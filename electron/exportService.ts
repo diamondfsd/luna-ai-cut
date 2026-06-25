@@ -90,7 +90,9 @@ export async function exportFiles(
 
     const ext = path.extname(file.name)
     const base = path.basename(file.name, ext)
-    const destName = watermarkSettings.enabled ? `${base}_wm${ext}` : file.name
+    const ts = Date.now()
+    const suffix = watermarkSettings.enabled ? `_wm` : ''
+    const destName = `${base}${suffix}_${ts}${ext}`
     const tmpPath = path.join(tmpDir, safeName(destName))
     const finalPath = path.join(exportDir, safeName(destName))
 
