@@ -177,3 +177,95 @@ jobs:
             echo "✓ ${filename} 上传完成"
             echo "::endgroup::"
           done
+
+  update-readme:
+    name: Update GitCode README
+    needs: [package-mac, package-win]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update GitCode Release Repo README
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          GITCODE_OWNER: diamondfsd
+          GITCODE_REPO: luna-ai-cut-package-release
+          TAG: ${{ github.ref_name }}
+          GITHUB_REPO: diamondfsd/luna-ai-cut
+        run: |
+          set -euo pipefail
+
+          echo "::group::获取 Release 附件信息"
+
+          # 通过 GitCode API 获取 release 详情（含 assets browser_download_url）
+          release_json=$(curl -sS \
+            "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/tags/${TAG}?access_token=${GITCODE_TOKEN}")
+
+          mac_url=$(echo "$release_json" | jq -r '.assets[] | select(.name | endswith(".dmg")) | .browser_download_url // empty' | head -1)
+          win_url=$(echo "$release_json" | jq -r '.assets[] | select(.name | endswith(".exe")) | .browser_download_url // empty' | head -1)
+          mac_name=$(echo "$release_json" | jq -r '.assets[] | select(.name | endswith(".dmg")) | .name // empty' | head -1)
+          win_name=$(echo "$release_json" | jq -r '.assets[] | select(.name | endswith(".exe")) | .name // empty' | head -1)
+
+          echo "macOS: ${mac_name}"
+          echo "Windows: ${win_name}"
+          echo "::endgroup::"
+
+          # 生成 README 内容
+          readme_body=$(cat <<-END
+          # Luna AI Cut — 国内下载镜像
+
+          > 本仓库用于托管 [Luna AI Cut](https://github.com/${GITHUB_REPO}) 的构建产物，方便国内用户高速下载。
+
+          ---
+
+          ## 📥 最新版本：${TAG}
+
+          [![GitHub Release](https://img.shields.io/badge/release-${TAG}-blue)](https://github.com/${GITHUB_REPO}/releases/tag/${TAG})
+
+          | 平台 | 文件 | 下载 |
+          |------|------|------|
+          | macOS (Apple Silicon) | ${mac_name} | [⬇️ 下载](${mac_url}) |
+          | Windows (x64) | ${win_name} | [⬇️ 下载](${win_url}) |
+
+          ---
+
+          ## 📋 关于
+
+          **Luna AI Cut** 是一款面向 Insta360 Luna Ultra 相机的桌面媒体管理工具。
+
+          - **功能**：Wi-Fi 连接相机、媒体浏览与下载、水印导出、边到边预览
+          - **GitHub 仓库**：[${GITHUB_REPO}](https://github.com/${GITHUB_REPO})
+          - **GitHub Releases**：[所有版本](https://github.com/${GITHUB_REPO}/releases)
+          - **问题反馈**：[Issues](https://github.com/${GITHUB_REPO}/issues)
+          END
+          )
+
+          # Base64 编码
+          content_b64=$(echo "$readme_body" | base64 -w 0)
+
+          # 获取当前 README 的 SHA
+          current_sha=$(curl -sS \
+            "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/contents/README.md?access_token=${GITCODE_TOKEN}" \
+            | jq -r '.sha // empty')
+
+          echo "::group::更新 README.md"
+          if [ -n "$current_sha" ]; then
+            # 更新已有文件
+            curl -s -X PUT \
+              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/contents/README.md?access_token=${GITCODE_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$(cat <<-END
+          {
+            "message": "chore: update download links for ${TAG}",
+            "content": "${content_b64}",
+            "sha": "${current_sha}"
+          }
+          END
+          )" | jq -r '.commit.message // "updated"'
+            echo "✓ README.md 已更新"
+          else
+            echo "⚠ 未找到 README.md，跳过更新"
+          fi
+          echo "::endgroup::"

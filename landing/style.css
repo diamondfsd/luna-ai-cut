@@ -728,3 +728,83 @@ img {
     text-align: center;
   }
 }
+
+/* ---- Mirror (GitCode 国内镜像) ---- */
+.mirror-section {
+  margin-top: 40px;
+  padding: 28px 32px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-card);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.mirror-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--blue-on-dark);
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.mirror-desc {
+  font-size: 13px;
+  color: var(--muted-dark);
+  margin-bottom: 16px;
+  opacity: 0.8;
+}
+
+.mirror-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mirror-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-btn);
+  color: var(--muted-dark);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.mirror-link:hover {
+  background: rgba(41, 151, 255, 0.15);
+  color: var(--blue-on-dark);
+  text-decoration: none;
+}
+
+.mirror-link-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.mirror-link-text {
+  flex: 1;
+}
+
+.mirror-link-arrow {
+  opacity: 0.5;
+  transition: transform 140ms ease;
+}
+
+.mirror-link:hover .mirror-link-arrow {
+  transform: translateX(4px);
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .mirror-section {
+    padding: 20px 18px;
+  }
+}
