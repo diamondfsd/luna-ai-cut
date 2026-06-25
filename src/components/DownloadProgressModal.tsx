@@ -26,14 +26,16 @@ function formatSpeed(bps: number): string {
   return `${Math.round(bps)} B/s`
 }
 
-function previewSourceFor(progress: DownloadProgress, file: LunaFile | undefined): string | null {
+function previewSourceFor(progress: DownloadProgress, file: LunaFile | undefined, readyThumbnailUrls?: Map<string, string>): string | null {
   // 已完成下载的显示本地文件（全分辨率），否则使用和预览列表一致的缩略图路径
   if ((progress.status === 'done' || progress.status === 'exists') && progress.destinationPath) {
     const path = progress.destinationPath
     const url = path.startsWith('file://') ? path : encodeURI(`file://${path}`).replace(/#/g, '%23').replace(/\?/g, '%3F')
     return url
   }
-  return file?.thumbnailUrl ?? null
+  // 优先使用 onThumbnailReady 回传的缩略图，回退到 file.thumbnailUrl
+  const readyUrl = file ? readyThumbnailUrls?.get(file.name) : null
+  return readyUrl ?? file?.thumbnailUrl ?? null
 }
 
 function statusLabel(progress: DownloadProgress): string {
@@ -73,6 +75,9 @@ export function DownloadProgressModal({
   const onFileDownloadedRef = useRef(onFileDownloaded)
   const onQueueClearRef = useRef(onQueueClear)
   const onQueueShiftRef = useRef(onQueueShift)
+  const readyThumbnailUrlsRef = useRef<Map<string, string>>(new Map())
+  const [, forceUpdate] = useState(0)
+  const requestedThumbnailIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     queueRef.current = downloadQueue
@@ -80,6 +85,41 @@ export function DownloadProgressModal({
       fileSnapshotsRef.current.set(file.name, file)
     }
   }, [downloadQueue])
+
+  // 对下载队列中的文件主动请求缩略图缓存
+  useEffect(() => {
+    for (const file of downloadQueue) {
+      if (file.thumbnailUrl || requestedThumbnailIdsRef.current.has(file.id)) continue
+      requestedThumbnailIdsRef.current.add(file.id)
+      window.luna.cacheFile(file).catch(() => {
+        requestedThumbnailIdsRef.current.delete(file.id)
+      })
+    }
+  }, [downloadQueue])
+
+  // 监听缩略图就绪，动态更新缩略图
+  useEffect(() => {
+    return window.luna.onThumbnailReady(({ fileId, fileName, thumbnailUrl }) => {
+      let updated = false
+      for (const file of fileSnapshotsRef.current.values()) {
+        if (file.id === fileId || file.name === fileName) {
+          readyThumbnailUrlsRef.current.set(file.name, thumbnailUrl)
+          updated = true
+          break
+        }
+      }
+      // 也尝试从 downloadQueue 匹配（snapshot 可能未及时更新）
+      if (!updated) {
+        for (const file of queueRef.current) {
+          if (file.id === fileId || file.name === fileName) {
+            readyThumbnailUrlsRef.current.set(file.name, thumbnailUrl)
+            break
+          }
+        }
+      }
+      forceUpdate((n) => n + 1)
+    })
+  }, [])
 
   useEffect(() => {
     onFileDownloadedRef.current = onFileDownloaded
@@ -268,7 +308,7 @@ export function DownloadProgressModal({
         <div className="dl-file-list">
           {entries.map((progress) => {
             const file = fileSnapshotsRef.current.get(progress.fileName)
-            const previewSource = previewSourceFor(progress, file)
+            const previewSource = previewSourceFor(progress, file, readyThumbnailUrlsRef.current)
             const isVideoPreview = file?.kind === 'video' || file?.kind === 'lrv'
             const pct = progress.status === 'done' || progress.status === 'exists'
               ? 100

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, Download, FileQuestion, FolderOpen, Loader2, X } from 'lucide-react'
 
 import type { ExportProgress, LunaFile } from '../shared/types'
@@ -28,8 +28,9 @@ function filePathToPreviewUrl(filePath: string | null | undefined): string | nul
   return encodeURI(`file://${filePath}`).replace(/#/g, '%23').replace(/\?/g, '%3F')
 }
 
-function previewSourceFor(progress: ExportProgress, file: LunaFile | undefined): string | null {
-  const sourcePath = progress.destinationPath ?? file?.thumbnailUrl ?? file?.downloadFilePath ?? file?.localPath
+function previewSourceFor(progress: ExportProgress, file: LunaFile | undefined, readyThumbnailUrls?: Map<string, string>): string | null {
+  const readyUrl = file ? readyThumbnailUrls?.get(file.name) : null
+  const sourcePath = progress.destinationPath ?? readyUrl ?? file?.thumbnailUrl ?? file?.downloadFilePath ?? file?.localPath
   return filePathToPreviewUrl(sourcePath)
 }
 
@@ -51,6 +52,33 @@ export function ExportProgressModal({
 }: ExportProgressModalProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const readyThumbnailUrlsRef = useRef<Map<string, string>>(new Map())
+  const [, forceUpdate] = useState(0)
+  const requestedThumbnailIdsRef = useRef<Set<string>>(new Set())
+
+  // 对导出队列中的文件主动请求缩略图缓存
+  useEffect(() => {
+    for (const file of fileSnapshots.values()) {
+      if (file.thumbnailUrl || requestedThumbnailIdsRef.current.has(file.id)) continue
+      requestedThumbnailIdsRef.current.add(file.id)
+      window.luna.cacheFile(file).catch(() => {
+        requestedThumbnailIdsRef.current.delete(file.id)
+      })
+    }
+  }, [fileSnapshots])
+
+  // 监听缩略图就绪，动态更新缩略图
+  useEffect(() => {
+    return window.luna.onThumbnailReady(({ fileId, fileName, thumbnailUrl }) => {
+      for (const file of fileSnapshots.values()) {
+        if (file.id === fileId || file.name === fileName) {
+          readyThumbnailUrlsRef.current.set(file.name, thumbnailUrl)
+          break
+        }
+      }
+      forceUpdate((n) => n + 1)
+    })
+  }, [])
 
   const entries = [...exportProgress.values()].sort((a, b) => {
     const statusOrder = statusRank[a.status] - statusRank[b.status]
@@ -128,7 +156,7 @@ export function ExportProgressModal({
         <div className="dl-file-list">
           {entries.map((progress) => {
             const file = fileSnapshots.get(progress.fileName)
-            const previewSource = previewSourceFor(progress, file)
+            const previewSource = previewSourceFor(progress, file, readyThumbnailUrlsRef.current)
             const isVideoPreview = file?.kind === 'video' || file?.kind === 'lrv'
             const pct = progress.status === 'done' ? 100 : progress.percent ?? 0
             return (

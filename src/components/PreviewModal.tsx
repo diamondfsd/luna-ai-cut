@@ -164,6 +164,8 @@ export function PreviewModal({
   }, [file.kind])
 
   const isDownloaded = !!downloadedPath
+  // 水印控制：仅在已下载文件上生效
+  const effectiveWatermark = showWatermarkControls && isDownloaded
 
   // Load metadata when preview is ready (images) or after download (videos)
   useEffect(() => {
@@ -371,7 +373,7 @@ export function PreviewModal({
           isDownloadingCurrentFile={isDownloadingCurrentFile}
           isDownloadsPage={isDownloadsPage}
           progressPercent={progressPercent}
-          showWatermarkControls={showWatermarkControls}
+          showWatermarkControls={effectiveWatermark}
           watermarkSettings={watermarkSettings}
           onClose={onClose}
           onDownload={onDownload}
@@ -400,7 +402,7 @@ export function PreviewModal({
               previewLoading={previewLoading}
               previewMessage={preview?.message}
               previewImageRef={previewImageRef}
-              showWatermarkControls={showWatermarkControls}
+              showWatermarkControls={effectiveWatermark}
               videoRef={videoRef}
               watermarkSettings={watermarkSettings}
               finishImageDrag={finishImageDrag}
@@ -437,8 +439,8 @@ export function PreviewModal({
               onZoomOut={handleZoomOut}
               onResetZoom={handleResetZoom}
               onToggleCollapse={() => setInspectorOpen(false)}
-              watermarkSettings={showWatermarkControls ? watermarkSettings : undefined}
-              onWatermarkChange={showWatermarkControls ? saveWatermarkSettings : undefined}
+              watermarkSettings={effectiveWatermark ? watermarkSettings : undefined}
+              onWatermarkChange={effectiveWatermark ? saveWatermarkSettings : undefined}
             />
           )}
         </div>

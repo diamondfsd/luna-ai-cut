@@ -207,6 +207,21 @@
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 
+.video-play-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: grid;
+  width: px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  pointer-events: none;
+}
+
 .select-chip,
 .download-state,
 .downloaded-chip {

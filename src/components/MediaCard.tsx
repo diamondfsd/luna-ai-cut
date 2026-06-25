@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { Check, FileQuestion, FolderOpen, X } from 'lucide-react'
+import { Check, FileQuestion, FolderOpen, Play, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
 import { IconButton } from '../ui'
 
@@ -114,6 +114,11 @@ export function MediaCard({
             </span>
           </span>
         ) : null}
+        {file.kind === 'video' && (
+          <span className="video-play-badge">
+            <Play size={14} fill="currentColor" />
+          </span>
+        )}
       </div>
     </article>
   )

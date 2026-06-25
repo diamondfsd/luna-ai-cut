@@ -95,6 +95,7 @@ export function useMediaLibraryController({
   const previewRequestIdRef = useRef(0)
   const requestedThumbnailIdsRef = useRef(new Set<string>())
   const requestedFrameRateIdsRef = useRef(new Set<string>())
+  const requestFrameRateRef = useRef<(file: LunaFile, localPath: string | null | undefined) => void>(() => {})
   const activeDeviceId = activeDevice?.id ?? settings?.activeDeviceId ?? ''
   const storageOptions = [
     { value: 'all', label: '全部' },
@@ -189,6 +190,10 @@ export function useMediaLibraryController({
       setDownloadedFiles((current) =>
         current.map((f) => (matches(f) ? { ...f, cacheFilePath, thumbnailUrl } : f)),
       )
+      // 视频缓存完成后（cacheFilePath 可用），主动请求帧率和时长
+      // 即使 MediaCard 的 onLoad 重新触发也能覆盖，此处做双重保障
+      const mockFile: Partial<LunaFile> = { id: fileId, cacheFilePath, kind: 'video' }
+      requestFrameRateRef.current(mockFile as LunaFile, null)
     })
   }, [])
 
@@ -222,6 +227,9 @@ export function useMediaLibraryController({
       requestedFrameRateIdsRef.current.delete(file.id)
     })
   }
+
+  // 保持 ref 与最新函数同步，供 onThumbnailReady 等闭包回调使用
+  requestFrameRateRef.current = requestFrameRate
 
   function handleThumbnailImageLoad(file: LunaFile, localPath: string | null | undefined): void {
     requestThumbnail(file)
