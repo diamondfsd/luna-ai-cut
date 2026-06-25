@@ -12,6 +12,8 @@ type StorageFilter = string
 
 export interface MediaLibraryPageProps {
   isDownloadsPage: boolean
+  /** 当前页面是否为激活状态（否则隐藏页面应阻止预览弹窗等 Portal 元素渲染） */
+  pageActive?: boolean
   settings: AppSettings | null
   downloadProgress: Map<string, DownloadProgress>
   setDownloadProgress: React.Dispatch<React.SetStateAction<Map<string, DownloadProgress>>>

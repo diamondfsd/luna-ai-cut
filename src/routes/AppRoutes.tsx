@@ -120,6 +120,7 @@ export function AppRoutes() {
             <div hidden={showDeviceConnect}>
               <MediaLibraryPage
                 isDownloadsPage={false}
+                pageActive={isLibraryActive}
                 settings={settings}
                 downloadProgress={downloadProgress}
                 setDownloadProgress={setDownloadProgress}
@@ -141,6 +142,7 @@ export function AppRoutes() {
         <section className="route-panel" hidden={!isDownloadsActive}>
           <MediaLibraryPage
             isDownloadsPage={true}
+            pageActive={isDownloadsActive}
             settings={settings}
             downloadProgress={downloadProgress}
             setDownloadProgress={setDownloadProgress}

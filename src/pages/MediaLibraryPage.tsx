@@ -40,6 +40,7 @@ export function MediaLibraryPage({
   refreshKey,
   selectMode,
   onSelect,
+  pageActive = true,
 }: MediaLibraryPageProps) {
   const {
     activeDownloadFileNames,
@@ -233,7 +234,7 @@ export function MediaLibraryPage({
         toggleGroup={toggleGroup}
       />
 
-      {previewFile && !selectMode && (
+      {pageActive && previewFile && !selectMode && (
         <PreviewModal
           files={previewFiles.length > 0 ? previewFiles : filteredFiles}
           currentFile={previewFile}
