@@ -295,7 +295,7 @@ fi
 # ============================================================
 echo ""
 info "═══════════════════════════════════════════════════════════"
-ok  "全部完成！${TAG} 已发布到 GitCode"
+ok  "全部完成！${TAG} 已发布到 GitCode https://gitcode.com/diamondfsd/luna-ai-cut-package-release"
 info "  ${API_BASE}/releases/tag/${TAG}"
 info "═══════════════════════════════════════════════════════════"
 echo ""
