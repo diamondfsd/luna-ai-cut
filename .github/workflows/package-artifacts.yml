@@ -80,9 +80,12 @@ jobs:
             filename=$(basename "$filepath")
             echo "::group::上传 ${filename}"
 
+            # URL 编码文件名（文件名可能含空格）
+            encoded_name=$(printf '%s' "$filename" | jq -sRr @uri)
+
             # 获取 OBS 上传地址
             upload_json=$(curl -sS \
-              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?file_name=${filename}" \
+              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?file_name=${encoded_name}" \
             -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
             upload_url=$(echo "$upload_json" | jq -r '.url')
