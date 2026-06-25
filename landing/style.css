@@ -838,3 +838,67 @@ img {
     padding: 20px 18px;
   }
 }
+
+/* ==========================================
+   Contact / Follow 联系与关注
+   ========================================== */
+.contact-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  margin-top: 40px;
+}
+
+.contact-qr {
+  width: 200px;
+  height: 200px;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.contact-info h3 {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--ink);
+}
+
+.contact-info ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.contact-info li {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.contact-tip {
+  font-size: 14px;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+@media (max-width: 640px) {
+  .contact-card {
+    flex-direction: column;
+    gap: 24px;
+    text-align: center;
+  }
+
+  .contact-qr {
+    width: 160px;
+    height: 160px;
+  }
+
+  .contact-info ul {
+    text-align: left;
+  }
+}
