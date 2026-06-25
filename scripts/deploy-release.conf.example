@@ -1,0 +1,13 @@
+# deploy-release.sh 本地配置
+# 复制此文件为 deploy-release.conf 并填入真实值
+# deploy-release.conf 已被 .gitignore 忽略，不会提交到仓库
+
+# GitCode Personal Access Token（必填）
+GITCODE_TOKEN=your_token_here
+
+# GitCode 仓库信息（通常无需修改）
+GITCODE_OWNER=diamondfsd
+GITCODE_REPO=luna-ai-cut-package-release
+
+# GitHub 仓库信息
+GITHUB_REPO=diamondfsd/luna-ai-cut

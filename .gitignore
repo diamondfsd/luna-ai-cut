@@ -28,3 +28,6 @@ release
 # Build artifacts
 resources/ffmpeg/
 docs/
+
+# Local deploy config
+scripts/deploy-release.conf

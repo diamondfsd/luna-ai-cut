@@ -5,8 +5,12 @@ set -euo pipefail
 # deploy-release.sh — 本地打包并上传到 GitCode Release
 #
 # 用法:
-#   export GITCODE_TOKEN=your_token_here
-#   ./scripts/deploy-release.sh v1.2.9
+#   ./scripts/deploy-release.sh            # 自动取 package.json 版本
+#   ./scripts/deploy-release.sh v1.3.0     # 或手动指定
+#
+# 配置（二选一）:
+#   1. 复制 deploy-release.conf.example → deploy-release.conf，填入 token
+#   2. 设置环境变量: export GITCODE_TOKEN=xxx
 #
 # 流程:
 #   1. 检测当前平台并构建（macOS → DMG, Windows → EXE）
@@ -15,12 +19,23 @@ set -euo pipefail
 #   4. 更新 mirror 仓库 README
 # ============================================================
 
-TAG="${1:?用法: deploy-release.sh <版本号>  例: deploy-release.sh v1.2.9}"
-: "${GITCODE_TOKEN:?请先设置环境变量 GITCODE_TOKEN}"
+# ── 加载本地配置（如有） ──
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONF_FILE="${SCRIPT_DIR}/deploy-release.conf"
+if [ -f "$CONF_FILE" ]; then
+  source "$CONF_FILE"
+fi
 
-GITCODE_OWNER="diamondfsd"
-GITCODE_REPO="luna-ai-cut-package-release"
-GITHUB_REPO="diamondfsd/luna-ai-cut"
+# ── 自动获取最新版本号 ──
+PKG_VER="$(node -p "require('./package.json').version")"
+DEFAULT_TAG="v${PKG_VER}"
+TAG="${1:-$DEFAULT_TAG}"
+
+: "${GITCODE_TOKEN:?请先设置环境变量 GITCODE_TOKEN，或创建 deploy-release.conf}"
+
+GITCODE_OWNER="${GITCODE_OWNER:-diamondfsd}"
+GITCODE_REPO="${GITCODE_REPO:-luna-ai-cut-package-release}"
+GITHUB_REPO="${GITHUB_REPO:-diamondfsd/luna-ai-cut}"
 RELEASE_DIR="release"
 
 # ── 颜色 ──
