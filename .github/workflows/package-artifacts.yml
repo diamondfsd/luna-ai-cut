@@ -47,6 +47,54 @@ jobs:
         with:
           files: release/**/*.dmg
 
+      - name: Upload to GitCode Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          GITCODE_OWNER: diamondfsd
+          GITCODE_REPO: luna-ai-cut-package-release
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # 1. 创建 Release（已存在则忽略）
+          echo "::group::创建 GitCode Release"
+          curl -s -o /dev/null -w "→ HTTP %{http_code}\n" \
+            -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases?access_token=${GITCODE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\"}" || true
+          echo "::endgroup::"
+
+          # 2. 上传 DMG 文件
+          for filepath in release/*.dmg; do
+            [ -f "$filepath" ] || continue
+            filename=$(basename "$filepath")
+            echo "::group::上传 ${filename}"
+
+            # 获取 OBS 上传地址
+            upload_json=$(curl -sS \
+              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?access_token=${GITCODE_TOKEN}&file_name=${filename}")
+
+            upload_url=$(echo "$upload_json" | jq -r '.url')
+            echo "上传地址已获取"
+
+            headers_json=$(echo "$upload_json" | jq -r '.headers')
+            ct=$(echo "$headers_json" | jq -r '.["Content-Type"] // "application/octet-stream"')
+            pid=$(echo "$headers_json" | jq -r '.["x-obs-meta-project-id"] // ""')
+            acl=$(echo "$headers_json" | jq -r '.["x-obs-acl"] // ""')
+            cb=$(echo "$headers_json" | jq -r '.["x-obs-callback"] // ""')
+
+            header_args=(-H "Content-Type: ${ct}")
+            [ -n "$pid" ] && header_args+=(-H "x-obs-meta-project-id: ${pid}")
+            [ -n "$acl" ] && header_args+=(-H "x-obs-acl: ${acl}")
+            [ -n "$cb" ]  && header_args+=(-H "x-obs-callback: ${cb}")
+
+            curl -X PUT "${header_args[@]}" --data-binary "@${filepath}" "${upload_url}"
+            echo "✓ ${filename} 上传完成"
+            echo "::endgroup::"
+          done
+
   package-win:
     name: Build Windows (x64 NSIS)
     runs-on: windows-latest
@@ -82,3 +130,50 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: release/**/*Setup*.exe
+
+      - name: Upload to GitCode Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          GITCODE_OWNER: diamondfsd
+          GITCODE_REPO: luna-ai-cut-package-release
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # 1. 创建 Release（已存在则忽略）
+          echo "::group::创建 GitCode Release"
+          curl -s -o /dev/null -w "→ HTTP %{http_code}\n" \
+            -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases?access_token=${GITCODE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\"}" || true
+          echo "::endgroup::"
+
+          # 2. 上传安装包文件
+          for filepath in release/*Setup*.exe; do
+            [ -f "$filepath" ] || continue
+            filename=$(basename "$filepath")
+            echo "::group::上传 ${filename}"
+
+            upload_json=$(curl -sS \
+              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?access_token=${GITCODE_TOKEN}&file_name=${filename}")
+
+            upload_url=$(echo "$upload_json" | jq -r '.url')
+            echo "上传地址已获取"
+
+            headers_json=$(echo "$upload_json" | jq -r '.headers')
+            ct=$(echo "$headers_json" | jq -r '.["Content-Type"] // "application/octet-stream"')
+            pid=$(echo "$headers_json" | jq -r '.["x-obs-meta-project-id"] // ""')
+            acl=$(echo "$headers_json" | jq -r '.["x-obs-acl"] // ""')
+            cb=$(echo "$headers_json" | jq -r '.["x-obs-callback"] // ""')
+
+            header_args=(-H "Content-Type: ${ct}")
+            [ -n "$pid" ] && header_args+=(-H "x-obs-meta-project-id: ${pid}")
+            [ -n "$acl" ] && header_args+=(-H "x-obs-acl: ${acl}")
+            [ -n "$cb" ]  && header_args+=(-H "x-obs-callback: ${cb}")
+
+            curl -X PUT "${header_args[@]}" --data-binary "@${filepath}" "${upload_url}"
+            echo "✓ ${filename} 上传完成"
+            echo "::endgroup::"
+          done
