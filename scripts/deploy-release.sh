@@ -54,9 +54,9 @@ err()   { echo -e "${RED}  ✗${NC} $*"; }
 OS="$(uname -s)"
 case "$OS" in
   Darwin)
-    BUILD_CMD="npm run pack:mac:arm64"
-    FILE_PATTERN="*.dmg"
-    PLATFORM="macOS"
+    BUILD_CMD="npm run pack:all"
+    FILE_PATTERN="-name '*.dmg' -o -name '*Setup*.exe'"
+    PLATFORM="macOS + Windows"
     ;;
   Windows_NT|MINGW*|MSYS*)
     BUILD_CMD="npm run pack:win:x64"
@@ -89,9 +89,23 @@ info "开始构建 ${PLATFORM}..."
 $BUILD_CMD
 ok "构建完成"
 
+# 安装 pv（进度条），macOS 上通过 brew 安装
+if ! command -v pv &>/dev/null; then
+  info "安装 pv（进度条工具）..."
+  case "$OS" in
+    Darwin) brew install pv ;;
+    Linux)  sudo apt-get update -qq && sudo apt-get install -y -qq pv ;;
+  esac
+fi
+
 # 查找构建产物
 FILES=()
-while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" -name "$FILE_PATTERN" -type f 2>/dev/null || true)
+if [ "$OS" = "Darwin" ]; then
+  # macOS 交叉编译，可能产生 .dmg 和 .exe 两种文件
+  while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" \( -name "*.dmg" -o -name "*Setup*.exe" \) -type f 2>/dev/null || true)
+else
+  while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" -name "$FILE_PATTERN" -type f 2>/dev/null || true)
+fi
 if [ ${#FILES[@]} -eq 0 ]; then
   err "未找到构建产物 ($RELEASE_DIR/$FILE_PATTERN)"
   exit 1
