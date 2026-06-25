@@ -1,0 +1,49 @@
+{
+  "id": "luna-ultra",
+  "name": "Luna Ultra",
+  "vendor": "Insta360",
+  "defaultHost": "192.168.42.1",
+  "httpPort": 80,
+  "controlPort": 6666,
+  "mock": {
+    "host": "127.0.0.1",
+    "httpPort": 18080,
+    "tcpPort": 6666,
+    "rateMbps": 30
+  },
+  "bluetooth": {
+    "namePrefixes": ["Insta360 Z03", "##Insta360##"],
+    "scanServiceUuids": ["00001812-0000-1000-8000-00805f9b34fb"],
+    "optionalServiceUuids": [
+      "00001812-0000-1000-8000-00805f9b34fb",
+      "0000180a-0000-1000-8000-00805f9b34fb",
+      "0000180f-0000-1000-8000-00805f9b34fb",
+      "0000ffd0-0000-1000-8000-00805f9b34fb",
+      "0000ffd5-0000-1000-8000-00805f9b34fb",
+      "0000ffe0-0000-1000-8000-00805f9b34fb",
+      "0000ffe1-0000-1000-8000-00805f9b34fb"
+    ],
+    "serviceUuid": "0000ffd0-0000-1000-8000-00805f9b34fb",
+    "writeCharacteristicUuid": "0000ffd5-0000-1000-8000-00805f9b34fb",
+    "notifyCharacteristicUuid": "0000ffd5-0000-1000-8000-00805f9b34fb",
+    "wakePayloadHex": "0802"
+  },
+  "storages": [
+    {
+      "id": "storage_internal",
+      "label": "内置存储",
+      "path": "/storage_internal/DCIM/Camera01/",
+      "default": true
+    },
+    {
+      "id": "sdcard",
+      "label": "SD 卡",
+      "path": "/sdcard/DCIM/Camera/",
+      "default": false
+    }
+  ],
+  "watermarkStyles": [
+    { "value": "luna_ultra", "label": "标准", "fileName": "ic_watermark_luna_ultra" },
+    { "value": "luna_ultra_cn", "label": "中文", "fileName": "ic_watermark_luna_ultra_cn" }
+  ]
+}

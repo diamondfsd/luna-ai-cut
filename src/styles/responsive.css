@@ -1,0 +1,114 @@
+@media (max-width: 1180px) {
+  .media-grid.card-size-large {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .media-grid.card-size-medium {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .media-grid.card-size-small {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 840px) {
+  .nav-links {
+    display: none;
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .date-title-line {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .library-tools {
+    align-items: stretch;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+
+  .library-date-slot {
+    min-width: 0;
+  }
+
+  .library-controls {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .media-grid {
+    gap: 14px;
+  }
+
+  .media-grid.card-size-large {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .media-grid.card-size-medium {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .media-grid.card-size-small {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .control-band {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-row-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .host-field {
+    width: 100%;
+  }
+
+  .preview-body {
+    grid-template-columns: 1fr;
+  }
+
+  .media-inspector {
+    max-height: 260px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .media-grid.card-size-large,
+  .media-grid.card-size-medium {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .media-grid.card-size-small {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .media-section {
+    padding: 0 18px 56px;
+  }
+
+  .section-heading {
+    width: calc(100% + 36px);
+    margin-right: -18px;
+    margin-left: -18px;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+}

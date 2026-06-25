@@ -1,0 +1,127 @@
+/* ====== 设置页面布局 ====== */
+
+.settings-surface {
+  min-height: calc(100vh - 96px);
+  background: var(--parchment);
+  padding: 32px 24px 80px;
+}
+
+.settings-list {
+  display: flex;
+  max-width: 980px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  background: var(--canvas);
+  margin: 0 auto;
+}
+
+/* 组标题 */
+.settings-group-title {
+  margin: 0;
+  padding: 18px 22px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* 设置行：标签区 | 操作区 */
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 18px 22px;
+}
+
+.settings-row:last-child {
+  border-bottom: 0;
+}
+
+/* 标签区 */
+.settings-row-copy {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.settings-row-copy span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-row-copy span svg {
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.settings-row-copy strong,
+.settings-row-copy em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-row-copy strong {
+  font-size: 17px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.settings-row-copy em {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+}
+
+/* 操作区 */
+.settings-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Mock Server 配置字段网格 */
+.mock-settings-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.mock-settings-fields label {
+  display: grid;
+  gap: 6px;
+}
+
+.mock-settings-fields label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ====== 设置页 WiFi 编辑（未使用但保留兼容） ====== */
+.wifi-settings-edit {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+  border-top: 1px solid var(--hairline);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.wifi-settings-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.wifi-settings-fields .host-field {
+  flex: 1;
+  min-width: 180px;
+}

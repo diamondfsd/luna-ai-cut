@@ -1,0 +1,271 @@
+/* ====== 下载 / 导出进度徽标 ====== */
+.download-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 14px;
+  margin-left: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--canvas);
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.download-badge:hover {
+  background: var(--parchment);
+}
+
+.download-badge.is-active {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.download-badge.has-failed {
+  border-color: #ff3b30;
+  color: #ff3b30;
+}
+
+.download-badge-count,
+.download-badge-pct {
+  font-variant-numeric: tabular-nums;
+}
+
+.download-badge-pct {
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+/* ====== 进度下拉面板 ====== */
+.dl-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+}
+
+.dl-dropdown-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 46;
+  width: 440px;
+  max-height: 440px;
+  background: var(--glass-surface-strong);
+}
+
+.dl-dropdown-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dl-overall {
+  display: grid;
+  gap: 6px;
+}
+
+.dl-overall-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.dl-overall-label {
+  color: var(--muted);
+}
+
+.dl-overall-pct {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.dl-overall-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.dl-overall-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--blue);
+  transition: width 0.3s ease;
+}
+
+.dl-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dl-file-item {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+}
+
+.dl-file-item.done {
+  opacity: 0.65;
+}
+
+.dl-file-item.canceled {
+  opacity: 0.72;
+}
+
+.dl-file-item.failed {
+  background: rgba(255, 59, 48, 0.1);
+}
+
+.dl-file-preview {
+  display: grid;
+  width: 54px;
+  height: 40px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--muted);
+}
+
+.dl-file-preview img,
+.dl-file-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dl-file-info {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.dl-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.dl-file-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.dl-file-progress-track {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.dl-file-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--blue);
+  transition: width 0.3s ease;
+}
+
+.dl-file-item.failed .dl-file-progress-fill {
+  background: #ff3b30;
+}
+
+.dl-file-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 72px;
+}
+
+.dl-file-actions .circle-button {
+  width: 28px;
+  height: 28px;
+}
+
+.dl-file-status {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  border-radius: 999px;
+  background: rgba(0, 102, 204, 0.1);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--blue);
+  white-space: nowrap;
+}
+
+.dl-file-status.muted {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--muted);
+}
+
+.dl-cancel-button {
+  height: 30px;
+}
+
+/* ====== 水印设置工具栏 ====== */
+.watermark-popover.ui-popover-content {
+  width: auto;
+  max-height: none;
+  padding: 0;
+}
+
+.watermark-popover.ui-popover-content .ui-panel {
+  width: 380px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ====== 导出错误提示 ====== */
+.export-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(255, 59, 48, 0.12);
+  color: #ff3b30;
+  font-size: 12px;
+  line-height: 1.3;
+  max-width: 400px;
+}
+
+.export-error button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 59, 48, 0.2);
+  color: #ff3b30;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.export-error button:hover {
+  background: rgba(255, 59, 48, 0.35);
+}

@@ -1,0 +1,110 @@
+/* ====== 设备连接占位页面 ====== */
+.device-connect-page {
+  display: grid;
+  min-height: calc(100vh - 44px);
+  place-items: center;
+  background: var(--parchment);
+  padding: 24px;
+}
+
+.device-connect-content {
+  display: grid;
+  max-width: 420px;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.device-connect-icon {
+  display: grid;
+  width: 96px;
+  height: 96px;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 20px;
+  background: var(--canvas);
+  color: var(--muted);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.device-connect-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.device-connect-content h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.device-connect-desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.device-connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.device-connect-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-connect-meta span {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--canvas);
+  padding: 0 10px;
+}
+
+.device-connect-tip {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  max-width: 320px;
+}
+
+.device-connect-help {
+  margin-top: 24px;
+}
+
+.device-help-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 100ms ease, background 100ms ease;
+}
+
+.device-help-btn:hover {
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.04);
+}

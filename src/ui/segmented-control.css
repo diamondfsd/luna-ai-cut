@@ -1,0 +1,44 @@
+/* ==========================================
+   Luna AI Cut — SegmentedControl / ButtonGroup 通用药丸样式
+   与 ButtonGroup 组件保持视觉一致
+   ========================================== */
+
+.segmented-pill,
+.size-switch,
+.ui-btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.segmented-pill button,
+.size-switch button,
+.ui-btn-group-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--parchment);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 120ms, color 120ms;
+  white-space: nowrap;
+}
+
+.segmented-pill button:hover,
+.size-switch button:hover,
+.ui-btn-group-btn:hover {
+  background: #e8e8ed;
+}
+
+.segmented-pill button.active,
+.size-switch button.active,
+.ui-btn-group-btn.active {
+  background: var(--blue);
+  color: #fff;
+}

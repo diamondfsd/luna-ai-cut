@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Luna AI Cut — Insta360 Luna Ultra 桌面媒体管理</title>
+    <meta name="description" content="Luna AI Cut 是面向 Insta360 Luna Ultra 相机的桌面媒体管理工具，支持 Wi-Fi 连接、媒体浏览下载、水印导出等功能。" />
+    <meta name="keywords" content="Luna AI Cut, Insta360, Luna Ultra, 媒体管理, 360 相机, 桌面工具" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Luna AI Cut — 智能媒体管理工具" />
+    <meta property="og:description" content="面向 Insta360 Luna Ultra 的专业桌面媒体管理工具" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://diamondfsd.github.io/luna-ai-cut/" />
+
+    <link rel="icon" type="image/png" href="assets/favicon.png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- ===== Global Nav ===== -->
+    <nav class="global-nav">
+      <div class="nav-inner">
+        <div class="nav-brand">
+          <img class="nav-logo" src="assets/icon.png" alt="Luna AI Cut" width="18" height="18" />
+          Luna AI Cut
+        </div>
+        <div class="nav-links">
+          <a href="#download">下载</a>
+          <a href="#features">功能</a>
+          <a href="#guide">使用指南</a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ===== Hero ===== -->
+    <section class="hero">
+      <div class="hero-bg"></div>
+      <div class="hero-content">
+        <div class="hero-headline">
+          <img class="hero-icon" src="assets/icon.png" alt="Luna AI Cut" width="100" height="100" />
+          <h1 class="hero-title">Luna AI Cut</h1>
+        </div>
+        <p class="hero-lead">Insta360 Luna Ultra 的桌面搭档<br/>媒体管理 · 水印导出 · 一站式完成</p>
+        <div class="hero-cta">
+          <a href="#download" class="pill primary">免费下载</a>
+          <a href="#features" class="pill secondary">了解功能</a>
+        </div>
+        <div class="hero-preview">
+          <div class="hero-mockup">
+            <div class="mockup-bar">
+              <span class="mockup-dot"></span>
+              <span class="mockup-dot"></span>
+              <span class="mockup-dot"></span>
+              <span class="mockup-text">Luna AI Cut — 媒体库</span>
+            </div>
+            <div class="mockup-body">
+              <div class="mockup-nav">
+                <span class="mockup-nav-item active">设备媒体库</span>
+                <span class="mockup-nav-item">本地资源</span>
+                <span class="mockup-nav-item">设置</span>
+              </div>
+              <div class="mockup-toolbar">
+                <span class="mockup-toolbar-text" id="mockup-date"></span>
+                <div class="mockup-toolbar-right">
+                  <span class="mockup-chip active">全部</span>
+                  <span class="mockup-chip">照片</span>
+                  <span class="mockup-chip">视频</span>
+                </div>
+              </div>
+              <div class="mockup-gallery">
+                <div class="mockup-card"></div>
+                <div class="mockup-card mockup-card-tall"></div>
+                <div class="mockup-card"></div>
+                <div class="mockup-card mockup-card-tall"></div>
+                <div class="mockup-card"></div>
+                <div class="mockup-card"></div>
+                <div class="mockup-card mockup-card-tall"></div>
+                <div class="mockup-card"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Download ===== -->
+    <section id="download" class="section section-dark">
+      <div class="section-inner">
+        <div class="section-label accent">下载</div>
+        <h2 class="section-title section-title-light">选择你的平台</h2>
+        <p class="section-desc section-desc-light">目前支持 macOS 和 Windows，免费使用</p>
+
+        <div class="download-grid">
+          <a href="https://github.com/diamondfsd/luna-ai-cut/releases" class="download-card" id="dl-mac" target="_blank" rel="noopener">
+            <div class="download-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/>
+                <path d="M9 21h6"/>
+              </svg>
+            </div>
+            <h3 class="download-title">macOS 版</h3>
+            <p class="download-sub">Apple Silicon (M 系列芯片)</p>
+            <span class="download-badge">.dmg · 免费</span>
+          </a>
+
+          <a href="https://github.com/diamondfsd/luna-ai-cut/releases" class="download-card" id="dl-win" target="_blank" rel="noopener">
+            <div class="download-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="4" width="16" height="16" rx="2"/>
+                <path d="M9 9h1v1H9z"/><path d="M9 13h1v1H9z"/><path d="M9 17h1v1H9z"/>
+                <path d="M13 9h1v1h-1z"/><path d="M13 13h1v1h-1z"/><path d="M13 17h1v1h-1z"/>
+                <path d="M17 9h1v1h-1z"/><path d="M17 13h1v1h-1z"/><path d="M17 17h1v1h-1z"/>
+              </svg>
+            </div>
+            <h3 class="download-title">Windows 版</h3>
+            <p class="download-sub">安装包（.exe）</p>
+            <span class="download-badge">.exe · 免费</span>
+          </a>
+        </div>
+        <p class="download-note">
+          <a href="https://github.com/diamondfsd/luna-ai-cut/releases" target="_blank" rel="noopener">前往 GitHub Releases</a> 下载最新版本
+        </p>
+      </div>
+    </section>
+
+    <!-- ===== Features ===== -->
+    <section id="features" class="section section-parchment">
+      <div class="section-inner">
+        <div class="section-label">功能亮点</div>
+        <h2 class="section-title">专为 Luna Ultra 打造</h2>
+        <p class="section-desc">从连接相机到导出成片，每个环节都精心设计</p>
+
+        <div class="features-grid">
+          <article class="feature-card">
+            <div class="feature-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">一键连接相机</h3>
+            <p class="feature-desc">连接 Luna Wi-Fi 热点后，应用自动检测设备并加载媒体库。无需繁琐配置，打开即用。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">媒体浏览管理</h3>
+            <p class="feature-desc">按日期分组浏览照片和视频，支持全部/照片/视频快速筛选。三种缩略图尺寸自由切换，轻松管理数千个文件。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="8,17 16,11 8,5"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">高效选择下载</h3>
+            <p class="feature-desc">框选、单选、组选灵活切换。拖动跨越半张卡片即选中，批量下载到本地日期目录，实时进度一目了然。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">边到边预览</h3>
+            <p class="feature-desc">全屏暗色预览，媒体内容居中突出。右侧信息面板展示分辨率、文件大小、拍摄时间等关键元数据。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">水印与导出</h3>
+            <p class="feature-desc">支持多种水印样式、位置和大小，导出时自动添加品牌标识。已下载文件跨会话保持状态，安全可靠。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Guide ===== -->
+    <section id="guide" class="section section-white">
+      <div class="section-inner">
+        <div class="section-label">使用指南</div>
+        <h2 class="section-title">三步上手，轻松管理</h2>
+        <p class="section-desc">从连接到导出，简单直观</p>
+
+        <div class="guide-steps">
+          <div class="guide-step">
+            <div class="guide-step-number">1</div>
+            <div class="guide-step-content">
+              <h3 class="guide-step-title">连接相机</h3>
+              <p class="guide-step-desc">将电脑连接到 Luna Ultra 的 Wi-Fi 热点，打开 Luna AI Cut，应用会自动检测并连接设备。连接成功后，相机中的媒体文件会立即加载到媒体库中。</p>
+              <div class="guide-step-tip">
+                <strong>提示：</strong>首次使用可在设置中选择下载目录，也可以开启模拟模式提前体验功能。
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-step">
+            <div class="guide-step-number">2</div>
+            <div class="guide-step-content">
+              <h3 class="guide-step-title">浏览与选择</h3>
+              <p class="guide-step-desc">媒体库按拍摄日期自动分组，可通过顶部标签在「全部」「照片」「视频」间快速筛选。点击缩略图可预览大图或播放视频，使用键盘左右键切换文件。</p>
+              <p class="guide-step-desc">长按或拖动可框选多个文件，选中后可使用下载按钮批量保存到本地。</p>
+              <div class="guide-step-tip">
+                <strong>提示：</strong>缩略图支持大、中、小三档尺寸，在日期标题栏即可切换。
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-step">
+            <div class="guide-step-number">3</div>
+            <div class="guide-step-content">
+              <h3 class="guide-step-title">下载与导出</h3>
+              <p class="guide-step-desc">选中文件后点击下载按钮，文件会自动保存到设定的下载目录中，并按日期分文件夹存放。已下载的文件会出现蓝色文件夹标识，点击可定位到文件在系统中的位置。</p>
+              <p class="guide-step-desc">在导出时可以选择水印样式、位置和大小，添加品牌标识后导出最终版本。</p>
+              <div class="guide-step-tip">
+                <strong>提示：</strong>已下载的文件在「本地资源」中可以随时浏览和管理，无需重复连接相机。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Footer ===== -->
+    <footer class="footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <img class="footer-logo" src="assets/icon.png" alt="Luna AI Cut" width="16" height="16" />
+          Luna AI Cut
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/diamondfsd/luna-ai-cut" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/diamondfsd/luna-ai-cut/issues" target="_blank" rel="noopener">问题反馈</a>
+          <a href="https://github.com/diamondfsd/luna-ai-cut/releases" target="_blank" rel="noopener">更新日志</a>
+        </div>
+        <p class="footer-copy">
+          开源项目 · 基于 MIT 协议发布。<br/>
+          与 Insta360 公司无关联。Insta360 是 Arashi Vision 公司的注册商标。
+        </p>
+      </div>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>

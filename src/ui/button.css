@@ -1,0 +1,102 @@
+/* ==========================================
+   Luna AI Cut — 通用 UI 组件样式
+   所有 Input / Button / IconButton 等公共组件样式集中于此
+   ========================================== */
+
+/* ---------- Button 组件 ---------- */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: -0.224px;
+  border: 0;
+  box-sizing: border-box;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
+    opacity 140ms ease;
+}
+
+.ui-btn:active {
+  transform: scale(0.95);
+}
+
+.ui-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* primary — 蓝色实心圆角 */
+.ui-btn-primary {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 8px 17px;
+  background: var(--blue);
+  color: #fff;
+}
+
+.ui-btn-primary:hover {
+  background: var(--blue-dark);
+}
+
+/* secondary — 蓝色边框透明 */
+.ui-btn-secondary {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 8px 17px;
+  border: 1px solid var(--blue);
+  background: transparent;
+  color: var(--blue);
+}
+
+/* utility — 深色矩形按钮 */
+.ui-btn-utility {
+  height: 44px;
+  border-radius: 8px;
+  padding: 0 15px;
+  background: var(--ink);
+  color: #fff;
+}
+
+/* ghost — 无边框文字按钮，极低强调 */
+.ui-btn-ghost {
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px dashed var(--hairline);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ui-btn-ghost:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+/* danger — 红色提示按钮（删除等） */
+.ui-btn-danger {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 8px 17px;
+  border: 1px solid #e74c3c;
+  background: transparent;
+  color: #e74c3c;
+}
+
+/* 尺寸 */
+.ui-btn-compact {
+  min-height: 32px;
+  padding: 7px 14px;
+}
+
+.ui-btn-mini {
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: 11px;
+}

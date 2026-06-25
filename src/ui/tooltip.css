@@ -1,0 +1,19 @@
+/* ==========================================
+   Luna AI Cut — 通用 UI 组件样式
+   所有 Input / Button / IconButton 等公共组件样式集中于此
+   ========================================== */
+
+/* ---------- Tooltip 组件 ---------- */
+.ui-tooltip {
+  z-index: 100;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(29, 29, 31, 0.92);
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.ui-tooltip-arrow {
+  fill: rgba(29, 29, 31, 0.92);
+}

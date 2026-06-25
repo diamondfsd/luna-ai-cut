@@ -1,0 +1,72 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.diamondfsd.lunaaicut",
+  "asar": true,
+  "asarUnpack": [
+    "**/node_modules/sharp/**/*",
+    "**/node_modules/@img/**/*"
+  ],
+  "productName": "Luna AI Cut",
+  "directories": {
+    "output": "release/${version}",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist",
+    "dist-electron"
+  ],
+  "extraResources": [
+    {
+      "from": "build/icon.png",
+      "to": "icon.png"
+    },
+    {
+      "from": "luna_mock_server",
+      "to": "luna_mock_server",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources/ffmpeg",
+      "to": "ffmpeg",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "src/assets/watermark",
+      "to": "watermark",
+      "filter": ["**/*.png"]
+    }
+  ],
+  "mac": {
+    "icon": "build/icon.icns",
+    "target": [
+      "dmg"
+    ],
+    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+  },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "linux": {
+    "icon": "build/icon.png",
+    "target": [
+      "AppImage"
+    ],
+    "artifactName": "${productName}-Linux-${version}.${ext}"
+  }
+}

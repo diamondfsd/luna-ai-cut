@@ -1,0 +1,143 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  color: #1d2329;
+  background: #f4f2ee;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input {
+  letter-spacing: 0;
+}
+
+.route-panel[hidden] {
+  display: none;
+}
+
+.route-stack {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.route-panel {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+
+/* ====== 帮助与反馈弹窗（抖音二维码） ====== */
+.help-dialog-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0 24px;
+}
+
+.help-version-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0 8px;
+  flex-wrap: wrap;
+}
+
+.help-version-text {
+  font-size: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.help-update-available {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.help-no-update {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.help-qr-code {
+  width: 220px;
+  height: 220px;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.help-qr-tip {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ====== 更新提示横幅 ====== */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 8px 18px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+
+.update-banner-text {
+  font-weight: 400;
+}
+
+.update-banner-text strong {
+  font-weight: 600;
+}
+
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-banner-close {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 12px;
+  border: none;
+  cursor: pointer;
+  transition: background 120ms;
+}
+
+.update-banner-close:hover {
+  background: rgba(255, 255, 255, 0.35);
+}

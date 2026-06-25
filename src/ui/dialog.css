@@ -1,0 +1,161 @@
+/* ==========================================
+   Luna AI Cut — 通用 UI 组件样式
+   所有 Input / Button / IconButton 等公共组件样式集中于此
+   ========================================== */
+
+/* ==========================================
+   Dialog 弹窗组件
+   ========================================== */
+
+/* 遮罩层 */
+.ui-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--glass-backdrop);
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  overscroll-behavior: contain;
+  animation: ui-fade-in 180ms ease;
+}
+
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ui-scale-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.94) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) translateY(0);
+  }
+}
+
+/* 内容面板 */
+.ui-dialog-content {
+  position: fixed;
+  z-index: 50;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(440px, 92vw);
+  max-height: min(720px, 85vh);
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: var(--glass-surface-strong);
+  color: var(--ink);
+  outline: 0;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  animation: ui-scale-in 200ms ease;
+}
+
+/* 关闭按钮（右上角） */
+.ui-dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 100ms ease;
+}
+
+.ui-dialog-close:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+/* 头部 */
+.ui-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 24px 24px 16px;
+}
+
+.ui-dialog-header [data-radix-dialog-title] {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding-right: 40px; /* 给关闭按钮留空间 */
+}
+
+.ui-dialog-header [data-radix-dialog-description] {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* 内容体 */
+.ui-dialog-body {
+  overflow: auto;
+  padding: 16px 24px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* 底部操作栏 */
+.ui-dialog-footer {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 14px 16px 16px;
+}
+
+.ui-dialog-footer .ui-btn {
+  width: 100%;
+  min-height: 34px;
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ui-dialog-footer .ui-btn-secondary {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.54);
+  color: var(--ink);
+}
+
+.ui-dialog-footer .ui-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.ui-dialog-footer .ui-btn-primary {
+  background: var(--blue);
+  color: #fff;
+}
+
+.ui-dialog-footer .ui-btn-danger {
+  border-color: transparent;
+  background: #ff3b30;
+  color: #fff;
+}
+
+.ui-dialog-footer .ui-btn-danger:hover {
+  background: #d93025;
+}

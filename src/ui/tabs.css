@@ -1,0 +1,44 @@
+/* ==========================================
+   Luna AI Cut — 通用 UI 组件样式
+   所有 Input / Button / IconButton 等公共组件样式集中于此
+   ========================================== */
+
+/* ==========================================
+   Tabs 标签组件
+   ========================================== */
+
+/* 药丸形标签组（类似 SegmentedControl） */
+.ui-pill-tabs {
+  display: inline-flex;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--canvas);
+}
+
+.ui-pill-tab-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 82px;
+  padding: 0 16px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 14px;
+  white-space: nowrap;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.ui-pill-tab-trigger[data-state='active'] {
+  background: var(--ink);
+  color: #fff;
+}
+
+.ui-pill-tab-trigger:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}

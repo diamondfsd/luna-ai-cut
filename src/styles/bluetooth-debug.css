@@ -1,0 +1,319 @@
+.ble-debug-surface {
+  min-height: calc(100vh - 44px);
+  background: var(--parchment);
+  padding: 28px 24px 80px;
+}
+
+.ble-debug-header {
+  display: flex;
+  max-width: 1100px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 auto 18px;
+}
+
+.ble-debug-header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.ble-debug-header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.debug-header-tools {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.debug-tabs {
+  display: inline-flex;
+  gap: 3px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--canvas);
+  padding: 3px;
+}
+
+.debug-tabs button {
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.debug-tabs button.active {
+  background: var(--blue);
+  color: white;
+}
+
+.ble-status {
+  display: inline-flex;
+  max-width: 420px;
+  min-height: 30px;
+  align-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--canvas);
+  color: var(--muted);
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.ble-status-connected {
+  border-color: rgba(0, 102, 204, 0.28);
+  color: var(--blue);
+}
+
+.ble-status-error {
+  border-color: #ff3b30;
+  color: #ff3b30;
+}
+
+.ble-debug-grid {
+  display: grid;
+  max-width: 1100px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0 auto;
+}
+
+.ble-debug-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--canvas);
+  padding: 16px;
+}
+
+.ble-debug-panel h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ble-debug-panel label {
+  display: grid;
+  gap: 6px;
+}
+
+.ble-debug-panel label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ble-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ble-device-list {
+  display: grid;
+  gap: 6px;
+  min-height: 120px;
+}
+
+.ble-device-list p,
+.ble-debug-log p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ble-device-list button {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: transparent;
+  padding: 9px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ble-device-list button:hover {
+  border-color: rgba(0, 102, 204, 0.36);
+}
+
+.ble-device-list strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ble-device-list span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ble-adv-data {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.ble-debug-log {
+  grid-column: 1 / -1;
+}
+
+.ble-debug-log code {
+  display: block;
+  border-top: 1px solid var(--hairline);
+  padding-top: 8px;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.wifi-debug-grid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.wifi-network-panel {
+  grid-column: 1 / -1;
+}
+
+.wifi-status-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.wifi-status-grid span,
+.wifi-inline-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wifi-status-grid strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wifi-inline-row {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wifi-result-json {
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  margin: 0;
+  padding: 10px;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.wifi-network-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+}
+
+.wifi-network-head,
+.wifi-network-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.3fr) 92px minmax(140px, 1fr) minmax(160px, 1fr) 72px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+}
+
+.wifi-network-head {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.wifi-network-row {
+  border-top: 1px solid var(--hairline);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.wifi-network-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.wifi-network-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wifi-network-table p {
+  margin: 0;
+  border-top: 1px solid var(--hairline);
+  padding: 14px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.developer-debug-grid {
+  max-width: 760px;
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 920px) {
+  .ble-debug-header {
+    display: grid;
+  }
+
+  .debug-header-tools {
+    justify-items: start;
+  }
+
+  .ble-debug-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wifi-network-head {
+    display: none;
+  }
+
+  .wifi-network-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+}

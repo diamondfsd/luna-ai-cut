@@ -1,0 +1,31 @@
+/* ====== 导出弹窗 - 右侧选项面板 ====== */
+
+.export-options-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #1f1f21;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.export-options-header {
+  padding: 22px 22px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.export-options-body {
+  flex: 1;
+  overflow: auto;
+  padding: 18px 22px;
+}
+
+.export-options-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 18px 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}

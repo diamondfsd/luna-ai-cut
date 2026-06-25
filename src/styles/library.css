@@ -1,0 +1,435 @@
+/* 媒体库页面专用样式 */
+.control-band {
+  position: sticky;
+  top: 0px;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--hairline);
+  background: rgba(245, 245, 247, 0.88);
+  padding: 10px 24px;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+
+.library-tools {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  width: min(1440px, 100%);
+  justify-content: space-between;
+  flex-wrap: nowrap;
+}
+
+/* ── 浏览模式筛选区 ── */
+.browse-filters {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+/* ── 选择模式 ── */
+.library-tools.is-selecting {
+  justify-content: space-between;
+}
+
+.selection-summary {
+  white-space: nowrap;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.selection-summary strong {
+  font-weight: 700;
+}
+
+.library-controls {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.library-search-wrap {
+  flex: 1 1 320px;
+  max-width: 420px;
+  min-width: 220px;
+}
+
+/* Gallery — 统一浅色背景 */
+.gallery {
+  background: var(--parchment);
+}
+
+.media-section {
+  padding: 0 24px 28px;
+}
+
+.media-section[data-tone='light'],
+.media-section[data-tone='parchment'],
+.media-section[data-tone='dark'] {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+/* ── 日期行（类似 mockup 风格） ── */
+.section-heading {
+  display: flex;
+  width: calc(100% + 48px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 -24px 24px;
+  border-bottom: 1px solid var(--hairline);
+  background: rgba(245, 245, 247, 0.92);
+  padding: 10px 24px;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.file-count-chip {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── 卡片网格 ── */
+.media-grid {
+  display: grid;
+  max-width: 1440px;
+  gap: 16px;
+  margin: 0 auto;
+}
+
+.media-grid.card-size-large {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.media-grid.card-size-medium {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.media-grid.card-size-small {
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.media-grid.card-size-small .card-copy {
+  padding: 10px;
+}
+
+.media-grid.card-size-small .card-copy strong {
+  font-size: 12px;
+}
+
+.media-grid.card-size-small .card-copy span {
+  font-size: 11px;
+}
+
+/* ── 媒体卡片 ── */
+.media-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  background: var(--canvas);
+  color: var(--ink);
+  content-visibility: auto;
+  contain-intrinsic-size: 1000px;
+}
+
+.media-card.selected {
+  border-color: var(--blue);
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+.media-frame {
+  position: relative;
+  display: grid;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 17px;
+  cursor: pointer;
+  background: var(--parchment);
+  color: var(--muted);
+  line-height: 0;
+  padding: 0;
+}
+
+.media-frame img,
+.media-frame video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-frame video {
+  aspect-ratio: auto;
+}
+
+.duration-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  line-height: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+.select-chip,
+.download-state,
+.downloaded-chip {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.downloaded-folder-btn {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.45);
+  transition: background 100ms ease;
+}
+
+.downloaded-folder-btn:hover {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.live-photo-chip {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55));
+}
+
+.live-photo-chip:hover {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.live-photo-symbol {
+  position: relative;
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 2%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 70% 6%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 86% 17%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 97% 33%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 98% 52%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 91% 72%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 76% 89%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 58% 98%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 38% 98%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 20% 89%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 7% 72%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 2% 52%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 4% 33%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 14% 17%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 30% 6%, currentColor 0.85px, transparent 1.1px);
+}
+
+.live-photo-symbol span {
+  position: absolute;
+  inset: 5.5px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.live-photo-symbol span:nth-child(2) {
+  inset: 8.5px;
+}
+
+.live-photo-symbol span:nth-child(3) {
+  inset: 11px;
+  background: currentColor;
+}
+
+.card-live-chip {
+  left: 12px;
+  bottom: 12px;
+}
+
+.select-chip {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
+  background: rgba(0, 0, 0, 0.22) !important;
+  color: #fff !important;
+}
+
+.media-card.selected .select-chip {
+  border-color: var(--blue) !important;
+  background: var(--blue) !important;
+}
+
+.download-state {
+  top: 12px;
+  left: 12px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.72)) padding-box,
+    conic-gradient(var(--blue) var(--progress), rgba(255, 255, 255, 0.28) 0) border-box;
+  color: #fff;
+  cursor: default;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.download-state.done {
+  background: rgba(0, 102, 204, 0.92);
+  cursor: pointer;
+}
+
+.download-state.failed {
+  background: rgba(255, 59, 48, 0.92);
+}
+
+.download-state:disabled {
+  opacity: 1;
+}
+
+.card-copy {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.card-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  line-height: 1.25;
+}
+
+.card-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.loading-gallery,
+.empty-gallery,
+.load-sentinel {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  color: var(--muted);
+}
+
+.loading-gallery {
+  align-content: center;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(18px);
+}
+
+/* 选择模式下文件计数颜色修正 */
+.media-section .selection-summary {
+  color: var(--ink);
+}
+
+/* ── 筛选 popover ── */
+.filter-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 200px;
+}
+
+.filter-popover-divider {
+  height: 1px;
+  background: var(--hairline);
+  margin: 4px 0;
+}
+
+.filter-popover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filter-popover-label {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.filter-popover-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px 16px;
+}
+
+/* ── 工具栏日期 ── */
+.toolbar-date {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
