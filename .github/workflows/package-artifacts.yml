@@ -55,15 +55,23 @@ jobs:
           GITCODE_OWNER: diamondfsd
           GITCODE_REPO: luna-ai-cut-package-release
           TAG: ${{ github.ref_name }}
+          GITHUB_REPO: diamondfsd/luna-ai-cut
         run: |
           set -euo pipefail
 
-          # 1. 创建 Release（已存在则忽略）
+          # 1. 创建 Release（已存在则忽略，body 为必填字段）
           echo "::group::创建 GitCode Release"
           curl -s -o /dev/null -w "→ HTTP %{http_code}\n" \
             -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases?access_token=${GITCODE_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\"}" || true
+            -d "$(cat <<-END
+          {
+            "tag_name": "${TAG}",
+            "name": "${TAG}",
+            "body": "Luna AI Cut ${TAG} 发布，详见 GitHub Release: https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
+          }
+          END
+          )" || true
           echo "::endgroup::"
 
           # 2. 上传 DMG 文件
@@ -139,15 +147,23 @@ jobs:
           GITCODE_OWNER: diamondfsd
           GITCODE_REPO: luna-ai-cut-package-release
           TAG: ${{ github.ref_name }}
+          GITHUB_REPO: diamondfsd/luna-ai-cut
         run: |
           set -euo pipefail
 
-          # 1. 创建 Release（已存在则忽略）
+          # 1. 创建 Release（已存在则忽略，body 为必填字段）
           echo "::group::创建 GitCode Release"
           curl -s -o /dev/null -w "→ HTTP %{http_code}\n" \
             -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases?access_token=${GITCODE_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\"}" || true
+            -d "$(cat <<-END
+          {
+            "tag_name": "${TAG}",
+            "name": "${TAG}",
+            "body": "Luna AI Cut ${TAG} 发布，详见 GitHub Release: https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
+          }
+          END
+          )" || true
           echo "::endgroup::"
 
           # 2. 上传安装包文件
