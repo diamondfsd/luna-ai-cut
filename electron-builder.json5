@@ -42,7 +42,7 @@
     "target": [
       "dmg"
     ],
-    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+    "artifactName": "LunaAICut-Mac-${version}-Installer.${ext}"
   },
   "win": {
     "icon": "build/icon.ico",
@@ -54,7 +54,7 @@
         ]
       }
     ],
-    "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
+    "artifactName": "LunaAICut-Windows-${version}-Setup.${ext}"
   },
   "nsis": {
     "oneClick": false,
@@ -67,6 +67,6 @@
     "target": [
       "AppImage"
     ],
-    "artifactName": "${productName}-Linux-${version}.${ext}"
+    "artifactName": "LunaAICut-Linux-${version}.${ext}"
   }
 }
