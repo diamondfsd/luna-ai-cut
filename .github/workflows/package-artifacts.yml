@@ -76,8 +76,7 @@ jobs:
           echo "::endgroup::"
 
           # 2. 上传 DMG 文件
-          for filepath in release/*.dmg; do
-            [ -f "$filepath" ] || continue
+          while IFS= read -r filepath; do
             filename=$(basename "$filepath")
             echo "::group::上传 ${filename}"
 
@@ -103,7 +102,7 @@ jobs:
             curl -X PUT "${header_args[@]}" --data-binary "@${filepath}" "${upload_url}"
             echo "✓ ${filename} 上传完成"
             echo "::endgroup::"
-          done
+          done < <(find release -name "*.dmg" -type f 2>/dev/null || true)
 
   package-win:
     name: Build Windows (x64 NSIS)
@@ -170,8 +169,7 @@ jobs:
           echo "::endgroup::"
 
           # 2. 上传安装包文件
-          for filepath in release/*Setup*.exe; do
-            [ -f "$filepath" ] || continue
+          while IFS= read -r filepath; do
             filename=$(basename "$filepath")
             echo "::group::上传 ${filename}"
 
@@ -196,7 +194,7 @@ jobs:
             curl -X PUT "${header_args[@]}" --data-binary "@${filepath}" "${upload_url}"
             echo "✓ ${filename} 上传完成"
             echo "::endgroup::"
-          done
+          done < <(find release -name "*Setup*" -name "*.exe" -type f 2>/dev/null || true)
 
   update-readme:
     name: Update GitCode README
