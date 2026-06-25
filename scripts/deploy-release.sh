@@ -90,7 +90,8 @@ $BUILD_CMD
 ok "构建完成"
 
 # 查找构建产物
-mapfile -t FILES < <(find "$RELEASE_DIR" -name "$FILE_PATTERN" -type f 2>/dev/null || true)
+FILES=()
+while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" -name "$FILE_PATTERN" -type f 2>/dev/null || true)
 if [ ${#FILES[@]} -eq 0 ]; then
   err "未找到构建产物 ($RELEASE_DIR/$FILE_PATTERN)"
   exit 1
