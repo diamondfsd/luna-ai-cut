@@ -4,7 +4,7 @@ import { MediaGallery } from '../components/MediaGallery'
 import { MediaLibraryToolbar } from '../components/MediaLibraryToolbar'
 import { PreviewModal } from '../components/PreviewModal'
 import { useMediaLibraryController, type MediaLibraryPageProps } from './useMediaLibraryController'
-import { Modal } from '../ui'
+import { Modal, toast } from '../ui'
 import '../styles/library.css'
 
 /** 格式化日期，年月日和星期之间加空格 */
@@ -250,6 +250,7 @@ export function MediaLibraryPage({
           }}
           onDownload={(file) => downloadOne(file)}
           onExportWithWatermark={(file, watermarkSettings) => {
+            toast.success('已加入导出队列')
             void exportLocalFiles([file], { ...watermarkSettings, enabled: true })
           }}
           onReveal={(file) => {

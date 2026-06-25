@@ -1,4 +1,5 @@
 import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, Loader2, RefreshCcw, Trash2, X } from 'lucide-react'
+import { toast } from '../ui'
 import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 
@@ -150,7 +151,11 @@ export function MediaLibraryToolbar({
                       <Trash2 size={14} />
                       删除 ({selectedCount})
                     </Button>
-                    <Button variant="primary" size="compact" disabled={exporting} onClick={() => setShowExportDialog(true)}>
+                    <Button variant="primary" size="compact" disabled={exporting}
+                      onClick={() => {
+                        void exportLocalFiles(selectedFiles, exportWatermarkSettings)
+                        toast.success('已加入导出队列')
+                      }}>
                       导出 ({selectedCount})
                     </Button>
                   </>
