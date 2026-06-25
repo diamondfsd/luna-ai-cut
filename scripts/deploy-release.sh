@@ -89,14 +89,6 @@ info "开始构建 ${PLATFORM}..."
 $BUILD_CMD
 ok "构建完成"
 
-# 安装 pv（进度条），macOS 上通过 brew 安装
-if ! command -v pv &>/dev/null; then
-  info "安装 pv（进度条工具）..."
-  case "$OS" in
-    Darwin) brew install pv ;;
-    Linux)  sudo apt-get update -qq && sudo apt-get install -y -qq pv ;;
-  esac
-fi
 
 # 查找构建产物
 FILES=()
@@ -191,18 +183,10 @@ for filepath in "${FILES[@]}"; do
   [ -n "$acl" ] && header_args+=(-H "x-obs-acl: ${acl}")
   [ -n "$cb" ]  && header_args+=(-H "x-obs-callback: ${cb}")
 
-  # 上传文件（用 pv 显示进度；没有 pv 则用 curl 静默上传）
-  if command -v pv &>/dev/null; then
-    pv -cN "${filename}" "$filepath" | \
-      curl -X PUT "${header_args[@]}" --data-binary @- "${upload_url}" \
-        --no-progress-meter -o /dev/null -w "→ HTTP %{http_code}\n" && \
-      ok "${filename} 上传完成" || err "${filename} 上传失败"
-  else
-    warn "未安装 pv，使用静默模式上传（进度不可见）"
-    curl -sS -X PUT "${header_args[@]}" --data-binary "@${filepath}" \
-      "${upload_url}" -o /dev/null -w "→ HTTP %{http_code}\n" && \
-      ok "${filename} 上传完成" || err "${filename} 上传失败"
-  fi
+  # 上传文件（curl --progress-bar 显示实际网络传输进度）
+  curl --progress-bar -X PUT "${header_args[@]}" --data-binary "@${filepath}" \
+    "${upload_url}" -o /dev/null -w "\n→ HTTP %{http_code}\n" && \
+    ok "${filename} 上传完成" || err "${filename} 上传失败"
 done
 
 # ============================================================
