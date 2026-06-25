@@ -10,6 +10,7 @@ permissions:
   contents: write
 
 jobs:
+  # ─── macOS 构建 ───────────────────────────────────
   package-mac:
     name: Build macOS (ARM64 DMG)
     runs-on: macos-latest
@@ -47,66 +48,7 @@ jobs:
         with:
           files: release/**/*.dmg
 
-      - name: Upload to GitCode Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        env:
-          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-          GITCODE_OWNER: diamondfsd
-          GITCODE_REPO: luna-ai-cut-package-release
-          TAG: ${{ github.ref_name }}
-          GITHUB_REPO: diamondfsd/luna-ai-cut
-        run: |
-          set -euo pipefail
-
-          # 1. 创建 Release（已存在则忽略，body 为必填字段）
-          echo "::group::创建 GitCode Release"
-          curl -s -o /dev/null -w "→ HTTP %{http_code}\n" \
-            -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases" \
-            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$(cat <<-END
-          {
-            "tag_name": "${TAG}",
-            "name": "${TAG}",
-            "body": "Luna AI Cut ${TAG} 发布，详见 GitHub Release: https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
-          }
-          END
-          )" || true
-          echo "::endgroup::"
-
-          # 2. 上传 DMG 文件
-          while IFS= read -r filepath; do
-            filename=$(basename "$filepath")
-            echo "::group::上传 ${filename}"
-
-            # URL 编码文件名（文件名可能含空格）
-            encoded_name=$(printf '%s' "$filename" | jq -sRr @uri)
-
-            # 获取 OBS 上传地址
-            upload_json=$(curl -sS \
-              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?file_name=${encoded_name}" \
-            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
-
-            upload_url=$(echo "$upload_json" | jq -r '.url')
-            echo "上传地址已获取"
-
-            headers_json=$(echo "$upload_json" | jq -r '.headers')
-            ct=$(echo "$headers_json" | jq -r '.["Content-Type"] // "application/octet-stream"')
-            pid=$(echo "$headers_json" | jq -r '.["x-obs-meta-project-id"] // ""')
-            acl=$(echo "$headers_json" | jq -r '.["x-obs-acl"] // ""')
-            cb=$(echo "$headers_json" | jq -r '.["x-obs-callback"] // ""')
-
-            header_args=(-H "Content-Type: ${ct}")
-            [ -n "$pid" ] && header_args+=(-H "x-obs-meta-project-id: ${pid}")
-            [ -n "$acl" ] && header_args+=(-H "x-obs-acl: ${acl}")
-            [ -n "$cb" ]  && header_args+=(-H "x-obs-callback: ${cb}")
-
-            curl -X PUT "${header_args[@]}" --data-binary "@${filepath}" "${upload_url}"
-            echo "✓ ${filename} 上传完成"
-            echo "::endgroup::"
-          done < <(find release -name "*.dmg" -type f 2>/dev/null || true)
-
+  # ─── Windows 构建 ─────────────────────────────────
   package-win:
     name: Build Windows (x64 NSIS)
     runs-on: windows-latest
@@ -143,9 +85,26 @@ jobs:
         with:
           files: release/**/*Setup*.exe
 
-      - name: Upload to GitCode Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
+  # ─── GitCode 上传（不阻塞 GitHub Release）─────────
+  upload-gitcode:
+    name: Upload to GitCode Release
+    needs: [package-mac, package-win]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: luna-ai-cut-macos-arm64-dmg
+          path: artifacts/macos
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: luna-ai-cut-windows-x64-nsis
+          path: artifacts/windows
+
+      - name: Upload to GitCode
         env:
           GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
           GITCODE_OWNER: diamondfsd
@@ -155,7 +114,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 1. 创建 Release（已存在则忽略，body 为必填字段）
+          # 安装 pv（进度条工具）
+          sudo apt-get update -qq && sudo apt-get install -y -qq pv
+
+          # 1. 创建 GitCode Release
           echo "::group::创建 GitCode Release"
           curl -s -o /dev/null -w "→ HTTP %{http_code}\n" \
             -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases" \
@@ -165,23 +127,31 @@ jobs:
           {
             "tag_name": "${TAG}",
             "name": "${TAG}",
-            "body": "Luna AI Cut ${TAG} 发布，详见 GitHub Release: https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
+            "body": "Luna AI Cut ${TAG} 发布，详见 https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
           }
           END
           )" || true
           echo "::endgroup::"
 
-          # 2. 上传安装包文件
+          # 2. 上传 DMG
           while IFS= read -r filepath; do
             filename=$(basename "$filepath")
-            echo "::group::上传 ${filename}"
+            size=$(stat -c%s "$filepath" 2>/dev/null || stat -f%z "$filepath" 2>/dev/null)
+            size_hr=$(numfmt --to=iec "$size" 2>/dev/null || echo "${size}B")
+            echo "::group::📦 ${filename} (${size_hr})"
+
+            encoded_name=$(printf '%s' "$filename" | jq -sRr @uri)
 
             upload_json=$(curl -sS \
-              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?file_name=${filename}" \
-            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
+              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?file_name=${encoded_name}" \
+              -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
-            upload_url=$(echo "$upload_json" | jq -r '.url')
-            echo "上传地址已获取"
+            upload_url=$(echo "$upload_json" | jq -r '.url // empty')
+            if [ -z "$upload_url" ]; then
+              echo "✗ 获取上传地址失败: $(echo "$upload_json" | jq -r '.error_message // .')"
+              echo "::endgroup::"
+              continue
+            fi
 
             headers_json=$(echo "$upload_json" | jq -r '.headers')
             ct=$(echo "$headers_json" | jq -r '.["Content-Type"] // "application/octet-stream"')
@@ -194,21 +164,16 @@ jobs:
             [ -n "$acl" ] && header_args+=(-H "x-obs-acl: ${acl}")
             [ -n "$cb" ]  && header_args+=(-H "x-obs-callback: ${cb}")
 
-            curl -X PUT "${header_args[@]}" --data-binary "@${filepath}" "${upload_url}"
-            echo "✓ ${filename} 上传完成"
+            # 用 pv 显示进度条，curl --no-progress-meter 隐藏详细输出
+            pv -cN "${filename}" "$filepath" | \
+              curl -X PUT "${header_args[@]}" --data-binary @- "${upload_url}" \
+                --no-progress-meter -o /dev/null -w "→ %{http_code}\n" && \
+              echo "✓ 上传完成" || echo "✗ 上传失败"
             echo "::endgroup::"
-          done < <(find release -name "*Setup*" -name "*.exe" -type f 2>/dev/null || true)
+          done < <(find artifacts/macos -name "*.dmg" -type f 2>/dev/null; find artifacts/windows -name "*Setup*" -name "*.exe" -type f 2>/dev/null)
 
-  update-readme:
-    name: Update GitCode README
-    needs: [package-mac, package-win]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Update GitCode Release Repo README
+      # ─── 上传完成后更新 README ──────────────────
+      - name: Update GitCode README
         env:
           GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
           GITCODE_OWNER: diamondfsd
@@ -220,7 +185,6 @@ jobs:
 
           echo "::group::获取 Release 附件信息"
 
-          # 通过 GitCode API 获取 release 详情（含 assets browser_download_url）
           release_json=$(curl -sS \
             "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/tags/${TAG}" \
             -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
@@ -234,7 +198,6 @@ jobs:
           echo "Windows: ${win_name}"
           echo "::endgroup::"
 
-          # 生成 README 内容
           readme_body=$(cat <<-END
           # Luna AI Cut — 国内下载镜像
 
@@ -264,10 +227,8 @@ jobs:
           END
           )
 
-          # Base64 编码
           content_b64=$(echo "$readme_body" | base64 -w 0)
 
-          # 获取当前 README 的 SHA
           current_sha=$(curl -sS \
             "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/contents/README.md" \
             -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
@@ -275,10 +236,9 @@ jobs:
 
           echo "::group::更新 README.md"
           if [ -n "$current_sha" ]; then
-            # 更新已有文件
             curl -s -X PUT \
               "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/contents/README.md" \
-            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
+              -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
               -H "Content-Type: application/json" \
               -d "$(cat <<-END
           {
