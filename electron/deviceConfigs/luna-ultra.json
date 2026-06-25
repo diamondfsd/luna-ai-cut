@@ -38,7 +38,7 @@
     {
       "id": "sdcard",
       "label": "SD 卡",
-      "path": "/sdcard/DCIM/Camera/",
+      "path": "/DCIM/Camera01/",
       "default": false
     }
   ],
