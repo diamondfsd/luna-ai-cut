@@ -56,23 +56,27 @@ export function MediaPreviewPanel({
     <div className="preview-stage-col">
       <div className="preview-stage">
         {currentFile.kind === 'image' && displaySource ? (
-          <div className="preview-media-inner">
-            <img
-              src={displaySource}
-              alt={currentFile.name}
-              style={{ maxWidth: '100%', maxHeight: '100%' }}
-            />
-            {showWatermark && <WatermarkOverlay settings={watermarkSettings} kind="image" />}
+          <div className="preview-media-wrapper">
+            <div className="preview-media-inner">
+              <img
+                src={displaySource}
+                alt={currentFile.name}
+                style={{ maxWidth: '100%', maxHeight: '100%' }}
+              />
+              {showWatermark && <WatermarkOverlay settings={watermarkSettings} kind="image" />}
+            </div>
           </div>
         ) : currentFile.kind === 'video' && displaySource ? (
-          <div className="preview-media-inner">
-            <video
-              src={displaySource}
-              controls
-              autoPlay
-              style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
-            />
-            {showWatermark && <WatermarkOverlay settings={watermarkSettings} kind="video" />}
+          <div className="preview-media-wrapper">
+            <div className="preview-media-inner">
+              <video
+                src={displaySource}
+                controls
+                autoPlay
+                style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
+              />
+              {showWatermark && <WatermarkOverlay settings={watermarkSettings} kind="video" />}
+            </div>
           </div>
         ) : (
           <div className="unknown-preview">
