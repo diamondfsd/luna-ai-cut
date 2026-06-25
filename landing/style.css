@@ -592,6 +592,18 @@ img {
   color: var(--blue-on-dark);
 }
 
+/* ---- 地区标签 ---- */
+.dl-region-tag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  background: rgba(41, 151, 255, 0.15);
+  color: var(--blue-on-dark);
+  border-radius: 999px;
+  margin-top: 4px;
+}
+
 /* ---- Footer ---- */
 .footer {
   background: var(--black);

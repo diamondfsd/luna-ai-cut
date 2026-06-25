@@ -291,11 +291,67 @@ else
 fi
 
 # ============================================================
+# 第五步：更新 Landing 页面下载地址
+# ============================================================
+echo ""
+info "═══════════════════════════════════════════════════════════"
+info "  更新 Landing 页面下载地址"
+info "═══════════════════════════════════════════════════════════"
+echo ""
+
+SCRIPT_JS="${SCRIPT_DIR}/../landing/script.js"
+GITCODE_BASE="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/download"
+
+# 从 upload 步骤收集到的 FILES 构建下载 URL
+mac_file=""
+win_file=""
+for f in "${FILES[@]}"; do
+  fn=$(basename "$f")
+  case "$fn" in
+    *.dmg) mac_file="$fn" ;;
+    *Setup*.exe | *.exe) win_file="$fn" ;;
+  esac
+done
+
+mac_dl="${GITCODE_BASE}/${TAG}/${mac_file}"
+win_dl="${GITCODE_BASE}/${TAG}/${win_file}"
+
+info "macOS 下载地址: ${mac_dl}"
+info "Windows 下载地址: ${win_dl}"
+
+# 更新 script.js 中的 LATEST_RELEASE 常量
+if [ -f "$SCRIPT_JS" ]; then
+  # macOS: sed -i '' 需要空字符串参数
+  if [ "$OS" = "Darwin" ]; then
+    sed -i '' "s|tag: '.*'|tag: '${TAG}'|" "$SCRIPT_JS"
+    sed -i '' "s|gitcode_mac: '.*'|gitcode_mac: '${mac_dl}'|" "$SCRIPT_JS"
+    sed -i '' "s|gitcode_win: '.*'|gitcode_win: '${win_dl}'|" "$SCRIPT_JS"
+  else
+    sed -i "s|tag: '.*'|tag: '${TAG}'|" "$SCRIPT_JS"
+    sed -i "s|gitcode_mac: '.*'|gitcode_mac: '${mac_dl}'|" "$SCRIPT_JS"
+    sed -i "s|gitcode_win: '.*'|gitcode_win: '${win_dl}'|" "$SCRIPT_JS"
+  fi
+  ok "landing/script.js 已更新"
+
+  # 提交并推送 landing 页面改动
+  info "提交 Landing 页面更新..."
+  git add "$SCRIPT_JS" 2>/dev/null || true
+  if git diff --cached --quiet 2>/dev/null; then
+    warn "无变更，跳过提交"
+  else
+    git commit -m "chore: update landing download links for ${TAG}" || true
+    git push origin main 2>/dev/null || warn "推送失败，请手动推送"
+    ok "Landing 页面已更新并推送"
+  fi
+else
+  warn "未找到 landing/script.js"
+fi
+
+# ============================================================
 # 完成
 # ============================================================
 echo ""
 info "═══════════════════════════════════════════════════════════"
-ok  "全部完成！${TAG} 已发布到 GitCode https://gitcode.com/diamondfsd/luna-ai-cut-package-release"
+ok  "全部完成！${TAG} 已发布到 GitCode"
 info "  ${API_BASE}/releases/tag/${TAG}"
-info "═══════════════════════════════════════════════════════════"
 echo ""
