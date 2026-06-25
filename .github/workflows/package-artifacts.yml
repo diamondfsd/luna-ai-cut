@@ -62,7 +62,8 @@ jobs:
           # 1. 创建 Release（已存在则忽略，body 为必填字段）
           echo "::group::创建 GitCode Release"
           curl -s -o /dev/null -w "→ HTTP %{http_code}\n" \
-            -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases?access_token=${GITCODE_TOKEN}" \
+            -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases" \
+            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "$(cat <<-END
           {
@@ -82,7 +83,8 @@ jobs:
 
             # 获取 OBS 上传地址
             upload_json=$(curl -sS \
-              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?access_token=${GITCODE_TOKEN}&file_name=${filename}")
+              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?file_name=${filename}" \
+            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
             upload_url=$(echo "$upload_json" | jq -r '.url')
             echo "上传地址已获取"
@@ -154,7 +156,8 @@ jobs:
           # 1. 创建 Release（已存在则忽略，body 为必填字段）
           echo "::group::创建 GitCode Release"
           curl -s -o /dev/null -w "→ HTTP %{http_code}\n" \
-            -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases?access_token=${GITCODE_TOKEN}" \
+            -X POST "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases" \
+            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "$(cat <<-END
           {
@@ -173,7 +176,8 @@ jobs:
             echo "::group::上传 ${filename}"
 
             upload_json=$(curl -sS \
-              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?access_token=${GITCODE_TOKEN}&file_name=${filename}")
+              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/${TAG}/upload_url?file_name=${filename}" \
+            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
             upload_url=$(echo "$upload_json" | jq -r '.url')
             echo "上传地址已获取"
@@ -217,7 +221,8 @@ jobs:
 
           # 通过 GitCode API 获取 release 详情（含 assets browser_download_url）
           release_json=$(curl -sS \
-            "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/tags/${TAG}?access_token=${GITCODE_TOKEN}")
+            "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/tags/${TAG}" \
+            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
           mac_url=$(echo "$release_json" | jq -r '.assets[] | select(.name | endswith(".dmg")) | .browser_download_url // empty' | head -1)
           win_url=$(echo "$release_json" | jq -r '.assets[] | select(.name | endswith(".exe")) | .browser_download_url // empty' | head -1)
@@ -263,14 +268,16 @@ jobs:
 
           # 获取当前 README 的 SHA
           current_sha=$(curl -sS \
-            "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/contents/README.md?access_token=${GITCODE_TOKEN}" \
+            "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/contents/README.md" \
+            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
             | jq -r '.sha // empty')
 
           echo "::group::更新 README.md"
           if [ -n "$current_sha" ]; then
             # 更新已有文件
             curl -s -X PUT \
-              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/contents/README.md?access_token=${GITCODE_TOKEN}" \
+              "https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/contents/README.md" \
+            -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}" \
               -H "Content-Type: application/json" \
               -d "$(cat <<-END
           {
