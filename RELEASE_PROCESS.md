@@ -86,6 +86,20 @@ gh release create v<新版本号> \
 >
 > 手动触发 `workflow_dispatch` 时不会上传到 Release（仅 tag 推送触发）。
 
+### 6b. 发布到国内资源（GitCode）
+
+GitHub Release 创建完成后，需要再执行本地部署脚本，将构建产物上传到 GitCode 国内镜像仓库，方便国内用户高速下载：
+
+```bash
+# 确保本地已拉取最新的 tag（包含 CI 构建产物信息）
+git pull origin v<版本号>
+
+# 运行部署脚本（会自动构建并上传）
+./scripts/deploy-release.sh v<版本号>
+```
+
+> 前置条件：`GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件。
+
 ## gh release 常用参数
 
 | 参数 | 说明 |
