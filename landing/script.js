@@ -6,9 +6,9 @@
 
 // ★ 由 deploy-release.sh 自动更新 ★
 const LATEST_RELEASE = {
-  tag: 'v1.2.9',
-  gitcode_mac: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.9/LunaAICut-Mac-1.2.9-Installer.dmg',
-  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.9/LunaAICut-Windows-1.2.9-Setup.exe',
+  tag: 'v1.2.10',
+  gitcode_mac: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.10/LunaAICut-Mac-1.2.10-Installer.dmg',
+  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.10/LunaAICut-Windows-1.2.10-Setup.exe',
 }
 
 // ── 地区检测 ──────────────────────────────────────────
