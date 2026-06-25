@@ -122,6 +122,24 @@ img {
   text-decoration: none;
 }
 
+.nav-github {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7) !important;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.nav-github:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff !important;
+}
+
 /* ---- Hero ---- */
 .hero {
   position: relative;
