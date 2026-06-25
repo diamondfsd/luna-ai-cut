@@ -39,35 +39,7 @@
   font-size: 11px;
 }
 
-/* ====== 进度下拉面板 ====== */
-.dl-panel-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 45;
-  background: rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(10px) saturate(130%);
-  -webkit-backdrop-filter: blur(10px) saturate(130%);
-}
-
-.dl-dropdown-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 46;
-  width: 440px;
-  max-height: 440px;
-  background: var(--glass-surface-strong);
-}
-
-.dl-dropdown-panel h2 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-}
-
+/* ====== 进度面板内容 ====== */
 .dl-overall {
   display: grid;
   gap: 6px;

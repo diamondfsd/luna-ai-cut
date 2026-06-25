@@ -3,9 +3,8 @@ import { Check, Download, FileQuestion, FolderOpen, Loader2, X } from 'lucide-re
 
 import { formatBytes } from '../lib/format'
 import type { DownloadProgress, LunaFile } from '../shared/types'
-import { Button, IconButton, Panel, PanelBody, PanelHeader } from '../ui'
+import { Button, DropdownPanel, IconButton } from '../ui'
 import '../styles/download-progress.css'
-import '../styles/modal.css'
 
 interface DownloadProgressModalProps {
   downloadDir: string | undefined
@@ -68,7 +67,6 @@ export function DownloadProgressModal({
 }: DownloadProgressModalProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
   const queueRef = useRef(downloadQueue)
   const fileSnapshotsRef = useRef<Map<string, LunaFile>>(new Map())
   const drainingRef = useRef(false)
@@ -94,27 +92,6 @@ export function DownloadProgressModal({
   useEffect(() => {
     onQueueShiftRef.current = onQueueShift
   }, [onQueueShift])
-
-  useEffect(() => {
-    if (!open) return
-
-    function handlePointerDown(event: PointerEvent): void {
-      const target = event.target instanceof Node ? event.target : null
-      if (!target || rootRef.current?.contains(target)) return
-      setOpen(false)
-    }
-
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown, { capture: true })
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown, { capture: true })
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
 
   const MAX_CONCURRENT = 5
 
@@ -259,93 +236,84 @@ export function DownloadProgressModal({
         <span className="download-badge-pct">{Math.round(overallPercent)}%</span>
       </button>
 
-      {/* 下拉面板 */}
-      {open && (
-        <>
-          <div className="dl-panel-backdrop" onClick={() => setOpen(false)} />
-          <Panel ref={panelRef} className="dl-dropdown-panel" onPointerDown={(event) => event.stopPropagation()}>
-            <PanelHeader>
-              <h2>
-                <Download size={16} />
-                下载进度
-              </h2>
-              {activeCount + queuedCount > 0 && (
-                <Button variant="secondary" size="compact" className="dl-cancel-button" onClick={() => void cancelDownloads()} icon={<X size={14} />}>
-                  取消
-                </Button>
-              )}
-            </PanelHeader>
+      {/* 下载进度下拉面板 */}
+      <DropdownPanel
+        open={open}
+        triggerRef={rootRef}
+        onClose={() => setOpen(false)}
+        title={<><Download size={16} />下载进度</>}
+        headerActions={activeCount + queuedCount > 0 && (
+          <Button variant="secondary" size="compact" className="dl-cancel-button" onClick={() => void cancelDownloads()} icon={<X size={14} />}>
+            取消
+          </Button>
+        )}
+      >
+        {/* 总进度 */}
+        <div className="dl-overall">
+          <div className="dl-overall-stats">
+            <span className="dl-overall-label">
+              已完成 {completedCount}/{totalCount}
+              {queuedCount > 0 && `，${queuedCount} 个等待`}
+              {failedCount > 0 && `，${failedCount} 个失败`}
+              {canceledCount > 0 && `，${canceledCount} 个已取消`}
+            </span>
+            <span className="dl-overall-pct">{Math.round(overallPercent)}%</span>
+          </div>
+          <div className="dl-overall-track">
+            <div className="dl-overall-fill" style={{ width: `${overallPercent}%` }} />
+          </div>
+        </div>
 
-            <PanelBody>
-              {/* 总进度 */}
-              <div className="dl-overall">
-                <div className="dl-overall-stats">
-                  <span className="dl-overall-label">
-                    已完成 {completedCount}/{totalCount}
-                    {queuedCount > 0 && `，${queuedCount} 个等待`}
-                    {failedCount > 0 && `，${failedCount} 个失败`}
-                    {canceledCount > 0 && `，${canceledCount} 个已取消`}
+        {/* 文件列表 */}
+        <div className="dl-file-list">
+          {entries.map((progress) => {
+            const file = fileSnapshotsRef.current.get(progress.fileName)
+            const previewSource = previewSourceFor(progress, file)
+            const isVideoPreview = file?.kind === 'video' || file?.kind === 'lrv'
+            const pct = progress.status === 'done' || progress.status === 'exists'
+              ? 100
+              : progress.total ? (progress.downloaded / progress.total) * 100 : 0
+            const normalizedStatus = progress.status === 'exists' ? 'done' : progress.status
+            return (
+              <div key={progress.fileName} className={`dl-file-item ${normalizedStatus}`}>
+                <div className="dl-file-preview">
+                  {previewSource && !isVideoPreview && <img src={previewSource} alt="" loading="lazy" />}
+                  {previewSource && isVideoPreview && <video src={previewSource} muted playsInline preload="metadata" />}
+                  {!previewSource && <FileQuestion size={18} />}
+                </div>
+                <div className="dl-file-info">
+                  <span className="dl-file-name">{progress.fileName}</span>
+                  <span className="dl-file-meta">
+                    {formatBytes(progress.downloaded)}
+                    {progress.total ? ` / ${formatBytes(progress.total)}` : ''}
+                    {progress.speedBps > 0 && ` · ${formatSpeed(progress.speedBps)}`}
+                    {(progress.status === 'done' || progress.status === 'exists') && ' · 已完成'}
+                    {progress.status === 'queued' && ' · 等待中'}
+                    {progress.status === 'failed' && ' · 失败'}
+                    {progress.status === 'canceled' && ' · 已取消'}
                   </span>
-                  <span className="dl-overall-pct">{Math.round(overallPercent)}%</span>
+                  <div className="dl-file-progress-track">
+                    <div className="dl-file-progress-fill" style={{ width: `${Math.min(100, pct)}%` }} />
+                  </div>
                 </div>
-                <div className="dl-overall-track">
-                  <div className="dl-overall-fill" style={{ width: `${overallPercent}%` }} />
+                <div className="dl-file-actions">
+                  {(progress.status === 'done' || progress.status === 'exists') && progress.destinationPath && (
+                    <IconButton
+                      variant="light"
+                      onClick={() => onRevealFile(progress.destinationPath!)}
+                      title="在文件夹中显示"
+                      icon={<FolderOpen size={14} />}
+                    />
+                  )}
+                  <span className={progress.status === 'failed' || progress.status === 'canceled' ? 'dl-file-status muted' : 'dl-file-status'}>
+                    {statusLabel(progress)}
+                  </span>
                 </div>
               </div>
-
-              {/* 文件列表 */}
-              <div className="dl-file-list">
-                {entries.map((progress) => {
-                  const file = fileSnapshotsRef.current.get(progress.fileName)
-                  const previewSource = previewSourceFor(progress, file)
-                  const isVideoPreview = file?.kind === 'video' || file?.kind === 'lrv'
-                  const pct = progress.status === 'done' || progress.status === 'exists'
-                    ? 100
-                    : progress.total ? (progress.downloaded / progress.total) * 100 : 0
-                  const normalizedStatus = progress.status === 'exists' ? 'done' : progress.status
-                  return (
-                    <div key={progress.fileName} className={`dl-file-item ${normalizedStatus}`}>
-                      <div className="dl-file-preview">
-                        {previewSource && !isVideoPreview && <img src={previewSource} alt="" loading="lazy" />}
-                        {previewSource && isVideoPreview && <video src={previewSource} muted playsInline preload="metadata" />}
-                        {!previewSource && <FileQuestion size={18} />}
-                      </div>
-                      <div className="dl-file-info">
-                        <span className="dl-file-name">{progress.fileName}</span>
-                        <span className="dl-file-meta">
-                          {formatBytes(progress.downloaded)}
-                          {progress.total ? ` / ${formatBytes(progress.total)}` : ''}
-                          {progress.speedBps > 0 && ` · ${formatSpeed(progress.speedBps)}`}
-                          {(progress.status === 'done' || progress.status === 'exists') && ' · 已完成'}
-                          {progress.status === 'queued' && ' · 等待中'}
-                          {progress.status === 'failed' && ' · 失败'}
-                          {progress.status === 'canceled' && ' · 已取消'}
-                        </span>
-                        <div className="dl-file-progress-track">
-                          <div className="dl-file-progress-fill" style={{ width: `${Math.min(100, pct)}%` }} />
-                        </div>
-                      </div>
-                      <div className="dl-file-actions">
-                        {(progress.status === 'done' || progress.status === 'exists') && progress.destinationPath && (
-                          <IconButton
-                            variant="light"
-                            onClick={() => onRevealFile(progress.destinationPath!)}
-                            title="在文件夹中显示"
-                            icon={<FolderOpen size={14} />}
-                          />
-                        )}
-                        <span className={progress.status === 'failed' || progress.status === 'canceled' ? 'dl-file-status muted' : 'dl-file-status'}>
-                          {statusLabel(progress)}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </PanelBody>
-          </Panel>
-        </>
-      )}
+            )
+          })}
+        </div>
+      </DropdownPanel>
     </div>
   )
 }

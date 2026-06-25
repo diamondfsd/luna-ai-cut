@@ -1,0 +1,18 @@
+/* ==========================================
+   DropdownPanel — 下拉面板
+   ========================================== */
+
+.ui-dropdown-panel {
+  width: 440px;
+  max-height: 440px;
+  background: var(--glass-surface-strong);
+}
+
+.ui-dropdown-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { FileQuestion, Film, Play, X } from 'lucide-react'
+import { X } from 'lucide-react'
 
-import { WatermarkOverlay } from './WatermarkOverlay'
+import { MediaPreviewPanel } from './MediaPreviewPanel'
 import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToPreviewUrl } from './previewModalUtils'
 import type { DeviceWatermarkStyleConfig, LunaFile, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
@@ -28,24 +28,12 @@ export function ExportModal({
   onConfirm,
   onSettingsChange,
 }: ExportModalProps) {
-  const [fileIndex, setFileIndex] = useState(0)
-  const currentFile = files[fileIndex]
+  const [currentFile, setCurrentFile] = useState<LunaFile>(files[0])
 
   const displaySource = useMemo(() => {
-    if (!currentFile) return null
     const localPath = currentFile.downloadFilePath ?? currentFile.localPath
     return localPath ? filePathToPreviewUrl(localPath) : null
   }, [currentFile])
-
-  const [hasPrevious, hasNext] = useMemo(() => {
-    return [fileIndex > 0, fileIndex < files.length - 1]
-  }, [fileIndex, files.length])
-
-  function navigateFile(direction: -1 | 1): void {
-    const next = fileIndex + direction
-    if (next < 0 || next >= files.length) return
-    setFileIndex(next)
-  }
 
   return (
     <BaseModal onClose={onClose}>
@@ -64,75 +52,13 @@ export function ExportModal({
 
         <div className="preview-body">
           {/* Left: file preview */}
-          <div className="preview-stage-col">
-            <div className="preview-stage">
-              {currentFile?.kind === 'image' && displaySource ? (
-                <div className="preview-media-inner">
-                  <img
-                    src={displaySource}
-                    alt={currentFile.name}
-                    style={{ maxWidth: '100%', maxHeight: '100%' }}
-                  />
-                  <WatermarkOverlay settings={watermarkSettings} kind="image" />
-                </div>
-              ) : currentFile?.kind === 'video' && displaySource ? (
-                <div className="preview-media-inner">
-                  <video
-                    src={displaySource}
-                    controls
-                    autoPlay
-                    style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
-                  />
-                  <WatermarkOverlay settings={watermarkSettings} kind="video" />
-                </div>
-              ) : (
-                <div className="unknown-preview">
-                  <FileQuestion size={48} />
-                  <span>无法预览</span>
-                </div>
-              )}
-
-              {hasPrevious && (
-                <button className="preview-nav previous" onClick={() => navigateFile(-1)} title="上一个">
-                  <Play size={18} style={{ transform: 'rotate(180deg)' }} />
-                </button>
-              )}
-              {hasNext && (
-                <button className="preview-nav next" onClick={() => navigateFile(1)} title="下一个">
-                  <Play size={18} />
-                </button>
-              )}
-            </div>
-
-            {/* Thumbnail strip */}
-            <div className="preview-thumbnails">
-              {files.map((file) => {
-                const isActive = file.id === currentFile?.id
-                const thumbSrc = file.thumbnailUrl ?? null
-                return (
-                  <button
-                    key={file.id}
-                    className={`preview-thumb-item${isActive ? ' active' : ''}`}
-                    onClick={() => setFileIndex(files.findIndex((f) => f.id === file.id))}
-                    title={file.name}
-                  >
-                    {thumbSrc ? (
-                      <img src={thumbSrc} alt={file.name} loading="lazy" />
-                    ) : (
-                      <span className="preview-thumb-placeholder">
-                        {file.kind === 'video' ? <Film size={14} /> : <FileQuestion size={14} />}
-                      </span>
-                    )}
-                    {file.kind === 'video' && (
-                      <span className="preview-thumb-badge">
-                        <Play size={8} fill="currentColor" />
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          <MediaPreviewPanel
+            files={files}
+            currentFile={currentFile}
+            displaySource={displaySource}
+            onFileChange={setCurrentFile}
+            watermarkSettings={watermarkSettings}
+          />
 
           {/* Right: export options */}
           <div className="export-options-panel">

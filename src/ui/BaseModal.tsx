@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 
+import { ModalLayer } from './ModalLayer'
+
 interface BaseModalProps {
   onClose: () => void
   children: ReactNode
@@ -8,12 +10,13 @@ interface BaseModalProps {
 /**
  * 全屏弹窗基底组件。
  *
- * 提供：
- * - 毛玻璃背景遮罩，点击背景关闭
- * - Esc / Ctrl+W / Cmd+W 快捷键关闭（兼容 Win/Mac）
- * - 弹窗挂载时自动聚焦
+ * 基于 ModalLayer，额外增加：
+ * - 内容区域自动居中
+ * - 弹窗挂载时自动聚焦（让键盘事件生效）
+ * - Cmd+W / Ctrl+W 快捷键关闭
  *
- * 子元素需自行负责布局样式（如 `.preview-modal` 网格布局）。
+ * 子元素需自行负责内部布局样式（如 `.preview-modal` 网格布局）。
+ * 不需要 Cmd+W 和自动聚焦时可直接使用 ModalLayer。
  */
 export function BaseModal({ onClose, children }: BaseModalProps) {
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -24,14 +27,9 @@ export function BaseModal({ onClose, children }: BaseModalProps) {
     return () => window.clearTimeout(id)
   }, [])
 
-  // Esc / Ctrl+W / Cmd+W 关闭弹窗
+  // Cmd+W / Ctrl+W 关闭弹窗（Esc 由 ModalLayer 处理）
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        onClose()
-        return
-      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'w') {
         event.preventDefault()
         event.stopPropagation()
@@ -43,15 +41,15 @@ export function BaseModal({ onClose, children }: BaseModalProps) {
   }, [onClose])
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <ModalLayer onClose={onClose}>
       <div
         ref={contentRef}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        style={{ outline: 'none' }}
+        style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%', outline: 'none' }}
       >
         {children}
       </div>
-    </div>
+    </ModalLayer>
   )
 }

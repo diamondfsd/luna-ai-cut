@@ -1,23 +1,10 @@
 import { useEffect, useState } from 'react'
-import {
-  Loader2,
-  Trash2,
-} from 'lucide-react'
 
 import { MediaGallery } from '../components/MediaGallery'
 import { MediaLibraryToolbar } from '../components/MediaLibraryToolbar'
 import { PreviewModal } from '../components/PreviewModal'
 import { useMediaLibraryController, type MediaLibraryPageProps } from './useMediaLibraryController'
-import {
-  Button,
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../ui'
+import { Modal } from '../ui'
 import '../styles/library.css'
 
 /** 格式化日期，年月日和星期之间加空格 */
@@ -277,34 +264,21 @@ export function MediaLibraryPage({
         />
       )}
 
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>删除本地文件</DialogTitle>
-            <DialogDescription>
-              将删除已选的 {selectedFiles.length} 个本地文件。这个操作不会删除相机中的原始素材。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogBody>
-            <p className="delete-dialog-copy">
-              删除后文件会从本地资源列表中移除，正在预览的已删除文件也会关闭。
-            </p>
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setShowDeleteDialog(false)} disabled={deletingLocalFiles}>
-              取消
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => void deleteSelectedLocalFiles()}
-              disabled={deletingLocalFiles}
-              icon={deletingLocalFiles ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />}
-            >
-              {deletingLocalFiles ? '删除中...' : '确认删除'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Modal
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="删除本地文件"
+        description={`将删除已选的 ${selectedFiles.length} 个本地文件。这个操作不会删除相机中的原始素材。`}
+        confirmText={deletingLocalFiles ? '删除中...' : '确认删除'}
+        confirmVariant="danger"
+        confirmDisabled={deletingLocalFiles}
+        confirmLoading={deletingLocalFiles}
+        onConfirm={() => void deleteSelectedLocalFiles()}
+      >
+        <p className="delete-dialog-copy">
+          删除后文件会从本地资源列表中移除，正在预览的已删除文件也会关闭。
+        </p>
+      </Modal>
     </>
   )
 }
