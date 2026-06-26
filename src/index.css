@@ -43,28 +43,39 @@ input {
   overflow-y: auto;
 }
 
-/* ====== 帮助与反馈弹窗（抖音二维码） ====== */
+/* ====== 帮助与反馈弹窗 ====== */
 .help-dialog-body {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 0 24px;
+  gap: 0;
+  padding: 0;
 }
 
-.help-version-section {
+.help-section {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.help-section + .help-section {
+  border-top: 1px solid var(--hairline);
+}
+
+.help-version-row {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
   width: 100%;
-  padding: 0 8px;
   flex-wrap: wrap;
 }
 
 .help-version-text {
   font-size: 14px;
-  color: var(--muted);
+  font-weight: 600;
+  color: var(--ink);
   white-space: nowrap;
 }
 
@@ -81,9 +92,42 @@ input {
   color: var(--muted);
 }
 
+.help-link-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--blue, #0066cc);
+  background: transparent;
+  color: var(--blue, #0066cc);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+  text-decoration: none;
+}
+
+.help-link-btn:hover {
+  background: var(--blue, #0066cc);
+  color: #fff;
+  text-decoration: none;
+}
+
+.help-link-btn small {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.help-links-row {
+  flex-direction: row;
+  justify-content: center;
+  gap: 10px;
+}
+
 .help-qr-code {
-  width: 220px;
-  height: 220px;
+  width: 160px;
+  height: 160px;
   border-radius: 12px;
   object-fit: cover;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
@@ -95,6 +139,25 @@ input {
   font-size: 13px;
   text-align: center;
   line-height: 1.5;
+}
+
+.help-devtools-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+
+.help-devtools-btn:hover {
+  background: var(--parchment);
+  color: var(--ink);
 }
 
 /* ====== 更新说明弹窗 ====== */
@@ -132,27 +195,6 @@ input {
   color: var(--muted);
   padding: 32px 0;
   font-size: 14px;
-}
-
-/* ====== 帮助弹窗更新说明按钮 ====== */
-.help-release-notes-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--blue, #0066cc);
-  background: transparent;
-  color: var(--blue, #0066cc);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 120ms, color 120ms;
-}
-
-.help-release-notes-btn:hover {
-  background: var(--blue, #0066cc);
-  color: #fff;
 }
 
 /* ====== 更新提示横幅 ====== */
