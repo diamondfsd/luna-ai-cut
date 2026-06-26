@@ -10,6 +10,7 @@ import { previewCacheDir } from './settingsService'
 import type {
   LunaFile,
   PreviewResult,
+  VideoExportSettings,
   WatermarkPosition,
   WatermarkSettings,
   WatermarkSize,
@@ -153,6 +154,24 @@ async function probeMedia(inputPath: string): Promise<MediaProbe> {
   }
 }
 
+/** 分辨率预设映射 */
+const RESOLUTION_MAP: Record<string, { width: number; height: number }> = {
+  '1080p': { width: 1920, height: 1080 },
+  '720p': { width: 1280, height: 720 },
+}
+
+/** 画质预设码率映射 */
+const QUALITY_BITRATES: Record<string, string> = {
+  high: '50M',
+  medium: '20M',
+  low: '10M',
+}
+
+/** 构建分辨率缩放 filter 字符串 */
+function scaleFilter(targetWidth: number, targetHeight: number): string {
+  return `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2,setsar=1`
+}
+
 function videoCodecArgs(codec: string | null): string[] {
   // libx265 默认输出 hev1 标签，QuickTime Player 只认 hvc1
   if (codec === 'hevc' || codec === 'h265') return ['-c:v', 'libx265', '-tag:v', 'hvc1']
@@ -160,10 +179,15 @@ function videoCodecArgs(codec: string | null): string[] {
   return ['-c:v', 'libx264']
 }
 
-function videoBitrateArgs(bitrate: number | null): string[] {
+function videoBitrateArgs(bitrate: number | string | null): string[] {
   // -pix_fmt yuv420p: QuickTime Player 不支持 yuv444p，必须显式指定 yuv420p
   if (!bitrate) return ['-crf', '18', '-pix_fmt', 'yuv420p']
-  return ['-b:v', String(bitrate), '-maxrate', String(bitrate), '-bufsize', String(bitrate * 2), '-pix_fmt', 'yuv420p']
+  const b = typeof bitrate === 'number' ? String(bitrate) : bitrate
+  // 提取数值和后缀（如 "20M" → 20, "M"）
+  const match = b.match(/^(\d+)([kKM]?)$/)
+  const num = match ? parseInt(match[1]) : 0
+  const suffix = match?.[2] || ''
+  return ['-b:v', b, '-maxrate', b, '-bufsize', `${num * 2}${suffix}`, '-pix_fmt', 'yuv420p']
 }
 
 /** 根据输出扩展名选择 ffmpeg 图片编码器参数（最高质量保留） */
@@ -240,43 +264,94 @@ export async function applyWatermarkToVideo(
   style: WatermarkStyle,
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
+  /** 视频导出参数（分辨率/帧率/码率），不传则保持原始 */
+  videoExportSettings?: VideoExportSettings,
 ): Promise<void> {
   const ffmpegPath = getFfmpegPath()
   const wmPath = watermarkFileFor('video', style)
   const media = await probeMedia(inputPath)
   const { durationSeconds, videoBitrate, videoCodec, videoWidth, videoHeight } = media
 
-  const wmTargetWidth = Math.round(videoWidth * WATERMARK_SCALE[size])
-  const marginPx = Math.round(videoWidth * 0.03)
+  // 判断是否真的需要添加水印（相比 videoExportSettings，水印是独立控制的）
+  const hasWatermark = true // 此函数始终由「需要水印」的场景调用
+
+  // 1️⃣ 计算目标分辨率和帧率
+  const res = videoExportSettings?.resolution
+    ? RESOLUTION_MAP[videoExportSettings.resolution]
+    : null
+  const targetWidth = res?.width ?? videoWidth
+  const targetHeight = res?.height ?? videoHeight
+  const needsScale = targetWidth !== videoWidth || targetHeight !== videoHeight
+
+  // 帧率参数
+  const frameRate = videoExportSettings?.frameRate
+    ? (videoExportSettings.frameRate !== 'original' ? videoExportSettings.frameRate : null)
+    : null
+
+  // 码率参数
+  let bitrateOverride: string | null = null
+  if (videoExportSettings?.quality && videoExportSettings.quality !== 'original') {
+    bitrateOverride = QUALITY_BITRATES[videoExportSettings.quality]
+  }
+
+  // 2️⃣ 计算水印位置（基于目标分辨率）
+  const wmTargetWidth = Math.round(targetWidth * WATERMARK_SCALE[size])
+  const marginPx = Math.round(targetWidth * 0.03)
   const [vPos, hPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
   const x = hPos === 'left'
     ? marginPx
     : hPos === 'right'
-      ? videoWidth - wmTargetWidth - marginPx
-      : Math.round((videoWidth - wmTargetWidth) / 2)
+      ? targetWidth - wmTargetWidth - marginPx
+      : Math.round((targetWidth - wmTargetWidth) / 2)
   let y = marginPx
-
   if (vPos === 'bottom') {
     const wmInfo = await probeImage(wmPath)
     const wmRatio = wmInfo.height / wmInfo.width
-    y = Math.round(videoHeight - wmTargetWidth * wmRatio - marginPx)
+    y = Math.round(targetHeight - wmTargetWidth * wmRatio - marginPx)
   }
 
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(ffmpegPath, [
-      '-i', inputPath,
-      '-i', wmPath,
+  // 3️⃣ 构建 ffmpeg 参数
+  const args: string[] = ['-i', inputPath, '-i', wmPath]
+
+  // 3a. filter_complex：缩放 + 水印合成
+  if (needsScale && hasWatermark) {
+    // 先缩放视频，再叠加缩放后的水印
+    args.push(
+      '-filter_complex',
+      `[0:v]${scaleFilter(targetWidth, targetHeight)}[v0];[1:v]scale=${wmTargetWidth}:-1[wm];[v0][wm]overlay=${x}:${y}`,
+    )
+  } else if (needsScale) {
+    // 仅缩放，无水印
+    args.push('-vf', scaleFilter(targetWidth, targetHeight))
+  } else if (hasWatermark) {
+    // 仅水印，不缩放
+    args.push(
       '-filter_complex',
       `[1:v]scale=${wmTargetWidth}:-1[wm];[0:v][wm]overlay=${x}:${y}`,
-      ...videoCodecArgs(videoCodec),
-      ...videoBitrateArgs(videoBitrate),
-      '-c:a', 'aac', '-b:a', '192k',
-      '-map_metadata', '0',
-      '-progress', 'pipe:2',
-      '-nostats',
-      '-y',
-      outputPath,
-    ])
+    )
+  }
+
+  // 3b. 帧率
+  if (frameRate) {
+    args.push('-r', frameRate)
+  }
+
+  // 3c. 编码器和码率
+  args.push(...videoCodecArgs(videoCodec))
+  if (bitrateOverride) {
+    args.push(...videoBitrateArgs(bitrateOverride))
+  } else {
+    args.push(...videoBitrateArgs(videoBitrate))
+  }
+
+  // 3d. 音频
+  args.push('-c:a', 'aac', '-b:a', '192k')
+
+  // 3e. 通用参数
+  args.push('-map_metadata', '0', '-progress', 'pipe:2', '-nostats', '-y', outputPath)
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(ffmpegPath, args)
 
     const abort = (): void => {
       child.kill('SIGTERM')
@@ -323,6 +398,106 @@ async function watermarkCachePath(sourcePath: string, settings: WatermarkSetting
   const base = path.basename(sourcePath, ext)
   const params = `wm_${settings.style}_${settings.size}_${settings.position}`
   return path.join(dir, `${safeName(base)}_${params}${ext}`)
+}
+
+/**
+ * 仅应用视频导出参数（分辨率/帧率/码率），不添加水印
+ * 当用户不需要水印但想要调整输出参数时使用
+ */
+export async function applyVideoExportSettings(
+  inputPath: string,
+  outputPath: string,
+  videoExportSettings: VideoExportSettings,
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const ffmpegPath = getFfmpegPath()
+  const media = await probeMedia(inputPath)
+  const { durationSeconds, videoBitrate, videoCodec, videoWidth, videoHeight } = media
+
+  // 目标分辨率
+  const res = videoExportSettings.resolution !== 'original'
+    ? RESOLUTION_MAP[videoExportSettings.resolution]
+    : null
+  const targetWidth = res?.width ?? videoWidth
+  const targetHeight = res?.height ?? videoHeight
+  const needsScale = targetWidth !== videoWidth || targetHeight !== videoHeight
+
+  // 帧率
+  const frameRate = videoExportSettings.frameRate !== 'original' ? videoExportSettings.frameRate : null
+
+  // 码率
+  let bitrateOverride: string | null = null
+  if (videoExportSettings.quality !== 'original') {
+    bitrateOverride = QUALITY_BITRATES[videoExportSettings.quality]
+  }
+
+  const args: string[] = ['-i', inputPath]
+
+  // 分辨率缩放
+  if (needsScale) {
+    args.push('-vf', scaleFilter(targetWidth, targetHeight))
+  }
+
+  // 帧率
+  if (frameRate) {
+    args.push('-r', frameRate)
+  }
+
+  // 编码和码率
+  args.push(...videoCodecArgs(videoCodec))
+  if (bitrateOverride) {
+    args.push(...videoBitrateArgs(bitrateOverride))
+  } else {
+    args.push(...videoBitrateArgs(videoBitrate))
+  }
+
+  // 音频
+  args.push('-c:a', 'aac', '-b:a', '192k')
+
+  // 通用
+  args.push('-map_metadata', '0', '-progress', 'pipe:2', '-nostats', '-y', outputPath)
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(ffmpegPath, args)
+
+    const abort = (): void => {
+      child.kill('SIGTERM')
+      reject(new DOMException('导出已取消', 'AbortError'))
+    }
+
+    if (signal?.aborted) {
+      abort()
+      return
+    }
+
+    signal?.addEventListener('abort', abort, { once: true })
+
+    let stderr = ''
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk
+      const match = chunk.match(/out_time_ms=(\d+)/)
+      if (match && durationSeconds) {
+        const seconds = Number(match[1]) / 1_000_000
+        onProgress?.(Math.max(1, Math.min(99, (seconds / durationSeconds) * 100)))
+      }
+    })
+    child.on('error', (error) => {
+      signal?.removeEventListener('abort', abort)
+      reject(error)
+    })
+    child.on('close', (code) => {
+      signal?.removeEventListener('abort', abort)
+      if (signal?.aborted) return
+      if (code === 0) {
+        onProgress?.(100)
+        resolve()
+        return
+      }
+      reject(new Error(stderr.trim() || `ffmpeg exited with code ${code}`))
+    })
+  })
 }
 
 export async function previewWithWatermark(

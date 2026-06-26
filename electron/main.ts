@@ -55,6 +55,7 @@ import type {
   DeviceConnectOptions,
   DownloadProgress,
   LunaFile,
+  VideoExportSettings,
   WatermarkSettings,
   WifiConnectOptions,
   WifiHttpRequestOptions,
@@ -415,12 +416,12 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('luna:exportFiles', (_event, files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings) => {
+  ipcMain.handle('luna:exportFiles', (_event, files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) => {
     const controller = new AbortController()
     activeExportControllers.add(controller)
     return exportFiles(files, exportDir, watermarkSettings, (progress) => {
       win?.webContents.send('export:progress', progress)
-    }, controller.signal)
+    }, controller.signal, videoExportSettings)
       .finally(() => activeExportControllers.delete(controller))
   })
 

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
-import { X } from 'lucide-react'
+import { ImagePlus, Monitor, Video, X } from 'lucide-react'
 
 import { MediaPreviewPanel } from './MediaPreviewPanel'
 import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToPreviewUrl } from './previewModalUtils'
-import type { DeviceWatermarkStyleConfig, LunaFile, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import { BaseModal, Button, IconButton } from '../ui'
+import type { DeviceWatermarkStyleConfig, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
+import { Accordion, BaseModal, Button, IconButton, Select } from '../ui'
 import '../styles/modal.css'
 import '../styles/export-modal.css'
 
@@ -15,9 +16,30 @@ interface ExportModalProps {
   watermarkStyleOptions?: DeviceWatermarkStyleConfig[]
   exporting: boolean
   onClose: () => void
-  onConfirm: (settings: WatermarkSettingsType) => void
+  onConfirm: (settings: WatermarkSettingsType, videoSettings: VideoExportSettings) => void
   onSettingsChange: (settings: WatermarkSettingsType) => void
 }
+
+const RESOLUTION_OPTIONS = [
+  { value: 'original' as const, label: '原始' },
+  { value: '1080p' as const, label: '1080p' },
+  { value: '720p' as const, label: '720p' },
+]
+
+const FRAME_RATE_OPTIONS = [
+  { value: 'original' as const, label: '原始' },
+  { value: '30' as const, label: '30fps' },
+  { value: '60' as const, label: '60fps' },
+  { value: '24' as const, label: '24fps' },
+  { value: '25' as const, label: '25fps' },
+]
+
+const QUALITY_OPTIONS = [
+  { value: 'original' as const, label: '原始画质' },
+  { value: 'high' as const, label: '高质量' },
+  { value: 'medium' as const, label: '标准' },
+  { value: 'low' as const, label: '压缩小体积' },
+]
 
 export function ExportModal({
   files,
@@ -29,11 +51,14 @@ export function ExportModal({
   onSettingsChange,
 }: ExportModalProps) {
   const [currentFile, setCurrentFile] = useState<LunaFile>(files[0])
+  const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
 
   const displaySource = useMemo(() => {
     const localPath = currentFile.downloadFilePath ?? currentFile.localPath
     return localPath ? filePathToPreviewUrl(localPath) : null
   }, [currentFile])
+
+  const hasVideoFiles = useMemo(() => files.some((f) => f.kind === 'video'), [files])
 
   return (
     <BaseModal onClose={onClose}>
@@ -67,11 +92,51 @@ export function ExportModal({
             </div>
 
             <div className="export-options-body">
-              <WatermarkSettings
-                settings={watermarkSettings}
-                onChange={onSettingsChange}
-                styleOptions={watermarkStyleOptions}
-              />
+              <Accordion title={<><ImagePlus size={14} /> 水印设置</>} defaultOpen>
+                <WatermarkSettings
+                  settings={watermarkSettings}
+                  onChange={onSettingsChange}
+                  styleOptions={watermarkStyleOptions}
+                  showToggle={false}
+                />
+              </Accordion>
+
+              {hasVideoFiles && (
+                <Accordion title={<><Video size={14} /> 视频输出</>} defaultOpen>
+                  <div className="video-export-setting-row">
+                    <span className="video-export-setting-label">
+                      <Monitor size={13} />
+                      分辨率
+                    </span>
+                    <Select
+                      variant="compact"
+                      options={RESOLUTION_OPTIONS}
+                      value={videoSettings.resolution}
+                      onValueChange={(v) => setVideoSettings((prev) => ({ ...prev, resolution: v as VideoExportSettings['resolution'] }))}
+                    />
+                  </div>
+
+                  <div className="video-export-setting-row">
+                    <span className="video-export-setting-label">帧率</span>
+                    <Select
+                      variant="compact"
+                      options={FRAME_RATE_OPTIONS}
+                      value={videoSettings.frameRate}
+                      onValueChange={(v) => setVideoSettings((prev) => ({ ...prev, frameRate: v as VideoExportSettings['frameRate'] }))}
+                    />
+                  </div>
+
+                  <div className="video-export-setting-row">
+                    <span className="video-export-setting-label">画质</span>
+                    <Select
+                      variant="compact"
+                      options={QUALITY_OPTIONS}
+                      value={videoSettings.quality}
+                      onValueChange={(v) => setVideoSettings((prev) => ({ ...prev, quality: v as VideoExportSettings['quality'] }))}
+                    />
+                  </div>
+                </Accordion>
+              )}
             </div>
 
             <div className="export-options-footer">
@@ -82,7 +147,7 @@ export function ExportModal({
                 variant="primary"
                 size="compact"
                 disabled={exporting}
-                onClick={() => onConfirm(watermarkSettings)}
+                onClick={() => onConfirm(watermarkSettings, videoSettings)}
               >
                 {exporting ? '导出中...' : '确认导出'}
               </Button>

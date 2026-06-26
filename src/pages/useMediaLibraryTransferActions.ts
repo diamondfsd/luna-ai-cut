@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 
-import type { AppSettings, DownloadProgress, ExportProgress, LunaFile, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { AppSettings, DownloadProgress, ExportProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import type { ViewMode } from './useMediaLibraryController'
 
 interface TransferActionProps {
@@ -207,7 +207,7 @@ export function useMediaLibraryTransferActions({
     setDownloadQueue((current) => (current.some((item) => item.name === file.name) ? current : [...current, file]))
   }
 
-  async function exportLocalFiles(filesToExport: LunaFile[], watermarkSettings: WatermarkSettingsType): Promise<void> {
+  async function exportLocalFiles(filesToExport: LunaFile[], watermarkSettings: WatermarkSettingsType, videoExportSettings?: VideoExportSettings): Promise<void> {
     if (filesToExport.length === 0) return
     setExportError(null)
     setExporting(true)
@@ -236,7 +236,7 @@ export function useMediaLibraryTransferActions({
         kind: file.kind,
         localPath: file.downloadFilePath ?? file.localPath,
       }))
-      const result = await window.luna.exportFiles(payload, settings.exportDir, watermarkSettings)
+      const result = await window.luna.exportFiles(payload, settings.exportDir, watermarkSettings, videoExportSettings)
       if (result.failed.length > 0) {
         const firstError = result.failed[0]
         setExportError(`${firstError.name}: ${firstError.error}`)

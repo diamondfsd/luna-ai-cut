@@ -109,6 +109,29 @@ export interface WatermarkSettings {
   position: WatermarkPosition
 }
 
+/** 视频导出分辨率选项 */
+export type VideoResolution = 'original' | '1080p' | '720p'
+
+/** 视频导出帧率选项 */
+export type VideoFrameRate = 'original' | '24' | '25' | '30' | '60'
+
+/** 视频导出画质（码率）选项 */
+export type VideoQuality = 'original' | 'high' | 'medium' | 'low'
+
+/** 视频导出参数设置 */
+export interface VideoExportSettings {
+  resolution: VideoResolution
+  frameRate: VideoFrameRate
+  quality: VideoQuality
+}
+
+/** 默认视频导出设置（所有参数保持原始） */
+export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
+  resolution: 'original',
+  frameRate: 'original',
+  quality: 'original',
+}
+
 export interface AppSettings {
   downloadDir: string
   exportDir?: string
@@ -340,7 +363,7 @@ export interface LunaApi {
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
-  exportFiles(files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings): Promise<ExportSummary>
+  exportFiles(files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
   getDownloadedRecords(files: LunaFile[], downloadDir?: string): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>

@@ -1,0 +1,63 @@
+/* ==========================================
+   Accordion 手风琴折叠面板（基于 Radix Collapsible）
+   ========================================== */
+
+.ui-accordion {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ui-accordion:first-child {
+  border-top: none;
+}
+
+/* 可点击标题栏 */
+.ui-accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.ui-accordion-header:hover {
+  opacity: 0.85;
+}
+
+.ui-accordion-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-dark);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* chevron 动画 */
+.ui-accordion-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 180ms ease;
+}
+
+.ui-accordion[data-state="open"] .ui-accordion-chevron {
+  transform: rotate(180deg);
+}
+
+/* 内容区 — Radix Collapsible.Content 自带隐藏/显示 */
+.ui-accordion-body {
+  padding-bottom: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+/* 在导出面板内时，第一个 Accordion 去掉顶部 padding */
+.export-options-body .ui-accordion:first-child .ui-accordion-header {
+  padding-top: 0;
+}

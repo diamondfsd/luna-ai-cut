@@ -6,8 +6,8 @@ import { lunaMediaAdapter } from './deviceMedia'
 import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
 import { generateThumbnail, safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
-import { applyWatermarkToImage, applyWatermarkToVideo } from './watermarkService'
-import type { LunaFile, WatermarkSettings } from '../src/shared/types'
+import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToVideo } from './watermarkService'
+import type { LunaFile, VideoExportSettings, WatermarkSettings } from '../src/shared/types'
 
 export interface ExportProgress {
   fileName: string
@@ -50,12 +50,18 @@ async function ensureExportThumbnail(filePath: string, fileName: string, kind: s
   }
 }
 
+function isDefaultVideoExportSettings(s?: VideoExportSettings): boolean {
+  if (!s) return true
+  return s.resolution === 'original' && s.frameRate === 'original' && s.quality === 'original'
+}
+
 export async function exportFiles(
   files: Array<{ name: string; kind: string; localPath?: string }>,
   exportDir: string,
   watermarkSettings: WatermarkSettings,
   onProgress?: (progress: ExportProgress) => void,
   signal?: AbortSignal,
+  videoExportSettings?: VideoExportSettings,
 ): Promise<ExportSummary> {
   const completed: ExportSummary['completed'] = []
   const failed: ExportSummary['failed'] = []
@@ -98,13 +104,8 @@ export async function exportFiles(
 
     try {
       onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: 0, status: 'exporting' })
-      if (!watermarkSettings.enabled) {
-        await fs.cp(localPath, tmpPath, { force: true })
-        onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: 95, status: 'exporting' })
-      } else if (file.kind === 'image') {
-        await applyWatermarkToImage(localPath, tmpPath, watermarkSettings.size, watermarkSettings.position, watermarkSettings.style)
-        onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: 95, status: 'exporting' })
-      } else if (file.kind === 'video') {
+      if (file.kind === 'video' && watermarkSettings.enabled) {
+        // 有水印的视频 — 需要 ffmpeg 合成水印
         await applyWatermarkToVideo(
           localPath,
           tmpPath,
@@ -113,9 +114,23 @@ export async function exportFiles(
           watermarkSettings.style,
           (percent) => onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent, status: 'exporting' }),
           signal,
+          videoExportSettings,
         )
+      } else if (file.kind === 'video' && !isDefaultVideoExportSettings(videoExportSettings)) {
+        // 无水印但设定了导出参数 — 需要 ffmpeg 转码
+        await applyVideoExportSettings(
+          localPath,
+          tmpPath,
+          videoExportSettings!,
+          (percent) => onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent, status: 'exporting' }),
+          signal,
+        )
+      } else if (file.kind === 'image' && watermarkSettings.enabled) {
+        await applyWatermarkToImage(localPath, tmpPath, watermarkSettings.size, watermarkSettings.position, watermarkSettings.style)
+        onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: 95, status: 'exporting' })
       } else {
         await fs.cp(localPath, tmpPath, { force: true })
+        onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: 95, status: 'exporting' })
       }
       throwIfAborted(signal)
       await fs.rename(tmpPath, finalPath)

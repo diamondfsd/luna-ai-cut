@@ -6,7 +6,7 @@
 
 ### 共享组件清单
 
-使用 `src/ui` 组件管理所有共享控件：
+使用 `src/ui` 组件管理所有共享控件。**所有 UI 组件默认基于 Radix 基元进行二次开发**，不使用原生 HTML 元素自制交互行为（如用 `<select>` 做下拉、用 JS 控制显隐等）。Radix 已提供的行为基元包括：Dialog、Popover、Tabs、Switch、Tooltip、Collapsible、Select 等。
 
 | 组件 | 说明 |
 |------|------|
@@ -14,6 +14,8 @@
 | `IconButton` | 圆形图标按钮，支持 `circle` / `light` / `outline` / `ghost` 四种主题和 `default` / `compact` / `mini` 三种尺寸 |
 | `Input` | 输入框，支持 `pill` / `compact` / `ghost` 三种主题，可选 icon 前置图标和 fullWidth 撑满父容器 |
 | `SearchField` | 搜索输入框（基于 Input 封装），带放大镜图标 |
+| `Select` | 下拉选择器（基于 Radix Select），支持 `pill` / `compact` / `ghost` 三种主题，可选 icon 和 fullWidth |
+| `Accordion` | 手风琴折叠面板（基于 Radix Collapsible），支持受控/非受控模式 |
 | `SegmentedControl` | 分段选择器，用于媒体过滤和尺寸切换 |
 | `Switch` | 开关控件，用于二进制设置项（基于 Radix） |
 | `Tooltip` | 悬停提示（基于 Radix） |
