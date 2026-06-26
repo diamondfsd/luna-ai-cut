@@ -212,6 +212,8 @@ export interface ExportProgress {
   status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
   destinationPath?: string
   error?: string
+  /** 导出任务唯一 ID（前端生成，同文件多次导出时做 key） */
+  exportId?: string
 }
 
 export interface ExportSummary {
@@ -365,7 +367,7 @@ export interface LunaApi {
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
-  exportFiles(files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
+  exportFiles(files: Array<{ name: string; kind: string; localPath?: string; exportId?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
   getDownloadedRecords(files: LunaFile[], downloadDir?: string): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>

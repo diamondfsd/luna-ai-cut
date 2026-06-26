@@ -88,7 +88,7 @@ export function useMediaLibraryController({
   // 监听导出进度
   useEffect(() => {
     return window.luna.onExportProgress((progress) => {
-      setExportProgress((current) => new Map(current).set(progress.fileName, progress))
+      setExportProgress((current) => new Map(current).set(progress.exportId ?? progress.fileName, progress))
     })
   }, [])
 

@@ -157,7 +157,7 @@ export function ExportProgressModal({
 
         <div className="dl-file-list">
           {entries.map((progress) => {
-            const file = fileSnapshots.get(progress.fileName)
+            const file = fileSnapshots.get(progress.exportId ?? progress.fileName)
             const previewSource = previewSourceFor(progress, file, readyThumbnailUrlsRef.current)
             const isVideoPreview = file?.kind === 'video' || file?.kind === 'lrv'
             const pct = progress.status === 'done' ? 100 : progress.percent ?? 0
@@ -187,7 +187,7 @@ export function ExportProgressModal({
                       <IconButton
                         variant="ghost"
                         onClick={() => {
-                          const snap = fileSnapshots.get(progress.fileName)
+                          const snap = fileSnapshots.get(progress.exportId ?? progress.fileName)
                           if (snap) {
                             setPreviewFile({
                               ...snap,

@@ -17,6 +17,7 @@ export interface ExportProgress {
   status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
   destinationPath?: string
   error?: string
+  exportId?: string
 }
 
 export interface ExportSummary {
@@ -56,7 +57,7 @@ function isDefaultVideoExportSettings(s?: VideoExportSettings): boolean {
 }
 
 export async function exportFiles(
-  files: Array<{ name: string; kind: string; localPath?: string }>,
+  files: Array<{ name: string; kind: string; localPath?: string; exportId?: string }>,
   exportDir: string,
   watermarkSettings: WatermarkSettings,
   onProgress?: (progress: ExportProgress) => void,
@@ -70,19 +71,23 @@ export async function exportFiles(
 
   await fs.mkdir(tmpDir, { recursive: true })
 
-  for (const [index, file] of files.entries()) {
+  function prog(file: typeof files[number], extra: Partial<ExportProgress>): ExportProgress {
+    return { fileName: file.name, exportId: file.exportId, index: files.indexOf(file), totalFiles: files.length, percent: null, status: 'queued' as const, ...extra }
+  }
+
+  for (const file of files) {
     try {
       throwIfAborted(signal)
     } catch {
       canceled.push({ name: file.name })
-      onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: null, status: 'canceled' })
+      onProgress?.(prog(file, { percent: null, status: 'canceled' }))
       break
     }
 
     const localPath = file.localPath
     if (!localPath) {
       failed.push({ name: file.name, error: '文件未下载' })
-      onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: null, status: 'failed', error: '文件未下载' })
+      onProgress?.(prog(file, { percent: null, status: 'failed', error: '文件未下载' }))
       continue
     }
 
@@ -90,7 +95,7 @@ export async function exportFiles(
       await fs.access(localPath)
     } catch {
       failed.push({ name: file.name, error: '本地文件不存在' })
-      onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: null, status: 'failed', error: '本地文件不存在' })
+      onProgress?.(prog(file, { percent: null, status: 'failed', error: '本地文件不存在' }))
       continue
     }
 
@@ -103,7 +108,7 @@ export async function exportFiles(
     const finalPath = path.join(exportDir, safeName(destName))
 
     try {
-      onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: 0, status: 'exporting' })
+      onProgress?.(prog(file, { percent: 0, status: 'exporting' }))
       if (file.kind === 'video' && watermarkSettings.enabled) {
         // 有水印的视频 — 需要 ffmpeg 合成水印
         await applyWatermarkToVideo(
@@ -112,7 +117,7 @@ export async function exportFiles(
           watermarkSettings.size,
           watermarkSettings.position,
           watermarkSettings.style,
-          (percent) => onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent, status: 'exporting' }),
+          (percent) => onProgress?.(prog(file, { percent, status: 'exporting' })),
           signal,
           videoExportSettings,
         )
@@ -122,7 +127,7 @@ export async function exportFiles(
           localPath,
           tmpPath,
           videoExportSettings!,
-          (percent) => onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent, status: 'exporting' }),
+          (percent) => onProgress?.(prog(file, { percent, status: 'exporting' })),
           signal,
         )
       } else if (file.kind === 'image' && watermarkSettings.enabled && /^LIV_/i.test(file.name)) {
@@ -133,33 +138,33 @@ export async function exportFiles(
           watermarkSettings.size,
           watermarkSettings.position,
           watermarkSettings.style,
-          (percent) => onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent, status: 'exporting' }),
+          (percent) => onProgress?.(prog(file, { percent, status: 'exporting' })),
           signal,
           videoExportSettings,
         )
       } else if (file.kind === 'image' && watermarkSettings.enabled) {
         await applyWatermarkToImage(localPath, tmpPath, watermarkSettings.size, watermarkSettings.position, watermarkSettings.style)
-        onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: 95, status: 'exporting' })
+        onProgress?.(prog(file, { percent: 95, status: 'exporting' }))
       } else {
         await fs.cp(localPath, tmpPath, { force: true })
-        onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: 95, status: 'exporting' })
+        onProgress?.(prog(file, { percent: 95, status: 'exporting' }))
       }
       throwIfAborted(signal)
       await fs.rename(tmpPath, finalPath)
       await ensureExportThumbnail(finalPath, destName, file.kind)
       completed.push({ name: file.name, path: finalPath })
-      onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: 100, status: 'done', destinationPath: finalPath })
+      onProgress?.(prog(file, { percent: 100, status: 'done', destinationPath: finalPath }))
     } catch (error) {
       try { await fs.rm(tmpPath, { force: true }) } catch { /* ignore */ }
       if (signal?.aborted || isAbortError(error)) {
         canceled.push({ name: file.name })
-        onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: null, status: 'canceled' })
+        onProgress?.(prog(file, { percent: null, status: 'canceled' }))
         break
       }
       const message = error instanceof Error ? error.message : String(error)
       console.error('[export] 导出失败:', file.name, error)
       failed.push({ name: file.name, error: message })
-      onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent: null, status: 'failed', error: message })
+      onProgress?.(prog(file, { percent: null, status: 'failed', error: message }))
     }
   }
 
