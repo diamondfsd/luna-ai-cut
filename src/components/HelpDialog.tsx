@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { HelpCircle, Loader2 } from 'lucide-react'
+import { FileText, HelpCircle, Loader2 } from 'lucide-react'
 
 import type { UpdateInfo } from '../shared/types'
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui'
+import { ReleaseNotesDialog } from './ReleaseNotesDialog'
 
 interface HelpDialogProps {
   children?: ReactNode
@@ -13,6 +14,7 @@ export function HelpDialog({ children }: HelpDialogProps) {
   const [checking, setChecking] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [noUpdate, setNoUpdate] = useState(false)
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
 
   async function handleCheckUpdate(): Promise<void> {
     setChecking(true)
@@ -75,6 +77,10 @@ export function HelpDialog({ children }: HelpDialogProps) {
               </Button>
             )}
           </div>
+          <button className="help-release-notes-btn" onClick={() => setReleaseNotesOpen(true)}>
+            <FileText size={14} />
+            <span>更新说明</span>
+          </button>
           <img
             src="/my-douyin-qr-code.jpg"
             alt="抖音二维码"
@@ -85,6 +91,7 @@ export function HelpDialog({ children }: HelpDialogProps) {
           </p>
         </div>
       </DialogContent>
+      <ReleaseNotesDialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen} />
     </Dialog>
   )
 }

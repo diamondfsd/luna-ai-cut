@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkForUpdates } from './updateService'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -442,6 +442,38 @@ function registerIpc(): void {
   // 手动触发更新检查
   ipcMain.handle('update:check', async () => {
     return checkForUpdates()
+  })
+
+  // 获取更新说明列表
+  ipcMain.handle('release-notes:list', async (): Promise<Array<{ version: string; content: string }>> => {
+    const notesDir = app.isPackaged
+      ? join(process.resourcesPath)
+      : join(app.getAppPath())
+    const prefix = 'RELEASE_NOTES_v'
+    try {
+      const files = readdirSync(notesDir)
+        .filter(f => f.startsWith(prefix) && f.endsWith('.md'))
+
+      // 按语义化版本号从新到旧排序
+      files.sort((a, b) => {
+        const va = a.match(/(\d+)\.(\d+)\.(\d+)/)
+        const vb = b.match(/(\d+)\.(\d+)\.(\d+)/)
+        if (!va || !vb) return b.localeCompare(a)
+        for (let i = 1; i <= 3; i++) {
+          const diff = Number(vb[i]) - Number(va[i])
+          if (diff !== 0) return diff
+        }
+        return 0
+      })
+
+      return files.slice(0, 5).map(f => {
+        const version = f.slice(prefix.length, -'.md'.length)
+        const content = readFileSync(join(notesDir, f), 'utf-8')
+        return { version, content }
+      })
+    } catch {
+      return []
+    }
   })
 }
 

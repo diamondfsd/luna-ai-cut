@@ -385,4 +385,11 @@ export interface LunaApi {
   checkForUpdates(): Promise<UpdateInfo | null>
   /** 监听有新版本的事件通知 */
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
+  /** 获取更新说明列表（按版本倒序，最多 5 条） */
+  listReleaseNotes(): Promise<ReleaseNoteItem[]>
+}
+
+export interface ReleaseNoteItem {
+  version: string
+  content: string
 }

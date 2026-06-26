@@ -95,6 +95,7 @@ const lunaApi: LunaApi = {
     ipcRenderer.on('update:available', listener)
     return () => ipcRenderer.off('update:available', listener)
   },
+  listReleaseNotes: () => ipcRenderer.invoke('release-notes:list'),
 }
 
 const wifiDebugApi: WifiDebugApi = {
