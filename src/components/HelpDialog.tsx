@@ -82,7 +82,7 @@ export function HelpDialog({ children }: HelpDialogProps) {
             <span>更新说明</span>
           </button>
           <img
-            src="/my-douyin-qr-code.jpg"
+            src="./my-douyin-qr-code.jpg"
             alt="抖音二维码"
             className="help-qr-code"
           />
