@@ -31,3 +31,6 @@ docs/
 
 # Local deploy config
 scripts/deploy-release.conf
+
+# Test resources
+test-resources/

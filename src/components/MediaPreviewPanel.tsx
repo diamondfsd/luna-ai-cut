@@ -1,31 +1,22 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, FileQuestion } from 'lucide-react'
 
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkOverlay } from './WatermarkOverlay'
+import { getContainRect, WATERMARK_SCALE, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
 import type { LunaFile, WatermarkSettings } from '../shared/types'
 
 interface MediaPreviewPanelProps {
-  /** 文件列表 */
   files: LunaFile[]
-  /** 当前文件 */
   currentFile: LunaFile
-  /** 当前文件的预览 URL */
   displaySource: string | null
-  /** 文件切换回调 */
   onFileChange: (file: LunaFile) => void
-  /** 水印覆盖层设置（可选，传此值即显示水印） */
   watermarkSettings?: WatermarkSettings
 }
 
-/**
- * 媒体预览面板。
- *
- * 封装了预览 stage（图片/视频展示 + 导航按钮）+ 缩略图条，
- * 用于 ExportModal 等需要简单预览能力的场景。
- *
- * 复杂的预览行为（缩放、拖拽、Live Photo）由 PreviewModal / PreviewStage 处理。
- */
+/** 水印图片原始尺寸 */
+const WM_IMAGE = { width: 2560, height: 400 }
+
 export function MediaPreviewPanel({
   files,
   currentFile,
@@ -35,9 +26,29 @@ export function MediaPreviewPanel({
 }: MediaPreviewPanelProps) {
   const thumbStripRef = useRef<HTMLDivElement>(null)
   const activeThumbRef = useRef<HTMLButtonElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
+  const [contentSize, setContentSize] = useState({ width: 0, height: 0 })
+
+  // 监听舞台尺寸
+  useEffect(() => {
+    const el = stageRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { inlineSize, blockSize } = entry.contentBoxSize[0] ?? entry.contentBoxSize
+        setStageSize({ width: inlineSize, height: blockSize })
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const showWatermark = watermarkSettings !== undefined
 
   const currentFileId = currentFile.id
-  const showWatermark = watermarkSettings !== undefined
 
   const [hasPrevious, hasNext] = useMemo(() => {
     const idx = files.findIndex((f) => f.id === currentFileId)
@@ -52,18 +63,50 @@ export function MediaPreviewPanel({
     onFileChange(files[next])
   }
 
+  // 计算水印布局（与后端一致：传感器宽算尺寸，展示方向算边距/位置，缩放至屏幕）
+  let wmLayout: { x: number; y: number; width: number; height: number } | null = null
+  if (showWatermark && watermarkSettings && stageSize.width > 0 && contentSize.width > 0) {
+    const cw = contentSize.width
+    const ch = contentSize.height
+    const rect = getContainRect(stageSize.width, stageSize.height, cw, ch)
+    if (rect.width > 0 && rect.height > 0) {
+      const sensorW = Math.max(cw, ch)
+      const wmAspect = WM_IMAGE.height / WM_IMAGE.width
+      const targetW = Math.min(Math.round(sensorW * WATERMARK_SCALE[watermarkSettings.size]), WM_IMAGE.width)
+      const targetH = Math.round(targetW * wmAspect)
+      const mx = Math.round(cw * WATERMARK_MARGIN_X_RATIO)
+      const my = Math.round(ch * WATERMARK_MARGIN_Y_RATIO)
+
+      const [vPos, hPos] = watermarkSettings.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
+      const imgX = hPos === 'left' ? mx : hPos === 'right' ? cw - targetW - mx : Math.round((cw - targetW) / 2)
+      const imgY = vPos === 'bottom' ? ch - targetH - my : my
+
+      const scale = rect.scale
+      wmLayout = {
+        x: Math.round(rect.x + imgX * scale),
+        y: Math.round(rect.y + imgY * scale),
+        width: Math.round(targetW * scale),
+        height: Math.round(targetH * scale),
+      }
+    }
+  }
+
   return (
     <div className="preview-stage-col">
-      <div className="preview-stage">
+      <div className="preview-stage" ref={stageRef}>
         {currentFile.kind === 'image' && displaySource ? (
           <div className="preview-media-wrapper">
             <div className="preview-media-inner">
               <img
+                ref={imgRef}
                 src={displaySource}
                 alt={currentFile.name}
-                style={{ maxWidth: '100%', maxHeight: '100%' }}
+                onLoad={(e) => {
+                  const img = e.currentTarget
+                  setContentSize({ width: img.naturalWidth, height: img.naturalHeight })
+                }}
+                style={{ maxWidth: '100%', maxHeight: '100%', display: 'block', width: 'auto', height: 'auto' }}
               />
-              {showWatermark && <WatermarkOverlay settings={watermarkSettings} kind="image" />}
             </div>
           </div>
         ) : currentFile.kind === 'video' && displaySource ? (
@@ -74,8 +117,11 @@ export function MediaPreviewPanel({
                 controls
                 autoPlay
                 style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget
+                  setContentSize({ width: v.videoWidth, height: v.videoHeight })
+                }}
               />
-              {showWatermark && <WatermarkOverlay settings={watermarkSettings} kind="video" />}
             </div>
           </div>
         ) : (
@@ -83,6 +129,18 @@ export function MediaPreviewPanel({
             <FileQuestion size={48} />
             <span>无法预览</span>
           </div>
+        )}
+
+        {wmLayout && (
+          <WatermarkOverlay
+            settings={watermarkSettings!}
+            kind={currentFile.kind === 'video' ? 'video' : 'image'}
+            x={wmLayout.x}
+            y={wmLayout.y}
+            width={wmLayout.width}
+            height={wmLayout.height}
+            className="watermark-overlay"
+          />
         )}
 
         {hasPrevious && (
