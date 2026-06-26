@@ -407,6 +407,20 @@ img {
   color: var(--canvas);
 }
 
+.version-tag {
+  display: inline-block;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: #2997ff;
+  background: rgba(41, 151, 255, 0.12);
+  padding: 2px 10px;
+  border-radius: 999px;
+  vertical-align: middle;
+  margin-left: 10px;
+  letter-spacing: 0;
+}
+
 .section-desc {
   font-size: 17px;
   color: var(--muted);

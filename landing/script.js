@@ -6,10 +6,14 @@
 
 // ★ 由 deploy-release.sh 自动更新 ★
 const LATEST_RELEASE = {
-  tag: 'v1.2.11',
-  gitcode_mac: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.11/LunaAICut-Mac-1.2.11-Installer.dmg',
-  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.11/LunaAICut-Windows-1.2.11-Setup.exe',
+  tag: 'v1.2.13',
+  gitcode_mac: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.13/LunaAICut-Mac-1.2.13-Installer.dmg',
+  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.13/LunaAICut-Windows-1.2.13-Setup.exe',
 }
+
+// ── 版本号渲染 ──────────────────────────────────────────
+const versionEl = document.getElementById('current-version')
+if (versionEl) versionEl.textContent = LATEST_RELEASE.tag
 
 // ── 地区检测 ──────────────────────────────────────────
 const isChineseUser =
