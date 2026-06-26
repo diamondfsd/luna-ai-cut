@@ -54,12 +54,10 @@ err()   { echo -e "${RED}  ✗${NC} $*"; }
 OS="$(uname -s)"
 case "$OS" in
   Darwin)
-    BUILD_CMD="CSC_IDENTITY_AUTO_DISCOVERY=false npm run pack:mac:arm64 && npm run pack:win:x64"
     FILE_PATTERN="-name '*.dmg' -o -name '*Setup*.exe'"
     PLATFORM="macOS + Windows"
     ;;
   Windows_NT|MINGW*|MSYS*)
-    BUILD_CMD="npm run pack:win:x64"
     FILE_PATTERN="*Setup*.exe"
     PLATFORM="Windows"
     ;;
@@ -85,9 +83,20 @@ if [ ! -d "node_modules" ]; then
   ok "依赖安装完成"
 fi
 
-info "开始构建 ${PLATFORM}..."
-$BUILD_CMD
-ok "构建完成"
+if [ "$OS" = "Darwin" ]; then
+  # ── macOS 上交叉打包：先 Win 后 Mac ──
+  info "构建 Windows x64..."
+  npm run pack:win:x64
+  ok "Windows 构建完成"
+
+  info "构建 macOS ARM64..."
+  npm run pack:mac:arm64
+  ok "macOS 构建完成"
+else
+  info "开始构建 ${PLATFORM}..."
+  npm run pack:win:x64
+  ok "构建完成"
+fi
 
 
 # 查找构建产物
