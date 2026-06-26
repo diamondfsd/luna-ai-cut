@@ -97,6 +97,64 @@ input {
   line-height: 1.5;
 }
 
+/* ====== 更新说明弹窗 ====== */
+.release-notes-dialog-content.ui-dialog-content {
+  width: min(720px, 92vw);
+}
+
+.release-notes-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 0 4px;
+}
+
+.release-notes-body .ui-accordion-header {
+  padding: 10px 0;
+}
+
+.release-notes-body .ui-accordion-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.release-notes-body .ui-accordion-body {
+  padding-bottom: 16px;
+}
+
+.release-notes-body .markdown-viewer h2 {
+  font-size: 14px;
+  margin-top: 0;
+}
+
+.release-notes-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 32px 0;
+  font-size: 14px;
+}
+
+/* ====== 帮助弹窗更新说明按钮 ====== */
+.help-release-notes-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--blue, #0066cc);
+  background: transparent;
+  color: var(--blue, #0066cc);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+
+.help-release-notes-btn:hover {
+  background: var(--blue, #0066cc);
+  color: #fff;
+}
+
 /* ====== 更新提示横幅 ====== */
 .update-banner {
   display: flex;

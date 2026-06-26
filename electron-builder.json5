@@ -35,6 +35,11 @@
       "from": "src/assets/watermark",
       "to": "watermark",
       "filter": ["**/*.png"]
+    },
+    {
+      "from": ".",
+      "to": ".",
+      "filter": ["RELEASE_NOTES_*.md"]
     }
   ],
   "mac": {
