@@ -98,14 +98,14 @@ export interface AiConfig {
   model: string
 }
 
-export type WatermarkSize = 'small' | 'medium' | 'large'
 export type WatermarkPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
 export type WatermarkStyle = 'luna_ultra' | 'luna_ultra_cn'
 
 export interface WatermarkSettings {
   enabled: boolean
   style: WatermarkStyle
-  size: WatermarkSize
+  /** 水印宽度占传感器最长边的百分比（1-40），默认 20 */
+  watermarkPercent: number
   position: WatermarkPosition
 }
 

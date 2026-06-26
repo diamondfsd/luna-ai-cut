@@ -20,17 +20,10 @@ import type {
   VideoExportSettings,
   WatermarkPosition,
   WatermarkSettings,
-  WatermarkSize,
   WatermarkStyle,
 } from '../src/shared/types'
 
 const execFileAsync = promisify(execFile)
-
-const WATERMARK_SCALE: Record<WatermarkSize, number> = {
-  small: 0.08,
-  medium: 0.12,
-  large: 0.18,
-}
 
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
@@ -230,11 +223,11 @@ function ffmpegImgEncoder(ext: string): string[] {
 export async function applyWatermarkToImage(
   inputPath: string,
   outputPath: string,
-  size: WatermarkSize,
+  watermarkPercent: number,
   position: WatermarkPosition,
   style: WatermarkStyle,
 ): Promise<void> {
-  return applyWatermarkToImageWithRef(inputPath, outputPath, size, position, style)
+  return applyWatermarkToImageWithRef(inputPath, outputPath, watermarkPercent, position, style)
 }
 
 /**
@@ -245,7 +238,7 @@ export async function applyWatermarkToImage(
 async function applyWatermarkToImageWithRef(
   inputPath: string,
   outputPath: string,
-  size: WatermarkSize,
+  watermarkPercent: number,
   position: WatermarkPosition,
   style: WatermarkStyle,
   refWidth?: number,
@@ -270,7 +263,7 @@ async function applyWatermarkToImageWithRef(
   // ── 水印像素尺寸用传感器最长边（横竖图统一） ──
   const sensorW = refWidth ?? Math.max(imgInfo.width, imgInfo.height)
   const wmAspect = wmInfo.height / wmInfo.width
-  const actualWmWidth = Math.min(Math.round(sensorW * WATERMARK_SCALE[size]), wmInfo.width)
+  const actualWmWidth = Math.min(Math.round(sensorW * watermarkPercent / 100), wmInfo.width)
   const actualWmHeight = Math.round(actualWmWidth * wmAspect)
 
   // ── 边距和位置用展示方向坐标 ──
@@ -354,7 +347,7 @@ async function extractLivePhotoVideo(livPath: string, destination: string): Prom
 export async function applyWatermarkToLivePhoto(
   inputPath: string,
   outputPath: string,
-  size: WatermarkSize,
+  watermarkPercent: number,
   position: WatermarkPosition,
   style: WatermarkStyle,
   onProgress?: (percent: number) => void,
@@ -367,7 +360,7 @@ export async function applyWatermarkToLivePhoto(
   const processedVideo = path.join(tmpDir, `_live_video.mp4`)
 
   try {
-    console.log('[LIVE] applyWatermarkToLivePhoto called', { inputPath, outputPath, size, position, style })
+    console.log('[LIVE] applyWatermarkToLivePhoto called', { inputPath, outputPath, watermarkPercent, position, style })
     const extracted = await extractLivePhotoVideo(inputPath, extractedVideo)
     if (!extracted) throw new Error('无法提取 Live Photo 内嵌视频')
 
@@ -378,11 +371,11 @@ export async function applyWatermarkToLivePhoto(
     console.log('[LIVE photo]', { videoProbe, source: inputPath })
 
     // 图片水印以原始视频分辨率为参考，保持视觉一致
-    await applyWatermarkToImageWithRef(inputPath, watermarkedImage, size, position, style, vidW, vidH)
+    await applyWatermarkToImageWithRef(inputPath, watermarkedImage, watermarkPercent, position, style, vidW, vidH)
 
     // 视频仅加水印，保持原始分辨率/帧率/码率
     const pipeline = new FfmpegPipeline()
-    pipeline.addModule(new WatermarkModule({ size, position, style }))
+    pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }))
     pipeline.addModule(new CodecModule())
     await pipeline.execute(extractedVideo, processedVideo,
       (pct) => onProgress?.(Math.round(pct * 0.6 + 30)), signal)
@@ -415,7 +408,7 @@ export async function applyWatermarkToLivePhoto(
 export async function applyWatermarkToVideo(
   inputPath: string,
   outputPath: string,
-  size: WatermarkSize,
+  watermarkPercent: number,
   position: WatermarkPosition,
   style: WatermarkStyle,
   onProgress?: (percent: number) => void,
@@ -428,7 +421,7 @@ export async function applyWatermarkToVideo(
   if (videoExportSettings?.resolution && videoExportSettings.resolution !== 'original') {
     pipeline.addModule(new ScaleModule({ resolution: videoExportSettings.resolution }))
   }
-  pipeline.addModule(new WatermarkModule({ size, position, style }))
+  pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }))
   if (videoExportSettings?.frameRate && videoExportSettings.frameRate !== 'original') {
     pipeline.addModule(new FrameRateModule({ frameRate: videoExportSettings.frameRate }))
   }
@@ -471,7 +464,7 @@ async function watermarkCachePath(sourcePath: string, settings: WatermarkSetting
   const dir = await previewCacheDir()
   const ext = path.extname(sourcePath)
   const base = path.basename(sourcePath, ext)
-  const params = `wm_${settings.style}_${settings.size}_${settings.position}`
+  const params = `wm_${settings.style}_${settings.watermarkPercent}_${settings.position}`
   return path.join(dir, `${safeName(base)}_${params}${ext}`)
 }
 
@@ -498,9 +491,9 @@ export async function previewWithWatermark(
   try {
     await fs.mkdir(path.dirname(destPath), { recursive: true })
     if (file.kind === 'image') {
-      await applyWatermarkToImage(sourcePath, destPath, settings.size, settings.position, settings.style)
+      await applyWatermarkToImage(sourcePath, destPath, settings.watermarkPercent, settings.position, settings.style)
     } else {
-      await applyWatermarkToVideo(sourcePath, destPath, settings.size, settings.position, settings.style)
+      await applyWatermarkToVideo(sourcePath, destPath, settings.watermarkPercent, settings.position, settings.style)
     }
     return { fileName: file.name, kind: file.kind, source: localThumbnailUrl(destPath), cachedPath: destPath }
   } catch (error) {

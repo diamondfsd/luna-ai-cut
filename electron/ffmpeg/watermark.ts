@@ -1,14 +1,7 @@
 import * as path from 'node:path'
 import { app } from 'electron'
 import type { FfmpegModule, BuildContext, ModuleArgs } from './pipeline'
-import type { WatermarkPosition, WatermarkSize, WatermarkStyle } from '../../src/shared/types'
-
-/** 水印尺寸比例 */
-const WATERMARK_SCALE: Record<WatermarkSize, number> = {
-  small: 0.08,
-  medium: 0.12,
-  large: 0.18,
-}
+import type { WatermarkPosition, WatermarkStyle } from '../../src/shared/types'
 
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
@@ -33,7 +26,8 @@ function overlayExpr(vPos: string, hPos: string, margin: number): [string, strin
 }
 
 export interface WatermarkOptions {
-  size: WatermarkSize
+  /** 水印百分比（如 20 表示 20%） */
+  watermarkPercent: number
   position: WatermarkPosition
   style: WatermarkStyle
 }
@@ -54,12 +48,11 @@ export class WatermarkModule implements FfmpegModule {
   }
 
   build(ctx: BuildContext): ModuleArgs {
-    const { size, position, style } = this.opts
+    const { watermarkPercent, position, style } = this.opts
     const wmPath = watermarkFileFor(style)
 
-    // 水印大小和边距基于输出分辨率计算（考虑 ScaleModule 已缩放）
     const outputW = ctx.outputWidth
-    const wmSize = Math.round(outputW * WATERMARK_SCALE[size])
+    const wmSize = Math.round(outputW * watermarkPercent / 100)
     const marginPx = Math.round(outputW * 0.03)
     const [vPos, hPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
     const [ox, oy] = overlayExpr(vPos, hPos, marginPx)

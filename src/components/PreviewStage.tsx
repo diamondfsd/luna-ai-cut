@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, FileQuestion, Loader2 } from 'lucide-react'
 
 import { LivePhotoPlayer } from './LivePhotoPlayer'
 import { WatermarkOverlay } from './WatermarkOverlay'
-import { getContainRect, WATERMARK_SCALE, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
+import { getContainRect, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
 import type { LunaFile, WatermarkSettings } from '../shared/types'
 
 interface PreviewStageProps {
@@ -72,7 +72,8 @@ function computeWatermarkLayout(
   // 水印尺寸用传感器最长边（与后端一致）
   const sensorW = Math.max(contentW, contentH)
   const wmAspect = WM_IMAGE.height / WM_IMAGE.width
-  const targetW = Math.min(Math.round(sensorW * WATERMARK_SCALE[settings.size]), WM_IMAGE.width)
+  const pct = settings.watermarkPercent / 100
+  const targetW = Math.min(Math.round(sensorW * pct), WM_IMAGE.width)
   const targetH = Math.round(targetW * wmAspect)
 
   // 边距用展示方向尺寸
@@ -104,7 +105,7 @@ function computeWatermarkLayout(
     scale: scale.toFixed(4),
     imgCoord: `(${imgX}, ${imgY}) ${targetW}×${targetH}`,
     screenCoord: `(${result.x}, ${result.y}) ${result.width}×${result.height}`,
-    settings: `${settings.size} / ${settings.position}`,
+    settings: `${settings.watermarkPercent}% / ${settings.position}`,
   })
 
   return result
@@ -256,6 +257,17 @@ export function PreviewStage({
               onPointerUp={finishImageDrag}
               onPointerCancel={finishImageDrag}
             />
+            {showWatermarkControls && wmLayout && (
+              <WatermarkOverlay
+                settings={watermarkSettings}
+                kind="image"
+                x={wmLayout.x}
+                y={wmLayout.y}
+                width={wmLayout.width}
+                height={wmLayout.height}
+                className="watermark-overlay"
+              />
+            )}
           </div>
         </div>
       )}
@@ -271,6 +283,17 @@ export function PreviewStage({
               onLoadedMetadata={(event) => onVideoLoad(event.currentTarget)}
               onTimeUpdate={(event) => handleVideoTimeUpdate(event.currentTarget)}
             />
+            {showWatermarkControls && wmLayout && (
+              <WatermarkOverlay
+                settings={watermarkSettings}
+                kind="video"
+                x={wmLayout.x}
+                y={wmLayout.y}
+                width={wmLayout.width}
+                height={wmLayout.height}
+                className="watermark-overlay"
+              />
+            )}
           </div>
         </div>
       )}
@@ -281,18 +304,6 @@ export function PreviewStage({
         </div>
       )}
 
-      {/* 水印叠加层 — 绝对定位在 .preview-stage 上，像素坐标 */}
-      {showWatermarkControls && wmLayout && (
-        <WatermarkOverlay
-          settings={watermarkSettings}
-          kind={file.kind === 'video' ? 'video' : 'image'}
-          x={wmLayout.x}
-          y={wmLayout.y}
-          width={wmLayout.width}
-          height={wmLayout.height}
-          className="watermark-overlay"
-        />
-      )}
     </div>
   )
 }

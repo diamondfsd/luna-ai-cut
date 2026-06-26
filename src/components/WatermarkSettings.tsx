@@ -1,22 +1,15 @@
 import { useCallback, useMemo } from 'react'
 import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
-import type { DeviceWatermarkStyleConfig, WatermarkSettings as WatermarkSettingsType, WatermarkPosition, WatermarkSize, WatermarkStyle } from '../shared/types'
+import type { DeviceWatermarkStyleConfig, WatermarkSettings as WatermarkSettingsType, WatermarkPosition, WatermarkStyle } from '../shared/types'
 
 interface WatermarkSettingsProps {
   settings: WatermarkSettingsType
   onChange: (settings: WatermarkSettingsType) => void
   compact?: boolean
   showToggle?: boolean
-  /** 从设备定义中读取的水印样式列表 */
   styleOptions?: DeviceWatermarkStyleConfig[]
 }
-
-const SIZE_OPTIONS = [
-  { value: 'small' as WatermarkSize, label: '小' },
-  { value: 'medium' as WatermarkSize, label: '中' },
-  { value: 'large' as WatermarkSize, label: '大' },
-]
 
 const H_OPTIONS = [
   { value: 'left' as const, label: '左' },
@@ -35,11 +28,11 @@ const DEFAULT_STYLE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'luna_ultra_cn', label: '中文' },
 ]
 
-function WatermarkSettingsContent({ settings, styleOptions, onStyleChange, onSizeChange, onHPosChange, onVPosChange }: {
+function WatermarkSettingsContent({ settings, styleOptions, onStyleChange, onPercentChange, onHPosChange, onVPosChange }: {
   settings: WatermarkSettingsType
   styleOptions?: DeviceWatermarkStyleConfig[]
   onStyleChange: (v: string) => void
-  onSizeChange: (v: string) => void
+  onPercentChange: (v: number) => void
   onHPosChange: (v: string) => void
   onVPosChange: (v: string) => void
 }) {
@@ -68,13 +61,14 @@ function WatermarkSettingsContent({ settings, styleOptions, onStyleChange, onSiz
         />
       </div>
       <div className="video-export-setting-row">
-        <span className="video-export-setting-label">水印大小</span>
-        <SegmentedControl
-          ariaLabel="水印大小"
-          options={SIZE_OPTIONS}
-          value={settings.size}
-          onChange={onSizeChange}
-          variant="size"
+        <span className="video-export-setting-label">水印大小 {settings.watermarkPercent}%</span>
+        <input
+          type="range"
+          min={1}
+          max={40}
+          value={settings.watermarkPercent}
+          onChange={(e) => onPercentChange(Number(e.target.value))}
+          style={{ flex: 1, accentColor: '#0066cc' }}
         />
       </div>
       <div className="video-export-setting-row">
@@ -116,9 +110,9 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     [settings, onChange],
   )
 
-  const handleSizeChange = useCallback(
-    (size: string) => {
-      onChange({ ...settings, size: size as WatermarkSize })
+  const handlePercentChange = useCallback(
+    (watermarkPercent: number) => {
+      onChange({ ...settings, watermarkPercent })
     },
     [settings, onChange],
   )
@@ -160,7 +154,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
                 settings={settings}
                 styleOptions={styleOptions}
                 onStyleChange={handleStyleChange}
-                onSizeChange={handleSizeChange}
+                onPercentChange={handlePercentChange}
                 onHPosChange={handleHPosChange}
                 onVPosChange={handleVPosChange}
               />
@@ -187,7 +181,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
           settings={settings}
           styleOptions={styleOptions}
           onStyleChange={handleStyleChange}
-          onSizeChange={handleSizeChange}
+          onPercentChange={handlePercentChange}
           onHPosChange={handleHPosChange}
           onVPosChange={handleVPosChange}
         />

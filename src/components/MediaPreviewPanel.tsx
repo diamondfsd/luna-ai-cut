@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, FileQuestion } from 'lucide-react'
 
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkOverlay } from './WatermarkOverlay'
-import { getContainRect, WATERMARK_SCALE, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
+import { getContainRect, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
 import type { LunaFile, WatermarkSettings } from '../shared/types'
 
 interface MediaPreviewPanelProps {
@@ -72,7 +72,8 @@ export function MediaPreviewPanel({
     if (rect.width > 0 && rect.height > 0) {
       const sensorW = Math.max(cw, ch)
       const wmAspect = WM_IMAGE.height / WM_IMAGE.width
-      const targetW = Math.min(Math.round(sensorW * WATERMARK_SCALE[watermarkSettings.size]), WM_IMAGE.width)
+      const pct = watermarkSettings.watermarkPercent / 100
+      const targetW = Math.min(Math.round(sensorW * pct), WM_IMAGE.width)
       const targetH = Math.round(targetW * wmAspect)
       const mx = Math.round(cw * WATERMARK_MARGIN_X_RATIO)
       const my = Math.round(ch * WATERMARK_MARGIN_Y_RATIO)
