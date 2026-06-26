@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>安装与打开指南 — Luna AI Cut</title>
+  <meta name="description" content="Luna AI Cut 在 macOS 和 Windows 上遇到无法验证、文件已损坏、SmartScreen 阻止时的打开说明。" />
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ---- Install page specific styles ---- */
+    .hero-install {
+      padding: 120px 24px 60px;
+      text-align: center;
+      background: var(--parchment);
+      border-bottom: 1px solid var(--hairline);
+    }
+
+    .hero-install .hero-lead {
+      max-width: 620px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .hero-install .eyebrow {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 10px;
+    }
+
+    .notice-card {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      padding: 18px 20px;
+      background: #fff7ed;
+      border: 1px solid rgba(180, 83, 9, .18);
+      border-radius: 18px;
+      color: #7c2d12;
+      margin-bottom: 24px;
+    }
+    .notice-card .notice-icon { font-size: 20px; line-height: 1; margin-top: 2px; }
+    .notice-card strong { color: #7c2d12; }
+    .notice-card p { margin: 4px 0 0; color: #9a3412; font-size: 15px; }
+
+    .quick-hints {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 48px;
+    }
+    .quick-hint {
+      border-radius: 18px;
+      padding: 18px;
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+    }
+    .quick-hint strong { display: block; margin-bottom: 5px; }
+    .quick-hint span { color: var(--muted); font-size: 14px; }
+
+    .install-cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .install-card {
+      background: var(--parchment);
+      border-radius: 24px;
+      padding: 24px;
+      border: 1px solid var(--hairline);
+      overflow: hidden;
+    }
+
+    .install-card.dark {
+      background: var(--tile-dark);
+      color: #fff;
+      border-color: rgba(255,255,255,.08);
+    }
+    .install-card.dark .muted,
+    .install-card.dark p,
+    .install-card.dark li { color: var(--muted-dark); }
+    .install-card.dark code { background: rgba(255,255,255,.08); color: #fff; }
+    .install-card.dark .step-num { background: var(--blue-on-dark); color: #001d35; }
+
+    .install-card h3 {
+      font-size: 28px;
+      line-height: 1.12;
+      letter-spacing: -0.02em;
+      margin: 0 0 12px;
+      font-weight: 600;
+    }
+
+    .step-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .step-item {
+      display: grid;
+      grid-template-columns: 30px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.72);
+      border: 1px solid rgba(0,0,0,.06);
+    }
+    .dark .step-item { background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.08); }
+    .step-num {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      background: var(--blue);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .step-item p { margin: 0; }
+    .step-item small {
+      display: block;
+      grid-column: 2;
+      color: var(--muted);
+      margin-top: -8px;
+      font-size: 13px;
+    }
+
+    .terminal-block {
+      margin-top: 18px;
+      background: #101012;
+      color: #f5f5f7;
+      border-radius: 18px;
+      padding: 16px;
+      border: 1px solid rgba(255,255,255,.08);
+      overflow: auto;
+      position: relative;
+    }
+    .terminal-block pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+    .terminal-block code {
+      background: transparent; padding: 0; border-radius: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 14px;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      height: 30px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.08);
+      color: #fff;
+      border-radius: 999px;
+      padding: 0 10px;
+      cursor: pointer;
+      font-size: 12px;
+      backdrop-filter: blur(12px);
+    }
+
+    .faq-list {
+      display: grid;
+      gap: 12px;
+    }
+    .faq-list details {
+      background: var(--parchment);
+      border: 1px solid var(--hairline);
+      border-radius: 18px;
+      padding: 0 18px;
+    }
+    .faq-list summary {
+      cursor: pointer;
+      font-weight: 600;
+      padding: 18px 0;
+      list-style: none;
+    }
+    .faq-list summary::-webkit-details-marker { display: none; }
+    .faq-list details p { margin: 0 0 18px; color: var(--muted); }
+
+    @media (max-width: 900px) {
+      .install-cards { grid-template-columns: 1fr; }
+      .quick-hints { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .hero-install { padding: 100px 18px 40px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== Global Nav (shared with index) ===== -->
+  <nav class="global-nav">
+    <div class="nav-inner">
+      <div class="nav-brand">
+        <img class="nav-logo" src="assets/icon.png" alt="Luna AI Cut" width="18" height="18" />
+        Luna AI Cut
+      </div>
+      <div class="nav-links">
+        <a href="index.html">返回首页</a>
+        <a href="index.html#download">下载</a>
+        <a href="index.html#features">功能</a>
+        <a href="https://github.com/diamondfsd/luna-ai-cut" target="_blank" rel="noopener" class="nav-github">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12 24 5.37 18.63 0 12 0z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ===== Hero ===== -->
+  <section class="hero-install">
+    <div class="section-inner">
+      <p class="eyebrow">Luna AI Cut Desktop</p>
+      <h1 class="section-title">第一次打开时，系统可能会拦截</h1>
+      <p class="hero-lead">这是因为当前安装包还没有做 Apple / Microsoft 代码签名。只要确认安装包来源可信，就可以按下面步骤手动允许打开。</p>
+      <div class="hero-cta">
+        <a href="#mac" class="pill primary">查看 macOS 步骤</a>
+        <a href="#windows" class="pill secondary">查看 Windows 步骤</a>
+      </div>
+      <p style="margin-top:18px;font-size:14px;color:var(--muted);max-width:620px;margin-left:auto;margin-right:auto;">
+        请只安装从团队指定渠道获取的版本。若安装包来自陌生链接、网盘转发或无法确认来源，不建议绕过系统安全提醒。
+      </p>
+    </div>
+  </section>
+
+  <!-- ===== Main Content ===== -->
+  <main>
+    <section class="section section-white">
+      <div class="section-inner">
+
+        <!-- 前置提醒 -->
+        <div class="notice-card">
+          <div class="notice-icon">⚠️</div>
+          <div>
+            <strong>先确认这些件事</strong>
+            <p>文件必须来自作者指定下载地址；不要修改安装包文件名里的扩展名。</p>
+          </div>
+        </div>
+
+        <div class="quick-hints">
+          <div class="quick-hint"><strong>macOS 常见提示</strong><span>"无法验证开发者""无法检查是否包含恶意软件""文件已损坏"。</span></div>
+          <div class="quick-hint"><strong>Windows 常见提示</strong><span>"Windows 已保护你的电脑""阻止了无法识别的应用启动"。</span></div>
+          <div class="quick-hint"><strong>原因</strong><span>测试版本未进行代码签名，系统无法通过开发者信誉自动放行。</span></div>
+        </div>
+
+        <!-- macOS -->
+        <div class="section-head" id="mac" style="display:flex;align-items:end;justify-content:space-between;gap:22px;margin-bottom:26px;">
+          <div>
+            <h2 class="section-title" style="font-size:clamp(32px,4vw,44px);">macOS 打开方式</h2>
+            <p class="section-desc" style="margin-bottom:0;">优先使用系统设置里的"仍要打开"。如果遇到"文件已损坏"，再使用终端移除隔离属性。</p>
+          </div>
+          <a class="pill secondary" href="https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac" target="_blank" rel="noreferrer" style="flex-shrink:0;">Apple 官方说明</a>
+        </div>
+
+        <div class="install-cards">
+          <article class="install-card">
+            <h3>情况一：提示"无法验证开发者"</h3>
+            <p class="muted">这是 macOS Gatekeeper 的正常保护。请先尝试下面这种系统推荐方式。</p>
+            <div class="step-list">
+              <div class="step-item"><div class="step-num">1</div><p>先双击打开一次应用，让 macOS 弹出拦截提示。</p></div>
+              <div class="step-item"><div class="step-num">2</div><p>打开 <strong>系统设置</strong> → <strong>隐私与安全性</strong>。</p></div>
+              <div class="step-item"><div class="step-num">3</div><p>在页面底部的"安全性"区域，找到刚刚被拦截的应用，点击 <strong>仍要打开 / Open Anyway</strong>。</p></div>
+              <div class="step-item"><div class="step-num">4</div><p>输入电脑登录密码，再点击 <strong>打开</strong>。之后一般就可以正常启动。</p><small>"仍要打开"按钮通常只会在尝试打开后的短时间内出现。</small></div>
+            </div>
+          </article>
+
+          <article class="install-card dark">
+            <h3>情况二：提示"文件已损坏，无法打开"</h3>
+            <p class="muted">如果你确定安装包来自可信渠道，可能是下载文件带有 quarantine 隔离属性。可以执行下面命令。</p>
+            <div class="step-list">
+              <div class="step-item"><div class="step-num">1</div><p>把应用拖到 <strong>应用程序 / Applications</strong> 文件夹。</p></div>
+              <div class="step-item"><div class="step-num">2</div><p>打开 <strong>终端 Terminal</strong>。</p></div>
+              <div class="step-item"><div class="step-num">3</div><p>复制下面命令执行，然后重新打开应用。</p></div>
+            </div>
+            <div class="terminal-block">
+              <button class="copy-btn" data-copy='xattr -dr com.apple.quarantine "/Applications/Luna AI Cut.app"'>复制</button>
+              <pre><code>xattr -dr com.apple.quarantine "/Applications/Luna AI Cut.app"</code></pre>
+            </div>
+          </article>
+        </div>
+
+        <!-- Windows -->
+        <div class="section-head" id="windows" style="display:flex;align-items:end;justify-content:space-between;gap:22px;margin:48px 0 26px;">
+          <div>
+            <h2 class="section-title" style="font-size:clamp(32px,4vw,44px);">Windows 打开方式</h2>
+            <p class="section-desc" style="margin-bottom:0;">Windows SmartScreen 会根据应用签名和信誉判断风险。未签名测试版经常会被标记为"无法识别"。</p>
+          </div>
+          <a class="pill secondary" href="https://support.microsoft.com/en-us/office/protect-my-pc-from-viruses" target="_blank" rel="noreferrer" style="flex-shrink:0;">Microsoft 安全说明</a>
+        </div>
+
+        <div class="install-cards">
+          <article class="install-card dark">
+            <h3>情况一：出现"Windows 已保护你的电脑"</h3>
+            <p class="muted">确认文件来源可信后，可以手动展开更多选项。</p>
+            <div class="step-list">
+              <div class="step-item"><div class="step-num">1</div><p>在蓝色 SmartScreen 提示窗口中，点击 <strong>更多信息</strong>。</p></div>
+              <div class="step-item"><div class="step-num">2</div><p>确认应用名称和发布渠道无误。</p></div>
+              <div class="step-item"><div class="step-num">3</div><p>点击 <strong>仍要运行 / Run anyway</strong>。</p></div>
+              <div class="step-item"><div class="step-num">4</div><p>如果弹出用户账户控制提示，点击 <strong>是</strong> 继续安装或启动。</p></div>
+            </div>
+          </article>
+
+          <article class="install-card">
+            <h3>情况二：文件属性里有"解除锁定"</h3>
+            <p class="muted">某些下载文件会被 Windows 标记为来自互联网，右键属性里可以解除阻止。</p>
+            <div class="step-list">
+              <div class="step-item"><div class="step-num">1</div><p>右键安装包或应用程序，选择 <strong>属性</strong>。</p></div>
+              <div class="step-item"><div class="step-num">2</div><p>在 <strong>常规</strong> 页底部找到 <strong>解除锁定 / Unblock</strong>。</p></div>
+              <div class="step-item"><div class="step-num">3</div><p>勾选后点击 <strong>应用</strong> → <strong>确定</strong>。</p></div>
+              <div class="step-item"><div class="step-num">4</div><p>重新双击打开安装包或应用。</p></div>
+            </div>
+          </article>
+        </div>
+
+        <!-- FAQ -->
+        <div class="section-head" style="display:flex;align-items:end;justify-content:space-between;gap:22px;margin:48px 0 26px;">
+          <div>
+            <h2 class="section-title" style="font-size:clamp(32px,4vw,44px);">常见问题</h2>
+            <p class="section-desc" style="margin-bottom:0;">这些提示不代表应用一定有问题，更多是系统对未签名应用的默认拦截。</p>
+          </div>
+        </div>
+
+        <div class="faq-list">
+          <details open>
+            <summary>为什么会出现这些提示？</summary>
+            <p>因为当前版本没有购买开发者证书进行代码签名，也没有完成 Apple notarization 或 Microsoft 信誉积累。系统无法确认开发者身份，所以会要求用户手动确认。</p>
+          </details>
+          <details>
+            <summary>绕过后会不会每次都提示？</summary>
+            <p>通常同一个应用版本只需要手动允许一次。更新新版本、换下载路径、重新解压或重新下载后，可能还会再次提示。</p>
+          </details>
+          <details>
+            <summary>什么时候不应该继续打开？</summary>
+            <p>如果安装包不是从作者指定渠道获取、文件大小明显不对、下载链接来自陌生人、或杀毒软件明确报毒，请不要绕过，先联系发布者确认。</p>
+          </details>
+          <details>
+            <summary>后续正式版会解决吗？</summary>
+            <p>正式对外分发会补齐代码签名。</p>
+          </details>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== Footer (shared with index) ===== -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <img class="footer-logo" src="assets/icon.png" alt="Luna AI Cut" width="16" height="16" />
+        Luna AI Cut
+      </div>
+      <div class="footer-links">
+        <a href="index.html">返回首页</a>
+        <a href="https://github.com/diamondfsd/luna-ai-cut" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/diamondfsd/luna-ai-cut/issues" target="_blank" rel="noopener">问题反馈</a>
+      </div>
+      <p class="footer-copy">
+        开源项目 · 基于 MIT 协议发布。<br/>
+        与 Insta360 公司无关联。Insta360 是 Arashi Vision 公司的注册商标。
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    document.querySelectorAll('[data-copy]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const text = button.getAttribute('data-copy');
+        try {
+          await navigator.clipboard.writeText(text);
+          const old = button.textContent;
+          button.textContent = '已复制';
+          setTimeout(() => button.textContent = old, 1200);
+        } catch (e) {
+          button.textContent = '复制失败';
+          setTimeout(() => button.textContent = '复制', 1200);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
