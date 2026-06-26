@@ -67,7 +67,7 @@ export function PreviewModal({
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>(() => ({
     enabled: false,
     style: 'luna_ultra_cn',
-    size: 'large',
+    watermarkPercent: 20,
     position: 'bottom-center',
   }))
 

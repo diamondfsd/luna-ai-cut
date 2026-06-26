@@ -114,7 +114,7 @@ export async function exportFiles(
         await applyWatermarkToVideo(
           localPath,
           tmpPath,
-          watermarkSettings.size,
+          watermarkSettings.watermarkPercent,
           watermarkSettings.position,
           watermarkSettings.style,
           (percent) => onProgress?.(prog(file, { percent, status: 'exporting' })),
@@ -135,7 +135,7 @@ export async function exportFiles(
         await applyWatermarkToLivePhoto(
           localPath,
           tmpPath,
-          watermarkSettings.size,
+          watermarkSettings.watermarkPercent,
           watermarkSettings.position,
           watermarkSettings.style,
           (percent) => onProgress?.(prog(file, { percent, status: 'exporting' })),
@@ -143,7 +143,7 @@ export async function exportFiles(
           videoExportSettings,
         )
       } else if (file.kind === 'image' && watermarkSettings.enabled) {
-        await applyWatermarkToImage(localPath, tmpPath, watermarkSettings.size, watermarkSettings.position, watermarkSettings.style)
+        await applyWatermarkToImage(localPath, tmpPath, watermarkSettings.watermarkPercent, watermarkSettings.position, watermarkSettings.style)
         onProgress?.(prog(file, { percent: 95, status: 'exporting' }))
       } else {
         await fs.cp(localPath, tmpPath, { force: true })
