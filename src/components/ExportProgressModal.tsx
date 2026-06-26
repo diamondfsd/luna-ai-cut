@@ -26,7 +26,9 @@ const statusRank: Record<ExportProgress['status'], number> = {
 function filePathToPreviewUrl(filePath: string | null | undefined): string | null {
   if (!filePath) return null
   if (filePath.startsWith('file://')) return filePath
-  return encodeURI(`file://${filePath}`).replace(/#/g, '%23').replace(/\?/g, '%3F')
+  const normalized = filePath.replace(/\\/g, '/')
+  return encodeURI(`file://${normalized.startsWith('/') ? '' : '/'}${normalized}`)
+    .replace(/#/g, '%23').replace(/\?/g, '%3F')
 }
 
 function previewSourceFor(progress: ExportProgress, file: LunaFile | undefined, readyThumbnailUrls?: Map<string, string>): string | null {

@@ -52,5 +52,8 @@ export function buildHistogram(image: HTMLImageElement): MediaDetails['histogram
 export function filePathToPreviewUrl(filePath: string | null | undefined): string | null {
   if (!filePath) return null
   if (filePath.startsWith('file://')) return filePath
-  return encodeURI(`file://${filePath}`).replace(/#/g, '%23').replace(/\?/g, '%3F')
+  // Windows 路径需将反斜杠转为正斜杠，保证 file:/// 有效
+  const normalized = filePath.replace(/\\/g, '/')
+  return encodeURI(`file://${normalized.startsWith('/') ? '' : '/'}${normalized}`)
+    .replace(/#/g, '%23').replace(/\?/g, '%3F')
 }

@@ -30,7 +30,8 @@ function previewSourceFor(progress: DownloadProgress, file: LunaFile | undefined
   // 已完成下载的显示本地文件（全分辨率），否则使用和预览列表一致的缩略图路径
   if ((progress.status === 'done' || progress.status === 'exists') && progress.destinationPath) {
     const path = progress.destinationPath
-    const url = path.startsWith('file://') ? path : encodeURI(`file://${path}`).replace(/#/g, '%23').replace(/\?/g, '%3F')
+    const normalized = path.replace(/\\/g, '/')
+    const url = path.startsWith('file://') ? path : encodeURI(`file://${normalized.startsWith('/') ? '' : '/'}${normalized}`).replace(/#/g, '%23').replace(/\?/g, '%3F')
     return url
   }
   // 优先使用 onThumbnailReady 回传的缩略图，回退到 file.thumbnailUrl
