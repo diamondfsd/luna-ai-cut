@@ -244,7 +244,8 @@ function registerIpc(): void {
     cancelBluetoothScan()
   })
   ipcMain.handle('devtools:open', () => {
-    win?.webContents.openDevTools({ mode: 'detach' })
+    const bw = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+    bw?.webContents.openDevTools({ mode: 'detach' })
   })
 
   ipcMain.handle('device:connect', async (_event, options?: DeviceConnectOptions) => {

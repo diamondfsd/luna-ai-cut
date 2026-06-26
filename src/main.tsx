@@ -8,6 +8,8 @@ import './styles/utilities.css'
 import './ui/styles.css'
 import './styles/responsive.css'
 
+document.title = `Luna AI Cut v${__APP_VERSION__}`
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <HashRouter>
