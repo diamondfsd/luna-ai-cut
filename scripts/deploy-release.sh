@@ -86,6 +86,11 @@ if [ "$SKIP_BUILD" = false ]; then
   info "═══════════════════════════════════════════════════════════"
   echo ""
 
+  # 清理之前的构建产物，避免旧文件混入新 Release
+  info "清理旧构建产物..."
+  rm -rf "${RELEASE_DIR:?}"/*
+  ok "旧构建产物已清理"
+
   # 检查 node_modules
   if [ ! -d "node_modules" ]; then
     info "安装依赖..."

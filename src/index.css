@@ -238,6 +238,19 @@ input {
   transition: background 120ms;
 }
 
+/* 蓝色横幅上的按钮使用白色系样式，避免与背景融为一体 */
+.update-banner-actions .ui-btn-secondary,
+.update-banner-actions .ui-btn-primary {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.update-banner-actions .ui-btn-secondary:hover,
+.update-banner-actions .ui-btn-primary:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 .update-banner-close:hover {
   background: rgba(255, 255, 255, 0.35);
 }
