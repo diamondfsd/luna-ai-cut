@@ -6,7 +6,7 @@ import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToPreviewUrl } from './previewModalUtils'
 import type { DeviceWatermarkStyleConfig, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
-import { Accordion, BaseModal, Button, IconButton, Select } from '../ui'
+import { Accordion, BaseModal, Button, IconButton, Input, Select } from '../ui'
 import '../styles/modal.css'
 import '../styles/export-modal.css'
 
@@ -23,22 +23,27 @@ interface ExportModalProps {
 const RESOLUTION_OPTIONS = [
   { value: 'original' as const, label: '原始' },
   { value: '1080p' as const, label: '1080p' },
-  { value: '720p' as const, label: '720p' },
+  { value: '2k' as const, label: '2K' },
+  { value: '4k' as const, label: '4K' },
 ]
 
 const FRAME_RATE_OPTIONS = [
   { value: 'original' as const, label: '原始' },
-  { value: '30' as const, label: '30fps' },
-  { value: '60' as const, label: '60fps' },
   { value: '24' as const, label: '24fps' },
   { value: '25' as const, label: '25fps' },
+  { value: '29.97' as const, label: '29.97fps' },
+  { value: '30' as const, label: '30fps' },
+  { value: '50' as const, label: '50fps' },
+  { value: '60' as const, label: '60fps' },
+  { value: '120' as const, label: '120fps' },
 ]
 
 const QUALITY_OPTIONS = [
   { value: 'original' as const, label: '原始画质' },
-  { value: 'high' as const, label: '高质量' },
-  { value: 'medium' as const, label: '标准' },
-  { value: 'low' as const, label: '压缩小体积' },
+  { value: 'low' as const, label: '低 (5M)' },
+  { value: 'medium' as const, label: '中 (20M)' },
+  { value: 'high' as const, label: '高 (50M)' },
+  { value: 'custom' as const, label: '自定义' },
 ]
 
 export function ExportModal({
@@ -52,6 +57,7 @@ export function ExportModal({
 }: ExportModalProps) {
   const [currentFile, setCurrentFile] = useState<LunaFile>(files[0])
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
+  const [customBitrateText, setCustomBitrateText] = useState('')
 
   const displaySource = useMemo(() => {
     const localPath = currentFile.downloadFilePath ?? currentFile.localPath
@@ -59,6 +65,33 @@ export function ExportModal({
   }, [currentFile])
 
   const hasVideoFiles = useMemo(() => files.some((f) => f.kind === 'video'), [files])
+
+  const handleBitrateChange = (value: string) => {
+    if (value === 'custom') {
+      // 切到自定义时，自动填入上次输入的值
+      setVideoSettings((prev) => ({
+        ...prev,
+        quality: 'custom',
+        customBitrate: customBitrateText ? parseInt(customBitrateText) || undefined : undefined,
+      }))
+    } else {
+      setVideoSettings((prev) => ({
+        ...prev,
+        quality: value as VideoExportSettings['quality'],
+        customBitrate: undefined,
+      }))
+    }
+  }
+
+  const handleCustomBitrateInput = (value: string) => {
+    // 只允许数字
+    const cleaned = value.replace(/\D/g, '')
+    setCustomBitrateText(cleaned)
+    setVideoSettings((prev) => ({
+      ...prev,
+      customBitrate: cleaned ? parseInt(cleaned) : undefined,
+    }))
+  }
 
   return (
     <BaseModal onClose={onClose}>
@@ -127,13 +160,29 @@ export function ExportModal({
                   </div>
 
                   <div className="video-export-setting-row">
-                    <span className="video-export-setting-label">画质</span>
-                    <Select
-                      variant="compact"
-                      options={QUALITY_OPTIONS}
-                      value={videoSettings.quality}
-                      onValueChange={(v) => setVideoSettings((prev) => ({ ...prev, quality: v as VideoExportSettings['quality'] }))}
-                    />
+                    <span className="video-export-setting-label">
+                      <Monitor size={13} />
+                      码率
+                    </span>
+                    <div className="video-export-setting-right">
+                      <Select
+                        variant="compact"
+                        options={QUALITY_OPTIONS}
+                        value={videoSettings.quality}
+                        onValueChange={handleBitrateChange}
+                      />
+                      {videoSettings.quality === 'custom' && (
+                        <div className="video-export-custom-bitrate">
+                          <Input
+                            variant="compact"
+                            placeholder="输入码率"
+                            value={customBitrateText}
+                            onChange={(e) => handleCustomBitrateInput(e.target.value)}
+                          />
+                          <span className="video-export-custom-bitrate-unit">kbps</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Accordion>
               )}

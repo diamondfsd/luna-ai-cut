@@ -154,22 +154,38 @@ async function probeMedia(inputPath: string): Promise<MediaProbe> {
   }
 }
 
-/** 分辨率预设映射 */
-const RESOLUTION_MAP: Record<string, { width: number; height: number }> = {
-  '1080p': { width: 1920, height: 1080 },
-  '720p': { width: 1280, height: 720 },
+/** 分辨率预设映射 — 值为目标短边像素（如 1080p=1080, 2K=1440, 4K=2160） */
+const RESOLUTION_MAP: Record<string, number> = {
+  '1080p': 1080,
+  '2k': 1440,
+  '4k': 2160,
 }
 
-/** 画质预设码率映射 */
+/** 画质预设码率映射（值已转为 kbps 字符串，如 '50000k'） */
 const QUALITY_BITRATES: Record<string, string> = {
-  high: '50M',
-  medium: '20M',
-  low: '10M',
+  low: '5000k',
+  medium: '20000k',
+  high: '50000k',
 }
 
-/** 构建分辨率缩放 filter 字符串 */
-function scaleFilter(targetWidth: number, targetHeight: number): string {
-  return `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2,setsar=1`
+/**
+ * 生成自适应朝向的分辨率缩放 filter
+ * - 横屏 (W ≥ H)：固定短边（高度），宽度自动
+ * - 竖屏 (H > W)：固定短边（宽度），高度自动
+ * -2 保证缩放后的宽/高为偶数（编码器要求）
+ */
+function orientationAwareScale(targetShortEdge: number): string {
+  return `scale='if(gte(iw,ih),-2,${targetShortEdge})':'if(gte(iw,ih),${targetShortEdge},-2)'`
+}
+
+/** 根据水印位置生成 FFmpeg overlay 表达式 (x, y)，使用 W/H 变量 */
+function overlayExpr(vPos: string, hPos: string, margin: number): [string, string] {
+  const x = hPos === 'left' ? String(margin)
+    : hPos === 'right' ? `(W-w-${margin})`
+    : '(W-w)/2'
+  const y = vPos === 'bottom' ? `(H-h-${margin})`
+    : String(margin)
+  return [x, y]
 }
 
 function videoCodecArgs(codec: string | null): string[] {
@@ -270,18 +286,13 @@ export async function applyWatermarkToVideo(
   const ffmpegPath = getFfmpegPath()
   const wmPath = watermarkFileFor('video', style)
   const media = await probeMedia(inputPath)
-  const { durationSeconds, videoBitrate, videoCodec, videoWidth, videoHeight } = media
+  const { durationSeconds, videoBitrate, videoCodec, videoHeight } = media
 
-  // 判断是否真的需要添加水印（相比 videoExportSettings，水印是独立控制的）
-  const hasWatermark = true // 此函数始终由「需要水印」的场景调用
-
-  // 1️⃣ 计算目标分辨率和帧率
-  const res = videoExportSettings?.resolution
+  // 1️⃣ 计算目标分辨率短边
+  const targetShortEdge = videoExportSettings?.resolution && videoExportSettings.resolution !== 'original'
     ? RESOLUTION_MAP[videoExportSettings.resolution]
     : null
-  const targetWidth = res?.width ?? videoWidth
-  const targetHeight = res?.height ?? videoHeight
-  const needsScale = targetWidth !== videoWidth || targetHeight !== videoHeight
+  const needsScale = targetShortEdge !== null
 
   // 帧率参数
   const frameRate = videoExportSettings?.frameRate
@@ -291,43 +302,32 @@ export async function applyWatermarkToVideo(
   // 码率参数
   let bitrateOverride: string | null = null
   if (videoExportSettings?.quality && videoExportSettings.quality !== 'original') {
-    bitrateOverride = QUALITY_BITRATES[videoExportSettings.quality]
+    if (videoExportSettings.quality === 'custom' && videoExportSettings.customBitrate) {
+      bitrateOverride = `${videoExportSettings.customBitrate}k`
+    } else {
+      bitrateOverride = QUALITY_BITRATES[videoExportSettings.quality]
+    }
   }
 
-  // 2️⃣ 计算水印位置（基于目标分辨率）
-  const wmTargetWidth = Math.round(targetWidth * WATERMARK_SCALE[size])
-  const marginPx = Math.round(targetWidth * 0.03)
+  // 2️⃣ 计算水印位置 — 基于目标短边推算 margin 和大小
+  const marginPx = targetShortEdge ? Math.round(targetShortEdge * 0.03) : 20
+  const wmSize = Math.round((targetShortEdge ?? videoHeight) * WATERMARK_SCALE[size])
   const [vPos, hPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
-  const x = hPos === 'left'
-    ? marginPx
-    : hPos === 'right'
-      ? targetWidth - wmTargetWidth - marginPx
-      : Math.round((targetWidth - wmTargetWidth) / 2)
-  let y = marginPx
-  if (vPos === 'bottom') {
-    const wmInfo = await probeImage(wmPath)
-    const wmRatio = wmInfo.height / wmInfo.width
-    y = Math.round(targetHeight - wmTargetWidth * wmRatio - marginPx)
-  }
+  const [ox, oy] = overlayExpr(vPos, hPos, marginPx)
 
   // 3️⃣ 构建 ffmpeg 参数
   const args: string[] = ['-i', inputPath, '-i', wmPath]
 
-  // 3a. filter_complex：缩放 + 水印合成
-  if (needsScale && hasWatermark) {
-    // 先缩放视频，再叠加缩放后的水印
+  // 3a. filter_complex — 自适应缩放 + 水印
+  if (needsScale) {
     args.push(
       '-filter_complex',
-      `[0:v]${scaleFilter(targetWidth, targetHeight)}[v0];[1:v]scale=${wmTargetWidth}:-1[wm];[v0][wm]overlay=${x}:${y}`,
+      `[0:v]${orientationAwareScale(targetShortEdge!)}[v0];[1:v]scale=${wmSize}:-1[wm];[v0][wm]overlay=${ox}:${oy}`,
     )
-  } else if (needsScale) {
-    // 仅缩放，无水印
-    args.push('-vf', scaleFilter(targetWidth, targetHeight))
-  } else if (hasWatermark) {
-    // 仅水印，不缩放
+  } else {
     args.push(
       '-filter_complex',
-      `[1:v]scale=${wmTargetWidth}:-1[wm];[0:v][wm]overlay=${x}:${y}`,
+      `[1:v]scale=${wmSize}:-1[wm];[0:v][wm]overlay=${ox}:${oy}`,
     )
   }
 
@@ -413,15 +413,13 @@ export async function applyVideoExportSettings(
 ): Promise<void> {
   const ffmpegPath = getFfmpegPath()
   const media = await probeMedia(inputPath)
-  const { durationSeconds, videoBitrate, videoCodec, videoWidth, videoHeight } = media
+  const { durationSeconds, videoBitrate, videoCodec } = media
 
-  // 目标分辨率
-  const res = videoExportSettings.resolution !== 'original'
+  // 目标分辨率短边
+  const targetShortEdge = videoExportSettings.resolution !== 'original'
     ? RESOLUTION_MAP[videoExportSettings.resolution]
     : null
-  const targetWidth = res?.width ?? videoWidth
-  const targetHeight = res?.height ?? videoHeight
-  const needsScale = targetWidth !== videoWidth || targetHeight !== videoHeight
+  const needsScale = targetShortEdge !== null
 
   // 帧率
   const frameRate = videoExportSettings.frameRate !== 'original' ? videoExportSettings.frameRate : null
@@ -429,14 +427,18 @@ export async function applyVideoExportSettings(
   // 码率
   let bitrateOverride: string | null = null
   if (videoExportSettings.quality !== 'original') {
-    bitrateOverride = QUALITY_BITRATES[videoExportSettings.quality]
+    if (videoExportSettings.quality === 'custom' && videoExportSettings.customBitrate) {
+      bitrateOverride = `${videoExportSettings.customBitrate}k`
+    } else {
+      bitrateOverride = QUALITY_BITRATES[videoExportSettings.quality]
+    }
   }
 
   const args: string[] = ['-i', inputPath]
 
-  // 分辨率缩放
+  // 分辨率缩放 — 自适应朝向
   if (needsScale) {
-    args.push('-vf', scaleFilter(targetWidth, targetHeight))
+    args.push('-vf', orientationAwareScale(targetShortEdge!))
   }
 
   // 帧率

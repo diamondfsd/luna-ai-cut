@@ -56,9 +56,9 @@ function WatermarkSettingsContent({ settings, styleOptions, onStyleChange, onSiz
   const [vPos, hPos] = (settings.position ?? 'bottom-center').split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
 
   return (
-    <div style={{ display: 'grid', gap: 14, padding: '4px 0' }}>
-      <div>
-        <span style={{ fontSize: 12, color: 'var(--muted-dark)', marginBottom: 6, display: 'block' }}>水印样式</span>
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div className="video-export-setting-row">
+        <span className="video-export-setting-label">水印样式</span>
         <SegmentedControl
           ariaLabel="水印样式"
           options={stylePills}
@@ -67,8 +67,8 @@ function WatermarkSettingsContent({ settings, styleOptions, onStyleChange, onSiz
           variant="size"
         />
       </div>
-      <div>
-        <span style={{ fontSize: 12, color: 'var(--muted-dark)', marginBottom: 6, display: 'block' }}>水印大小</span>
+      <div className="video-export-setting-row">
+        <span className="video-export-setting-label">水印大小</span>
         <SegmentedControl
           ariaLabel="水印大小"
           options={SIZE_OPTIONS}
@@ -77,24 +77,25 @@ function WatermarkSettingsContent({ settings, styleOptions, onStyleChange, onSiz
           variant="size"
         />
       </div>
-      <div>
-        <span style={{ fontSize: 12, color: 'var(--muted-dark)', marginBottom: 6, display: 'block' }}>水印位置</span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
-          <SegmentedControl
-            ariaLabel="水平位置"
-            options={H_OPTIONS}
-            value={hPos}
-            onChange={onHPosChange}
-            variant="size"
-          />
-          <SegmentedControl
-            ariaLabel="垂直位置"
-            options={V_OPTIONS}
-            value={vPos}
-            onChange={onVPosChange}
-            variant="size"
-          />
-        </div>
+      <div className="video-export-setting-row">
+        <span className="video-export-setting-label">水平位置</span>
+        <SegmentedControl
+          ariaLabel="水平位置"
+          options={H_OPTIONS}
+          value={hPos}
+          onChange={onHPosChange}
+          variant="size"
+        />
+      </div>
+      <div className="video-export-setting-row">
+        <span className="video-export-setting-label">垂直位置</span>
+        <SegmentedControl
+          ariaLabel="垂直位置"
+          options={V_OPTIONS}
+          value={vPos}
+          onChange={onVPosChange}
+          variant="size"
+        />
       </div>
     </div>
   )

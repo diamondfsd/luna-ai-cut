@@ -110,24 +110,26 @@ export interface WatermarkSettings {
 }
 
 /** 视频导出分辨率选项 */
-export type VideoResolution = 'original' | '1080p' | '720p'
+export type VideoResolution = 'original' | '1080p' | '2k' | '4k'
 
 /** 视频导出帧率选项 */
-export type VideoFrameRate = 'original' | '24' | '25' | '30' | '60'
+export type VideoFrameRate = 'original' | '24' | '25' | '29.97' | '30' | '50' | '60' | '120'
 
-/** 视频导出画质（码率）选项 */
-export type VideoQuality = 'original' | 'high' | 'medium' | 'low'
+/** 视频导出码率预设选项 */
+export type VideoQuality = 'original' | 'low' | 'medium' | 'high' | 'custom'
 
 /** 视频导出参数设置 */
 export interface VideoExportSettings {
   resolution: VideoResolution
   frameRate: VideoFrameRate
   quality: VideoQuality
+  /** 自定义码率（kbps），仅 quality 为 'custom' 时生效 */
+  customBitrate?: number
 }
 
-/** 默认视频导出设置（所有参数保持原始） */
+/** 默认视频导出设置（分辨率默认 1080p） */
 export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
-  resolution: 'original',
+  resolution: '1080p',
   frameRate: 'original',
   quality: 'original',
 }
