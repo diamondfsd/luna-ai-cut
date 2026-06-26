@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process'
 import { app } from 'electron'
 import * as fs from 'node:fs/promises'
+import { readFileSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
+import exifr from 'exifr'
 
 import { localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
@@ -49,7 +51,128 @@ function watermarkFileFor(kind: 'image' | 'video', style: WatermarkStyle): strin
   return path.join(getWatermarkDir(), filenames[style][kind])
 }
 
-// ─── 图片水印（独立路径，不经过 pipeline） ─────
+/** 将 JPEG 文件中的 EXIF Orientation 标签设为 1（正常方向），保留其他所有 EXIF */
+function clearExifOrientation(filePath: string): boolean {
+  let data: Buffer
+  try {
+    data = readFileSync(filePath)
+  } catch { return false }
+
+  const len = data.length
+  let pos = 2 // skip SOI (0xFFD8)
+
+  while (pos < len - 1) {
+    if (data[pos] !== 0xFF) { pos++; continue }
+    const marker = data[pos + 1]
+    if (marker === 0xD8 || marker === 0xD9 || marker === 0x00) { pos++; continue }
+    if (marker >= 0xD0 && marker <= 0xD7) { pos += 2; continue }
+
+    const segLen = data.readUInt16BE(pos + 2)
+    if (marker === 0xE1 && segLen >= 10 &&
+        data.toString('ascii', pos + 4, pos + 10) === 'Exif\0\0') {
+      // Found EXIF APP1 — TIFF header starts at pos + 10
+      const tiff = pos + 10
+      const le = data.toString('ascii', tiff, tiff + 2) === 'II'
+      const r16 = (off: number) => le ? data.readUInt16LE(off) : data.readUInt16BE(off)
+      const r32 = (off: number) => le ? data.readUInt32LE(off) : data.readUInt32BE(off)
+      const w16 = (off: number, v: number) => le ? data.writeUInt16LE(v, off) : data.writeUInt16BE(v, off)
+
+      if (r16(tiff + 2) !== 0x002A) { pos += 2 + segLen; continue }
+
+      const ifd0 = tiff + r32(tiff + 4)
+      const cnt = r16(ifd0)
+      for (let i = 0; i < cnt; i++) {
+        const entry = ifd0 + 2 + i * 12
+        if (r16(entry) === 0x0112) { // Orientation tag
+          const oldVal = r16(entry + 8)
+          if (oldVal !== 1) {
+            w16(entry + 8, 1) // Set to Normal (1)
+            writeFileSync(filePath, data)
+            return true
+          }
+          return true // Already 1, no change needed
+        }
+      }
+      return false // Orientation tag not found
+    }
+    pos += 2 + segLen
+  }
+  return false
+}
+
+/** 从源 JPEG 复制 EXIF APP1 段到目标 JPEG（仅在目标没有 EXIF 时） */
+function copyExifIfMissing(srcPath: string, dstPath: string): boolean {
+  // 检查目标是否已有 EXIF
+  let dstData: Buffer
+  try { dstData = readFileSync(dstPath) } catch { return false }
+  let pos = 2
+  while (pos < dstData.length - 1) {
+    if (dstData[pos] !== 0xFF) break
+    const m = dstData[pos + 1]
+    if (m === 0xD8 || m === 0xD9 || m === 0x00) { pos++; continue }
+    if (m >= 0xD0 && m <= 0xD7) { pos += 2; continue }
+    const segLen = dstData.readUInt16BE(pos + 2)
+    if (m === 0xE1 && segLen >= 10 && dstData.toString('ascii', pos + 4, pos + 10) === 'Exif\0\0') {
+      return true // Already has EXIF
+    }
+    pos += 2 + segLen
+  }
+
+  // 从源文件提取 APP1
+  let srcData: Buffer
+  try { srcData = readFileSync(srcPath) } catch { return false }
+  pos = 2
+  while (pos < srcData.length - 1) {
+    if (srcData[pos] !== 0xFF) { pos++; continue }
+    const m = srcData[pos + 1]
+    if (m === 0xD8 || m === 0xD9 || m === 0x00) { pos++; continue }
+    if (m >= 0xD0 && m <= 0xD7) { pos += 2; continue }
+    const segLen = srcData.readUInt16BE(pos + 2)
+    if (m === 0xE1 && segLen >= 10 && srcData.toString('ascii', pos + 4, pos + 10) === 'Exif\0\0') {
+      // Insert APP1 after SOI in destination
+      const app1 = srcData.subarray(pos, pos + 2 + segLen)
+      const newData = Buffer.concat([
+        dstData.subarray(0, 2), // SOI
+        app1,
+        dstData.subarray(2),
+      ])
+      writeFileSync(dstPath, newData)
+      return true
+    }
+    pos += 2 + segLen
+  }
+  return false
+}
+
+function orientationToDegrees(orientation: number): number {
+  // 1=正常, 3=180°, 6=90°CW, 8=90°CCW
+  switch (orientation) {
+    case 6: return 90
+    case 3: return 180
+    case 8: return 270
+    default: return 0
+  }
+}
+
+/** 获取图片的 EXIF 旋转角度（读取 Orientation 标签） */
+async function getExifRotationDeg(inputPath: string): Promise<number> {
+  try {
+    // translateValues: false 确保返回数值（如 8）而非字符串（如 "Rotate 270 CW"）
+    const data = await exifr.parse(inputPath, { translateValues: false }) as Record<string, unknown>
+    const orientation = data?.Orientation
+    if (typeof orientation === 'number') {
+      return orientationToDegrees(orientation)
+    }
+  } catch { /* 忽略 EXIF 解析失败 */ }
+  return 0
+}
+
+/** 将旋转角度映射到 ffmpeg transpose 模式（仅处理 90°/270°） */
+function rotationToTranspose(deg: number): number | null {
+  if (deg === 90) return 1  // 90° CW
+  if (deg === 270) return 2 // 90° CCW
+  return null
+}
 
 interface ImageInfo {
   width: number
@@ -134,39 +257,40 @@ async function applyWatermarkToImageWithRef(
   const imgInfo = await probeImage(inputPath)
   const wmInfo = await probeImage(wmPath)
 
-  const baseWidth = refWidth ?? imgInfo.width
-  const baseHeight = refHeight ?? imgInfo.height
+  // 检测 EXIF 旋转，仅对独立图片（无 ref）处理
+  const rotationDeg = refWidth === undefined || refHeight === undefined
+    ? await getExifRotationDeg(inputPath)
+    : 0
+  const needTranspose = rotationToTranspose(rotationDeg) !== null
 
-  // 以参考尺寸计算水印大小
-  const wmRatio = wmInfo.height / wmInfo.width
-  const refWmWidth = Math.min(Math.round(baseWidth * WATERMARK_SCALE[size]), wmInfo.width)
-  const refWmHeight = Math.round(refWmWidth * wmRatio)
-  const refMargin = Math.round(baseWidth * 0.03)
+  // ── 水印输出方向尺寸 ──
+  const displayW = needTranspose ? imgInfo.height : imgInfo.width
+  const displayH = needTranspose ? imgInfo.width : imgInfo.height
 
-  // 按图片与参考尺寸的比例缩放位置和大小
-  const scaleX = imgInfo.width / baseWidth
-  const scaleY = imgInfo.height / baseHeight
+  // ── 水印像素尺寸用传感器最长边（横竖图统一） ──
+  const sensorW = refWidth ?? Math.max(imgInfo.width, imgInfo.height)
+  const wmAspect = wmInfo.height / wmInfo.width
+  const actualWmWidth = Math.min(Math.round(sensorW * WATERMARK_SCALE[size]), wmInfo.width)
+  const actualWmHeight = Math.round(actualWmWidth * wmAspect)
 
-  const actualWmWidth = Math.round(refWmWidth * scaleX)
-  const actualWmHeight = Math.round(refWmHeight * scaleY)
-  const marginX = Math.round(refMargin * scaleX)
-  const marginY = Math.round(refMargin * scaleY)
+  // ── 边距和位置用展示方向坐标 ──
+  const marginX = Math.round(displayW * 0.03)
+  const marginY = Math.round(displayH * 0.03)
 
   const [vPos, hPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
   const x = hPos === 'left'
     ? marginX
     : hPos === 'right'
-      ? imgInfo.width - actualWmWidth - marginX
-      : Math.round((imgInfo.width - actualWmWidth) / 2)
+      ? displayW - actualWmWidth - marginX
+      : Math.round((displayW - actualWmWidth) / 2)
   const y = vPos === 'bottom'
-    ? imgInfo.height - actualWmHeight - marginY
+    ? displayH - actualWmHeight - marginY
     : marginY
 
-  console.log('[LIVE watermark IMG]', {
+  console.log('[watermark IMG]', {
     imgWidth: imgInfo.width, imgHeight: imgInfo.height,
-    refWidth: baseWidth, refHeight: baseHeight,
-    scaleX, scaleY,
-    refWmWidth, refWmHeight, refMargin,
+    rotationDeg,
+    sensorW, displayW, displayH,
     actualWmWidth, actualWmHeight, marginX, marginY,
     position, x, y,
   })
@@ -174,16 +298,42 @@ async function applyWatermarkToImageWithRef(
   const outputExt = path.extname(outputPath).toLowerCase()
   const encoder = ffmpegImgEncoder(outputExt)
 
+  // 构建 filter：需要旋转时先 transpose，再叠加水印
+  // autorotate 后清除 rotate metadata 防止二次旋转
+  let filterComplex: string
+  const rotateMode = rotationToTranspose(rotationDeg)
+
+  if (rotateMode !== null) {
+    filterComplex =
+      `[0:v]transpose=${rotateMode}[rot];` +
+      `[1:v]scale=${actualWmWidth}:-1[wm];` +
+      `[rot][wm]overlay=${x}:${y}`
+  } else {
+    filterComplex =
+      `[1:v]scale=${actualWmWidth}:-1[wm];` +
+      `[0:v][wm]overlay=${x}:${y}`
+  }
+
+  const metadataArgs = ['-map_metadata', '0']
+
+  // -noautorotate 阻止 ffmpeg 自动应用 EXIF 旋转（否则 transpose 会与自动旋转抵消）
   await execFileAsync(ffmpegPath, [
+    '-noautorotate',
     '-i', inputPath,
     '-i', wmPath,
-    '-filter_complex',
-    `[1:v]scale=${actualWmWidth}:-1[wm];[0:v][wm]overlay=${x}:${y}`,
+    '-filter_complex', filterComplex,
     ...encoder,
-    '-map_metadata', '0',
+    ...metadataArgs,
     '-y',
     outputPath,
   ], { timeout: 30000 } as never)
+
+  // ffmpeg 8.x 的 mjpeg 编码器不保留 EXIF，需手动从源文件复制
+  // 随后将 orientation 改为 1（防止 viewer 对已转好的像素再次旋转）
+  copyExifIfMissing(inputPath, outputPath)
+  if (rotateMode !== null) {
+    clearExifOrientation(outputPath)
+  }
 }
 
 // ─── Live Photo 处理 ─────────────────────────
