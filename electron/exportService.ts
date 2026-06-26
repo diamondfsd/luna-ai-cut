@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -67,7 +68,8 @@ export async function exportFiles(
   const completed: ExportSummary['completed'] = []
   const failed: ExportSummary['failed'] = []
   const canceled: ExportSummary['canceled'] = []
-  const tmpDir = path.join(exportDir, '.export_tmp')
+  const exportId = crypto.randomUUID().slice(0, 8)
+  const tmpDir = path.join(exportDir, `.export_tmp_${exportId}`)
 
   await fs.mkdir(tmpDir, { recursive: true })
 
