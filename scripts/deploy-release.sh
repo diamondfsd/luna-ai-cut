@@ -54,7 +54,7 @@ err()   { echo -e "${RED}  ✗${NC} $*"; }
 OS="$(uname -s)"
 case "$OS" in
   Darwin)
-    BUILD_CMD="npm run pack:all"
+    BUILD_CMD="CSC_IDENTITY_AUTO_DISCOVERY=false npm run pack:mac:arm64 && npm run pack:win:x64"
     FILE_PATTERN="-name '*.dmg' -o -name '*Setup*.exe'"
     PLATFORM="macOS + Windows"
     ;;
