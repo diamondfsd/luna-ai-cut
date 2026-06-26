@@ -109,6 +109,31 @@ export interface WatermarkSettings {
   position: WatermarkPosition
 }
 
+/** 视频导出分辨率选项 */
+export type VideoResolution = 'original' | '1080p' | '2k' | '4k'
+
+/** 视频导出帧率选项 */
+export type VideoFrameRate = 'original' | '24' | '25' | '29.97' | '30' | '50' | '60' | '120'
+
+/** 视频导出码率预设选项 */
+export type VideoQuality = 'original' | 'low' | 'medium' | 'high' | 'custom'
+
+/** 视频导出参数设置 */
+export interface VideoExportSettings {
+  resolution: VideoResolution
+  frameRate: VideoFrameRate
+  quality: VideoQuality
+  /** 自定义码率（kbps），仅 quality 为 'custom' 时生效 */
+  customBitrate?: number
+}
+
+/** 默认视频导出设置（分辨率默认 1080p） */
+export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
+  resolution: '1080p',
+  frameRate: 'original',
+  quality: 'original',
+}
+
 export interface AppSettings {
   downloadDir: string
   exportDir?: string
@@ -187,6 +212,8 @@ export interface ExportProgress {
   status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
   destinationPath?: string
   error?: string
+  /** 导出任务唯一 ID（前端生成，同文件多次导出时做 key） */
+  exportId?: string
 }
 
 export interface ExportSummary {
@@ -340,7 +367,7 @@ export interface LunaApi {
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
-  exportFiles(files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings): Promise<ExportSummary>
+  exportFiles(files: Array<{ name: string; kind: string; localPath?: string; exportId?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
   getDownloadedRecords(files: LunaFile[], downloadDir?: string): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>

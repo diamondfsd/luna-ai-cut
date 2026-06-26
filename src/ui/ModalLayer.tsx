@@ -42,7 +42,7 @@ export function ModalLayer({ onClose, children, variant = 'fullscreen' }: ModalL
 
   return createPortal(
     <div className={`modal-layer${variant === 'dropdown' ? ' is-dropdown' : ''}`} onClick={onClose}>
-      <div className="modal-layer-content" onClick={(event) => event.stopPropagation()}>
+      <div className="modal-layer-content">
         {children}
       </div>
     </div>,

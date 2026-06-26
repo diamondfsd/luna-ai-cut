@@ -29,3 +29,53 @@
   padding: 18px 22px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* ====== 视频导出参数设置（内部于 Accordion 内） ====== */
+
+.video-export-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.video-export-setting-right {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 码率预设 Select 和自定义输入框都撑满右侧 */
+.video-export-setting-right .ui-select-trigger {
+  width: 100%;
+}
+
+.video-export-setting-label {
+  font-size: 12px;
+  color: var(--muted-dark);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 48px;
+}
+
+/* 自定义码率输入 */
+.video-export-custom-bitrate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.video-export-custom-bitrate .ui-input-compact {
+  flex: 1;
+  width: auto;
+}
+
+.video-export-custom-bitrate-unit {
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}

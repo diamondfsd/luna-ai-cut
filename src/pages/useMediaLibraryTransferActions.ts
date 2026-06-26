@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 
-import type { AppSettings, DownloadProgress, ExportProgress, LunaFile, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { AppSettings, DownloadProgress, ExportProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import type { ViewMode } from './useMediaLibraryController'
 
 interface TransferActionProps {
@@ -207,7 +207,7 @@ export function useMediaLibraryTransferActions({
     setDownloadQueue((current) => (current.some((item) => item.name === file.name) ? current : [...current, file]))
   }
 
-  async function exportLocalFiles(filesToExport: LunaFile[], watermarkSettings: WatermarkSettingsType): Promise<void> {
+  async function exportLocalFiles(filesToExport: LunaFile[], watermarkSettings: WatermarkSettingsType, videoExportSettings?: VideoExportSettings): Promise<void> {
     if (filesToExport.length === 0) return
     setExportError(null)
     setExporting(true)
@@ -216,12 +216,15 @@ export function useMediaLibraryTransferActions({
         setExportError('未设置导出目录，请在设置中配置')
         return
       }
+      const batchTs = Date.now()
       const snapshots = new Map<string, LunaFile>()
       const queued = new Map<string, ExportProgress>()
       filesToExport.forEach((file, index) => {
         const exportName = file.downloadName || file.name
-        snapshots.set(exportName, file)
-        queued.set(exportName, {
+        const exportId = `${exportName}_${batchTs}_${index}`
+        snapshots.set(exportId, file)
+        queued.set(exportId, {
+          exportId,
           fileName: exportName,
           index,
           totalFiles: filesToExport.length,
@@ -231,12 +234,16 @@ export function useMediaLibraryTransferActions({
       })
       setExportSnapshots(snapshots)
       setExportProgress(queued)
-      const payload = filesToExport.map((file) => ({
-        name: file.downloadName || file.name,
-        kind: file.kind,
-        localPath: file.downloadFilePath ?? file.localPath,
-      }))
-      const result = await window.luna.exportFiles(payload, settings.exportDir, watermarkSettings)
+      const payload = filesToExport.map((file, index) => {
+        const exportName = file.downloadName || file.name
+        return {
+          name: exportName,
+          kind: file.kind,
+          localPath: file.downloadFilePath ?? file.localPath,
+          exportId: `${exportName}_${batchTs}_${index}`,
+        }
+      })
+      const result = await window.luna.exportFiles(payload, settings.exportDir, watermarkSettings, videoExportSettings)
       if (result.failed.length > 0) {
         const firstError = result.failed[0]
         setExportError(`${firstError.name}: ${firstError.error}`)
@@ -245,7 +252,7 @@ export function useMediaLibraryTransferActions({
         setExportError('导出已取消')
       }
       setSelected(new Set())
-      void loadExportLibrary()
+      await loadExportLibrary()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setExportError(`导出失败: ${message}`)

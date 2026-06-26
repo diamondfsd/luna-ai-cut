@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Download, FileQuestion, FolderOpen, Loader2, X } from 'lucide-react'
+import { Check, Download, Eye, FileQuestion, FolderOpen, Loader2, X } from 'lucide-react'
 
 import type { ExportProgress, LunaFile } from '../shared/types'
+import { PreviewModal } from './PreviewModal'
 import { Button, DropdownPanel, IconButton } from '../ui'
 import '../styles/download-progress.css'
 
@@ -51,6 +52,7 @@ export function ExportProgressModal({
   onCanceled,
 }: ExportProgressModalProps) {
   const [open, setOpen] = useState(false)
+  const [previewFile, setPreviewFile] = useState<LunaFile | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const readyThumbnailUrlsRef = useRef<Map<string, string>>(new Map())
   const [, forceUpdate] = useState(0)
@@ -155,7 +157,7 @@ export function ExportProgressModal({
 
         <div className="dl-file-list">
           {entries.map((progress) => {
-            const file = fileSnapshots.get(progress.fileName)
+            const file = fileSnapshots.get(progress.exportId ?? progress.fileName)
             const previewSource = previewSourceFor(progress, file, readyThumbnailUrlsRef.current)
             const isVideoPreview = file?.kind === 'video' || file?.kind === 'lrv'
             const pct = progress.status === 'done' ? 100 : progress.percent ?? 0
@@ -181,22 +183,59 @@ export function ExportProgressModal({
                 </div>
                 <div className="dl-file-actions">
                   {progress.status === 'done' && progress.destinationPath && (
-                    <IconButton
-                      variant="light"
-                      onClick={() => onRevealFile(progress.destinationPath!)}
-                      title="在文件夹中显示"
-                      icon={<FolderOpen size={14} />}
-                    />
+                    <>
+                      <IconButton
+                        variant="ghost"
+                        onClick={() => {
+                          const snap = fileSnapshots.get(progress.exportId ?? progress.fileName)
+                          if (snap) {
+                            setPreviewFile({
+                              ...snap,
+                              sourceUrl: filePathToPreviewUrl(progress.destinationPath!) ?? '',
+                              url: filePathToPreviewUrl(progress.destinationPath!) ?? '',
+                              localPath: progress.destinationPath,
+                              downloadFilePath: progress.destinationPath ?? null,
+                            })
+                          }
+                        }}
+                        title="预览"
+                        icon={<Eye size={14} />}
+                      />
+                      <IconButton
+                        variant="ghost"
+                        onClick={() => onRevealFile(progress.destinationPath!)}
+                        title="在文件夹中显示"
+                        icon={<FolderOpen size={14} />}
+                      />
+                    </>
                   )}
-                  <span className={progress.status === 'failed' || progress.status === 'canceled' ? 'dl-file-status muted' : 'dl-file-status'}>
-                    {statusLabel(progress)}
-                  </span>
+                  {progress.status !== 'done' && (
+                    <span className={progress.status === 'failed' || progress.status === 'canceled' ? 'dl-file-status muted' : 'dl-file-status'}>
+                      {statusLabel(progress)}
+                    </span>
+                  )}
                 </div>
               </div>
             )
           })}
         </div>
       </DropdownPanel>
+
+      {previewFile && (
+        <PreviewModal
+          files={[previewFile]}
+          currentFile={previewFile}
+          currentFileId={previewFile.id}
+          preview={null}
+          previewLoading={false}
+          downloadProgress={undefined}
+          isDownloadsPage={false}
+          onClose={() => setPreviewFile(null)}
+          onDownload={() => {}}
+          onReveal={(f) => onRevealFile(f.downloadFilePath ?? f.localPath ?? '')}
+          onFileChange={setPreviewFile}
+        />
+      )}
     </div>
   )
 }

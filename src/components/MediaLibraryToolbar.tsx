@@ -7,7 +7,7 @@ import { ExportModal } from './ExportModal'
 import { ExportProgressModal } from './ExportProgressModal'
 import { formatBytes } from '../lib/format'
 import type { CardSize, SortOrder } from '../pages/useMediaLibraryController'
-import type { DeviceDefinition, DownloadProgress, ExportProgress, LunaFile, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { DeviceDefinition, DownloadProgress, ExportProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
   Button,
   ButtonGroup,
@@ -64,7 +64,7 @@ interface MediaLibraryToolbarProps {
   setViewMode: (value: ViewMode) => void
   showExportDialog: boolean
   startDownload: () => Promise<void>
-  exportLocalFiles: (files: LunaFile[], settings: WatermarkSettingsType) => Promise<void>
+  exportLocalFiles: (files: LunaFile[], settings: WatermarkSettingsType, videoSettings: VideoExportSettings) => Promise<void>
   handleStorageFilterChange: (value: string) => Promise<void>
   loadCameraLibrary: () => Promise<void>
   loadDownloadedLibrary: () => Promise<void>
@@ -321,7 +321,7 @@ export function MediaLibraryToolbar({
           watermarkStyleOptions={activeDevice?.watermarkStyles}
           exporting={exporting}
           onClose={() => setShowExportDialog(false)}
-          onConfirm={(settings) => { setShowExportDialog(false); void exportLocalFiles(selectedFiles, settings) }}
+          onConfirm={(settings, videoSettings) => { setShowExportDialog(false); void exportLocalFiles(selectedFiles, settings, videoSettings) }}
           onSettingsChange={setExportWatermarkSettings}
         />
       )}
