@@ -6,7 +6,7 @@ import { lunaMediaAdapter } from './deviceMedia'
 import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
 import { generateThumbnail, safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
-import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToVideo } from './watermarkService'
+import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToLivePhoto, applyWatermarkToVideo } from './watermarkService'
 import type { LunaFile, VideoExportSettings, WatermarkSettings } from '../src/shared/types'
 
 export interface ExportProgress {
@@ -124,6 +124,18 @@ export async function exportFiles(
           videoExportSettings!,
           (percent) => onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent, status: 'exporting' }),
           signal,
+        )
+      } else if (file.kind === 'image' && watermarkSettings.enabled && /^LIV_/i.test(file.name)) {
+        // Live Photo — 给图片和内嵌视频都加水印，再合并回去
+        await applyWatermarkToLivePhoto(
+          localPath,
+          tmpPath,
+          watermarkSettings.size,
+          watermarkSettings.position,
+          watermarkSettings.style,
+          (percent) => onProgress?.({ fileName: file.name, index, totalFiles: files.length, percent, status: 'exporting' }),
+          signal,
+          videoExportSettings,
         )
       } else if (file.kind === 'image' && watermarkSettings.enabled) {
         await applyWatermarkToImage(localPath, tmpPath, watermarkSettings.size, watermarkSettings.position, watermarkSettings.style)
