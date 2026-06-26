@@ -5,15 +5,17 @@ set -euo pipefail
 # deploy-release.sh — 本地打包并上传到 GitCode Release
 #
 # 用法:
-#   ./scripts/deploy-release.sh            # 自动取 package.json 版本
-#   ./scripts/deploy-release.sh v1.3.0     # 或手动指定
+#   ./scripts/deploy-release.sh                 # 自动取 package.json 版本，构建 + 上传
+#   ./scripts/deploy-release.sh v1.3.0          # 手动指定版本，构建 + 上传
+#   ./scripts/deploy-release.sh --upload-only           # 跳过构建，直接上传（自动版本）
+#   ./scripts/deploy-release.sh --upload-only v1.3.0    # 跳过构建，直接上传（指定版本）
 #
 # 配置（二选一）:
 #   1. 复制 deploy-release.conf.example → deploy-release.conf，填入 token
 #   2. 设置环境变量: export GITCODE_TOKEN=xxx
 #
 # 流程:
-#   1. 检测当前平台并构建（macOS → DMG, Windows → EXE）
+#   1. [可选] 检测当前平台并构建（macOS → DMG, Windows → EXE）
 #   2. 在 GitCode 创建 Release
 #   3. 上传构建产物到 GitCode Release
 #   4. 更新 mirror 仓库 README
@@ -24,6 +26,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONF_FILE="${SCRIPT_DIR}/deploy-release.conf"
 if [ -f "$CONF_FILE" ]; then
   source "$CONF_FILE"
+fi
+
+# ── 参数解析 ──
+SKIP_BUILD=false
+if [ "${1:-}" = "--upload-only" ]; then
+  SKIP_BUILD=true
+  shift
 fi
 
 # ── 自动获取最新版本号 ──
@@ -68,36 +77,43 @@ case "$OS" in
 esac
 
 # ============================================================
-# 第一步：构建
+# 第一步：构建（--upload-only 跳过）
 # ============================================================
-echo ""
-info "═══════════════════════════════════════════════════════════"
-info "  Luna AI Cut ${TAG} — ${PLATFORM} 构建"
-info "═══════════════════════════════════════════════════════════"
-echo ""
+if [ "$SKIP_BUILD" = false ]; then
+  echo ""
+  info "═══════════════════════════════════════════════════════════"
+  info "  Luna AI Cut ${TAG} — ${PLATFORM} 构建"
+  info "═══════════════════════════════════════════════════════════"
+  echo ""
 
-# 检查 node_modules
-if [ ! -d "node_modules" ]; then
-  info "安装依赖..."
-  npm ci
-  ok "依赖安装完成"
-fi
+  # 检查 node_modules
+  if [ ! -d "node_modules" ]; then
+    info "安装依赖..."
+    npm ci
+    ok "依赖安装完成"
+  fi
 
-if [ "$OS" = "Darwin" ]; then
-  # ── macOS 上交叉打包：先 Win 后 Mac ──
-  info "构建 Windows x64..."
-  npm run pack:win:x64
-  ok "Windows 构建完成"
+  if [ "$OS" = "Darwin" ]; then
+    # ── macOS 上交叉打包：先 Win 后 Mac ──
+    info "构建 Windows x64..."
+    npm run pack:win:x64
+    ok "Windows 构建完成"
 
-  info "构建 macOS ARM64..."
-  npm run pack:mac:arm64
-  ok "macOS 构建完成"
+    info "构建 macOS ARM64..."
+    npm run pack:mac:arm64
+    ok "macOS 构建完成"
+  else
+    info "开始构建 ${PLATFORM}..."
+    npm run pack:win:x64
+    ok "构建完成"
+  fi
 else
-  info "开始构建 ${PLATFORM}..."
-  npm run pack:win:x64
-  ok "构建完成"
+  echo ""
+  info "═══════════════════════════════════════════════════════════"
+  info "  Luna AI Cut ${TAG} — 跳过构建，直接上传"
+  info "═══════════════════════════════════════════════════════════"
+  echo ""
 fi
-
 
 # 查找构建产物
 FILES=()
