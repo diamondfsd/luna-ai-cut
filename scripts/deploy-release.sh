@@ -100,11 +100,14 @@ if [ "$SKIP_BUILD" = false ]; then
 
   if [ "$OS" = "Darwin" ]; then
     # ── macOS 上交叉打包：先 Win 后 Mac ──
+    # 每次构建前清理 ffmpeg 二进制，避免累积多平台文件导致包体积膨胀
     info "构建 Windows x64..."
+    rm -rf resources/ffmpeg/* 2>/dev/null || true
     npm run pack:win:x64
     ok "Windows 构建完成"
 
     info "构建 macOS ARM64..."
+    rm -rf resources/ffmpeg/* 2>/dev/null || true
     npm run pack:mac:arm64
     ok "macOS 构建完成"
   else
