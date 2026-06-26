@@ -27,6 +27,7 @@ release
 
 # Build artifacts
 resources/ffmpeg/
+.ffmpeg-cache/
 docs/
 
 # Local deploy config

@@ -10,7 +10,7 @@
  *   node scripts/copy-ffmpeg.mjs --target win32          # 为 Windows x64 准备
  *   node scripts/copy-ffmpeg.mjs --target darwin --arch arm64  # 为 macOS arm64 准备
  */
-import { copyFileSync, existsSync, mkdirSync, chmodSync, createWriteStream, statSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, chmodSync, createWriteStream, statSync, rmSync, renameSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import https from 'node:https'
@@ -43,10 +43,12 @@ const archIndex = process.argv.indexOf('--arch')
 const targetArch = archIndex !== -1 ? process.argv[archIndex + 1] : process.arch
 const ext = targetPlatform === 'win32' ? '.exe' : ''
 const destDir = join(process.cwd(), 'resources', 'ffmpeg')
+const cacheDir = join(process.cwd(), '.ffmpeg-cache')
 
 console.log(`[copy-ffmpeg] target: ${targetPlatform}-${targetArch}, build: ${process.platform}-${process.arch}`)
 
 mkdirSync(destDir, { recursive: true })
+mkdirSync(cacheDir, { recursive: true })
 
 // ─── 下载文件（自动跟随重定向） ─────────────────────
 
@@ -106,26 +108,35 @@ async function copyFfmpeg() {
     }
   }
 
-  // 交叉编译（或本地找不到时）：从 GitHub Releases 下载
-  // 如果目标文件已存在则跳过下载（缓存）
-  try {
-    const st = statSync(dest)
-    if (st.size > 0) {
-      console.log(`[copy-ffmpeg] ✓ ffmpeg 已缓存 → ${dest} (${(st.size / 1024 / 1024).toFixed(1)} MB)`)
-      return
-    }
-  } catch { /* 文件不存在，需要下载 */ }
+  // 交叉编译：使用独立缓存目录，避免每次构建重新下载
+  const cacheKey = `ffmpeg-${targetPlatform}-${targetArch}`
+  const cachePath = join(cacheDir, cacheKey)
 
-  const releaseTag = 'b6.1.1' // 对应 ffmpeg-static@5.3.0 的 binary-release-tag
-  try {
-    await downloadFfmpeg(releaseTag, targetPlatform, targetArch, dest)
-    if (targetPlatform !== 'win32') chmodSync(dest, 0o755)
-    console.log(`[copy-ffmpeg] ✓ ffmpeg downloaded → ${dest}`)
-  } catch (err) {
-    console.error(`[copy-ffmpeg] ✗ 下载 ffmpeg 失败: ${err.message}`)
-    console.error(`  尝试手动下载: https://github.com/eugeneware/ffmpeg-static/releases/tag/${releaseTag}`)
-    process.exit(1)
+  if (!existsSync(cachePath)) {
+    const releaseTag = 'b6.1.1' // 对应 ffmpeg-static@5.3.0 的 binary-release-tag
+    const tmpPath = cachePath + '.tmp'
+    try {
+      // 先清空可能残留的临时文件，下载到 .tmp，完成后再改名，避免断下载导致缓存不全
+      try { rmSync(tmpPath, { force: true }) } catch { /* ignore */ }
+      await downloadFfmpeg(releaseTag, targetPlatform, targetArch, tmpPath)
+      renameSync(tmpPath, cachePath)
+      if (targetPlatform !== 'win32') chmodSync(cachePath, 0o755)
+      console.log(`[copy-ffmpeg] ✓ ffmpeg 已下载到缓存 → ${cachePath}`)
+    } catch (err) {
+      try { rmSync(tmpPath, { force: true }) } catch { /* ignore */ }
+      console.error(`[copy-ffmpeg] ✗ 下载 ffmpeg 失败: ${err.message}`)
+      console.error(`  尝试手动下载: https://github.com/eugeneware/ffmpeg-static/releases/tag/${releaseTag}`)
+      process.exit(1)
+    }
+  } else {
+    const size = (statSync(cachePath).size / 1024 / 1024).toFixed(1)
+    console.log(`[copy-ffmpeg] ✓ ffmpeg 命中缓存 → ${cachePath} (${size} MB)`)
   }
+
+  // 从缓存复制到构建目录
+  copyFileSync(cachePath, dest)
+  if (targetPlatform !== 'win32') chmodSync(dest, 0o755)
+  console.log(`[copy-ffmpeg] ✓ ffmpeg → ${dest}`)
 }
 
 // ─── ffprobe（ffprobe-static 已内置多平台二进制） ─────
