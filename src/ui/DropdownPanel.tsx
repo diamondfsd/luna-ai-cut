@@ -49,7 +49,7 @@ export function DropdownPanel({ open, triggerRef, onClose, title, children, head
         ref={panelRef}
         className="ui-dropdown-panel"
         style={panelStyle}
-        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <PanelHeader>
           <h2 className="ui-dropdown-panel-title">{title}</h2>
