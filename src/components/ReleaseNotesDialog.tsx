@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Accordion } from '../ui'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, Accordion } from '../ui'
 import { MarkdownViewer } from '../ui/MarkdownViewer'
 import type { ReleaseNoteItem } from '../shared/types'
 
