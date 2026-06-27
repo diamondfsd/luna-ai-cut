@@ -36,13 +36,15 @@ function noAccel(): HwAccelConfig {
 function macVideoToolbox(): HwAccelConfig {
   return {
     type: 'videotoolbox',
-    // 使用 videotoolbox（不带 _vld）以便解码帧回传到 CPU 内存
-    // 这样后续的 CPU overlay 滤镜可以正常工作
-    // 如遇到 10-bit HEVC 源，_vld 输出格式会与 CPU 滤镜不兼容
-    preInputArgs: ['-hwaccel', 'videotoolbox', '-hwaccel_output_format', 'videotoolbox'],
+    // 仅使用 -hwaccel videotoolbox，不加 -hwaccel_output_format
+    // 某些 ffmpeg 构建（如 tessus/evermeet.cx）不识别 videotoolbox 输出格式
+    // 解码后自动回传 CPU 内存，CPU overlay 滤镜可正常工作
+    preInputArgs: ['-hwaccel', 'videotoolbox'],
     encoderNameH264: 'h264_videotoolbox',
     encoderNameH265: 'hevc_videotoolbox',
-    encoderArgs: [],
+    // -allow_sw 1 允许 VideoToolbox 在硬件不支持时软件回退
+    // 例如 10-bit HEVC（yuv420p10le）在某些 Mac 上无法硬件编码
+    encoderArgs: ['-allow_sw', '1'],
     overlayFilter: 'overlay',
   }
 }
