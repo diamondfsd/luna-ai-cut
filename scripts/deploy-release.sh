@@ -79,6 +79,17 @@ esac
 # ============================================================
 # 第一步：构建（--upload-only 跳过）
 # ============================================================
+
+# 将构建产物收集到 release/ 目录
+collect_built_files() {
+  while IFS= read -r -d '' f; do
+    fn=$(basename "$f")
+    dest="${RELEASE_DIR}/${fn}"
+    # 避免重复复制（同一个文件被 build 和 collect 同时命中）
+    [ ! -f "$dest" ] && cp -p "$f" "$dest"
+  done < <(find dist -maxdepth 1 \( -name "*.dmg" -o -name "*Setup*.exe" -o -name "*.exe" \) -type f -print0 2>/dev/null || true)
+}
+
 if [ "$SKIP_BUILD" = false ]; then
   echo ""
   info "═══════════════════════════════════════════════════════════"
@@ -106,16 +117,19 @@ if [ "$SKIP_BUILD" = false ]; then
     rm -rf resources/ffmpeg/* 2>/dev/null || true
     npm run pack:win:x64
     ok "Windows 构建完成"
+    collect_built_files
 
     info "构建 macOS ARM64..."
     rm -rf resources/ffmpeg/* 2>/dev/null || true
     npm run pack:mac:arm64
     ok "macOS ARM64 构建完成"
+    collect_built_files
 
     info "构建 macOS x64 (Intel)..."
     rm -rf resources/ffmpeg/* 2>/dev/null || true
     npm run pack:mac:x64
     ok "macOS x64 构建完成"
+    collect_built_files
   else
     info "开始构建 ${PLATFORM}..."
     npm run pack:win:x64
@@ -129,16 +143,12 @@ else
   echo ""
 fi
 
-# 查找构建产物
+
 FILES=()
-if [ "$OS" = "Darwin" ]; then
-  # macOS 交叉编译，可能产生 .dmg（arm64 + x64）和 .exe 三种文件
-  while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" \( -name "*.dmg" -o -name "*Setup*.exe" \) -type f 2>/dev/null || true)
-else
-  while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" -name "$FILE_PATTERN" -type f 2>/dev/null || true)
-fi
+collect_built_files
+while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" \( -name "*.dmg" -o -name "*Setup*.exe" -o -name "*.exe" \) -type f 2>/dev/null || true)
 if [ ${#FILES[@]} -eq 0 ]; then
-  err "未找到构建产物 ($RELEASE_DIR/$FILE_PATTERN)"
+  err "未找到构建产物（当前目录 + ${RELEASE_DIR}/）"
   exit 1
 fi
 
