@@ -44,6 +44,7 @@ TAG="${1:-$DEFAULT_TAG}"
 
 GITCODE_OWNER="${GITCODE_OWNER:-diamondfsd}"
 GITCODE_REPO="${GITCODE_REPO:-luna-ai-cut-package-release}"
+GITCODE_DL="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/download"
 GITHUB_REPO="${GITHUB_REPO:-diamondfsd/luna-ai-cut}"
 RELEASE_DIR="release"
 
@@ -228,7 +229,114 @@ for filepath in "${FILES[@]}"; do
 done
 
 # ============================================================
-# 第四步：更新 README
+# 第四步：构建并上传热更新资产
+# ============================================================
+echo ""
+info "═══════════════════════════════════════════════════════════"
+info "  构建并上传热更新资产（平台无关 JS 增量更新）"
+info "═══════════════════════════════════════════════════════════"
+echo ""
+
+# 只在打包机（macOS）上构建热更新
+if [ "$OS" = "Darwin" ] || [ "$OS" = "Windows_NT" ]; then
+  # 前面的构建已经产生最新的 dist/ 和 dist-electron/，直接打包
+  HOT_DIR="release/hot-update"
+  mkdir -p "$HOT_DIR"
+
+  # 确定 build 号
+  # 先查一下远程有没有已上传的 renderer-latest.json
+  LAST_BUILD=0
+  REMOTE_MANIFEST=$(curl -sS "${GITCODE_DL}/${TAG}/renderer-latest.json" 2>/dev/null || echo "")
+  if [ -n "$REMOTE_MANIFEST" ]; then
+    LAST_BUILD=$(echo "$REMOTE_MANIFEST" | python3 -c "
+import json,sys
+try:
+    v = json.load(sys.stdin)['version']
+    print(v.split('hot.')[-1])
+except: print(0)
+" 2>/dev/null || echo "0")
+  fi
+  HOT_BUILD=$((LAST_BUILD + 1))
+  HOT_VERSION="${PKG_VER}-hot.${HOT_BUILD}"
+  HOT_ZIP="renderer-${HOT_VERSION}.zip"
+  HOT_ZIP_PATH="${HOT_DIR}/${HOT_ZIP}"
+
+  info "热更新版本: ${HOT_VERSION}"
+
+  # 打包 zip（用 node + adm-zip，与 build-hot-update.sh 逻辑一致）
+  node -e "
+const AdmZip = require('adm-zip');
+const zip = new AdmZip();
+zip.addLocalFolder('dist-electron', 'dist-electron', f => f !== 'dist-electron/main.js');
+zip.addLocalFolder('dist', 'dist');
+zip.writeZip('${HOT_ZIP_PATH}');
+"
+  ok "ZIP 构建完成: ${HOT_ZIP_PATH}"
+
+  # 创建元数据
+  MANIFEST_PATH="${HOT_DIR}/renderer-latest.json"
+  cat > "$MANIFEST_PATH" <<EOF
+{
+  "version": "${HOT_VERSION}",
+  "zipName": "${HOT_ZIP}",
+  "minAppVersion": "${PKG_VER}"
+}
+EOF
+  ok "元数据: ${MANIFEST_PATH}"
+
+  # 上传热更新 zip
+  info "上传 ${HOT_ZIP}..."
+  encoded_name=$(printf '%s' "$HOT_ZIP" | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))")
+  upload_json=$(curl -sS \
+    "${API_BASE}/releases/${TAG}/upload_url?file_name=${encoded_name}" \
+    -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
+  upload_url=$(echo "$upload_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
+  if [ -n "$upload_url" ]; then
+    headers_json=$(echo "$upload_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('headers',{})))" 2>/dev/null)
+    ct=$(echo "$headers_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('Content-Type','application/octet-stream'))" 2>/dev/null)
+    pid=$(echo "$headers_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('x-obs-meta-project-id',''))" 2>/dev/null)
+    acl=$(echo "$headers_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('x-obs-acl',''))" 2>/dev/null)
+    cb=$(echo "$headers_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('x-obs-callback',''))" 2>/dev/null)
+    header_args=(-H "Content-Type: ${ct}")
+    [ -n "$pid" ] && header_args+=(-H "x-obs-meta-project-id: ${pid}")
+    [ -n "$acl" ] && header_args+=(-H "x-obs-acl: ${acl}")
+    [ -n "$cb" ]  && header_args+=(-H "x-obs-callback: ${cb}")
+    curl --progress-bar -X PUT "${header_args[@]}" --data-binary "@${HOT_ZIP_PATH}" \
+      "${upload_url}" -o /dev/null -w "\n→ HTTP %{http_code}\n" && \
+      ok "${HOT_ZIP} 上传完成" || err "${HOT_ZIP} 上传失败"
+  else
+    warn "获取热更新 zip 上传地址失败，跳过"
+  fi
+
+  # 上传 renderer-latest.json 元数据
+  info "上传 renderer-latest.json..."
+  encoded_name=$(printf 'renderer-latest.json' | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))")
+  upload_json=$(curl -sS \
+    "${API_BASE}/releases/${TAG}/upload_url?file_name=${encoded_name}" \
+    -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
+  upload_url=$(echo "$upload_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
+  if [ -n "$upload_url" ]; then
+    headers_json=$(echo "$upload_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('headers',{})))" 2>/dev/null)
+    ct=$(echo "$headers_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('Content-Type','application/json'))" 2>/dev/null)
+    pid=$(echo "$headers_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('x-obs-meta-project-id',''))" 2>/dev/null)
+    acl=$(echo "$headers_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('x-obs-acl',''))" 2>/dev/null)
+    cb=$(echo "$headers_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('x-obs-callback',''))" 2>/dev/null)
+    header_args=(-H "Content-Type: ${ct}")
+    [ -n "$pid" ] && header_args+=(-H "x-obs-meta-project-id: ${pid}")
+    [ -n "$acl" ] && header_args+=(-H "x-obs-acl: ${acl}")
+    [ -n "$cb" ]  && header_args+=(-H "x-obs-callback: ${cb}")
+    curl --progress-bar -X PUT "${header_args[@]}" --data-binary "@${MANIFEST_PATH}" \
+      "${upload_url}" -o /dev/null -w "\n→ HTTP %{http_code}\n" && \
+      ok "renderer-latest.json 上传完成" || err "renderer-latest.json 上传失败"
+  else
+    warn "获取 renderer-latest.json 上传地址失败，跳过"
+  fi
+else
+  warn "非 macOS/Windows 环境，跳过热更新构建"
+fi
+
+# ============================================================
+# 第五步：更新 README
 # ============================================================
 echo ""
 info "═══════════════════════════════════════════════════════════"
@@ -339,7 +447,7 @@ else
 fi
 
 # ============================================================
-# 第五步：更新 Landing 页面下载地址
+# 第六步：更新 Landing 页面下载地址
 # ============================================================
 echo ""
 info "═══════════════════════════════════════════════════════════"

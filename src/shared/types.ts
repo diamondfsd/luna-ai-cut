@@ -338,6 +338,19 @@ export interface UpdateInfo {
   publishedAt?: string
 }
 
+/** 热更新检查结果 */
+export interface HotUpdateManifest {
+  version: string
+  zipName: string
+  minAppVersion: string
+}
+
+export interface HotUpdateCheckResult {
+  version: string
+  downloadUrl: string
+  manifest: HotUpdateManifest
+}
+
 export interface LunaApi {
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
@@ -391,6 +404,21 @@ export interface LunaApi {
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   /** 获取更新说明列表（按版本倒序，最多 5 条） */
   listReleaseNotes(): Promise<ReleaseNoteItem[]>
+
+  // ── 热更新 ──
+
+  /** 获取当前本地热更新版本（没有则返回 null） */
+  getHotUpdateVersion(): Promise<string | null>
+  /** 检查 GitCode 是否有新的热更新 */
+  checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
+  /** 下载并应用热更新 */
+  applyHotUpdate(info: HotUpdateCheckResult): Promise<{ success: boolean; error?: string }>
+  /** 清除热更新，回退到 asar 内置版本 */
+  clearHotUpdate(): Promise<void>
+  /** 重启应用（热更新后生效） */
+  relaunchApp(): Promise<void>
+  /** 监听热更新可用事件 */
+  onHotUpdateAvailable(callback: (info: HotUpdateCheckResult) => void): () => void
 }
 
 export interface ReleaseNoteItem {
