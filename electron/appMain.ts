@@ -545,30 +545,26 @@ function scheduleUpdateCheck(): void {
   const CHECK_FILE = join(app.getPath('userData'), '.last-update-check')
   const today = new Date().toISOString().slice(0, 10) // "2026-06-25"
 
-  // 今天已经检查过了，跳过
-  if (existsSync(CHECK_FILE) && readFileSync(CHECK_FILE, 'utf-8').trim() === today) {
-    return
-  }
-
   // 延迟 10s 执行首次检查
   setTimeout(async () => {
-    // 1. 检查全量更新（已有逻辑）
-    const info = await checkForUpdates()
-    if (info && win && !win.isDestroyed()) {
-      win.webContents.send('update:available', info)
-    }
-
-    // 2. 检查热更新（只有当前版本是最新时才需要）
-    if (!info) {
-      const hotInfo = await checkForHotUpdates()
-      if (hotInfo && win && !win.isDestroyed()) {
-        win.webContents.send('hot-update:available', hotInfo)
+    // 全量更新检查：受每日限制
+    if (existsSync(CHECK_FILE) && readFileSync(CHECK_FILE, 'utf-8').trim() === today) {
+      // 今天已检查过全量更新，跳过
+    } else {
+      const info = await checkForUpdates()
+      if (info && win && !win.isDestroyed()) {
+        win.webContents.send('update:available', info)
       }
+      // 记录检查日期
+      mkdirSync(app.getPath('userData'), { recursive: true })
+      writeFileSync(CHECK_FILE, today, 'utf-8')
     }
 
-    // 记录检查日期
-    mkdirSync(app.getPath('userData'), { recursive: true })
-    writeFileSync(CHECK_FILE, today, 'utf-8')
+    // 热更新检查：每次启动都检查（不受每日限制）
+    const hotInfo = await checkForHotUpdates()
+    if (hotInfo && win && !win.isDestroyed()) {
+      win.webContents.send('hot-update:available', hotInfo)
+    }
   }, 10_000)
 }
 
@@ -579,4 +575,11 @@ app.whenReady().then(() => {
   registerIpc()
   scheduleUpdateCheck()
   createWindow()
+
+  // 如果有热更新，更新窗口标题显示热更新版本号
+  const hotVersion = getCurrentHotVersion()
+  if (hotVersion && win && !win.isDestroyed()) {
+    // title 添加热更新版本标识，如 "Luna AI Cut v1.3.1-hot.6"
+    win.setTitle(`Luna AI Cut v${app.getVersion()}-${hotVersion.split('-').pop()}`)
+  }
 })

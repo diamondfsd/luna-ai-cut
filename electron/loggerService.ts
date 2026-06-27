@@ -19,7 +19,8 @@ function ensureDir(dir: string): void {
 
 function logFilePath(prefix: string, date: Date = new Date()): string {
   const dateStr = date.toISOString().slice(0, 10) // YYYY-MM-DD
-  return path.join(logDir(), `${prefix}-${dateStr}.log`)
+  const version = app.getVersion()
+  return path.join(logDir(), `${prefix}-${dateStr}-${version}.log`)
 }
 
 /** 递归清理 meta 对象中的文件路径，只保留文件名，避免泄露用户目录 */

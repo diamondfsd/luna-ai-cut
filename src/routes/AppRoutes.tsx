@@ -18,7 +18,6 @@ export function AppRoutes() {
     activeDevice,
     cameraLibraryMounted,
     connectDevice,
-    devices,
     devicePhase,
     mockServerStatus,
     showDeviceConnect,
@@ -164,7 +163,6 @@ export function AppRoutes() {
           <section className="route-panel">
             <SettingsPage
               activeDevice={activeDevice}
-              devices={devices}
               cacheStats={cacheStats}
               chooseDir={chooseDir}
               chooseExportDir={chooseExportDir}

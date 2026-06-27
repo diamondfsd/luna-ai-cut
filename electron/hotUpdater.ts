@@ -25,6 +25,7 @@ import AdmZip from 'adm-zip'
 const HOT_DIR = () => join(app.getPath('userData'), '.luna-hot')
 const VERSION_FILE = () => join(HOT_DIR(), 'version.json')
 
+const GITCODE_API = 'https://api.gitcode.com/api/v5/repos/diamondfsd/luna-ai-cut-package-release'
 const GITCODE_DL = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download'
 
 // ── 类型 ──
@@ -92,15 +93,49 @@ function parseHotVersion(version: string): { appVersion: string; hotBuild: numbe
 
 // ── GitCode API ──
 
+// ── GitCode API ──
+
 /**
- * 下载 renderer-latest.json 清单文件
+ * 通过 GitCode API 获取 Release 附件列表中最新的热更新 zip
+ *
+ * 不依赖静态 manifest 文件（OBS 不允许覆盖上传），
+ * 直接从 API 返回的附件中按版本号排序取最新。
  */
-async function fetchRendererLatest(releaseTag: string): Promise<HotUpdateManifest | null> {
-  const url = `${GITCODE_DL}/${releaseTag}/renderer-latest.json`
+async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdateManifest | null> {
   try {
-    const res = await fetch(url)
+    const res = await fetch(`${GITCODE_API}/releases/tags/${releaseTag}`)
     if (!res.ok) return null
-    return res.json()
+
+    const data = await res.json() as { assets?: Array<{ name: string }> }
+    const assets = data.assets ?? []
+
+    // 筛选 renderer-*-hot.*.zip 附件
+    const hotZips = assets.filter(a => {
+      return a.name.startsWith('renderer-') &&
+             a.name.endsWith('.zip') &&
+             /renderer-\d+\.\d+\.\d+-hot\.\d+\.zip$/.test(a.name)
+    })
+
+    if (hotZips.length === 0) return null
+
+    // 按 hot build 号降序排列，取最新的
+    hotZips.sort((a, b) => {
+      const na = Number(a.name.match(/-hot\.(\d+)\.zip$/)?.[1] ?? 0)
+      const nb = Number(b.name.match(/-hot\.(\d+)\.zip$/)?.[1] ?? 0)
+      return nb - na
+    })
+
+    const latest = hotZips[0]
+    // "renderer-1.3.1-hot.6.zip" → "1.3.1-hot.6"
+    const version = latest.name
+      .replace(/^renderer-/, '')
+      .replace(/\.zip$/, '')
+
+    return {
+      version,
+      zipName: latest.name,
+      minAppVersion: releaseTag.replace(/^v/, ''),
+    }
   } catch {
     return null
   }
@@ -116,7 +151,7 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   const appVersion = app.getVersion()
   const releaseTag = `v${appVersion}`
 
-  const manifest = await fetchRendererLatest(releaseTag)
+  const manifest = await fetchLatestHotUpdateViaAPI(releaseTag)
   if (!manifest) return null
 
   // 检查 minAppVersion 约束
