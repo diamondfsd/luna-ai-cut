@@ -494,10 +494,14 @@ function registerIpc(): void {
   // 应用热更新（下载 + 解压）
   ipcMain.handle('hot-update:apply', async (_event, info: HotUpdateCheckResult): Promise<{ success: boolean; error?: string }> => {
     try {
+      logMainInfo(`开始应用热更新: ${info.version}, 下载地址: ${info.downloadUrl}`)
       await applyHotUpdate(info)
+      const appliedVersion = getCurrentHotVersion()
+      logMainInfo(`热更新应用完成, 本地版本: ${appliedVersion}`)
       return { success: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      logMainError(`热更新应用失败: ${message}`)
       return { success: false, error: message }
     }
   })
@@ -586,8 +590,12 @@ app.whenReady().then(() => {
 
   // 如果有热更新，更新窗口标题显示热更新版本号
   const hotVersion = getCurrentHotVersion()
+  logMainInfo(`热更新版本检查: ${hotVersion ?? '无'}`)
   if (hotVersion && win && !win.isDestroyed()) {
-    // title 添加热更新版本标识，如 "Luna AI Cut v1.3.1-hot.6"
-    win.setTitle(`Luna AI Cut v${app.getVersion()}-${hotVersion.split('-').pop()}`)
+    const title = `Luna AI Cut v${app.getVersion()}-${hotVersion.split('-').pop()}`
+    logMainInfo(`设置窗口标题: ${title}`)
+    win.setTitle(title)
+  } else {
+    logMainInfo(`未设置热更新标题: hotVersion=${hotVersion}, win=${!!win}, destroyed=${win?.isDestroyed()}`)
   }
 })

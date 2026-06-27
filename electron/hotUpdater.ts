@@ -49,10 +49,15 @@ export interface HotUpdateCheckResult {
 /** 获取当前安装的热更新版本号，没有则返回 null */
 export function getCurrentHotVersion(): string | null {
   try {
-    if (!existsSync(VERSION_FILE())) return null
-    const data = JSON.parse(readFileSync(VERSION_FILE(), 'utf-8'))
-    return typeof data.version === 'string' ? data.version : null
-  } catch {
+    const path = VERSION_FILE()
+    if (!existsSync(path)) {
+      return null
+    }
+    const data = JSON.parse(readFileSync(path, 'utf-8'))
+    const version = typeof data.version === 'string' ? data.version : null
+    return version
+  } catch (err) {
+    console.log(`[hot-update] getCurrentHotVersion: 读取失败`, err)
     return null
   }
 }
