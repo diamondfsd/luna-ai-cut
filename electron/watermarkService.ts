@@ -12,6 +12,7 @@ import { previewCacheDir } from './settingsService'
 import { FfmpegPipeline, getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
 import { detectHardwareAccel } from './ffmpeg/hwaccel'
 import { CodecModule } from './ffmpeg/codec'
+import { BitrateModule } from './ffmpeg/bitrate'
 import { WatermarkModule } from './ffmpeg/watermark'
 import { applyWatermarkToVideo, applyVideoExportSettings } from './videoPipelineService'
 import type {
@@ -374,6 +375,13 @@ export async function applyWatermarkToLivePhoto(
       pipeline.setPreInputArgs(hwaccel.preInputArgs)
     }
     pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }, hwaccel.overlayFilter))
+    // 硬件编码器必须给显式码率
+    if (hwaccel.type !== null) {
+      pipeline.addModule(new BitrateModule({
+        quality: 'original',
+        useSourceBitrate: true,
+      }))
+    }
     pipeline.addModule(new CodecModule({
       encoderH264: hwaccel.encoderNameH264,
       encoderH265: hwaccel.encoderNameH265 ?? undefined,
