@@ -5,15 +5,16 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
 import exifr from 'exifr'
+import { logMainInfo, logMainError, logExport } from './loggerService'
 
 import { localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
 import { FfmpegPipeline, getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
+import { detectHardwareAccel } from './ffmpeg/hwaccel'
 import { CodecModule } from './ffmpeg/codec'
-import { ScaleModule } from './ffmpeg/scale'
-import { FrameRateModule } from './ffmpeg/framerate'
 import { BitrateModule } from './ffmpeg/bitrate'
 import { WatermarkModule } from './ffmpeg/watermark'
+import { applyWatermarkToVideo, applyVideoExportSettings } from './videoPipelineService'
 import type {
   LunaFile,
   PreviewResult,
@@ -280,13 +281,7 @@ async function applyWatermarkToImageWithRef(
     ? displayH - actualWmHeight - marginY
     : marginY
 
-  console.log('[watermark IMG]', {
-    imgWidth: imgInfo.width, imgHeight: imgInfo.height,
-    rotationDeg,
-    sensorW, displayW, displayH,
-    actualWmWidth, actualWmHeight, marginX, marginY,
-    position, x, y,
-  })
+  logExport('INFO', `[WATERMARK IMG] 图片水印参数`, { imgWidth: imgInfo.width, imgHeight: imgInfo.height, rotationDeg, sensorW, displayW, displayH, actualWmWidth, actualWmHeight, marginX, marginY, position, x, y })
 
   const outputExt = path.extname(outputPath).toLowerCase()
   const encoder = ffmpegImgEncoder(outputExt)
@@ -360,7 +355,7 @@ export async function applyWatermarkToLivePhoto(
   const processedVideo = path.join(tmpDir, `_live_video.mp4`)
 
   try {
-    console.log('[LIVE] applyWatermarkToLivePhoto called', { inputPath, outputPath, watermarkPercent, position, style })
+    logMainInfo('[LIVE] applyWatermarkToLivePhoto called', { inputPath, outputPath, watermarkPercent, position, style })
     const extracted = await extractLivePhotoVideo(inputPath, extractedVideo)
     if (!extracted) throw new Error('无法提取 Live Photo 内嵌视频')
 
@@ -368,15 +363,30 @@ export async function applyWatermarkToLivePhoto(
     const videoProbe = await probeMedia(extractedVideo)
     const vidW = videoProbe.videoWidth
     const vidH = videoProbe.videoHeight
-    console.log('[LIVE photo]', { videoProbe, source: inputPath })
+    logMainInfo('[LIVE photo]', { videoProbe: { videoWidth: videoProbe.videoWidth, videoHeight: videoProbe.videoHeight, durationSeconds: videoProbe.durationSeconds }, source: inputPath })
 
     // 图片水印以原始视频分辨率为参考，保持视觉一致
     await applyWatermarkToImageWithRef(inputPath, watermarkedImage, watermarkPercent, position, style, vidW, vidH)
 
     // 视频仅加水印，保持原始分辨率/帧率/码率
     const pipeline = new FfmpegPipeline()
-    pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }))
-    pipeline.addModule(new CodecModule())
+    const hwaccel = await detectHardwareAccel(getFfmpegPath())
+    if (hwaccel.preInputArgs.length > 0) {
+      pipeline.setPreInputArgs(hwaccel.preInputArgs)
+    }
+    pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }, hwaccel.overlayFilter))
+    // 硬件编码器必须给显式码率
+    if (hwaccel.type !== null) {
+      pipeline.addModule(new BitrateModule({
+        quality: 'original',
+        useSourceBitrate: true,
+      }))
+    }
+    pipeline.addModule(new CodecModule({
+      encoderH264: hwaccel.encoderNameH264,
+      encoderH265: hwaccel.encoderNameH265 ?? undefined,
+      encoderArgs: hwaccel.encoderArgs,
+    }))
     await pipeline.execute(extractedVideo, processedVideo,
       (pct) => onProgress?.(Math.round(pct * 0.6 + 30)), signal)
 
@@ -384,7 +394,7 @@ export async function applyWatermarkToLivePhoto(
     const vidStat = await fs.stat(processedVideo).catch(() => null)
     const imgStat = await fs.stat(watermarkedImage).catch(() => null)
     const origStat = await fs.stat(extractedVideo).catch(() => null)
-    console.log('[LIVE] post-process sizes:', {
+    logMainInfo('[LIVE] post-process sizes', {
       origVideo: origStat?.size,
       processedVideo: vidStat?.size,
       watermarkedImage: imgStat?.size,
@@ -394,7 +404,7 @@ export async function applyWatermarkToLivePhoto(
     const vidBytes = await fs.readFile(processedVideo)
     await fs.writeFile(outputPath, Buffer.concat([imgBytes, vidBytes]))
     const outStat = await fs.stat(outputPath).catch(() => null)
-    console.log('[LIVE] output file:', { size: outStat?.size })
+    logMainInfo('[LIVE] output file', { size: outStat?.size })
     onProgress?.(100)
   } finally {
     await fs.rm(extractedVideo, { force: true }).catch(() => {})
@@ -403,60 +413,9 @@ export async function applyWatermarkToLivePhoto(
   }
 }
 
-// ─── 视频水印（pipeline 包装） ───────────────
-
-export async function applyWatermarkToVideo(
-  inputPath: string,
-  outputPath: string,
-  watermarkPercent: number,
-  position: WatermarkPosition,
-  style: WatermarkStyle,
-  onProgress?: (percent: number) => void,
-  signal?: AbortSignal,
-  videoExportSettings?: VideoExportSettings,
-): Promise<void> {
-  const pipeline = new FfmpegPipeline()
-
-  // 模块顺序决定 filter 链顺序
-  if (videoExportSettings?.resolution && videoExportSettings.resolution !== 'original') {
-    pipeline.addModule(new ScaleModule({ resolution: videoExportSettings.resolution }))
-  }
-  pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }))
-  if (videoExportSettings?.frameRate && videoExportSettings.frameRate !== 'original') {
-    pipeline.addModule(new FrameRateModule({ frameRate: videoExportSettings.frameRate }))
-  }
-  if (videoExportSettings?.quality && videoExportSettings.quality !== 'original') {
-    pipeline.addModule(new BitrateModule({ quality: videoExportSettings.quality, customBitrate: videoExportSettings.customBitrate }))
-  }
-  pipeline.addModule(new CodecModule())
-
-  await pipeline.execute(inputPath, outputPath, onProgress, signal)
-}
-
-// ─── 纯视频转码（无水印，pipeline 包装） ──────
-
-export async function applyVideoExportSettings(
-  inputPath: string,
-  outputPath: string,
-  videoExportSettings: VideoExportSettings,
-  onProgress?: (percent: number) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  const pipeline = new FfmpegPipeline()
-
-  if (videoExportSettings.resolution !== 'original') {
-    pipeline.addModule(new ScaleModule({ resolution: videoExportSettings.resolution }))
-  }
-  if (videoExportSettings.frameRate !== 'original') {
-    pipeline.addModule(new FrameRateModule({ frameRate: videoExportSettings.frameRate }))
-  }
-  if (videoExportSettings.quality !== 'original') {
-    pipeline.addModule(new BitrateModule({ quality: videoExportSettings.quality, customBitrate: videoExportSettings.customBitrate }))
-  }
-  pipeline.addModule(new CodecModule())
-
-  await pipeline.execute(inputPath, outputPath, onProgress, signal)
-}
+// 视频流水线函数定义在 videoPipelineService.ts 中
+// 此处 re-export 保持向后兼容
+export { applyWatermarkToVideo, applyVideoExportSettings }
 
 // ─── 水印预览 ────────────────────────────────
 
@@ -497,7 +456,7 @@ export async function previewWithWatermark(
     }
     return { fileName: file.name, kind: file.kind, source: localThumbnailUrl(destPath), cachedPath: destPath }
   } catch (error) {
-    console.error('[watermark] 预览水印生成失败:', error)
+    logMainError('[watermark] 预览水印生成失败', error instanceof Error ? { message: error.message } : String(error))
     return { fileName: file.name, kind: file.kind, source: null, cachedPath: null, message: '水印生成失败' }
   }
 }

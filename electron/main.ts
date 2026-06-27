@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { checkForUpdates } from './updateService'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
+import { clearLogs, getLogDir, initLogger, logMainInfo, logMainError, logMainWarn, logExport, logRendererMessage } from './loggerService'
 
 import {
   cacheFile,
@@ -209,6 +210,29 @@ app.on('activate', () => {
 })
 
 function registerIpc(): void {
+  // 渲染进程日志
+  ipcMain.on('log:renderer', (_event, level: string, message: string, meta?: unknown) => {
+    logRendererMessage(level, message, meta)
+  })
+
+  // 导出日志
+  ipcMain.handle('log:export', (_event, message: string, meta?: unknown) => {
+    logExport('INFO', message, meta)
+    return true
+  })
+
+  // 主进程日志（供渲染进程直接调用）
+  ipcMain.on('log:main', (_event, level: string, message: string, meta?: unknown) => {
+    if (level === 'error') logMainError(message, meta)
+    else if (level === 'warn') logMainWarn(message, meta)
+    else logMainInfo(message, meta)
+  })
+
+  // 获取日志目录
+  ipcMain.handle('log:getDir', () => getLogDir())
+  // 清空日志
+  ipcMain.handle('log:clear', () => clearLogs())
+
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:save', (_event, settings: Partial<AppSettings>) => saveSettings(settings))
   ipcMain.handle('devices:list', () => deviceDefinitions())
@@ -503,6 +527,8 @@ function scheduleUpdateCheck(): void {
 }
 
 app.whenReady().then(() => {
+  initLogger()
+  logMainInfo('应用启动')
   Menu.setApplicationMenu(null)
   registerIpc()
   scheduleUpdateCheck()

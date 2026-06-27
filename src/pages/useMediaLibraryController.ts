@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { logger } from '../lib/rendererLogger'
 import type { AppSettings, DeviceDefinition, DownloadProgress, ExportProgress, LunaFile, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { useMediaLibraryTransferActions } from './useMediaLibraryTransferActions'
 
@@ -89,6 +90,16 @@ export function useMediaLibraryController({
   useEffect(() => {
     return window.luna.onExportProgress((progress) => {
       setExportProgress((current) => new Map(current).set(progress.exportId ?? progress.fileName, progress))
+      // 记录关键进度事件
+      if (progress.status === 'done') {
+        logger.info(`导出完成: ${progress.fileName}`, { destinationPath: progress.destinationPath })
+      } else if (progress.status === 'failed') {
+        logger.error(`导出失败: ${progress.fileName}`, { error: progress.error })
+      } else if (progress.status === 'canceled') {
+        logger.warn(`导出已取消: ${progress.fileName}`)
+      } else if (progress.status === 'exporting' && progress.percent !== null && progress.percent % 25 === 0) {
+        logger.info(`导出进度: ${progress.fileName}`, { percent: progress.percent })
+      }
     })
   }, [])
 

@@ -339,6 +339,10 @@ export interface UpdateInfo {
 }
 
 export interface LunaApi {
+  log: (level: string, message: string, meta?: unknown) => void
+  logExport: (message: string, meta?: unknown) => Promise<boolean>
+  getLogDir: () => Promise<string>
+  clearLogs: () => Promise<void>
   getSettings(): Promise<AppSettings>
   saveSettings(settings: Partial<AppSettings>): Promise<AppSettings>
   listDevices(): Promise<DeviceDefinition[]>

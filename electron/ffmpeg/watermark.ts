@@ -34,13 +34,16 @@ export interface WatermarkOptions {
 
 /**
  * 水印模块 — 叠加水印图片到视频
+ * 支持 GPU overlay（overlay_cuda / overlay_qsv）自动插入 hwupload
  */
 export class WatermarkModule implements FfmpegModule {
   readonly name = 'watermark'
   private opts: WatermarkOptions
+  private overlayFilter: string
 
-  constructor(opts: WatermarkOptions) {
+  constructor(opts: WatermarkOptions, overlayFilter: string = 'overlay') {
     this.opts = opts
+    this.overlayFilter = overlayFilter
   }
 
   isActive(): boolean {
@@ -63,13 +66,22 @@ export class WatermarkModule implements FfmpegModule {
       wmSize, marginPx,
       position, overlayExpr: `${ox}:${oy}`,
       prevLabel: ctx.prevLabel,
+      overlayFilter: this.overlayFilter,
     })
+
+    // GPU overlay（overlay_cuda / overlay_qsv）需要先将水印图片上传到 GPU
+    let filter: string
+    if (this.overlayFilter === 'overlay_cuda') {
+      filter = `[1:v]scale=${wmSize}:-1,format=nv12,hwupload_cuda[wm];${ctx.prevLabel}[wm]overlay_cuda=${ox}:${oy}`
+    } else if (this.overlayFilter === 'overlay_qsv') {
+      filter = `[1:v]scale=${wmSize}:-1,format=nv12,hwupload=qsv[wm];${ctx.prevLabel}[wm]overlay_qsv=${ox}:${oy}`
+    } else {
+      filter = `[1:v]scale=${wmSize}:-1[wm];${ctx.prevLabel}[wm]${this.overlayFilter}=${ox}:${oy}`
+    }
 
     return {
       inputs: [wmPath],
-      filters: [
-        `[1:v]scale=${wmSize}:-1[wm];${ctx.prevLabel}[wm]overlay=${ox}:${oy}`,
-      ],
+      filters: [filter],
     }
   }
 }

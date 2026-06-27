@@ -2,11 +2,15 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import App from './App.tsx'
+import { initRendererLogger } from './lib/rendererLogger'
 import './index.css'
 import './styles/variables.css'
 import './styles/utilities.css'
 import './ui/styles.css'
 import './styles/responsive.css'
+
+// 尽早初始化渲染进程日志系统，以捕获所有 console 输出
+initRendererLogger()
 
 document.title = `Luna AI Cut v${__APP_VERSION__}`
 
