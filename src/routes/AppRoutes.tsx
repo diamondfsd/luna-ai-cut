@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
 import { AppNav } from '../components/AppNav'
+import { HotUpdateBanner } from '../components/HotUpdateBanner'
 import { UpdateBanner } from '../components/UpdateBanner'
 import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
@@ -102,6 +103,7 @@ export function AppRoutes() {
     <main className="app">
       <AppNav connection={connection} sourceMode={sourceMode} activeDevice={activeDevice} />
       <UpdateBanner />
+      <HotUpdateBanner />
 
       <div className="route-stack" key={pagesKey}>
        

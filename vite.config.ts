@@ -15,11 +15,16 @@ export default defineConfig({
     react(),
     electron({
       main: {
-        // Shortcut of `build.lib.entry`.
+        // bootstrap 入口，它会动态 import ./appMain.ts
         entry: 'electron/main.ts',
         vite: {
           build: {
-            rollupOptions: {},
+            rollupOptions: {
+              output: {
+                // 让 appMain 的 chunk 有可预测的文件名，方便热更新构建
+                chunkFileNames: 'luna-[name].js',
+              },
+            },
           },
         },
       },
@@ -31,10 +36,11 @@ export default defineConfig({
       // Ployfill the Electron and Node.js API for Renderer process.
       // If you want use Node.js in Renderer process, the `nodeIntegration` needs to be enabled in the Main process.
       // See 👉 https://github.com/electron-vite/vite-plugin-electron-renderer
-      renderer: process.env.NODE_ENV === 'test'
-        // https://github.com/electron-vite/vite-plugin-electron-renderer/issues/78#issuecomment-2053600808
-        ? undefined
-        : {},
+      renderer:
+        process.env.NODE_ENV === 'test'
+          ? // https://github.com/electron-vite/vite-plugin-electron-renderer/issues/78#issuecomment-2053600808
+            undefined
+          : {},
     }),
   ],
 })
