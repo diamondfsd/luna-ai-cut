@@ -93,26 +93,45 @@ function dxva2Only(): HwAccelConfig {
 
 // ─── Windows 逐级探测 ────────────────────────────
 
+/**
+ * 验证硬件设备是否实际可用
+ * ffmpeg 二进制可能编译了某个编码器，但当前机器不一定有对应硬件
+ * 例如 Gyan.dev 的 Windows 构建包含所有编码器，但用户可能没有 NVIDIA 显卡
+ */
+async function probeHwDevice(ffmpegPath: string, deviceType: string): Promise<boolean> {
+  try {
+    await execAsync(ffmpegPath, [
+      '-hide_banner',
+      '-init_hw_device', deviceType,
+      '-f', 'lavfi', '-i', 'color=c=black:s=2x2:d=0.1',
+      '-f', 'null', '-',
+    ], { timeout: 8000 })
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function detectWindowsHwAccel(ffmpegPath: string): Promise<HwAccelConfig> {
   try {
     const { stdout } = await execAsync(ffmpegPath, ['-encoders'], { timeout: 5000 })
 
-    // NVIDIA CUDA — 最佳性能
-    if (stdout.includes('h264_nvenc')) {
+    // NVIDIA CUDA — 最佳性能（需要验证 CUDA 设备真的存在）
+    if (stdout.includes('h264_nvenc') && await probeHwDevice(ffmpegPath, 'cuda')) {
       return nvidiaCuda()
     }
 
-    // Intel QuickSync
-    if (stdout.includes('h264_qsv')) {
+    // Intel QuickSync（需要验证 QSV 设备）
+    if (stdout.includes('h264_qsv') && await probeHwDevice(ffmpegPath, 'qsv')) {
       return intelQsv()
     }
 
-    // AMD AMF
-    if (stdout.includes('h264_amf')) {
+    // AMD AMF（需要验证 D3D11 设备）
+    if (stdout.includes('h264_amf') && await probeHwDevice(ffmpegPath, 'd3d11va')) {
       return amdAmf()
     }
 
-    // DXVA2 仅解码加速（任何 GPU 都支持）
+    // DXVA2 仅解码加速（任何 GPU 都支持，回退方案）
     return dxva2Only()
   } catch {
     return noAccel()

@@ -59,13 +59,5 @@
     "vite-plugin-electron": "^0.28.6",
     "vite-plugin-electron-renderer": "^0.14.5"
   },
-  "build": {
-    "mac": {
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
-    },
-    "win": {
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
-    }
-  },
   "main": "dist-electron/main.js"
 }
