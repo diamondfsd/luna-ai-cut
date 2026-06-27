@@ -5,6 +5,7 @@ import type {
   DeviceConnectOptions,
   DownloadProgress,
   ExportProgress,
+  HotUpdateCheckResult,
   LunaApi,
   LunaFile,
   UpdateInfo,
@@ -105,6 +106,18 @@ const lunaApi: LunaApi = {
     return () => ipcRenderer.off('update:available', listener)
   },
   listReleaseNotes: () => ipcRenderer.invoke('release-notes:list'),
+
+  // ── 热更新 ──
+  getHotUpdateVersion: () => ipcRenderer.invoke('hot-update:current-version'),
+  checkForHotUpdates: () => ipcRenderer.invoke('hot-update:check'),
+  applyHotUpdate: (info: HotUpdateCheckResult) => ipcRenderer.invoke('hot-update:apply', info),
+  clearHotUpdate: () => ipcRenderer.invoke('hot-update:clear'),
+  relaunchApp: () => ipcRenderer.invoke('hot-update:relaunch'),
+  onHotUpdateAvailable: (callback: (info: HotUpdateCheckResult) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, info: HotUpdateCheckResult): void => callback(info)
+    ipcRenderer.on('hot-update:available', listener)
+    return () => ipcRenderer.off('hot-update:available', listener)
+  },
 }
 
 const wifiDebugApi: WifiDebugApi = {

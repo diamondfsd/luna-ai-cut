@@ -30,6 +30,11 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     },
   })
 
+  // 阻止 HTML <title> 覆盖通过 win.setTitle() 设置的窗口标题
+  win.on('page-title-updated', (event) => {
+    event.preventDefault()
+  })
+
   win.on('close', (event) => {
     const hasDownloadTasks = options.hasActiveDownloads()
     const hasExportTasks = options.hasActiveExports()

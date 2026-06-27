@@ -3,12 +3,11 @@ import { FolderOpen, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
-import { Button, Input, SegmentedControl, toast } from '../ui'
+import { Button, Input, toast } from '../ui'
 import '../styles/settings.css'
 
 interface SettingsPageProps {
   activeDevice?: DeviceDefinition
-  devices: DeviceDefinition[]
   cacheStats: CacheStats | null
   chooseDir: () => Promise<void>
   chooseExportDir: () => Promise<void>
@@ -21,7 +20,6 @@ interface SettingsPageProps {
 
 export function SettingsPage({
   activeDevice,
-  devices,
   cacheStats,
   chooseDir,
   chooseExportDir,
@@ -39,7 +37,6 @@ export function SettingsPage({
   }, [])
 
   const displayCacheStats = freshCacheStats ?? cacheStats
-  const deviceName = activeDevice?.name ?? '设备'
 
   async function handleClearCache(): Promise<void> {
     await clearCache()
@@ -48,50 +45,11 @@ export function SettingsPage({
     if (stats) setFreshCacheStats(stats)
   }
 
-  async function savePartial(partial: Partial<AppSettings>): Promise<AppSettings> {
-    const updated = await window.luna.saveSettings(partial)
-    setSettings(updated)
-    return updated
-  }
-
-  async function switchDevice(deviceId: string): Promise<void> {
-    const device = devices.find((item) => item.id === deviceId)
-    if (!device) return
-
-    await savePartial({
-      activeDeviceId: device.id,
-      cameraHost: device.defaultHost,
-      deviceStorage: {
-        ...(settings?.deviceStorage ?? {}),
-        [device.id]: settings?.deviceStorage?.[device.id] ?? 'all',
-      },
-      mockHost: device.mock.host,
-      mockHttpPort: device.mock.httpPort,
-      mockTcpPort: device.mock.tcpPort,
-      mockRateMbps: device.mock.rateMbps,
-    })
-  }
-
   return (
     <section className="settings-surface">
       {/* ===== 通用设置 ===== */}
       <div className="settings-list">
         <h3 className="settings-group-title">通用</h3>
-
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span>设备类型</span>
-            <strong>{deviceName}</strong>
-          </div>
-          {devices.length > 1 && (
-            <SegmentedControl
-              ariaLabel="选择设备类型"
-              options={devices.map((device) => ({ value: device.id, label: device.name }))}
-              value={activeDevice?.id ?? devices[0]?.id ?? ''}
-              onChange={(value) => void switchDevice(value)}
-            />
-          )}
-        </article>
 
         <article className="settings-row">
           <div className="settings-row-copy">
@@ -170,7 +128,7 @@ export function SettingsPage({
         <article className="settings-row">
           <div className="settings-row-copy">
             <span>相机地址</span>
-            <em>{connection?.message ?? `${deviceName} 默认地址：${activeDevice?.defaultHost || '未配置'}`}</em>
+            <em>{connection?.message ?? `${activeDevice?.name ?? '设备'} 默认地址：${activeDevice?.defaultHost || '未配置'}`}</em>
           </div>
           <Input
             variant="pill"
