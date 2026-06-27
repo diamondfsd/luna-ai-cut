@@ -34,9 +34,20 @@ export async function applyWatermarkToVideo(
   if (videoExportSettings?.frameRate && videoExportSettings.frameRate !== 'original') {
     pipeline.addModule(new FrameRateModule({ frameRate: videoExportSettings.frameRate }))
   }
-  if (videoExportSettings?.quality && videoExportSettings.quality !== 'original') {
-    pipeline.addModule(new BitrateModule({ quality: videoExportSettings.quality, customBitrate: videoExportSettings.customBitrate }))
+
+  // 码率：硬件编码器必须给显式 -b:v（否则默认 ~2mbps）
+  // 原始画质 + 硬件编码 → 用源视频码率
+  // 原始画质 + 软件编码 → 不给码率（libx264 用 CRF 模式）
+  const quality = videoExportSettings?.quality ?? 'original'
+  const useHwEncoder = hwaccel.type !== null
+  if (quality !== 'original' || useHwEncoder) {
+    pipeline.addModule(new BitrateModule({
+      quality,
+      customBitrate: videoExportSettings?.customBitrate,
+      useSourceBitrate: quality === 'original' && useHwEncoder,
+    }))
   }
+
   pipeline.addModule(new CodecModule({
     encoderH264: hwaccel.encoderNameH264,
     encoderH265: hwaccel.encoderNameH265 ?? undefined,
@@ -68,8 +79,15 @@ export async function applyVideoExportSettings(
   if (videoExportSettings.frameRate !== 'original') {
     pipeline.addModule(new FrameRateModule({ frameRate: videoExportSettings.frameRate }))
   }
-  if (videoExportSettings.quality !== 'original') {
-    pipeline.addModule(new BitrateModule({ quality: videoExportSettings.quality, customBitrate: videoExportSettings.customBitrate }))
+
+  // 码率：硬件编码器必须给显式 -b:v
+  const useHwEncoder = hwaccel.type !== null
+  if (videoExportSettings.quality !== 'original' || useHwEncoder) {
+    pipeline.addModule(new BitrateModule({
+      quality: videoExportSettings.quality,
+      customBitrate: videoExportSettings.customBitrate,
+      useSourceBitrate: videoExportSettings.quality === 'original' && useHwEncoder,
+    }))
   }
   pipeline.addModule(new CodecModule({
     encoderH264: hwaccel.encoderNameH264,
