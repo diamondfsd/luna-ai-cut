@@ -20,11 +20,12 @@ async function boot(): Promise<void> {
   // 检查是否有有效的热更新版本
   const hotVersion = readHotVersion(versionFile)
 
+  console.log(`[hot-update] versionFile=${versionFile}, exists=${existsSync(versionFile)}, hotMain=${hotMain}, exists=${existsSync(hotMain)}`)
   if (hotVersion && existsSync(hotMain)) {
-    // eslint-disable-next-line no-console
-    console.log(`[hot-update] 加载热更新版本: ${hotVersion}`)
+    console.log(`[hot-update] 加载热更新版本: ${hotVersion}, 路径: ${hotMain}`)
     try {
       await import(pathToFileURL(hotMain).href)
+      console.log(`[hot-update] 热更新加载成功: ${hotVersion}`)
       return // 加载成功
     } catch (err) {
       // 热更新加载失败时降级到 asar 版本，并清除坏的热更新
@@ -32,8 +33,13 @@ async function boot(): Promise<void> {
       try {
         const { rmSync } = await import('node:fs')
         rmSync(hotDir, { recursive: true, force: true })
-      } catch { /* ignore cleanup errors */ }
+        console.log(`[hot-update] 已清除损坏的热更新目录: ${hotDir}`)
+      } catch (cleanErr) {
+        console.error('[hot-update] 清除失败:', cleanErr)
+      }
     }
+  } else {
+    console.log(`[hot-update] 跳过热更新: hotVersion=${hotVersion}, mainExists=${existsSync(hotMain)}`)
   }
   // 加载 asar 内置的 fallback 版本
   // rollup 会将此动态 import 编译为名为 'luna-appMain.js' 的独立 chunk
