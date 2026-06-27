@@ -42,7 +42,7 @@ export class CodecModule implements FfmpegModule {
         outputArgs: [
           ...parts,
           '-pix_fmt', 'yuv420p',
-          '-c:a', 'aac', '-b:a', '192k',
+          '-c:a', 'copy',
         ],
       }
     }
@@ -53,7 +53,7 @@ export class CodecModule implements FfmpegModule {
         outputArgs: [
           '-c:v', 'prores_ks',
           '-pix_fmt', 'yuv420p',
-          '-c:a', 'aac', '-b:a', '192k',
+          '-c:a', 'copy',
         ],
       }
     }
@@ -68,7 +68,7 @@ export class CodecModule implements FfmpegModule {
       outputArgs: [
         ...parts,
         '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-b:a', '192k',
+        '-c:a', 'copy',
       ],
     }
   }
