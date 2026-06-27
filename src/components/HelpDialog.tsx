@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Code2, FileText, HelpCircle, Loader2 } from 'lucide-react'
+import { Code2, FileText, HelpCircle, Loader2, Zap } from 'lucide-react'
 
 import type { UpdateInfo } from '../shared/types'
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui'
@@ -14,7 +14,12 @@ export function HelpDialog({ children }: HelpDialogProps) {
   const [checking, setChecking] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [noUpdate, setNoUpdate] = useState(false)
+  const [hotVersion, setHotVersion] = useState<string | null>(null)
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
+
+  useEffect(() => {
+    window.luna.getHotUpdateVersion().then(v => setHotVersion(v)).catch(() => {})
+  }, [])
 
   async function handleCheckUpdate(): Promise<void> {
     setChecking(true)
@@ -58,7 +63,15 @@ export function HelpDialog({ children }: HelpDialogProps) {
           {/* 版本与更新 */}
           <div className="help-section">
             <div className="help-version-row">
-              <span className="help-version-text">v{__APP_VERSION__}</span>
+              <span className="help-version-text">
+              v{__APP_VERSION__}
+              {hotVersion && (
+                <span style={{ fontSize: 11, color: 'var(--blue)', marginLeft: 6, fontWeight: 600 }}>
+                  <Zap size={11} style={{ verticalAlign: 'middle', marginRight: 2 }} />
+                  {hotVersion.split('-').pop()}
+                </span>
+              )}
+            </span>
               {updateInfo ? (
                 <span className="help-update-available">
                   <span>新版本 <strong>v{updateInfo.version}</strong> 可用</span>
