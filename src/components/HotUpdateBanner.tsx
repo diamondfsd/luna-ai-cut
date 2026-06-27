@@ -81,9 +81,9 @@ export function HotUpdateBanner() {
               <RefreshCw size={14} />
               立即重启
             </Button>
-            <button className="update-banner-close" onClick={() => { setDismissed(true); setPhase('done') }} aria-label="稍后">
-              稍后
-            </button>
+            <Button variant="secondary" size="compact" onClick={() => { setDismissed(true); setPhase('done') }}>
+              稍后再说
+            </Button>
           </>
         )}
         {phase === 'done' && error && (

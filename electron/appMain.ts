@@ -466,9 +466,17 @@ function registerIpc(): void {
     activeExportControllers.clear()
   })
 
-  // 手动触发更新检查
+  // 手动触发更新检查（全量 + 热更新一并检查）
   ipcMain.handle('update:check', async () => {
-    return checkForUpdates()
+    const fullInfo = await checkForUpdates()
+    if (fullInfo) return fullInfo
+
+    // 没有全量更新时检查热更新，热更新通过 hot-update:available 事件通知
+    const hotInfo = await checkForHotUpdates()
+    if (hotInfo && win && !win.isDestroyed()) {
+      win.webContents.send('hot-update:available', hotInfo)
+    }
+    return null
   })
 
   // ── 热更新 ──
@@ -545,7 +553,7 @@ function scheduleUpdateCheck(): void {
   const CHECK_FILE = join(app.getPath('userData'), '.last-update-check')
   const today = new Date().toISOString().slice(0, 10) // "2026-06-25"
 
-  // 延迟 10s 执行首次检查
+  // 延迟 2s 执行首次检查
   setTimeout(async () => {
     // 全量更新检查：受每日限制
     if (existsSync(CHECK_FILE) && readFileSync(CHECK_FILE, 'utf-8').trim() === today) {
@@ -565,7 +573,7 @@ function scheduleUpdateCheck(): void {
     if (hotInfo && win && !win.isDestroyed()) {
       win.webContents.send('hot-update:available', hotInfo)
     }
-  }, 10_000)
+  }, 2_000)
 }
 
 app.whenReady().then(() => {
