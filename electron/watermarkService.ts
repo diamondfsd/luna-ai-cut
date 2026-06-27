@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
 import exifr from 'exifr'
+import { logMainInfo, logMainError, logExport } from './loggerService'
 
 import { localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
@@ -280,13 +281,7 @@ async function applyWatermarkToImageWithRef(
     ? displayH - actualWmHeight - marginY
     : marginY
 
-  console.log('[watermark IMG]', {
-    imgWidth: imgInfo.width, imgHeight: imgInfo.height,
-    rotationDeg,
-    sensorW, displayW, displayH,
-    actualWmWidth, actualWmHeight, marginX, marginY,
-    position, x, y,
-  })
+  logExport('INFO', `[WATERMARK IMG] 图片水印参数`, { imgWidth: imgInfo.width, imgHeight: imgInfo.height, rotationDeg, sensorW, displayW, displayH, actualWmWidth, actualWmHeight, marginX, marginY, position, x, y })
 
   const outputExt = path.extname(outputPath).toLowerCase()
   const encoder = ffmpegImgEncoder(outputExt)
@@ -360,7 +355,7 @@ export async function applyWatermarkToLivePhoto(
   const processedVideo = path.join(tmpDir, `_live_video.mp4`)
 
   try {
-    console.log('[LIVE] applyWatermarkToLivePhoto called', { inputPath, outputPath, watermarkPercent, position, style })
+    logMainInfo('[LIVE] applyWatermarkToLivePhoto called', { inputPath, outputPath, watermarkPercent, position, style })
     const extracted = await extractLivePhotoVideo(inputPath, extractedVideo)
     if (!extracted) throw new Error('无法提取 Live Photo 内嵌视频')
 
@@ -368,7 +363,7 @@ export async function applyWatermarkToLivePhoto(
     const videoProbe = await probeMedia(extractedVideo)
     const vidW = videoProbe.videoWidth
     const vidH = videoProbe.videoHeight
-    console.log('[LIVE photo]', { videoProbe, source: inputPath })
+    logMainInfo('[LIVE photo]', { videoProbe: { videoWidth: videoProbe.videoWidth, videoHeight: videoProbe.videoHeight, durationSeconds: videoProbe.durationSeconds }, source: inputPath })
 
     // 图片水印以原始视频分辨率为参考，保持视觉一致
     await applyWatermarkToImageWithRef(inputPath, watermarkedImage, watermarkPercent, position, style, vidW, vidH)
@@ -384,7 +379,7 @@ export async function applyWatermarkToLivePhoto(
     const vidStat = await fs.stat(processedVideo).catch(() => null)
     const imgStat = await fs.stat(watermarkedImage).catch(() => null)
     const origStat = await fs.stat(extractedVideo).catch(() => null)
-    console.log('[LIVE] post-process sizes:', {
+    logMainInfo('[LIVE] post-process sizes', {
       origVideo: origStat?.size,
       processedVideo: vidStat?.size,
       watermarkedImage: imgStat?.size,
@@ -394,7 +389,7 @@ export async function applyWatermarkToLivePhoto(
     const vidBytes = await fs.readFile(processedVideo)
     await fs.writeFile(outputPath, Buffer.concat([imgBytes, vidBytes]))
     const outStat = await fs.stat(outputPath).catch(() => null)
-    console.log('[LIVE] output file:', { size: outStat?.size })
+    logMainInfo('[LIVE] output file', { size: outStat?.size })
     onProgress?.(100)
   } finally {
     await fs.rm(extractedVideo, { force: true }).catch(() => {})
@@ -497,7 +492,7 @@ export async function previewWithWatermark(
     }
     return { fileName: file.name, kind: file.kind, source: localThumbnailUrl(destPath), cachedPath: destPath }
   } catch (error) {
-    console.error('[watermark] 预览水印生成失败:', error)
+    logMainError('[watermark] 预览水印生成失败', error instanceof Error ? { message: error.message } : String(error))
     return { fileName: file.name, kind: file.kind, source: null, cachedPath: null, message: '水印生成失败' }
   }
 }

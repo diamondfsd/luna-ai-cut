@@ -21,6 +21,7 @@
     "mock:luna": "node luna_mock_server/server.mjs",
     "pack:mac:arm64": "npm run build:app && node scripts/copy-ffmpeg.mjs --target darwin --arch arm64 && ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --mac dmg --arm64 --publish never",
     "pack:win:x64": "npm run build:app && node scripts/copy-ffmpeg.mjs --target win32 --arch x64 && electron-builder --win nsis --x64 --publish never",
+    "pack:mac:x64": "npm run build:app && node scripts/copy-ffmpeg.mjs --target darwin --arch x64 && ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --mac dmg --x64 --publish never",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
@@ -57,6 +58,11 @@
     "vite": "^5.1.6",
     "vite-plugin-electron": "^0.28.6",
     "vite-plugin-electron-renderer": "^0.14.5"
+  },
+  "build": {
+    "mac": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
   },
   "main": "dist-electron/main.js"
 }

@@ -8,6 +8,7 @@ import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
 import { generateThumbnail, safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
 import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToLivePhoto, applyWatermarkToVideo } from './watermarkService'
+import { logMainInfo, logMainError, logMainWarn } from './loggerService'
 import type { LunaFile, VideoExportSettings, WatermarkSettings } from '../src/shared/types'
 
 export interface ExportProgress {
@@ -71,6 +72,8 @@ export async function exportFiles(
   const exportId = crypto.randomUUID().slice(0, 8)
   const tmpDir = path.join(exportDir, `.export_tmp_${exportId}`)
 
+  logMainInfo('[EXPORT] 开始导出任务', { exportId, fileCount: files.length, exportDir, watermarkEnabled: watermarkSettings.enabled, watermarkPercent: watermarkSettings.watermarkPercent, watermarkPosition: watermarkSettings.position, watermarkStyle: watermarkSettings.style })
+
   await fs.mkdir(tmpDir, { recursive: true })
 
   function prog(file: typeof files[number], extra: Partial<ExportProgress>): ExportProgress {
@@ -82,6 +85,7 @@ export async function exportFiles(
       throwIfAborted(signal)
     } catch {
       canceled.push({ name: file.name })
+      logMainWarn('[EXPORT] 导出被取消', { name: file.name })
       onProgress?.(prog(file, { percent: null, status: 'canceled' }))
       break
     }
@@ -89,6 +93,7 @@ export async function exportFiles(
     const localPath = file.localPath
     if (!localPath) {
       failed.push({ name: file.name, error: '文件未下载' })
+      logMainError('[EXPORT] 文件导出失败', { name: file.name, error: '文件未下载' })
       onProgress?.(prog(file, { percent: null, status: 'failed', error: '文件未下载' }))
       continue
     }
@@ -97,6 +102,7 @@ export async function exportFiles(
       await fs.access(localPath)
     } catch {
       failed.push({ name: file.name, error: '本地文件不存在' })
+      logMainError('[EXPORT] 文件导出失败', { name: file.name, error: '本地文件不存在' })
       onProgress?.(prog(file, { percent: null, status: 'failed', error: '本地文件不存在' }))
       continue
     }
@@ -111,6 +117,7 @@ export async function exportFiles(
 
     try {
       onProgress?.(prog(file, { percent: 0, status: 'exporting' }))
+      logMainInfo('[EXPORT] 开始处理文件', { name: file.name, kind: file.kind, localPath })
       if (file.kind === 'video' && watermarkSettings.enabled) {
         // 有水印的视频 — 需要 ffmpeg 合成水印
         await applyWatermarkToVideo(
@@ -156,6 +163,7 @@ export async function exportFiles(
       await ensureExportThumbnail(finalPath, destName, file.kind)
       completed.push({ name: file.name, path: finalPath })
       onProgress?.(prog(file, { percent: 100, status: 'done', destinationPath: finalPath }))
+      logMainInfo('[EXPORT] 文件导出完成', { name: file.name, destinationPath: finalPath })
     } catch (error) {
       try { await fs.rm(tmpPath, { force: true }) } catch { /* ignore */ }
       if (signal?.aborted || isAbortError(error)) {
@@ -165,6 +173,7 @@ export async function exportFiles(
       }
       const message = error instanceof Error ? error.message : String(error)
       console.error('[export] 导出失败:', file.name, error)
+      logMainError('[EXPORT] 文件导出失败', { name: file.name, error: message })
       failed.push({ name: file.name, error: message })
       onProgress?.(prog(file, { percent: null, status: 'failed', error: message }))
     }
