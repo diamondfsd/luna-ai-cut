@@ -62,6 +62,9 @@
   "build": {
     "mac": {
       "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     }
   },
   "main": "dist-electron/main.js"

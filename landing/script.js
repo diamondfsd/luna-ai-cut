@@ -9,7 +9,7 @@ const LATEST_RELEASE = {
   tag: 'v1.2.14',
   gitcode_mac_arm: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.14/LunaAICut-1.2.14-arm64.dmg',
   gitcode_mac_x64: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.14/LunaAICut-1.2.14-x64.dmg',
-  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.14/LunaAICut-Windows-1.2.14-Setup.exe',
+  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.2.14/LunaAICut-Setup-1.2.14-x64.exe',
 }
 
 // ── 版本号渲染 ──────────────────────────────────────────
@@ -105,6 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── 芯片选择切换 ──
   if (macChipSelect) {
     macChipSelect.addEventListener('change', () => {
+      macChipSelect.dataset.userChanged = 'true'
       updateChipUI()
       setDownloadLinks()
     })

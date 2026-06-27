@@ -603,8 +603,7 @@ img {
 
 .dl-chip-selector {
   text-align: center;
-  margin-top: -8px;
-  padding-bottom: 12px;
+  margin-top: 12px;
   position: relative;
   z-index: 1;
 }
