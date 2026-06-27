@@ -23,12 +23,21 @@ async function boot(): Promise<void> {
   if (hotVersion && existsSync(hotMain)) {
     // eslint-disable-next-line no-console
     console.log(`[hot-update] 加载热更新版本: ${hotVersion}`)
-    await import(pathToFileURL(hotMain).href)
-  } else {
-    // 加载 asar 内置的 fallback 版本
-    // rollup 会将此动态 import 编译为名为 'luna-appMain.js' 的独立 chunk
-    await import('./appMain.ts')
+    try {
+      await import(pathToFileURL(hotMain).href)
+      return // 加载成功
+    } catch (err) {
+      // 热更新加载失败时降级到 asar 版本，并清除坏的热更新
+      console.error('[hot-update] 热更新加载失败，降级到内置版本:', err)
+      try {
+        const { rmSync } = await import('node:fs')
+        rmSync(hotDir, { recursive: true, force: true })
+      } catch { /* ignore cleanup errors */ }
+    }
   }
+  // 加载 asar 内置的 fallback 版本
+  // rollup 会将此动态 import 编译为名为 'luna-appMain.js' 的独立 chunk
+  await import('./appMain.ts')
 }
 
 function readHotVersion(filePath: string): string | null {

@@ -15,7 +15,7 @@
  */
 
 import { app } from 'electron'
-import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs'
+import { cpSync, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import AdmZip from 'adm-zip'
@@ -216,6 +216,13 @@ export async function applyHotUpdate(info: HotUpdateCheckResult): Promise<void> 
     }
   }
 
+  // 写入 package.json 标记 ESM，使热更新的 .js 文件能被 import() 正确加载
+  writeFileSync(
+    join(extractDir, 'package.json'),
+    JSON.stringify({ type: 'module', name: 'luna-ai-cut-hot', private: true }),
+    'utf-8',
+  )
+
   // 4. 删除旧的热更新文件
   const oldDistElectron = join(hotDir, 'dist-electron')
   const oldDist = join(hotDir, 'dist')
@@ -262,7 +269,6 @@ export async function applyHotUpdate(info: HotUpdateCheckResult): Promise<void> 
 
 /** 递归复制文件 */
 function copyRecursiveSync(src: string, dest: string): void {
-  const { cpSync } = require('node:fs') as typeof import('node:fs')
   cpSync(src, dest, { recursive: true, force: true })
 }
 

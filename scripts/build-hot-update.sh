@@ -152,7 +152,6 @@ EOF
 
   # ── 展示文件信息 ──
   echo ""
-  local size
   size=$(stat -f%z "$ZIP_PATH" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "$(wc -c < "$ZIP_PATH") bytes")
   echo "  ZIP 大小:   ${size}"
   echo "  ZIP 路径:   ${ZIP_PATH}"
