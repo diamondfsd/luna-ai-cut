@@ -17,6 +17,15 @@ import type {
 } from '../src/shared/types'
 
 const lunaApi: LunaApi = {
+  // 日志
+  log: (level: string, message: string, meta?: unknown) => {
+    ipcRenderer.send('log:renderer', level, message, meta)
+  },
+  logExport: (message: string, meta?: unknown) => {
+    return ipcRenderer.invoke('log:export', message, meta)
+  },
+  getLogDir: () => ipcRenderer.invoke('log:getDir'),
+  clearLogs: () => ipcRenderer.invoke('log:clear'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:save', settings),
   listDevices: () => ipcRenderer.invoke('devices:list'),

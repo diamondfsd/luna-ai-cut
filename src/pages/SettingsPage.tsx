@@ -3,7 +3,7 @@ import { FolderOpen, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
-import { Button, Input, SegmentedControl } from '../ui'
+import { Button, Input, SegmentedControl, toast } from '../ui'
 import '../styles/settings.css'
 
 interface SettingsPageProps {
@@ -120,6 +120,26 @@ export function SettingsPage({
             </Button>
             <Button variant="primary" size="compact" onClick={chooseExportDir} icon={<FolderOpen size={15} />}>
               更换目录
+            </Button>
+          </div>
+        </article>
+
+        <article className="settings-row">
+          <div className="settings-row-copy">
+            <span>日志目录</span>
+            <em>主进程和渲染进程的运行日志，按天轮转</em>
+          </div>
+          <div className="settings-row-actions">
+            <Button variant="secondary" size="compact" onClick={() => {
+              void window.luna.getLogDir().then(dir => openDirectory(dir))
+            }} icon={<FolderOpen size={15} />}>
+              打开
+            </Button>
+            <Button variant="secondary" size="compact" onClick={async () => {
+              await window.luna.clearLogs()
+              toast.success('日志已清空')
+            }} icon={<Trash2 size={15} />}>
+              清空日志
             </Button>
           </div>
         </article>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Download, Eye, FileQuestion, FolderOpen, Loader2, X } from 'lucide-react'
 
+import { logger } from '../lib/rendererLogger'
 import type { ExportProgress, LunaFile } from '../shared/types'
 import { PreviewModal } from './PreviewModal'
 import { Button, DropdownPanel, IconButton } from '../ui'
@@ -105,6 +106,7 @@ export function ExportProgressModal({
   if (totalCount === 0) return null
 
   async function cancelExports(): Promise<void> {
+    logger.warn('用户取消导出')
     setExporting(false)
     onCanceled()
     await window.luna.cancelExports()

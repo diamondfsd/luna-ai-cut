@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 
+import { logger, logExport } from '../lib/rendererLogger'
 import type { AppSettings, DownloadProgress, ExportProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import type { ViewMode } from './useMediaLibraryController'
 
@@ -214,8 +215,16 @@ export function useMediaLibraryTransferActions({
     try {
       if (!settings?.exportDir) {
         setExportError('未设置导出目录，请在设置中配置')
+        logger.error('导出失败：未设置导出目录')
         return
       }
+      logExport('开始导出', {
+        fileCount: filesToExport.length,
+        fileNames: filesToExport.map(f => f.downloadName || f.name),
+        exportDir: settings.exportDir,
+        watermarkSettings,
+        videoExportSettings,
+      })
       const batchTs = Date.now()
       const snapshots = new Map<string, LunaFile>()
       const queued = new Map<string, ExportProgress>()
@@ -244,19 +253,27 @@ export function useMediaLibraryTransferActions({
         }
       })
       const result = await window.luna.exportFiles(payload, settings.exportDir, watermarkSettings, videoExportSettings)
+      if (result.completed.length > 0) {
+        logExport('导出完成', {
+          completedCount: result.completed.length,
+          files: result.completed,
+        })
+      }
       if (result.failed.length > 0) {
         const firstError = result.failed[0]
         setExportError(`${firstError.name}: ${firstError.error}`)
+        logger.error('导出文件失败', { files: result.failed })
       }
       if (result.canceled.length > 0) {
         setExportError('导出已取消')
+        logExport('导出已取消', { files: result.canceled })
       }
       setSelected(new Set())
       await loadExportLibrary()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setExportError(`导出失败: ${message}`)
-      console.error('[export] 导出失败:', error)
+      logger.error('导出异常', { error: message })
     } finally {
       setExporting(false)
     }

@@ -98,33 +98,43 @@
         <p class="section-desc section-desc-light">目前支持 macOS 和 Windows，免费使用</p>
 
         <div class="download-grid">
-          <a href="https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases" class="download-card" id="dl-mac" target="_blank" rel="noopener">
-            <div class="download-icon">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/>
-                <path d="M9 21h6"/>
-              </svg>
+          <div class="download-cell">
+            <a href="https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases" class="download-card" id="dl-mac" target="_blank" rel="noopener">
+              <div class="download-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/>
+                  <path d="M9 21h6"/>
+                </svg>
+              </div>
+              <h3 class="download-title">macOS 版</h3>
+              <p class="download-sub" id="dl-mac-subtitle">Apple Silicon（M 系列芯片）</p>
+              <span class="download-badge" id="dl-mac-badge">.dmg · ARM64 · 免费</span>
+              <span class="dl-region-tag" id="dl-mac-region"></span>
+            </a>
+            <div class="dl-chip-selector">
+              <select id="dl-mac-chip">
+                <option value="arm64">Apple Silicon (ARM64)</option>
+                <option value="x64">Intel (x64)</option>
+              </select>
             </div>
-            <h3 class="download-title">macOS 版</h3>
-            <p class="download-sub">Apple Silicon (M 系列芯片)</p>
-            <span class="download-badge">.dmg · 免费</span>
-            <span class="dl-region-tag" id="dl-mac-region"></span>
-          </a>
+          </div>
 
-          <a href="https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases" class="download-card" id="dl-win" target="_blank" rel="noopener">
-            <div class="download-icon">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="4" y="4" width="16" height="16" rx="2"/>
-                <path d="M9 9h1v1H9z"/><path d="M9 13h1v1H9z"/><path d="M9 17h1v1H9z"/>
-                <path d="M13 9h1v1h-1z"/><path d="M13 13h1v1h-1z"/><path d="M13 17h1v1h-1z"/>
-                <path d="M17 9h1v1h-1z"/><path d="M17 13h1v1h-1z"/><path d="M17 17h1v1h-1z"/>
-              </svg>
-            </div>
-            <h3 class="download-title">Windows 版</h3>
-            <p class="download-sub">安装包（.exe）</p>
-            <span class="download-badge">.exe · 免费</span>
-            <span class="dl-region-tag" id="dl-win-region"></span>
-          </a>
+          <div class="download-cell">
+            <a href="https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases" class="download-card" id="dl-win" target="_blank" rel="noopener">
+              <div class="download-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="4" width="16" height="16" rx="2"/>
+                  <path d="M9 9h1v1H9z"/><path d="M9 13h1v1H9z"/><path d="M9 17h1v1H9z"/>
+                  <path d="M13 9h1v1h-1z"/><path d="M13 13h1v1h-1z"/><path d="M13 17h1v1h-1z"/>
+                  <path d="M17 9h1v1h-1z"/><path d="M17 13h1v1h-1z"/><path d="M17 17h1v1h-1z"/>
+                </svg>
+              </div>
+              <h3 class="download-title">Windows 版</h3>
+              <p class="download-sub">安装包（.exe）</p>
+              <span class="download-badge">.exe · 免费</span>
+              <span class="dl-region-tag" id="dl-win-region"></span>
+            </a>
+          </div>
         </div>
         <p class="download-note" id="dl-note">
           根据你的地区自动选择最快下载源 ·

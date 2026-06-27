@@ -547,6 +547,12 @@ img {
   margin: 0 auto;
 }
 
+.download-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 .download-card {
   display: flex;
   flex-direction: column;
@@ -593,6 +599,42 @@ img {
   background: rgba(255, 255, 255, 0.1);
   color: var(--muted-dark);
   border-radius: var(--radius-pill);
+}
+
+.dl-chip-selector {
+  text-align: center;
+  margin-top: -8px;
+  padding-bottom: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.dl-chip-selector select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--muted-dark);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-pill);
+  padding: 4px 24px 4px 12px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 200ms ease, color 200ms ease;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  display: none; /* 非 Mac 平台默认隐藏 */
+}
+
+.dl-chip-selector select:hover {
+  border-color: var(--blue-on-dark);
+  color: #ccc;
+}
+
+.dl-chip-selector select:focus {
+  border-color: var(--blue-on-dark);
 }
 
 .download-note {

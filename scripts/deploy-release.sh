@@ -99,8 +99,9 @@ if [ "$SKIP_BUILD" = false ]; then
   fi
 
   if [ "$OS" = "Darwin" ]; then
-    # ── macOS 上交叉打包：先 Win 后 Mac ──
+    # ── macOS 上交叉打包：三端打包 ──
     # 每次构建前清理 ffmpeg 二进制，避免累积多平台文件导致包体积膨胀
+
     info "构建 Windows x64..."
     rm -rf resources/ffmpeg/* 2>/dev/null || true
     npm run pack:win:x64
@@ -109,7 +110,12 @@ if [ "$SKIP_BUILD" = false ]; then
     info "构建 macOS ARM64..."
     rm -rf resources/ffmpeg/* 2>/dev/null || true
     npm run pack:mac:arm64
-    ok "macOS 构建完成"
+    ok "macOS ARM64 构建完成"
+
+    info "构建 macOS x64 (Intel)..."
+    rm -rf resources/ffmpeg/* 2>/dev/null || true
+    npm run pack:mac:x64
+    ok "macOS x64 构建完成"
   else
     info "开始构建 ${PLATFORM}..."
     npm run pack:win:x64
@@ -126,7 +132,7 @@ fi
 # 查找构建产物
 FILES=()
 if [ "$OS" = "Darwin" ]; then
-  # macOS 交叉编译，可能产生 .dmg 和 .exe 两种文件
+  # macOS 交叉编译，可能产生 .dmg（arm64 + x64）和 .exe 三种文件
   while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" \( -name "*.dmg" -o -name "*Setup*.exe" \) -type f 2>/dev/null || true)
 else
   while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" -name "$FILE_PATTERN" -type f 2>/dev/null || true)
@@ -249,13 +255,21 @@ for a in d.get('assets',[]):
 " 2>/dev/null
 }
 
-mac_url=$(extract_asset ".dmg")
+mac_arm_url=$(extract_asset "-arm64.dmg")
+mac_x64_url=$(extract_asset "-x64.dmg")
 win_url=$(extract_asset ".exe")
-mac_name=$(extract_asset ".dmg" | python3 -c "import json,sys; d=json.load(sys.stdin); assets=d.get('assets',[]); [print(a['name']) for a in assets if a['name'].endswith('.dmg')]" 2>/dev/null || echo "$release_json" | python3 -c "
+mac_arm_name=$(echo "$release_json" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 for a in d.get('assets',[]):
-    if a['name'].endswith('.dmg'):
+    if a['name'].endswith('-arm64.dmg'):
+        print(a['name']); break
+")
+mac_x64_name=$(echo "$release_json" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+for a in d.get('assets',[]):
+    if a['name'].endswith('-x64.dmg'):
         print(a['name']); break
 ")
 win_name=$(echo "$release_json" | python3 -c "
@@ -266,8 +280,9 @@ for a in d.get('assets',[]):
         print(a['name']); break
 ")
 
-echo "  macOS: ${mac_name:-<未上传>}"
-echo "  Windows: ${win_name:-<未上传>}"
+echo "  macOS ARM64: ${mac_arm_name:-<未上传>}"
+echo "  macOS x64:   ${mac_x64_name:-<未上传>}"
+echo "  Windows:     ${win_name:-<未上传>}"
 
 readme_body=$(cat <<-END
 # Luna AI Cut — 国内下载镜像
@@ -282,7 +297,8 @@ readme_body=$(cat <<-END
 
 | 平台 | 文件 | 下载 |
 |------|------|------|
-| macOS (Apple Silicon) | ${mac_name} | [⬇️ 下载](${mac_url}) |
+| macOS (Apple Silicon) | ${mac_arm_name} | [⬇️ 下载](${mac_arm_url}) |
+| macOS (Intel) | ${mac_x64_name} | [⬇️ 下载](${mac_x64_url}) |
 | Windows (x64) | ${win_name} | [⬇️ 下载](${win_url}) |
 
 ---
@@ -336,32 +352,39 @@ SCRIPT_JS="${SCRIPT_DIR}/../landing/script.js"
 GITCODE_BASE="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/download"
 
 # 从 upload 步骤收集到的 FILES 构建下载 URL
-mac_file=""
+mac_arm_file=""
+mac_x64_file=""
 win_file=""
 for f in "${FILES[@]}"; do
   fn=$(basename "$f")
   case "$fn" in
-    *.dmg) mac_file="$fn" ;;
+    *-arm64.dmg) mac_arm_file="$fn" ;;
+    *-x64.dmg)   mac_x64_file="$fn" ;;
+    *.dmg)       mac_arm_file="$fn" ;;  # 降级：不含架构后缀的 DMG 视为 ARM64
     *Setup*.exe | *.exe) win_file="$fn" ;;
   esac
 done
 
-mac_dl="${GITCODE_BASE}/${TAG}/${mac_file}"
+mac_arm_dl="${GITCODE_BASE}/${TAG}/${mac_arm_file}"
+mac_x64_dl="${GITCODE_BASE}/${TAG}/${mac_x64_file}"
 win_dl="${GITCODE_BASE}/${TAG}/${win_file}"
 
-info "macOS 下载地址: ${mac_dl}"
-info "Windows 下载地址: ${win_dl}"
+info "macOS ARM64 下载地址: ${mac_arm_dl}"
+info "macOS x64 下载地址:   ${mac_x64_dl}"
+info "Windows 下载地址:     ${win_dl}"
 
 # 更新 script.js 中的 LATEST_RELEASE 常量
 if [ -f "$SCRIPT_JS" ]; then
   # macOS: sed -i '' 需要空字符串参数
   if [ "$OS" = "Darwin" ]; then
     sed -i '' "s|tag: '.*'|tag: '${TAG}'|" "$SCRIPT_JS"
-    sed -i '' "s|gitcode_mac: '.*'|gitcode_mac: '${mac_dl}'|" "$SCRIPT_JS"
+    sed -i '' "s|gitcode_mac_arm: '.*'|gitcode_mac_arm: '${mac_arm_dl}'|" "$SCRIPT_JS"
+    sed -i '' "s|gitcode_mac_x64: '.*'|gitcode_mac_x64: '${mac_x64_dl}'|" "$SCRIPT_JS"
     sed -i '' "s|gitcode_win: '.*'|gitcode_win: '${win_dl}'|" "$SCRIPT_JS"
   else
     sed -i "s|tag: '.*'|tag: '${TAG}'|" "$SCRIPT_JS"
-    sed -i "s|gitcode_mac: '.*'|gitcode_mac: '${mac_dl}'|" "$SCRIPT_JS"
+    sed -i "s|gitcode_mac_arm: '.*'|gitcode_mac_arm: '${mac_arm_dl}'|" "$SCRIPT_JS"
+    sed -i "s|gitcode_mac_x64: '.*'|gitcode_mac_x64: '${mac_x64_dl}'|" "$SCRIPT_JS"
     sed -i "s|gitcode_win: '.*'|gitcode_win: '${win_dl}'|" "$SCRIPT_JS"
   fi
   ok "landing/script.js 已更新"
