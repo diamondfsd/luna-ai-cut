@@ -76,6 +76,16 @@ export interface FfmpegModule {
 
 export class FfmpegPipeline {
   private modules: FfmpegModule[] = []
+  private preInputArgs: string[] = []
+
+  /**
+   * 设置硬件加速前置参数（解码器标志等）
+   * 这些参数会放在第一个 -i 之前
+   */
+  setPreInputArgs(args: string[]): this {
+    this.preInputArgs = args
+    return this
+  }
 
   addModule(module: FfmpegModule): this {
     this.modules.push(module)
@@ -117,8 +127,13 @@ export class FfmpegPipeline {
     }
 
     // 编译完整 ffmpeg 参数
+    // 硬件加速参数放在第一个 -i 之前（解码器标志 hwaccel）
+    // 其余输入（watermark 等）放在其后
+    const [firstInput, ...restInputs] = allInputs
     const ffmpegArgs = [
-      ...allInputs.flatMap((f) => ['-i', f]),
+      ...this.preInputArgs,
+      '-i', firstInput,
+      ...restInputs.flatMap((f) => ['-i', f]),
       ...(allFilters.length > 0 ? ['-filter_complex', allFilters.join(';')] : []),
       ...allOutputArgs,
       '-map_metadata', '0',

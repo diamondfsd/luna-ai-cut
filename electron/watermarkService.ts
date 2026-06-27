@@ -10,11 +10,10 @@ import { logMainInfo, logMainError, logExport } from './loggerService'
 import { localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
 import { FfmpegPipeline, getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
+import { detectHardwareAccel } from './ffmpeg/hwaccel'
 import { CodecModule } from './ffmpeg/codec'
-import { ScaleModule } from './ffmpeg/scale'
-import { FrameRateModule } from './ffmpeg/framerate'
-import { BitrateModule } from './ffmpeg/bitrate'
 import { WatermarkModule } from './ffmpeg/watermark'
+import { applyWatermarkToVideo, applyVideoExportSettings } from './videoPipelineService'
 import type {
   LunaFile,
   PreviewResult,
@@ -370,8 +369,16 @@ export async function applyWatermarkToLivePhoto(
 
     // 视频仅加水印，保持原始分辨率/帧率/码率
     const pipeline = new FfmpegPipeline()
-    pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }))
-    pipeline.addModule(new CodecModule())
+    const hwaccel = await detectHardwareAccel(getFfmpegPath())
+    if (hwaccel.preInputArgs.length > 0) {
+      pipeline.setPreInputArgs(hwaccel.preInputArgs)
+    }
+    pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }, hwaccel.overlayFilter))
+    pipeline.addModule(new CodecModule({
+      encoderH264: hwaccel.encoderNameH264,
+      encoderH265: hwaccel.encoderNameH265 ?? undefined,
+      encoderArgs: hwaccel.encoderArgs,
+    }))
     await pipeline.execute(extractedVideo, processedVideo,
       (pct) => onProgress?.(Math.round(pct * 0.6 + 30)), signal)
 
@@ -398,60 +405,9 @@ export async function applyWatermarkToLivePhoto(
   }
 }
 
-// ─── 视频水印（pipeline 包装） ───────────────
-
-export async function applyWatermarkToVideo(
-  inputPath: string,
-  outputPath: string,
-  watermarkPercent: number,
-  position: WatermarkPosition,
-  style: WatermarkStyle,
-  onProgress?: (percent: number) => void,
-  signal?: AbortSignal,
-  videoExportSettings?: VideoExportSettings,
-): Promise<void> {
-  const pipeline = new FfmpegPipeline()
-
-  // 模块顺序决定 filter 链顺序
-  if (videoExportSettings?.resolution && videoExportSettings.resolution !== 'original') {
-    pipeline.addModule(new ScaleModule({ resolution: videoExportSettings.resolution }))
-  }
-  pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }))
-  if (videoExportSettings?.frameRate && videoExportSettings.frameRate !== 'original') {
-    pipeline.addModule(new FrameRateModule({ frameRate: videoExportSettings.frameRate }))
-  }
-  if (videoExportSettings?.quality && videoExportSettings.quality !== 'original') {
-    pipeline.addModule(new BitrateModule({ quality: videoExportSettings.quality, customBitrate: videoExportSettings.customBitrate }))
-  }
-  pipeline.addModule(new CodecModule())
-
-  await pipeline.execute(inputPath, outputPath, onProgress, signal)
-}
-
-// ─── 纯视频转码（无水印，pipeline 包装） ──────
-
-export async function applyVideoExportSettings(
-  inputPath: string,
-  outputPath: string,
-  videoExportSettings: VideoExportSettings,
-  onProgress?: (percent: number) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  const pipeline = new FfmpegPipeline()
-
-  if (videoExportSettings.resolution !== 'original') {
-    pipeline.addModule(new ScaleModule({ resolution: videoExportSettings.resolution }))
-  }
-  if (videoExportSettings.frameRate !== 'original') {
-    pipeline.addModule(new FrameRateModule({ frameRate: videoExportSettings.frameRate }))
-  }
-  if (videoExportSettings.quality !== 'original') {
-    pipeline.addModule(new BitrateModule({ quality: videoExportSettings.quality, customBitrate: videoExportSettings.customBitrate }))
-  }
-  pipeline.addModule(new CodecModule())
-
-  await pipeline.execute(inputPath, outputPath, onProgress, signal)
-}
+// 视频流水线函数定义在 videoPipelineService.ts 中
+// 此处 re-export 保持向后兼容
+export { applyWatermarkToVideo, applyVideoExportSettings }
 
 // ─── 水印预览 ────────────────────────────────
 
