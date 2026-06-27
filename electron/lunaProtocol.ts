@@ -392,8 +392,37 @@ export class LunaClient {
 
         lastStatus = response.status
         if (response.ok) {
-          const files = parseLunaIndex(await response.text(), cameraUrl(this.host, cameraPath))
-          return files
+          const html = await response.text()
+          const baseUrl = cameraUrl(this.host, cameraPath)
+
+          // 发现 Camera* 子目录（相机在图片过多时会自动分文件夹）
+          const cameraDirs = extractCameraSubdirs(html)
+
+          if (cameraDirs.length > 0) {
+            // 读取所有 Camera* 子目录中的文件并聚合
+            const results = await Promise.all(
+              cameraDirs.map(async (dir) => {
+                const dirUrl = cameraUrl(this.host, `${cameraPath}${dir}/`)
+                try {
+                  const dirResponse = await fetch(dirUrl, {
+                    headers: {
+                      'User-Agent': 'LunaAI-Cut/0.1',
+                      'Accept-Encoding': 'identity',
+                      'Cache-Control': 'no-cache',
+                    },
+                  })
+                  if (!dirResponse.ok) return []
+                  return parseLunaIndex(await dirResponse.text(), dirUrl)
+                } catch {
+                  return []
+                }
+              }),
+            )
+            return results.flat()
+          }
+
+          // 没有 Camera* 子目录，直接从根目录解析文件
+          return parseLunaIndex(html, baseUrl)
         }
 
         response.body?.cancel().catch(() => undefined)
@@ -414,6 +443,24 @@ export class LunaClient {
   }
 }
 
+/**
+ * 从 Apache 目录列表 HTML 中提取所有 Camera* 子目录名
+ */
+function extractCameraSubdirs(html: string): string[] {
+  const dirs: string[] = []
+  for (const match of html.matchAll(INDEX_RE)) {
+    const href = match.groups?.href
+    if (!href) continue
+    const decoded = htmlDecode(href)
+    if (decoded === '../') continue
+    // Camera01/, Camera02/, Camera03/ ... 兼容 Camera1, Camera999
+    if (decoded.endsWith('/') && /^Camera\d+\/$/i.test(decoded)) {
+      dirs.push(decoded.replace(/\/$/, ''))
+    }
+  }
+  return dirs.sort()
+}
+
 export function parseLunaIndex(html: string, baseUrl = cameraUrl(DEFAULT_HOST)): LunaFile[] {
   const files: LunaFile[] = []
 
@@ -424,6 +471,8 @@ export function parseLunaIndex(html: string, baseUrl = cameraUrl(DEFAULT_HOST)):
     const href = htmlDecode(groups.href)
     const name = htmlDecode(groups.name)
     if (href === '../' || name === '../') continue
+    // 跳过目录条目（Apache 目录列表中的子目录以 / 结尾）
+    if (href.endsWith('/')) continue
 
     const kind = lunaMediaAdapter.mediaKind(name)
     const timestamp = lunaMediaAdapter.capturedAt(name) ?? parseIndexTimestamp(groups.date, groups.time)

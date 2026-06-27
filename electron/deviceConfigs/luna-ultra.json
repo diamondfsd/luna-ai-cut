@@ -32,13 +32,13 @@
     {
       "id": "storage_internal",
       "label": "内置存储",
-      "path": "/storage_internal/DCIM/Camera01/",
+      "path": "/storage_internal/DCIM/",
       "default": true
     },
     {
       "id": "sdcard",
       "label": "SD 卡",
-      "path": "/DCIM/Camera01/",
+      "path": "/DCIM/",
       "default": false
     }
   ],
