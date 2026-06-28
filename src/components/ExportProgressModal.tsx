@@ -193,12 +193,15 @@ export function ExportProgressModal({
                         onClick={() => {
                           const snap = fileSnapshots.get(progress.exportId ?? progress.fileName)
                           if (snap) {
+                            const destPath = progress.destinationPath!
+                            const exportedName = destPath.split(/[/\\]/).pop() ?? snap.name
                             setPreviewFile({
                               ...snap,
-                              sourceUrl: filePathToPreviewUrl(progress.destinationPath!) ?? '',
-                              url: filePathToPreviewUrl(progress.destinationPath!) ?? '',
-                              localPath: progress.destinationPath,
-                              downloadFilePath: progress.destinationPath ?? null,
+                              name: exportedName,
+                              sourceUrl: filePathToPreviewUrl(destPath) ?? '',
+                              url: filePathToPreviewUrl(destPath) ?? '',
+                              localPath: destPath,
+                              downloadFilePath: destPath,
                             })
                           }
                         }}
