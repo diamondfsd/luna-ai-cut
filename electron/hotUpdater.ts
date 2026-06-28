@@ -35,6 +35,7 @@ export interface HotUpdateManifest {
   version: string
   zipName: string
   minAppVersion: string
+  notesUrl?: string
 }
 
 /** 热更新检查结果 */
@@ -42,6 +43,7 @@ export interface HotUpdateCheckResult {
   version: string
   downloadUrl: string
   manifest: HotUpdateManifest
+  notes?: string
 }
 
 // ── 本地版本读写 ──
@@ -111,7 +113,7 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
     const res = await fetch(`${GITCODE_API}/releases/tags/${releaseTag}`)
     if (!res.ok) return null
 
-    const data = await res.json() as { assets?: Array<{ name: string }> }
+    const data = await res.json() as { assets?: Array<{ name: string; browser_download_url?: string }> }
     const assets = data.assets ?? []
 
     // 筛选 renderer-*-hot.*.zip 附件
@@ -136,10 +138,17 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
       .replace(/^renderer-/, '')
       .replace(/\.zip$/, '')
 
+    // 查找对应的发布说明文件
+    const notesAsset = assets.find(a =>
+      a.name === `RELEASE_NOTES_v${version}.md` ||
+      a.name === `RELEASE_NOTES_${version}.md`
+    )
+
     return {
       version,
       zipName: latest.name,
       minAppVersion: releaseTag.replace(/^v/, ''),
+      notesUrl: notesAsset?.browser_download_url,
     }
   } catch {
     return null
@@ -177,7 +186,21 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   }
 
   const downloadUrl = `${GITCODE_DL}/${releaseTag}/${manifest.zipName}`
-  return { version: manifest.version, downloadUrl, manifest }
+
+  // 获取发布说明
+  let notes: string | undefined
+  if (manifest.notesUrl) {
+    try {
+      const notesRes = await fetch(manifest.notesUrl)
+      if (notesRes.ok) {
+        const text = await notesRes.text()
+        // 只取前 2048 个字符作为摘要
+        notes = text.length > 2048 ? text.slice(0, 2048) + '\n...' : text
+      }
+    } catch { /* 获取发布说明失败不影响热更新 */ }
+  }
+
+  return { version: manifest.version, downloadUrl, manifest, notes }
 }
 
 // ── 下载与应用 ──

@@ -272,8 +272,28 @@ function upload_asset() {
     ok "${filename} 上传完成" || err "${filename} 上传失败"
 }
 
-# 上传 zip（manifest 不再需要，客户端通过 API 自动发现最新 zip）
+# 上传 zip
 upload_asset "$ZIP_PATH"
+
+# 上传发布说明（如果存在）
+NOTES_FILE="RELEASE_NOTES_${FULL_VERSION}.md"
+if [ -f "$NOTES_FILE" ]; then
+  cp "$NOTES_FILE" "${RELEASE_DIR}/"
+  upload_asset "${RELEASE_DIR}/$(basename "$NOTES_FILE")"
+  ok "发布说明已上传"
+else
+  warn "发布说明文件不存在: ${NOTES_FILE}（跳过）"
+fi
+
+# ── 打 Git tag ──
+TAG_NAME="hot/v${FULL_VERSION}"
+if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+  ok "Git tag 已存在: ${TAG_NAME}"
+else
+  info "创建 Git tag: ${TAG_NAME}..."
+  git tag "$TAG_NAME"
+  git push origin "$TAG_NAME" 2>/dev/null && ok "Git tag 已推送: ${TAG_NAME}" || warn "Git tag 推送失败（需手动推送: git push origin ${TAG_NAME}）"
+fi
 
 echo ""
 ok "全部上传完成！"

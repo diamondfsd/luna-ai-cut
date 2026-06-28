@@ -254,3 +254,65 @@ input {
 .update-banner-close:hover {
   background: rgba(255, 255, 255, 0.35);
 }
+
+/* ====== 更新内容弹窗 ====== */
+.update-notes-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+}
+
+.update-notes-dialog {
+  background: #fff;
+  border-radius: 12px;
+  width: min(520px, 90vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+.update-notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.update-notes-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.update-notes-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.update-notes-body p {
+  margin: 4px 0;
+}
+
+.update-notes-body .notes-heading {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0 6px;
+  color: #111;
+}
+
+.update-notes-body .notes-heading:first-child {
+  margin-top: 0;
+}
+
+.update-notes-body .notes-item {
+  padding-left: 12px;
+  color: #444;
+}

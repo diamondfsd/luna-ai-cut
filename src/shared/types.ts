@@ -349,6 +349,7 @@ export interface HotUpdateCheckResult {
   version: string
   downloadUrl: string
   manifest: HotUpdateManifest
+  notes?: string
 }
 
 export interface LunaApi {
