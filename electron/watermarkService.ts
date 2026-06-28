@@ -1,11 +1,14 @@
 import { execFile } from 'node:child_process'
+import { createReadStream, readFileSync, writeFileSync } from 'node:fs'
 import { app } from 'electron'
 import * as fs from 'node:fs/promises'
-import { readFileSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
 import exifr from 'exifr'
+import probe from 'probe-image-size'
 import { logMainInfo, logMainError, logExport } from './loggerService'
+
+const execFileAsync = promisify(execFile)
 
 import { localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
@@ -23,8 +26,6 @@ import type {
   WatermarkSettings,
   WatermarkStyle,
 } from '../src/shared/types'
-
-const execFileAsync = promisify(execFile)
 
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
@@ -173,39 +174,20 @@ interface ImageInfo {
   height: number
 }
 
-/** 获取 ffprobe 路径 */
-function getFfprobePath(): string {
-  if (app.isPackaged) {
-    const ext = process.platform === 'win32' ? '.exe' : ''
-    return path.join(process.resourcesPath, 'ffmpeg', `ffprobe${ext}`)
-  }
-  try {
-    const pkgDir = path.dirname(require.resolve('ffprobe-static/package.json'))
-    return path.join(pkgDir, 'bin', process.platform, process.arch, `ffprobe${process.platform === 'win32' ? '.exe' : ''}`)
-  } catch {
-    return 'ffprobe'
-  }
-}
-
-/** 用 ffprobe 获取图片宽高 */
+/**
+ * 获取图片宽高（使用 probe-image-size）
+ */
 async function probeImage(inputPath: string): Promise<ImageInfo> {
   try {
-    const { stdout } = await execFileAsync(getFfprobePath(), [
-      '-v', 'quiet',
-      '-print_format', 'json',
-      '-show_streams',
+    const result = await probe(createReadStream(inputPath))
+    logMainInfo('[PROBE IMG]', { inputPath, width: result.width, height: result.height, type: result.type })
+    return { width: result.width, height: result.height }
+  } catch (err) {
+    logMainError('[PROBE IMG] 失败，使用 fallback', {
       inputPath,
-    ], { encoding: 'utf-8' } as never)
-    const data = JSON.parse(String(stdout)) as {
-      streams?: Array<{ codec_type: string; codec_name?: string; width?: number; height?: number }>
-    }
-    // Live Photo（LJPEG）文件有多个 video stream：图片（mjpeg）+ 内嵌 MP4（h264）
-    // 优先取 mjpeg 流（JPEG 图片数据），不同 ffprobe 版本流的顺序可能不同
-    const allVideo = data.streams?.filter((s) => s.codec_type === 'video') ?? []
-    const videoStream = allVideo.find((s) => s.codec_name === 'mjpeg') ?? allVideo[0]
-    return { width: videoStream?.width ?? 1920, height: videoStream?.height ?? 1080 }
-  } catch {
-    return { width: 1920, height: 1080 }
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return { width: 3840, height: 2160 }
   }
 }
 
@@ -285,6 +267,17 @@ async function applyWatermarkToImageWithRef(
 
   logExport('INFO', `[WATERMARK IMG] 图片水印参数`, { imgWidth: imgInfo.width, imgHeight: imgInfo.height, rotationDeg, sensorW, displayW, displayH, actualWmWidth, actualWmHeight, marginX, marginY, position, x, y })
 
+  logExport('INFO', `[WATERMARK IMG] 水印引用信息`, {
+    refWidth: refWidth ?? '无',
+    refHeight: refHeight ?? '无',
+    wmPath,
+    wmImgWidth: wmInfo.width,
+    wmImgHeight: wmInfo.height,
+    wmAspect: wmAspect.toFixed(4),
+    sensorW,
+    watermarkPercent,
+  })
+
   const outputExt = path.extname(outputPath).toLowerCase()
   const encoder = ffmpegImgEncoder(outputExt)
 
@@ -306,6 +299,14 @@ async function applyWatermarkToImageWithRef(
 
   const metadataArgs = ['-map_metadata', '0']
 
+  logExport('INFO', `[WATERMARK IMG] 执行 ffmpeg`, {
+    inputPath,
+    outputPath,
+    filterComplex,
+    encoder: encoder.join(' '),
+    ffmpegPath,
+  })
+
   // -noautorotate 阻止 ffmpeg 自动应用 EXIF 旋转（否则 transpose 会与自动旋转抵消）
   await execFileAsync(ffmpegPath, [
     '-noautorotate',
@@ -317,6 +318,18 @@ async function applyWatermarkToImageWithRef(
     '-y',
     outputPath,
   ], { timeout: 30000 } as never)
+
+  // 输出文件校验
+  try {
+    const outStat = await fs.stat(outputPath)
+    const inStat = await fs.stat(inputPath)
+    logExport('INFO', `[WATERMARK IMG] 输出文件信息`, {
+      outputPath,
+      outputSize: outStat.size,
+      inputSize: inStat.size,
+      sizeRatio: inStat.size > 0 ? (outStat.size / inStat.size * 100).toFixed(1) + '%' : 'N/A',
+    })
+  } catch { /* 忽略校验错误 */ }
 
   // ffmpeg 8.x 的 mjpeg 编码器不保留 EXIF，需手动从源文件复制
   // 随后将 orientation 改为 1（防止 viewer 对已转好的像素再次旋转）
@@ -358,6 +371,7 @@ export async function applyWatermarkToLivePhoto(
 
   try {
     logMainInfo('[LIVE] applyWatermarkToLivePhoto called', { inputPath, outputPath, watermarkPercent, position, style })
+
     const extracted = await extractLivePhotoVideo(inputPath, extractedVideo)
     if (!extracted) throw new Error('无法提取 Live Photo 内嵌视频')
 

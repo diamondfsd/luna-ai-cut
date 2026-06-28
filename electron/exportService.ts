@@ -8,7 +8,7 @@ import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
 import { generateThumbnail, safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
 import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToLivePhoto, applyWatermarkToVideo } from './watermarkService'
-import { logMainInfo, logMainError, logMainWarn } from './loggerService'
+import { logMainInfo, logMainError, logMainWarn, logExport } from './loggerService'
 import type { LunaFile, VideoExportSettings, WatermarkSettings } from '../src/shared/types'
 
 export interface ExportProgress {
@@ -160,6 +160,18 @@ export async function exportFiles(
       }
       throwIfAborted(signal)
       await fs.rename(tmpPath, finalPath)
+      // 输出文件校验
+      try {
+        const outStat = await fs.stat(finalPath)
+        const inStat = await fs.stat(localPath)
+        logExport('INFO', '[EXPORT] 输出文件信息', {
+          name: file.name,
+          outputPath: finalPath,
+          outputSize: outStat.size,
+          inputSize: inStat.size,
+          sizeRatio: inStat.size > 0 ? (outStat.size / inStat.size * 100).toFixed(1) + '%' : 'N/A',
+        })
+      } catch { /* 忽略 */ }
       await ensureExportThumbnail(finalPath, destName, file.kind)
       completed.push({ name: file.name, path: finalPath })
       onProgress?.(prog(file, { percent: 100, status: 'done', destinationPath: finalPath }))

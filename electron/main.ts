@@ -13,6 +13,12 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 async function boot(): Promise<void> {
+  // 开发模式跳过热更新，避免本地代码被热更新覆盖
+  if (!app.isPackaged) {
+    await import('./appMain.ts')
+    return
+  }
+
   const hotDir = join(app.getPath('userData'), '.luna-hot')
   const versionFile = join(hotDir, 'version.json')
   const hotMain = join(hotDir, 'dist-electron', 'luna-appMain.js')
