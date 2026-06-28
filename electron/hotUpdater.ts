@@ -140,8 +140,7 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
 
     // 查找对应的发布说明文件
     const notesAsset = assets.find(a =>
-      a.name === `RELEASE_NOTES_v${version}.md` ||
-      a.name === `RELEASE_NOTES_${version}.md`
+      a.name === `RELEASE_NOTES_v${version}.md`
     )
 
     return {
