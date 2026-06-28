@@ -96,6 +96,8 @@ FULL_VERSION="${PKG_VERSION}-hot.${HOT_VERSION}"
 ZIP_NAME="renderer-${FULL_VERSION}.zip"
 ZIP_PATH="${RELEASE_DIR}/${ZIP_NAME}"
 MANIFEST_PATH="${RELEASE_DIR}/renderer-latest.json"
+NOTES_NAME="RELEASE_NOTES_v${FULL_VERSION}.md"
+NOTES_PATH="${RELEASE_DIR}/${NOTES_NAME}"
 
 # ============================================================
 # 第一步：构建
@@ -276,13 +278,12 @@ function upload_asset() {
 upload_asset "$ZIP_PATH"
 
 # 上传发布说明（如果存在）
-NOTES_FILE="RELEASE_NOTES_${FULL_VERSION}.md"
-if [ -f "$NOTES_FILE" ]; then
-  cp "$NOTES_FILE" "${RELEASE_DIR}/"
-  upload_asset "${RELEASE_DIR}/$(basename "$NOTES_FILE")"
+if [ -f "$NOTES_NAME" ]; then
+  cp "$NOTES_NAME" "${RELEASE_DIR}/"
+  upload_asset "${RELEASE_DIR}/${NOTES_NAME}"
   ok "发布说明已上传"
 else
-  warn "发布说明文件不存在: ${NOTES_FILE}（跳过）"
+  warn "发布说明文件不存在: ${NOTES_NAME}（跳过）"
 fi
 
 # ── 打 Git tag ──
