@@ -13,6 +13,8 @@ import {
   chooseMockMediaDir,
   chooseDownloadDir,
   chooseExportDir,
+  chooseLocalResourcesDir,
+  getLocalResourcesDir,
   clearCache,
   deleteLocalFiles,
   downloadFiles,
@@ -239,6 +241,7 @@ function registerIpc(): void {
   ipcMain.handle('settings:save', (_event, settings: Partial<AppSettings>) => saveSettings(settings))
   ipcMain.handle('devices:list', () => deviceDefinitions())
   ipcMain.handle('settings:chooseDownloadDir', () => chooseDownloadDir())
+  ipcMain.handle('settings:chooseLocalResourcesDir', () => chooseLocalResourcesDir())
   ipcMain.handle('settings:chooseExportDir', () => chooseExportDir())
   ipcMain.handle('settings:chooseMockMediaDir', () => chooseMockMediaDir())
   ipcMain.handle('mock:start', (_event, settings?: Partial<AppSettings>) => startMockServer(settings))
@@ -246,9 +249,9 @@ function registerIpc(): void {
   ipcMain.handle('mock:status', () => getMockStatus())
   ipcMain.handle('cache:stats', () => getCacheStats())
   ipcMain.handle('cache:clear', () => clearCache())
-  ipcMain.handle('downloads:records', async (_event, files: LunaFile[], downloadDir?: string) => {
+  ipcMain.handle('downloads:records', async (_event, files: LunaFile[], _downloadDir?: string) => {
     const settings = await getSettings()
-    return getDownloadedRecords(files, downloadDir || settings.downloadDir)
+    return getDownloadedRecords(files, getLocalResourcesDir(settings))
   })
 
   ipcMain.handle('wifi:openSettings', () => openWifiSettings())
@@ -376,9 +379,10 @@ function registerIpc(): void {
     const settings = await getSettings()
     return listSampleFiles(settings.mockMediaDir)
   })
-  ipcMain.handle('downloads:listFiles', async (_event, downloadDir?: string) => {
+  ipcMain.handle('downloads:listFiles', async (_event, _downloadDir?: string) => {
     const settings = await getSettings()
-    const resolvedDir = downloadDir || settings.downloadDir
+    const resolvedDir = getLocalResourcesDir(settings)
+    logMainInfo('[下载列表] 读取目录', { resolvedDir, localResourcesDir: settings.localResourcesDir, downloadDir: settings.downloadDir })
     const files = await listDownloadedFiles(resolvedDir)
     if (resolvedDir) {
       // 优先检测已有缩略图，设置 thumbnailUrl（同步返回给渲染层）
@@ -421,7 +425,7 @@ function registerIpc(): void {
   ipcMain.handle('ai:chat', async (_event, config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) => {
     return chatCompletion(config, systemPrompt, messages as Array<{ role: 'user' | 'assistant'; content: string }>)
   })
-  ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[], downloadDir?: string) => {
+  ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[], _downloadDir?: string) => {
     const settings = await getSettings()
     const needsCameraSession = files.some((file) => !(file.sourceUrl || file.url).startsWith('file:'))
     const client = needsCameraSession ? clientFor(settings.cameraHost, controlPortFor(settings, settings.cameraHost)) : null
@@ -434,7 +438,7 @@ function registerIpc(): void {
     const controller = new AbortController()
     activeDownloadControllers.add(controller)
     try {
-      return await downloadFiles(files, downloadDir || settings.downloadDir, (progress: DownloadProgress) => {
+      return await downloadFiles(files, getLocalResourcesDir(settings), (progress: DownloadProgress) => {
         win?.webContents.send('download:progress', progress)
       }, controller.signal)
     } finally {

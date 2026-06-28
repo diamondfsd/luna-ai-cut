@@ -15,6 +15,11 @@ export function cacheDir(): string {
   return path.join(app.getPath('userData'), 'cache')
 }
 
+/** 获取有效的本地资源目录路径 */
+export function getLocalResourcesDir(settings: AppSettings): string {
+  return settings.localResourcesDir || path.join(settings.downloadDir, 'localResources')
+}
+
 export async function previewCacheDir(): Promise<string> {
   const settings = await getSettings()
   return path.join(settings.downloadDir, 'cache_previews')
@@ -29,8 +34,10 @@ function defaultExportDir(): string {
 }
 
 function defaultSettings(): AppSettings {
+  const dl = defaultDownloadDir()
   return {
-    downloadDir: defaultDownloadDir(),
+    downloadDir: dl,
+    localResourcesDir: path.join(dl, 'localResources'),
     exportDir: defaultExportDir(),
     cacheDir: cacheDir(),
     cameraHost: DEFAULT_DEVICE.defaultHost,
@@ -54,11 +61,15 @@ async function readSettingsFile(): Promise<Partial<AppSettings> | null> {
 }
 
 function mergeSettings(saved: Partial<AppSettings> | null): AppSettings {
-  return {
+  const merged = {
     ...defaultSettings(),
     ...(saved ?? {}),
     cacheDir: cacheDir(),
   }
+  if (!merged.localResourcesDir) {
+    merged.localResourcesDir = getLocalResourcesDir(merged)
+  }
+  return merged
 }
 
 async function readSettingsWithoutWriting(): Promise<AppSettings> {
@@ -98,6 +109,20 @@ export async function chooseDownloadDir(): Promise<string | null> {
   if (result.canceled || result.filePaths.length === 0) return null
 
   await saveSettings({ downloadDir: result.filePaths[0] })
+  return result.filePaths[0]
+}
+
+export async function chooseLocalResourcesDir(): Promise<string | null> {
+  const settings = await getSettings()
+  const result = await dialog.showOpenDialog({
+    defaultPath: getLocalResourcesDir(settings),
+    properties: ['openDirectory', 'createDirectory'],
+    title: '选择本地资源目录',
+  })
+
+  if (result.canceled || result.filePaths.length === 0) return null
+
+  await saveSettings({ localResourcesDir: result.filePaths[0] })
   return result.filePaths[0]
 }
 

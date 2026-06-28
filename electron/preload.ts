@@ -31,6 +31,7 @@ const lunaApi: LunaApi = {
   saveSettings: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:save', settings),
   listDevices: () => ipcRenderer.invoke('devices:list'),
   chooseDownloadDir: () => ipcRenderer.invoke('settings:chooseDownloadDir'),
+  chooseLocalResourcesDir: () => ipcRenderer.invoke('settings:chooseLocalResourcesDir'),
   chooseExportDir: () => ipcRenderer.invoke('settings:chooseExportDir'),
   chooseMockMediaDir: () => ipcRenderer.invoke('settings:chooseMockMediaDir'),
   startMockServer: (settings?: Partial<AppSettings>) => ipcRenderer.invoke('mock:start', settings),

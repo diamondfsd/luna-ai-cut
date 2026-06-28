@@ -9,12 +9,8 @@ function isGeneratedLivePreviewName(name: string): boolean {
   return name.toLowerCase().endsWith('.live.mp4')
 }
 
-function localResourcesDir(outputDir: string): string {
-  return path.join(outputDir, 'localResources')
-}
-
-function destinationFor(outputDir: string, file: LunaFile): string {
-  return path.join(localResourcesDir(outputDir), safeName(file.downloadName))
+function destinationFor(localResourcesDir: string, file: LunaFile): string {
+  return path.join(localResourcesDir, safeName(file.downloadName))
 }
 
 export async function getDownloadedRecords(files: LunaFile[], outputDir: string): Promise<DownloadRecord[]> {
@@ -80,10 +76,10 @@ export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]
   }
 
   try {
-    const entries = await fs.readdir(localResourcesDir(outputDir), { withFileTypes: true })
+    const entries = await fs.readdir(outputDir, { withFileTypes: true })
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue
-      const entryPath = path.join(localResourcesDir(outputDir), entry.name)
+      const entryPath = path.join(outputDir, entry.name)
       if (entry.isFile()) await appendFile(entryPath)
     }
   } catch {

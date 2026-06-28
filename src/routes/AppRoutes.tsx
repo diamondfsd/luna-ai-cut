@@ -55,9 +55,14 @@ export function AppRoutes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function chooseDir(): Promise<void> {
+  async function chooseBaseDir(): Promise<void> {
     const dir = await window.luna.chooseDownloadDir()
     if (dir) setSettings(await window.luna.saveSettings({ downloadDir: dir }))
+  }
+
+  async function chooseLocalResourcesDir(): Promise<void> {
+    const dir = await window.luna.chooseLocalResourcesDir()
+    if (dir) setSettings(await window.luna.saveSettings({ localResourcesDir: dir }))
   }
 
   async function chooseExportDir(): Promise<void> {
@@ -164,7 +169,8 @@ export function AppRoutes() {
             <SettingsPage
               activeDevice={activeDevice}
               cacheStats={cacheStats}
-              chooseDir={chooseDir}
+              chooseBaseDir={chooseBaseDir}
+              chooseLocalResourcesDir={chooseLocalResourcesDir}
               chooseExportDir={chooseExportDir}
               clearCache={clearCache}
               connection={connection}
