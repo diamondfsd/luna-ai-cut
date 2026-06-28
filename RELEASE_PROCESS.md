@@ -129,15 +129,53 @@ GitCode 上传完成后，构建初始热更新包（供已有用户从上一版
 
 当只需要推送增量修复（不涉及版本号变更、Electron 升级或原生模块变更）时：
 
+### 1. 创建热更新发布说明
+
+创建 `RELEASE_NOTES_v<版本号>-hot.<build号>.md`，按以下分类整理变更：
+
+- Bug 修复
+- 改进
+- 其他（如需）
+
+发布说明文件同时充当变更记录，用户可通过查看 Release 附件中的说明了解热更新内容。
+
+示例：
+
+```markdown
+# v1.3.2-hot.4 — 热更新发布说明
+
+## Bug 修复
+
+- **修复 xxx 问题**：xxx
+
+## 改进
+
+- **xxx**：xxx
+```
+
+### 2. 提交代码
+
 ```bash
-# 1. 修改代码后提交
 git add -A && git commit -m "fix: xxx"
+```
 
-# 2. 构建并上传热更新包（自动取下一个 build 号）
+### 3. 构建并上传热更新包
+
+```bash
+# 自动取下一个 build 号，构建并上传到 GitCode Release
 ./scripts/build-hot-update.sh
+```
 
-# 3. 推送到 main（可选，仅用于代码同步）
+首次运行需确保 `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件。
+
+### 4. 推送到 main
+
+```bash
 git push origin main
 ```
 
 > 客户端每次启动会自动检查热更新（2 秒后），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效。
+
+## 查看热更新发布记录
+
+热更新发布说明文件以 `RELEASE_NOTES_v<版本号>-hot.<build号>.md` 命名，与正式版发布说明放在同一目录下。GitCode Release 的附件中也会同步上传最新的发布说明。
