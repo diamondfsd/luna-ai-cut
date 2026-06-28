@@ -168,10 +168,22 @@ git add -A && git commit -m "fix: xxx"
 
 首次运行需确保 `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件。
 
-### 4. 推送到 main
+### 4. 打 Git tag
+
+```bash
+# 提交发布说明
+git add RELEASE_NOTES_v<版本号>-hot.<build号>.md
+git commit -m "docs: <版本号>-hot.<build号> 热更新发布说明"
+
+# 打 tag（以 hot/ 前缀区分正式版 tag）
+git tag hot/v<版本号>-hot.<build号>
+```
+
+### 5. 推送到 main
 
 ```bash
 git push origin main
+git push origin hot/v<版本号>-hot.<build号>
 ```
 
 > 客户端每次启动会自动检查热更新（2 秒后），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效。
