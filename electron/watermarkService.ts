@@ -197,10 +197,12 @@ async function probeImage(inputPath: string): Promise<ImageInfo> {
       inputPath,
     ], { encoding: 'utf-8' } as never)
     const data = JSON.parse(String(stdout)) as {
-      streams?: Array<{ codec_type: string; width?: number; height?: number }>
+      streams?: Array<{ codec_type: string; codec_name?: string; width?: number; height?: number }>
     }
-    // Live Photo 文件可能有多个 video stream（图片 + 内嵌 MP4），取第一个
-    const videoStream = data.streams?.find((s) => s.codec_type === 'video')
+    // Live Photo（LJPEG）文件有多个 video stream：图片（mjpeg）+ 内嵌 MP4（h264）
+    // 优先取 mjpeg 流（JPEG 图片数据），不同 ffprobe 版本流的顺序可能不同
+    const allVideo = data.streams?.filter((s) => s.codec_type === 'video') ?? []
+    const videoStream = allVideo.find((s) => s.codec_name === 'mjpeg') ?? allVideo[0]
     return { width: videoStream?.width ?? 1920, height: videoStream?.height ?? 1080 }
   } catch {
     return { width: 1920, height: 1080 }
