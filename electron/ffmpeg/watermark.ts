@@ -18,11 +18,11 @@ function watermarkFileFor(style: WatermarkStyle): string {
 }
 
 /** 根据水印位置生成 FFmpeg overlay 表达式 */
-function overlayExpr(vPos: string, hPos: string, margin: number): [string, string] {
-  const x = hPos === 'left' ? String(margin)
-    : hPos === 'right' ? `(W-w-${margin})`
+function overlayExpr(vPos: string, hPos: string, marginX: number, marginY: number): [string, string] {
+  const x = hPos === 'left' ? String(marginX)
+    : hPos === 'right' ? `(W-w-${marginX})`
     : '(W-w)/2'
-  const y = vPos === 'bottom' ? `(H-h-${margin})` : String(margin)
+  const y = vPos === 'bottom' ? `(H-h-${marginY})` : String(marginY)
   return [x, y]
 }
 
@@ -56,15 +56,17 @@ export class WatermarkModule implements FfmpegModule {
     const wmPath = watermarkFileFor(style)
 
     const outputW = ctx.outputWidth
+    const outputH = ctx.outputHeight
     const wmSize = Math.round(outputW * watermarkPercent / 100)
-    const marginPx = Math.round(outputW * 0.03)
+    const marginX = Math.round(outputW * 0.03)
+    const marginY = Math.round(outputH * 0.03)
     const [vPos, hPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
-    const [ox, oy] = overlayExpr(vPos, hPos, marginPx)
+    const [ox, oy] = overlayExpr(vPos, hPos, marginX, marginY)
 
     logExport('INFO', `[WATERMARK VID] 视频水印参数`, {
-      outputWidth: ctx.outputWidth, outputHeight: ctx.outputHeight,
+      outputWidth: outputW, outputHeight: outputH,
       probeVideoWidth: ctx.probe.videoWidth,
-      wmSize, marginPx,
+      wmSize, marginX, marginY,
       position, overlayExpr: `${ox}:${oy}`,
       prevLabel: ctx.prevLabel,
       overlayFilter: this.overlayFilter,

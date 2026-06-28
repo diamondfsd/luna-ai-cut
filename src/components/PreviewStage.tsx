@@ -238,6 +238,17 @@ export function PreviewStage({
             autoPlay
             onError={(message) => setLiveError(message)}
           />
+          {showWatermarkControls && wmLayout && (
+            <WatermarkOverlay
+              settings={watermarkSettings}
+              kind="image"
+              x={wmLayout.x}
+              y={wmLayout.y}
+              width={wmLayout.width}
+              height={wmLayout.height}
+              className="watermark-overlay"
+            />
+          )}
         </div>
       )}
       {!previewLoading && !livePlaying && displaySource && file.kind === 'image' && (
