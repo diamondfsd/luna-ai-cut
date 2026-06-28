@@ -588,14 +588,12 @@ app.whenReady().then(() => {
   scheduleUpdateCheck()
   createWindow()
 
-  // 如果有热更新，更新窗口标题显示热更新版本号
-  const hotVersion = getCurrentHotVersion()
-  logMainInfo(`热更新版本检查: ${hotVersion ?? '无'}`)
-  if (hotVersion && win && !win.isDestroyed()) {
-    const title = `Luna AI Cut v${app.getVersion()}-${hotVersion.split('-').pop()}`
-    logMainInfo(`设置窗口标题: ${title}`)
+  // 设置窗口标题（含版本号，有热更新则追加 hot build 号）
+  const hotVersion = !app.isPackaged ? null : getCurrentHotVersion()
+  const titleSuffix = hotVersion ? `-${hotVersion.split('-').pop()}` : ''
+  const title = `Luna AI Cut v${app.getVersion()}${titleSuffix}`
+  logMainInfo(`设置窗口标题: ${title}`)
+  if (win && !win.isDestroyed()) {
     win.setTitle(title)
-  } else {
-    logMainInfo(`未设置热更新标题: hotVersion=${hotVersion}, win=${!!win}, destroyed=${win?.isDestroyed()}`)
   }
 })

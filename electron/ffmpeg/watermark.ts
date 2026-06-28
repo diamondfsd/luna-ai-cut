@@ -2,6 +2,7 @@ import * as path from 'node:path'
 import { app } from 'electron'
 import type { FfmpegModule, BuildContext, ModuleArgs } from './pipeline'
 import type { WatermarkPosition, WatermarkStyle } from '../../src/shared/types'
+import { logExport } from '../loggerService'
 
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
@@ -60,7 +61,7 @@ export class WatermarkModule implements FfmpegModule {
     const [vPos, hPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
     const [ox, oy] = overlayExpr(vPos, hPos, marginPx)
 
-    console.log('[LIVE watermark VID]', {
+    logExport('INFO', `[WATERMARK VID] 视频水印参数`, {
       outputWidth: ctx.outputWidth, outputHeight: ctx.outputHeight,
       probeVideoWidth: ctx.probe.videoWidth,
       wmSize, marginPx,
