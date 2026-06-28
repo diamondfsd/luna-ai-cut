@@ -18,6 +18,8 @@ export {
   cacheDir,
   chooseDownloadDir,
   chooseExportDir,
+  chooseLocalResourcesDir,
+  getLocalResourcesDir,
   chooseMockMediaDir,
   getSettings,
   previewCacheDir,
@@ -34,12 +36,8 @@ function partialPathFor(destination: string): string {
   return `${destination}.tmp`
 }
 
-function localResourcesDir(outputDir: string): string {
-  return path.join(outputDir, 'localResources')
-}
-
-function destinationFor(outputDir: string, file: LunaFile): string {
-  return path.join(localResourcesDir(outputDir), safeName(file.downloadName))
+function destinationFor(localResourcesDir: string, file: LunaFile): string {
+  return path.join(localResourcesDir, safeName(file.downloadName))
 }
 
 async function fileSize(filePath: string): Promise<number> {

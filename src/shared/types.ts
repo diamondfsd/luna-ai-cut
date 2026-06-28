@@ -136,6 +136,8 @@ export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
 
 export interface AppSettings {
   downloadDir: string
+  /** 本地资源目录，不设置时默认 downloadDir/localResources */
+  localResourcesDir?: string
   exportDir?: string
   cacheDir: string
   cameraHost: string
@@ -361,6 +363,7 @@ export interface LunaApi {
   saveSettings(settings: Partial<AppSettings>): Promise<AppSettings>
   listDevices(): Promise<DeviceDefinition[]>
   chooseDownloadDir(): Promise<string | null>
+  chooseLocalResourcesDir(): Promise<string | null>
   chooseExportDir(): Promise<string | null>
   chooseMockMediaDir(): Promise<string | null>
   startMockServer(settings?: Partial<AppSettings>): Promise<MockServerStatus>

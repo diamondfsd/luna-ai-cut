@@ -9,7 +9,8 @@ import '../styles/settings.css'
 interface SettingsPageProps {
   activeDevice?: DeviceDefinition
   cacheStats: CacheStats | null
-  chooseDir: () => Promise<void>
+  chooseBaseDir: () => Promise<void>
+  chooseLocalResourcesDir: () => Promise<void>
   chooseExportDir: () => Promise<void>
   clearCache: () => Promise<void>
   connection: ConnectionStatus | null
@@ -21,7 +22,8 @@ interface SettingsPageProps {
 export function SettingsPage({
   activeDevice,
   cacheStats,
-  chooseDir,
+  chooseBaseDir,
+  chooseLocalResourcesDir,
   chooseExportDir,
   clearCache,
   connection,
@@ -53,14 +55,31 @@ export function SettingsPage({
 
         <article className="settings-row">
           <div className="settings-row-copy">
-            <span>下载目录</span>
+            <span>基础目录</span>
             <strong>{settings?.downloadDir}</strong>
+            <em>缓存、预览等通用文件存放位置</em>
           </div>
           <div className="settings-row-actions">
             <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.downloadDir)} icon={<FolderOpen size={15} />}>
               打开
             </Button>
-            <Button variant="primary" size="compact" onClick={chooseDir} icon={<FolderOpen size={15} />}>
+            <Button variant="primary" size="compact" onClick={chooseBaseDir} icon={<FolderOpen size={15} />}>
+              更换目录
+            </Button>
+          </div>
+        </article>
+
+        <article className="settings-row">
+          <div className="settings-row-copy">
+            <span>本地资源目录</span>
+            <strong>{settings?.localResourcesDir ?? (settings?.downloadDir ? settings.downloadDir + '/localResources' : '')}</strong>
+            <em>从相机下载的素材存放位置</em>
+          </div>
+          <div className="settings-row-actions">
+            <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.localResourcesDir)} icon={<FolderOpen size={15} />}>
+              打开
+            </Button>
+            <Button variant="primary" size="compact" onClick={chooseLocalResourcesDir} icon={<FolderOpen size={15} />}>
               更换目录
             </Button>
           </div>
