@@ -19,7 +19,7 @@
 | `SegmentedControl` | 分段选择器，用于媒体过滤和尺寸切换 |
 | `Switch` | 开关控件，用于二进制设置项（基于 Radix） |
 | `Tooltip` | 悬停提示（基于 Radix） |
-| `Dialog` | 弹窗，含 DialogContent / DialogHeader / DialogBody / DialogFooter / DialogTitle / DialogDescription（基于 Radix） |
+| `Dialog` | 弹窗，统一通过 `title` / `description` / `footer` / `children` 等 props 使用（基于 Radix） |
 | `Popover` | 弹出面板，含 PopoverContent / PopoverTrigger / PopoverClose（基于 Radix） |
 | `Tabs` / `PillTabs` | 标签切换，`PillTabs` 是药丸形预设（基于 Radix） |
 | `LoadingIndicator` | 加载状态指示器 |
@@ -83,7 +83,7 @@
 | `description` | 弹窗描述 |
 | `children` | 主体内容 |
 | `footer` | 底部操作栏 |
-| `className` | DialogContent 自定义类名 |
+| `className` | 弹窗内容面板自定义类名 |
 
 标题和描述自动组合为头部（带 `.ui-dialog-header`），footer 自动包裹 `.ui-dialog-footer`。需要自定义 body 样式时在 children 中自行包裹 div。
 
@@ -145,6 +145,10 @@
 - 保持单一强调色 `--blue`（`#0066cc`）。
 - 偏好扁平化设计，按钮和文本不添加厚重阴影。
 - CSS 用于布局和功能特定表面，可复用的控件样式放在共享 UI 层（`src/ui/ui.css`）。
+
+## 文案规则
+
+面向用户可见的组件文案、提示、弹窗、按钮、空状态、错误说明等，不要出现偏开发人员的专业术语（例如 JSON、IPC、WebGL、pipeline、缓存键、序列化等）。需要表达技术实现时，转换成用户能理解的结果或行为，例如“编辑内容会自动保存”“项目会保存在本地资源中”。
 
 ## 组件库选择
 

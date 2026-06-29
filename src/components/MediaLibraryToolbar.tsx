@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -6,19 +6,17 @@ import { useNavigate } from 'react-router-dom'
 import { DownloadProgressModal } from './DownloadProgressModal'
 import { ExportModal } from './ExportModal'
 import { ExportProgressModal } from './ExportProgressModal'
+import { AddToWorkspaceProjectDialog, CreateWorkspaceProjectDialog } from './WorkspaceProjectDialogs'
 import { formatBytes } from '../lib/format'
 import type { CardSize, SortOrder } from '../pages/useMediaLibraryController'
 import type { DeviceDefinition, DownloadProgress, ExportProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
   Button,
   ButtonGroup,
-  Dialog,
-  Input,
   Popover,
   PopoverContent,
   PopoverTrigger,
   SegmentedControl,
-  Select,
   toast,
 } from '../ui'
 import type { WorkspaceProject } from '../shared/types'
@@ -407,57 +405,25 @@ export function MediaLibraryToolbar({
         )}
       </section>
 
-      <Dialog
+      <CreateWorkspaceProjectDialog
         open={createProjectOpen}
         onOpenChange={setCreateProjectOpen}
-        title="创建工作台项目"
-        description="项目会保存在本地资源目录，编辑参数写入项目 JSON。"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setCreateProjectOpen(false)}>取消</Button>
-            <Button variant="primary" disabled={!canSendToWorkspace || projectBusy} icon={<Sparkles size={14} />} onClick={() => void handleCreateProject()}>
-              创建并编辑
-            </Button>
-          </>
-        }
-      >
-        <div className="workspace-dialog-body">
-          <Input
-            fullWidth
-            value={projectName}
-            placeholder="项目名称"
-            onChange={(event) => setProjectName(event.target.value)}
-          />
-        </div>
-      </Dialog>
+        projectName={projectName}
+        onProjectNameChange={setProjectName}
+        canCreate={canSendToWorkspace}
+        busy={projectBusy}
+        onConfirm={() => void handleCreateProject()}
+      />
 
-      <Dialog
+      <AddToWorkspaceProjectDialog
         open={addProjectOpen}
         onOpenChange={setAddProjectOpen}
-        title="添加到已有项目"
-        description="选择一个工作台项目追加当前选中的图片。"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setAddProjectOpen(false)}>取消</Button>
-            <Button variant="primary" disabled={!selectedProjectId || projectBusy} onClick={() => void handleAddToProject()}>
-              添加并编辑
-            </Button>
-          </>
-        }
-      >
-        <div className="workspace-dialog-body">
-          {projects.length > 0 ? (
-            <Select
-              fullWidth
-              value={selectedProjectId}
-              options={projects.map((project) => ({ value: project.id, label: project.name }))}
-              onValueChange={setSelectedProjectId}
-            />
-          ) : (
-            <div className="workspace-dialog-empty">暂无项目，请先创建项目。</div>
-          )}
-        </div>
-      </Dialog>
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onSelectedProjectIdChange={setSelectedProjectId}
+        busy={projectBusy}
+        onConfirm={() => void handleAddToProject()}
+      />
 
       {showExportDialog && (
         <ExportModal
