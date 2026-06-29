@@ -49,6 +49,33 @@ function macVideoToolbox(): HwAccelConfig {
   }
 }
 
+/**
+ * 快速探测 hevc_videotoolbox 是否实际可用
+ *
+ * 某些旧 Mac（macOS < 10.13 或旧款 Intel 硬件）不支持 HEVC 硬件编码，
+ * 即使 ffmpeg 编译了 hevc_videotoolbox 编码器，
+ * 底层 VideoToolbox 框架仍可能返回 kVTParameterErr (-12905)。
+ *
+ * @param ffmpegPath - ffmpeg 二进制路径
+ * @returns true 如果 hevc_videotoolbox 可编码
+ */
+async function probeHevcVideoToolbox(ffmpegPath: string): Promise<boolean> {
+  try {
+    await execAsync(ffmpegPath, [
+      '-hide_banner',
+      '-f', 'lavfi',
+      '-i', 'color=c=black:s=1920x1080:d=0.5',
+      '-c:v', 'hevc_videotoolbox',
+      '-allow_sw', '1',
+      '-pix_fmt', 'yuv420p',
+      '-f', 'null', '-',
+    ], { timeout: 10000 })
+    return true
+  } catch {
+    return false
+  }
+}
+
 function nvidiaCuda(): HwAccelConfig {
   return {
     type: 'cuda',
@@ -159,8 +186,16 @@ export async function detectHardwareAccel(ffmpegPath?: string): Promise<HwAccelC
   const platform = process.platform
 
   if (platform === 'darwin') {
-    // macOS: VideoToolbox 几乎总是可用
     cachedConfig = macVideoToolbox()
+    // 验证 hevc_videotoolbox 是否真实可用
+    // 旧 Mac（macOS < 10.13 或旧硬件）不支持 HEVC 硬件编码
+    if (ffmpegPath && cachedConfig.encoderNameH265) {
+      const hevcAvailable = await probeHevcVideoToolbox(ffmpegPath)
+      if (!hevcAvailable) {
+        console.warn('[hwaccel] hevc_videotoolbox not available, falling back to libx265 for HEVC sources')
+        cachedConfig.encoderNameH265 = null
+      }
+    }
     return cachedConfig
   }
 
