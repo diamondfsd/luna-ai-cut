@@ -11,8 +11,6 @@ uniform vec4 u_crop;
 uniform float u_rotate;
 uniform vec2 u_flip;
 uniform float u_scale;
-uniform vec2 u_perspective;
-uniform float u_lensDistortion;
 uniform float u_exposure;
 uniform float u_contrast;
 uniform float u_brightness;
@@ -60,9 +58,9 @@ vec2 containUv(vec2 uv) {
   float canvasAspect = max(u_aspectRatio.y, 0.0001);
   vec2 size = vec2(1.0);
   if (canvasAspect > imageAspect) {
-    size.x = imageAspect / canvasAspect;
-  } else {
     size.y = canvasAspect / imageAspect;
+  } else {
+    size.x = imageAspect / canvasAspect;
   }
   vec2 origin = (vec2(1.0) - size) * 0.5;
   if (uv.x < origin.x || uv.y < origin.y || uv.x > origin.x + size.x || uv.y > origin.y + size.y) {
@@ -72,12 +70,6 @@ vec2 containUv(vec2 uv) {
 }
 
 vec2 transformUv(vec2 uv) {
-  vec2 lensCentered = uv - 0.5;
-  float r2 = dot(lensCentered, lensCentered);
-  uv = 0.5 + lensCentered * (1.0 + u_lensDistortion * r2 * 0.32);
-  vec2 perspectiveCentered = uv - 0.5;
-  uv.x += perspectiveCentered.y * u_perspective.x * 0.28;
-  uv.y += perspectiveCentered.x * u_perspective.y * 0.28;
   vec2 cropUv = u_crop.xy + uv * u_crop.zw;
   vec2 centered = cropUv - 0.5;
   centered /= max(u_scale, 0.01);

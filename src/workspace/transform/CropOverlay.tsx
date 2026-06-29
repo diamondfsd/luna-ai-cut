@@ -104,6 +104,7 @@ export function CropOverlay({ crop, imageRect, onCropChange, onConfirm, onCancel
           height: `${activeCrop.h * 100}%`,
         }}
       >
+        <div className="workspace-crop-grid" />
         {(['tl', 'tr', 'bl', 'br'] as const).map((mode) => (
           <button
             key={mode}
@@ -113,14 +114,14 @@ export function CropOverlay({ crop, imageRect, onCropChange, onConfirm, onCancel
             aria-label="调整裁剪区域"
           />
         ))}
-      </div>
-      <div className="workspace-crop-actions">
-        <Button variant="secondary" size="compact" type="button" onClick={onCancel}>
-          取消
-        </Button>
-        <Button variant="primary" size="compact" type="button" onClick={onConfirm}>
-          确认裁剪
-        </Button>
+        <div className="workspace-crop-actions">
+          <Button variant="secondary" size="compact" type="button" onClick={onCancel}>
+            取消
+          </Button>
+          <Button variant="primary" size="compact" type="button" onClick={onConfirm}>
+            确认裁剪
+          </Button>
+        </div>
       </div>
     </div>
   )

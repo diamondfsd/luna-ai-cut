@@ -14,8 +14,6 @@ const UNIFORM_NAMES = [
   'u_rotate',
   'u_flip',
   'u_scale',
-  'u_perspective',
-  'u_lensDistortion',
   'u_exposure',
   'u_contrast',
   'u_brightness',
@@ -126,16 +124,15 @@ export class WebGLRenderer {
   }
 
   getDisplayRect(): { x: number; y: number; width: number; height: number } {
-    const canvasWidth = Math.max(1, this.canvas.clientWidth)
-    const canvasHeight = Math.max(1, this.canvas.clientHeight)
-    const imageAspect = Math.max(1, this.sourceSize.width) / Math.max(1, this.sourceSize.height)
-    const canvasAspect = canvasWidth / canvasHeight
-    if (canvasAspect > imageAspect) {
-      const width = canvasHeight * imageAspect
-      return { x: (canvasWidth - width) / 2, y: 0, width, height: canvasHeight }
-    }
-    const height = canvasWidth / imageAspect
-    return { x: 0, y: (canvasHeight - height) / 2, width: canvasWidth, height }
+    return { x: 0, y: 0, width: Math.max(1, this.canvas.clientWidth), height: Math.max(1, this.canvas.clientHeight) }
+  }
+
+  samplePixel(x: number, y: number): { r: number; g: number; b: number } | null {
+    if (!this.texture) return null
+    const gl = this.gl
+    const pixels = new Uint8Array(4)
+    gl.readPixels(Math.round(x), Math.round(this.canvas.height - y), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+    return { r: pixels[0], g: pixels[1], b: pixels[2] }
   }
 
   private updateUniforms(pipeline: EditPipeline): void {
@@ -144,13 +141,14 @@ export class WebGLRenderer {
     gl.uniform2f(this.uniform('u_resolution'), this.sourceSize.width, this.sourceSize.height)
     const canvasAspect = Math.max(1, this.canvas.width) / Math.max(1, this.canvas.height)
     const imageAspect = Math.max(1, this.sourceSize.width) / Math.max(1, this.sourceSize.height)
-    gl.uniform2f(this.uniform('u_aspectRatio'), imageAspect, canvasAspect)
+    const isRotated = Math.abs(pipeline.transform.rotate % 180) >= 45
+    const displayImageAspect = isRotated ? 1 / imageAspect : imageAspect
+    gl.uniform2f(this.uniform('u_aspectRatio'), displayImageAspect, canvasAspect)
     gl.uniform4f(this.uniform('u_crop'), crop.x, crop.y, crop.w, crop.h)
     gl.uniform1f(this.uniform('u_rotate'), pipeline.transform.rotate)
     gl.uniform2f(this.uniform('u_flip'), pipeline.transform.flipH ? 1 : 0, pipeline.transform.flipV ? 1 : 0)
-    gl.uniform1f(this.uniform('u_scale'), pipeline.transform.scale)
-    gl.uniform2f(this.uniform('u_perspective'), pipeline.transform.perspectiveH / 100, pipeline.transform.perspectiveV / 100)
-    gl.uniform1f(this.uniform('u_lensDistortion'), pipeline.effects.lensDistortion / 100)
+    const effectiveAspect = isRotated ? 1 / imageAspect : imageAspect
+    gl.uniform1f(this.uniform('u_scale'), Math.min(canvasAspect / effectiveAspect, effectiveAspect / canvasAspect))
     gl.uniform1f(this.uniform('u_exposure'), pipeline.color.exposure)
     gl.uniform1f(this.uniform('u_contrast'), pipeline.color.contrast / 100)
     gl.uniform1f(this.uniform('u_brightness'), pipeline.color.brightness / 100)
@@ -177,8 +175,8 @@ export class WebGLRenderer {
     gl.uniform1f(this.uniform('u_sharpenRadius'), pipeline.effects.sharpenRadius)
     gl.uniform1f(this.uniform('u_sharpenDetail'), pipeline.effects.sharpenDetail / 100)
     gl.uniform1f(this.uniform('u_sharpenMasking'), pipeline.effects.sharpenMasking / 100)
-    gl.uniform1f(this.uniform('u_noiseReduction'), pipeline.effects.noiseReductionEnabled ? pipeline.effects.noiseReduction / 100 : 0)
-    gl.uniform1f(this.uniform('u_colorNoiseReduction'), pipeline.effects.noiseReductionEnabled ? pipeline.effects.colorNoiseReduction / 100 : 0)
+    gl.uniform1f(this.uniform('u_noiseReduction'), pipeline.effects.noiseReduction / 100)
+    gl.uniform1f(this.uniform('u_colorNoiseReduction'), pipeline.effects.colorNoiseReduction / 100)
     gl.uniform1f(this.uniform('u_vignette'), pipeline.effects.vignette / 100)
     gl.uniform1f(this.uniform('u_grainAmount'), pipeline.effects.grainAmount / 100)
     gl.uniform1f(this.uniform('u_grainSize'), pipeline.effects.grainSize / 100)

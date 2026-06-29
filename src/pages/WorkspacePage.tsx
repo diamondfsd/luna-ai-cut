@@ -63,6 +63,7 @@ export function WorkspacePage() {
   const [cropActive, setCropActive] = useState(false)
   const [cropDraft, setCropDraft] = useState<EditPipeline['transform']['crop']>(null)
   const [compareOriginal, setCompareOriginal] = useState(false)
+  const [pipetteActive, setPipetteActive] = useState(false)
   const [imageRect, setImageRect] = useState({ x: 0, y: 0, width: 1, height: 1 })
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rendererRef = useRef<WebGLRenderer | null>(null)
@@ -212,6 +213,34 @@ export function WorkspacePage() {
     commitPatch(patch)
   }
 
+  useEffect(() => {
+    if (!pipetteActive) return
+    // @ts-ignore — EyeDropper API is Chromium/Electron only, not in TS types
+    if (typeof window.EyeDropper !== 'function') {
+      toast.error('当前浏览器不支持取色器')
+      setPipetteActive(false)
+      return
+    }
+    // @ts-ignore
+    const dropper = new window.EyeDropper()
+    dropper.open().then((result: { sRGBHex: string }) => {
+      const hex = result.sRGBHex
+      const r = parseInt(hex.slice(1, 3), 16) / 255
+      const g = parseInt(hex.slice(3, 5), 16) / 255
+      const b = parseInt(hex.slice(5, 7), 16) / 255
+      const avg = (r + g + b) / 3
+      if (avg > 0.01 && avg < 0.99) {
+        const temperature = Math.max(-100, Math.min(100, Math.round((b - r) * 100)))
+        const tint = Math.max(-100, Math.min(100, Math.round((g - (r + b) / 2) * 100)))
+        commitPatch({ color: { temperature, tint, whiteBalanceMode: 'custom' } })
+      }
+    }).catch(() => {
+      // User cancelled — ignore
+    }).finally(() => {
+      setPipetteActive(false)
+    })
+  }, [pipetteActive, commitPatch])
+
   function openProject(project: WorkspaceProject): void {
     setCurrentProject(project)
     setActiveIndex(0)
@@ -317,27 +346,13 @@ export function WorkspacePage() {
             onToggleCrop={() => (cropActive ? setCropActive(false) : startCrop())}
           />
         </Accordion>
-        <Accordion
-          title="调色"
-          defaultOpen
-          actions={
-            <button
-              className="workspace-acc-reset"
-              type="button"
-              onClick={() => updatePipeline({ color: createDefaultPipeline().color, effects: createDefaultPipeline().effects })}
-              title="重置调色"
-            >
-              <RotateCcw size={11} />
-            </button>
-          }
-        >
           <ColorPanel
             value={pipeline.color}
             effects={pipeline.effects}
             onChange={(color) => updatePipeline({ color })}
             onEffectsChange={(effects) => updatePipeline({ effects })}
+            onActivatePipette={() => setPipetteActive(true)}
           />
-        </Accordion>
       </aside>
 
       <footer className="workspace-toolbar">
