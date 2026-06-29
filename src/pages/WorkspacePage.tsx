@@ -5,7 +5,6 @@ import { useLocation } from 'react-router-dom'
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../shared/types'
 import { Accordion, Button, IconButton, Tooltip, toast } from '../ui'
 import { ColorPanel } from '../workspace/color/ColorPanel'
-import { EffectsPanel } from '../workspace/effects/EffectsPanel'
 import { checkWebGLSupport, WebGLRenderer, workspaceImageCache } from '../workspace'
 import { createEditHistory, pushHistory, redoHistory, resetHistory, undoHistory, type EditHistory } from '../workspace/shared/editHistory'
 import {
@@ -322,23 +321,22 @@ export function WorkspacePage() {
           title="调色"
           defaultOpen
           actions={
-            <button className="workspace-acc-reset" type="button" onClick={() => updatePipeline({ color: createDefaultPipeline().color })} title="重置调色">
+            <button
+              className="workspace-acc-reset"
+              type="button"
+              onClick={() => updatePipeline({ color: createDefaultPipeline().color, effects: createDefaultPipeline().effects })}
+              title="重置调色"
+            >
               <RotateCcw size={11} />
             </button>
           }
         >
-          <ColorPanel value={pipeline.color} onChange={(color) => updatePipeline({ color })} />
-        </Accordion>
-        <Accordion
-          title="效果"
-          defaultOpen
-          actions={
-            <button className="workspace-acc-reset" type="button" onClick={() => updatePipeline({ effects: createDefaultPipeline().effects })} title="重置效果">
-              <RotateCcw size={11} />
-            </button>
-          }
-        >
-          <EffectsPanel value={pipeline.effects} onChange={(effects) => updatePipeline({ effects })} />
+          <ColorPanel
+            value={pipeline.color}
+            effects={pipeline.effects}
+            onChange={(color) => updatePipeline({ color })}
+            onEffectsChange={(effects) => updatePipeline({ effects })}
+          />
         </Accordion>
       </aside>
 
