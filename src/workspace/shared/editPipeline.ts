@@ -12,8 +12,11 @@ export interface EditPipeline {
     flipH: boolean
     flipV: boolean
     scale: number
+    perspectiveH: number
+    perspectiveV: number
   }
   color: {
+    whiteBalanceMode: WhiteBalanceMode
     exposure: number
     contrast: number
     brightness: number
@@ -28,7 +31,9 @@ export interface EditPipeline {
     texture: number
     clarity: number
     dehaze: number
+    curve: ToneCurveAdjust
     hsl: Record<ColorMixChannel, HslAdjust>
+    colorEditor: ColorEditorAdjust
     grading: {
       shadowsHue: number
       shadowsSaturation: number
@@ -39,6 +44,7 @@ export interface EditPipeline {
       blending: number
       balance: number
     }
+    selectiveColorMode: SelectiveColorMode
     selectiveColor: Record<SelectiveColorChannel, SelectiveColorAdjust>
     calibration: {
       redHue: number
@@ -74,13 +80,35 @@ export interface EditPipeline {
   }
 }
 
+export type WhiteBalanceMode = 'auto' | 'custom' | 'daylight' | 'cloudy' | 'indoor'
+export type ToneCurveChannel = 'rgb' | 'luminance' | 'red' | 'green' | 'blue'
 export type ColorMixChannel = 'red' | 'orange' | 'yellow' | 'green' | 'aqua' | 'blue' | 'purple' | 'magenta'
 export type SelectiveColorChannel = 'red' | 'yellow' | 'green' | 'cyan' | 'blue' | 'magenta' | 'white' | 'neutral' | 'black'
+export type SelectiveColorMode = 'relative' | 'absolute'
+
+export interface ToneCurveAdjust {
+  channel: ToneCurveChannel
+  shadows: number
+  darks: number
+  lights: number
+  highlights: number
+}
 
 export interface HslAdjust {
   hue: number
   saturation: number
   luminance: number
+}
+
+export interface ColorEditorAdjust {
+  hue: number
+  saturation: number
+  smoothing: number
+  luminanceSmoothing: number
+  hueOffset: number
+  saturationOffset: number
+  brightnessOffset: number
+  uniformity: number
 }
 
 export interface SelectiveColorAdjust {
@@ -115,8 +143,11 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     flipH: false,
     flipV: false,
     scale: 1,
+    perspectiveH: 0,
+    perspectiveV: 0,
   },
   color: {
+    whiteBalanceMode: 'custom',
     exposure: 0,
     contrast: 0,
     brightness: 0,
@@ -131,7 +162,24 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     texture: 0,
     clarity: 0,
     dehaze: 0,
+    curve: {
+      channel: 'rgb',
+      shadows: 0,
+      darks: 0,
+      lights: 0,
+      highlights: 0,
+    },
     hsl: createDefaultHsl(),
+    colorEditor: {
+      hue: 224,
+      saturation: 54,
+      smoothing: 50,
+      luminanceSmoothing: 50,
+      hueOffset: 0,
+      saturationOffset: 0,
+      brightnessOffset: 0,
+      uniformity: 0,
+    },
     grading: {
       shadowsHue: 220,
       shadowsSaturation: 0,
@@ -142,6 +190,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
       blending: 50,
       balance: 0,
     },
+    selectiveColorMode: 'relative',
     selectiveColor: createDefaultSelectiveColor(),
     calibration: {
       redHue: 0,
@@ -188,8 +237,11 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
     transform: { ...pipeline.transform, ...patch.transform },
     color: {
       ...nextColor,
+      curve: { ...pipeline.color.curve, ...patch.color?.curve },
       hsl: { ...pipeline.color.hsl, ...patch.color?.hsl },
+      colorEditor: { ...pipeline.color.colorEditor, ...patch.color?.colorEditor },
       grading: { ...pipeline.color.grading, ...patch.color?.grading },
+      selectiveColorMode: patch.color?.selectiveColorMode ?? pipeline.color.selectiveColorMode,
       selectiveColor: { ...pipeline.color.selectiveColor, ...patch.color?.selectiveColor },
       calibration: { ...pipeline.color.calibration, ...patch.color?.calibration },
     },

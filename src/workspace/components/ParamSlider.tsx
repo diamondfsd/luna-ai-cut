@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react'
+
 interface ParamSliderProps {
   label: string
   value: number
@@ -49,4 +51,3 @@ export function ParamSlider({
     </label>
   )
 }
-import type { CSSProperties } from 'react'

@@ -3,6 +3,7 @@ import fragmentSource from './shaders/pipeline.glsl?raw'
 import vertexSource from './shaders/vertex.glsl?raw'
 
 const COLOR_MIX_CHANNELS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'] as const
+const SELECTIVE_COLOR_CHANNELS = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta', 'white', 'neutral', 'black'] as const
 
 const UNIFORM_NAMES = [
   'u_texture',
@@ -12,6 +13,7 @@ const UNIFORM_NAMES = [
   'u_rotate',
   'u_flip',
   'u_scale',
+  'u_perspective',
   'u_lensDistortion',
   'u_exposure',
   'u_contrast',
@@ -27,6 +29,8 @@ const UNIFORM_NAMES = [
   'u_textureAmount',
   'u_clarity',
   'u_dehaze',
+  'u_curve',
+  'u_curveChannel',
   'u_sharpen',
   'u_sharpenRadius',
   'u_sharpenDetail',
@@ -42,12 +46,17 @@ const UNIFORM_NAMES = [
   'u_hslHue',
   'u_hslSaturation',
   'u_hslLuminance',
+  'u_colorEditor',
+  'u_colorEditorExtra',
   'u_gradingShadows',
   'u_gradingMidtones',
   'u_gradingHighlights',
   'u_gradingBlending',
   'u_gradingBalance',
-  'u_calibration',
+  'u_selectiveColor',
+  'u_selectiveColorMode',
+  'u_calibrationHue',
+  'u_calibrationSaturation',
 ] as const
 
 export class WebGLRenderer {
@@ -60,7 +69,7 @@ export class WebGLRenderer {
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false })
-    if (!gl) throw new Error('当前设备不支持 WebGL2')
+    if (!gl) throw new Error('当前设备不支持工作台预览')
 
     this.canvas = canvas
     this.gl = gl
@@ -140,6 +149,7 @@ export class WebGLRenderer {
     gl.uniform1f(this.uniform('u_rotate'), pipeline.transform.rotate)
     gl.uniform2f(this.uniform('u_flip'), pipeline.transform.flipH ? 1 : 0, pipeline.transform.flipV ? 1 : 0)
     gl.uniform1f(this.uniform('u_scale'), pipeline.transform.scale)
+    gl.uniform2f(this.uniform('u_perspective'), pipeline.transform.perspectiveH / 100, pipeline.transform.perspectiveV / 100)
     gl.uniform1f(this.uniform('u_lensDistortion'), pipeline.effects.lensDistortion / 100)
     gl.uniform1f(this.uniform('u_exposure'), pipeline.color.exposure)
     gl.uniform1f(this.uniform('u_contrast'), pipeline.color.contrast / 100)
@@ -155,6 +165,14 @@ export class WebGLRenderer {
     gl.uniform1f(this.uniform('u_textureAmount'), pipeline.color.texture / 100)
     gl.uniform1f(this.uniform('u_clarity'), pipeline.color.clarity / 100)
     gl.uniform1f(this.uniform('u_dehaze'), pipeline.color.dehaze / 100)
+    gl.uniform4f(
+      this.uniform('u_curve'),
+      pipeline.color.curve.shadows / 100,
+      pipeline.color.curve.darks / 100,
+      pipeline.color.curve.lights / 100,
+      pipeline.color.curve.highlights / 100,
+    )
+    gl.uniform1i(this.uniform('u_curveChannel'), ['rgb', 'luminance', 'red', 'green', 'blue'].indexOf(pipeline.color.curve.channel))
     gl.uniform1f(this.uniform('u_sharpen'), pipeline.effects.sharpen / 150)
     gl.uniform1f(this.uniform('u_sharpenRadius'), pipeline.effects.sharpenRadius)
     gl.uniform1f(this.uniform('u_sharpenDetail'), pipeline.effects.sharpenDetail / 100)
@@ -170,13 +188,41 @@ export class WebGLRenderer {
     gl.uniform1fv(this.uniform('u_hslHue'), COLOR_MIX_CHANNELS.map((channel) => pipeline.color.hsl[channel].hue / 100))
     gl.uniform1fv(this.uniform('u_hslSaturation'), COLOR_MIX_CHANNELS.map((channel) => pipeline.color.hsl[channel].saturation / 100))
     gl.uniform1fv(this.uniform('u_hslLuminance'), COLOR_MIX_CHANNELS.map((channel) => pipeline.color.hsl[channel].luminance / 100))
+    gl.uniform4f(
+      this.uniform('u_colorEditor'),
+      pipeline.color.colorEditor.hue / 360,
+      pipeline.color.colorEditor.saturation / 100,
+      pipeline.color.colorEditor.smoothing / 100,
+      pipeline.color.colorEditor.luminanceSmoothing / 100,
+    )
+    gl.uniform4f(
+      this.uniform('u_colorEditorExtra'),
+      pipeline.color.colorEditor.hueOffset / 100,
+      pipeline.color.colorEditor.saturationOffset / 100,
+      pipeline.color.colorEditor.brightnessOffset / 100,
+      pipeline.color.colorEditor.uniformity / 100,
+    )
     gl.uniform3f(this.uniform('u_gradingShadows'), pipeline.color.grading.shadowsHue / 360, pipeline.color.grading.shadowsSaturation / 100, 0)
     gl.uniform3f(this.uniform('u_gradingMidtones'), pipeline.color.grading.midtonesHue / 360, pipeline.color.grading.midtonesSaturation / 100, 0)
     gl.uniform3f(this.uniform('u_gradingHighlights'), pipeline.color.grading.highlightsHue / 360, pipeline.color.grading.highlightsSaturation / 100, 0)
     gl.uniform1f(this.uniform('u_gradingBlending'), pipeline.color.grading.blending / 100)
     gl.uniform1f(this.uniform('u_gradingBalance'), pipeline.color.grading.balance / 100)
+    gl.uniform4fv(
+      this.uniform('u_selectiveColor'),
+      SELECTIVE_COLOR_CHANNELS.flatMap((channel) => {
+        const item = pipeline.color.selectiveColor[channel]
+        return [item.cyan / 100, item.magenta / 100, item.yellow / 100, item.black / 100]
+      }),
+    )
+    gl.uniform1f(this.uniform('u_selectiveColorMode'), pipeline.color.selectiveColorMode === 'absolute' ? 1 : 0)
     gl.uniform3f(
-      this.uniform('u_calibration'),
+      this.uniform('u_calibrationHue'),
+      pipeline.color.calibration.redHue / 100,
+      pipeline.color.calibration.greenHue / 100,
+      pipeline.color.calibration.blueHue / 100,
+    )
+    gl.uniform3f(
+      this.uniform('u_calibrationSaturation'),
       pipeline.color.calibration.redSaturation / 100,
       pipeline.color.calibration.greenSaturation / 100,
       pipeline.color.calibration.blueSaturation / 100,
@@ -209,12 +255,12 @@ export class WebGLRenderer {
     const vertex = this.compileShader(gl.VERTEX_SHADER, vertexSource)
     const fragment = this.compileShader(gl.FRAGMENT_SHADER, fragmentSource)
     const program = gl.createProgram()
-    if (!program) throw new Error('无法创建 WebGL program')
+    if (!program) throw new Error('无法初始化预览效果')
     gl.attachShader(program, vertex)
     gl.attachShader(program, fragment)
     gl.linkProgram(program)
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(program) ?? 'WebGL program link failed')
+      throw new Error(gl.getProgramInfoLog(program) ?? '预览效果初始化失败')
     }
     gl.deleteShader(vertex)
     gl.deleteShader(fragment)
@@ -224,18 +270,18 @@ export class WebGLRenderer {
   private compileShader(type: number, source: string): WebGLShader {
     const gl = this.gl
     const shader = gl.createShader(type)
-    if (!shader) throw new Error('无法创建 WebGL shader')
+    if (!shader) throw new Error('无法初始化预览效果')
     gl.shaderSource(shader, source)
     gl.compileShader(shader)
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      throw new Error(gl.getShaderInfoLog(shader) ?? 'WebGL shader compile failed')
+      throw new Error(gl.getShaderInfoLog(shader) ?? '预览效果初始化失败')
     }
     return shader
   }
 
   private uniform(name: string): WebGLUniformLocation {
     const location = this.uniforms.get(name)
-    if (!location) throw new Error(`WebGL uniform not found: ${name}`)
+    if (!location) throw new Error('预览参数缺失')
     return location
   }
 }
