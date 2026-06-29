@@ -59,28 +59,54 @@
   display: grid;
   place-items: center;
   color: rgba(0, 102, 204, 0.72);
+  overflow: hidden;
 }
 
 .workspace-project-previews {
   position: absolute;
-  left: 27px;
-  right: 17px;
-  bottom: 20px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3px;
+  left: 34px;
+  top: 34px;
+  width: 72px;
+  height: 48px;
+  pointer-events: none;
 }
 
 .workspace-project-previews img,
 .workspace-project-previews span {
-  aspect-ratio: 1.25;
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  width: 54px;
+  height: 36px;
   border-radius: 4px;
   overflow: hidden;
   background: #eef0f3;
+  border: 2px solid #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
   display: grid;
   place-items: center;
   object-fit: cover;
   color: var(--muted);
+}
+
+.workspace-project-previews img:nth-child(1),
+.workspace-project-previews span:nth-child(1) {
+  transform: translate(-8px, 5px) rotate(-7deg);
+}
+
+.workspace-project-previews img:nth-child(2),
+.workspace-project-previews span:nth-child(2) {
+  transform: translate(2px, -1px) rotate(4deg);
+}
+
+.workspace-project-previews img:nth-child(3),
+.workspace-project-previews span:nth-child(3) {
+  transform: translate(11px, 6px) rotate(8deg);
+}
+
+.workspace-project-previews img:nth-child(4),
+.workspace-project-previews span:nth-child(4) {
+  transform: translate(0, 10px) rotate(-2deg);
 }
 
 .workspace-project-name {
