@@ -61,28 +61,31 @@
 
 ### Dialog 弹窗
 
-基于 `@radix-ui/react-dialog`。用法：
+基于 `@radix-ui/react-dialog`，统一组件通过 props 控制所有内容，无需引入子组件：
 
 ```tsx
-<Dialog open={open} onOpenChange={setOpen}>
-  <DialogContent>
-    <DialogHeader>
-      <DialogTitle>标题</DialogTitle>
-      <DialogDescription>描述</DialogDescription>
-    </DialogHeader>
-    <DialogBody>内容区域</DialogBody>
-    <DialogFooter>
-      <Button variant="secondary">取消</Button>
-      <Button variant="primary">确认</Button>
-    </DialogFooter>
-  </DialogContent>
+<Dialog
+  open={open}
+  onOpenChange={setOpen}
+  title="标题"
+  description="描述"
+  footer={<><Button variant="secondary">取消</Button><Button variant="primary">确认</Button></>}
+>
+  内容区域
 </Dialog>
 ```
 
-- **DialogContent** — 包含遮罩层 + 内容面板 + 右上角关闭按钮，自动 Portal
-- **DialogHeader** — 顶部，含 border-bottom，自动给 DialogTitle 预留关闭按钮空间
-- **DialogBody** — 可滚动内容区域
-- **DialogFooter** — 底部操作栏，flex-end 对齐
+| Prop | 说明 |
+|------|------|
+| `open` / `onOpenChange` / `defaultOpen` | 受控/非受控模式 |
+| `trigger` | 触发按钮（非受控模式） |
+| `title` | 弹窗标题 |
+| `description` | 弹窗描述 |
+| `children` | 主体内容 |
+| `footer` | 底部操作栏 |
+| `className` | DialogContent 自定义类名 |
+
+标题和描述自动组合为头部（带 `.ui-dialog-header`），footer 自动包裹 `.ui-dialog-footer`。需要自定义 body 样式时在 children 中自行包裹 div。
 
 ### Popover 弹出面板
 

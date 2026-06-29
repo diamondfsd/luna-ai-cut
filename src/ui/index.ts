@@ -1,17 +1,8 @@
 export { Button } from './Button'
 export type { ButtonVariant, ButtonSize } from './Button'
 export { ButtonGroup } from './ButtonGroup'
-export {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogOverlay,
-  DialogTitle,
-  DialogTrigger,
-} from './Dialog'
+export { Dialog } from './Dialog'
+export type { DialogProps } from './Dialog'
 export { IconButton } from './IconButton'
 export type { IconButtonVariant, IconButtonSize } from './IconButton'
 export { Input } from './Input'
