@@ -1,11 +1,9 @@
 import type { EditPipeline } from '../shared/editPipeline'
 import { ParamSlider } from '../components/ParamSlider'
-import { Button } from '../../ui'
 
 interface ColorPanelProps {
   value: EditPipeline['color']
   onChange: (patch: Partial<EditPipeline['color']>) => void
-  onReset: () => void
 }
 
 const MAIN_CONTROLS = [
@@ -29,7 +27,7 @@ const COLOR_CONTROLS = [
   ['去雾', 'dehaze', -100, 100, 1],
 ] as const
 
-export function ColorPanel({ value, onChange, onReset }: ColorPanelProps) {
+export function ColorPanel({ value, onChange }: ColorPanelProps) {
   return (
     <div className="workspace-panel-stack">
       {MAIN_CONTROLS.map(([label, key, min, max, step]) => (
@@ -54,10 +52,6 @@ export function ColorPanel({ value, onChange, onReset }: ColorPanelProps) {
       {COLOR_CONTROLS.map(([label, key, min, max, step]) => (
         <ParamSlider key={key} label={label} value={value[key]} min={min} max={max} step={step} onChange={(next) => onChange({ [key]: next })} />
       ))}
-
-      <div className="workspace-panel-actions">
-        <Button variant="ghost" size="mini" onClick={onReset}>重置调色</Button>
-      </div>
     </div>
   )
 }

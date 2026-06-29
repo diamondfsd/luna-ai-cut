@@ -6,6 +6,7 @@ out vec4 fragColor;
 
 uniform sampler2D u_texture;
 uniform vec2 u_resolution;
+uniform vec2 u_aspectRatio;
 uniform vec4 u_crop;
 uniform float u_rotate;
 uniform vec2 u_flip;
@@ -24,6 +25,22 @@ uniform float u_clarity;
 uniform float u_dehaze;
 uniform float u_sharpen;
 uniform float u_vignette;
+
+vec2 containUv(vec2 uv) {
+  float imageAspect = max(u_aspectRatio.x, 0.0001);
+  float canvasAspect = max(u_aspectRatio.y, 0.0001);
+  vec2 size = vec2(1.0);
+  if (canvasAspect > imageAspect) {
+    size.x = imageAspect / canvasAspect;
+  } else {
+    size.y = canvasAspect / imageAspect;
+  }
+  vec2 origin = (vec2(1.0) - size) * 0.5;
+  if (uv.x < origin.x || uv.y < origin.y || uv.x > origin.x + size.x || uv.y > origin.y + size.y) {
+    return vec2(-1.0);
+  }
+  return (uv - origin) / size;
+}
 
 vec2 transformUv(vec2 uv) {
   vec2 cropUv = u_crop.xy + uv * u_crop.zw;
@@ -82,15 +99,21 @@ vec3 applyVignette(vec2 uv, vec3 color) {
 }
 
 void main() {
-  vec2 uv = transformUv(v_uv);
+  vec2 containedUv = containUv(v_uv);
+  if (containedUv.x < 0.0) {
+    fragColor = vec4(0.0);
+    return;
+  }
+
+  vec2 uv = transformUv(containedUv);
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-    fragColor = vec4(0.02, 0.02, 0.025, 1.0);
+    fragColor = vec4(0.0);
     return;
   }
 
   vec4 source = texture(u_texture, uv);
   vec3 color = applyColor(source.rgb);
   color = applySharpen(uv, color);
-  color = applyVignette(v_uv, color);
+  color = applyVignette(containedUv, color);
   fragColor = vec4(color, source.a);
 }

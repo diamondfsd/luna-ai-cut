@@ -1,30 +1,25 @@
-import { Download, Eye, EyeOff, Redo2, RotateCcw, Undo2 } from 'lucide-react'
+import { ArrowLeft, Download, Eye, EyeOff, Folder, ImageIcon, Redo2, RotateCcw, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
+import type { WorkspaceMediaAsset, WorkspaceProject } from '../shared/types'
+import { Accordion, Button, IconButton, Tooltip, toast } from '../ui'
 import { ColorPanel } from '../workspace/color/ColorPanel'
 import { EffectsPanel } from '../workspace/effects/EffectsPanel'
 import { checkWebGLSupport, WebGLRenderer, workspaceImageCache } from '../workspace'
-import { CropOverlay } from '../workspace/transform/CropOverlay'
-import { TransformPanel } from '../workspace/transform/TransformPanel'
+import { createEditHistory, pushHistory, redoHistory, resetHistory, undoHistory, type EditHistory } from '../workspace/shared/editHistory'
 import {
   createDefaultPipeline,
   DEFAULT_PIPELINE,
   mergePipeline,
+  type EditPipeline,
   type PipelinePatch,
 } from '../workspace/shared/editPipeline'
-import { createEditHistory, pushHistory, redoHistory, resetHistory, undoHistory, type EditHistory } from '../workspace/shared/editHistory'
-import { Accordion, Button, IconButton, Tooltip, toast } from '../ui'
-
-export interface WorkspaceMediaAsset {
-  id: string
-  name: string
-  path: string
-  kind: 'image' | 'video'
-  thumbnailUrl?: string | null
-}
+import { CropOverlay } from '../workspace/transform/CropOverlay'
+import { TransformPanel } from '../workspace/transform/TransformPanel'
 
 interface WorkspaceRouteState {
+  project?: WorkspaceProject
   media?: WorkspaceMediaAsset[]
   mediaPaths?: string[]
   initialIndex?: number
@@ -44,29 +39,68 @@ function mediaFromState(state: WorkspaceRouteState | null): WorkspaceMediaAsset[
   }))
 }
 
+function normalizePipeline(value: unknown): EditPipeline {
+  if (!value || typeof value !== 'object') return createDefaultPipeline()
+  return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
+}
+
+function projectMedia(project: WorkspaceProject | null, fallbackMedia: WorkspaceMediaAsset[]): WorkspaceMediaAsset[] {
+  return project?.assets ?? fallbackMedia
+}
+
 export function WorkspacePage() {
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
-  const initialMedia = useMemo(() => mediaFromState(routeState), [routeState])
-  const [media, setMedia] = useState<WorkspaceMediaAsset[]>(initialMedia)
+  const fallbackMedia = useMemo(() => mediaFromState(routeState), [location.key])
+  const [projects, setProjects] = useState<WorkspaceProject[]>([])
+  const [projectLoading, setProjectLoading] = useState(false)
+  const [currentProject, setCurrentProject] = useState<WorkspaceProject | null>(routeState?.project ?? null)
+  const [transientMedia, setTransientMedia] = useState<WorkspaceMediaAsset[]>(fallbackMedia)
   const [activeIndex, setActiveIndex] = useState(routeState?.initialIndex ?? 0)
   const [history, setHistory] = useState<EditHistory>(() => createEditHistory(createDefaultPipeline()))
   const [imageLoading, setImageLoading] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
   const [webglMessage, setWebglMessage] = useState<string | null>(null)
   const [cropActive, setCropActive] = useState(false)
+  const [cropDraft, setCropDraft] = useState<EditPipeline['transform']['crop']>(null)
   const [compareOriginal, setCompareOriginal] = useState(false)
+  const [imageRect, setImageRect] = useState({ x: 0, y: 0, width: 1, height: 1 })
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rendererRef = useRef<WebGLRenderer | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const projectRef = useRef<WorkspaceProject | null>(currentProject)
+  const pipelineRef = useRef<EditPipeline>(history.present)
+  const saveTimerRef = useRef<number | null>(null)
   const pipeline = history.present
+  const media = projectMedia(currentProject, transientMedia)
   const activeMedia = media[activeIndex] ?? null
+  const canRender = Boolean(rendererRef.current && activeMedia && !webglMessage?.includes('不支持'))
 
   useEffect(() => {
-    if (!initialMedia.length) return
-    setMedia(initialMedia)
-    setActiveIndex(Math.min(routeState?.initialIndex ?? 0, initialMedia.length - 1))
-  }, [initialMedia, routeState?.initialIndex])
+    if (routeState?.project) {
+      setCurrentProject(routeState.project)
+      setActiveIndex(Math.min(routeState.initialIndex ?? 0, routeState.project.assets.length - 1))
+    } else if (fallbackMedia.length) {
+      setTransientMedia(fallbackMedia)
+      setActiveIndex(Math.min(routeState?.initialIndex ?? 0, fallbackMedia.length - 1))
+    }
+  }, [location.key])
+
+  useEffect(() => {
+    projectRef.current = currentProject
+  }, [currentProject])
+
+  useEffect(() => {
+    pipelineRef.current = pipeline
+  }, [pipeline])
+
+  useEffect(() => {
+    setProjectLoading(true)
+    window.luna.workspace.listProjects()
+      .then(setProjects)
+      .catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
+      .finally(() => setProjectLoading(false))
+  }, [])
 
   useEffect(() => {
     const support = checkWebGLSupport()
@@ -90,16 +124,22 @@ export function WorkspacePage() {
     }
   }, [webglMessage])
 
+  const updateImageRect = useCallback(() => {
+    const rect = rendererRef.current?.getDisplayRect()
+    if (rect) setImageRect(rect)
+  }, [])
+
   useEffect(() => {
     if (!stageRef.current || !rendererRef.current) return
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
       rendererRef.current?.resize(width, height)
       rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : pipeline)
+      updateImageRect()
     })
     observer.observe(stageRef.current)
     return () => observer.disconnect()
-  }, [compareOriginal, pipeline])
+  }, [compareOriginal, pipeline, updateImageRect])
 
   useEffect(() => {
     if (!activeMedia || !rendererRef.current) return
@@ -110,10 +150,18 @@ export function WorkspacePage() {
       .then((entry) => {
         if (canceled) return
         rendererRef.current?.loadImage(entry.previewBitmap)
-        rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : pipeline)
-        setMedia((current) => current.map((item) => (
-          item.path === activeMedia.path ? { ...item, thumbnailUrl: item.thumbnailUrl ?? entry.thumbnailUrl } : item
-        )))
+        rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : pipelineRef.current)
+        updateImageRect()
+        const applyThumb = <T extends WorkspaceMediaAsset>(items: T[]): T[] =>
+          items.map((item) => (item.path === activeMedia.path && !item.thumbnailUrl ? { ...item, thumbnailUrl: entry.thumbnailUrl } : item)) as T[]
+        if (projectRef.current) {
+          const nextProject = { ...projectRef.current, assets: applyThumb(projectRef.current.assets) }
+          projectRef.current = nextProject
+          setCurrentProject(nextProject)
+          window.luna.workspace.saveProject(nextProject).catch(() => undefined)
+        } else {
+          setTransientMedia(applyThumb)
+        }
       })
       .catch((error) => {
         if (!canceled) setImageError(error instanceof Error ? error.message : String(error))
@@ -122,11 +170,35 @@ export function WorkspacePage() {
         if (!canceled) setImageLoading(false)
       })
     return () => { canceled = true }
-  }, [activeMedia, compareOriginal, pipeline])
+  }, [activeMedia?.path, compareOriginal, updateImageRect])
 
   useEffect(() => {
     rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : pipeline)
   }, [compareOriginal, pipeline])
+
+  useEffect(() => {
+    const asset = currentProject?.assets[activeIndex]
+    setCropActive(false)
+    setCropDraft(null)
+    setHistory(createEditHistory(normalizePipeline(asset?.pipeline)))
+  }, [activeIndex, currentProject?.id])
+
+  useEffect(() => {
+    if (!currentProject || !activeMedia) return
+    const baseProject = projectRef.current
+    if (!baseProject) return
+    const nextProject: WorkspaceProject = {
+      ...baseProject,
+      assets: baseProject.assets.map((asset, index) => (index === activeIndex ? { ...asset, pipeline } : asset)),
+    }
+    projectRef.current = nextProject
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => {
+      window.luna.workspace.saveProject(nextProject).catch((error) => {
+        toast.error(error instanceof Error ? error.message : String(error))
+      })
+    }, 500)
+  }, [activeIndex, activeMedia, currentProject?.id, pipeline])
 
   const commitPatch = useCallback((patch: PipelinePatch) => {
     setHistory((current) => pushHistory(current, mergePipeline(current.present, patch)))
@@ -136,67 +208,79 @@ export function WorkspacePage() {
     commitPatch(patch)
   }
 
-  function handleUndo(): void {
-    setHistory(undoHistory)
+  function openProject(project: WorkspaceProject): void {
+    setCurrentProject(project)
+    setActiveIndex(0)
   }
 
-  function handleRedo(): void {
-    setHistory(redoHistory)
+  function backToProjects(): void {
+    setCurrentProject(null)
+    setCropActive(false)
+    window.luna.workspace.listProjects().then(setProjects).catch(() => undefined)
   }
 
   function handleReset(): void {
     setHistory((current) => resetHistory(current, createDefaultPipeline()))
     setCropActive(false)
+    setCropDraft(null)
   }
 
   function handleExport(): void {
     toast.show('工作台导出管线将在下一步接入')
   }
 
-  const canRender = Boolean(rendererRef.current && activeMedia && !webglMessage?.includes('不支持'))
+  function startCrop(): void {
+    setCropDraft(pipeline.transform.crop ?? { x: 0.12, y: 0.12, w: 0.76, h: 0.76 })
+    setCropActive(true)
+  }
+
+  function confirmCrop(): void {
+    if (cropDraft) updatePipeline({ transform: { crop: cropDraft } })
+    setCropActive(false)
+  }
+
+  if (!currentProject && transientMedia.length === 0) {
+    return (
+      <div className="workspace-project-page">
+        <header className="workspace-project-header">
+          <h2>工作台项目</h2>
+          <span>{projectLoading ? '加载中...' : `${projects.length} 个项目`}</span>
+        </header>
+        <div className="workspace-project-grid">
+          {projects.map((project) => (
+            <button key={project.id} className="workspace-project-card" type="button" onClick={() => openProject(project)}>
+              <span className="workspace-project-folder">
+                <Folder size={72} strokeWidth={1.5} />
+                <span className="workspace-project-previews">
+                  {project.assets.slice(0, 4).map((asset) => (
+                    asset.thumbnailUrl ? <img key={asset.id} src={asset.thumbnailUrl} alt="" /> : <span key={asset.id}><ImageIcon size={16} /></span>
+                  ))}
+                </span>
+              </span>
+              <span className="workspace-project-name">{project.name}</span>
+            </button>
+          ))}
+          {!projectLoading && projects.length === 0 && (
+            <div className="workspace-project-empty">在本地资源中多选图片后创建工作台项目。</div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="workspace-layout">
-      <aside className="workspace-sidebar">
-        <div className="workspace-sidebar-header">
-          <span>工作台</span>
-          <strong>{media.length}</strong>
-        </div>
-        <div className="workspace-media-list">
-          {media.map((item, index) => (
-            <button
-              key={item.id}
-              className={`workspace-thumb${index === activeIndex ? ' active' : ''}`}
-              type="button"
-              onClick={() => {
-                setActiveIndex(index)
-                setCropActive(false)
-              }}
-            >
-              <span className="workspace-thumb-preview">
-                {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span>{item.kind === 'video' ? '视频' : '图片'}</span>}
-              </span>
-              <span className="workspace-thumb-name">{item.name}</span>
-            </button>
-          ))}
-          {media.length === 0 && (
-            <div className="workspace-empty-list">
-              从本地资源选择图片后发送到工作台
-            </div>
-          )}
-        </div>
-      </aside>
-
       <section className="workspace-canvas-shell">
         <div ref={stageRef} className="workspace-canvas-stage">
           <canvas ref={canvasRef} className="workspace-canvas" />
           {cropActive && canRender && (
             <CropOverlay
-              crop={pipeline.transform.crop}
-              onCropChange={(crop) => updatePipeline({ transform: { crop } })}
-              onConfirm={() => setCropActive(false)}
+              crop={cropDraft}
+              imageRect={imageRect}
+              onCropChange={setCropDraft}
+              onConfirm={confirmCrop}
               onCancel={() => {
-                updatePipeline({ transform: { crop: null } })
+                setCropDraft(null)
                 setCropActive(false)
               }}
             />
@@ -213,42 +297,60 @@ export function WorkspacePage() {
       </section>
 
       <aside className="workspace-params">
-        <Accordion title="几何变换" defaultOpen>
+        <Accordion
+          title="几何变换"
+          defaultOpen
+          actions={
+            <button className="workspace-acc-reset" type="button" onClick={() => updatePipeline({ transform: createDefaultPipeline().transform })} title="重置几何变换">
+              <RotateCcw size={11} />
+            </button>
+          }
+        >
           <TransformPanel
             value={pipeline.transform}
             cropActive={cropActive}
             onChange={(transform) => updatePipeline({ transform })}
-            onReset={() => updatePipeline({ transform: createDefaultPipeline().transform })}
-            onToggleCrop={() => setCropActive((value) => !value)}
+            onToggleCrop={() => (cropActive ? setCropActive(false) : startCrop())}
           />
         </Accordion>
-        <Accordion title="调色" defaultOpen>
-          <ColorPanel
-            value={pipeline.color}
-            onChange={(color) => updatePipeline({ color })}
-            onReset={() => updatePipeline({ color: createDefaultPipeline().color })}
-          />
+        <Accordion
+          title="调色"
+          defaultOpen
+          actions={
+            <button className="workspace-acc-reset" type="button" onClick={() => updatePipeline({ color: createDefaultPipeline().color })} title="重置调色">
+              <RotateCcw size={11} />
+            </button>
+          }
+        >
+          <ColorPanel value={pipeline.color} onChange={(color) => updatePipeline({ color })} />
         </Accordion>
-        <Accordion title="效果" defaultOpen>
-          <EffectsPanel
-            value={pipeline.effects}
-            onChange={(effects) => updatePipeline({ effects })}
-            onReset={() => updatePipeline({ effects: createDefaultPipeline().effects })}
-          />
+        <Accordion
+          title="效果"
+          defaultOpen
+          actions={
+            <button className="workspace-acc-reset" type="button" onClick={() => updatePipeline({ effects: createDefaultPipeline().effects })} title="重置效果">
+              <RotateCcw size={11} />
+            </button>
+          }
+        >
+          <EffectsPanel value={pipeline.effects} onChange={(effects) => updatePipeline({ effects })} />
         </Accordion>
       </aside>
 
       <footer className="workspace-toolbar">
         <div className="workspace-toolbar-group">
+          <Tooltip content="返回项目列表">
+            <IconButton variant="ghost" size="compact" icon={<ArrowLeft size={16} />} onClick={backToProjects} />
+          </Tooltip>
           <Tooltip content="撤销">
-            <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={history.past.length === 0} onClick={handleUndo} />
+            <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={history.past.length === 0} onClick={() => setHistory(undoHistory)} />
           </Tooltip>
           <Tooltip content="重做">
-            <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={history.future.length === 0} onClick={handleRedo} />
+            <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={history.future.length === 0} onClick={() => setHistory(redoHistory)} />
           </Tooltip>
           <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={handleReset}>重置</Button>
         </div>
-        <div className="workspace-toolbar-title">{activeMedia?.name ?? '未选择素材'}</div>
+        <div className="workspace-toolbar-title">{currentProject?.name ?? '临时工作台'} · {activeMedia?.name ?? '未选择素材'}</div>
         <div className="workspace-toolbar-group">
           <Button
             variant={compareOriginal ? 'primary' : 'secondary'}
@@ -265,6 +367,22 @@ export function WorkspacePage() {
           </Button>
         </div>
       </footer>
+
+      <div className="workspace-media-strip">
+        {media.map((item, index) => (
+          <button
+            key={item.id}
+            className={`workspace-thumb${index === activeIndex ? ' active' : ''}`}
+            type="button"
+            onClick={() => setActiveIndex(index)}
+          >
+            <span className="workspace-thumb-preview">
+              {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span>{item.kind === 'video' ? '视频' : '图片'}</span>}
+            </span>
+            <span className="workspace-thumb-name">{item.name}</span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

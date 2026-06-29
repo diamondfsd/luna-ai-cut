@@ -5,6 +5,7 @@ import vertexSource from './shaders/vertex.glsl?raw'
 type UniformName =
   | 'u_texture'
   | 'u_resolution'
+  | 'u_aspectRatio'
   | 'u_crop'
   | 'u_rotate'
   | 'u_flip'
@@ -27,6 +28,7 @@ type UniformName =
 const UNIFORM_NAMES: UniformName[] = [
   'u_texture',
   'u_resolution',
+  'u_aspectRatio',
   'u_crop',
   'u_rotate',
   'u_flip',
@@ -56,7 +58,7 @@ export class WebGLRenderer {
   private sourceSize = { width: 1, height: 1 }
 
   constructor(canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext('webgl2', { alpha: false, premultipliedAlpha: false })
+    const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false })
     if (!gl) throw new Error('当前设备不支持 WebGL2')
 
     this.canvas = canvas
@@ -100,7 +102,7 @@ export class WebGLRenderer {
     if (!this.texture) return
     const gl = this.gl
     gl.useProgram(this.program)
-    gl.clearColor(0.02, 0.02, 0.025, 1)
+    gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(gl.TEXTURE_2D, this.texture)
@@ -113,10 +115,26 @@ export class WebGLRenderer {
     this.gl.deleteProgram(this.program)
   }
 
+  getDisplayRect(): { x: number; y: number; width: number; height: number } {
+    const canvasWidth = Math.max(1, this.canvas.clientWidth)
+    const canvasHeight = Math.max(1, this.canvas.clientHeight)
+    const imageAspect = Math.max(1, this.sourceSize.width) / Math.max(1, this.sourceSize.height)
+    const canvasAspect = canvasWidth / canvasHeight
+    if (canvasAspect > imageAspect) {
+      const width = canvasHeight * imageAspect
+      return { x: (canvasWidth - width) / 2, y: 0, width, height: canvasHeight }
+    }
+    const height = canvasWidth / imageAspect
+    return { x: 0, y: (canvasHeight - height) / 2, width: canvasWidth, height }
+  }
+
   private updateUniforms(pipeline: EditPipeline): void {
     const gl = this.gl
     const crop = pipeline.transform.crop ?? { x: 0, y: 0, w: 1, h: 1 }
     gl.uniform2f(this.uniform('u_resolution'), this.sourceSize.width, this.sourceSize.height)
+    const canvasAspect = Math.max(1, this.canvas.width) / Math.max(1, this.canvas.height)
+    const imageAspect = Math.max(1, this.sourceSize.width) / Math.max(1, this.sourceSize.height)
+    gl.uniform2f(this.uniform('u_aspectRatio'), imageAspect, canvasAspect)
     gl.uniform4f(this.uniform('u_crop'), crop.x, crop.y, crop.w, crop.h)
     gl.uniform1f(this.uniform('u_rotate'), pipeline.transform.rotate)
     gl.uniform2f(this.uniform('u_flip'), pipeline.transform.flipH ? 1 : 0, pipeline.transform.flipV ? 1 : 0)

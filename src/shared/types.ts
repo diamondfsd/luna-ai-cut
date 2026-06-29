@@ -34,6 +34,27 @@ export interface LunaFile {
   duration?: number
 }
 
+export interface WorkspaceMediaAsset {
+  id: string
+  name: string
+  path: string
+  kind: 'image' | 'video'
+  thumbnailUrl?: string | null
+}
+
+export interface WorkspaceProjectAsset extends WorkspaceMediaAsset {
+  pipeline?: unknown
+}
+
+export interface WorkspaceProject {
+  id: string
+  name: string
+  dir: string
+  createdAt: string
+  updatedAt: string
+  assets: WorkspaceProjectAsset[]
+}
+
 export interface ConnectionStatus {
   deviceId?: string
   deviceName?: string
@@ -399,6 +420,10 @@ export interface LunaApi {
   cacheFile(file: LunaFile): Promise<boolean>
   workspace: {
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
+    listProjects(): Promise<WorkspaceProject[]>
+    createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
+    addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
+    saveProject(project: WorkspaceProject): Promise<WorkspaceProject>
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void

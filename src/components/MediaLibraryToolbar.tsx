@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, Loader2, RefreshCcw, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Sparkles, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -12,11 +12,16 @@ import type { DeviceDefinition, DownloadProgress, ExportProgress, LunaFile, Vide
 import {
   Button,
   ButtonGroup,
+  Dialog,
+  Input,
   Popover,
   PopoverContent,
   PopoverTrigger,
   SegmentedControl,
+  Select,
+  toast,
 } from '../ui'
+import type { WorkspaceProject } from '../shared/types'
 
 type DownloadStatusFilter = 'all' | 'downloaded' | 'not-downloaded'
 import type { ViewMode } from '../pages/useMediaLibraryController'
@@ -130,6 +135,12 @@ export function MediaLibraryToolbar({
 }: MediaLibraryToolbarProps) {
   const haveSelection = selectedCount > 0
   const [filterOpen, setFilterOpen] = useState(false)
+  const [createProjectOpen, setCreateProjectOpen] = useState(false)
+  const [addProjectOpen, setAddProjectOpen] = useState(false)
+  const [projectName, setProjectName] = useState('')
+  const [projects, setProjects] = useState<WorkspaceProject[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [projectBusy, setProjectBusy] = useState(false)
   const navigate = useNavigate()
   const workspaceMedia = selectedFiles
     .filter((file) => file.kind === 'image')
@@ -146,6 +157,53 @@ export function MediaLibraryToolbar({
     })
     .filter((file): file is NonNullable<typeof file> => Boolean(file))
   const canSendToWorkspace = isDownloadsPage && workspaceMedia.length > 0
+
+  async function handleCreateProject(): Promise<void> {
+    if (!canSendToWorkspace || projectBusy) return
+    setProjectBusy(true)
+    try {
+      const name = projectName.trim() || `工作台项目 ${new Date().toLocaleString()}`
+      const project = await window.luna.workspace.createProject(name, workspaceMedia)
+      setCreateProjectOpen(false)
+      setProjectName('')
+      setSelected(new Set())
+      navigate('/workspace', { state: { project, initialIndex: 0 } })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setProjectBusy(false)
+    }
+  }
+
+  async function openAddProjectDialog(): Promise<void> {
+    if (!canSendToWorkspace || projectBusy) return
+    setProjectBusy(true)
+    try {
+      const nextProjects = await window.luna.workspace.listProjects()
+      setProjects(nextProjects)
+      setSelectedProjectId(nextProjects[0]?.id ?? '')
+      setAddProjectOpen(true)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setProjectBusy(false)
+    }
+  }
+
+  async function handleAddToProject(): Promise<void> {
+    if (!selectedProjectId || projectBusy) return
+    setProjectBusy(true)
+    try {
+      const project = await window.luna.workspace.addAssetsToProject(selectedProjectId, workspaceMedia)
+      setAddProjectOpen(false)
+      setSelected(new Set())
+      navigate('/workspace', { state: { project, initialIndex: Math.max(0, project.assets.length - workspaceMedia.length) } })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setProjectBusy(false)
+    }
+  }
 
   return (
     <>
@@ -167,10 +225,19 @@ export function MediaLibraryToolbar({
                       variant="secondary"
                       size="compact"
                       disabled={!canSendToWorkspace}
-                      icon={<Sparkles size={14} />}
-                      onClick={() => navigate('/workspace', { state: { media: workspaceMedia, initialIndex: 0 } })}
+                      icon={<FolderPlus size={14} />}
+                      onClick={() => setCreateProjectOpen(true)}
                     >
-                      发送到工作台 ({workspaceMedia.length})
+                      创建项目 ({workspaceMedia.length})
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="compact"
+                      disabled={!canSendToWorkspace || projectBusy}
+                      icon={<Plus size={14} />}
+                      onClick={() => void openAddProjectDialog()}
+                    >
+                      添加到项目
                     </Button>
                     <Button variant="danger" size="compact" onClick={() => setShowDeleteDialog(true)}>
                       <Trash2 size={14} />
@@ -339,6 +406,58 @@ export function MediaLibraryToolbar({
           />
         )}
       </section>
+
+      <Dialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        title="创建工作台项目"
+        description="项目会保存在本地资源目录，编辑参数写入项目 JSON。"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCreateProjectOpen(false)}>取消</Button>
+            <Button variant="primary" disabled={!canSendToWorkspace || projectBusy} icon={<Sparkles size={14} />} onClick={() => void handleCreateProject()}>
+              创建并编辑
+            </Button>
+          </>
+        }
+      >
+        <div className="workspace-dialog-body">
+          <Input
+            fullWidth
+            value={projectName}
+            placeholder="项目名称"
+            onChange={(event) => setProjectName(event.target.value)}
+          />
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={addProjectOpen}
+        onOpenChange={setAddProjectOpen}
+        title="添加到已有项目"
+        description="选择一个工作台项目追加当前选中的图片。"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAddProjectOpen(false)}>取消</Button>
+            <Button variant="primary" disabled={!selectedProjectId || projectBusy} onClick={() => void handleAddToProject()}>
+              添加并编辑
+            </Button>
+          </>
+        }
+      >
+        <div className="workspace-dialog-body">
+          {projects.length > 0 ? (
+            <Select
+              fullWidth
+              value={selectedProjectId}
+              options={projects.map((project) => ({ value: project.id, label: project.name }))}
+              onValueChange={setSelectedProjectId}
+            />
+          ) : (
+            <div className="workspace-dialog-empty">暂无项目，请先创建项目。</div>
+          )}
+        </div>
+      </Dialog>
 
       {showExportDialog && (
         <ExportModal
