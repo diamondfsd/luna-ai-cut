@@ -192,8 +192,10 @@ export async function detectHardwareAccel(ffmpegPath?: string): Promise<HwAccelC
     if (ffmpegPath && cachedConfig.encoderNameH265) {
       const hevcAvailable = await probeHevcVideoToolbox(ffmpegPath)
       if (!hevcAvailable) {
-        console.warn('[hwaccel] hevc_videotoolbox not available, falling back to libx265 for HEVC sources')
-        cachedConfig.encoderNameH265 = null
+        console.warn('[hwaccel] hevc_videotoolbox not available, falling back to h264_videotoolbox for HEVC sources')
+        // 使用 h264_videotoolbox 而非 libx265 软件编码（速度提升 10x+）
+        // 代价是输出从 HEVC 变为 H.264，但旧硬件上这是最快的可用方案
+        cachedConfig.encoderNameH265 = 'h264_videotoolbox'
       }
     }
     return cachedConfig
