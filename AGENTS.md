@@ -152,7 +152,9 @@
 
 ## 组件库选择
 
-Radix 基元仅用于提供行为和可访问性，不施加视觉样式。**不要引入完整的视觉框架**（如 Ant Design 或 MUI），除非设计方向有意变更。
+**优先使用 radix-ui 进行二次封装**。radix-ui 已作为 monorepo 全量安装（`npm install radix-ui`），所有 Radix 基元通过 `radix-ui/*` 路径导入，按需使用。
+
+Radix 基元用于提供行为和可访问性，不施加视觉样式。**不要引入完整的视觉框架**（如 Ant Design 或 MUI），除非设计方向有意变更。
 
 ## 维护规范
 
@@ -180,7 +182,7 @@ Luna AI Cut 是一款面向 Insta360 Luna Ultra 相机的桌面媒体管理。
 - **前端**：React + TypeScript + Vite
 - **路由**：React Router（HashRouter）
 - **图标**：lucide-react
-- **UI 基元**：@radix-ui（react-dialog / react-tabs / react-popover / react-switch / react-tooltip）
+- **UI 基元**：radix-ui（全量安装的 Radix UI monorepo，统一依赖管理，无需逐个安装 @radix-ui/* 包）
 - **桌面**：Electron（通过 contextBridge 通信）
 - **AI**：openai SDK
 - **构建**：Vite + electron-builder

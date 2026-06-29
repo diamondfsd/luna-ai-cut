@@ -12,8 +12,6 @@ export interface EditPipeline {
     flipH: boolean
     flipV: boolean
     scale: number
-    perspectiveH: number
-    perspectiveV: number
   }
   color: {
     whiteBalanceMode: WhiteBalanceMode
@@ -60,14 +58,12 @@ export interface EditPipeline {
     sharpenRadius: number
     sharpenDetail: number
     sharpenMasking: number
-    noiseReductionEnabled: boolean
     noiseReduction: number
     colorNoiseReduction: number
     vignette: number
     grainAmount: number
     grainSize: number
     grainRoughness: number
-    lensDistortion: number
     lensVignetting: number
     chromaticAberration: number
   }
@@ -134,7 +130,7 @@ const COLOR_MIX_CHANNELS: ColorMixChannel[] = ['red', 'orange', 'yellow', 'green
 const TONE_CURVE_CHANNELS: ToneCurveChannel[] = ['rgb', 'luminance', 'red', 'green', 'blue']
 const SELECTIVE_COLOR_CHANNELS: SelectiveColorChannel[] = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta', 'white', 'neutral', 'black']
 
-function createDefaultCurveBand(): ToneCurveBandAdjust {
+export function createDefaultCurveBand(): ToneCurveBandAdjust {
   return {
     shadows: 0,
     darks: 0,
@@ -143,18 +139,18 @@ function createDefaultCurveBand(): ToneCurveBandAdjust {
   }
 }
 
-function createDefaultCurve(): ToneCurveAdjust {
+export function createDefaultCurve(): ToneCurveAdjust {
   return {
     activeChannel: 'rgb',
     channels: Object.fromEntries(TONE_CURVE_CHANNELS.map((channel) => [channel, createDefaultCurveBand()])) as Record<ToneCurveChannel, ToneCurveBandAdjust>,
   }
 }
 
-function createDefaultHsl(): Record<ColorMixChannel, HslAdjust> {
+export function createDefaultHsl(): Record<ColorMixChannel, HslAdjust> {
   return Object.fromEntries(COLOR_MIX_CHANNELS.map((channel) => [channel, { hue: 0, saturation: 0, luminance: 0 }])) as Record<ColorMixChannel, HslAdjust>
 }
 
-function createDefaultSelectiveColor(): Record<SelectiveColorChannel, SelectiveColorAdjust> {
+export function createDefaultSelectiveColor(): Record<SelectiveColorChannel, SelectiveColorAdjust> {
   return Object.fromEntries(SELECTIVE_COLOR_CHANNELS.map((channel) => [channel, { cyan: 0, magenta: 0, yellow: 0, black: 0 }])) as Record<SelectiveColorChannel, SelectiveColorAdjust>
 }
 
@@ -165,8 +161,6 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     flipH: false,
     flipV: false,
     scale: 1,
-    perspectiveH: 0,
-    perspectiveV: 0,
   },
   color: {
     whiteBalanceMode: 'custom',
@@ -222,14 +216,12 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     sharpenRadius: 1,
     sharpenDetail: 25,
     sharpenMasking: 0,
-    noiseReductionEnabled: false,
     noiseReduction: 0,
     colorNoiseReduction: 0,
     vignette: 0,
     grainAmount: 0,
     grainSize: 25,
     grainRoughness: 50,
-    lensDistortion: 0,
     lensVignetting: 0,
     chromaticAberration: 0,
   },
@@ -245,6 +237,74 @@ export const DEFAULT_PIPELINE: EditPipeline = {
 
 export function createDefaultPipeline(): EditPipeline {
   return structuredClone(DEFAULT_PIPELINE)
+}
+
+// Per-group default values — single source of truth for reset buttons
+export const WHITE_BALANCE_DEFAULTS: Partial<EditPipeline['color']> = {
+  whiteBalanceMode: 'custom',
+  temperature: 0,
+  tint: 0,
+}
+
+export const TONE_DEFAULTS: Partial<EditPipeline['color']> = {
+  exposure: 0,
+  contrast: 0,
+  brightness: 0,
+  highlights: 0,
+  shadows: 0,
+  whites: 0,
+  blacks: 0,
+  texture: 0,
+  clarity: 0,
+  dehaze: 0,
+  vibrance: 0,
+  saturation: 0,
+}
+
+export const CURVE_DEFAULTS: Partial<EditPipeline['color']> = {
+  curve: createDefaultCurve(),
+}
+
+export const HSL_DEFAULTS: Partial<EditPipeline['color']> = {
+  hsl: createDefaultHsl(),
+}
+
+export const COLOR_EDITOR_DEFAULTS: Partial<EditPipeline['color']> = {
+  colorEditor: DEFAULT_PIPELINE.color.colorEditor,
+}
+
+export const GRADING_DEFAULTS: Partial<EditPipeline['color']> = {
+  grading: DEFAULT_PIPELINE.color.grading,
+}
+
+export const SELECTIVE_COLOR_DEFAULTS: Partial<EditPipeline['color']> = {
+  selectiveColor: createDefaultSelectiveColor(),
+  selectiveColorMode: 'relative',
+}
+
+export const CALIBRATION_DEFAULTS: Partial<EditPipeline['color']> = {
+  calibration: DEFAULT_PIPELINE.color.calibration,
+}
+
+export const DETAIL_DEFAULTS: Partial<EditPipeline['effects']> = {
+  sharpen: 0,
+  sharpenRadius: 1,
+  sharpenDetail: 25,
+  sharpenMasking: 0,
+  noiseReduction: 0,
+  colorNoiseReduction: 0,
+}
+
+export const GRAIN_DEFAULTS: Partial<EditPipeline['effects']> = {
+  grainAmount: 0,
+  grainSize: 25,
+  grainRoughness: 50,
+}
+
+export const LENS_DEFAULTS: Partial<EditPipeline['effects']> = {
+  lensVignetting: 0,
+  vignette: 0,
+  chromaticAberration: 0,
 }
 
 function mergeCurve(current: ToneCurveAdjust, patch?: Partial<ToneCurveAdjust> | null): ToneCurveAdjust {

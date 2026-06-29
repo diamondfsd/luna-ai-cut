@@ -1,4 +1,4 @@
-import { FlipHorizontal2, FlipVertical2, Scan } from 'lucide-react'
+import { FlipHorizontal2, FlipVertical2, RotateCcw, RotateCw, Scan } from 'lucide-react'
 
 import type { EditPipeline } from '../shared/editPipeline'
 import { Button, IconButton, Tooltip } from '../../ui'
@@ -9,6 +9,14 @@ interface TransformPanelProps {
   cropActive: boolean
   onChange: (patch: Partial<EditPipeline['transform']>) => void
   onToggleCrop: () => void
+}
+
+function rotateLeft(current: number): number {
+  return ((current - 90) % 360 + 360) % 360
+}
+
+function rotateRight(current: number): number {
+  return ((current + 90) % 360) % 360
 }
 
 export function TransformPanel({ value, cropActive, onChange, onToggleCrop }: TransformPanelProps) {
@@ -34,12 +42,24 @@ export function TransformPanel({ value, cropActive, onChange, onToggleCrop }: Tr
             onClick={() => onChange({ flipV: !value.flipV })}
           />
         </Tooltip>
+        <Tooltip content="左旋转 90°">
+          <IconButton
+            variant="ghost"
+            size="compact"
+            icon={<RotateCcw size={16} />}
+            onClick={() => onChange({ rotate: rotateLeft(value.rotate) })}
+          />
+        </Tooltip>
+        <Tooltip content="右旋转 90°">
+          <IconButton
+            variant="ghost"
+            size="compact"
+            icon={<RotateCw size={16} />}
+            onClick={() => onChange({ rotate: rotateRight(value.rotate) })}
+          />
+        </Tooltip>
       </div>
-
       <ParamSlider label="旋转" value={value.rotate} min={-180} max={180} onChange={(rotate) => onChange({ rotate })} formatValue={(next) => `${next}°`} />
-      <ParamSlider label="缩放" value={value.scale} min={0.1} max={10} step={0.1} onChange={(scale) => onChange({ scale })} formatValue={(next) => `${next.toFixed(1)}x`} />
-      <ParamSlider label="水平透视" value={value.perspectiveH} min={-100} max={100} onChange={(perspectiveH) => onChange({ perspectiveH })} />
-      <ParamSlider label="垂直透视" value={value.perspectiveV} min={-100} max={100} onChange={(perspectiveV) => onChange({ perspectiveV })} />
     </div>
   )
 }

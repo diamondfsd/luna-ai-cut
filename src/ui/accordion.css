@@ -70,3 +70,12 @@
 .export-options-body .ui-accordion:first-child .ui-accordion-header {
   padding-top: 0;
 }
+
+/* 已修改标记圆点 */
+.ui-accordion-modified-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--blue);
+}

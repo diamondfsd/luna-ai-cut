@@ -1,4 +1,4 @@
-import * as RadixSwitch from '@radix-ui/react-switch'
+import { Switch as RadixSwitch } from 'radix-ui'
 
 interface SwitchProps {
   checked: boolean
