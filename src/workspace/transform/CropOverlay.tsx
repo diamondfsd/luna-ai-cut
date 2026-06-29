@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { CropRect } from '../shared/editPipeline'
+import { Button } from '../../ui'
 
 interface CropOverlayProps {
   crop: CropRect | null
+  imageRect: { x: number; y: number; width: number; height: number }
   onCropChange: (crop: CropRect) => void
   onConfirm: () => void
   onCancel: () => void
@@ -25,7 +27,7 @@ function clampCrop(crop: CropRect): CropRect {
   }
 }
 
-export function CropOverlay({ crop, onCropChange, onConfirm, onCancel }: CropOverlayProps) {
+export function CropOverlay({ crop, imageRect, onCropChange, onConfirm, onCancel }: CropOverlayProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<{ mode: DragMode; x: number; y: number; crop: CropRect } | null>(null)
   const activeCrop = crop ?? DEFAULT_CROP
@@ -80,7 +82,17 @@ export function CropOverlay({ crop, onCropChange, onConfirm, onCancel }: CropOve
   }
 
   return (
-    <div ref={rootRef} className="workspace-crop-overlay" onDoubleClick={onConfirm}>
+    <div
+      ref={rootRef}
+      className="workspace-crop-overlay"
+      style={{
+        left: imageRect.x,
+        top: imageRect.y,
+        width: imageRect.width,
+        height: imageRect.height,
+      }}
+      onDoubleClick={onConfirm}
+    >
       <div className="workspace-crop-mask" />
       <div
         className="workspace-crop-box"
@@ -101,6 +113,14 @@ export function CropOverlay({ crop, onCropChange, onConfirm, onCancel }: CropOve
             aria-label="调整裁剪区域"
           />
         ))}
+      </div>
+      <div className="workspace-crop-actions">
+        <Button variant="secondary" size="compact" type="button" onClick={onCancel}>
+          取消
+        </Button>
+        <Button variant="primary" size="compact" type="button" onClick={onConfirm}>
+          确认裁剪
+        </Button>
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import sharp from 'sharp'
 import { checkForUpdates } from './updateService'
 import type { HotUpdateCheckResult } from './hotUpdater'
 import { checkForHotUpdates, applyHotUpdate, getCurrentHotVersion, clearHotUpdate } from './hotUpdater'
@@ -45,6 +46,12 @@ import { appIconPath, createMainWindow } from './windowService'
 import { chatCompletion } from './aiService'
 import { openWifiSettings } from './wifiService'
 import {
+  addAssetsToWorkspaceProject,
+  createWorkspaceProject,
+  listWorkspaceProjects,
+  saveWorkspaceProject,
+} from './workspaceProjectService'
+import {
   checkWifiPort,
   connectWifiNetwork,
   disconnectWifiNetwork,
@@ -60,6 +67,8 @@ import type {
   DeviceConnectOptions,
   DownloadProgress,
   LunaFile,
+  WorkspaceMediaAsset,
+  WorkspaceProject,
   VideoExportSettings,
   WatermarkSettings,
   WifiConnectOptions,
@@ -156,14 +165,7 @@ function sourceHostFor(url: string | null | undefined): string | null {
   }
 }
 
-function mimeTypeForPath(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase()
-  if (ext === '.png') return 'image/png'
-  if (ext === '.webp') return 'image/webp'
-  if (ext === '.gif') return 'image/gif'
-  if (ext === '.avif') return 'image/avif'
-  return 'image/jpeg'
-}
+
 
 async function ensureCameraSessionForUrl(url: string | null | undefined): Promise<void> {
   const host = sourceHostFor(url)
@@ -431,12 +433,32 @@ function registerIpc(): void {
   ipcMain.handle('files:reveal', (_event, filePath: string) => revealFile(filePath))
   ipcMain.handle('files:openPath', (_event, targetPath: string) => openPath(targetPath))
   ipcMain.handle('files:deleteLocal', (_event, filePaths: string[]) => deleteLocalFiles(filePaths))
-  ipcMain.handle('workspace:loadPreview', (_event, filePath: string) => {
-    const buffer = readFileSync(filePath)
+  ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
+    const buffer = await sharp(filePath)
+      .rotate()              // 自动应用 EXIF orientation
+      .resize(2000, null, { fit: 'inside', withoutEnlargement: true })
+      .png()
+      .toBuffer()
     return {
       buffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
-      mimeType: mimeTypeForPath(filePath),
+      mimeType: 'image/png',
     }
+  })
+  ipcMain.handle('workspace:listProjects', async () => {
+    const settings = await getSettings()
+    return listWorkspaceProjects(getLocalResourcesDir(settings))
+  })
+  ipcMain.handle('workspace:createProject', async (_event, name: string, assets: WorkspaceMediaAsset[]) => {
+    const settings = await getSettings()
+    return createWorkspaceProject(getLocalResourcesDir(settings), name, assets)
+  })
+  ipcMain.handle('workspace:addAssetsToProject', async (_event, projectId: string, assets: WorkspaceMediaAsset[]) => {
+    const settings = await getSettings()
+    return addAssetsToWorkspaceProject(getLocalResourcesDir(settings), projectId, assets)
+  })
+  ipcMain.handle('workspace:saveProject', async (_event, project: WorkspaceProject) => {
+    const settings = await getSettings()
+    return saveWorkspaceProject(getLocalResourcesDir(settings), project)
   })
   ipcMain.handle('ai:chat', async (_event, config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) => {
     return chatCompletion(config, systemPrompt, messages as Array<{ role: 'user' | 'assistant'; content: string }>)

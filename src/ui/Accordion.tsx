@@ -6,6 +6,8 @@ import { cx } from './utils'
 interface AccordionProps {
   /** 标题 */
   title: ReactNode
+  /** 标题右侧操作按钮（如重置），位于折叠图标左边 */
+  actions?: ReactNode
   /** 内容 */
   children: ReactNode
   /** 是否默认展开 */
@@ -36,7 +38,7 @@ interface AccordionProps {
  * </Accordion>
  * ```
  */
-export function Accordion({ title, children, defaultOpen, open, onOpenChange, headerClassName, className }: AccordionProps) {
+export function Accordion({ title, actions, children, defaultOpen, open, onOpenChange, headerClassName, className }: AccordionProps) {
   return (
     <Collapsible.Root
       className={cx('ui-accordion', className)}
@@ -47,6 +49,7 @@ export function Accordion({ title, children, defaultOpen, open, onOpenChange, he
       <Collapsible.Trigger asChild>
         <button className={cx('ui-accordion-header', headerClassName)} type="button">
           <span className="ui-accordion-title">{title}</span>
+          {actions && <span className="ui-accordion-actions" onClick={(e) => e.stopPropagation()}>{actions}</span>}
           <ChevronDown size={14} className="ui-accordion-chevron" />
         </button>
       </Collapsible.Trigger>

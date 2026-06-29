@@ -8,6 +8,8 @@ import type {
   HotUpdateCheckResult,
   LunaApi,
   LunaFile,
+  WorkspaceMediaAsset,
+  WorkspaceProject,
   UpdateInfo,
   VideoExportSettings,
   WatermarkSettings,
@@ -71,6 +73,10 @@ const lunaApi: LunaApi = {
   cacheFile: (file: LunaFile) => ipcRenderer.invoke('luna:cacheFile', file),
   workspace: {
     loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
+    listProjects: () => ipcRenderer.invoke('workspace:listProjects'),
+    createProject: (name: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:createProject', name, assets),
+    addAssetsToProject: (projectId: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:addAssetsToProject', projectId, assets),
+    saveProject: (project: WorkspaceProject) => ipcRenderer.invoke('workspace:saveProject', project),
   },
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: DownloadProgress): void => callback(progress)

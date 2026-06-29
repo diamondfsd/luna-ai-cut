@@ -31,6 +31,7 @@
 }
 
 .ui-accordion-title {
+  flex: 1;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted-dark);
@@ -44,6 +45,14 @@
   flex-shrink: 0;
   color: var(--muted);
   transition: transform 180ms ease;
+}
+
+/* 标题右侧操作按钮（如重置） */
+.ui-accordion-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
 }
 
 .ui-accordion[data-state="open"] .ui-accordion-chevron {

@@ -1,4 +1,4 @@
-import { FlipHorizontal2, FlipVertical2, RotateCcw, Scan } from 'lucide-react'
+import { FlipHorizontal2, FlipVertical2, Scan } from 'lucide-react'
 
 import type { EditPipeline } from '../shared/editPipeline'
 import { Button, IconButton, Tooltip } from '../../ui'
@@ -8,11 +8,10 @@ interface TransformPanelProps {
   value: EditPipeline['transform']
   cropActive: boolean
   onChange: (patch: Partial<EditPipeline['transform']>) => void
-  onReset: () => void
   onToggleCrop: () => void
 }
 
-export function TransformPanel({ value, cropActive, onChange, onReset, onToggleCrop }: TransformPanelProps) {
+export function TransformPanel({ value, cropActive, onChange, onToggleCrop }: TransformPanelProps) {
   return (
     <div className="workspace-panel-stack">
       <div className="workspace-button-row">
@@ -39,10 +38,6 @@ export function TransformPanel({ value, cropActive, onChange, onReset, onToggleC
 
       <ParamSlider label="旋转" value={value.rotate} min={-180} max={180} onChange={(rotate) => onChange({ rotate })} formatValue={(next) => `${next}°`} />
       <ParamSlider label="缩放" value={value.scale} min={0.1} max={10} step={0.1} onChange={(scale) => onChange({ scale })} formatValue={(next) => `${next.toFixed(1)}x`} />
-
-      <div className="workspace-panel-actions">
-        <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={onReset}>重置几何</Button>
-      </div>
     </div>
   )
 }
