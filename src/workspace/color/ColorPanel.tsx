@@ -8,6 +8,7 @@ import type {
   HslAdjust,
   SelectiveColorAdjust,
   SelectiveColorChannel,
+  ToneCurveBandAdjust,
   ToneCurveChannel,
   WhiteBalanceMode,
 } from '../shared/editPipeline'
@@ -109,13 +110,22 @@ function ColorWheel({
   )
 }
 
-function CurvePreview() {
+function curveY(base: number, adjust: number): number {
+  return Math.max(2, Math.min(130, base - adjust * 0.42))
+}
+
+function CurvePreview({ curve }: { curve: ToneCurveBandAdjust }) {
+  const shadowY = curveY(104, curve.shadows)
+  const darkY = curveY(82, curve.darks)
+  const lightY = curveY(46, curve.lights)
+  const highlightY = curveY(12, curve.highlights)
+  const curvePath = `M0 130 C30 ${shadowY} 52 ${darkY} 75 66 C105 ${lightY} 135 ${highlightY} 180 2`
   return (
     <div className="workspace-curve-preview" aria-hidden="true">
       <svg viewBox="0 0 180 132">
         <path className="workspace-curve-grid" d="M45 0V132M90 0V132M135 0V132M0 33H180M0 66H180M0 99H180" />
-        <path className="workspace-curve-fill" d="M0 130 C30 104 52 92 75 66 C105 32 135 30 180 2 L180 132 L0 132 Z" />
-        <path className="workspace-curve-line" d="M0 130 C30 104 52 92 75 66 C105 32 135 30 180 2" />
+        <path className="workspace-curve-fill" d={`${curvePath} L180 132 L0 132 Z`} />
+        <path className="workspace-curve-line" d={curvePath} />
         <circle cx="75" cy="66" r="4" />
       </svg>
     </div>
@@ -129,7 +139,6 @@ function ColorBarSlider({ color, children }: { color: string; children: ReactNod
 export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorPanelProps) {
   const [hslMode, setHslMode] = useState<'hue' | 'saturation' | 'luminance'>('hue')
   const [selectiveChannel, setSelectiveChannel] = useState<SelectiveColorChannel>('red')
-  const [noiseEnabled, setNoiseEnabled] = useState(false)
 
   function updateHsl(channel: ColorMixChannel, patch: Partial<HslAdjust>): void {
     onChange({ hsl: { ...value.hsl, [channel]: { ...value.hsl[channel], ...patch } } })
@@ -139,7 +148,13 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorP
     onChange({ selectiveColor: { ...value.selectiveColor, [channel]: { ...value.selectiveColor[channel], ...patch } } })
   }
 
+  function updateCurve(channel: ToneCurveChannel, patch: Partial<ToneCurveBandAdjust>): void {
+    onChange({ curve: { ...value.curve, channels: { ...value.curve.channels, [channel]: { ...value.curve.channels[channel], ...patch } } } })
+  }
+
   const selective = value.selectiveColor[selectiveChannel]
+  const activeCurveChannel = value.curve.activeChannel
+  const activeCurve = value.curve.channels[activeCurveChannel]
 
   return (
     <div className="workspace-color-modules">
@@ -196,18 +211,18 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorP
               key={item.key}
               variant="utility"
               size="mini"
-              className={value.curve.channel === item.key ? 'workspace-mini-choice active' : 'workspace-mini-choice'}
-              onClick={() => onChange({ curve: { ...value.curve, channel: item.key } })}
+              className={activeCurveChannel === item.key ? 'workspace-mini-choice active' : 'workspace-mini-choice'}
+              onClick={() => onChange({ curve: { ...value.curve, activeChannel: item.key } })}
             >
               {item.label}
             </Button>
           ))}
         </div>
-        <CurvePreview />
-        <ParamSlider label="高光" value={value.curve.highlights} min={-100} max={100} onChange={(highlights) => onChange({ curve: { ...value.curve, highlights } })} />
-        <ParamSlider label="亮调" value={value.curve.lights} min={-100} max={100} onChange={(lights) => onChange({ curve: { ...value.curve, lights } })} />
-        <ParamSlider label="暗调" value={value.curve.darks} min={-100} max={100} onChange={(darks) => onChange({ curve: { ...value.curve, darks } })} />
-        <ParamSlider label="阴影" value={value.curve.shadows} min={-100} max={100} onChange={(shadows) => onChange({ curve: { ...value.curve, shadows } })} />
+        <CurvePreview curve={activeCurve} />
+        <ParamSlider label="高光" value={activeCurve.highlights} min={-100} max={100} onChange={(highlights) => updateCurve(activeCurveChannel, { highlights })} />
+        <ParamSlider label="亮调" value={activeCurve.lights} min={-100} max={100} onChange={(lights) => updateCurve(activeCurveChannel, { lights })} />
+        <ParamSlider label="暗调" value={activeCurve.darks} min={-100} max={100} onChange={(darks) => updateCurve(activeCurveChannel, { darks })} />
+        <ParamSlider label="阴影" value={activeCurve.shadows} min={-100} max={100} onChange={(shadows) => updateCurve(activeCurveChannel, { shadows })} />
       </Accordion>
 
       <Accordion title="HSL">
@@ -343,7 +358,7 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorP
 
       <Accordion
         title="细节"
-        actions={<Switch checked={noiseEnabled} onCheckedChange={setNoiseEnabled} ariaLabel="智能降噪" />}
+        actions={<Switch checked={effects.noiseReductionEnabled} onCheckedChange={(noiseReductionEnabled) => onEffectsChange({ noiseReductionEnabled })} ariaLabel="智能降噪" />}
       >
         <ParamSlider label="锐化" value={effects.sharpen} min={0} max={150} onChange={(sharpen) => onEffectsChange({ sharpen })} formatValue={String} />
         <ParamSlider label="半径" value={effects.sharpenRadius} min={0.5} max={3} step={0.1} onChange={(sharpenRadius) => onEffectsChange({ sharpenRadius })} formatValue={decimalValue} />

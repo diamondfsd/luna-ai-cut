@@ -27,8 +27,7 @@ uniform float u_blacks;
 uniform float u_textureAmount;
 uniform float u_clarity;
 uniform float u_dehaze;
-uniform vec4 u_curve;
-uniform int u_curveChannel;
+uniform vec4 u_curve[5];
 uniform float u_sharpen;
 uniform float u_sharpenRadius;
 uniform float u_sharpenDetail;
@@ -155,20 +154,13 @@ float applyCurveValue(float value, vec4 curve) {
 }
 
 vec3 applyToneCurve(vec3 color) {
-  if (u_curveChannel == 1) {
-    float luma = max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
-    float mapped = applyCurveValue(luma, u_curve);
-    return clamp(color * (mapped / luma), 0.0, 1.0);
-  }
-  if (u_curveChannel == 2) {
-    color.r = applyCurveValue(color.r, u_curve);
-  } else if (u_curveChannel == 3) {
-    color.g = applyCurveValue(color.g, u_curve);
-  } else if (u_curveChannel == 4) {
-    color.b = applyCurveValue(color.b, u_curve);
-  } else {
-    color = vec3(applyCurveValue(color.r, u_curve), applyCurveValue(color.g, u_curve), applyCurveValue(color.b, u_curve));
-  }
+  color = vec3(applyCurveValue(color.r, u_curve[0]), applyCurveValue(color.g, u_curve[0]), applyCurveValue(color.b, u_curve[0]));
+  float luma = max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
+  float mapped = applyCurveValue(luma, u_curve[1]);
+  color *= mapped / luma;
+  color.r = applyCurveValue(color.r, u_curve[2]);
+  color.g = applyCurveValue(color.g, u_curve[3]);
+  color.b = applyCurveValue(color.b, u_curve[4]);
   return clamp(color, 0.0, 1.0);
 }
 
@@ -261,19 +253,35 @@ vec3 applyColor(vec3 color) {
   color = applyColorGrading(color);
   color = applySelectiveColor(color);
   color = applyCalibration(color);
-  color = mix(color, (color - 0.5) * (1.0 + u_clarity) + 0.5, 0.35);
-  color += (color - gray) * u_dehaze * 0.3;
+  color += (color - gray) * u_dehaze * 0.12;
   return clamp(color, 0.0, 1.0);
 }
 
-vec3 applySharpen(vec2 uv, vec3 color) {
-  if (u_sharpen <= 0.001 && abs(u_textureAmount) <= 0.001 && u_noiseReduction <= 0.001 && u_colorNoiseReduction <= 0.001) return color;
-  vec2 texel = u_sharpenRadius / max(u_resolution, vec2(1.0));
+vec3 sampleSource(vec2 uv, vec2 offset) {
   vec2 sampleUv = vec2(uv.x, 1.0 - uv.y);
-  vec3 north = texture(u_texture, sampleUv - vec2(0.0, texel.y)).rgb;
-  vec3 south = texture(u_texture, sampleUv + vec2(0.0, texel.y)).rgb;
-  vec3 east = texture(u_texture, sampleUv + vec2(texel.x, 0.0)).rgb;
-  vec3 west = texture(u_texture, sampleUv - vec2(texel.x, 0.0)).rgb;
+  return texture(u_texture, sampleUv + offset).rgb;
+}
+
+vec3 crossBlur(vec2 uv, vec2 texel) {
+  vec3 north = sampleSource(uv, -vec2(0.0, texel.y));
+  vec3 south = sampleSource(uv, vec2(0.0, texel.y));
+  vec3 east = sampleSource(uv, vec2(texel.x, 0.0));
+  vec3 west = sampleSource(uv, -vec2(texel.x, 0.0));
+  vec3 center = sampleSource(uv, vec2(0.0));
+  return (north + south + east + west + center) / 5.0;
+}
+
+vec3 applyDetail(vec2 uv, vec3 color) {
+  if (u_sharpen <= 0.001 && abs(u_textureAmount) <= 0.001 && abs(u_clarity) <= 0.001 && abs(u_dehaze) <= 0.001 && u_noiseReduction <= 0.001 && u_colorNoiseReduction <= 0.001) return color;
+  vec2 baseTexel = 1.0 / max(u_resolution, vec2(1.0));
+  vec3 smallBlur = crossBlur(uv, baseTexel * 1.4);
+  vec3 midBlur = crossBlur(uv, baseTexel * 6.0);
+  vec3 largeBlur = crossBlur(uv, baseTexel * 14.0);
+  vec2 sharpTexel = baseTexel * u_sharpenRadius;
+  vec3 north = sampleSource(uv, -vec2(0.0, sharpTexel.y));
+  vec3 south = sampleSource(uv, vec2(0.0, sharpTexel.y));
+  vec3 east = sampleSource(uv, vec2(sharpTexel.x, 0.0));
+  vec3 west = sampleSource(uv, -vec2(sharpTexel.x, 0.0));
   vec3 blur = (north + south + east + west + color) / 5.0;
   color = mix(color, blur, u_noiseReduction * 0.38);
   float colorLuma = dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -281,7 +289,9 @@ vec3 applySharpen(vec2 uv, vec3 color) {
   vec3 edge = color * 5.0 - north - south - east - west;
   float edgeMask = smoothstep(u_sharpenMasking, 1.0, length(edge - color));
   color = mix(color, edge, u_sharpen * mix(0.45, 1.0, u_sharpenDetail) * edgeMask);
-  color += (color - blur) * u_textureAmount * 0.42;
+  color += (color - smallBlur) * u_textureAmount * 0.42;
+  color += (color - midBlur) * u_clarity * 0.24;
+  color += (color - largeBlur) * u_dehaze * 0.18;
   return clamp(color, 0.0, 1.0);
 }
 
@@ -316,7 +326,7 @@ void main() {
   source.r = texture(u_texture, sampleUv + vec2(aberration, 0.0)).r;
   source.b = texture(u_texture, sampleUv - vec2(aberration, 0.0)).b;
   vec3 color = applyColor(source.rgb);
-  color = applySharpen(uv, color);
+  color = applyDetail(uv, color);
   color = applyVignette(containedUv, color);
   fragColor = vec4(color, source.a);
 }
