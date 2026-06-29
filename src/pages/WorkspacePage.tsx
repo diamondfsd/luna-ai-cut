@@ -74,6 +74,7 @@ export function WorkspacePage() {
   const pipeline = history.present
   const media = projectMedia(currentProject, transientMedia)
   const activeMedia = media[activeIndex] ?? null
+  const editorOpen = Boolean(currentProject || transientMedia.length > 0)
   const canRender = Boolean(rendererRef.current && activeMedia && !webglMessage?.includes('不支持'))
 
   useEffect(() => {
@@ -111,10 +112,19 @@ export function WorkspacePage() {
     setWebglMessage(support.message ?? null)
   }, [])
 
+  const updateImageRect = useCallback(() => {
+    const rect = rendererRef.current?.getDisplayRect()
+    if (rect) setImageRect(rect)
+  }, [])
+
   useEffect(() => {
-    if (!canvasRef.current || rendererRef.current || webglMessage?.includes('不支持')) return
+    if (!editorOpen || !canvasRef.current || rendererRef.current || webglMessage?.includes('不支持')) return
     try {
       rendererRef.current = new WebGLRenderer(canvasRef.current)
+      const bounds = canvasRef.current.getBoundingClientRect()
+      rendererRef.current.resize(bounds.width, bounds.height)
+      rendererRef.current.render(pipelineRef.current)
+      updateImageRect()
     } catch (error) {
       setWebglMessage(error instanceof Error ? error.message : String(error))
     }
@@ -122,12 +132,7 @@ export function WorkspacePage() {
       rendererRef.current?.destroy()
       rendererRef.current = null
     }
-  }, [webglMessage])
-
-  const updateImageRect = useCallback(() => {
-    const rect = rendererRef.current?.getDisplayRect()
-    if (rect) setImageRect(rect)
-  }, [])
+  }, [editorOpen, updateImageRect, webglMessage])
 
   useEffect(() => {
     if (!stageRef.current || !rendererRef.current) return
@@ -153,7 +158,7 @@ export function WorkspacePage() {
         rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : pipelineRef.current)
         updateImageRect()
         const applyThumb = <T extends WorkspaceMediaAsset>(items: T[]): T[] =>
-          items.map((item) => (item.path === activeMedia.path && !item.thumbnailUrl ? { ...item, thumbnailUrl: entry.thumbnailUrl } : item)) as T[]
+          items.map((item) => (item.path === activeMedia.path ? { ...item, thumbnailUrl: entry.thumbnailUrl } : item)) as T[]
         if (projectRef.current) {
           const nextProject = { ...projectRef.current, assets: applyThumb(projectRef.current.assets) }
           projectRef.current = nextProject

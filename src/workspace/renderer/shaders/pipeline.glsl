@@ -111,7 +111,7 @@ void main() {
     return;
   }
 
-  vec4 source = texture(u_texture, uv);
+  vec4 source = texture(u_texture, vec2(uv.x, 1.0 - uv.y));
   vec3 color = applyColor(source.rgb);
   color = applySharpen(uv, color);
   color = applyVignette(containedUv, color);
