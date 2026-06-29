@@ -3,6 +3,7 @@ import fragmentSource from './shaders/pipeline.glsl?raw'
 import vertexSource from './shaders/vertex.glsl?raw'
 
 const COLOR_MIX_CHANNELS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'] as const
+const TONE_CURVE_CHANNELS = ['rgb', 'luminance', 'red', 'green', 'blue'] as const
 const SELECTIVE_COLOR_CHANNELS = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta', 'white', 'neutral', 'black'] as const
 
 const UNIFORM_NAMES = [
@@ -29,8 +30,7 @@ const UNIFORM_NAMES = [
   'u_textureAmount',
   'u_clarity',
   'u_dehaze',
-  'u_curve',
-  'u_curveChannel',
+  'u_curve[0]',
   'u_sharpen',
   'u_sharpenRadius',
   'u_sharpenDetail',
@@ -156,8 +156,9 @@ export class WebGLRenderer {
     gl.uniform1f(this.uniform('u_brightness'), pipeline.color.brightness / 100)
     gl.uniform1f(this.uniform('u_saturation'), pipeline.color.saturation / 100)
     gl.uniform1f(this.uniform('u_vibrance'), pipeline.color.vibrance / 100)
-    gl.uniform1f(this.uniform('u_temperature'), pipeline.color.temperature / 100)
-    gl.uniform1f(this.uniform('u_tint'), pipeline.color.tint / 100)
+    const whiteBalance = this.whiteBalanceValues(pipeline)
+    gl.uniform1f(this.uniform('u_temperature'), whiteBalance.temperature / 100)
+    gl.uniform1f(this.uniform('u_tint'), whiteBalance.tint / 100)
     gl.uniform1f(this.uniform('u_highlights'), pipeline.color.highlights / 100)
     gl.uniform1f(this.uniform('u_shadows'), pipeline.color.shadows / 100)
     gl.uniform1f(this.uniform('u_whites'), pipeline.color.whites / 100)
@@ -165,20 +166,19 @@ export class WebGLRenderer {
     gl.uniform1f(this.uniform('u_textureAmount'), pipeline.color.texture / 100)
     gl.uniform1f(this.uniform('u_clarity'), pipeline.color.clarity / 100)
     gl.uniform1f(this.uniform('u_dehaze'), pipeline.color.dehaze / 100)
-    gl.uniform4f(
-      this.uniform('u_curve'),
-      pipeline.color.curve.shadows / 100,
-      pipeline.color.curve.darks / 100,
-      pipeline.color.curve.lights / 100,
-      pipeline.color.curve.highlights / 100,
+    gl.uniform4fv(
+      this.uniform('u_curve[0]'),
+      TONE_CURVE_CHANNELS.flatMap((channel) => {
+        const curve = pipeline.color.curve.channels[channel]
+        return [curve.shadows / 100, curve.darks / 100, curve.lights / 100, curve.highlights / 100]
+      }),
     )
-    gl.uniform1i(this.uniform('u_curveChannel'), ['rgb', 'luminance', 'red', 'green', 'blue'].indexOf(pipeline.color.curve.channel))
     gl.uniform1f(this.uniform('u_sharpen'), pipeline.effects.sharpen / 150)
     gl.uniform1f(this.uniform('u_sharpenRadius'), pipeline.effects.sharpenRadius)
     gl.uniform1f(this.uniform('u_sharpenDetail'), pipeline.effects.sharpenDetail / 100)
     gl.uniform1f(this.uniform('u_sharpenMasking'), pipeline.effects.sharpenMasking / 100)
-    gl.uniform1f(this.uniform('u_noiseReduction'), pipeline.effects.noiseReduction / 100)
-    gl.uniform1f(this.uniform('u_colorNoiseReduction'), pipeline.effects.colorNoiseReduction / 100)
+    gl.uniform1f(this.uniform('u_noiseReduction'), pipeline.effects.noiseReductionEnabled ? pipeline.effects.noiseReduction / 100 : 0)
+    gl.uniform1f(this.uniform('u_colorNoiseReduction'), pipeline.effects.noiseReductionEnabled ? pipeline.effects.colorNoiseReduction / 100 : 0)
     gl.uniform1f(this.uniform('u_vignette'), pipeline.effects.vignette / 100)
     gl.uniform1f(this.uniform('u_grainAmount'), pipeline.effects.grainAmount / 100)
     gl.uniform1f(this.uniform('u_grainSize'), pipeline.effects.grainSize / 100)
@@ -227,6 +227,20 @@ export class WebGLRenderer {
       pipeline.color.calibration.greenSaturation / 100,
       pipeline.color.calibration.blueSaturation / 100,
     )
+  }
+
+  private whiteBalanceValues(pipeline: EditPipeline): { temperature: number; tint: number } {
+    const preset = {
+      auto: { temperature: 0, tint: 0 },
+      custom: { temperature: 0, tint: 0 },
+      daylight: { temperature: 12, tint: 2 },
+      cloudy: { temperature: 24, tint: 4 },
+      indoor: { temperature: -18, tint: -3 },
+    }[pipeline.color.whiteBalanceMode]
+    return {
+      temperature: pipeline.color.temperature + preset.temperature,
+      tint: pipeline.color.tint + preset.tint,
+    }
   }
 
   private initGeometry(): void {

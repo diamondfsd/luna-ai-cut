@@ -60,6 +60,7 @@ export interface EditPipeline {
     sharpenRadius: number
     sharpenDetail: number
     sharpenMasking: number
+    noiseReductionEnabled: boolean
     noiseReduction: number
     colorNoiseReduction: number
     vignette: number
@@ -86,12 +87,16 @@ export type ColorMixChannel = 'red' | 'orange' | 'yellow' | 'green' | 'aqua' | '
 export type SelectiveColorChannel = 'red' | 'yellow' | 'green' | 'cyan' | 'blue' | 'magenta' | 'white' | 'neutral' | 'black'
 export type SelectiveColorMode = 'relative' | 'absolute'
 
-export interface ToneCurveAdjust {
-  channel: ToneCurveChannel
+export interface ToneCurveBandAdjust {
   shadows: number
   darks: number
   lights: number
   highlights: number
+}
+
+export interface ToneCurveAdjust {
+  activeChannel: ToneCurveChannel
+  channels: Record<ToneCurveChannel, ToneCurveBandAdjust>
 }
 
 export interface HslAdjust {
@@ -126,7 +131,24 @@ export type PipelinePatch = {
 }
 
 const COLOR_MIX_CHANNELS: ColorMixChannel[] = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta']
+const TONE_CURVE_CHANNELS: ToneCurveChannel[] = ['rgb', 'luminance', 'red', 'green', 'blue']
 const SELECTIVE_COLOR_CHANNELS: SelectiveColorChannel[] = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta', 'white', 'neutral', 'black']
+
+function createDefaultCurveBand(): ToneCurveBandAdjust {
+  return {
+    shadows: 0,
+    darks: 0,
+    lights: 0,
+    highlights: 0,
+  }
+}
+
+function createDefaultCurve(): ToneCurveAdjust {
+  return {
+    activeChannel: 'rgb',
+    channels: Object.fromEntries(TONE_CURVE_CHANNELS.map((channel) => [channel, createDefaultCurveBand()])) as Record<ToneCurveChannel, ToneCurveBandAdjust>,
+  }
+}
 
 function createDefaultHsl(): Record<ColorMixChannel, HslAdjust> {
   return Object.fromEntries(COLOR_MIX_CHANNELS.map((channel) => [channel, { hue: 0, saturation: 0, luminance: 0 }])) as Record<ColorMixChannel, HslAdjust>
@@ -162,13 +184,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     texture: 0,
     clarity: 0,
     dehaze: 0,
-    curve: {
-      channel: 'rgb',
-      shadows: 0,
-      darks: 0,
-      lights: 0,
-      highlights: 0,
-    },
+    curve: createDefaultCurve(),
     hsl: createDefaultHsl(),
     colorEditor: {
       hue: 224,
@@ -206,6 +222,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     sharpenRadius: 1,
     sharpenDetail: 25,
     sharpenMasking: 0,
+    noiseReductionEnabled: false,
     noiseReduction: 0,
     colorNoiseReduction: 0,
     vignette: 0,
@@ -230,6 +247,34 @@ export function createDefaultPipeline(): EditPipeline {
   return structuredClone(DEFAULT_PIPELINE)
 }
 
+function mergeCurve(current: ToneCurveAdjust, patch?: Partial<ToneCurveAdjust> | null): ToneCurveAdjust {
+  if (!patch) return current
+  const legacyPatch = patch as Partial<ToneCurveBandAdjust> & { channel?: ToneCurveChannel }
+  if (!patch.channels && ('channel' in legacyPatch || 'shadows' in legacyPatch || 'darks' in legacyPatch || 'lights' in legacyPatch || 'highlights' in legacyPatch)) {
+    const activeChannel = legacyPatch.channel ?? current.activeChannel
+    return {
+      activeChannel,
+      channels: {
+        ...current.channels,
+        [activeChannel]: {
+          ...current.channels[activeChannel],
+          shadows: legacyPatch.shadows ?? current.channels[activeChannel].shadows,
+          darks: legacyPatch.darks ?? current.channels[activeChannel].darks,
+          lights: legacyPatch.lights ?? current.channels[activeChannel].lights,
+          highlights: legacyPatch.highlights ?? current.channels[activeChannel].highlights,
+        },
+      },
+    }
+  }
+  return {
+    activeChannel: patch.activeChannel ?? current.activeChannel,
+    channels: Object.fromEntries(TONE_CURVE_CHANNELS.map((channel) => [
+      channel,
+      { ...current.channels[channel], ...patch.channels?.[channel] },
+    ])) as Record<ToneCurveChannel, ToneCurveBandAdjust>,
+  }
+}
+
 export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): EditPipeline {
   const nextColor = { ...pipeline.color, ...patch.color }
   const nextEffects = { ...pipeline.effects, ...patch.effects }
@@ -237,7 +282,7 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
     transform: { ...pipeline.transform, ...patch.transform },
     color: {
       ...nextColor,
-      curve: { ...pipeline.color.curve, ...patch.color?.curve },
+      curve: mergeCurve(pipeline.color.curve, patch.color?.curve),
       hsl: { ...pipeline.color.hsl, ...patch.color?.hsl },
       colorEditor: { ...pipeline.color.colorEditor, ...patch.color?.colorEditor },
       grading: { ...pipeline.color.grading, ...patch.color?.grading },
