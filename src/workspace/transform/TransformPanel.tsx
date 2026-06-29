@@ -38,6 +38,8 @@ export function TransformPanel({ value, cropActive, onChange, onToggleCrop }: Tr
 
       <ParamSlider label="旋转" value={value.rotate} min={-180} max={180} onChange={(rotate) => onChange({ rotate })} formatValue={(next) => `${next}°`} />
       <ParamSlider label="缩放" value={value.scale} min={0.1} max={10} step={0.1} onChange={(scale) => onChange({ scale })} formatValue={(next) => `${next.toFixed(1)}x`} />
+      <ParamSlider label="水平透视" value={value.perspectiveH} min={-100} max={100} onChange={(perspectiveH) => onChange({ perspectiveH })} />
+      <ParamSlider label="垂直透视" value={value.perspectiveV} min={-100} max={100} onChange={(perspectiveV) => onChange({ perspectiveV })} />
     </div>
   )
 }

@@ -2,7 +2,15 @@ import { useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Pipette, Sparkles } from 'lucide-react'
 
-import type { ColorMixChannel, EditPipeline, HslAdjust, SelectiveColorAdjust, SelectiveColorChannel } from '../shared/editPipeline'
+import type {
+  ColorMixChannel,
+  EditPipeline,
+  HslAdjust,
+  SelectiveColorAdjust,
+  SelectiveColorChannel,
+  ToneCurveChannel,
+  WhiteBalanceMode,
+} from '../shared/editPipeline'
 import { ParamSlider } from '../components/ParamSlider'
 import { Accordion, Button, IconButton, PillTabs, Select, Switch, Tooltip } from '../../ui'
 
@@ -34,6 +42,14 @@ const SELECTIVE_CHANNELS: Array<{ key: SelectiveColorChannel; label: string; col
   { key: 'white', label: '白色', color: '#f5f5f7' },
   { key: 'neutral', label: '灰色', color: '#8e8e93' },
   { key: 'black', label: '黑色', color: '#050505' },
+]
+
+const CURVE_CHANNELS: Array<{ key: ToneCurveChannel; label: string }> = [
+  { key: 'rgb', label: '全部' },
+  { key: 'luminance', label: '亮' },
+  { key: 'red', label: '红' },
+  { key: 'green', label: '绿' },
+  { key: 'blue', label: '蓝' },
 ]
 
 function exposureValue(value: number): string {
@@ -114,7 +130,6 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorP
   const [hslMode, setHslMode] = useState<'hue' | 'saturation' | 'luminance'>('hue')
   const [selectiveChannel, setSelectiveChannel] = useState<SelectiveColorChannel>('red')
   const [noiseEnabled, setNoiseEnabled] = useState(false)
-  const [selectiveRelative, setSelectiveRelative] = useState(true)
 
   function updateHsl(channel: ColorMixChannel, patch: Partial<HslAdjust>): void {
     onChange({ hsl: { ...value.hsl, [channel]: { ...value.hsl[channel], ...patch } } })
@@ -133,7 +148,8 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorP
           <Select
             variant="compact"
             fullWidth
-            value="custom"
+            value={value.whiteBalanceMode}
+            onValueChange={(whiteBalanceMode) => onChange({ whiteBalanceMode: whiteBalanceMode as WhiteBalanceMode })}
             options={[
               { value: 'auto', label: '自动' },
               { value: 'custom', label: '自定义' },
@@ -175,17 +191,23 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorP
 
       <Accordion title="曲线">
         <div className="workspace-curve-toolbar">
-          {['全部', '亮', '红', '绿', '蓝'].map((item) => (
-            <Button key={item} variant="utility" size="mini" className="workspace-mini-choice">
-              {item}
+          {CURVE_CHANNELS.map((item) => (
+            <Button
+              key={item.key}
+              variant="utility"
+              size="mini"
+              className={value.curve.channel === item.key ? 'workspace-mini-choice active' : 'workspace-mini-choice'}
+              onClick={() => onChange({ curve: { ...value.curve, channel: item.key } })}
+            >
+              {item.label}
             </Button>
           ))}
         </div>
         <CurvePreview />
-        <ParamSlider label="高光" value={value.highlights} min={-100} max={100} onChange={(highlights) => onChange({ highlights })} />
-        <ParamSlider label="亮调" value={value.whites} min={-100} max={100} onChange={(whites) => onChange({ whites })} />
-        <ParamSlider label="暗调" value={value.blacks} min={-100} max={100} onChange={(blacks) => onChange({ blacks })} />
-        <ParamSlider label="阴影" value={value.shadows} min={-100} max={100} onChange={(shadows) => onChange({ shadows })} />
+        <ParamSlider label="高光" value={value.curve.highlights} min={-100} max={100} onChange={(highlights) => onChange({ curve: { ...value.curve, highlights } })} />
+        <ParamSlider label="亮调" value={value.curve.lights} min={-100} max={100} onChange={(lights) => onChange({ curve: { ...value.curve, lights } })} />
+        <ParamSlider label="暗调" value={value.curve.darks} min={-100} max={100} onChange={(darks) => onChange({ curve: { ...value.curve, darks } })} />
+        <ParamSlider label="阴影" value={value.curve.shadows} min={-100} max={100} onChange={(shadows) => onChange({ curve: { ...value.curve, shadows } })} />
       </Accordion>
 
       <Accordion title="HSL">
@@ -216,19 +238,22 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorP
         <div className="workspace-editor-wheel-row">
           <ColorWheel
             label="色彩编辑器"
-            hue={value.grading.midtonesHue}
-            saturation={value.grading.midtonesSaturation}
-            onChange={(midtonesHue, midtonesSaturation) => onChange({ grading: { ...value.grading, midtonesHue, midtonesSaturation } })}
+            hue={value.colorEditor.hue}
+            saturation={value.colorEditor.saturation}
+            onChange={(hue, saturation) => onChange({ colorEditor: { ...value.colorEditor, hue, saturation } })}
           />
           <div className="workspace-editor-color-readout">
-            <span style={{ background: hueColor(value.grading.midtonesHue, value.grading.midtonesSaturation) }} />
-            <strong>{value.grading.midtonesHue}°</strong>
-            <small>{value.grading.midtonesSaturation}%</small>
+            <span style={{ background: hueColor(value.colorEditor.hue, value.colorEditor.saturation) }} />
+            <strong>{value.colorEditor.hue}°</strong>
+            <small>{value.colorEditor.saturation}%</small>
           </div>
         </div>
-        <ParamSlider label="色彩平滑" value={value.grading.blending} min={0} max={100} onChange={(blending) => onChange({ grading: { ...value.grading, blending } })} formatValue={String} />
-        <ParamSlider label="色相偏移" value={value.calibration.blueHue} min={-100} max={100} onChange={(blueHue) => onChange({ calibration: { ...value.calibration, blueHue } })} />
-        <ParamSlider label="饱和偏移" value={value.calibration.blueSaturation} min={-100} max={100} onChange={(blueSaturation) => onChange({ calibration: { ...value.calibration, blueSaturation } })} />
+        <ParamSlider label="色彩平滑" value={value.colorEditor.smoothing} min={0} max={100} onChange={(smoothing) => onChange({ colorEditor: { ...value.colorEditor, smoothing } })} formatValue={String} />
+        <ParamSlider label="亮度平滑" value={value.colorEditor.luminanceSmoothing} min={0} max={100} onChange={(luminanceSmoothing) => onChange({ colorEditor: { ...value.colorEditor, luminanceSmoothing } })} formatValue={String} />
+        <ParamSlider label="色相偏移" value={value.colorEditor.hueOffset} min={-100} max={100} onChange={(hueOffset) => onChange({ colorEditor: { ...value.colorEditor, hueOffset } })} />
+        <ParamSlider label="饱和偏移" value={value.colorEditor.saturationOffset} min={-100} max={100} onChange={(saturationOffset) => onChange({ colorEditor: { ...value.colorEditor, saturationOffset } })} />
+        <ParamSlider label="明度偏移" value={value.colorEditor.brightnessOffset} min={-100} max={100} onChange={(brightnessOffset) => onChange({ colorEditor: { ...value.colorEditor, brightnessOffset } })} />
+        <ParamSlider label="色彩均匀度" value={value.colorEditor.uniformity} min={0} max={100} onChange={(uniformity) => onChange({ colorEditor: { ...value.colorEditor, uniformity } })} formatValue={String} />
       </Accordion>
 
       <Accordion title="颜色分级">
@@ -279,20 +304,41 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorP
           <Button
             variant="utility"
             size="mini"
-            className={selectiveRelative ? 'workspace-mini-choice active' : 'workspace-mini-choice'}
-            onClick={() => setSelectiveRelative(true)}
+            className={value.selectiveColorMode === 'relative' ? 'workspace-mini-choice active' : 'workspace-mini-choice'}
+            onClick={() => onChange({ selectiveColorMode: 'relative' })}
           >
             相对
           </Button>
           <Button
             variant="utility"
             size="mini"
-            className={!selectiveRelative ? 'workspace-mini-choice active' : 'workspace-mini-choice'}
-            onClick={() => setSelectiveRelative(false)}
+            className={value.selectiveColorMode === 'absolute' ? 'workspace-mini-choice active' : 'workspace-mini-choice'}
+            onClick={() => onChange({ selectiveColorMode: 'absolute' })}
           >
             绝对
           </Button>
         </div>
+      </Accordion>
+
+      <Accordion title="校准">
+        <ColorBarSlider color="linear-gradient(90deg, #ff375f, #b6b6b6, #ff9f0a)">
+          <ParamSlider label="红原色色相" value={value.calibration.redHue} min={-100} max={100} onChange={(redHue) => onChange({ calibration: { ...value.calibration, redHue } })} />
+        </ColorBarSlider>
+        <ColorBarSlider color="linear-gradient(90deg, #ff453a, #b6b6b6, #30d158)">
+          <ParamSlider label="红原色饱和" value={value.calibration.redSaturation} min={-100} max={100} onChange={(redSaturation) => onChange({ calibration: { ...value.calibration, redSaturation } })} />
+        </ColorBarSlider>
+        <ColorBarSlider color="linear-gradient(90deg, #ffd60a, #b6b6b6, #30d158)">
+          <ParamSlider label="绿原色色相" value={value.calibration.greenHue} min={-100} max={100} onChange={(greenHue) => onChange({ calibration: { ...value.calibration, greenHue } })} />
+        </ColorBarSlider>
+        <ColorBarSlider color="linear-gradient(90deg, #ff453a, #b6b6b6, #30d158)">
+          <ParamSlider label="绿原色饱和" value={value.calibration.greenSaturation} min={-100} max={100} onChange={(greenSaturation) => onChange({ calibration: { ...value.calibration, greenSaturation } })} />
+        </ColorBarSlider>
+        <ColorBarSlider color="linear-gradient(90deg, #64d2ff, #b6b6b6, #bf5af2)">
+          <ParamSlider label="蓝原色色相" value={value.calibration.blueHue} min={-100} max={100} onChange={(blueHue) => onChange({ calibration: { ...value.calibration, blueHue } })} />
+        </ColorBarSlider>
+        <ColorBarSlider color="linear-gradient(90deg, #ff453a, #b6b6b6, #0a84ff)">
+          <ParamSlider label="蓝原色饱和" value={value.calibration.blueSaturation} min={-100} max={100} onChange={(blueSaturation) => onChange({ calibration: { ...value.calibration, blueSaturation } })} />
+        </ColorBarSlider>
       </Accordion>
 
       <Accordion
@@ -317,6 +363,7 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange }: ColorP
         <ParamSlider label="畸变矫正" value={effects.lensDistortion} min={-100} max={100} onChange={(lensDistortion) => onEffectsChange({ lensDistortion })} />
         <Switch checked={effects.lensVignetting !== 0} onCheckedChange={(checked) => onEffectsChange({ lensVignetting: checked ? 20 : 0 })} ariaLabel="边缘亮度" />
         <ParamSlider label="暗角调节" value={effects.lensVignetting} min={-100} max={100} onChange={(lensVignetting) => onEffectsChange({ lensVignetting })} />
+        <ParamSlider label="创意暗角" value={effects.vignette} min={-100} max={100} onChange={(vignette) => onEffectsChange({ vignette })} />
         <ParamSlider label="色差" value={effects.chromaticAberration} min={0} max={100} onChange={(chromaticAberration) => onEffectsChange({ chromaticAberration })} formatValue={String} />
       </Accordion>
     </div>

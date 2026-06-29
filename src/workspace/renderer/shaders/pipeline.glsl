@@ -11,6 +11,7 @@ uniform vec4 u_crop;
 uniform float u_rotate;
 uniform vec2 u_flip;
 uniform float u_scale;
+uniform vec2 u_perspective;
 uniform float u_lensDistortion;
 uniform float u_exposure;
 uniform float u_contrast;
@@ -26,6 +27,8 @@ uniform float u_blacks;
 uniform float u_textureAmount;
 uniform float u_clarity;
 uniform float u_dehaze;
+uniform vec4 u_curve;
+uniform int u_curveChannel;
 uniform float u_sharpen;
 uniform float u_sharpenRadius;
 uniform float u_sharpenDetail;
@@ -41,12 +44,17 @@ uniform float u_chromaticAberration;
 uniform float u_hslHue[8];
 uniform float u_hslSaturation[8];
 uniform float u_hslLuminance[8];
+uniform vec4 u_colorEditor;
+uniform vec4 u_colorEditorExtra;
 uniform vec3 u_gradingShadows;
 uniform vec3 u_gradingMidtones;
 uniform vec3 u_gradingHighlights;
 uniform float u_gradingBlending;
 uniform float u_gradingBalance;
-uniform vec3 u_calibration;
+uniform vec4 u_selectiveColor[9];
+uniform float u_selectiveColorMode;
+uniform vec3 u_calibrationHue;
+uniform vec3 u_calibrationSaturation;
 
 vec2 containUv(vec2 uv) {
   float imageAspect = max(u_aspectRatio.x, 0.0001);
@@ -68,6 +76,9 @@ vec2 transformUv(vec2 uv) {
   vec2 lensCentered = uv - 0.5;
   float r2 = dot(lensCentered, lensCentered);
   uv = 0.5 + lensCentered * (1.0 + u_lensDistortion * r2 * 0.32);
+  vec2 perspectiveCentered = uv - 0.5;
+  uv.x += perspectiveCentered.y * u_perspective.x * 0.28;
+  uv.y += perspectiveCentered.x * u_perspective.y * 0.28;
   vec2 cropUv = u_crop.xy + uv * u_crop.zw;
   vec2 centered = cropUv - 0.5;
   centered /= max(u_scale, 0.01);
@@ -107,6 +118,10 @@ float hueDistance(float a, float b) {
   return min(d, 1.0 - d);
 }
 
+float hueWeight(float hue, float center, float radius) {
+  return 1.0 - smoothstep(0.0, radius, hueDistance(hue, center));
+}
+
 vec3 applyHslMix(vec3 color) {
   vec3 hsv = rgbToHsv(color);
   float centers[8] = float[8](0.0, 0.083, 0.16, 0.333, 0.50, 0.62, 0.75, 0.88);
@@ -114,7 +129,7 @@ vec3 applyHslMix(vec3 color) {
   float satShift = 0.0;
   float lumShift = 0.0;
   for (int i = 0; i < 8; i++) {
-    float weight = smoothstep(0.17, 0.0, hueDistance(hsv.x, centers[i])) * hsv.y;
+    float weight = hueWeight(hsv.x, centers[i], 0.17) * hsv.y;
     hueShift += u_hslHue[i] * weight;
     satShift += u_hslSaturation[i] * weight;
     lumShift += u_hslLuminance[i] * weight;
@@ -125,10 +140,57 @@ vec3 applyHslMix(vec3 color) {
   return hsvToRgb(hsv);
 }
 
+float applyCurveValue(float value, vec4 curve) {
+  float shadowMask = 1.0 - smoothstep(0.0, 0.34, value);
+  float darkMask = smoothstep(0.08, 0.34, value) * (1.0 - smoothstep(0.36, 0.58, value));
+  float lightMask = smoothstep(0.42, 0.64, value) * (1.0 - smoothstep(0.66, 0.9, value));
+  float highlightMask = smoothstep(0.66, 1.0, value);
+  float lift = curve.x * shadowMask * 0.18
+    + curve.y * darkMask * 0.14
+    + curve.z * lightMask * 0.14
+    + curve.w * highlightMask * 0.18;
+  float contrast = (curve.z + curve.w - curve.x - curve.y) * 0.08;
+  float sCurve = value + (value - 0.5) * (1.0 - abs(value - 0.5) * 2.0) * contrast;
+  return clamp(sCurve + lift, 0.0, 1.0);
+}
+
+vec3 applyToneCurve(vec3 color) {
+  if (u_curveChannel == 1) {
+    float luma = max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
+    float mapped = applyCurveValue(luma, u_curve);
+    return clamp(color * (mapped / luma), 0.0, 1.0);
+  }
+  if (u_curveChannel == 2) {
+    color.r = applyCurveValue(color.r, u_curve);
+  } else if (u_curveChannel == 3) {
+    color.g = applyCurveValue(color.g, u_curve);
+  } else if (u_curveChannel == 4) {
+    color.b = applyCurveValue(color.b, u_curve);
+  } else {
+    color = vec3(applyCurveValue(color.r, u_curve), applyCurveValue(color.g, u_curve), applyCurveValue(color.b, u_curve));
+  }
+  return clamp(color, 0.0, 1.0);
+}
+
+vec3 applyColorEditor(vec3 color) {
+  vec3 hsv = rgbToHsv(color);
+  float hueMask = hueWeight(hsv.x, u_colorEditor.x, 0.28);
+  float satWeight = smoothstep(0.0, 0.28, hsv.y) * (1.0 - smoothstep(0.25, 1.0, abs(hsv.y - u_colorEditor.y)));
+  float lumWeight = smoothstep(0.0, 0.35, hsv.z) * (1.0 - smoothstep(0.82, 1.0, hsv.z));
+  float weight = hueMask * mix(0.45, 1.0, u_colorEditor.z) * mix(0.55, 1.0, u_colorEditor.w) * max(satWeight, 0.25) * max(lumWeight, 0.35);
+  hsv.x = fract(hsv.x + u_colorEditorExtra.x * 0.1 * weight);
+  hsv.y = clamp(hsv.y * (1.0 + u_colorEditorExtra.y * weight), 0.0, 1.0);
+  hsv.z = clamp(hsv.z + u_colorEditorExtra.z * 0.24 * weight, 0.0, 1.0);
+  vec3 edited = hsvToRgb(hsv);
+  float uniformity = u_colorEditorExtra.w * weight;
+  edited = mix(edited, vec3(dot(edited, vec3(0.2126, 0.7152, 0.0722))) + (hueToRgb(u_colorEditor.x) - 0.5) * hsv.y, uniformity * 0.18);
+  return clamp(edited, 0.0, 1.0);
+}
+
 vec3 applyColorGrading(vec3 color) {
   float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
   float blend = mix(0.12, 0.32, u_gradingBlending);
-  float shadowWeight = smoothstep(0.55 + u_gradingBalance * 0.22, 0.08, luma);
+  float shadowWeight = 1.0 - smoothstep(0.08, 0.55 + u_gradingBalance * 0.22, luma);
   float highlightWeight = smoothstep(0.45 + u_gradingBalance * 0.22, 0.92, luma);
   float midWeight = smoothstep(0.12, 0.5, luma) * (1.0 - smoothstep(0.5, 0.88, luma));
   vec3 shadows = hueToRgb(u_gradingShadows.x);
@@ -138,6 +200,38 @@ vec3 applyColorGrading(vec3 color) {
   color = mix(color, color * midtones, midWeight * u_gradingMidtones.y * blend);
   color = mix(color, color * highlights, highlightWeight * u_gradingHighlights.y * blend);
   return color;
+}
+
+float colorBandWeight(vec3 hsv, int index, float luma) {
+  float centers[6] = float[6](0.0, 0.16, 0.333, 0.50, 0.62, 0.88);
+  if (index < 6) return hueWeight(hsv.x, centers[index], 0.16) * smoothstep(0.04, 0.3, hsv.y);
+  if (index == 6) return smoothstep(0.68, 0.98, luma) * (1.0 - smoothstep(0.0, 0.32, hsv.y));
+  if (index == 7) return (1.0 - smoothstep(0.0, 0.28, abs(luma - 0.5))) * (1.0 - smoothstep(0.0, 0.36, hsv.y));
+  return (1.0 - smoothstep(0.05, 0.32, luma)) * (1.0 - smoothstep(0.0, 0.42, hsv.y));
+}
+
+vec3 applySelectiveColor(vec3 color) {
+  vec3 hsv = rgbToHsv(color);
+  float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  vec3 result = color;
+  for (int i = 0; i < 9; i++) {
+    float weight = colorBandWeight(hsv, i, luma);
+    vec4 cmyk = u_selectiveColor[i];
+    vec3 rgbDelta = vec3(-cmyk.x, -cmyk.y, -cmyk.z) * 0.18 - vec3(cmyk.w) * 0.12;
+    float modeGain = mix(1.0, 1.45, u_selectiveColorMode);
+    result += rgbDelta * weight * modeGain;
+  }
+  return clamp(result, 0.0, 1.0);
+}
+
+vec3 applyCalibration(vec3 color) {
+  vec3 hsv = rgbToHsv(color);
+  float redWeight = hueWeight(hsv.x, 0.0, 0.17);
+  float greenWeight = hueWeight(hsv.x, 0.333, 0.2);
+  float blueWeight = hueWeight(hsv.x, 0.62, 0.2);
+  hsv.x = fract(hsv.x + (u_calibrationHue.r * redWeight + u_calibrationHue.g * greenWeight + u_calibrationHue.b * blueWeight) * 0.08);
+  hsv.y = clamp(hsv.y * (1.0 + u_calibrationSaturation.r * redWeight * 0.45 + u_calibrationSaturation.g * greenWeight * 0.45 + u_calibrationSaturation.b * blueWeight * 0.45), 0.0, 1.0);
+  return hsvToRgb(hsv);
 }
 
 vec3 applyColor(vec3 color) {
@@ -161,9 +255,12 @@ vec3 applyColor(vec3 color) {
   color += shadowMask * u_shadows * 0.18;
   color += smoothstep(0.7, 1.0, luma) * u_whites * 0.12;
   color += (1.0 - smoothstep(0.0, 0.3, luma)) * u_blacks * 0.12;
-  color *= 1.0 + u_calibration * 0.16;
+  color = applyToneCurve(color);
   color = applyHslMix(color);
+  color = applyColorEditor(color);
   color = applyColorGrading(color);
+  color = applySelectiveColor(color);
+  color = applyCalibration(color);
   color = mix(color, (color - 0.5) * (1.0 + u_clarity) + 0.5, 0.35);
   color += (color - gray) * u_dehaze * 0.3;
   return clamp(color, 0.0, 1.0);
