@@ -1,7 +1,7 @@
 import { Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-import { Button, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '.'
+import { Button, Dialog } from '.'
 
 interface ModalProps {
   open: boolean
@@ -34,10 +34,8 @@ interface ModalProps {
 /**
  * 简化弹窗组件。
  *
- * 基于 Radix Dialog，封装了标题 / 描述 / 主体 / 底部按钮的标准布局，
+ * 基于 Dialog，封装了标题 / 描述 / 主体 / 底部按钮的标准布局，
  * 调用方只需传内容，无需编写 DialogHeader / DialogBody / DialogFooter 等样板代码。
- *
- * 需要自定义布局时使用 BaseModal（全屏弹窗）或 ModalLayer（仅遮罩层）。
  */
 export function Modal({
   open,
@@ -53,38 +51,31 @@ export function Modal({
   confirmVariant = 'primary',
   cancelText = '取消',
 }: ModalProps) {
-  const hasDefaultFooter = onConfirm !== undefined
+  const defaultFooter = onConfirm !== undefined ? (
+    <>
+      <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={confirmLoading}>
+        {cancelText}
+      </Button>
+      <Button
+        variant={confirmVariant}
+        onClick={onConfirm}
+        disabled={confirmDisabled}
+        icon={confirmLoading ? <Loader2 className="spin" size={15} /> : undefined}
+      >
+        {confirmLoading ? `${confirmText}中...` : confirmText}
+      </Button>
+    </>
+  ) : undefined
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
-        </DialogHeader>
-
-        <DialogBody>{children}</DialogBody>
-
-        {(footer || hasDefaultFooter) && (
-          <DialogFooter>
-            {footer ?? (
-              <>
-                <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={confirmLoading}>
-                  {cancelText}
-                </Button>
-                <Button
-                  variant={confirmVariant}
-                  onClick={onConfirm}
-                  disabled={confirmDisabled}
-                  icon={confirmLoading ? <Loader2 className="spin" size={15} /> : undefined}
-                >
-                  {confirmLoading ? `${confirmText}中...` : confirmText}
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        )}
-      </DialogContent>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      description={description}
+      footer={footer ?? defaultFooter}
+    >
+      <div className="ui-dialog-body">{children}</div>
     </Dialog>
   )
 }

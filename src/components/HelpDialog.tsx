@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Code2, FileText, HelpCircle, Loader2, Zap } from 'lucide-react'
 
 import type { UpdateInfo } from '../shared/types'
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui'
+import { Button, Dialog } from '../ui'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog'
 
 interface HelpDialogProps {
@@ -45,19 +45,16 @@ export function HelpDialog({ children }: HelpDialogProps) {
   }
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        {children ?? (
+    <>
+      <Dialog
+        trigger={children ?? (
           <button className="nav-icon-button" title="帮助与反馈">
             <HelpCircle size={15} />
           </button>
         )}
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>帮助与反馈</DialogTitle>
-          <DialogDescription>有疑问或需要帮助？扫码关注我的抖音加入讨论群</DialogDescription>
-        </DialogHeader>
+        title="帮助与反馈"
+        description="有疑问或需要帮助？扫码关注我的抖音加入讨论群"
+      >
         <div className="help-dialog-body">
 
           {/* 版本与更新 */}
@@ -124,8 +121,8 @@ export function HelpDialog({ children }: HelpDialogProps) {
           </div>
 
         </div>
-      </DialogContent>
+      </Dialog>
       <ReleaseNotesDialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen} />
-    </Dialog>
+    </>
   )
 }
