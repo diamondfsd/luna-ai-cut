@@ -28,6 +28,9 @@ export function AppNav({ activeDevice, connection, sourceMode }: AppNavProps) {
           <NavLink to="/local-resources" className={({ isActive }) => (isActive ? 'active' : '')}>
             本地资源
           </NavLink>
+          <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>
+            工作台
+          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>

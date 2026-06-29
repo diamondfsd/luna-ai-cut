@@ -69,6 +69,9 @@ const lunaApi: LunaApi = {
     ipcRenderer.invoke('ai:chat', config, systemPrompt, messages),
   disconnect: (host?: string) => ipcRenderer.invoke('luna:disconnect', host),
   cacheFile: (file: LunaFile) => ipcRenderer.invoke('luna:cacheFile', file),
+  workspace: {
+    loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
+  },
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: DownloadProgress): void => callback(progress)
     ipcRenderer.on('download:progress', listener)

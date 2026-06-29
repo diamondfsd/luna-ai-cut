@@ -156,6 +156,15 @@ function sourceHostFor(url: string | null | undefined): string | null {
   }
 }
 
+function mimeTypeForPath(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase()
+  if (ext === '.png') return 'image/png'
+  if (ext === '.webp') return 'image/webp'
+  if (ext === '.gif') return 'image/gif'
+  if (ext === '.avif') return 'image/avif'
+  return 'image/jpeg'
+}
+
 async function ensureCameraSessionForUrl(url: string | null | undefined): Promise<void> {
   const host = sourceHostFor(url)
   if (!host) return
@@ -422,6 +431,13 @@ function registerIpc(): void {
   ipcMain.handle('files:reveal', (_event, filePath: string) => revealFile(filePath))
   ipcMain.handle('files:openPath', (_event, targetPath: string) => openPath(targetPath))
   ipcMain.handle('files:deleteLocal', (_event, filePaths: string[]) => deleteLocalFiles(filePaths))
+  ipcMain.handle('workspace:loadPreview', (_event, filePath: string) => {
+    const buffer = readFileSync(filePath)
+    return {
+      buffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+      mimeType: mimeTypeForPath(filePath),
+    }
+  })
   ipcMain.handle('ai:chat', async (_event, config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) => {
     return chatCompletion(config, systemPrompt, messages as Array<{ role: 'user' | 'assistant'; content: string }>)
   })
