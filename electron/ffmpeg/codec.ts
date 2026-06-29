@@ -33,10 +33,15 @@ export class CodecModule implements FfmpegModule {
     // hevc / h265
     if (codec === 'hevc' || codec === 'h265') {
       const enc = this.opts.encoderH265 ?? 'libx265'
-      // 硬件编码器没有 libx 前缀，不需要 tag，但 hvc1 tag 是容器级兼容
+      // 判断编码器是否实际输出 HEVC
+      // 当 hevc_videotoolbox 不可用时，可能回退到 h264_videotoolbox
+      // 此时 tag 必须用 avc1 而非 hvc1，否则容器标记错误导致文件不可播放
+      const isHevcEncoder = enc.includes('265') || enc.includes('hevc') || enc.startsWith('libx265')
+      const tag = isHevcEncoder ? 'hvc1' : 'avc1'
+      // 硬件编码器没有 libx 前缀，但同样支持 hvc1/avc1 tag
       const parts = enc.startsWith('libx')
-        ? ['-tag:v', 'hvc1', '-c:v', enc]
-        : ['-tag:v', 'hvc1', '-c:v', enc, ...extraArgs]
+        ? ['-tag:v', tag, '-c:v', enc]
+        : ['-tag:v', tag, '-c:v', enc, ...extraArgs]
 
       return {
         outputArgs: [
