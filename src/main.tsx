@@ -6,6 +6,7 @@ import { initRendererLogger } from './lib/rendererLogger'
 import './index.css'
 import './styles/variables.css'
 import './styles/utilities.css'
+import './styles/workspace.css'
 import './ui/styles.css'
 import './styles/responsive.css'
 

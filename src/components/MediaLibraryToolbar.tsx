@@ -1,6 +1,7 @@
-import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, Loader2, RefreshCcw, Trash2, X } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, Loader2, RefreshCcw, Sparkles, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { DownloadProgressModal } from './DownloadProgressModal'
 import { ExportModal } from './ExportModal'
@@ -129,6 +130,22 @@ export function MediaLibraryToolbar({
 }: MediaLibraryToolbarProps) {
   const haveSelection = selectedCount > 0
   const [filterOpen, setFilterOpen] = useState(false)
+  const navigate = useNavigate()
+  const workspaceMedia = selectedFiles
+    .filter((file) => file.kind === 'image')
+    .map((file) => {
+      const path = file.localPath ?? file.downloadFilePath ?? file.cacheFilePath ?? null
+      if (!path) return null
+      return {
+        id: file.id,
+        name: file.name,
+        path,
+        kind: 'image' as const,
+        thumbnailUrl: file.thumbnailUrl,
+      }
+    })
+    .filter((file): file is NonNullable<typeof file> => Boolean(file))
+  const canSendToWorkspace = isDownloadsPage && workspaceMedia.length > 0
 
   return (
     <>
@@ -146,6 +163,15 @@ export function MediaLibraryToolbar({
                 </Button>
                 {isDownloadsPage ? (
                   <>
+                    <Button
+                      variant="secondary"
+                      size="compact"
+                      disabled={!canSendToWorkspace}
+                      icon={<Sparkles size={14} />}
+                      onClick={() => navigate('/workspace', { state: { media: workspaceMedia, initialIndex: 0 } })}
+                    >
+                      发送到工作台 ({workspaceMedia.length})
+                    </Button>
                     <Button variant="danger" size="compact" onClick={() => setShowDeleteDialog(true)}>
                       <Trash2 size={14} />
                       删除 ({selectedCount})

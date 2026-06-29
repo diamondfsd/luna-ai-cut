@@ -10,6 +10,7 @@ import { DevPage } from '../pages/DevPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
 import { MediaLibraryPage } from '../pages/MediaLibraryPage'
 import { SettingsPage } from '../pages/SettingsPage'
+import { WorkspacePage } from '../pages/WorkspacePage'
 import type { CacheStats, LunaFile, PreviewResult } from '../shared/types'
 
 export function AppRoutes() {
@@ -91,9 +92,10 @@ export function AppRoutes() {
   const isLibraryActive = activePath === '/library' && !isDeveloperActive
   const isDownloadsLegacy = activePath === '/downloads'
   const isDownloadsActive = activePath === '/local-resources'
+  const isWorkspaceActive = activePath === '/workspace'
   const isSettingsActive = activePath === '/settings'
   const isBluetoothDebugActive = import.meta.env.DEV && activePath === '/ble-debug'
-  const isKnownRoute = isDeveloperActive || isLibraryActive || isDownloadsActive || isSettingsActive || isBluetoothDebugActive
+  const isKnownRoute = isDeveloperActive || isLibraryActive || isDownloadsActive || isWorkspaceActive || isSettingsActive || isBluetoothDebugActive
 
   if (isDownloadsLegacy) {
     return <Navigate to="/local-resources" replace />
@@ -162,6 +164,10 @@ export function AppRoutes() {
             setPreviewLoading={setPreviewLoading}
             refreshKey={localResourcesRefreshKey}
           />
+        </section>
+
+        <section className="route-panel" hidden={!isWorkspaceActive}>
+          <WorkspacePage />
         </section>
 
         {isSettingsActive && (

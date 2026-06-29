@@ -397,6 +397,9 @@ export interface LunaApi {
   aiChat(config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>): Promise<string>
   disconnect(host?: string): Promise<void>
   cacheFile(file: LunaFile): Promise<boolean>
+  workspace: {
+    loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
+  }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void
   onConnectionLost(callback: () => void): () => void
