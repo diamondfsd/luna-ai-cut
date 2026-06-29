@@ -2,30 +2,9 @@ import type { EditPipeline } from '../shared/editPipeline'
 import fragmentSource from './shaders/pipeline.glsl?raw'
 import vertexSource from './shaders/vertex.glsl?raw'
 
-type UniformName =
-  | 'u_texture'
-  | 'u_resolution'
-  | 'u_aspectRatio'
-  | 'u_crop'
-  | 'u_rotate'
-  | 'u_flip'
-  | 'u_scale'
-  | 'u_exposure'
-  | 'u_contrast'
-  | 'u_saturation'
-  | 'u_vibrance'
-  | 'u_temperature'
-  | 'u_tint'
-  | 'u_highlights'
-  | 'u_shadows'
-  | 'u_whites'
-  | 'u_blacks'
-  | 'u_clarity'
-  | 'u_dehaze'
-  | 'u_sharpen'
-  | 'u_vignette'
+const COLOR_MIX_CHANNELS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'] as const
 
-const UNIFORM_NAMES: UniformName[] = [
+const UNIFORM_NAMES = [
   'u_texture',
   'u_resolution',
   'u_aspectRatio',
@@ -33,8 +12,10 @@ const UNIFORM_NAMES: UniformName[] = [
   'u_rotate',
   'u_flip',
   'u_scale',
+  'u_lensDistortion',
   'u_exposure',
   'u_contrast',
+  'u_brightness',
   'u_saturation',
   'u_vibrance',
   'u_temperature',
@@ -43,17 +24,37 @@ const UNIFORM_NAMES: UniformName[] = [
   'u_shadows',
   'u_whites',
   'u_blacks',
+  'u_textureAmount',
   'u_clarity',
   'u_dehaze',
   'u_sharpen',
+  'u_sharpenRadius',
+  'u_sharpenDetail',
+  'u_sharpenMasking',
+  'u_noiseReduction',
+  'u_colorNoiseReduction',
   'u_vignette',
-]
+  'u_grainAmount',
+  'u_grainSize',
+  'u_grainRoughness',
+  'u_lensVignetting',
+  'u_chromaticAberration',
+  'u_hslHue',
+  'u_hslSaturation',
+  'u_hslLuminance',
+  'u_gradingShadows',
+  'u_gradingMidtones',
+  'u_gradingHighlights',
+  'u_gradingBlending',
+  'u_gradingBalance',
+  'u_calibration',
+] as const
 
 export class WebGLRenderer {
   private readonly canvas: HTMLCanvasElement
   private readonly gl: WebGL2RenderingContext
   private readonly program: WebGLProgram
-  private readonly uniforms = new Map<UniformName, WebGLUniformLocation>()
+  private readonly uniforms = new Map<string, WebGLUniformLocation>()
   private texture: WebGLTexture | null = null
   private sourceSize = { width: 1, height: 1 }
 
@@ -139,8 +140,10 @@ export class WebGLRenderer {
     gl.uniform1f(this.uniform('u_rotate'), pipeline.transform.rotate)
     gl.uniform2f(this.uniform('u_flip'), pipeline.transform.flipH ? 1 : 0, pipeline.transform.flipV ? 1 : 0)
     gl.uniform1f(this.uniform('u_scale'), pipeline.transform.scale)
+    gl.uniform1f(this.uniform('u_lensDistortion'), pipeline.effects.lensDistortion / 100)
     gl.uniform1f(this.uniform('u_exposure'), pipeline.color.exposure)
     gl.uniform1f(this.uniform('u_contrast'), pipeline.color.contrast / 100)
+    gl.uniform1f(this.uniform('u_brightness'), pipeline.color.brightness / 100)
     gl.uniform1f(this.uniform('u_saturation'), pipeline.color.saturation / 100)
     gl.uniform1f(this.uniform('u_vibrance'), pipeline.color.vibrance / 100)
     gl.uniform1f(this.uniform('u_temperature'), pipeline.color.temperature / 100)
@@ -149,10 +152,35 @@ export class WebGLRenderer {
     gl.uniform1f(this.uniform('u_shadows'), pipeline.color.shadows / 100)
     gl.uniform1f(this.uniform('u_whites'), pipeline.color.whites / 100)
     gl.uniform1f(this.uniform('u_blacks'), pipeline.color.blacks / 100)
+    gl.uniform1f(this.uniform('u_textureAmount'), pipeline.color.texture / 100)
     gl.uniform1f(this.uniform('u_clarity'), pipeline.color.clarity / 100)
     gl.uniform1f(this.uniform('u_dehaze'), pipeline.color.dehaze / 100)
-    gl.uniform1f(this.uniform('u_sharpen'), pipeline.effects.sharpen / 100)
+    gl.uniform1f(this.uniform('u_sharpen'), pipeline.effects.sharpen / 150)
+    gl.uniform1f(this.uniform('u_sharpenRadius'), pipeline.effects.sharpenRadius)
+    gl.uniform1f(this.uniform('u_sharpenDetail'), pipeline.effects.sharpenDetail / 100)
+    gl.uniform1f(this.uniform('u_sharpenMasking'), pipeline.effects.sharpenMasking / 100)
+    gl.uniform1f(this.uniform('u_noiseReduction'), pipeline.effects.noiseReduction / 100)
+    gl.uniform1f(this.uniform('u_colorNoiseReduction'), pipeline.effects.colorNoiseReduction / 100)
     gl.uniform1f(this.uniform('u_vignette'), pipeline.effects.vignette / 100)
+    gl.uniform1f(this.uniform('u_grainAmount'), pipeline.effects.grainAmount / 100)
+    gl.uniform1f(this.uniform('u_grainSize'), pipeline.effects.grainSize / 100)
+    gl.uniform1f(this.uniform('u_grainRoughness'), pipeline.effects.grainRoughness / 100)
+    gl.uniform1f(this.uniform('u_lensVignetting'), pipeline.effects.lensVignetting / 100)
+    gl.uniform1f(this.uniform('u_chromaticAberration'), pipeline.effects.chromaticAberration / 100)
+    gl.uniform1fv(this.uniform('u_hslHue'), COLOR_MIX_CHANNELS.map((channel) => pipeline.color.hsl[channel].hue / 100))
+    gl.uniform1fv(this.uniform('u_hslSaturation'), COLOR_MIX_CHANNELS.map((channel) => pipeline.color.hsl[channel].saturation / 100))
+    gl.uniform1fv(this.uniform('u_hslLuminance'), COLOR_MIX_CHANNELS.map((channel) => pipeline.color.hsl[channel].luminance / 100))
+    gl.uniform3f(this.uniform('u_gradingShadows'), pipeline.color.grading.shadowsHue / 360, pipeline.color.grading.shadowsSaturation / 100, 0)
+    gl.uniform3f(this.uniform('u_gradingMidtones'), pipeline.color.grading.midtonesHue / 360, pipeline.color.grading.midtonesSaturation / 100, 0)
+    gl.uniform3f(this.uniform('u_gradingHighlights'), pipeline.color.grading.highlightsHue / 360, pipeline.color.grading.highlightsSaturation / 100, 0)
+    gl.uniform1f(this.uniform('u_gradingBlending'), pipeline.color.grading.blending / 100)
+    gl.uniform1f(this.uniform('u_gradingBalance'), pipeline.color.grading.balance / 100)
+    gl.uniform3f(
+      this.uniform('u_calibration'),
+      pipeline.color.calibration.redSaturation / 100,
+      pipeline.color.calibration.greenSaturation / 100,
+      pipeline.color.calibration.blueSaturation / 100,
+    )
   }
 
   private initGeometry(): void {
@@ -205,7 +233,7 @@ export class WebGLRenderer {
     return shader
   }
 
-  private uniform(name: UniformName): WebGLUniformLocation {
+  private uniform(name: string): WebGLUniformLocation {
     const location = this.uniforms.get(name)
     if (!location) throw new Error(`WebGL uniform not found: ${name}`)
     return location
