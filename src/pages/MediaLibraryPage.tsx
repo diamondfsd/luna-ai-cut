@@ -224,6 +224,7 @@ export function MediaLibraryPage({
         revealFileByPath={revealFileByPath}
         toggleFile={toggleFile}
         toggleGroup={toggleGroup}
+        onDragSelectionChange={(fileIds) => setSelected(fileIds)}
       />
 
       {pageActive && previewFile && !selectMode && (

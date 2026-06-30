@@ -17,10 +17,12 @@
   margin-bottom: 8px;
 }
 
-.workspace-color-slider .workspace-range-wrap input[type="range"]::-webkit-slider-runnable-track {
-  background:
-    linear-gradient(to right, transparent var(--workspace-range-zero), rgba(255, 255, 255, 0.38) var(--workspace-range-zero), rgba(255, 255, 255, 0.38) var(--workspace-range-value), transparent var(--workspace-range-value)),
-    var(--workspace-slider-color);
+.workspace-color-slider .workspace-slider-track {
+  background: var(--workspace-slider-color);
+}
+
+.workspace-color-slider .workspace-slider-fill {
+  background: rgba(255, 255, 255, 0.38);
 }
 
 .workspace-curve-toolbar,
