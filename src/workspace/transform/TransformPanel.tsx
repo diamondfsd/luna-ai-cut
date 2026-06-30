@@ -1,4 +1,5 @@
-import { FlipHorizontal2, FlipVertical2, RotateCcw, RotateCw } from 'lucide-react'
+import { FlipHorizontal2, FlipVertical2, Lock, RotateCcw, RotateCw, Unlock } from 'lucide-react'
+import { useState } from 'react'
 
 import type { EditPipeline } from '../shared/editPipeline'
 import { IconButton, Input, Select, Tooltip } from '../../ui'
@@ -47,6 +48,19 @@ export function TransformPanel({
   onCropPresetChange,
   onCropSizeChange,
 }: TransformPanelProps) {
+  const [aspectLocked, setAspectLocked] = useState(true)
+  const cropRatio = Math.max(1, cropWidth) / Math.max(1, cropHeight)
+
+  function handleWidthChange(widthValue: number): void {
+    const width = Math.max(1, Math.round(widthValue))
+    onCropSizeChange(aspectLocked ? { width, height: Math.max(1, Math.round(width / cropRatio)) } : { width })
+  }
+
+  function handleHeightChange(heightValue: number): void {
+    const height = Math.max(1, Math.round(heightValue))
+    onCropSizeChange(aspectLocked ? { width: Math.max(1, Math.round(height * cropRatio)), height } : { height })
+  }
+
   return (
     <div className="workspace-panel-stack">
       <Select
@@ -57,13 +71,22 @@ export function TransformPanel({
         onValueChange={(next) => onCropPresetChange(next as CropPreset)}
       />
       <div className="workspace-crop-size-row">
+        <Tooltip content={aspectLocked ? '解除比例锁定' : '锁定当前比例'}>
+          <IconButton
+            variant={aspectLocked ? 'outline' : 'ghost'}
+            size="mini"
+            icon={aspectLocked ? <Lock size={13} /> : <Unlock size={13} />}
+            aria-label={aspectLocked ? '解除比例锁定' : '锁定当前比例'}
+            onClick={() => setAspectLocked((current) => !current)}
+          />
+        </Tooltip>
         <Input
           variant="compact"
           type="number"
           min={1}
           value={cropWidth}
           aria-label="裁剪宽度"
-          onChange={(event) => onCropSizeChange({ width: Number(event.currentTarget.value) })}
+          onChange={(event) => handleWidthChange(Number(event.currentTarget.value))}
         />
         <span>×</span>
         <Input
@@ -72,7 +95,7 @@ export function TransformPanel({
           min={1}
           value={cropHeight}
           aria-label="裁剪高度"
-          onChange={(event) => onCropSizeChange({ height: Number(event.currentTarget.value) })}
+          onChange={(event) => handleHeightChange(Number(event.currentTarget.value))}
         />
       </div>
       <div className="workspace-button-row">

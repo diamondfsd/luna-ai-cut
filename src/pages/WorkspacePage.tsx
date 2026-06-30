@@ -69,7 +69,6 @@ export function WorkspacePage() {
   const rendererRef = useRef<WebGLRenderer | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const projectRef = useRef<WorkspaceProject | null>(currentProject)
-  const pipelineRef = useRef<EditPipeline>(history.present)
   const cropActiveRef = useRef(false)
   const previewPipelineRef = useRef<EditPipeline>(history.present)
   const previousToolRef = useRef<WorkspaceTool>('color')
@@ -80,6 +79,10 @@ export function WorkspacePage() {
   const previewPipeline = useMemo(
     () => (cropActive && transformDraft ? mergePipeline(pipeline, { transform: transformDraft }) : pipeline),
     [cropActive, transformDraft, pipeline],
+  )
+  const comparePipeline = useMemo(
+    () => mergePipeline(previewPipeline, { color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects }),
+    [previewPipeline],
   )
   const media = projectMedia(currentProject, transientMedia)
   const activeMedia = media[activeIndex] ?? null
@@ -104,10 +107,6 @@ export function WorkspacePage() {
   useEffect(() => {
     projectRef.current = currentProject
   }, [currentProject])
-
-  useEffect(() => {
-    pipelineRef.current = pipeline
-  }, [pipeline])
 
   useEffect(() => {
     previewPipelineRef.current = previewPipeline
@@ -163,12 +162,12 @@ export function WorkspacePage() {
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
       rendererRef.current?.resize(width, height)
-      rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : previewPipeline, { cropMode: cropActive })
+      rendererRef.current?.render(compareOriginal ? comparePipeline : previewPipeline, { cropMode: cropActive })
       updateImageRect()
     })
     observer.observe(stageRef.current)
     return () => observer.disconnect()
-  }, [compareOriginal, cropActive, previewPipeline, updateImageRect])
+  }, [compareOriginal, comparePipeline, cropActive, previewPipeline, updateImageRect])
 
   useEffect(() => {
     if (!activeMedia || !rendererRef.current) return
@@ -179,7 +178,7 @@ export function WorkspacePage() {
       .then((entry) => {
         if (canceled) return
         rendererRef.current?.loadImage(entry.previewBitmap)
-        rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : previewPipelineRef.current, { cropMode: cropActiveRef.current })
+        rendererRef.current?.render(compareOriginal ? mergePipeline(previewPipelineRef.current, { color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects }) : previewPipelineRef.current, { cropMode: cropActiveRef.current })
         updateImageRect()
         const applyThumb = <T extends WorkspaceMediaAsset>(items: T[]): T[] =>
           items.map((item) => (item.path === activeMedia.path ? { ...item, thumbnailUrl: entry.thumbnailUrl } : item)) as T[]
@@ -202,8 +201,8 @@ export function WorkspacePage() {
   }, [activeMedia?.path, compareOriginal, updateImageRect])
 
   useEffect(() => {
-    rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : previewPipeline, { cropMode: cropActive })
-  }, [compareOriginal, previewPipeline, cropActive])
+    rendererRef.current?.render(compareOriginal ? comparePipeline : previewPipeline, { cropMode: cropActive })
+  }, [compareOriginal, comparePipeline, previewPipeline, cropActive])
 
   useEffect(() => {
     const asset = currentProject?.assets[activeIndex]
