@@ -43,59 +43,66 @@ interface GitCodeRelease {
 
 /**
  * 从 GitCode API 获取最新 Release（含下载链接），无需鉴权
+ *
+ * 注意：不使用 /releases/latest（GitCode 该接口返回的并非最新 tag），
+ * 改为遍历 release 列表找到版本最大的发行版。
  */
 async function checkGitCode(): Promise<UpdateCheckResult | null> {
-  const res = await fetch(`${GITCODE_API}/releases/latest`)
+  const res = await fetch(`${GITCODE_API}/releases?per_page=50`)
   if (!res.ok) return null
 
-  const data: GitCodeRelease = await res.json()
-  const tagName = data.tag_name ?? ''
-  const latestVersion = tagName.replace(/^v/, '')
+  const releases: GitCodeRelease[] = await res.json()
   const currentVersion = app.getVersion()
-  if (compareVersions(latestVersion, currentVersion) <= 0) return null
 
-  // assets 中 type 为 "attach" 的才是上传的安装包，排除 source 包
-  const attachAssets = (data.assets ?? []).filter(a => a.type === 'attach')
+  // 从新到旧遍历（列表按创建时间升序，reverse 后最新在前）
+  for (const data of releases.reverse()) {
+    const tagName = data.tag_name ?? ''
+    const latestVersion = tagName.replace(/^v/, '')
+    if (compareVersions(latestVersion, currentVersion) <= 0) continue
 
-  // 根据当前操作系统和 CPU 架构选择对应安装包
-  // 资产命名示例: LunaAICut-Mac-1.3.3-Installer-arm64.dmg / LunaAICut-Windows-1.3.3-Setup-x64.exe
-  const platform = process.platform
-  const arch = process.arch // 'arm64' | 'x64'
-  const installer = attachAssets.find(a => {
-    if (platform === 'win32') return a.name.endsWith('.exe') && a.name.includes('-Windows-')
-    if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-${arch}.dmg`)
-    return false
-  })
+    // assets 中 type 为 "attach" 的才是上传的安装包，排除 source 包
+    const attachAssets = (data.assets ?? []).filter(a => a.type === 'attach')
 
-  // 没有安装包文件（Release 刚创建，CI 还没上传完），不提示更新
-  if (!installer) return null
+    // 根据当前操作系统和 CPU 架构选择对应安装包
+    // 资产命名示例: LunaAICut-Mac-1.3.3-Installer-arm64.dmg / LunaAICut-Windows-1.3.3-Setup-x64.exe
+    const platform = process.platform
+    const arch = process.arch // 'arm64' | 'x64'
+    const installer = attachAssets.find(a => {
+      if (platform === 'win32') return a.name.endsWith('.exe') && a.name.includes('-Windows-')
+      if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-${arch}.dmg`)
+      return false
+    })
+    if (!installer) continue // 该版本没有安装包，继续看更早的版本
 
-  // 从 GitHub 获取详细的发布说明（GitCode 只有附件，没有完整内容）
-  let releaseNotes: string | undefined
-  try {
-    const ghRes = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${tagName}`,
-      { headers: { Accept: 'application/vnd.github+json' } },
-    )
-    if (ghRes.ok) {
-      const ghData: any = await ghRes.json()
-      releaseNotes = ghData.body?.slice(0, 500) || undefined
+    // 从 GitHub 获取详细的发布说明（GitCode 只有附件，没有完整内容）
+    let releaseNotes: string | undefined
+    try {
+      const ghRes = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${tagName}`,
+        { headers: { Accept: 'application/vnd.github+json' } },
+      )
+      if (ghRes.ok) {
+        const ghData: any = await ghRes.json()
+        releaseNotes = ghData.body?.slice(0, 500) || undefined
+      }
+    } catch {
+      // GitHub 获取失败不影响主流程，用户仍可下载
     }
-  } catch {
-    // GitHub 获取失败不影响主流程，用户仍可下载
+
+    // API 返回的 browser_download_url 是 api.gitcode.com 域名（直链可能鉴权）
+    // 改用 gitcode.com 的公开下载地址
+    const downloadUrl = `${GITCODE_DL}/${tagName}/${installer.name}`
+
+    return {
+      version: latestVersion,
+      downloadUrl,
+      releaseUrl: `https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/tag/${tagName}`,
+      releaseNotes,
+      publishedAt: data.created_at,
+    }
   }
 
-  // API 返回的 browser_download_url 是 api.gitcode.com 域名（直链可能鉴权）
-  // 改用 gitcode.com 的公开下载地址
-  const downloadUrl = `${GITCODE_DL}/${tagName}/${installer.name}`
-
-  return {
-    version: latestVersion,
-    downloadUrl,
-    releaseUrl: `https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/tag/${tagName}`,
-    releaseNotes,
-    publishedAt: data.created_at,
-  }
+  return null
 }
 
 /**
