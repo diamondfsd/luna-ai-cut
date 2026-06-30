@@ -20,6 +20,9 @@ export interface ExportProgress {
   destinationPath?: string
   error?: string
   exportId?: string
+  taskId?: string
+  taskName?: string
+  createdAt?: number
 }
 
 export interface ExportSummary {
@@ -59,7 +62,7 @@ function isDefaultVideoExportSettings(s?: VideoExportSettings): boolean {
 }
 
 export async function exportFiles(
-  files: Array<{ name: string; kind: string; localPath?: string; exportId?: string }>,
+  files: Array<{ name: string; kind: string; localPath?: string; exportId?: string; taskId?: string; taskName?: string; createdAt?: number }>,
   exportDir: string,
   watermarkSettings: WatermarkSettings,
   onProgress?: (progress: ExportProgress) => void,
@@ -77,7 +80,7 @@ export async function exportFiles(
   await fs.mkdir(tmpDir, { recursive: true })
 
   function prog(file: typeof files[number], extra: Partial<ExportProgress>): ExportProgress {
-    return { fileName: file.name, exportId: file.exportId, index: files.indexOf(file), totalFiles: files.length, percent: null, status: 'queued' as const, ...extra }
+    return { fileName: file.name, exportId: file.exportId, taskId: file.taskId, taskName: file.taskName, createdAt: file.createdAt, index: files.indexOf(file), totalFiles: files.length, percent: null, status: 'queued' as const, ...extra }
   }
 
   for (const file of files) {

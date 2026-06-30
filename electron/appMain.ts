@@ -61,6 +61,7 @@ import {
 } from './wifiDebugService'
 import { cancelBluetoothScan, scanBluetoothDevices } from './bluetoothDebugService'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
+import { safeName } from './filePathUtils'
 import type {
   AiConfig,
   AppSettings,
@@ -451,6 +452,19 @@ function registerIpc(): void {
   ipcMain.handle('workspace:saveProject', async (_event, project: WorkspaceProject) => {
     const settings = await getSettings()
     return saveWorkspaceProject(getLocalResourcesDir(settings), project)
+  })
+  ipcMain.handle('workspace:exportImage', async (_event, name: string, dataUrl: string) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    mkdirSync(settings.exportDir, { recursive: true })
+    const match = /^data:image\/(png|jpeg);base64,(.+)$/i.exec(dataUrl)
+    if (!match) throw new Error('导出图片数据无效')
+    const ext = match[1].toLowerCase() === 'jpeg' ? '.jpg' : '.png'
+    const baseName = path.basename(name, path.extname(name)) || 'workspace'
+    const fileName = safeName(`${baseName}_workspace_${Date.now()}${ext}`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+    writeFileSync(destinationPath, Buffer.from(match[2], 'base64'))
+    return { path: destinationPath, name: fileName }
   })
   ipcMain.handle('ai:chat', async (_event, config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) => {
     return chatCompletion(config, systemPrompt, messages as Array<{ role: 'user' | 'assistant'; content: string }>)

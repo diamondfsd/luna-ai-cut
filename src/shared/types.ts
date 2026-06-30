@@ -237,6 +237,12 @@ export interface ExportProgress {
   error?: string
   /** 导出任务唯一 ID（前端生成，同文件多次导出时做 key） */
   exportId?: string
+  /** 导出批次 ID，同一次导出的多条明细共享 */
+  taskId?: string
+  /** 导出任务标题 */
+  taskName?: string
+  /** 导出任务创建时间 */
+  createdAt?: number
 }
 
 export interface ExportSummary {
@@ -409,7 +415,7 @@ export interface LunaApi {
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
-  exportFiles(files: Array<{ name: string; kind: string; localPath?: string; exportId?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
+  exportFiles(files: Array<{ name: string; kind: string; localPath?: string; exportId?: string; taskId?: string; taskName?: string; createdAt?: number }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
   getDownloadedRecords(files: LunaFile[], downloadDir?: string): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>
@@ -424,6 +430,7 @@ export interface LunaApi {
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     saveProject(project: WorkspaceProject): Promise<WorkspaceProject>
+    exportImage(name: string, dataUrl: string): Promise<{ path: string; name: string }>
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void

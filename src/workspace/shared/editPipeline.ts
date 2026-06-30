@@ -1,3 +1,5 @@
+import type { WatermarkSettings } from '../../shared/types'
+
 export interface CropRect {
   x: number
   y: number
@@ -68,14 +70,7 @@ export interface EditPipeline {
     lensVignetting: number
     chromaticAberration: number
   }
-  watermark: {
-    enabled: boolean
-    styleId: string | null
-    customImagePath: string | null
-    opacity: number
-    size: number
-    position: 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight' | 'center'
-  }
+  watermark: WatermarkSettings
 }
 
 export type WhiteBalanceMode = 'auto' | 'custom' | 'daylight' | 'cloudy' | 'indoor'
@@ -229,11 +224,9 @@ export const DEFAULT_PIPELINE: EditPipeline = {
   },
   watermark: {
     enabled: false,
-    styleId: null,
-    customImagePath: null,
-    opacity: 100,
-    size: 15,
-    position: 'bottomRight',
+    style: 'luna_ultra_cn',
+    watermarkPercent: 20,
+    position: 'bottom-center',
   },
 }
 

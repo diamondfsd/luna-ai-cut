@@ -226,6 +226,8 @@ export function useMediaLibraryTransferActions({
         videoExportSettings,
       })
       const batchTs = Date.now()
+      const taskId = `export_task_${batchTs}`
+      const taskName = `导出 ${filesToExport.length} 个文件`
       const snapshots = new Map<string, LunaFile>()
       const queued = new Map<string, ExportProgress>()
       filesToExport.forEach((file, index) => {
@@ -234,6 +236,9 @@ export function useMediaLibraryTransferActions({
         snapshots.set(exportId, file)
         queued.set(exportId, {
           exportId,
+          taskId,
+          taskName,
+          createdAt: batchTs,
           fileName: exportName,
           index,
           totalFiles: filesToExport.length,
@@ -241,8 +246,8 @@ export function useMediaLibraryTransferActions({
           status: 'queued',
         })
       })
-      setExportSnapshots(snapshots)
-      setExportProgress(queued)
+      setExportSnapshots((current) => new Map([...current, ...snapshots]))
+      setExportProgress((current) => new Map([...current, ...queued]))
       const payload = filesToExport.map((file, index) => {
         const exportName = file.downloadName || file.name
         return {
@@ -250,6 +255,9 @@ export function useMediaLibraryTransferActions({
           kind: file.kind,
           localPath: file.downloadFilePath ?? file.localPath,
           exportId: `${exportName}_${batchTs}_${index}`,
+          taskId,
+          taskName,
+          createdAt: batchTs,
         }
       })
       const result = await window.luna.exportFiles(payload, settings.exportDir, watermarkSettings, videoExportSettings)

@@ -52,8 +52,6 @@ export function MediaLibraryPage({
     downloadQueue,
     downloadStatusFilter,
     exportError,
-    exportProgress,
-    exportSnapshots,
     exporting,
     exportWatermarkSettings,
     filteredFiles,
@@ -91,8 +89,6 @@ export function MediaLibraryPage({
     setDownloadQueue,
     setDownloadStatusFilter,
     setExportError,
-    setExporting,
-    setExportProgress,
     setExportWatermarkSettings,
     setMediaFilter,
     setPreviewFiles,
@@ -171,8 +167,6 @@ export function MediaLibraryPage({
         downloading={downloading}
         downloadStatusFilter={downloadStatusFilter}
         exportError={exportError}
-        exportProgress={exportProgress}
-        exportSnapshots={exportSnapshots}
         exporting={exporting}
         exportWatermarkSettings={exportWatermarkSettings}
         isDownloadsPage={isDownloadsPage}
@@ -192,8 +186,6 @@ export function MediaLibraryPage({
         setDownloading={setDownloading}
         setDownloadStatusFilter={setDownloadStatusFilter}
         setExportError={setExportError}
-        setExporting={setExporting}
-        setExportProgress={setExportProgress}
         setExportWatermarkSettings={setExportWatermarkSettings}
         setMediaFilter={setMediaFilter}
         setSelected={setSelected}

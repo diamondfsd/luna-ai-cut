@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { logger } from '../lib/rendererLogger'
-import type { AppSettings, DeviceDefinition, DownloadProgress, ExportProgress, LunaFile, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { AppSettings, DeviceDefinition, DownloadProgress, LunaFile, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { useMediaLibraryTransferActions } from './useMediaLibraryTransferActions'
+import { useApp } from '../context/AppContext'
 
 type MediaFilter = 'all' | 'image' | 'video'
 type DownloadStatusFilter = 'all' | 'downloaded' | 'not-downloaded'
@@ -52,6 +52,7 @@ export function useMediaLibraryController({
   activeDevice,
   refreshKey,
 }: MediaLibraryPageProps) {
+  const { exportProgress, exportSnapshots, exporting, setExportProgress, setExportSnapshots, setExporting } = useApp()
   const [files, setFiles] = useState<LunaFile[]>([])
   const [downloadedFiles, setDownloadedFiles] = useState<LunaFile[]>([])
   const [previewFiles, setPreviewFiles] = useState<LunaFile[]>([])
@@ -71,37 +72,17 @@ export function useMediaLibraryController({
   const [storageFilter, setStorageFilter] = useState<StorageFilter>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('download')
   const [exportedFiles, setExportedFiles] = useState<LunaFile[]>([])
-  const [exporting, setExporting] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deletingLocalFiles, setDeletingLocalFiles] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [exportProgress, setExportProgress] = useState<Map<string, ExportProgress>>(new Map())
-  const [exportSnapshots, setExportSnapshots] = useState<Map<string, LunaFile>>(new Map())
   const [exportWatermarkSettings, setExportWatermarkSettings] = useState<WatermarkSettingsType>(() => ({
     enabled: true,
     style: 'luna_ultra_cn',
     watermarkPercent: 20,
     position: 'bottom-center',
   }))
-
-  // 监听导出进度
-  useEffect(() => {
-    return window.luna.onExportProgress((progress) => {
-      setExportProgress((current) => new Map(current).set(progress.exportId ?? progress.fileName, progress))
-      // 记录关键进度事件
-      if (progress.status === 'done') {
-        logger.info(`导出完成: ${progress.fileName}`, { destinationPath: progress.destinationPath })
-      } else if (progress.status === 'failed') {
-        logger.error(`导出失败: ${progress.fileName}`, { error: progress.error })
-      } else if (progress.status === 'canceled') {
-        logger.warn(`导出已取消: ${progress.fileName}`)
-      } else if (progress.status === 'exporting' && progress.percent !== null && progress.percent % 25 === 0) {
-        logger.info(`导出进度: ${progress.fileName}`, { percent: progress.percent })
-      }
-    })
-  }, [])
 
   const loadingCameraRef = useRef(false)
   const loadingDownloadsRef = useRef(false)
