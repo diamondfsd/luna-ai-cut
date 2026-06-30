@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 
 import { lunaMediaAdapter } from './deviceMedia'
 import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
-import { previewCacheDir } from './settingsService'
+import { getSettings, previewCacheDir } from './settingsService'
 import { generateThumbnail, safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
 import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToLivePhoto, applyWatermarkToVideo } from './watermarkService'
 import { logMainInfo, logMainError, logMainWarn, logExport } from './loggerService'
@@ -75,6 +75,7 @@ export async function exportFiles(
   logMainInfo('[EXPORT] 开始导出任务', { exportId, fileCount: files.length, exportDir, watermarkEnabled: watermarkSettings.enabled, watermarkPercent: watermarkSettings.watermarkPercent, watermarkPosition: watermarkSettings.position, watermarkStyle: watermarkSettings.style })
 
   await fs.mkdir(tmpDir, { recursive: true })
+  const appSettings = await getSettings()
 
   function prog(file: typeof files[number], extra: Partial<ExportProgress>): ExportProgress {
     return { fileName: file.name, exportId: file.exportId, index: files.indexOf(file), totalFiles: files.length, percent: null, status: 'queued' as const, ...extra }
@@ -141,8 +142,8 @@ export async function exportFiles(
         )
       } else if (file.kind === 'image' && watermarkSettings.enabled && /^LIV_/i.test(file.name)) {
         // Live Photo — 给图片和内嵌视频都加水印，再合并回去
-        // macOS 额外导出 Apple 配对格式（文件夹 + JPEG + MOV）
-        const appleExportFolder = process.platform === 'darwin'
+        // macOS 额外导出 Apple 配对格式（文件夹 + JPEG + MOV，默认关闭）
+        const appleExportFolder = process.platform === 'darwin' && appSettings.exportAppleLivePhoto
           ? path.join(exportDir, safeName(path.basename(destName, ext)))
           : undefined
         await applyWatermarkToLivePhoto(

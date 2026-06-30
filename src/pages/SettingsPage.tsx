@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { FolderOpen, Trash2 } from 'lucide-react'
+import { FolderOpen, Image, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
-import { Button, Input, toast } from '../ui'
+import { Button, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
 interface SettingsPageProps {
@@ -143,6 +143,23 @@ export function SettingsPage({
             </Button>
           </div>
         </article>
+
+        {window.navigator.platform.includes('Mac') && (
+          <article className="settings-row">
+            <div className="settings-row-copy">
+              <span><Image size={15} /> Apple Live Photo</span>
+              <em>导出时同时生成 Apple 配对格式（JPG+MOV 文件夹），需导入照片应用后共享到 iPhone 才能识别</em>
+            </div>
+            <Switch
+              checked={!!settings?.exportAppleLivePhoto}
+              onCheckedChange={(checked) => {
+                setSettings((current) => (current ? { ...current, exportAppleLivePhoto: checked } : current))
+                window.luna.saveSettings({ exportAppleLivePhoto: checked }).then(setSettings)
+              }}
+              ariaLabel="导出 Apple Live Photo"
+            />
+          </article>
+        )}
 
         <article className="settings-row">
           <div className="settings-row-copy">
