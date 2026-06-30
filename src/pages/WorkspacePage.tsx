@@ -1,9 +1,9 @@
-import { ArrowLeft, Download, Eye, EyeOff, Redo2, RotateCcw, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../shared/types'
-import { Button, IconButton, Tooltip, toast } from '../ui'
+import { Button, Dialog, IconButton, Tooltip, toast } from '../ui'
 import { checkWebGLSupport, WebGLRenderer, workspaceImageCache } from '../workspace'
 import { createEditHistory, pushHistory, redoHistory, resetHistory, undoHistory, type EditHistory } from '../workspace/shared/editHistory'
 import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline, type EditPipeline, type PipelinePatch } from '../workspace/shared/editPipeline'
@@ -15,6 +15,9 @@ import { WorkspaceWatermarkOverlay } from '../workspace/components/WorkspaceWate
 import { useWorkspaceExport } from '../workspace/export/useWorkspaceExport'
 import { cropForAspect, frameAspect, maxCropInsideImage } from '../workspace/transform/cropGeometry'
 import { WorkspaceEditSidebar, type WorkspaceTool } from '../workspace/components/WorkspaceEditSidebar'
+
+/** 复制到粘贴板：只复制调色+效果+水印，不含裁剪等变换 */
+const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
 
 interface WorkspaceRouteState {
   project?: WorkspaceProject
@@ -62,6 +65,11 @@ export function WorkspacePage() {
   const [activeTool, setActiveTool] = useState<WorkspaceTool>('color')
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [pipetteActive, setPipetteActive] = useState(false)
+  const [brokenPaths, setBrokenPaths] = useState<Set<string>>(new Set())
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
+  const selectedIndicesRef = useRef(selectedIndices)
+  selectedIndicesRef.current = selectedIndices
   const [imageRect, setImageRect] = useState({ x: 0, y: 0, width: 1, height: 1 })
   const [sourceAspect, setSourceAspect] = useState(1)
   const [viewZoom, setViewZoom] = useState(1)
@@ -123,6 +131,61 @@ export function WorkspacePage() {
       .catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
       .finally(() => setProjectLoading(false))
   }, [])
+
+  // 全局快捷键
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      // 全局阻止空格默认行为（使用捕获阶段在滑块内部处理前拦截）
+      if (event.code === 'Space') {
+        event.preventDefault()
+        event.stopPropagation()
+        // 在输入框中只阻止，不触发对比功能
+        const inInput = event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable]')
+        if (!inInput && !cropActiveRef.current && activeMedia) {
+          setCompareOriginal(true)
+        }
+        return
+      }
+
+      // 在文本输入框中不触发其他快捷键
+      const inInput = event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable]')
+      if (inInput) return
+      // Delete / Backspace 删除素材（支持多选）
+      if ((event.code === 'Delete' || event.code === 'Backspace') && activeMedia && !cropActiveRef.current) {
+        const removalCount = selectedIndicesRef.current.size || 1
+        if (removalCount >= media.length) return
+        event.preventDefault()
+        setDeleteConfirmOpen(true)
+        return
+      }
+      // Ctrl/Cmd+Shift+C 复制调色和水印设置
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyC' && !cropActiveRef.current) {
+        event.preventDefault()
+        copyPipelineRef.current()
+        return
+      }
+      // Ctrl/Cmd+Shift+V 粘贴调色和水印设置
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyV' && !cropActiveRef.current) {
+        event.preventDefault()
+        pasteToCurrentRef.current()
+        return
+      }
+    }
+    function handleKeyUp(event: KeyboardEvent): void {
+      if (event.code === 'Space') {
+        event.preventDefault()
+        event.stopPropagation()
+        setCompareOriginal(false)
+      }
+    }
+    // 使用捕获阶段，确保在滑块/输入框内部处理 Space 之前拦截
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    window.addEventListener('keyup', handleKeyUp, { capture: true })
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true })
+      window.removeEventListener('keyup', handleKeyUp, { capture: true })
+    }
+  }, [activeMedia, media.length, cropActiveRef.current])
 
   useEffect(() => {
     const support = checkWebGLSupport()
@@ -192,7 +255,13 @@ export function WorkspacePage() {
         }
       })
       .catch((error) => {
-        if (!canceled) setImageError(error instanceof Error ? error.message : String(error))
+        if (!canceled) {
+          const msg = error instanceof Error ? error.message : String(error)
+          setImageError(msg)
+          if (msg.includes('Input file is missing') || msg.includes('文件不存在') || msg.includes('no such file') || msg.includes('ENOENT')) {
+            setBrokenPaths((prev) => new Set(prev).add(activeMedia.path))
+          }
+        }
       })
       .finally(() => {
         if (!canceled) setImageLoading(false)
@@ -228,6 +297,36 @@ export function WorkspacePage() {
       })
     }, 500)
   }, [activeIndex, activeMedia, currentProject?.id, pipeline])
+
+  // 复制粘贴板：只存调色 + 效果 + 水印，不含变换
+  const pipelineClipboardRef = useRef<{ color: EditPipeline['color']; effects: EditPipeline['effects']; watermark: EditPipeline['watermark'] } | null>(null)
+
+  function copyPipeline(): void {
+    pipelineClipboardRef.current = {
+      color: structuredClone(pipeline.color),
+      effects: structuredClone(pipeline.effects),
+      watermark: structuredClone(pipeline.watermark),
+    }
+    localStorage.setItem(PIPELINE_CLIPBOARD_KEY, JSON.stringify(pipelineClipboardRef.current))
+    toast.success('已复制调色和水印设置')
+  }
+
+  function pasteToCurrent(): void {
+    const data = pipelineClipboardRef.current ?? (() => {
+      const raw = localStorage.getItem(PIPELINE_CLIPBOARD_KEY)
+      if (!raw) { toast.error('没有可粘贴的调色设置'); return null }
+      try { return JSON.parse(raw) as typeof pipelineClipboardRef.current } catch { return null }
+    })()
+    if (!data) return
+    commitPatch({ color: data.color, effects: data.effects, watermark: data.watermark })
+    toast.success('已粘贴调色和水印设置')
+  }
+
+  // ref 包装函数，以便在键盘事件（useEffect 闭包）中稳定调用
+  const copyPipelineRef = useRef(copyPipeline)
+  const pasteToCurrentRef = useRef(pasteToCurrent)
+  copyPipelineRef.current = copyPipeline
+  pasteToCurrentRef.current = pasteToCurrent
 
   const commitPatch = useCallback((patch: PipelinePatch) => {
     setHistory((current) => pushHistory(current, mergePipeline(current.present, patch)))
@@ -271,6 +370,32 @@ export function WorkspacePage() {
     })
   }, [pipetteActive, commitPatch])
 
+  // 多选处理：Shift 范围选，Ctrl/Cmd 切换选
+  function handleSelectionChange(clickedIndex: number, modifiers: { shift: boolean; ctrl: boolean; meta: boolean }): void {
+    setSelectedIndices((prev) => {
+      if (modifiers.shift && prev.size > 0) {
+        // Shift: 从最近的选中项到当前点击项范围选中
+        const sorted = [...prev].sort((a, b) => a - b)
+        const nearest = sorted.reduce((best, i) =>
+          Math.abs(i - clickedIndex) < Math.abs(best - clickedIndex) ? i : best,
+        )
+        const [from, to] = nearest < clickedIndex ? [nearest, clickedIndex] : [clickedIndex, nearest]
+        const range = new Set<number>()
+        for (let i = from; i <= to; i++) range.add(i)
+        return range
+      }
+      if (modifiers.ctrl || modifiers.meta) {
+        // Ctrl/Cmd: 切换单项选中
+        const next = new Set(prev)
+        if (next.has(clickedIndex)) next.delete(clickedIndex)
+        else next.add(clickedIndex)
+        return next
+      }
+      // 普通点击：单选
+      return new Set([clickedIndex])
+    })
+  }
+
   function openProject(project: WorkspaceProject): void {
     setCurrentProject(project)
     setActiveIndex(0)
@@ -280,6 +405,54 @@ export function WorkspacePage() {
     setCurrentProject(null)
     setCropActive(false)
     window.luna.workspace.listProjects().then(setProjects).catch(() => undefined)
+  }
+
+  function removeBrokenAssets(): void {
+    if (!currentProject) {
+      setTransientMedia((prev) => prev.filter((item) => !brokenPaths.has(item.path)))
+      setBrokenPaths(new Set())
+      return
+    }
+    const nextAssets = currentProject.assets.filter((item) => !brokenPaths.has(item.path))
+    const nextProject = { ...currentProject, assets: nextAssets, updatedAt: new Date().toISOString() }
+    setCurrentProject(nextProject)
+    projectRef.current = nextProject
+    setBrokenPaths(new Set())
+    window.luna.workspace.saveProject(nextProject).catch(() => undefined)
+    if (activeIndex >= nextAssets.length) setActiveIndex(Math.max(0, nextAssets.length - 1))
+    toast.success('已移除失效的素材')
+  }
+
+  function handleRemoveMedia(index: number): void {
+    if (!activeMedia || media.length <= 1) return
+    if (!currentProject) {
+      setTransientMedia((prev) => prev.filter((_, i) => i !== index))
+    } else {
+      const nextAssets = currentProject.assets.filter((_, i) => i !== index)
+      const nextProject = { ...currentProject, assets: nextAssets, updatedAt: new Date().toISOString() }
+      setCurrentProject(nextProject)
+      projectRef.current = nextProject
+      window.luna.workspace.saveProject(nextProject).catch(() => undefined)
+    }
+    if (index <= activeIndex && activeIndex > 0) setActiveIndex(activeIndex - 1)
+    else if (index === activeIndex && activeIndex === media.length - 1) setActiveIndex(Math.max(0, activeIndex - 1))
+  }
+
+  function handleRemoveSelected(indices: Set<number>): void {
+    if (indices.size < 1 || indices.size >= media.length) return
+    if (!currentProject) {
+      setTransientMedia((prev) => prev.filter((_, i) => !indices.has(i)))
+    } else {
+      const nextAssets = currentProject.assets.filter((_, i) => !indices.has(i))
+      const nextProject = { ...currentProject, assets: nextAssets, updatedAt: new Date().toISOString() }
+      setCurrentProject(nextProject)
+      projectRef.current = nextProject
+      window.luna.workspace.saveProject(nextProject).catch(() => undefined)
+    }
+    const removedBeforeActive = [...indices].filter((i) => i < activeIndex).length
+    const remaining = media.length - indices.size
+    setActiveIndex(Math.max(0, Math.min(activeIndex - removedBeforeActive, remaining - 1)))
+    setSelectedIndices(new Set())
   }
 
   function handleReset(): void {
@@ -475,8 +648,23 @@ export function WorkspacePage() {
             <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={history.future.length === 0} onClick={() => setHistory(redoHistory)} />
           </Tooltip>
           <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={handleReset}>重置</Button>
+          <div className="workspace-toolbar-divider" />
+          <Tooltip content="复制调色和水印">
+            <IconButton variant="ghost" size="compact" icon={<ClipboardCopy size={15} />} disabled={!activeMedia || !canRender} onClick={copyPipeline} />
+          </Tooltip>
+          <Tooltip content="粘贴调色和水印到当前图片">
+            <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={15} />} disabled={!activeMedia || !canRender} onClick={pasteToCurrent} />
+          </Tooltip>
+          {brokenPaths.size > 0 && (
+            <>
+              <div className="workspace-toolbar-divider" />
+              <Button variant="danger" size="compact" icon={<Trash2 size={13} />} onClick={removeBrokenAssets}>
+                移除 {brokenPaths.size} 个失效素材
+              </Button>
+            </>
+          )}
         </div>
-        <div className="workspace-toolbar-title">{currentProject?.name ?? '临时工作台'} · {activeMedia?.name ?? '未选择素材'}</div>
+        <div className="workspace-toolbar-title">{currentProject?.name ?? '临时工作台'} · {activeIndex + 1}/{media.length}</div>
         <div className="workspace-toolbar-group">
           <Button
             variant={compareOriginal ? 'primary' : 'secondary'}
@@ -494,7 +682,39 @@ export function WorkspacePage() {
         </div>
       </footer>
 
-      <WorkspaceMediaStrip media={media} activeIndex={activeIndex} onActiveIndexChange={setActiveIndex} />
+      <WorkspaceMediaStrip
+        media={media}
+        activeIndex={activeIndex}
+        onActiveIndexChange={(index) => { setActiveIndex(index); setSelectedIndices(new Set([index])) }}
+        selectedIndices={selectedIndices}
+        onSelectionChange={handleSelectionChange}
+        brokenPaths={brokenPaths}
+        onDragSelectionChange={(indices) => setSelectedIndices(indices)}
+      />
+
+      <Dialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={selectedIndices.size > 1 ? `移除 ${selectedIndices.size} 个素材` : '移除此素材'}
+        description={
+          selectedIndices.size > 1
+            ? `确定从工作台移除这 ${selectedIndices.size} 个素材？不会删除文件，只会从列表中移除。`
+            : `确定从工作台移除「${activeMedia?.name ?? ''}」？不会删除文件，只会从列表中移除。`
+        }
+        footer={
+          <>
+            <Button variant="secondary" size="compact" onClick={() => setDeleteConfirmOpen(false)}>取消</Button>
+            <Button variant="danger" size="compact" onClick={() => {
+              if (selectedIndices.size > 1) {
+                handleRemoveSelected(selectedIndices)
+              } else {
+                handleRemoveMedia(activeIndex)
+              }
+              setDeleteConfirmOpen(false)
+            }}>移除</Button>
+          </>
+        }
+      />
     </div>
   )
 }

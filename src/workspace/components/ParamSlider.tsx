@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { Slider as RadixSlider } from 'radix-ui'
 
 interface ParamSliderProps {
   label: string
@@ -24,8 +25,10 @@ export function ParamSlider({
   onChange,
   formatValue = formatSigned,
 }: ParamSliderProps) {
-  const zeroPosition = `${((-min) / (max - min)) * 100}%`
-  const valuePosition = `${((value - min) / (max - min)) * 100}%`
+  const zeroRatio = max - min > 0 ? (0 - min) / (max - min) : 0.5
+  const valueRatio = max - min > 0 ? (value - min) / (max - min) : 0.5
+  const fillLeft = Math.min(zeroRatio, valueRatio) * 100
+  const fillWidth = Math.abs(valueRatio - zeroRatio) * 100
 
   const [editValue, setEditValue] = useState(() => formatValue(value))
   const [editing, setEditing] = useState(false)
@@ -48,36 +51,48 @@ export function ParamSlider({
   }
 
   return (
-    <label className="workspace-param-slider">
-      <span className="workspace-param-label">{label}</span>
-      <span className="workspace-range-wrap">
+    <div className="workspace-param-slider">
+      <div className="workspace-param-header">
+        <span className="workspace-param-label">{label}</span>
         <input
-          type="range"
+          ref={inputRef}
+          type="number"
+          className="workspace-param-value-input"
           min={min}
           max={max}
           step={step}
-          value={value}
-          onDoubleClick={() => onChange(min <= 0 && max >= 0 ? 0 : min)}
-          onChange={(event) => onChange(Number(event.currentTarget.value))}
-          style={{
-            '--workspace-range-zero': zeroPosition,
-            '--workspace-range-value': valuePosition,
-          } as CSSProperties}
+          value={editing ? editValue : String(value)}
+          onChange={(e) => { setEditing(true); setEditValue(e.currentTarget.value) }}
+          onFocus={() => { setEditValue(String(value)); setEditing(true) }}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') { (e.currentTarget as HTMLInputElement).blur() } }}
         />
-      </span>
-      <input
-        ref={inputRef}
-        type="number"
-        className="workspace-param-value-input"
-        min={min}
-        max={max}
-        step={step}
-        value={editing ? editValue : String(value)}
-        onChange={(e) => { setEditing(true); setEditValue(e.currentTarget.value) }}
-        onFocus={() => { setEditValue(String(value)); setEditing(true) }}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === 'Enter') { (e.currentTarget as HTMLInputElement).blur() } }}
-      />
-    </label>
+      </div>
+      <div className="workspace-range-wrap">
+        <RadixSlider.Root
+          className="workspace-slider-root"
+          value={[value]}
+          min={min}
+          max={max}
+          step={step}
+          onValueChange={([v]) => onChange(v)}
+        >
+          <RadixSlider.Track className="workspace-slider-track">
+            <div
+              className="workspace-slider-fill"
+              style={{ left: `${fillLeft}%`, width: `${fillWidth}%` }}
+            />
+            <div
+              className="workspace-slider-zero"
+              style={{ left: `${zeroRatio * 100}%` }}
+            />
+          </RadixSlider.Track>
+          <RadixSlider.Thumb
+            className="workspace-slider-thumb"
+            onDoubleClick={() => onChange(min <= 0 && max >= 0 ? 0 : min)}
+          />
+        </RadixSlider.Root>
+      </div>
+    </div>
   )
 }
