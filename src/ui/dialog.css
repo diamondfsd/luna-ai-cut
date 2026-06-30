@@ -86,14 +86,14 @@
 .ui-dialog-header {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  padding: 24px 24px 16px;
+  padding: 18px 20px 12px;
 }
 
 .ui-dialog-header [data-radix-dialog-title] {
   margin: 0;
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 600;
   letter-spacing: 0;
   padding-right: 40px; /* 给关闭按钮留空间 */
@@ -102,14 +102,14 @@
 .ui-dialog-header [data-radix-dialog-description] {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 /* 内容体 */
 .ui-dialog-body {
   overflow: auto;
-  padding: 16px 24px;
+  padding: 12px 20px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;

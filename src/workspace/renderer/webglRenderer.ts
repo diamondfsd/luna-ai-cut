@@ -71,7 +71,7 @@ export class WebGLRenderer {
   private displayRect = { x: 0, y: 0, width: 1, height: 1 }
 
   constructor(canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false })
+    const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true })
     if (!gl) throw new Error('当前设备不支持工作台预览')
 
     this.canvas = canvas

@@ -251,6 +251,35 @@ export interface ExportSummary {
   canceled: Array<{ name: string }>
 }
 
+/** 导出任务单条明细记录 */
+export interface ExportTaskItemRecord {
+  exportId: string
+  fileName: string
+  kind: string
+  startTime: number | null
+  endTime: number | null
+  /** 耗时（毫秒） */
+  duration: number | null
+  progress: number
+  status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
+  error?: string
+  destinationPath?: string
+}
+
+/** 导出任务主表记录（后端持久化） */
+export interface ExportTaskRecord {
+  id: string
+  name: string
+  totalCount: number
+  startTime: number
+  endTime: number | null
+  /** 总耗时（毫秒） */
+  duration: number | null
+  progress: number
+  status: 'pending' | 'exporting' | 'completed' | 'failed' | 'canceled'
+  items: ExportTaskItemRecord[]
+}
+
 export interface DownloadSummary {
   completed: Array<{ name: string; path: string }>
   failed: Array<{ name: string; error: string }>
@@ -417,6 +446,10 @@ export interface LunaApi {
   cancelDownloads(): Promise<void>
   exportFiles(files: Array<{ name: string; kind: string; localPath?: string; exportId?: string; taskId?: string; taskName?: string; createdAt?: number }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
+  cancelExportTask(taskId: string): Promise<void>
+  getExportTasks(): Promise<ExportTaskRecord[]>
+  getExportTask(taskId: string): Promise<ExportTaskRecord | null>
+  clearExportTasks(): Promise<void>
   getDownloadedRecords(files: LunaFile[], downloadDir?: string): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>
   openPath(targetPath: string): Promise<void>

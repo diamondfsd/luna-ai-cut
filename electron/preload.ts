@@ -63,6 +63,10 @@ const lunaApi: LunaApi = {
   exportFiles: (files: Array<{ name: string; kind: string; localPath?: string; exportId?: string; taskId?: string; taskName?: string; createdAt?: number }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
     ipcRenderer.invoke('luna:exportFiles', files, exportDir, watermarkSettings, videoExportSettings),
   cancelExports: () => ipcRenderer.invoke('luna:cancelExports'),
+  cancelExportTask: (taskId: string) => ipcRenderer.invoke('luna:cancelExportTask', taskId),
+  getExportTasks: () => ipcRenderer.invoke('exports:getTasks'),
+  getExportTask: (taskId: string) => ipcRenderer.invoke('exports:getTask', taskId),
+  clearExportTasks: () => ipcRenderer.invoke('exports:clearTasks'),
   getDownloadedRecords: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('downloads:records', files, downloadDir),
   revealFile: (filePath: string) => ipcRenderer.invoke('files:reveal', filePath),
   openPath: (targetPath: string) => ipcRenderer.invoke('files:openPath', targetPath),
