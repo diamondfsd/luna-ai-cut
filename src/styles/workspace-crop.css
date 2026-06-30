@@ -16,12 +16,21 @@
     linear-gradient(rgba(0, 102, 204, 0.08), rgba(0, 102, 204, 0.08));
 }
 
+.workspace-crop-dim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
 .workspace-crop-box {
   position: absolute;
   border: 2px solid #fff;
   outline: 1px solid rgba(0, 102, 204, 0.86);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
   cursor: move;
+  z-index: 2;
 }
 
 .workspace-crop-grid {

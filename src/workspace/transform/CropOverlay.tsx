@@ -146,6 +146,12 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
       >
         <div className="workspace-crop-mask" />
         <div
+          className="workspace-crop-dim"
+          style={{
+            clipPath: `polygon(0 0, 0 100%, ${activeCrop.x * 100}% 100%, ${activeCrop.x * 100}% ${activeCrop.y * 100}%, ${(activeCrop.x + activeCrop.w) * 100}% ${activeCrop.y * 100}%, ${(activeCrop.x + activeCrop.w) * 100}% ${(activeCrop.y + activeCrop.h) * 100}%, ${activeCrop.x * 100}% ${(activeCrop.y + activeCrop.h) * 100}%, ${activeCrop.x * 100}% 100%, 100% 100%, 100% 0)`,
+          }}
+        />
+        <div
           className="workspace-crop-box"
           onPointerDown={(event) => startDrag(event, 'move')}
           style={{
