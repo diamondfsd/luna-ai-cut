@@ -586,11 +586,13 @@ export async function applyWatermarkToLivePhoto(
       watermarkedImage: imgStat?.size,
     })
 
-    // ── Apple Live Photo 配对导出（macOS 专用） ──
-    if (appleExportFolder) {
-      const baseName = path.basename(appleExportFolder)
-      await exportAppleLivePhotoPair(watermarkedImage, processedVideo, appleExportFolder, baseName, onProgress)
-    }
+    // ── Apple Live Photo 配对导出（macOS 专用，暂不输出，有兼容问题） ──
+    // 保持引用让 tsc 不报 unused warning
+    void exportAppleLivePhotoPair
+    // if (appleExportFolder) {
+    //   const baseName = path.basename(appleExportFolder)
+    //   await exportAppleLivePhotoPair(watermarkedImage, processedVideo, appleExportFolder, baseName, onProgress)
+    // }
 
     // ── Google Motion Photo XMP 注入 ──
     try {
