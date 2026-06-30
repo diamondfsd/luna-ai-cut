@@ -5,7 +5,7 @@ import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { buildHistogram, emptyDetails, filePathToPreviewUrl, type MediaDetails } from './previewModalUtils'
 import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import { BaseModal } from '../ui'
+import { Dialog } from '../ui'
 import '../styles/modal.css'
 
 interface PreviewModalProps {
@@ -363,7 +363,7 @@ export function PreviewModal({
   }, [modalFiles, currentFileId, onFileChange])
 
   return (
-    <BaseModal onClose={onClose}>
+    <Dialog open variant="fullscreen" onOpenChange={(o) => !o && onClose()}>
       <section className="preview-modal">
         <PreviewModalHeader
           downloadProgress={downloadProgress}
@@ -445,6 +445,6 @@ export function PreviewModal({
           )}
         </div>
       </section>
-    </BaseModal>
+    </Dialog>
   )
 }

@@ -6,7 +6,7 @@ import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToPreviewUrl } from './previewModalUtils'
 import type { DeviceWatermarkStyleConfig, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
-import { Accordion, BaseModal, Button, IconButton, Input, Select } from '../ui'
+import { Accordion, Button, Dialog, IconButton, Input, Select } from '../ui'
 import '../styles/modal.css'
 import '../styles/export-modal.css'
 
@@ -94,7 +94,7 @@ export function ExportModal({
   }
 
   return (
-    <BaseModal onClose={onClose}>
+    <Dialog open variant="fullscreen" onOpenChange={(o) => !o && onClose()}>
       <section className="preview-modal">
         <header>
           <div>
@@ -204,6 +204,6 @@ export function ExportModal({
           </div>
         </div>
       </section>
-    </BaseModal>
+    </Dialog>
   )
 }
