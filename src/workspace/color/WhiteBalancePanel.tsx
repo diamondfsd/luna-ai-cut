@@ -1,6 +1,7 @@
 import { Pipette, RotateCcw } from 'lucide-react'
 
 import { WHITE_BALANCE_DEFAULTS, type EditPipeline, type WhiteBalanceMode } from '../shared/editPipeline'
+import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
 import { ParamSlider } from '../components/ParamSlider'
 import { Accordion, IconButton, Select, Tooltip } from '../../ui'
 
@@ -12,11 +13,11 @@ interface WhiteBalancePanelProps {
 }
 
 const WHITE_BALANCE_OPTIONS: Array<{ value: WhiteBalanceMode; label: string; temperature: number; tint: number }> = [
-  { value: 'auto', label: '自动', temperature: 0, tint: 0 },
-  { value: 'custom', label: '自定义', temperature: 0, tint: 0 },
-  { value: 'daylight', label: '日光', temperature: 12, tint: 2 },
-  { value: 'cloudy', label: '阴天', temperature: 24, tint: 4 },
-  { value: 'indoor', label: '室内', temperature: -18, tint: -3 },
+  { value: 'auto', label: '自动', temperature: 5500, tint: 0 },
+  { value: 'custom', label: '自定义', temperature: 5500, tint: 0 },
+  { value: 'daylight', label: '日光', temperature: 5500, tint: 2 },
+  { value: 'cloudy', label: '阴天', temperature: 6500, tint: 4 },
+  { value: 'indoor', label: '室内', temperature: 3200, tint: -3 },
 ]
 
 function ColorBarSlider({ color, children }: { color: string; children: React.ReactNode }) {
@@ -58,10 +59,10 @@ export function WhiteBalancePanel({ value, modified, onChange, onActivatePipette
         </Tooltip>
       </div>
       <ColorBarSlider color="linear-gradient(90deg, #3958ff, #d9d3a5, #f5f15a)">
-        <ParamSlider label="色温" value={value.temperature} min={-100} max={100} onChange={(temperature) => onChange({ temperature })} />
+        <ParamSlider label="色温" value={value.temperature} {...sliderRange(EDIT_PARAMETER_RANGES.color.temperature)} onChange={(temperature) => onChange({ temperature, whiteBalanceMode: 'custom' })} formatValue={(temperature) => `${Math.round(temperature)}K`} />
       </ColorBarSlider>
       <ColorBarSlider color="linear-gradient(90deg, #35bd4b, #b6b6b6, #d936c7)">
-        <ParamSlider label="色调" value={value.tint} min={-100} max={100} onChange={(tint) => onChange({ tint })} />
+        <ParamSlider label="色调" value={value.tint} {...sliderRange(EDIT_PARAMETER_RANGES.color.tint)} onChange={(tint) => onChange({ tint, whiteBalanceMode: 'custom' })} />
       </ColorBarSlider>
     </Accordion>
   )

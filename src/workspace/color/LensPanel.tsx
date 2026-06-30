@@ -1,6 +1,7 @@
 import { RotateCcw } from 'lucide-react'
 
 import { LENS_DEFAULTS, type EditPipeline } from '../shared/editPipeline'
+import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
 import { ParamSlider } from '../components/ParamSlider'
 import { Accordion } from '../../ui'
 
@@ -21,9 +22,9 @@ export function LensPanel({ effects, modified, onEffectsChange }: LensPanelProps
         </button>
       }
     >
-      <ParamSlider label="暗角调节" value={effects.lensVignetting} min={-100} max={100} onChange={(lensVignetting) => onEffectsChange({ lensVignetting })} />
-      <ParamSlider label="创意暗角" value={effects.vignette} min={-100} max={100} onChange={(vignette) => onEffectsChange({ vignette })} />
-      <ParamSlider label="色差" value={effects.chromaticAberration} min={0} max={100} onChange={(chromaticAberration) => onEffectsChange({ chromaticAberration })} formatValue={String} />
+      <ParamSlider label="镜头暗角校正" value={effects.lensVignetting} {...sliderRange(EDIT_PARAMETER_RANGES.effects.lensVignetting)} onChange={(lensVignetting) => onEffectsChange({ lensVignetting })} />
+      <ParamSlider label="创意暗角" value={effects.vignette} {...sliderRange(EDIT_PARAMETER_RANGES.effects.vignette)} onChange={(vignette) => onEffectsChange({ vignette })} />
+      <ParamSlider label="色差" value={effects.chromaticAberration} {...sliderRange(EDIT_PARAMETER_RANGES.effects.chromaticAberration)} onChange={(chromaticAberration) => onEffectsChange({ chromaticAberration })} formatValue={String} />
     </Accordion>
   )
 }

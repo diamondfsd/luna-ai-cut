@@ -28,7 +28,7 @@ export function ColorPanel({ value, effects, onChange, onEffectsChange, onActiva
   const activeCurve = value.curve.channels[value.curve.activeChannel]
 
   const modified = {
-    whiteBalance: value.temperature !== 0 || value.tint !== 0 || value.whiteBalanceMode !== 'custom',
+    whiteBalance: value.temperature !== 5500 || value.tint !== 0 || value.whiteBalanceMode !== 'custom',
     tone: value.exposure !== 0 || value.contrast !== 0 || value.brightness !== 0 ||
            value.highlights !== 0 || value.shadows !== 0 || value.whites !== 0 || value.blacks !== 0 ||
            value.texture !== 0 || value.clarity !== 0 || value.dehaze !== 0 ||

@@ -42,6 +42,12 @@ export interface WorkspaceMediaAsset {
   thumbnailUrl?: string | null
 }
 
+export interface WorkspaceColorMetadata {
+  whiteBalanceMode: 'auto' | 'manual' | 'unknown'
+  temperatureKelvin: number | null
+  tint: number | null
+}
+
 export interface WorkspaceProjectAsset extends WorkspaceMediaAsset {
   pipeline?: unknown
 }
@@ -459,6 +465,7 @@ export interface LunaApi {
   cacheFile(file: LunaFile): Promise<boolean>
   workspace: {
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
+    readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     listProjects(): Promise<WorkspaceProject[]>
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>

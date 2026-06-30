@@ -52,6 +52,7 @@ import {
   saveWorkspaceProject,
 } from './workspaceProjectService'
 import { loadWorkspacePreview } from './workspacePreviewService'
+import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
 import {
   checkWifiPort,
   connectWifiNetwork,
@@ -437,6 +438,9 @@ function registerIpc(): void {
   ipcMain.handle('files:deleteLocal', (_event, filePaths: string[]) => deleteLocalFiles(filePaths))
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
     return loadWorkspacePreview(filePath)
+  })
+  ipcMain.handle('workspace:readColorMetadata', async (_event, filePath: string) => {
+    return readWorkspaceColorMetadata(filePath)
   })
   ipcMain.handle('workspace:listProjects', async () => {
     const settings = await getSettings()

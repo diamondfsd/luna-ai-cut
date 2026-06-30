@@ -1,6 +1,7 @@
 import { RotateCcw } from 'lucide-react'
 
 import { HSL_DEFAULTS, type ColorMixChannel, type EditPipeline, type HslAdjust } from '../shared/editPipeline'
+import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
 import { ParamSlider } from '../components/ParamSlider'
 import { Accordion, PillTabs } from '../../ui'
 import { ColorBarSlider, HSL_CHANNELS } from './colorPanelShared'
@@ -43,8 +44,7 @@ export function HslPanel({ value, mode, modified, onModeChange, onChange }: HslP
           <ParamSlider
             label={label}
             value={value.hsl[key][mode]}
-            min={-100}
-            max={100}
+            {...sliderRange(EDIT_PARAMETER_RANGES.hsl[mode])}
             onChange={(next) => updateHsl(key, { [mode]: next })}
           />
         </ColorBarSlider>

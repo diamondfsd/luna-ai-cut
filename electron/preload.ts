@@ -77,6 +77,7 @@ const lunaApi: LunaApi = {
   cacheFile: (file: LunaFile) => ipcRenderer.invoke('luna:cacheFile', file),
   workspace: {
     loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
+    readColorMetadata: (filePath: string) => ipcRenderer.invoke('workspace:readColorMetadata', filePath),
     listProjects: () => ipcRenderer.invoke('workspace:listProjects'),
     createProject: (name: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:createProject', name, assets),
     addAssetsToProject: (projectId: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:addAssetsToProject', projectId, assets),

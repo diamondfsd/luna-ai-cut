@@ -7,6 +7,7 @@ import {
   type SelectiveColorChannel,
   type SelectiveColorMode,
 } from '../shared/editPipeline'
+import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
 import { ParamSlider } from '../components/ParamSlider'
 import { Accordion, ButtonGroup } from '../../ui'
 import { ColorBarSlider, SELECTIVE_CHANNELS } from './colorPanelShared'
@@ -49,16 +50,16 @@ export function SelectiveColorPanel({ value, channel, modified, onChannelChange,
         ))}
       </div>
       <ColorBarSlider color="linear-gradient(90deg, #ff375f, #7ee7ef)">
-        <ParamSlider label="青色" value={value.selectiveColor[channel].cyan} min={-100} max={100} onChange={(cyan) => updateSelective(channel, { cyan })} />
+        <ParamSlider label="青色" value={value.selectiveColor[channel].cyan} {...sliderRange(EDIT_PARAMETER_RANGES.selectiveColor.cyan)} onChange={(cyan) => updateSelective(channel, { cyan })} />
       </ColorBarSlider>
       <ColorBarSlider color="linear-gradient(90deg, #30d158, #ff2d9a)">
-        <ParamSlider label="洋红" value={value.selectiveColor[channel].magenta} min={-100} max={100} onChange={(magenta) => updateSelective(channel, { magenta })} />
+        <ParamSlider label="洋红" value={value.selectiveColor[channel].magenta} {...sliderRange(EDIT_PARAMETER_RANGES.selectiveColor.magenta)} onChange={(magenta) => updateSelective(channel, { magenta })} />
       </ColorBarSlider>
       <ColorBarSlider color="linear-gradient(90deg, #4057ff, #ffd60a)">
-        <ParamSlider label="黄色" value={value.selectiveColor[channel].yellow} min={-100} max={100} onChange={(yellow) => updateSelective(channel, { yellow })} />
+        <ParamSlider label="黄色" value={value.selectiveColor[channel].yellow} {...sliderRange(EDIT_PARAMETER_RANGES.selectiveColor.yellow)} onChange={(yellow) => updateSelective(channel, { yellow })} />
       </ColorBarSlider>
       <ColorBarSlider color="linear-gradient(90deg, #ffffff, #000000)">
-        <ParamSlider label="黑色" value={selective.black} min={-100} max={100} onChange={(black) => updateSelective(channel, { black })} />
+        <ParamSlider label="黑色" value={selective.black} {...sliderRange(EDIT_PARAMETER_RANGES.selectiveColor.black)} onChange={(black) => updateSelective(channel, { black })} />
       </ColorBarSlider>
       <ButtonGroup
         options={[

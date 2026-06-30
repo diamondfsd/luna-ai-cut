@@ -1,6 +1,7 @@
 import { RotateCcw } from 'lucide-react'
 
 import { COLOR_EDITOR_DEFAULTS, type EditPipeline } from '../shared/editPipeline'
+import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
 import { ParamSlider } from '../components/ParamSlider'
 import { Accordion } from '../../ui'
 import { ColorWheel, hueColor } from './colorPanelShared'
@@ -35,12 +36,12 @@ export function ColorEditorPanel({ value, modified, onChange }: ColorEditorPanel
           <small>{value.colorEditor.saturation}%</small>
         </div>
       </div>
-      <ParamSlider label="色彩平滑" value={value.colorEditor.smoothing} min={0} max={100} onChange={(smoothing) => onChange({ colorEditor: { ...value.colorEditor, smoothing } })} formatValue={String} />
-      <ParamSlider label="亮度平滑" value={value.colorEditor.luminanceSmoothing} min={0} max={100} onChange={(luminanceSmoothing) => onChange({ colorEditor: { ...value.colorEditor, luminanceSmoothing } })} formatValue={String} />
-      <ParamSlider label="色相偏移" value={value.colorEditor.hueOffset} min={-100} max={100} onChange={(hueOffset) => onChange({ colorEditor: { ...value.colorEditor, hueOffset } })} />
-      <ParamSlider label="饱和偏移" value={value.colorEditor.saturationOffset} min={-100} max={100} onChange={(saturationOffset) => onChange({ colorEditor: { ...value.colorEditor, saturationOffset } })} />
-      <ParamSlider label="明度偏移" value={value.colorEditor.brightnessOffset} min={-100} max={100} onChange={(brightnessOffset) => onChange({ colorEditor: { ...value.colorEditor, brightnessOffset } })} />
-      <ParamSlider label="色彩均匀度" value={value.colorEditor.uniformity} min={0} max={100} onChange={(uniformity) => onChange({ colorEditor: { ...value.colorEditor, uniformity } })} formatValue={String} />
+      <ParamSlider label="色彩平滑" value={value.colorEditor.smoothing} {...sliderRange(EDIT_PARAMETER_RANGES.colorEditor.smoothing)} onChange={(smoothing) => onChange({ colorEditor: { ...value.colorEditor, smoothing } })} formatValue={String} />
+      <ParamSlider label="亮度平滑" value={value.colorEditor.luminanceSmoothing} {...sliderRange(EDIT_PARAMETER_RANGES.colorEditor.luminanceSmoothing)} onChange={(luminanceSmoothing) => onChange({ colorEditor: { ...value.colorEditor, luminanceSmoothing } })} formatValue={String} />
+      <ParamSlider label="色相偏移" value={value.colorEditor.hueOffset} {...sliderRange(EDIT_PARAMETER_RANGES.colorEditor.hueOffset)} onChange={(hueOffset) => onChange({ colorEditor: { ...value.colorEditor, hueOffset } })} />
+      <ParamSlider label="饱和偏移" value={value.colorEditor.saturationOffset} {...sliderRange(EDIT_PARAMETER_RANGES.colorEditor.saturationOffset)} onChange={(saturationOffset) => onChange({ colorEditor: { ...value.colorEditor, saturationOffset } })} />
+      <ParamSlider label="明度偏移" value={value.colorEditor.brightnessOffset} {...sliderRange(EDIT_PARAMETER_RANGES.colorEditor.brightnessOffset)} onChange={(brightnessOffset) => onChange({ colorEditor: { ...value.colorEditor, brightnessOffset } })} />
+      <ParamSlider label="色彩均匀度" value={value.colorEditor.uniformity} {...sliderRange(EDIT_PARAMETER_RANGES.colorEditor.uniformity)} onChange={(uniformity) => onChange({ colorEditor: { ...value.colorEditor, uniformity } })} formatValue={String} />
     </Accordion>
   )
 }
