@@ -3,7 +3,7 @@ import { RotateCcw } from 'lucide-react'
 import { HSL_DEFAULTS, type ColorMixChannel, type EditPipeline, type HslAdjust } from '../shared/editPipeline'
 import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
 import { ParamSlider } from '../components/ParamSlider'
-import { Accordion, PillTabs } from '../../ui'
+import { Accordion, ButtonGroup } from '../../ui'
 import { ColorBarSlider, HSL_CHANNELS } from './colorPanelShared'
 
 interface HslPanelProps {
@@ -29,10 +29,10 @@ export function HslPanel({ value, mode, modified, onModeChange, onChange }: HslP
         </button>
       }
     >
-      <PillTabs
+      <ButtonGroup
         value={mode}
-        onValueChange={(next) => onModeChange(next as typeof mode)}
-        items={[
+        onChange={onModeChange}
+        options={[
           { value: 'hue', label: '色相' },
           { value: 'saturation', label: '饱和度' },
           { value: 'luminance', label: '明亮度' },
