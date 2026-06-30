@@ -48,14 +48,14 @@ export function decimalValue(value: number): string {
 }
 
 export function hueColor(hue: number, saturation: number): string {
-  return `hsl(${hue} ${Math.max(12, saturation)}% 56%)`
+  return `hsl(${hue} ${saturation}% 56%)`
 }
 
 function updateWheel(event: React.PointerEvent<HTMLButtonElement>, onChange: (hue: number, saturation: number) => void): void {
   const rect = event.currentTarget.getBoundingClientRect()
+  const radius = Math.max(1, Math.min(rect.width, rect.height) / 2)
   const x = event.clientX - rect.left - rect.width / 2
   const y = event.clientY - rect.top - rect.height / 2
-  const radius = Math.max(1, rect.width / 2)
   const hue = Math.round(((Math.atan2(y, x) * 180) / Math.PI + 360) % 360)
   const saturation = Math.round(Math.min(100, Math.hypot(x, y) / radius * 100))
   onChange(hue, saturation)
@@ -74,16 +74,26 @@ export function ColorWheel({
   size?: 'default' | 'mini'
   onChange: (hue: number, saturation: number) => void
 }) {
-  const markerDistance = saturation / 2
+  const wheelSize = size === 'mini' ? 76 : 150
+  const markerDistance = (saturation / 100) * (wheelSize / 2)
   const radians = (hue * Math.PI) / 180
   return (
     <button
       type="button"
       aria-label={label}
       className={`workspace-color-wheel workspace-color-wheel-${size}`}
-      onPointerDown={(event) => updateWheel(event, onChange)}
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId)
+        updateWheel(event, onChange)
+      }}
       onPointerMove={(event) => {
-        if (event.buttons === 1) updateWheel(event, onChange)
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) updateWheel(event, onChange)
+      }}
+      onPointerUp={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+      }}
+      onPointerCancel={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       }}
     >
       <span
