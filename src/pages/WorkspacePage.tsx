@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Eye, EyeOff, Folder, ImageIcon, Redo2, RotateCcw, Undo2 } from 'lucide-react'
+import { ArrowLeft, Download, Eye, EyeOff, Redo2, RotateCcw, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
@@ -15,7 +15,10 @@ import {
   type PipelinePatch,
 } from '../workspace/shared/editPipeline'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
-import { TransformPanel } from '../workspace/transform/TransformPanel'
+import { TransformPanel, type CropPreset } from '../workspace/transform/TransformPanel'
+import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
+import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
+import { cropForAspect } from '../workspace/transform/cropGeometry'
 
 interface WorkspaceRouteState {
   project?: WorkspaceProject
@@ -62,16 +65,28 @@ export function WorkspacePage() {
   const [webglMessage, setWebglMessage] = useState<string | null>(null)
   const [cropActive, setCropActive] = useState(false)
   const [cropDraft, setCropDraft] = useState<EditPipeline['transform']['crop']>(null)
+  const [cropPreset, setCropPreset] = useState<CropPreset>('original')
+  const [cropSize, setCropSize] = useState({ width: 0, height: 0 })
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [pipetteActive, setPipetteActive] = useState(false)
   const [imageRect, setImageRect] = useState({ x: 0, y: 0, width: 1, height: 1 })
+  const [sourceAspect, setSourceAspect] = useState(1)
+  const [viewZoom, setViewZoom] = useState(1)
+  const [viewPan, setViewPan] = useState({ x: 0, y: 0 })
+  const [viewDrag, setViewDrag] = useState<{ x: number; y: number; pan: { x: number; y: number } } | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rendererRef = useRef<WebGLRenderer | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const projectRef = useRef<WorkspaceProject | null>(currentProject)
   const pipelineRef = useRef<EditPipeline>(history.present)
+  const cropActiveRef = useRef(false)
+  const previewPipelineRef = useRef<EditPipeline>(history.present)
   const saveTimerRef = useRef<number | null>(null)
   const pipeline = history.present
+  const previewPipeline = useMemo(
+    () => (cropActive && cropDraft ? mergePipeline(pipeline, { transform: { crop: cropDraft } }) : pipeline),
+    [cropActive, cropDraft, pipeline],
+  )
   const media = projectMedia(currentProject, transientMedia)
   const activeMedia = media[activeIndex] ?? null
   const editorOpen = Boolean(currentProject || transientMedia.length > 0)
@@ -88,12 +103,25 @@ export function WorkspacePage() {
   }, [location.key])
 
   useEffect(() => {
+    setViewZoom(1)
+    setViewPan({ x: 0, y: 0 })
+  }, [activeMedia?.path])
+
+  useEffect(() => {
     projectRef.current = currentProject
   }, [currentProject])
 
   useEffect(() => {
     pipelineRef.current = pipeline
   }, [pipeline])
+
+  useEffect(() => {
+    previewPipelineRef.current = previewPipeline
+  }, [previewPipeline])
+
+  useEffect(() => {
+    cropActiveRef.current = cropActive
+  }, [cropActive])
 
   useEffect(() => {
     setProjectLoading(true)
@@ -115,6 +143,8 @@ export function WorkspacePage() {
   const updateImageRect = useCallback(() => {
     const rect = rendererRef.current?.getDisplayRect()
     if (rect) setImageRect(rect)
+    const aspect = rendererRef.current?.getSourceAspect()
+    if (aspect) setSourceAspect(aspect)
   }, [])
 
   useEffect(() => {
@@ -123,7 +153,7 @@ export function WorkspacePage() {
       rendererRef.current = new WebGLRenderer(canvasRef.current)
       const bounds = canvasRef.current.getBoundingClientRect()
       rendererRef.current.resize(bounds.width, bounds.height)
-      rendererRef.current.render(pipelineRef.current)
+      rendererRef.current.render(previewPipelineRef.current, { cropMode: cropActiveRef.current })
       updateImageRect()
     } catch (error) {
       setWebglMessage(error instanceof Error ? error.message : String(error))
@@ -139,12 +169,12 @@ export function WorkspacePage() {
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
       rendererRef.current?.resize(width, height)
-      rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : pipeline)
+      rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : previewPipeline, { cropMode: cropActive })
       updateImageRect()
     })
     observer.observe(stageRef.current)
     return () => observer.disconnect()
-  }, [compareOriginal, pipeline, updateImageRect])
+  }, [compareOriginal, cropActive, previewPipeline, updateImageRect])
 
   useEffect(() => {
     if (!activeMedia || !rendererRef.current) return
@@ -155,7 +185,7 @@ export function WorkspacePage() {
       .then((entry) => {
         if (canceled) return
         rendererRef.current?.loadImage(entry.previewBitmap)
-        rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : pipelineRef.current)
+        rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : previewPipelineRef.current, { cropMode: cropActiveRef.current })
         updateImageRect()
         const applyThumb = <T extends WorkspaceMediaAsset>(items: T[]): T[] =>
           items.map((item) => (item.path === activeMedia.path ? { ...item, thumbnailUrl: entry.thumbnailUrl } : item)) as T[]
@@ -178,13 +208,14 @@ export function WorkspacePage() {
   }, [activeMedia?.path, compareOriginal, updateImageRect])
 
   useEffect(() => {
-    rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : pipeline)
-  }, [compareOriginal, pipeline])
+    rendererRef.current?.render(compareOriginal ? DEFAULT_PIPELINE : previewPipeline, { cropMode: cropActive })
+  }, [compareOriginal, previewPipeline, cropActive])
 
   useEffect(() => {
     const asset = currentProject?.assets[activeIndex]
     setCropActive(false)
     setCropDraft(null)
+    setCropPreset('original')
     setHistory(createEditHistory(normalizePipeline(asset?.pipeline)))
   }, [activeIndex, currentProject?.id])
 
@@ -209,9 +240,7 @@ export function WorkspacePage() {
     setHistory((current) => pushHistory(current, mergePipeline(current.present, patch)))
   }, [])
 
-  function updatePipeline(patch: PipelinePatch): void {
-    commitPatch(patch)
-  }
+  function updatePipeline(patch: PipelinePatch): void { commitPatch(patch) }
 
   useEffect(() => {
     if (!pipetteActive) return
@@ -258,13 +287,51 @@ export function WorkspacePage() {
     setCropDraft(null)
   }
 
-  function handleExport(): void {
-    toast.show('工作台导出管线将在下一步接入')
+  function startCrop(): void {
+    setCropDraft(pipeline.transform.crop ?? { x: 0, y: 0, w: 1, h: 1 })
+    if (cropSize.width <= 0 || cropSize.height <= 0) setCropSize({ width: Math.round(sourceAspect * 2160), height: 2160 })
+    setCropActive(true)
   }
 
-  function startCrop(): void {
-    setCropDraft(pipeline.transform.crop ?? { x: 0.12, y: 0.12, w: 0.76, h: 0.76 })
-    setCropActive(true)
+  function applyCropAspect(targetAspect: number, nextSize?: { width: number; height: number }): void {
+    if (!cropActive) setCropActive(true)
+    setCropDraft(cropForAspect(sourceAspect, pipeline.transform.orientation, targetAspect))
+    if (nextSize) setCropSize(nextSize)
+  }
+
+  function handleCropPresetChange(preset: CropPreset): void {
+    setCropPreset(preset)
+    if (!cropActive) setCropActive(true)
+    if (preset === 'free') return
+    if (preset === 'original') {
+      const width = Math.round(sourceAspect * 2160)
+      const height = 2160
+      applyCropAspect(sourceAspect, { width, height })
+      return
+    }
+    if (preset === 'custom') {
+      const width = cropSize.width || Math.round(sourceAspect * 2160)
+      const height = cropSize.height || 2160
+      applyCropAspect(width / Math.max(height, 1), { width, height })
+      return
+    }
+    const [w, h] = preset.split(':').map(Number)
+    applyCropAspect(w / h, { width: w * 1000, height: h * 1000 })
+  }
+
+  function handleCropSizeChange(size: { width?: number; height?: number }): void {
+    const width = Math.max(1, Math.round(size.width ?? (cropSize.width || Math.round(sourceAspect * 2160))))
+    const height = Math.max(1, Math.round(size.height ?? (cropSize.height || 2160)))
+    setCropPreset('custom')
+    applyCropAspect(width / height, { width, height })
+  }
+
+  function handleRotateChange(rotate: number): void {
+    if (!cropActive) {
+      setCropDraft(pipeline.transform.crop ?? { x: 0, y: 0, w: 1, h: 1 })
+      setCropActive(true)
+    }
+    updatePipeline({ transform: { rotate } })
   }
 
   function confirmCrop(): void {
@@ -272,52 +339,74 @@ export function WorkspacePage() {
     setCropActive(false)
   }
 
+  function handlePreviewWheel(event: React.WheelEvent): void {
+    if (!activeMedia) return
+    event.preventDefault()
+    setViewZoom((current) => {
+      const next = Math.max(1, Math.min(4, current * (event.deltaY > 0 ? 0.9 : 1.1)))
+      if (next === 1) setViewPan({ x: 0, y: 0 })
+      return Math.round(next * 100) / 100
+    })
+  }
+
+  function handlePreviewPointerDown(event: React.PointerEvent): void {
+    if (cropActive || viewZoom <= 1 || event.button !== 0) return
+    setViewDrag({ x: event.clientX, y: event.clientY, pan: viewPan })
+    stageRef.current?.setPointerCapture(event.pointerId)
+  }
+
+  function handlePreviewPointerMove(event: React.PointerEvent): void {
+    if (!viewDrag) return
+    setViewPan({
+      x: viewDrag.pan.x + event.clientX - viewDrag.x,
+      y: viewDrag.pan.y + event.clientY - viewDrag.y,
+    })
+  }
+
+  function handlePreviewPointerUp(event: React.PointerEvent): void {
+    if (!viewDrag) return
+    setViewDrag(null)
+    stageRef.current?.releasePointerCapture(event.pointerId)
+  }
+
   if (!currentProject && transientMedia.length === 0) {
-    return (
-      <div className="workspace-project-page">
-        <header className="workspace-project-header">
-          <h2>工作台项目</h2>
-          <span>{projectLoading ? '加载中...' : `${projects.length} 个项目`}</span>
-        </header>
-        <div className="workspace-project-grid">
-          {projects.map((project) => (
-            <button key={project.id} className="workspace-project-card" type="button" onClick={() => openProject(project)}>
-              <span className="workspace-project-folder">
-                <Folder size={72} strokeWidth={1.5} />
-                <span className="workspace-project-previews">
-                  {project.assets.slice(0, 4).map((asset) => (
-                    asset.thumbnailUrl ? <img key={asset.id} src={asset.thumbnailUrl} alt="" /> : <span key={asset.id}><ImageIcon size={16} /></span>
-                  ))}
-                </span>
-              </span>
-              <span className="workspace-project-name">{project.name}</span>
-            </button>
-          ))}
-          {!projectLoading && projects.length === 0 && (
-            <div className="workspace-project-empty">在本地资源中多选图片后创建工作台项目。</div>
-          )}
-        </div>
-      </div>
-    )
+    return <WorkspaceProjectPicker projects={projects} projectLoading={projectLoading} onOpenProject={openProject} />
   }
 
   return (
     <div className="workspace-layout">
       <section className="workspace-canvas-shell">
-        <div ref={stageRef} className="workspace-canvas-stage">
-          <canvas ref={canvasRef} className="workspace-canvas" />
-          {cropActive && canRender && (
-            <CropOverlay
-              crop={cropDraft}
-              imageRect={imageRect}
-              onCropChange={setCropDraft}
-              onConfirm={confirmCrop}
-              onCancel={() => {
-                setCropDraft(null)
-                setCropActive(false)
-              }}
-            />
-          )}
+        <div
+          ref={stageRef}
+          className={`workspace-canvas-stage${cropActive ? ' cropping' : ''}${viewZoom > 1 && !cropActive ? ' panning' : ''}`}
+          onWheel={handlePreviewWheel}
+          onPointerDown={handlePreviewPointerDown}
+          onPointerMove={handlePreviewPointerMove}
+          onPointerUp={handlePreviewPointerUp}
+          onPointerCancel={handlePreviewPointerUp}
+        >
+          <div
+            className="workspace-preview-surface"
+            style={{ transform: `translate(${viewPan.x}px, ${viewPan.y}px) scale(${viewZoom})` }}
+          >
+            <canvas ref={canvasRef} className="workspace-canvas" />
+            {cropActive && canRender && (
+              <CropOverlay
+                crop={cropDraft}
+                imageRect={imageRect}
+                sourceAspect={sourceAspect}
+                orientation={pipeline.transform.orientation}
+                rotate={pipeline.transform.rotate}
+                onCropChange={setCropDraft}
+                onRotateChange={(rotate) => updatePipeline({ transform: { rotate } })}
+                onConfirm={confirmCrop}
+                onCancel={() => {
+                  setCropDraft(null)
+                  setCropActive(false)
+                }}
+              />
+            )}
+          </div>
           {(imageLoading || imageError || webglMessage || !activeMedia) && (
             <div className="workspace-stage-status">
               {imageLoading && <span>加载预览中...</span>}
@@ -331,7 +420,7 @@ export function WorkspacePage() {
 
       <aside className="workspace-params">
         <Accordion
-          title="几何变换"
+          title="裁剪"
           defaultOpen
           actions={
             <button className="workspace-acc-reset" type="button" onClick={() => updatePipeline({ transform: createDefaultPipeline().transform })} title="重置几何变换">
@@ -342,7 +431,13 @@ export function WorkspacePage() {
           <TransformPanel
             value={pipeline.transform}
             cropActive={cropActive}
+            cropPreset={cropPreset}
+            cropWidth={cropSize.width || Math.round(sourceAspect * 2160)}
+            cropHeight={cropSize.height || 2160}
             onChange={(transform) => updatePipeline({ transform })}
+            onRotateChange={handleRotateChange}
+            onCropPresetChange={handleCropPresetChange}
+            onCropSizeChange={handleCropSizeChange}
             onToggleCrop={() => (cropActive ? setCropActive(false) : startCrop())}
           />
         </Accordion>
@@ -380,27 +475,13 @@ export function WorkspacePage() {
           >
             对比
           </Button>
-          <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMedia} onClick={handleExport}>
+          <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMedia} onClick={() => toast.show('工作台导出管线将在下一步接入')}>
             导出
           </Button>
         </div>
       </footer>
 
-      <div className="workspace-media-strip">
-        {media.map((item, index) => (
-          <button
-            key={item.id}
-            className={`workspace-thumb${index === activeIndex ? ' active' : ''}`}
-            type="button"
-            onClick={() => setActiveIndex(index)}
-          >
-            <span className="workspace-thumb-preview">
-              {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span>{item.kind === 'video' ? '视频' : '图片'}</span>}
-            </span>
-            <span className="workspace-thumb-name">{item.name}</span>
-          </button>
-        ))}
-      </div>
+      <WorkspaceMediaStrip media={media} activeIndex={activeIndex} onActiveIndexChange={setActiveIndex} />
     </div>
   )
 }

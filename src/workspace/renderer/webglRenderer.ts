@@ -1,10 +1,12 @@
 import type { EditPipeline } from '../shared/editPipeline'
+import { containRect, displayAspectForCrop, frameSize } from '../transform/cropGeometry'
 import fragmentSource from './shaders/pipeline.glsl?raw'
 import vertexSource from './shaders/vertex.glsl?raw'
 
 const COLOR_MIX_CHANNELS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'] as const
 const TONE_CURVE_CHANNELS = ['rgb', 'luminance', 'red', 'green', 'blue'] as const
 const SELECTIVE_COLOR_CHANNELS = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta', 'white', 'neutral', 'black'] as const
+const CROP_MODE_PREVIEW_SCALE = 0.82
 
 const UNIFORM_NAMES = [
   'u_texture',
@@ -14,6 +16,9 @@ const UNIFORM_NAMES = [
   'u_rotate',
   'u_flip',
   'u_scale',
+  'u_cropAspect',
+  'u_frameSize',
+  'u_fillScale',
   'u_exposure',
   'u_contrast',
   'u_brightness',
@@ -64,6 +69,7 @@ export class WebGLRenderer {
   private readonly uniforms = new Map<string, WebGLUniformLocation>()
   private texture: WebGLTexture | null = null
   private sourceSize = { width: 1, height: 1 }
+  private displayRect = { x: 0, y: 0, width: 1, height: 1 }
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false })
@@ -106,7 +112,7 @@ export class WebGLRenderer {
     this.gl.viewport(0, 0, nextWidth, nextHeight)
   }
 
-  render(pipeline: EditPipeline): void {
+  render(pipeline: EditPipeline, options: { cropMode?: boolean } = {}): void {
     if (!this.texture) return
     const gl = this.gl
     gl.useProgram(this.program)
@@ -114,7 +120,7 @@ export class WebGLRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT)
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(gl.TEXTURE_2D, this.texture)
-    this.updateUniforms(pipeline)
+    this.updateUniforms(pipeline, options)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   }
 
@@ -124,7 +130,11 @@ export class WebGLRenderer {
   }
 
   getDisplayRect(): { x: number; y: number; width: number; height: number } {
-    return { x: 0, y: 0, width: Math.max(1, this.canvas.clientWidth), height: Math.max(1, this.canvas.clientHeight) }
+    return this.displayRect
+  }
+
+  getSourceAspect(): number {
+    return Math.max(1, this.sourceSize.width) / Math.max(1, this.sourceSize.height)
   }
 
   samplePixel(x: number, y: number): { r: number; g: number; b: number } | null {
@@ -135,20 +145,35 @@ export class WebGLRenderer {
     return { r: pixels[0], g: pixels[1], b: pixels[2] }
   }
 
-  private updateUniforms(pipeline: EditPipeline): void {
+  private updateUniforms(pipeline: EditPipeline, options: { cropMode?: boolean }): void {
     const gl = this.gl
-    const crop = pipeline.transform.crop ?? { x: 0, y: 0, w: 1, h: 1 }
+    const fullCrop = { x: 0, y: 0, w: 1, h: 1 }
+    const selectionCrop = pipeline.transform.crop ?? fullCrop
+    const crop = options.cropMode ? fullCrop : selectionCrop
     gl.uniform2f(this.uniform('u_resolution'), this.sourceSize.width, this.sourceSize.height)
     const canvasAspect = Math.max(1, this.canvas.width) / Math.max(1, this.canvas.height)
     const imageAspect = Math.max(1, this.sourceSize.width) / Math.max(1, this.sourceSize.height)
-    const isRotated = Math.abs(pipeline.transform.rotate % 180) >= 45
-    const displayImageAspect = isRotated ? 1 / imageAspect : imageAspect
+    const totalRotate = pipeline.transform.orientation + pipeline.transform.rotate
+    const displayImageAspect = displayAspectForCrop(imageAspect, pipeline.transform.orientation, crop)
+    const currentFrameSize = frameSize(imageAspect, pipeline.transform.orientation)
+    const displayContainerScale = options.cropMode ? CROP_MODE_PREVIEW_SCALE : 1
+    const displayContainerW = Math.max(1, this.canvas.clientWidth) * displayContainerScale
+    const displayContainerH = Math.max(1, this.canvas.clientHeight) * displayContainerScale
+    const displayRect = containRect(displayContainerW, displayContainerH, displayImageAspect)
+    this.displayRect = {
+      x: displayRect.x + (Math.max(1, this.canvas.clientWidth) - displayContainerW) / 2,
+      y: displayRect.y + (Math.max(1, this.canvas.clientHeight) - displayContainerH) / 2,
+      width: displayRect.width,
+      height: displayRect.height,
+    }
     gl.uniform2f(this.uniform('u_aspectRatio'), displayImageAspect, canvasAspect)
     gl.uniform4f(this.uniform('u_crop'), crop.x, crop.y, crop.w, crop.h)
-    gl.uniform1f(this.uniform('u_rotate'), pipeline.transform.rotate)
+    gl.uniform1f(this.uniform('u_rotate'), totalRotate)
     gl.uniform2f(this.uniform('u_flip'), pipeline.transform.flipH ? 1 : 0, pipeline.transform.flipV ? 1 : 0)
-    const effectiveAspect = isRotated ? 1 / imageAspect : imageAspect
-    gl.uniform1f(this.uniform('u_scale'), Math.min(canvasAspect / effectiveAspect, effectiveAspect / canvasAspect))
+    gl.uniform1f(this.uniform('u_scale'), pipeline.transform.scale)
+    gl.uniform1f(this.uniform('u_cropAspect'), imageAspect)
+    gl.uniform2f(this.uniform('u_frameSize'), currentFrameSize.width, currentFrameSize.height)
+    gl.uniform1f(this.uniform('u_fillScale'), 1)
     gl.uniform1f(this.uniform('u_exposure'), pipeline.color.exposure)
     gl.uniform1f(this.uniform('u_contrast'), pipeline.color.contrast / 100)
     gl.uniform1f(this.uniform('u_brightness'), pipeline.color.brightness / 100)
@@ -228,16 +253,9 @@ export class WebGLRenderer {
   }
 
   private whiteBalanceValues(pipeline: EditPipeline): { temperature: number; tint: number } {
-    const preset = {
-      auto: { temperature: 0, tint: 0 },
-      custom: { temperature: 0, tint: 0 },
-      daylight: { temperature: 12, tint: 2 },
-      cloudy: { temperature: 24, tint: 4 },
-      indoor: { temperature: -18, tint: -3 },
-    }[pipeline.color.whiteBalanceMode]
     return {
-      temperature: pipeline.color.temperature + preset.temperature,
-      tint: pipeline.color.tint + preset.tint,
+      temperature: pipeline.color.temperature,
+      tint: pipeline.color.tint,
     }
   }
 

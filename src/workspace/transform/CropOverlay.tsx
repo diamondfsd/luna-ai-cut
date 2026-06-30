@@ -2,39 +2,52 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { CropRect } from '../shared/editPipeline'
 import { Button } from '../../ui'
+import { clampCrop, fitCropInsideImage, normalizeFineRotate, sameCrop } from './cropGeometry'
 
 interface CropOverlayProps {
   crop: CropRect | null
   imageRect: { x: number; y: number; width: number; height: number }
+  sourceAspect: number
+  orientation: number
+  rotate: number
   onCropChange: (crop: CropRect) => void
+  onRotateChange: (rotate: number) => void
   onConfirm: () => void
   onCancel: () => void
 }
 
-type DragMode = 'move' | 'tl' | 'tr' | 'bl' | 'br'
+type DragMode = 'move' | 'rotate' | 'tl' | 'tr' | 'bl' | 'br' | 'top' | 'right' | 'bottom' | 'left'
 
-const DEFAULT_CROP: CropRect = { x: 0.12, y: 0.12, w: 0.76, h: 0.76 }
+const DEFAULT_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 }
 
-function clampCrop(crop: CropRect): CropRect {
-  const min = 0.05
-  const w = Math.max(min, Math.min(1, crop.w))
-  const h = Math.max(min, Math.min(1, crop.h))
-  return {
-    x: Math.max(0, Math.min(1 - w, crop.x)),
-    y: Math.max(0, Math.min(1 - h, crop.y)),
-    w,
-    h,
-  }
+function pointerAngle(event: PointerEvent | React.PointerEvent, bounds: DOMRect): number {
+  const cx = bounds.left + bounds.width / 2
+  const cy = bounds.top + bounds.height / 2
+  return (Math.atan2(event.clientY - cy, event.clientX - cx) * 180) / Math.PI
 }
 
-export function CropOverlay({ crop, imageRect, onCropChange, onConfirm, onCancel }: CropOverlayProps) {
+export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate, onCropChange, onRotateChange, onConfirm, onCancel }: CropOverlayProps) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const [drag, setDrag] = useState<{ mode: DragMode; x: number; y: number; crop: CropRect } | null>(null)
+  const preferredCropRef = useRef<CropRect | null>(null)
+  const [drag, setDrag] = useState<{ mode: DragMode; x: number; y: number; crop: CropRect; angle: number; rotate: number } | null>(null)
   const activeCrop = crop ?? DEFAULT_CROP
 
   useEffect(() => {
-    if (!crop) onCropChange(DEFAULT_CROP)
+    if (crop && !preferredCropRef.current) preferredCropRef.current = crop
+  }, [crop])
+
+  useEffect(() => {
+    if (!crop) {
+      preferredCropRef.current = DEFAULT_CROP
+      onCropChange(DEFAULT_CROP)
+    }
   }, [crop, onCropChange])
+
+  useEffect(() => {
+    const preferred = preferredCropRef.current ?? activeCrop
+    const fitted = fitCropInsideImage(preferred, sourceAspect, orientation, rotate)
+    if (!sameCrop(fitted, activeCrop)) onCropChange(fitted)
+  }, [activeCrop, sourceAspect, orientation, rotate, onCropChange])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -52,6 +65,10 @@ export function CropOverlay({ crop, imageRect, onCropChange, onConfirm, onCancel
     function handlePointerMove(event: PointerEvent): void {
       const bounds = rootRef.current?.getBoundingClientRect()
       if (!bounds) return
+      if (activeDrag.mode === 'rotate') {
+        onRotateChange(normalizeFineRotate(activeDrag.rotate + pointerAngle(event, bounds) - activeDrag.angle))
+        return
+      }
       const dx = (event.clientX - activeDrag.x) / bounds.width
       const dy = (event.clientY - activeDrag.y) / bounds.height
       const start = activeDrag.crop
@@ -61,7 +78,13 @@ export function CropOverlay({ crop, imageRect, onCropChange, onConfirm, onCancel
       if (activeDrag.mode === 'tr') next = { x: start.x, y: start.y + dy, w: start.w + dx, h: start.h - dy }
       if (activeDrag.mode === 'bl') next = { x: start.x + dx, y: start.y, w: start.w - dx, h: start.h + dy }
       if (activeDrag.mode === 'br') next = { ...start, w: start.w + dx, h: start.h + dy }
-      onCropChange(clampCrop(next))
+      if (activeDrag.mode === 'top') next = { ...start, y: start.y + dy, h: start.h - dy }
+      if (activeDrag.mode === 'right') next = { ...start, w: start.w + dx }
+      if (activeDrag.mode === 'bottom') next = { ...start, h: start.h + dy }
+      if (activeDrag.mode === 'left') next = { ...start, x: start.x + dx, w: start.w - dx }
+      const clamped = clampCrop(next)
+      preferredCropRef.current = clamped
+      onCropChange(fitCropInsideImage(clamped, sourceAspect, orientation, rotate))
     }
 
     function handlePointerUp(): void {
@@ -74,11 +97,24 @@ export function CropOverlay({ crop, imageRect, onCropChange, onConfirm, onCancel
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [drag, onCropChange])
+  }, [drag, onCropChange, onRotateChange, orientation, rotate, sourceAspect])
 
   function startDrag(event: React.PointerEvent, mode: DragMode): void {
     event.preventDefault()
-    setDrag({ mode, x: event.clientX, y: event.clientY, crop: activeCrop })
+    event.stopPropagation()
+    const bounds = rootRef.current?.getBoundingClientRect()
+    setDrag({
+      mode,
+      x: event.clientX,
+      y: event.clientY,
+      crop: activeCrop,
+      angle: bounds ? pointerAngle(event, bounds) : 0,
+      rotate,
+    })
+  }
+
+  function startRotate(event: React.PointerEvent): void {
+    startDrag(event, 'rotate')
   }
 
   return (
@@ -91,6 +127,7 @@ export function CropOverlay({ crop, imageRect, onCropChange, onConfirm, onCancel
         width: imageRect.width,
         height: imageRect.height,
       }}
+      onPointerDown={startRotate}
       onDoubleClick={onConfirm}
     >
       <div className="workspace-crop-mask" />
@@ -108,7 +145,16 @@ export function CropOverlay({ crop, imageRect, onCropChange, onConfirm, onCancel
         {(['tl', 'tr', 'bl', 'br'] as const).map((mode) => (
           <button
             key={mode}
-            className={`workspace-crop-handle ${mode}`}
+            className={`workspace-crop-corner ${mode}`}
+            type="button"
+            onPointerDown={(event) => startDrag(event, mode)}
+            aria-label="调整裁剪区域"
+          />
+        ))}
+        {(['top', 'right', 'bottom', 'left'] as const).map((mode) => (
+          <button
+            key={mode}
+            className={`workspace-crop-edge ${mode}`}
             type="button"
             onPointerDown={(event) => startDrag(event, mode)}
             aria-label="调整裁剪区域"
