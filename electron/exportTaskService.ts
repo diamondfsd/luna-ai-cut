@@ -9,29 +9,24 @@ const MAX_TASKS = 100
 
 let tasksDir: string | null = null
 
-// 简单的串行锁，防止并发读写 JSON 文件导致竞态条件
-let writeLock: Promise<void> = Promise.resolve()
-let lockRelease: (() => void) | null = null
-
-async function acquireLock(): Promise<() => void> {
-  while (lockRelease) {
-    await lockRelease
-  }
-  let release: () => void
-  const prev = writeLock
-  writeLock = new Promise<void>((resolve) => { release = resolve })
-  await prev
-  lockRelease = release!
-  return release!
-}
+// 互斥锁，防止并发读写 JSON 文件导致竞态
+let mutexQueue: Array<() => void> = []
+let mutexLocked = false
 
 async function withLock<T>(fn: () => Promise<T>): Promise<T> {
-  const release = await acquireLock()
+  if (mutexLocked) {
+    await new Promise<void>((resolve) => mutexQueue.push(resolve))
+  }
+  mutexLocked = true
   try {
     return await fn()
   } finally {
-    lockRelease = null
-    release()
+    if (mutexQueue.length > 0) {
+      const next = mutexQueue.shift()
+      next!() // 唤醒下一个等待者，它自己会设 mutexLocked = true
+    } else {
+      mutexLocked = false
+    }
   }
 }
 

@@ -39,6 +39,30 @@
   font-size: 11px;
 }
 
+/* ====== 导出进行中呼吸蓝点 ====== */
+.export-breathing-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 0 0 var(--blue);
+  animation: export-breathe 2s ease-in-out infinite;
+}
+
+@keyframes export-breathe {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(0, 102, 204, 0.4);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 0 4px rgba(0, 102, 204, 0);
+  }
+}
+
 /* ====== 导出按钮角标 ====== */
 .download-badge-corner {
   position: absolute;

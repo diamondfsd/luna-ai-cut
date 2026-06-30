@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
-import { Check, Clock, Loader2, X } from 'lucide-react'
+import { Check, Clock, X } from 'lucide-react'
 
 import type { ExportProgress } from '../shared/types'
-import { Dialog, IconButton, Tooltip } from '../ui'
+import { Dialog, Tooltip } from '../ui'
 import { ExportTaskTable } from './ExportTaskTable'
 import '../styles/download-progress.css'
 
@@ -27,17 +27,22 @@ export function ExportProgressModal({
 
   const icon =
     entries.length === 0 ? <Clock size={15} /> :
-    activeCount > 0 ? <Loader2 className="spin" size={14} /> :
+    activeCount > 0 ? <Clock size={15} /> :
     failedCount > 0 || canceledCount > 0 ? <X size={14} /> :
     <Check size={14} />
 
   return (
     <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
       <Tooltip content="导出记录">
-        <IconButton variant="ghost" icon={icon} onClick={() => setOpen(true)} />
+        <button className="nav-icon-button" onClick={() => setOpen(true)}>
+          {icon}
+          {activeCount > 0 && <span className="export-breathing-dot" />}
+        </button>
       </Tooltip>
-      {completedCount > 0 && completedCount > seenCount && (
-        <span className="download-badge-corner">{completedCount}</span>
+      {completedCount > 0 && (
+        <span className="download-badge-corner">
+          {completedCount > seenCount ? completedCount : 0}
+        </span>
       )}
 
       <Dialog

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
+import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
 import type { ExportTaskRecord, LunaFile } from '../shared/types'
 import { useApp } from '../context/AppContext'
@@ -19,7 +19,7 @@ function formatDate(ts: number | null | undefined): string {
   if (!ts) return '—'
   const d = new Date(ts)
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 function formatDuration(ms: number | null | undefined): string {
@@ -80,7 +80,7 @@ function ExportTaskDetailDialog({ task, open, onOpenChange, onRevealFile, onPrev
                       {item.status === 'done' && <CheckCircle2 size={13} style={{ flexShrink: 0, color: '#34c759' }} />}
                       {item.status === 'failed' && <XCircle size={13} style={{ flexShrink: 0, color: '#ff3b30' }} />}
                       {item.status === 'queued' && <Clock size={13} style={{ flexShrink: 0, color: 'var(--muted)' }} />}
-                      {item.status === 'canceled' && <span style={{ flexShrink: 0, fontSize: 13 }}>⏹️</span>}
+                      {item.status === 'canceled' && <Ban size={13} style={{ flexShrink: 0, color: 'var(--muted)' }} />}
                       <span className="et-item-name">{item.fileName}</span>
                     </span>
                   </td>
@@ -269,7 +269,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
                       {task.status === 'exporting' && <Loader2 className="spin" size={14} style={{ flexShrink: 0 }} />}
                       {task.status === 'completed' && <CheckCircle2 size={14} style={{ flexShrink: 0, color: '#34c759' }} />}
                       {task.status === 'failed' && <XCircle size={14} style={{ flexShrink: 0, color: '#ff3b30' }} />}
-                      {task.status === 'canceled' && <span style={{ flexShrink: 0, fontSize: 14 }}>⏹️</span>}
+                      {task.status === 'canceled' && <Ban size={14} style={{ flexShrink: 0, color: 'var(--muted)' }} />}
                       {(task.status === 'pending' || task.status === 'exporting') && <Clock size={14} style={{ flexShrink: 0, color: 'var(--blue)' }} />}
                       <span className="et-item-name">{task.name}</span>
                     </span>
