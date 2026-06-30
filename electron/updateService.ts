@@ -56,11 +56,16 @@ async function checkGitCode(): Promise<UpdateCheckResult | null> {
 
   // assets 中 type 为 "attach" 的才是上传的安装包，排除 source 包
   const attachAssets = (data.assets ?? []).filter(a => a.type === 'attach')
-  const installer = attachAssets.find(
-    a =>
-      (a.name.endsWith('.dmg') && a.name.includes('-Mac-')) ||
-      (a.name.endsWith('Setup.exe') && a.name.includes('-Windows-')),
-  )
+
+  // 根据当前操作系统和 CPU 架构选择对应安装包
+  // 资产命名示例: Luna_AI_Cut-v1.3.2-Mac-arm64.dmg / Luna_AI_Cut-v1.3.2-Windows-x64_Setup.exe
+  const platform = process.platform
+  const arch = process.arch // 'arm64' | 'x64'
+  const installer = attachAssets.find(a => {
+    if (platform === 'win32') return a.name.endsWith('Setup.exe') && a.name.includes('-Windows-')
+    if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-Mac-${arch}`)
+    return false
+  })
 
   // 没有安装包文件（Release 刚创建，CI 还没上传完），不提示更新
   if (!installer) return null
@@ -110,11 +115,16 @@ async function checkGitHub(): Promise<UpdateCheckResult | null> {
   if (compareVersions(latestVersion, currentVersion) <= 0) return null
 
   const assets: Array<{ name: string; browser_download_url: string }> = data.assets ?? []
-  const installer = assets.find(
-    a =>
-      (a.name.endsWith('.dmg') && a.name.includes('-Mac-')) ||
-      (a.name.endsWith('Setup.exe') && a.name.includes('-Windows-')),
-  )
+
+  // 根据当前操作系统和 CPU 架构选择对应安装包
+  // 资产命名示例: Luna_AI_Cut-v1.3.2-Mac-arm64.dmg / Luna_AI_Cut-v1.3.2-Windows-x64_Setup.exe
+  const platform = process.platform
+  const arch = process.arch // 'arm64' | 'x64'
+  const installer = assets.find(a => {
+    if (platform === 'win32') return a.name.endsWith('Setup.exe') && a.name.includes('-Windows-')
+    if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-Mac-${arch}`)
+    return false
+  })
 
   // 没有安装包文件则不提示更新
   if (!installer) return null
