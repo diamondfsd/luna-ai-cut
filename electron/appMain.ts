@@ -538,11 +538,20 @@ function registerIpc(): void {
     activeExportControllers.clear()
   })
 
-  ipcMain.handle('luna:cancelExportTask', (_event, taskId: string) => {
+  ipcMain.handle('luna:cancelExportTask', async (_event, taskId: string) => {
     const controller = activeExportControllers.get(taskId)
     if (controller) {
       controller.abort()
       activeExportControllers.delete(taskId)
+    }
+    // 直接更新任务状态为已取消，不等 worker 的 catch 慢慢写
+    const task = await getExportTaskById(taskId)
+    if (task) {
+      for (const item of task.items) {
+        if (item.status === 'queued' || item.status === 'exporting') {
+          await updateTaskItemProgress(taskId, item.exportId, item.startTime ?? Date.now(), 0, 'canceled')
+        }
+      }
     }
   })
 
