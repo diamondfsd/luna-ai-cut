@@ -3,22 +3,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../shared/types'
-import { Accordion, Button, IconButton, Tooltip, toast } from '../ui'
-import { ColorPanel } from '../workspace/color/ColorPanel'
+import { Button, IconButton, Tooltip, toast } from '../ui'
 import { checkWebGLSupport, WebGLRenderer, workspaceImageCache } from '../workspace'
 import { createEditHistory, pushHistory, redoHistory, resetHistory, undoHistory, type EditHistory } from '../workspace/shared/editHistory'
-import {
-  createDefaultPipeline,
-  DEFAULT_PIPELINE,
-  mergePipeline,
-  type EditPipeline,
-  type PipelinePatch,
-} from '../workspace/shared/editPipeline'
+import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline, type EditPipeline, type PipelinePatch } from '../workspace/shared/editPipeline'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
-import { TransformPanel, type CropPreset } from '../workspace/transform/TransformPanel'
+import type { CropPreset } from '../workspace/transform/TransformPanel'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
-import { cropForAspect } from '../workspace/transform/cropGeometry'
+import { cropForAspect, frameAspect, maxCropInsideImage } from '../workspace/transform/cropGeometry'
+import { WorkspaceEditSidebar, type WorkspaceTool } from '../workspace/components/WorkspaceEditSidebar'
 
 interface WorkspaceRouteState {
   project?: WorkspaceProject
@@ -27,9 +21,7 @@ interface WorkspaceRouteState {
   initialIndex?: number
 }
 
-function fileNameFromPath(filePath: string): string {
-  return filePath.split(/[\\/]/).pop() || filePath
-}
+function fileNameFromPath(filePath: string): string { return filePath.split(/[\\/]/).pop() || filePath }
 
 function mediaFromState(state: WorkspaceRouteState | null): WorkspaceMediaAsset[] {
   if (state?.media?.length) return state.media
@@ -46,9 +38,7 @@ function normalizePipeline(value: unknown): EditPipeline {
   return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
 }
 
-function projectMedia(project: WorkspaceProject | null, fallbackMedia: WorkspaceMediaAsset[]): WorkspaceMediaAsset[] {
-  return project?.assets ?? fallbackMedia
-}
+function projectMedia(project: WorkspaceProject | null, fallbackMedia: WorkspaceMediaAsset[]): WorkspaceMediaAsset[] { return project?.assets ?? fallbackMedia }
 
 export function WorkspacePage() {
   const location = useLocation()
@@ -64,9 +54,10 @@ export function WorkspacePage() {
   const [imageError, setImageError] = useState<string | null>(null)
   const [webglMessage, setWebglMessage] = useState<string | null>(null)
   const [cropActive, setCropActive] = useState(false)
-  const [cropDraft, setCropDraft] = useState<EditPipeline['transform']['crop']>(null)
+  const [transformDraft, setTransformDraft] = useState<EditPipeline['transform'] | null>(null)
   const [cropPreset, setCropPreset] = useState<CropPreset>('original')
   const [cropSize, setCropSize] = useState({ width: 0, height: 0 })
+  const [activeTool, setActiveTool] = useState<WorkspaceTool>('color')
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [pipetteActive, setPipetteActive] = useState(false)
   const [imageRect, setImageRect] = useState({ x: 0, y: 0, width: 1, height: 1 })
@@ -81,11 +72,14 @@ export function WorkspacePage() {
   const pipelineRef = useRef<EditPipeline>(history.present)
   const cropActiveRef = useRef(false)
   const previewPipelineRef = useRef<EditPipeline>(history.present)
+  const previousToolRef = useRef<WorkspaceTool>('color')
   const saveTimerRef = useRef<number | null>(null)
   const pipeline = history.present
+  const activeTransform = cropActive && transformDraft ? transformDraft : pipeline.transform
+  const cropAspectRatio = cropPreset === 'free' ? null : cropPreset === 'original' ? frameAspect(sourceAspect, activeTransform.orientation) : (cropSize.width || Math.round(sourceAspect * 2160)) / Math.max(cropSize.height || 2160, 1)
   const previewPipeline = useMemo(
-    () => (cropActive && cropDraft ? mergePipeline(pipeline, { transform: { crop: cropDraft } }) : pipeline),
-    [cropActive, cropDraft, pipeline],
+    () => (cropActive && transformDraft ? mergePipeline(pipeline, { transform: transformDraft }) : pipeline),
+    [cropActive, transformDraft, pipeline],
   )
   const media = projectMedia(currentProject, transientMedia)
   const activeMedia = media[activeIndex] ?? null
@@ -214,7 +208,7 @@ export function WorkspacePage() {
   useEffect(() => {
     const asset = currentProject?.assets[activeIndex]
     setCropActive(false)
-    setCropDraft(null)
+    setTransformDraft(null)
     setCropPreset('original')
     setHistory(createEditHistory(normalizePipeline(asset?.pipeline)))
   }, [activeIndex, currentProject?.id])
@@ -241,6 +235,14 @@ export function WorkspacePage() {
   }, [])
 
   function updatePipeline(patch: PipelinePatch): void { commitPatch(patch) }
+
+  function updateWorkspacePanel(patch: PipelinePatch): void {
+    if (cropActive && patch.transform) {
+      setTransformDraft((current) => ({ ...(current ?? pipeline.transform), ...patch.transform }))
+      return
+    }
+    updatePipeline(patch)
+  }
 
   useEffect(() => {
     if (!pipetteActive) return
@@ -284,18 +286,38 @@ export function WorkspacePage() {
   function handleReset(): void {
     setHistory((current) => resetHistory(current, createDefaultPipeline()))
     setCropActive(false)
-    setCropDraft(null)
+    setTransformDraft(null)
   }
 
   function startCrop(): void {
-    setCropDraft(pipeline.transform.crop ?? { x: 0, y: 0, w: 1, h: 1 })
+    const aspectRatio = cropPreset === 'original' ? frameAspect(sourceAspect, pipeline.transform.orientation) : cropPreset === 'free' ? null : (cropSize.width || Math.round(sourceAspect * 2160)) / Math.max(cropSize.height || 2160, 1)
+    const crop = pipeline.transform.crop ?? maxCropInsideImage({ sourceAspect, orientation: pipeline.transform.orientation, rotate: pipeline.transform.rotate, aspectRatio })
+    setTransformDraft({ ...pipeline.transform, crop })
     if (cropSize.width <= 0 || cropSize.height <= 0) setCropSize({ width: Math.round(sourceAspect * 2160), height: 2160 })
     setCropActive(true)
   }
 
+  function handleSelectTool(tool: WorkspaceTool): void {
+    if (tool === 'crop') {
+      if (activeTool !== 'crop') previousToolRef.current = activeTool
+      setActiveTool('crop')
+      if (cropActive) return
+      startCrop()
+      return
+    }
+    if (cropActive) {
+      setTransformDraft(null)
+      setCropActive(false)
+    }
+    setActiveTool(tool)
+  }
+
   function applyCropAspect(targetAspect: number, nextSize?: { width: number; height: number }): void {
     if (!cropActive) setCropActive(true)
-    setCropDraft(cropForAspect(sourceAspect, pipeline.transform.orientation, targetAspect))
+    setTransformDraft((current) => ({
+      ...(current ?? pipeline.transform),
+      crop: cropForAspect(sourceAspect, activeTransform.orientation, targetAspect),
+    }))
     if (nextSize) setCropSize(nextSize)
   }
 
@@ -328,15 +350,24 @@ export function WorkspacePage() {
 
   function handleRotateChange(rotate: number): void {
     if (!cropActive) {
-      setCropDraft(pipeline.transform.crop ?? { x: 0, y: 0, w: 1, h: 1 })
+      setTransformDraft({ ...pipeline.transform, crop: pipeline.transform.crop ?? { x: 0, y: 0, w: 1, h: 1 }, rotate })
       setCropActive(true)
+      return
     }
-    updatePipeline({ transform: { rotate } })
+    setTransformDraft((current) => ({ ...(current ?? pipeline.transform), rotate }))
   }
 
   function confirmCrop(): void {
-    if (cropDraft) updatePipeline({ transform: { crop: cropDraft } })
+    if (transformDraft) updatePipeline({ transform: transformDraft })
     setCropActive(false)
+    setTransformDraft(null)
+    setActiveTool(previousToolRef.current)
+  }
+
+  function cancelCrop(): void {
+    setTransformDraft(null)
+    setCropActive(false)
+    setActiveTool(previousToolRef.current)
   }
 
   function handlePreviewWheel(event: React.WheelEvent): void {
@@ -392,18 +423,16 @@ export function WorkspacePage() {
             <canvas ref={canvasRef} className="workspace-canvas" />
             {cropActive && canRender && (
               <CropOverlay
-                crop={cropDraft}
+                crop={activeTransform.crop}
                 imageRect={imageRect}
                 sourceAspect={sourceAspect}
-                orientation={pipeline.transform.orientation}
-                rotate={pipeline.transform.rotate}
-                onCropChange={setCropDraft}
-                onRotateChange={(rotate) => updatePipeline({ transform: { rotate } })}
+                orientation={activeTransform.orientation}
+                rotate={activeTransform.rotate}
+                aspectRatio={cropAspectRatio}
+                onCropChange={(crop) => setTransformDraft((current) => ({ ...(current ?? pipeline.transform), crop }))}
+                onRotateChange={handleRotateChange}
                 onConfirm={confirmCrop}
-                onCancel={() => {
-                  setCropDraft(null)
-                  setCropActive(false)
-                }}
+                onCancel={cancelCrop}
               />
             )}
           </div>
@@ -418,37 +447,21 @@ export function WorkspacePage() {
         </div>
       </section>
 
-      <aside className="workspace-params">
-        <Accordion
-          title="裁剪"
-          defaultOpen
-          actions={
-            <button className="workspace-acc-reset" type="button" onClick={() => updatePipeline({ transform: createDefaultPipeline().transform })} title="重置几何变换">
-              <RotateCcw size={11} />
-            </button>
-          }
-        >
-          <TransformPanel
-            value={pipeline.transform}
-            cropActive={cropActive}
-            cropPreset={cropPreset}
-            cropWidth={cropSize.width || Math.round(sourceAspect * 2160)}
-            cropHeight={cropSize.height || 2160}
-            onChange={(transform) => updatePipeline({ transform })}
-            onRotateChange={handleRotateChange}
-            onCropPresetChange={handleCropPresetChange}
-            onCropSizeChange={handleCropSizeChange}
-            onToggleCrop={() => (cropActive ? setCropActive(false) : startCrop())}
-          />
-        </Accordion>
-          <ColorPanel
-            value={pipeline.color}
-            effects={pipeline.effects}
-            onChange={(color) => updatePipeline({ color })}
-            onEffectsChange={(effects) => updatePipeline({ effects })}
-            onActivatePipette={() => setPipetteActive(true)}
-          />
-      </aside>
+      <WorkspaceEditSidebar
+        activeTool={activeTool}
+        pipeline={previewPipeline}
+        cropPreset={cropPreset}
+        cropWidth={cropSize.width || Math.round(sourceAspect * 2160)}
+        cropHeight={cropSize.height || 2160}
+        onSelectTool={handleSelectTool}
+        onUpdatePipeline={updateWorkspacePanel}
+        onRotateChange={handleRotateChange}
+        onCropPresetChange={handleCropPresetChange}
+        onCropSizeChange={handleCropSizeChange}
+        onCancelCrop={cancelCrop}
+        onConfirmCrop={confirmCrop}
+        onActivatePipette={() => setPipetteActive(true)}
+      />
 
       <footer className="workspace-toolbar">
         <div className="workspace-toolbar-group">

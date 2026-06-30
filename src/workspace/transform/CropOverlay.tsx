@@ -1,8 +1,9 @@
+import { RotateCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
+import { IconButton } from '../../ui'
 import type { CropRect } from '../shared/editPipeline'
-import { Button } from '../../ui'
-import { clampCrop, fitCropInsideImage, normalizeFineRotate, sameCrop } from './cropGeometry'
+import { fitCropInsideImage, maxCropInsideImage, moveCropInsideImage, normalizeFineRotate, resizeCropInsideImage, sameCrop, type CropDragMode } from './cropGeometry'
 
 interface CropOverlayProps {
   crop: CropRect | null
@@ -10,13 +11,12 @@ interface CropOverlayProps {
   sourceAspect: number
   orientation: number
   rotate: number
+  aspectRatio: number | null
   onCropChange: (crop: CropRect) => void
   onRotateChange: (rotate: number) => void
   onConfirm: () => void
   onCancel: () => void
 }
-
-type DragMode = 'move' | 'rotate' | 'tl' | 'tr' | 'bl' | 'br' | 'top' | 'right' | 'bottom' | 'left'
 
 const DEFAULT_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 }
 
@@ -26,11 +26,18 @@ function pointerAngle(event: PointerEvent | React.PointerEvent, bounds: DOMRect)
   return (Math.atan2(event.clientY - cy, event.clientX - cx) * 180) / Math.PI
 }
 
-export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate, onCropChange, onRotateChange, onConfirm, onCancel }: CropOverlayProps) {
+export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate, aspectRatio, onCropChange, onRotateChange, onConfirm, onCancel }: CropOverlayProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const preferredCropRef = useRef<CropRect | null>(null)
-  const [drag, setDrag] = useState<{ mode: DragMode; x: number; y: number; crop: CropRect; angle: number; rotate: number } | null>(null)
+  const activeCropRef = useRef<CropRect>(DEFAULT_CROP)
+  const cropFrameKeyRef = useRef('')
+  const rotateKeyRef = useRef('')
+  const [drag, setDrag] = useState<{ mode: CropDragMode; x: number; y: number; crop: CropRect; angle: number; rotate: number } | null>(null)
   const activeCrop = crop ?? DEFAULT_CROP
+
+  useEffect(() => {
+    activeCropRef.current = activeCrop
+  }, [activeCrop])
 
   useEffect(() => {
     if (crop && !preferredCropRef.current) preferredCropRef.current = crop
@@ -44,10 +51,22 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
   }, [crop, onCropChange])
 
   useEffect(() => {
-    const preferred = preferredCropRef.current ?? activeCrop
+    const cropFrameKey = `${sourceAspect}:${orientation}:${aspectRatio ?? 'free'}`
+    if (cropFrameKeyRef.current === cropFrameKey) return
+    cropFrameKeyRef.current = cropFrameKey
+    const fitted = maxCropInsideImage({ sourceAspect, orientation, rotate, aspectRatio })
+    preferredCropRef.current = fitted
+    if (!sameCrop(fitted, activeCropRef.current)) onCropChange(fitted)
+  }, [aspectRatio, sourceAspect, orientation, rotate, onCropChange])
+
+  useEffect(() => {
+    const rotateKey = `${sourceAspect}:${orientation}:${rotate}:${aspectRatio ?? 'free'}`
+    if (rotateKeyRef.current === rotateKey) return
+    rotateKeyRef.current = rotateKey
+    const preferred = preferredCropRef.current ?? activeCropRef.current
     const fitted = fitCropInsideImage(preferred, sourceAspect, orientation, rotate)
-    if (!sameCrop(fitted, activeCrop)) onCropChange(fitted)
-  }, [activeCrop, sourceAspect, orientation, rotate, onCropChange])
+    if (!sameCrop(fitted, activeCropRef.current)) onCropChange(fitted)
+  }, [aspectRatio, sourceAspect, orientation, rotate, onCropChange])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -71,20 +90,12 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
       }
       const dx = (event.clientX - activeDrag.x) / bounds.width
       const dy = (event.clientY - activeDrag.y) / bounds.height
-      const start = activeDrag.crop
-      let next = start
-      if (activeDrag.mode === 'move') next = { ...start, x: start.x + dx, y: start.y + dy }
-      if (activeDrag.mode === 'tl') next = { x: start.x + dx, y: start.y + dy, w: start.w - dx, h: start.h - dy }
-      if (activeDrag.mode === 'tr') next = { x: start.x, y: start.y + dy, w: start.w + dx, h: start.h - dy }
-      if (activeDrag.mode === 'bl') next = { x: start.x + dx, y: start.y, w: start.w - dx, h: start.h + dy }
-      if (activeDrag.mode === 'br') next = { ...start, w: start.w + dx, h: start.h + dy }
-      if (activeDrag.mode === 'top') next = { ...start, y: start.y + dy, h: start.h - dy }
-      if (activeDrag.mode === 'right') next = { ...start, w: start.w + dx }
-      if (activeDrag.mode === 'bottom') next = { ...start, h: start.h + dy }
-      if (activeDrag.mode === 'left') next = { ...start, x: start.x + dx, w: start.w - dx }
-      const clamped = clampCrop(next)
-      preferredCropRef.current = clamped
-      onCropChange(fitCropInsideImage(clamped, sourceAspect, orientation, rotate))
+      const options = { sourceAspect, orientation, rotate, aspectRatio }
+      const next = activeDrag.mode === 'move'
+        ? moveCropInsideImage(activeDrag.crop, dx, dy, options)
+        : resizeCropInsideImage(activeDrag.crop, activeDrag.mode, dx, dy, options)
+      preferredCropRef.current = next
+      onCropChange(next)
     }
 
     function handlePointerUp(): void {
@@ -97,9 +108,9 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [drag, onCropChange, onRotateChange, orientation, rotate, sourceAspect])
+  }, [aspectRatio, drag, onCropChange, onRotateChange, orientation, rotate, sourceAspect])
 
-  function startDrag(event: React.PointerEvent, mode: DragMode): void {
+  function startDrag(event: React.PointerEvent, mode: CropDragMode): void {
     event.preventDefault()
     event.stopPropagation()
     const bounds = rootRef.current?.getBoundingClientRect()
@@ -131,6 +142,14 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
       onDoubleClick={onConfirm}
     >
       <div className="workspace-crop-mask" />
+      <IconButton
+        className="workspace-crop-rotate-handle"
+        variant="light"
+        size="compact"
+        icon={<RotateCw size={17} />}
+        aria-label="旋转裁剪"
+        onPointerDown={startRotate}
+      />
       <div
         className="workspace-crop-box"
         onPointerDown={(event) => startDrag(event, 'move')}
@@ -160,14 +179,6 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
             aria-label="调整裁剪区域"
           />
         ))}
-        <div className="workspace-crop-actions">
-          <Button variant="secondary" size="compact" type="button" onClick={onCancel}>
-            取消
-          </Button>
-          <Button variant="primary" size="compact" type="button" onClick={onConfirm}>
-            确认裁剪
-          </Button>
-        </div>
       </div>
     </div>
   )

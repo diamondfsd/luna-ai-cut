@@ -11,6 +11,22 @@
     linear-gradient(rgba(0, 102, 204, 0.08), rgba(0, 102, 204, 0.08));
 }
 
+.workspace-crop-rotate-handle {
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  cursor: alias;
+}
+
+.workspace-crop-rotate-handle:active {
+  transform: translateX(-50%) scale(0.95);
+}
+
 .workspace-crop-box {
   position: absolute;
   border: 2px solid #fff;
@@ -58,8 +74,8 @@
 }
 
 .workspace-crop-corner.tl {
-  top: -4px;
-  left: -4px;
+  top: 0;
+  left: 0;
   cursor: nw-resize;
 }
 
@@ -69,8 +85,8 @@
 }
 
 .workspace-crop-corner.tr {
-  top: -4px;
-  right: -4px;
+  top: 0;
+  right: 0;
   cursor: ne-resize;
 }
 
@@ -80,8 +96,8 @@
 }
 
 .workspace-crop-corner.bl {
-  bottom: -4px;
-  left: -4px;
+  bottom: 0;
+  left: 0;
   cursor: sw-resize;
 }
 
@@ -91,8 +107,8 @@
 }
 
 .workspace-crop-corner.br {
-  right: -4px;
-  bottom: -4px;
+  right: 0;
+  bottom: 0;
   cursor: se-resize;
 }
 
@@ -111,11 +127,11 @@
 }
 
 .workspace-crop-edge.top {
-  top: -9px;
+  top: 0;
 }
 
 .workspace-crop-edge.bottom {
-  bottom: -9px;
+  bottom: 0;
 }
 
 .workspace-crop-edge.top::before,
@@ -139,11 +155,11 @@
 }
 
 .workspace-crop-edge.left {
-  left: -9px;
+  left: 0;
 }
 
 .workspace-crop-edge.right {
-  right: -9px;
+  right: 0;
 }
 
 .workspace-crop-edge.left::before,
@@ -155,15 +171,4 @@
   left: 7px;
   width: 4px;
   background: currentColor;
-}
-
-.workspace-crop-actions {
-  position: absolute;
-  bottom: -44px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 10px;
-  z-index: 10;
-  white-space: nowrap;
 }

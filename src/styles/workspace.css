@@ -132,7 +132,7 @@
 
 .workspace-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 292px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   grid-template-rows: minmax(0, 1fr) 48px 118px;
   height: 100%;
   min-height: 0;
@@ -447,13 +447,6 @@
   .workspace-layout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) 48px 108px 260px;
-  }
-
-  .workspace-params {
-    grid-column: 1;
-    grid-row: 4;
-    border-left: 0;
-    border-top: 1px solid var(--hairline);
   }
 }
 
