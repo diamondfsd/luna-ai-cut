@@ -16,6 +16,11 @@ function formatSigned(value: number): string {
   return String(value)
 }
 
+function numericInputValue(value: number, formatValue: (value: number) => string): string {
+  const formatted = formatValue(value).replace(/^\+/, '')
+  return Number.isFinite(Number(formatted)) ? formatted : String(value)
+}
+
 export function ParamSlider({
   label,
   value,
@@ -33,12 +38,13 @@ export function ParamSlider({
   const [editValue, setEditValue] = useState(() => formatValue(value))
   const [editing, setEditing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const displayValue = numericInputValue(value, formatValue)
 
   useEffect(() => {
     if (!editing) {
-      setEditValue(formatValue(value))
+      setEditValue(displayValue)
     }
-  }, [value, editing, formatValue])
+  }, [displayValue, editing])
 
   function commit() {
     const parsed = Number(editValue)
@@ -61,9 +67,9 @@ export function ParamSlider({
           min={min}
           max={max}
           step={step}
-          value={editing ? editValue : String(value)}
+          value={editing ? editValue : displayValue}
           onChange={(e) => { setEditing(true); setEditValue(e.currentTarget.value) }}
-          onFocus={() => { setEditValue(String(value)); setEditing(true) }}
+          onFocus={() => { setEditValue(displayValue); setEditing(true) }}
           onBlur={commit}
           onKeyDown={(e) => { if (e.key === 'Enter') { (e.currentTarget as HTMLInputElement).blur() } }}
         />

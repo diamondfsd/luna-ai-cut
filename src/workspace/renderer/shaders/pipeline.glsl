@@ -19,8 +19,7 @@ uniform float u_contrast;
 uniform float u_brightness;
 uniform float u_saturation;
 uniform float u_vibrance;
-uniform float u_temperature;
-uniform float u_tint;
+uniform vec3 u_whiteBalanceGains;
 uniform float u_highlights;
 uniform float u_shadows;
 uniform float u_whites;
@@ -222,7 +221,18 @@ vec3 applyCalibration(vec3 color) {
   return hsvToRgb(hsv);
 }
 
+vec3 adjustLumaPreservingChroma(vec3 color, float targetLuma) {
+  float luma = max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
+  return clamp(color * (clamp(targetLuma, 0.0, 1.0) / luma), 0.0, 1.0);
+}
+
+vec3 protectSaturation(vec3 color, float amount) {
+  float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  return clamp(mix(vec3(luma), color, 1.0 + amount), 0.0, 1.0);
+}
+
 vec3 applyColor(vec3 color) {
+  color *= u_whiteBalanceGains;
   color *= pow(2.0, u_exposure);
   color += u_brightness * 0.25;
   color = (color - 0.5) * (1.0 + u_contrast) + 0.5;
@@ -233,16 +243,29 @@ vec3 applyColor(vec3 color) {
   float vibranceMask = clamp(1.0 - abs(max(max(color.r, color.g), color.b) - luma), 0.0, 1.0);
   color = mix(gray, color, 1.0 + u_vibrance * vibranceMask);
 
-  color.r += u_temperature * 0.08 + u_tint * 0.025;
-  color.b -= u_temperature * 0.08;
-  color.g += u_tint * 0.04;
-
   float highlightMask = smoothstep(0.45, 1.0, luma);
   float shadowMask = 1.0 - smoothstep(0.0, 0.55, luma);
-  color += highlightMask * u_highlights * 0.18;
-  color += shadowMask * u_shadows * 0.18;
-  color += smoothstep(0.7, 1.0, luma) * u_whites * 0.12;
-  color += (1.0 - smoothstep(0.0, 0.3, luma)) * u_blacks * 0.12;
+  if (u_shadows >= 0.0) {
+    float shadowAmount = u_shadows * shadowMask;
+    float toeProtect = smoothstep(0.01, 0.10, luma);
+    float lifted = luma + (1.0 - luma) * shadowAmount * toeProtect * 0.34;
+    color = protectSaturation(adjustLumaPreservingChroma(color, lifted), shadowAmount * 0.10);
+  } else {
+    float lowered = mix(luma, luma * luma, -u_shadows * shadowMask * 0.55);
+    color = adjustLumaPreservingChroma(color, lowered);
+  }
+  luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  highlightMask = smoothstep(0.45, 1.0, luma);
+  if (u_highlights >= 0.0) {
+    float pushed = mix(luma, 1.0 - (1.0 - luma) * (1.0 - luma), u_highlights * highlightMask * 0.55);
+    color = adjustLumaPreservingChroma(color, pushed);
+  } else {
+    float recovered = mix(luma, 1.0 - sqrt(max(1.0 - luma, 0.0)), -u_highlights * highlightMask * 0.75);
+    color = adjustLumaPreservingChroma(color, recovered);
+  }
+  luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  color = adjustLumaPreservingChroma(color, luma + smoothstep(0.72, 1.0, luma) * u_whites * 0.10);
+  color = adjustLumaPreservingChroma(color, luma - (1.0 - smoothstep(0.0, 0.32, luma)) * u_blacks * 0.10);
   color = applyToneCurve(color);
   color = applyHslMix(color);
   color = applyColorEditor(color);

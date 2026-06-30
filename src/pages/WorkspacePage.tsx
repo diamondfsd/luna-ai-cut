@@ -18,12 +18,29 @@ import { WorkspaceEditSidebar, type WorkspaceTool } from '../workspace/component
 
 /** 复制到粘贴板：只复制调色+效果+水印，不含裁剪等变换 */
 const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
+const DEFAULT_WHITE_BALANCE_KELVIN = 5500
+
+function clampKelvin(value: number): number {
+  return Math.max(2000, Math.min(15000, Math.round(value)))
+}
 
 interface WorkspaceRouteState {
   project?: WorkspaceProject
   media?: WorkspaceMediaAsset[]
   mediaPaths?: string[]
   initialIndex?: number
+}
+
+interface EyeDropperConstructor {
+  new(): {
+    open(): Promise<{ sRGBHex: string }>
+  }
+}
+
+declare global {
+  interface Window {
+    EyeDropper?: EyeDropperConstructor
+  }
 }
 
 function fileNameFromPath(filePath: string): string { return filePath.split(/[\\/]/).pop() || filePath }
@@ -83,6 +100,7 @@ export function WorkspacePage() {
   const previewPipelineRef = useRef<EditPipeline>(history.present)
   const previousToolRef = useRef<WorkspaceTool>('color')
   const saveTimerRef = useRef<number | null>(null)
+  const autoWhiteBalanceKeyRef = useRef<string | null>(null)
   const pipeline = history.present
   const activeTransform = cropActive && transformDraft ? transformDraft : pipeline.transform
   const cropAspectRatio = cropPreset === 'free' ? null : cropPreset === 'original' ? frameAspect(sourceAspect, activeTransform.orientation) : (cropSize.width || Math.round(sourceAspect * 2160)) / Math.max(cropSize.height || 2160, 1)
@@ -96,6 +114,9 @@ export function WorkspacePage() {
   const editorOpen = Boolean(currentProject || transientMedia.length > 0)
   const canRender = Boolean(rendererRef.current && activeMedia && !webglMessage?.includes('不支持'))
   const exportWorkspaceImage = useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline: previewPipeline })
+  const commitPatch = useCallback((patch: PipelinePatch) => {
+    setHistory((current) => pushHistory(current, mergePipeline(current.present, patch)))
+  }, [])
 
   useEffect(() => {
     if (routeState?.project) {
@@ -282,6 +303,27 @@ export function WorkspacePage() {
   }, [activeIndex, currentProject?.id])
 
   useEffect(() => {
+    if (pipeline.color.whiteBalanceMode !== 'auto') {
+      autoWhiteBalanceKeyRef.current = null
+      return
+    }
+    if (!activeMedia) return
+    const key = `${activeMedia.path}:${pipeline.color.whiteBalanceMode}`
+    if (autoWhiteBalanceKeyRef.current === key) return
+    autoWhiteBalanceKeyRef.current = key
+    let canceled = false
+    window.luna.workspace.readColorMetadata(activeMedia.path)
+      .then((metadata) => {
+        if (canceled) return
+        const temperature = metadata.temperatureKelvin ? clampKelvin(metadata.temperatureKelvin) : DEFAULT_WHITE_BALANCE_KELVIN
+        const tint = metadata.tint ?? 0
+        commitPatch({ color: { temperature, tint, whiteBalanceMode: 'auto' } })
+      })
+      .catch(() => undefined)
+    return () => { canceled = true }
+  }, [activeMedia?.path, pipeline.color.whiteBalanceMode, commitPatch])
+
+  useEffect(() => {
     if (!currentProject || !activeMedia) return
     const baseProject = projectRef.current
     if (!baseProject) return
@@ -328,10 +370,6 @@ export function WorkspacePage() {
   copyPipelineRef.current = copyPipeline
   pasteToCurrentRef.current = pasteToCurrent
 
-  const commitPatch = useCallback((patch: PipelinePatch) => {
-    setHistory((current) => pushHistory(current, mergePipeline(current.present, patch)))
-  }, [])
-
   function updatePipeline(patch: PipelinePatch): void { commitPatch(patch) }
 
   function updateWorkspacePanel(patch: PipelinePatch): void {
@@ -344,13 +382,11 @@ export function WorkspacePage() {
 
   useEffect(() => {
     if (!pipetteActive) return
-    // @ts-ignore — EyeDropper API is Chromium/Electron only, not in TS types
     if (typeof window.EyeDropper !== 'function') {
       toast.error('当前浏览器不支持取色器')
       setPipetteActive(false)
       return
     }
-    // @ts-ignore
     const dropper = new window.EyeDropper()
     dropper.open().then((result: { sRGBHex: string }) => {
       const hex = result.sRGBHex
@@ -359,7 +395,7 @@ export function WorkspacePage() {
       const b = parseInt(hex.slice(5, 7), 16) / 255
       const avg = (r + g + b) / 3
       if (avg > 0.01 && avg < 0.99) {
-        const temperature = Math.max(-100, Math.min(100, Math.round((b - r) * 100)))
+        const temperature = clampKelvin((pipeline.color.temperature || DEFAULT_WHITE_BALANCE_KELVIN) + (b - r) * 4500)
         const tint = Math.max(-100, Math.min(100, Math.round((g - (r + b) / 2) * 100)))
         commitPatch({ color: { temperature, tint, whiteBalanceMode: 'custom' } })
       }
@@ -368,7 +404,7 @@ export function WorkspacePage() {
     }).finally(() => {
       setPipetteActive(false)
     })
-  }, [pipetteActive, commitPatch])
+  }, [pipetteActive, commitPatch, pipeline.color.temperature])
 
   // 多选处理：Shift 范围选，Ctrl/Cmd 切换选
   function handleSelectionChange(clickedIndex: number, modifiers: { shift: boolean; ctrl: boolean; meta: boolean }): void {

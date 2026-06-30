@@ -1,6 +1,7 @@
 import { RotateCcw } from 'lucide-react'
 
 import { GRAIN_DEFAULTS, type EditPipeline } from '../shared/editPipeline'
+import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
 import { ParamSlider } from '../components/ParamSlider'
 import { Accordion } from '../../ui'
 
@@ -21,9 +22,9 @@ export function GrainPanel({ effects, modified, onEffectsChange }: GrainPanelPro
         </button>
       }
     >
-      <ParamSlider label="数量" value={effects.grainAmount} min={0} max={100} onChange={(grainAmount) => onEffectsChange({ grainAmount })} formatValue={String} />
-      <ParamSlider label="大小" value={effects.grainSize} min={0} max={100} onChange={(grainSize) => onEffectsChange({ grainSize })} formatValue={String} />
-      <ParamSlider label="粗糙度" value={effects.grainRoughness} min={0} max={100} onChange={(grainRoughness) => onEffectsChange({ grainRoughness })} formatValue={String} />
+      <ParamSlider label="数量" value={effects.grainAmount} {...sliderRange(EDIT_PARAMETER_RANGES.effects.grainAmount)} onChange={(grainAmount) => onEffectsChange({ grainAmount })} formatValue={String} />
+      <ParamSlider label="大小" value={effects.grainSize} {...sliderRange(EDIT_PARAMETER_RANGES.effects.grainSize)} onChange={(grainSize) => onEffectsChange({ grainSize })} formatValue={String} />
+      <ParamSlider label="粗糙度" value={effects.grainRoughness} {...sliderRange(EDIT_PARAMETER_RANGES.effects.grainRoughness)} onChange={(grainRoughness) => onEffectsChange({ grainRoughness })} formatValue={String} />
     </Accordion>
   )
 }

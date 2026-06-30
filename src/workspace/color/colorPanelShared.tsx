@@ -6,6 +6,7 @@ import type {
   ToneCurveBandAdjust,
   ToneCurveChannel,
 } from '../shared/editPipeline'
+import { EDIT_PARAMETER_RANGES } from '../shared/editParameterRanges'
 
 export const HSL_CHANNELS: Array<{ key: ColorMixChannel; label: string; color: string }> = [
   { key: 'red', label: '红色', color: '#ff3b30' },
@@ -39,7 +40,7 @@ export const CURVE_CHANNELS: Array<{ key: ToneCurveChannel; label: string }> = [
 ]
 
 export function exposureValue(value: number): string {
-  return `${value > 0 ? '+' : ''}${value.toFixed(1)}`
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)}`
 }
 
 export function decimalValue(value: number): string {
@@ -129,7 +130,8 @@ export function CurvePreview({ curve, onChange }: { curve: ToneCurveBandAdjust; 
     const viewBoxY = Math.max(0, Math.min(132, ((event.clientY - rect.top) / rect.height) * 132))
     const point = points.find((p) => p.id === dragging)
     if (!point) return
-    const adjust = Math.max(-100, Math.min(100, Math.round((point.base - viewBoxY) / 0.42)))
+    const range = EDIT_PARAMETER_RANGES.curve.band
+    const adjust = Math.max(range.uiMin ?? range.min, Math.min(range.uiMax ?? range.max, Math.round((point.base - viewBoxY) / 0.42)))
     onChange({ [dragging]: adjust })
   }
 

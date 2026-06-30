@@ -7,6 +7,39 @@ const COLOR_MIX_CHANNELS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 
 const TONE_CURVE_CHANNELS = ['rgb', 'luminance', 'red', 'green', 'blue'] as const
 const SELECTIVE_COLOR_CHANNELS = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta', 'white', 'neutral', 'black'] as const
 const CROP_MODE_PREVIEW_SCALE = 0.88
+const EXPOSURE_EV_SCALE = 0.4
+
+function kelvinToRgb(kelvin: number): { r: number; g: number; b: number } {
+  const temp = Math.max(10, kelvin / 100)
+  const r = temp <= 66 ? 255 : 329.698727446 * Math.pow(temp - 60, -0.1332047592)
+  const g = temp <= 66
+    ? 99.4708025861 * Math.log(temp) - 161.1195681661
+    : 288.1221695283 * Math.pow(temp - 60, -0.0755148492)
+  const b = temp >= 66 ? 255 : temp <= 19 ? 0 : 138.5177312231 * Math.log(temp - 10) - 305.0447927307
+  return {
+    r: Math.max(0.05, Math.min(1, r / 255)),
+    g: Math.max(0.05, Math.min(1, g / 255)),
+    b: Math.max(0.05, Math.min(1, b / 255)),
+  }
+}
+
+function whiteBalanceGains(kelvin: number, tint: number): { r: number; g: number; b: number } {
+  const reference = kelvinToRgb(5500)
+  const target = kelvinToRgb(kelvin)
+  const tintShift = tint / 100
+  const gains = {
+    r: reference.r / target.r * (1 + Math.max(0, tintShift) * 0.08),
+    g: reference.g / target.g * (1 - tintShift * 0.12),
+    b: reference.b / target.b * (1 - Math.max(0, tintShift) * 0.04),
+  }
+  const middle = (gains.r + gains.g + gains.b) / 3
+  return {
+    r: gains.r / middle,
+    g: gains.g / middle,
+    b: gains.b / middle,
+  }
+}
+
 const UNIFORM_NAMES = [
   'u_texture',
   'u_resolution',
@@ -23,8 +56,7 @@ const UNIFORM_NAMES = [
   'u_brightness',
   'u_saturation',
   'u_vibrance',
-  'u_temperature',
-  'u_tint',
+  'u_whiteBalanceGains',
   'u_highlights',
   'u_shadows',
   'u_whites',
@@ -184,14 +216,13 @@ export class WebGLRenderer {
     gl.uniform1f(this.uniform('u_cropAspect'), imageAspect)
     gl.uniform2f(this.uniform('u_frameSize'), currentFrameSize.width, currentFrameSize.height)
     gl.uniform1f(this.uniform('u_fillScale'), 1)
-    gl.uniform1f(this.uniform('u_exposure'), pipeline.color.exposure)
+    gl.uniform1f(this.uniform('u_exposure'), pipeline.color.exposure * EXPOSURE_EV_SCALE)
     gl.uniform1f(this.uniform('u_contrast'), pipeline.color.contrast / 100)
     gl.uniform1f(this.uniform('u_brightness'), pipeline.color.brightness / 100)
     gl.uniform1f(this.uniform('u_saturation'), pipeline.color.saturation / 100)
     gl.uniform1f(this.uniform('u_vibrance'), pipeline.color.vibrance / 100)
     const whiteBalance = this.whiteBalanceValues(pipeline)
-    gl.uniform1f(this.uniform('u_temperature'), whiteBalance.temperature / 100)
-    gl.uniform1f(this.uniform('u_tint'), whiteBalance.tint / 100)
+    gl.uniform3f(this.uniform('u_whiteBalanceGains'), whiteBalance.gains.r, whiteBalance.gains.g, whiteBalance.gains.b)
     gl.uniform1f(this.uniform('u_highlights'), pipeline.color.highlights / 100)
     gl.uniform1f(this.uniform('u_shadows'), pipeline.color.shadows / 100)
     gl.uniform1f(this.uniform('u_whites'), pipeline.color.whites / 100)
@@ -262,11 +293,11 @@ export class WebGLRenderer {
     )
   }
 
-  private whiteBalanceValues(pipeline: EditPipeline): { temperature: number; tint: number } {
-    return {
-      temperature: pipeline.color.temperature,
-      tint: pipeline.color.tint,
-    }
+  private whiteBalanceValues(pipeline: EditPipeline): { temperature: number; tint: number; gains: { r: number; g: number; b: number } } {
+    const temperature = Math.max(2000, Math.min(15000, pipeline.color.temperature || 5500))
+    const tint = Math.max(-100, Math.min(100, pipeline.color.tint || 0))
+    const gains = whiteBalanceGains(temperature, tint)
+    return { temperature, tint, gains }
   }
 
   private initGeometry(): void {
