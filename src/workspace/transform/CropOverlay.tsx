@@ -1,7 +1,5 @@
-import { RotateCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { IconButton } from '../../ui'
 import type { CropRect } from '../shared/editPipeline'
 import { fitCropInsideImage, maxCropInsideImage, moveCropInsideImage, normalizeFineRotate, resizeCropInsideImage, sameCrop, type CropDragMode } from './cropGeometry'
 
@@ -28,6 +26,7 @@ function pointerAngle(event: PointerEvent | React.PointerEvent, bounds: DOMRect)
 
 export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate, aspectRatio, onCropChange, onRotateChange, onConfirm, onCancel }: CropOverlayProps) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
   const preferredCropRef = useRef<CropRect | null>(null)
   const activeCropRef = useRef<CropRect>(DEFAULT_CROP)
   const cropFrameKeyRef = useRef('')
@@ -82,7 +81,7 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
     const activeDrag = drag
 
     function handlePointerMove(event: PointerEvent): void {
-      const bounds = rootRef.current?.getBoundingClientRect()
+      const bounds = frameRef.current?.getBoundingClientRect()
       if (!bounds) return
       if (activeDrag.mode === 'rotate') {
         onRotateChange(normalizeFineRotate(activeDrag.rotate + pointerAngle(event, bounds) - activeDrag.angle))
@@ -113,7 +112,7 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
   function startDrag(event: React.PointerEvent, mode: CropDragMode): void {
     event.preventDefault()
     event.stopPropagation()
-    const bounds = rootRef.current?.getBoundingClientRect()
+    const bounds = frameRef.current?.getBoundingClientRect()
     setDrag({
       mode,
       x: event.clientX,
@@ -132,53 +131,50 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
     <div
       ref={rootRef}
       className="workspace-crop-overlay"
-      style={{
-        left: imageRect.x,
-        top: imageRect.y,
-        width: imageRect.width,
-        height: imageRect.height,
-      }}
       onPointerDown={startRotate}
       onDoubleClick={onConfirm}
     >
-      <div className="workspace-crop-mask" />
-      <IconButton
-        className="workspace-crop-rotate-handle"
-        variant="light"
-        size="compact"
-        icon={<RotateCw size={17} />}
-        aria-label="旋转裁剪"
-        onPointerDown={startRotate}
-      />
       <div
-        className="workspace-crop-box"
-        onPointerDown={(event) => startDrag(event, 'move')}
+        ref={frameRef}
+        className="workspace-crop-frame"
         style={{
-          left: `${activeCrop.x * 100}%`,
-          top: `${activeCrop.y * 100}%`,
-          width: `${activeCrop.w * 100}%`,
-          height: `${activeCrop.h * 100}%`,
+          left: imageRect.x,
+          top: imageRect.y,
+          width: imageRect.width,
+          height: imageRect.height,
         }}
       >
-        <div className="workspace-crop-grid" />
-        {(['tl', 'tr', 'bl', 'br'] as const).map((mode) => (
-          <button
-            key={mode}
-            className={`workspace-crop-corner ${mode}`}
-            type="button"
-            onPointerDown={(event) => startDrag(event, mode)}
-            aria-label="调整裁剪区域"
-          />
-        ))}
-        {(['top', 'right', 'bottom', 'left'] as const).map((mode) => (
-          <button
-            key={mode}
-            className={`workspace-crop-edge ${mode}`}
-            type="button"
-            onPointerDown={(event) => startDrag(event, mode)}
-            aria-label="调整裁剪区域"
-          />
-        ))}
+        <div className="workspace-crop-mask" />
+        <div
+          className="workspace-crop-box"
+          onPointerDown={(event) => startDrag(event, 'move')}
+          style={{
+            left: `${activeCrop.x * 100}%`,
+            top: `${activeCrop.y * 100}%`,
+            width: `${activeCrop.w * 100}%`,
+            height: `${activeCrop.h * 100}%`,
+          }}
+        >
+          <div className="workspace-crop-grid" />
+          {(['tl', 'tr', 'bl', 'br'] as const).map((mode) => (
+            <button
+              key={mode}
+              className={`workspace-crop-corner ${mode}`}
+              type="button"
+              onPointerDown={(event) => startDrag(event, mode)}
+              aria-label="调整裁剪区域"
+            />
+          ))}
+          {(['top', 'right', 'bottom', 'left'] as const).map((mode) => (
+            <button
+              key={mode}
+              className={`workspace-crop-edge ${mode}`}
+              type="button"
+              onPointerDown={(event) => startDrag(event, mode)}
+              aria-label="调整裁剪区域"
+            />
+          ))}
+        </div>
       </div>
     </div>
   )
