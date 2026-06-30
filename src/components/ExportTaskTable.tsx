@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Clock, Eye, FileDown, Loader2, Trash2, X, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
-import type { ExportTaskRecord } from '../shared/types'
+import type { ExportTaskRecord, LunaFile } from '../shared/types'
 import { useApp } from '../context/AppContext'
 import { Button, Dialog, IconButton } from '../ui'
+import { filePathToPreviewUrl } from './previewModalUtils'
+import { PreviewModal } from './PreviewModal'
 import '../styles/export-tasks.css'
 
 function formatTime(ts: number | null | undefined): string {
@@ -38,7 +40,7 @@ interface ExportTaskDetailDialogProps {
   onRevealFile?: (path: string) => void
 }
 
-function ExportTaskDetailDialog({ task, open, onOpenChange, onRevealFile }: ExportTaskDetailDialogProps) {
+function ExportTaskDetailDialog({ task, open, onOpenChange, onRevealFile, onPreviewItem }: ExportTaskDetailDialogProps & { onPreviewItem?: (item: ExportTaskRecord['items'][number]) => void }) {
   if (!task) return null
 
   return (
@@ -58,16 +60,18 @@ function ExportTaskDetailDialog({ task, open, onOpenChange, onRevealFile }: Expo
           <thead>
             <tr>
               <th>文件名</th>
+              <th>类型</th>
               <th>开始时间</th>
               <th>完成时间</th>
               <th>耗时</th>
               <th>进度</th>
-              <th>状态</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {task.items.map((item) => {
               const pct = item.status === 'done' ? 100 : item.progress
+              const isVideo = item.kind === 'video' || item.kind === 'lrv'
               return (
                 <tr key={item.exportId} className={`et-row et-status-${item.status}`}>
                   <td>
@@ -78,6 +82,12 @@ function ExportTaskDetailDialog({ task, open, onOpenChange, onRevealFile }: Expo
                       {item.status === 'queued' && <Clock size={13} style={{ flexShrink: 0, color: 'var(--muted)' }} />}
                       {item.status === 'canceled' && <span style={{ flexShrink: 0, fontSize: 13 }}>⏹️</span>}
                       <span className="et-item-name">{item.fileName}</span>
+                    </span>
+                  </td>
+                  <td className="et-cell-num">
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {isVideo ? <Film size={13} /> : <ImageIcon size={13} />}
+                      {isVideo ? '视频' : '图片'}
                     </span>
                   </td>
                   <td className="et-cell-time">{formatTime(item.startTime)}</td>
@@ -92,16 +102,25 @@ function ExportTaskDetailDialog({ task, open, onOpenChange, onRevealFile }: Expo
                     </div>
                   </td>
                   <td>
-                    {item.status === 'done' && item.destinationPath ? (
-                      <IconButton variant="ghost" onClick={() => onRevealFile?.(item.destinationPath!)} title="在文件夹中显示" icon={<FileDown size={14} />} />
-                    ) : (
-                      <span className={`et-badge et-badge-${item.status}`}>
-                        {item.status === 'exporting' ? '导出中' : ''}
-                        {item.status === 'queued' ? '等待中' : ''}
-                        {item.status === 'failed' ? (item.error ? item.error : '失败') : ''}
-                        {item.status === 'canceled' ? '已取消' : ''}
-                      </span>
-                    )}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      {(item.status === 'exporting' || item.status === 'queued') && (
+                        <span className={`et-badge et-badge-${item.status}`}>
+                          {item.status === 'exporting' ? '导出中' : '等待中'}
+                        </span>
+                      )}
+                      {item.status === 'failed' && (
+                        <span className="et-badge et-badge-failed">{item.error ?? '失败'}</span>
+                      )}
+                      {item.status === 'canceled' && (
+                        <span className="et-badge et-badge-canceled">已取消</span>
+                      )}
+                      {item.status === 'done' && item.destinationPath && (
+                        <>
+                          <IconButton variant="ghost" onClick={() => onPreviewItem?.(item)} title="预览" icon={<Eye size={14} />} />
+                          <IconButton variant="ghost" onClick={() => onRevealFile?.(item.destinationPath!)} title="在文件夹中显示" icon={<FileDown size={14} />} />
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )
@@ -122,9 +141,12 @@ interface ExportTaskTableProps {
 export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   const { exporting } = useApp()
   const [tasks, setTasks] = useState<ExportTaskRecord[]>([])
+  const PAGE_SIZE = 10
   const [loading, setLoading] = useState(false)
   const [detailTask, setDetailTask] = useState<ExportTaskRecord | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [page, setPage] = useState(1)
+  const [previewFile, setPreviewFile] = useState<LunaFile | null>(null)
 
   const loadTasks = async () => {
     setLoading(true)
@@ -141,13 +163,55 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   useEffect(() => { void loadTasks() }, [])
   useEffect(() => {
     if (!exporting) return
-    void loadTasks() // 立即刷新，不等 2s
+    void loadTasks()
     const interval = setInterval(() => { void loadTasks() }, 2000)
     return () => clearInterval(interval)
   }, [exporting])
 
+  const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const pageTasks = tasks.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
+  // 导出进行中时翻回第一页
+  useEffect(() => {
+    if (exporting) setPage(1)
+  }, [exporting])
+
+  const handlePreviewItem = (item: ExportTaskRecord['items'][number]): void => {
+    if (!item.destinationPath) return
+    const destUrl = filePathToPreviewUrl(item.destinationPath) ?? ''
+    setPreviewFile({
+      id: item.exportId,
+      name: item.destinationPath.split(/[/\\]/).pop() ?? item.fileName,
+      href: item.fileName,
+      sourceUrl: destUrl,
+      url: destUrl,
+      dateText: '',
+      timeText: '',
+      sizeText: '',
+      bytes: null,
+      kind: item.kind as 'image' | 'video',
+      extension: '',
+      capturedAt: null,
+      groupDay: '',
+      groupHour: '',
+      videoKey: null,
+      previewName: null,
+      previewUrl: null,
+      cacheFilePath: null,
+      downloadFilePath: item.destinationPath,
+      thumbnailUrl: null,
+      isLivePhoto: false,
+      livePhotoVideoName: null,
+      livePhotoVideoUrl: null,
+      livePhotoCacheFilePath: null,
+      downloadName: item.fileName,
+      canPreview: true,
+      localPath: item.destinationPath,
+    })
+  }
+
   const handleCancelTask = async (taskId: string): Promise<void> => {
-    // 立即乐观更新本地状态，让按钮消失
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId) return t
@@ -166,11 +230,6 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
     await window.luna.cancelExportTask(taskId)
   }
 
-  const handleClear = async () => {
-    await window.luna.clearExportTasks()
-    setTasks([])
-  }
-
   if (loading && tasks.length === 0) {
     return (
       <div className="et-loading">
@@ -182,13 +241,6 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
 
   return (
     <>
-      {tasks.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <Button variant="ghost" size="mini" icon={<Trash2 size={12} />} onClick={() => void handleClear()}>
-            清空记录
-          </Button>
-        </div>
-      )}
       <div className="et-table-wrap">
         <table className="et-table">
           <thead>
@@ -207,7 +259,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
               <tr>
                 <td colSpan={7} className="et-empty">暂无导出记录</td>
               </tr>
-            ) : tasks.map((task) => {
+            ) : pageTasks.map((task) => {
               const done = task.items.filter((i) => i.status === 'done').length
               const failed = task.items.filter((i) => i.status === 'failed').length
               return (
@@ -257,7 +309,34 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         </table>
       </div>
 
-      <ExportTaskDetailDialog task={detailTask} open={detailOpen} onOpenChange={setDetailOpen} onRevealFile={onRevealFile} />
+      {totalPages > 1 && (
+        <div className="et-pagination">
+          <button className="et-page-btn" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+            <ChevronLeft size={14} />
+          </button>
+          <span className="et-page-info">{safePage} / {totalPages}</span>
+          <button className="et-page-btn" disabled={safePage >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+
+      <ExportTaskDetailDialog task={detailTask} open={detailOpen} onOpenChange={setDetailOpen} onRevealFile={onRevealFile} onPreviewItem={handlePreviewItem} />
+      {previewFile && (
+        <PreviewModal
+          files={[previewFile]}
+          currentFile={previewFile}
+          currentFileId={previewFile.id}
+          preview={null}
+          previewLoading={false}
+          downloadProgress={undefined}
+          isDownloadsPage={false}
+          onClose={() => setPreviewFile(null)}
+          onDownload={() => {}}
+          onReveal={(f) => onRevealFile?.(f.downloadFilePath ?? f.localPath ?? '')}
+          onFileChange={setPreviewFile}
+        />
+      )}
     </>
   )
 }

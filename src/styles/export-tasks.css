@@ -191,7 +191,46 @@
 
 .et-empty {
   text-align: center !important;
-  padding: 40px 12px !important;
+  padding: 64px 12px !important;
   color: var(--muted);
   font-size: 13px;
+}
+
+/* ====== 分页 ====== */
+
+.et-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 0 4px;
+}
+
+.et-page-btn {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.et-page-btn:hover:not(:disabled) {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.et-page-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.et-page-info {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
