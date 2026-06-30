@@ -132,7 +132,7 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
     // 1. Content Identifier — the critical pairing UUID (matches JPG)
     let contentId = makeMetadataItem(
         keySpace: .quickTimeMetadata,
-        key: "com.apple.quicktime.content.identifier" as NSString,
+        key: "com.apple.quicktime.content-identifier" as NSString,
         value: identifier as NSString,
         dataType: kCMMetadataBaseDataType_UTF8 as String
     )
@@ -145,7 +145,15 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
         dataType: kCMMetadataBaseDataType_SInt8 as String
     )
 
-    // 3. Creation date
+    // 3. Live Photo Info — THE critical key iOS checks to recognize Live Photo video
+    let livePhotoInfo = makeMetadataItem(
+        keySpace: .quickTimeMetadata,
+        key: "com.apple.quicktime.live-photo-info" as NSString,
+        value: 1 as NSNumber,
+        dataType: kCMMetadataBaseDataType_SInt8 as String
+    )
+
+    // 4. Creation date
     let df = DateFormatter()
     df.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZZZ"
     let creationDate = makeMetadataItem(
@@ -155,7 +163,7 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
         dataType: kCMMetadataBaseDataType_UTF8 as String
     )
 
-    // 4. Make and model (Apple-standard)
+    // 5. Make and model (Apple-standard)
     let makeItem = makeMetadataItem(
         keySpace: .quickTimeMetadata,
         key: "com.apple.quicktime.make" as NSString,
@@ -169,7 +177,7 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
         dataType: kCMMetadataBaseDataType_UTF8 as String
     )
 
-    // 5. Also write to QuickTime UserData for broader compatibility
+    // 6. Also write to QuickTime UserData for broader compatibility
     let contentIdUD = makeMetadataItem(
         keySpace: .quickTimeUserData,
         key: "\\xa9inf" as NSString,  // UserData copyright info
@@ -177,7 +185,7 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
         dataType: kCMMetadataBaseDataType_UTF8 as String
     )
 
-    writer.metadata = [contentId, stillImageTime, creationDate, makeItem, modelItem, contentIdUD]
+    writer.metadata = [contentId, stillImageTime, livePhotoInfo, creationDate, makeItem, modelItem, contentIdUD]
 
     // ── Video track ──
     let videoInput = AVAssetWriterInput(mediaType: .video,
