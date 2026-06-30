@@ -181,6 +181,10 @@
   display: block;
 }
 
+.workspace-watermark-overlay {
+  z-index: 1;
+}
+
 .workspace-stage-status {
   position: absolute;
   inset: 0;

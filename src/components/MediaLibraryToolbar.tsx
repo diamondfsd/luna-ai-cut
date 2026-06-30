@@ -5,11 +5,10 @@ import { useNavigate } from 'react-router-dom'
 
 import { DownloadProgressModal } from './DownloadProgressModal'
 import { ExportModal } from './ExportModal'
-import { ExportProgressModal } from './ExportProgressModal'
 import { AddToWorkspaceProjectDialog, CreateWorkspaceProjectDialog } from './WorkspaceProjectDialogs'
 import { formatBytes } from '../lib/format'
 import type { CardSize, SortOrder } from '../pages/useMediaLibraryController'
-import type { DeviceDefinition, DownloadProgress, ExportProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { DeviceDefinition, DownloadProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
   Button,
   ButtonGroup,
@@ -36,8 +35,6 @@ interface MediaLibraryToolbarProps {
   downloading: boolean
   downloadStatusFilter: DownloadStatusFilter
   exportError: string | null
-  exportProgress: Map<string, ExportProgress>
-  exportSnapshots: Map<string, LunaFile>
   exporting: boolean
   exportWatermarkSettings: WatermarkSettingsType
   isDownloadsPage: boolean
@@ -58,8 +55,6 @@ interface MediaLibraryToolbarProps {
   setDownloading: (downloading: boolean) => void
   setDownloadStatusFilter: (value: DownloadStatusFilter) => void
   setExportError: (value: string | null) => void
-  setExporting: (value: boolean) => void
-  setExportProgress: Dispatch<SetStateAction<Map<string, ExportProgress>>>
   setExportWatermarkSettings: (settings: WatermarkSettingsType) => void
   setSelected: Dispatch<SetStateAction<Set<string>>>
   setShowDeleteDialog: (value: boolean) => void
@@ -90,8 +85,6 @@ export function MediaLibraryToolbar({
   downloading,
   downloadStatusFilter,
   exportError,
-  exportProgress,
-  exportSnapshots,
   exporting,
   exportWatermarkSettings,
   isDownloadsPage,
@@ -112,8 +105,6 @@ export function MediaLibraryToolbar({
   setDownloading,
   setDownloadStatusFilter,
   setExportError,
-  setExporting,
-  setExportProgress,
   setExportWatermarkSettings,
   setSelected,
   setShowDeleteDialog,
@@ -360,26 +351,6 @@ export function MediaLibraryToolbar({
           )}
         </div>
 
-        {isDownloadsPage && exportProgress.size > 0 && (
-          <ExportProgressModal
-            exportProgress={exportProgress}
-            fileSnapshots={exportSnapshots}
-            exporting={exporting}
-            setExporting={setExporting}
-            onRevealFile={revealFileByPath}
-            onCanceled={() => {
-              setExportProgress((current) => {
-                const next = new Map(current)
-                for (const [fileName, progress] of next.entries()) {
-                  if (progress.status === 'queued' || progress.status === 'exporting') {
-                    next.set(fileName, { ...progress, status: 'canceled', percent: null })
-                  }
-                }
-                return next
-              })
-            }}
-          />
-        )}
         {isDownloadsPage && exportError && (
           <span className="export-error">{exportError}<button onClick={() => setExportError(null)} title="关闭">&times;</button></span>
         )}

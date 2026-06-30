@@ -80,6 +80,64 @@
   gap: 8px;
 }
 
+.dl-task-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dl-task-item {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dl-task-item:hover,
+.dl-task-item.active {
+  border-color: rgba(0, 102, 204, 0.28);
+  background: rgba(0, 102, 204, 0.06);
+}
+
+.dl-task-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dl-task-meta {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dl-task-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.dl-task-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 0.3s ease;
+}
+
+.dl-task-item.failed .dl-task-fill {
+  background: #ff3b30;
+}
+
 .dl-file-item {
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr) auto;

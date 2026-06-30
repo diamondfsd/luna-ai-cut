@@ -1,12 +1,13 @@
-import { Check, Crop, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
+import { Check, Crop, ImagePlus, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
 import type { EditPipeline, PipelinePatch } from '../shared/editPipeline'
 import { createDefaultPipeline } from '../shared/editPipeline'
 import { ColorPanel } from '../color/ColorPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
+import { WatermarkSettings } from '../../components/WatermarkSettings'
 
-export type WorkspaceTool = 'color' | 'crop'
+export type WorkspaceTool = 'color' | 'crop' | 'watermark'
 
 interface WorkspaceEditSidebarProps {
   activeTool: WorkspaceTool
@@ -27,7 +28,14 @@ interface WorkspaceEditSidebarProps {
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
+  { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
 ]
+
+function titleForTool(tool: WorkspaceTool): string {
+  if (tool === 'crop') return '裁剪工具'
+  if (tool === 'watermark') return '水印'
+  return '色彩调节'
+}
 
 export function WorkspaceEditSidebar({
   activeTool,
@@ -48,7 +56,7 @@ export function WorkspaceEditSidebar({
     <aside className="workspace-edit-sidebar">
       <section className="workspace-tool-panel">
         <header className="workspace-tool-panel-header">
-          <h2>{activeTool === 'color' ? '色彩调节' : '裁剪工具'}</h2>
+          <h2>{titleForTool(activeTool)}</h2>
         </header>
         <div className="workspace-tool-panel-body">
           {activeTool === 'color' ? (
@@ -59,7 +67,7 @@ export function WorkspaceEditSidebar({
               onEffectsChange={(effects) => onUpdatePipeline({ effects })}
               onActivatePipette={onActivatePipette}
             />
-          ) : (
+          ) : activeTool === 'crop' ? (
             <>
               <Accordion
                 title="裁剪"
@@ -95,6 +103,26 @@ export function WorkspaceEditSidebar({
                 </Button>
               </div>
             </>
+          ) : (
+            <Accordion
+              title="水印"
+              defaultOpen
+              actions={
+                <button
+                  className="workspace-acc-reset"
+                  type="button"
+                  onClick={() => onUpdatePipeline({ watermark: createDefaultPipeline().watermark })}
+                  title="重置水印"
+                >
+                  <RotateCcw size={11} />
+                </button>
+              }
+            >
+              <WatermarkSettings
+                settings={pipeline.watermark}
+                onChange={(watermark) => onUpdatePipeline({ watermark })}
+              />
+            </Accordion>
           )}
         </div>
       </section>

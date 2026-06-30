@@ -60,7 +60,7 @@ const lunaApi: LunaApi = {
     ipcRenderer.invoke('luna:requestVideoFrameRate', file, cachedPath),
   downloadFiles: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('luna:downloadFiles', files, downloadDir),
   cancelDownloads: () => ipcRenderer.invoke('luna:cancelDownloads'),
-  exportFiles: (files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
+  exportFiles: (files: Array<{ name: string; kind: string; localPath?: string; exportId?: string; taskId?: string; taskName?: string; createdAt?: number }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
     ipcRenderer.invoke('luna:exportFiles', files, exportDir, watermarkSettings, videoExportSettings),
   cancelExports: () => ipcRenderer.invoke('luna:cancelExports'),
   getDownloadedRecords: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('downloads:records', files, downloadDir),
@@ -77,6 +77,7 @@ const lunaApi: LunaApi = {
     createProject: (name: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:createProject', name, assets),
     addAssetsToProject: (projectId: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:addAssetsToProject', projectId, assets),
     saveProject: (project: WorkspaceProject) => ipcRenderer.invoke('workspace:saveProject', project),
+    exportImage: (name: string, dataUrl: string) => ipcRenderer.invoke('workspace:exportImage', name, dataUrl),
   },
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: DownloadProgress): void => callback(progress)

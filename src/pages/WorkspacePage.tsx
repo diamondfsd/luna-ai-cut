@@ -11,6 +11,8 @@ import { CropOverlay } from '../workspace/transform/CropOverlay'
 import type { CropPreset } from '../workspace/transform/TransformPanel'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
+import { WorkspaceWatermarkOverlay } from '../workspace/components/WorkspaceWatermarkOverlay'
+import { useWorkspaceExport } from '../workspace/export/useWorkspaceExport'
 import { cropForAspect, frameAspect, maxCropInsideImage } from '../workspace/transform/cropGeometry'
 import { WorkspaceEditSidebar, type WorkspaceTool } from '../workspace/components/WorkspaceEditSidebar'
 
@@ -80,14 +82,12 @@ export function WorkspacePage() {
     () => (cropActive && transformDraft ? mergePipeline(pipeline, { transform: transformDraft }) : pipeline),
     [cropActive, transformDraft, pipeline],
   )
-  const comparePipeline = useMemo(
-    () => mergePipeline(previewPipeline, { color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects }),
-    [previewPipeline],
-  )
+  const comparePipeline = useMemo(() => mergePipeline(previewPipeline, { color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects }), [previewPipeline])
   const media = projectMedia(currentProject, transientMedia)
   const activeMedia = media[activeIndex] ?? null
   const editorOpen = Boolean(currentProject || transientMedia.length > 0)
   const canRender = Boolean(rendererRef.current && activeMedia && !webglMessage?.includes('不支持'))
+  const exportWorkspaceImage = useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline: previewPipeline })
 
   useEffect(() => {
     if (routeState?.project) {
@@ -420,6 +420,7 @@ export function WorkspacePage() {
             style={{ transform: `translate(${viewPan.x}px, ${viewPan.y}px) scale(${viewZoom})` }}
           >
             <canvas ref={canvasRef} className="workspace-canvas" />
+            <WorkspaceWatermarkOverlay settings={previewPipeline.watermark} imageRect={imageRect} />
             {cropActive && canRender && (
               <CropOverlay
                 crop={activeTransform.crop}
@@ -487,7 +488,7 @@ export function WorkspacePage() {
           >
             对比
           </Button>
-          <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMedia} onClick={() => toast.show('工作台导出管线将在下一步接入')}>
+          <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMedia || !canRender} onClick={() => void exportWorkspaceImage()}>
             导出
           </Button>
         </div>

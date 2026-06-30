@@ -2,6 +2,8 @@ import { MonitorCog } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
+import { useApp } from '../context/AppContext'
+import { ExportProgressModal } from './ExportProgressModal'
 import { HelpDialog } from './HelpDialog'
 import '../styles/nav.css'
 
@@ -12,6 +14,7 @@ interface AppNavProps {
 }
 
 export function AppNav({ activeDevice, connection, sourceMode }: AppNavProps) {
+  const { exportProgress, exportSnapshots, exporting, setExporting, setExportProgress } = useApp()
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
@@ -46,6 +49,26 @@ export function AppNav({ activeDevice, connection, sourceMode }: AppNavProps) {
           <button className="nav-icon-button" onClick={() => window.luna.openWifiSettings()} title="打开 Wi-Fi 设置">
             <MonitorCog size={15} />
           </button>
+          {exportProgress.size > 0 && (
+            <ExportProgressModal
+              exportProgress={exportProgress}
+              fileSnapshots={exportSnapshots}
+              exporting={exporting}
+              setExporting={setExporting}
+              onRevealFile={(path) => void window.luna.revealFile(path)}
+              onCanceled={() => {
+                setExportProgress((current) => {
+                  const next = new Map(current)
+                  for (const [key, progress] of next.entries()) {
+                    if (progress.status === 'queued' || progress.status === 'exporting') {
+                      next.set(key, { ...progress, status: 'canceled', percent: null })
+                    }
+                  }
+                  return next
+                })
+              }}
+            />
+          )}
           <HelpDialog />
         </div>
       </div>

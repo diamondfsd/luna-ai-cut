@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Download, Eye, FileQuestion, FolderOpen, Loader2, X } from 'lucide-react'
 
 import { logger } from '../lib/rendererLogger'
@@ -46,6 +46,23 @@ function statusLabel(progress: ExportProgress): string {
   return '已完成'
 }
 
+function taskStatus(items: ExportProgress[]): ExportProgress['status'] {
+  if (items.some((item) => item.status === 'exporting')) return 'exporting'
+  if (items.some((item) => item.status === 'queued')) return 'queued'
+  if (items.some((item) => item.status === 'failed')) return 'failed'
+  if (items.some((item) => item.status === 'canceled')) return 'canceled'
+  return 'done'
+}
+
+function taskPercent(items: ExportProgress[]): number {
+  if (items.length === 0) return 0
+  return items.reduce((sum, progress) => {
+    if (progress.status === 'done') return sum + 100
+    if (progress.status === 'failed' || progress.status === 'canceled') return sum
+    return sum + (progress.percent ?? 0)
+  }, 0) / items.length
+}
+
 export function ExportProgressModal({
   exportProgress,
   fileSnapshots,
@@ -89,6 +106,23 @@ export function ExportProgressModal({
     const statusOrder = statusRank[a.status] - statusRank[b.status]
     return statusOrder || a.index - b.index || a.fileName.localeCompare(b.fileName)
   })
+  const tasks = useMemo(() => {
+    const groups = new Map<string, ExportProgress[]>()
+    for (const progress of exportProgress.values()) {
+      const taskId = progress.taskId ?? progress.exportId ?? progress.fileName
+      groups.set(taskId, [...(groups.get(taskId) ?? []), progress])
+    }
+    return [...groups.entries()]
+      .map(([id, items]) => ({
+        id,
+        title: items[0]?.taskName ?? `导出 ${items.length} 个文件`,
+        createdAt: items[0]?.createdAt ?? 0,
+        items: items.sort((a, b) => a.index - b.index),
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt)
+  }, [exportProgress])
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? tasks[0] ?? null
   const totalCount = entries.length
   const completedCount = entries.filter((progress) => progress.status === 'done').length
   const failedCount = entries.filter((progress) => progress.status === 'failed').length
@@ -159,8 +193,37 @@ export function ExportProgressModal({
           </div>
         </div>
 
-        <div className="dl-file-list">
-          {entries.map((progress) => {
+        <div className="dl-task-list">
+          {tasks.map((task) => {
+            const status = taskStatus(task.items)
+            const percent = taskPercent(task.items)
+            const done = task.items.filter((item) => item.status === 'done').length
+            const failed = task.items.filter((item) => item.status === 'failed').length
+            return (
+              <button
+                key={task.id}
+                className={`dl-task-item ${selectedTask?.id === task.id ? 'active' : ''} ${status}`}
+                type="button"
+                onClick={() => setSelectedTaskId(task.id)}
+              >
+                <span className="dl-task-title">{task.title}</span>
+                <span className="dl-task-meta">
+                  {done}/{task.items.length}
+                  {failed > 0 && `，${failed} 个失败`}
+                  {' · '}
+                  {Math.round(percent)}%
+                </span>
+                <span className="dl-task-track">
+                  <span className="dl-task-fill" style={{ width: `${Math.min(100, percent)}%` }} />
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {selectedTask && (
+          <div className="dl-file-list">
+            {selectedTask.items.map((progress) => {
             const file = fileSnapshots.get(progress.exportId ?? progress.fileName)
             const previewSource = previewSourceFor(progress, file, readyThumbnailUrlsRef.current)
             const isVideoPreview = file?.kind === 'video' || file?.kind === 'lrv'
@@ -224,8 +287,9 @@ export function ExportProgressModal({
                 </div>
               </div>
             )
-          })}
-        </div>
+            })}
+          </div>
+        )}
       </DropdownPanel>
 
       {previewFile && (
