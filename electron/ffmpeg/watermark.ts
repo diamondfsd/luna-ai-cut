@@ -73,13 +73,15 @@ export class WatermarkModule implements FfmpegModule {
     })
 
     // GPU overlay（overlay_cuda / overlay_qsv）需要先将水印图片上传到 GPU
+    // 注意：当前默认不使用 GPU overlay，详见 hwaccel.ts 中 nvidiaCuda/intelQsv 的注释
     let filter: string
     if (this.overlayFilter === 'overlay_cuda') {
       filter = `[1:v]scale=${wmSize}:-1,format=nv12,hwupload_cuda[wm];${ctx.prevLabel}[wm]overlay_cuda=${ox}:${oy}`
     } else if (this.overlayFilter === 'overlay_qsv') {
       filter = `[1:v]scale=${wmSize}:-1,format=nv12,hwupload=qsv[wm];${ctx.prevLabel}[wm]overlay_qsv=${ox}:${oy}`
     } else {
-      filter = `[1:v]scale=${wmSize}:-1[wm];${ctx.prevLabel}[wm]${this.overlayFilter}=${ox}:${oy}`
+      // format=rgba 确保 PNG 透明通道被保留；overlay=:format=auto 自动选择输出格式
+      filter = `[1:v]format=rgba,scale=${wmSize}:-1[wm];${ctx.prevLabel}[wm]overlay=${ox}:${oy}:format=auto`
     }
 
     return {

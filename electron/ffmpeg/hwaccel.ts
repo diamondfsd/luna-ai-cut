@@ -79,22 +79,28 @@ async function probeHevcVideoToolbox(ffmpegPath: string): Promise<boolean> {
 function nvidiaCuda(): HwAccelConfig {
   return {
     type: 'cuda',
-    preInputArgs: ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda'],
+    // 不使用 -hwaccel_output_format cuda：解码帧回退到 CPU 内存，
+    // 避免 overlay_cuda 在 10-bit/odd-size 视频上格式转换失败
+    preInputArgs: ['-hwaccel', 'cuda'],
     encoderNameH264: 'h264_nvenc',
     encoderNameH265: 'hevc_nvenc',
-    encoderArgs: ['-preset', 'p7', '-rc', 'vbr'],
-    overlayFilter: 'overlay_cuda',
+    encoderArgs: ['-preset', 'p5', '-rc', 'vbr'],
+    // 使用 CPU overlay，稳定性远高于 overlay_cuda
+    overlayFilter: 'overlay',
   }
 }
 
 function intelQsv(): HwAccelConfig {
   return {
     type: 'qsv',
-    preInputArgs: ['-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv'],
+    // 不使用 -hwaccel_output_format qsv：解码帧回退到 CPU 内存，
+    // 避免 overlay_qsv 在特定格式视频上转换失败
+    preInputArgs: ['-hwaccel', 'qsv'],
     encoderNameH264: 'h264_qsv',
     encoderNameH265: 'hevc_qsv',
     encoderArgs: ['-preset', '7'],
-    overlayFilter: 'overlay_qsv',
+    // 使用 CPU overlay，稳定性远高于 overlay_qsv
+    overlayFilter: 'overlay',
   }
 }
 
