@@ -6,8 +6,7 @@ import vertexSource from './shaders/vertex.glsl?raw'
 const COLOR_MIX_CHANNELS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'] as const
 const TONE_CURVE_CHANNELS = ['rgb', 'luminance', 'red', 'green', 'blue'] as const
 const SELECTIVE_COLOR_CHANNELS = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta', 'white', 'neutral', 'black'] as const
-const CROP_MODE_PREVIEW_SCALE = 0.82
-
+const CROP_MODE_PREVIEW_SCALE = 0.88
 const UNIFORM_NAMES = [
   'u_texture',
   'u_resolution',
@@ -151,22 +150,33 @@ export class WebGLRenderer {
     const selectionCrop = pipeline.transform.crop ?? fullCrop
     const crop = options.cropMode ? fullCrop : selectionCrop
     gl.uniform2f(this.uniform('u_resolution'), this.sourceSize.width, this.sourceSize.height)
-    const canvasAspect = Math.max(1, this.canvas.width) / Math.max(1, this.canvas.height)
     const imageAspect = Math.max(1, this.sourceSize.width) / Math.max(1, this.sourceSize.height)
     const totalRotate = pipeline.transform.orientation + pipeline.transform.rotate
     const displayImageAspect = displayAspectForCrop(imageAspect, pipeline.transform.orientation, crop)
     const currentFrameSize = frameSize(imageAspect, pipeline.transform.orientation)
+    const canvasClientW = Math.max(1, this.canvas.clientWidth)
+    const canvasClientH = Math.max(1, this.canvas.clientHeight)
     const displayContainerScale = options.cropMode ? CROP_MODE_PREVIEW_SCALE : 1
-    const displayContainerW = Math.max(1, this.canvas.clientWidth) * displayContainerScale
-    const displayContainerH = Math.max(1, this.canvas.clientHeight) * displayContainerScale
+    const displayContainerW = canvasClientW * displayContainerScale
+    const displayContainerH = canvasClientH * displayContainerScale
+    const displayContainerX = (canvasClientW - displayContainerW) / 2
+    const displayContainerY = (canvasClientH - displayContainerH) / 2
     const displayRect = containRect(displayContainerW, displayContainerH, displayImageAspect)
+    const dprX = this.canvas.width / canvasClientW
+    const dprY = this.canvas.height / canvasClientH
+    gl.viewport(
+      Math.round(displayContainerX * dprX),
+      Math.round((canvasClientH - displayContainerY - displayContainerH) * dprY),
+      Math.round(displayContainerW * dprX),
+      Math.round(displayContainerH * dprY),
+    )
     this.displayRect = {
-      x: displayRect.x + (Math.max(1, this.canvas.clientWidth) - displayContainerW) / 2,
-      y: displayRect.y + (Math.max(1, this.canvas.clientHeight) - displayContainerH) / 2,
+      x: displayContainerX + displayRect.x,
+      y: displayContainerY + displayRect.y,
       width: displayRect.width,
       height: displayRect.height,
     }
-    gl.uniform2f(this.uniform('u_aspectRatio'), displayImageAspect, canvasAspect)
+    gl.uniform2f(this.uniform('u_aspectRatio'), displayImageAspect, displayContainerW / displayContainerH)
     gl.uniform4f(this.uniform('u_crop'), crop.x, crop.y, crop.w, crop.h)
     gl.uniform1f(this.uniform('u_rotate'), totalRotate)
     gl.uniform2f(this.uniform('u_flip'), pipeline.transform.flipH ? 1 : 0, pipeline.transform.flipV ? 1 : 0)

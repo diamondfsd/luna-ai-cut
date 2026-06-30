@@ -9,6 +9,7 @@ import './styles/utilities.css'
 import './styles/workspace.css'
 import './styles/workspace-crop.css'
 import './styles/workspace-color.css'
+import './styles/workspace-sidebar.css'
 import './ui/styles.css'
 import './styles/responsive.css'
 

@@ -1,14 +1,13 @@
-import { FlipHorizontal2, FlipVertical2, RotateCcw, RotateCw, Scan } from 'lucide-react'
+import { FlipHorizontal2, FlipVertical2, RotateCcw, RotateCw } from 'lucide-react'
 
 import type { EditPipeline } from '../shared/editPipeline'
-import { Button, IconButton, Input, Select, Tooltip } from '../../ui'
+import { IconButton, Input, Select, Tooltip } from '../../ui'
 import { ParamSlider } from '../components/ParamSlider'
 
 export type CropPreset = 'original' | 'free' | '1:1' | '3:4' | '4:5' | '5:7' | '2:3' | '16:9' | 'custom'
 
 interface TransformPanelProps {
   value: EditPipeline['transform']
-  cropActive: boolean
   cropPreset: CropPreset
   cropWidth: number
   cropHeight: number
@@ -16,7 +15,6 @@ interface TransformPanelProps {
   onRotateChange: (rotate: number) => void
   onCropPresetChange: (preset: CropPreset) => void
   onCropSizeChange: (size: { width?: number; height?: number }) => void
-  onToggleCrop: () => void
 }
 
 function rotateLeft(current: number): number {
@@ -41,7 +39,6 @@ const CROP_PRESETS: Array<{ value: CropPreset; label: string }> = [
 
 export function TransformPanel({
   value,
-  cropActive,
   cropPreset,
   cropWidth,
   cropHeight,
@@ -49,7 +46,6 @@ export function TransformPanel({
   onRotateChange,
   onCropPresetChange,
   onCropSizeChange,
-  onToggleCrop,
 }: TransformPanelProps) {
   return (
     <div className="workspace-panel-stack">
@@ -80,9 +76,6 @@ export function TransformPanel({
         />
       </div>
       <div className="workspace-button-row">
-        <Button variant={cropActive ? 'primary' : 'secondary'} size="compact" icon={<Scan size={14} />} onClick={onToggleCrop}>
-          裁剪
-        </Button>
         <Tooltip content="水平翻转">
           <IconButton
             variant={value.flipH ? 'outline' : 'ghost'}

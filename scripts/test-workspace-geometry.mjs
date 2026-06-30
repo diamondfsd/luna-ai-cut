@@ -35,6 +35,11 @@ close(geometry.frameAspect(sourceAspect, 90), 1 / sourceAspect, 'portrait frame 
 
 cropClose(geometry.cropForAspect(sourceAspect, 0, sourceAspect), { x: 0, y: 0, w: 1, h: 1 }, 'original landscape crop')
 cropClose(geometry.cropForAspect(sourceAspect, 90, 1 / sourceAspect), { x: 0, y: 0, w: 1, h: 1 }, 'original portrait crop')
+cropClose(
+  geometry.maxCropInsideImage({ sourceAspect, orientation: 0, rotate: 0, aspectRatio: geometry.frameAspect(sourceAspect, 0) }),
+  { x: 0, y: 0, w: 1, h: 1 },
+  'default original crop fills image',
+)
 
 const squareFromLandscape = geometry.cropForAspect(sourceAspect, 0, 1)
 close(squareFromLandscape.x, 0.21875, 'square landscape crop x')
@@ -55,8 +60,44 @@ const fitted = geometry.fitCropInsideImage({ x: 0, y: 0, w: 1, h: 1 }, sourceAsp
 assert.equal(geometry.isCropInsideImage(fitted, sourceAspect, 0, 35), true)
 assert.ok(fitted.w < 1 || fitted.h < 1, 'rotation should shrink crop box instead of requiring preview image scale')
 
+const maxRotated = geometry.maxCropInsideImage({
+  sourceAspect,
+  orientation: 0,
+  rotate: 30,
+  aspectRatio: sourceAspect,
+})
+assert.equal(geometry.isCropInsideImage(maxRotated, sourceAspect, 0, 30), true)
+const oversizedRotated = {
+  x: maxRotated.x - maxRotated.w * 0.005,
+  y: maxRotated.y - maxRotated.h * 0.005,
+  w: maxRotated.w * 1.01,
+  h: maxRotated.h * 1.01,
+}
+assert.equal(geometry.isCropInsideImage(oversizedRotated, sourceAspect, 0, 30), false, 'max rotated crop should be tight against rotated image bounds')
+
 const restored = geometry.fitCropInsideImage({ x: 0, y: 0, w: 1, h: 1 }, sourceAspect, 0, 0)
 cropClose(restored, { x: 0, y: 0, w: 1, h: 1 }, 'crop can return to full frame when rotation permits it')
+
+const moved = geometry.moveCropInsideImage({ x: 0.2, y: 0.2, w: 0.35, h: 0.35 }, 2, 2, {
+  sourceAspect,
+  orientation: 0,
+  rotate: 30,
+})
+close(moved.w, 0.35, 'moving crop never changes width')
+close(moved.h, 0.35, 'moving crop never changes height')
+assert.equal(geometry.isCropInsideImage(moved, sourceAspect, 0, 30), true)
+
+const resized = geometry.resizeCropInsideImage({ x: 0.25, y: 0.25, w: 0.2, h: 0.2 }, 'br', 0.4, 0.1, {
+  sourceAspect,
+  orientation: 0,
+  rotate: 0,
+  aspectRatio: 1,
+})
+close(geometry.frameAspect(sourceAspect, 0) * resized.w / resized.h, 1, 'locked resize keeps square visual aspect', 0.001)
+assert.equal(geometry.isCropInsideImage(resized, sourceAspect, 0, 0), true)
+
+const rotatedPoint = geometry.framePointToSourceUv({ x: 0.25, y: 0.5 }, sourceAspect, 0, 30)
+assert.ok(rotatedPoint.y > 0.5, 'CPU rotation matches shader inverse rotation direction')
 
 const rect = geometry.containRect(1000, 1000, 16 / 9)
 close(rect.width, 1000, 'contain rect width')
