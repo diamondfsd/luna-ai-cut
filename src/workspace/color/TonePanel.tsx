@@ -1,8 +1,8 @@
-import { RotateCcw, Sparkles } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 
 import { TONE_DEFAULTS, type EditPipeline } from '../shared/editPipeline'
 import { ParamSlider } from '../components/ParamSlider'
-import { Accordion, IconButton } from '../../ui'
+import { Accordion } from '../../ui'
 import { exposureValue } from './colorPanelShared'
 
 interface TonePanelProps {
@@ -18,12 +18,9 @@ export function TonePanel({ value, modified, onChange }: TonePanelProps) {
       defaultOpen
       modified={modified}
       actions={
-        <>
-          <IconButton variant="ghost" size="mini" icon={<Sparkles size={14} />} title="自动调整" />
-          <button className="workspace-acc-reset" type="button" onClick={() => onChange(TONE_DEFAULTS)} title="重置影调">
-            <RotateCcw size={11} />
-          </button>
-        </>
+        <button className="workspace-acc-reset" type="button" onClick={() => onChange(TONE_DEFAULTS)} title="重置影调">
+          <RotateCcw size={11} />
+        </button>
       }
     >
       <ParamSlider label="曝光" value={value.exposure} min={-5} max={5} step={0.1} onChange={(exposure) => onChange({ exposure })} formatValue={exposureValue} />
