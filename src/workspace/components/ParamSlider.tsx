@@ -72,7 +72,7 @@ export function ParamSlider({
         min={min}
         max={max}
         step={step}
-        value={editing ? editValue : formatValue(value)}
+        value={editing ? editValue : String(value)}
         onChange={(e) => { setEditing(true); setEditValue(e.currentTarget.value) }}
         onFocus={() => { setEditValue(String(value)); setEditing(true) }}
         onBlur={commit}

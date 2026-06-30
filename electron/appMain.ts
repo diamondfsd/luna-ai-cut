@@ -1,7 +1,6 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import sharp from 'sharp'
 import { checkForUpdates } from './updateService'
 import type { HotUpdateCheckResult } from './hotUpdater'
 import { checkForHotUpdates, applyHotUpdate, getCurrentHotVersion, clearHotUpdate } from './hotUpdater'
@@ -51,6 +50,7 @@ import {
   listWorkspaceProjects,
   saveWorkspaceProject,
 } from './workspaceProjectService'
+import { loadWorkspacePreview } from './workspacePreviewService'
 import {
   checkWifiPort,
   connectWifiNetwork,
@@ -434,15 +434,7 @@ function registerIpc(): void {
   ipcMain.handle('files:openPath', (_event, targetPath: string) => openPath(targetPath))
   ipcMain.handle('files:deleteLocal', (_event, filePaths: string[]) => deleteLocalFiles(filePaths))
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
-    const buffer = await sharp(filePath)
-      .rotate()              // 自动应用 EXIF orientation
-      .resize(2000, null, { fit: 'inside', withoutEnlargement: true })
-      .png()
-      .toBuffer()
-    return {
-      buffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
-      mimeType: 'image/png',
-    }
+    return loadWorkspacePreview(filePath)
   })
   ipcMain.handle('workspace:listProjects', async () => {
     const settings = await getSettings()

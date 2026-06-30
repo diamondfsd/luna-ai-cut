@@ -1,0 +1,169 @@
+.workspace-crop-overlay {
+  position: absolute;
+  cursor: alias;
+}
+
+.workspace-crop-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(0, 102, 204, 0.08), rgba(0, 102, 204, 0.08));
+}
+
+.workspace-crop-box {
+  position: absolute;
+  border: 2px solid #fff;
+  outline: 1px solid rgba(0, 102, 204, 0.86);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+  cursor: move;
+}
+
+.workspace-crop-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    linear-gradient(to bottom, transparent calc(100% / 3 - 1px), rgba(255, 255, 255, 0.4) calc(100% / 3 - 1px), rgba(255, 255, 255, 0.4) calc(100% / 3 + 1px), transparent calc(100% / 3 + 1px)),
+    linear-gradient(to bottom, transparent calc(200% / 3 - 1px), rgba(255, 255, 255, 0.4) calc(200% / 3 - 1px), rgba(255, 255, 255, 0.4) calc(200% / 3 + 1px), transparent calc(200% / 3 + 1px)),
+    linear-gradient(to right, transparent calc(100% / 3 - 1px), rgba(255, 255, 255, 0.4) calc(100% / 3 - 1px), rgba(255, 255, 255, 0.4) calc(100% / 3 + 1px), transparent calc(100% / 3 + 1px)),
+    linear-gradient(to right, transparent calc(200% / 3 - 1px), rgba(255, 255, 255, 0.4) calc(200% / 3 - 1px), rgba(255, 255, 255, 0.4) calc(200% / 3 + 1px), transparent calc(200% / 3 + 1px));
+}
+
+.workspace-crop-corner,
+.workspace-crop-edge {
+  position: absolute;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #fff;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  touch-action: none;
+  z-index: 2;
+}
+
+.workspace-crop-corner {
+  width: 32px;
+  height: 32px;
+}
+
+.workspace-crop-corner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-color: currentColor;
+  border-style: solid;
+  border-width: 0;
+}
+
+.workspace-crop-corner.tl {
+  top: -4px;
+  left: -4px;
+  cursor: nw-resize;
+}
+
+.workspace-crop-corner.tl::before {
+  border-top-width: 4px;
+  border-left-width: 4px;
+}
+
+.workspace-crop-corner.tr {
+  top: -4px;
+  right: -4px;
+  cursor: ne-resize;
+}
+
+.workspace-crop-corner.tr::before {
+  border-top-width: 4px;
+  border-right-width: 4px;
+}
+
+.workspace-crop-corner.bl {
+  bottom: -4px;
+  left: -4px;
+  cursor: sw-resize;
+}
+
+.workspace-crop-corner.bl::before {
+  border-bottom-width: 4px;
+  border-left-width: 4px;
+}
+
+.workspace-crop-corner.br {
+  right: -4px;
+  bottom: -4px;
+  cursor: se-resize;
+}
+
+.workspace-crop-corner.br::before {
+  border-right-width: 4px;
+  border-bottom-width: 4px;
+}
+
+.workspace-crop-edge.top,
+.workspace-crop-edge.bottom {
+  left: 50%;
+  width: 44px;
+  height: 18px;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.workspace-crop-edge.top {
+  top: -9px;
+}
+
+.workspace-crop-edge.bottom {
+  bottom: -9px;
+}
+
+.workspace-crop-edge.top::before,
+.workspace-crop-edge.bottom::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
+  height: 4px;
+  background: currentColor;
+}
+
+.workspace-crop-edge.left,
+.workspace-crop-edge.right {
+  top: 50%;
+  width: 18px;
+  height: 44px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.workspace-crop-edge.left {
+  left: -9px;
+}
+
+.workspace-crop-edge.right {
+  right: -9px;
+}
+
+.workspace-crop-edge.left::before,
+.workspace-crop-edge.right::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 4px;
+  background: currentColor;
+}
+
+.workspace-crop-actions {
+  position: absolute;
+  bottom: -44px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  z-index: 10;
+  white-space: nowrap;
+}

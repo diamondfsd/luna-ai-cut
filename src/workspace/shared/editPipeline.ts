@@ -8,6 +8,7 @@ export interface CropRect {
 export interface EditPipeline {
   transform: {
     crop: CropRect | null
+    orientation: number
     rotate: number
     flipH: boolean
     flipV: boolean
@@ -157,6 +158,7 @@ export function createDefaultSelectiveColor(): Record<SelectiveColorChannel, Sel
 export const DEFAULT_PIPELINE: EditPipeline = {
   transform: {
     crop: null,
+    orientation: 0,
     rotate: 0,
     flipH: false,
     flipV: false,
