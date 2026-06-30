@@ -58,12 +58,12 @@ async function checkGitCode(): Promise<UpdateCheckResult | null> {
   const attachAssets = (data.assets ?? []).filter(a => a.type === 'attach')
 
   // 根据当前操作系统和 CPU 架构选择对应安装包
-  // 资产命名示例: Luna_AI_Cut-v1.3.2-Mac-arm64.dmg / Luna_AI_Cut-v1.3.2-Windows-x64_Setup.exe
+  // 资产命名示例: LunaAICut-Mac-1.3.3-Installer-arm64.dmg / LunaAICut-Windows-1.3.3-Setup-x64.exe
   const platform = process.platform
   const arch = process.arch // 'arm64' | 'x64'
   const installer = attachAssets.find(a => {
-    if (platform === 'win32') return a.name.endsWith('Setup.exe') && a.name.includes('-Windows-')
-    if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-Mac-${arch}`)
+    if (platform === 'win32') return a.name.endsWith('.exe') && a.name.includes('-Windows-')
+    if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-${arch}.dmg`)
     return false
   })
 
@@ -117,12 +117,12 @@ async function checkGitHub(): Promise<UpdateCheckResult | null> {
   const assets: Array<{ name: string; browser_download_url: string }> = data.assets ?? []
 
   // 根据当前操作系统和 CPU 架构选择对应安装包
-  // 资产命名示例: Luna_AI_Cut-v1.3.2-Mac-arm64.dmg / Luna_AI_Cut-v1.3.2-Windows-x64_Setup.exe
+  // 资产命名示例: LunaAICut-Mac-1.3.3-Installer-arm64.dmg / LunaAICut-Windows-1.3.3-Setup-x64.exe
   const platform = process.platform
   const arch = process.arch // 'arm64' | 'x64'
   const installer = assets.find(a => {
-    if (platform === 'win32') return a.name.endsWith('Setup.exe') && a.name.includes('-Windows-')
-    if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-Mac-${arch}`)
+    if (platform === 'win32') return a.name.endsWith('.exe') && a.name.includes('-Windows-')
+    if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-${arch}.dmg`)
     return false
   })
 
