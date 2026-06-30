@@ -37,6 +37,10 @@
       "from": ".",
       "to": ".",
       "filter": ["RELEASE_NOTES_*.md"]
+    },
+    {
+      "from": "electron/livetool.swift",
+      "to": "livetool.swift"
     }
   ],
   "mac": {

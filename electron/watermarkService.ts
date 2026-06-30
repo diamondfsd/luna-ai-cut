@@ -339,6 +339,156 @@ async function applyWatermarkToImageWithRef(
   }
 }
 
+// ─── Google Motion Photo XMP ─────────────────
+
+const XMP_NS = 'http://ns.adobe.com/xap/1.0/'
+const GCAMERA_NS = 'http://ns.google.com/photos/1.0/camera/'
+/** MicroVideoOffset 固定宽度，15 位足够覆盖到 PB 级文件 */
+const OFFSET_PAD = 15
+const OFFSET_PLACEHOLDER = '0'.repeat(OFFSET_PAD)
+
+function buildGoogleXmpXml(videoOffset: number): string {
+  const padded = String(videoOffset).padStart(OFFSET_PAD, '0')
+  return [
+    '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>',
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Luna AI Cut">',
+    '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
+    `    <rdf:Description rdf:about=""`,
+    `      xmlns:GCamera="${GCAMERA_NS}">`,
+    '      <GCamera:MicroVideo>1</GCamera:MicroVideo>',
+    '      <GCamera:MicroVideoVersion>1</GCamera:MicroVideoVersion>',
+    `      <GCamera:MicroVideoOffset>${padded}</GCamera:MicroVideoOffset>`,
+    '    </rdf:Description>',
+    '  </rdf:RDF>',
+    '</x:xmpmeta>',
+    '<?xpacket end="w"?>',
+  ].join('\n')
+}
+
+/**
+ * 向 JPEG 文件头部注入 Google Motion Photo XMP APP1 段。
+ * 先写入一个占位偏移，再根据最终 JPEG 大小原地替换，避免循环依赖。
+ */
+function injectGoogleXmpIntoJpeg(jpegPath: string): void {
+  const data = readFileSync(jpegPath)
+
+  // 构建 XMP APP1 段
+  const xmpXml = buildGoogleXmpXml(0) // 先用占位偏移
+  const xmpBytes = Buffer.from(xmpXml, 'utf-8')
+  const nsBytes = Buffer.from(XMP_NS, 'ascii')
+
+  const payloadLen = nsBytes.length + 1 + xmpBytes.length
+  const segLen = 2 + payloadLen
+  const seg = Buffer.alloc(2 + segLen)
+  seg[0] = 0xFF
+  seg[1] = 0xE1
+  seg.writeUInt16BE(segLen, 2)
+  nsBytes.copy(seg, 4)
+  seg[4 + nsBytes.length] = 0 // namespace 后的 null 终止符
+  xmpBytes.copy(seg, 4 + nsBytes.length + 1)
+
+  // 找到插入位置：跳过所有 APP marker，停在第一个非 APP marker 之前
+  let pos = 2 // 跳过 SOI
+  let insertAt = 2
+  while (pos < data.length - 1) {
+    if (data[pos] !== 0xFF) break
+    const marker = data[pos + 1]
+    if (marker >= 0xD0 && marker <= 0xD7) { pos += 2; continue }
+    if (marker === 0x00 || marker === 0xD8 || marker === 0xD9) { pos++; continue }
+    if (marker === 0x01) { pos += 2; continue }
+    if (pos + 4 > data.length) break
+    const sLen = data.readUInt16BE(pos + 2)
+    if (sLen < 2) break
+    if (marker >= 0xE0 && marker <= 0xEF) {
+      pos += 2 + sLen
+      insertAt = pos
+      continue
+    }
+    break
+  }
+
+  // 插入 XMP 段
+  const result = Buffer.concat([
+    data.subarray(0, insertAt),
+    seg,
+    data.subarray(insertAt),
+  ])
+
+  // 计算实际偏移量（视频将追加在 JPEG 之后，偏移 = 最终 JPEG 大小）
+  const realOffset = result.length
+  const offsetStr = String(realOffset).padStart(OFFSET_PAD, '0')
+
+  // 原地替换占位符（相同长度，文件大小不变）
+  const placeholderBuf = Buffer.from(OFFSET_PLACEHOLDER)
+  const offsetBuf = Buffer.from(offsetStr)
+  const idx = result.indexOf(placeholderBuf)
+  if (idx !== -1) {
+    offsetBuf.copy(result, idx)
+  }
+
+  writeFileSync(jpegPath, result)
+}
+
+// ─── Apple Live Photo 配对导出 ──────────────
+
+/**
+ * 在 MAC 上创建 Apple 格式的 Live Photo 配对文件。
+ * - folder/ 目录
+ *   - folder.jpg — 静态图片
+ *   - folder.mov — 配套视频
+ */
+async function exportAppleLivePhotoPair(
+  imagePath: string,
+  videoPath: string,
+  folderPath: string,
+  baseName: string,
+  onProgress?: (percent: number) => void,
+): Promise<void> {
+  await fs.mkdir(folderPath, { recursive: true })
+  logMainInfo('[LIVE Apple] creating pair', { folderPath, baseName })
+
+  // 1. 复制静态图片
+  const imgDest = path.join(folderPath, `${baseName}.jpg`)
+  await fs.copyFile(imagePath, imgDest)
+  logMainInfo('[LIVE Apple] image copied', { dest: imgDest })
+
+  // 2. 将视频 remux 为 MOV 容器
+  const vidDest = path.join(folderPath, `${baseName}.mov`)
+  const ffmpegPath = getFfmpegPath()
+  try {
+    await execFileAsync(ffmpegPath, [
+      '-i', videoPath,
+      '-c', 'copy',
+      '-f', 'mov',
+      '-movflags', 'faststart',
+      '-y',
+      vidDest,
+    ], { timeout: 60000 })
+  } catch (err) {
+    // ffmpeg remux 失败时直接复制（多数播放器兼容）
+    logMainError('[LIVE Apple] MOV remux failed, fallback to copy', { error: err })
+    await fs.copyFile(videoPath, vidDest)
+  }
+
+  // 3. 用 livetool.swift 注入 Apple Live Photo 配对元数据（content identifier UUID）
+  try {
+    const livetoolPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'livetool.swift')
+      : path.join(app.getAppPath(), 'electron', 'livetool.swift')
+    const tempPrefix = path.join(folderPath, `_${baseName}_live`)
+    await execFileAsync('swift', [livetoolPath, imgDest, vidDest, tempPrefix], { timeout: 30000 })
+    // 将注入元数据后的临时文件重命名为最终文件名
+    await fs.rename(`${tempPrefix}.jpg`, imgDest)
+    await fs.rename(`${tempPrefix}.mov`, vidDest)
+    logMainInfo('[LIVE Apple] livetool metadata injected')
+  } catch (err) {
+    logMainError('[LIVE Apple] livetool metadata injection failed (non-fatal), using unmodified pair', { error: err })
+  }
+
+  onProgress?.(96)
+  logMainInfo('[LIVE Apple] pair complete', { imgDest, vidDest })
+}
+
 // ─── Live Photo 处理 ─────────────────────────
 
 async function extractLivePhotoVideo(livPath: string, destination: string): Promise<string | null> {
@@ -363,6 +513,7 @@ export async function applyWatermarkToLivePhoto(
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
   _videoExportSettings?: VideoExportSettings,
+  appleExportFolder?: string,
 ): Promise<void> {
   const tmpDir = path.dirname(outputPath)
   const extractedVideo = path.join(tmpDir, `_live_extracted.mp4`)
@@ -370,7 +521,7 @@ export async function applyWatermarkToLivePhoto(
   const processedVideo = path.join(tmpDir, `_live_video.mp4`)
 
   try {
-    logMainInfo('[LIVE] applyWatermarkToLivePhoto called', { inputPath, outputPath, watermarkPercent, position, style })
+    logMainInfo('[LIVE] applyWatermarkToLivePhoto called', { inputPath, outputPath, watermarkPercent, position, style, appleExportFolder })
 
     const extracted = await extractLivePhotoVideo(inputPath, extractedVideo)
     if (!extracted) throw new Error('无法提取 Live Photo 内嵌视频')
@@ -383,6 +534,7 @@ export async function applyWatermarkToLivePhoto(
 
     // 图片水印以原始视频分辨率为参考，保持视觉一致
     await applyWatermarkToImageWithRef(inputPath, watermarkedImage, watermarkPercent, position, style, vidW, vidH)
+    onProgress?.(25)
 
     // 视频仅加水印，保持原始分辨率/帧率/码率
     const pipeline = new FfmpegPipeline()
@@ -404,7 +556,7 @@ export async function applyWatermarkToLivePhoto(
       encoderArgs: hwaccel.encoderArgs,
     }))
     await pipeline.execute(extractedVideo, processedVideo,
-      (pct) => onProgress?.(Math.round(pct * 0.6 + 30)), signal)
+      (pct) => onProgress?.(Math.round(pct * 0.4 + 25)), signal)
 
     // 检查处理后的文件
     const vidStat = await fs.stat(processedVideo).catch(() => null)
@@ -416,6 +568,22 @@ export async function applyWatermarkToLivePhoto(
       watermarkedImage: imgStat?.size,
     })
 
+    // ── Apple Live Photo 配对导出（macOS 专用） ──
+    if (appleExportFolder) {
+      const baseName = path.basename(appleExportFolder)
+      await exportAppleLivePhotoPair(watermarkedImage, processedVideo, appleExportFolder, baseName, onProgress)
+    }
+
+    // ── Google Motion Photo XMP 注入 ──
+    try {
+      injectGoogleXmpIntoJpeg(watermarkedImage)
+      logMainInfo('[LIVE] Google XMP injected')
+    } catch (err) {
+      logMainError('[LIVE] Google XMP injection failed (non-fatal)', { error: err })
+    }
+    onProgress?.(97)
+
+    // ── 拼接图片+视频 → 符合 Google 协议的 Live Photo ──
     const imgBytes = await fs.readFile(watermarkedImage)
     const vidBytes = await fs.readFile(processedVideo)
     await fs.writeFile(outputPath, Buffer.concat([imgBytes, vidBytes]))
