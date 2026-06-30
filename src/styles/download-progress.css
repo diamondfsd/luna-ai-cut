@@ -39,6 +39,28 @@
   font-size: 11px;
 }
 
+/* ====== 导出按钮角标 ====== */
+.download-badge-corner {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px var(--canvas);
+}
+
 /* ====== 进度面板内容 ====== */
 .dl-overall {
   display: grid;

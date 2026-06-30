@@ -7,6 +7,7 @@ import { checkForHotUpdates, applyHotUpdate, getCurrentHotVersion, clearHotUpdat
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { clearLogs, getLogDir, initLogger, logMainInfo, logMainError, logMainWarn, logExport, logRendererMessage } from './loggerService'
+import { createExportTask, getExportTasks, getExportTaskById, clearExportTasks, updateTaskItemProgress } from './exportTaskService'
 
 import {
   cacheFile,
@@ -100,7 +101,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 let win: BrowserWindow | null
 const clients = new Map<string, LunaClient>()
 let activeDownloadControllers = new Set<AbortController>()
-let activeExportControllers = new Set<AbortController>()
+let activeExportControllers = new Map<string, AbortController>()
 const previewCacheTasks = new Map<string, Promise<boolean>>()
 const videoFrameRateTasks = new Map<string, Promise<number | null>>()
 const enqueuePreviewTask = createPreviewTaskQueue(10)
@@ -194,7 +195,7 @@ function createWindow(): void {
       activeDownloadControllers.clear()
     },
     abortExports: () => {
-      for (const controller of activeExportControllers) controller.abort()
+      for (const [, controller] of activeExportControllers) controller.abort()
       activeExportControllers.clear()
     },
   })
@@ -464,6 +465,18 @@ function registerIpc(): void {
     const fileName = safeName(`${baseName}_workspace_${Date.now()}${ext}`)
     const destinationPath = path.join(settings.exportDir, fileName)
     writeFileSync(destinationPath, Buffer.from(match[2], 'base64'))
+
+    // 创建导出任务记录
+    const taskName = `${baseName}导出`
+    const exportId = `workspace_${baseName}_${Date.now()}`
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind: 'image' }])
+    const taskStart = Date.now()
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    })
+
     return { path: destinationPath, name: fileName }
   })
   ipcMain.handle('ai:chat', async (_event, config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) => {
@@ -493,11 +506,22 @@ function registerIpc(): void {
 
   ipcMain.handle('luna:exportFiles', (_event, files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) => {
     const controller = new AbortController()
-    activeExportControllers.add(controller)
-    return exportFiles(files, exportDir, watermarkSettings, (progress) => {
+    const callKey = `export_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    activeExportControllers.set(callKey, controller)
+    const resultPromise = exportFiles(files, exportDir, watermarkSettings, (progress) => {
       win?.webContents.send('export:progress', progress)
-    }, controller.signal, videoExportSettings)
-      .finally(() => activeExportControllers.delete(controller))
+    }, controller.signal, videoExportSettings, (taskId) => {
+      // 任务创建后，用真实 taskId 替换占位 key
+      activeExportControllers.delete(callKey)
+      activeExportControllers.set(taskId, controller)
+    })
+    resultPromise.finally(() => {
+      // 从所有可能的 key 中清理
+      for (const [key, ctrl] of activeExportControllers) {
+        if (ctrl === controller) activeExportControllers.delete(key)
+      }
+    })
+    return resultPromise
   })
 
   ipcMain.handle('luna:cancelDownloads', () => {
@@ -508,10 +532,32 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('luna:cancelExports', () => {
-    for (const controller of activeExportControllers) {
+    for (const [, controller] of activeExportControllers) {
       controller.abort()
     }
     activeExportControllers.clear()
+  })
+
+  ipcMain.handle('luna:cancelExportTask', (_event, taskId: string) => {
+    const controller = activeExportControllers.get(taskId)
+    if (controller) {
+      controller.abort()
+      activeExportControllers.delete(taskId)
+    }
+  })
+
+  // ── 导出任务管理 ──
+
+  ipcMain.handle('exports:getTasks', async () => {
+    return getExportTasks()
+  })
+
+  ipcMain.handle('exports:getTask', async (_event, taskId: string) => {
+    return getExportTaskById(taskId)
+  })
+
+  ipcMain.handle('exports:clearTasks', async () => {
+    await clearExportTasks()
   })
 
   // 手动触发更新检查（全量 + 热更新一并检查）

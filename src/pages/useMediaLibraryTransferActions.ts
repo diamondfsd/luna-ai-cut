@@ -227,7 +227,9 @@ export function useMediaLibraryTransferActions({
       })
       const batchTs = Date.now()
       const taskId = `export_task_${batchTs}`
-      const taskName = `导出 ${filesToExport.length} 个文件`
+      const taskName = filesToExport.length === 1
+        ? `${filesToExport[0].downloadName || filesToExport[0].name}导出`
+        : `${filesToExport.length}张图片导出`
       const snapshots = new Map<string, LunaFile>()
       const queued = new Map<string, ExportProgress>()
       filesToExport.forEach((file, index) => {
