@@ -206,6 +206,11 @@ export async function exportFiles(
           signal,
         )
       } else if (file.kind === 'image' && watermarkSettings.enabled && /^LIV_/i.test(file.name)) {
+        // Live Photo — 给图片和内嵌视频都加水印，再合并回去
+        // macOS 额外导出 Apple 配对格式（文件夹 + JPEG + MOV）
+        const appleExportFolder = process.platform === 'darwin'
+          ? path.join(exportDir, safeName(path.basename(destName, ext)))
+          : undefined
         await applyWatermarkToLivePhoto(
           localPath,
           tmpPath,
@@ -218,6 +223,7 @@ export async function exportFiles(
           },
           signal,
           videoExportSettings,
+          appleExportFolder,
         )
       } else if (file.kind === 'image' && watermarkSettings.enabled) {
         await applyWatermarkToImage(localPath, tmpPath, watermarkSettings.watermarkPercent, watermarkSettings.position, watermarkSettings.style)
