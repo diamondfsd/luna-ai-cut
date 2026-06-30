@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { createReadStream, readFileSync, writeFileSync } from 'node:fs'
+import { createReadStream, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { app } from 'electron'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
@@ -342,22 +342,29 @@ async function applyWatermarkToImageWithRef(
 // ─── Google Motion Photo XMP ─────────────────
 
 const XMP_NS = 'http://ns.adobe.com/xap/1.0/'
-const GCAMERA_NS = 'http://ns.google.com/photos/1.0/camera/'
-/** MicroVideoOffset 固定宽度，15 位足够覆盖到 PB 级文件 */
-const OFFSET_PAD = 15
-const OFFSET_PLACEHOLDER = '0'.repeat(OFFSET_PAD)
 
-function buildGoogleXmpXml(videoOffset: number): string {
-  const padded = String(videoOffset).padStart(OFFSET_PAD, '0')
+function buildGoogleXmpXml(primaryLength: number, videoLength: number): string {
   return [
     '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>',
     '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Luna AI Cut">',
     '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
-    `    <rdf:Description rdf:about=""`,
-    `      xmlns:GCamera="${GCAMERA_NS}">`,
-    '      <GCamera:MicroVideo>1</GCamera:MicroVideo>',
-    '      <GCamera:MicroVideoVersion>1</GCamera:MicroVideoVersion>',
-    `      <GCamera:MicroVideoOffset>${padded}</GCamera:MicroVideoOffset>`,
+    '    <rdf:Description rdf:about=""',
+    '        xmlns:GCamera="http://ns.google.com/photos/1.0/camera/"',
+    '        xmlns:Container="http://ns.google.com/photos/1.0/container/"',
+    '        xmlns:Item="http://ns.google.com/photos/1.0/container/item/">',
+    '      <GCamera:MotionPhoto>1</GCamera:MotionPhoto>',
+    '      <GCamera:MotionPhotoVersion>1</GCamera:MotionPhotoVersion>',
+    '      <GCamera:MotionPhotoPresentationTimestampUs>0</GCamera:MotionPhotoPresentationTimestampUs>',
+    '      <Container:Directory>',
+    '        <rdf:Seq>',
+    '          <rdf:li rdf:parseType="Resource">',
+    `            <Container:Item Item:Mime="image/jpeg" Item:Semantic="Primary" Item:Length="${primaryLength}" Item:Padding="0"/>`,
+    '          </rdf:li>',
+    '          <rdf:li rdf:parseType="Resource">',
+    `            <Container:Item Item:Mime="video/mp4" Item:Semantic="MotionPhoto" Item:Length="${videoLength}"/>`,
+    '          </rdf:li>',
+    '        </rdf:Seq>',
+    '      </Container:Directory>',
     '    </rdf:Description>',
     '  </rdf:RDF>',
     '</x:xmpmeta>',
@@ -365,18 +372,10 @@ function buildGoogleXmpXml(videoOffset: number): string {
   ].join('\n')
 }
 
-/**
- * 向 JPEG 文件头部注入 Google Motion Photo XMP APP1 段。
- * 先写入一个占位偏移，再根据最终 JPEG 大小原地替换，避免循环依赖。
- */
-function injectGoogleXmpIntoJpeg(jpegPath: string): void {
-  const data = readFileSync(jpegPath)
-
-  // 构建 XMP APP1 段
-  const xmpXml = buildGoogleXmpXml(0) // 先用占位偏移
-  const xmpBytes = Buffer.from(xmpXml, 'utf-8')
+/** 构建 XMP APP1 段（FF E1 + 长度 + namespace + XML） */
+function buildXmpApp1Segment(xml: string): Buffer {
+  const xmpBytes = Buffer.from(xml, 'utf-8')
   const nsBytes = Buffer.from(XMP_NS, 'ascii')
-
   const payloadLen = nsBytes.length + 1 + xmpBytes.length
   const segLen = 2 + payloadLen
   const seg = Buffer.alloc(2 + segLen)
@@ -386,10 +385,12 @@ function injectGoogleXmpIntoJpeg(jpegPath: string): void {
   nsBytes.copy(seg, 4)
   seg[4 + nsBytes.length] = 0 // namespace 后的 null 终止符
   xmpBytes.copy(seg, 4 + nsBytes.length + 1)
+  return seg
+}
 
-  // 找到插入位置：跳过所有 APP marker，停在第一个非 APP marker 之前
+/** 找到 XMP APP1 在 JPEG 头部中的插入位置（SOI 之后、SOS 之前） */
+function findXmpInsertPos(data: Buffer): number {
   let pos = 2 // 跳过 SOI
-  let insertAt = 2
   while (pos < data.length - 1) {
     if (data[pos] !== 0xFF) break
     const marker = data[pos + 1]
@@ -401,30 +402,41 @@ function injectGoogleXmpIntoJpeg(jpegPath: string): void {
     if (sLen < 2) break
     if (marker >= 0xE0 && marker <= 0xEF) {
       pos += 2 + sLen
-      insertAt = pos
       continue
     }
     break
   }
+  return pos
+}
 
-  // 插入 XMP 段
-  const result = Buffer.concat([
+/**
+ * 向 JPEG 文件注入 Google Motion Photo XMP APP1 段。
+ * 两遍构建法：先用假值算出最终 JPEG 大小，再用真实长度重建。
+ */
+function injectGoogleXmpIntoJpeg(jpegPath: string, videoPath: string): void {
+  const data = readFileSync(jpegPath)
+  const videoStat = statSync(videoPath)
+  const videoLength = videoStat.size
+
+  // 第一遍：用假值构建 XMP，算出最终 JPEG 大小
+  const probeXml = buildGoogleXmpXml(0, 0)
+  const probeSeg = buildXmpApp1Segment(probeXml)
+  const insertAt = findXmpInsertPos(data)
+  const withXmp = Buffer.concat([
     data.subarray(0, insertAt),
-    seg,
+    probeSeg,
     data.subarray(insertAt),
   ])
+  const finalJpegSize = withXmp.length
 
-  // 计算实际偏移量（视频将追加在 JPEG 之后，偏移 = 最终 JPEG 大小）
-  const realOffset = result.length
-  const offsetStr = String(realOffset).padStart(OFFSET_PAD, '0')
-
-  // 原地替换占位符（相同长度，文件大小不变）
-  const placeholderBuf = Buffer.from(OFFSET_PLACEHOLDER)
-  const offsetBuf = Buffer.from(offsetStr)
-  const idx = result.indexOf(placeholderBuf)
-  if (idx !== -1) {
-    offsetBuf.copy(result, idx)
-  }
+  // 第二遍：用真实长度重建 XMP 并写入
+  const finalXml = buildGoogleXmpXml(finalJpegSize, videoLength)
+  const finalSeg = buildXmpApp1Segment(finalXml)
+  const result = Buffer.concat([
+    data.subarray(0, insertAt),
+    finalSeg,
+    data.subarray(insertAt),
+  ])
 
   writeFileSync(jpegPath, result)
 }
@@ -576,7 +588,7 @@ export async function applyWatermarkToLivePhoto(
 
     // ── Google Motion Photo XMP 注入 ──
     try {
-      injectGoogleXmpIntoJpeg(watermarkedImage)
+      injectGoogleXmpIntoJpeg(watermarkedImage, processedVideo)
       logMainInfo('[LIVE] Google XMP injected')
     } catch (err) {
       logMainError('[LIVE] Google XMP injection failed (non-fatal)', { error: err })
