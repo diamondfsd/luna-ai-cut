@@ -35,3 +35,6 @@ scripts/deploy-release.conf
 
 # Test resources
 test-resources/
+
+# Worktrees
+.worktrees/
