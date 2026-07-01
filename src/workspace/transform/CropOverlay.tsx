@@ -1,20 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CropRect } from '../shared/editPipeline'
-import { fitCropInsideImage, maxCropInsideImage, moveCropInsideImage, normalizeFineRotate, resizeCropInsideImage, sameCrop, type CropDragMode } from './cropGeometry'
-
-interface CropOverlayProps {
-  crop: CropRect | null
-  imageRect: { x: number; y: number; width: number; height: number }
-  sourceAspect: number
-  orientation: number
-  rotate: number
-  aspectRatio: number | null
-  onCropChange: (crop: CropRect) => void
-  onRotateChange: (rotate: number) => void
-  onConfirm: () => void
-  onCancel: () => void
-}
+import { fitCropInsideImage, maxCropInsideImage, moveCropInsideImage, normalizeFineRotate, resizeCropInsideImage, sameCrop, frameAspect, type CropDragMode } from './cropGeometry'
+import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
+import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 
 const DEFAULT_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 }
 
@@ -24,7 +13,10 @@ function pointerAngle(event: PointerEvent | React.PointerEvent, bounds: DOMRect)
   return (Math.atan2(event.clientY - cy, event.clientX - cx) * 180) / Math.PI
 }
 
-export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate, aspectRatio, onCropChange, onRotateChange, onConfirm, onCancel }: CropOverlayProps) {
+export function CropOverlay() {
+  const edit = useWorkspaceEdit()
+  const canvas = useWorkspaceCanvas()
+
   const rootRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const preferredCropRef = useRef<CropRect | null>(null)
@@ -32,7 +24,24 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
   const cropFrameKeyRef = useRef('')
   const rotateKeyRef = useRef('')
   const [drag, setDrag] = useState<{ mode: CropDragMode; x: number; y: number; crop: CropRect; angle: number; rotate: number } | null>(null)
+
+  const activeTransform = edit.cropActive && edit.transformDraft ? edit.transformDraft : edit.pipeline.transform
+  const crop = activeTransform.crop
+  const orientation = activeTransform.orientation
+  const rotate = activeTransform.rotate
   const activeCrop = crop ?? DEFAULT_CROP
+
+  const aspectRatio = useMemo(() => {
+    if (edit.cropPreset === 'free') return null
+    if (edit.cropPreset === 'original') return frameAspect(canvas.sourceAspect, orientation)
+    const w = edit.cropSize.width || Math.round(canvas.sourceAspect * 2160)
+    const h = edit.cropSize.height || 2160
+    return w / Math.max(h, 1)
+  }, [edit.cropPreset, edit.cropSize, canvas.sourceAspect, orientation])
+
+  const onCropChange = useCallback((nextCrop: CropRect) => {
+    edit.setTransformDraft((current) => ({ ...(current ?? edit.pipeline.transform), crop: nextCrop }))
+  }, [edit.setTransformDraft, edit.pipeline.transform])
 
   useEffect(() => {
     activeCropRef.current = activeCrop
@@ -50,31 +59,31 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
   }, [crop, onCropChange])
 
   useEffect(() => {
-    const cropFrameKey = `${sourceAspect}:${orientation}:${aspectRatio ?? 'free'}`
+    const cropFrameKey = `${canvas.sourceAspect}:${orientation}:${aspectRatio ?? 'free'}`
     if (cropFrameKeyRef.current === cropFrameKey) return
     cropFrameKeyRef.current = cropFrameKey
-    const fitted = maxCropInsideImage({ sourceAspect, orientation, rotate, aspectRatio })
+    const fitted = maxCropInsideImage({ sourceAspect: canvas.sourceAspect, orientation, rotate, aspectRatio })
     preferredCropRef.current = fitted
     if (!sameCrop(fitted, activeCropRef.current)) onCropChange(fitted)
-  }, [aspectRatio, sourceAspect, orientation, rotate, onCropChange])
+  }, [aspectRatio, canvas.sourceAspect, orientation, rotate, onCropChange])
 
   useEffect(() => {
-    const rotateKey = `${sourceAspect}:${orientation}:${rotate}:${aspectRatio ?? 'free'}`
+    const rotateKey = `${canvas.sourceAspect}:${orientation}:${rotate}:${aspectRatio ?? 'free'}`
     if (rotateKeyRef.current === rotateKey) return
     rotateKeyRef.current = rotateKey
     const preferred = preferredCropRef.current ?? activeCropRef.current
-    const fitted = fitCropInsideImage(preferred, sourceAspect, orientation, rotate)
+    const fitted = fitCropInsideImage(preferred, canvas.sourceAspect, orientation, rotate)
     if (!sameCrop(fitted, activeCropRef.current)) onCropChange(fitted)
-  }, [aspectRatio, sourceAspect, orientation, rotate, onCropChange])
+  }, [aspectRatio, canvas.sourceAspect, orientation, rotate, onCropChange])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') onCancel()
-      if (event.key === 'Enter') onConfirm()
+      if (event.key === 'Escape') edit.cancelCrop()
+      if (event.key === 'Enter') edit.confirmCrop()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onCancel, onConfirm])
+  }, [edit.cancelCrop, edit.confirmCrop])
 
   useEffect(() => {
     if (!drag) return
@@ -84,12 +93,12 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
       const bounds = frameRef.current?.getBoundingClientRect()
       if (!bounds) return
       if (activeDrag.mode === 'rotate') {
-        onRotateChange(normalizeFineRotate(activeDrag.rotate + pointerAngle(event, bounds) - activeDrag.angle))
+        edit.handleRotateChange(normalizeFineRotate(activeDrag.rotate + pointerAngle(event, bounds) - activeDrag.angle))
         return
       }
       const dx = (event.clientX - activeDrag.x) / bounds.width
       const dy = (event.clientY - activeDrag.y) / bounds.height
-      const options = { sourceAspect, orientation, rotate, aspectRatio }
+      const options = { sourceAspect: canvas.sourceAspect, orientation, rotate, aspectRatio }
       const next = activeDrag.mode === 'move'
         ? moveCropInsideImage(activeDrag.crop, dx, dy, options)
         : resizeCropInsideImage(activeDrag.crop, activeDrag.mode, dx, dy, options)
@@ -107,7 +116,7 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [aspectRatio, drag, onCropChange, onRotateChange, orientation, rotate, sourceAspect])
+  }, [aspectRatio, canvas.sourceAspect, drag, onCropChange, edit.handleRotateChange, orientation, rotate])
 
   function startDrag(event: React.PointerEvent, mode: CropDragMode): void {
     event.preventDefault()
@@ -132,16 +141,16 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
       ref={rootRef}
       className="workspace-crop-overlay"
       onPointerDown={startRotate}
-      onDoubleClick={onConfirm}
+      onDoubleClick={edit.confirmCrop}
     >
       <div
         ref={frameRef}
         className="workspace-crop-frame"
         style={{
-          left: imageRect.x,
-          top: imageRect.y,
-          width: imageRect.width,
-          height: imageRect.height,
+          left: canvas.imageRect.x,
+          top: canvas.imageRect.y,
+          width: canvas.imageRect.width,
+          height: canvas.imageRect.height,
         }}
       >
         <div className="workspace-crop-mask" />
@@ -185,3 +194,6 @@ export function CropOverlay({ crop, imageRect, sourceAspect, orientation, rotate
     </div>
   )
 }
+
+// Re-export for convenience
+export type { CropPreset } from '../transform/TransformPanel'
