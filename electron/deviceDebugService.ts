@@ -6,9 +6,8 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { app } from 'electron'
 
-import { GoUltraClient, AuthState } from './goUltraProtocol'
-import { GO_ULTRA_DEVICE } from './deviceDefaults'
 import { logMainInfo } from './loggerService'
+import type { IDeviceDebugProtocol } from './deviceDebugProtocol'
 
 // ============================================================
 // 设备调试日志
@@ -40,11 +39,34 @@ function timestamp(): string {
 
 function ensureLogStream(): void {
   if (logStream) return
-  ensureDir(logDir())
-  const filePath = logFilePath()
-  logStream = fs.createWriteStream(filePath, { flags: 'a' })
-  logStream.write(`[${timestamp()}] [INFO] [DeviceDebug] 日志文件已创建\n`)
-  logMainInfo('[DeviceDebug] 日志文件', { path: filePath })
+
+  try {
+    ensureDir(logDir())
+    const filePath = logFilePath()
+
+    // 健壮性：如果目标路径是目录（如之前 bug 遗留），先删掉再创建文件
+    try {
+      const stat = fs.statSync(filePath)
+      if (stat.isDirectory()) {
+        fs.rmSync(filePath, { recursive: true, force: true })
+        logMainInfo('[DeviceDebug] 清理了遗留的目录', { path: filePath })
+      }
+    } catch {
+      // 文件不存在，正常
+    }
+
+    logStream = null
+
+    logStream = fs.createWriteStream(filePath, { flags: 'a' })
+    logStream.on('error', (err) => {
+      console.error('[DeviceDebug] 日志流错误:', err)
+    })
+    logStream.write(`[${timestamp()}] [INFO] [DeviceDebug] 日志文件已创建\n`)
+    logMainInfo('[DeviceDebug] 日志文件', { path: filePath })
+  } catch (err) {
+    console.error('[DeviceDebug] 创建日志流失败:', err)
+    logStream = null
+  }
 }
 
 /** 写入设备调试日志 */
@@ -61,7 +83,11 @@ export function writeDeviceDebugLog(level: string, message: string, data?: unkno
 
 /** 获取当前设备调试日志文件路径 */
 export function getDeviceDebugLogPath(): string {
-  ensureLogStream()
+  try {
+    ensureLogStream()
+  } catch (err) {
+    console.error('[DeviceDebug] 初始化日志流失败:', err)
+  }
   return logFilePath()
 }
 
@@ -99,16 +125,19 @@ async function delay(ms: number): Promise<void> {
 
 /**
  * 运行完整连接测试
- * @param deviceId 设备 ID ('luna-ultra' | 'go-ultra')
+ *
+ * 通过 IDeviceDebugProtocol 接口统一执行所有步骤，
+ * 各设备类型的协议差异由适配器实现处理。
+ *
+ * @param protocol 设备调试协议适配器
  * @param host 相机 IP
  * @param onLog 实时日志回调
  */
 export async function runDeviceTest(
-  deviceId: string,
+  protocol: IDeviceDebugProtocol,
   host: string,
   onLog: (level: string, message: string, data?: unknown) => void,
 ): Promise<TestResult> {
-  const isGoUltra = deviceId === 'go-ultra'
   const steps: TestStepResult[] = []
   let finalAuthState = 'none'
 
@@ -118,46 +147,22 @@ export async function runDeviceTest(
   }
 
   log('INFO', `========== 一键测试开始 ==========`)
-  log('INFO', `设备: ${deviceId}, 主机: ${host}`)
+  log('INFO', `设备: ${protocol.deviceName} (${protocol.deviceId}), 主机: ${host}`)
 
-  // ---- 步骤 1: 端口检测 ----
+  // ---- 步骤 1: 端口检测 — 通过协议适配器统一执行 ----
   {
     const t0 = performance.now()
     log('INFO', '[步骤 1/5] 端口检测...')
-    let httpOk = false
-    let controlOk = false
-    let detail = ''
+    const portResult = await protocol.checkPort(host)
+    const portDetail = `HTTP:${portResult.httpOk ? portResult.httpPort : '❌'} 控制:${portResult.controlOk ? portResult.controlPort : '❌'}`
 
-    try {
-      const httpResp = await fetch(`http://${host}/`, { signal: AbortSignal.timeout(3000) })
-      httpOk = true
-      detail = `HTTP ${httpResp.status}`
-      log('INFO', `  HTTP 端口: ✅ (${httpResp.status})`)
-    } catch (error) {
-      detail = `HTTP ❌ (${String(error)})`
-      log('WARN', `  HTTP 端口: ❌ (${String(error)})`)
-    }
-
-    try {
-      if (isGoUltra) {
-        const client = new GoUltraClient(host, GO_ULTRA_DEVICE.controlPort)
-        const status = await client.checkStatus()
-        controlOk = status.controlOk
-      } else {
-        await fetch(`http://${host}:6666/`, { signal: AbortSignal.timeout(2000) })
-        controlOk = true
-      }
-      if (controlOk) {
-        detail += ` | 控制 ✅`
-        log('INFO', `  控制端口: ✅`)
-      }
-    } catch {
-      detail += ` | 控制 ❌`
-      log('WARN', `  控制端口: ❌`)
-    }
+    if (portResult.httpOk) log('INFO', `  HTTP 端口: ✅ (${portResult.httpPort})`)
+    else log('WARN', `  HTTP 端口: ❌`)
+    if (portResult.controlOk) log('INFO', `  控制端口: ✅ (${portResult.controlPort})`)
+    else log('WARN', `  控制端口: ❌`)
 
     const elapsed = performance.now() - t0
-    steps.push({ step: '端口检测', success: httpOk && controlOk, detail, elapsedMs: Math.round(elapsed) })
+    steps.push({ step: '端口检测', success: portResult.httpOk && portResult.controlOk, detail: portDetail, elapsedMs: Math.round(elapsed) })
   }
 
   // ---- 步骤 2: 连接 ----
@@ -165,19 +170,14 @@ export async function runDeviceTest(
     const t0 = performance.now()
     log('INFO', '[步骤 2/5] 连接设备...')
     try {
-      if (isGoUltra) {
-        const client = new GoUltraClient(host, GO_ULTRA_DEVICE.controlPort)
-        await client.connect()
-        finalAuthState = client.authState
-        log('INFO', `  连接成功, 授权状态: ${client.authState}`)
+      await protocol.disconnect() // 确保之前状态已清理
+      const connResult = await protocol.connect(host)
+      finalAuthState = connResult.authState
+
+      if (connResult.success) {
+        log('INFO', `  连接成功, 授权状态: ${connResult.authState}`)
       } else {
-        await (await import('./lunaProtocol')).LunaClient.prototype.connect.call({
-          host,
-        })
-        // 直接用 luna connect
-        const resp = await fetch(`http://${host}/DCIM/`, { signal: AbortSignal.timeout(5000) })
-        log('INFO', `  连接成功, HTTP: ${resp.status}`)
-        finalAuthState = 'basic_auth_done'
+        throw new Error(connResult.message)
       }
 
       const elapsed = performance.now() - t0
@@ -189,99 +189,109 @@ export async function runDeviceTest(
     }
   }
 
-  // ---- 步骤 3: 授权（仅 Go Ultra） ----
-  if (isGoUltra) {
-    const t0 = performance.now()
-    log('INFO', '[步骤 3/5] 授权检查...')
-    try {
-      const client = new GoUltraClient(host, GO_ULTRA_DEVICE.controlPort)
-      if (client.authState === AuthState.NEED_CAMERA_CONFIRM) {
-        log('WARN', '  需要用户在 Go Ultra 相机上确认授权')
-        log('INFO', '  等待授权中（最多 60 秒）...')
-
-        // 等最多 60 秒，轮询检查 authState
-        let waited = 0
-        while (waited < 60) {
-          await delay(1000)
-          waited++
-          if (String(client.authState) === 'authorized') break
-          if (waited % 10 === 0) {
-            log('INFO', `  ...已等待 ${waited} 秒，请在相机上确认`)
-          }
-        }
-
-        if (String(client.authState) === 'authorized') {
-          const elapsed = performance.now() - t0
-          log('INFO', `  授权成功 ✅ (等待 ${waited} 秒)`)
-          steps.push({ step: '授权确认', success: true, detail: `用户确认授权, 等待 ${waited} 秒`, elapsedMs: Math.round(elapsed) })
-        } else {
-          const elapsed = performance.now() - t0
-          log('WARN', `  授权超时或失败`)
-          steps.push({ step: '授权确认', success: false, detail: `授权超时或未确认`, elapsedMs: Math.round(elapsed) })
-        }
-      } else if (client.authState === AuthState.AUTHORIZED) {
-        const elapsed = performance.now() - t0
-        log('INFO', `  已授权 ✅`)
-        steps.push({ step: '授权检查', success: true, detail: '已授权', elapsedMs: Math.round(elapsed) })
-      } else {
-        const elapsed = performance.now() - t0
-        log('WARN', `  授权状态异常: ${client.authState}`)
-        steps.push({ step: '授权检查', success: false, detail: `状态: ${client.authState}`, elapsedMs: Math.round(elapsed) })
-      }
-    } catch (error) {
-      const elapsed = performance.now() - t0
-      log('ERROR', `  授权检查异常: ${String(error)}`)
-      steps.push({ step: '授权检查', success: false, detail: String(error), elapsedMs: Math.round(elapsed) })
-    }
-  } else {
-    // Luna 不需要授权，直接算成功
-    steps.push({ step: '授权检查', success: true, detail: 'Luna 设备无需授权', elapsedMs: 0 })
-  }
-
-  // ---- 步骤 4: HTTP 文件访问 ----
+  // ---- 步骤 3: 授权检查 ----
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 4/5] 文件列表读取...')
-    try {
-      const path = isGoUltra ? '/DCIM/' : '/storage_internal/DCIM/'
-      const resp = await fetch(`http://${host}${path}`, { signal: AbortSignal.timeout(8000) })
-      if (resp.ok) {
-        const text = await resp.text()
-        const fileCount = (text.match(/<a href/g) || []).length - 1 // 减去 ../
+    log('INFO', '[步骤 3/5] 授权检查...')
 
-        const elapsed = performance.now() - t0
-        log('INFO', `  HTTP ${resp.status}, 文件数: ${fileCount}`)
-        steps.push({ step: '文件列表', success: true, detail: `HTTP ${resp.status}, ${fileCount} 个文件`, elapsedMs: Math.round(elapsed) })
+    const authResult = await protocol.checkAuth()
+    if (authResult.success) {
+      // 已授权，直接成功
+      const elapsed = performance.now() - t0
+      log('INFO', `  ${authResult.message}`)
+      steps.push({ step: '授权检查', success: true, detail: authResult.message, elapsedMs: Math.round(elapsed) })
+    } else if (authResult.authState === 'need_camera_confirm') {
+      // 需要用户在相机上确认，等待授权
+      log('WARN', '  需要用户在相机上确认授权')
+      log('INFO', '  发送授权请求...')
+      await protocol.requestAuth()
+      log('INFO', '  等待授权中（最多 60 秒）...')
+
+      const authorized = await protocol.waitForAuthConfirm(60000)
+      const elapsed = performance.now() - t0
+
+      if (authorized) {
+        finalAuthState = 'authorized'
+        log('INFO', `  授权成功 ✅`)
+        steps.push({ step: '授权确认', success: true, detail: '用户确认授权', elapsedMs: Math.round(elapsed) })
       } else {
-        const elapsed = performance.now() - t0
-        log('WARN', `  HTTP ${resp.status}: ${resp.statusText}`)
-        steps.push({ step: '文件列表', success: false, detail: `HTTP ${resp.status}`, elapsedMs: Math.round(elapsed) })
+        log('WARN', `  授权超时或失败`)
+        steps.push({ step: '授权确认', success: false, detail: '授权超时或未确认', elapsedMs: Math.round(elapsed) })
+      }
+    } else {
+      // 不需要授权的设备（如 Luna Ultra），直接成功
+      const elapsed = performance.now() - t0
+      log('INFO', `  ${authResult.message}`)
+      steps.push({ step: '授权检查', success: true, detail: authResult.message, elapsedMs: Math.round(elapsed) })
+    }
+  }
+
+  // ---- 步骤 4: 文件列表 ----
+  {
+    const t0 = performance.now()
+    log('INFO', '[步骤 4/5] 读取文件列表...')
+
+    try {
+      const fileResult = await protocol.listFiles()
+      const elapsed = performance.now() - t0
+
+      if (fileResult.success && fileResult.files.length > 0) {
+        log('INFO', `  找到 ${fileResult.files.length} 个文件`)
+        steps.push({ step: '文件列表', success: true, detail: `找到 ${fileResult.files.length} 个文件`, elapsedMs: Math.round(elapsed) })
+      } else if (fileResult.success) {
+        log('WARN', `  文件列表为空`)
+        steps.push({ step: '文件列表', success: true, detail: '文件列表为空（可能目录下无文件）', elapsedMs: Math.round(elapsed) })
+      } else {
+        log('WARN', `  读取文件列表失败: ${fileResult.message}`)
+        steps.push({ step: '文件列表', success: false, detail: fileResult.message, elapsedMs: Math.round(elapsed) })
       }
     } catch (error) {
       const elapsed = performance.now() - t0
-      log('ERROR', `  文件列表异常: ${String(error)}`)
+      log('WARN', `  文件列表异常: ${String(error)}`)
       steps.push({ step: '文件列表', success: false, detail: String(error), elapsedMs: Math.round(elapsed) })
     }
   }
 
-  // ---- 步骤 5: BLE 唤醒探测（预留） ----
+  // ---- 步骤 5: 保活 / 连接确认 ----
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 5/5] 连接保活测试...')
-    try {
-      if (isGoUltra) {
-        const client = new GoUltraClient(host, GO_ULTRA_DEVICE.controlPort)
-        client.startKeepAlive(5000)
-        await delay(1000)
-        client.stopKeepAlive()
+    log('INFO', '[步骤 5/5] 保活 / 连接确认...')
+
+    // 检查步骤 2 是否连接成功
+    const step2 = steps.find((s) => s.step === '设备连接')
+    const wasConnected = step2?.success === true
+
+    if (!wasConnected) {
+      const elapsed = performance.now() - t0
+      log('WARN', `  设备未连接，跳过保活测试`)
+      steps.push({ step: '保活测试', success: false, detail: '设备未连接，跳过', elapsedMs: Math.round(elapsed) })
+    } else {
+      try {
+        log('INFO', '  启动保活定时器...')
+        protocol.startKeepAlive(2000)
+        // 等待至少一个保活周期，让保活定时器有机会执行
+        await delay(2500)
+        protocol.stopKeepAlive()
+
+        // 主动做一次端口检测，验证设备仍在响应
+        log('INFO', '  验证设备响应...')
+        const healthCheck = await protocol.checkPort(host)
+
+        const elapsed = performance.now() - t0
+        if (healthCheck.httpOk && healthCheck.controlOk) {
+          log('INFO', `  保活测试通过 ✅ (HTTP+控制通道均正常)`)
+          steps.push({ step: '保活测试', success: true, detail: `保活正常, HTTP:${healthCheck.httpPort}, 控制:${healthCheck.controlPort}`, elapsedMs: Math.round(elapsed) })
+        } else if (healthCheck.controlOk) {
+          log('INFO', `  保活测试通过 ✅ (控制通道正常)`)
+          steps.push({ step: '保活测试', success: true, detail: `保活正常, 控制通道活跃:${healthCheck.controlPort}`, elapsedMs: Math.round(elapsed) })
+        } else {
+          throw new Error(`保活后设备无响应: ${healthCheck.message}`)
+        }
+      } catch (error) {
+        const elapsed = performance.now() - t0
+        log('WARN', `  保活异常: ${String(error)}`)
+        steps.push({ step: '保活测试', success: false, detail: String(error), elapsedMs: Math.round(elapsed) })
       }
-      const elapsed = performance.now() - t0
-      log('INFO', `  保活测试完成`)
-      steps.push({ step: '保活测试', success: true, detail: '保活启动正常', elapsedMs: Math.round(elapsed) })
-    } catch (error) {
-      const elapsed = performance.now() - t0
-      log('WARN', `  保活异常: ${String(error)}`)
-      steps.push({ step: '保活测试', success: false, detail: String(error), elapsedMs: Math.round(elapsed) })
     }
   }
 
@@ -296,7 +306,7 @@ export async function runDeviceTest(
   log('INFO', `========== 测试完成: ${summary} ==========`)
 
   return {
-    deviceId,
+    deviceId: protocol.deviceId,
     host,
     overall,
     steps,

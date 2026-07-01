@@ -47,7 +47,6 @@ import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { chatCompletion } from './aiService'
 import { openWifiSettings } from './wifiService'
-import { registerGoUltraDebugHandlers } from './goUltraDebugHandlers'
 import { registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import {
   checkWifiPort,
@@ -259,9 +258,6 @@ function registerIpc(): void {
   ipcMain.on('log:renderer', (_event, level: string, message: string, meta?: unknown) => {
     logRendererMessage(level, message, meta)
   })
-
-  // 注册 Go Ultra 设备调试处理器
-  registerGoUltraDebugHandlers(ipcMain)
 
   // 注册设备调试服务（一键测试 + 独立日志）
   registerDeviceDebugHandlers(() => win)

@@ -3,10 +3,10 @@ import type {
   AiConfig,
   AppSettings,
   DeviceConnectOptions,
+  DeviceDebugApi,
   DeviceDebugEvent,
   DownloadProgress,
   ExportProgress,
-  GoUltraDebugApi,
   HotUpdateCheckResult,
   LunaApi,
   LunaFile,
@@ -19,7 +19,7 @@ import type {
   WifiPortCheckOptions,
 } from '../src/shared/types'
 
-const lunaApi = {
+const lunaApi: LunaApi = {
   // 日志
   log: (level: string, message: string, meta?: unknown) => {
     ipcRenderer.send('log:renderer', level, message, meta)
@@ -132,30 +132,31 @@ const wifiDebugApi: WifiDebugApi = {
   httpRequest: (options: WifiHttpRequestOptions) => ipcRenderer.invoke('wifiDebug:httpRequest', options),
 }
 
-const goUltraDebugApi: GoUltraDebugApi = {
-  connect: ({ host }) => ipcRenderer.invoke('goUltraDebug:connect', { host }),
-  checkAuth: ({ host }) => ipcRenderer.invoke('goUltraDebug:checkAuth', { host }),
-  requestAuth: ({ host }) => ipcRenderer.invoke('goUltraDebug:requestAuth', { host }),
-  listFiles: ({ host }) => ipcRenderer.invoke('goUltraDebug:listFiles', { host }),
-  disconnect: ({ host }) => ipcRenderer.invoke('goUltraDebug:disconnect', { host }),
-  checkPort: ({ host }) => ipcRenderer.invoke('goUltraDebug:checkPort', { host }),
-}
+// ============================================================
+// 统一设备调试 API
+// ============================================================
 
-const lunaApiExtended: LunaApi = {
-  ...lunaApi,
-  // ── 设备调试服务 ──
-  deviceDebugRunTest: (params) => ipcRenderer.invoke('deviceDebug:runTest', params),
-  deviceDebugLog: (params) => ipcRenderer.invoke('deviceDebug:log', params),
-  deviceDebugGetLogPath: () => ipcRenderer.invoke('deviceDebug:getLogPath'),
-  onDeviceDebugLog: (callback) => {
+const deviceDebugApi: DeviceDebugApi = {
+  runTest: (params) => ipcRenderer.invoke('deviceDebug:runTest', params),
+  checkPort: (params) => ipcRenderer.invoke('deviceDebug:checkPort', params),
+  connect: (params) => ipcRenderer.invoke('deviceDebug:connect', params),
+  disconnect: (params) => ipcRenderer.invoke('deviceDebug:disconnect', params),
+  checkAuth: (params) => ipcRenderer.invoke('deviceDebug:checkAuth', params),
+  requestAuth: (params) => ipcRenderer.invoke('deviceDebug:requestAuth', params),
+  getAuthState: (params) => ipcRenderer.invoke('deviceDebug:getAuthState', params),
+  listFiles: (params) => ipcRenderer.invoke('deviceDebug:listFiles', params),
+  getDeviceOptions: () => ipcRenderer.invoke('deviceDebug:getDeviceOptions'),
+  log: (params) => ipcRenderer.invoke('deviceDebug:log', params),
+  getLogPath: () => ipcRenderer.invoke('deviceDebug:getLogPath'),
+  onLog: (callback: (event: DeviceDebugEvent) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, data: DeviceDebugEvent): void => callback(data)
     ipcRenderer.on('deviceDebug:log', listener)
     return () => ipcRenderer.off('deviceDebug:log', listener)
   },
 }
 
-contextBridge.exposeInMainWorld('luna', lunaApiExtended)
+contextBridge.exposeInMainWorld('luna', lunaApi)
 if (import.meta.env.DEV || process.env.VITE_DEV_SERVER_URL) {
   contextBridge.exposeInMainWorld('wifiDebug', wifiDebugApi)
-  contextBridge.exposeInMainWorld('goUltraDebug', goUltraDebugApi)
+  contextBridge.exposeInMainWorld('deviceDebug', deviceDebugApi)
 }

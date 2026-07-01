@@ -426,16 +426,6 @@ export interface LunaApi {
   /** 监听热更新可用事件 */
   onHotUpdateAvailable(callback: (info: HotUpdateCheckResult) => void): () => void
 
-  // ── 设备调试服务 ──
-
-  /** 运行一键测试 */
-  deviceDebugRunTest(params: { deviceId: string; host: string }): Promise<DeviceDebugTestResult>
-  /** 写入设备调试日志 */
-  deviceDebugLog(params: { level: string; message: string; data?: unknown }): Promise<{ success: boolean }>
-  /** 获取设备调试日志文件路径 */
-  deviceDebugGetLogPath(): Promise<string>
-  /** 监听设备调试日志事件 */
-  onDeviceDebugLog(callback: (event: DeviceDebugEvent) => void): () => void
 }
 
 export interface ReleaseNoteItem {
@@ -444,47 +434,7 @@ export interface ReleaseNoteItem {
 }
 
 // ============================================================
-// Go Ultra 设备调试 API（开发模式专用）
-// ============================================================
-
-export interface GoUltraDebugConnectResult {
-  success: boolean
-  message: string
-  httpOk: boolean
-  controlOk: boolean
-  authState: string
-}
-
-export interface GoUltraDebugAuthResult {
-  success: boolean
-  authState: string
-  message: string
-  rawResponse?: string
-}
-
-export interface GoUltraDebugListFilesResult {
-  success: boolean
-  message: string
-  files: Array<{ name: string; size: number | null; url: string }>
-}
-
-export interface GoUltraDebugPortResult {
-  httpOk: boolean
-  controlOk: boolean
-  message: string
-}
-
-export interface GoUltraDebugApi {
-  connect(params: { host: string }): Promise<GoUltraDebugConnectResult>
-  checkAuth(params: { host: string }): Promise<GoUltraDebugAuthResult>
-  requestAuth(params: { host: string }): Promise<GoUltraDebugAuthResult>
-  listFiles(params: { host: string }): Promise<GoUltraDebugListFilesResult>
-  disconnect(params: { host: string }): Promise<{ success: boolean }>
-  checkPort(params: { host: string }): Promise<GoUltraDebugPortResult>
-}
-
-// ============================================================
-// 设备调试服务 API
+// 统一设备调试 API
 // ============================================================
 
 export interface DeviceDebugTestStep {
@@ -507,4 +457,56 @@ export interface DeviceDebugEvent {
   level: string
   message: string
   data?: unknown
+}
+
+export interface DeviceDebugPortResult {
+  httpOk: boolean
+  controlOk: boolean
+  httpPort: number | null
+  controlPort: number | null
+  message: string
+}
+
+export interface DeviceDebugConnectResult {
+  success: boolean
+  authState: string
+  message: string
+  httpOk: boolean
+  controlOk: boolean
+}
+
+export interface DeviceDebugAuthResult {
+  success: boolean
+  authState: string
+  message: string
+}
+
+export interface DeviceDebugFileListResult {
+  success: boolean
+  files: Array<{ name: string; size: number | null; url: string }>
+  message: string
+}
+
+export interface DeviceDebugOption {
+  id: string
+  name: string
+  defaultHost: string
+  controlPort: number
+  needsAuth: boolean
+  protocolType: string
+}
+
+export interface DeviceDebugApi {
+  runTest(params: { deviceId: string; host: string }): Promise<DeviceDebugTestResult>
+  checkPort(params: { deviceId: string; host: string }): Promise<DeviceDebugPortResult>
+  connect(params: { deviceId: string; host: string }): Promise<DeviceDebugConnectResult>
+  disconnect(params: { deviceId: string; host: string }): Promise<{ success: boolean }>
+  checkAuth(params: { deviceId: string; host: string }): Promise<DeviceDebugAuthResult>
+  requestAuth(params: { deviceId: string; host: string }): Promise<DeviceDebugAuthResult>
+  getAuthState(params: { deviceId: string; host: string }): Promise<{ authState: string }>
+  listFiles(params: { deviceId: string; host: string }): Promise<DeviceDebugFileListResult>
+  getDeviceOptions(): Promise<DeviceDebugOption[]>
+  log(params: { level: string; message: string; data?: unknown }): Promise<{ success: boolean }>
+  getLogPath(): Promise<string>
+  onLog(callback: (event: DeviceDebugEvent) => void): () => void
 }
