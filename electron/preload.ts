@@ -156,7 +156,8 @@ const deviceDebugApi: DeviceDebugApi = {
 }
 
 contextBridge.exposeInMainWorld('luna', lunaApi)
+// deviceDebug 在开发环境和生产环境都需要可用（独立调试包）
+contextBridge.exposeInMainWorld('deviceDebug', deviceDebugApi)
 if (import.meta.env.DEV || process.env.VITE_DEV_SERVER_URL) {
   contextBridge.exposeInMainWorld('wifiDebug', wifiDebugApi)
-  contextBridge.exposeInMainWorld('deviceDebug', deviceDebugApi)
 }
