@@ -150,10 +150,11 @@ export async function runDeviceTest(
   log('INFO', `设备: ${protocol.deviceName} (${protocol.deviceId}), 主机: ${host}`)
 
   // ---- 步骤 1: 端口检测 — 通过协议适配器统一执行 ----
+  let portResult: import('./deviceDebugProtocol').DebugPortResult
   {
     const t0 = performance.now()
     log('INFO', '[步骤 1/5] 端口检测...')
-    const portResult = await protocol.checkPort(host)
+    portResult = await protocol.checkPort(host)
     const portDetail = `HTTP:${portResult.httpOk ? portResult.httpPort : '❌'} 控制:${portResult.controlOk ? portResult.controlPort : '❌'}`
 
     if (portResult.httpOk) log('INFO', `  HTTP 端口: ✅ (${portResult.httpPort})`)
@@ -163,6 +164,14 @@ export async function runDeviceTest(
 
     const elapsed = performance.now() - t0
     steps.push({ step: '端口检测', success: portResult.httpOk && portResult.controlOk, detail: portDetail, elapsedMs: Math.round(elapsed) })
+  }
+
+  // 端口全关 → 设备不在线，无需后续步骤
+  if (!portResult.httpOk && !portResult.controlOk) {
+    log('WARN', '  HTTP 和控制端口均无响应，跳过后续步骤')
+    const summary = '❌ 设备未在线（端口全关）'
+    log('INFO', `========== 测试结束: ${summary} ==========`)
+    return { deviceId: protocol.deviceId, host, overall: false, steps, authState: 'none', summary }
   }
 
   // ---- 步骤 2: 连接 ----
@@ -218,11 +227,16 @@ export async function runDeviceTest(
         log('WARN', `  授权超时或失败`)
         steps.push({ step: '授权确认', success: false, detail: '授权超时或未确认', elapsedMs: Math.round(elapsed) })
       }
-    } else {
-      // 不需要授权的设备（如 Luna Ultra），直接成功
+    } else if (authResult.authState === 'basic_auth_done') {
+      // 不需要额外授权的设备（如 Luna Ultra），基础认证即完成
       const elapsed = performance.now() - t0
       log('INFO', `  ${authResult.message}`)
       steps.push({ step: '授权检查', success: true, detail: authResult.message, elapsedMs: Math.round(elapsed) })
+    } else {
+      // 未连接、授权失败、或异常状态
+      const elapsed = performance.now() - t0
+      log('WARN', `  授权检查失败: ${authResult.message}`)
+      steps.push({ step: '授权检查', success: false, detail: authResult.message, elapsedMs: Math.round(elapsed) })
     }
   }
 
