@@ -175,7 +175,7 @@ interface ImageInfo {
  */
 async function probeImage(inputPath: string): Promise<ImageInfo> {
   try {
-    const result = await probe(createReadStream(inputPath))
+    const result = await probe(createReadStream(inputPath) as unknown as NodeJS.ReadableStream)
     logMainInfo('[PROBE IMG]', { inputPath, width: result.width, height: result.height, type: result.type })
     return { width: result.width, height: result.height }
   } catch (err) {

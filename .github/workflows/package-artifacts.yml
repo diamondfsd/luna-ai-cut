@@ -18,20 +18,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build macOS DMG
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
-        run: npm run pack:mac:arm64
+        run: pnpm run pack:mac:arm64
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -54,20 +57,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build macOS x64 DMG
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
-        run: npm run pack:mac:x64
+        run: pnpm run pack:mac:x64
 
       - name: Upload macOS x64 artifact
         uses: actions/upload-artifact@v4
@@ -90,19 +96,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build Windows NSIS
         env:
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
-        run: npm run pack:win:x64
+        run: pnpm run pack:win:x64
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
