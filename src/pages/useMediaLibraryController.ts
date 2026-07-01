@@ -267,25 +267,32 @@ export function useMediaLibraryController({
   // --- File loading ---
 
   async function loadCameraLibrary(): Promise<void> {
-    if (!settings) return
-    if (loadingCameraRef.current) return
+    if (!settings) {
+      logger.warn('[媒体库] loadCameraLibrary: 设置为空，跳过')
+      return
+    }
+    if (loadingCameraRef.current) {
+      logger.debug('[媒体库] loadCameraLibrary: 正在加载中，跳过')
+      return
+    }
     loadingCameraRef.current = true
     setLoadingFiles(true)
     const t0 = performance.now()
     try {
       const host = settings.cameraHost
+      logger.info('[媒体库] 开始从设备加载文件', { host, storageFilter })
       await window.luna.checkConnection(host)
       // listFiles 只做轻量本地路径/已有缩略图标记，缓存由渲染层按需发起
       const lunaFiles = await window.luna.listFiles(host, storageFilter)
-      const t1 = performance.now()
-      console.log(`[timing] loadCameraLibrary: ${(t1 - t0).toFixed(0)}ms (checkConnection + listFiles IPC)`)
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
+      logger.info('[媒体库] 设备文件加载完成', { host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })
       setFiles(lunaFiles)
       setSelected(new Set())
       setCacheFailedIds(new Set())
       requestedThumbnailIdsRef.current.clear()
       requestedFrameRateIdsRef.current.clear()
     } catch (error) {
-      console.error(error)
+      logger.error('[媒体库] 设备文件加载失败', { error: error instanceof Error ? error.message : String(error), storageFilter })
     } finally {
       loadingCameraRef.current = false
       setLoadingFiles(false)

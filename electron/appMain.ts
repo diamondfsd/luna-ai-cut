@@ -7,7 +7,7 @@ import type { HotUpdateCheckResult } from './hotUpdater'
 import { checkForHotUpdates, applyHotUpdate, getCurrentHotVersion, clearHotUpdate } from './hotUpdater'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
-import { clearLogs, getLogDir, initLogger, logMainInfo, logMainError, logMainWarn, logExport, logRendererMessage } from './loggerService'
+import { clearLogs, getLogDir, initLogger, logMainDebug, logMainInfo, logMainError, logMainWarn, logExport, logRendererMessage } from './loggerService'
 
 import {
   cacheFile,
@@ -130,6 +130,7 @@ function clientFor(host = DEFAULT_HOST, controlPort = DEFAULT_DEVICE.controlPort
   const client = new LunaClient(normalizedHost, controlPort)
   // 保活失败时通知渲染进程
   client.onKeepAliveFailed = () => {
+    logMainWarn(`[保活] 保活失败，通知渲染进程连接丢失`, { host: normalizedHost })
     win?.webContents.send('luna:connection-lost')
   }
   clients.set(key, client)
@@ -140,7 +141,10 @@ function lunaProtocol(): LunaUltraProtocol {
   return new LunaUltraProtocol(
     clientFor,
     (host) => controlPortForCurrentSettings(host),
-    () => win?.webContents.send('luna:connection-lost'),
+    () => {
+      logMainWarn(`[设备协议] 连接丢失回调触发，通知渲染进程`)
+      win?.webContents.send('luna:connection-lost')
+    },
   )
 }
 
@@ -281,14 +285,35 @@ function registerIpc(): void {
   ipcMain.handle('device:connect', async (_event, options?: DeviceConnectOptions) => {
     const settings = await getSettings()
     const deviceId = options?.deviceId ?? settings.activeDeviceId ?? DEFAULT_DEVICE.id
-    if (deviceId !== DEFAULT_DEVICE.id) throw new Error(`未支持的设备协议：${deviceId}`)
-    return lunaProtocol().connect({ ...options, deviceId })
+    const host = options?.host || settings.cameraHost || DEFAULT_HOST
+    logMainInfo(`[设备连接] 开始连接设备`, { deviceId, host, options })
+    if (deviceId !== DEFAULT_DEVICE.id) {
+      const errMsg = `未支持的设备协议：${deviceId}`
+      logMainError(`[设备连接] 失败`, { deviceId, error: errMsg })
+      throw new Error(errMsg)
+    }
+    try {
+      const status = await lunaProtocol().connect({ ...options, deviceId })
+      logMainInfo(`[设备连接] 连接结果`, { deviceId, host, httpOk: status.httpOk, controlOk: status.controlOk, message: status.message })
+      return status
+    } catch (error) {
+      logMainError(`[设备连接] 连接异常`, { deviceId, host, error: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
   })
 
   ipcMain.handle('luna:checkConnection', async (_event, host?: string) => {
     const settings = await getSettings()
     const normalizedHost = host || settings.cameraHost
-    return lunaProtocol().checkStatus(normalizedHost)
+    logMainInfo(`[HTTP检测] 检查设备连接状态`, { host: normalizedHost })
+    try {
+      const status = await lunaProtocol().checkStatus(normalizedHost)
+      logMainInfo(`[HTTP检测] 连接状态结果`, { host: normalizedHost, httpOk: status.httpOk, controlOk: status.controlOk, message: status.message })
+      return status
+    } catch (error) {
+      logMainError(`[HTTP检测] 检查连接异常`, { host: normalizedHost, error: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
   })
 
   ipcMain.handle('luna:listFiles', async (_event, host?: string, storageId?: string) => {
@@ -296,36 +321,51 @@ function registerIpc(): void {
     const normalizedHost = host || settings.cameraHost
     const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
     const nextStorageId = storageId ?? settings.deviceStorage?.[deviceId] ?? 'all'
-    const files = await lunaProtocol().listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
-    await saveSettings({
-      cameraHost: normalizedHost,
-      deviceStorage: {
-        ...(settings.deviceStorage ?? {}),
-        [deviceId]: nextStorageId,
-      },
-    })
-    // 将已存在于下载目录或缓存的本地路径写回文件对象
-    const nextSettings = await getSettings()
-    if (nextSettings.downloadDir) {
-      await resolveLocalThumbnails(files, nextSettings.downloadDir)
+    logMainInfo(`[HTTP读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId })
+    const t0 = performance.now()
+    try {
+      const files = await lunaProtocol().listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
+      logMainInfo(`[HTTP读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed })
+      await saveSettings({
+        cameraHost: normalizedHost,
+        deviceStorage: {
+          ...(settings.deviceStorage ?? {}),
+          [deviceId]: nextStorageId,
+        },
+      })
+      // 将已存在于下载目录或缓存的本地路径写回文件对象
+      const nextSettings = await getSettings()
+      if (nextSettings.downloadDir) {
+        await resolveLocalThumbnails(files, nextSettings.downloadDir)
+      }
+      return files
+    } catch (error) {
+      logMainError(`[HTTP读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, error: error instanceof Error ? error.message : String(error) })
+      throw error
     }
-    return files
   })
 
   ipcMain.handle('luna:cacheFile', async (_event, file: LunaFile) => {
     const key = file.id || file.name
     const existingTask = previewCacheTasks.get(key)
-    if (existingTask) return existingTask
+    if (existingTask) {
+      logMainDebug(`[缓存] 缓存任务已存在，复用`, { key, fileName: file.name })
+      return existingTask
+    }
+    logMainInfo(`[缓存] 开始缓存文件`, { key, fileName: file.name, kind: file.kind })
 
     const task = enqueuePreviewTask(async () => {
       const cacheFilePath = await cacheFile(file)
       if (cacheFilePath) {
+        logMainInfo(`[缓存] 文件缓存成功，开始生成缩略图`, { key, fileName: file.name, cacheFilePath })
         // 通过队列生成缩略图（串行，避免卡死）
         const cacheDir = await previewCacheDir()
         const thumbDir = thumbnailDir(cacheDir)
         const thumbnailKey = file.downloadName || file.name
         const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
         if (thumbPath) {
+          logMainInfo(`[缓存] 缩略图生成成功`, { key, fileName: file.name })
           // 缩略图生成成功
           win?.webContents.send('luna:thumbnail-ready', {
             fileId: file.id,
@@ -335,8 +375,8 @@ function registerIpc(): void {
             thumbnailUrl: pathToFileURL(thumbPath).toString(),
           })
         } else {
+          logMainWarn(`[缓存] 缩略图生成失败，清理损坏的缓存文件`, { key, fileName: file.name, cacheFilePath })
           // 缩略图生成失败（如源文件损坏），删除缓存文件让下次重试能重新下载
-          console.warn(`[缩略图] 生成失败，清理损坏的缓存文件: ${cacheFilePath}`)
           await rm(cacheFilePath, { force: true, maxRetries: 3 }).catch(() => {})
           win?.webContents.send('luna:thumbnail-ready', {
             fileId: file.id,
@@ -347,9 +387,13 @@ function registerIpc(): void {
           })
         }
       }
+      if (!cacheFilePath) {
+        logMainWarn(`[缓存] 缓存文件失败`, { key, fileName: file.name })
+      }
       return cacheFilePath !== null
     }, 0).finally(() => {
       previewCacheTasks.delete(key)
+      logMainDebug(`[缓存] 缓存任务结束`, { key, fileName: file.name })
     })
     previewCacheTasks.set(key, task)
     return task
@@ -381,12 +425,14 @@ function registerIpc(): void {
 
   ipcMain.handle('luna:disconnect', (_event, host?: string) => {
     const normalizedHost = (host?.trim() || DEFAULT_HOST)
+    logMainInfo(`[设备断开] 断开设备连接`, { host: normalizedHost })
     const match = [...clients.entries()].find(([key]) => key.startsWith(`${normalizedHost}:`))
     const client = match?.[1]
     if (client && match) {
       client.stopKeepAlive()
       client.close()
       clients.delete(match[0])
+      logMainInfo(`[设备断开] 连接已关闭`, { host: normalizedHost })
     }
   })
 
@@ -442,12 +488,16 @@ function registerIpc(): void {
   })
   ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[], _downloadDir?: string) => {
     const settings = await getSettings()
+    logMainInfo(`[下载] 开始下载文件`, { fileCount: files.length, fileNames: files.map(f => f.name).slice(0, 5).join(', ') + (files.length > 5 ? `...(+${files.length - 5})` : '') })
     const needsCameraSession = files.some((file) => !(file.sourceUrl || file.url).startsWith('file:'))
     const client = needsCameraSession ? clientFor(settings.cameraHost, controlPortFor(settings, settings.cameraHost)) : null
     if (client) {
+      logMainDebug(`[下载] 需要设备会话，建立连接`, { host: settings.cameraHost })
       await client.connect()
       // 下载期间用更短的间隔保活（默认15s，下载可能较长）
       client.startKeepAlive()
+    } else {
+      logMainDebug(`[下载] 无需设备会话（本地文件）`)
     }
 
     const controller = new AbortController()
