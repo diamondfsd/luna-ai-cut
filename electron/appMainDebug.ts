@@ -13,7 +13,7 @@ import path from 'node:path'
 
 import { registerDeviceDebugHandlers, cleanupDeviceDebug } from './deviceDebugHandlers'
 import { deviceDefinitions } from './deviceDefaults'
-import { getSettings } from './fileService'
+import { getSettings, openPath } from './fileService'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, '..')
@@ -79,6 +79,9 @@ function registerIpc(): void {
   ipcMain.handle('devices:list', async () => {
     return deviceDefinitions()
   })
+
+  // 文件操作（用于打开日志文件等）
+  ipcMain.handle('files:openPath', (_event, targetPath: string) => openPath(targetPath))
 }
 
 app.whenReady().then(() => {
