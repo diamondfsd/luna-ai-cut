@@ -1,3 +1,4 @@
+import brightness from './brightness.glsl?raw'
 import colorBalanceRgb from './colorBalanceRgb.glsl?raw'
 import common from './common.glsl?raw'
 import curve from './curve.glsl?raw'
@@ -20,6 +21,7 @@ uniform sampler2D u_image;
 in vec2 v_uv;
 out vec4 fragColor;
 
+${brightness}
 ${common}
 ${transform}
 ${detail}
@@ -50,6 +52,7 @@ void main() {
   vec3 c = applyDenoise(raw, blurred);
 
   c = applyExposure(c);
+  c = applyBrightness(c);
   c = applyWhiteBalance(c);
   c = applyToneEqualizer(c);
   c = applyLocalContrast(c, detail);

@@ -20,14 +20,15 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
 
   const modified = {
     whiteBalance: value.temperature !== 0 || value.tint !== 0 || value.whiteBalanceMode !== 'custom',
-    tone: value.exposure !== 0 || value.black !== 0 || value.contrast !== 0 ||
+    tone: value.exposure !== 0 || value.black !== 0 || value.contrast !== 0 || value.brightness !== 0 ||
       value.highlights !== 0 || value.shadows !== 0 || value.whites !== 0 || value.blacks !== 0 ||
+      value.clarity !== 0 || value.texture !== 0 ||
       value.vibrance !== 0 || value.saturation !== 0,
     curve: activeCurve.length > 0 || value.curveLift !== 0 || value.curveContrast !== 0 ||
       value.levelsBlack !== 0 || value.levelsGray !== 0.5 || value.levelsWhite !== 1,
     hsl: value.hslSat !== 0 || value.hslLum !== 0,
     grading: value.gradeShadowsAmount !== 0 || value.gradeMidAmount !== 0 || value.gradeHighlightsAmount !== 0,
-    detail: value.clarity !== 0 || value.texture !== 0 || value.sharpen !== 0 || value.denoise !== 0,
+    detail: value.sharpen !== 0 || value.denoise !== 0,
   }
 
   return (
