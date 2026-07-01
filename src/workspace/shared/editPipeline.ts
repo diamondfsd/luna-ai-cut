@@ -34,6 +34,7 @@ export interface EditPipeline {
     // Exposure
     exposure: number
     black: number
+    brightness: number
 
     // White Balance
     whiteBalanceMode: WhiteBalanceMode
@@ -117,6 +118,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     whiteBalanceMode: 'custom',
     exposure: 0,
     black: 0,
+    brightness: 0,
     temperature: 0,
     tint: 0,
     contrast: 0,
@@ -177,13 +179,16 @@ export const WHITE_BALANCE_DEFAULTS: Partial<EditPipeline['color']> = {
 export const TONE_DEFAULTS: Partial<EditPipeline['color']> = {
   exposure: 0,
   black: 0,
+  brightness: 0,
   contrast: 0,
   highlights: 0,
   shadows: 0,
   whites: 0,
   blacks: 0,
-  saturation: 0,
+  clarity: 0,
+  texture: 0,
   vibrance: 0,
+  saturation: 0,
 }
 
 export const CURVE_DEFAULTS: Partial<EditPipeline['color']> = {
@@ -212,8 +217,6 @@ export const GRADING_DEFAULTS: Partial<EditPipeline['color']> = {
 }
 
 export const DETAIL_DEFAULTS: Partial<EditPipeline['color']> = {
-  clarity: 0,
-  texture: 0,
   sharpen: 0,
   denoise: 0,
 }
@@ -268,6 +271,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
       whiteBalanceMode: ['custom', 'daylight', 'cloudy', 'indoor'].includes(pipeline.color.whiteBalanceMode) ? pipeline.color.whiteBalanceMode : 'custom',
       exposure: clampNumber(pipeline.color.exposure, color.exposure),
       black: clampNumber(pipeline.color.black, color.black),
+      brightness: clampNumber(pipeline.color.brightness, color.brightness),
       temperature: clampNumber(pipeline.color.temperature, color.temperature),
       tint: clampNumber(pipeline.color.tint, color.tint),
       contrast: clampNumber(pipeline.color.contrast, color.contrast),

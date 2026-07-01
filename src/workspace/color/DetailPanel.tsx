@@ -27,8 +27,6 @@ export function DetailPanel({ value, modified, onChange }: DetailPanelProps) {
         </button>
       }
     >
-      <ParamSlider label="清晰度" value={value.clarity} {...sliderRange(EDIT_PARAMETER_RANGES.color.clarity)} onChange={(clarity) => onChange({ clarity })} />
-      <ParamSlider label="纹理" value={value.texture} {...sliderRange(EDIT_PARAMETER_RANGES.color.texture)} onChange={(texture) => onChange({ texture })} />
       <ParamSlider label="锐化" value={value.sharpen} {...sliderRange(EDIT_PARAMETER_RANGES.color.sharpen)} onChange={(sharpen) => onChange({ sharpen })} formatValue={String} />
       <ParamSlider label="降噪" value={value.denoise} {...sliderRange(EDIT_PARAMETER_RANGES.color.denoise)} onChange={(denoise) => onChange({ denoise })} formatValue={String} />
     </Accordion>

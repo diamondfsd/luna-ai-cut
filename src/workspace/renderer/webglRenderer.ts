@@ -16,9 +16,10 @@ const UNIFORM_NAMES = [
   'u_cropAspect',
   'u_frameSize',
   'u_fillScale',
-  // Exposure
+  // Exposure & Brightness
   'u_exposure',
   'u_black',
+  'u_brightness',
   // White Balance
   'u_temperature',
   'u_tint',
@@ -196,7 +197,8 @@ export class WebGLRenderer {
 
     // Exposure
     gl.uniform1f(this.uniform('u_exposure'), color.exposure)
-    gl.uniform1f(this.uniform('u_black'), color.black / 100)
+    gl.uniform1f(this.uniform('u_black'), color.black)
+    gl.uniform1f(this.uniform('u_brightness'), color.brightness)
 
     // White Balance
     gl.uniform1f(this.uniform('u_temperature'), color.temperature / 100)
