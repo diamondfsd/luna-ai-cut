@@ -12,6 +12,7 @@ import { MediaLibraryPage } from '../pages/MediaLibraryPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import type { CacheStats, LunaFile, PreviewResult } from '../shared/types'
+import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 
 export function AppRoutes() {
   const { settings, setSettings, connection, downloadProgress, setDownloadProgress } = useApp()
@@ -35,6 +36,9 @@ export function AppRoutes() {
   const [downloading, setDownloading] = useState(false)
   const [localResourcesRefreshKey, setLocalResourcesRefreshKey] = useState(0)
   const [pagesKey, setPagesKey] = useState(0)
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('edit')
+  const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
+  const [workspaceEditing, setWorkspaceEditing] = useState(false)
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -107,7 +111,19 @@ export function AppRoutes() {
 
   return (
     <main className="app">
-      <AppNav connection={connection} sourceMode={sourceMode} activeDevice={activeDevice} />
+      <AppNav
+        connection={connection}
+        sourceMode={sourceMode}
+        activeDevice={activeDevice}
+        showWorkspaceMode={isWorkspaceActive && workspaceEditing}
+        workspaceMode={workspaceMode}
+        creativeModeId={creativeModeId}
+        onModeChange={(mode) => {
+          setWorkspaceMode(mode)
+          if (mode === 'edit') setCreativeModeId(null)
+        }}
+        onCreativeModeChange={setCreativeModeId}
+      />
       <UpdateBanner />
       <HotUpdateBanner />
 
@@ -167,7 +183,7 @@ export function AppRoutes() {
         </section>
 
         <section className="route-panel" hidden={!isWorkspaceActive}>
-          <WorkspacePage />
+          <WorkspacePage workspaceMode={workspaceMode} onEditingChange={setWorkspaceEditing} />
         </section>
 
         {isSettingsActive && (

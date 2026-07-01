@@ -145,6 +145,7 @@
 - 保持单一强调色 `--blue`（`#0066cc`）。
 - 偏好扁平化设计，按钮和文本不添加厚重阴影。
 - CSS 用于布局和功能特定表面，可复用的控件样式放在共享 UI 层（`src/ui/ui.css`）。
+- **每个功能组件的 CSS 写在自己的文件里**，并在组件代码中自行 import，不要在 `main.tsx` 统一加载。workspace 子模块已有独立文件约定：`workspace-crop.css`、`workspace-color.css`、`workspace-mode.css` 等，每个由对应的组件引入（如 `WorkspaceCropOverlay.tsx` import `../../styles/workspace-crop.css`）。无论 workspace 内外，功能相关的样式都必须单独建文件、由组件自行加载，不得塞入已有的公共 CSS 文件或全局入口集中加载。
 
 ## 文案规则
 

@@ -5,15 +5,21 @@ import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { useApp } from '../context/AppContext'
 import { ExportProgressModal } from './ExportProgressModal'
 import { HelpDialog } from './HelpDialog'
+import { WorkspaceModeHeader, type CreativeModeId, type WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 import '../styles/nav.css'
 
 interface AppNavProps {
   activeDevice?: DeviceDefinition
   connection: ConnectionStatus | null
   sourceMode: 'demo' | 'camera'
+  showWorkspaceMode?: boolean
+  workspaceMode?: WorkspaceMode
+  creativeModeId?: CreativeModeId | null
+  onModeChange?: (mode: WorkspaceMode) => void
+  onCreativeModeChange?: (modeId: CreativeModeId | null) => void
 }
 
-export function AppNav({ activeDevice, connection, sourceMode }: AppNavProps) {
+export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode, workspaceMode, creativeModeId, onModeChange, onCreativeModeChange }: AppNavProps) {
   const { exportProgress } = useApp()
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceName ?? activeDevice?.name ?? '设备'
@@ -43,6 +49,17 @@ export function AppNav({ activeDevice, connection, sourceMode }: AppNavProps) {
             </NavLink>
           )}
         </div>
+        {showWorkspaceMode && workspaceMode && onModeChange && onCreativeModeChange && (
+          <div className="nav-center">
+            <WorkspaceModeHeader
+              variant="nav"
+              mode={workspaceMode}
+              creativeModeId={creativeModeId ?? null}
+              onModeChange={onModeChange}
+              onCreativeModeChange={onCreativeModeChange}
+            />
+          </div>
+        )}
         <div className="nav-status">
           <span className={connected ? 'status-dot ok' : 'status-dot'} />
           <span>{statusText}</span>

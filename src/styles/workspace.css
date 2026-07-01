@@ -145,6 +145,7 @@
   background: #f4f5f7;
   display: grid;
   padding: 14px;
+  position: relative;
 }
 
 .workspace-canvas-stage {
@@ -158,6 +159,11 @@
   place-items: center;
   background: #f8f9fb;
   touch-action: none;
+}
+
+.workspace-canvas-stage--hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .workspace-canvas-stage.cropping {
@@ -442,13 +448,18 @@
 }
 
 .workspace-thumb {
+  box-sizing: border-box;
   flex: 0 0 90px;
-  min-width: 90px;
+  width: 90px;
+  height: 90px;
   padding: 4px;
+  border: 2px solid transparent;
   border-radius: 8px;
-  border: 1px solid transparent;
-  background: transparent;
+  background: #ededf0;
   cursor: pointer;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
 }
 
 .workspace-thumb:hover {
@@ -461,26 +472,24 @@
 }
 
 .workspace-thumb.selected {
-  outline: 2px solid var(--blue);
-  outline-offset: -2px;
+  border-color: var(--blue);
 }
 
-.workspace-thumb-preview {
-  width: 100%;
-  height: 82px;
-  border-radius: 6px;
-  overflow: hidden;
-  background: #ededf0;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.workspace-thumb-preview img {
+.workspace-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
+  border-radius: 4px;
+}
+
+.workspace-thumb .workspace-thumb-broken {
+  color: var(--muted);
+}
+
+.workspace-thumb-label {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 /* 拖拽框选 */
@@ -511,3 +520,4 @@
 .workspace-curve-preview.dragging circle {
   cursor: grabbing;
 }
+

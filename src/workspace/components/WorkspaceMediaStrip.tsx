@@ -110,9 +110,7 @@ export function WorkspaceMediaStrip({ media, activeIndex, onActiveIndexChange, s
             type="button"
             onClick={(e) => handleClick(index, e)}
           >
-            <span className="workspace-thumb-preview">
-              {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span>{item.kind === 'video' ? '视频' : '图片'}</span>}
-            </span>
+            {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span className="workspace-thumb-label">{item.kind === 'video' ? '视频' : '图片'}</span>}
           </button>
         )
       })}
