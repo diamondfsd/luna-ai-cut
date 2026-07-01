@@ -30,7 +30,7 @@ function createWindow(): BrowserWindow {
     height: 820,
     minWidth: 1040,
     minHeight: 680,
-    icon: path.join(process.env.APP_ROOT, 'build', process.platform === 'darwin' ? 'icon.icns' : 'icon.png'),
+    icon: path.join(process.env.APP_ROOT, 'build-debug', process.platform === 'darwin' ? 'icon.icns' : 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),

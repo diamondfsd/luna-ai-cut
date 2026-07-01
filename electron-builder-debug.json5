@@ -7,7 +7,7 @@
   "productName": "Luna Device Debug",
   "directories": {
     "output": "release-debug",
-    "buildResources": "build"
+    "buildResources": "build-debug"
   },
   "files": [
     "dist-debug",
@@ -15,14 +15,14 @@
   ],
   "extraResources": [],
   "mac": {
-    "icon": "build/icon.icns",
+    "icon": "build-debug/icon.icns",
     "target": [
       "dmg"
     ],
     "artifactName": "LunaDeviceDebug-Mac-${version}-${arch}.${ext}"
   },
   "win": {
-    "icon": "build/icon.ico",
+    "icon": "build-debug/icon.ico",
     "target": [
       {
         "target": "nsis",
