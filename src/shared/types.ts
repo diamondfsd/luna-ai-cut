@@ -183,6 +183,8 @@ export interface AppSettings {
   mockHttpPort?: number
   mockTcpPort?: number
   mockRateMbps?: number
+  /** 导出时是否同时生成 Apple Live Photo 配对文件（macOS 专用） */
+  exportAppleLivePhoto?: boolean
   aiConfig?: AiConfig
 }
 

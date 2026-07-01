@@ -12,11 +12,7 @@ const execFileAsync = promisify(execFile)
 
 import { localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
-import { FfmpegPipeline, getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
-import { detectHardwareAccel } from './ffmpeg/hwaccel'
-import { CodecModule } from './ffmpeg/codec'
-import { BitrateModule } from './ffmpeg/bitrate'
-import { WatermarkModule } from './ffmpeg/watermark'
+import { getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
 import { applyWatermarkToVideo, applyVideoExportSettings } from './videoPipelineService'
 import type {
   LunaFile,
@@ -179,7 +175,7 @@ interface ImageInfo {
  */
 async function probeImage(inputPath: string): Promise<ImageInfo> {
   try {
-    const result = await probe(createReadStream(inputPath))
+    const result = await probe(createReadStream(inputPath) as unknown as NodeJS.ReadableStream)
     logMainInfo('[PROBE IMG]', { inputPath, width: result.width, height: result.height, type: result.type })
     return { width: result.width, height: result.height }
   } catch (err) {
@@ -548,27 +544,37 @@ export async function applyWatermarkToLivePhoto(
     await applyWatermarkToImageWithRef(inputPath, watermarkedImage, watermarkPercent, position, style, vidW, vidH)
     onProgress?.(25)
 
-    // 视频仅加水印，保持原始分辨率/帧率/码率
-    const pipeline = new FfmpegPipeline()
-    const hwaccel = await detectHardwareAccel(getFfmpegPath())
-    if (hwaccel.preInputArgs.length > 0) {
-      pipeline.setPreInputArgs(hwaccel.preInputArgs)
-    }
-    pipeline.addModule(new WatermarkModule({ watermarkPercent, position, style }, hwaccel.overlayFilter))
-    // 硬件编码器必须给显式码率
-    if (hwaccel.type !== null) {
-      pipeline.addModule(new BitrateModule({
-        quality: 'original',
-        useSourceBitrate: true,
-      }))
-    }
-    pipeline.addModule(new CodecModule({
-      encoderH264: hwaccel.encoderNameH264,
-      encoderH265: hwaccel.encoderNameH265 ?? undefined,
-      encoderArgs: hwaccel.encoderArgs,
-    }))
-    await pipeline.execute(extractedVideo, processedVideo,
-      (pct) => onProgress?.(Math.round(pct * 0.4 + 25)), signal)
+    // 视频仅加水印 — 直接跑 ffmpeg 跳过完整 pipeline，强制 h264_videotoolbox 快 3-5x
+    const wmVideoPath = watermarkFileFor('video', style)
+    const wmSize = Math.round(vidW * watermarkPercent / 100)
+    const marginX2 = Math.round(vidW * 0.03)
+    const marginY2 = Math.round(vidH * 0.03)
+    const [vPos2, hPos2] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
+    const ox = hPos2 === 'left' ? String(marginX2)
+      : hPos2 === 'right' ? `(W-w-${marginX2})`
+      : '(W-w)/2'
+    const oy = vPos2 === 'bottom' ? `(H-h-${marginY2})` : String(marginY2)
+    const filterComplex = `[1:v]format=rgba,scale=${wmSize}:-1[wm];[0:v][wm]overlay=${ox}:${oy}:format=auto`
+    onProgress?.(26)
+    logMainInfo('[LIVE] video watermark direct ffmpeg', { vidW, vidH, wmSize, filterComplex, wmVideoPath })
+    await execFileAsync(getFfmpegPath(), [
+      '-hwaccel', 'videotoolbox',
+      '-i', extractedVideo,
+      '-i', wmVideoPath,
+      '-filter_complex', filterComplex,
+      '-c:v', 'h264_videotoolbox',
+      '-allow_sw', '1',
+      '-b:v', '15000k',
+      '-maxrate', '30000k',
+      '-bufsize', '30000k',
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'copy',
+      '-map_metadata', '0',
+      '-progress', 'pipe:2',
+      '-nostats',
+      '-y',
+      processedVideo,
+    ], { timeout: 60000, signal })
 
     // 检查处理后的文件
     const vidStat = await fs.stat(processedVideo).catch(() => null)

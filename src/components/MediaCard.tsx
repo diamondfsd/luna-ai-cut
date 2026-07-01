@@ -18,6 +18,7 @@ interface MediaCardProps {
   onRevealPath: (path: string) => void
   onRevealProgress: (progress: DownloadProgress | undefined) => void
   onThumbnailLoad: (file: LunaFile, localPath: string | null | undefined) => void
+  onThumbnailError: (file: LunaFile) => void
 }
 
 function thumbnailPlaceholderFor(file: LunaFile): string {
@@ -42,6 +43,7 @@ export function MediaCard({
   onRevealPath,
   onRevealProgress,
   onThumbnailLoad,
+  onThumbnailError,
 }: MediaCardProps) {
   const localThumbnailUrl = file.thumbnailUrl
   const progressValue = progress?.status === 'done' || progress?.status === 'exists' ? 100 : progress?.percent ?? 0
@@ -100,6 +102,7 @@ export function MediaCard({
             alt={file.name}
             loading="lazy"
             onLoad={() => onThumbnailLoad(file, downloadedPath)}
+            onError={() => onThumbnailError(file)}
           />
         )}
         {!localThumbnailUrl && cacheFailed && <FileQuestion size={34} />}

@@ -204,13 +204,32 @@ export function useMediaLibraryController({
   }, [])
 
   function requestThumbnail(file: LunaFile): void {
-    if (file.thumbnailUrl || cacheFailedIds.has(file.id) || requestedThumbnailIdsRef.current.has(file.id)) return
+    if (file.thumbnailUrl) {
+      return
+    }
+    if (cacheFailedIds.has(file.id)) {
+      return
+    }
+    if (requestedThumbnailIdsRef.current.has(file.id)) {
+      return
+    }
     requestedThumbnailIdsRef.current.add(file.id)
     void window.luna.cacheFile(file)
       .then((ok) => {
-        if (!ok) setCacheFailedIds((current) => new Set(current).add(file.id))
+        if (!ok) {
+          logger.warn(`[缩略图] cacheFile 返回 false，标记 cacheFailed`, { fileId: file.id, fileName: file.name, kind: file.kind })
+          setCacheFailedIds((current) => new Set(current).add(file.id))
+        }
       })
-      .catch(() => setCacheFailedIds((current) => new Set(current).add(file.id)))
+      .catch((err) => {
+        logger.error(`[缩略图] cacheFile IPC 异常`, {
+          fileId: file.id,
+          fileName: file.name,
+          kind: file.kind,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        setCacheFailedIds((current) => new Set(current).add(file.id))
+      })
   }
 
   function requestFrameRate(file: LunaFile, localPath: string | null | undefined): void {
@@ -230,28 +249,51 @@ export function useMediaLibraryController({
     requestFrameRate(file, localPath)
   }
 
+  function handleThumbnailImageError(file: LunaFile): void {
+    logger.warn(`[缩略图] 图片 onError`, { fileId: file.id, fileName: file.name, kind: file.kind })
+    // 缩略图加载失败（如文件损坏），清除请求记录允许重试
+    requestedThumbnailIdsRef.current.delete(file.id)
+    // 清除 thumbnailUrl 让卡片显示占位图，然后重新触发缓存 + 缩略图生成
+    setFiles((current) =>
+      current.map((f) => (f.id === file.id ? { ...f, thumbnailUrl: null } : f)),
+    )
+    setDownloadedFiles((current) =>
+      current.map((f) => (f.id === file.id ? { ...f, thumbnailUrl: null } : f)),
+    )
+    // 短暂延迟后重试，避免在加载循环中打满 IPC
+    // 注意：要清除 file.thumbnailUrl 避免被 requestThumbnail 的短路检查跳过
+    setTimeout(() => requestThumbnail({ ...file, thumbnailUrl: null }), 300)
+  }
+
   // --- File loading ---
 
   async function loadCameraLibrary(): Promise<void> {
-    if (!settings) return
-    if (loadingCameraRef.current) return
+    if (!settings) {
+      logger.warn('[媒体库] loadCameraLibrary: 设置为空，跳过')
+      return
+    }
+    if (loadingCameraRef.current) {
+      logger.debug('[媒体库] loadCameraLibrary: 正在加载中，跳过')
+      return
+    }
     loadingCameraRef.current = true
     setLoadingFiles(true)
     const t0 = performance.now()
     try {
       const host = settings.cameraHost
+      logger.info('[媒体库] 开始从设备加载文件', { host, storageFilter })
       await window.luna.checkConnection(host)
       // listFiles 只做轻量本地路径/已有缩略图标记，缓存由渲染层按需发起
       const lunaFiles = await window.luna.listFiles(host, storageFilter)
-      const t1 = performance.now()
-      console.log(`[timing] loadCameraLibrary: ${(t1 - t0).toFixed(0)}ms (checkConnection + listFiles IPC)`)
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
+      logger.info('[媒体库] 设备文件加载完成', { host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })
       setFiles(lunaFiles)
       setSelected(new Set())
       setCacheFailedIds(new Set())
       requestedThumbnailIdsRef.current.clear()
       requestedFrameRateIdsRef.current.clear()
     } catch (error) {
-      console.error(error)
+      logger.error('[媒体库] 设备文件加载失败', { error: error instanceof Error ? error.message : String(error), storageFilter })
     } finally {
       loadingCameraRef.current = false
       setLoadingFiles(false)
@@ -449,6 +491,7 @@ export function useMediaLibraryController({
     handlePreviewClick,
     handleStorageFilterChange,
     handleThumbnailImageLoad,
+    handleThumbnailImageError,
     loadCameraLibrary,
     loadDownloadedLibrary,
     loadExportLibrary,

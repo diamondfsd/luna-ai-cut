@@ -1,6 +1,7 @@
 import { getSettings, saveSettings } from './fileService'
 import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
 import { DEFAULT_DEVICE } from './deviceDefaults'
+import { logMainInfo, logMainWarn } from './loggerService'
 import type { ConnectionStatus, DeviceConnectOptions, DeviceDefinition, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export interface DeviceProtocol {
@@ -43,12 +44,17 @@ export class LunaUltraProtocol implements DeviceProtocol {
   }
 
   async connect(options?: DeviceConnectOptions): Promise<ConnectionStatus> {
-    await this.wakeDevice()
     const settings = await getSettings()
     const host = options?.host || settings.cameraHost || this.definition.defaultHost
+    logMainInfo(`[设备协议] 开始连接设备`, { device: this.definition.name, host })
+    await this.wakeDevice()
     const client = this.clientFor(host, this.controlPortForHost(host))
     const status = await client.checkStatus()
-    if (!status.httpOk || !status.controlOk) return withDeviceInfo(status, this.definition)
+    logMainInfo(`[设备协议] 端口检测结果`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
+    if (!status.httpOk || !status.controlOk) {
+      logMainWarn(`[设备协议] 端口检测未通过，放弃连接`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
+      return withDeviceInfo(status, this.definition)
+    }
 
     await client.connect()
     client.onKeepAliveFailed = this.onConnectionLost ?? null
@@ -57,6 +63,7 @@ export class LunaUltraProtocol implements DeviceProtocol {
       activeDeviceId: this.definition.id,
       cameraHost: client.host,
     })
+    logMainInfo(`[设备协议] 连接完成`, { device: this.definition.name, host })
     return withDeviceInfo({ ...status, message: `已连接 ${this.definition.name}` }, this.definition)
   }
 
@@ -64,17 +71,23 @@ export class LunaUltraProtocol implements DeviceProtocol {
     const settings = await getSettings()
     const host = options?.host || settings.cameraHost || this.definition.defaultHost
     const storageId = options?.storageId ?? settings.deviceStorage?.[this.definition.id] ?? 'all'
+    logMainInfo(`[设备协议] 开始读取文件列表`, { host, storageId })
     const client = this.clientFor(host, this.controlPortForHost(host))
     const storages = storageId === 'all'
       ? this.definition.storages
       : this.definition.storages.filter((storage) => storage.id === storageId)
+    logMainInfo(`[设备协议] 读取 ${storages.length} 个存储的文件`, { storages: storages.map(s => s.id) })
+    const t0 = performance.now()
     const files = await listStorageFiles(client, storages.length > 0 ? storages : this.definition.storages)
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
+    logMainInfo(`[设备协议] 文件列表读取完成`, { host, storageId, fileCount: files.length, elapsedSec: elapsed })
     client.startKeepAlive()
     return files
   }
 
   async disconnect(host?: string): Promise<void> {
     const normalizedHost = host ?? DEFAULT_HOST
+    logMainInfo(`[设备协议] 断开设备连接`, { host: normalizedHost })
     const client = this.clientFor(normalizedHost, this.controlPortForHost(normalizedHost))
     client.stopKeepAlive()
     client.close()
@@ -83,7 +96,9 @@ export class LunaUltraProtocol implements DeviceProtocol {
 
 async function listStorageFiles(client: LunaClient, storages: DeviceStorageOption[]): Promise<LunaFile[]> {
   const results = await Promise.allSettled(storages.map(async (storage) => {
+    logMainInfo(`[存储读取] 开始读取存储`, { storageId: storage.id, label: storage.label })
     const files = await client.listFiles(storage.id)
+    logMainInfo(`[存储读取] 存储读取完成`, { storageId: storage.id, label: storage.label, fileCount: files.length })
     return files.map((file) => ({
       ...file,
       id: `${storage.id}:${file.id}`,
@@ -97,7 +112,8 @@ async function listStorageFiles(client: LunaClient, storages: DeviceStorageOptio
     if (result.status === 'fulfilled') {
       groups.push(result.value)
     } else {
-      console.warn(`[device] storage unavailable: ${storages[index]?.id ?? 'unknown'}`, result.reason)
+      const storageId = storages[index]?.id ?? 'unknown'
+      logMainWarn(`[存储读取] 存储不可用`, { storageId, reason: result.reason instanceof Error ? result.reason.message : String(result.reason) })
     }
   }
 
