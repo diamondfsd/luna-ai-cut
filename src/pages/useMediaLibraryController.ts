@@ -189,6 +189,7 @@ export function useMediaLibraryController({
   // 监听缓存下载完成，更新卡片缩略图
   useEffect(() => {
     return window.luna.onThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
+      logger.info(`[缩略图] 收到 thumbnail-ready`, { fileId, fileName, downloadName, hasThumbnailUrl: Boolean(thumbnailUrl), hasCacheFilePath: Boolean(cacheFilePath) })
       const matches = (file: LunaFile): boolean =>
         file.id === fileId || file.name === fileName || file.downloadName === downloadName
       setCacheFailedIds((current) => {
@@ -223,13 +224,34 @@ export function useMediaLibraryController({
   }, [])
 
   function requestThumbnail(file: LunaFile): void {
-    if (file.thumbnailUrl || cacheFailedIds.has(file.id) || requestedThumbnailIdsRef.current.has(file.id)) return
+    if (file.thumbnailUrl) {
+      return
+    }
+    if (cacheFailedIds.has(file.id)) {
+      return
+    }
+    if (requestedThumbnailIdsRef.current.has(file.id)) {
+      logger.debug(`[缩略图] 已请求过，跳过`, { fileId: file.id, fileName: file.name })
+      return
+    }
     requestedThumbnailIdsRef.current.add(file.id)
+    logger.info(`[缩略图] 发起 cacheFile 请求`, { fileId: file.id, fileName: file.name, kind: file.kind, hasLocalPath: Boolean(file.downloadFilePath || file.localPath) })
     void window.luna.cacheFile(file)
       .then((ok) => {
-        if (!ok) setCacheFailedIds((current) => new Set(current).add(file.id))
+        if (!ok) {
+          logger.warn(`[缩略图] cacheFile 返回 false，标记 cacheFailed`, { fileId: file.id, fileName: file.name, kind: file.kind })
+          setCacheFailedIds((current) => new Set(current).add(file.id))
+        }
       })
-      .catch(() => setCacheFailedIds((current) => new Set(current).add(file.id)))
+      .catch((err) => {
+        logger.error(`[缩略图] cacheFile IPC 异常`, {
+          fileId: file.id,
+          fileName: file.name,
+          kind: file.kind,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        setCacheFailedIds((current) => new Set(current).add(file.id))
+      })
   }
 
   function requestFrameRate(file: LunaFile, localPath: string | null | undefined): void {
@@ -245,11 +267,13 @@ export function useMediaLibraryController({
   requestFrameRateRef.current = requestFrameRate
 
   function handleThumbnailImageLoad(file: LunaFile, localPath: string | null | undefined): void {
+    logger.debug(`[缩略图] 图片 onLoad 触发`, { fileId: file.id, fileName: file.name, kind: file.kind, hasThumbnailUrl: Boolean(file.thumbnailUrl), hasLocalPath: Boolean(localPath), hasCacheFilePath: Boolean(file.cacheFilePath) })
     requestThumbnail(file)
     requestFrameRate(file, localPath)
   }
 
   function handleThumbnailImageError(file: LunaFile): void {
+    logger.warn(`[缩略图] 图片 onError`, { fileId: file.id, fileName: file.name, kind: file.kind })
     // 缩略图加载失败（如文件损坏），清除请求记录允许重试
     requestedThumbnailIdsRef.current.delete(file.id)
     // 清除 thumbnailUrl 让卡片显示占位图，然后重新触发缓存 + 缩略图生成
@@ -286,6 +310,22 @@ export function useMediaLibraryController({
       const lunaFiles = await window.luna.listFiles(host, storageFilter)
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
       logger.info('[媒体库] 设备文件加载完成', { host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })
+      // 调试：统计文件状态
+      const withThumb = lunaFiles.filter(f => f.thumbnailUrl).length
+      const withLocalPath = lunaFiles.filter(f => f.downloadFilePath || f.localPath).length
+      const withCachePath = lunaFiles.filter(f => f.cacheFilePath).length
+      logger.info('[媒体库] 文件状态统计', { total: lunaFiles.length, withThumbnailUrl: withThumb, withLocalPath, withCachePath })
+      if (lunaFiles.length > 0) {
+        logger.debug('[媒体库] 前3个文件样本', lunaFiles.slice(0, 3).map(f => ({
+          id: f.id, name: f.name, kind: f.kind,
+          hasThumbnailUrl: Boolean(f.thumbnailUrl),
+          hasDownloadFilePath: Boolean(f.downloadFilePath),
+          hasLocalPath: Boolean(f.localPath),
+          hasCacheFilePath: Boolean(f.cacheFilePath),
+          hasPreviewName: Boolean(f.previewName),
+          hasPreviewUrl: Boolean(f.previewUrl),
+        })))
+      }
       setFiles(lunaFiles)
       setSelected(new Set())
       setCacheFailedIds(new Set())

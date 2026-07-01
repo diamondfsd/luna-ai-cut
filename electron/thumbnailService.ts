@@ -5,6 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
 import { promisify } from 'node:util'
+import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
 
 const execFileAsync = promisify(execFile)
 const _require = createRequire(import.meta.url)
@@ -28,16 +29,20 @@ const WORKER_COUNT = Math.max(2, Math.min(8, os.cpus().length - 1))
 
 /** 获取 ffmpeg 二进制路径（打包后取 resources，开发环境取 ffmpeg-static） */
 function getFfmpegPath(): string {
+  let ffmpegPath: string
   if (app.isPackaged) {
     const ext = process.platform === 'win32' ? '.exe' : ''
-    return path.join(process.resourcesPath, 'ffmpeg', `ffmpeg${ext}`)
+    ffmpegPath = path.join(process.resourcesPath, 'ffmpeg', `ffmpeg${ext}`)
+  } else {
+    try {
+      const p = _require('ffmpeg-static') as string
+      ffmpegPath = p
+    } catch {
+      ffmpegPath = 'ffmpeg'
+    }
   }
-  try {
-    const p = _require('ffmpeg-static') as string
-    return p
-  } catch {
-    return 'ffmpeg'
-  }
+  logMainDebug(`[缩略图] ffmpeg 路径`, { ffmpegPath, isPackaged: app.isPackaged, platform: process.platform })
+  return ffmpegPath
 }
 
 /** 安全化文件名（替换路径分隔符和特殊字符） */
@@ -83,15 +88,21 @@ async function runWorker(): Promise<void> {
 
     const label = task.fileName || task.fileId
     const start = Date.now()
-    console.log(`[缩略图] 开始生成 ${label} (${task.kind || '?'}) worker ${activeWorkers}/${WORKER_COUNT}`)
+    logMainInfo(`[缩略图] worker 开始生成`, { label, kind: task.kind, sourcePath: task.sourcePath, worker: `${activeWorkers}/${WORKER_COUNT}` })
 
     try {
       const result = await generateThumbnail(task.sourcePath, task.thumbDir, task.fileId, task.kind)
       const elapsed = Date.now() - start
-      console.log(`[缩略图] 完成 ${label} → ${path.basename(result)} (${elapsed}ms)`)
+      logMainInfo(`[缩略图] worker 完成`, { label, result: path.basename(result), elapsedMs: elapsed })
       task.resolve(result)
     } catch (err) {
-      console.error(`[缩略图] 失败 ${label}: ${err}`)
+      logMainError(`[缩略图] worker 失败`, {
+        label,
+        sourcePath: task.sourcePath,
+        kind: task.kind,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      })
       task.resolve(null)
     }
   }
@@ -126,11 +137,11 @@ export function enqueueThumbnailGeneration(
   return fs.stat(destPath).then(
     (stats) => {
       if (stats.size > 200) {
-        console.log(`[缩略图] 已存在 ${fileName || fileId}，跳过生成`)
+        logMainInfo(`[缩略图] 已存在，跳过生成`, { fileId, fileName, destPath })
         return destPath
       }
       // 文件太小，视为损坏，删除后重新生成
-      console.warn(`[缩略图] 已存在的文件过小 (${stats.size}B)，视为损坏，重新生成 ${fileName || fileId}`)
+      logMainWarn(`[缩略图] 已存在的文件过小 (${stats.size}B)，视为损坏，重新生成`, { fileId, fileName, destPath })
       return fs.rm(destPath, { force: true, maxRetries: 3 }).then(() => {
         return new Promise<string | null>((resolve) => {
           taskQueue.push({ sourcePath, thumbDir, fileId, kind, fileName, resolve })
@@ -140,6 +151,7 @@ export function enqueueThumbnailGeneration(
     },
     () => {
       // 不存在，入队生成
+      logMainDebug(`[缩略图] 文件不存在，入队生成`, { fileId, fileName, kind })
       return new Promise<string | null>((resolve) => {
         taskQueue.push({ sourcePath, thumbDir, fileId, kind, fileName, resolve })
         spawnWorkers()

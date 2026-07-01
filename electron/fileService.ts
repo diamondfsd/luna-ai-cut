@@ -6,7 +6,7 @@ import { localThumbnailUrl, safeName } from './filePathUtils'
 import { downloadToFile, downloadToFileWithRetry, isAbortError } from './fileDownloadService'
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
-import { logMainDebug, logMainWarn } from './loggerService'
+import { logMainDebug, logMainInfo, logMainWarn } from './loggerService'
 import type {
   DownloadProgress,
   DownloadSummary,
@@ -221,6 +221,7 @@ export async function previewFile(file: LunaFile): Promise<PreviewResult> {
 export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: string): Promise<void> {
   if (files.length === 0) return
   const cacheDir = await previewCacheDir()
+  logMainDebug(`[resolveLocalThumbnails] 开始检查`, { fileCount: files.length, downloadDir, cacheDir })
 
   // 一次性读取缩略图目录文件清单
   let thumbFileSet = new Set<string>()
@@ -230,7 +231,13 @@ export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: str
     for (const entry of entries) {
       thumbFileSet.add(entry.name)
     }
-  } catch { /* thumbnails 目录可能还不存在 */ }
+    logMainDebug(`[resolveLocalThumbnails] 缩略图目录已有文件`, { thumbDir: thumbDirPath, existingThumbs: thumbFileSet.size })
+  } catch { /* thumbnails 目录可能还不存在 */
+    logMainDebug(`[resolveLocalThumbnails] 缩略图目录不存在`, { cacheDir })
+  }
+
+  let foundLocal = 0
+  let foundThumb = 0
 
   for (const file of files) {
     // --- 下载目录中已存在 ---
@@ -240,6 +247,7 @@ export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: str
       if (stats.isFile()) {
         file.localPath = dest
         file.downloadFilePath = dest
+        foundLocal++
       }
     } catch { /* not in download dir */ }
 
@@ -247,9 +255,11 @@ export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: str
     const thumbName = `${safeId(file.downloadName || file.name)}${THUMB_EXT}`
     if (thumbFileSet.has(thumbName)) {
       file.thumbnailUrl = localThumbnailUrl(thumbnailPathFor(cacheDir, file.downloadName || file.name))
+      foundThumb++
     }
   }
 
+  logMainInfo(`[resolveLocalThumbnails] 检查完成`, { total: files.length, foundLocal, foundThumb })
 }
 
 /**
@@ -264,49 +274,77 @@ async function downloadWithLog(file: LunaFile, url: string, destPath: string): P
 }
 
 export async function cacheFile(file: LunaFile): Promise<string | null> {
-  const cacheDir = await previewCacheDir()
-  await fs.mkdir(cacheDir, { recursive: true })
-
+  logMainDebug(`[cacheFile] 进入`, {
+    fileName: file.name,
+    kind: file.kind,
+    hasDownloadFilePath: Boolean(file.downloadFilePath),
+    hasLocalPath: Boolean(file.localPath),
+    hasCacheFilePath: Boolean(file.cacheFilePath),
+    hasPreviewName: Boolean(file.previewName),
+    hasPreviewUrl: Boolean(file.previewUrl),
+  })
   try {
+    const cacheDir = await previewCacheDir()
+    logMainDebug(`[cacheFile] cacheDir`, { cacheDir })
+    await fs.mkdir(cacheDir, { recursive: true })
+
     const existingLocalPath = localPathForPreview(file)
     if (existingLocalPath) {
       const exists = await fileExists(existingLocalPath)
       logMainDebug(`[cacheFile] 检查本地路径`, { fileName: file.name, path: existingLocalPath, exists })
-      if (exists) return existingLocalPath
+      if (exists) {
+        logMainInfo(`[cacheFile] 本地文件已存在，直接返回`, { fileName: file.name, path: existingLocalPath })
+        return existingLocalPath
+      }
+      logMainDebug(`[cacheFile] 本地路径指向的文件不存在`, { fileName: file.name, path: existingLocalPath })
+    } else {
+      logMainDebug(`[cacheFile] 无本地路径，需要从源下载`, { fileName: file.name })
     }
 
     if (file.cacheFilePath) {
       const exists = await fileExists(file.cacheFilePath)
       logMainDebug(`[cacheFile] 检查 cacheFilePath`, { fileName: file.name, cacheFilePath: file.cacheFilePath, exists })
-      if (exists) return file.cacheFilePath
+      if (exists) {
+        logMainInfo(`[cacheFile] 缓存文件已存在，直接返回`, { fileName: file.name, cacheFilePath: file.cacheFilePath })
+        return file.cacheFilePath
+      }
     }
 
     const sourceUrl = sourceUrlFor(file)
-    logMainDebug(`[cacheFile] 准备下载`, { fileName: file.name, kind: file.kind, sourceUrl, hasPreview: Boolean(file.previewName), lrvUrl: file.previewUrl })
+    logMainInfo(`[cacheFile] 开始下载`, { fileName: file.name, kind: file.kind, sourceUrl, hasPreview: Boolean(file.previewName), lrvUrl: file.previewUrl })
 
     if (file.kind === 'video' && file.previewName && file.previewUrl) {
       const lrvPath = path.join(cacheDir, safeName(file.previewName))
-      logMainDebug(`[cacheFile] 下载 LRV 预览`, { fileName: file.name, lrvPath })
+      logMainInfo(`[cacheFile] 下载 LRV 预览`, { fileName: file.name, lrvPath })
       await downloadWithLog(file, file.previewUrl, lrvPath)
+      logMainInfo(`[cacheFile] LRV 下载完成`, { fileName: file.name, lrvPath })
       return lrvPath
     }
     if (file.kind === 'video') {
       const destPath = path.join(cacheDir, safeName(file.name))
-      logMainDebug(`[cacheFile] 下载完整视频`, { fileName: file.name, destPath, sourceUrl })
+      logMainInfo(`[cacheFile] 下载完整视频`, { fileName: file.name, destPath, sourceUrl })
       await downloadWithLog(file, sourceUrl, destPath)
+      logMainInfo(`[cacheFile] 视频下载完成`, { fileName: file.name, destPath })
       return destPath
     }
     if (file.kind === 'image') {
       const destPath = path.join(cacheDir, safeName(file.name))
-      logMainDebug(`[cacheFile] 下载图片`, { fileName: file.name, destPath, sourceUrl })
+      logMainInfo(`[cacheFile] 下载图片`, { fileName: file.name, destPath, sourceUrl })
       await downloadWithLog(file, sourceUrl, destPath)
+      logMainInfo(`[cacheFile] 图片下载完成`, { fileName: file.name, destPath })
       return destPath
     }
 
     logMainWarn(`[cacheFile] 未知文件类型，跳过`, { fileName: file.name, kind: file.kind })
   } catch (error) {
-    logMainWarn(`[cacheFile] 缓存失败`, { fileName: file.name, kind: file.kind, error: error instanceof Error ? error.message : String(error) })
+    logMainWarn(`[cacheFile] 缓存失败`, {
+      fileName: file.name,
+      kind: file.kind,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
   }
+  logMainDebug(`[cacheFile] 返回 null`, { fileName: file.name })
   return null
 }
 

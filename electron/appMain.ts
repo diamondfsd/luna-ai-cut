@@ -6,6 +6,7 @@ import { checkForUpdates } from './updateService'
 import type { HotUpdateCheckResult } from './hotUpdater'
 import { checkForHotUpdates, applyHotUpdate, getCurrentHotVersion, clearHotUpdate } from './hotUpdater'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import os from 'node:os'
 import path from 'node:path'
 import { clearLogs, getLogDir, initLogger, logMainDebug, logMainInfo, logMainError, logMainWarn, logExport, logRendererMessage } from './loggerService'
 
@@ -356,41 +357,54 @@ function registerIpc(): void {
     logMainInfo(`[缓存] 开始缓存文件`, { key, fileName: file.name, kind: file.kind })
 
     const task = enqueuePreviewTask(async () => {
-      const cacheFilePath = await cacheFile(file)
-      if (cacheFilePath) {
-        logMainInfo(`[缓存] 文件缓存成功，开始生成缩略图`, { key, fileName: file.name, cacheFilePath })
-        // 通过队列生成缩略图（串行，避免卡死）
-        const cacheDir = await previewCacheDir()
-        const thumbDir = thumbnailDir(cacheDir)
-        const thumbnailKey = file.downloadName || file.name
-        const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
-        if (thumbPath) {
-          logMainInfo(`[缓存] 缩略图生成成功`, { key, fileName: file.name })
-          // 缩略图生成成功
-          win?.webContents.send('luna:thumbnail-ready', {
-            fileId: file.id,
-            fileName: file.name,
-            downloadName: file.downloadName,
-            cacheFilePath,
-            thumbnailUrl: pathToFileURL(thumbPath).toString(),
-          })
-        } else {
-          logMainWarn(`[缓存] 缩略图生成失败，清理损坏的缓存文件`, { key, fileName: file.name, cacheFilePath })
-          // 缩略图生成失败（如源文件损坏），删除缓存文件让下次重试能重新下载
-          await rm(cacheFilePath, { force: true, maxRetries: 3 }).catch(() => {})
-          win?.webContents.send('luna:thumbnail-ready', {
-            fileId: file.id,
-            fileName: file.name,
-            downloadName: file.downloadName,
-            cacheFilePath: null,
-            thumbnailUrl: null,
-          })
+      let cacheFilePath: string | null = null
+      try {
+        logMainDebug(`[缓存] 队列任务开始执行，调用 cacheFile`, { key, fileName: file.name, kind: file.kind })
+        cacheFilePath = await cacheFile(file)
+        if (cacheFilePath) {
+          logMainInfo(`[缓存] 文件缓存成功，开始生成缩略图`, { key, fileName: file.name, cacheFilePath })
+          // 通过队列生成缩略图（串行，避免卡死）
+          const cacheDir = await previewCacheDir()
+          const thumbDir = thumbnailDir(cacheDir)
+          const thumbnailKey = file.downloadName || file.name
+          const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
+          if (thumbPath) {
+            logMainInfo(`[缓存] 缩略图生成成功`, { key, fileName: file.name })
+            // 缩略图生成成功
+            win?.webContents.send('luna:thumbnail-ready', {
+              fileId: file.id,
+              fileName: file.name,
+              downloadName: file.downloadName,
+              cacheFilePath,
+              thumbnailUrl: pathToFileURL(thumbPath).toString(),
+            })
+          } else {
+            logMainWarn(`[缓存] 缩略图生成失败，清理损坏的缓存文件`, { key, fileName: file.name, cacheFilePath })
+            // 缩略图生成失败（如源文件损坏），删除缓存文件让下次重试能重新下载
+            await rm(cacheFilePath, { force: true, maxRetries: 3 }).catch(() => {})
+            win?.webContents.send('luna:thumbnail-ready', {
+              fileId: file.id,
+              fileName: file.name,
+              downloadName: file.downloadName,
+              cacheFilePath: null,
+              thumbnailUrl: null,
+            })
+          }
         }
+        if (!cacheFilePath) {
+          logMainWarn(`[缓存] 缓存文件失败`, { key, fileName: file.name })
+        }
+        return cacheFilePath !== null
+      } catch (err) {
+        logMainError(`[缓存] 缓存任务异常`, {
+          key,
+          fileName: file.name,
+          kind: file.kind,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        })
+        return false
       }
-      if (!cacheFilePath) {
-        logMainWarn(`[缓存] 缓存文件失败`, { key, fileName: file.name })
-      }
-      return cacheFilePath !== null
     }, 0).finally(() => {
       previewCacheTasks.delete(key)
       logMainDebug(`[缓存] 缓存任务结束`, { key, fileName: file.name })
@@ -652,6 +666,16 @@ function scheduleUpdateCheck(): void {
 app.whenReady().then(() => {
   initLogger()
   logMainInfo('应用启动')
+  // 打印系统信息
+  logMainInfo('[系统信息]', {
+    platform: process.platform,
+    arch: process.arch,
+    osRelease: os.release(),
+    osVersion: os.version(),
+    cpuCount: os.cpus().length,
+    totalMemory: `${Math.round(os.totalmem() / (1024 ** 3))}G`,
+    userData: app.getPath('userData').replace(process.env.USERPROFILE || process.env.HOME || '', '~'),
+  })
   Menu.setApplicationMenu(null)
   registerIpc()
   scheduleUpdateCheck()
