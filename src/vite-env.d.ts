@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { LunaApi, WifiDebugApi } from './shared/types'
+import type { LunaApi, WifiDebugApi, GoUltraDebugApi } from './shared/types'
 
 declare global {
   const __APP_VERSION__: string
@@ -8,5 +8,6 @@ declare global {
   interface Window {
     luna: LunaApi
     wifiDebug: WifiDebugApi
+    goUltraDebug: GoUltraDebugApi
   }
 }

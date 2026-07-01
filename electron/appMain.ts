@@ -39,13 +39,16 @@ import {
 } from './fileService'
 import { listSampleFiles } from './localMedia'
 import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
-import { LunaUltraProtocol } from './deviceProtocols'
-import { DEFAULT_DEVICE, deviceDefinitionFor, deviceDefinitions } from './deviceDefaults'
+import { GoUltraClient } from './goUltraProtocol'
+import { LunaUltraProtocol, GoUltraProtocol } from './deviceProtocols'
+import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor, deviceDefinitions } from './deviceDefaults'
 import { getMockStatus, mockTcpPortForHost, startMockServer, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { chatCompletion } from './aiService'
 import { openWifiSettings } from './wifiService'
+import { registerGoUltraDebugHandlers } from './goUltraDebugHandlers'
+import { registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import {
   checkWifiPort,
   connectWifiNetwork,
@@ -91,6 +94,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let win: BrowserWindow | null
 const clients = new Map<string, LunaClient>()
+const goUltraClients = new Map<string, GoUltraClient>()
 let activeDownloadControllers = new Set<AbortController>()
 let activeExportControllers = new Set<AbortController>()
 const previewCacheTasks = new Map<string, Promise<boolean>>()
@@ -104,6 +108,11 @@ function stopAllKeepAlive(): void {
     client.close()
   }
   clients.clear()
+  for (const client of goUltraClients.values()) {
+    client.stopKeepAlive()
+    client.close()
+  }
+  goUltraClients.clear()
 }
 
 function clientKey(host: string, controlPort: number): string {
@@ -144,6 +153,32 @@ function lunaProtocol(): LunaUltraProtocol {
     (host) => controlPortForCurrentSettings(host),
     () => {
       logMainWarn(`[设备协议] 连接丢失回调触发，通知渲染进程`)
+      win?.webContents.send('luna:connection-lost')
+    },
+  )
+}
+
+/** Go Ultra 客户端工厂（复用 LuaClient 类似的缓存模式） */
+function goUltraClientFor(host = GO_ULTRA_DEVICE.defaultHost): GoUltraClient {
+  const normalizedHost = host.trim() || GO_ULTRA_DEVICE.defaultHost
+  const key = normalizedHost
+  const existing = goUltraClients.get(key)
+  if (existing) return existing
+
+  const client = new GoUltraClient(normalizedHost, GO_ULTRA_DEVICE.controlPort)
+  client.onConnectionLost = () => {
+    logMainWarn(`[GoUltra] 连接丢失`, { host: normalizedHost })
+    win?.webContents.send('luna:connection-lost')
+  }
+  goUltraClients.set(key, client)
+  return client
+}
+
+function goUltraProtocol(): GoUltraProtocol {
+  return new GoUltraProtocol(
+    (host) => goUltraClientFor(host),
+    () => {
+      logMainWarn(`[GoUltra] 连接丢失回调触发，通知渲染进程`)
       win?.webContents.send('luna:connection-lost')
     },
   )
@@ -225,6 +260,12 @@ function registerIpc(): void {
     logRendererMessage(level, message, meta)
   })
 
+  // 注册 Go Ultra 设备调试处理器
+  registerGoUltraDebugHandlers(ipcMain)
+
+  // 注册设备调试服务（一键测试 + 独立日志）
+  registerDeviceDebugHandlers(() => win)
+
   // 导出日志
   ipcMain.handle('log:export', (_event, message: string, meta?: unknown) => {
     logExport('INFO', message, meta)
@@ -288,13 +329,21 @@ function registerIpc(): void {
     const deviceId = options?.deviceId ?? settings.activeDeviceId ?? DEFAULT_DEVICE.id
     const host = options?.host || settings.cameraHost || DEFAULT_HOST
     logMainInfo(`[设备连接] 开始连接设备`, { deviceId, host, options })
-    if (deviceId !== DEFAULT_DEVICE.id) {
-      const errMsg = `未支持的设备协议：${deviceId}`
-      logMainError(`[设备连接] 失败`, { deviceId, error: errMsg })
-      throw new Error(errMsg)
+
+    // 根据设备 ID 路由到对应协议
+    let protocol: LunaUltraProtocol | GoUltraProtocol
+    switch (deviceId) {
+      case 'go-ultra':
+        protocol = goUltraProtocol()
+        break
+      case 'luna-ultra':
+      default:
+        protocol = lunaProtocol()
+        break
     }
+
     try {
-      const status = await lunaProtocol().connect({ ...options, deviceId })
+      const status = await protocol.connect({ ...options, deviceId })
       logMainInfo(`[设备连接] 连接结果`, { deviceId, host, httpOk: status.httpOk, controlOk: status.controlOk, message: status.message })
       return status
     } catch (error) {
@@ -306,9 +355,19 @@ function registerIpc(): void {
   ipcMain.handle('luna:checkConnection', async (_event, host?: string) => {
     const settings = await getSettings()
     const normalizedHost = host || settings.cameraHost
-    logMainInfo(`[HTTP检测] 检查设备连接状态`, { host: normalizedHost })
+    const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
+    logMainInfo(`[HTTP检测] 检查设备连接状态`, { host: normalizedHost, deviceId })
     try {
-      const status = await lunaProtocol().checkStatus(normalizedHost)
+      let protocol: LunaUltraProtocol | GoUltraProtocol
+      switch (deviceId) {
+        case 'go-ultra':
+          protocol = goUltraProtocol()
+          break
+        default:
+          protocol = lunaProtocol()
+          break
+      }
+      const status = await protocol.checkStatus(normalizedHost)
       logMainInfo(`[HTTP检测] 连接状态结果`, { host: normalizedHost, httpOk: status.httpOk, controlOk: status.controlOk, message: status.message })
       return status
     } catch (error) {
@@ -322,10 +381,21 @@ function registerIpc(): void {
     const normalizedHost = host || settings.cameraHost
     const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
     const nextStorageId = storageId ?? settings.deviceStorage?.[deviceId] ?? 'all'
-    logMainInfo(`[HTTP读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId })
+    logMainInfo(`[HTTP读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId, deviceId })
     const t0 = performance.now()
     try {
-      const files = await lunaProtocol().listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+      let files: LunaFile[]
+      switch (deviceId) {
+        case 'go-ultra': {
+          const protocol = goUltraProtocol()
+          files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+          break
+        }
+        default: {
+          const protocol = lunaProtocol()
+          files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+        }
+      }
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
       logMainInfo(`[HTTP读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed })
       await saveSettings({
@@ -439,13 +509,24 @@ function registerIpc(): void {
   ipcMain.handle('luna:disconnect', (_event, host?: string) => {
     const normalizedHost = (host?.trim() || DEFAULT_HOST)
     logMainInfo(`[设备断开] 断开设备连接`, { host: normalizedHost })
+
+    // 清理 Luna 连接
     const match = [...clients.entries()].find(([key]) => key.startsWith(`${normalizedHost}:`))
     const client = match?.[1]
     if (client && match) {
       client.stopKeepAlive()
       client.close()
       clients.delete(match[0])
-      logMainInfo(`[设备断开] 连接已关闭`, { host: normalizedHost })
+      logMainInfo(`[设备断开] Luna 连接已关闭`, { host: normalizedHost })
+    }
+
+    // 清理 Go Ultra 连接
+    const goUltraClient = goUltraClients.get(normalizedHost)
+    if (goUltraClient) {
+      goUltraClient.stopKeepAlive()
+      goUltraClient.close()
+      goUltraClients.delete(normalizedHost)
+      logMainInfo(`[设备断开] Go Ultra 连接已关闭`, { host: normalizedHost })
     }
   })
 

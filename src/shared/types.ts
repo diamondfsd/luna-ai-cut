@@ -425,9 +425,86 @@ export interface LunaApi {
   relaunchApp(): Promise<void>
   /** 监听热更新可用事件 */
   onHotUpdateAvailable(callback: (info: HotUpdateCheckResult) => void): () => void
+
+  // ── 设备调试服务 ──
+
+  /** 运行一键测试 */
+  deviceDebugRunTest(params: { deviceId: string; host: string }): Promise<DeviceDebugTestResult>
+  /** 写入设备调试日志 */
+  deviceDebugLog(params: { level: string; message: string; data?: unknown }): Promise<{ success: boolean }>
+  /** 获取设备调试日志文件路径 */
+  deviceDebugGetLogPath(): Promise<string>
+  /** 监听设备调试日志事件 */
+  onDeviceDebugLog(callback: (event: DeviceDebugEvent) => void): () => void
 }
 
 export interface ReleaseNoteItem {
   version: string
   content: string
+}
+
+// ============================================================
+// Go Ultra 设备调试 API（开发模式专用）
+// ============================================================
+
+export interface GoUltraDebugConnectResult {
+  success: boolean
+  message: string
+  httpOk: boolean
+  controlOk: boolean
+  authState: string
+}
+
+export interface GoUltraDebugAuthResult {
+  success: boolean
+  authState: string
+  message: string
+  rawResponse?: string
+}
+
+export interface GoUltraDebugListFilesResult {
+  success: boolean
+  message: string
+  files: Array<{ name: string; size: number | null; url: string }>
+}
+
+export interface GoUltraDebugPortResult {
+  httpOk: boolean
+  controlOk: boolean
+  message: string
+}
+
+export interface GoUltraDebugApi {
+  connect(params: { host: string }): Promise<GoUltraDebugConnectResult>
+  checkAuth(params: { host: string }): Promise<GoUltraDebugAuthResult>
+  requestAuth(params: { host: string }): Promise<GoUltraDebugAuthResult>
+  listFiles(params: { host: string }): Promise<GoUltraDebugListFilesResult>
+  disconnect(params: { host: string }): Promise<{ success: boolean }>
+  checkPort(params: { host: string }): Promise<GoUltraDebugPortResult>
+}
+
+// ============================================================
+// 设备调试服务 API
+// ============================================================
+
+export interface DeviceDebugTestStep {
+  step: string
+  success: boolean
+  detail: string
+  elapsedMs: number
+}
+
+export interface DeviceDebugTestResult {
+  deviceId: string
+  host: string
+  overall: boolean
+  steps: DeviceDebugTestStep[]
+  authState: string
+  summary: string
+}
+
+export interface DeviceDebugEvent {
+  level: string
+  message: string
+  data?: unknown
 }

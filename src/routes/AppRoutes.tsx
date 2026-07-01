@@ -7,13 +7,14 @@ import { UpdateBanner } from '../components/UpdateBanner'
 import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { DevPage } from '../pages/DevPage'
+import { DeviceDebugPage } from '../pages/DeviceDebugPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
 import { MediaLibraryPage } from '../pages/MediaLibraryPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import type { CacheStats, LunaFile, PreviewResult } from '../shared/types'
 
 export function AppRoutes() {
-  const { settings, setSettings, connection, downloadProgress, setDownloadProgress } = useApp()
+  const { settings, setSettings, connection, downloadProgress, setDownloadProgress, hiddenDevMode } = useApp()
   const {
     activeDevice,
     cameraLibraryMounted,
@@ -92,8 +93,9 @@ export function AppRoutes() {
   const isDownloadsLegacy = activePath === '/downloads'
   const isDownloadsActive = activePath === '/local-resources'
   const isSettingsActive = activePath === '/settings'
-  const isBluetoothDebugActive = import.meta.env.DEV && activePath === '/ble-debug'
-  const isKnownRoute = isDeveloperActive || isLibraryActive || isDownloadsActive || isSettingsActive || isBluetoothDebugActive
+  const isBluetoothDebugActive = (import.meta.env.DEV || hiddenDevMode) && activePath === '/ble-debug'
+  const isDeviceDebugActive = (import.meta.env.DEV || hiddenDevMode) && activePath === '/device-debug'
+  const isKnownRoute = isDeveloperActive || isLibraryActive || isDownloadsActive || isSettingsActive || isBluetoothDebugActive || isDeviceDebugActive
 
   if (isDownloadsLegacy) {
     return <Navigate to="/local-resources" replace />
@@ -194,6 +196,12 @@ export function AppRoutes() {
               chooseMockMediaDir={chooseMockMediaDir}
               openDirectory={openDirectory}
             />
+          </section>
+        )}
+
+        {isDeviceDebugActive && (
+          <section className="route-panel">
+            <DeviceDebugPage />
           </section>
         )}
       </div>
