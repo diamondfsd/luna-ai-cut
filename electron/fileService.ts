@@ -6,6 +6,7 @@ import { localThumbnailUrl, safeName } from './filePathUtils'
 import { downloadToFile, downloadToFileWithRetry, isAbortError } from './fileDownloadService'
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
+import { logMainDebug, logMainWarn } from './loggerService'
 import type {
   DownloadProgress,
   DownloadSummary,
@@ -268,30 +269,44 @@ export async function cacheFile(file: LunaFile): Promise<string | null> {
 
   try {
     const existingLocalPath = localPathForPreview(file)
-    if (existingLocalPath && (await fileExists(existingLocalPath))) {
-      return existingLocalPath
+    if (existingLocalPath) {
+      const exists = await fileExists(existingLocalPath)
+      logMainDebug(`[cacheFile] 检查本地路径`, { fileName: file.name, path: existingLocalPath, exists })
+      if (exists) return existingLocalPath
     }
 
-    if (file.cacheFilePath && (await fileExists(file.cacheFilePath))) {
-      return file.cacheFilePath
+    if (file.cacheFilePath) {
+      const exists = await fileExists(file.cacheFilePath)
+      logMainDebug(`[cacheFile] 检查 cacheFilePath`, { fileName: file.name, cacheFilePath: file.cacheFilePath, exists })
+      if (exists) return file.cacheFilePath
     }
+
+    const sourceUrl = sourceUrlFor(file)
+    logMainDebug(`[cacheFile] 准备下载`, { fileName: file.name, kind: file.kind, sourceUrl, hasPreview: Boolean(file.previewName), lrvUrl: file.previewUrl })
 
     if (file.kind === 'video' && file.previewName && file.previewUrl) {
       const lrvPath = path.join(cacheDir, safeName(file.previewName))
+      logMainDebug(`[cacheFile] 下载 LRV 预览`, { fileName: file.name, lrvPath })
       await downloadWithLog(file, file.previewUrl, lrvPath)
       return lrvPath
     }
     if (file.kind === 'video') {
       const destPath = path.join(cacheDir, safeName(file.name))
-      await downloadWithLog(file, sourceUrlFor(file), destPath)
+      logMainDebug(`[cacheFile] 下载完整视频`, { fileName: file.name, destPath, sourceUrl })
+      await downloadWithLog(file, sourceUrl, destPath)
       return destPath
     }
     if (file.kind === 'image') {
       const destPath = path.join(cacheDir, safeName(file.name))
-      await downloadWithLog(file, sourceUrlFor(file), destPath)
+      logMainDebug(`[cacheFile] 下载图片`, { fileName: file.name, destPath, sourceUrl })
+      await downloadWithLog(file, sourceUrl, destPath)
       return destPath
     }
-  } catch { /* 静默 */ }
+
+    logMainWarn(`[cacheFile] 未知文件类型，跳过`, { fileName: file.name, kind: file.kind })
+  } catch (error) {
+    logMainWarn(`[cacheFile] 缓存失败`, { fileName: file.name, kind: file.kind, error: error instanceof Error ? error.message : String(error) })
+  }
   return null
 }
 

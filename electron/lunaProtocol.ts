@@ -477,23 +477,27 @@ export class LunaClient {
           return files
         }
 
-        response.body?.cancel().catch(() => undefined)
-        logMainWarn(`[HTTP读取] HTTP ${response.status}, 尝试 ${attempt + 1}/4`, { url })
+        // 读取错误响应体以便排查
+        let errorBody = ''
+        try {
+          errorBody = (await response.text()).slice(0, 500)
+        } catch { /* 忽略读取错误体异常 */ }
+        logMainWarn(`[HTTP读取] HTTP ${response.status}, 尝试 ${attempt + 1}/4`, { url, path: cameraPath, responsePreview: errorBody })
         if (response.status !== 401 && response.status !== 403) break
         this.resetAuthSession()
       } catch (error) {
         lastError = error
         this.resetAuthSession()
-        logMainWarn(`[HTTP读取] 请求失败，尝试 ${attempt + 1}/4`, { url, error: error instanceof Error ? error.message : String(error) })
+        logMainWarn(`[HTTP读取] 请求失败，尝试 ${attempt + 1}/4`, { url, path: cameraPath, error: error instanceof Error ? error.message : String(error) })
       }
     }
 
     const failedAt = ((performance.now() - t0) / 1000).toFixed(2)
     if (lastError && lastStatus === null) {
-      logMainError(`[HTTP读取] 最终失败（无响应）`, { url, elapsedSec: failedAt, error: lastError instanceof Error ? lastError.message : String(lastError) })
+      logMainError(`[HTTP读取] 最终失败（无响应）`, { url, path: cameraPath, elapsedSec: failedAt, error: lastError instanceof Error ? lastError.message : String(lastError) })
       throw lastError instanceof Error ? lastError : new Error(String(lastError))
     }
-    logMainError(`[HTTP读取] 最终失败`, { url, status: lastStatus, elapsedSec: failedAt })
+    logMainError(`[HTTP读取] 最终失败`, { url, path: cameraPath, status: lastStatus, elapsedSec: failedAt })
     throw new Error(`读取文件列表失败：HTTP ${lastStatus ?? '未知'}`)
   }
 }
