@@ -277,14 +277,16 @@ export function DeviceDebugPage() {
 
   return (
     <div className="device-debug-surface">
-      {/* 顶栏 */}
-      <div className="device-debug-topbar">
-        <button className="device-debug-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <h1>设备协议调试</h1>
-        <span className="device-debug-badge">开发模式</span>
-      </div>
+      {/* 顶栏 — 独立包模式下不显示（没有其他页面，导航无意义） */}
+      {!__DEBUG_STANDALONE__ && (
+        <div className="device-debug-topbar">
+          <button className="device-debug-back" onClick={() => navigate(-1)}>
+            <ArrowLeft size={18} />
+          </button>
+          <h1>设备协议调试</h1>
+          <span className="device-debug-badge">开发模式</span>
+        </div>
+      )}
 
       {/* 主网格 */}
       <div className="device-debug-grid">

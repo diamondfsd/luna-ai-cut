@@ -105,6 +105,15 @@ export function AppRoutes() {
     return <Navigate to={developerMode ? '/developer' : '/library'} replace />
   }
 
+  // 独立调试包：只渲染设备调试页面，无导航、无路由切换
+  if (typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__) {
+    return (
+      <main className="app">
+        <DeviceDebugPage />
+      </main>
+    )
+  }
+
   return (
     <main className="app">
       <AppNav connection={connection} sourceMode={sourceMode} activeDevice={activeDevice} />
@@ -112,7 +121,6 @@ export function AppRoutes() {
       <HotUpdateBanner />
 
       <div className="route-stack" key={pagesKey}>
-       
 
         <section className="route-panel" hidden={!isLibraryActive}>
           {showDeviceConnect && (

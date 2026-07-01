@@ -23,7 +23,13 @@
     "pack:win:x64": "npm run build:app && node scripts/copy-ffmpeg.mjs --target win32 --arch x64 && electron-builder --win nsis --x64 --publish never",
     "pack:mac:x64": "npm run build:app && node scripts/copy-ffmpeg.mjs --target darwin --arch x64 && ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --mac dmg --x64 --publish never",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+
+    "dev:debug": "vite --config vite.debug.config.ts",
+    "build:debug": "tsc && vite build --config vite.debug.config.ts",
+    "pack:debug:mac:arm64": "npm run build:debug && ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --config electron-builder-debug.json5 --mac dmg --arm64 --publish never",
+    "pack:debug:win:x64": "npm run build:debug && electron-builder --config electron-builder-debug.json5 --win nsis --x64 --publish never",
+    "pack:debug:mac:x64": "npm run build:debug && ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --config electron-builder-debug.json5 --mac dmg --x64 --publish never"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.14",
