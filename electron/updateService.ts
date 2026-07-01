@@ -54,11 +54,11 @@ async function checkGitCode(): Promise<UpdateCheckResult | null> {
   const releases: GitCodeRelease[] = await res.json()
   const currentVersion = app.getVersion()
 
-	  // 从新到旧遍历（列表按创建时间升序，reverse 后最新在前）
-	  for (const data of releases.reverse()) {
-	    const tagName = data.tag_name ?? ''
-	    const latestVersion = tagName.replace(/^v/, '')
-	    if (compareVersions(latestVersion, currentVersion) <= 0) continue
+  // 从新到旧遍历（列表按创建时间升序，reverse 后最新在前）
+  for (const data of releases.reverse()) {
+    const tagName = data.tag_name ?? ''
+    const latestVersion = tagName.replace(/^v/, '')
+    if (compareVersions(latestVersion, currentVersion) <= 0) continue
 
     // assets 中 type 为 "attach" 的才是上传的安装包，排除 source 包
     const attachAssets = (data.assets ?? []).filter(a => a.type === 'attach')
@@ -124,13 +124,6 @@ async function checkGitHub(): Promise<UpdateCheckResult | null> {
   const assets: Array<{ name: string; browser_download_url: string }> = data.assets ?? []
 
   // 根据当前操作系统和 CPU 架构选择对应安装包
-
-  // 资产命名示例: Luna_AI_Cut-v1.3.2-Mac-arm64.dmg / Luna_AI_Cut-v1.3.2-Windows-x64_Setup.exe
-  const platform = process.platform
-  const arch = process.arch // 'arm64' | 'x64'
-  const installer = assets.find(a => {
-    if (platform === 'win32') return a.name.endsWith('Setup.exe') && a.name.includes('-Windows-')
-    if (platform === 'darwin') return a.name.endsWith('.dmg') && a.name.includes(`-Mac-${arch}`)
 
   // 资产命名示例: LunaAICut-Mac-1.3.3-Installer-arm64.dmg / LunaAICut-Windows-1.3.3-Setup-x64.exe
   const platform = process.platform
