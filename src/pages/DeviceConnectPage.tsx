@@ -26,6 +26,13 @@ export function DeviceConnectPage({
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
   const deviceName = activeDevice?.name ?? '设备'
+  const deviceInfo = connection?.deviceInfo
+  const infoRows = [
+    ['设备', deviceInfo?.deviceName],
+    ['序列号', deviceInfo?.serial],
+    ['固件', deviceInfo?.firmware],
+    ['Wi-Fi', deviceInfo?.ssid],
+  ].filter((row): row is [string, string] => Boolean(row[1]))
 
   async function handleConnect(): Promise<void> {
     setConnecting(true)
@@ -67,6 +74,17 @@ export function DeviceConnectPage({
             </span>
           )}
         </div>
+
+        {infoRows.length > 0 && (
+          <dl className="device-info-grid">
+            {infoRows.map(([label, value]) => (
+              <div key={label} className="device-info-row">
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
 
         <div className="device-connect-actions">
           <Button

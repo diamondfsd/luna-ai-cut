@@ -13,7 +13,7 @@ interface AppNavProps {
 
 export function AppNav({ activeDevice, connection, sourceMode }: AppNavProps) {
   const connected = Boolean(connection?.httpOk && connection.controlOk)
-  const deviceName = connection?.deviceName ?? activeDevice?.name ?? '设备'
+  const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
     ? `已连接 ${deviceName}`
     : connection?.message ?? (sourceMode === 'demo' ? `已连接 ${deviceName}（模拟）` : `${deviceName} 未连接`)
