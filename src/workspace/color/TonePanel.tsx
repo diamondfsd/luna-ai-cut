@@ -25,17 +25,14 @@ export function TonePanel({ value, modified, onChange }: TonePanelProps) {
       }
     >
       <ParamSlider label="曝光" value={value.exposure} {...sliderRange(EDIT_PARAMETER_RANGES.color.exposure)} onChange={(exposure) => onChange({ exposure })} formatValue={exposureValue} />
+      <ParamSlider label="黑场" value={value.black} {...sliderRange(EDIT_PARAMETER_RANGES.color.black)} onChange={(black) => onChange({ black })} />
       <ParamSlider label="对比度" value={value.contrast} {...sliderRange(EDIT_PARAMETER_RANGES.color.contrast)} onChange={(contrast) => onChange({ contrast })} />
-      <ParamSlider label="亮度" value={value.brightness} {...sliderRange(EDIT_PARAMETER_RANGES.color.brightness)} onChange={(brightness) => onChange({ brightness })} />
+      <ParamSlider label="鲜艳度" value={value.vibrance} {...sliderRange(EDIT_PARAMETER_RANGES.color.vibrance)} onChange={(vibrance) => onChange({ vibrance })} />
+      <ParamSlider label="饱和度" value={value.saturation} {...sliderRange(EDIT_PARAMETER_RANGES.color.saturation)} onChange={(saturation) => onChange({ saturation })} />
       <ParamSlider label="高光" value={value.highlights} {...sliderRange(EDIT_PARAMETER_RANGES.color.highlights)} onChange={(highlights) => onChange({ highlights })} />
       <ParamSlider label="阴影" value={value.shadows} {...sliderRange(EDIT_PARAMETER_RANGES.color.shadows)} onChange={(shadows) => onChange({ shadows })} />
       <ParamSlider label="白色" value={value.whites} {...sliderRange(EDIT_PARAMETER_RANGES.color.whites)} onChange={(whites) => onChange({ whites })} />
       <ParamSlider label="黑色" value={value.blacks} {...sliderRange(EDIT_PARAMETER_RANGES.color.blacks)} onChange={(blacks) => onChange({ blacks })} />
-      <ParamSlider label="纹理" value={value.texture} {...sliderRange(EDIT_PARAMETER_RANGES.color.texture)} onChange={(texture) => onChange({ texture })} />
-      <ParamSlider label="清晰度" value={value.clarity} {...sliderRange(EDIT_PARAMETER_RANGES.color.clarity)} onChange={(clarity) => onChange({ clarity })} />
-      <ParamSlider label="祛雾" value={value.dehaze} {...sliderRange(EDIT_PARAMETER_RANGES.color.dehaze)} onChange={(dehaze) => onChange({ dehaze })} />
-      <ParamSlider label="鲜艳度" value={value.vibrance} {...sliderRange(EDIT_PARAMETER_RANGES.color.vibrance)} onChange={(vibrance) => onChange({ vibrance })} />
-      <ParamSlider label="饱和度" value={value.saturation} {...sliderRange(EDIT_PARAMETER_RANGES.color.saturation)} onChange={(saturation) => onChange({ saturation })} />
     </Accordion>
   )
 }

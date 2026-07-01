@@ -1,48 +1,13 @@
 import type { EditPipeline } from '../shared/editPipeline'
 import { containRect, displayAspectForCrop, frameSize } from '../transform/cropGeometry'
-import fragmentSource from './shaders/pipeline.glsl?raw'
-import vertexSource from './shaders/vertex.glsl?raw'
+import { fragmentSource, vertexSource } from './shaders/program'
 
-const COLOR_MIX_CHANNELS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'] as const
-const TONE_CURVE_CHANNELS = ['rgb', 'luminance', 'red', 'green', 'blue'] as const
-const SELECTIVE_COLOR_CHANNELS = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta', 'white', 'neutral', 'black'] as const
 const CROP_MODE_PREVIEW_SCALE = 0.88
-const EXPOSURE_EV_SCALE = 0.4
-
-function kelvinToRgb(kelvin: number): { r: number; g: number; b: number } {
-  const temp = Math.max(10, kelvin / 100)
-  const r = temp <= 66 ? 255 : 329.698727446 * Math.pow(temp - 60, -0.1332047592)
-  const g = temp <= 66
-    ? 99.4708025861 * Math.log(temp) - 161.1195681661
-    : 288.1221695283 * Math.pow(temp - 60, -0.0755148492)
-  const b = temp >= 66 ? 255 : temp <= 19 ? 0 : 138.5177312231 * Math.log(temp - 10) - 305.0447927307
-  return {
-    r: Math.max(0.05, Math.min(1, r / 255)),
-    g: Math.max(0.05, Math.min(1, g / 255)),
-    b: Math.max(0.05, Math.min(1, b / 255)),
-  }
-}
-
-function whiteBalanceGains(kelvin: number, tint: number): { r: number; g: number; b: number } {
-  const reference = kelvinToRgb(5500)
-  const target = kelvinToRgb(kelvin)
-  const tintShift = tint / 100
-  const gains = {
-    r: reference.r / target.r * (1 + Math.max(0, tintShift) * 0.08),
-    g: reference.g / target.g * (1 - tintShift * 0.12),
-    b: reference.b / target.b * (1 - Math.max(0, tintShift) * 0.04),
-  }
-  const middle = (gains.r + gains.g + gains.b) / 3
-  return {
-    r: gains.r / middle,
-    g: gains.g / middle,
-    b: gains.b / middle,
-  }
-}
+const MAX_CURVE_POINTS = 12
 
 const UNIFORM_NAMES = [
-  'u_texture',
-  'u_resolution',
+  // Texture / Transform
+  'u_image',
   'u_aspectRatio',
   'u_crop',
   'u_rotate',
@@ -51,46 +16,56 @@ const UNIFORM_NAMES = [
   'u_cropAspect',
   'u_frameSize',
   'u_fillScale',
+  // Exposure
   'u_exposure',
-  'u_contrast',
-  'u_brightness',
-  'u_saturation',
-  'u_vibrance',
-  'u_whiteBalanceGains',
-  'u_highlights',
+  'u_black',
+  // White Balance
+  'u_temperature',
+  'u_tint',
+  // Tone Equalizer
   'u_shadows',
+  'u_highlights',
   'u_whites',
   'u_blacks',
-  'u_textureAmount',
-  'u_clarity',
-  'u_dehaze',
-  'u_curve[0]',
-  'u_sharpen',
-  'u_sharpenRadius',
-  'u_sharpenDetail',
-  'u_sharpenMasking',
-  'u_noiseReduction',
-  'u_colorNoiseReduction',
-  'u_vignette',
-  'u_grainAmount',
-  'u_grainSize',
-  'u_grainRoughness',
-  'u_lensVignetting',
-  'u_chromaticAberration',
+  // Color Balance
+  'u_contrast',
+  'u_vibrance',
+  'u_saturation',
+  // Color Grading
+  'u_gradeShadowsHue',
+  'u_gradeShadowsAmount',
+  'u_gradeMidHue',
+  'u_gradeMidAmount',
+  'u_gradeHighlightsHue',
+  'u_gradeHighlightsAmount',
+  // Curves
+  'u_curveLift',
+  'u_curveContrast',
+  'u_curveRgbPointCount',
+  'u_curveRgbPoints',
+  'u_curveLuminancePointCount',
+  'u_curveLuminancePoints',
+  'u_curveRedPointCount',
+  'u_curveRedPoints',
+  'u_curveGreenPointCount',
+  'u_curveGreenPoints',
+  'u_curveBluePointCount',
+  'u_curveBluePoints',
+  // Levels
+  'u_levelsBlack',
+  'u_levelsGray',
+  'u_levelsWhite',
+  // HSL
+  'u_hue',
   'u_hslHue',
-  'u_hslSaturation',
-  'u_hslLuminance',
-  'u_colorEditor',
-  'u_colorEditorExtra',
-  'u_gradingShadows',
-  'u_gradingMidtones',
-  'u_gradingHighlights',
-  'u_gradingBlending',
-  'u_gradingBalance',
-  'u_selectiveColor',
-  'u_selectiveColorMode',
-  'u_calibrationHue',
-  'u_calibrationSaturation',
+  'u_hslSat',
+  'u_hslLum',
+  // Detail
+  'u_texel',
+  'u_clarity',
+  'u_texture',
+  'u_sharpen',
+  'u_denoise',
 ] as const
 
 export class WebGLRenderer {
@@ -115,7 +90,7 @@ export class WebGLRenderer {
       const location = gl.getUniformLocation(this.program, name)
       if (location) this.uniforms.set(name, location)
     }
-    gl.uniform1i(this.uniform('u_texture'), 0)
+    gl.uniform1i(this.uniform('u_image'), 0)
   }
 
   loadImage(bitmap: ImageBitmap): void {
@@ -181,7 +156,6 @@ export class WebGLRenderer {
     const fullCrop = { x: 0, y: 0, w: 1, h: 1 }
     const selectionCrop = pipeline.transform.crop ?? fullCrop
     const crop = options.cropMode ? fullCrop : selectionCrop
-    gl.uniform2f(this.uniform('u_resolution'), this.sourceSize.width, this.sourceSize.height)
     const imageAspect = Math.max(1, this.sourceSize.width) / Math.max(1, this.sourceSize.height)
     const totalRotate = pipeline.transform.orientation + pipeline.transform.rotate
     const displayImageAspect = displayAspectForCrop(imageAspect, pipeline.transform.orientation, crop)
@@ -216,88 +190,75 @@ export class WebGLRenderer {
     gl.uniform1f(this.uniform('u_cropAspect'), imageAspect)
     gl.uniform2f(this.uniform('u_frameSize'), currentFrameSize.width, currentFrameSize.height)
     gl.uniform1f(this.uniform('u_fillScale'), 1)
-    gl.uniform1f(this.uniform('u_exposure'), pipeline.color.exposure * EXPOSURE_EV_SCALE)
-    gl.uniform1f(this.uniform('u_contrast'), pipeline.color.contrast / 100)
-    gl.uniform1f(this.uniform('u_brightness'), pipeline.color.brightness / 100)
-    gl.uniform1f(this.uniform('u_saturation'), pipeline.color.saturation / 100)
-    gl.uniform1f(this.uniform('u_vibrance'), pipeline.color.vibrance / 100)
-    const whiteBalance = this.whiteBalanceValues(pipeline)
-    gl.uniform3f(this.uniform('u_whiteBalanceGains'), whiteBalance.gains.r, whiteBalance.gains.g, whiteBalance.gains.b)
-    gl.uniform1f(this.uniform('u_highlights'), pipeline.color.highlights / 100)
-    gl.uniform1f(this.uniform('u_shadows'), pipeline.color.shadows / 100)
-    gl.uniform1f(this.uniform('u_whites'), pipeline.color.whites / 100)
-    gl.uniform1f(this.uniform('u_blacks'), pipeline.color.blacks / 100)
-    gl.uniform1f(this.uniform('u_textureAmount'), pipeline.color.texture / 100)
-    gl.uniform1f(this.uniform('u_clarity'), pipeline.color.clarity / 100)
-    gl.uniform1f(this.uniform('u_dehaze'), pipeline.color.dehaze / 100)
-    gl.uniform4fv(
-      this.uniform('u_curve[0]'),
-      TONE_CURVE_CHANNELS.flatMap((channel) => {
-        const curve = pipeline.color.curve.channels[channel]
-        return [curve.shadows / 100, curve.darks / 100, curve.lights / 100, curve.highlights / 100]
-      }),
-    )
-    gl.uniform1f(this.uniform('u_sharpen'), pipeline.effects.sharpen / 150)
-    gl.uniform1f(this.uniform('u_sharpenRadius'), pipeline.effects.sharpenRadius)
-    gl.uniform1f(this.uniform('u_sharpenDetail'), pipeline.effects.sharpenDetail / 100)
-    gl.uniform1f(this.uniform('u_sharpenMasking'), pipeline.effects.sharpenMasking / 100)
-    gl.uniform1f(this.uniform('u_noiseReduction'), pipeline.effects.noiseReduction / 100)
-    gl.uniform1f(this.uniform('u_colorNoiseReduction'), pipeline.effects.colorNoiseReduction / 100)
-    gl.uniform1f(this.uniform('u_vignette'), pipeline.effects.vignette / 100)
-    gl.uniform1f(this.uniform('u_grainAmount'), pipeline.effects.grainAmount / 100)
-    gl.uniform1f(this.uniform('u_grainSize'), pipeline.effects.grainSize / 100)
-    gl.uniform1f(this.uniform('u_grainRoughness'), pipeline.effects.grainRoughness / 100)
-    gl.uniform1f(this.uniform('u_lensVignetting'), pipeline.effects.lensVignetting / 100)
-    gl.uniform1f(this.uniform('u_chromaticAberration'), pipeline.effects.chromaticAberration / 100)
-    gl.uniform1fv(this.uniform('u_hslHue'), COLOR_MIX_CHANNELS.map((channel) => pipeline.color.hsl[channel].hue / 100))
-    gl.uniform1fv(this.uniform('u_hslSaturation'), COLOR_MIX_CHANNELS.map((channel) => pipeline.color.hsl[channel].saturation / 100))
-    gl.uniform1fv(this.uniform('u_hslLuminance'), COLOR_MIX_CHANNELS.map((channel) => pipeline.color.hsl[channel].luminance / 100))
-    gl.uniform4f(
-      this.uniform('u_colorEditor'),
-      pipeline.color.colorEditor.hue / 360,
-      pipeline.color.colorEditor.saturation / 100,
-      pipeline.color.colorEditor.smoothing / 100,
-      pipeline.color.colorEditor.luminanceSmoothing / 100,
-    )
-    gl.uniform4f(
-      this.uniform('u_colorEditorExtra'),
-      pipeline.color.colorEditor.hueOffset / 100,
-      pipeline.color.colorEditor.saturationOffset / 100,
-      pipeline.color.colorEditor.brightnessOffset / 100,
-      pipeline.color.colorEditor.uniformity / 100,
-    )
-    gl.uniform3f(this.uniform('u_gradingShadows'), pipeline.color.grading.shadowsHue / 360, pipeline.color.grading.shadowsSaturation / 100, 0)
-    gl.uniform3f(this.uniform('u_gradingMidtones'), pipeline.color.grading.midtonesHue / 360, pipeline.color.grading.midtonesSaturation / 100, 0)
-    gl.uniform3f(this.uniform('u_gradingHighlights'), pipeline.color.grading.highlightsHue / 360, pipeline.color.grading.highlightsSaturation / 100, 0)
-    gl.uniform1f(this.uniform('u_gradingBlending'), pipeline.color.grading.blending / 100)
-    gl.uniform1f(this.uniform('u_gradingBalance'), pipeline.color.grading.balance / 100)
-    gl.uniform4fv(
-      this.uniform('u_selectiveColor'),
-      SELECTIVE_COLOR_CHANNELS.flatMap((channel) => {
-        const item = pipeline.color.selectiveColor[channel]
-        return [item.cyan / 100, item.magenta / 100, item.yellow / 100, item.black / 100]
-      }),
-    )
-    gl.uniform1f(this.uniform('u_selectiveColorMode'), pipeline.color.selectiveColorMode === 'absolute' ? 1 : 0)
-    gl.uniform3f(
-      this.uniform('u_calibrationHue'),
-      pipeline.color.calibration.redHue / 100,
-      pipeline.color.calibration.greenHue / 100,
-      pipeline.color.calibration.blueHue / 100,
-    )
-    gl.uniform3f(
-      this.uniform('u_calibrationSaturation'),
-      pipeline.color.calibration.redSaturation / 100,
-      pipeline.color.calibration.greenSaturation / 100,
-      pipeline.color.calibration.blueSaturation / 100,
-    )
+
+    // --- Color uniforms (adapted from darktable WebGL color lab) ---
+    const color = pipeline.color
+
+    // Exposure
+    gl.uniform1f(this.uniform('u_exposure'), color.exposure)
+    gl.uniform1f(this.uniform('u_black'), color.black / 100)
+
+    // White Balance
+    gl.uniform1f(this.uniform('u_temperature'), color.temperature / 100)
+    gl.uniform1f(this.uniform('u_tint'), color.tint / 100)
+
+    // Tone Equalizer
+    gl.uniform1f(this.uniform('u_shadows'), color.shadows / 100)
+    gl.uniform1f(this.uniform('u_highlights'), color.highlights / 100)
+    gl.uniform1f(this.uniform('u_whites'), color.whites / 100)
+    gl.uniform1f(this.uniform('u_blacks'), color.blacks / 100)
+
+    // Color Balance
+    gl.uniform1f(this.uniform('u_contrast'), color.contrast / 100)
+    gl.uniform1f(this.uniform('u_vibrance'), color.vibrance / 100)
+    gl.uniform1f(this.uniform('u_saturation'), color.saturation / 100)
+
+    // Color Grading
+    gl.uniform1f(this.uniform('u_gradeShadowsHue'), color.gradeShadowsHue)
+    gl.uniform1f(this.uniform('u_gradeShadowsAmount'), color.gradeShadowsAmount / 100)
+    gl.uniform1f(this.uniform('u_gradeMidHue'), color.gradeMidHue)
+    gl.uniform1f(this.uniform('u_gradeMidAmount'), color.gradeMidAmount / 100)
+    gl.uniform1f(this.uniform('u_gradeHighlightsHue'), color.gradeHighlightsHue)
+    gl.uniform1f(this.uniform('u_gradeHighlightsAmount'), color.gradeHighlightsAmount / 100)
+
+    // Curves — per-channel point arrays
+    this.setCurvePoints('Rgb', color.curve.points.rgb)
+    this.setCurvePoints('Luminance', color.curve.points.luminance)
+    this.setCurvePoints('Red', color.curve.points.red)
+    this.setCurvePoints('Green', color.curve.points.green)
+    this.setCurvePoints('Blue', color.curve.points.blue)
+    gl.uniform1f(this.uniform('u_curveLift'), color.curveLift / 100)
+    gl.uniform1f(this.uniform('u_curveContrast'), color.curveContrast / 100)
+
+    // Levels
+    gl.uniform1f(this.uniform('u_levelsBlack'), color.levelsBlack)
+    gl.uniform1f(this.uniform('u_levelsGray'), color.levelsGray)
+    gl.uniform1f(this.uniform('u_levelsWhite'), color.levelsWhite)
+
+    // HSL
+    gl.uniform1f(this.uniform('u_hue'), color.hue)
+    gl.uniform1f(this.uniform('u_hslHue'), color.hslHue)
+    gl.uniform1f(this.uniform('u_hslSat'), color.hslSat / 100)
+    gl.uniform1f(this.uniform('u_hslLum'), color.hslLum / 100)
+
+    // Detail
+    gl.uniform2f(this.uniform('u_texel'), 1 / Math.max(1, this.sourceSize.width), 1 / Math.max(1, this.sourceSize.height))
+    gl.uniform1f(this.uniform('u_clarity'), color.clarity / 100)
+    gl.uniform1f(this.uniform('u_texture'), color.texture / 100)
+    gl.uniform1f(this.uniform('u_sharpen'), color.sharpen / 100)
+    gl.uniform1f(this.uniform('u_denoise'), color.denoise / 100)
   }
 
-  private whiteBalanceValues(pipeline: EditPipeline): { temperature: number; tint: number; gains: { r: number; g: number; b: number } } {
-    const temperature = Math.max(2000, Math.min(15000, pipeline.color.temperature || 5500))
-    const tint = Math.max(-100, Math.min(100, pipeline.color.tint || 0))
-    const gains = whiteBalanceGains(temperature, tint)
-    return { temperature, tint, gains }
+  private setCurvePoints(name: string, points: Array<{ x: number; y: number }>): void {
+    const gl = this.gl
+    const safe = points.slice(0, MAX_CURVE_POINTS)
+    gl.uniform1i(this.uniform(`u_curve${name}PointCount`), safe.length)
+    const data = new Float32Array(MAX_CURVE_POINTS * 2)
+    safe.forEach((point, index) => {
+      data[index * 2] = point.x
+      data[index * 2 + 1] = point.y
+    })
+    gl.uniform2fv(this.uniform(`u_curve${name}Points`), data)
   }
 
   private initGeometry(): void {
@@ -352,7 +313,7 @@ export class WebGLRenderer {
 
   private uniform(name: string): WebGLUniformLocation {
     const location = this.uniforms.get(name)
-    if (!location) throw new Error('预览参数缺失')
+    if (!location) throw new Error(`预览参数缺失: ${name}`)
     return location
   }
 }

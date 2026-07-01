@@ -2,7 +2,7 @@ import { Check, Crop, ImagePlus, RotateCcw, SlidersHorizontal, X } from 'lucide-
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
 import type { EditPipeline, PipelinePatch } from '../shared/editPipeline'
-import { createDefaultPipeline } from '../shared/editPipeline'
+import { createDefaultPipeline, DEFAULT_PIPELINE } from '../shared/editPipeline'
 import { ColorPanel } from '../color/ColorPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
@@ -37,6 +37,39 @@ function titleForTool(tool: WorkspaceTool): string {
   return '色彩调节'
 }
 
+/** 检查当前 pipeline 的调色参数是否有任何修改 */
+function isColorModified(color: EditPipeline['color']): boolean {
+  const d = DEFAULT_PIPELINE.color
+  return (
+    color.exposure !== d.exposure ||
+    color.black !== d.black ||
+    color.temperature !== d.temperature ||
+    color.tint !== d.tint ||
+    color.contrast !== d.contrast ||
+    color.vibrance !== d.vibrance ||
+    color.saturation !== d.saturation ||
+    color.shadows !== d.shadows ||
+    color.highlights !== d.highlights ||
+    color.whites !== d.whites ||
+    color.blacks !== d.blacks ||
+    color.gradeShadowsAmount !== d.gradeShadowsAmount ||
+    color.gradeMidAmount !== d.gradeMidAmount ||
+    color.gradeHighlightsAmount !== d.gradeHighlightsAmount ||
+    color.curveLift !== d.curveLift ||
+    color.curveContrast !== d.curveContrast ||
+    color.levelsBlack !== d.levelsBlack ||
+    color.levelsGray !== d.levelsGray ||
+    color.levelsWhite !== d.levelsWhite ||
+    color.hslSat !== d.hslSat ||
+    color.hslLum !== d.hslLum ||
+    color.clarity !== d.clarity ||
+    color.texture !== d.texture ||
+    color.sharpen !== d.sharpen ||
+    color.denoise !== d.denoise ||
+    Object.values(color.curve.points).some((points) => points.length > 0)
+  )
+}
+
 export function WorkspaceEditSidebar({
   activeTool,
   pipeline,
@@ -57,14 +90,26 @@ export function WorkspaceEditSidebar({
       <section className="workspace-tool-panel">
         <header className="workspace-tool-panel-header">
           <h2>{titleForTool(activeTool)}</h2>
+          {activeTool === 'color' && (
+            <span className="workspace-tool-panel-actions">
+              {isColorModified(pipeline.color) && <span className="ui-accordion-modified-dot" />}
+              <Tooltip content="重置全部调色">
+                <IconButton
+                  variant="ghost"
+                  size="compact"
+                  icon={<RotateCcw size={14} />}
+                  onClick={() => onUpdatePipeline({ color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects })}
+                  aria-label="重置全部调色"
+                />
+              </Tooltip>
+            </span>
+          )}
         </header>
         <div className="workspace-tool-panel-body">
           {activeTool === 'color' ? (
             <ColorPanel
               value={pipeline.color}
-              effects={pipeline.effects}
               onChange={(color) => onUpdatePipeline({ color })}
-              onEffectsChange={(effects) => onUpdatePipeline({ effects })}
               onActivatePipette={onActivatePipette}
             />
           ) : activeTool === 'crop' ? (

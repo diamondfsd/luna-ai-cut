@@ -1,50 +1,28 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
-import type {
-  ColorMixChannel,
-  SelectiveColorChannel,
-  ToneCurveBandAdjust,
-  ToneCurveChannel,
-} from '../shared/editPipeline'
-import { EDIT_PARAMETER_RANGES } from '../shared/editParameterRanges'
+import type { CurvePoint, ToneCurveChannel } from '../shared/editPipeline'
 
-export const HSL_CHANNELS: Array<{ key: ColorMixChannel; label: string; color: string }> = [
-  { key: 'red', label: '红色', color: '#ff3b30' },
-  { key: 'orange', label: '橙色', color: '#ff9500' },
-  { key: 'yellow', label: '黄色', color: '#ffd60a' },
-  { key: 'green', label: '绿色', color: '#34c759' },
-  { key: 'aqua', label: '浅绿色', color: '#48d6d2' },
-  { key: 'blue', label: '蓝色', color: '#0a84ff' },
-  { key: 'purple', label: '紫色', color: '#bf5af2' },
-  { key: 'magenta', label: '洋红色', color: '#ff2d9a' },
-]
-
-export const SELECTIVE_CHANNELS: Array<{ key: SelectiveColorChannel; label: string; color: string }> = [
-  { key: 'red', label: '红色', color: '#ff453a' },
-  { key: 'yellow', label: '黄色', color: '#ffd60a' },
-  { key: 'green', label: '绿色', color: '#30d158' },
-  { key: 'cyan', label: '青色', color: '#64d2ff' },
-  { key: 'blue', label: '蓝色', color: '#0a84ff' },
-  { key: 'magenta', label: '洋红', color: '#ff2d9a' },
-  { key: 'white', label: '白色', color: '#f5f5f7' },
-  { key: 'neutral', label: '灰色', color: '#8e8e93' },
-  { key: 'black', label: '黑色', color: '#050505' },
+export const HSL_CHANNELS: Array<{ key: string; label: string; hue: number; color: string }> = [
+  { key: 'red', label: '红色', hue: 0, color: '#ff3b30' },
+  { key: 'orange', label: '橙色', hue: 30, color: '#ff9500' },
+  { key: 'yellow', label: '黄色', hue: 60, color: '#ffd60a' },
+  { key: 'green', label: '绿色', hue: 120, color: '#34c759' },
+  { key: 'aqua', label: '浅绿色', hue: 170, color: '#48d6d2' },
+  { key: 'blue', label: '蓝色', hue: 220, color: '#0a84ff' },
+  { key: 'purple', label: '紫色', hue: 275, color: '#bf5af2' },
+  { key: 'magenta', label: '洋红色', hue: 320, color: '#ff2d9a' },
 ]
 
 export const CURVE_CHANNELS: Array<{ key: ToneCurveChannel; label: string }> = [
   { key: 'rgb', label: '全部' },
-  { key: 'luminance', label: '亮' },
+  { key: 'luminance', label: '亮度' },
   { key: 'red', label: '红' },
   { key: 'green', label: '绿' },
   { key: 'blue', label: '蓝' },
 ]
 
 export function exposureValue(value: number): string {
-  return `${value > 0 ? '+' : ''}${value.toFixed(2)}`
-}
-
-export function decimalValue(value: number): string {
-  return value.toFixed(1)
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)} EV`
 }
 
 export function hueColor(hue: number, saturation: number): string {
@@ -106,77 +84,114 @@ export function ColorWheel({
   )
 }
 
-function curveY(base: number, adjust: number): number {
-  return Math.max(2, Math.min(130, base - adjust * 0.42))
+function pointToSvg(point: CurvePoint): { x: number; y: number } {
+  return { x: point.x * 180, y: (1 - point.y) * 132 }
 }
 
-export function CurvePreview({ curve, onChange }: { curve: ToneCurveBandAdjust; onChange?: (patch: Partial<ToneCurveBandAdjust>) => void }) {
+function eventToPoint(event: React.PointerEvent<SVGSVGElement>): CurvePoint {
+  const rect = event.currentTarget.getBoundingClientRect()
+  return {
+    x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, 1 - (event.clientY - rect.top) / rect.height)),
+  }
+}
+
+function curvePath(points: CurvePoint[]): string {
+  const ordered = [{ x: 0, y: 0 }, ...points, { x: 1, y: 1 }].sort((a, b) => a.x - b.x)
+  return ordered.map((point, index) => {
+    const svg = pointToSvg(point)
+    return `${index === 0 ? 'M' : 'L'}${svg.x.toFixed(1)} ${svg.y.toFixed(1)}`
+  }).join(' ')
+}
+
+export function CurvePreview({
+  points,
+  onChange,
+}: {
+  points: CurvePoint[]
+  onChange: (points: CurvePoint[]) => void
+}) {
   const svgRef = useRef<SVGSVGElement>(null)
-  const [dragging, setDragging] = useState<'shadows' | 'darks' | 'lights' | 'highlights' | null>(null)
-  const shadowY = curveY(104, curve.shadows)
-  const darkY = curveY(82, curve.darks)
-  const lightY = curveY(46, curve.lights)
-  const highlightY = curveY(12, curve.highlights)
-  const curvePath = `M0 130 C30 ${shadowY} 52 ${darkY} 75 66 C105 ${lightY} 135 ${highlightY} 180 2`
-  const points: Array<{ id: 'shadows' | 'darks' | 'lights' | 'highlights'; x: number; base: number }> = [
-    { id: 'shadows', x: 20, base: 104 },
-    { id: 'darks', x: 60, base: 82 },
-    { id: 'lights', x: 108, base: 46 },
-    { id: 'highlights', x: 158, base: 12 },
-  ]
-  const pointY: Record<string, number> = { shadows: shadowY, darks: darkY, lights: lightY, highlights: highlightY }
+  const [dragging, setDragging] = useState<number | null>(null)
+  const path = curvePath(points)
 
-  function handlePointerDown(pointId: typeof dragging, event: React.PointerEvent): void {
-    if (!onChange) return
-    event.preventDefault()
-    setDragging(pointId)
-    svgRef.current?.setPointerCapture(event.pointerId)
+  function commit(nextPoints: CurvePoint[]): void {
+    onChange(nextPoints.sort((a, b) => a.x - b.x).slice(0, 12))
   }
 
-  function handlePointerMove(event: React.PointerEvent): void {
-    if (!dragging || !onChange || !svgRef.current) return
-    event.preventDefault()
-    const rect = svgRef.current.getBoundingClientRect()
-    const viewBoxY = Math.max(0, Math.min(132, ((event.clientY - rect.top) / rect.height) * 132))
-    const point = points.find((p) => p.id === dragging)
-    if (!point) return
-    const range = EDIT_PARAMETER_RANGES.curve.band
-    const adjust = Math.max(range.uiMin ?? range.min, Math.min(range.uiMax ?? range.max, Math.round((point.base - viewBoxY) / 0.42)))
-    onChange({ [dragging]: adjust })
+  function addPoint(event: React.PointerEvent<SVGSVGElement>): void {
+    if (event.target !== event.currentTarget && !(event.target as SVGElement).classList.contains('workspace-curve-hit')) return
+    if (points.length >= 12) return
+    const point = eventToPoint(event)
+    const next = [...points, point].sort((a, b) => a.x - b.x)
+    const index = next.findIndex((item) => item === point)
+    commit(next)
+    setDragging(index)
+    event.currentTarget.setPointerCapture(event.pointerId)
   }
 
-  function handlePointerUp(): void {
-    if (!dragging) return
+  function movePoint(event: React.PointerEvent<SVGSVGElement>): void {
+    if (dragging === null) return
+    const point = eventToPoint(event)
+    const next = points.map((item, index) => index === dragging ? point : item)
+    commit(next)
+  }
+
+  function stopDrag(event: React.PointerEvent<SVGSVGElement>): void {
+    if (dragging === null) return
     setDragging(null)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  function removePoint(index: number): void {
+    commit(points.filter((_, pointIndex) => pointIndex !== index))
   }
 
   return (
-    <div className={`workspace-curve-preview${dragging ? ' dragging' : ''}`} aria-hidden="true">
+    <div className={`workspace-curve-preview${dragging !== null ? ' dragging' : ''}`}>
       <svg
         ref={svgRef}
         viewBox="0 0 180 132"
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onPointerDown={addPoint}
+        onPointerMove={movePoint}
+        onPointerUp={stopDrag}
+        onPointerCancel={stopDrag}
+        onContextMenu={(event) => event.preventDefault()}
         style={{ touchAction: 'none' }}
       >
+        <rect className="workspace-curve-hit" x="0" y="0" width="180" height="132" fill="transparent" />
         <path className="workspace-curve-grid" d="M45 0V132M90 0V132M135 0V132M0 33H180M0 66H180M0 99H180" />
-        <path className="workspace-curve-fill" d={`${curvePath} L180 132 L0 132 Z`} />
-        <path className="workspace-curve-line" d={curvePath} />
-        {onChange && points.map(({ id, x }) => (
-          <circle
-            key={id}
-            cx={x}
-            cy={pointY[id]}
-            r={6}
-            fill="#fff"
-            stroke="var(--blue)"
-            strokeWidth={1.5}
-            style={{ cursor: dragging === id ? 'grabbing' : 'grab' }}
-            onPointerDown={(event) => handlePointerDown(id, event)}
-          />
-        ))}
-        <circle cx="75" cy="66" r="3" fill="none" stroke="var(--muted)" strokeWidth={1} opacity={0.5} />
+        <path className="workspace-curve-line muted" d="M0 132L180 0" />
+        <path className="workspace-curve-line" d={path} />
+        {points.map((point, index) => {
+          const svg = pointToSvg(point)
+          return (
+            <circle
+              key={`${point.x}-${point.y}-${index}`}
+              cx={svg.x}
+              cy={svg.y}
+              r={6}
+              fill="#fff"
+              stroke="var(--blue)"
+              strokeWidth={1.5}
+              style={{ cursor: dragging === index ? 'grabbing' : 'grab' }}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+                setDragging(index)
+                event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId)
+              }}
+              onDoubleClick={(event) => {
+                event.stopPropagation()
+                removePoint(index)
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                removePoint(index)
+              }}
+            />
+          )
+        })}
       </svg>
     </div>
   )
