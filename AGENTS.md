@@ -159,7 +159,7 @@ Radix 基元仅用于提供行为和可访问性，不施加视觉样式。**不
 1. 检查 `src/ui` 是否已有匹配的组件。
 2. 如果行为是共享的，以保守的 prop 扩展现有组件。
 3. 只有当样式属于特定页面或工作流时，才添加功能特定的 CSS 类。
-4. 提交 UI 改动前运行 `npm run build:app`。
+4. 提交 UI 改动前运行 `pnpm run build:app`。
 
 ## 项目概述
 
@@ -213,19 +213,19 @@ src/
 ## 项目基础信息
 
 ### 包管理器
-- 使用 **npm**（不是 pnpm），`package-lock.json` 是锁定文件
+- 使用 **pnpm**，`pnpm-lock.yaml` 是锁定文件
 
 ### 常用命令
 
 | 命令 | 说明 |
 |------|------|
-| `npm run dev` | 启动 Vite 开发服务器 |
-| `npm run build:app` | 仅构建前端（tsc + vite build） |
-| `npm run build` | 完整构建（tsc + vite build + electron-builder） |
-| `npm run pack:mac:arm64` | 打包 macOS ARM64 DMG |
-| `npm run pack:win:x64` | 打包 Windows x64 NSIS |
-| `npm run lint` | ESLint 检查 |
-| `npm run mock:luna` | 启动模拟 Luna 相机服务器 |
+| `pnpm dev` | 启动 Vite 开发服务器 |
+| `pnpm build:app` | 仅构建前端（tsc + vite build） |
+| `pnpm build` | 完整构建（tsc + vite build + electron-builder） |
+| `pnpm pack:mac:arm64` | 打包 macOS ARM64 DMG |
+| `pnpm pack:win:x64` | 打包 Windows x64 NSIS |
+| `pnpm lint` | ESLint 检查 |
+| `pnpm mock:luna` | 启动模拟 Luna 相机服务器 |
 
 ### Electron 配置
 - 主进程入口：`electron/main.ts`
