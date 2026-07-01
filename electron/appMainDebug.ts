@@ -17,7 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, '..')
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
-const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist-debug')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
@@ -54,6 +54,9 @@ function createWindow(): BrowserWindow {
       hash: '/device-debug',
     })
   }
+
+  // 自动打开开发者工具，方便排查白屏等问题
+  win.webContents.openDevTools()
 
   return win
 }
