@@ -7,11 +7,13 @@
  * - 无热更新、无 AI、无蓝牙、无缩略图、无导出等
  */
 
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import { registerDeviceDebugHandlers, cleanupDeviceDebug } from './deviceDebugHandlers'
+import { deviceDefinitions } from './deviceDefaults'
+import { getSettings } from './fileService'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, '..')
@@ -62,7 +64,21 @@ function createWindow(): BrowserWindow {
 }
 
 function registerIpc(): void {
+  // 注册设备调试处理器
   registerDeviceDebugHandlers(() => win)
+
+  // 注册 DeviceConnectionContext 依赖的基础处理器
+  // 设置读写（返回默认值）
+  ipcMain.handle('settings:get', async () => {
+    return await getSettings()
+  })
+  ipcMain.handle('settings:save', async (_event, _settings: Record<string, unknown>) => {
+    return await getSettings()
+  })
+  // 设备列表
+  ipcMain.handle('devices:list', async () => {
+    return deviceDefinitions()
+  })
 }
 
 app.whenReady().then(() => {
