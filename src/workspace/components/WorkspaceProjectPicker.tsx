@@ -1,14 +1,10 @@
 import { Folder, ImageIcon } from 'lucide-react'
 
-import type { WorkspaceMediaAsset, WorkspaceProject } from '../../shared/types'
+import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 
-interface WorkspaceProjectPickerProps {
-  projects: WorkspaceProject[]
-  projectLoading: boolean
-  onOpenProject: (project: WorkspaceProject) => void
-}
+export function WorkspaceProjectPicker() {
+  const { projects, projectLoading, openProject } = useWorkspaceMedia()
 
-export function WorkspaceProjectPicker({ projects, projectLoading, onOpenProject }: WorkspaceProjectPickerProps) {
   return (
     <div className="workspace-project-page">
       <header className="workspace-project-header">
@@ -17,11 +13,11 @@ export function WorkspaceProjectPicker({ projects, projectLoading, onOpenProject
       </header>
       <div className="workspace-project-grid">
         {projects.map((project) => (
-          <button key={project.id} className="workspace-project-card" type="button" onClick={() => onOpenProject(project)}>
+          <button key={project.id} className="workspace-project-card" type="button" onClick={() => openProject(project)}>
             <span className="workspace-project-folder">
               <Folder size={72} strokeWidth={1.5} />
               <span className="workspace-project-previews">
-                {project.assets.slice(0, 4).map((asset: WorkspaceMediaAsset) => (
+                {project.assets.slice(0, 4).map((asset: any) => (
                   asset.thumbnailUrl ? <img key={asset.id} src={asset.thumbnailUrl} alt="" /> : <span key={asset.id}><ImageIcon size={16} /></span>
                 ))}
               </span>

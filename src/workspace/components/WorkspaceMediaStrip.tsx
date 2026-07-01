@@ -1,40 +1,27 @@
 import { ImageOff } from 'lucide-react'
 import { type MouseEvent, useRef, useState } from 'react'
-import type { WorkspaceMediaAsset } from '../../shared/types'
 
-interface WorkspaceMediaStripProps {
-  media: WorkspaceMediaAsset[]
-  activeIndex: number
-  onActiveIndexChange: (index: number) => void
-  /** 多选：已选中的索引集合 */
-  selectedIndices?: Set<number>
-  /** 多选：选中变更回调，index 为当前点击项，含有元信息 */
-  onSelectionChange?: (index: number, modifiers: { shift: boolean; ctrl: boolean; meta: boolean }) => void
-  /** 文件已删除的素材路径集合 */
-  brokenPaths?: Set<string>
-  /** 拖拽框选回调 */
-  onDragSelectionChange?: (indices: Set<number>) => void
-}
+import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 
-export function WorkspaceMediaStrip({ media, activeIndex, onActiveIndexChange, selectedIndices, onSelectionChange, brokenPaths, onDragSelectionChange }: WorkspaceMediaStripProps) {
+export function WorkspaceMediaStrip() {
+  const media = useWorkspaceMedia()
   const containerRef = useRef<HTMLDivElement>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [dragHighlighted, setDragHighlighted] = useState<Set<number>>(new Set())
 
   function handleClick(index: number, event: MouseEvent): void {
-    if (onSelectionChange && (event.shiftKey || event.ctrlKey || event.metaKey)) {
-      onSelectionChange(index, { shift: event.shiftKey, ctrl: event.ctrlKey, meta: event.metaKey })
+    if (event.shiftKey || event.ctrlKey || event.metaKey) {
+      media.handleSelectionChange(index, { shift: event.shiftKey, ctrl: event.ctrlKey, meta: event.metaKey })
       return
     }
-    onActiveIndexChange(index)
+    media.setActiveIndex(index)
+    media.setSelectedIndices(new Set([index]))
   }
 
   function handlePointerDown(e: React.PointerEvent): void {
-    // 只响应左键，且在缩略图按钮上不触发拖拽
     if (e.button !== 0) return
     if ((e.target as HTMLElement).closest('.workspace-thumb')) return
-    if (!onDragSelectionChange) return
 
     dragStartRef.current = { x: e.clientX, y: e.clientY }
     containerRef.current?.setPointerCapture(e.pointerId)
@@ -52,7 +39,6 @@ export function WorkspaceMediaStrip({ media, activeIndex, onActiveIndexChange, s
     const height = Math.abs(e.clientY - dragStartRef.current.y)
     setDragRect({ left, top, width, height })
 
-    // 计算选框覆盖的缩略图
     const dragBounds = {
       left: Math.min(dragStartRef.current.x, e.clientX),
       right: Math.max(dragStartRef.current.x, e.clientX),
@@ -78,13 +64,12 @@ export function WorkspaceMediaStrip({ media, activeIndex, onActiveIndexChange, s
     setDragRect(null)
 
     if (dragHighlighted.size > 0) {
-      // 切换模式：已选中的移除，未选中的叠加
-      const toggled = new Set(selectedIndices ?? [])
+      const toggled = new Set(media.selectedIndices)
       for (const idx of dragHighlighted) {
         if (toggled.has(idx)) toggled.delete(idx)
         else toggled.add(idx)
       }
-      onDragSelectionChange?.(toggled)
+      media.setSelectedIndices(toggled)
     }
     setDragHighlighted(new Set())
   }
@@ -98,10 +83,10 @@ export function WorkspaceMediaStrip({ media, activeIndex, onActiveIndexChange, s
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      {media.map((item, index) => {
-        const isBroken = brokenPaths?.has(item.path)
-        const isActive = index === activeIndex
-        const isSelected = selectedIndices?.has(index)
+      {media.media.map((item, index) => {
+        const isBroken = media.brokenPaths.has(item.path)
+        const isActive = index === media.activeIndex
+        const isSelected = media.selectedIndices.has(index)
         const isDragHighlighted = dragHighlighted.has(index)
         return (
           <button
@@ -110,7 +95,7 @@ export function WorkspaceMediaStrip({ media, activeIndex, onActiveIndexChange, s
             type="button"
             onClick={(e) => handleClick(index, e)}
           >
-            {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" /> : <span className="workspace-thumb-label">{item.kind === 'video' ? '视频' : '图片'}</span>}
+            {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" draggable={false} /> : <span className="workspace-thumb-label">{item.kind === 'video' ? '视频' : '图片'}</span>}
           </button>
         )
       })}

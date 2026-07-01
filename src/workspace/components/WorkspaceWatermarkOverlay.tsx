@@ -1,18 +1,23 @@
 import { WatermarkOverlay } from '../../components/WatermarkOverlay'
-import type { WatermarkSettings, WatermarkStyle } from '../../shared/types'
+import type { WatermarkStyle } from '../../shared/types'
 import { calculateWatermarkLayout, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../../shared/watermark'
-
-interface WorkspaceWatermarkOverlayProps {
-  settings: WatermarkSettings
-  imageRect: { x: number; y: number; width: number; height: number }
-}
+import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
+import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 
 const WATERMARK_IMAGE_SIZE: Record<WatermarkStyle, { width: number; height: number }> = {
   luna_ultra: { width: 1399, height: 252 },
   luna_ultra_cn: { width: 1605, height: 252 },
 }
 
-export function WorkspaceWatermarkOverlay({ settings, imageRect }: WorkspaceWatermarkOverlayProps) {
+export function WorkspaceWatermarkOverlay() {
+  const canvas = useWorkspaceCanvas()
+  const edit = useWorkspaceEdit()
+
+  const { settings } = edit.previewPipeline.watermark
+    ? { settings: edit.previewPipeline.watermark }
+    : { settings: edit.pipeline.watermark }
+  const { imageRect } = canvas
+
   if (!settings.enabled || imageRect.width <= 1 || imageRect.height <= 1) return null
   const watermarkSize = WATERMARK_IMAGE_SIZE[settings.style] ?? WATERMARK_IMAGE_SIZE.luna_ultra_cn
   const layout = calculateWatermarkLayout({
