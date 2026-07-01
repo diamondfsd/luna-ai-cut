@@ -9,6 +9,7 @@ import * as net from 'node:net'
 
 import { LunaClient } from './lunaProtocol'
 import { DEFAULT_DEVICE } from './deviceDefaults'
+import { runInsta360TcpDiagnostics } from './insta360TcpDiagnostics'
 import { logMainInfo } from './loggerService'
 import type { IDeviceDebugProtocol, DebugPortResult, DebugConnectResult, DebugAuthResult, DebugFileListResult } from './deviceDebugProtocol'
 
@@ -198,6 +199,14 @@ export class LunaDebugAdapter implements IDeviceDebugProtocol {
         message: String(error),
       }
     }
+  }
+
+  async runDiagnostics(
+    host: string,
+    log: (level: 'INFO' | 'WARN' | 'ERROR', message: string, data?: unknown) => void,
+  ) {
+    const hostname = parseHostname(host)
+    return await runInsta360TcpDiagnostics(hostname, DEFAULT_DEVICE.controlPort, log)
   }
 
   startKeepAlive(intervalMs?: number): void {

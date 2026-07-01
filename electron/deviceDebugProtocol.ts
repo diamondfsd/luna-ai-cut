@@ -47,6 +47,42 @@ export interface DebugStatusResult {
   message: string
 }
 
+export interface DebugDiagnosticsResult {
+  success: boolean
+  host: string
+  port: number
+  http: Array<{
+    path: string
+    ok: boolean
+    status?: number
+    server?: string | null
+    contentType?: string | null
+    directoryLinks?: number
+    mediaLinks?: number
+    preview?: string
+    error?: string
+  }>
+  tcp: Array<{
+    label: string
+    ok: boolean
+    code?: number
+    requestId?: number
+    bodyBytes?: number
+    trailer?: string
+    ascii?: string
+    error?: string
+  }>
+  deviceInfo: {
+    deviceName?: string
+    serial?: string
+    firmware?: string
+    ssid?: string
+    wifiPassword?: string
+    rawStrings: string[]
+  } | null
+  summary: string
+}
+
 // ============================================================
 // 设备调试协议接口
 // ============================================================
@@ -78,6 +114,9 @@ export interface IDeviceDebugProtocol {
 
   /** 读取文件列表 */
   listFiles(): Promise<DebugFileListResult>
+
+  /** 运行原始协议诊断，输出 HTTP/TCP 原始探测日志 */
+  runDiagnostics(host: string, log: (level: 'INFO' | 'WARN' | 'ERROR', message: string, data?: unknown) => void): Promise<DebugDiagnosticsResult>
 
   /** 启动保活 */
   startKeepAlive(intervalMs?: number): void

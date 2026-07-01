@@ -497,6 +497,35 @@ export interface DeviceDebugFileListResult {
   message: string
 }
 
+export interface DeviceDebugDiagnosticsResult {
+  success: boolean
+  host: string
+  port: number
+  http: Array<{
+    path: string
+    ok: boolean
+    status?: number
+    server?: string | null
+    contentType?: string | null
+    directoryLinks?: number
+    mediaLinks?: number
+    preview?: string
+    error?: string
+  }>
+  tcp: Array<{
+    label: string
+    ok: boolean
+    code?: number
+    requestId?: number
+    bodyBytes?: number
+    trailer?: string
+    ascii?: string
+    error?: string
+  }>
+  deviceInfo: Insta360DeviceInfo | null
+  summary: string
+}
+
 export interface DeviceDebugOption {
   id: string
   name: string
@@ -515,6 +544,7 @@ export interface DeviceDebugApi {
   requestAuth(params: { deviceId: string; host: string }): Promise<DeviceDebugAuthResult>
   getAuthState(params: { deviceId: string; host: string }): Promise<{ authState: string }>
   listFiles(params: { deviceId: string; host: string }): Promise<DeviceDebugFileListResult>
+  runDiagnostics(params: { deviceId: string; host: string }): Promise<DeviceDebugDiagnosticsResult>
   getDeviceOptions(): Promise<DeviceDebugOption[]>
   log(params: { level: string; message: string; data?: unknown }): Promise<{ success: boolean }>
   getLogPath(): Promise<string>

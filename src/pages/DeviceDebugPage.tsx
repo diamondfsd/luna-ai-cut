@@ -2,13 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plug, PlugZap, FileText, List, RotateCcw, Wifi, ArrowLeft, Play, Download } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import type { DeviceDebugOption } from '../shared/types'
+import type { DeviceDebugDiagnosticsResult, DeviceDebugOption } from '../shared/types'
 import { Button, Input, toast } from '../ui'
 import '../styles/device-debug.css'
-
-// ============================================================
-// 类型
-// ============================================================
 
 interface LogEntry {
   id: number
@@ -17,10 +13,6 @@ interface LogEntry {
   message: string
   data?: unknown
 }
-
-// ============================================================
-// DeviceDebugPage
-// ============================================================
 
 export function DeviceDebugPage() {
   const navigate = useNavigate()
@@ -32,7 +24,9 @@ export function DeviceDebugPage() {
   const [controlOk, setControlOk] = useState<boolean | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [diagnosing, setDiagnosing] = useState(false)
   const [files, setFiles] = useState<Array<{ name: string; size: number | null; url: string }>>([])
+  const [diagnostics, setDiagnostics] = useState<DeviceDebugDiagnosticsResult | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logPath, setLogPath] = useState<string>('')
   const logIdRef = useRef(0)
@@ -49,7 +43,6 @@ export function DeviceDebugPage() {
     failed: '授权失败 ❌',
   }
 
-  // 初始化：获取支持的设备列表、日志路径
   useEffect(() => {
     window.deviceDebug.getDeviceOptions().then((options) => {
       setDeviceOptions(options)
@@ -62,19 +55,17 @@ export function DeviceDebugPage() {
     window.deviceDebug.getLogPath().then(setLogPath).catch(() => {})
   }, [])
 
-  // 监听后端实时日志
   useEffect(() => {
     return window.deviceDebug.onLog((event) => {
-      addLog(event.level as LogEntry['level'], event.message, event.data)
+      const level = event.level.toLowerCase() as LogEntry['level']
+      addLog(level === 'info' || level === 'warn' || level === 'error' || level === 'data' ? level : 'info', event.message, event.data)
     })
   })
 
-  // 自动滚动到底部
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
-  // 切换设备类型时更新默认 IP
   useEffect(() => {
     const device = deviceOptions.find((d) => d.id === selectedDeviceId)
     if (device) setHost(device.defaultHost)
@@ -89,14 +80,13 @@ export function DeviceDebugPage() {
   const clearLogs = useCallback(() => {
     setLogs([])
     setFiles([])
+    setDiagnostics(null)
   }, [])
 
-  /** 写入独立日志文件 */
   const writeLogFile = useCallback((level: string, message: string, data?: unknown) => {
     window.deviceDebug.log({ level, message, data }).catch(() => {})
   }, [])
 
-  /** 端口检测 */
   async function checkPort(): Promise<void> {
     if (!selectedDeviceId) return
     addLog('info', `端口检测 ${host} ...`)
@@ -116,7 +106,6 @@ export function DeviceDebugPage() {
     }
   }
 
-  /** 连接设备 */
   async function connect(): Promise<void> {
     if (!selectedDeviceId || !selectedDevice) return
     setConnecting(true)
@@ -138,7 +127,6 @@ export function DeviceDebugPage() {
     }
   }
 
-  /** 断开设备 */
   async function disconnect(): Promise<void> {
     if (!selectedDeviceId) return
     addLog('info', '断开连接...')
@@ -157,7 +145,6 @@ export function DeviceDebugPage() {
     }
   }
 
-  /** 检查授权 */
   async function checkAuth(): Promise<void> {
     if (!selectedDeviceId) return
     addLog('info', '检查授权状态...')
@@ -173,7 +160,6 @@ export function DeviceDebugPage() {
     }
   }
 
-  /** 请求授权 */
   async function requestAuth(): Promise<void> {
     if (!selectedDeviceId) return
     addLog('info', '发送授权请求，请在相机上确认...')
@@ -189,7 +175,6 @@ export function DeviceDebugPage() {
     }
   }
 
-  /** 读取文件列表 */
   async function listFiles(): Promise<void> {
     if (!selectedDeviceId) return
     addLog('info', '读取文件列表...')
@@ -210,7 +195,30 @@ export function DeviceDebugPage() {
     }
   }
 
-  /** 刷新连接状态 */
+  async function runDiagnostics(): Promise<void> {
+    if (!selectedDeviceId) return
+    setDiagnosing(true)
+    setDiagnostics(null)
+    addLog('info', '启动原始协议诊断...')
+    writeLogFile('INFO', '启动原始协议诊断')
+    try {
+      const result = await window.deviceDebug.runDiagnostics({ deviceId: selectedDeviceId, host })
+      setDiagnostics(result)
+      setHttpOk(result.http.some((item) => item.ok))
+      setControlOk(result.tcp.some((item) => item.ok))
+      addLog(result.success ? 'info' : 'warn', result.summary, {
+        deviceInfo: result.deviceInfo,
+        http: result.http.map((item) => ({ path: item.path, ok: item.ok, status: item.status, mediaLinks: item.mediaLinks, error: item.error })),
+        tcp: result.tcp.map((item) => ({ label: item.label, ok: item.ok, code: item.code, requestId: item.requestId, bodyBytes: item.bodyBytes, error: item.error })),
+      })
+    } catch (error) {
+      addLog('error', `协议诊断异常: ${String(error)}`)
+      writeLogFile('ERROR', `协议诊断异常: ${String(error)}`)
+    } finally {
+      setDiagnosing(false)
+    }
+  }
+
   async function checkConnectionStatus(): Promise<void> {
     if (!selectedDeviceId) return
     addLog('info', '检查连接状态...')
@@ -223,10 +231,6 @@ export function DeviceDebugPage() {
       addLog('error', `状态检查异常: ${String(error)}`)
     }
   }
-
-  // ============================================================
-  // 一键测试
-  // ============================================================
 
   async function runOneClickTest(): Promise<void> {
     if (!selectedDeviceId) return
@@ -263,7 +267,6 @@ export function DeviceDebugPage() {
     }
   }
 
-  /** 打开日志文件 */
   async function openLogFile(): Promise<void> {
     try {
       const filePath = await window.deviceDebug.getLogPath()
@@ -277,7 +280,6 @@ export function DeviceDebugPage() {
 
   return (
     <div className="device-debug-surface">
-      {/* 顶栏 — 独立包模式下不显示（没有其他页面，导航无意义） */}
       {!__DEBUG_STANDALONE__ && (
         <div className="device-debug-topbar">
           <button className="device-debug-back" onClick={() => navigate(-1)}>
@@ -288,9 +290,7 @@ export function DeviceDebugPage() {
         </div>
       )}
 
-      {/* 主网格 */}
       <div className="device-debug-grid">
-        {/* 左侧：设备配置 */}
         <div className="dd-panel">
           <h2><Plug size={16} /> 设备配置</h2>
 
@@ -334,11 +334,13 @@ export function DeviceDebugPage() {
             </Button>
           </div>
 
-          {/* 一键测试 */}
           <div className="dd-section-divider" />
           <div className="dd-actions">
             <Button onClick={runOneClickTest} size="compact" disabled={testing} variant="primary" style={{ flex: 1 }}>
               <Play size={14} /> {testing ? '测试中...' : '一键测试'}
+            </Button>
+            <Button onClick={runDiagnostics} size="compact" disabled={diagnosing} variant="secondary">
+              <FileText size={14} /> {diagnosing ? '诊断中...' : '协议诊断'}
             </Button>
             <Button onClick={openLogFile} size="compact" variant="secondary" title="打开日志文件">
               <Download size={14} />
@@ -347,7 +349,6 @@ export function DeviceDebugPage() {
           {logPath && <span className="dd-log-path">{logPath}</span>}
         </div>
 
-        {/* 中间：状态 */}
         <div className="dd-panel">
           <h2><FileText size={16} /> 连接状态</h2>
 
@@ -393,9 +394,18 @@ export function DeviceDebugPage() {
               ✅ 授权已完成，可以读取文件
             </div>
           )}
+
+          {diagnostics && (
+            <div className="dd-diagnostics">
+              <strong>{diagnostics.summary}</strong>
+              {diagnostics.deviceInfo?.deviceName && <span>设备：{diagnostics.deviceInfo.deviceName}</span>}
+              {diagnostics.deviceInfo?.firmware && <span>固件：{diagnostics.deviceInfo.firmware}</span>}
+              <span>HTTP：{diagnostics.http.filter((item) => item.ok).length}/{diagnostics.http.length}</span>
+              <span>TCP：{diagnostics.tcp.filter((item) => item.ok).length}/{diagnostics.tcp.length}</span>
+            </div>
+          )}
         </div>
 
-        {/* 右侧：文件列表 */}
         <div className="dd-panel">
           <h2><List size={16} /> 文件列表</h2>
 
@@ -426,7 +436,6 @@ export function DeviceDebugPage() {
           )}
         </div>
 
-        {/* 日志区：跨三列 */}
         <div className="dd-panel dd-panel-full">
           <div className="dd-log-header">
             <h2><FileText size={16} /> 日志 {testing && <span className="dd-log-spinner" />}</h2>
