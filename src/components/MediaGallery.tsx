@@ -20,6 +20,7 @@ interface MediaGalleryProps {
   groupTitle: (group: string) => string
   handlePreviewClick: (file: LunaFile) => void
   handleThumbnailImageLoad: (file: LunaFile, localPath: string | null | undefined) => void
+  handleThumbnailImageError: (file: LunaFile) => void
   onSelect?: (files: LunaFile[]) => void
   revealDownloadedFile: (progress: DownloadProgress | undefined) => void
   revealFileByPath: (path: string) => void
@@ -41,6 +42,7 @@ export function MediaGallery({
   groupTitle,
   handlePreviewClick,
   handleThumbnailImageLoad,
+  handleThumbnailImageError,
   onSelect,
   revealDownloadedFile,
   revealFileByPath,
@@ -94,6 +96,7 @@ export function MediaGallery({
                   onRevealPath={revealFileByPath}
                   onRevealProgress={revealDownloadedFile}
                   onThumbnailLoad={handleThumbnailImageLoad}
+                  onThumbnailError={handleThumbnailImageError}
                 />
               )
             })}

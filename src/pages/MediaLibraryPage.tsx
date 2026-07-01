@@ -77,6 +77,7 @@ export function MediaLibraryPage({
     handlePreviewClick,
     handleStorageFilterChange,
     handleThumbnailImageLoad,
+    handleThumbnailImageError,
     loadCameraLibrary,
     loadDownloadedLibrary,
     loadExportLibrary,
@@ -227,6 +228,7 @@ export function MediaLibraryPage({
         groupTitle={groupTitle}
         handlePreviewClick={handlePreviewClick}
         handleThumbnailImageLoad={handleThumbnailImageLoad}
+        handleThumbnailImageError={handleThumbnailImageError}
         onSelect={onSelect}
         revealDownloadedFile={revealDownloadedFile}
         revealFileByPath={revealFileByPath}

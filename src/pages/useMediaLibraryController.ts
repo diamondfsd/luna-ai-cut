@@ -249,6 +249,21 @@ export function useMediaLibraryController({
     requestFrameRate(file, localPath)
   }
 
+  function handleThumbnailImageError(file: LunaFile): void {
+    // 缩略图加载失败（如文件损坏），清除请求记录允许重试
+    requestedThumbnailIdsRef.current.delete(file.id)
+    // 清除 thumbnailUrl 让卡片显示占位图，然后重新触发缓存 + 缩略图生成
+    setFiles((current) =>
+      current.map((f) => (f.id === file.id ? { ...f, thumbnailUrl: null } : f)),
+    )
+    setDownloadedFiles((current) =>
+      current.map((f) => (f.id === file.id ? { ...f, thumbnailUrl: null } : f)),
+    )
+    // 短暂延迟后重试，避免在加载循环中打满 IPC
+    // 注意：要清除 file.thumbnailUrl 避免被 requestThumbnail 的短路检查跳过
+    setTimeout(() => requestThumbnail({ ...file, thumbnailUrl: null }), 300)
+  }
+
   // --- File loading ---
 
   async function loadCameraLibrary(): Promise<void> {
@@ -468,6 +483,7 @@ export function useMediaLibraryController({
     handlePreviewClick,
     handleStorageFilterChange,
     handleThumbnailImageLoad,
+    handleThumbnailImageError,
     loadCameraLibrary,
     loadDownloadedLibrary,
     loadExportLibrary,
