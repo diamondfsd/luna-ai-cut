@@ -19,11 +19,6 @@ import type { WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 
 /** 复制到粘贴板：只复制调色+效果+水印，不含裁剪等变换 */
 const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
-const DEFAULT_WHITE_BALANCE_KELVIN = 5500
-
-function clampKelvin(value: number): number {
-  return Math.max(2000, Math.min(15000, Math.round(value)))
-}
 
 interface WorkspaceRouteState {
   project?: WorkspaceProject
@@ -106,7 +101,6 @@ export function WorkspacePage({ workspaceMode, onEditingChange }: WorkspacePageP
   const previewPipelineRef = useRef<EditPipeline>(history.present)
   const previousToolRef = useRef<WorkspaceTool>('color')
   const saveTimerRef = useRef<number | null>(null)
-  const autoWhiteBalanceKeyRef = useRef<string | null>(null)
   const pipeline = history.present
   const activeTransform = cropActive && transformDraft ? transformDraft : pipeline.transform
   const cropAspectRatio = cropPreset === 'free' ? null : cropPreset === 'original' ? frameAspect(sourceAspect, activeTransform.orientation) : (cropSize.width || Math.round(sourceAspect * 2160)) / Math.max(cropSize.height || 2160, 1)
@@ -314,27 +308,6 @@ export function WorkspacePage({ workspaceMode, onEditingChange }: WorkspacePageP
   }, [activeIndex, currentProject?.id])
 
   useEffect(() => {
-    if (pipeline.color.whiteBalanceMode !== 'auto') {
-      autoWhiteBalanceKeyRef.current = null
-      return
-    }
-    if (!activeMedia) return
-    const key = `${activeMedia.path}:${pipeline.color.whiteBalanceMode}`
-    if (autoWhiteBalanceKeyRef.current === key) return
-    autoWhiteBalanceKeyRef.current = key
-    let canceled = false
-    window.luna.workspace.readColorMetadata(activeMedia.path)
-      .then((metadata) => {
-        if (canceled) return
-        const temperature = metadata.temperatureKelvin ? clampKelvin(metadata.temperatureKelvin) : DEFAULT_WHITE_BALANCE_KELVIN
-        const tint = metadata.tint ?? 0
-        commitPatch({ color: { temperature, tint, whiteBalanceMode: 'auto' } })
-      })
-      .catch(() => undefined)
-    return () => { canceled = true }
-  }, [activeMedia?.path, pipeline.color.whiteBalanceMode, commitPatch])
-
-  useEffect(() => {
     if (!currentProject || !activeMedia) return
     const baseProject = projectRef.current
     if (!baseProject) return
@@ -406,7 +379,7 @@ export function WorkspacePage({ workspaceMode, onEditingChange }: WorkspacePageP
       const b = parseInt(hex.slice(5, 7), 16) / 255
       const avg = (r + g + b) / 3
       if (avg > 0.01 && avg < 0.99) {
-        const temperature = clampKelvin((pipeline.color.temperature || DEFAULT_WHITE_BALANCE_KELVIN) + (b - r) * 4500)
+        const temperature = Math.max(-100, Math.min(100, Math.round(pipeline.color.temperature + (b - r) * 100)))
         const tint = Math.max(-100, Math.min(100, Math.round((g - (r + b) / 2) * 100)))
         commitPatch({ color: { temperature, tint, whiteBalanceMode: 'custom' } })
       }

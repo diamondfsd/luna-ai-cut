@@ -33,6 +33,13 @@
   letter-spacing: 0;
 }
 
+.workspace-tool-panel-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .workspace-tool-panel-body {
   min-width: 0;
   min-height: 0;

@@ -1,6 +1,6 @@
 import { RotateCcw } from 'lucide-react'
 
-import { HSL_DEFAULTS, type ColorMixChannel, type EditPipeline, type HslAdjust } from '../shared/editPipeline'
+import { HSL_DEFAULTS, type EditPipeline } from '../shared/editPipeline'
 import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
 import { ParamSlider } from '../components/ParamSlider'
 import { Accordion, ButtonGroup } from '../../ui'
@@ -15,10 +15,6 @@ interface HslPanelProps {
 }
 
 export function HslPanel({ value, mode, modified, onModeChange, onChange }: HslPanelProps) {
-  function updateHsl(channel: ColorMixChannel, patch: Partial<HslAdjust>): void {
-    onChange({ hsl: { ...value.hsl, [channel]: { ...value.hsl[channel], ...patch } } })
-  }
-
   return (
     <Accordion
       title="HSL"
@@ -39,16 +35,27 @@ export function HslPanel({ value, mode, modified, onModeChange, onChange }: HslP
         ]}
         className="workspace-panel-tabs"
       />
-      {HSL_CHANNELS.map(({ key, label, color }) => (
-        <ColorBarSlider key={key} color={`linear-gradient(90deg, ${color}, #ffffff, ${color})`}>
-          <ParamSlider
-            label={label}
-            value={value.hsl[key][mode]}
-            {...sliderRange(EDIT_PARAMETER_RANGES.hsl[mode])}
-            onChange={(next) => updateHsl(key, { [mode]: next })}
-          />
-        </ColorBarSlider>
-      ))}
+      {HSL_CHANNELS.map(({ key, label, hue, color }) => {
+        const isActive = Math.abs(value.hslHue - hue) < 18 || Math.abs(value.hslHue - hue) > 342
+        const displayValue = isActive
+          ? (mode === 'hue' ? value.hue : mode === 'saturation' ? value.hslSat : value.hslLum)
+          : 0
+        return (
+          <ColorBarSlider key={key} color={`linear-gradient(90deg, ${color}, #ffffff, ${color})`}>
+            <ParamSlider
+              label={label}
+              value={displayValue}
+              {...sliderRange(mode === 'hue' ? EDIT_PARAMETER_RANGES.hsl.hue : mode === 'saturation' ? EDIT_PARAMETER_RANGES.hsl.saturation : EDIT_PARAMETER_RANGES.hsl.luminance)}
+              onChange={(next) => {
+                onChange({
+                  hslHue: hue,
+                  ...(mode === 'hue' ? { hue: next } : mode === 'saturation' ? { hslSat: next } : { hslLum: next }),
+                })
+              }}
+            />
+          </ColorBarSlider>
+        )
+      })}
     </Accordion>
   )
 }

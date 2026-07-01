@@ -1,6 +1,6 @@
 import { RotateCcw } from 'lucide-react'
 
-import { CURVE_DEFAULTS, type EditPipeline, type ToneCurveBandAdjust, type ToneCurveChannel } from '../shared/editPipeline'
+import { CURVE_DEFAULTS, type CurvePoint, type EditPipeline, type ToneCurveChannel } from '../shared/editPipeline'
 import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
 import { ParamSlider } from '../components/ParamSlider'
 import { Accordion, ButtonGroup } from '../../ui'
@@ -14,10 +14,10 @@ interface CurvePanelProps {
 
 export function CurvePanel({ value, modified, onChange }: CurvePanelProps) {
   const activeCurveChannel = value.curve.activeChannel
-  const activeCurve = value.curve.channels[activeCurveChannel]
+  const activePoints = value.curve.points[activeCurveChannel]
 
-  function updateCurve(channel: ToneCurveChannel, patch: Partial<ToneCurveBandAdjust>): void {
-    onChange({ curve: { ...value.curve, channels: { ...value.curve.channels, [channel]: { ...value.curve.channels[channel], ...patch } } } })
+  function updateCurve(channel: ToneCurveChannel, points: CurvePoint[]): void {
+    onChange({ curve: { ...value.curve, points: { ...value.curve.points, [channel]: points } } })
   }
 
   return (
@@ -35,11 +35,13 @@ export function CurvePanel({ value, modified, onChange }: CurvePanelProps) {
         value={activeCurveChannel}
         onChange={(activeChannel) => onChange({ curve: { ...value.curve, activeChannel: activeChannel as ToneCurveChannel } })}
       />
-      <CurvePreview curve={activeCurve} onChange={(patch) => updateCurve(activeCurveChannel, patch)} />
-      <ParamSlider label="高光" value={activeCurve.highlights} {...sliderRange(EDIT_PARAMETER_RANGES.curve.band)} onChange={(highlights) => updateCurve(activeCurveChannel, { highlights })} />
-      <ParamSlider label="亮调" value={activeCurve.lights} {...sliderRange(EDIT_PARAMETER_RANGES.curve.band)} onChange={(lights) => updateCurve(activeCurveChannel, { lights })} />
-      <ParamSlider label="暗调" value={activeCurve.darks} {...sliderRange(EDIT_PARAMETER_RANGES.curve.band)} onChange={(darks) => updateCurve(activeCurveChannel, { darks })} />
-      <ParamSlider label="阴影" value={activeCurve.shadows} {...sliderRange(EDIT_PARAMETER_RANGES.curve.band)} onChange={(shadows) => updateCurve(activeCurveChannel, { shadows })} />
+      <CurvePreview points={activePoints} onChange={(points) => updateCurve(activeCurveChannel, points)} />
+      <p className="workspace-help-text">点击曲线添加节点，拖动调整，双击或右键删除</p>
+      <ParamSlider label="曲线对比" value={value.curveContrast} {...sliderRange(EDIT_PARAMETER_RANGES.color.curveContrast)} onChange={(curveContrast) => onChange({ curveContrast })} />
+      <ParamSlider label="曲线中段" value={value.curveLift} {...sliderRange(EDIT_PARAMETER_RANGES.color.curveLift)} onChange={(curveLift) => onChange({ curveLift })} />
+      <ParamSlider label="输入黑点" value={value.levelsBlack} {...sliderRange(EDIT_PARAMETER_RANGES.levels.black)} onChange={(levelsBlack) => onChange({ levelsBlack })} />
+      <ParamSlider label="中间调" value={value.levelsGray} {...sliderRange(EDIT_PARAMETER_RANGES.levels.gray)} onChange={(levelsGray) => onChange({ levelsGray })} />
+      <ParamSlider label="输入白点" value={value.levelsWhite} {...sliderRange(EDIT_PARAMETER_RANGES.levels.white)} onChange={(levelsWhite) => onChange({ levelsWhite })} />
     </Accordion>
   )
 }
