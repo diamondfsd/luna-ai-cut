@@ -2,6 +2,7 @@ import { MonitorCog } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
+import { useApp } from '../context/AppContext'
 import { HelpDialog } from './HelpDialog'
 import '../styles/nav.css'
 
@@ -12,6 +13,7 @@ interface AppNavProps {
 }
 
 export function AppNav({ activeDevice, connection, sourceMode }: AppNavProps) {
+  const { hiddenDevMode } = useApp()
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
@@ -31,9 +33,14 @@ export function AppNav({ activeDevice, connection, sourceMode }: AppNavProps) {
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>
-          {import.meta.env.DEV && (
+          {(import.meta.env.DEV || hiddenDevMode) && (
             <NavLink to="/ble-debug" className={({ isActive }) => (isActive ? 'active' : '')}>
               调试
+            </NavLink>
+          )}
+          {(import.meta.env.DEV || hiddenDevMode) && (
+            <NavLink to="/device-debug" className={({ isActive }) => (isActive ? 'active' : '')}>
+              设备调试
             </NavLink>
           )}
         </div>
