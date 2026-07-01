@@ -36,8 +36,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-easy-crop": "^6.0.2",
-    "react-router-dom": "^7.18.0",
-    "sharp": "^0.35.2"
+    "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
