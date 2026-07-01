@@ -21,8 +21,9 @@ export function getLocalResourcesDir(settings: AppSettings): string {
 }
 
 export async function previewCacheDir(): Promise<string> {
-  const settings = await getSettings()
-  return path.join(settings.downloadDir, 'cache_previews')
+  // 使用 userData 目录（C:\Users\<用户>\AppData\Roaming\luna-ai-cut），
+  // 不跟 downloadDir 走，避免 SD 卡/U 盘等不可写盘符导致 EPERM
+  return path.join(app.getPath('userData'), 'cache_previews')
 }
 
 function defaultDownloadDir(): string {
