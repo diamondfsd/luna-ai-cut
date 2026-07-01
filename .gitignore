@@ -7,6 +7,10 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Lock files (using pnpm)
+package-lock.json
+yarn.lock
+
 node_modules
 dist
 dist-electron
