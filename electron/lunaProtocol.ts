@@ -2,6 +2,7 @@ import * as net from 'node:net'
 
 import { DEFAULT_DEVICE } from './deviceDefaults'
 import { lunaMediaAdapter } from './deviceMedia'
+import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
 import type { ConnectionStatus, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export const DEFAULT_HOST = DEFAULT_DEVICE.defaultHost
@@ -180,34 +181,45 @@ export class LunaAuthSession {
   }
 
   async open(): Promise<void> {
-    if (this.isOpen) return
+    if (this.isOpen) {
+      logMainDebug(`[TCP鉴权] 会话已存在，跳过`, { host: this.host, port: this.port })
+      return
+    }
 
+    logMainInfo(`[TCP鉴权] 开始建立控制连接`, { host: this.host, port: this.port })
     let lastError: unknown
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const socket = await connectSocket(this.host, this.port, 1000)
         this.socket = socket
         await this.sendAuth()
+        logMainInfo(`[TCP鉴权] 连接建立成功`, { host: this.host, port: this.port, attempt: attempt + 1 })
         return
       } catch (error) {
         lastError = error
         this.close()
+        logMainWarn(`[TCP鉴权] 连接尝试失败`, { host: this.host, port: this.port, attempt: attempt + 1, error: error instanceof Error ? error.message : String(error) })
         await delay(200)
       }
     }
 
+    const errMsg = lastError instanceof Error ? lastError.message : '无法打开 Luna 控制会话'
+    logMainError(`[TCP鉴权] 连接最终失败`, { host: this.host, port: this.port, error: errMsg })
     throw lastError instanceof Error ? lastError : new Error('无法打开 Luna 控制会话')
   }
 
   async refresh(): Promise<void> {
     if (!this.isOpen) {
+      logMainWarn(`[TCP鉴权] 刷新时会话已断开，重新连接`, { host: this.host, port: this.port })
       await this.open()
       return
     }
 
     try {
       await this.sendAuth()
-    } catch {
+      logMainDebug(`[TCP鉴权] 刷新成功`, { host: this.host, port: this.port })
+    } catch (error) {
+      logMainWarn(`[TCP鉴权] 刷新失败，尝试重连`, { host: this.host, port: this.port, error: error instanceof Error ? error.message : String(error) })
       this.close()
       await this.open()
     }
@@ -263,13 +275,23 @@ export class LunaClient {
       this.authSession = new LunaAuthSession(this.host, this.controlPort)
     }
     if (!this.authSession.isOpen) {
+      logMainDebug(`[LunaClient] 鉴权会话未打开，发起连接`, { host: this.host })
       await this.authSession.open()
+    } else {
+      logMainDebug(`[LunaClient] 鉴权会话已存活，跳过认证`, { host: this.host })
     }
     // 会话已存活则跳过重复认证（sendAuth + drainSocket ~290ms）
   }
 
   async connect(): Promise<void> {
-    await this.runAuthExclusive(() => this.connectUnlocked())
+    logMainInfo(`[LunaClient] 开始连接`, { host: this.host })
+    try {
+      await this.runAuthExclusive(() => this.connectUnlocked())
+      logMainInfo(`[LunaClient] 连接成功`, { host: this.host })
+    } catch (error) {
+      logMainError(`[LunaClient] 连接失败`, { host: this.host, error: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
   }
 
   private resetAuthSession(): void {
@@ -278,6 +300,7 @@ export class LunaClient {
   }
 
   private async reconnectForAuthUnlocked(attempt: number): Promise<void> {
+    logMainWarn(`[LunaClient] 重新认证`, { host: this.host, attempt: attempt + 1 })
     this.stopKeepAlive()
     this.resetAuthSession()
     await delay(300 + attempt * 250)
@@ -285,17 +308,21 @@ export class LunaClient {
   }
 
   close(): void {
+    logMainInfo(`[LunaClient] 关闭连接`, { host: this.host })
     this.stopKeepAlive()
     this.resetAuthSession()
   }
 
-  /** 启动后台保活，每 2 秒刷新一次鉴权会话（防止相机端显示已断开） */
-  startKeepAlive(intervalMs = 2000): void {
+  /** 启动后台保活，定期刷新鉴权会话（防止相机端显示已断开） */
+  startKeepAlive(intervalMs = 5000): void {
+    logMainInfo(`[保活] 启动后台保活`, { host: this.host, intervalMs })
     this.stopKeepAlive()
     this.keeperTimer = setInterval(async () => {
       try {
         await this.connect()
-      } catch {
+        logMainDebug(`[保活] 保活成功`, { host: this.host })
+      } catch (error) {
+        logMainWarn(`[保活] 保活失败，断开连接`, { host: this.host, error: error instanceof Error ? error.message : String(error) })
         // 保活失败立即断开，回到连接页面
         this.stopKeepAlive()
         this.onKeepAliveFailed?.()
@@ -315,6 +342,8 @@ export class LunaClient {
     let httpOk = false
     let controlOk = false
     let message = '未检测到 Luna 相机'
+    let httpError: string | null = null
+    let controlError: string | null = null
 
     try {
       // 端口 80（HTTP）：超时 1.5 秒 — 本地网络设备检测无需更久
@@ -323,7 +352,8 @@ export class LunaClient {
       socket.destroy()
       httpOk = true
     } catch (error) {
-      message = `HTTP 服务不可用：${error instanceof Error ? error.message : String(error)}`
+      httpError = error instanceof Error ? error.message : String(error)
+      message = `HTTP 服务不可用：${httpError}`
     }
 
     if (this.authSession?.isOpen) {
@@ -336,8 +366,9 @@ export class LunaClient {
         socket.destroy()
         controlOk = true
       } catch (error) {
+        controlError = error instanceof Error ? error.message : String(error)
         if (httpOk) {
-          message = `控制端口不可用：${error instanceof Error ? error.message : String(error)}`
+          message = `控制端口不可用：${controlError}`
         }
       }
     }
@@ -346,6 +377,7 @@ export class LunaClient {
       message = '已检测到 Luna 相机'
     }
 
+    logMainInfo(`[状态检测] 端口检测结果`, { host: this.host, httpOk, controlOk, httpError, controlError, message })
     return { host: this.host, httpOk, controlOk, message }
   }
 
@@ -373,16 +405,20 @@ export class LunaClient {
   private async listFilesUnlocked(cameraPath: string): Promise<LunaFile[]> {
     let lastStatus: number | null = null
     let lastError: unknown = null
+    const url = cameraUrl(this.host, cameraPath)
+    logMainInfo(`[HTTP读取] 发起文件列表请求`, { url, host: this.host, cameraPath })
+    const t0 = performance.now()
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
         if (attempt > 0) {
+          logMainWarn(`[HTTP读取] 第 ${attempt + 1}/4 次重试`, { url })
           await this.reconnectForAuthUnlocked(attempt)
         } else {
           await this.connectUnlocked()
         }
 
-        const response = await fetch(cameraUrl(this.host, cameraPath), {
+        const response = await fetch(url, {
           headers: {
             'User-Agent': 'LunaAI-Cut/0.1',
             'Accept-Encoding': 'identity',
@@ -391,12 +427,15 @@ export class LunaClient {
         })
 
         lastStatus = response.status
+        logMainDebug(`[HTTP读取] 响应状态`, { url, status: response.status, attempt: attempt + 1 })
+
         if (response.ok) {
           const html = await response.text()
-          const baseUrl = cameraUrl(this.host, cameraPath)
+          const baseUrl = url
 
           // 发现 Camera* 子目录（相机在图片过多时会自动分文件夹）
           const cameraDirs = extractCameraSubdirs(html)
+          logMainDebug(`[HTTP读取] 发现 Camera 子目录`, { url, cameraDirs: cameraDirs.length > 0 ? cameraDirs : '无' })
 
           if (cameraDirs.length > 0) {
             // 读取所有 Camera* 子目录中的文件并聚合
@@ -404,6 +443,7 @@ export class LunaClient {
               cameraDirs.map(async (dir) => {
                 const dirUrl = cameraUrl(this.host, `${cameraPath}${dir}/`)
                 try {
+                  logMainDebug(`[HTTP读取] 读取子目录`, { url: dirUrl })
                   const dirResponse = await fetch(dirUrl, {
                     headers: {
                       'User-Agent': 'LunaAI-Cut/0.1',
@@ -411,34 +451,49 @@ export class LunaClient {
                       'Cache-Control': 'no-cache',
                     },
                   })
-                  if (!dirResponse.ok) return []
-                  return parseLunaIndex(await dirResponse.text(), dirUrl)
-                } catch {
+                  if (!dirResponse.ok) {
+                    logMainWarn(`[HTTP读取] 子目录请求失败`, { url: dirUrl, status: dirResponse.status })
+                    return []
+                  }
+                  const dirFiles = parseLunaIndex(await dirResponse.text(), dirUrl)
+                  logMainDebug(`[HTTP读取] 子目录文件数`, { dir, fileCount: dirFiles.length })
+                  return dirFiles
+                } catch (error) {
+                  logMainWarn(`[HTTP读取] 子目录读取异常`, { dir, error: error instanceof Error ? error.message : String(error) })
                   return []
                 }
               }),
             )
-            return results.flat()
+            const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
+            const allFiles = results.flat()
+            logMainInfo(`[HTTP读取] 文件列表读取完成（多子目录）`, { fileCount: allFiles.length, cameraDirs: cameraDirs.length, elapsedSec: elapsed })
+            return allFiles
           }
 
           // 没有 Camera* 子目录，直接从根目录解析文件
-          return parseLunaIndex(html, baseUrl)
+          const files = parseLunaIndex(html, baseUrl)
+          const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
+          logMainInfo(`[HTTP读取] 文件列表读取完成`, { fileCount: files.length, elapsedSec: elapsed })
+          return files
         }
 
         response.body?.cancel().catch(() => undefined)
-        console.warn(`[luna] listFiles HTTP ${response.status}, attempt ${attempt + 1}/4`)
+        logMainWarn(`[HTTP读取] HTTP ${response.status}, 尝试 ${attempt + 1}/4`, { url })
         if (response.status !== 401 && response.status !== 403) break
         this.resetAuthSession()
       } catch (error) {
         lastError = error
         this.resetAuthSession()
-        console.warn(`[luna] listFiles failed, attempt ${attempt + 1}/4`, error)
+        logMainWarn(`[HTTP读取] 请求失败，尝试 ${attempt + 1}/4`, { url, error: error instanceof Error ? error.message : String(error) })
       }
     }
 
+    const failedAt = ((performance.now() - t0) / 1000).toFixed(2)
     if (lastError && lastStatus === null) {
+      logMainError(`[HTTP读取] 最终失败（无响应）`, { url, elapsedSec: failedAt, error: lastError instanceof Error ? lastError.message : String(lastError) })
       throw lastError instanceof Error ? lastError : new Error(String(lastError))
     }
+    logMainError(`[HTTP读取] 最终失败`, { url, status: lastStatus, elapsedSec: failedAt })
     throw new Error(`读取文件列表失败：HTTP ${lastStatus ?? '未知'}`)
   }
 }

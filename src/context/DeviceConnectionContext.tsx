@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useApp } from './AppContext'
+import { logger } from '../lib/rendererLogger'
 import type { AppSettings, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MockServerStatus } from '../shared/types'
 
 interface DeviceConnectionContextValue {
@@ -64,17 +65,19 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     const initialize = async (): Promise<void> => {
       try {
+        logger.info('[设备连接] 初始化：获取设置和设备列表')
         const [nextSettings, nextDevices] = await Promise.all([
           window.luna.getSettings(),
           window.luna.listDevices(),
         ])
+        logger.info('[设备连接] 初始化完成', { devices: nextDevices.map(d => ({ id: d.id, name: d.name })), activeDeviceId: nextSettings.activeDeviceId })
         setDevices(nextDevices)
         setSettings(nextSettings)
         setConnection(null)
         setDevicePhase('idle')
         void window.luna.getMockServerStatus().then(setMockServerStatus).catch(() => undefined)
       } catch (error) {
-        console.error(error)
+        logger.error('[设备连接] 初始化失败', { error: error instanceof Error ? error.message : String(error) })
       }
     }
     void initialize()
@@ -84,6 +87,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     return window.luna.onConnectionLost(() => {
       const host = settings?.cameraHost || activeDevice?.defaultHost || ''
+      logger.warn('[设备连接] 连接丢失', { host })
       setConnection({ host, httpOk: false, controlOk: false, message: '设备连接已断开' })
       setDevicePhase('error')
       void window.luna.disconnect()
@@ -99,27 +103,37 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     try {
       const deviceId = settings?.activeDeviceId ?? activeDevice?.id
       const host = settings?.cameraHost ?? activeDevice?.defaultHost
+      logger.info('[设备连接] 发起连接', { deviceId, host })
       if (!deviceId || !host) {
-        setConnection({ host: host ?? '', httpOk: false, controlOk: false, message: '未配置设备连接地址' })
+        const errMsg = '未配置设备连接地址'
+        logger.warn('[设备连接] 无法连接', { deviceId, host, error: errMsg })
+        setConnection({ host: host ?? '', httpOk: false, controlOk: false, message: errMsg })
         setDevicePhase('error')
         return
       }
 
       setDevicePhase('checking')
+      const t0 = performance.now()
       const status = await Promise.race([
         window.luna.connectDevice({ deviceId, host }),
         connectionTimeoutStatus(host),
       ])
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
+      logger.info('[设备连接] 连接结果', { deviceId, host, httpOk: status.httpOk, controlOk: status.controlOk, message: status.message, elapsedSec: elapsed })
       setConnection(status)
       if (status.httpOk && status.controlOk) {
         setDevicePhase('connected')
         setCameraLibraryMounted(false)
+        logger.info('[设备连接] 连接成功', { deviceId, host })
       } else {
         setDevicePhase('error')
+        logger.warn('[设备连接] 连接失败', { deviceId, host, message: status.message })
       }
     } catch (error) {
       const host = settings?.cameraHost || activeDevice?.defaultHost || ''
-      setConnection({ host, httpOk: false, controlOk: false, message: error instanceof Error ? error.message : String(error) })
+      const errMsg = error instanceof Error ? error.message : String(error)
+      logger.error('[设备连接] 连接异常', { host, error: errMsg })
+      setConnection({ host, httpOk: false, controlOk: false, message: errMsg })
       setDevicePhase('error')
     }
   }
