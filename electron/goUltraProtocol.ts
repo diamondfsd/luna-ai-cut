@@ -26,8 +26,24 @@ import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerSe
 import type { ConnectionStatus, DeviceDefinition, LunaFile } from '../src/shared/types'
 
 // ============================================================
-// 配置
+// 调试日志工具
 // ============================================================
+
+/** 二进制转 base64，方便日志查看 */
+function bufToB64(buf: Buffer): string {
+  return buf.toString('base64')
+}
+
+/** 格式化数据日志：非二进制数据直接显示，二进制转 base64 + 长度 */
+function fmtData(label: string, buf: Buffer): Record<string, unknown> {
+  // 尝试检测是否可读文本
+  const preview = buf.subarray(0, 64).toString('utf8').replace(/[\x00-\x1f]/g, '.')
+  const isText = buf.length > 0 && buf.length <= 256 && /^[\x20-\x7e\n\r\t.]+$/.test(preview)
+  if (isText && buf.length <= 256) {
+    return { [`${label}_text`]: preview.replace(/\n/g, '\\n'), [`${label}_len`]: buf.length }
+  }
+  return { [`${label}_b64`]: bufToB64(buf), [`${label}_len`]: buf.length }
+}
 
 const DEVICE_CFG = goUltraConfig as DeviceDefinition
 export const DEFAULT_HOST = DEVICE_CFG.defaultHost
@@ -345,6 +361,14 @@ export class GoUltraAuthSession {
       const envelope = buildMessageEnvelope(messageCode, data, requestId)
       const packet = buildUcd2(UcdType.MSG, seq, envelope)
 
+      logMainDebug('[GoUltraAuth] >> 发送 MSG', {
+        messageCode,
+        requestId,
+        seq,
+        ...fmtData('data', data),
+        packetB64: bufToB64(packet),
+      })
+
       const timer = setTimeout(() => {
         this.pending.delete(requestId)
         reject(new Error(`命令超时: messageCode=${messageCode}, requestId=${requestId}`))
@@ -355,7 +379,6 @@ export class GoUltraAuthSession {
         resolve(response)
       })
 
-      logMainDebug('[GoUltraAuth] 发送命令', { messageCode, requestId, seq, dataLen: data.length })
       this.socket.write(packet)
     })
   }
@@ -367,12 +390,18 @@ export class GoUltraAuthSession {
       return
     }
 
-    const requestId = 0 // 通知消息 requestId = 0
+    const requestId = 0
     const seq = ++this.seq
     const envelope = buildMessageEnvelope(messageCode, data, requestId)
     const packet = buildUcd2(UcdType.MSG, seq, envelope)
 
-    logMainDebug('[GoUltraAuth] 发送通知', { messageCode, seq, dataLen: data.length })
+    logMainDebug('[GoUltraAuth] >> 发送 NOTIFY', {
+      messageCode,
+      seq,
+      ...fmtData('data', data),
+      packetB64: bufToB64(packet),
+    })
+
     this.socket.write(packet)
   }
 
@@ -455,20 +484,30 @@ export class GoUltraAuthSession {
   }
 
   private handlePacket(pkt: ParsedUcd2): void {
+    const typeName = this.ucdTypeName(pkt.type)
+
     if (pkt.type === UcdType.MSG) {
       const msg = parseMessageEnvelope(pkt.data)
       if (!msg) {
-        logMainDebug('[GoUltraAuth] 无法解析 MSG 消息', { rawHex: pkt.data.subarray(0, 32).toString('hex') })
+        logMainDebug('[GoUltraAuth] << 无法解析 MSG', {
+          typeName,
+          ...fmtData('raw', pkt.data),
+        })
         return
       }
 
+      logMainDebug('[GoUltraAuth] << 收到 MSG', {
+        typeName,
+        requestId: msg.requestId,
+        messageCode: msg.messageCode,
+        ...fmtData('data', msg.data),
+        rawB64: bufToB64(pkt.data),
+      })
+
       if (msg.requestId === 0) {
         // requestId=0 → 相机推送的通知
-        logMainDebug('[GoUltraAuth] 收到通知', { messageCode: msg.messageCode, dataLen: msg.data.length })
         const handler = this.notificationHandlers.get(msg.messageCode)
-        if (handler) {
-          handler(msg)
-        }
+        if (handler) handler(msg)
         this.onNotification?.(msg)
       } else {
         // requestId>0 → 请求的响应
@@ -477,24 +516,47 @@ export class GoUltraAuthSession {
           this.pending.delete(msg.requestId)
           callback(msg)
         } else {
-          logMainDebug('[GoUltraAuth] 收到未知 requestId 的响应', { requestId: msg.requestId, messageCode: msg.messageCode })
+          logMainWarn('[GoUltraAuth] << 未知 requestId 的响应', { requestId: msg.requestId, messageCode: msg.messageCode })
         }
       }
     } else {
-      // 非 MSG 类型包
+      logMainDebug('[GoUltraAuth] << 收到非 MSG 包', {
+        type: pkt.type,
+        typeName,
+        seq: pkt.seq,
+        ...fmtData('data', pkt.data),
+      })
       const handler = this.packetHandlers.get(pkt.type)
       handler?.(pkt)
     }
   }
 
+  /** UCD2 类型名（调试用） */
+  private ucdTypeName(type: number): string {
+    const names: Record<number, string> = {
+      0: 'DUMMY', 1: 'FIRST', 2: 'HEARTBEAT', 3: 'MSG',
+      4: 'FILE', 5: 'STREAM', 6: 'SYNC', 7: 'TUNNEL',
+      8: 'BTMSG', 9: 'LINUXCMD', 10: 'LOGFILE',
+    }
+    return names[type] ?? `TYPE_${type}`
+  }
+
   private async sendAuthPackets(): Promise<void> {
     if (!this.socket) throw new Error('Socket 未打开')
 
-    for (const pkt of AUTH_PACKETS) {
+    for (const [i, pkt] of AUTH_PACKETS.entries()) {
+      logMainDebug('[GoUltraAuth] >> 发送认证包', {
+        index: i + 1,
+        total: AUTH_PACKETS.length,
+        type: pkt[6],  // UCD2 type byte
+        seq: pkt[7],   // UCD2 seq byte
+        packetB64: bufToB64(pkt),
+      })
       this.socket.write(pkt)
       await this.delay(30)
     }
     // 等待相机处理认证包（接收可能返回的响应）
+    logMainDebug('[GoUltraAuth] 等待认证响应...')
     await this.delay(300)
   }
 
@@ -669,7 +731,9 @@ export class GoUltraClient {
 
     // 监听 AUTHORIZATION_RESULT (8209) 通知
     this.authSession.onNotificationCode(8209, (msg) => {
-      logMainInfo('[GoUltraClient] 收到授权结果通知', { dataHex: msg.data.subarray(0, 32).toString('hex') })
+      logMainInfo('[GoUltraClient] << 授权结果通知', {
+        ...fmtData('data', msg.data),
+      })
       // 解析通知数据: 通常 field 1 = 授权结果 (0=拒绝, 1=同意)
       const rawHex = msg.data.toString('hex')
       if (rawHex === '0801' || rawHex === '08 01') {
@@ -682,7 +746,9 @@ export class GoUltraClient {
 
     // 监听 CHECK_AUTHORIZATION_RESULT (8228) 通知
     this.authSession.onNotificationCode(8228, (msg) => {
-      logMainDebug('[GoUltraClient] 收到检查授权结果通知', { dataHex: msg.data.subarray(0, 32).toString('hex') })
+      logMainDebug('[GoUltraClient] << 检查授权结果通知', {
+        ...fmtData('data', msg.data),
+      })
     })
 
     // 监听连接断开
@@ -695,7 +761,10 @@ export class GoUltraClient {
     // 通用通知处理器（日志）
     this.authSession.onNotification = (msg) => {
       if (msg.messageCode !== 8209 && msg.messageCode !== 8228) {
-        logMainDebug('[GoUltraClient] 收到通知', { messageCode: msg.messageCode, dataLen: msg.data.length })
+        logMainDebug('[GoUltraClient] << 通知', {
+          messageCode: msg.messageCode,
+          ...fmtData('data', msg.data),
+        })
       }
     }
   }
@@ -787,16 +856,28 @@ export class GoUltraClient {
     return files
   }
 
-  /** 保活 — 保持 TCP 连接活跃 */
+  /** 保活 — 定期发送协议心跳包，确认双向通信正常 */
   startKeepAlive(intervalMs: number = 10000): void {
     this.stopKeepAlive()
-    this.keeperTimer = setInterval(() => {
-      if (this.authSession?.isOpen) {
-        logMainDebug('[GoUltraClient] 保活：连接正常', { host: this.host })
-      } else {
-        logMainWarn('[GoUltraClient] 保活：连接已断开', { host: this.host })
+    this.keeperTimer = setInterval(async () => {
+      if (!this.authSession?.isOpen) {
+        logMainWarn('[GoUltraClient] 保活：Socket 已断开', { host: this.host })
         this.stopKeepAlive()
         this.onConnectionLost?.()
+        return
+      }
+
+      try {
+        // 发送 CHECK_AUTHORIZATION 作为心跳包，验证双向通信
+        const resp = await this.authSession.sendCommand(MessageCode.CHECK_AUTHORIZATION, Buffer.alloc(0), 4000)
+        logMainDebug('[GoUltraClient] 保活：心跳响应正常', {
+          host: this.host,
+          messageCode: resp.messageCode,
+        })
+      } catch (error) {
+        logMainWarn('[GoUltraClient] 保活：心跳失败', { host: this.host, error: String(error) })
+        // 单次失败不立即断开，给下次机会继续观察
+        // 连续多次失败可由上层（onConnectionLost）处理
       }
     }, intervalMs)
   }

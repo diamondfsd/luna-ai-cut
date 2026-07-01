@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plug, PlugZap, FileText, List, RotateCcw, Wifi, ArrowLeft, Play, Download } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import type { DeviceDebugTestResult } from '../shared/types'
+import type { DeviceDebugOption } from '../shared/types'
 import { Button, Input, toast } from '../ui'
 import '../styles/device-debug.css'
 
@@ -18,48 +18,15 @@ interface LogEntry {
   data?: unknown
 }
 
-interface DeviceOption {
-  id: string
-  name: string
-  defaultHost: string
-  controlPort: number
-  needsAuth: boolean
-}
-
-const DEVICE_OPTIONS: DeviceOption[] = [
-  {
-    id: 'luna-ultra',
-    name: 'Luna Ultra (Z03)',
-    defaultHost: '192.168.42.1',
-    controlPort: 6666,
-    needsAuth: false,
-  },
-  {
-    id: 'go-ultra',
-    name: 'GO Ultra (TC4)',
-    defaultHost: '192.168.42.1',
-    controlPort: 6666,
-    needsAuth: true,
-  },
-]
-
-const AUTH_STATE_LABELS: Record<string, string> = {
-  none: '未连接',
-  basic_auth_done: '基础认证完成',
-  checking: '授权检查中...',
-  need_camera_confirm: '等待相机确认 ⚠️',
-  authorized: '已授权 ✅',
-  failed: '授权失败 ❌',
-}
-
 // ============================================================
 // DeviceDebugPage
 // ============================================================
 
 export function DeviceDebugPage() {
   const navigate = useNavigate()
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>(DEVICE_OPTIONS[0].id)
-  const [host, setHost] = useState(DEVICE_OPTIONS[0].defaultHost)
+  const [deviceOptions, setDeviceOptions] = useState<DeviceDebugOption[]>([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
+  const [host, setHost] = useState('192.168.42.1')
   const [authState, setAuthState] = useState<string>('none')
   const [httpOk, setHttpOk] = useState<boolean | null>(null)
   const [controlOk, setControlOk] = useState<boolean | null>(null)
@@ -71,17 +38,33 @@ export function DeviceDebugPage() {
   const logIdRef = useRef(0)
   const logsEndRef = useRef<HTMLDivElement>(null)
 
-  const selectedDevice = DEVICE_OPTIONS.find((d) => d.id === selectedDeviceId)
-  const isGoUltra = selectedDeviceId === 'go-ultra'
+  const selectedDevice = deviceOptions.find((d) => d.id === selectedDeviceId)
 
-  // 获取日志文件路径
+  const AUTH_STATE_LABELS: Record<string, string> = {
+    none: '未连接',
+    basic_auth_done: '基础认证完成',
+    checking: '授权检查中...',
+    need_camera_confirm: '等待相机确认 ⚠️',
+    authorized: '已授权 ✅',
+    failed: '授权失败 ❌',
+  }
+
+  // 初始化：获取支持的设备列表、日志路径
   useEffect(() => {
-    window.luna.deviceDebugGetLogPath().then(setLogPath).catch(() => {})
+    window.deviceDebug.getDeviceOptions().then((options) => {
+      setDeviceOptions(options)
+      if (options.length > 0) {
+        setSelectedDeviceId(options[0].id)
+        setHost(options[0].defaultHost)
+      }
+    }).catch(() => {})
+
+    window.deviceDebug.getLogPath().then(setLogPath).catch(() => {})
   }, [])
 
   // 监听后端实时日志
   useEffect(() => {
-    return window.luna.onDeviceDebugLog((event) => {
+    return window.deviceDebug.onLog((event) => {
       addLog(event.level as LogEntry['level'], event.message, event.data)
     })
   })
@@ -91,10 +74,11 @@ export function DeviceDebugPage() {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
+  // 切换设备类型时更新默认 IP
   useEffect(() => {
-    const device = DEVICE_OPTIONS.find((d) => d.id === selectedDeviceId)
+    const device = deviceOptions.find((d) => d.id === selectedDeviceId)
     if (device) setHost(device.defaultHost)
-  }, [selectedDeviceId])
+  }, [selectedDeviceId, deviceOptions])
 
   const addLog = useCallback((level: LogEntry['level'], message: string, data?: unknown) => {
     const now = new Date()
@@ -109,71 +93,43 @@ export function DeviceDebugPage() {
 
   /** 写入独立日志文件 */
   const writeLogFile = useCallback((level: string, message: string, data?: unknown) => {
-    window.luna.deviceDebugLog({ level, message, data }).catch(() => {})
+    window.deviceDebug.log({ level, message, data }).catch(() => {})
   }, [])
 
-  // ---- 端口检测 ----
+  /** 端口检测 */
   async function checkPort(): Promise<void> {
-    addLog('info', `端口检测 ${host}:80 / :6666 ...`)
-    writeLogFile('INFO', `端口检测 ${host}:80 / :6666`)
+    if (!selectedDeviceId) return
+    addLog('info', `端口检测 ${host} ...`)
+    writeLogFile('INFO', `端口检测 ${host}`)
 
-    if (isGoUltra) {
-      try {
-        const result = await window.goUltraDebug.checkPort({ host })
-        setHttpOk(result.httpOk)
-        setControlOk(result.controlOk)
-        addLog('info', `HTTP: ${result.httpOk ? '✅' : '❌'} | 控制: ${result.controlOk ? '✅' : '❌'} | ${result.message}`)
-        writeLogFile('INFO', `端口检测结果: HTTP=${result.httpOk}, 控制=${result.controlOk}, ${result.message}`)
-      } catch (error) {
-        addLog('error', `端口检测异常: ${String(error)}`)
-        writeLogFile('ERROR', `端口检测异常: ${String(error)}`)
-      }
-    } else {
-      try {
-        const resp = await fetch(`http://${host}/`, { signal: AbortSignal.timeout(3000) })
-        setHttpOk(true)
-        addLog('info', `HTTP: ✅ (${resp.status})`)
-        writeLogFile('INFO', `HTTP: ${resp.status}`)
-      } catch (error) {
-        setHttpOk(false)
-        addLog('error', `HTTP: ❌ (${String(error)})`)
-        writeLogFile('ERROR', `HTTP: ${String(error)}`)
-      }
-      try {
-        const status = await window.luna.checkConnection(host)
-        setControlOk(status.controlOk)
-        addLog('info', `控制端口: ${status.controlOk ? '✅' : '❌'}`)
-        writeLogFile('INFO', `控制端口: ${status.controlOk ? 'OK' : 'FAIL'}`)
-      } catch {
-        setControlOk(false)
-        addLog('error', '控制端口: ❌')
-        writeLogFile('ERROR', '控制端口: FAIL')
-      }
+    try {
+      const result = await window.deviceDebug.checkPort({ deviceId: selectedDeviceId, host })
+      setHttpOk(result.httpOk)
+      setControlOk(result.controlOk)
+      addLog('info', `HTTP: ${result.httpOk ? '✅' : '❌'} | 控制: ${result.controlOk ? '✅' : '❌'} | ${result.message}`)
+      writeLogFile('INFO', `端口检测结果: HTTP=${result.httpOk}, 控制=${result.controlOk}, ${result.message}`)
+    } catch (error) {
+      setHttpOk(false)
+      setControlOk(false)
+      addLog('error', `端口检测异常: ${String(error)}`)
+      writeLogFile('ERROR', `端口检测异常: ${String(error)}`)
     }
   }
 
-  // ---- 连接 ----
+  /** 连接设备 */
   async function connect(): Promise<void> {
+    if (!selectedDeviceId || !selectedDevice) return
     setConnecting(true)
-    addLog('info', `连接设备: ${selectedDevice?.name} @ ${host}`)
+    addLog('info', `连接设备: ${selectedDevice.name} @ ${host}`)
     writeLogFile('INFO', `连接设备: ${selectedDeviceId} @ ${host}`)
 
     try {
-      if (isGoUltra) {
-        const result = await window.goUltraDebug.connect({ host })
-        setAuthState(result.authState)
-        setHttpOk(result.httpOk)
-        setControlOk(result.controlOk)
-        addLog(result.success ? 'info' : 'warn', result.message)
-        writeLogFile(result.success ? 'INFO' : 'WARN', `连接结果: ${result.message}`)
-      } else {
-        const status = await window.luna.connectDevice({ deviceId: selectedDeviceId, host })
-        setHttpOk(status.httpOk)
-        setControlOk(status.controlOk)
-        setAuthState(status.httpOk && status.controlOk ? 'basic_auth_done' : 'none')
-        addLog(status.httpOk ? 'info' : 'warn', `连接结果: ${status.message}`)
-        writeLogFile('INFO', `连接结果: ${status.message}`)
-      }
+      const result = await window.deviceDebug.connect({ deviceId: selectedDeviceId, host })
+      setAuthState(result.authState)
+      setHttpOk(result.httpOk)
+      setControlOk(result.controlOk)
+      addLog(result.success ? 'info' : 'warn', result.message)
+      writeLogFile(result.success ? 'INFO' : 'WARN', `连接结果: ${result.message}`)
     } catch (error) {
       addLog('error', `连接异常: ${String(error)}`)
       writeLogFile('ERROR', `连接异常: ${String(error)}`)
@@ -182,16 +138,13 @@ export function DeviceDebugPage() {
     }
   }
 
-  // ---- 断开 ----
+  /** 断开设备 */
   async function disconnect(): Promise<void> {
+    if (!selectedDeviceId) return
     addLog('info', '断开连接...')
     writeLogFile('INFO', '断开连接')
     try {
-      if (isGoUltra) {
-        await window.goUltraDebug.disconnect({ host })
-      } else {
-        await window.luna.disconnect(host)
-      }
+      await window.deviceDebug.disconnect({ deviceId: selectedDeviceId, host })
       setAuthState('none')
       setHttpOk(null)
       setControlOk(null)
@@ -204,13 +157,13 @@ export function DeviceDebugPage() {
     }
   }
 
-  // ---- 授权 ----
+  /** 检查授权 */
   async function checkAuth(): Promise<void> {
-    if (!isGoUltra) return
+    if (!selectedDeviceId) return
     addLog('info', '检查授权状态...')
     writeLogFile('INFO', '检查授权状态')
     try {
-      const result = await window.goUltraDebug.checkAuth({ host })
+      const result = await window.deviceDebug.checkAuth({ deviceId: selectedDeviceId, host })
       setAuthState(result.authState)
       addLog(result.success ? 'info' : 'warn', result.message)
       writeLogFile(result.success ? 'INFO' : 'WARN', `授权检查: ${result.message}`)
@@ -220,12 +173,13 @@ export function DeviceDebugPage() {
     }
   }
 
+  /** 请求授权 */
   async function requestAuth(): Promise<void> {
-    if (!isGoUltra) return
+    if (!selectedDeviceId) return
     addLog('info', '发送授权请求，请在相机上确认...')
     writeLogFile('INFO', '发送授权请求')
     try {
-      const result = await window.goUltraDebug.requestAuth({ host })
+      const result = await window.deviceDebug.requestAuth({ deviceId: selectedDeviceId, host })
       setAuthState(result.authState)
       addLog('info', result.message)
       writeLogFile('INFO', `授权请求: ${result.message}`)
@@ -235,26 +189,20 @@ export function DeviceDebugPage() {
     }
   }
 
-  // ---- 文件 ----
+  /** 读取文件列表 */
   async function listFiles(): Promise<void> {
+    if (!selectedDeviceId) return
     addLog('info', '读取文件列表...')
     writeLogFile('INFO', '读取文件列表')
     try {
-      if (isGoUltra) {
-        const result = await window.goUltraDebug.listFiles({ host })
-        if (result.success) {
-          setFiles(result.files ?? [])
-          addLog('info', `找到 ${(result.files ?? []).length} 个文件`)
-          writeLogFile('INFO', `文件列表: ${(result.files ?? []).length} 个文件`)
-        } else {
-          addLog('error', result.message)
-          writeLogFile('ERROR', `文件列表失败: ${result.message}`)
-        }
+      const result = await window.deviceDebug.listFiles({ deviceId: selectedDeviceId, host })
+      if (result.success) {
+        setFiles(result.files ?? [])
+        addLog('info', `找到 ${(result.files ?? []).length} 个文件`)
+        writeLogFile('INFO', `文件列表: ${(result.files ?? []).length} 个文件`)
       } else {
-        const fileList = await window.luna.listFiles(host)
-        setFiles(fileList.map((f) => ({ name: f.name, size: f.bytes, url: f.url })))
-        addLog('info', `找到 ${fileList.length} 个文件`)
-        writeLogFile('INFO', `文件列表: ${fileList.length} 个文件`)
+        addLog('error', result.message)
+        writeLogFile('ERROR', `文件列表失败: ${result.message}`)
       }
     } catch (error) {
       addLog('error', `文件列表异常: ${String(error)}`)
@@ -262,13 +210,15 @@ export function DeviceDebugPage() {
     }
   }
 
-  async function refreshStatus(): Promise<void> {
+  /** 刷新连接状态 */
+  async function checkConnectionStatus(): Promise<void> {
+    if (!selectedDeviceId) return
     addLog('info', '检查连接状态...')
     try {
-      const status = await window.luna.checkConnection(host)
-      setHttpOk(status.httpOk)
-      setControlOk(status.controlOk)
-      addLog('info', `HTTP: ${status.httpOk ? '✅' : '❌'} | 控制: ${status.controlOk ? '✅' : '❌'} | ${status.message}`)
+      const result = await window.deviceDebug.checkPort({ deviceId: selectedDeviceId, host })
+      setHttpOk(result.httpOk)
+      setControlOk(result.controlOk)
+      addLog('info', `HTTP: ${result.httpOk ? '✅' : '❌'} | 控制: ${result.controlOk ? '✅' : '❌'} | ${result.message}`)
     } catch (error) {
       addLog('error', `状态检查异常: ${String(error)}`)
     }
@@ -279,13 +229,14 @@ export function DeviceDebugPage() {
   // ============================================================
 
   async function runOneClickTest(): Promise<void> {
+    if (!selectedDeviceId) return
     setTesting(true)
     setFiles([])
     addLog('info', '══════════ 一键测试启动 ══════════')
     writeLogFile('INFO', '══════ 一键测试启动 ══════')
 
     try {
-      const result: DeviceDebugTestResult = await window.luna.deviceDebugRunTest({
+      const result = await window.deviceDebug.runTest({
         deviceId: selectedDeviceId,
         host,
       })
@@ -312,15 +263,17 @@ export function DeviceDebugPage() {
     }
   }
 
-  // ---- 打开日志文件 ----
+  /** 打开日志文件 */
   async function openLogFile(): Promise<void> {
     try {
-      const filePath = await window.luna.deviceDebugGetLogPath()
+      const filePath = await window.deviceDebug.getLogPath()
       await window.luna.openPath(filePath)
     } catch (error) {
       addLog('error', `打开日志文件失败: ${String(error)}`)
     }
   }
+
+  const needsAuth = selectedDevice?.needsAuth ?? false
 
   return (
     <div className="device-debug-surface">
@@ -346,7 +299,7 @@ export function DeviceDebugPage() {
               value={selectedDeviceId}
               onChange={(e) => setSelectedDeviceId(e.target.value)}
             >
-              {DEVICE_OPTIONS.map((opt) => (
+              {deviceOptions.map((opt) => (
                 <option key={opt.id} value={opt.id}>{opt.name}</option>
               ))}
             </select>
@@ -364,7 +317,7 @@ export function DeviceDebugPage() {
 
           <label className="dd-field">
             <span>协议</span>
-            <Input value={isGoUltra ? 'UCD2 + 授权流程' : 'UCD2 基础认证'} readOnly />
+            <Input value={selectedDevice?.protocolType ?? ''} readOnly />
           </label>
 
           <div className="dd-actions">
@@ -400,22 +353,22 @@ export function DeviceDebugPage() {
             <span>协议状态</span>
             <strong>{AUTH_STATE_LABELS[authState] ?? authState}</strong>
 
-            <span>HTTP 80</span>
+            <span>HTTP 服务</span>
             <strong className={httpOk === true ? 'dd-ok' : httpOk === false ? 'dd-err' : ''}>
               {httpOk === true ? '✅ 可用' : httpOk === false ? '❌ 不可用' : '--'}
             </strong>
 
-            <span>控制 6666</span>
+            <span>控制通道</span>
             <strong className={controlOk === true ? 'dd-ok' : controlOk === false ? 'dd-err' : ''}>
               {controlOk === true ? '✅ 可用' : controlOk === false ? '❌ 不可用' : '--'}
             </strong>
           </div>
 
           <div className="dd-actions">
-            <Button onClick={refreshStatus} size="compact" variant="secondary">
+            <Button onClick={checkConnectionStatus} size="compact" variant="secondary">
               <RotateCcw size={14} /> 刷新状态
             </Button>
-            {isGoUltra && (
+            {needsAuth && (
               <>
                 <Button onClick={checkAuth} size="compact" variant="secondary">
                   <FileText size={14} /> 检查授权
@@ -429,7 +382,7 @@ export function DeviceDebugPage() {
 
           {authState === 'need_camera_confirm' && (
             <div className="dd-tip dd-tip-warn">
-              ⚠️ 请在 <strong>Go Ultra</strong> 相机屏幕上确认授权
+              ⚠️ 请在 <strong>{selectedDevice?.name ?? '相机'}</strong> 屏幕上确认授权
             </div>
           )}
 
