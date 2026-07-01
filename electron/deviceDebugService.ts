@@ -174,10 +174,26 @@ export async function runDeviceTest(
     return { deviceId: protocol.deviceId, host, overall: false, steps, authState: 'none', summary }
   }
 
-  // ---- 步骤 2: 连接 ----
+  // ---- 步骤 2: 原始协议诊断 ----
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 2/5] 连接设备...')
+    log('INFO', '[步骤 2/6] 原始协议诊断...')
+    try {
+      const diag = await protocol.runDiagnostics(host, log)
+      const elapsed = performance.now() - t0
+      log(diag.success ? 'INFO' : 'WARN', `  诊断完成: ${diag.summary}`)
+      steps.push({ step: '协议诊断', success: diag.success, detail: diag.summary, elapsedMs: Math.round(elapsed) })
+    } catch (error) {
+      const elapsed = performance.now() - t0
+      log('WARN', `  协议诊断异常: ${String(error)}`)
+      steps.push({ step: '协议诊断', success: false, detail: String(error), elapsedMs: Math.round(elapsed) })
+    }
+  }
+
+  // ---- 步骤 3: 连接 ----
+  {
+    const t0 = performance.now()
+    log('INFO', '[步骤 3/6] 连接设备...')
     try {
       await protocol.disconnect() // 确保之前状态已清理
       const connResult = await protocol.connect(host)
@@ -198,10 +214,10 @@ export async function runDeviceTest(
     }
   }
 
-  // ---- 步骤 3: 授权检查 ----
+  // ---- 步骤 4: 授权检查 ----
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 3/5] 授权检查...')
+    log('INFO', '[步骤 4/6] 授权检查...')
 
     const authResult = await protocol.checkAuth()
     if (authResult.success) {
@@ -240,10 +256,10 @@ export async function runDeviceTest(
     }
   }
 
-  // ---- 步骤 4: 文件列表 ----
+  // ---- 步骤 5: 文件列表 ----
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 4/5] 读取文件列表...')
+    log('INFO', '[步骤 5/6] 读取文件列表...')
 
     try {
       const fileResult = await protocol.listFiles()
@@ -266,10 +282,10 @@ export async function runDeviceTest(
     }
   }
 
-  // ---- 步骤 5: 保活 / 连接确认 ----
+  // ---- 步骤 6: 保活 / 连接确认 ----
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 5/5] 保活 / 连接确认...')
+    log('INFO', '[步骤 6/6] 保活 / 连接确认...')
 
     // 检查步骤 2 是否连接成功
     const step2 = steps.find((s) => s.step === '设备连接')

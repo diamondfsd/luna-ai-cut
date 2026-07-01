@@ -184,6 +184,27 @@
   color: #248a3d;
 }
 
+.dd-diagnostics {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--canvas-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dd-diagnostics strong {
+  color: var(--ink);
+}
+
+.dd-diagnostics span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 /* ---- 文件列表 ---- */
 
 .dd-file-list {

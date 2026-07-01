@@ -135,6 +135,20 @@ export function registerDeviceDebugHandlers(mainWindow: () => BrowserWindow | nu
   })
 
   /**
+   * deviceDebug:runDiagnostics — 运行原始 HTTP/TCP 协议诊断
+   */
+  ipcMain.handle('deviceDebug:runDiagnostics', async (_event, params: { deviceId: string; host: string }) => {
+    const protocol = getOrCreateProtocol(params.deviceId, params.host)
+    return await protocol.runDiagnostics(params.host, (level, message, data) => {
+      writeDeviceDebugLog(level, message, data)
+      const win = mainWindow()
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('deviceDebug:log', { level: level.toLowerCase(), message, data })
+      }
+    })
+  })
+
+  /**
    * deviceDebug:getDeviceOptions — 获取支持的调试设备列表
    */
   ipcMain.handle('deviceDebug:getDeviceOptions', () => {

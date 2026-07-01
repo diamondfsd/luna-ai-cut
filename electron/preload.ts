@@ -145,6 +145,7 @@ const deviceDebugApi: DeviceDebugApi = {
   requestAuth: (params) => ipcRenderer.invoke('deviceDebug:requestAuth', params),
   getAuthState: (params) => ipcRenderer.invoke('deviceDebug:getAuthState', params),
   listFiles: (params) => ipcRenderer.invoke('deviceDebug:listFiles', params),
+  runDiagnostics: (params) => ipcRenderer.invoke('deviceDebug:runDiagnostics', params),
   getDeviceOptions: () => ipcRenderer.invoke('deviceDebug:getDeviceOptions'),
   log: (params) => ipcRenderer.invoke('deviceDebug:log', params),
   getLogPath: () => ipcRenderer.invoke('deviceDebug:getLogPath'),
