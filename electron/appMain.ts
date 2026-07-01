@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { checkForUpdates } from './updateService'
 import type { HotUpdateCheckResult } from './hotUpdater'
@@ -324,13 +325,27 @@ function registerIpc(): void {
         const thumbDir = thumbnailDir(cacheDir)
         const thumbnailKey = file.downloadName || file.name
         const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
-        win?.webContents.send('luna:thumbnail-ready', {
-          fileId: file.id,
-          fileName: file.name,
-          downloadName: file.downloadName,
-          cacheFilePath,
-          thumbnailUrl: thumbPath ? pathToFileURL(thumbPath).toString() : pathToFileURL(cacheFilePath).toString(),
-        })
+        if (thumbPath) {
+          // 缩略图生成成功
+          win?.webContents.send('luna:thumbnail-ready', {
+            fileId: file.id,
+            fileName: file.name,
+            downloadName: file.downloadName,
+            cacheFilePath,
+            thumbnailUrl: pathToFileURL(thumbPath).toString(),
+          })
+        } else {
+          // 缩略图生成失败（如源文件损坏），删除缓存文件让下次重试能重新下载
+          console.warn(`[缩略图] 生成失败，清理损坏的缓存文件: ${cacheFilePath}`)
+          await rm(cacheFilePath, { force: true, maxRetries: 3 }).catch(() => {})
+          win?.webContents.send('luna:thumbnail-ready', {
+            fileId: file.id,
+            fileName: file.name,
+            downloadName: file.downloadName,
+            cacheFilePath: null,
+            thumbnailUrl: null,
+          })
+        }
       }
       return cacheFilePath !== null
     }, 0).finally(() => {
