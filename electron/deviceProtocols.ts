@@ -20,7 +20,7 @@ function withDeviceInfo(status: ConnectionStatus, definition: DeviceDefinition):
   return {
     ...status,
     deviceId: definition.id,
-    deviceName: definition.name,
+    deviceName: status.deviceInfo?.deviceName ?? definition.name,
   }
 }
 
@@ -62,6 +62,7 @@ export class LunaUltraProtocol implements DeviceProtocol {
     }
 
     await client.connect()
+    const connectedStatus = await client.checkStatus()
     client.onKeepAliveFailed = this.onConnectionLost ?? null
     client.startKeepAlive()
     await saveSettings({
@@ -69,7 +70,7 @@ export class LunaUltraProtocol implements DeviceProtocol {
       cameraHost: client.host,
     })
     logMainInfo(`[设备协议] 连接完成`, { device: this.definition.name, host })
-    return withDeviceInfo({ ...status, message: `已连接 ${this.definition.name}` }, this.definition)
+    return withDeviceInfo({ ...connectedStatus, message: `已连接 ${this.definition.name}` }, this.definition)
   }
 
   async listFiles(options?: DeviceConnectOptions): Promise<LunaFile[]> {

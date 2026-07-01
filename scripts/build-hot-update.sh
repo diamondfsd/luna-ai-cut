@@ -111,7 +111,7 @@ if [ "$UPLOAD_ONLY" = false ]; then
 
   # ── 构建 ──
   info "执行前端构建..."
-  npm run build:app
+  pnpm run build:app
   ok "构建完成"
 
   # ── 检查构建产物 ──

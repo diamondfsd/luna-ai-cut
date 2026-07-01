@@ -95,7 +95,7 @@ if [ "$SKIP_BUILD" = false ]; then
   # 检查 node_modules
   if [ ! -d "node_modules" ]; then
     info "安装依赖..."
-    npm ci
+    pnpm install --frozen-lockfile
     ok "依赖安装完成"
   fi
 
@@ -104,21 +104,21 @@ if [ "$SKIP_BUILD" = false ]; then
     # 每次构建前清理 ffmpeg 二进制，避免累积多平台文件导致包体积膨胀
     info "构建 Windows x64..."
     rm -rf resources/ffmpeg/* 2>/dev/null || true
-    npm run pack:win:x64
+    pnpm run pack:win:x64
     ok "Windows 构建完成"
 
     info "构建 macOS ARM64..."
     rm -rf resources/ffmpeg/* 2>/dev/null || true
-    npm run pack:mac:arm64
+    pnpm run pack:mac:arm64
     ok "macOS ARM64 构建完成"
 
     info "构建 macOS x64 (Intel)..."
     rm -rf resources/ffmpeg/* 2>/dev/null || true
-    npm run pack:mac:x64
+    pnpm run pack:mac:x64
     ok "macOS x64 构建完成"
   else
     info "开始构建 ${PLATFORM}..."
-    npm run pack:win:x64
+    pnpm run pack:win:x64
     ok "构建完成"
   fi
 else

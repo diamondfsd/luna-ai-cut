@@ -77,6 +77,44 @@
   padding: 0 10px;
 }
 
+.device-info-grid {
+  display: grid;
+  width: min(100%, 360px);
+  gap: 1px;
+  margin: 8px 0 0;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--hairline);
+  text-align: left;
+}
+
+.device-info-row {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: center;
+  background: var(--canvas);
+  min-height: 32px;
+}
+
+.device-info-row dt,
+.device-info-row dd {
+  margin: 0;
+  min-width: 0;
+  padding: 7px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.device-info-row dt {
+  color: var(--muted);
+}
+
+.device-info-row dd {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
 .device-connect-tip {
   margin: 12px 0 0;
   color: var(--muted);
