@@ -26,6 +26,8 @@ function logFilePath(prefix: string, date: Date = new Date()): string {
 /** 递归清理 meta 对象中的文件路径，只保留文件名，避免泄露用户目录 */
 function sanitizePaths(value: unknown): unknown {
   if (typeof value === 'string') {
+    // 跳过 HTTP URL 和相机设备路径，保留完整信息方便调试
+    if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/DCIM') || value.startsWith('/storage_')) return value
     // 将绝对路径替换为纯文件名：/Users/xxx/Pictures/file.mp4 → file.mp4
     return value.replace(/(?:\/[^\s/]+){2,}/g, (match) => {
       const idx = match.lastIndexOf('/')

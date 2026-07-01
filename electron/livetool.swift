@@ -10,6 +10,14 @@ import CoreMedia
 // ============================================================
 // Live Photo Maker Tool
 // Takes a JPG + MOV pair and adds Apple Live Photo metadata
+//
+// ⚠️ 使用注意事项：
+// 1. 先导入 JPG 到 Mac 照片应用（支持自动识别）
+// 2. 再将 MOV "共享" 到 iPhone（AirDrop / iCloud）
+// 3. iOS 通过文件名配对来识别 Live Photo
+//
+// 常见误区：将两个文件同时传输到 iPhone，照片应用不识别
+// 正确流程：Mac 照片应用 → 导入 JPG → 再单独共享 MOV
 // ============================================================
 
 guard CommandLine.arguments.count >= 3 else {
@@ -93,7 +101,7 @@ func processJPG(input: URL, output: URL, identifier: String) -> Bool {
 }
 
 // MARK: - MOV Processing
-func processMOV(input: URL, output: URL, identifier: String) throws {
+func processMOV(input: URL, output: URL, identifier: String) async throws {
     let asset = AVURLAsset(url: input)
 
     // Synchronous track loading (deprecated but functional)
@@ -115,7 +123,7 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
     let reader = try AVAssetReader(asset: asset)
     let writer = try AVAssetWriter(outputURL: output, fileType: .mov)
 
-    // ── Set Live Photo metadata items ──
+    // ── Set Live Photo metadata items (matching LivePhoto.swift approach) ──
 
     func makeMetadataItem(keySpace: AVMetadataKeySpace, key: any NSCopying & NSObjectProtocol,
                           value: any NSCopying & NSObjectProtocol, dataType: String? = nil) -> AVMutableMetadataItem {
@@ -129,55 +137,53 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
         return item
     }
 
-    // 1. Content Identifier — the critical pairing UUID (matches JPG)
+    // Content Identifier
     let contentId = makeMetadataItem(
         keySpace: .quickTimeMetadata,
         key: "com.apple.quicktime.content.identifier" as NSString,
         value: identifier as NSString,
-        dataType: kCMMetadataBaseDataType_UTF8 as String
+        dataType: "com.apple.metadata.datatype.UTF-8"
     )
 
-    // 2. Still Image Time — when in the video the still was taken (0 = start)
-    let stillImageTime = makeMetadataItem(
+    // Live Photo Auto — signals this is a Live Photo video
+    let liveAuto = makeMetadataItem(
         keySpace: .quickTimeMetadata,
-        key: "com.apple.quicktime.still-image-time" as NSString,
-        value: 0 as NSNumber,
-        dataType: kCMMetadataBaseDataType_SInt8 as String
+        key: "com.apple.quicktime.live-photo.auto" as NSString,
+        value: "1" as NSString,
+        dataType: "com.apple.metadata.datatype.UTF-8"
     )
 
-    // 3. Creation date
-    let df = DateFormatter()
-    df.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZZZ"
-    let creationDate = makeMetadataItem(
+    // Vitality Score
+    let vitalityScore = makeMetadataItem(
         keySpace: .quickTimeMetadata,
-        key: "com.apple.quicktime.creation-date" as NSString,
-        value: df.string(from: Date()) as NSString,
-        dataType: kCMMetadataBaseDataType_UTF8 as String
+        key: "com.apple.quicktime.live-photo.vitality-score" as NSString,
+        value: "1" as NSString,
+        dataType: "com.apple.metadata.datatype.UTF-8"
     )
 
-    // 4. Make and model (Apple-standard)
+    // Vitality Scoring Version
+    let vitalityVersion = makeMetadataItem(
+        keySpace: .quickTimeMetadata,
+        key: "com.apple.quicktime.live-photo.vitality-scoring-version" as NSString,
+        value: "4" as NSString,
+        dataType: "com.apple.metadata.datatype.UTF-8"
+    )
+
+    // Make & Model
     let makeItem = makeMetadataItem(
         keySpace: .quickTimeMetadata,
         key: "com.apple.quicktime.make" as NSString,
         value: "Apple" as NSString,
-        dataType: kCMMetadataBaseDataType_UTF8 as String
+        dataType: "com.apple.metadata.datatype.UTF-8"
     )
     let modelItem = makeMetadataItem(
         keySpace: .quickTimeMetadata,
         key: "com.apple.quicktime.model" as NSString,
         value: "iPhone" as NSString,
-        dataType: kCMMetadataBaseDataType_UTF8 as String
+        dataType: "com.apple.metadata.datatype.UTF-8"
     )
 
-    // 5. Also write to QuickTime UserData for broader compatibility
-    let contentIdUD = makeMetadataItem(
-        keySpace: .quickTimeUserData,
-        key: "\\xa9inf" as NSString,  // UserData copyright info
-        value: identifier as NSString,
-        dataType: kCMMetadataBaseDataType_UTF8 as String
-    )
-
-    writer.metadata = [contentId, stillImageTime, creationDate, makeItem, modelItem, contentIdUD]
+    writer.metadata = [contentId, liveAuto, vitalityScore, vitalityVersion, makeItem, modelItem]
 
     // ── Video track ──
     let videoInput = AVAssetWriterInput(mediaType: .video,
@@ -218,6 +224,30 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
         }
     }
 
+    // ── Still Image Time metadata track (matching LivePhoto.swift) ──
+    let keyStillImageTime = "com.apple.quicktime.still-image-time"
+    let keySpaceQuickTimeMetadata = "mdta"
+    let spec: NSDictionary = [
+        kCMMetadataFormatDescriptionMetadataSpecificationKey_Identifier as NSString:
+        "\(keySpaceQuickTimeMetadata)/\(keyStillImageTime)",
+        kCMMetadataFormatDescriptionMetadataSpecificationKey_DataType as NSString:
+        "com.apple.metadata.datatype.int8"
+    ]
+    var metadataDesc: CMFormatDescription? = nil
+    CMMetadataFormatDescriptionCreateWithMetadataSpecifications(
+        allocator: kCFAllocatorDefault,
+        metadataType: kCMMetadataFormatType_Boxed,
+        metadataSpecifications: [spec] as CFArray,
+        formatDescriptionOut: &metadataDesc)
+    let metadataInput = AVAssetWriterInput(mediaType: .metadata,
+                                           outputSettings: nil,
+                                           sourceFormatHint: metadataDesc)
+    metadataInput.expectsMediaDataInRealTime = false
+    if writer.canAdd(metadataInput) {
+        writer.add(metadataInput)
+    }
+    let metadataAdaptor = AVAssetWriterInputMetadataAdaptor(assetWriterInput: metadataInput)
+
     // ── Start ──
     reader.startReading()
     guard writer.startWriting() else {
@@ -225,6 +255,26 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
                      userInfo: [NSLocalizedDescriptionKey: "写入器启动失败"])
     }
     writer.startSession(atSourceTime: .zero)
+
+    // Add still image time metadata (matching LivePhoto.swift)
+    let assetDuration = try await videoTrack.load(.timeRange).duration
+    let nominalRate = try await videoTrack.load(.nominalFrameRate)
+    let stillImagePercent: Float = 0.5
+    let frameCount = Int(CMTimeGetSeconds(assetDuration) * Float64(nominalRate))
+    let frameDuration = CMTimeMake(value: Int64(Float(assetDuration.value) / Float(frameCount)),
+                                   timescale: assetDuration.timescale)
+    let stillTime = CMTimeMake(value: Int64(Float(assetDuration.value) * stillImagePercent),
+                               timescale: assetDuration.timescale)
+    let stillRange = CMTimeRangeMake(start: stillTime, duration: frameDuration)
+
+    let stillItem = AVMutableMetadataItem()
+    stillItem.key = keyStillImageTime as (NSCopying & NSObjectProtocol)?
+    stillItem.keySpace = AVMetadataKeySpace(rawValue: keySpaceQuickTimeMetadata)
+    stillItem.value = 0 as (NSCopying & NSObjectProtocol)?
+    stillItem.dataType = "com.apple.metadata.datatype.int8"
+
+    metadataAdaptor.append(AVTimedMetadataGroup(items: [stillItem], timeRange: stillRange))
+    metadataInput.markAsFinished()
 
     print("⏳ 正在处理 MOV (不重新编码,保持原始画质)...")
 
@@ -319,23 +369,28 @@ func processMOV(input: URL, output: URL, identifier: String) throws {
 // MARK: - Main
 if processJPG(input: inputJPG, output: outputJPG, identifier: assetIdentifier) {
     print("")
-    do {
-        try processMOV(input: inputMOV, output: outputMOV, identifier: assetIdentifier)
-        print("")
-        print("🎉 完成! Live Photo 元数据已写入文件对:")
-        print("   \(outputJPG.lastPathComponent)")
-        print("   \(outputMOV.lastPathComponent)")
-        print("")
-        print("📱 使用方式:")
-        print("   1. 确保两个文件在**同一目录**且**同名**")
-        print("   2. AirDrop 传输到 iPhone → 照片 App 自动识别")
-        print("   3. 或在 Mac 上导入「照片」应用 (勾选「包含视频」)")
-        print("")
-        print("💡 提示: 文件名必须配对 — 系统通过文件名关联 JPG 和 MOV")
-    } catch {
-        print("❌ MOV 处理失败: \(error.localizedDescription)")
-        exit(1)
+    Task {
+        do {
+            try await processMOV(input: inputMOV, output: outputMOV, identifier: assetIdentifier)
+            print("")
+            print("🎉 完成! Live Photo 元数据已写入文件对:")
+            print("   \(outputJPG.lastPathComponent)")
+            print("   \(outputMOV.lastPathComponent)")
+            print("")
+            print("📱 共享到 iPhone 的正确步骤:")
+            print("   1. 打开 Mac「照片」应用 → 文件 → 导入")
+            print("   2. **选中两个文件**，勾选「包含视频」→ 导入")
+            print("   3. 开启 iCloud 照片同步，或右键 → 共享 → AirDrop → iPhone")
+            print("")
+            print("💡 注意: 直接 AirDrop 文件不会触发 Live Photo 配对，")
+            print("   必须先导入 Mac 照片 App，iOS 通过照片 App 传输才能识别")
+            exit(0)
+        } catch {
+            print("❌ MOV 处理失败: \(error.localizedDescription)")
+            exit(1)
+        }
     }
+    RunLoop.current.run()
 } else {
     print("❌ JPG 处理失败")
     exit(1)

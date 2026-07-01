@@ -5,9 +5,15 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
 import { promisify } from 'node:util'
+import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
 
 const execFileAsync = promisify(execFile)
 const _require = createRequire(import.meta.url)
+
+/** 临时文件路径：下载完成前先写 .tmp，完成后 rename 到最终路径 */
+function partialPathFor(destination: string): string {
+  return `${destination}.tmp`
+}
 
 /** 缩略图最长边（等比缩放，不裁剪） */
 export const THUMBNAIL_MAX = 400
@@ -23,16 +29,20 @@ const WORKER_COUNT = Math.max(2, Math.min(8, os.cpus().length - 1))
 
 /** 获取 ffmpeg 二进制路径（打包后取 resources，开发环境取 ffmpeg-static） */
 function getFfmpegPath(): string {
+  let ffmpegPath: string
   if (app.isPackaged) {
     const ext = process.platform === 'win32' ? '.exe' : ''
-    return path.join(process.resourcesPath, 'ffmpeg', `ffmpeg${ext}`)
+    ffmpegPath = path.join(process.resourcesPath, 'ffmpeg', `ffmpeg${ext}`)
+  } else {
+    try {
+      const p = _require('ffmpeg-static') as string
+      ffmpegPath = p
+    } catch {
+      ffmpegPath = 'ffmpeg'
+    }
   }
-  try {
-    const p = _require('ffmpeg-static') as string
-    return p
-  } catch {
-    return 'ffmpeg'
-  }
+  logMainDebug(`[缩略图] ffmpeg 路径`, { ffmpegPath, isPackaged: app.isPackaged, platform: process.platform })
+  return ffmpegPath
 }
 
 /** 安全化文件名（替换路径分隔符和特殊字符） */
@@ -78,15 +88,21 @@ async function runWorker(): Promise<void> {
 
     const label = task.fileName || task.fileId
     const start = Date.now()
-    console.log(`[缩略图] 开始生成 ${label} (${task.kind || '?'}) worker ${activeWorkers}/${WORKER_COUNT}`)
+    logMainInfo(`[缩略图] worker 开始生成`, { label, kind: task.kind, sourcePath: task.sourcePath, worker: `${activeWorkers}/${WORKER_COUNT}` })
 
     try {
       const result = await generateThumbnail(task.sourcePath, task.thumbDir, task.fileId, task.kind)
       const elapsed = Date.now() - start
-      console.log(`[缩略图] 完成 ${label} → ${path.basename(result)} (${elapsed}ms)`)
+      logMainInfo(`[缩略图] worker 完成`, { label, result: path.basename(result), elapsedMs: elapsed })
       task.resolve(result)
     } catch (err) {
-      console.error(`[缩略图] 失败 ${label}: ${err}`)
+      logMainError(`[缩略图] worker 失败`, {
+        label,
+        sourcePath: task.sourcePath,
+        kind: task.kind,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      })
       task.resolve(null)
     }
   }
@@ -101,7 +117,8 @@ function spawnWorkers(): void {
 
 /**
  * 入队一个缩略图生成任务（多 worker 并发执行）
- * 如果缩略图已存在则直接返回，不重复生成
+ * 如果缩略图已存在则直接返回，不重复生成。
+ * 同时清理异常残留的 .tmp 文件和 0 字节/极小损坏文件。
  * @returns 生成的缩略图路径，或 null 失败
  */
 export function enqueueThumbnailGeneration(
@@ -113,14 +130,28 @@ export function enqueueThumbnailGeneration(
 ): Promise<string | null> {
   const destPath = path.join(thumbDir, `${safeId(fileId)}${THUMB_EXT}`)
 
-  // 检查缩略图是否已存在
-  return fs.access(destPath).then(
-    () => {
-      console.log(`[缩略图] 已存在 ${fileName || fileId}，跳过生成`)
-      return destPath
+  // 先清理可能残留的 .tmp 文件（上次生成中断留下的）
+  fs.rm(partialPathFor(destPath), { force: true, maxRetries: 3 }).catch(() => {})
+
+  // 检查缩略图是否已存在且有效（大小 > 200 字节，避免残留损坏文件被跳过）
+  return fs.stat(destPath).then(
+    (stats) => {
+      if (stats.size > 200) {
+        logMainInfo(`[缩略图] 已存在，跳过生成`, { fileId, fileName, destPath })
+        return destPath
+      }
+      // 文件太小，视为损坏，删除后重新生成
+      logMainWarn(`[缩略图] 已存在的文件过小 (${stats.size}B)，视为损坏，重新生成`, { fileId, fileName, destPath })
+      return fs.rm(destPath, { force: true, maxRetries: 3 }).then(() => {
+        return new Promise<string | null>((resolve) => {
+          taskQueue.push({ sourcePath, thumbDir, fileId, kind, fileName, resolve })
+          spawnWorkers()
+        })
+      })
     },
     () => {
       // 不存在，入队生成
+      logMainDebug(`[缩略图] 文件不存在，入队生成`, { fileId, fileName, kind })
       return new Promise<string | null>((resolve) => {
         taskQueue.push({ sourcePath, thumbDir, fileId, kind, fileName, resolve })
         spawnWorkers()
@@ -133,6 +164,10 @@ export function enqueueThumbnailGeneration(
 
 /**
  * 为图片生成缩略图（ffmpeg libwebp → WebP）
+ *
+ * 先写到 .tmp 文件，成功后再 rename 到最终路径。
+ * 避免 ffmpeg 中断时留下损坏的缩略图文件，导致后续误认为已存在。
+ *
  * @param sourcePath 原始图片路径
  * @param thumbDir 缩略图输出目录
  * @param fileId 文件 ID（用于命名输出文件）
@@ -145,27 +180,41 @@ export async function generateImageThumbnail(
 ): Promise<string> {
   await fs.mkdir(thumbDir, { recursive: true })
   const dest = path.join(thumbDir, `${safeId(fileId)}${THUMB_EXT}`)
+  const tmp = partialPathFor(dest)
   const ffmpegPath = getFfmpegPath()
 
-  await execFileAsync(
-    ffmpegPath,
-    [
-      '-i', sourcePath,
-      '-vf', `scale=${THUMBNAIL_MAX}:${THUMBNAIL_MAX}:force_original_aspect_ratio=decrease`,
-      '-c:v', 'libwebp',
-      '-lossless', '0',
-      '-q:v', '80',
-      '-y',
-      dest,
-    ],
-    { timeout: 15000 },
-  )
+  try {
+    await execFileAsync(
+      ffmpegPath,
+      [
+        '-i', sourcePath,
+        '-vf', `scale=${THUMBNAIL_MAX}:${THUMBNAIL_MAX}:force_original_aspect_ratio=decrease`,
+        '-c:v', 'libwebp',
+        '-lossless', '0',
+        '-q:v', '80',
+        '-f', 'webp',
+        '-y',
+        tmp,
+      ],
+      { timeout: 15000 },
+    )
+    // 生成成功，原子 rename
+    await fs.rename(tmp, dest)
+  } catch (err) {
+    // 生成失败，清理残留 .tmp 文件
+    await fs.rm(tmp, { force: true, maxRetries: 3 })
+    throw err
+  }
 
   return dest
 }
 
 /**
  * 为视频生成缩略图（ffmpeg 取第一帧 → WebP）
+ *
+ * 先写到 .tmp 文件，成功后再 rename 到最终路径。
+ * 避免 ffmpeg 中断时留下损坏的缩略图文件。
+ *
  * @param sourcePath 原始视频路径
  * @param thumbDir 缩略图输出目录
  * @param fileId 文件 ID（用于命名输出文件）
@@ -178,24 +227,34 @@ export async function generateVideoThumbnail(
 ): Promise<string> {
   await fs.mkdir(thumbDir, { recursive: true })
   const dest = path.join(thumbDir, `${safeId(fileId)}${THUMB_EXT}`)
+  const tmp = partialPathFor(dest)
   const ffmpegPath = getFfmpegPath()
 
-  // 取视频第一帧，等比缩放到最长边 400px
-  await execFileAsync(
-    ffmpegPath,
-    [
-      '-ss', '0',
-      '-i', sourcePath,
-      '-vframes', '1',
-      '-vf', `scale=${THUMBNAIL_MAX}:${THUMBNAIL_MAX}:force_original_aspect_ratio=decrease`,
-      '-c:v', 'libwebp',
-      '-lossless', '0',
-      '-q:v', '80',
-      '-y',
-      dest,
-    ],
-    { timeout: 15000 },
-  )
+  try {
+    // 取视频第一帧，等比缩放到最长边 400px
+    await execFileAsync(
+      ffmpegPath,
+      [
+        '-ss', '0',
+        '-i', sourcePath,
+        '-vframes', '1',
+        '-vf', `scale=${THUMBNAIL_MAX}:${THUMBNAIL_MAX}:force_original_aspect_ratio=decrease`,
+        '-c:v', 'libwebp',
+        '-lossless', '0',
+        '-q:v', '80',
+        '-f', 'webp',
+        '-y',
+        tmp,
+      ],
+      { timeout: 15000 },
+    )
+    // 生成成功，原子 rename
+    await fs.rename(tmp, dest)
+  } catch (err) {
+    // 生成失败，清理残留 .tmp 文件
+    await fs.rm(tmp, { force: true, maxRetries: 3 })
+    throw err
+  }
 
   return dest
 }
