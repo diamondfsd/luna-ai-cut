@@ -1,0 +1,40 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.diamondfsd.luna-device-debug",
+  "asar": true,
+  "asarUnpack": [],
+  "productName": "Luna Device Debug",
+  "directories": {
+    "output": "release-debug",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist-debug",
+    "dist-electron"
+  ],
+  "extraResources": [],
+  "mac": {
+    "icon": "build/icon.icns",
+    "target": [
+      "dmg"
+    ],
+    "artifactName": "LunaDeviceDebug-Mac-${version}-${arch}.${ext}"
+  },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "LunaDeviceDebug-Windows-${version}-Setup-${arch}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  }
+}
