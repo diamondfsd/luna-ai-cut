@@ -34,9 +34,19 @@ export interface LunaFile {
   duration?: number
 }
 
+export interface Insta360DeviceInfo {
+  serial?: string
+  deviceName?: string
+  firmware?: string
+  ssid?: string
+  wifiPassword?: string
+  rawStrings: string[]
+}
+
 export interface ConnectionStatus {
   deviceId?: string
   deviceName?: string
+  deviceInfo?: Insta360DeviceInfo
   host: string
   httpOk: boolean
   controlOk: boolean
