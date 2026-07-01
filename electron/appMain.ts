@@ -359,7 +359,6 @@ function registerIpc(): void {
     const task = enqueuePreviewTask(async () => {
       let cacheFilePath: string | null = null
       try {
-        logMainDebug(`[缓存] 队列任务开始执行，调用 cacheFile`, { key, fileName: file.name, kind: file.kind })
         cacheFilePath = await cacheFile(file)
         if (cacheFilePath) {
           logMainInfo(`[缓存] 文件缓存成功，开始生成缩略图`, { key, fileName: file.name, cacheFilePath })
