@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, LayoutTemplate, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
@@ -15,6 +15,7 @@ import { WorkspaceWatermarkOverlay } from '../workspace/components/WorkspaceWate
 import { useWorkspaceExport } from '../workspace/export/useWorkspaceExport'
 import { cropForAspect, frameAspect, maxCropInsideImage } from '../workspace/transform/cropGeometry'
 import { WorkspaceEditSidebar, type WorkspaceTool } from '../workspace/components/WorkspaceEditSidebar'
+import type { WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 
 /** 复制到粘贴板：只复制调色+效果+水印，不含裁剪等变换 */
 const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
@@ -62,7 +63,12 @@ function normalizePipeline(value: unknown): EditPipeline {
 
 function projectMedia(project: WorkspaceProject | null, fallbackMedia: WorkspaceMediaAsset[]): WorkspaceMediaAsset[] { return project?.assets ?? fallbackMedia }
 
-export function WorkspacePage() {
+interface WorkspacePageProps {
+  workspaceMode: WorkspaceMode
+  onEditingChange?: (editing: boolean) => void
+}
+
+export function WorkspacePage({ workspaceMode, onEditingChange }: WorkspacePageProps) {
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
   const fallbackMedia = useMemo(() => mediaFromState(routeState), [location.key])
@@ -114,6 +120,11 @@ export function WorkspacePage() {
   const editorOpen = Boolean(currentProject || transientMedia.length > 0)
   const canRender = Boolean(rendererRef.current && activeMedia && !webglMessage?.includes('不支持'))
   const exportWorkspaceImage = useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline: previewPipeline })
+
+  useEffect(() => {
+    onEditingChange?.(editorOpen)
+    return () => onEditingChange?.(false)
+  }, [editorOpen, onEditingChange])
   const commitPatch = useCallback((patch: PipelinePatch) => {
     setHistory((current) => pushHistory(current, mergePipeline(current.present, patch)))
   }, [])
@@ -617,7 +628,7 @@ export function WorkspacePage() {
       <section className="workspace-canvas-shell">
         <div
           ref={stageRef}
-          className={`workspace-canvas-stage${cropActive ? ' cropping' : ''}${viewZoom > 1 && !cropActive ? ' panning' : ''}`}
+          className={`workspace-canvas-stage${workspaceMode === 'creative' ? ' workspace-canvas-stage--hidden' : ''}${cropActive ? ' cropping' : ''}${viewZoom > 1 && !cropActive ? ' panning' : ''}`}
           onWheel={handlePreviewWheel}
           onPointerDown={handlePreviewPointerDown}
           onPointerMove={handlePreviewPointerMove}
@@ -654,23 +665,37 @@ export function WorkspacePage() {
             </div>
           )}
         </div>
+        {workspaceMode === 'creative' && (
+          <div className="workspace-creative-placeholder">
+            <div className="workspace-creative-placeholder-icon">
+              <LayoutTemplate size={28} />
+            </div>
+            <h2>开始你的 Live 三拼</h2>
+            <p>从下方素材面板拖拽三张竖版 Live 图或视频到三个格子中，松手即可完成拼接。</p>
+            <div className="workspace-creative-placeholder-hint">
+              也可以直接从电脑文件夹拖入文件
+            </div>
+          </div>
+        )}
       </section>
 
-      <WorkspaceEditSidebar
-        activeTool={activeTool}
-        pipeline={previewPipeline}
-        cropPreset={cropPreset}
-        cropWidth={cropSize.width || Math.round(sourceAspect * 2160)}
-        cropHeight={cropSize.height || 2160}
-        onSelectTool={handleSelectTool}
-        onUpdatePipeline={updateWorkspacePanel}
-        onRotateChange={handleRotateChange}
-        onCropPresetChange={handleCropPresetChange}
-        onCropSizeChange={handleCropSizeChange}
-        onCancelCrop={cancelCrop}
-        onConfirmCrop={confirmCrop}
-        onActivatePipette={() => setPipetteActive(true)}
-      />
+      {workspaceMode !== 'creative' && (
+        <WorkspaceEditSidebar
+          activeTool={activeTool}
+          pipeline={previewPipeline}
+          cropPreset={cropPreset}
+          cropWidth={cropSize.width || Math.round(sourceAspect * 2160)}
+          cropHeight={cropSize.height || 2160}
+          onSelectTool={handleSelectTool}
+          onUpdatePipeline={updateWorkspacePanel}
+          onRotateChange={handleRotateChange}
+          onCropPresetChange={handleCropPresetChange}
+          onCropSizeChange={handleCropSizeChange}
+          onCancelCrop={cancelCrop}
+          onConfirmCrop={confirmCrop}
+          onActivatePipette={() => setPipetteActive(true)}
+        />
+      )}
 
       <footer className="workspace-toolbar">
         <div className="workspace-toolbar-group">
