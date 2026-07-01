@@ -1,7 +1,18 @@
 import { ImageOff } from 'lucide-react'
 import { type MouseEvent, useRef, useState } from 'react'
 
+import type { WorkspaceMediaAsset } from '../../shared/types'
+import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../shared/editPipeline'
+import type { PipelinePatch } from '../shared/editPipeline'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
+
+/** 检查素材的 pipeline 是否有非默认的修改 */
+function isAssetModified(item: WorkspaceMediaAsset): boolean {
+  const raw = (item as unknown as { pipeline?: unknown }).pipeline
+  if (!raw || typeof raw !== 'object') return false
+  const normalized = mergePipeline(createDefaultPipeline(), raw as PipelinePatch)
+  return JSON.stringify(normalized) !== JSON.stringify(DEFAULT_PIPELINE)
+}
 
 export function WorkspaceMediaStrip() {
   const media = useWorkspaceMedia()
@@ -88,6 +99,7 @@ export function WorkspaceMediaStrip() {
         const isActive = index === media.activeIndex
         const isSelected = media.selectedIndices.has(index)
         const isDragHighlighted = dragHighlighted.has(index)
+        const isModified = !isBroken && isAssetModified(item)
         return (
           <button
             key={item.id}
@@ -95,6 +107,7 @@ export function WorkspaceMediaStrip() {
             type="button"
             onClick={(e) => handleClick(index, e)}
           >
+            {isModified && <span className="workspace-thumb-modified-dot" />}
             {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" draggable={false} /> : <span className="workspace-thumb-label">{item.kind === 'video' ? '视频' : '图片'}</span>}
           </button>
         )

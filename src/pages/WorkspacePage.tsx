@@ -101,8 +101,10 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
       window.luna.workspace.saveProject(nextProject).catch((error) => {
         toast.error(error instanceof Error ? error.message : String(error))
       })
+      // 更新内存状态：切回图片时能保留修改后的参数
+      media.setCurrentProject(nextProject)
     }, 500)
-  }, [media.activeIndex, media.activeMedia, media.currentProject?.id, edit.pipeline])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, edit.pipeline])
 
   // ── onEditingChange ──
   useEffect(() => {

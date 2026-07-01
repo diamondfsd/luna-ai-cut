@@ -460,6 +460,18 @@
   overflow: hidden;
   display: grid;
   place-items: center;
+  position: relative;
+}
+
+.workspace-thumb-modified-dot {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+  z-index: 1;
 }
 
 .workspace-thumb:hover {
