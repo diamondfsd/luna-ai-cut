@@ -15,7 +15,6 @@ export function WorkspaceWatermarkOverlay() {
     : { settings: edit.pipeline.watermark }
   const { imageRect } = canvas
 
-  // 工作台无设备上下文，使用默认宽度比
   const ratios = resolveWatermarkRatios(null, settings.style, imageRect.width, imageRect.height, settings.position)
   const widthRatio = ratios?.widthRatio ?? 0.15
 
@@ -40,14 +39,13 @@ export function WorkspaceWatermarkOverlay() {
   const targetW = Math.min(Math.round(sensorW * widthRatio), wmImage.width)
   const targetH = Math.round(targetW * wmAspect)
 
-  const [vPos, hPos] = settings.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
-
-  const marginX = Math.round(imageRect.width * 0.03)
-  const marginY = Math.round(imageRect.height * 0.03)
-  const x = hPos === 'left' ? marginX
-    : hPos === 'right' ? imageRect.width - targetW - marginX
-    : Math.round((imageRect.width - targetW) / 2)
-  const y = vPos === 'bottom' ? imageRect.height - targetH - marginY : marginY
+  const [vPos] = settings.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
+  const xRatio = ratios?.xRatio ?? 0.03
+  const yRatio = ratios?.yRatio ?? 0.03
+  const x = Math.round(imageRect.width * xRatio)
+  const y = vPos === 'bottom'
+    ? Math.round(imageRect.height - targetH - imageRect.height * yRatio)
+    : Math.round(imageRect.height * (1 - yRatio))
 
   return (
     <WatermarkOverlay
