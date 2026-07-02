@@ -6,10 +6,10 @@
 
 // ★ 由 deploy-release.sh 自动更新 ★
 const LATEST_RELEASE = {
-  tag: 'v1.3.3',
-  gitcode_mac_arm: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.3.3/LunaAICut-Mac-1.3.3-Installer-arm64.dmg',
-  gitcode_mac_x64: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.3.3/LunaAICut-Mac-1.3.3-Installer-x64.dmg',
-  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.3.3/LunaAICut-Windows-1.3.3-Setup-x64.exe',
+  tag: 'v1.4.0',
+  gitcode_mac_arm: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.4.0/LunaAICut-Mac-1.4.0-Installer-arm64.dmg',
+  gitcode_mac_x64: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.4.0/LunaAICut-Mac-1.4.0-Installer-x64.dmg',
+  gitcode_win: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/v1.4.0/LunaAICut-Windows-1.4.0-Setup-x64.exe',
 }
 
 // ── 版本号渲染 ──────────────────────────────────────────
