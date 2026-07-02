@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { cp, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { checkForUpdates } from './updateService'
 import type { HotUpdateCheckResult } from './hotUpdater'
@@ -63,6 +63,7 @@ import { cancelBluetoothScan, scanBluetoothDevices } from './bluetoothDebugServi
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 import { safeName } from './filePathUtils'
+import { applyColorGradingToVideo } from './videoPipelineService'
 import type {
   AiConfig,
   AppSettings,
@@ -634,6 +635,75 @@ function registerIpc(): void {
     const taskName = `${baseName}导出`
     const exportId = `workspace_${baseName}_${Date.now()}`
     const task = await createExportTask(taskName, [{ exportId, fileName, kind: 'image' }])
+    const taskStart = Date.now()
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    })
+
+    return { path: destinationPath, name: fileName }
+  })
+  ipcMain.handle('workspace:copyFile', async (_event, sourcePath: string) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+    const baseName = path.basename(sourcePath)
+    const ext = path.extname(baseName).toLowerCase()
+    const nameBase = path.basename(baseName, ext) || 'workspace'
+    const fileName = safeName(`${nameBase}_workspace_${Date.now()}${ext}`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+    await cp(sourcePath, destinationPath, { force: true })
+
+    // 创建导出任务记录
+    const videoExts = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
+    const kind = videoExts.has(ext) ? 'video' : 'image'
+    const taskName = `${nameBase}导出`
+    const exportId = `workspace_${nameBase}_${Date.now()}`
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
+    const taskStart = Date.now()
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    })
+
+    return { path: destinationPath, name: fileName }
+  })
+  ipcMain.handle('workspace:exportVideo', async (_event, sourcePath: string, color: Record<string, number>) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+    const baseName = path.basename(sourcePath)
+    const ext = path.extname(baseName)
+    const nameBase = path.basename(baseName, ext) || 'workspace'
+    const fileName = safeName(`${nameBase}_workspace_${Date.now()}${ext}`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+
+    const colorOpts = {
+      exposure: color.exposure ?? 0,
+      black: color.black ?? 0,
+      brightness: color.brightness ?? 0,
+      temperature: color.temperature ?? 0,
+      tint: color.tint ?? 0,
+      contrast: color.contrast ?? 0,
+      saturation: color.saturation ?? 0,
+      vibrance: color.vibrance ?? 0,
+      shadows: color.shadows ?? 0,
+      highlights: color.highlights ?? 0,
+      whites: color.whites ?? 0,
+      blacks: color.blacks ?? 0,
+      clarity: color.clarity ?? 0,
+      sharpen: color.sharpen ?? 0,
+      denoise: color.denoise ?? 0,
+    }
+
+    await applyColorGradingToVideo(sourcePath, destinationPath, colorOpts)
+
+    const kind = 'video'
+    const taskName = `${nameBase}导出`
+    const exportId = `workspace_${nameBase}_${Date.now()}`
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
     const taskStart = Date.now()
     await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
       endTime: Date.now(),
