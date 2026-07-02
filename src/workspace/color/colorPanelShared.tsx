@@ -2,17 +2,6 @@ import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 import type { CurvePoint, ToneCurveChannel } from '../shared/editPipeline'
 
-export const HSL_CHANNELS: Array<{ key: string; label: string; hue: number; color: string }> = [
-  { key: 'red', label: '红色', hue: 0, color: '#ff3b30' },
-  { key: 'orange', label: '橙色', hue: 30, color: '#ff9500' },
-  { key: 'yellow', label: '黄色', hue: 60, color: '#ffd60a' },
-  { key: 'green', label: '绿色', hue: 120, color: '#34c759' },
-  { key: 'aqua', label: '浅绿色', hue: 170, color: '#48d6d2' },
-  { key: 'blue', label: '蓝色', hue: 220, color: '#0a84ff' },
-  { key: 'purple', label: '紫色', hue: 275, color: '#bf5af2' },
-  { key: 'magenta', label: '洋红色', hue: 320, color: '#ff2d9a' },
-]
-
 export const CURVE_CHANNELS: Array<{ key: ToneCurveChannel; label: string }> = [
   { key: 'rgb', label: '全部' },
   { key: 'luminance', label: '亮度' },
