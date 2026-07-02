@@ -7,6 +7,7 @@ import { downloadToFile, downloadToFileWithRetry, isAbortError } from './fileDow
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
 import { logMainInfo, logMainWarn } from './loggerService'
+import { recordDownloadedFileSource } from './mediaSourceManifestService'
 import type {
   DownloadProgress,
   DownloadSummary,
@@ -388,6 +389,7 @@ export async function downloadFiles(
     try {
       const existingFinal = await fileSize(destination)
       if (existingFinal > 0) {
+        await recordDownloadedFileSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
@@ -409,6 +411,7 @@ export async function downloadFiles(
       const cachedPath = file.cacheFilePath ?? path.join(previewDir, safeName(file.name))
       const canCopyCachedFile = path.basename(cachedPath) === safeName(file.downloadName)
       if (canCopyCachedFile && await copyIfPresent(cachedPath, destination)) {
+        await recordDownloadedFileSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
@@ -445,6 +448,7 @@ export async function downloadFiles(
         status: 'done',
         destinationPath: destination,
       })
+      await recordDownloadedFileSource(outputDir, destination, file)
       summary.completed.push({ name: file.name, path: destination })
       logFinalDownloadSuccess(file, destination, file.bytes)
     } catch (error) {

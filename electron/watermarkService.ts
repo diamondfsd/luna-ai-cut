@@ -14,6 +14,7 @@ import { localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
 import { getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
 import { applyWatermarkToVideo, applyVideoExportSettings } from './videoPipelineService'
+import { resolveWatermarkSettingsForFile } from './watermarkResolver'
 import type {
   LunaFile,
   PreviewResult,
@@ -23,13 +24,15 @@ import type {
   WatermarkStyle,
 } from '../src/shared/types'
 
+type ConcreteWatermarkStyle = Exclude<WatermarkStyle, 'auto'>
+
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
   return path.join(app.getAppPath(), 'src', 'assets', 'watermark')
 }
 
-function watermarkFileFor(kind: 'image' | 'video', style: WatermarkStyle): string {
-  const filenames: Record<WatermarkStyle, Record<'image' | 'video', string>> = {
+function watermarkFileFor(kind: 'image' | 'video', style: ConcreteWatermarkStyle): string {
+  const filenames: Record<ConcreteWatermarkStyle, Record<'image' | 'video', string>> = {
     luna_ultra: {
       video: 'ic_watermark_luna_ultra.png',
       image: 'ic_watermark_luna_ultra_image.png',
@@ -37,6 +40,14 @@ function watermarkFileFor(kind: 'image' | 'video', style: WatermarkStyle): strin
     luna_ultra_cn: {
       video: 'ic_watermark_luna_ultra_cn.png',
       image: 'ic_watermark_luna_ultra_image_cn.png',
+    },
+    go_ultra: {
+      video: 'ic_watermark_go_ultra.png',
+      image: 'ic_watermark_go_ultra_image.png',
+    },
+    go_ultra_cn: {
+      video: 'ic_watermark_go_ultra_cn.png',
+      image: 'ic_watermark_go_ultra_image_cn.png',
     },
   }
   return path.join(getWatermarkDir(), filenames[style][kind])
@@ -206,7 +217,7 @@ export async function applyWatermarkToImage(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: WatermarkStyle,
+  style: ConcreteWatermarkStyle,
 ): Promise<void> {
   return applyWatermarkToImageWithRef(inputPath, outputPath, watermarkPercent, position, style)
 }
@@ -221,7 +232,7 @@ async function applyWatermarkToImageWithRef(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: WatermarkStyle,
+  style: ConcreteWatermarkStyle,
   refWidth?: number,
   refHeight?: number,
 ): Promise<void> {
@@ -517,7 +528,7 @@ export async function applyWatermarkToLivePhoto(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: WatermarkStyle,
+  style: ConcreteWatermarkStyle,
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
   _videoExportSettings?: VideoExportSettings,
@@ -641,7 +652,8 @@ export async function previewWithWatermark(
     return { fileName: file.name, kind: file.kind, source: null, cachedPath: null, message: '水印未启用' }
   }
 
-  const destPath = await watermarkCachePath(sourcePath, settings)
+  const resolvedSettings = await resolveWatermarkSettingsForFile({ ...file, localPath: sourcePath }, settings)
+  const destPath = await watermarkCachePath(sourcePath, resolvedSettings)
   try {
     await fs.access(destPath)
     return { fileName: file.name, kind: file.kind, source: localThumbnailUrl(destPath), cachedPath: destPath }
@@ -652,9 +664,9 @@ export async function previewWithWatermark(
   try {
     await fs.mkdir(path.dirname(destPath), { recursive: true })
     if (file.kind === 'image') {
-      await applyWatermarkToImage(sourcePath, destPath, settings.watermarkPercent, settings.position, settings.style)
+      await applyWatermarkToImage(sourcePath, destPath, resolvedSettings.watermarkPercent, resolvedSettings.position, resolvedSettings.style)
     } else {
-      await applyWatermarkToVideo(sourcePath, destPath, settings.watermarkPercent, settings.position, settings.style)
+      await applyWatermarkToVideo(sourcePath, destPath, resolvedSettings.watermarkPercent, resolvedSettings.position, resolvedSettings.style)
     }
     return { fileName: file.name, kind: file.kind, source: localThumbnailUrl(destPath), cachedPath: destPath }
   } catch (error) {

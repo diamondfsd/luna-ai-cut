@@ -7,6 +7,7 @@ import { UpdateBanner } from '../components/UpdateBanner'
 import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { DevPage } from '../pages/DevPage'
+import { DeviceDebugPage } from '../pages/DeviceDebugPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
 import { MediaLibraryPage } from '../pages/MediaLibraryPage'
 import { SettingsPage } from '../pages/SettingsPage'
@@ -15,7 +16,7 @@ import type { CacheStats, LunaFile, PreviewResult } from '../shared/types'
 import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 
 export function AppRoutes() {
-  const { settings, setSettings, connection, downloadProgress, setDownloadProgress } = useApp()
+  const { settings, setSettings, connection, downloadProgress, setDownloadProgress, hiddenDevMode } = useApp()
   const {
     activeDevice,
     cameraLibraryMounted,
@@ -98,8 +99,9 @@ export function AppRoutes() {
   const isDownloadsActive = activePath === '/local-resources'
   const isWorkspaceActive = activePath === '/workspace'
   const isSettingsActive = activePath === '/settings'
-  const isBluetoothDebugActive = import.meta.env.DEV && activePath === '/ble-debug'
-  const isKnownRoute = isDeveloperActive || isLibraryActive || isDownloadsActive || isWorkspaceActive || isSettingsActive || isBluetoothDebugActive
+  const isBluetoothDebugActive = (import.meta.env.DEV || hiddenDevMode) && activePath === '/ble-debug'
+  const isDeviceDebugActive = (import.meta.env.DEV || hiddenDevMode) && activePath === '/device-debug'
+  const isKnownRoute = isDeveloperActive || isLibraryActive || isDownloadsActive || isSettingsActive || isBluetoothDebugActive || isDeviceDebugActive
 
   if (isDownloadsLegacy) {
     return <Navigate to="/local-resources" replace />
@@ -107,6 +109,15 @@ export function AppRoutes() {
 
   if (!isKnownRoute) {
     return <Navigate to={developerMode ? '/developer' : '/library'} replace />
+  }
+
+  // 独立调试包：只渲染设备调试页面，无导航、无路由切换
+  if (typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__) {
+    return (
+      <main className="app">
+        <DeviceDebugPage />
+      </main>
+    )
   }
 
   return (
@@ -128,7 +139,6 @@ export function AppRoutes() {
       <HotUpdateBanner />
 
       <div className="route-stack" key={pagesKey}>
-       
 
         <section className="route-panel" hidden={!isLibraryActive}>
           {showDeviceConnect && (
@@ -216,6 +226,12 @@ export function AppRoutes() {
               chooseMockMediaDir={chooseMockMediaDir}
               openDirectory={openDirectory}
             />
+          </section>
+        )}
+
+        {isDeviceDebugActive && (
+          <section className="route-panel">
+            <DeviceDebugPage />
           </section>
         )}
       </div>

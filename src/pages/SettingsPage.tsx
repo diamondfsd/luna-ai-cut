@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FolderOpen, Image, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
+import { useApp } from '../context/AppContext'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { Button, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
@@ -31,11 +32,34 @@ export function SettingsPage({
   settings,
   setSettings,
 }: SettingsPageProps) {
+  const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
+  const clickCountRef = useRef(0)
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 每次进入设置页重新获取缓存统计
+  // 连点 5 次"相机地址"激活隐藏开发模式
+  const handleCameraTitleClick = useCallback(() => {
+    clickCountRef.current += 1
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+
+    if (clickCountRef.current >= 5) {
+      clickCountRef.current = 0
+      setHiddenDevMode(true)
+      toast.success('开发者模式已激活（重启后失效）')
+      return
+    }
+
+    // 1.5 秒内未连点满 5 次则重置计数
+    clickTimerRef.current = setTimeout(() => {
+      clickCountRef.current = 0
+    }, 1500)
+  }, [setHiddenDevMode])
+
+  // 组件卸载时清理定时器
   useEffect(() => {
-    window.luna.getCacheStats().then(setFreshCacheStats).catch(() => {})
+    return () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    }
   }, [])
 
   const displayCacheStats = freshCacheStats ?? cacheStats
@@ -163,7 +187,13 @@ export function SettingsPage({
 
         <article className="settings-row">
           <div className="settings-row-copy">
-            <span>相机地址</span>
+            <span
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+              onClick={handleCameraTitleClick}
+              title={hiddenDevMode ? '隐藏开发模式已激活' : '连点 5 次激活隐藏开发模式'}
+            >
+              相机地址 {hiddenDevMode && <span style={{ color: '#34c759', fontSize: 11, fontWeight: 600 }}>🔓 开发</span>}
+            </span>
             <em>{connection?.message ?? `${activeDevice?.name ?? '设备'} 默认地址：${activeDevice?.defaultHost || '未配置'}`}</em>
           </div>
           <Input

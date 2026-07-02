@@ -2,6 +2,8 @@ import type { WatermarkSettings, WatermarkStyle } from '../../shared/types'
 import { calculateWatermarkLayout, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../../shared/watermark'
 import wmUltraImage from '../../assets/watermark/ic_watermark_luna_ultra_image.png'
 import wmUltraImageCn from '../../assets/watermark/ic_watermark_luna_ultra_image_cn.png'
+import wmGoUltraImage from '../../assets/watermark/ic_watermark_go_ultra_image.png'
+import wmGoUltraImageCn from '../../assets/watermark/ic_watermark_go_ultra_image_cn.png'
 
 interface ImageRect {
   x: number
@@ -13,6 +15,9 @@ interface ImageRect {
 const WATERMARK_ASSETS: Record<WatermarkStyle, { src: string; width: number; height: number }> = {
   luna_ultra: { src: wmUltraImage, width: 1399, height: 252 },
   luna_ultra_cn: { src: wmUltraImageCn, width: 1605, height: 252 },
+  go_ultra: { src: wmGoUltraImage, width: 866, height: 254 },
+  go_ultra_cn: { src: wmGoUltraImageCn, width: 1002, height: 252 },
+  auto: { src: wmUltraImage, width: 1399, height: 252 },
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

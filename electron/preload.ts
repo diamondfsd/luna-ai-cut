@@ -2,8 +2,11 @@ import { ipcRenderer, contextBridge } from 'electron'
 import type {
   AiConfig,
   AppSettings,
+  DeviceDebugApi,
+  DeviceDebugEvent,
   DeviceConnectOptions,
   DownloadProgress,
+  ExportFileInput,
   ExportProgress,
   HotUpdateCheckResult,
   LunaApi,
@@ -60,7 +63,7 @@ const lunaApi: LunaApi = {
     ipcRenderer.invoke('luna:requestVideoFrameRate', file, cachedPath),
   downloadFiles: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('luna:downloadFiles', files, downloadDir),
   cancelDownloads: () => ipcRenderer.invoke('luna:cancelDownloads'),
-  exportFiles: (files: Array<{ name: string; kind: string; localPath?: string; exportId?: string; taskId?: string; taskName?: string; createdAt?: number }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
+  exportFiles: (files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
     ipcRenderer.invoke('luna:exportFiles', files, exportDir, watermarkSettings, videoExportSettings),
   cancelExports: () => ipcRenderer.invoke('luna:cancelExports'),
   cancelExportTask: (taskId: string) => ipcRenderer.invoke('luna:cancelExportTask', taskId),
@@ -145,7 +148,28 @@ const wifiDebugApi: WifiDebugApi = {
   httpRequest: (options: WifiHttpRequestOptions) => ipcRenderer.invoke('wifiDebug:httpRequest', options),
 }
 
+const deviceDebugApi: DeviceDebugApi = {
+  runTest: (params) => ipcRenderer.invoke('deviceDebug:runTest', params),
+  checkPort: (params) => ipcRenderer.invoke('deviceDebug:checkPort', params),
+  connect: (params) => ipcRenderer.invoke('deviceDebug:connect', params),
+  disconnect: (params) => ipcRenderer.invoke('deviceDebug:disconnect', params),
+  checkAuth: (params) => ipcRenderer.invoke('deviceDebug:checkAuth', params),
+  requestAuth: (params) => ipcRenderer.invoke('deviceDebug:requestAuth', params),
+  getAuthState: (params) => ipcRenderer.invoke('deviceDebug:getAuthState', params),
+  listFiles: (params) => ipcRenderer.invoke('deviceDebug:listFiles', params),
+  runDiagnostics: (params) => ipcRenderer.invoke('deviceDebug:runDiagnostics', params),
+  getDeviceOptions: () => ipcRenderer.invoke('deviceDebug:getDeviceOptions'),
+  log: (params) => ipcRenderer.invoke('deviceDebug:log', params),
+  getLogPath: () => ipcRenderer.invoke('deviceDebug:getLogPath'),
+  onLog: (callback: (event: DeviceDebugEvent) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: DeviceDebugEvent): void => callback(data)
+    ipcRenderer.on('deviceDebug:log', listener)
+    return () => ipcRenderer.off('deviceDebug:log', listener)
+  },
+}
+
 contextBridge.exposeInMainWorld('luna', lunaApi)
+contextBridge.exposeInMainWorld('deviceDebug', deviceDebugApi)
 if (import.meta.env.DEV || process.env.VITE_DEV_SERVER_URL) {
   contextBridge.exposeInMainWorld('wifiDebug', wifiDebugApi)
 }

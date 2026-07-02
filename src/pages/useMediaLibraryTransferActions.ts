@@ -260,6 +260,11 @@ export function useMediaLibraryTransferActions({
           taskId,
           taskName,
           createdAt: batchTs,
+          sourceDeviceId: file.sourceDeviceId,
+          sourceDeviceName: file.sourceDeviceName,
+          cameraType: file.cameraType,
+          cameraSerial: file.cameraSerial,
+          watermarkProfileId: file.watermarkProfileId,
         }
       })
       const result = await window.luna.exportFiles(payload, settings.exportDir, watermarkSettings, videoExportSettings)

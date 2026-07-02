@@ -24,6 +24,7 @@ const V_OPTIONS = [
 
 /** 默认样式选项（无设备配置时兜底） */
 const DEFAULT_STYLE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: '自动' },
   { value: 'luna_ultra', label: '标准' },
   { value: 'luna_ultra_cn', label: '中文' },
 ]
@@ -38,10 +39,10 @@ function WatermarkSettingsContent({ settings, styleOptions, onStyleChange, onPer
 }) {
   const stylePills = useMemo(() => {
     if (styleOptions && styleOptions.length > 0) {
-      return styleOptions.map((opt) => ({
+      return [{ value: 'auto', label: '自动' }, ...styleOptions.map((opt) => ({
         value: opt.value,
         label: opt.label,
-      }))
+      }))]
     }
     return DEFAULT_STYLE_OPTIONS
   }, [styleOptions])
