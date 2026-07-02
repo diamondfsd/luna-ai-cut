@@ -86,7 +86,12 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
     renderer.loadVideo(video)
     renderer.resize(width, height)
 
-    // 逐帧 seek + 渲染
+    // 预分配翻转缓冲（避免每帧 GC）
+    const stride = width * 4
+    const flipped = new Uint8Array(width * height * 4)
+    let lastReportedPct = -1
+
+    // 逐帧 seek + 渲染（每 30 帧 yield 一次，让 UI 线程呼吸）
     for (let frame = 0; frame < totalFrames; frame++) {
       const time = Math.min(frame * frameDuration, duration - 0.001)
       video.currentTime = time
@@ -95,10 +100,8 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
       // WebGL shader 渲染当前帧
       renderer.render(pipeline)
 
-      // 读取像素（WebGL 原点在左下，需要翻转 Y）
+      // 读取像素 → Y 翻转（复用 flipped 缓冲）
       const pixels = renderer.readAllPixels()
-      const stride = width * 4
-      const flipped = new Uint8Array(pixels.length)
       for (let y = 0; y < height; y++) {
         flipped.set(pixels.subarray(y * stride, (y + 1) * stride), (height - 1 - y) * stride)
       }
@@ -106,10 +109,17 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
       // IPC 发送到主进程 ffmpeg 编码器
       await window.luna.workspace.sendVideoExportFrame(exportId, flipped.buffer as ArrayBuffer)
 
-      // 进度
+      // 进度（每 2% 更新一次，防 React 频繁 re-render）
       const pct = Math.round(((frame + 1) / totalFrames) * 100)
-      onProgress?.(pct)
-      window.luna.log('info', `[videoExport] 帧 ${frame + 1}/${totalFrames} (${pct}%)`)
+      if (pct >= lastReportedPct + 2 || pct === 100) {
+        lastReportedPct = pct
+        onProgress?.(pct)
+      }
+
+      // 每 30 帧让出主线程，避免页面卡死
+      if (frame > 0 && frame % 30 === 0) {
+        await new Promise((r) => setTimeout(r, 0))
+      }
     }
   } finally {
     renderer.destroy()
