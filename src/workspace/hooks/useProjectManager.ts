@@ -51,19 +51,6 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
   const activeMedia = media[activeIndex] ?? null
   const editorOpen = Boolean(currentProject || transientMedia.length > 0)
 
-  logger.info(`[Workspace] useProjectManager init`, {
-    hasRouteProject: !!routeState?.project,
-    routeMediaPathsCount: routeState?.mediaPaths?.length ?? 0,
-    routeMediaCount: routeState?.media?.length ?? 0,
-    transientMediaCount: transientMedia.length,
-    currentProjectId: currentProject?.id ?? null,
-    currentProjectAssets: currentProject?.assets?.length ?? 0,
-    activeIndex,
-    hasActiveMedia: !!activeMedia,
-    editorOpen,
-    locationKey,
-  })
-
   useEffect(() => {
     setProjectLoading(true)
     window.luna.workspace.listProjects()

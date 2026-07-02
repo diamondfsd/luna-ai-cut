@@ -1,8 +1,11 @@
+import * as os from 'node:os'
+
 import { getSettings, saveSettings } from './fileService'
 import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
 import { DEFAULT_DEVICE, GO_ULTRA_DEVICE } from './deviceDefaults'
 import { GoUltraClient, AuthState } from './goUltraProtocol'
 import { logMainInfo, logMainWarn, logMainError } from './loggerService'
+import { scanWifiNetworks, connectWifiNetwork } from './wifiDebugService'
 import type { ConnectionStatus, DeviceConnectOptions, DeviceDefinition, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export interface DeviceProtocol {
@@ -15,6 +18,20 @@ export interface DeviceProtocol {
 }
 
 type ConnectionLostHandler = () => void
+
+/** 检查当前系统是否有 IP 在 192.168.42.x 网段（Luna 相机 WiFi 子网） */
+function isOnLunaSubnet(): boolean {
+  const interfaces = os.networkInterfaces()
+  for (const iface of Object.values(interfaces)) {
+    if (!iface) continue
+    for (const addr of iface) {
+      if (addr.family === 'IPv4' && addr.address.startsWith('192.168.42.')) {
+        return true
+      }
+    }
+  }
+  return false
+}
 
 function withDeviceInfo(status: ConnectionStatus, definition: DeviceDefinition): ConnectionStatus {
   return {
@@ -54,8 +71,50 @@ export class LunaUltraProtocol implements DeviceProtocol {
     logMainInfo(`[设备协议] 开始连接设备`, { device: this.definition.name, host })
     await this.wakeDevice()
     const client = this.clientFor(host, this.controlPortForHost(host))
-    const status = await client.checkStatus()
+
+    // ── 先判断当前 IP 是否在 Luna WiFi 网段（192.168.42.x）──
+    const onLunaSubnet = isOnLunaSubnet()
+    logMainInfo(`[设备协议] 网络探测`, { host, isOnLunaSubnet: onLunaSubnet })
+
+    if (host === this.definition.defaultHost && !onLunaSubnet) {
+      // 连接的是 Luna 默认 IP 但当前不在 Luna WiFi 网段 → 尝试搜索并连接 Luna WiFi
+      logMainInfo(`[设备协议] 当前不在 Luna 网段，尝试搜索 Luna WiFi`)
+      try {
+        const wifiResult = await scanWifiNetworks()
+        if (wifiResult.success && wifiResult.data) {
+          const lunaWifi = wifiResult.data.find((n) => /Luna/i.test(n.ssid ?? ''))
+          if (lunaWifi?.ssid) {
+            logMainInfo(`[设备协议] 发现 Luna WiFi`, { ssid: lunaWifi.ssid })
+            const connectResult = await connectWifiNetwork({ ssid: lunaWifi.ssid })
+            if (connectResult.success) {
+              logMainInfo(`[设备协议] 已连接 Luna WiFi`, { ssid: lunaWifi.ssid })
+
+              // 打印本地 IP，检查网关是否为目标主机
+              const connectedIp = connectResult.data?.ipAddress ?? null
+              const gateway = connectedIp ? connectedIp.replace(/\d+$/, '1') : null
+              logMainInfo(`[设备协议] WiFi 连接后网络信息`, { ssid: lunaWifi.ssid, localIp: connectedIp, gateway, targetHost: host, gatewayMatches: gateway === host })
+
+              // 等待网络就绪
+              await new Promise((resolve) => setTimeout(resolve, 3000))
+            } else {
+              logMainWarn(`[设备协议] Luna WiFi 连接失败`, { ssid: lunaWifi.ssid, message: connectResult.message })
+            }
+          } else {
+            logMainWarn(`[设备协议] 未扫描到 Luna WiFi`)
+          }
+        } else {
+          logMainWarn(`[设备协议] WiFi 扫描失败`, { message: wifiResult.message })
+        }
+      } catch (error) {
+        logMainError(`[设备协议] WiFi 扫描/连接异常`, { error: error instanceof Error ? error.message : String(error) })
+      }
+    }
+
+    // ── 端口检测（HTTP 80 + TCP 6666）──
+    logMainInfo(`[设备协议] 开始端口检测`, { host })
+    let status = await client.checkStatus()
     logMainInfo(`[设备协议] 端口检测结果`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
+
     if (!status.httpOk || !status.controlOk) {
       logMainWarn(`[设备协议] 端口检测未通过，放弃连接`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
       return withDeviceInfo(status, this.definition)
