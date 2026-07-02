@@ -51,14 +51,24 @@ void main() {
   vec3 detail = raw - blurred;
   vec3 c = applyDenoise(raw, blurred);
 
-  c = applyExposure(c);
-  c = applyBrightness(c);
+  // ── Color pipeline (matches ffmpeg filter order) ──
+  // 1. eq: gamma + brightness + contrast + saturation (combined LUT)
+  c = applyEq(c);
+  // 2. vibrance
+  c = applyVibrance(c);
+  // 3. colortemperature + tint
   c = applyWhiteBalance(c);
+  // 4. colorbalance (shadows/highlights)
   c = applyToneEqualizer(c);
-  c = applyLocalContrast(c, detail);
+  // 5. colorlevels
   c = applyLevels(c);
-  c = applyColorBalanceRgb(c);
+  // 6. curves
   c = applyCurve(c);
+  // 7. three-way color grading wheels
+  c = applyColorGrading(c);
+
+  // ── Detail (unsharp / hqdn3d) ──
+  c = applyLocalContrast(c, detail);
   c = applySharpen(c, detail);
 
   fragColor = vec4(sat(c), 1.0);
