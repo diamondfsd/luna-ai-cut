@@ -34,15 +34,16 @@ export function ExportProgressModal({
   return (
     <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
       <Tooltip content="导出记录">
-        <button className="nav-icon-button" onClick={() => setOpen(true)}>
+        <button className="nav-icon-button" onClick={() => {
+          setSeenCount(completedCount)
+          setOpen(true)
+        }}>
           {icon}
           {activeCount > 0 && <span className="export-breathing-dot" />}
         </button>
       </Tooltip>
-      {completedCount > 0 && (
-        <span className="download-badge-corner">
-          {completedCount > seenCount ? completedCount : 0}
-        </span>
+      {completedCount > seenCount && (
+        <span className="download-badge-corner">{completedCount - seenCount}</span>
       )}
 
       <Dialog
