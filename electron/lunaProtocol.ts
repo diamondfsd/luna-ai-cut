@@ -232,9 +232,7 @@ export class LunaClient {
         controlOk = true
       } catch (error) {
         controlError = error instanceof Error ? error.message : String(error)
-        if (httpOk) {
-          message = `控制端口不可用：${controlError}`
-        }
+        message = `控制端口不可用：${controlError}`
       }
     }
 
