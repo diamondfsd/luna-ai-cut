@@ -44,6 +44,7 @@ export function WorkspaceMediaStrip() {
   }, [setCurrentProject, setTransientMedia])
 
   function handleClick(index: number, event: MouseEvent): void {
+    containerRef.current?.focus({ preventScroll: true })
     if (event.shiftKey || event.ctrlKey || event.metaKey) {
       handleSelectionChange(index, { shift: event.shiftKey, ctrl: event.ctrlKey, meta: event.metaKey })
       return
@@ -54,6 +55,7 @@ export function WorkspaceMediaStrip() {
 
   function handlePointerDown(e: React.PointerEvent): void {
     if (e.button !== 0) return
+    containerRef.current?.focus({ preventScroll: true })
     if ((e.target as HTMLElement).closest('.workspace-thumb')) return
 
     dragStartRef.current = { x: e.clientX, y: e.clientY }
@@ -111,6 +113,7 @@ export function WorkspaceMediaStrip() {
     <div
       ref={containerRef}
       className="workspace-media-strip"
+      tabIndex={0}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

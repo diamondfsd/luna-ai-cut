@@ -500,6 +500,11 @@
   -webkit-user-select: none;
 }
 
+.workspace-media-strip:focus-visible {
+  outline: 1px solid rgba(0, 102, 204, 0.55);
+  outline-offset: -2px;
+}
+
 .workspace-thumb {
   box-sizing: border-box;
   flex: 0 0 90px;
