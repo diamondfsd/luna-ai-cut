@@ -46,12 +46,21 @@ function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, 
           requestedRef.current = true
           observer.disconnect()
           const localPath = file.downloadFilePath ?? file.localPath
-          if (!localPath) return
-          window.luna.resolveThumbnail(localPath, file.kind).then((url) => {
-            if (url) onThumbnailResolved(file.id, url)
-          }).catch(() => {
-            logger.warn('[缩略图条] resolveThumbnail 失败', { fileId: file.id, fileName: file.name })
-          })
+          if (localPath) {
+            // 有本地文件 → resolveThumbnail 直接生成缩略图
+            window.luna.resolveThumbnail(localPath, file.kind).then((url) => {
+              if (url) onThumbnailResolved(file.id, url)
+            }).catch(() => {
+              logger.warn('[缩略图条] resolveThumbnail 失败', { fileId: file.id, fileName: file.name })
+            })
+          } else {
+            // 无本地路径（相机文件）→ cacheFile 先下载再生成缩略图
+            window.luna.cacheFile(file).then((ok) => {
+              if (!ok) logger.warn('[缩略图条] cacheFile 返回 false', { fileId: file.id, fileName: file.name })
+            }).catch(() => {
+              logger.warn('[缩略图条] cacheFile 异常', { fileId: file.id, fileName: file.name })
+            })
+          }
         }
       },
       { rootMargin: '100px' },
@@ -74,7 +83,7 @@ function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, 
     >
       {isModified && <span className="preview-thumb-modified-dot" />}
       {showThumb ? (
-        <img src={thumbSrc} alt={file.name} loading="lazy" />
+        <img src={thumbSrc ?? undefined} alt={file.name} loading="lazy" />
       ) : (
         <span className="preview-thumb-placeholder">
           {file.kind === 'video' ? <Film size={14} /> : <FileQuestion size={14} />}
