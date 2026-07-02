@@ -85,6 +85,7 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
       if (isVid) {
         // 视频：ffmpeg 调色导出（传参数 + exportId 用于进度追踪）
         const { whiteBalanceMode, gradeShadowsHue, gradeMidHue, gradeHighlightsHue, curve, ...rest } = pipeline.color
+        toast.success('已开始导出视频')
         logger.info(`[Export] 开始导出视频`, { exportId, taskName, path: activeMedia.path, colorKeys: Object.keys(rest) })
         result = await window.luna.workspace.exportVideo(activeMedia.path, rest as Record<string, number>, { exportId, taskName })
         logger.info(`[Export] 视频导出完成`, { exportId, result })
