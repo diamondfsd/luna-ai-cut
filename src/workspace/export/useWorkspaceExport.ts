@@ -82,9 +82,9 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
       let result: { name: string; path: string }
 
       if (isVid) {
-        // 视频：ffmpeg 调色导出（只传数值参数）
+        // 视频：ffmpeg 调色导出（传参数 + exportId 用于进度追踪）
         const { whiteBalanceMode, gradeShadowsHue, gradeMidHue, gradeHighlightsHue, curve, ...rest } = pipeline.color
-        result = await window.luna.workspace.exportVideo(activeMedia.path, rest as Record<string, number>)
+        result = await window.luna.workspace.exportVideo(activeMedia.path, rest as Record<string, number>, { exportId, taskName })
         setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path, 'video')))
       } else {
         // 图片：捕获 canvas + 水印合成
