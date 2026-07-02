@@ -3,7 +3,7 @@ import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
-import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails } from './previewModalUtils'
+import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
 import { concreteWatermarkStyle } from '../shared/insta360DeviceProfiles'
 import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Dialog } from '../ui'
@@ -54,7 +54,9 @@ export function PreviewModal({
   const activeThumbRef = useRef<HTMLButtonElement | null>(null)
 
   // ── 从文件路径推导文件信息 ──
-  const internalFile = useMemo(() => filePathToLunaFile(filePath), [filePath])
+  const internalFile = useMemo(() => filePathToLunaFile(filePath, {
+    thumbnailUrl: thumbnailForPath(filePath),
+  }), [filePath])
   const file = propCurrentFile ?? internalFile
   const showWatermarkControls = propShowWatermarkControls ?? isDownloadsPage
 
@@ -232,7 +234,7 @@ export function PreviewModal({
       return
     }
     if (file.kind === 'image') {
-      const metaPath = preview?.cachedPath ?? downloadedPath
+      const metaPath = downloadedPath
       if (!metaPath) return
       setMetadataLoading(true)
       window.luna.getMediaMetadata(file, metaPath)
@@ -242,9 +244,8 @@ export function PreviewModal({
       return
     }
     if (file.kind === 'video' && isDownloaded) {
-      const localPath = file.downloadFilePath ?? file.localPath ?? completedDownloadPath
       setMetadataLoading(true)
-      window.luna.getMediaMetadata(file, localPath)
+      window.luna.getMediaMetadata(file, downloadedPath)
         .then((meta) => {
           setMediaMetadata(meta)
           const videoGroup = meta.groups.find((g) => g.name === '视频')
@@ -257,7 +258,7 @@ export function PreviewModal({
         .catch(() => {})
         .finally(() => setMetadataLoading(false))
     }
-  }, [inspectorOpen, file.id, file.kind, isDownloaded])
+  }, [inspectorOpen, file.id, file.kind, isDownloaded, downloadedPath])
 
   const handleImageLoaded = useCallback((image: HTMLImageElement) => {
     let histogram: MediaDetails['histogram'] = []

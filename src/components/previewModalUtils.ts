@@ -103,6 +103,12 @@ export function filePathToLunaFile(
   }
 }
 
+/** 根据文件路径生成 file:// 缩略图 URL */
+export function thumbnailForPath(filePath: string | null | undefined): string | null {
+  if (!filePath) return null
+  return filePathToPreviewUrl(filePath)
+}
+
 export function filePathToPreviewUrl(filePath: string | null | undefined): string | null {
   if (!filePath) return null
   if (filePath.startsWith('file://')) return filePath
