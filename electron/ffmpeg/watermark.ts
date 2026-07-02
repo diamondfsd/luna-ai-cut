@@ -1,18 +1,27 @@
 import * as path from 'node:path'
 import { app } from 'electron'
 import type { FfmpegModule, BuildContext, ModuleArgs } from './pipeline'
-import type { WatermarkPosition, WatermarkStyle } from '../../src/shared/types'
+import type { WatermarkPosition } from '../../src/shared/types'
 import { logExport } from '../loggerService'
-
-type ConcreteWatermarkStyle = Exclude<WatermarkStyle, 'auto'>
+import { deviceDefinitions } from '../deviceDefaults'
 
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
   return path.join(app.getAppPath(), 'src', 'assets', 'watermark')
 }
 
+/** 从设备配置构建 style → fileName 查找表 */
+const WATERMARK_FILE_NAMES = new Map<string, string>()
+for (const device of deviceDefinitions()) {
+  for (const ws of device.watermarkStyles ?? []) {
+    WATERMARK_FILE_NAMES.set(ws.value, ws.fileName)
+  }
+}
+
 function watermarkFileFor(style: string): string {
-  return path.join(getWatermarkDir(), `ic_watermark_${style}.png`)
+  const fileName = WATERMARK_FILE_NAMES.get(style)
+  if (!fileName) throw new Error(`未知水印样式: ${style}`)
+  return path.join(getWatermarkDir(), `${fileName}.png`)
 }
 
 /** 根据水印位置生成 FFmpeg overlay 表达式 */
@@ -28,7 +37,7 @@ export interface WatermarkOptions {
   /** 水印百分比（如 20 表示 20%） */
   watermarkPercent: number
   position: WatermarkPosition
-  style: ConcreteWatermarkStyle
+  style: string
 }
 
 /**

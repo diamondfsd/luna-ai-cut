@@ -1,10 +1,26 @@
+import goUltraConfig from '../../electron/deviceConfigs/go-ultra.json'
+import lunaUltraConfig from '../../electron/deviceConfigs/luna-ultra.json'
+
+interface WatermarkStyleEntry {
+  value: string
+  label: string
+  fileName: string
+}
+
+/** 所有设备配置中声明的水印样式（唯一数据源，与 electron/deviceConfigs 保持一致） */
+export const ALL_WATERMARK_STYLES: WatermarkStyleEntry[] = [
+  ...(goUltraConfig as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
+  ...(lunaUltraConfig as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
+]
+
 /**
- * 水印图片 src 映射 — 由文件命名约定自动构建：
+ * 水印图片 src 映射 — 由设备配置的 watermarkStyles[].fileName 驱动。
  *
- *    ic_watermark_{style}.png          → video
- *    ic_watermark_{style}_image.png    → image
+ *    {fileName}.png             → video
+ *    {fileName}_image.png       → image
  *
- * 新增水印只需在 src/assets/watermark/ 放对应图片，无需改代码。
+ * 新增水印只需在设备 JSON 的 watermarkStyles 配 { value, label, fileName }，
+ * 并在 src/assets/watermark/ 放对应图片文件。
  */
 const rawModules = import.meta.glob<string>('../assets/watermark/ic_watermark_*.png', {
   eager: true,
@@ -14,19 +30,14 @@ const rawModules = import.meta.glob<string>('../assets/watermark/ic_watermark_*.
 
 const SRC: Record<string, Record<'image' | 'video', string>> = {}
 
-for (const [filePath, url] of Object.entries(rawModules)) {
-  const fileName = filePath.split('/').pop()!
-  const baseName = fileName.replace(/\.png$/, '') // ic_watermark_go_ultra_image
-
-  const isImage = baseName.endsWith('_image')
-  const kind: 'image' | 'video' = isImage ? 'image' : 'video'
-
-  // 从文件名提取 style：去掉 ic_watermark_ 前缀和 _image 后缀
-  let style = baseName.replace(/^ic_watermark_/, '')
-  if (isImage) style = style.replace(/_image$/, '')
-
-  if (!SRC[style]) SRC[style] = { video: '', image: '' }
-  SRC[style][kind] = url
+for (const { value, fileName } of ALL_WATERMARK_STYLES) {
+  // 从 import.meta.glob 结果中匹配对应图片
+  const videoFile = `../assets/watermark/${fileName}.png`
+  const imageFile = `../assets/watermark/${fileName}_image.png`
+  SRC[value] = {
+    video: rawModules[videoFile] ?? '',
+    image: rawModules[imageFile] ?? '',
+  }
 }
 
 export const WM_SRC: Readonly<Record<string, Readonly<Record<'image' | 'video', string>>>> = SRC
