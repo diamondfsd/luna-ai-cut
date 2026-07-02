@@ -1,7 +1,8 @@
-import type { CSSProperties } from 'react'
-import { Check, FileQuestion, FolderOpen, Play, X } from 'lucide-react'
+import { type CSSProperties, useEffect, useRef } from 'react'
+import { Check, FileQuestion, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
-import { IconButton } from '../ui'
+import { IconButton, VideoPlayBadge } from '../ui'
+import { logger } from '../lib/rendererLogger'
 
 const THUMBNAIL_PLACEHOLDER =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect width="400" height="300" fill="%23f4f2ee"/%3E%3Cpath d="M168 116h64a16 16 0 0 1 16 16v36a16 16 0 0 1-16 16h-64a16 16 0 0 1-16-16v-36a16 16 0 0 1 16-16Z" fill="none" stroke="%23948f87" stroke-width="10"/%3E%3Ccircle cx="180" cy="142" r="10" fill="%23948f87"/%3E%3Cpath d="m164 174 34-32 20 19 16-14 18 27" fill="none" stroke="%23948f87" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/%3E%3C/svg%3E'
@@ -45,6 +46,8 @@ export function MediaCard({
   onThumbnailLoad,
   onThumbnailError,
 }: MediaCardProps) {
+  const cardRef = useRef<HTMLElement>(null)
+  const visibilityFiredRef = useRef(false)
   const localThumbnailUrl = file.thumbnailUrl
   const progressValue = progress?.status === 'done' || progress?.status === 'exists' ? 100 : progress?.percent ?? 0
   const progressStyle = { '--progress': `${progressValue * 3.6}deg` } as CSSProperties
@@ -55,8 +58,27 @@ export function MediaCard({
     progress && ['queued', 'downloading', 'failed'].includes(progress.status) && !downloadedPath,
   )
 
+  // 视口可见时再请求缩略图，避免清空缓存后瞬间发起大量 cacheFile IPC
+  useEffect(() => {
+    if (localThumbnailUrl || visibilityFiredRef.current) return
+    const el = cardRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          visibilityFiredRef.current = true
+          observer.disconnect()
+          onThumbnailLoad(file, downloadedPath)
+        }
+      },
+      { rootMargin: '300px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [file.id, file.thumbnailUrl])
+
   return (
-    <article className={selected ? 'media-card selected' : 'media-card'} data-file-id={file.id}>
+    <article ref={cardRef} className={selected ? 'media-card selected' : 'media-card'} data-file-id={file.id}>
       {showProgress && progress && (
         <button
           className={`download-state ${progress.status}`}
@@ -101,8 +123,19 @@ export function MediaCard({
             src={thumbnailSource}
             alt={file.name}
             loading="lazy"
-            onLoad={() => onThumbnailLoad(file, downloadedPath)}
-            onError={() => onThumbnailError(file)}
+            onLoad={() => {
+              // 占位 data-uri 加载不触发，由 IntersectionObserver 按需发起
+              if (!localThumbnailUrl) return
+              onThumbnailLoad(file, downloadedPath)
+            }}
+            onError={(e) => {
+              logger.warn(`[MediaCard] img onError`, {
+                fileId: file.id, fileName: file.name, kind: file.kind,
+                src: (e.currentTarget as HTMLImageElement).src?.slice(0, 200),
+                thumbnailUrl: file.thumbnailUrl?.slice(0, 200),
+              })
+              onThumbnailError(file)
+            }}
           />
         )}
         {!localThumbnailUrl && cacheFailed && <FileQuestion size={34} />}
@@ -117,11 +150,7 @@ export function MediaCard({
             </span>
           </span>
         ) : null}
-        {file.kind === 'video' && (
-          <span className="video-play-badge">
-            <Play size={14} fill="currentColor" />
-          </span>
-        )}
+        {file.kind === 'video' && <VideoPlayBadge size={26} />}
       </div>
     </article>
   )

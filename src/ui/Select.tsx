@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import * as RadixSelect from '@radix-ui/react-select'
+import { Select as RadixSelect } from 'radix-ui'
 import { Check, ChevronDown } from 'lucide-react'
 import { cx } from './utils'
 

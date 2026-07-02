@@ -14,32 +14,33 @@ import { localThumbnailUrl, safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
 import { getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
 import { applyWatermarkToVideo, applyVideoExportSettings } from './videoPipelineService'
+import { resolveWatermarkSettingsForFile } from './watermarkResolver'
 import type {
   LunaFile,
   PreviewResult,
   VideoExportSettings,
   WatermarkPosition,
   WatermarkSettings,
-  WatermarkStyle,
 } from '../src/shared/types'
+import { deviceDefinitions } from './deviceDefaults'
 
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
   return path.join(app.getAppPath(), 'src', 'assets', 'watermark')
 }
 
-function watermarkFileFor(kind: 'image' | 'video', style: WatermarkStyle): string {
-  const filenames: Record<WatermarkStyle, Record<'image' | 'video', string>> = {
-    luna_ultra: {
-      video: 'ic_watermark_luna_ultra.png',
-      image: 'ic_watermark_luna_ultra_image.png',
-    },
-    luna_ultra_cn: {
-      video: 'ic_watermark_luna_ultra_cn.png',
-      image: 'ic_watermark_luna_ultra_image_cn.png',
-    },
+/** 从设备配置构建 style → { video, image } 文件名查找表 */
+const WATERMARK_FILE_NAMES = new Map<string, { video: string; image: string }>()
+for (const device of deviceDefinitions()) {
+  for (const ws of device.watermarkStyles ?? []) {
+    WATERMARK_FILE_NAMES.set(ws.value, { video: ws.videoFileName, image: ws.imageFileName })
   }
-  return path.join(getWatermarkDir(), filenames[style][kind])
+}
+
+export function watermarkFileFor(kind: 'image' | 'video', style: string): string {
+  const pair = WATERMARK_FILE_NAMES.get(style)
+  if (!pair) throw new Error(`未知水印样式: ${style}`)
+  return path.join(getWatermarkDir(), `${pair[kind]}.png`)
 }
 
 /** 将 JPEG 文件中的 EXIF Orientation 标签设为 1（正常方向），保留其他所有 EXIF */
@@ -206,7 +207,7 @@ export async function applyWatermarkToImage(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: WatermarkStyle,
+  style: string,
 ): Promise<void> {
   return applyWatermarkToImageWithRef(inputPath, outputPath, watermarkPercent, position, style)
 }
@@ -221,7 +222,7 @@ async function applyWatermarkToImageWithRef(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: WatermarkStyle,
+  style: string,
   refWidth?: number,
   refHeight?: number,
 ): Promise<void> {
@@ -517,7 +518,7 @@ export async function applyWatermarkToLivePhoto(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: WatermarkStyle,
+  style: string,
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
   _videoExportSettings?: VideoExportSettings,
@@ -625,7 +626,8 @@ async function watermarkCachePath(sourcePath: string, settings: WatermarkSetting
   const dir = await previewCacheDir()
   const ext = path.extname(sourcePath)
   const base = path.basename(sourcePath, ext)
-  const params = `wm_${settings.style}_${settings.watermarkPercent}_${settings.position}`
+  const widthPct = 'widthPercent' in settings ? (settings as any).widthPercent : 15
+  const params = `wm_${settings.style}_${widthPct}_${settings.position}`
   return path.join(dir, `${safeName(base)}_${params}${ext}`)
 }
 
@@ -641,7 +643,8 @@ export async function previewWithWatermark(
     return { fileName: file.name, kind: file.kind, source: null, cachedPath: null, message: '水印未启用' }
   }
 
-  const destPath = await watermarkCachePath(sourcePath, settings)
+  const resolvedSettings = await resolveWatermarkSettingsForFile({ ...file, localPath: sourcePath }, settings)
+  const destPath = await watermarkCachePath(sourcePath, resolvedSettings)
   try {
     await fs.access(destPath)
     return { fileName: file.name, kind: file.kind, source: localThumbnailUrl(destPath), cachedPath: destPath }
@@ -652,9 +655,9 @@ export async function previewWithWatermark(
   try {
     await fs.mkdir(path.dirname(destPath), { recursive: true })
     if (file.kind === 'image') {
-      await applyWatermarkToImage(sourcePath, destPath, settings.watermarkPercent, settings.position, settings.style)
+      await applyWatermarkToImage(sourcePath, destPath, resolvedSettings.widthPercent, resolvedSettings.position, resolvedSettings.style)
     } else {
-      await applyWatermarkToVideo(sourcePath, destPath, settings.watermarkPercent, settings.position, settings.style)
+      await applyWatermarkToVideo(sourcePath, destPath, resolvedSettings.widthPercent, resolvedSettings.position, resolvedSettings.style)
     }
     return { fileName: file.name, kind: file.kind, source: localThumbnailUrl(destPath), cachedPath: destPath }
   } catch (error) {

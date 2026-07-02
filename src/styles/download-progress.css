@@ -39,6 +39,52 @@
   font-size: 11px;
 }
 
+/* ====== 导出进行中呼吸蓝点 ====== */
+.export-breathing-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 0 0 var(--blue);
+  animation: export-breathe 2s ease-in-out infinite;
+}
+
+@keyframes export-breathe {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(0, 102, 204, 0.4);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 0 4px rgba(0, 102, 204, 0);
+  }
+}
+
+/* ====== 导出按钮角标 ====== */
+.download-badge-corner {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px var(--canvas);
+}
+
 /* ====== 进度面板内容 ====== */
 .dl-overall {
   display: grid;
@@ -78,6 +124,64 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.dl-task-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dl-task-item {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dl-task-item:hover,
+.dl-task-item.active {
+  border-color: rgba(0, 102, 204, 0.28);
+  background: rgba(0, 102, 204, 0.06);
+}
+
+.dl-task-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dl-task-meta {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dl-task-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.dl-task-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 0.3s ease;
+}
+
+.dl-task-item.failed .dl-task-fill {
+  background: #ff3b30;
 }
 
 .dl-file-item {
@@ -208,6 +312,81 @@
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+/* 水印样式缩略图 — 纯图片无按钮样式 */
+.wm-style-selector.size-switch {
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.wm-style-selector.size-switch button {
+  flex: 0 0 calc(50% - 2px);
+  max-width: calc(50% - 2px);
+  overflow: hidden;
+  height: auto;
+  padding: 2px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1.5px solid transparent;
+  transition: border-color 0.15s;
+}
+.wm-style-selector.size-switch button:hover {
+  background: transparent;
+}
+.wm-style-selector.size-switch button.active {
+  background: transparent;
+  border-color: var(--blue);
+}
+.wm-style-thumb {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: brightness(0.85);
+  opacity: 0.7;
+  transition: opacity 0.15s, filter 0.15s;
+}
+button.active .wm-style-thumb {
+  filter: brightness(1);
+  opacity: 1;
+}
+
+/* 水印位置选择 — 3 列网格 */
+.wm-position-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: 100%;
+}
+.wm-pos-cell {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--parchment);
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  padding: 4px;
+  transition: background 0.12s, border-color 0.12s;
+  min-height: 36px;
+}
+.wm-pos-cell:hover {
+  background: #e8e8ed;
+}
+.wm-pos-cell.active {
+  background: #e0e7ff;
+  border-color: var(--blue);
+}
+.wm-pos-empty {
+  cursor: default;
+  pointer-events: none;
+  background: transparent;
+  border-color: transparent;
+}
+.wm-pos-frame {
+  width: 100%;
+  height: 100%;
+  color: var(--text);
 }
 
 /* ====== 导出错误提示 ====== */

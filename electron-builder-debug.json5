@@ -1,0 +1,49 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.diamondfsd.luna-device-debug",
+  "asar": true,
+  "asarUnpack": [],
+  "productName": "Luna Device Debug",
+  "directories": {
+    "output": "release-debug",
+    "buildResources": "build-debug"
+  },
+  "files": [
+    "dist-debug",
+    "dist-electron"
+  ],
+  "extraResources": [],
+  "mac": {
+    "icon": "build-debug/icon.icns",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["arm64", "x64"]
+      }
+    ],
+    "artifactName": "LunaDeviceDebug-Mac-${version}-${arch}.${ext}",
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "hardenedRuntime": true,
+    "extendInfo": {
+      "NSLocalNetworkUsageDescription": "Luna AI Cut 需要访问本地网络来连接 Insta360 相机（Luna / Go Ultra）"
+    }
+  },
+  "win": {
+    "icon": "build-debug/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "LunaDeviceDebug-Windows-${version}-Setup-${arch}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  }
+}

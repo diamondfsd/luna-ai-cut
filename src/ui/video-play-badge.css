@@ -1,0 +1,25 @@
+.video-play-badge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  pointer-events: none;
+}
+
+/* 在媒体库大卡片中稍大一点 */
+.media-card .video-play-badge {
+  right: 8px;
+  bottom: 8px;
+}
+
+/* 在缩略图条中稍小一点 */
+.preview-thumb-item .video-play-badge,
+.workspace-thumb .video-play-badge {
+  right: 3px;
+  bottom: 3px;
+}

@@ -31,6 +31,7 @@
 }
 
 .ui-accordion-title {
+  flex: 1;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted-dark);
@@ -44,6 +45,14 @@
   flex-shrink: 0;
   color: var(--muted);
   transition: transform 180ms ease;
+}
+
+/* 标题右侧操作按钮（如重置） */
+.ui-accordion-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
 }
 
 .ui-accordion[data-state="open"] .ui-accordion-chevron {
@@ -60,4 +69,13 @@
 /* 在导出面板内时，第一个 Accordion 去掉顶部 padding */
 .export-options-body .ui-accordion:first-child .ui-accordion-header {
   padding-top: 0;
+}
+
+/* 已修改标记圆点 */
+.ui-accordion-modified-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--blue);
 }

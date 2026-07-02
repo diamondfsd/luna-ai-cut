@@ -169,7 +169,8 @@ export class Insta360DebugAdapter implements IDeviceDebugProtocol {
     return {
       success: diagnostics.tcp.some((item) => item.label.includes('GET_FILE_LIST') && item.ok),
       files,
-      message: `TCP 文件列表返回 ${files.length} 个文件`,
+      http: diagnostics.http,
+      message: `TCP 文件列表返回 ${files.length} 个文件，HTTP 可达 ${diagnostics.http.filter((item) => item.ok).length}/${diagnostics.http.length}`,
     }
   }
 

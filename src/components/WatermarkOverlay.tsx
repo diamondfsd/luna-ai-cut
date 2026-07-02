@@ -1,21 +1,5 @@
-import type { WatermarkSettings, WatermarkStyle } from '../shared/types'
-
-import wmUltra from '../assets/watermark/ic_watermark_luna_ultra.png'
-import wmUltraCn from '../assets/watermark/ic_watermark_luna_ultra_cn.png'
-import wmUltraImage from '../assets/watermark/ic_watermark_luna_ultra_image.png'
-import wmUltraImageCn from '../assets/watermark/ic_watermark_luna_ultra_image_cn.png'
-
-/** 水印资源映射：按样式 + 媒体类型区分 */
-const WM_SRC: Record<WatermarkStyle, Record<'image' | 'video', string>> = {
-  luna_ultra: {
-    video: wmUltra,
-    image: wmUltraImage,
-  },
-  luna_ultra_cn: {
-    video: wmUltraCn,
-    image: wmUltraImageCn,
-  },
-}
+import type { WatermarkSettings } from '../shared/types'
+import { WM_SRC } from '../shared/watermarkAssets'
 
 interface WatermarkOverlayProps {
   settings: WatermarkSettings
@@ -34,6 +18,7 @@ interface WatermarkOverlayProps {
  * 调用方需传入已算好的像素坐标（px），确保预览与导出视觉一致。
  */
 export function WatermarkOverlay({ settings, kind, x, y, width, height, className }: WatermarkOverlayProps) {
+  // style 应已由调用方解析为具体值（如通过 concreteWatermarkStyle）
   const src = WM_SRC[settings.style]?.[kind]
   if (!settings.enabled || !src) return null
 

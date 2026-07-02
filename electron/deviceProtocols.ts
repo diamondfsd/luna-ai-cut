@@ -1,7 +1,8 @@
 import { getSettings, saveSettings } from './fileService'
 import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
-import { DEFAULT_DEVICE } from './deviceDefaults'
-import { logMainInfo, logMainWarn } from './loggerService'
+import { DEFAULT_DEVICE, GO_ULTRA_DEVICE } from './deviceDefaults'
+import { GoUltraClient, AuthState } from './goUltraProtocol'
+import { logMainInfo, logMainWarn, logMainError } from './loggerService'
 import type { ConnectionStatus, DeviceConnectOptions, DeviceDefinition, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export interface DeviceProtocol {
@@ -22,6 +23,10 @@ function withDeviceInfo(status: ConnectionStatus, definition: DeviceDefinition):
     deviceName: status.deviceInfo?.deviceName ?? definition.name,
   }
 }
+
+// ============================================================
+// Luna Ultra 协议实现
+// ============================================================
 
 export class LunaUltraProtocol implements DeviceProtocol {
   readonly definition = DEFAULT_DEVICE
@@ -49,11 +54,23 @@ export class LunaUltraProtocol implements DeviceProtocol {
     logMainInfo(`[设备协议] 开始连接设备`, { device: this.definition.name, host })
     await this.wakeDevice()
     const client = this.clientFor(host, this.controlPortForHost(host))
-    const status = await client.checkStatus()
-    logMainInfo(`[设备协议] 端口检测结果`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
-    if (!status.httpOk || !status.controlOk) {
-      logMainWarn(`[设备协议] 端口检测未通过，放弃连接`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
-      return withDeviceInfo(status, this.definition)
+
+    // 重试检测端口，最多 6 次共约 15 秒，给相机 WiFi 路由建立留足时间
+    let status: ConnectionStatus | null = null
+    const MAX_RETRIES = 6
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
+      status = await client.checkStatus()
+      if (status.controlOk) break
+      if (attempt < MAX_RETRIES - 1) {
+        logMainWarn(`[设备协议] 端口检测第 ${attempt + 1}/${MAX_RETRIES} 次未通过，${attempt === 0 ? '800ms' : '3s'} 后重试`, { host })
+        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 800 : 3000))
+      }
+    }
+
+    logMainInfo(`[设备协议] 端口检测结果`, { host, httpOk: status?.httpOk, controlOk: status?.controlOk })
+    if (!status?.controlOk) {
+      logMainWarn(`[设备协议] 控制端口检测未通过，放弃连接`, { host, controlOk: status?.controlOk })
+      return withDeviceInfo(status ?? { host, httpOk: false, controlOk: false, message: '控制端口不可用' }, this.definition)
     }
 
     await client.connect()
@@ -94,6 +111,137 @@ export class LunaUltraProtocol implements DeviceProtocol {
     client.close()
   }
 }
+
+// ============================================================
+// Go Ultra 协议实现
+// ============================================================
+
+export class GoUltraProtocol implements DeviceProtocol {
+  readonly definition = GO_ULTRA_DEVICE
+
+  constructor(
+    private readonly clientFor: (host?: string, port?: number) => GoUltraClient,
+    private readonly onConnectionLost?: ConnectionLostHandler,
+  ) {}
+
+  async wakeDevice(): Promise<void> {
+    // Go Ultra 唤醒逻辑（预留）
+  }
+
+  async checkStatus(host?: string): Promise<ConnectionStatus> {
+    const settings = await getSettings()
+    const normalizedHost = host || settings.cameraHost || this.definition.defaultHost
+    const client = this.clientFor(normalizedHost)
+    return withDeviceInfo(await client.checkStatus(), this.definition)
+  }
+
+  async connect(options?: DeviceConnectOptions): Promise<ConnectionStatus> {
+    const settings = await getSettings()
+    const host = options?.host || settings.cameraHost || this.definition.defaultHost
+    logMainInfo(`[GoUltraProtocol] 开始连接`, { device: this.definition.name, host })
+
+    // 端口检测
+    const client = this.clientFor(host)
+    const status = await client.checkStatus()
+    logMainInfo(`[GoUltraProtocol] 端口检测结果`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
+
+    if (!status.httpOk || !status.controlOk) {
+      logMainWarn(`[GoUltraProtocol] 端口检测未通过`, { host })
+      return withDeviceInfo(status, this.definition)
+    }
+
+    try {
+      // TCP 连接 + 基础 UCD2 认证 + 授权流程
+      client.onConnectionLost = this.onConnectionLost ?? null
+      await client.connect()
+      logMainInfo(`[GoUltraProtocol] 基础连接完成`, { host })
+
+      // 等待授权结果
+      if (client.authState === AuthState.NEED_CAMERA_CONFIRM) {
+        logMainInfo(`[GoUltraProtocol] 请在 Go Ultra 相机上确认授权`, { host })
+      }
+
+      // 等待授权（非阻塞）
+      client.startKeepAlive()
+
+      await saveSettings({
+        activeDeviceId: this.definition.id,
+        cameraHost: host,
+      })
+
+      return withDeviceInfo(
+        { ...status, message: `已连接 ${this.definition.name}${client.authState === AuthState.NEED_CAMERA_CONFIRM ? '（等待相机确认授权）' : ''}` },
+        this.definition,
+      )
+    } catch (error) {
+      logMainError(`[GoUltraProtocol] 连接失败`, { host, error: String(error) })
+      client.close()
+      throw error
+    }
+  }
+
+  async listFiles(options?: DeviceConnectOptions): Promise<LunaFile[]> {
+    const settings = await getSettings()
+    const host = options?.host || settings.cameraHost || this.definition.defaultHost
+    logMainInfo(`[GoUltraProtocol] 开始读取文件列表`, { host })
+
+    // 确保授权完成
+    const client = this.clientFor(host)
+    if (client.authState !== AuthState.AUTHORIZED) {
+      // 尝试等待授权
+      try {
+        const authorized = await client.waitForAuthorization(30000)
+        if (!authorized) {
+          throw new Error('Go Ultra 未授权，无法读取文件列表。请在相机屏幕上确认授权。')
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('超时')) {
+          throw new Error('Go Ultra 授权超时，请在相机屏幕上确认授权后重试。')
+        }
+        throw error
+      }
+    }
+
+    const files = await client.listFiles()
+    return files.map((f) => ({
+      ...f,
+      id: `go-ultra:${f.name}`,
+      storageId: 'internal',
+    }))
+  }
+
+  async disconnect(host?: string): Promise<void> {
+    const normalizedHost = host ?? GO_ULTRA_DEVICE.defaultHost
+    logMainInfo(`[GoUltraProtocol] 断开连接`, { host: normalizedHost })
+    const client = this.clientFor(normalizedHost)
+    client.stopKeepAlive()
+    client.close()
+  }
+}
+
+// ============================================================
+// 根据设备 ID 获取协议实现
+// ============================================================
+
+export function protocolForDevice(
+  deviceId: string,
+  lunaClientFactory: (host?: string, controlPort?: number) => LunaClient,
+  goUltraClientFactory: (host?: string, port?: number) => GoUltraClient,
+  controlPortForHost: (host: string) => number,
+  onConnectionLost?: ConnectionLostHandler,
+): DeviceProtocol {
+  switch (deviceId) {
+    case 'go-ultra':
+      return new GoUltraProtocol(goUltraClientFactory, onConnectionLost)
+    case 'luna-ultra':
+    default:
+      return new LunaUltraProtocol(lunaClientFactory, controlPortForHost, onConnectionLost)
+  }
+}
+
+// ============================================================
+// 公共辅助函数
+// ============================================================
 
 async function listStorageFiles(client: LunaClient, storages: DeviceStorageOption[]): Promise<LunaFile[]> {
   const results = await Promise.allSettled(storages.map(async (storage) => {

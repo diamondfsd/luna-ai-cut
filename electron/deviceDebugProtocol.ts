@@ -37,6 +37,14 @@ export interface DebugAuthResult {
 export interface DebugFileListResult {
   success: boolean
   files: Array<{ name: string; size: number | null; url: string }>
+  http?: Array<{
+    path: string
+    ok: boolean
+    status?: number
+    server?: string | null
+    contentType?: string | null
+    error?: string
+  }>
   message: string
 }
 

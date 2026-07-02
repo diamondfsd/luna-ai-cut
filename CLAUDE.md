@@ -1,1 +1,1 @@
-@AGENTS.md
+# 必须读取 `AGENTS.md` 的内容，再进行任务

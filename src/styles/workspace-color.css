@@ -1,0 +1,188 @@
+.workspace-color-modules {
+  display: grid;
+  gap: 0;
+}
+
+.workspace-panel-tabs {
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.workspace-inline-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.workspace-color-slider .workspace-slider-track {
+  background: var(--workspace-slider-color);
+}
+
+.workspace-color-slider .workspace-slider-fill {
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.workspace-curve-toolbar,
+.workspace-color-swatches,
+.workspace-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workspace-mini-choice.ui-btn {
+  height: 28px;
+  min-width: 34px;
+  padding: 0 10px;
+  border-color: var(--hairline);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.workspace-mini-choice.ui-btn.active {
+  border-color: rgba(0, 102, 204, 0.42);
+  background: rgba(0, 102, 204, 0.08);
+  color: var(--blue);
+}
+
+.workspace-curve-preview {
+  height: 160px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #81878c, #101316);
+  border: 1px solid var(--hairline);
+}
+
+.workspace-curve-preview svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.workspace-curve-grid {
+  stroke: rgba(255, 255, 255, 0.13);
+  stroke-width: 1;
+}
+
+.workspace-curve-fill {
+  fill: rgba(255, 255, 255, 0.42);
+}
+
+.workspace-curve-line {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.workspace-curve-preview circle {
+  fill: #050505;
+  stroke: #fff;
+  stroke-width: 1.2;
+}
+
+.workspace-color-wheel {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  border: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #fff 0, rgba(255, 255, 255, 0.88) 18%, rgba(255, 255, 255, 0) 72%),
+    conic-gradient(from 90deg, #ff3b30, #ffd60a, #30d158, #64d2ff, #0a84ff, #bf5af2, #ff2d9a, #ff3b30);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.workspace-color-wheel-mini {
+  width: 76px;
+  height: 76px;
+}
+
+.workspace-color-wheel-marker {
+  position: absolute;
+  left: calc(50% - 5px);
+  top: calc(50% - 5px);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+.workspace-editor-wheel-row {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.workspace-editor-color-readout {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace-editor-color-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace-editor-color-chip-row span {
+  width: 54px;
+  height: 32px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+}
+
+.workspace-editor-color-readout strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.workspace-grading-wheels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  text-align: center;
+}
+
+.workspace-grading-wheels > div {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.workspace-color-swatches {
+  margin-bottom: 8px;
+}
+
+.workspace-color-swatches button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.workspace-color-swatches button.active {
+  border-color: #ff453a;
+  box-shadow: inset 0 0 0 2px #fff;
+}

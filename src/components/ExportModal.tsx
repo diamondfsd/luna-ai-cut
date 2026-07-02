@@ -1,19 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ImagePlus, Monitor, Video, X } from 'lucide-react'
 
 import { MediaPreviewPanel } from './MediaPreviewPanel'
 import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToPreviewUrl } from './previewModalUtils'
-import type { DeviceWatermarkStyleConfig, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
-import { Accordion, BaseModal, Button, IconButton, Input, Select } from '../ui'
+import { Accordion, Button, Dialog, IconButton, Input, Select } from '../ui'
 import '../styles/modal.css'
 import '../styles/export-modal.css'
 
 interface ExportModalProps {
   files: LunaFile[]
   watermarkSettings: WatermarkSettingsType
-  watermarkStyleOptions?: DeviceWatermarkStyleConfig[]
   exporting: boolean
   onClose: () => void
   onConfirm: (settings: WatermarkSettingsType, videoSettings: VideoExportSettings) => void
@@ -49,7 +48,6 @@ const QUALITY_OPTIONS = [
 export function ExportModal({
   files,
   watermarkSettings,
-  watermarkStyleOptions,
   exporting,
   onClose,
   onConfirm,
@@ -58,6 +56,7 @@ export function ExportModal({
   const [currentFile, setCurrentFile] = useState<LunaFile>(files[0])
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
   const [customBitrateText, setCustomBitrateText] = useState('')
+  const lastClickRef = useRef(0)
 
   const displaySource = useMemo(() => {
     const localPath = currentFile.downloadFilePath ?? currentFile.localPath
@@ -94,7 +93,7 @@ export function ExportModal({
   }
 
   return (
-    <BaseModal onClose={onClose}>
+    <Dialog open variant="fullscreen" onOpenChange={(o) => !o && onClose()}>
       <section className="preview-modal">
         <header>
           <div>
@@ -129,7 +128,7 @@ export function ExportModal({
                 <WatermarkSettings
                   settings={watermarkSettings}
                   onChange={onSettingsChange}
-                  styleOptions={watermarkStyleOptions}
+                  filePath={currentFile.downloadFilePath ?? currentFile.localPath ?? undefined}
                   showToggle={false}
                 />
               </Accordion>
@@ -195,8 +194,12 @@ export function ExportModal({
               <Button
                 variant="primary"
                 size="compact"
-                disabled={exporting}
-                onClick={() => onConfirm(watermarkSettings, videoSettings)}
+                onClick={() => {
+                  const now = Date.now()
+                  if (now - lastClickRef.current < 1000) return
+                  lastClickRef.current = now
+                  onConfirm(watermarkSettings, videoSettings)
+                }}
               >
                 {exporting ? '导出中...' : '确认导出'}
               </Button>
@@ -204,6 +207,6 @@ export function ExportModal({
           </div>
         </div>
       </section>
-    </BaseModal>
+    </Dialog>
   )
 }

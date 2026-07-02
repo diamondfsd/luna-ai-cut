@@ -3,7 +3,9 @@ import { ChevronLeft, ChevronRight, FileQuestion, Loader2 } from 'lucide-react'
 
 import { LivePhotoPlayer } from './LivePhotoPlayer'
 import { WatermarkOverlay } from './WatermarkOverlay'
-import { getContainRect, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
+import { getContainRect } from '../shared/watermark'
+import { resolveWatermarkRatios } from '../shared/watermark/layoutConfig'
+import { loadWatermarkImage } from '../shared/watermarkAssets'
 import type { LunaFile, WatermarkSettings } from '../shared/types'
 
 interface PreviewStageProps {
@@ -46,14 +48,15 @@ interface WmLayout {
   height: number
 }
 
-/** 水印图片原始尺寸（项目内固定） */
-const WM_IMAGE = { width: 2560, height: 400 }
-
 /**
- * 计算水印在屏幕上的像素位置。
+ * 根据原版 App 的水印配置表计算水印在屏幕上的像素位置。
  *
- * 策略：与后端一致 —— 水印尺寸用传感器最长边（对齐像素），
- * 边距/位置用展示方向尺寸，最后缩放到屏幕坐标。
+ * 策略：
+ * 1. 根据设备 ID + 水印样式 + 内容宽高 → 查表获取三个比率
+ * 2. 水印宽度 = widthRatio × sensorLongestSide（与后端一致）
+ * 3. X = xRatio × displayWidth（直接使用表值）
+ * 4. Bottom: Y = displayHeight - waterHeight - yRatio × displayHeight
+ *    Top: Y = (1 - yRatio) × displayHeight
  */
 function computeWatermarkLayout(
   containerW: number,
@@ -61,6 +64,9 @@ function computeWatermarkLayout(
   contentW: number,
   contentH: number,
   settings: WatermarkSettings,
+  wmImageW: number,
+  wmImageH: number,
+  sourceDeviceId?: string | null,
 ): WmLayout | null {
   if (!settings.enabled || containerW <= 0 || containerH <= 0 || contentW <= 0 || contentH <= 0) {
     return null
@@ -68,24 +74,22 @@ function computeWatermarkLayout(
   const rect = getContainRect(containerW, containerH, contentW, contentH)
   if (rect.width <= 0 || rect.height <= 0) return null
 
-  // ── 图片坐标空间计算水印 ──
-  // 水印尺寸用传感器最长边（与后端一致）
+  // 查表获取比率
+  const ratios = resolveWatermarkRatios(sourceDeviceId, settings.style, contentW, contentH, settings.position)
+  if (!ratios) return null
+
   const sensorW = Math.max(contentW, contentH)
-  const wmAspect = WM_IMAGE.height / WM_IMAGE.width
-  const pct = settings.watermarkPercent / 100
-  const targetW = Math.min(Math.round(sensorW * pct), WM_IMAGE.width)
+  const wmAspect = wmImageH / wmImageW
+  const targetW = Math.min(Math.round(sensorW * ratios.widthRatio), wmImageW)
   const targetH = Math.round(targetW * wmAspect)
 
-  // 边距用展示方向尺寸
-  const marginX = Math.round(contentW * WATERMARK_MARGIN_X_RATIO)
-  const marginY = Math.round(contentH * WATERMARK_MARGIN_Y_RATIO)
+  const [vPos] = settings.position.split('-') as ['top' | 'bottom']
 
-  // 位置用展示方向坐标
-  const [vPos, hPos] = settings.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
-  const imgX = hPos === 'left' ? marginX
-    : hPos === 'right' ? contentW - targetW - marginX
-    : Math.round((contentW - targetW) / 2)
-  const imgY = vPos === 'bottom' ? contentH - targetH - marginY : marginY
+  // 统一处理：xRatio 直接从左边缘，yRatio 根据垂直位置转换
+  const imgX = Math.round(ratios.xRatio * contentW)
+  const imgY = vPos === 'bottom'
+    ? contentH - targetH - Math.round(ratios.yRatio * contentH)
+    : Math.round((1 - ratios.yRatio) * contentH)
 
   // ── 缩放到屏幕坐标 ──
   const scale = rect.scale
@@ -95,18 +99,6 @@ function computeWatermarkLayout(
     width: Math.round(targetW * scale),
     height: Math.round(targetH * scale),
   }
-
-  // eslint-disable-next-line no-console
-  console.log('[wm preview]', {
-    stage: `${containerW}×${containerH}`,
-    natural: `${contentW}×${contentH}`,
-    sensorW,
-    containRect: `${Math.round(rect.width)}×${Math.round(rect.height)}`,
-    scale: scale.toFixed(4),
-    imgCoord: `(${imgX}, ${imgY}) ${targetW}×${targetH}`,
-    screenCoord: `(${result.x}, ${result.y}) ${result.width}×${result.height}`,
-    settings: `${settings.watermarkPercent}% / ${settings.position}`,
-  })
 
   return result
 }
@@ -175,12 +167,27 @@ export function PreviewStage({
     handleVideoLoaded(video)
   }, [handleVideoLoaded])
 
-  // 计算水印布局
-  const wmLayout = computeWatermarkLayout(
-    stageSize.width, stageSize.height,
-    contentSize.width, contentSize.height,
-    watermarkSettings,
-  )
+  // watermarkSettings.style 已是具体样式（已移除 'auto'）
+  const wmKind = file.kind === 'video' ? 'video' : 'image'
+
+  // 异步加载水印图片实际像素尺寸（根据文件类型选择 image/video 水印）
+  const [wmSize, setWmSize] = useState<{ width: number; height: number } | null>(null)
+  useEffect(() => {
+    if (!watermarkSettings.enabled) {
+      setWmSize(null)
+      return
+    }
+    let cancelled = false
+    loadWatermarkImage(watermarkSettings.style, wmKind).then((info) => {
+      if (!cancelled) setWmSize(info)
+    }).catch(() => setWmSize(null))
+    return () => { cancelled = true }
+  }, [watermarkSettings.enabled, watermarkSettings.style, wmKind])
+
+  // 计算水印布局（使用查表法，传入设备 ID）
+  const wmLayout = wmSize
+    ? computeWatermarkLayout(stageSize.width, stageSize.height, contentSize.width, contentSize.height, watermarkSettings, wmSize.width, wmSize.height, file.sourceDeviceId)
+    : null
 
   return (
     <div className="preview-stage" ref={stageRef}>

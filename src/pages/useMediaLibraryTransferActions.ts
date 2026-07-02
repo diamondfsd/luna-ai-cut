@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react'
 
 import { logger, logExport } from '../lib/rendererLogger'
 import type { AppSettings, DownloadProgress, ExportProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { createDefaultPipeline } from '../workspace/shared/editPipeline'
 import type { ViewMode } from './useMediaLibraryController'
 
 interface TransferActionProps {
@@ -31,6 +32,40 @@ interface TransferActionProps {
 
 function markDownloaded(file: LunaFile, path: string): LunaFile {
   return { ...file, localPath: path, downloadFilePath: path }
+}
+
+function exportSourcePath(file: LunaFile): string | null {
+  return file.downloadFilePath ?? file.localPath ?? null
+}
+
+function exportSnapshot(file: LunaFile, exportedPath?: string): LunaFile {
+  const path = exportedPath ?? exportSourcePath(file) ?? file.sourceUrl
+  return {
+    ...file,
+    sourceUrl: path,
+    url: path,
+    downloadFilePath: exportedPath ?? file.downloadFilePath,
+    localPath: exportedPath ?? file.localPath,
+  }
+}
+
+function isVideoFile(file: LunaFile): boolean {
+  return file.kind === 'video' || file.kind === 'lrv'
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++
+      await worker(items[index], index)
+    }
+  })
+  await Promise.all(workers)
 }
 
 export function useMediaLibraryTransferActions({
@@ -208,7 +243,7 @@ export function useMediaLibraryTransferActions({
     setDownloadQueue((current) => (current.some((item) => item.name === file.name) ? current : [...current, file]))
   }
 
-  async function exportLocalFiles(filesToExport: LunaFile[], watermarkSettings: WatermarkSettingsType, videoExportSettings?: VideoExportSettings): Promise<void> {
+  async function exportLocalFiles(filesToExport: LunaFile[], watermarkSettings: WatermarkSettingsType, _videoExportSettings?: VideoExportSettings): Promise<void> {
     if (filesToExport.length === 0) return
     setExportError(null)
     setExporting(true)
@@ -223,17 +258,43 @@ export function useMediaLibraryTransferActions({
         fileNames: filesToExport.map(f => f.downloadName || f.name),
         exportDir: settings.exportDir,
         watermarkSettings,
-        videoExportSettings,
       })
       const batchTs = Date.now()
+      const taskName = filesToExport.length === 1
+        ? `${filesToExport[0].downloadName || filesToExport[0].name}导出`
+        : `${filesToExport.length}个文件导出`
+      const exportEntries = filesToExport.map((file, index) => {
+        const exportName = file.downloadName || file.name
+        return {
+          file,
+          index,
+          exportName,
+          exportId: `${exportName}_${batchTs}_${index}`,
+        }
+      })
+      const runnableEntries = exportEntries.filter(({ file }) => exportSourcePath(file))
+      const missingEntries = exportEntries.filter(({ file }) => !exportSourcePath(file))
+      if (runnableEntries.length === 0) {
+        setExportError('本地文件不存在')
+        return
+      }
+      const task = await window.luna.workspace.createExportTask(
+        taskName,
+        runnableEntries.map(({ file, exportName, exportId }) => ({
+          exportId,
+          fileName: exportName,
+          kind: isVideoFile(file) ? 'video' : 'image',
+        })),
+      )
       const snapshots = new Map<string, LunaFile>()
       const queued = new Map<string, ExportProgress>()
-      filesToExport.forEach((file, index) => {
-        const exportName = file.downloadName || file.name
-        const exportId = `${exportName}_${batchTs}_${index}`
-        snapshots.set(exportId, file)
+      exportEntries.forEach(({ file, index, exportName, exportId }) => {
+        snapshots.set(exportId, exportSnapshot(file))
         queued.set(exportId, {
           exportId,
+          taskId: task.id,
+          taskName,
+          createdAt: batchTs,
           fileName: exportName,
           index,
           totalFiles: filesToExport.length,
@@ -241,32 +302,116 @@ export function useMediaLibraryTransferActions({
           status: 'queued',
         })
       })
-      setExportSnapshots(snapshots)
-      setExportProgress(queued)
-      const payload = filesToExport.map((file, index) => {
-        const exportName = file.downloadName || file.name
-        return {
-          name: exportName,
-          kind: file.kind,
-          localPath: file.downloadFilePath ?? file.localPath,
-          exportId: `${exportName}_${batchTs}_${index}`,
-        }
-      })
-      const result = await window.luna.exportFiles(payload, settings.exportDir, watermarkSettings, videoExportSettings)
-      if (result.completed.length > 0) {
-        logExport('导出完成', {
-          completedCount: result.completed.length,
-          files: result.completed,
+      setExportSnapshots((current) => new Map([...current, ...snapshots]))
+      setExportProgress((current) => new Map([...current, ...queued]))
+
+      const completed: Array<{ name: string; path: string }> = []
+      const failed: Array<{ name: string; error: string }> = missingEntries.map(({ exportName }) => ({
+        name: exportName,
+        error: '本地文件不存在',
+      }))
+      if (missingEntries.length > 0) {
+        setExportProgress((current) => {
+          const next = new Map(current)
+          for (const { index, exportName, exportId } of missingEntries) {
+            next.set(exportId, {
+              exportId,
+              taskName,
+              createdAt: batchTs,
+              fileName: exportName,
+              index,
+              totalFiles: filesToExport.length,
+              percent: null,
+              status: 'failed',
+              error: '本地文件不存在',
+            })
+          }
+          return next
         })
       }
-      if (result.failed.length > 0) {
-        const firstError = result.failed[0]
-        setExportError(`${firstError.name}: ${firstError.error}`)
-        logger.error('导出文件失败', { files: result.failed })
+
+      const imageEntries = runnableEntries.filter(({ file }) => !isVideoFile(file))
+      const videoEntries = runnableEntries.filter(({ file }) => isVideoFile(file))
+      const exportOne = async ({ file, index, exportName, exportId }: typeof exportEntries[number]) => {
+        const sourcePath = exportSourcePath(file)!
+
+        const pipeline = createDefaultPipeline()
+        pipeline.watermark = { ...watermarkSettings }
+
+        try {
+          setExportProgress((current) => new Map(current).set(exportId, {
+            exportId,
+            taskId: task.id,
+            taskName,
+            createdAt: batchTs,
+            fileName: exportName,
+            index,
+            totalFiles: filesToExport.length,
+            percent: 0,
+            status: 'exporting',
+          }))
+
+          const result = await window.luna.workspace.exportFFmpeg(
+            sourcePath,
+            JSON.parse(JSON.stringify(pipeline)),
+            {
+              exportId,
+              taskName,
+              taskId: task.id,
+              fileName: exportName,
+              index,
+              totalFiles: filesToExport.length,
+              createdAt: batchTs,
+            },
+          )
+
+          completed.push({ name: exportName, path: result.path })
+          setExportSnapshots((current) => new Map(current).set(exportId, exportSnapshot(file, result.path)))
+          setExportProgress((current) => new Map(current).set(exportId, {
+            exportId,
+            taskId: task.id,
+            taskName,
+            createdAt: batchTs,
+            fileName: exportName,
+            index,
+            totalFiles: filesToExport.length,
+            percent: 100,
+            status: 'done',
+            destinationPath: result.path,
+          }))
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          failed.push({ name: exportName, error: message })
+          setExportProgress((current) => new Map(current).set(exportId, {
+            exportId,
+            taskId: task.id,
+            taskName,
+            createdAt: batchTs,
+            fileName: exportName,
+            index,
+            totalFiles: filesToExport.length,
+            percent: null,
+            status: 'failed',
+            error: message,
+          }))
+        }
       }
-      if (result.canceled.length > 0) {
-        setExportError('导出已取消')
-        logExport('导出已取消', { files: result.canceled })
+
+      await Promise.all([
+        runWithConcurrency(imageEntries, 4, exportOne),
+        runWithConcurrency(videoEntries, 1, exportOne),
+      ])
+
+      if (completed.length > 0) {
+        logExport('导出完成', {
+          completedCount: completed.length,
+          files: completed,
+        })
+      }
+      if (failed.length > 0) {
+        const firstError = failed[0]
+        setExportError(`${firstError.name}: ${firstError.error}`)
+        logger.error('导出文件失败', { files: failed })
       }
       setSelected(new Set())
       await loadExportLibrary()
