@@ -181,6 +181,9 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     setImageLoading(true)
     setImageError(null)
 
+    // 清除旧纹理，避免切换时旧纹理 + 新参数渲染
+    rendererRef.current?.clearSource()
+
     const filePath = activeMedia.path
     const isVid = isVideoPath(filePath)
 
@@ -215,12 +218,12 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
         setRenderKey((k) => k + 1)
       }
 
-      // loadedmetadata 是最关键的就绪信号（宽度/高度已确定）
+      // loadedmetadata：记录时长，但不触发渲染（此时尚无解码帧）
       video.addEventListener('loadedmetadata', () => {
         clearTimeout(timeoutId)
-        onVideoReady()
+        if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
       }, { once: true })
-      // canplay 作为后备
+      // canplay：确保第一帧已解码，此时才绑定纹理到 WebGL
       video.addEventListener('canplay', onVideoReady, { once: true })
 
       video.addEventListener('timeupdate', () => {

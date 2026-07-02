@@ -25,7 +25,7 @@ export function WorkspaceProjectPicker() {
         {projects.map((project) => (
           <button key={project.id} className="workspace-project-card" type="button" onClick={() => openProject(project)}>
             <span className="workspace-project-folder">
-              <Folder size={72} strokeWidth={1.5} />
+              <Folder size={96} strokeWidth={1.2} />
               <span className="workspace-project-previews">
                 {project.assets.slice(0, 4).map((asset: any) => (
                   asset.thumbnailUrl ? <img key={asset.id} src={asset.thumbnailUrl} alt="" onError={() => handleThumbError(asset.thumbnailUrl, project.name)} /> : <span key={asset.id}><ImageIcon size={16} /></span>
