@@ -170,10 +170,12 @@ export function PreviewModal({
   // Load metadata when preview is ready (images) or after download (videos)
   useEffect(() => {
     if (file.kind === 'image') {
-      if (!preview?.cachedPath) return
+      // 优先用预览缓存路径，其次用本地文件路径（导出列表预览等场景）
+      const metaPath = preview?.cachedPath ?? downloadedPath
+      if (!metaPath) return
       setMetadataLoading(true)
       window.luna
-        .getMediaMetadata(file, preview.cachedPath)
+        .getMediaMetadata(file, metaPath)
         .then(setMediaMetadata)
         .catch(() => setMediaMetadata({ groups: [] }))
         .finally(() => setMetadataLoading(false))
@@ -200,7 +202,7 @@ export function PreviewModal({
         .catch(() => { /* 静默失败 */ })
         .finally(() => setMetadataLoading(false))
     }
-  }, [preview?.cachedPath, file, isDownloaded])
+  }, [preview?.cachedPath, file, isDownloaded, downloadedPath])
 
   const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
 
