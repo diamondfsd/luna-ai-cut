@@ -17,7 +17,6 @@ function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
   const d = DEFAULT_PIPELINE.color
   return (
     color.exposure !== d.exposure ||
-    color.black !== d.black ||
     color.temperature !== d.temperature ||
     color.tint !== d.tint ||
     color.contrast !== d.contrast ||
@@ -30,8 +29,6 @@ function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
     color.gradeShadowsAmount !== d.gradeShadowsAmount ||
     color.gradeMidAmount !== d.gradeMidAmount ||
     color.gradeHighlightsAmount !== d.gradeHighlightsAmount ||
-    color.curveLift !== d.curveLift ||
-    color.curveContrast !== d.curveContrast ||
     color.levelsBlack !== d.levelsBlack ||
     color.levelsGray !== d.levelsGray ||
     color.levelsWhite !== d.levelsWhite ||

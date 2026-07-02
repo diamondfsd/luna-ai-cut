@@ -16,7 +16,7 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
 
   const modified = {
     whiteBalance: value.temperature !== 0 || value.tint !== 0 || value.whiteBalanceMode !== 'custom',
-    tone: value.exposure !== 0 || value.black !== 0 || value.contrast !== 0 || value.brightness !== 0 ||
+    tone: value.exposure !== 0 || value.contrast !== 0 || value.brightness !== 0 ||
       value.highlights !== 0 || value.shadows !== 0 || value.whites !== 0 || value.blacks !== 0 ||
       value.clarity !== 0 || value.texture !== 0 ||
       value.vibrance !== 0 || value.saturation !== 0,

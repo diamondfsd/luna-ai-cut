@@ -682,7 +682,6 @@ function registerIpc(): void {
 
     const colorOpts = {
       exposure: color.exposure ?? 0,
-      black: color.black ?? 0,
       brightness: color.brightness ?? 0,
       temperature: color.temperature ?? 0,
       tint: color.tint ?? 0,

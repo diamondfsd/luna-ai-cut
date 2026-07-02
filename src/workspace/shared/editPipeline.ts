@@ -33,7 +33,6 @@ export interface EditPipeline {
   color: {
     // Exposure
     exposure: number
-    black: number
     brightness: number
 
     // White Balance
@@ -117,7 +116,6 @@ export const DEFAULT_PIPELINE: EditPipeline = {
   color: {
     whiteBalanceMode: 'custom',
     exposure: 0,
-    black: 0,
     brightness: 0,
     temperature: 0,
     tint: 0,
@@ -177,7 +175,6 @@ export const WHITE_BALANCE_DEFAULTS: Partial<EditPipeline['color']> = {
 
 export const TONE_DEFAULTS: Partial<EditPipeline['color']> = {
   exposure: 0,
-  black: 0,
   brightness: 0,
   contrast: 0,
   highlights: 0,
@@ -192,8 +189,6 @@ export const TONE_DEFAULTS: Partial<EditPipeline['color']> = {
 
 export const CURVE_DEFAULTS: Partial<EditPipeline['color']> = {
   curve: createDefaultCurve(),
-  curveLift: 0,
-  curveContrast: 0,
   levelsBlack: 0,
   levelsGray: 0.5,
   levelsWhite: 1,
@@ -269,7 +264,6 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
       ...pipeline.color,
       whiteBalanceMode: ['custom', 'daylight', 'cloudy', 'indoor'].includes(pipeline.color.whiteBalanceMode) ? pipeline.color.whiteBalanceMode : 'custom',
       exposure: clampNumber(pipeline.color.exposure, color.exposure),
-      black: clampNumber(pipeline.color.black, color.black),
       brightness: clampNumber(pipeline.color.brightness, color.brightness),
       temperature: clampNumber(pipeline.color.temperature, color.temperature),
       tint: clampNumber(pipeline.color.tint, color.tint),

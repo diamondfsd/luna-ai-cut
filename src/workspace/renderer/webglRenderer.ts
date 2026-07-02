@@ -18,7 +18,6 @@ const UNIFORM_NAMES = [
   'u_fillScale',
   // Exposure & Brightness
   'u_exposure',
-  'u_black',
   'u_brightness',
   // White Balance
   'u_temperature',
@@ -215,9 +214,8 @@ export class WebGLRenderer {
     // --- Color uniforms (derived from ffmpeg filter source) ---
     const color = pipeline.color
 
-    // Exposure (eq=gamma power law) / Black point (vf_exposure.c)
+    // Exposure (eq=gamma power law)
     gl.uniform1f(this.uniform('u_exposure'), color.exposure)
-    gl.uniform1f(this.uniform('u_black'), color.black)
     // Brightness (eq=brightness — additive offset)
     gl.uniform1f(this.uniform('u_brightness'), color.brightness)
 

@@ -27,7 +27,6 @@ export const EDIT_PARAMETER_RANGES = {
     temperature: signedPercent,
     tint: signedPercent,
     exposure: { min: -5, max: 5, step: 0.01 },
-    black: { min: -0.1, max: 0.2, uiMin: -100, uiMax: 100 },
     brightness: signedPercent,
     contrast: signedPercent,
     saturation: signedPercent,
