@@ -44,6 +44,19 @@
 
 ## 实施计划
 
+### 前提：ffmpeg 无法实现的功能 → 删除
+
+以下功能 ffmpeg 没有任何 filter 组合能等效实现，直接**从工作台 UI 中删除**对应的控制项：
+
+| 功能 | 涉及 GLSL | 原因 | 替代 |
+|------|----------|------|------|
+| **HSL 单波段调色** | `hsl.glsl` | ffmpeg 没有"选中色相范围→只调该范围饱和/明度"的 filter。`hue` 是全局的，`colorchannelmixer` 是按通道不是按色相范围。 | 删除整个 HSL 面板 |
+| **色阶灰度点** | `levels.glsl` | `colorlevels` 只有输入黑/白点（rimin/rimax），没有灰度点和 gamma 参数。`eq=gamma` 是全局 gamma 不等价于色阶的灰度点 gamma。 | 色阶面板只保留黑/白点，去掉灰度点滑块 |
+
+其余所有功能都可以用 ffmpeg filter 精确或近似实现，Phase 1-5 逐一对齐。
+
+---
+
 ### Phase 1 — eq filter（曝光/亮度/对比度/饱和度）
 
 **替换 GLSL**：`exposure.glsl` + `brightness.glsl` + `colorBalanceRgb.glsl` 中对比度/饱和度部分
@@ -187,25 +200,13 @@ GLSL 需要实现完整的 hqdn3d 算法或至少空间降噪部分。
 
 ---
 
-### Phase 5 — HSL 单波段调色
+### Phase 5 — 删除 HSL 面板
 
-**替换 GLSL**：`hsl.glsl`
+**ffmpeg 无法实现，直接删除 `hsl.glsl` 及其 UI**。
 
-当前 HSL 算法（目标色带检测）：
-```
-distanceToTarget = |hsl.hue - targetHue|  // 色带距离
-band = 1 - smoothstep(0.08, 0.28, distanceToTarget)
-hsl.hue += u_hue / 360                     // 全局色相偏移
-hsl.s += u_hslSat * band                   // 色带内饱和度偏移
-hsl.l += u_hslLum * band                   // 色带内明度偏移
-```
+当前 HSL 算法复杂：目标色带检测 + 平滑过渡 + 三通道独立偏移。ffmpeg 没有任何 filter 能实现此功能。
 
-ffmpeg 没有直接的"色带内 HSL 偏移" filter。替代方案：
-- `hue` filter — 全局色相偏移
-- `colorchannelmixer` — 逐通道偏移，可近似模拟色带效果
-- 或在 GLSL 中保持当前算法，ffmpeg 导出时用 `colorchannelmixer` 近似
-
-**建议**：HSL 保持 GLSL 和 ffmpeg 各自实现，因为这个功能是"选颜色范围调偏移"，视觉一致性通过参数映射保证。
+UI 改动：移除 `HslPanel.tsx`，不再暴露 hslHue/hslSat/hslLum/hue 四个参数。输出管线（GLSL + ffmpeg）都不处理这些参数。
 
 ---
 
@@ -235,7 +236,7 @@ Phase 2-5 同理
 | `levels.glsl` | darktable | `colorlevels` 公式 | 3 |
 | `curve.glsl` | darktable | `curves` filter 插值 | 3 |
 | `detail.glsl` | darktable | `unsharp` + `hqdn3d` 算法 | 4 |
-| `hsl.glsl` | darktable | 保持独立（无直 ffmpeg 等价） | 5 |
+| `hsl.glsl` | darktable | **删除**（ffmpeg 无法实现） | 5 |
 | `colorBalanceRgb.glsl` | darktable | 拆分到 Phase 1+2（对比度/饱和度→eq，三路色轮→colorbalance） | 1+2 |
 
 ---
@@ -273,7 +274,6 @@ Phase 2-5 同理
 | gradeHighlightsHue/Amount | `colorbalance=rh/gh/bh` | 2 | 已有，需对齐参数语义 |
 | levelsBlack/Gray/White | `colorlevels` 全参数 | 3 | 需要 gamma 点计算 |
 | curve (5通道) | `curves` | 3 | 需要 points→spline 序列化 |
-| hslHue/Sat/Lum | `hue`+`colorchannelmixer` | 5 | 近似实现 |
 | texture | `unsharp` 中半径 | 4 | 新参数 |
 
 ---
@@ -289,7 +289,7 @@ Phase 3 (curves)   → 曲线、色阶（最复杂的参数映射）
   ↓ 验证通过
 Phase 4 (detail)   → 锐化、清晰度、纹理、降噪
   ↓ 验证通过
-Phase 5 (HSL)      → 单波段 HSL 调色
+Phase 5 (cleanup)  → 删除 HSL 面板 + 色阶灰度点滑块
 ```
 
 每个 Phase 包含：
