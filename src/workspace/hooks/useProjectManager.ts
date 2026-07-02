@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../../shared/types'
 import { toast } from '../../ui'
-import { logger } from '../../lib/rendererLogger'
 
 export interface WorkspaceRouteState {
   project?: WorkspaceProject

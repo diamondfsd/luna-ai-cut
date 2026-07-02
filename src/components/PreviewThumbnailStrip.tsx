@@ -16,11 +16,78 @@ interface PreviewThumbnailStripProps {
 }
 
 function thumbnailSrcFor(file: LunaFile, resolvedMap: Record<string, string>): string | null {
-  // 优先使用 IPC 已解析/更新的缩略图
   const resolved = resolvedMap[file.id]
   if (resolved) return resolved
-  // 回退到已有的 thumbnailUrl
   return file.thumbnailUrl ?? null
+}
+
+function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, onThumbnailResolved, activeThumbRef }: {
+  file: LunaFile
+  isActive: boolean
+  isModified: boolean
+  resolvedMap: Record<string, string>
+  onFileChange: (file: LunaFile) => void
+  onThumbnailResolved: (fileId: string, url: string) => void
+  activeThumbRef?: RefObject<HTMLButtonElement>
+}) {
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const requestedRef = useRef(false)
+  const thumbSrc = thumbnailSrcFor(file, resolvedMap)
+  const showThumb = Boolean(thumbSrc)
+
+  // 进入视口时才请求缩略图
+  useEffect(() => {
+    if (showThumb || requestedRef.current) return
+    const el = btnRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          requestedRef.current = true
+          observer.disconnect()
+          const localPath = file.downloadFilePath ?? file.localPath
+          if (!localPath) return
+          window.luna.resolveThumbnail(localPath, file.kind).then((url) => {
+            if (url) onThumbnailResolved(file.id, url)
+          }).catch(() => {
+            logger.warn('[缩略图条] resolveThumbnail 失败', { fileId: file.id, fileName: file.name })
+          })
+        }
+      },
+      { rootMargin: '100px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [file.id, showThumb])
+
+  return (
+    <button
+      ref={(el) => {
+        (btnRef as React.MutableRefObject<HTMLButtonElement | null>).current = el
+        if (isActive && activeThumbRef) {
+          ;(activeThumbRef as React.MutableRefObject<HTMLButtonElement | null>).current = el
+        }
+      }}
+      className={`preview-thumb-item${isActive ? ' active' : ''}${isModified ? ' modified' : ''}`}
+      onClick={() => onFileChange(file)}
+      title={file.name}
+    >
+      {isModified && <span className="preview-thumb-modified-dot" />}
+      {showThumb ? (
+        <img src={thumbSrc} alt={file.name} loading="lazy" />
+      ) : (
+        <span className="preview-thumb-placeholder">
+          {file.kind === 'video' ? <Film size={14} /> : <FileQuestion size={14} />}
+        </span>
+      )}
+      {file.kind === 'video' && <VideoPlayBadge size={16} />}
+      {file.isLivePhoto && (
+        <span className="preview-thumb-live">
+          <span /><span /><span />
+        </span>
+      )}
+    </button>
+  )
 }
 
 export function PreviewThumbnailStrip({
@@ -32,30 +99,8 @@ export function PreviewThumbnailStrip({
   modifiedFileIds,
 }: PreviewThumbnailStripProps) {
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
-  const requestedRef = useRef<Set<string>>(new Set())
 
-  // 对所有无缩略图的文件（图片和视频）主动请求缩略图
-  useEffect(() => {
-    for (const file of files) {
-      // 已有缩略图则跳过
-      if (thumbnails[file.id] || file.thumbnailUrl) continue
-      if (requestedRef.current.has(file.id)) continue
-      requestedRef.current.add(file.id)
-
-      const localPath = file.downloadFilePath ?? file.localPath
-      if (!localPath) continue
-
-      window.luna.resolveThumbnail(localPath, file.kind).then((url) => {
-        if (url) {
-          setThumbnails((prev) => ({ ...prev, [file.id]: url }))
-        }
-      }).catch(() => {
-        logger.warn(`[缩略图条] resolveThumbnail 失败`, { fileId: file.id, fileName: file.name, kind: file.kind })
-      })
-    }
-  }, [files, thumbnails])
-
-  // 监听 onThumbnailReady，实时同步缩略图（主库 cacheFile 完成后推送）
+  // 监听 onThumbnailReady，实时同步缩略图
   useEffect(() => {
     return window.luna.onThumbnailReady(({ fileId, thumbnailUrl }) => {
       if (thumbnailUrl) {
@@ -64,37 +109,24 @@ export function PreviewThumbnailStrip({
     })
   }, [])
 
+  function handleThumbnailResolved(fileId: string, url: string): void {
+    setThumbnails((prev) => ({ ...prev, [fileId]: url }))
+  }
+
   return (
     <div className="preview-thumbnails" ref={stripRef}>
-      {files.map((file) => {
-        const isActive = file.id === currentFileId
-        const thumbSrc = thumbnailSrcFor(file, thumbnails)
-        const isModified = modifiedFileIds?.has(file.id)
-        return (
-          <button
-            key={file.id}
-            ref={isActive ? activeThumbRef : undefined}
-            className={`preview-thumb-item${isActive ? ' active' : ''}${isModified ? ' modified' : ''}`}
-            onClick={() => onFileChange(file)}
-            title={file.name}
-          >
-            {isModified && <span className="preview-thumb-modified-dot" />}
-            {thumbSrc ? (
-              <img src={thumbSrc} alt={file.name} loading="lazy" />
-            ) : (
-              <span className="preview-thumb-placeholder">
-                {file.kind === 'video' ? <Film size={14} /> : <FileQuestion size={14} />}
-              </span>
-            )}
-            {file.kind === 'video' && <VideoPlayBadge size={16} />}
-            {file.isLivePhoto && (
-              <span className="preview-thumb-live">
-                <span /><span /><span />
-              </span>
-            )}
-          </button>
-        )
-      })}
+      {files.map((file) => (
+        <ThumbnailItem
+          key={file.id}
+          file={file}
+          isActive={file.id === currentFileId}
+          isModified={modifiedFileIds?.has(file.id) ?? false}
+          resolvedMap={thumbnails}
+          onFileChange={onFileChange}
+          onThumbnailResolved={handleThumbnailResolved}
+          activeThumbRef={file.id === currentFileId ? activeThumbRef : undefined}
+        />
+      ))}
     </div>
   )
 }
