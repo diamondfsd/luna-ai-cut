@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
 import type { BuildContext, FfmpegModule, ModuleArgs } from './pipeline'
 import { logMainInfo } from '../loggerService'
+import { resolveWatermarkRatios } from '../../src/shared/watermark/layoutConfig'
 
 function clamp(v: number, mn: number, mx: number): number {
   return Math.max(mn, Math.min(mx, v ?? 0))
@@ -7,6 +9,18 @@ function clamp(v: number, mn: number, mx: number): number {
 
 function normalizeDegrees(value: number): number {
   return ((value % 360) + 360) % 360
+}
+
+function pngSize(filePath: string): { width: number; height: number } {
+  const buffer = readFileSync(filePath)
+  const pngSignature = '89504e470d0a1a0a'
+  if (buffer.subarray(0, 8).toString('hex') !== pngSignature) {
+    throw new Error(`Unsupported watermark image format: ${filePath}`)
+  }
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  }
 }
 
 /**
@@ -70,6 +84,8 @@ export class FullPipelineModule implements FfmpegModule {
     const manualRotate = this.pipeline.transform?.rotate ?? 0
     let frameW = srcW
     let frameH = srcH
+    let outputW = srcW
+    let outputH = srcH
 
     if (orient !== 0) {
       const angle = (orient * Math.PI / 180).toFixed(6)
@@ -78,6 +94,8 @@ export class FullPipelineModule implements FfmpegModule {
         frameW = srcH
         frameH = srcW
       }
+      outputW = frameW
+      outputH = frameH
     }
 
     if (manualRotate !== 0) {
@@ -101,6 +119,8 @@ export class FullPipelineModule implements FfmpegModule {
       const isFullFrame = px <= 0 && py <= 0 && pw >= frameW && ph >= frameH
       if (!isFullFrame) {
         mainFilters.push(`crop=${pw}:${ph}:${px}:${py}`)
+        outputW = pw
+        outputH = ph
       }
     }
 
@@ -250,19 +270,23 @@ export class FullPipelineModule implements FfmpegModule {
     // 水印
     if (hasWatermark && this.watermarkImagePath) {
       inputs.push(this.watermarkImagePath)
-      const rawWidthRatio = wmSettings.widthPercent ?? 0.15
+      const position = wmSettings.position ?? 'bottom-center'
+      const ratios = resolveWatermarkRatios(null, wmSettings.style, outputW, outputH, position)
+      const rawWidthRatio = ratios?.widthRatio ?? wmSettings.widthPercent ?? 0.15
       const widthRatio = rawWidthRatio > 1 ? rawWidthRatio / 100 : rawWidthRatio
-      const [vPos, hPos] = (wmSettings.position ?? 'bottom-center').split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
+      const wmSize = pngSize(this.watermarkImagePath)
+      const targetW = Math.min(Math.round(Math.max(outputW, outputH) * widthRatio), wmSize.width)
+      const targetH = Math.round(targetW * wmSize.height / wmSize.width)
+      const [vPos, hPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
       const marginX = 'W*0.03'
       const marginY = 'H*0.03'
       const xExpr = hPos === 'left' ? marginX
         : hPos === 'right' ? `W-w-${marginX}`
-        : '(W-w)/2'
+        : `(W-w)/2`
       const yExpr = vPos === 'top' ? marginY : `H-h-${marginY}`
 
-      filterParts.push(`[1:v]format=rgba[wmraw]`)
-      filterParts.push(`[wmraw][vmain]scale2ref=w='max(main_w,main_h)*${widthRatio.toFixed(4)}':h=-1[wm][vref]`)
-      filterParts.push(`[vref][wm]overlay=${xExpr}:${yExpr}:format=auto[vout]`)
+      filterParts.push(`[1:v]format=rgba,scale=${targetW}:${targetH}:flags=lanczos,setsar=1[wm]`)
+      filterParts.push(`[vmain][wm]overlay=${xExpr}:${yExpr}:format=auto[vout]`)
     } else {
       // 无水印，直接输出
       filterParts.push(`[vmain]null[vout]`)
