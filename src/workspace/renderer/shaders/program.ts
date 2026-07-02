@@ -1,15 +1,7 @@
-import brightness from './brightness.glsl?raw'
-import colorBalanceRgb from './colorBalanceRgb.glsl?raw'
 import common from './common.glsl?raw'
-import curve from './curve.glsl?raw'
 import detail from './detail.glsl?raw'
-import exposure from './exposure.glsl?raw'
-import hsl from './hsl.glsl?raw'
-import levels from './levels.glsl?raw'
-import toneEqualizer from './toneEqualizer.glsl?raw'
 import transform from './transform.glsl?raw'
 import vertex from './vertex.glsl?raw'
-import whiteBalance from './whiteBalance.glsl?raw'
 import lut from './lut.glsl?raw'
 
 export const vertexSource = vertex
@@ -22,17 +14,9 @@ uniform sampler2D u_image;
 in vec2 v_uv;
 out vec4 fragColor;
 
-${brightness}
 ${common}
 ${transform}
 ${detail}
-${exposure}
-${whiteBalance}
-${toneEqualizer}
-${levels}
-${colorBalanceRgb}
-${curve}
-${hsl}
 ${lut}
 
 void main() {
@@ -50,30 +34,14 @@ void main() {
 
   vec3 raw = sampleImage(uv);
   vec3 blurred = blur3(uv);
-  vec3 detail = raw - blurred;
-  vec3 c;
 
-  // LUT 路径：颜色映射来自 ffmpeg 烘焙结果，细节类调整仍在预览端按空间滤镜处理。
-  if (u_useLut > 0.5) {
-    c = applyLut(raw);
-    vec3 lutBlurred = applyLut(blurred);
-    vec3 lutDetail = c - lutBlurred;
-    c = applyDenoise(c, lutBlurred);
-    c = applyLocalContrast(c, lutDetail);
-    c = applySharpen(c, lutDetail);
-  } else {
-    c = applyDenoise(raw, blurred);
-    c = applyExposure(c);
-    c = applyBrightness(c);
-    c = applyWhiteBalance(c);
-    c = applyToneEqualizer(c);
-    c = applyLocalContrast(c, detail);
-    c = applyLevels(c);
-    c = applyColorBalanceRgb(c);
-    c = applyCurve(c);
-    c = applyHsl(c);
-    c = applySharpen(c, detail);
-  }
+  // 颜色调校已烘焙进 LUT，预览端只处理空间滤镜（降噪/清晰度/锐化）
+  vec3 c = applyLut(raw);
+  vec3 lutBlurred = applyLut(blurred);
+  vec3 lutDetail = c - lutBlurred;
+  c = applyDenoise(c, lutBlurred);
+  c = applyLocalContrast(c, lutDetail);
+  c = applySharpen(c, lutDetail);
 
   fragColor = vec4(sat(c), 1.0);
 }`
