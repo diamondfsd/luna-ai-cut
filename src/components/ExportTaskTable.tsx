@@ -8,13 +8,6 @@ import { IconButton } from '../ui'
 import { Table, type Column } from '../ui/Table'
 import '../styles/export-tasks.css'
 
-function formatTime(ts: number | null | undefined): string {
-  if (!ts) return '—'
-  const d = new Date(ts)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
-
 function formatDate(ts: number | null | undefined): string {
   if (!ts) return '—'
   const d = new Date(ts)
@@ -29,6 +22,18 @@ function formatDuration(ms: number | null | undefined): string {
   const minutes = Math.floor(ms / 60000)
   const seconds = Math.round((ms % 60000) / 1000)
   return `${minutes}分${seconds}秒`
+}
+
+function formatETA(item: ExportTaskItemRecord): string | null {
+  if (item.status !== 'exporting' || !item.startTime || item.progress <= 0) return null
+  const now = Date.now()
+  const elapsed = now - item.startTime
+  if (elapsed < 1000) return null
+  const progress = item.progress / 100
+  const estimatedTotal = elapsed / progress
+  const remaining = estimatedTotal - elapsed
+  if (remaining < 0 || !Number.isFinite(remaining)) return null
+  return formatDuration(Math.round(remaining))
 }
 
 /* ==================== 内联项目条 ==================== */
@@ -52,9 +57,8 @@ function TaskItemRow({ item, onPreview, onRevealFile }: {
         {item.status === 'queued' && <Clock size={12} style={{ color: 'var(--muted)' }} />}
         {item.status === 'canceled' && <Ban size={12} style={{ color: 'var(--muted)' }} />}
       </span>
-      <span className="et-ti-kind">{isVideo ? <Film size={12} /> : <ImageIcon size={12} />}</span>
+      <span className="et-ti-kind">{isVideo ? <Film size={12} /> : <ImageIcon size={12} />}{isVideo ? ' 视频' : ' 图片'}</span>
       <span className="et-ti-name" title={item.destinationPath ?? item.fileName}>{displayName}</span>
-      <span className="et-ti-time">{formatTime(item.startTime)}</span>
       <span className="et-ti-dur">{formatDuration(item.duration)}</span>
       <span className="et-ti-progress">
         <span className="et-progress-track" style={{ width: 40 }}>
@@ -62,6 +66,7 @@ function TaskItemRow({ item, onPreview, onRevealFile }: {
         </span>
         <span className="et-cell-num">{item.status === 'done' ? 100 : Math.round(item.progress)}%</span>
       </span>
+      <span className="et-ti-eta">{item.status === 'exporting' ? formatETA(item) : null}</span>
       <span className="et-ti-actions">
         {item.status === 'failed' && <span className="et-badge et-badge-failed">{item.error ?? '失败'}</span>}
         {item.status === 'done' && item.destinationPath && (
