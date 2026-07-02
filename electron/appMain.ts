@@ -8,22 +8,16 @@ import { checkForHotUpdates, applyHotUpdate, getCurrentHotVersion, clearHotUpdat
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
-import { clearLogs, getLogDir, initLogger, logMainDebug, logMainInfo, logMainError, logMainWarn, logExport, logRendererMessage } from './loggerService'
+import { initLogger, logMainDebug, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
 import { createExportTask, getExportTasks, getExportTaskById, clearExportTasks, updateTaskItemProgress } from './exportTaskService'
 
 import {
   cacheFile,
-  chooseMockMediaDir,
-  chooseDownloadDir,
-  chooseExportDir,
-  chooseLocalResourcesDir,
   getLocalResourcesDir,
-  clearCache,
   deleteLocalFiles,
   downloadFiles,
   exportFiles,
   listExportFiles,
-  getCacheStats,
   getDownloadedRecords,
   listDownloadedFiles,
   getMediaMetadata,
@@ -42,9 +36,9 @@ import { listSampleFiles } from './localMedia'
 import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
 import { GoUltraClient } from './goUltraProtocol'
 import { LunaUltraProtocol, GoUltraProtocol } from './deviceProtocols'
-import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor, deviceDefinitions } from './deviceDefaults'
+import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './deviceDefaults'
 import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
-import { getMockStatus, mockTcpPortForHost, startMockServer, stopMockServer } from './mockServerService'
+import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { chatCompletion } from './aiService'
@@ -282,43 +276,26 @@ app.on('activate', () => {
 })
 
 function registerIpc(): void {
-  registerDeviceDebugHandlers(() => win)
+  // ── 使用 import.meta.glob 自动发现并注册 IPC Service ──
+  const ctx = { win, clients, goUltraClients, activeDownloadControllers, activeExportControllers, previewCacheTasks, videoFrameRateTasks, lunaProtocol, goUltraProtocol } as const
+  const ipcModules = import.meta.glob('./ipc*.ts', { eager: true })
+  for (const [, mod] of Object.entries(ipcModules)) {
+    const fn = (mod as any).register
+    if (typeof fn === 'function') fn(ctx)
+  }
 
-  // 渲染进程日志
+  // ── 渲染进程日志广播 ──
   ipcMain.on('log:renderer', (_event, level: string, message: string, meta?: unknown) => {
     logRendererMessage(level, message, meta)
   })
-
-  // 导出日志
-  ipcMain.handle('log:export', (_event, message: string, meta?: unknown) => {
-    logExport('INFO', message, meta)
-    return true
-  })
-
-  // 主进程日志（供渲染进程直接调用）
   ipcMain.on('log:main', (_event, level: string, message: string, meta?: unknown) => {
     if (level === 'error') logMainError(message, meta)
     else if (level === 'warn') logMainWarn(message, meta)
     else logMainInfo(message, meta)
   })
 
-  // 获取日志目录
-  ipcMain.handle('log:getDir', () => getLogDir())
-  // 清空日志
-  ipcMain.handle('log:clear', () => clearLogs())
-
-  ipcMain.handle('settings:get', () => getSettings())
-  ipcMain.handle('settings:save', (_event, settings: Partial<AppSettings>) => saveSettings(settings))
-  ipcMain.handle('devices:list', () => deviceDefinitions())
-  ipcMain.handle('settings:chooseDownloadDir', () => chooseDownloadDir())
-  ipcMain.handle('settings:chooseLocalResourcesDir', () => chooseLocalResourcesDir())
-  ipcMain.handle('settings:chooseExportDir', () => chooseExportDir())
-  ipcMain.handle('settings:chooseMockMediaDir', () => chooseMockMediaDir())
-  ipcMain.handle('mock:start', (_event, settings?: Partial<AppSettings>) => startMockServer(settings))
-  ipcMain.handle('mock:stop', () => stopMockServer())
-  ipcMain.handle('mock:status', () => getMockStatus())
-  ipcMain.handle('cache:stats', () => getCacheStats())
-  ipcMain.handle('cache:clear', () => clearCache())
+  // ── 设备调试 ──
+  registerDeviceDebugHandlers(() => win)
   ipcMain.handle('downloads:records', async (_event, files: LunaFile[], _downloadDir?: string) => {
     const settings = await getSettings()
     return getDownloadedRecords(files, getLocalResourcesDir(settings))
