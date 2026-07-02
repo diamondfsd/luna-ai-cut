@@ -10,11 +10,11 @@ function getWatermarkDir(): string {
   return path.join(app.getAppPath(), 'src', 'assets', 'watermark')
 }
 
-/** 从设备配置构建 style → fileName 查找表 */
+/** 从设备配置构建 style → videoFileName 查找表 */
 const WATERMARK_FILE_NAMES = new Map<string, string>()
 for (const device of deviceDefinitions()) {
   for (const ws of device.watermarkStyles ?? []) {
-    WATERMARK_FILE_NAMES.set(ws.value, ws.fileName)
+    WATERMARK_FILE_NAMES.set(ws.value, ws.videoFileName)
   }
 }
 

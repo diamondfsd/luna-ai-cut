@@ -29,19 +29,18 @@ function getWatermarkDir(): string {
   return path.join(app.getAppPath(), 'src', 'assets', 'watermark')
 }
 
-/** 从设备配置构建 style → fileName 查找表 */
-const WATERMARK_FILE_NAMES = new Map<string, string>()
+/** 从设备配置构建 style → { video, image } 文件名查找表 */
+const WATERMARK_FILE_NAMES = new Map<string, { video: string; image: string }>()
 for (const device of deviceDefinitions()) {
   for (const ws of device.watermarkStyles ?? []) {
-    WATERMARK_FILE_NAMES.set(ws.value, ws.fileName)
+    WATERMARK_FILE_NAMES.set(ws.value, { video: ws.videoFileName, image: ws.imageFileName })
   }
 }
 
 function watermarkFileFor(kind: 'image' | 'video', style: string): string {
-  const fileName = WATERMARK_FILE_NAMES.get(style)
-  if (!fileName) throw new Error(`未知水印样式: ${style}`)
-  const suffix = kind === 'image' ? '_image' : ''
-  return path.join(getWatermarkDir(), `${fileName}${suffix}.png`)
+  const pair = WATERMARK_FILE_NAMES.get(style)
+  if (!pair) throw new Error(`未知水印样式: ${style}`)
+  return path.join(getWatermarkDir(), `${pair[kind]}.png`)
 }
 
 /** 将 JPEG 文件中的 EXIF Orientation 标签设为 1（正常方向），保留其他所有 EXIF */
