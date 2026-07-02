@@ -119,10 +119,6 @@ export interface TestResult {
   summary: string
 }
 
-async function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
-}
-
 /**
  * 运行完整连接测试
  *
@@ -149,179 +145,118 @@ export async function runDeviceTest(
   log('INFO', `========== 一键测试开始 ==========`)
   log('INFO', `设备: ${protocol.deviceName} (${protocol.deviceId}), 主机: ${host}`)
 
-  // ---- 步骤 1: 端口检测 — 通过协议适配器统一执行 ----
+  function pushStep(step: string, success: boolean, detail: string, startedAt: number): void {
+    steps.push({ step, success, detail, elapsedMs: Math.round(performance.now() - startedAt) })
+  }
+
+  // ---- 步骤 1: 端口检测 ----
   let portResult: import('./deviceDebugProtocol').DebugPortResult
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 1/5] 端口检测...')
+    log('INFO', '[步骤 1/5] IP / 端口可达检测')
     portResult = await protocol.checkPort(host)
     const portDetail = `HTTP:${portResult.httpOk ? portResult.httpPort : '❌'} 控制:${portResult.controlOk ? portResult.controlPort : '❌'}`
-
-    if (portResult.httpOk) log('INFO', `  HTTP 端口: ✅ (${portResult.httpPort})`)
-    else log('WARN', `  HTTP 端口: ❌`)
-    if (portResult.controlOk) log('INFO', `  控制端口: ✅ (${portResult.controlPort})`)
-    else log('WARN', `  控制端口: ❌`)
-
-    const elapsed = performance.now() - t0
-    steps.push({ step: '端口检测', success: portResult.httpOk && portResult.controlOk, detail: portDetail, elapsedMs: Math.round(elapsed) })
+    log(portResult.httpOk && portResult.controlOk ? 'INFO' : 'WARN', `  ${portDetail}`, portResult)
+    pushStep('端口检测', portResult.httpOk && portResult.controlOk, portDetail, t0)
   }
 
-  // 端口全关 → 设备不在线，无需后续步骤
   if (!portResult.httpOk && !portResult.controlOk) {
     log('WARN', '  HTTP 和控制端口均无响应，跳过后续步骤')
-    const summary = '❌ 设备未在线（端口全关）'
+    const summary = '设备未在线（端口全关）'
     log('INFO', `========== 测试结束: ${summary} ==========`)
     return { deviceId: protocol.deviceId, host, overall: false, steps, authState: 'none', summary }
   }
 
-  // ---- 步骤 2: 原始协议诊断 ----
+  let diagnostics: Awaited<ReturnType<IDeviceDebugProtocol['runDiagnostics']>> | null = null
+
+  // ---- 步骤 2: 获取设备信息 ----
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 2/6] 原始协议诊断...')
+    log('INFO', '[步骤 2/5] 获取设备信息（GET_OPTIONS）')
     try {
-      const diag = await protocol.runDiagnostics(host, log)
-      const elapsed = performance.now() - t0
-      log(diag.success ? 'INFO' : 'WARN', `  诊断完成: ${diag.summary}`)
-      steps.push({ step: '协议诊断', success: diag.success, detail: diag.summary, elapsedMs: Math.round(elapsed) })
+      diagnostics = await protocol.runDiagnostics(host, log)
+      const info = diagnostics.deviceInfo
+      const detail = info?.deviceName
+        ? `${info.deviceName}${info.firmware ? ` / ${info.firmware}` : ''}${info.serial ? ` / ${info.serial}` : ''}`
+        : '未解析到设备信息'
+      log(info ? 'INFO' : 'WARN', `  ${detail}`, { deviceInfo: info, summary: diagnostics.summary })
+      pushStep('设备信息', Boolean(info), detail, t0)
     } catch (error) {
-      const elapsed = performance.now() - t0
-      log('WARN', `  协议诊断异常: ${String(error)}`)
-      steps.push({ step: '协议诊断', success: false, detail: String(error), elapsedMs: Math.round(elapsed) })
+      log('WARN', `  获取设备信息异常: ${String(error)}`)
+      pushStep('设备信息', false, String(error), t0)
     }
   }
 
-  // ---- 步骤 3: 连接 ----
+  // ---- 步骤 3: 授权 ----
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 3/6] 连接设备...')
+    log('INFO', '[步骤 3/5] 授权检查 / 请求授权')
     try {
-      await protocol.disconnect() // 确保之前状态已清理
-      const connResult = await protocol.connect(host)
-      finalAuthState = connResult.authState
-
-      if (connResult.success) {
-        log('INFO', `  连接成功, 授权状态: ${connResult.authState}`)
-      } else {
-        throw new Error(connResult.message)
+      let authResult = await protocol.checkAuth()
+      finalAuthState = authResult.authState
+      if (!authResult.success && authResult.authState === 'need_camera_confirm') {
+        log('WARN', '  需要在相机上确认授权，发送授权请求')
+        authResult = await protocol.requestAuth()
+        finalAuthState = authResult.authState
+        log('INFO', '  等待相机确认，最多 60 秒')
+        if (await protocol.waitForAuthConfirm(60000)) {
+          finalAuthState = 'authorized'
+        }
       }
-
-      const elapsed = performance.now() - t0
-      steps.push({ step: '设备连接', success: true, detail: `连接成功, 状态: ${finalAuthState}`, elapsedMs: Math.round(elapsed) })
-    } catch (error) {
-      const elapsed = performance.now() - t0
-      log('ERROR', `  连接失败: ${String(error)}`)
-      steps.push({ step: '设备连接', success: false, detail: String(error), elapsedMs: Math.round(elapsed) })
-    }
-  }
-
-  // ---- 步骤 4: 授权检查 ----
-  {
-    const t0 = performance.now()
-    log('INFO', '[步骤 4/6] 授权检查...')
-
-    const authResult = await protocol.checkAuth()
-    if (authResult.success) {
-      // 已授权，直接成功
-      const elapsed = performance.now() - t0
-      log('INFO', `  ${authResult.message}`)
-      steps.push({ step: '授权检查', success: true, detail: authResult.message, elapsedMs: Math.round(elapsed) })
-    } else if (authResult.authState === 'need_camera_confirm') {
-      // 需要用户在相机上确认，等待授权
-      log('WARN', '  需要用户在相机上确认授权')
-      log('INFO', '  发送授权请求...')
-      await protocol.requestAuth()
-      log('INFO', '  等待授权中（最多 60 秒）...')
-
-      const authorized = await protocol.waitForAuthConfirm(60000)
-      const elapsed = performance.now() - t0
-
+      const authorized = finalAuthState === 'authorized' || authResult.success || finalAuthState === 'basic_auth_done'
       if (authorized) {
         finalAuthState = 'authorized'
-        log('INFO', `  授权成功 ✅`)
-        steps.push({ step: '授权确认', success: true, detail: '用户确认授权', elapsedMs: Math.round(elapsed) })
+        log('INFO', `  授权通过: ${authResult.message}`, authResult)
+        pushStep('授权', true, authResult.message, t0)
       } else {
-        log('WARN', `  授权超时或失败`)
-        steps.push({ step: '授权确认', success: false, detail: '授权超时或未确认', elapsedMs: Math.round(elapsed) })
-      }
-    } else if (authResult.authState === 'basic_auth_done') {
-      // 不需要额外授权的设备（如 Luna Ultra），基础认证即完成
-      const elapsed = performance.now() - t0
-      log('INFO', `  ${authResult.message}`)
-      steps.push({ step: '授权检查', success: true, detail: authResult.message, elapsedMs: Math.round(elapsed) })
-    } else {
-      // 未连接、授权失败、或异常状态
-      const elapsed = performance.now() - t0
-      log('WARN', `  授权检查失败: ${authResult.message}`)
-      steps.push({ step: '授权检查', success: false, detail: authResult.message, elapsedMs: Math.round(elapsed) })
-    }
-  }
-
-  // ---- 步骤 5: 文件列表 ----
-  {
-    const t0 = performance.now()
-    log('INFO', '[步骤 5/6] 读取文件列表...')
-
-    try {
-      const fileResult = await protocol.listFiles()
-      const elapsed = performance.now() - t0
-
-      if (fileResult.success && fileResult.files.length > 0) {
-        log('INFO', `  找到 ${fileResult.files.length} 个文件`)
-        steps.push({ step: '文件列表', success: true, detail: `找到 ${fileResult.files.length} 个文件`, elapsedMs: Math.round(elapsed) })
-      } else if (fileResult.success) {
-        log('WARN', `  文件列表为空`)
-        steps.push({ step: '文件列表', success: true, detail: '文件列表为空（可能目录下无文件）', elapsedMs: Math.round(elapsed) })
-      } else {
-        log('WARN', `  读取文件列表失败: ${fileResult.message}`)
-        steps.push({ step: '文件列表', success: false, detail: fileResult.message, elapsedMs: Math.round(elapsed) })
+        const detail = authResult.message || '授权未完成'
+        log('WARN', `  ${detail}`, authResult)
+        pushStep('授权', false, detail, t0)
       }
     } catch (error) {
-      const elapsed = performance.now() - t0
-      log('WARN', `  文件列表异常: ${String(error)}`)
-      steps.push({ step: '文件列表', success: false, detail: String(error), elapsedMs: Math.round(elapsed) })
+      finalAuthState = 'failed'
+      log('WARN', `  授权异常: ${String(error)}`)
+      pushStep('授权', false, String(error), t0)
     }
   }
 
-  // ---- 步骤 6: 保活 / 连接确认 ----
+  let fileResult: Awaited<ReturnType<IDeviceDebugProtocol['listFiles']>> | null = null
+
+  // ---- 步骤 4: TCP 文件列表 ----
   {
     const t0 = performance.now()
-    log('INFO', '[步骤 6/6] 保活 / 连接确认...')
-
-    // 检查步骤 2 是否连接成功
-    const step2 = steps.find((s) => s.step === '设备连接')
-    const wasConnected = step2?.success === true
-
-    if (!wasConnected) {
-      const elapsed = performance.now() - t0
-      log('WARN', `  设备未连接，跳过保活测试`)
-      steps.push({ step: '保活测试', success: false, detail: '设备未连接，跳过', elapsedMs: Math.round(elapsed) })
-    } else {
-      try {
-        log('INFO', '  启动保活定时器...')
-        protocol.startKeepAlive(2000)
-        // 等待至少一个保活周期，让保活定时器有机会执行
-        await delay(2500)
-        protocol.stopKeepAlive()
-
-        // 主动做一次端口检测，验证设备仍在响应
-        log('INFO', '  验证设备响应...')
-        const healthCheck = await protocol.checkPort(host)
-
-        const elapsed = performance.now() - t0
-        if (healthCheck.httpOk && healthCheck.controlOk) {
-          log('INFO', `  保活测试通过 ✅ (HTTP+控制通道均正常)`)
-          steps.push({ step: '保活测试', success: true, detail: `保活正常, HTTP:${healthCheck.httpPort}, 控制:${healthCheck.controlPort}`, elapsedMs: Math.round(elapsed) })
-        } else if (healthCheck.controlOk) {
-          log('INFO', `  保活测试通过 ✅ (控制通道正常)`)
-          steps.push({ step: '保活测试', success: true, detail: `保活正常, 控制通道活跃:${healthCheck.controlPort}`, elapsedMs: Math.round(elapsed) })
-        } else {
-          throw new Error(`保活后设备无响应: ${healthCheck.message}`)
-        }
-      } catch (error) {
-        const elapsed = performance.now() - t0
-        log('WARN', `  保活异常: ${String(error)}`)
-        steps.push({ step: '保活测试', success: false, detail: String(error), elapsedMs: Math.round(elapsed) })
+    log('INFO', '[步骤 4/5] TCP 文件列表')
+    try {
+      fileResult = await protocol.listFiles()
+      if (fileResult.success && fileResult.files.length > 0) {
+        log('INFO', `  找到 ${fileResult.files.length} 个文件`, { sample: fileResult.files.slice(0, 5) })
+        pushStep('TCP 文件列表', true, `找到 ${fileResult.files.length} 个文件`, t0)
+      } else if (fileResult.success) {
+        log('WARN', '  文件列表为空')
+        pushStep('TCP 文件列表', true, '文件列表为空', t0)
+      } else {
+        log('WARN', `  ${fileResult.message}`)
+        pushStep('TCP 文件列表', false, fileResult.message, t0)
       }
+    } catch (error) {
+      log('WARN', `  文件列表异常: ${String(error)}`)
+      pushStep('TCP 文件列表', false, String(error), t0)
+    }
+  }
+
+  // ---- 步骤 5: HTTP 可达验证 ----
+  {
+    const t0 = performance.now()
+    log('INFO', '[步骤 5/5] HTTP 文件 URL 可达验证')
+    const http = fileResult?.http ?? diagnostics?.http ?? []
+    const reachable = http.filter((item) => item.ok).length
+    if (http.length === 0) {
+      log('WARN', '  没有可验证的 HTTP 文件 URL')
+      pushStep('HTTP 可达', false, '没有可验证的 HTTP 文件 URL', t0)
+    } else {
+      const detail = `${reachable}/${http.length} 可达`
+      log(reachable > 0 ? 'INFO' : 'WARN', `  ${detail}`, http)
+      pushStep('HTTP 可达', reachable > 0, detail, t0)
     }
   }
 

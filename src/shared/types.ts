@@ -489,6 +489,14 @@ export interface DeviceDebugAuthResult {
 export interface DeviceDebugFileListResult {
   success: boolean
   files: Array<{ name: string; size: number | null; url: string }>
+  http?: Array<{
+    path: string
+    ok: boolean
+    status?: number
+    server?: string | null
+    contentType?: string | null
+    error?: string
+  }>
   message: string
 }
 
@@ -517,6 +525,16 @@ export interface DeviceDebugDiagnosticsResult {
     ascii?: string
     error?: string
   }>
+  auth: {
+    authorized: boolean | null
+    needsConfirm: boolean
+    message: string
+    requestId?: number
+    messageCode?: number
+    bodyHex?: string
+    bodyAscii?: string
+  } | null
+  files: Array<{ name: string; path: string; url: string; size: number | null }>
   deviceInfo: Insta360DeviceInfo | null
   summary: string
 }
