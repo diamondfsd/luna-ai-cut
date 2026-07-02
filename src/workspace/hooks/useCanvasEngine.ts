@@ -81,12 +81,13 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
           maxSize: PREVIEW_MAX_SIZE,
           seekSeconds: videoRef.current?.currentTime,
         })
-        console.error('=== IPC RESULT PATH ===', result.path, result.path.length, '=== END ===')
         if (!result?.path || canceledRef.current) return
+        // path 片段，排查截断
+        const _pp = result.path.split('/')
+        logger.info('[CanvasEngine] pathParts', { count: _pp.length, last: _pp[_pp.length-1], prev: _pp[_pp.length-2]||'', first3: _pp.slice(0,3).join('/') })
 
         // 用 filePathToPreviewUrl 加载预览（与初始图片加载同一套逻辑）
         const previewUrl = filePathToPreviewUrl(result.path)
-        console.error('=== PREVIEW URL ===', previewUrl, '=== END ===')
         if (!previewUrl) {
           logger.warn('[CanvasEngine] 无法生成预览URL', { path: result.path })
           return

@@ -697,7 +697,9 @@ function registerIpc(): void {
 
     await previewColorFrame(sourcePath, outputPath, colorOpts, { maxSize, seekSeconds: options?.seekSeconds })
     logMainInfo(`[workspace:previewColor] 完成`, { outputPath })
-    console.error('=== DEBUGOUTPUTPATH ===', outputPath, '=== END ===')
+    // 绕过 sanitizePaths：把路径分段输出，观察哪段丢失
+    const pathParts = outputPath.split('/')
+    logMainInfo(`[DEBUG] outputPath parts`, { count: pathParts.length, last: pathParts[pathParts.length-1], second: pathParts[pathParts.length-2] || '', third: pathParts[pathParts.length-3] || '', first3: pathParts.slice(0,3).join('/') })
     return { path: outputPath }
   })
 
