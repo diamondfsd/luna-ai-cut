@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 
 import { useApp } from '../../context/AppContext'
-import type { LunaFile, WorkspaceMediaAsset } from '../../shared/types'
+import type { LunaFile, MediaKind, WorkspaceMediaAsset } from '../../shared/types'
 import { toast } from '../../ui'
 import type { EditPipeline } from '../shared/editPipeline'
 import { composeWorkspaceExport } from './exportWorkspaceImage'
@@ -13,7 +13,16 @@ interface UseWorkspaceExportOptions {
   pipeline: EditPipeline
 }
 
-function snapshotForAsset(asset: WorkspaceMediaAsset, exportedPath?: string): LunaFile {
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'mts', 'insv', 'lrv'])
+
+function isVideoPath(path: string): boolean {
+  const segments = path.split('.')
+  const ext = segments.length > 1 ? segments[segments.length - 1].toLowerCase() : ''
+  return VIDEO_EXTS.has(ext)
+}
+
+function snapshotForAsset(asset: WorkspaceMediaAsset, exportedPath?: string, kind?: MediaKind): LunaFile {
+  const isVid = kind === 'video' || (exportedPath ? isVideoPath(exportedPath) : asset.kind === 'video')
   return {
     id: `${asset.id}:workspace-export`,
     name: asset.name,
@@ -24,8 +33,8 @@ function snapshotForAsset(asset: WorkspaceMediaAsset, exportedPath?: string): Lu
     timeText: '',
     sizeText: '',
     bytes: null,
-    kind: 'image',
-    extension: 'png',
+    kind: kind ?? (isVid ? 'video' : 'image'),
+    extension: isVid ? (asset.name.split('.').pop() ?? 'mp4') : 'png',
     capturedAt: null,
     groupDay: '',
     groupHour: '',
@@ -52,8 +61,10 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
     if (!activeMedia || !canvasRef.current) return
     const createdAt = Date.now()
     const taskId = `workspace_export_${createdAt}`
-    const taskName = `导出工作台图片`
+    const taskName = activeMedia.kind === 'video' ? '导出工作台视频' : '导出工作台图片'
     const exportId = `${activeMedia.name}_${createdAt}`
+    const isVid = activeMedia.kind === 'video'
+
     setExporting(true)
     setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia)))
     setExportProgress((current) => new Map(current).set(exportId, {
@@ -68,9 +79,20 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
       status: 'exporting',
     }))
     try {
-      const dataUrl = await composeWorkspaceExport(canvasRef.current, imageRect, pipeline.watermark)
-      const result = await window.luna.workspace.exportImage(activeMedia.name, dataUrl)
-      setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path)))
+      let result: { name: string; path: string }
+
+      if (isVid) {
+        // 视频：ffmpeg 调色导出（只传数值参数）
+        const { whiteBalanceMode, gradeShadowsHue, gradeMidHue, gradeHighlightsHue, curve, ...rest } = pipeline.color
+        result = await window.luna.workspace.exportVideo(activeMedia.path, rest as Record<string, number>)
+        setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path, 'video')))
+      } else {
+        // 图片：捕获 canvas + 水印合成
+        const dataUrl = await composeWorkspaceExport(canvasRef.current, imageRect, pipeline.watermark)
+        result = await window.luna.workspace.exportImage(activeMedia.name, dataUrl)
+        setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path)))
+      }
+
       setExportProgress((current) => new Map(current).set(exportId, {
         exportId,
         taskId,

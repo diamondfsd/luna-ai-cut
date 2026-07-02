@@ -5,7 +5,9 @@ import { ScaleModule } from './ffmpeg/scale'
 import { FrameRateModule } from './ffmpeg/framerate'
 import { BitrateModule } from './ffmpeg/bitrate'
 import { WatermarkModule } from './ffmpeg/watermark'
+import { ColorGradingModule } from './ffmpeg/colorGrading'
 import type { VideoExportSettings, WatermarkPosition, WatermarkStyle } from '../src/shared/types'
+import type { ColorGradingOptions } from './ffmpeg/colorGrading'
 
 type ConcreteWatermarkStyle = Exclude<WatermarkStyle, 'auto'>
 
@@ -91,6 +93,35 @@ export async function applyVideoExportSettings(
       useSourceBitrate: videoExportSettings.quality === 'original' && useHwEncoder,
     }))
   }
+  pipeline.addModule(new CodecModule({
+    encoderH264: hwaccel.encoderNameH264,
+    encoderH265: hwaccel.encoderNameH265 ?? undefined,
+    encoderArgs: hwaccel.encoderArgs,
+  }))
+
+  await pipeline.execute(inputPath, outputPath, onProgress, signal)
+}
+
+// ─── 视频调色导出（工作台调用） ─────────────
+
+export async function applyColorGradingToVideo(
+  inputPath: string,
+  outputPath: string,
+  color: ColorGradingOptions,
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const pipeline = new FfmpegPipeline()
+  const hwaccel = await detectHardwareAccel(getFfmpegPath())
+
+  if (hwaccel.preInputArgs.length > 0) {
+    pipeline.setPreInputArgs(hwaccel.preInputArgs)
+  }
+
+  // 调色滤镜（插入在水印/缩放之前）
+  pipeline.addModule(new ColorGradingModule(color))
+
+  // 编码器
   pipeline.addModule(new CodecModule({
     encoderH264: hwaccel.encoderNameH264,
     encoderH265: hwaccel.encoderNameH265 ?? undefined,

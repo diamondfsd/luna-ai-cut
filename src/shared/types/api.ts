@@ -78,6 +78,8 @@ export interface LunaApi {
     addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     saveProject(project: WorkspaceProject): Promise<WorkspaceProject>
     exportImage(name: string, dataUrl: string): Promise<{ path: string; name: string }>
+    copyFile(sourcePath: string): Promise<{ path: string; name: string }>
+    exportVideo(sourcePath: string, color: Record<string, number>): Promise<{ path: string; name: string }>
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void
