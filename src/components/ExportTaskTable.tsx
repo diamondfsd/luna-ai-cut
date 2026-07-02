@@ -40,6 +40,10 @@ function TaskItemRow({ item, onPreview, onRevealFile }: {
   onRevealFile?: (path: string) => void
 }) {
   const isVideo = item.kind === 'video' || item.kind === 'lrv'
+  // 导出后的文件名：优先用 destinationPath，回退到 fileName
+  const displayName = item.destinationPath
+    ? item.destinationPath.split(/[/\\]/).pop() ?? item.fileName
+    : item.fileName
   return (
     <div className={`et-task-item et-status-${item.status}`}>
       <span className="et-ti-icon">
@@ -50,7 +54,7 @@ function TaskItemRow({ item, onPreview, onRevealFile }: {
         {item.status === 'canceled' && <Ban size={12} style={{ color: 'var(--muted)' }} />}
       </span>
       <span className="et-ti-kind">{isVideo ? <Film size={12} /> : <ImageIcon size={12} />}</span>
-      <span className="et-ti-name">{item.fileName}</span>
+      <span className="et-ti-name" title={item.destinationPath ?? item.fileName}>{displayName}</span>
       <span className="et-ti-time">{formatTime(item.startTime)}</span>
       <span className="et-ti-dur">{formatDuration(item.duration)}</span>
       <span className="et-ti-progress">
