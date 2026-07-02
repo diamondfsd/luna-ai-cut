@@ -1,16 +1,10 @@
+import { useEffect, useState } from 'react'
 import { WatermarkOverlay } from '../../components/WatermarkOverlay'
-import type { WatermarkStyle } from '../../shared/types'
 import { calculateWatermarkLayout, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../../shared/watermark'
+import { loadWatermarkImage } from '../../shared/watermarkAssets'
+import type { WatermarkImageInfo } from '../../shared/watermarkAssets'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
-
-const WATERMARK_IMAGE_SIZE: Record<WatermarkStyle, { width: number; height: number }> = {
-  luna_ultra: { width: 1399, height: 252 },
-  luna_ultra_cn: { width: 1605, height: 252 },
-  go_ultra: { width: 866, height: 254 },
-  go_ultra_cn: { width: 1002, height: 252 },
-  auto: { width: 1399, height: 252 },
-}
 
 export function WorkspaceWatermarkOverlay() {
   const canvas = useWorkspaceCanvas()
@@ -21,13 +15,26 @@ export function WorkspaceWatermarkOverlay() {
     : { settings: edit.pipeline.watermark }
   const { imageRect } = canvas
 
-  if (!settings.enabled || imageRect.width <= 1 || imageRect.height <= 1) return null
-  const watermarkSize = WATERMARK_IMAGE_SIZE[settings.style] ?? WATERMARK_IMAGE_SIZE.luna_ultra_cn
+  const [wmImage, setWmImage] = useState<WatermarkImageInfo | null>(null)
+
+  useEffect(() => {
+    if (!settings.enabled) {
+      setWmImage(null)
+      return
+    }
+    let cancelled = false
+    loadWatermarkImage(settings.style, 'image').then((info) => {
+      if (!cancelled) setWmImage(info)
+    })
+    return () => { cancelled = true }
+  }, [settings.enabled, settings.style])
+
+  if (!settings.enabled || imageRect.width <= 1 || imageRect.height <= 1 || !wmImage) return null
   const layout = calculateWatermarkLayout({
     contentWidth: imageRect.width,
     contentHeight: imageRect.height,
-    watermarkWidth: watermarkSize.width,
-    watermarkHeight: watermarkSize.height,
+    watermarkWidth: wmImage.width,
+    watermarkHeight: wmImage.height,
     widthRatio: settings.watermarkPercent / 100,
     marginXRatio: WATERMARK_MARGIN_X_RATIO,
     marginYRatio: WATERMARK_MARGIN_Y_RATIO,
