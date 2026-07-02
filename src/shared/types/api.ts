@@ -81,6 +81,18 @@ export interface LunaApi {
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     exportColor(sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }): Promise<{ path: string; name: string }>
     previewColor(sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }): Promise<{ path: string; dataUrl: string }>
+    /**
+     * FFmpegFast 导出 —— 将 pipeline 完整参数传给 ffmpeg，一次完成解码→调色→编码。
+     * 支持图片和视频，完全绕过 WebGL readPixels 链路。
+     */
+    /** 烘焙 LUT 并返回 float 数据给 WebGL 预览 */
+    bakeAndGetLut(colorParams: Record<string, unknown>): Promise<{ lutBuffer: ArrayBuffer; lutSize: number }>
+    exportFFmpeg(
+      sourcePath: string,
+      pipeline: Record<string, unknown>,
+      exportMeta: { exportId: string; taskName: string },
+      onProgress?: (percent: number) => void,
+    ): Promise<{ path: string; name: string }>
     startVideoExport(meta: { exportId: string; taskName: string; outputName: string; width: number; height: number; fps: number }): Promise<{ exportId: string; outputPath: string; rawFilePath: string; taskId: string; taskStart: number }>
     sendVideoExportFrame(exportId: string, frameData: ArrayBuffer, meta?: { totalFrames: number; taskId: string; taskStart: number; rawFilePath: string }): Promise<void>
     endVideoExport(exportId: string, meta: { taskId: string; taskStart: number; outputPath: string; rawFilePath: string; width: number; height: number; fps: number }): Promise<{ path: string; name: string }>
