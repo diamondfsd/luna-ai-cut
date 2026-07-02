@@ -167,6 +167,38 @@ export function PreviewModal({
   // 水印控制：仅在已下载文件上生效
   const effectiveWatermark = showWatermarkControls && isDownloaded
 
+  // 从元数据中提取常用字段，回填到文件信息中
+  const enrichedFile = useMemo(() => {
+    if (!mediaMetadata) return file
+    const map = new Map<string, string>()
+    for (const group of mediaMetadata.groups) {
+      for (const entry of group.entries) {
+        map.set(entry.key, entry.value)
+      }
+    }
+    let bytes = file.bytes
+    let capturedAt = file.capturedAt
+
+    // 尝试从 EXIF 元数据提取文件大小
+    if (bytes === null || bytes === undefined) {
+      const fileSizeStr = map.get('size')
+      if (fileSizeStr) {
+        const num = Number(fileSizeStr)
+        if (!Number.isNaN(num)) bytes = Math.round(num)
+      }
+    }
+
+    // 尝试从 EXIF 元数据提取拍摄时间
+    if (!capturedAt) {
+      capturedAt = map.get('DateTimeOriginal') ?? null
+      if (!capturedAt) capturedAt = map.get('CreateDate') ?? null
+      if (!capturedAt) capturedAt = map.get('ModifyDate') ?? null
+    }
+
+    if (bytes === file.bytes && capturedAt === file.capturedAt) return file
+    return { ...file, bytes, capturedAt }
+  }, [file, mediaMetadata])
+
   // Load metadata when preview is ready (images) or after download (videos)
   useEffect(() => {
     if (file.kind === 'image') {
@@ -369,7 +401,7 @@ export function PreviewModal({
       <section className="preview-modal">
         <PreviewModalHeader
           downloadProgress={downloadProgress}
-          file={file}
+          file={enrichedFile}
           inspectorOpen={inspectorOpen}
           isDownloaded={isDownloaded}
           isDownloadingCurrentFile={isDownloadingCurrentFile}
@@ -388,7 +420,7 @@ export function PreviewModal({
           <div className="preview-stage-col">
             <PreviewStage
               displaySource={displaySource}
-              file={file}
+              file={enrichedFile}
               hasNext={hasNext}
               hasPrevious={hasPrevious}
               imageDragging={imageDragging}
@@ -430,7 +462,7 @@ export function PreviewModal({
 
           {inspectorOpen && (
             <MediaInspector
-              file={file}
+              file={enrichedFile}
               mediaDetails={mediaDetails}
               mediaMetadata={mediaMetadata}
               metadataLoading={metadataLoading}
