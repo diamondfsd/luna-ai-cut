@@ -56,8 +56,8 @@ export class LunaUltraProtocol implements DeviceProtocol {
     const client = this.clientFor(host, this.controlPortForHost(host))
     const status = await client.checkStatus()
     logMainInfo(`[设备协议] 端口检测结果`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
-    if (!status.httpOk || !status.controlOk) {
-      logMainWarn(`[设备协议] 端口检测未通过，放弃连接`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
+    if (!status.controlOk) {
+      logMainWarn(`[设备协议] 控制端口检测未通过，放弃连接`, { host, controlOk: status.controlOk })
       return withDeviceInfo(status, this.definition)
     }
 
