@@ -670,7 +670,7 @@ function registerIpc(): void {
 
     return { path: destinationPath, name: fileName }
   })
-  ipcMain.handle('workspace:exportVideo', async (event, sourcePath: string, color: Record<string, number>) => {
+  ipcMain.handle('workspace:exportVideo', async (event, sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
     await mkdir(settings.exportDir, { recursive: true })
@@ -679,6 +679,10 @@ function registerIpc(): void {
     const nameBase = path.basename(baseName, ext) || 'workspace'
     const fileName = safeName(`${nameBase}_workspace_${Date.now()}${ext}`)
     const destinationPath = path.join(settings.exportDir, fileName)
+
+    // 使用前端传入的 exportId 保持进度一致性
+    const exportId = exportMeta?.exportId ?? `workspace_${nameBase}_${Date.now()}`
+    const taskName = exportMeta?.taskName ?? `${nameBase}导出`
 
     const colorOpts = {
       exposure: color.exposure ?? 0,
@@ -700,23 +704,21 @@ function registerIpc(): void {
       denoise: color.denoise ?? 0,
     }
 
-    // 将 ffmpeg 进度推送到前端
+    // 将 ffmpeg 进度推送到前端（同一 exportId）
     const win = BrowserWindow.fromWebContents(event.sender)
     await applyColorGradingToVideo(sourcePath, destinationPath, colorOpts, (percent) => {
       win?.webContents.send('export:progress', {
-        exportId: `workspace_${nameBase}_${Date.now()}`,
+        exportId,
         percent: Math.round(percent),
         status: percent >= 100 ? 'done' : 'exporting',
         fileName,
-        taskName: `${nameBase}导出`,
+        taskName,
         index: 0,
         totalFiles: 1,
       })
     })
 
     const kind = 'video'
-    const taskName = `${nameBase}导出`
-    const exportId = `workspace_${nameBase}_${Date.now()}`
     const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
     const taskStart = Date.now()
     await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
