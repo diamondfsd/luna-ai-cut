@@ -215,6 +215,78 @@
   pointer-events: none;
 }
 
+/* ── 视频播放控件 ── */
+.workspace-video-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 5;
+  color: #fff;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+.workspace-video-play-overlay:hover { opacity: 1; }
+
+.workspace-video-controls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  z-index: 5;
+}
+
+.workspace-video-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.workspace-video-btn:hover { opacity: 1; }
+
+.workspace-video-progress {
+  flex: 1;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255,255,255,0.25);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.workspace-video-progress::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #4a9eff;
+  border: 2px solid #fff;
+  cursor: pointer;
+}
+
+.workspace-video-time {
+  font-size: 11px;
+  color: rgba(255,255,255,0.7);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
 .workspace-params {
   grid-column: 2;
   grid-row: 1 / 4;

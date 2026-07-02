@@ -130,7 +130,7 @@ export function MediaLibraryToolbar({
   const [projectBusy, setProjectBusy] = useState(false)
   const navigate = useNavigate()
   const workspaceMedia = selectedFiles
-    .filter((file) => file.kind === 'image')
+    .filter((file) => file.kind === 'image' || file.kind === 'video')
     .map((file) => {
       const path = file.localPath ?? file.downloadFilePath ?? file.cacheFilePath ?? null
       if (!path) return null
@@ -138,7 +138,7 @@ export function MediaLibraryToolbar({
         id: file.id,
         name: file.name,
         path,
-        kind: 'image' as const,
+        kind: file.kind as 'image' | 'video',
         thumbnailUrl: file.thumbnailUrl,
       }
     })
