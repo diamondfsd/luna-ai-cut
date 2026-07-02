@@ -670,7 +670,7 @@ function registerIpc(): void {
 
     return { path: destinationPath, name: fileName }
   })
-  ipcMain.handle('workspace:exportVideo', async (_event, sourcePath: string, color: Record<string, number>) => {
+  ipcMain.handle('workspace:exportVideo', async (event, sourcePath: string, color: Record<string, number>) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
     await mkdir(settings.exportDir, { recursive: true })
@@ -700,7 +700,19 @@ function registerIpc(): void {
       denoise: color.denoise ?? 0,
     }
 
-    await applyColorGradingToVideo(sourcePath, destinationPath, colorOpts)
+    // 将 ffmpeg 进度推送到前端
+    const win = BrowserWindow.fromWebContents(event.sender)
+    await applyColorGradingToVideo(sourcePath, destinationPath, colorOpts, (percent) => {
+      win?.webContents.send('export:progress', {
+        exportId: `workspace_${nameBase}_${Date.now()}`,
+        percent: Math.round(percent),
+        status: percent >= 100 ? 'done' : 'exporting',
+        fileName,
+        taskName: `${nameBase}导出`,
+        index: 0,
+        totalFiles: 1,
+      })
+    })
 
     const kind = 'video'
     const taskName = `${nameBase}导出`
