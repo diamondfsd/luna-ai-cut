@@ -56,13 +56,13 @@ export async function composeWorkspaceExport(
     const wmAspect = wmInfo.height / wmInfo.width
     const targetW = Math.min(Math.round(sensorW * widthRatio), wmInfo.width)
     const targetH = Math.round(targetW * wmAspect)
-    const [vPos, hPos] = watermark.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
-    const marginX = Math.round(width * 0.03)
-    const marginY = Math.round(height * 0.03)
-    const x = hPos === 'left' ? marginX
-      : hPos === 'right' ? width - targetW - marginX
-      : Math.round((width - targetW) / 2)
-    const y = vPos === 'bottom' ? height - targetH - marginY : marginY
+    const [vPos] = watermark.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
+    const xRatio = ratios?.xRatio ?? 0.03
+    const yRatio = ratios?.yRatio ?? 0.03
+    const x = Math.round(width * xRatio)
+    const y = vPos === 'bottom'
+      ? Math.round(height - targetH - height * yRatio)
+      : Math.round(height * (1 - yRatio))
     const image = new Image()
     image.src = wmInfo.src
     await image.decode()

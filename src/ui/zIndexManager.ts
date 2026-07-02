@@ -21,15 +21,6 @@ export function releaseIndex(id: string): void {
   active.delete(id)
 }
 
-/** 返回当前最高序号，无活动弹窗时返回 -1 */
-export function getMaxZIndex(): number {
-  let max = -1
-  for (const z of active.values()) {
-    if (z > max) max = z
-  }
-  return max
-}
-
 /** 计算遮罩层 z-index：基础值 40 + 序号 * 10 */
 export function overlayZ(zIndex: number): number {
   return 40 + zIndex * 10
