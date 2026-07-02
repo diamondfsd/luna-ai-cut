@@ -65,6 +65,13 @@ import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHa
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 import { safeName } from './filePathUtils'
 import { applyColorGrading, previewColorFrame } from './videoPipelineService'
+import { FfmpegPipeline, getFfmpegPath } from './ffmpeg/pipeline'
+import { detectHardwareAccel } from './ffmpeg/hwaccel'
+import { CodecModule } from './ffmpeg/codec'
+import { BitrateModule } from './ffmpeg/bitrate'
+import { FullPipelineModule } from './ffmpeg/pipelineCompiler'
+import { bakeColorLut, parseCubeToFloatArray } from './ffmpeg/lutGenerator'
+import { watermarkFileFor } from './watermarkService'
 import type {
   AiConfig,
   AppSettings,
@@ -790,6 +797,163 @@ function registerIpc(): void {
       destinationPath,
     })
 
+    return { path: destinationPath, name: fileName }
+  })
+  // ── 为 WebGL 预览烘焙 LUT，返回 float 数据 ──
+  ipcMain.handle('workspace:bakeAndGetLut', async (_event, colorParams: Record<string, any>) => {
+    const tempDir = await previewCacheDir()
+    const cubePath = path.join(tempDir, `.preview_lut_${Date.now()}.cube`)
+    try {
+      await bakeColorLut(colorParams, cubePath)
+      const lutData = parseCubeToFloatArray(cubePath)
+      // 返回 ArrayBuffer 给渲染进程
+      return { lutBuffer: lutData.buffer as ArrayBuffer, lutSize: 33 }
+    } finally {
+      rm(cubePath, { force: true }).catch(() => {})
+    }
+  })
+  // ── FFmpegFast 导出（直达 ffmpeg 完整管线，绕过 WebGL readPixels） ──
+  ipcMain.handle('workspace:exportFFmpeg', async (event, sourcePath: string, pipeline: Record<string, any>, exportMeta: { exportId: string; taskName: string }) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+    const baseName = path.basename(sourcePath)
+    const ext = path.extname(baseName)
+    const nameBase = path.basename(baseName, ext) || 'workspace'
+    const isVid = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv'].includes(ext.toLowerCase())
+    const outExt = isVid ? '.mp4' : ext
+    const fileName = safeName(`${nameBase}_ffmpeg_fast_${Date.now()}${outExt}`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+
+    const exportId = exportMeta?.exportId ?? `ffmpeg_fast_${nameBase}_${Date.now()}`
+    const taskName = exportMeta?.taskName ?? `${nameBase}导出`
+
+    logMainInfo(`[FFmpegFast] 收到导出请求`, {
+      exportId, taskName, sourcePath, destinationPath, isVid,
+      color: pipeline.color ? JSON.stringify({
+        exposure: pipeline.color.exposure,
+        brightness: pipeline.color.brightness,
+        contrast: pipeline.color.contrast,
+        saturation: pipeline.color.saturation,
+        temperature: pipeline.color.temperature,
+        tint: pipeline.color.tint,
+        shadows: pipeline.color.shadows,
+        highlights: pipeline.color.highlights,
+        whites: pipeline.color.whites,
+        blacks: pipeline.color.blacks,
+        vibrance: pipeline.color.vibrance,
+        clarity: pipeline.color.clarity,
+        texture: pipeline.color.texture,
+        sharpen: pipeline.color.sharpen,
+        denoise: pipeline.color.denoise,
+        gradeShadowsAmount: pipeline.color.gradeShadowsAmount,
+        gradeMidAmount: pipeline.color.gradeMidAmount,
+        gradeHighlightsAmount: pipeline.color.gradeHighlightsAmount,
+        levelsBlack: pipeline.color.levelsBlack,
+        levelsWhite: pipeline.color.levelsWhite,
+        hslSat: pipeline.color.hslSat,
+      }) : 'no-color',
+      hasCurve: !!pipeline.color?.curve?.points,
+      transform: pipeline.transform ? JSON.stringify(pipeline.transform) : 'no-transform',
+      watermark: pipeline.watermark ? JSON.stringify({ enabled: pipeline.watermark.enabled, style: pipeline.watermark.style, position: pipeline.watermark.position }) : 'no-watermark',
+    })
+
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind: isVid ? 'video' : 'image' }])
+    const taskStart = Date.now()
+    const win = BrowserWindow.fromWebContents(event.sender)
+    let lutPath: string | undefined
+
+    try {
+      const ffPipeline = new FfmpegPipeline()
+      const hwaccel = isVid ? await detectHardwareAccel(getFfmpegPath()) : { type: null as string | null, preInputArgs: [] as string[], encoderNameH264: 'libx264', encoderNameH265: null, encoderArgs: [] as string[], overlayFilter: 'overlay' }
+
+      if (hwaccel.preInputArgs.length > 0) {
+        ffPipeline.setPreInputArgs(hwaccel.preInputArgs)
+      }
+
+      // 解析水印路径
+      let watermarkImagePath: string | undefined
+      if (pipeline.watermark?.enabled && pipeline.watermark?.style) {
+        try {
+          watermarkImagePath = watermarkFileFor(isVid ? 'video' : 'image', pipeline.watermark.style)
+          logMainInfo(`[FFmpegFast] 水印图片路径`, { watermarkImagePath, style: pipeline.watermark.style })
+        } catch (wmErr) {
+          logMainWarn(`[FFmpegFast] 水印图片解析失败，跳过水印`, { error: wmErr instanceof Error ? wmErr.message : String(wmErr) })
+        }
+      }
+
+      // 烘焙颜色调色参数到 .cube LUT（使预览和导出一致）
+      const hasColor = pipeline.color && Object.values(pipeline.color as Record<string, unknown>).some(
+        (v) => typeof v === 'number' && v !== 0,
+      )
+      if (hasColor) {
+        try {
+          lutPath = path.join(settings.exportDir, `.lut_${exportId}_${Date.now()}.cube`)
+          await bakeColorLut(pipeline.color ?? {}, lutPath)
+          logMainInfo(`[FFmpegFast] LUT 烘焙完成`, { lutPath })
+        } catch (lutErr) {
+          logMainWarn(`[FFmpegFast] LUT 烘焙失败，回退直接滤镜模式`, { error: lutErr instanceof Error ? lutErr.message : String(lutErr) })
+          lutPath = undefined
+        }
+      }
+
+      // FullPipelineModule：transform(空间) + lut3d(颜色) + detail(锐化/降噪) + watermark
+      ffPipeline.addModule(new FullPipelineModule(pipeline, watermarkImagePath, lutPath))
+
+      if (isVid) {
+        // 视频编码器 — 使用源视频码率确保硬件编码器不会用过低默认值
+        ffPipeline.addModule(new BitrateModule({
+          quality: 'original',
+          useSourceBitrate: true,
+        }))
+        ffPipeline.addModule(new CodecModule({
+          encoderH264: hwaccel.encoderNameH264,
+          encoderH265: hwaccel.encoderNameH265 ?? undefined,
+          encoderArgs: hwaccel.encoderArgs,
+        }))
+        // 显式映射音频流（when using -map for video via filter_complex）
+        ffPipeline.addModule({
+          name: 'audioPassthrough',
+          isActive: () => true,
+          build: () => ({ outputArgs: ['-map', '0:a?'] }),
+        })
+      }
+
+      await ffPipeline.execute(sourcePath, destinationPath, (percent) => {
+        const pct = Math.round(percent)
+        win?.webContents.send('export:progress', {
+          exportId,
+          percent: pct,
+          status: pct >= 100 ? 'done' : 'exporting' as const,
+          fileName,
+          taskName,
+          index: 0,
+          totalFiles: 1,
+        })
+        updateTaskItemProgress(task.id, exportId, taskStart, pct, pct >= 100 ? 'done' : 'exporting', {
+          destinationPath,
+        }).catch(() => {})
+      })
+    } catch (err) {
+      logMainError(`[FFmpegFast] 导出失败`, { exportId, error: err instanceof Error ? err.message : String(err) })
+      await updateTaskItemProgress(task.id, exportId, taskStart, 0, 'failed', {
+        error: err instanceof Error ? err.message : String(err),
+      }).catch(() => {})
+      throw err
+    } finally {
+      // 清理临时 LUT 文件
+      if (lutPath) {
+        rm(lutPath, { force: true }).catch(() => {})
+      }
+    }
+
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    }).catch(() => {})
+
+    logMainInfo(`[FFmpegFast] 导出完成`, { exportId, destinationPath })
     return { path: destinationPath, name: fileName }
   })
   // ── WebGL 视频导出（渲染器逐帧 WebGL shader 调色 → ffmpeg 仅编码） ──

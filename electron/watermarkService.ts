@@ -37,7 +37,7 @@ for (const device of deviceDefinitions()) {
   }
 }
 
-function watermarkFileFor(kind: 'image' | 'video', style: string): string {
+export function watermarkFileFor(kind: 'image' | 'video', style: string): string {
   const pair = WATERMARK_FILE_NAMES.get(style)
   if (!pair) throw new Error(`未知水印样式: ${style}`)
   return path.join(getWatermarkDir(), `${pair[kind]}.png`)

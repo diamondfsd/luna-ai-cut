@@ -30,6 +30,8 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const rendererRef = useRef<WebGLRenderer | null>(null)
   const canceledRef = useRef(false)
+  const lutRequestRef = useRef(0)
+  const loadedMediaPathRef = useRef<string | null>(null)
 
   // ── Video state ──
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -48,6 +50,7 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
   const [sourceAspect, setSourceAspect] = useState(1)
   const [rendererReady, setRendererReady] = useState(false)
   const [renderKey, setRenderKey] = useState(0)
+  const [loadedMediaPath, setLoadedMediaPath] = useState<string | null>(null)
 
   // ═══════════════════════════════════════════════
   //  RAF 循环（视频 — WebGL shader 实时调色）
@@ -149,9 +152,40 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
 
   const render = useCallback((pipeline: EditPipeline, opts?: { cropMode?: boolean }) => {
     lastPipelineRef.current = pipeline
+    if (activeMedia && loadedMediaPathRef.current !== activeMedia.path) return
     rendererRef.current?.render(pipeline, { cropMode: opts?.cropMode ?? false })
     updateImageRect()
+  }, [activeMedia, updateImageRect])
+
+  // ═══════════════════════════════════════════════
+  //  3D LUT — 用烘焙 LUT 替代 GLSL 颜色计算
+  // ═══════════════════════════════════════════════
+
+  // B: 烘焙 LUT 并发送到 WebGL 渲染器
+  const bakeAndLoadLut = useCallback(async (colorParams: Record<string, unknown>, key: string) => {
+    if (!rendererRef.current) return false
+    const requestId = ++lutRequestRef.current
+    try {
+      const result = await window.luna.workspace.bakeAndGetLut(colorParams)
+      if (requestId !== lutRequestRef.current) return false
+      const floatArray = new Float32Array(result.lutBuffer)
+      rendererRef.current.loadLut(floatArray, result.lutSize, key)
+      rendererRef.current.render(lastPipelineRef.current)
+      updateImageRect()
+      return true
+    } catch (err) {
+      // LUT 烘焙失败，回退到 GLSL
+      if (requestId === lutRequestRef.current) rendererRef.current?.clearLut()
+      console.warn('[LUT] 烘焙失败，使用 GLSL 回退:', err)
+      return false
+    }
   }, [updateImageRect])
+
+  // C: 清除 LUT
+  const clearLut = useCallback(() => {
+    lutRequestRef.current++
+    rendererRef.current?.clearLut()
+  }, [])
 
   // ═══════════════════════════════════════════════
   //  Callback refs
@@ -176,6 +210,8 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     const filePath = activeMedia.path
     const isVid = isVideoPath(filePath)
 
+    loadedMediaPathRef.current = null
+    setLoadedMediaPath(null)
     rendererRef.current?.clearSource()
 
     if (isVid) {
@@ -203,6 +239,9 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
         videoReady = true
         if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
         rendererRef.current?.loadVideo(video)
+        rendererRef.current?.render(lastPipelineRef.current)
+        loadedMediaPathRef.current = filePath
+        setLoadedMediaPath(filePath)
         updateImageRect()
         setImageLoading(false)
         setRenderKey((k) => k + 1)
@@ -248,6 +287,8 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
         if (!renderer) return
         renderer.loadImage(entry.previewBitmap)
         renderer.render(lastPipelineRef.current)
+        loadedMediaPathRef.current = filePath
+        setLoadedMediaPath(filePath)
         updateImageRect()
         setRendererReady(true)
         setRenderKey((k) => k + 1)
@@ -322,7 +363,7 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMedia?.path])
 
-  const canRender = Boolean(rendererRef.current && activeMedia && !webglMessage?.includes('不支持'))
+  const canRender = Boolean(rendererRef.current && activeMedia && loadedMediaPath === activeMedia.path && !imageLoading && !webglMessage?.includes('不支持'))
 
   return {
     canvasRef,
@@ -337,6 +378,7 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     updateImageRect: () => updateImageRect(),
     rendererReady,
     renderKey,
+    loadedMediaPath,
     isVideo,
     videoPlaying,
     videoDuration,
@@ -345,5 +387,7 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     pauseVideo,
     seekVideo,
     toggleVideoPlayback,
+    bakeAndLoadLut,
+    clearLut,
   }
 }
