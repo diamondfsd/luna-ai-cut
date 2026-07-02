@@ -828,20 +828,26 @@ function registerIpc(): void {
   })
 
   const exportVideoFrameCount = new Map<string, number>()
+  const exportVideoMeta = new Map<string, { totalFrames: number; taskId: string; taskStart: number }>()
   ipcMain.handle('workspace:sendVideoExportFrame', async (_event, exportId: string, frameData: ArrayBuffer, meta?: { totalFrames: number; taskId: string; taskStart: number }) => {
     const encoder = activeExportEncoders.get(exportId)
     if (!encoder || encoder.killed) {
       logMainWarn(`[videoExport] encoder not found for ${exportId}, skipping frame`)
       return
     }
+    // 首帧存储元数据，后续帧复用它（renderer 只传一次 meta）
+    if (meta) exportVideoMeta.set(exportId, meta)
+    const exportMeta = exportVideoMeta.get(exportId)
+    if (!exportMeta) return
+
     const count = (exportVideoFrameCount.get(exportId) ?? 0) + 1
     exportVideoFrameCount.set(exportId, count)
 
     // 每 30 帧更新一次任务进度
-    if (meta && (count % 30 === 0 || count === 1)) {
-      const pct = Math.round((count / meta.totalFrames) * 100)
-      logMainInfo(`[videoExport] 任务进度 ${count}/${meta.totalFrames} (${pct}%)`, { exportId })
-      await updateTaskItemProgress(meta.taskId, exportId, meta.taskStart, pct, pct >= 100 ? 'done' : 'exporting', {}).catch(() => {})
+    if (count % 30 === 0 || count === 1) {
+      const pct = Math.round((count / exportMeta.totalFrames) * 100)
+      logMainInfo(`[videoExport] 任务进度 ${count}/${exportMeta.totalFrames} (${pct}%)`, { exportId })
+      await updateTaskItemProgress(exportMeta.taskId, exportId, exportMeta.taskStart, pct, pct >= 100 ? 'done' : 'exporting', {}).catch(() => {})
     }
     return new Promise<void>((resolve, reject) => {
       const canContinue = encoder.stdin.write(Buffer.from(frameData), (err) => {
@@ -874,6 +880,8 @@ function registerIpc(): void {
           return
         }
         logMainInfo(`[videoExport] 视频导出完成`, { exportId })
+        exportVideoMeta.delete(exportId)
+        exportVideoFrameCount.delete(exportId)
         resolve({ path: outputPath, name: path.basename(outputPath) })
       })
 
