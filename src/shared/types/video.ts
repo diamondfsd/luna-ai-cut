@@ -13,7 +13,7 @@ export interface VideoExportSettings {
 }
 
 export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
-  resolution: '1080p',
+  resolution: 'original',
   frameRate: 'original',
   quality: 'original',
 }
