@@ -1,5 +1,6 @@
 // Color balance: three-way grading wheels + contrast / saturation / vibrance
-// Adapted from darktable's WebGL color lab
+// Contrast & saturation formulas derived from ffmpeg vf_eq.c (eq filter)
+// Vibrance & grading derived from ffmpeg vf_vibrance.c / vf_colorbalance.c
 uniform float u_contrast;
 uniform float u_vibrance;
 uniform float u_saturation;
@@ -19,10 +20,17 @@ vec3 applyColorBalanceRgb(vec3 c) {
   c += colorWheel(u_gradeMidHue, u_gradeMidAmount) * mid;
   c += colorWheel(u_gradeHighlightsHue, u_gradeHighlightsAmount) * hi;
 
-  float pivot = 0.1845;
-  c = (c - pivot) * (1.0 + u_contrast * 1.35) + pivot;
+  // Contrast: ffmpeg eq=contrast formula — c' = (c - 0.5) * contrast + 0.5
+  // u_contrast: -100..100, maps to multiplier 0..2 (default 1.0)
+  float pivot = 0.5;
+  c = (c - pivot) * (1.0 + u_contrast) + pivot;
+
+  // Saturation: ffmpeg eq=saturation — c' = mix(gray, c, saturation)
+  // u_saturation: -100..100, maps to saturation factor 0..2 (default 1.0)
   float gray = luma(c);
   c = mix(vec3(gray), c, 1.0 + u_saturation);
+
+  // Vibrance: ffmpeg vf_vibrance.c — protect high-chroma areas
   float maxc = max(max(c.r, c.g), c.b);
   float chroma = maxc - min(min(c.r, c.g), c.b);
   c = mix(vec3(gray), c, 1.0 + u_vibrance * (1.0 - sat(chroma)));

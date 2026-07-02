@@ -40,8 +40,6 @@ const UNIFORM_NAMES = [
   'u_gradeHighlightsHue',
   'u_gradeHighlightsAmount',
   // Curves
-  'u_curveLift',
-  'u_curveContrast',
   'u_curveRgbPointCount',
   'u_curveRgbPoints',
   'u_curveLuminancePointCount',
@@ -54,13 +52,7 @@ const UNIFORM_NAMES = [
   'u_curveBluePoints',
   // Levels
   'u_levelsBlack',
-  'u_levelsGray',
   'u_levelsWhite',
-  // HSL
-  'u_hue',
-  'u_hslHue',
-  'u_hslSat',
-  'u_hslLum',
   // Detail
   'u_texel',
   'u_clarity',
@@ -220,25 +212,26 @@ export class WebGLRenderer {
     gl.uniform2f(this.uniform('u_frameSize'), currentFrameSize.width, currentFrameSize.height)
     gl.uniform1f(this.uniform('u_fillScale'), 1)
 
-    // --- Color uniforms (adapted from darktable WebGL color lab) ---
+    // --- Color uniforms (derived from ffmpeg filter source) ---
     const color = pipeline.color
 
-    // Exposure
+    // Exposure (eq=gamma power law) / Black point (vf_exposure.c)
     gl.uniform1f(this.uniform('u_exposure'), color.exposure)
     gl.uniform1f(this.uniform('u_black'), color.black)
+    // Brightness (eq=brightness — additive offset)
     gl.uniform1f(this.uniform('u_brightness'), color.brightness)
 
-    // White Balance
+    // White Balance (colortemperature / hue)
     gl.uniform1f(this.uniform('u_temperature'), color.temperature / 100)
     gl.uniform1f(this.uniform('u_tint'), color.tint / 100)
 
-    // Tone Equalizer
+    // Tone Equalizer (colorbalance shadows/highlights/whites/blacks)
     gl.uniform1f(this.uniform('u_shadows'), color.shadows / 100)
     gl.uniform1f(this.uniform('u_highlights'), color.highlights / 100)
     gl.uniform1f(this.uniform('u_whites'), color.whites / 100)
     gl.uniform1f(this.uniform('u_blacks'), color.blacks / 100)
 
-    // Color Balance
+    // Color Balance (eq=contrast / eq=saturation / vibrance / grading)
     gl.uniform1f(this.uniform('u_contrast'), color.contrast / 100)
     gl.uniform1f(this.uniform('u_vibrance'), color.vibrance / 100)
     gl.uniform1f(this.uniform('u_saturation'), color.saturation / 100)
@@ -257,19 +250,9 @@ export class WebGLRenderer {
     this.setCurvePoints('Red', color.curve.points.red)
     this.setCurvePoints('Green', color.curve.points.green)
     this.setCurvePoints('Blue', color.curve.points.blue)
-    gl.uniform1f(this.uniform('u_curveLift'), color.curveLift / 100)
-    gl.uniform1f(this.uniform('u_curveContrast'), color.curveContrast / 100)
-
-    // Levels
+    // Levels (colorlevels: imin / imax)
     gl.uniform1f(this.uniform('u_levelsBlack'), color.levelsBlack)
-    gl.uniform1f(this.uniform('u_levelsGray'), color.levelsGray)
     gl.uniform1f(this.uniform('u_levelsWhite'), color.levelsWhite)
-
-    // HSL
-    gl.uniform1f(this.uniform('u_hue'), color.hue)
-    gl.uniform1f(this.uniform('u_hslHue'), color.hslHue)
-    gl.uniform1f(this.uniform('u_hslSat'), color.hslSat / 100)
-    gl.uniform1f(this.uniform('u_hslLum'), color.hslLum / 100)
 
     // Detail
     gl.uniform2f(this.uniform('u_texel'), 1 / Math.max(1, this.sourceSize.width), 1 / Math.max(1, this.sourceSize.height))

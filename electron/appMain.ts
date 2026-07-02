@@ -693,7 +693,10 @@ function registerIpc(): void {
       highlights: color.highlights ?? 0,
       whites: color.whites ?? 0,
       blacks: color.blacks ?? 0,
+      levelsBlack: color.levelsBlack ?? 0,
+      levelsWhite: color.levelsWhite ?? 1,
       clarity: color.clarity ?? 0,
+      texture: color.texture ?? 0,
       sharpen: color.sharpen ?? 0,
       denoise: color.denoise ?? 0,
     }
