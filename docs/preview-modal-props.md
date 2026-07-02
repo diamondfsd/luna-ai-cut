@@ -59,6 +59,49 @@
 />
 ```
 
+## LunaFile 属性说明
+
+`LunaFile` 是贯穿整个应用的媒体文件模型，定义在 `src/shared/types/media.ts`。
+
+| 属性 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `id` | `string` | ✅ | 文件唯一 ID |
+| `storageId` | `string` | — | 存储介质 ID（内置/SD 卡） |
+| `storageLabel` | `string` | — | 存储介质标签 |
+| `sourceDeviceId` | `string` | — | 源设备 ID（如 `luna-ultra` / `go-ultra`） |
+| `sourceDeviceName` | `string` | — | 源设备名称 |
+| `cameraType` | `string` | — | 相机型号文本 |
+| `cameraSerial` | `string` | — | 相机序列号 |
+| `watermarkProfileId` | `string` | — | 水印配置 ID |
+| `name` | `string` | ✅ | 文件名 |
+| `href` | `string` | ✅ | 文件相对路径/链接 |
+| `sourceUrl` | `string` | ✅ | 设备端文件 URL（http://...） |
+| `url` | `string` | ✅ | 预览 URL（可能是设备端或本地） |
+| `dateText` | `string` | ✅ | 日期文本（如 `2024-01-15`） |
+| `timeText` | `string` | ✅ | 时间文本（如 `14:30:00`） |
+| `sizeText` | `string` | ✅ | 文件大小文本（如 `12.5 MB`） |
+| `bytes` | `number \| null` | ✅ | 文件字节数 |
+| `kind` | `MediaKind` | ✅ | 媒体类型：`'image' \| 'video' \| 'lrv' \| 'unknown'` |
+| `extension` | `string` | ✅ | 文件扩展名（如 `.jpg`） |
+| `capturedAt` | `string \| null` | ✅ | 拍摄时间 ISO 字符串 |
+| `groupDay` | `string` | ✅ | 按天分组的 key |
+| `groupHour` | `string` | ✅ | 按小时分组的 key |
+| `videoKey` | `string \| null` | ✅ | 视频/照片配对的关联 key |
+| `previewName` | `string \| null` | ✅ | 预览缩略图文件名 |
+| `previewUrl` | `string \| null` | ✅ | 预览缩略图 URL |
+| `cacheFilePath` | `string \| null` | ✅ | 缓存文件路径（下载到缓存目录） |
+| `downloadFilePath` | `string \| null` | ✅ | 下载文件路径（用户指定目录） |
+| `thumbnailUrl` | `string \| null` | ✅ | 缩略图 URL |
+| `isLivePhoto` | `boolean` | ✅ | 是否为 Live Photo |
+| `livePhotoVideoName` | `string \| null` | ✅ | Live Photo 内嵌视频文件名 |
+| `livePhotoVideoUrl` | `string \| null` | ✅ | Live Photo 内嵌视频 URL |
+| `livePhotoCacheFilePath` | `string \| null` | ✅ | Live Photo 内嵌视频缓存路径 |
+| `downloadName` | `string` | ✅ | 下载时的文件名（可能不同于 `name`） |
+| `canPreview` | `boolean` | ✅ | 是否支持预览 |
+| `localPath` | `string` | — | 本地文件路径（额外字段，不一定有） |
+| `frameRate` | `number` | — | 视频帧率（额外字段） |
+| `duration` | `number` | — | 视频时长（秒） |
+
 ## 值得注意的点
 
 1. **`preview` 为 null 时** — 之前图片元数据加载会跳过（已修），现在会降级到 `file.downloadFilePath` / `localPath`
