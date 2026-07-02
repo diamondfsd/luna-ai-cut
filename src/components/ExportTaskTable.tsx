@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
 import type { ExportTaskItemRecord, ExportTaskRecord } from '../shared/types'
@@ -102,11 +102,19 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   }
 
   useEffect(() => { void loadTasks() }, [])
+  const prevExportingRef = useRef(exporting)
   useEffect(() => {
     if (!exporting) return
     void loadTasks()
     const interval = setInterval(() => { void loadTasks() }, 2000)
     return () => clearInterval(interval)
+  }, [exporting])
+  // 导出刚结束时再做一次加载，确保表格显示最终状态
+  useEffect(() => {
+    if (prevExportingRef.current && !exporting) {
+      void loadTasks()
+    }
+    prevExportingRef.current = exporting
   }, [exporting])
 
   // 默认展开最近的一个导出任务
