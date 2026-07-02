@@ -15,6 +15,7 @@ const UNIFORM_NAMES = [
   // Texture / Transform
   'u_image',
   'u_lut3d',
+  'u_useLut',
   'u_aspectRatio',
   'u_crop',
   'u_rotate',
@@ -212,7 +213,7 @@ export class WebGLRenderer {
       gl.bindTexture(gl.TEXTURE_3D, this.lutTexture)
     }
 
-    this.updateUniforms(pipeline, options)
+    this.updateUniforms(pipeline, options, lutValid)
     const err1 = gl.getError()
     if (err1 !== gl.NO_ERROR) glLog('updateUniforms', err1)
 
@@ -261,13 +262,14 @@ export class WebGLRenderer {
     return { r: pixels[0], g: pixels[1], b: pixels[2] }
   }
 
-  private updateUniforms(pipeline: EditPipeline, options: { cropMode?: boolean }): void {
+  private updateUniforms(pipeline: EditPipeline, options: { cropMode?: boolean }, useLut: boolean): void {
     const gl = this.gl
 
     // 主纹理在纹理单元 0，3D LUT 在纹理单元 1
     gl.uniform1i(this.uniform('u_image'), 0)
     const lutLoc = gl.getUniformLocation(this.program, 'u_lut3d')
     if (lutLoc) gl.uniform1i(lutLoc, 1)
+    gl.uniform1i(this.uniform('u_useLut'), useLut ? 1 : 0)
 
     const fullCrop = { x: 0, y: 0, w: 1, h: 1 }
     const selectionCrop = pipeline.transform.crop ?? fullCrop

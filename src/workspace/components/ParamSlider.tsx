@@ -38,6 +38,8 @@ export function ParamSlider({
   const [editValue, setEditValue] = useState(() => formatValue(value))
   const [editing, setEditing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const rafRef = useRef<number | null>(null)
+  const pendingValueRef = useRef<number | null>(null)
   const displayValue = numericInputValue(value, formatValue)
 
   useEffect(() => {
@@ -55,6 +57,32 @@ export function ParamSlider({
     }
     setEditing(false)
   }
+
+  function scheduleSliderChange(next: number): void {
+    pendingValueRef.current = next
+    if (rafRef.current !== null) return
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      const pending = pendingValueRef.current
+      pendingValueRef.current = null
+      if (pending !== null) onChange(pending)
+    })
+  }
+
+  function flushSliderChange(next: number): void {
+    pendingValueRef.current = null
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    onChange(next)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    }
+  }, [])
 
   return (
     <div className="workspace-param-slider">
@@ -81,7 +109,8 @@ export function ParamSlider({
           min={min}
           max={max}
           step={step}
-          onValueChange={([v]) => onChange(v)}
+          onValueChange={([v]) => scheduleSliderChange(v)}
+          onValueCommit={([v]) => flushSliderChange(v)}
         >
           <RadixSlider.Track className="workspace-slider-track">
             <div
