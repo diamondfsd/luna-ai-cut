@@ -3,93 +3,115 @@ import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
-import { buildHistogram, emptyDetails, filePathToPreviewUrl, type MediaDetails } from './previewModalUtils'
+import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
 import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import { BaseModal } from '../ui'
+import { watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
+import { Dialog } from '../ui'
 import '../styles/modal.css'
 
 interface PreviewModalProps {
-  files: LunaFile[]
-  currentFile: LunaFile
-  currentFileId: string
-  preview: PreviewResult | null
-  previewLoading: boolean
-  downloadProgress: DownloadProgress | undefined
-  isDownloadsPage: boolean
-  showWatermarkControls?: boolean
+  /** 文件路径 — 必须，组件从路径推导所有文件信息 */
+  filePath: string
+  /** 可选文件列表，用于缩略图导航 */
+  files?: LunaFile[]
+  /** 当前文件（当 files 传入时需要） */
+  currentFile?: LunaFile
+  onFileChange?: (file: LunaFile) => void
+
   onClose: () => void
-  onDownload: (file: LunaFile) => void
+  onReveal?: (file: LunaFile) => void
+  onDownload?: (file: LunaFile) => void
   onExportWithWatermark?: (file: LunaFile, settings: WatermarkSettingsType) => void
-  onReveal: (file: LunaFile) => void
-  onFileChange: (file: LunaFile) => void
   autoPlayLive?: boolean
+
+  /** @deprecated 逐渐淘汰 */
+  preview?: PreviewResult | null
+  previewLoading?: boolean
+  downloadProgress?: DownloadProgress
+  isDownloadsPage?: boolean
+  showWatermarkControls?: boolean
 }
 
 export function PreviewModal({
-  files,
-  currentFile,
-  currentFileId,
-  preview,
-  previewLoading,
-  downloadProgress,
-  isDownloadsPage,
-  showWatermarkControls = isDownloadsPage,
+  filePath,
+  files: propFiles,
+  currentFile: propCurrentFile,
+  onFileChange,
   onClose,
+  onReveal,
   onDownload,
   onExportWithWatermark,
-  onReveal,
-  onFileChange,
   autoPlayLive = false,
+  preview: deprecatedPreview,
+  previewLoading: deprecatedPreviewLoading,
+  downloadProgress,
+  isDownloadsPage = false,
+  showWatermarkControls: propShowWatermarkControls,
 }: PreviewModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const previewImageRef = useRef<HTMLImageElement | null>(null)
   const thumbStripRef = useRef<HTMLDivElement | null>(null)
   const activeThumbRef = useRef<HTMLButtonElement | null>(null)
 
+  // ── 从文件路径推导文件信息 ──
+  const internalFile = useMemo(() => filePathToLunaFile(filePath, {
+    thumbnailUrl: thumbnailForPath(filePath),
+  }), [filePath])
+  const file = propCurrentFile ?? internalFile
+  const showWatermarkControls = propShowWatermarkControls ?? isDownloadsPage
+
+  // ── 导航 ──
   const modalFiles = useMemo(() => {
-    if (files.some((item) => item.id === currentFile.id)) return files
-    return [...files, currentFile]
-  }, [currentFile, files])
+    if (propFiles && propFiles.some((item) => item.id === file.id)) return propFiles
+    if (propFiles) return [...propFiles, file]
+    return [file]
+  }, [file, propFiles])
 
-  const file = useMemo(
-    () => modalFiles.find((f) => f.id === currentFileId) ?? currentFile,
-    [currentFile, currentFileId, modalFiles],
-  )
+  const [hasPrevious, hasNext] = useMemo(() => {
+    const idx = modalFiles.findIndex((f) => f.id === file.id)
+    return [idx > 0, idx >= 0 && idx < modalFiles.length - 1]
+  }, [modalFiles, file.id])
 
+  function navigateFile(direction: -1 | 1): void {
+    const idx = modalFiles.findIndex((f) => f.id === file.id)
+    if (idx < 0) return
+    const next = idx + direction
+    if (next < 0 || next >= modalFiles.length) return
+    onFileChange?.(modalFiles[next])
+  }
+
+  // ── 预览加载 ──
+  const [internalPreview, setInternalPreview] = useState<PreviewResult | null>(null)
+  const [internalPreviewLoading, setInternalPreviewLoading] = useState(false)
+
+  const preview = deprecatedPreview ?? internalPreview
+  const previewLoading = deprecatedPreviewLoading ?? internalPreviewLoading
+
+  // 内部自动加载预览
+  useEffect(() => {
+    if (deprecatedPreview !== undefined) return // 外部提供了就用外部的
+    setInternalPreviewLoading(true)
+    window.luna.previewFile(file, modalFiles)
+      .then(setInternalPreview)
+      .catch(() => {})
+      .finally(() => setInternalPreviewLoading(false))
+  }, [file.id])
+
+  // ── 状态 ──
   const [mediaDetails, setMediaDetails] = useState<MediaDetails>(() => emptyDetails())
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
   const [imageZoom, setImageZoom] = useState(1)
   const [imagePan, setImagePan] = useState({ x: 0, y: 0 })
-  const [baseScale, setBaseScale] = useState(1) // 原始/预览缩放比（displayedNatural）
+  const [baseScale, setBaseScale] = useState(1)
   const [imageDragging, setImageDragging] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
+  // 获取设备默认水印样式
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>(() => ({
     enabled: false,
-    style: 'luna_ultra_cn',
-    watermarkPercent: 20,
+    style: 'luna_ultra',
     position: 'bottom-center',
   }))
-
-  // 加载已保存的水印设置（仅已下载页面需要预览水印）
-  useEffect(() => {
-    if (!isDownloadsPage) return
-    window.luna.getSettings().then((s) => {
-      const deviceId = s.activeDeviceId
-      const wm = deviceId ? s.deviceWatermark?.[deviceId] : undefined
-      if (wm) setWatermarkSettings(wm)
-    }).catch(() => {})
-  }, [isDownloadsPage])
-
-  const completedDownloadPath = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists'
-    ? downloadProgress.destinationPath ?? null
-    : null
-  const isDownloadingCurrentFile = downloadProgress?.status === 'queued' || downloadProgress?.status === 'downloading'
-
-  // 优先使用已下载的本地文件作为预览源
-  const downloadedPath = file.downloadFilePath ?? file.localPath ?? completedDownloadPath
-  const previewMatchesFile = preview?.fileName === file.name
-  const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
   const [livePreview, setLivePreview] = useState<PreviewResult | null>(null)
   const [liveLoading, setLiveLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
@@ -105,19 +127,34 @@ export function PreviewModal({
     originY: number
   } | null>(null)
 
-  // Navigation helpers
-  const [hasPrevious, hasNext] = useMemo(() => {
-    const idx = modalFiles.findIndex((f) => f.id === currentFileId)
-    return [idx > 0, idx >= 0 && idx < modalFiles.length - 1]
-  }, [modalFiles, currentFileId])
+  const completedDownloadPath = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists'
+    ? downloadProgress.destinationPath ?? null
+    : null
+  const isDownloadingCurrentFile = downloadProgress?.status === 'queued' || downloadProgress?.status === 'downloading'
+  const downloadedPath = file.downloadFilePath ?? file.localPath ?? completedDownloadPath
+  const isDownloaded = !!downloadedPath
+  const effectiveWatermark = showWatermarkControls && isDownloaded
+  const previewMatchesFile = preview?.fileName === file.name
+  const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
+  const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
 
-  function navigateFile(direction: -1 | 1): void {
-    const idx = modalFiles.findIndex((f) => f.id === currentFileId)
-    if (idx < 0) return
-    const next = idx + direction
-    if (next < 0 || next >= modalFiles.length) return
-    onFileChange(modalFiles[next])
-  }
+  // 加载已保存的水印设置，若无保存则设设备默认样式
+  useEffect(() => {
+    if (!isDownloadsPage) return
+    const deviceIdForWm = file.sourceDeviceId ?? file.watermarkProfileId ?? null
+    window.luna.getSettings().then((s) => {
+      const activeId = s.activeDeviceId
+      const wm = activeId ? s.deviceWatermark?.[activeId] : undefined
+      if (wm) {
+        setWatermarkSettings(wm)
+      } else if (deviceIdForWm) {
+        const opts = watermarkStyleOptionsForDevice(deviceIdForWm)
+        if (opts.length > 0) {
+          setWatermarkSettings((prev) => ({ ...prev, style: opts[0].value }))
+        }
+      }
+    }).catch(() => {})
+  }, [isDownloadsPage, file.sourceDeviceId, file.watermarkProfileId])
 
   function saveWatermarkSettings(next: WatermarkSettingsType): void {
     setWatermarkSettings(next)
@@ -140,180 +177,115 @@ export function PreviewModal({
     autoPlayLiveRef.current = null
   }, [file.id])
 
-  // Wheel zoom for images（含 Live Photo）
   useEffect(() => {
-    if (file.kind !== 'image') return
+    setImageZoom(1)
+    setImagePan({ x: 0, y: 0 })
+    setBaseScale(1)
+    setImageDragging(false)
+  }, [file.id])
 
-    function handleWheel(event: WheelEvent): void {
-      const target = event.target instanceof HTMLElement ? event.target : null
-      const inPreviewModal = Boolean(target?.closest('.preview-modal'))
-      if (!inPreviewModal || target?.closest('.media-inspector') || target?.closest('.preview-thumbnails')) return
-
-      event.preventDefault()
-      event.stopPropagation()
-
-      setImageZoom((current) => {
-        const next = Math.min(8, Math.max(1, current + (event.deltaY < 0 ? 0.18 : -0.18)))
-        if (next <= 1) setImagePan({ x: 0, y: 0 })
-        return next
-      })
+  // 从元数据回填文件信息
+  const enrichedFile = useMemo(() => {
+    if (!mediaMetadata) return file
+    const map = new Map<string, string>()
+    for (const group of mediaMetadata.groups) {
+      for (const entry of group.entries) map.set(entry.key, entry.value)
     }
+    let bytes = file.bytes
+    let capturedAt = file.capturedAt
+    if (bytes === null || bytes === undefined) {
+      const fileSizeStr = map.get('size')
+      if (fileSizeStr) {
+        const num = Number(fileSizeStr)
+        if (!Number.isNaN(num)) bytes = Math.round(num)
+      }
+    }
+    if (!capturedAt) {
+      capturedAt = map.get('DateTimeOriginal') ?? map.get('CreateDate') ?? map.get('ModifyDate') ?? null
+    }
+    if (bytes === file.bytes && capturedAt === file.capturedAt) return file
+    return { ...file, bytes, capturedAt }
+  }, [file, mediaMetadata])
 
-    document.addEventListener('wheel', handleWheel, { capture: true, passive: false })
-    return () => document.removeEventListener('wheel', handleWheel, { capture: true })
-  }, [file.kind])
-
-  const isDownloaded = !!downloadedPath
-  // 水印控制：仅在已下载文件上生效
-  const effectiveWatermark = showWatermarkControls && isDownloaded
-
-  // Load metadata when preview is ready (images) or after download (videos)
+  // 元数据懒加载 — inspector 打开时才加载
   useEffect(() => {
+    if (!inspectorOpen || file.kind === 'unknown') {
+      setMediaMetadata(null)
+      return
+    }
     if (file.kind === 'image') {
-      if (!preview?.cachedPath) return
+      const metaPath = downloadedPath
+      if (!metaPath) return
       setMetadataLoading(true)
-      window.luna
-        .getMediaMetadata(file, preview.cachedPath)
+      window.luna.getMediaMetadata(file, metaPath)
         .then(setMediaMetadata)
         .catch(() => setMediaMetadata({ groups: [] }))
         .finally(() => setMetadataLoading(false))
       return
     }
-
-    // 视频：下载后才获取元数据（分辨率、帧率等）
     if (file.kind === 'video' && isDownloaded) {
-      const localPath = file.downloadFilePath ?? file.localPath ?? completedDownloadPath
       setMetadataLoading(true)
-      window.luna
-        .getMediaMetadata(file, localPath)
+      window.luna.getMediaMetadata(file, downloadedPath)
         .then((meta) => {
           setMediaMetadata(meta)
           const videoGroup = meta.groups.find((g) => g.name === '视频')
           const fpsEntry = videoGroup?.entries.find((e) => e.key === '帧率')
           if (fpsEntry) {
             const fps = Number.parseFloat(fpsEntry.value)
-            if (!Number.isNaN(fps)) {
-              setMediaDetails((prev) => ({ ...prev, frameRate: fps }))
-            }
+            if (!Number.isNaN(fps)) setMediaDetails((prev) => ({ ...prev, frameRate: fps }))
           }
         })
-        .catch(() => { /* 静默失败 */ })
+        .catch(() => {})
         .finally(() => setMetadataLoading(false))
     }
-  }, [preview?.cachedPath, file, isDownloaded])
+  }, [inspectorOpen, file.id, file.kind, isDownloaded, downloadedPath])
 
-  const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
-
-  function handleImageLoaded(image: HTMLImageElement): void {
+  const handleImageLoaded = useCallback((image: HTMLImageElement) => {
     let histogram: MediaDetails['histogram'] = []
-    try {
-      histogram = buildHistogram(image)
-    } catch {
-      histogram = []
-    }
-    // 计算实际显示比例（CSS 显示尺寸 / 原始像素尺寸）
-    const rect = image.getBoundingClientRect()
-    const scale = Math.min(
-      rect.width / Math.max(image.naturalWidth, 1),
-      rect.height / Math.max(image.naturalHeight, 1),
-    )
-    setBaseScale(Math.max(0.01, scale))
+    try { histogram = buildHistogram(image) } catch { histogram = [] }
     setMediaDetails((current) => ({ ...current, width: image.naturalWidth, height: image.naturalHeight, histogram }))
-  }
+  }, [])
 
-  function handleVideoLoaded(video: HTMLVideoElement): void {
+  const handleVideoLoaded = useCallback((video: HTMLVideoElement) => {
     setMediaDetails((current) => ({
       ...current,
       width: video.videoWidth,
       height: video.videoHeight,
       duration: video.duration,
-      currentTime: video.currentTime,
     }))
-  }
+  }, [])
 
-  function handleVideoTimeUpdate(video: HTMLVideoElement): void {
-    setMediaDetails((current) => ({
-      ...current,
-      currentTime: video.currentTime,
-      duration: video.duration || current.duration,
-    }))
-  }
+  const handleVideoTimeUpdate = useCallback((video: HTMLVideoElement) => {
+    setMediaDetails((current) => ({ ...current, currentTime: video.currentTime }))
+  }, [])
 
-  const playLivePhoto = useCallback(async (): Promise<void> => {
-    if (!file.isLivePhoto || liveLoading) return
+  // 水印加载相关
+  const playLivePhoto = useCallback(async () => {
+    if (liveLoading) return
     setLiveLoading(true)
     setLiveError(null)
     try {
       const result = livePreview ?? await window.luna.previewLivePhoto(file)
       setLivePreview(result)
-      setLivePlaying(Boolean(result.source))
-      if (result.source) setLiveReplayKey((current) => current + 1)
-      if (!result.source && result.message) setLiveError(result.message)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      setLivePreview({
-        fileName: file.name,
-        kind: 'video',
-        source: null,
-        cachedPath: null,
-        message,
-      })
-      setLiveError(message)
-      setLivePlaying(false)
+      setLivePlaying(true)
+    } catch (e: any) {
+      setLiveError(e?.message ?? 'Live Photo 加载失败')
     } finally {
       setLiveLoading(false)
+      setLiveReplayKey((k) => k + 1)
     }
-  }, [file, liveLoading, livePreview])
+  }, [liveLoading, livePreview, file])
 
   useEffect(() => {
     if (!autoPlayLive || previewLoading || autoPlayLiveRef.current === file.id) return
     autoPlayLiveRef.current = file.id
-    void playLivePhoto()
-  }, [autoPlayLive, file.id, playLivePhoto, previewLoading])
+    const timer = setTimeout(() => void playLivePhoto(), 200)
+    return () => clearTimeout(timer)
+  }, [autoPlayLive, file.id, previewLoading, playLivePhoto])
 
-  function isZoomedIn(): boolean {
-    return imageZoom > 1
-  }
-
-  function resetImageView(): void {
-    setImageZoom(1)
-    setImagePan({ x: 0, y: 0 })
-  }
-
-  const handleZoomIn = useCallback(() => {
-    setImageZoom((value) => Math.min(8, value + 0.2))
-  }, [])
-
-  const handleZoomOut = useCallback(() => {
-    setImageZoom((value) => {
-      const next = Math.max(1, value - 0.2)
-      if (next <= 1) setImagePan({ x: 0, y: 0 })
-      return next
-    })
-  }, [])
-
-  const handleResetZoom = useCallback(() => {
-    resetImageView()
-  }, [])
-
-  function handleImageDoubleClick(event: ReactPointerEvent<HTMLImageElement>): void {
-    event.preventDefault()
-    event.stopPropagation()
-    if (isZoomedIn()) {
-      // 双击已放大的图片，重置为适配屏幕
-      resetImageView()
-      return
-    }
-    // 双击未放大的图片，设为 100%（原始像素 1:1）
-    setImageZoom(Math.round((1 / baseScale) * 100) / 100)
-    setImagePan({ x: 0, y: 0 })
-  }
-
-  function handleImagePointerDown(event: ReactPointerEvent<HTMLImageElement>): void {
+  // 手势相关
+  function handleImagePointerDown(event: ReactPointerEvent): void {
     if (imageZoom <= 1) return
-    event.preventDefault()
-    event.stopPropagation()
-    event.currentTarget.setPointerCapture(event.pointerId)
     imageDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -321,53 +293,57 @@ export function PreviewModal({
       originX: imagePan.x,
       originY: imagePan.y,
     }
-    setImageDragging(true)
   }
 
-  function handleImagePointerMove(event: ReactPointerEvent<HTMLImageElement>): void {
+  function handleImagePointerMove(event: ReactPointerEvent): void {
     const drag = imageDragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-    event.preventDefault()
-    event.stopPropagation()
-    setImagePan({ x: drag.originX + event.clientX - drag.startX, y: drag.originY + event.clientY - drag.startY })
+    if (!drag || event.pointerId !== drag.pointerId) return
+    setImagePan({
+      x: drag.originX + (event.clientX - drag.startX),
+      y: drag.originY + (event.clientY - drag.startY),
+    })
   }
 
-  function finishImageDrag(event: ReactPointerEvent<HTMLImageElement>): void {
-    const drag = imageDragRef.current
-    if (drag?.pointerId === event.pointerId) {
-      imageDragRef.current = null
-      setImageDragging(false)
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-  }
+  function finishImageDrag(): void { imageDragRef.current = null }
 
-  // 缩略图条自动滚动到当前文件
-  useEffect(() => {
-    activeThumbRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-  }, [currentFileId])
-
-  // 切换文件时重置缩放
-  useEffect(() => {
-    setImageZoom(1)
+  function handleImageDoubleClick(_event: React.MouseEvent): void {
+    setImageZoom((current) => current > 1 ? 1 : 3)
     setImagePan({ x: 0, y: 0 })
-  }, [currentFileId])
+  }
 
-  // 窗口级键盘事件：左右箭头切换文件，Esc / Cmd+W 由 BaseModal 处理
+  useEffect(() => {
+    function handleWheel(event: WheelEvent): void {
+      const target = event.target as HTMLElement | null
+      const inPreviewModal = Boolean(target?.closest('.preview-modal'))
+      if (!inPreviewModal || target?.closest('.media-inspector') || target?.closest('.preview-thumbnails')) return
+      event.preventDefault()
+      setImageZoom((current) => {
+        const next = Math.min(8, Math.max(1, current + (event.deltaY < 0 ? 0.18 : -0.18)))
+        if (next <= 1) setImagePan({ x: 0, y: 0 })
+        return next
+      })
+    }
+    document.addEventListener('wheel', handleWheel, { capture: true, passive: false })
+    return () => document.removeEventListener('wheel', handleWheel, { capture: true })
+  }, [file.kind])
+
+  // 键盘导航
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'ArrowLeft') { event.preventDefault(); navigateFile(-1); return }
-      if (event.key === 'ArrowRight') { event.preventDefault(); navigateFile(1); return }
+      if (event.key === 'Escape') onClose()
+      if ((event.key === 'ArrowLeft' || event.key === 'ArrowUp') && hasPrevious) navigateFile(-1)
+      if ((event.key === 'ArrowRight' || event.key === 'ArrowDown') && hasNext) navigateFile(1)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [modalFiles, currentFileId, onFileChange])
+  }, [modalFiles, file.id, onFileChange, onClose])
 
   return (
-    <BaseModal onClose={onClose}>
+    <Dialog open variant="fullscreen" onOpenChange={(o) => !o && onClose()}>
       <section className="preview-modal">
         <PreviewModalHeader
           downloadProgress={downloadProgress}
-          file={file}
+          file={enrichedFile}
           inspectorOpen={inspectorOpen}
           isDownloaded={isDownloaded}
           isDownloadingCurrentFile={isDownloadingCurrentFile}
@@ -386,7 +362,7 @@ export function PreviewModal({
           <div className="preview-stage-col">
             <PreviewStage
               displaySource={displaySource}
-              file={file}
+              file={enrichedFile}
               hasNext={hasNext}
               hasPrevious={hasPrevious}
               imageDragging={imageDragging}
@@ -395,7 +371,7 @@ export function PreviewModal({
               liveError={liveError}
               liveLoading={liveLoading}
               livePlaying={livePlaying}
-              livePreviewMessage={livePreview?.message}
+              livePreviewMessage={undefined}
               liveReplayKey={liveReplayKey}
               liveSource={liveSource}
               previewFileName={preview?.fileName}
@@ -419,32 +395,39 @@ export function PreviewModal({
 
             <PreviewThumbnailStrip
               activeThumbRef={activeThumbRef}
-              currentFileId={currentFileId}
+              currentFileId={file.id}
               files={modalFiles}
               stripRef={thumbStripRef}
-              onFileChange={onFileChange}
+              onFileChange={(f) => onFileChange?.(f)}
             />
           </div>
 
           {inspectorOpen && (
             <MediaInspector
-              file={file}
+              file={enrichedFile}
               mediaDetails={mediaDetails}
               mediaMetadata={mediaMetadata}
               metadataLoading={metadataLoading}
               isDownloaded={isDownloaded}
               imageZoom={imageZoom}
               baseScale={baseScale}
-              onZoomIn={handleZoomIn}
-              onZoomOut={handleZoomOut}
-              onResetZoom={handleResetZoom}
+              onZoomIn={() => setImageZoom((z) => Math.min(8, z * 1.5))}
+              onZoomOut={() => {
+                setImageZoom((z) => {
+                  const next = z / 1.5
+                  if (next <= 1) { setImagePan({ x: 0, y: 0 }); return 1 }
+                  return next
+                })
+              }}
+              onResetZoom={() => { setImageZoom(1); setImagePan({ x: 0, y: 0 }) }}
               onToggleCollapse={() => setInspectorOpen(false)}
               watermarkSettings={effectiveWatermark ? watermarkSettings : undefined}
               onWatermarkChange={effectiveWatermark ? saveWatermarkSettings : undefined}
+              watermarkFilePath={effectiveWatermark ? downloadedPath : undefined}
             />
           )}
         </div>
       </section>
-    </BaseModal>
+    </Dialog>
   )
 }

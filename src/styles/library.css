@@ -62,7 +62,10 @@
 
 /* Gallery — 统一浅色背景 */
 .gallery {
+  position: relative;
   background: var(--parchment);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .media-section {
@@ -167,6 +170,13 @@
   outline-offset: -2px;
 }
 
+/* 拖拽框选高亮 */
+.media-card.drag-selected {
+  border-color: var(--blue) !important;
+  outline: 2px solid var(--blue) !important;
+  outline-offset: -2px !important;
+}
+
 .media-frame {
   position: relative;
   display: grid;
@@ -205,21 +215,6 @@
   letter-spacing: 0.2px;
   line-height: 1;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
-}
-
-.video-play-badge {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  z-index: 2;
-  display: grid;
-  width: 26px;
-  height: 26px;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.35);
-  color: #fff;
-  pointer-events: none;
 }
 
 .select-chip,
@@ -447,4 +442,14 @@
   font-weight: 600;
   color: var(--ink);
   white-space: nowrap;
+}
+
+/* 拖拽框选 */
+.gallery-drag-select {
+  position: absolute;
+  border: 1px solid var(--blue);
+  background: rgba(0, 102, 204, 0.08);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 10;
 }

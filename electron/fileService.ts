@@ -6,7 +6,8 @@ import { localThumbnailUrl, safeName } from './filePathUtils'
 import { downloadToFile, downloadToFileWithRetry, isAbortError } from './fileDownloadService'
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
-import { logMainInfo, logMainWarn } from './loggerService'
+import { logMainDebug, logMainInfo, logMainWarn } from './loggerService'
+import { recordDownloadedFileSource } from './mediaSourceManifestService'
 import type {
   DownloadProgress,
   DownloadSummary,
@@ -250,12 +251,23 @@ export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: str
     // --- 检查已生成的缩略图 ---
     const thumbName = `${safeId(file.downloadName || file.name)}${THUMB_EXT}`
     if (thumbFileSet.has(thumbName)) {
-      file.thumbnailUrl = localThumbnailUrl(thumbnailPathFor(cacheDir, file.downloadName || file.name))
+      const thumbPath = thumbnailPathFor(cacheDir, file.downloadName || file.name)
+      file.thumbnailUrl = localThumbnailUrl(thumbPath)
       foundThumb++
+      if (foundThumb <= 3) {
+        logMainDebug(`[resolveLocalThumbnails] 找到缩略图`, {
+          fileName: file.name, thumbName, thumbPath, url: file.thumbnailUrl,
+        })
+      }
     }
   }
 
-  logMainInfo(`[resolveLocalThumbnails] 检查完成`, { total: files.length, foundLocal, foundThumb })
+  logMainInfo(`[resolveLocalThumbnails] 检查完成`, {
+    total: files.length, foundLocal, foundThumb,
+    cacheDir,
+    thumbDirPath: thumbnailDir(cacheDir),
+    thumbFileCount: thumbFileSet.size,
+  })
 }
 
 /**
@@ -388,6 +400,7 @@ export async function downloadFiles(
     try {
       const existingFinal = await fileSize(destination)
       if (existingFinal > 0) {
+        await recordDownloadedFileSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
@@ -409,6 +422,7 @@ export async function downloadFiles(
       const cachedPath = file.cacheFilePath ?? path.join(previewDir, safeName(file.name))
       const canCopyCachedFile = path.basename(cachedPath) === safeName(file.downloadName)
       if (canCopyCachedFile && await copyIfPresent(cachedPath, destination)) {
+        await recordDownloadedFileSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
@@ -445,6 +459,7 @@ export async function downloadFiles(
         status: 'done',
         destinationPath: destination,
       })
+      await recordDownloadedFileSource(outputDir, destination, file)
       summary.completed.push({ name: file.name, path: destination })
       logFinalDownloadSuccess(file, destination, file.bytes)
     } catch (error) {

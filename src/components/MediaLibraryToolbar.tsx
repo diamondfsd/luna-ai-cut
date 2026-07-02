@@ -1,13 +1,14 @@
-import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, Loader2, RefreshCcw, Trash2, X } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { DownloadProgressModal } from './DownloadProgressModal'
 import { ExportModal } from './ExportModal'
-import { ExportProgressModal } from './ExportProgressModal'
+import { AddToWorkspaceProjectDialog, CreateWorkspaceProjectDialog } from './WorkspaceProjectDialogs'
 import { formatBytes } from '../lib/format'
 import type { CardSize, SortOrder } from '../pages/useMediaLibraryController'
-import type { DeviceDefinition, DownloadProgress, ExportProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { DownloadProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
   Button,
   ButtonGroup,
@@ -15,13 +16,14 @@ import {
   PopoverContent,
   PopoverTrigger,
   SegmentedControl,
+  toast,
 } from '../ui'
+import type { WorkspaceProject } from '../shared/types'
 
 type DownloadStatusFilter = 'all' | 'downloaded' | 'not-downloaded'
 import type { ViewMode } from '../pages/useMediaLibraryController'
 
 interface MediaLibraryToolbarProps {
-  activeDevice?: DeviceDefinition
   activeDownloadFileNames: Set<string>
   cardSize: CardSize
   currentDate: string
@@ -32,8 +34,6 @@ interface MediaLibraryToolbarProps {
   downloading: boolean
   downloadStatusFilter: DownloadStatusFilter
   exportError: string | null
-  exportProgress: Map<string, ExportProgress>
-  exportSnapshots: Map<string, LunaFile>
   exporting: boolean
   exportWatermarkSettings: WatermarkSettingsType
   isDownloadsPage: boolean
@@ -54,8 +54,6 @@ interface MediaLibraryToolbarProps {
   setDownloading: (downloading: boolean) => void
   setDownloadStatusFilter: (value: DownloadStatusFilter) => void
   setExportError: (value: string | null) => void
-  setExporting: (value: boolean) => void
-  setExportProgress: Dispatch<SetStateAction<Map<string, ExportProgress>>>
   setExportWatermarkSettings: (settings: WatermarkSettingsType) => void
   setSelected: Dispatch<SetStateAction<Set<string>>>
   setShowDeleteDialog: (value: boolean) => void
@@ -75,7 +73,6 @@ interface MediaLibraryToolbarProps {
 }
 
 export function MediaLibraryToolbar({
-  activeDevice,
   activeDownloadFileNames,
   cardSize,
   currentDate,
@@ -86,8 +83,6 @@ export function MediaLibraryToolbar({
   downloading,
   downloadStatusFilter,
   exportError,
-  exportProgress,
-  exportSnapshots,
   exporting,
   exportWatermarkSettings,
   isDownloadsPage,
@@ -108,8 +103,6 @@ export function MediaLibraryToolbar({
   setDownloading,
   setDownloadStatusFilter,
   setExportError,
-  setExporting,
-  setExportProgress,
   setExportWatermarkSettings,
   setSelected,
   setShowDeleteDialog,
@@ -129,6 +122,75 @@ export function MediaLibraryToolbar({
 }: MediaLibraryToolbarProps) {
   const haveSelection = selectedCount > 0
   const [filterOpen, setFilterOpen] = useState(false)
+  const [createProjectOpen, setCreateProjectOpen] = useState(false)
+  const [addProjectOpen, setAddProjectOpen] = useState(false)
+  const [projectName, setProjectName] = useState('')
+  const [projects, setProjects] = useState<WorkspaceProject[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [projectBusy, setProjectBusy] = useState(false)
+  const navigate = useNavigate()
+  const workspaceMedia = selectedFiles
+    .filter((file) => file.kind === 'image' || file.kind === 'video')
+    .map((file) => {
+      const path = file.localPath ?? file.downloadFilePath ?? file.cacheFilePath ?? null
+      if (!path) return null
+      return {
+        id: file.id,
+        name: file.name,
+        path,
+        kind: file.kind as 'image' | 'video',
+        thumbnailUrl: file.thumbnailUrl,
+      }
+    })
+    .filter((file): file is NonNullable<typeof file> => Boolean(file))
+  const canSendToWorkspace = isDownloadsPage && workspaceMedia.length > 0
+
+  async function handleCreateProject(): Promise<void> {
+    if (!canSendToWorkspace || projectBusy) return
+    setProjectBusy(true)
+    try {
+      const name = projectName.trim() || `工作台项目 ${new Date().toLocaleString()}`
+      const project = await window.luna.workspace.createProject(name, workspaceMedia)
+      setCreateProjectOpen(false)
+      setProjectName('')
+      setSelected(new Set())
+      navigate('/workspace', { state: { project, initialIndex: 0 } })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setProjectBusy(false)
+    }
+  }
+
+  async function openAddProjectDialog(): Promise<void> {
+    if (!canSendToWorkspace || projectBusy) return
+    setProjectBusy(true)
+    try {
+      const nextProjects = await window.luna.workspace.listProjects()
+      setProjects(nextProjects)
+      setSelectedProjectId(nextProjects[0]?.id ?? '')
+      setAddProjectOpen(true)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setProjectBusy(false)
+    }
+  }
+
+  async function handleAddToProject(): Promise<void> {
+    if (!selectedProjectId || projectBusy) return
+    setProjectBusy(true)
+    try {
+      const project = await window.luna.workspace.addAssetsToProject(selectedProjectId, workspaceMedia)
+      setAddProjectOpen(false)
+      setSelected(new Set())
+      navigate('/workspace', { state: { project, initialIndex: Math.max(0, project.assets.length - workspaceMedia.length) } })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setProjectBusy(false)
+    }
+  }
 
   return (
     <>
@@ -146,6 +208,24 @@ export function MediaLibraryToolbar({
                 </Button>
                 {isDownloadsPage ? (
                   <>
+                    <Button
+                      variant="secondary"
+                      size="compact"
+                      disabled={!canSendToWorkspace}
+                      icon={<FolderPlus size={14} />}
+                      onClick={() => setCreateProjectOpen(true)}
+                    >
+                      创建项目 ({workspaceMedia.length})
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="compact"
+                      disabled={!canSendToWorkspace || projectBusy}
+                      icon={<Plus size={14} />}
+                      onClick={() => void openAddProjectDialog()}
+                    >
+                      添加到项目
+                    </Button>
                     <Button variant="danger" size="compact" onClick={() => setShowDeleteDialog(true)}>
                       <Trash2 size={14} />
                       删除 ({selectedCount})
@@ -269,26 +349,6 @@ export function MediaLibraryToolbar({
           )}
         </div>
 
-        {isDownloadsPage && exportProgress.size > 0 && (
-          <ExportProgressModal
-            exportProgress={exportProgress}
-            fileSnapshots={exportSnapshots}
-            exporting={exporting}
-            setExporting={setExporting}
-            onRevealFile={revealFileByPath}
-            onCanceled={() => {
-              setExportProgress((current) => {
-                const next = new Map(current)
-                for (const [fileName, progress] of next.entries()) {
-                  if (progress.status === 'queued' || progress.status === 'exporting') {
-                    next.set(fileName, { ...progress, status: 'canceled', percent: null })
-                  }
-                }
-                return next
-              })
-            }}
-          />
-        )}
         {isDownloadsPage && exportError && (
           <span className="export-error">{exportError}<button onClick={() => setExportError(null)} title="关闭">&times;</button></span>
         )}
@@ -314,11 +374,30 @@ export function MediaLibraryToolbar({
         )}
       </section>
 
+      <CreateWorkspaceProjectDialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        projectName={projectName}
+        onProjectNameChange={setProjectName}
+        canCreate={canSendToWorkspace}
+        busy={projectBusy}
+        onConfirm={() => void handleCreateProject()}
+      />
+
+      <AddToWorkspaceProjectDialog
+        open={addProjectOpen}
+        onOpenChange={setAddProjectOpen}
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onSelectedProjectIdChange={setSelectedProjectId}
+        busy={projectBusy}
+        onConfirm={() => void handleAddToProject()}
+      />
+
       {showExportDialog && (
         <ExportModal
           files={selectedFiles}
           watermarkSettings={exportWatermarkSettings}
-          watermarkStyleOptions={activeDevice?.watermarkStyles}
           exporting={exporting}
           onClose={() => setShowExportDialog(false)}
           onConfirm={(settings, videoSettings) => { setShowExportDialog(false); void exportLocalFiles(selectedFiles, settings, videoSettings) }}

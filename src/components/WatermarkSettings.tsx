@@ -1,136 +1,152 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
-import type { DeviceWatermarkStyleConfig, WatermarkSettings as WatermarkSettingsType, WatermarkPosition, WatermarkStyle } from '../shared/types'
+import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
+import { resolveWatermarkRatios } from '../shared/watermark/layoutConfig'
+import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
+import type { WatermarkPosition, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+
+/** 5 个固定位置（对应原版 App） */
+const POSITIONS: Array<{ value: string; label: string; row: number; col: number }> = [
+  { value: 'top-left', label: '左上', row: 0, col: 0 },
+  { value: 'top-right', label: '右上', row: 0, col: 2 },
+  { value: 'bottom-left', label: '左下', row: 1, col: 0 },
+  { value: 'bottom-center', label: '底中', row: 1, col: 1 },
+  { value: 'bottom-right', label: '右下', row: 1, col: 2 },
+]
+
+const POSITION_GRID_ROWS = 2
+const POSITION_GRID_COLS = 3
+const FRAME_W = 160
+const FRAME_H = 90
 
 interface WatermarkSettingsProps {
   settings: WatermarkSettingsType
   onChange: (settings: WatermarkSettingsType) => void
   compact?: boolean
   showToggle?: boolean
-  styleOptions?: DeviceWatermarkStyleConfig[]
+  /** 传文件路径即可自动按设备过滤水印样式 */
+  filePath?: string
 }
 
-const H_OPTIONS = [
-  { value: 'left' as const, label: '左' },
-  { value: 'center' as const, label: '中' },
-  { value: 'right' as const, label: '右' },
-]
-
-const V_OPTIONS = [
-  { value: 'top' as const, label: '上' },
-  { value: 'bottom' as const, label: '下' },
-]
-
-/** 默认样式选项（无设备配置时兜底） */
-const DEFAULT_STYLE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'luna_ultra', label: '标准' },
-  { value: 'luna_ultra_cn', label: '中文' },
-]
-
-function WatermarkSettingsContent({ settings, styleOptions, onStyleChange, onPercentChange, onHPosChange, onVPosChange }: {
+function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPositionChange }: {
+  stylePills: Array<{ value: string; label: React.ReactNode }>
   settings: WatermarkSettingsType
-  styleOptions?: DeviceWatermarkStyleConfig[]
   onStyleChange: (v: string) => void
-  onPercentChange: (v: number) => void
-  onHPosChange: (v: string) => void
-  onVPosChange: (v: string) => void
+  onPositionChange: (v: string) => void
 }) {
-  const stylePills = useMemo(() => {
-    if (styleOptions && styleOptions.length > 0) {
-      return styleOptions.map((opt) => ({
-        value: opt.value,
-        label: opt.label,
-      }))
-    }
-    return DEFAULT_STYLE_OPTIONS
-  }, [styleOptions])
-
-  const [vPos, hPos] = (settings.position ?? 'bottom-center').split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
+  const wmPreviewRects = useMemo(() => {
+    const sensorW = Math.max(FRAME_W, FRAME_H)
+    return POSITIONS.map((pos) => {
+      const ratios = resolveWatermarkRatios(null, settings.style, FRAME_W, FRAME_H, pos.value)
+      if (!ratios) return null
+      const w = Math.round(sensorW * ratios.widthRatio)
+      const h = Math.round(w * 0.3)
+      const [vPos] = pos.value.split('-') as ['top' | 'bottom']
+      const x = Math.round(ratios.xRatio * FRAME_W)
+      const y = vPos === 'bottom'
+        ? FRAME_H - h - Math.round(ratios.yRatio * FRAME_H)
+        : Math.round((1 - ratios.yRatio) * FRAME_H)
+      return { x, y, w, h }
+    })
+  }, [settings.style])
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <div className="video-export-setting-row">
-        <span className="video-export-setting-label">水印样式</span>
+      {stylePills.length > 0 && (
         <SegmentedControl
           ariaLabel="水印样式"
           options={stylePills}
           value={settings.style}
           onChange={onStyleChange}
           variant="size"
+          className="size-switch wm-style-selector"
         />
-      </div>
-      <div className="video-export-setting-row">
-        <span className="video-export-setting-label">水印大小 {settings.watermarkPercent}%</span>
-        <input
-          type="range"
-          min={1}
-          max={40}
-          value={settings.watermarkPercent}
-          onChange={(e) => onPercentChange(Number(e.target.value))}
-          style={{ flex: 1, accentColor: '#0066cc' }}
-        />
-      </div>
-      <div className="video-export-setting-row">
-        <span className="video-export-setting-label">水平位置</span>
-        <SegmentedControl
-          ariaLabel="水平位置"
-          options={H_OPTIONS}
-          value={hPos}
-          onChange={onHPosChange}
-          variant="size"
-        />
-      </div>
-      <div className="video-export-setting-row">
-        <span className="video-export-setting-label">垂直位置</span>
-        <SegmentedControl
-          ariaLabel="垂直位置"
-          options={V_OPTIONS}
-          value={vPos}
-          onChange={onVPosChange}
-          variant="size"
-        />
+      )}
+
+      <div className="wm-position-grid">
+        {Array.from({ length: POSITION_GRID_ROWS * POSITION_GRID_COLS }, (_, i) => {
+          const row = Math.floor(i / POSITION_GRID_COLS)
+          const col = i % POSITION_GRID_COLS
+          const posIdx = POSITIONS.findIndex((p) => p.row === row && p.col === col)
+          if (posIdx < 0) return <div key={i} className="wm-pos-cell wm-pos-empty" />
+          const pos = POSITIONS[posIdx]
+          const active = settings.position === pos.value
+          const rect = wmPreviewRects[posIdx]
+          return (
+            <button
+              key={pos.value}
+              className={`wm-pos-cell ${active ? 'active' : ''}`}
+              onClick={() => onPositionChange(pos.value)}
+              title={pos.label}
+            >
+              <svg viewBox={`0 0 ${FRAME_W} ${FRAME_H}`} className="wm-pos-frame">
+                {rect && (
+                  <rect
+                    x={Math.max(0, rect.x)}
+                    y={Math.max(0, rect.y)}
+                    width={Math.min(rect.w, FRAME_W - rect.x)}
+                    height={Math.min(rect.h, FRAME_H - rect.y)}
+                    fill="currentColor"
+                    rx={2}
+                    opacity={0.4}
+                  />
+                )}
+              </svg>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
 }
 
-export function WatermarkSettings({ settings, onChange, compact, showToggle = true, styleOptions }: WatermarkSettingsProps) {
+export function WatermarkSettings({ settings, onChange, compact, showToggle = true, filePath }: WatermarkSettingsProps) {
+  // 从文件路径自动检测设备 → 水印样式选项
+  const [deviceId, setDeviceId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!filePath) return
+    let cancelled = false
+    resolveDeviceId(
+      { sourceDeviceId: null, cameraType: null, sourceDeviceName: null, cameraSerial: null, watermarkProfileId: null },
+      { filePath, readExif: window.luna.readExifModel.bind(window.luna) },
+    ).then((id) => { if (!cancelled) setDeviceId(id) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [filePath])
+
+  const stylePills = useMemo(() => {
+    const opts = deviceId ? watermarkStyleOptionsForDevice(deviceId) : watermarkStyleOptionsForDevice('luna-ultra')
+    return opts.map((opt) => {
+      const thumbSrc = WM_SRC[opt.value]?.image
+      return {
+        value: opt.value,
+        label: thumbSrc ? <img src={thumbSrc} alt={opt.label} className="wm-style-thumb" /> : opt.label,
+      }
+    })
+  }, [deviceId])
+
   const handleToggle = useCallback(
-    (enabled: boolean) => {
-      onChange({ ...settings, enabled })
-    },
+    (enabled: boolean) => onChange({ ...settings, enabled }),
     [settings, onChange],
   )
 
   const handleStyleChange = useCallback(
-    (style: string) => {
-      onChange({ ...settings, style: style as WatermarkStyle })
-    },
+    (style: string) => onChange({ ...settings, style }),
     [settings, onChange],
   )
 
-  const handlePercentChange = useCallback(
-    (watermarkPercent: number) => {
-      onChange({ ...settings, watermarkPercent })
-    },
+  const handlePositionChange = useCallback(
+    (position: string) => onChange({ ...settings, position: position as WatermarkPosition }),
     [settings, onChange],
   )
 
-  const handleHPosChange = useCallback(
-    (h: string) => {
-      const vPos = (settings.position ?? 'bottom-center').split('-')[0] || 'bottom'
-      onChange({ ...settings, position: `${vPos}-${h}` as WatermarkPosition })
-    },
-    [settings, onChange],
-  )
-
-  const handleVPosChange = useCallback(
-    (v: string) => {
-      const hPos = (settings.position ?? 'bottom-center').split('-')[1] || 'center'
-      onChange({ ...settings, position: `${v}-${hPos}` as WatermarkPosition })
-    },
-    [settings, onChange],
+  const content = (
+    <WatermarkSettingsContent
+      stylePills={stylePills}
+      settings={settings}
+      onStyleChange={handleStyleChange}
+      onPositionChange={handlePositionChange}
+    />
   )
 
   if (compact) {
@@ -150,14 +166,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
             </PopoverTrigger>
             <PopoverContent className="watermark-popover" align="start" sideOffset={6}>
               <div data-popover-header>水印参数</div>
-              <WatermarkSettingsContent
-                settings={settings}
-                styleOptions={styleOptions}
-                onStyleChange={handleStyleChange}
-                onPercentChange={handlePercentChange}
-                onHPosChange={handleHPosChange}
-                onVPosChange={handleVPosChange}
-              />
+              {content}
             </PopoverContent>
           </Popover>
         )}
@@ -176,16 +185,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
           <Switch checked={settings.enabled} onCheckedChange={handleToggle} ariaLabel="启用水印" />
         </div>
       )}
-      {(!showToggle || settings.enabled) && (
-        <WatermarkSettingsContent
-          settings={settings}
-          styleOptions={styleOptions}
-          onStyleChange={handleStyleChange}
-          onPercentChange={handlePercentChange}
-          onHPosChange={handleHPosChange}
-          onVPosChange={handleVPosChange}
-        />
-      )}
+      {(!showToggle || settings.enabled) && content}
     </section>
   )
 }

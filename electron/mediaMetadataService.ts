@@ -213,9 +213,11 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
         entries.push({ key: '视频编码', value: videoStream.codec_name.toUpperCase() })
       }
 
-      const bitRate = videoStream.bit_rate || data.format?.bit_rate
-      if (bitRate) {
-        const mbps = (Number(bitRate) / 1_000_000).toFixed(1)
+      // 码率（ffprobe 可能返回 "N/A" 或空字符串）
+      const bitRateRaw = videoStream.bit_rate || data.format?.bit_rate || ''
+      const bitRateNum = Number(bitRateRaw)
+      if (bitRateNum > 0) {
+        const mbps = (bitRateNum / 1_000_000).toFixed(1)
         entries.push({ key: '码率', value: `${mbps} Mbps` })
       }
 
@@ -226,10 +228,26 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
         entries.push({ key: '时长', value: `${m}:${String(s).padStart(2, '0')}` })
       }
 
-      if (data.format?.size) {
-        const mb = (Number(data.format.size) / 1_000_000).toFixed(1)
-        entries.push({ key: '文件大小', value: `${mb} MB` })
+      // 文件大小：ffprobe format.size 或 fs.stat 兜底
+      let fileSizeBytes: number | null = null
+      const formatSize = Number(data.format?.size)
+      if (formatSize > 0) {
+        fileSizeBytes = Math.round(formatSize)
+      } else {
+        try { const stat = await fs.stat(sourcePath); fileSizeBytes = stat.size } catch { /* ignore */ }
       }
+      if (fileSizeBytes !== null) {
+        entries.push({ key: 'size', value: String(fileSizeBytes) })
+        entries.push({ key: '文件大小', value: `${(fileSizeBytes / 1_000_000).toFixed(1)} MB` })
+      }
+
+      // 拍摄时间：文件 mtime 兜底
+      try {
+        const stat = await fs.stat(sourcePath)
+        const ts = stat.mtimeMs
+        // 追加为可被 enrichedFile 捕获的元数据
+        entries.push({ key: 'ModifyDate', value: new Date(ts).toISOString() })
+      } catch { /* ignore */ }
 
       return { groups: [{ name: '视频', entries }] }
     } catch {
@@ -257,20 +275,49 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
     mergeOutput: false,
   })
 
-  if (!parsed || typeof parsed !== 'object') return { groups: [] }
+  // 文件大小兜底：exifr 可能解析不到（如 PNG 水印图），通过 fs.stat 补充
+  let fileBytesFallback: number | null = null
+  try {
+    const stat = await fs.stat(sourcePath)
+    fileBytesFallback = stat.size
+  } catch { /* ignore */ }
 
-  const groups = Object.entries(parsed as Record<string, Record<string, unknown>>)
-    .map(([name, values]) => {
-      const entries = Object.entries(values ?? {}).map(([key, value]) => ({
-        key,
-        value: formatMetadataValue(value),
-      }))
-      return {
-        name: metadataGroupTitle(name),
-        entries,
-      }
-    })
-    .filter((group) => group.entries.length > 0)
+  if (!parsed || typeof parsed !== 'object') {
+    if (fileBytesFallback != null) {
+      const mb = (fileBytesFallback / 1_000_000).toFixed(1)
+      return { groups: [{ name: '文件', entries: [
+        { key: 'size', value: String(fileBytesFallback) },
+        { key: '文件大小', value: `${mb} MB` },
+      ]}]}
+    }
+    return { groups: [] }
+  }
+
+  const groups: Array<{ name: string; entries: Array<{ key: string; value: string }> }> = []
+  let hasSize = false
+  for (const [name, values] of Object.entries(parsed as Record<string, Record<string, unknown>>)) {
+    const entries = Object.entries(values ?? {}).map(([key, value]) => ({
+      key,
+      value: formatMetadataValue(value),
+    }))
+    if (name.toLowerCase() === 'file' && entries.some((e) => e.key === 'size')) hasSize = true
+    groups.push({ name: metadataGroupTitle(name), entries })
+  }
+
+  // exifr 未提供文件大小时，用 fs.stat 补充
+  if (!hasSize && fileBytesFallback != null) {
+    const fileGroup = groups.find((g) => g.name === '文件')
+    const mb = (fileBytesFallback / 1_000_000).toFixed(1)
+    if (fileGroup) {
+      fileGroup.entries.push({ key: 'size', value: String(fileBytesFallback) })
+      fileGroup.entries.push({ key: '文件大小', value: `${mb} MB` })
+    } else {
+      groups.unshift({ name: '文件', entries: [
+        { key: 'size', value: String(fileBytesFallback) },
+        { key: '文件大小', value: `${mb} MB` },
+      ]})
+    }
+  }
 
   return { groups }
 }

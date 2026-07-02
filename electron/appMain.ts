@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
+import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { appendFile, cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { checkForUpdates } from './updateService'
 import type { HotUpdateCheckResult } from './hotUpdater'
@@ -8,21 +9,16 @@ import { checkForHotUpdates, applyHotUpdate, getCurrentHotVersion, clearHotUpdat
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
-import { clearLogs, getLogDir, initLogger, logMainDebug, logMainInfo, logMainError, logMainWarn, logExport, logRendererMessage } from './loggerService'
+import { initLogger, logMainDebug, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
+import { createExportTask, getExportTasks, getExportTaskById, clearExportTasks, updateTaskItemProgress } from './exportTaskService'
 
 import {
   cacheFile,
-  chooseMockMediaDir,
-  chooseDownloadDir,
-  chooseExportDir,
-  chooseLocalResourcesDir,
   getLocalResourcesDir,
-  clearCache,
   deleteLocalFiles,
   downloadFiles,
   exportFiles,
   listExportFiles,
-  getCacheStats,
   getDownloadedRecords,
   listDownloadedFiles,
   getMediaMetadata,
@@ -39,13 +35,23 @@ import {
 } from './fileService'
 import { listSampleFiles } from './localMedia'
 import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
-import { LunaUltraProtocol } from './deviceProtocols'
-import { DEFAULT_DEVICE, deviceDefinitionFor, deviceDefinitions } from './deviceDefaults'
-import { getMockStatus, mockTcpPortForHost, startMockServer, stopMockServer } from './mockServerService'
+import { GoUltraClient } from './goUltraProtocol'
+import { LunaUltraProtocol, GoUltraProtocol } from './deviceProtocols'
+import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './deviceDefaults'
+import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
+import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { chatCompletion } from './aiService'
 import { openWifiSettings } from './wifiService'
+import {
+  addAssetsToWorkspaceProject,
+  createWorkspaceProject,
+  listWorkspaceProjects,
+  saveWorkspaceProject,
+} from './workspaceProjectService'
+import { loadWorkspacePreview } from './workspacePreviewService'
+import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
 import {
   checkWifiPort,
   connectWifiNetwork,
@@ -57,12 +63,24 @@ import {
 import { cancelBluetoothScan, scanBluetoothDevices } from './bluetoothDebugService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
+import { safeName } from './filePathUtils'
+import { applyColorGrading, previewColorFrame } from './videoPipelineService'
+import { FfmpegPipeline, getFfmpegPath } from './ffmpeg/pipeline'
+import { detectHardwareAccel } from './ffmpeg/hwaccel'
+import { CodecModule } from './ffmpeg/codec'
+import { BitrateModule } from './ffmpeg/bitrate'
+import { FullPipelineModule } from './ffmpeg/pipelineCompiler'
+import { bakeColorLut, bakeColorLutData } from './ffmpeg/lutGenerator'
+import { watermarkFileFor } from './watermarkService'
 import type {
   AiConfig,
   AppSettings,
   DeviceConnectOptions,
   DownloadProgress,
+  ExportFileInput,
   LunaFile,
+  WorkspaceMediaAsset,
+  WorkspaceProject,
   VideoExportSettings,
   WatermarkSettings,
   WifiConnectOptions,
@@ -92,8 +110,10 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let win: BrowserWindow | null
 const clients = new Map<string, LunaClient>()
+const goUltraClients = new Map<string, GoUltraClient>()
 let activeDownloadControllers = new Set<AbortController>()
-let activeExportControllers = new Set<AbortController>()
+let activeExportControllers = new Map<string, AbortController>()
+const activeExportEncoders = new Map<string, import('node:child_process').ChildProcessWithoutNullStreams>()
 const previewCacheTasks = new Map<string, Promise<boolean>>()
 const videoFrameRateTasks = new Map<string, Promise<number | null>>()
 const enqueuePreviewTask = createPreviewTaskQueue(10)
@@ -105,6 +125,11 @@ function stopAllKeepAlive(): void {
     client.close()
   }
   clients.clear()
+  for (const client of goUltraClients.values()) {
+    client.stopKeepAlive()
+    client.close()
+  }
+  goUltraClients.clear()
 }
 
 function clientKey(host: string, controlPort: number): string {
@@ -150,6 +175,32 @@ function lunaProtocol(): LunaUltraProtocol {
   )
 }
 
+/** Go Ultra 客户端工厂（复用 LuaClient 类似的缓存模式） */
+function goUltraClientFor(host = GO_ULTRA_DEVICE.defaultHost): GoUltraClient {
+  const normalizedHost = host.trim() || GO_ULTRA_DEVICE.defaultHost
+  const key = normalizedHost
+  const existing = goUltraClients.get(key)
+  if (existing) return existing
+
+  const client = new GoUltraClient(normalizedHost, GO_ULTRA_DEVICE.controlPort)
+  client.onConnectionLost = () => {
+    logMainWarn(`[GoUltra] 连接丢失`, { host: normalizedHost })
+    win?.webContents.send('luna:connection-lost')
+  }
+  goUltraClients.set(key, client)
+  return client
+}
+
+function goUltraProtocol(): GoUltraProtocol {
+  return new GoUltraProtocol(
+    (host) => goUltraClientFor(host),
+    () => {
+      logMainWarn(`[GoUltra] 连接丢失回调触发，通知渲染进程`)
+      win?.webContents.send('luna:connection-lost')
+    },
+  )
+}
+
 function controlPortForCurrentSettings(host: string): number {
   return mockTcpPortForHost(host) ?? DEFAULT_DEVICE.controlPort
 }
@@ -161,6 +212,18 @@ function sourceHostFor(url: string | null | undefined): string | null {
   } catch {
     return null
   }
+}
+
+function attachSourceDevice(files: LunaFile[], deviceId: string): LunaFile[] {
+  const device = deviceDefinitionFor(deviceId)
+  const profile = deviceProfileForId(deviceId)
+  return files.map((file) => ({
+    ...file,
+    sourceDeviceId: file.sourceDeviceId ?? deviceId,
+    sourceDeviceName: file.sourceDeviceName ?? device.name,
+    cameraType: file.cameraType ?? profile?.cameraType ?? device.name,
+    watermarkProfileId: file.watermarkProfileId ?? profile?.id ?? deviceId,
+  }))
 }
 
 async function ensureCameraSessionForUrl(url: string | null | undefined): Promise<void> {
@@ -189,7 +252,7 @@ function createWindow(): void {
       activeDownloadControllers.clear()
     },
     abortExports: () => {
-      for (const controller of activeExportControllers) controller.abort()
+      for (const [, controller] of activeExportControllers) controller.abort()
       activeExportControllers.clear()
     },
   })
@@ -203,6 +266,7 @@ app.on('window-all-closed', () => {
     stopAllKeepAlive()
     cleanupDeviceDebug()
     void stopMockServer()
+    for (const encoder of activeExportEncoders.values()) encoder.kill()
     app.quit()
     win = null
   }
@@ -212,6 +276,7 @@ app.on('before-quit', () => {
   stopAllKeepAlive()
   cleanupDeviceDebug()
   void stopMockServer()
+  for (const encoder of activeExportEncoders.values()) encoder.kill()
 })
 
 app.on('activate', () => {
@@ -223,43 +288,26 @@ app.on('activate', () => {
 })
 
 function registerIpc(): void {
-  registerDeviceDebugHandlers(() => win)
+  // ── 使用 import.meta.glob 自动发现并注册 IPC Service ──
+  const ctx = { win, clients, goUltraClients, activeDownloadControllers, activeExportControllers, previewCacheTasks, videoFrameRateTasks, lunaProtocol, goUltraProtocol } as const
+  const ipcModules = import.meta.glob('./ipc*.ts', { eager: true })
+  for (const [, mod] of Object.entries(ipcModules)) {
+    const fn = (mod as any).register
+    if (typeof fn === 'function') fn(ctx)
+  }
 
-  // 渲染进程日志
+  // ── 渲染进程日志广播 ──
   ipcMain.on('log:renderer', (_event, level: string, message: string, meta?: unknown) => {
     logRendererMessage(level, message, meta)
   })
-
-  // 导出日志
-  ipcMain.handle('log:export', (_event, message: string, meta?: unknown) => {
-    logExport('INFO', message, meta)
-    return true
-  })
-
-  // 主进程日志（供渲染进程直接调用）
   ipcMain.on('log:main', (_event, level: string, message: string, meta?: unknown) => {
     if (level === 'error') logMainError(message, meta)
     else if (level === 'warn') logMainWarn(message, meta)
     else logMainInfo(message, meta)
   })
 
-  // 获取日志目录
-  ipcMain.handle('log:getDir', () => getLogDir())
-  // 清空日志
-  ipcMain.handle('log:clear', () => clearLogs())
-
-  ipcMain.handle('settings:get', () => getSettings())
-  ipcMain.handle('settings:save', (_event, settings: Partial<AppSettings>) => saveSettings(settings))
-  ipcMain.handle('devices:list', () => deviceDefinitions())
-  ipcMain.handle('settings:chooseDownloadDir', () => chooseDownloadDir())
-  ipcMain.handle('settings:chooseLocalResourcesDir', () => chooseLocalResourcesDir())
-  ipcMain.handle('settings:chooseExportDir', () => chooseExportDir())
-  ipcMain.handle('settings:chooseMockMediaDir', () => chooseMockMediaDir())
-  ipcMain.handle('mock:start', (_event, settings?: Partial<AppSettings>) => startMockServer(settings))
-  ipcMain.handle('mock:stop', () => stopMockServer())
-  ipcMain.handle('mock:status', () => getMockStatus())
-  ipcMain.handle('cache:stats', () => getCacheStats())
-  ipcMain.handle('cache:clear', () => clearCache())
+  // ── 设备调试 ──
+  registerDeviceDebugHandlers(() => win)
   ipcMain.handle('downloads:records', async (_event, files: LunaFile[], _downloadDir?: string) => {
     const settings = await getSettings()
     return getDownloadedRecords(files, getLocalResourcesDir(settings))
@@ -293,13 +341,21 @@ function registerIpc(): void {
     const deviceId = options?.deviceId ?? settings.activeDeviceId ?? DEFAULT_DEVICE.id
     const host = options?.host || settings.cameraHost || DEFAULT_HOST
     logMainInfo(`[设备连接] 开始连接设备`, { deviceId, host, options })
-    if (deviceId !== DEFAULT_DEVICE.id) {
-      const errMsg = `未支持的设备协议：${deviceId}`
-      logMainError(`[设备连接] 失败`, { deviceId, error: errMsg })
-      throw new Error(errMsg)
+
+    // 根据设备 ID 路由到对应协议
+    let protocol: LunaUltraProtocol | GoUltraProtocol
+    switch (deviceId) {
+      case 'go-ultra':
+        protocol = goUltraProtocol()
+        break
+      case 'luna-ultra':
+      default:
+        protocol = lunaProtocol()
+        break
     }
+
     try {
-      const status = await lunaProtocol().connect({ ...options, deviceId })
+      const status = await protocol.connect({ ...options, deviceId })
       logMainInfo(`[设备连接] 连接结果`, { deviceId, host, httpOk: status.httpOk, controlOk: status.controlOk, message: status.message })
       return status
     } catch (error) {
@@ -311,9 +367,19 @@ function registerIpc(): void {
   ipcMain.handle('luna:checkConnection', async (_event, host?: string) => {
     const settings = await getSettings()
     const normalizedHost = host || settings.cameraHost
-    logMainInfo(`[HTTP检测] 检查设备连接状态`, { host: normalizedHost })
+    const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
+    logMainInfo(`[HTTP检测] 检查设备连接状态`, { host: normalizedHost, deviceId })
     try {
-      const status = await lunaProtocol().checkStatus(normalizedHost)
+      let protocol: LunaUltraProtocol | GoUltraProtocol
+      switch (deviceId) {
+        case 'go-ultra':
+          protocol = goUltraProtocol()
+          break
+        default:
+          protocol = lunaProtocol()
+          break
+      }
+      const status = await protocol.checkStatus(normalizedHost)
       logMainInfo(`[HTTP检测] 连接状态结果`, { host: normalizedHost, httpOk: status.httpOk, controlOk: status.controlOk, message: status.message })
       return status
     } catch (error) {
@@ -327,10 +393,22 @@ function registerIpc(): void {
     const normalizedHost = host || settings.cameraHost
     const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
     const nextStorageId = storageId ?? settings.deviceStorage?.[deviceId] ?? 'all'
-    logMainInfo(`[HTTP读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId })
+    logMainInfo(`[HTTP读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId, deviceId })
     const t0 = performance.now()
     try {
-      const files = await lunaProtocol().listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+      let files: LunaFile[]
+      switch (deviceId) {
+        case 'go-ultra': {
+          const protocol = goUltraProtocol()
+          files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+          break
+        }
+        default: {
+          const protocol = lunaProtocol()
+          files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+        }
+      }
+      files = attachSourceDevice(files, deviceId)
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
       logMainInfo(`[HTTP读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed })
       await saveSettings({
@@ -373,14 +451,15 @@ function registerIpc(): void {
           const thumbnailKey = file.downloadName || file.name
           const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
           if (thumbPath) {
-            logMainInfo(`[缓存] 缩略图生成成功`, { key, fileName: file.name })
+            const thumbnailUrl = pathToFileURL(thumbPath).toString()
+            logMainInfo(`[缓存] 缩略图生成成功`, { key, fileName: file.name, thumbPath, thumbnailUrl })
             // 缩略图生成成功
             win?.webContents.send('luna:thumbnail-ready', {
               fileId: file.id,
               fileName: file.name,
               downloadName: file.downloadName,
               cacheFilePath,
-              thumbnailUrl: pathToFileURL(thumbPath).toString(),
+              thumbnailUrl,
             })
           } else {
             logMainWarn(`[缓存] 缩略图生成失败，清理损坏的缓存文件`, { key, fileName: file.name, cacheFilePath })
@@ -441,16 +520,31 @@ function registerIpc(): void {
     return task
   })
 
+  ipcMain.handle('luna:readExifModel', async (_event, localPath: string) => {
+    const { readExifModel } = await import('./exifReader')
+    return readExifModel(localPath)
+  })
   ipcMain.handle('luna:disconnect', (_event, host?: string) => {
     const normalizedHost = (host?.trim() || DEFAULT_HOST)
     logMainInfo(`[设备断开] 断开设备连接`, { host: normalizedHost })
+
+    // 清理 Luna 连接
     const match = [...clients.entries()].find(([key]) => key.startsWith(`${normalizedHost}:`))
     const client = match?.[1]
     if (client && match) {
       client.stopKeepAlive()
       client.close()
       clients.delete(match[0])
-      logMainInfo(`[设备断开] 连接已关闭`, { host: normalizedHost })
+      logMainInfo(`[设备断开] Luna 连接已关闭`, { host: normalizedHost })
+    }
+
+    // 清理 Go Ultra 连接
+    const goUltraClient = goUltraClients.get(normalizedHost)
+    if (goUltraClient) {
+      goUltraClient.stopKeepAlive()
+      goUltraClient.close()
+      goUltraClients.delete(normalizedHost)
+      logMainInfo(`[设备断开] Go Ultra 连接已关闭`, { host: normalizedHost })
     }
   })
 
@@ -477,6 +571,19 @@ function registerIpc(): void {
     return listExportFiles(resolvedDir)
   })
 
+  /** 根据文件路径解析缩略图 URL（图片用 file://，视频生成缩略图后返回） */
+  ipcMain.handle('luna:resolveThumbnail', async (_event, filePath: string, kind?: string) => {
+    const cacheDir = await previewCacheDir()
+    const thumbDir = thumbnailDir(cacheDir)
+    const fileId = path.basename(filePath).replace(path.extname(filePath), '')
+    // 检查或生成缩略图
+    const thumbPath = await enqueueThumbnailGeneration(filePath, thumbDir, fileId, kind, path.basename(filePath))
+    if (thumbPath) {
+      return pathToFileURL(thumbPath).toString()
+    }
+    return null
+  })
+
   ipcMain.handle('luna:previewFile', async (_event, file: LunaFile) => {
     return enqueuePreviewTask(async () => {
       await ensureCameraSessionForFile(file)
@@ -501,6 +608,448 @@ function registerIpc(): void {
   ipcMain.handle('files:reveal', (_event, filePath: string) => revealFile(filePath))
   ipcMain.handle('files:openPath', (_event, targetPath: string) => openPath(targetPath))
   ipcMain.handle('files:deleteLocal', (_event, filePaths: string[]) => deleteLocalFiles(filePaths))
+  ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
+    return loadWorkspacePreview(filePath)
+  })
+  ipcMain.handle('workspace:readColorMetadata', async (_event, filePath: string) => {
+    return readWorkspaceColorMetadata(filePath)
+  })
+  ipcMain.handle('workspace:listProjects', async () => {
+    const settings = await getSettings()
+    return listWorkspaceProjects(getLocalResourcesDir(settings))
+  })
+  ipcMain.handle('workspace:createProject', async (_event, name: string, assets: WorkspaceMediaAsset[]) => {
+    const settings = await getSettings()
+    return createWorkspaceProject(getLocalResourcesDir(settings), name, assets)
+  })
+  ipcMain.handle('workspace:addAssetsToProject', async (_event, projectId: string, assets: WorkspaceMediaAsset[]) => {
+    const settings = await getSettings()
+    return addAssetsToWorkspaceProject(getLocalResourcesDir(settings), projectId, assets)
+  })
+  ipcMain.handle('workspace:saveProject', async (_event, project: WorkspaceProject) => {
+    const settings = await getSettings()
+    return saveWorkspaceProject(getLocalResourcesDir(settings), project)
+  })
+  ipcMain.handle('workspace:createExportTask', async (_event, taskName: string, items: Array<{ exportId: string; fileName: string; kind: string }>) => {
+    return createExportTask(taskName, items)
+  })
+  ipcMain.handle('workspace:exportImage', async (_event, name: string, dataUrl: string) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    mkdirSync(settings.exportDir, { recursive: true })
+    const match = /^data:image\/(png|jpeg);base64,(.+)$/i.exec(dataUrl)
+    if (!match) throw new Error('导出图片数据无效')
+    const ext = match[1].toLowerCase() === 'jpeg' ? '.jpg' : '.png'
+    const baseName = path.basename(name, path.extname(name)) || 'workspace'
+    const fileName = safeName(`${baseName}_workspace_${Date.now()}${ext}`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+    writeFileSync(destinationPath, Buffer.from(match[2], 'base64'))
+
+    // 创建导出任务记录
+    const taskName = `${baseName}导出`
+    const exportId = `workspace_${baseName}_${Date.now()}`
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind: 'image' }])
+    const taskStart = Date.now()
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    })
+
+    return { path: destinationPath, name: fileName }
+  })
+  ipcMain.handle('workspace:copyFile', async (_event, sourcePath: string) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+    const baseName = path.basename(sourcePath)
+    const ext = path.extname(baseName).toLowerCase()
+    const nameBase = path.basename(baseName, ext) || 'workspace'
+    const fileName = safeName(`${nameBase}_workspace_${Date.now()}${ext}`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+    await cp(sourcePath, destinationPath, { force: true })
+
+    // 创建导出任务记录
+    const videoExts = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
+    const kind = videoExts.has(ext) ? 'video' : 'image'
+    const taskName = `${nameBase}导出`
+    const exportId = `workspace_${nameBase}_${Date.now()}`
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
+    const taskStart = Date.now()
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    })
+
+    return { path: destinationPath, name: fileName }
+  })
+  // 读取预览图片文件，返回 base64 data URL（避免 file:// 跨域问题）
+  ipcMain.handle('workspace:readPreviewImage', async (_event, filePath: string) => {
+    const data = await readFile(filePath)
+    const base64 = data.toString('base64')
+    return `data:image/jpeg;base64,${base64}`
+  })
+
+  // 快速预览帧 — 降分辨率跑 ffmpeg 调色，替代 WebGL 预览
+  ipcMain.handle('workspace:previewColor', async (_event, sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }) => {
+    logMainInfo(`[workspace:previewColor] 收到请求`, { sourcePath, colorKeys: Object.keys(color).join(','), maxSize: options?.maxSize, seekSeconds: options?.seekSeconds })
+    const cacheDir = await previewCacheDir()
+    const baseName = path.basename(sourcePath)
+    const ext = path.extname(baseName)
+    const nameBase = path.basename(baseName, ext)
+    const maxSize = options?.maxSize ?? 480
+    const fileName = safeName(`preview_${nameBase}_${maxSize}_${Date.now()}.jpg`)
+    const outputPath = path.join(cacheDir, fileName)
+    // 确保缓存目录存在
+    await mkdir(cacheDir, { recursive: true }).catch(() => {})
+
+    const colorOpts = {
+      exposure: color.exposure ?? 0, brightness: color.brightness ?? 0,
+      temperature: color.temperature ?? 0, tint: color.tint ?? 0,
+      contrast: color.contrast ?? 0, saturation: color.saturation ?? 0,
+      vibrance: color.vibrance ?? 0,
+      shadows: color.shadows ?? 0, highlights: color.highlights ?? 0,
+      whites: color.whites ?? 0, blacks: color.blacks ?? 0,
+      levelsBlack: color.levelsBlack ?? 0, levelsWhite: color.levelsWhite ?? 1,
+      clarity: color.clarity ?? 0, texture: color.texture ?? 0,
+      sharpen: color.sharpen ?? 0, denoise: color.denoise ?? 0,
+    }
+
+    await previewColorFrame(sourcePath, outputPath, colorOpts, { maxSize, seekSeconds: options?.seekSeconds })
+    logMainInfo(`[workspace:previewColor] 完成`, { outputPath })
+
+    // 读取文件返回 base64 data URL，避免前端 file:// 加载兼容性问题
+    const data = await readFile(outputPath)
+    const dataUrl = `data:image/jpeg;base64,${data.toString('base64')}`
+
+    return { path: outputPath, dataUrl }
+  })
+
+  // 统一调色导出（图片/视频共用，由输出文件扩展名决定编码）
+  ipcMain.handle('workspace:exportColor', async (event, sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+    const baseName = path.basename(sourcePath)
+    const ext = path.extname(baseName)
+    const nameBase = path.basename(baseName, ext) || 'workspace'
+    const fileName = safeName(`${nameBase}_workspace_${Date.now()}${ext}`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+
+    // 使用前端传入的 exportId 保持进度一致性
+    const exportId = exportMeta?.exportId ?? `workspace_${nameBase}_${Date.now()}`
+    const taskName = exportMeta?.taskName ?? `${nameBase}导出`
+
+    logMainInfo(`[workspace:exportColor] 开始导出`, { exportId, taskName, sourcePath, destinationPath, hasExportMeta: !!exportMeta })
+
+    const colorOpts = {
+      exposure: color.exposure ?? 0,
+      brightness: color.brightness ?? 0,
+      temperature: color.temperature ?? 0,
+      tint: color.tint ?? 0,
+      contrast: color.contrast ?? 0,
+      saturation: color.saturation ?? 0,
+      vibrance: color.vibrance ?? 0,
+      shadows: color.shadows ?? 0,
+      highlights: color.highlights ?? 0,
+      whites: color.whites ?? 0,
+      blacks: color.blacks ?? 0,
+      levelsBlack: color.levelsBlack ?? 0,
+      levelsWhite: color.levelsWhite ?? 1,
+      clarity: color.clarity ?? 0,
+      texture: color.texture ?? 0,
+      sharpen: color.sharpen ?? 0,
+      denoise: color.denoise ?? 0,
+    }
+
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const kind = 'video'
+    const taskStart = Date.now()
+
+    // 先创建导出任务（table 能立刻看到）
+    logMainInfo(`[workspace:exportColor] 创建导出任务`, { exportId, taskName })
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
+    logMainInfo(`[workspace:exportColor] 任务已创建`, { taskId: task.id, exportId })
+
+    // 执行 ffmpeg，同时推进度到前端 + 更新后端任务
+    await applyColorGrading(sourcePath, destinationPath, colorOpts, (percent) => {
+      const pct = Math.round(percent)
+      logMainDebug(`[workspace:exportColor] 进度`, { exportId, percent: pct })
+      // 前端 React state
+      win?.webContents.send('export:progress', {
+        exportId,
+        percent: pct,
+        status: pct >= 100 ? 'done' : 'exporting',
+        fileName,
+        taskName,
+        index: 0,
+        totalFiles: 1,
+      })
+      // 后端 ExportTaskTable
+      updateTaskItemProgress(task.id, exportId, taskStart, pct, pct >= 100 ? 'done' : 'exporting', {
+        destinationPath,
+      }).catch(() => {})
+    })
+
+    // ffmpeg 完成 → 标记 100%
+    logMainInfo(`[workspace:exportColor] ffmpeg 完成`)
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    })
+
+    return { path: destinationPath, name: fileName }
+  })
+  // ── 为 WebGL 预览烘焙 LUT，返回 float 数据 ──
+  ipcMain.handle('workspace:bakeAndGetLut', async (_event, colorParams: Record<string, any>) => {
+    const lutData = bakeColorLutData(colorParams)
+    // 返回 ArrayBuffer 给渲染进程，预览链路不再写临时 .cube 文件。
+    return { lutBuffer: lutData.buffer as ArrayBuffer, lutSize: 33 }
+  })
+  // ── FFmpegFast 导出（直达 ffmpeg 完整管线，绕过 WebGL readPixels） ──
+  ipcMain.handle('workspace:exportFFmpeg', async (event, sourcePath: string, pipeline: Record<string, any>, exportMeta: { exportId: string; taskName: string; taskId?: string; fileName?: string; index?: number; totalFiles?: number; createdAt?: number }) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+    const baseName = path.basename(sourcePath)
+    const ext = path.extname(baseName)
+    const nameBase = path.basename(baseName, ext) || 'workspace'
+    const isVid = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv'].includes(ext.toLowerCase())
+    const outExt = isVid ? '.mp4' : ext
+    const fileName = safeName(`${nameBase}_ffmpeg_fast_${Date.now()}${outExt}`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+
+    const exportId = exportMeta?.exportId ?? `ffmpeg_fast_${nameBase}_${Date.now()}`
+    const taskName = exportMeta?.taskName ?? `${nameBase}导出`
+
+    logMainInfo(`[FFmpegFast] 收到导出请求`, {
+      exportId, taskName, sourcePath, destinationPath, isVid,
+      color: pipeline.color ? JSON.stringify({
+        exposure: pipeline.color.exposure,
+        brightness: pipeline.color.brightness,
+        contrast: pipeline.color.contrast,
+        saturation: pipeline.color.saturation,
+        temperature: pipeline.color.temperature,
+        tint: pipeline.color.tint,
+        shadows: pipeline.color.shadows,
+        highlights: pipeline.color.highlights,
+        whites: pipeline.color.whites,
+        blacks: pipeline.color.blacks,
+        vibrance: pipeline.color.vibrance,
+        clarity: pipeline.color.clarity,
+        texture: pipeline.color.texture,
+        sharpen: pipeline.color.sharpen,
+        denoise: pipeline.color.denoise,
+        gradeShadowsAmount: pipeline.color.gradeShadowsAmount,
+        gradeMidAmount: pipeline.color.gradeMidAmount,
+        gradeHighlightsAmount: pipeline.color.gradeHighlightsAmount,
+        levelsBlack: pipeline.color.levelsBlack,
+        levelsWhite: pipeline.color.levelsWhite,
+        hslSat: pipeline.color.hslSat,
+      }) : 'no-color',
+      hasCurve: !!pipeline.color?.curve?.points,
+      transform: pipeline.transform ? JSON.stringify(pipeline.transform) : 'no-transform',
+      watermark: pipeline.watermark ? JSON.stringify({ enabled: pipeline.watermark.enabled, style: pipeline.watermark.style, position: pipeline.watermark.position }) : 'no-watermark',
+    })
+
+    const task = exportMeta?.taskId
+      ? await getExportTaskById(exportMeta.taskId)
+      : await createExportTask(taskName, [{ exportId, fileName, kind: isVid ? 'video' : 'image' }])
+    if (!task) throw new Error('导出任务不存在')
+    const taskStart = Date.now()
+    const win = BrowserWindow.fromWebContents(event.sender)
+    let lutPath: string | undefined
+
+    try {
+      const ffPipeline = new FfmpegPipeline()
+      const hwaccel = isVid ? await detectHardwareAccel(getFfmpegPath()) : { type: null as string | null, preInputArgs: [] as string[], encoderNameH264: 'libx264', encoderNameH265: null, encoderArgs: [] as string[], overlayFilter: 'overlay' }
+
+      if (hwaccel.preInputArgs.length > 0) {
+        ffPipeline.setPreInputArgs(hwaccel.preInputArgs)
+      }
+
+      // 解析水印路径
+      let watermarkImagePath: string | undefined
+      if (pipeline.watermark?.enabled && pipeline.watermark?.style) {
+        try {
+          watermarkImagePath = watermarkFileFor(isVid ? 'video' : 'image', pipeline.watermark.style)
+          logMainInfo(`[FFmpegFast] 水印图片路径`, { watermarkImagePath, style: pipeline.watermark.style })
+        } catch (wmErr) {
+          logMainWarn(`[FFmpegFast] 水印图片解析失败，跳过水印`, { error: wmErr instanceof Error ? wmErr.message : String(wmErr) })
+        }
+      }
+
+      // 烘焙颜色调色参数到 .cube LUT（使预览和导出一致）
+      const hasColor = pipeline.color && Object.values(pipeline.color as Record<string, unknown>).some(
+        (v) => typeof v === 'number' && v !== 0,
+      )
+      if (hasColor) {
+        try {
+          lutPath = path.join(settings.exportDir, `.lut_${exportId}_${Date.now()}.cube`)
+          await bakeColorLut(pipeline.color ?? {}, lutPath)
+          logMainInfo(`[FFmpegFast] LUT 烘焙完成`, { lutPath })
+        } catch (lutErr) {
+          logMainWarn(`[FFmpegFast] LUT 烘焙失败，回退直接滤镜模式`, { error: lutErr instanceof Error ? lutErr.message : String(lutErr) })
+          lutPath = undefined
+        }
+      }
+
+      // FullPipelineModule：transform(空间) + lut3d(颜色) + detail(锐化/降噪) + watermark
+      ffPipeline.addModule(new FullPipelineModule(pipeline, watermarkImagePath, lutPath))
+
+      if (isVid) {
+        // 视频编码器 — 使用源视频码率确保硬件编码器不会用过低默认值
+        ffPipeline.addModule(new BitrateModule({
+          quality: 'original',
+          useSourceBitrate: true,
+        }))
+        ffPipeline.addModule(new CodecModule({
+          encoderH264: hwaccel.encoderNameH264,
+          encoderH265: hwaccel.encoderNameH265 ?? undefined,
+          encoderArgs: hwaccel.encoderArgs,
+        }))
+        // 显式映射音频流（when using -map for video via filter_complex）
+        ffPipeline.addModule({
+          name: 'audioPassthrough',
+          isActive: () => true,
+          build: () => ({ outputArgs: ['-map', '0:a?'] }),
+        })
+      }
+
+      await ffPipeline.execute(sourcePath, destinationPath, (percent) => {
+        const pct = Math.round(percent)
+        win?.webContents.send('export:progress', {
+          exportId,
+          percent: pct,
+          status: pct >= 100 ? 'done' : 'exporting' as const,
+          fileName: exportMeta?.fileName ?? fileName,
+          taskId: task.id,
+          taskName,
+          createdAt: exportMeta?.createdAt,
+          index: exportMeta?.index ?? 0,
+          totalFiles: exportMeta?.totalFiles ?? 1,
+        })
+        updateTaskItemProgress(task.id, exportId, taskStart, pct, pct >= 100 ? 'done' : 'exporting', {
+          destinationPath,
+        }).catch(() => {})
+      })
+    } catch (err) {
+      logMainError(`[FFmpegFast] 导出失败`, { exportId, error: err instanceof Error ? err.message : String(err) })
+      await updateTaskItemProgress(task.id, exportId, taskStart, 0, 'failed', {
+        error: err instanceof Error ? err.message : String(err),
+      }).catch(() => {})
+      throw err
+    } finally {
+      // 清理临时 LUT 文件
+      if (lutPath) {
+        rm(lutPath, { force: true }).catch(() => {})
+      }
+    }
+
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    }).catch(() => {})
+
+    logMainInfo(`[FFmpegFast] 导出完成`, { exportId, destinationPath })
+    return { path: destinationPath, name: fileName }
+  })
+  // ── WebGL 视频导出（渲染器逐帧 WebGL shader 调色 → ffmpeg 仅编码） ──
+  ipcMain.handle('workspace:startVideoExport', async (_event, meta: {
+    exportId: string; taskName: string; outputName: string;
+    width: number; height: number; fps: number;
+  }) => {
+    const { exportId, taskName, outputName, width, height, fps } = meta
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+    const baseName = path.basename(outputName, path.extname(outputName)) || 'workspace'
+    const fileName = safeName(`${baseName}_${taskName}_${Date.now()}.mp4`)
+    const outputPath = path.join(settings.exportDir, fileName)
+    // 临时 raw 文件（避免 IPC → encoder.stdin 背压瓶颈）
+    const rawFilePath = outputPath.replace(/\.mp4$/, '.raw')
+    logMainInfo(`[videoExport] 开始 WebGL 视频导出`, { exportId, taskName, width, height, fps, outputPath, rawFilePath })
+
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind: 'video' }])
+    const taskStart = Date.now()
+
+    return { exportId, outputPath, rawFilePath, taskId: task.id, taskStart }
+  })
+
+  const exportVideoFrameCount = new Map<string, number>()
+  const exportVideoMeta = new Map<string, { totalFrames: number; taskId: string; taskStart: number; rawFilePath: string }>()
+  ipcMain.handle('workspace:sendVideoExportFrame', async (_event, exportId: string, frameData: ArrayBuffer, meta?: { totalFrames: number; taskId: string; taskStart: number; rawFilePath: string }) => {
+    // 首帧存储元数据，后续帧复用
+    if (meta) exportVideoMeta.set(exportId, meta)
+    const exportMeta = exportVideoMeta.get(exportId)
+    if (!exportMeta) return
+
+    const count = (exportVideoFrameCount.get(exportId) ?? 0) + 1
+    exportVideoFrameCount.set(exportId, count)
+
+    // 写入 temp raw 文件（无背压，IPC 仅传输 33MB → ~30ms）
+    await appendFile(exportMeta.rawFilePath, Buffer.from(frameData))
+
+    // 每 30 帧更新一次任务进度
+    if (count % 30 === 0 || count === 1) {
+      const pct = Math.round((count / exportMeta.totalFrames) * 100)
+      logMainInfo(`[videoExport] 任务进度 ${count}/${exportMeta.totalFrames} (${pct}%)`, { exportId })
+      await updateTaskItemProgress(exportMeta.taskId, exportId, exportMeta.taskStart, pct, pct >= 100 ? 'done' : 'exporting', {}).catch(() => {})
+    }
+  })
+
+  ipcMain.handle('workspace:endVideoExport', async (_event, exportId: string, meta: { taskId: string; taskStart: number; outputPath: string; rawFilePath: string; width: number; height: number; fps: number }) => {
+    const { outputPath, rawFilePath, width, height, fps: fpsMeta } = meta
+
+    logMainInfo(`[videoExport] 开始编码 temp raw 文件`, { exportId, rawFilePath, outputPath })
+
+    const ffmpegPath = getFfmpegPath()
+    const hwaccel = await detectHardwareAccel(ffmpegPath)
+    const encoder = spawn(ffmpegPath, [
+      '-f', 'rawvideo',
+      '-pix_fmt', 'rgba',
+      '-s', `${width}x${height}`,
+      '-r', String(fpsMeta),
+      '-i', rawFilePath,
+      '-c:v', hwaccel.encoderNameH264,
+      '-pix_fmt', 'yuv420p',
+      ...hwaccel.encoderArgs,
+      '-y', outputPath,
+    ])
+
+    return new Promise<{ path: string; name: string }>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        encoder.kill()
+        reject(new Error('视频编码超时'))
+      }, 5 * 60 * 1000)
+
+      encoder.on('close', async (code) => {
+        clearTimeout(timeout)
+        if (code !== 0) {
+          logMainError(`[videoExport] ffmpeg 编码异常退出`, { exportId, code })
+          reject(new Error(`ffmpeg 编码退出 (code=${code})`))
+          return
+        }
+        // 删除 temp raw 文件
+        try { await rm(rawFilePath) } catch {}
+
+        logMainInfo(`[videoExport] 视频导出完成`, { exportId })
+        exportVideoMeta.delete(exportId)
+        exportVideoFrameCount.delete(exportId)
+        activeExportEncoders.delete(exportId)
+        resolve({ path: outputPath, name: path.basename(outputPath) })
+      })
+
+      encoder.on('error', (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      })
+    })
+  })
+
   ipcMain.handle('ai:chat', async (_event, config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) => {
     return chatCompletion(config, systemPrompt, messages as Array<{ role: 'user' | 'assistant'; content: string }>)
   })
@@ -530,13 +1079,24 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('luna:exportFiles', (_event, files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) => {
+  ipcMain.handle('luna:exportFiles', (_event, files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) => {
     const controller = new AbortController()
-    activeExportControllers.add(controller)
-    return exportFiles(files, exportDir, watermarkSettings, (progress) => {
+    const callKey = `export_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    activeExportControllers.set(callKey, controller)
+    const resultPromise = exportFiles(files, exportDir, watermarkSettings, (progress) => {
       win?.webContents.send('export:progress', progress)
-    }, controller.signal, videoExportSettings)
-      .finally(() => activeExportControllers.delete(controller))
+    }, controller.signal, videoExportSettings, (taskId) => {
+      // 任务创建后，用真实 taskId 替换占位 key
+      activeExportControllers.delete(callKey)
+      activeExportControllers.set(taskId, controller)
+    })
+    resultPromise.finally(() => {
+      // 从所有可能的 key 中清理
+      for (const [key, ctrl] of activeExportControllers) {
+        if (ctrl === controller) activeExportControllers.delete(key)
+      }
+    })
+    return resultPromise
   })
 
   ipcMain.handle('luna:cancelDownloads', () => {
@@ -547,10 +1107,41 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('luna:cancelExports', () => {
-    for (const controller of activeExportControllers) {
+    for (const [, controller] of activeExportControllers) {
       controller.abort()
     }
     activeExportControllers.clear()
+  })
+
+  ipcMain.handle('luna:cancelExportTask', async (_event, taskId: string) => {
+    const controller = activeExportControllers.get(taskId)
+    if (controller) {
+      controller.abort()
+      activeExportControllers.delete(taskId)
+    }
+    // 直接更新任务状态为已取消，不等 worker 的 catch 慢慢写
+    const task = await getExportTaskById(taskId)
+    if (task) {
+      for (const item of task.items) {
+        if (item.status === 'queued' || item.status === 'exporting') {
+          await updateTaskItemProgress(taskId, item.exportId, item.startTime ?? Date.now(), 0, 'canceled')
+        }
+      }
+    }
+  })
+
+  // ── 导出任务管理 ──
+
+  ipcMain.handle('exports:getTasks', async () => {
+    return getExportTasks()
+  })
+
+  ipcMain.handle('exports:getTask', async (_event, taskId: string) => {
+    return getExportTaskById(taskId)
+  })
+
+  ipcMain.handle('exports:clearTasks', async () => {
+    await clearExportTasks()
   })
 
   // 手动触发更新检查（全量 + 热更新一并检查）
@@ -667,6 +1258,58 @@ function scheduleUpdateCheck(): void {
   }, 2_000)
 }
 
+/** 创建应用菜单，保留文本编辑快捷键（剪切/复制/粘贴/全选） */
+function createAppMenu(): void {
+  const isMac = process.platform === 'darwin'
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' as const },
+        { type: 'separator' as const },
+        { role: 'hide' as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide' as const },
+        { type: 'separator' as const },
+        { role: 'quit' as const },
+      ],
+    }] : []),
+    ...(isMac ? [{
+      label: '文件',
+      submenu: [
+        { role: 'close' as const },
+      ],
+    }] : []),
+    {
+      label: 'Edit' as const,
+      submenu: [
+        { role: 'undo' as const, label: '撤销' },
+        { role: 'redo' as const, label: '重做' },
+        { type: 'separator' as const },
+        { role: 'cut' as const, label: '剪切' },
+        { role: 'copy' as const, label: '复制' },
+        { role: 'paste' as const, label: '粘贴' },
+        { role: 'selectAll' as const, label: '全选' },
+      ],
+    },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'reload' as const, label: '重新加载' },
+        { role: 'toggleDevTools' as const, label: '开发者工具' },
+        { type: 'separator' as const },
+        { role: 'resetZoom' as const, label: '重置缩放' },
+        { role: 'zoomIn' as const, label: '放大' },
+        { role: 'zoomOut' as const, label: '缩小' },
+        { type: 'separator' as const },
+        { role: 'togglefullscreen' as const, label: '全屏' },
+      ],
+    },
+  ]
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
+
 app.whenReady().then(() => {
   initLogger()
   logMainInfo('应用启动')
@@ -680,7 +1323,7 @@ app.whenReady().then(() => {
     totalMemory: `${Math.round(os.totalmem() / (1024 ** 3))}G`,
     userData: app.getPath('userData').replace(process.env.USERPROFILE || process.env.HOME || '', '~'),
   })
-  Menu.setApplicationMenu(null)
+  createAppMenu()
   registerIpc()
   scheduleUpdateCheck()
   createWindow()

@@ -1,0 +1,12 @@
+.workspace-canvas-stage.loading {
+  background: #171717;
+}
+
+.workspace-preview-surface.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workspace-stage-status {
+  z-index: 8;
+}

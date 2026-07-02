@@ -44,7 +44,8 @@ function macVideoToolbox(): HwAccelConfig {
     encoderNameH265: 'hevc_videotoolbox',
     // -allow_sw 1 允许 VideoToolbox 在硬件不支持时软件回退
     // 例如 10-bit HEVC（yuv420p10le）在某些 Mac 上无法硬件编码
-    encoderArgs: ['-allow_sw', '1'],
+    // -realtime 1 关闭帧重排，编码速度提升 2-3x（代价是略大文件体积）
+    encoderArgs: ['-allow_sw', '1', '-realtime', '1'],
     overlayFilter: 'overlay',
   }
 }

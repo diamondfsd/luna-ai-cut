@@ -1,4 +1,4 @@
-import * as RadixPopover from '@radix-ui/react-popover'
+import { Popover as RadixPopover } from 'radix-ui'
 
 /* ==================== Root ==================== */
 export const Popover = RadixPopover.Root

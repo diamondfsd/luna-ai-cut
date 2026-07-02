@@ -19,7 +19,7 @@
 | `SegmentedControl` | 分段选择器，用于媒体过滤和尺寸切换 |
 | `Switch` | 开关控件，用于二进制设置项（基于 Radix） |
 | `Tooltip` | 悬停提示（基于 Radix） |
-| `Dialog` | 弹窗，含 DialogContent / DialogHeader / DialogBody / DialogFooter / DialogTitle / DialogDescription（基于 Radix） |
+| `Dialog` | 弹窗，统一通过 `title` / `description` / `footer` / `children` 等 props 使用（基于 Radix） |
 | `Popover` | 弹出面板，含 PopoverContent / PopoverTrigger / PopoverClose（基于 Radix） |
 | `Tabs` / `PillTabs` | 标签切换，`PillTabs` 是药丸形预设（基于 Radix） |
 | `LoadingIndicator` | 加载状态指示器 |
@@ -83,7 +83,7 @@
 | `description` | 弹窗描述 |
 | `children` | 主体内容 |
 | `footer` | 底部操作栏 |
-| `className` | DialogContent 自定义类名 |
+| `className` | 弹窗内容面板自定义类名 |
 
 标题和描述自动组合为头部（带 `.ui-dialog-header`），footer 自动包裹 `.ui-dialog-footer`。需要自定义 body 样式时在 children 中自行包裹 div。
 
@@ -145,14 +145,22 @@
 - 保持单一强调色 `--blue`（`#0066cc`）。
 - 偏好扁平化设计，按钮和文本不添加厚重阴影。
 - CSS 用于布局和功能特定表面，可复用的控件样式放在共享 UI 层（`src/ui/ui.css`）。
+- **每个功能组件的 CSS 写在自己的文件里**，并在组件代码中自行 import，不要在 `main.tsx` 统一加载。workspace 子模块已有独立文件约定：`workspace-crop.css`、`workspace-color.css`、`workspace-mode.css` 等，每个由对应的组件引入（如 `WorkspaceCropOverlay.tsx` import `../../styles/workspace-crop.css`）。无论 workspace 内外，功能相关的样式都必须单独建文件、由组件自行加载，不得塞入已有的公共 CSS 文件或全局入口集中加载。
+
+## 文案规则
+
+面向用户可见的组件文案、提示、弹窗、按钮、空状态、错误说明等，不要出现偏开发人员的专业术语（例如 JSON、IPC、WebGL、pipeline、缓存键、序列化等）。需要表达技术实现时，转换成用户能理解的结果或行为，例如“编辑内容会自动保存”“项目会保存在本地资源中”。
 
 ## 组件库选择
 
-Radix 基元仅用于提供行为和可访问性，不施加视觉样式。**不要引入完整的视觉框架**（如 Ant Design 或 MUI），除非设计方向有意变更。
+**优先使用 radix-ui 进行二次封装**。radix-ui 已作为 monorepo 全量安装（`npm install radix-ui`），所有 Radix 基元通过 `radix-ui/*` 路径导入，按需使用。
+
+Radix 基元用于提供行为和可访问性，不施加视觉样式。**不要引入完整的视觉框架**（如 Ant Design 或 MUI），除非设计方向有意变更。
 
 ## 维护规范
 
 单个源文件原则上不要超过 500 行。提交前扫描相关改动范围内的 `.ts` / `.tsx` / `.css` 文件，超过 500 行时优先按功能组件、服务职责或样式域拆分；只有历史规格文档、外部资料归档或无法安全拆分的生成类内容可以例外，并在改动说明中标明原因。
+行数限制是为了让你在开发的时候，注意组件拆分，不要堆砌组件，需要合理的进行组件开发。
 
 在添加新的可复用控件之前：
 
@@ -176,7 +184,7 @@ Luna AI Cut 是一款面向 Insta360 Luna Ultra 相机的桌面媒体管理。
 - **前端**：React + TypeScript + Vite
 - **路由**：React Router（HashRouter）
 - **图标**：lucide-react
-- **UI 基元**：@radix-ui（react-dialog / react-tabs / react-popover / react-switch / react-tooltip）
+- **UI 基元**：radix-ui（全量安装的 Radix UI monorepo，统一依赖管理，无需逐个安装 @radix-ui/* 包）
 - **桌面**：Electron（通过 contextBridge 通信）
 - **AI**：openai SDK
 - **构建**：Vite + electron-builder

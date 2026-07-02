@@ -1,11 +1,13 @@
 import { type ReactNode } from 'react'
-import * as Collapsible from '@radix-ui/react-collapsible'
+import { Collapsible } from 'radix-ui'
 import { ChevronDown } from 'lucide-react'
 import { cx } from './utils'
 
 interface AccordionProps {
   /** 标题 */
   title: ReactNode
+  /** 标题右侧操作按钮（如重置），位于折叠图标左边 */
+  actions?: ReactNode
   /** 内容 */
   children: ReactNode
   /** 是否默认展开 */
@@ -18,6 +20,8 @@ interface AccordionProps {
   headerClassName?: string
   /** 额外 class */
   className?: string
+  /** 是否有未保存的修改 — 显示蓝色小圆点 */
+  modified?: boolean
 }
 
 /**
@@ -36,7 +40,7 @@ interface AccordionProps {
  * </Accordion>
  * ```
  */
-export function Accordion({ title, children, defaultOpen, open, onOpenChange, headerClassName, className }: AccordionProps) {
+export function Accordion({ title, actions, children, defaultOpen, open, onOpenChange, headerClassName, className, modified }: AccordionProps) {
   return (
     <Collapsible.Root
       className={cx('ui-accordion', className)}
@@ -46,7 +50,11 @@ export function Accordion({ title, children, defaultOpen, open, onOpenChange, he
     >
       <Collapsible.Trigger asChild>
         <button className={cx('ui-accordion-header', headerClassName)} type="button">
-          <span className="ui-accordion-title">{title}</span>
+          <span className="ui-accordion-title">
+            {title}
+            {modified && <span className="ui-accordion-modified-dot" />}
+            {actions && <span className="ui-accordion-actions" onClick={(e) => e.stopPropagation()}>{actions}</span>}
+          </span>
           <ChevronDown size={14} className="ui-accordion-chevron" />
         </button>
       </Collapsible.Trigger>

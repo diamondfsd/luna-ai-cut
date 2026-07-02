@@ -6,6 +6,10 @@ import { initRendererLogger } from './lib/rendererLogger'
 import './index.css'
 import './styles/variables.css'
 import './styles/utilities.css'
+import './styles/workspace.css'
+import './styles/workspace-crop.css'
+import './styles/workspace-color.css'
+import './styles/workspace-sidebar.css'
 import './ui/styles.css'
 import './styles/responsive.css'
 
@@ -22,7 +26,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>,
 )
 
-// Use contextBridge
-window.ipcRenderer.on('main-process-message', (_event, message) => {
-  console.log(message)
-})
+// ipcRenderer 未在 contextBridge 中暴露，此监听无意义
+// 如有需要请通过 window.luna / window.deviceDebug API 通信

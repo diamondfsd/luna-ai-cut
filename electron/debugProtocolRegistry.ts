@@ -12,16 +12,8 @@ export interface DebugDeviceOption {
 
 export const DEBUG_DEVICE_OPTIONS: DebugDeviceOption[] = [
   {
-    id: 'luna-ultra',
-    name: 'Luna Ultra',
-    defaultHost: '192.168.42.1',
-    controlPort: 6666,
-    needsAuth: true,
-    protocolType: 'Insta360 UCD2 TCP + MSG 授权',
-  },
-  {
-    id: 'go-ultra',
-    name: 'GO Ultra / Insta360 通用',
+    id: 'insta360-generic',
+    name: 'Insta360 通用设备',
     defaultHost: '192.168.42.1',
     controlPort: 6666,
     needsAuth: true,

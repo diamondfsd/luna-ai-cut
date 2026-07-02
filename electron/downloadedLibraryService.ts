@@ -3,6 +3,8 @@ import * as path from 'node:path'
 
 import { lunaMediaAdapter } from './deviceMedia'
 import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
+import { readSourceRecord, withSourceMetadata } from './mediaSourceManifestService'
+import { logMainInfo } from './loggerService'
 import type { DownloadRecord, LunaFile } from '../src/shared/types'
 
 function isGeneratedLivePreviewName(name: string): boolean {
@@ -21,7 +23,8 @@ export async function getDownloadedRecords(files: LunaFile[], outputDir: string)
     try {
       const stats = await fs.stat(destination)
       if (stats.isFile()) {
-        records.push({ fileName: file.name, path: destination, bytes: stats.size, downloadedAt: stats.mtime.toISOString() })
+        const record = await readSourceRecord(outputDir, path.basename(destination))
+        records.push(withSourceMetadata({ fileName: file.name, path: destination, bytes: stats.size, downloadedAt: stats.mtime.toISOString() }, record))
       }
     } catch {
       // Missing files simply mean the media is not downloaded yet.
@@ -44,7 +47,8 @@ export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]
     const labels = labelsFor(timestamp)
     const fileUrl = localThumbnailUrl(filePath)
 
-    files.push({
+    const sourceRecord = await readSourceRecord(outputDir, name)
+    files.push(withSourceMetadata({
       id: filePath,
       name,
       href: name,
@@ -72,7 +76,7 @@ export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]
       downloadName: name,
       canPreview: kind === 'image' || kind === 'video',
       localPath: filePath,
-    })
+    }, sourceRecord))
   }
 
   try {
@@ -82,9 +86,12 @@ export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]
       const entryPath = path.join(outputDir, entry.name)
       if (entry.isFile()) await appendFile(entryPath)
     }
-  } catch {
+  } catch (err) {
+    logMainInfo(`[listDownloadedFiles] 读取失败`, { outputDir, error: err instanceof Error ? err.message : String(err) })
     return []
   }
 
-  return lunaMediaAdapter.attachRelatedFiles(files)
+  const result = lunaMediaAdapter.attachRelatedFiles(files)
+  logMainInfo(`[listDownloadedFiles] 完成`, { outputDir, fileCount: result.length })
+  return result
 }

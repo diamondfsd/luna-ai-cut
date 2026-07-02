@@ -52,8 +52,6 @@ export function MediaLibraryPage({
     downloadQueue,
     downloadStatusFilter,
     exportError,
-    exportProgress,
-    exportSnapshots,
     exporting,
     exportWatermarkSettings,
     filteredFiles,
@@ -92,8 +90,6 @@ export function MediaLibraryPage({
     setDownloadQueue,
     setDownloadStatusFilter,
     setExportError,
-    setExporting,
-    setExportProgress,
     setExportWatermarkSettings,
     setMediaFilter,
     setPreviewFiles,
@@ -161,7 +157,6 @@ export function MediaLibraryPage({
   return (
     <>
       <MediaLibraryToolbar
-        activeDevice={activeDevice}
         activeDownloadFileNames={activeDownloadFileNames}
         cardSize={cardSize}
         currentDate={currentDate}
@@ -172,8 +167,6 @@ export function MediaLibraryPage({
         downloading={downloading}
         downloadStatusFilter={downloadStatusFilter}
         exportError={exportError}
-        exportProgress={exportProgress}
-        exportSnapshots={exportSnapshots}
         exporting={exporting}
         exportWatermarkSettings={exportWatermarkSettings}
         isDownloadsPage={isDownloadsPage}
@@ -193,8 +186,6 @@ export function MediaLibraryPage({
         setDownloading={setDownloading}
         setDownloadStatusFilter={setDownloadStatusFilter}
         setExportError={setExportError}
-        setExporting={setExporting}
-        setExportProgress={setExportProgress}
         setExportWatermarkSettings={setExportWatermarkSettings}
         setMediaFilter={setMediaFilter}
         setSelected={setSelected}
@@ -234,15 +225,14 @@ export function MediaLibraryPage({
         revealFileByPath={revealFileByPath}
         toggleFile={toggleFile}
         toggleGroup={toggleGroup}
+        onDragSelectionChange={(fileIds) => setSelected(fileIds)}
       />
 
       {pageActive && previewFile && !selectMode && (
         <PreviewModal
+          filePath={previewFile.downloadFilePath ?? previewFile.localPath ?? previewFile.sourceUrl}
           files={previewFiles.length > 0 ? previewFiles : filteredFiles}
           currentFile={previewFile}
-          currentFileId={previewFile.id}
-          preview={preview}
-          previewLoading={previewLoading}
           downloadProgress={progressForPreview}
           isDownloadsPage={isDownloadsPage}
           showWatermarkControls={isDownloadsPage && viewMode === 'download'}

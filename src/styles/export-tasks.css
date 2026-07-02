@@ -1,0 +1,331 @@
+/* ====== 导出记录弹窗 ====== */
+
+.et-main-dialog {
+  width: min(1100px, 95vw) !important;
+  max-width: none;
+}
+
+.et-detail-dialog {
+  width: min(860px, 90vw) !important;
+  max-width: none;
+}
+
+.et-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ====== 表格 ====== */
+
+.et-table-wrap {
+  overflow-x: auto;
+  max-height: 420px;
+  min-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.et-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.et-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.et-table th {
+  padding: 9px 12px;
+  background: var(--parchment);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.et-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink);
+  vertical-align: middle;
+}
+
+.et-row:last-child td {
+  border-bottom: none;
+}
+
+.et-row:hover td {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* 状态行着色 */
+.et-status-exporting td {
+  background: rgba(0, 102, 204, 0.03);
+}
+
+.et-status-failed td {
+  background: rgba(255, 59, 48, 0.03);
+}
+
+.et-status-canceled td {
+  color: var(--muted);
+}
+
+/* ====== 通用单元格样式 ====== */
+
+.et-cell-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 120px;
+}
+
+.et-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.et-cell-time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.et-cell-num {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+/* ====== 进度条 ====== */
+
+.et-progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.et-progress-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.et-progress-track {
+  display: inline-block;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  min-width: 56px;
+}
+
+.et-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--blue);
+  transition: width 0.3s ease;
+}
+
+.et-fill-completed {
+  background: #34c759;
+}
+
+.et-fill-failed {
+  background: #ff3b30;
+}
+
+.et-fill-canceled {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* ====== 状态徽标 ====== */
+
+.et-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.et-badge-exporting {
+  background: rgba(0, 102, 204, 0.1);
+  color: var(--blue);
+}
+
+.et-badge-queued {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--muted);
+}
+
+.et-badge-failed {
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+}
+
+.et-badge-canceled {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--muted);
+}
+
+/* ====== 空状态 ====== */
+
+.et-empty {
+  text-align: center !important;
+  padding: 64px 12px !important;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ====== 展开按钮 ====== */
+
+.et-expand-btn {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.et-expand-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink);
+}
+
+/* ====== 展开的任务明细列表 ====== */
+
+.et-task-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--hairline);
+}
+
+.et-task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.et-task-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.et-ti-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 14px;
+  place-content: center;
+}
+
+.et-ti-kind {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.et-ti-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.et-ti-dur {
+  white-space: nowrap;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.et-ti-eta {
+  white-space: nowrap;
+  color: var(--blue);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.et-ti-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 60px;
+}
+
+.et-ti-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ====== 分页 ====== */
+
+.et-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 0 4px;
+}
+
+.et-page-btn {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.et-page-btn:hover:not(:disabled) {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.et-page-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.et-page-info {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
