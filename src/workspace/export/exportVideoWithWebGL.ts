@@ -11,15 +11,6 @@ interface VideoExportOptions {
   onProgress?: (percent: number) => void
 }
 
-function waitForSeeked(video: HTMLVideoElement): Promise<void> {
-  if (video.seeking) {
-    return new Promise((resolve) => {
-      video.addEventListener('seeked', () => resolve(), { once: true })
-    })
-  }
-  return Promise.resolve()
-}
-
 /** 通过 ffmpeg 获取视频原始帧率 */
 async function getVideoFps(sourcePath: string): Promise<number> {
   try {
@@ -33,19 +24,19 @@ async function getVideoFps(sourcePath: string): Promise<number> {
 
 /**
  * 使用 WebGL shader 渲染视频每帧输出到 ffmpeg 仅编码（无色差滤镜参与）
- * 策略：按帧率 seek 每帧位置 → WebGL 渲染 → readPixels → IPC 发送到主进程
+ * 策略：以正常速度播放视频 → RAF 逐帧捕获 → WebGL 渲染 → readPixels → IPC
+ * 替代逐帧 seek（seek 每帧重启解码器，极其缓慢）
  */
 export async function exportVideoWithWebGL(options: VideoExportOptions): Promise<void> {
   const { sourcePath, pipeline, exportId, taskName, onProgress } = options
+
+  // 1. 加载视频
   const video = document.createElement('video')
   video.muted = true
   video.preload = 'auto'
-  video.crossOrigin = 'anonymous'
   video.playsInline = true
-  const videoUrl = filePathToPreviewUrl(sourcePath) ?? `file://${sourcePath}`
-  video.src = videoUrl
+  video.src = filePathToPreviewUrl(sourcePath) ?? `file://${sourcePath}`
 
-  // 等待元数据
   await new Promise<void>((resolve, reject) => {
     const onMeta = (): void => {
       if (video.duration > 0 && video.videoWidth > 0) resolve()
@@ -58,80 +49,134 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
   const width = video.videoWidth
   const height = video.videoHeight
   const duration = video.duration
-
-  // 通过 ffmpeg 获取原始帧率
   const fps = await getVideoFps(sourcePath)
-
   const totalFrames = Math.max(1, Math.ceil(duration * fps))
   const frameDuration = 1 / fps
 
-  logger.info(`[videoExport] 开始逐帧导出`, { width, height, duration, fps, totalFrames })
+  logger.info(`[videoExport] 开始`, { width, height, duration, fps, totalFrames })
 
-  // 启动主进程编码器
+  // 2. 启动主进程编码器
   const encoder = await window.luna.workspace.startVideoExport({
-    exportId, taskName, outputName: sourcePath,
-    width, height, fps,
+    exportId, taskName, outputName: sourcePath, width, height, fps,
   })
-
   const outputPath = encoder.outputPath
 
-  // 创建离屏 canvas + WebGL
+  // 3. 离屏 WebGL
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const renderer = new WebGLRenderer(canvas)
+  const bufSize = width * height * 4
+  const pixels = new Uint8Array(bufSize)
+  // 翻转 ping-pong 缓冲（IPC 异步读取时避免写冲突）
+  const flipBufs = [new Uint8Array(bufSize), new Uint8Array(bufSize)]
+  let flipIdx = 0
+  let ipcPending = Promise.resolve()
+  const stride = width * 4
+
+  let capturedCount = 0
+  let lastReportedPct = -1
+  let exportError: Error | null = null
 
   try {
-    // 加载视频到 WebGL
     renderer.loadVideo(video)
     renderer.resize(width, height)
 
-    // 预分配翻转缓冲（避免每帧 GC）
-    const stride = width * 4
-    const flipped = new Uint8Array(width * height * 4)
-    let lastReportedPct = -1
+    // 4. 播放并逐帧捕获（play 方式比逐帧 seek 快 10x+）
+    logger.info('[videoExport] 开始播放捕获')
+    video.play()
 
-    // 逐帧 seek + 渲染（每 30 帧 yield 一次，让 UI 线程呼吸）
-    for (let frame = 0; frame < totalFrames; frame++) {
-      const time = Math.min(frame * frameDuration, duration - 0.001)
-      video.currentTime = time
-      await waitForSeeked(video)
+    await new Promise<void>((resolve) => {
+      video.addEventListener('ended', () => resolve(), { once: true })
+      video.addEventListener('error', () => {
+        exportError = new Error('视频播放失败')
+        resolve()
+      }, { once: true })
 
-      // WebGL shader 渲染当前帧
-      renderer.render(pipeline)
+      let lastFrameIndex = -1
 
-      // 读取像素 → Y 翻转（复用 flipped 缓冲）
-      const pixels = renderer.readAllPixels()
-      for (let y = 0; y < height; y++) {
-        flipped.set(pixels.subarray(y * stride, (y + 1) * stride), (height - 1 - y) * stride)
+      const captureLoop = async (): Promise<void> => {
+        if (video.paused || video.ended || exportError) return
+
+        const currentFrame = Math.floor(video.currentTime / frameDuration)
+
+        if (currentFrame > lastFrameIndex && currentFrame < totalFrames) {
+          lastFrameIndex = currentFrame
+
+          // 等待上一帧 IPC 完成
+          await ipcPending
+
+          // WebGL 渲染 → 读像素 → Y 翻转
+          renderer.render(pipeline)
+          renderer.readPixelsInto(pixels)
+          const fb = flipBufs[flipIdx]
+          for (let y = 0; y < height; y++) {
+            fb.set(pixels.subarray(y * stride, (y + 1) * stride), (height - 1 - y) * stride)
+          }
+          // IPC 发送（用 ping-pong 缓冲，避免写冲突）
+          ipcPending = window.luna.workspace.sendVideoExportFrame(exportId, fb.buffer as ArrayBuffer)
+            .catch((err: unknown) => { exportError = err instanceof Error ? err : new Error(String(err)) })
+          flipIdx ^= 1
+
+          capturedCount++
+          const pct = Math.round((capturedCount / totalFrames) * 100)
+          if (pct >= lastReportedPct + 2 || capturedCount >= totalFrames) {
+            lastReportedPct = pct
+            onProgress?.(pct)
+          }
+        }
+
+        if (capturedCount < totalFrames) {
+          requestAnimationFrame(captureLoop)
+        } else {
+          video.pause()
+          resolve()
+        }
       }
 
-      // IPC 发送到主进程 ffmpeg 编码器
-      await window.luna.workspace.sendVideoExportFrame(exportId, flipped.buffer as ArrayBuffer)
+      requestAnimationFrame(() => { captureLoop().catch((e) => { exportError = e; resolve() }) })
+    })
 
-      // 进度（每 2% 更新一次，防 React 频繁 re-render）
-      const pct = Math.round(((frame + 1) / totalFrames) * 100)
-      if (pct >= lastReportedPct + 2 || pct === 100) {
+    if (exportError) throw exportError
+
+    logger.info(`[videoExport] 播放捕获完成`, { capturedCount, totalFrames })
+
+    // 5. 补帧：RAF 可能漏掉少量帧（尤其是播放结束前后），用 seek 补
+    while (capturedCount < totalFrames) {
+      const time = Math.min(capturedCount * frameDuration, duration - 0.001)
+      video.currentTime = time
+      if (video.seeking) {
+        await new Promise((r) => video.addEventListener('seeked', r, { once: true }))
+      }
+      renderer.render(pipeline)
+      renderer.readPixelsInto(pixels)
+      const fb = flipBufs[flipIdx]
+      for (let y = 0; y < height; y++) {
+        fb.set(pixels.subarray(y * stride, (y + 1) * stride), (height - 1 - y) * stride)
+      }
+      await window.luna.workspace.sendVideoExportFrame(exportId, fb.buffer as ArrayBuffer)
+      flipIdx ^= 1
+      capturedCount++
+      const pct = Math.round((capturedCount / totalFrames) * 100)
+      if (pct >= lastReportedPct + 2 || capturedCount >= totalFrames) {
         lastReportedPct = pct
         onProgress?.(pct)
-      }
-
-      // 每 30 帧让出主线程，避免页面卡死
-      if (frame > 0 && frame % 30 === 0) {
-        await new Promise((r) => setTimeout(r, 0))
       }
     }
   } finally {
     renderer.destroy()
+    video.pause()
+    video.removeAttribute('src')
+    video.load()
     video.remove()
   }
 
-  // 结束编码，等待 ffmpeg 完成
+  // 6. 结束编码
+  logger.info('[videoExport] 结束编码')
   const result = await window.luna.workspace.endVideoExport(exportId, {
     taskId: encoder.taskId,
     taskStart: encoder.taskStart,
     outputPath,
   })
-
-  logger.info(`[videoExport] 导出完成`, { result })
+  logger.info('[videoExport] 导出完成', { result })
 }

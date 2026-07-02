@@ -186,6 +186,12 @@ export class WebGLRenderer {
     return pixels
   }
 
+  /** 读取整个画布的像素，使用预分配缓冲（避免 GC） */
+  readPixelsInto(pixels: Uint8Array): void {
+    const gl = this.gl
+    gl.readPixels(0, 0, this.canvas.width, this.canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+  }
+
   /** 读取整个画布的像素 */
   readAllPixels(): Uint8Array {
     return this.readPixels(0, 0, this.canvas.width, this.canvas.height)
