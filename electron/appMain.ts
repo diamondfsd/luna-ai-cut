@@ -672,6 +672,7 @@ function registerIpc(): void {
   })
   // 快速预览帧 — 降分辨率跑 ffmpeg 调色，替代 WebGL 预览
   ipcMain.handle('workspace:previewColor', async (_event, sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }) => {
+    logMainInfo(`[workspace:previewColor] 收到请求`, { sourcePath, colorKeys: Object.keys(color).join(','), maxSize: options?.maxSize, seekSeconds: options?.seekSeconds })
     const cacheDir = await previewCacheDir()
     const baseName = path.basename(sourcePath)
     const ext = path.extname(baseName)
@@ -693,6 +694,7 @@ function registerIpc(): void {
     }
 
     await previewColorFrame(sourcePath, outputPath, colorOpts, { maxSize, seekSeconds: options?.seekSeconds })
+    logMainInfo(`[workspace:previewColor] 完成`, { outputPath })
     return { path: outputPath }
   })
 

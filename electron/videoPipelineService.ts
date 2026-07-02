@@ -180,7 +180,9 @@ export async function previewColorFrame(
   args.push('-vf', vfParts.join(','))
 
   args.push('-frames:v', '1', '-y', outputPath)
+  logMainInfo(`[previewColorFrame] 执行`, { sourcePath, outputPath, args: args.join(' ') })
   await execFile(ffmpeg, args)
+  logMainInfo(`[previewColorFrame] 完成`, { outputPath })
 }
 
 // 与 ColorGradingModule.build() 完全一致的 filter 构建
