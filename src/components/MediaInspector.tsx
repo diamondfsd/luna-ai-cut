@@ -3,7 +3,7 @@ import { ChevronRight, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
 import { IconButton } from '../ui'
 import { formatBytes } from '../lib/format'
 import { WatermarkSettings } from './WatermarkSettings'
-import type { DeviceWatermarkStyleConfig, LunaFile, MediaMetadata, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { LunaFile, MediaMetadata, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 
 // ─── MediaDetails ──────────────────────────────────────
 // (shared with PreviewModal.tsx)
@@ -40,7 +40,8 @@ interface MediaInspectorProps {
   onToggleCollapse?: () => void
   watermarkSettings?: WatermarkSettingsType
   onWatermarkChange?: (settings: WatermarkSettingsType) => void
-  watermarkStyleOptions?: DeviceWatermarkStyleConfig[]
+  /** 水印预览文件路径，用于自动检测设备 */
+  watermarkFilePath?: string
 }
 
 // ─── Helpers ───────────────────────────────────────────
@@ -314,7 +315,7 @@ export function MediaInspector({
   onToggleCollapse,
   watermarkSettings,
   onWatermarkChange,
-  watermarkStyleOptions,
+  watermarkFilePath,
 }: MediaInspectorProps) {
   const metaMap = useMemo(() => buildMetadataMap(mediaMetadata), [mediaMetadata])
 
@@ -339,7 +340,7 @@ export function MediaInspector({
     <aside className="media-inspector">
       {/* ── 水印设置（图片/视频） ── */}
       {file.kind !== 'unknown' && watermarkSettings && onWatermarkChange && (
-        <WatermarkSettings settings={watermarkSettings} onChange={onWatermarkChange} styleOptions={watermarkStyleOptions} />
+        <WatermarkSettings settings={watermarkSettings} onChange={onWatermarkChange} filePath={watermarkFilePath} />
       )}
 
       {/* ── 文件信息（通用） ── */}

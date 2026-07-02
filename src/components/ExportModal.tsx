@@ -4,7 +4,7 @@ import { ImagePlus, Monitor, Video, X } from 'lucide-react'
 import { MediaPreviewPanel } from './MediaPreviewPanel'
 import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToPreviewUrl } from './previewModalUtils'
-import type { DeviceWatermarkStyleConfig, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
 import { Accordion, Button, Dialog, IconButton, Input, Select } from '../ui'
 import '../styles/modal.css'
@@ -13,7 +13,6 @@ import '../styles/export-modal.css'
 interface ExportModalProps {
   files: LunaFile[]
   watermarkSettings: WatermarkSettingsType
-  watermarkStyleOptions?: DeviceWatermarkStyleConfig[]
   exporting: boolean
   onClose: () => void
   onConfirm: (settings: WatermarkSettingsType, videoSettings: VideoExportSettings) => void
@@ -49,7 +48,6 @@ const QUALITY_OPTIONS = [
 export function ExportModal({
   files,
   watermarkSettings,
-  watermarkStyleOptions,
   exporting,
   onClose,
   onConfirm,
@@ -129,7 +127,7 @@ export function ExportModal({
                 <WatermarkSettings
                   settings={watermarkSettings}
                   onChange={onSettingsChange}
-                  styleOptions={watermarkStyleOptions}
+                  filePath={currentFile.downloadFilePath ?? currentFile.localPath ?? undefined}
                   showToggle={false}
                 />
               </Accordion>

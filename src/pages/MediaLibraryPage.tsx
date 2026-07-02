@@ -157,7 +157,6 @@ export function MediaLibraryPage({
   return (
     <>
       <MediaLibraryToolbar
-        activeDevice={activeDevice}
         activeDownloadFileNames={activeDownloadFileNames}
         cardSize={cardSize}
         currentDate={currentDate}
