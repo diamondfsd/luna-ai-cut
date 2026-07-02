@@ -1,22 +1,35 @@
-import wmUltra from '../assets/watermark/ic_watermark_luna_ultra.png'
-import wmUltraCn from '../assets/watermark/ic_watermark_luna_ultra_cn.png'
-import wmUltraImage from '../assets/watermark/ic_watermark_luna_ultra_image.png'
-import wmUltraImageCn from '../assets/watermark/ic_watermark_luna_ultra_image_cn.png'
-import wmGoUltra from '../assets/watermark/ic_watermark_go_ultra.png'
-import wmGoUltraCn from '../assets/watermark/ic_watermark_go_ultra_cn.png'
-import wmGoUltraImage from '../assets/watermark/ic_watermark_go_ultra_image.png'
-import wmGoUltraImageCn from '../assets/watermark/ic_watermark_go_ultra_image_cn.png'
-
 /**
- * 水印图片 src 映射（key = 具体样式标识符，不含 'auto'）。
- * 调用方需先通过 concreteWatermarkStyle() 解析 'auto'。
+ * 水印图片 src 映射 — 由文件命名约定自动构建：
+ *
+ *    ic_watermark_{style}.png          → video
+ *    ic_watermark_{style}_image.png    → image
+ *
+ * 新增水印只需在 src/assets/watermark/ 放对应图片，无需改代码。
  */
-export const WM_SRC: Record<string, Record<'image' | 'video', string>> = {
-  luna_ultra: { video: wmUltra, image: wmUltraImage },
-  luna_ultra_cn: { video: wmUltraCn, image: wmUltraImageCn },
-  go_ultra: { video: wmGoUltra, image: wmGoUltraImage },
-  go_ultra_cn: { video: wmGoUltraCn, image: wmGoUltraImageCn },
+const rawModules = import.meta.glob<string>('../assets/watermark/ic_watermark_*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+})
+
+const SRC: Record<string, Record<'image' | 'video', string>> = {}
+
+for (const [filePath, url] of Object.entries(rawModules)) {
+  const fileName = filePath.split('/').pop()!
+  const baseName = fileName.replace(/\.png$/, '') // ic_watermark_go_ultra_image
+
+  const isImage = baseName.endsWith('_image')
+  const kind: 'image' | 'video' = isImage ? 'image' : 'video'
+
+  // 从文件名提取 style：去掉 ic_watermark_ 前缀和 _image 后缀
+  let style = baseName.replace(/^ic_watermark_/, '')
+  if (isImage) style = style.replace(/_image$/, '')
+
+  if (!SRC[style]) SRC[style] = { video: '', image: '' }
+  SRC[style][kind] = url
 }
+
+export const WM_SRC: Readonly<Record<string, Readonly<Record<'image' | 'video', string>>>> = SRC
 
 /** 获取所有已注册的水印样式 key */
 export function registeredWatermarkStyles(): string[] {

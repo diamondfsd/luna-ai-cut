@@ -11,14 +11,8 @@ function getWatermarkDir(): string {
   return path.join(app.getAppPath(), 'src', 'assets', 'watermark')
 }
 
-function watermarkFileFor(style: ConcreteWatermarkStyle): string {
-  const filenames: Record<ConcreteWatermarkStyle, string> = {
-    luna_ultra: 'ic_watermark_luna_ultra.png',
-    luna_ultra_cn: 'ic_watermark_luna_ultra_cn.png',
-    go_ultra: 'ic_watermark_go_ultra.png',
-    go_ultra_cn: 'ic_watermark_go_ultra_cn.png',
-  }
-  return path.join(getWatermarkDir(), filenames[style])
+function watermarkFileFor(style: string): string {
+  return path.join(getWatermarkDir(), `ic_watermark_${style}.png`)
 }
 
 /** 根据水印位置生成 FFmpeg overlay 表达式 */
