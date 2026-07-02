@@ -31,26 +31,9 @@ function getWatermarkDir(): string {
   return path.join(app.getAppPath(), 'src', 'assets', 'watermark')
 }
 
-function watermarkFileFor(kind: 'image' | 'video', style: ConcreteWatermarkStyle): string {
-  const filenames: Record<ConcreteWatermarkStyle, Record<'image' | 'video', string>> = {
-    luna_ultra: {
-      video: 'ic_watermark_luna_ultra.png',
-      image: 'ic_watermark_luna_ultra_image.png',
-    },
-    luna_ultra_cn: {
-      video: 'ic_watermark_luna_ultra_cn.png',
-      image: 'ic_watermark_luna_ultra_image_cn.png',
-    },
-    go_ultra: {
-      video: 'ic_watermark_go_ultra.png',
-      image: 'ic_watermark_go_ultra_image.png',
-    },
-    go_ultra_cn: {
-      video: 'ic_watermark_go_ultra_cn.png',
-      image: 'ic_watermark_go_ultra_image_cn.png',
-    },
-  }
-  return path.join(getWatermarkDir(), filenames[style][kind])
+function watermarkFileFor(kind: 'image' | 'video', style: string): string {
+  const suffix = kind === 'image' ? '_image' : ''
+  return path.join(getWatermarkDir(), `ic_watermark_${style}${suffix}.png`)
 }
 
 /** 将 JPEG 文件中的 EXIF Orientation 标签设为 1（正常方向），保留其他所有 EXIF */
