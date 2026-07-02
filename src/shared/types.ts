@@ -435,17 +435,12 @@ export interface LunaApi {
   relaunchApp(): Promise<void>
   /** 监听热更新可用事件 */
   onHotUpdateAvailable(callback: (info: HotUpdateCheckResult) => void): () => void
-
 }
 
 export interface ReleaseNoteItem {
   version: string
   content: string
 }
-
-// ============================================================
-// 统一设备调试 API
-// ============================================================
 
 export interface DeviceDebugTestStep {
   step: string

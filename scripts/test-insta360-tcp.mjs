@@ -1,21 +1,28 @@
 #!/usr/bin/env node
 import net from 'node:net'
-import { randomBytes } from 'node:crypto'
 import { Buffer } from 'node:buffer'
 import { createWriteStream } from 'node:fs'
 import { resolve } from 'node:path'
 
-const host = process.argv[2] ?? '192.168.42.1'
-const port = Number(process.argv[3] ?? 6666)
-const logFileArg = process.argv[4]
+const rawArgs = process.argv.slice(2)
+const requestAuth = rawArgs.includes('--request-auth')
+const positionalArgs = rawArgs.filter((arg) => !arg.startsWith('--'))
+const host = positionalArgs[0] ?? '192.168.42.1'
+const port = Number(positionalArgs[1] ?? 6666)
+const logFileArg = positionalArgs[2]
 const logFile = resolve(logFileArg ?? `insta360-tcp-test-${new Date().toISOString().replace(/[:.]/g, '-')}.log`)
 const logStream = createWriteStream(logFile, { flags: 'a' })
 const UCD2_MAGIC = Buffer.from('UCD2')
 const UCD2_VERSION = 0x01
 const UCD2_FLAGS = 0x0c
+const UCD2_MSG = 0x03
 const UCD2_FILE = 0x04
 const UCD2_STREAM = 0x05
 const CODE_GET_OPTIONS = 8
+const CODE_CHECK_AUTHORIZATION = 39
+const CODE_REQUEST_AUTHORIZATION = 86
+const CODE_PHONE_INFO = 220
+const PACKET_CHECKSUM_POLY = 0x04c11db7
 
 let seq = 0x24
 let requestId = 1
@@ -71,6 +78,89 @@ function wireFieldVarint(field, value) {
   return Buffer.concat([wireVarint(field << 3), wireVarint(value)])
 }
 
+function wireFieldBytes(field, value) {
+  return Buffer.concat([wireVarint((field << 3) | 2), wireVarint(value.length), value])
+}
+
+function buildMessageEnvelope(messageCode, body, req) {
+  return Buffer.concat([
+    wireFieldVarint(1, req),
+    wireFieldVarint(2, messageCode),
+    wireFieldBytes(3, body),
+  ])
+}
+
+function parseVarint(buffer, offset) {
+  let value = 0
+  let shift = 0
+  while (offset < buffer.length) {
+    const byte = buffer[offset++]
+    value |= (byte & 0x7f) << shift
+    if ((byte & 0x80) === 0) return { value, offset }
+    shift += 7
+  }
+  return { value, offset }
+}
+
+function parseMessageEnvelope(buffer) {
+  let offset = 0
+  const message = { requestId: 0, messageCode: 0, body: Buffer.alloc(0) }
+  while (offset < buffer.length) {
+    const tag = parseVarint(buffer, offset)
+    offset = tag.offset
+    const field = tag.value >> 3
+    const wireType = tag.value & 0x07
+    if (wireType === 0) {
+      const parsed = parseVarint(buffer, offset)
+      offset = parsed.offset
+      if (field === 1) message.requestId = parsed.value
+      else if (field === 2) message.messageCode = parsed.value
+    } else if (wireType === 2) {
+      const parsed = parseVarint(buffer, offset)
+      offset = parsed.offset
+      const bytes = buffer.subarray(offset, offset + parsed.value)
+      offset += parsed.value
+      if (field === 3) message.body = Buffer.from(bytes)
+    } else {
+      break
+    }
+  }
+  return message
+}
+
+function buildPacketChecksumTable() {
+  const table = []
+  for (let i = 0; i < 256; i += 1) {
+    let value = (i << 24) | 0
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value & 0x80000000) !== 0
+        ? ((value << 1) ^ PACKET_CHECKSUM_POLY) | 0
+        : (value << 1) | 0
+    }
+    table.push(value >>> 0)
+  }
+  return table
+}
+
+const PACKET_CHECKSUM_TABLE = buildPacketChecksumTable()
+
+function insta360PacketChecksum(frameWithoutTrailer) {
+  let checksum = 0xffffffff | 0
+  for (const byte of frameWithoutTrailer) {
+    checksum = (checksum ^ byte) | 0
+    for (let i = 0; i < 4; i += 1) {
+      checksum = ((checksum << 8) ^ PACKET_CHECKSUM_TABLE[(checksum >>> 24) & 0xff]) | 0
+    }
+  }
+  return checksum >>> 0
+}
+
+function checksumTrailer(frameWithoutTrailer) {
+  const trailer = Buffer.alloc(4)
+  trailer.writeUInt32LE(insta360PacketChecksum(frameWithoutTrailer), 0)
+  return trailer
+}
+
 function buildUcd2(type, payload, forcedSeq) {
   const header = Buffer.alloc(8)
   UCD2_MAGIC.copy(header, 0)
@@ -87,11 +177,11 @@ function buildStreamHello(mode) {
       ? Buffer.from('f6cc4f09', 'hex')
       : mode === 'zero'
         ? Buffer.alloc(4)
-        : randomBytes(4)
+        : Buffer.from('f6cc4f09', 'hex')
   return buildUcd2(UCD2_STREAM, Buffer.concat([Buffer.alloc(4), tail]))
 }
 
-function buildRawFileCommand(code, body, trailerMode) {
+function buildRawFileCommand(code, body) {
   const req = requestId++
   const raw = Buffer.alloc(9 + body.length)
   raw.writeUInt16LE(code, 0)
@@ -100,17 +190,25 @@ function buildRawFileCommand(code, body, trailerMode) {
   raw.writeUInt32LE(0x8000, 5)
   body.copy(raw, 9)
 
-  const trailer =
-    trailerMode === 'fixed'
-      ? Buffer.from('7c008e7c', 'hex')
-      : trailerMode === 'zero'
-        ? Buffer.alloc(4)
-        : randomBytes(4)
-
   const length = Buffer.alloc(4)
   length.writeUInt32LE(raw.length, 0)
-  const packet = buildUcd2(UCD2_FILE, Buffer.concat([length, raw, trailer]))
+  const frameWithoutTrailer = buildUcd2(UCD2_FILE, Buffer.concat([length, raw]))
+  const trailer = checksumTrailer(frameWithoutTrailer)
+  const packet = Buffer.concat([frameWithoutTrailer, trailer])
   return { packet, req, trailer }
+}
+
+function buildMsgCommand(code, body = Buffer.alloc(0)) {
+  const req = requestId++
+  const envelope = buildMessageEnvelope(code, body, req)
+  const packet = buildUcd2(UCD2_MSG, envelope)
+  return { packet, req, body }
+}
+
+function buildMsgNotify(code, body = Buffer.alloc(0)) {
+  const envelope = buildMessageEnvelope(code, body, 0)
+  const packet = buildUcd2(UCD2_MSG, envelope)
+  return { packet, body }
 }
 
 function parseRaw(payload) {
@@ -134,6 +232,19 @@ function describeFrame(frame) {
   const seqNo = frame[7]
   if (type === UCD2_STREAM) {
     log('RX STREAM', { seq: seqNo, bytes: frame.length, payload: hex(frame.subarray(8)) })
+    return
+  }
+  if (type === UCD2_MSG) {
+    const msg = parseMessageEnvelope(frame.subarray(8))
+    log('RX MSG', {
+      seq: seqNo,
+      bytes: frame.length,
+      requestId: msg.requestId,
+      messageCode: msg.messageCode,
+      bodyBytes: msg.body.length,
+      bodyHex: hex(msg.body),
+      bodyAscii: ascii(msg.body),
+    })
     return
   }
   if (type !== UCD2_FILE) {
@@ -179,6 +290,11 @@ function onData(data) {
     const frameLen =
       type === UCD2_STREAM
         ? 16
+        : type === UCD2_MSG
+          ? (() => {
+              const nextMagic = rxBuffer.indexOf(UCD2_MAGIC, 8)
+              return nextMagic > 0 ? nextMagic : rxBuffer.length
+            })()
         : type === UCD2_FILE && rxBuffer.length >= 12
           ? 12 + rxBuffer.readUInt32LE(8) + 4
           : 0
@@ -208,11 +324,38 @@ async function sendExact(socket, label, hexText) {
   await send(socket, label, Buffer.from(hexText.replace(/\s+/g, ''), 'hex'))
 }
 
+async function sendMsg(socket, label, code, body = Buffer.alloc(0), waitMs = 1200) {
+  const command = buildMsgCommand(code, body)
+  log(`TX ${label}`, {
+    code,
+    requestId: command.req,
+    bodyBytes: body.length,
+    bytes: command.packet.length,
+    hex: hex(command.packet),
+  })
+  socket.write(command.packet)
+  await sleep(waitMs)
+}
+
+async function sendNotify(socket, label, code, body = Buffer.alloc(0), waitMs = 300) {
+  const command = buildMsgNotify(code, body)
+  log(`TX ${label}`, {
+    code,
+    requestId: 0,
+    bodyBytes: body.length,
+    bytes: command.packet.length,
+    hex: hex(command.packet),
+  })
+  socket.write(command.packet)
+  await sleep(waitMs)
+}
+
 async function main() {
   log('Log file', { path: logFile })
+  log('Options', { requestAuth })
   log('Connecting', { host, port })
   const socket = net.createConnection({ host, port })
-  socket.setTimeout(15000)
+  socket.setTimeout(requestAuth ? 70000 : 15000)
   socket.on('data', onData)
   socket.on('close', (hadError) => log('Socket close', { hadError }))
   socket.on('end', () => log('Socket end'))
@@ -231,6 +374,12 @@ async function main() {
   const smallOptions = Buffer.concat([wireFieldVarint(1, 48), wireFieldVarint(1, 15), wireFieldVarint(1, 11)])
 
   await send(socket, 'STREAM hello pcap-tail', buildStreamHello('pcap'))
+  await sendMsg(socket, 'MSG CHECK_AUTHORIZATION', CODE_CHECK_AUTHORIZATION)
+
+  if (requestAuth) {
+    await sendNotify(socket, 'MSG PHONE_INFO notify before authorization', CODE_PHONE_INFO)
+    await sendMsg(socket, 'MSG REQUEST_AUTHORIZATION -- confirm on camera', CODE_REQUEST_AUTHORIZATION, Buffer.alloc(0), 30000)
+  }
 
   await sendExact(
     socket,
@@ -314,14 +463,8 @@ async function main() {
     `,
   )
 
-  const fixed = buildRawFileCommand(CODE_GET_OPTIONS, smallOptions, 'fixed')
-  await send(socket, `GET_OPTIONS fixed-trailer req=${fixed.req} trailer=${hex(fixed.trailer)}`, fixed.packet)
-
-  const zero = buildRawFileCommand(CODE_GET_OPTIONS, smallOptions, 'zero')
-  await send(socket, `GET_OPTIONS zero-trailer req=${zero.req} trailer=${hex(zero.trailer)}`, zero.packet)
-
-  const random = buildRawFileCommand(CODE_GET_OPTIONS, smallOptions, 'random')
-  await send(socket, `GET_OPTIONS random-trailer req=${random.req} trailer=${hex(random.trailer)}`, random.packet)
+  const generated = buildRawFileCommand(CODE_GET_OPTIONS, smallOptions)
+  await send(socket, `GET_OPTIONS generated-checksum req=${generated.req} trailer=${hex(generated.trailer)}`, generated.packet)
 
   log('Waiting for late frames')
   await sleep(5000)
