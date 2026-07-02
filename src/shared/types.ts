@@ -4,6 +4,11 @@ export interface LunaFile {
   id: string
   storageId?: string
   storageLabel?: string
+  sourceDeviceId?: string
+  sourceDeviceName?: string
+  cameraType?: string
+  cameraSerial?: string
+  watermarkProfileId?: string
   name: string
   href: string
   sourceUrl: string
@@ -109,7 +114,7 @@ export interface AiConfig {
 }
 
 export type WatermarkPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
-export type WatermarkStyle = 'luna_ultra' | 'luna_ultra_cn'
+export type WatermarkStyle = 'auto' | 'luna_ultra' | 'luna_ultra_cn' | 'go_ultra' | 'go_ultra_cn'
 
 export interface WatermarkSettings {
   enabled: boolean
@@ -216,6 +221,23 @@ export interface DownloadRecord {
   path: string
   bytes: number | null
   downloadedAt: string
+  sourceDeviceId?: string
+  sourceDeviceName?: string
+  cameraType?: string
+  cameraSerial?: string
+  watermarkProfileId?: string
+}
+
+export interface ExportFileInput {
+  name: string
+  kind: string
+  localPath?: string
+  exportId?: string
+  sourceDeviceId?: string
+  sourceDeviceName?: string
+  cameraType?: string
+  cameraSerial?: string
+  watermarkProfileId?: string
 }
 
 export interface ExportProgress {
@@ -400,7 +422,7 @@ export interface LunaApi {
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
-  exportFiles(files: Array<{ name: string; kind: string; localPath?: string; exportId?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
+  exportFiles(files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
   getDownloadedRecords(files: LunaFile[], downloadDir?: string): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>

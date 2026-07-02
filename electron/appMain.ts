@@ -42,6 +42,7 @@ import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
 import { GoUltraClient } from './goUltraProtocol'
 import { LunaUltraProtocol, GoUltraProtocol } from './deviceProtocols'
 import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor, deviceDefinitions } from './deviceDefaults'
+import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
 import { getMockStatus, mockTcpPortForHost, startMockServer, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
@@ -63,6 +64,7 @@ import type {
   AppSettings,
   DeviceConnectOptions,
   DownloadProgress,
+  ExportFileInput,
   LunaFile,
   VideoExportSettings,
   WatermarkSettings,
@@ -194,6 +196,18 @@ function sourceHostFor(url: string | null | undefined): string | null {
   } catch {
     return null
   }
+}
+
+function attachSourceDevice(files: LunaFile[], deviceId: string): LunaFile[] {
+  const device = deviceDefinitionFor(deviceId)
+  const profile = deviceProfileForId(deviceId)
+  return files.map((file) => ({
+    ...file,
+    sourceDeviceId: file.sourceDeviceId ?? deviceId,
+    sourceDeviceName: file.sourceDeviceName ?? device.name,
+    cameraType: file.cameraType ?? profile?.cameraType ?? device.name,
+    watermarkProfileId: file.watermarkProfileId ?? profile?.id ?? deviceId,
+  }))
 }
 
 async function ensureCameraSessionForUrl(url: string | null | undefined): Promise<void> {
@@ -393,6 +407,7 @@ function registerIpc(): void {
           files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
         }
       }
+      files = attachSourceDevice(files, deviceId)
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
       logMainInfo(`[HTTP读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed })
       await saveSettings({
@@ -603,7 +618,7 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('luna:exportFiles', (_event, files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) => {
+  ipcMain.handle('luna:exportFiles', (_event, files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) => {
     const controller = new AbortController()
     activeExportControllers.add(controller)
     return exportFiles(files, exportDir, watermarkSettings, (progress) => {
