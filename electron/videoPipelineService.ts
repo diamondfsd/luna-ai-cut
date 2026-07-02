@@ -8,6 +8,7 @@ import { WatermarkModule } from './ffmpeg/watermark'
 import { ColorGradingModule } from './ffmpeg/colorGrading'
 import type { VideoExportSettings, WatermarkPosition, WatermarkStyle } from '../src/shared/types'
 import type { ColorGradingOptions } from './ffmpeg/colorGrading'
+import { logMainInfo, logMainError } from './loggerService'
 
 type ConcreteWatermarkStyle = Exclude<WatermarkStyle, 'auto'>
 
@@ -111,6 +112,7 @@ export async function applyColorGradingToVideo(
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  logMainInfo(`[applyColorGradingToVideo] 开始`, { inputPath, outputPath, hasOnProgress: !!onProgress })
   const pipeline = new FfmpegPipeline()
   const hwaccel = await detectHardwareAccel(getFfmpegPath())
 
@@ -128,5 +130,12 @@ export async function applyColorGradingToVideo(
     encoderArgs: hwaccel.encoderArgs,
   }))
 
-  await pipeline.execute(inputPath, outputPath, onProgress, signal)
+  logMainInfo(`[applyColorGradingToVideo] 执行 pipeline`)
+  try {
+    await pipeline.execute(inputPath, outputPath, onProgress, signal)
+    logMainInfo(`[applyColorGradingToVideo] 完成`)
+  } catch (err) {
+    logMainError(`[applyColorGradingToVideo] 失败`, { error: err instanceof Error ? err.message : String(err) })
+    throw err
+  }
 }
