@@ -84,7 +84,13 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
         logger.info('[CanvasEngine] previewColor IPC returned', { hasResult: !!result, path: result?.path })
         if (!result?.path || canceledRef.current) return
 
-        // Load the preview image onto canvas
+        // 用 filePathToPreviewUrl 加载预览（与初始图片加载同一套逻辑）
+        const previewUrl = filePathToPreviewUrl(result.path)
+        if (!previewUrl) {
+          logger.warn('[CanvasEngine] 无法生成预览URL', { path: result.path })
+          return
+        }
+
         const img = new Image()
         img.onload = () => {
           if (canceledRef.current) return
@@ -113,17 +119,12 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
           }
           setImageLoading(false)
           setRenderKey((k) => k + 1)
-          // Revoke old preview URL
-          if (previewUrlRef.current && previewUrlRef.current !== result.path) {
-            URL.revokeObjectURL(previewUrlRef.current)
-          }
-          previewUrlRef.current = result.path
+          previewUrlRef.current = previewUrl
         }
         img.onerror = () => {
-          logger.warn('[CanvasEngine] 预览图片加载失败', { path: result.path })
+          logger.warn('[CanvasEngine] 预览图片加载失败', { path: result.path, previewUrl })
         }
-        // Local file path → file:// URL（路径中的空格等特殊字符编码）
-        img.src = `file://${result.path.replace(/ /g, '%20')}`
+        img.src = previewUrl
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
         logger.warn('[CanvasEngine] ffmpeg预览失败', { error: msg })
