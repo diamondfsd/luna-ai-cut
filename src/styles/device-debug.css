@@ -88,6 +88,10 @@
   grid-column: 1 / -1;
 }
 
+.dd-panel-wide {
+  grid-column: span 2;
+}
+
 /* ---- 字段 ---- */
 
 .dd-field {
@@ -268,6 +272,36 @@
   margin: 0;
 }
 
+/* ---- HTTP 验证 ---- */
+
+.dd-http-list {
+  display: grid;
+  gap: 6px;
+}
+
+.dd-http-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.dd-http-item span {
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dd-http-item em {
+  color: var(--muted);
+  font-style: normal;
+}
+
 /* ---- 日志 ---- */
 
 .dd-log-header {
@@ -362,5 +396,9 @@
 @media (max-width: 920px) {
   .device-debug-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dd-panel-wide {
+    grid-column: 1;
   }
 }
