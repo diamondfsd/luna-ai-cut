@@ -680,6 +680,8 @@ function registerIpc(): void {
     const maxSize = options?.maxSize ?? 480
     const fileName = safeName(`preview_${nameBase}_${maxSize}_${Date.now()}.jpg`)
     const outputPath = path.join(cacheDir, fileName)
+    // 确保缓存目录存在
+    await mkdir(cacheDir, { recursive: true }).catch(() => {})
 
     const colorOpts = {
       exposure: color.exposure ?? 0, brightness: color.brightness ?? 0,
