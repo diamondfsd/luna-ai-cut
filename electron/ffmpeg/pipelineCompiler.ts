@@ -277,13 +277,12 @@ export class FullPipelineModule implements FfmpegModule {
       const wmSize = pngSize(this.watermarkImagePath)
       const targetW = Math.min(Math.round(Math.max(outputW, outputH) * widthRatio), wmSize.width)
       const targetH = Math.round(targetW * wmSize.height / wmSize.width)
-      const [vPos, hPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
-      const marginX = 'W*0.03'
-      const marginY = 'H*0.03'
-      const xExpr = hPos === 'left' ? marginX
-        : hPos === 'right' ? `W-w-${marginX}`
-        : `(W-w)/2`
-      const yExpr = vPos === 'top' ? marginY : `H-h-${marginY}`
+      const [vPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
+      const xRatio = ratios?.xRatio ?? 0.03
+      const yRatio = ratios?.yRatio ?? 0.03
+      const xExpr = `W*${xRatio.toFixed(4)}`
+      const yExpr = vPos === 'top' ? `H*${(1 - yRatio).toFixed(4)}`
+        : `H-h-H*${yRatio.toFixed(4)}`
 
       filterParts.push(`[1:v]format=rgba,scale=${targetW}:${targetH}:flags=lanczos,setsar=1[wm]`)
       filterParts.push(`[vmain][wm]overlay=${xExpr}:${yExpr}:format=auto[vout]`)
