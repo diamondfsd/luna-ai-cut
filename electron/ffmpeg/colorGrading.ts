@@ -2,7 +2,6 @@ import type { FfmpegModule, BuildContext, ModuleArgs } from './pipeline'
 
 export interface ColorGradingOptions {
   exposure: number   // -5 ~ 5 (EV)
-  black: number      // -0.1 ~ 0.2
   brightness: number // -100 ~ 100
   temperature: number // -100 ~ 100
   tint: number       // -100 ~ 100
@@ -46,7 +45,7 @@ export class ColorGradingModule implements FfmpegModule {
   isActive(): boolean {
     const o = this.opts
     return (
-      o.exposure !== 0 || o.black !== 0 || o.brightness !== 0 ||
+      o.exposure !== 0 || o.brightness !== 0 ||
       o.temperature !== 0 || o.tint !== 0 ||
       o.contrast !== 0 || o.saturation !== 0 || o.vibrance !== 0 ||
       o.shadows !== 0 || o.highlights !== 0 ||
@@ -121,11 +120,12 @@ export class ColorGradingModule implements FfmpegModule {
     // ── colorlevels（black/levelsBlack/levelsWhite）─
     // vf_colorlevels.c: output = (input - imin) * coeff + omin
     const clParts: string[] = []
-    // rimin = black (黑场, -0.1~0.2) + blacks (黑色调, -100~100 → -0.15~0.15)
-    if (o.black !== 0 || o.blacks !== 0) {
+    // rimin = levelsBlack (输入黑点, 0~0.95) + blacks (黑色调, -100~100 → -0.15~0.15)
+    if (o.levelsBlack !== 0 || o.blacks !== 0) {
       let rimin = 0
-      if (o.black !== 0) rimin += clamp(o.black, -0.1, 0.2)
+      if (o.levelsBlack !== 0) rimin += clamp(o.levelsBlack, 0, 0.95)
       if (o.blacks !== 0) rimin += clamp(o.blacks, -100, 100) / 100 * -0.15
+      rimin = clamp(rimin, -1, 1)
       clParts.push(`rimin=${rimin.toFixed(3)}:gimin=${rimin.toFixed(3)}:bimin=${rimin.toFixed(3)}`)
     }
     // rimax = levelsWhite (输入白点, 0.05~1.5) + whites (白色调, -100~100 → 0~0.15)
