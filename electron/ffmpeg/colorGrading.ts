@@ -88,24 +88,18 @@ export class ColorGradingModule implements FfmpegModule {
       parts.push(`vibrance=${(clamp(o.vibrance, -100, 100) / 100).toFixed(3)}`)
     }
 
-    // ── 色温 / 色调 ──
-    const wbParts: string[] = []
+    // ── 色温 ──
     if (o.temperature !== 0) {
       const kelvin = Math.round(5500 - clamp(o.temperature, -100, 100) * 30)
-      wbParts.push(`colortemperature=${kelvin}`)
-    }
-    if (o.tint !== 0) {
-      // hue rotation — vf_hue.c
-      wbParts.push(`hue=H=${(clamp(o.tint, -100, 100) * 0.08).toFixed(2)}`)
-    }
-    if (wbParts.length > 0) {
-      parts.push(wbParts.join(','))
+      parts.push(`colortemperature=${kelvin}`)
     }
 
-    // ── colorbalance（三路色轮：shadows / highlights）─
+    // ── colorbalance（三路色轮：shadows / highlights / tint）─
     // vf_colorbalance.c get_component() internal scale = 0.7
-    // GLSL toneEqualizer uses factor 0.9, so: factor * 0.7 ≈ 0.9 → factor ≈ 1.286
-    // Clamp rs/rh to [-1, 1] (ffmpeg internal limit), shadows/100 → rs gives ±1.0
+    //   shadows:   rs/gs/bs  = shadows * 1.2 / 100
+    //   highlights: rh/gh/bh = highlights * 1.2 / 100
+    //   tint:      gs/gm/gh  = -tint * 0.214 / 100 (0.214 = 0.15/0.7 补偿内乘 0.7)
+    // Clamp all to [-1, 1]
     const cbParts: string[] = []
     if (o.shadows !== 0) {
       const val = clamp(clamp(o.shadows, -100, 100) / 100 * 1.2, -1, 1).toFixed(3)
@@ -114,6 +108,10 @@ export class ColorGradingModule implements FfmpegModule {
     if (o.highlights !== 0) {
       const val = clamp(clamp(o.highlights, -100, 100) / 100 * 1.2, -1, 1).toFixed(3)
       cbParts.push(`rh=${val}:gh=${val}:bh=${val}`)
+    }
+    if (o.tint !== 0) {
+      const val = clamp(clamp(o.tint, -100, 100) / 100 * -0.214, -1, 1).toFixed(3)
+      cbParts.push(`gs=${val}:gm=${val}:gh=${val}`)
     }
     if (cbParts.length > 0) {
       parts.push(`colorbalance=${cbParts.join(':')}`)
