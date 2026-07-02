@@ -14,10 +14,10 @@ interface PreviewModalHeaderProps {
   progressPercent: number
   showWatermarkControls: boolean
   watermarkSettings: WatermarkSettingsType
-  onDownload: (file: LunaFile) => void
+  onDownload?: (file: LunaFile) => void
   onClose: () => void
   onExportWithWatermark?: (file: LunaFile, settings: WatermarkSettingsType) => void
-  onReveal: (file: LunaFile) => void
+  onReveal?: (file: LunaFile) => void
   onSetInspectorOpen: (open: boolean) => void
 }
 
@@ -55,7 +55,7 @@ export function PreviewModalHeader({
         </h2>
       </div>
       <div className="preview-actions">
-        {!isDownloadsPage && (
+        {!isDownloadsPage && onDownload && (
           <Button
             variant="primary"
             size="compact"
@@ -87,12 +87,14 @@ export function PreviewModalHeader({
                 icon={<CircleAlert size={15} />}
               />
             )}
-            <IconButton
-              variant="light"
-              onClick={() => onReveal(file)}
-              title="在文件夹中显示"
-              icon={<FolderOpen size={15} />}
-            />
+            {onReveal && (
+              <IconButton
+                variant="light"
+                onClick={() => onReveal(file)}
+                title="在文件夹中显示"
+                icon={<FolderOpen size={15} />}
+              />
+            )}
           </>
         )}
         {downloadProgress && downloadProgress.status !== 'done' && downloadProgress.status !== 'exists' && (
