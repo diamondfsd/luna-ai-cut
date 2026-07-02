@@ -21,7 +21,7 @@ interface WorkspaceCanvasValue {
   stageRef: React.RefObject<HTMLDivElement | null>
   imageLoading: boolean
   imageError: string | null
-  previewMessage: string | null
+  webglMessage: string | null
   imageRect: { x: number; y: number; width: number; height: number }
   sourceAspect: number
   canRender: boolean
@@ -88,7 +88,7 @@ export function WorkspaceCanvasProvider({ children }: { children: ReactNode }) {
       stageRef: engine.stageRef,
       imageLoading: engine.imageLoading,
       imageError: engine.imageError,
-      previewMessage: engine.previewMessage,
+      webglMessage: engine.webglMessage,
       imageRect: engine.imageRect,
       sourceAspect: engine.sourceAspect,
       canRender: engine.canRender,

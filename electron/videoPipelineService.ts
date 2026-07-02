@@ -1,4 +1,6 @@
-import { execFile } from 'node:child_process'
+import { execFile as execFileCallback } from 'node:child_process'
+import { promisify } from 'node:util'
+const execFile = promisify(execFileCallback)
 import * as path from 'node:path'
 import { FfmpegPipeline, getFfmpegPath } from './ffmpeg/pipeline'
 import { detectHardwareAccel } from './ffmpeg/hwaccel'
@@ -159,8 +161,9 @@ export async function previewColorFrame(
   color: ColorGradingOptions,
   options?: { maxSize?: number; seekSeconds?: number },
 ): Promise<void> {
-  const maxSize = options?.maxSize ?? 480
+  const maxSize = options?.maxSize ?? 1920
   const ffmpeg = getFfmpegPath()
+  const hwaccel = await detectHardwareAccel(ffmpeg)
 
   // Build filter string directly (same as ColorGradingModule.build)
   const filterStr = buildColorFilter(color)
@@ -168,7 +171,7 @@ export async function previewColorFrame(
   const ext = path.extname(sourcePath).toLowerCase()
   const isVid = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.insv'].includes(ext)
 
-  const args: string[] = []
+  const args: string[] = [...hwaccel.preInputArgs]
   if (isVid && options?.seekSeconds) {
     args.push('-ss', String(options.seekSeconds))
   }

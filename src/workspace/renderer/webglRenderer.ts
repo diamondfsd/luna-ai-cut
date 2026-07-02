@@ -52,6 +52,12 @@ const UNIFORM_NAMES = [
   // Levels
   'u_levelsBlack',
   'u_levelsWhite',
+  'u_levelsGray',
+  // HSL (single-band)
+  'u_hue',
+  'u_hslHue',
+  'u_hslSat',
+  'u_hslLum',
   // Detail
   'u_texel',
   'u_clarity',
@@ -104,6 +110,7 @@ export class WebGLRenderer {
   /** 加载视频源 — 后续每帧 render() 时自动上传当前视频帧到纹理 */
   loadVideo(video: HTMLVideoElement): void {
     this.videoSrc = video
+    this.sourceSize = { width: video.videoWidth, height: video.videoHeight }
     const gl = this.gl
     if (!this.texture) this.texture = gl.createTexture()
     gl.activeTexture(gl.TEXTURE0)
@@ -114,7 +121,6 @@ export class WebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video)
-    this.sourceSize = { width: video.videoWidth, height: video.videoHeight }
   }
 
   /** 是否有视频源加载 */
@@ -172,11 +178,22 @@ export class WebGLRenderer {
     return Math.max(1, this.sourceSize.width) / Math.max(1, this.sourceSize.height)
   }
 
+  /** 读取画布上指定区域的像素（用于导出/取色） */
+  readPixels(x: number, y: number, width: number, height: number): Uint8Array {
+    const gl = this.gl
+    const pixels = new Uint8Array(width * height * 4)
+    gl.readPixels(x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+    return pixels
+  }
+
+  /** 读取整个画布的像素 */
+  readAllPixels(): Uint8Array {
+    return this.readPixels(0, 0, this.canvas.width, this.canvas.height)
+  }
+
   samplePixel(x: number, y: number): { r: number; g: number; b: number } | null {
     if (!this.texture) return null
-    const gl = this.gl
-    const pixels = new Uint8Array(4)
-    gl.readPixels(Math.round(x), Math.round(this.canvas.height - y), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+    const pixels = this.readPixels(Math.round(x), Math.round(this.canvas.height - y), 1, 1)
     return { r: pixels[0], g: pixels[1], b: pixels[2] }
   }
 
@@ -257,9 +274,16 @@ export class WebGLRenderer {
     this.setCurvePoints('Red', color.curve.points.red)
     this.setCurvePoints('Green', color.curve.points.green)
     this.setCurvePoints('Blue', color.curve.points.blue)
-    // Levels (colorlevels: imin / imax)
+    // Levels (black / gray / white with gamma)
     gl.uniform1f(this.uniform('u_levelsBlack'), color.levelsBlack)
     gl.uniform1f(this.uniform('u_levelsWhite'), color.levelsWhite)
+    gl.uniform1f(this.uniform('u_levelsGray'), color.levelsGray)
+
+    // HSL single-band
+    gl.uniform1f(this.uniform('u_hue'), color.hue)
+    gl.uniform1f(this.uniform('u_hslHue'), color.hslHue)
+    gl.uniform1f(this.uniform('u_hslSat'), color.hslSat / 100)
+    gl.uniform1f(this.uniform('u_hslLum'), color.hslLum / 100)
 
     // Detail
     gl.uniform2f(this.uniform('u_texel'), 1 / Math.max(1, this.sourceSize.width), 1 / Math.max(1, this.sourceSize.height))

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
+import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { cp, mkdir, rm } from 'node:fs/promises'
+import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { checkForUpdates } from './updateService'
 import type { HotUpdateCheckResult } from './hotUpdater'
@@ -105,6 +106,7 @@ const clients = new Map<string, LunaClient>()
 const goUltraClients = new Map<string, GoUltraClient>()
 let activeDownloadControllers = new Set<AbortController>()
 let activeExportControllers = new Map<string, AbortController>()
+const activeExportEncoders = new Map<string, import('node:child_process').ChildProcessWithoutNullStreams>()
 const previewCacheTasks = new Map<string, Promise<boolean>>()
 const videoFrameRateTasks = new Map<string, Promise<number | null>>()
 const enqueuePreviewTask = createPreviewTaskQueue(10)
@@ -257,6 +259,7 @@ app.on('window-all-closed', () => {
     stopAllKeepAlive()
     cleanupDeviceDebug()
     void stopMockServer()
+    for (const encoder of activeExportEncoders.values()) encoder.kill()
     app.quit()
     win = null
   }
@@ -266,6 +269,7 @@ app.on('before-quit', () => {
   stopAllKeepAlive()
   cleanupDeviceDebug()
   void stopMockServer()
+  for (const encoder of activeExportEncoders.values()) encoder.kill()
 })
 
 app.on('activate', () => {
@@ -670,6 +674,13 @@ function registerIpc(): void {
 
     return { path: destinationPath, name: fileName }
   })
+  // 读取预览图片文件，返回 base64 data URL（避免 file:// 跨域问题）
+  ipcMain.handle('workspace:readPreviewImage', async (_event, filePath: string) => {
+    const data = await readFile(filePath)
+    const base64 = data.toString('base64')
+    return `data:image/jpeg;base64,${base64}`
+  })
+
   // 快速预览帧 — 降分辨率跑 ffmpeg 调色，替代 WebGL 预览
   ipcMain.handle('workspace:previewColor', async (_event, sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }) => {
     logMainInfo(`[workspace:previewColor] 收到请求`, { sourcePath, colorKeys: Object.keys(color).join(','), maxSize: options?.maxSize, seekSeconds: options?.seekSeconds })
@@ -697,10 +708,12 @@ function registerIpc(): void {
 
     await previewColorFrame(sourcePath, outputPath, colorOpts, { maxSize, seekSeconds: options?.seekSeconds })
     logMainInfo(`[workspace:previewColor] 完成`, { outputPath })
-    // 绕过 sanitizePaths：把路径分段输出，观察哪段丢失
-    const pathParts = outputPath.split('/')
-    logMainInfo(`[DEBUG] outputPath parts`, { count: pathParts.length, last: pathParts[pathParts.length-1], second: pathParts[pathParts.length-2] || '', third: pathParts[pathParts.length-3] || '', first3: pathParts.slice(0,3).join('/') })
-    return { path: outputPath }
+
+    // 读取文件返回 base64 data URL，避免前端 file:// 加载兼容性问题
+    const data = await readFile(outputPath)
+    const dataUrl = `data:image/jpeg;base64,${data.toString('base64')}`
+
+    return { path: outputPath, dataUrl }
   })
 
   // 统一调色导出（图片/视频共用，由输出文件扩展名决定编码）
@@ -779,6 +792,85 @@ function registerIpc(): void {
 
     return { path: destinationPath, name: fileName }
   })
+  // ── WebGL 视频导出（渲染器逐帧 WebGL shader 调色 → ffmpeg 仅编码） ──
+  ipcMain.handle('workspace:startVideoExport', async (_event, meta: {
+    exportId: string; taskName: string; outputName: string;
+    width: number; height: number; fps: number;
+  }) => {
+    const { exportId, taskName, outputName, width, height, fps } = meta
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+    const baseName = path.basename(outputName, path.extname(outputName)) || 'workspace'
+    const fileName = safeName(`${baseName}_${taskName}_${Date.now()}.mp4`)
+    const outputPath = path.join(settings.exportDir, fileName)
+    logMainInfo(`[videoExport] 开始 WebGL 视频导出`, { exportId, taskName, width, height, fps, outputPath })
+
+    const ffmpegPath = (await import('./ffmpeg/pipeline')).getFfmpegPath()
+    const hwaccel = await (await import('./ffmpeg/hwaccel')).detectHardwareAccel(ffmpegPath)
+    const encoder = spawn(ffmpegPath, [
+      '-f', 'rawvideo',
+      '-pix_fmt', 'rgba',
+      '-s', `${width}x${height}`,
+      '-r', String(fps),
+      '-i', 'pipe:0',
+      '-c:v', hwaccel.encoderNameH264,
+      '-pix_fmt', 'yuv420p',
+      ...hwaccel.encoderArgs,
+      '-y', outputPath,
+    ])
+    activeExportEncoders.set(exportId, encoder)
+
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind: 'video' }])
+    const taskStart = Date.now()
+
+    return { exportId, outputPath, taskId: task.id, taskStart }
+  })
+
+  ipcMain.handle('workspace:sendVideoExportFrame', async (_event, exportId: string, frameData: ArrayBuffer) => {
+    const encoder = activeExportEncoders.get(exportId)
+    if (!encoder || encoder.killed) {
+      logMainWarn(`[videoExport] encoder not found for ${exportId}, skipping frame`)
+      return
+    }
+    return new Promise<void>((resolve, reject) => {
+      const canContinue = encoder.stdin.write(Buffer.from(frameData), (err) => {
+        if (err) reject(err)
+        else resolve()
+      })
+      if (!canContinue) {
+        encoder.stdin.once('drain', () => resolve())
+      }
+    })
+  })
+
+  ipcMain.handle('workspace:endVideoExport', async (_event, exportId: string, meta: { taskId: string; taskStart: number; outputPath: string }) => {
+    const encoder = activeExportEncoders.get(exportId)
+    if (!encoder) throw new Error(`Export ${exportId} not found`)
+    const { outputPath } = meta
+
+    return new Promise<{ path: string; name: string }>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        encoder.kill()
+        reject(new Error('视频编码超时'))
+      }, 5 * 60 * 1000)
+
+      encoder.on('close', async (code) => {
+        clearTimeout(timeout)
+        activeExportEncoders.delete(exportId)
+        if (code !== 0) {
+          logMainError(`[videoExport] ffmpeg 编码异常退出`, { exportId, code })
+          reject(new Error(`ffmpeg 编码退出 (code=${code})`))
+          return
+        }
+        logMainInfo(`[videoExport] 视频导出完成`, { exportId })
+        resolve({ path: outputPath, name: path.basename(outputPath) })
+      })
+
+      encoder.stdin.end()
+    })
+  })
+
   ipcMain.handle('ai:chat', async (_event, config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) => {
     return chatCompletion(config, systemPrompt, messages as Array<{ role: 'user' | 'assistant'; content: string }>)
   })
