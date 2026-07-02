@@ -30,14 +30,16 @@
 
 | ffmpeg filter | 入口文件 | 覆盖功能 |
 |--------------|---------|---------|
-| `eq` | `vf_eq.c` | exposure(gamma), brightness, contrast, saturation |
+| `exposure` | `vf_exposure.c` | 曝光度 ±3EV + 黑色级别 ±1 |
+| `eq` | `vf_eq.c` | brightness(加性), contrast(绕0.5), saturation(乘性), gamma(幂律) |
 | `vibrance` | `vf_vibrance.c` | 自适应饱和度（保护肤色） |
-| `colortemperature` | `vf_colortemperature.c` | 色温/色调转换矩阵 |
-| `colorbalance` | `vf_colorbalance.c` | 阴影/中间调/高光逐通道 RGB 偏移 |
-| `colorlevels` | `vf_colorlevels.c` | 输入 RGB 黑/灰/白点映射 |
+| `colortemperature` | `vf_colortemperature.c` | 色温 Kelvin 转换矩阵 |
+| `colorbalance` | `vf_colorbalance.c` | 阴影(rs/gs/bs) + 中间调(rm/gm/bm) + 高光(rh/gh/bh) |
+| `colorlevels` | `vf_colorlevels.c` | 输入 RGB 黑/白点（rimin/rimax，无 gray 参数） |
 | `curves` | `vf_curves.c` | 分段三次样条曲线（master/r/g/b 通道） |
 | `hue` | `vf_hue.c` | 色相旋转（角度） |
-| `unsharp` | `vf_unsharp.c` | USM 锐化/清晰度/纹理 |
+| `huesaturation` | `vf_huesaturation.c` | 固定 6 色区(R/Y/G/C/B/M) + hue/sat/intensity/strength |
+| `unsharp` | `vf_unsharp.c` | USM 锐化（可配置半径） |
 | `hqdn3d` | `vf_hqdn3d.c` | 3D 降噪（空间+时间） |
 
 ---
@@ -46,14 +48,14 @@
 
 ### 前提：ffmpeg 无法实现的功能 → 删除
 
-以下功能 ffmpeg 没有任何 filter 组合能等效实现，直接**从工作台 UI 中删除**对应的控制项：
+基于 `/Users/zhouchao/projects/FFmpeg/libavfilter/` 实际源码验证：
 
-| 功能 | 涉及 GLSL | 原因 | 替代 |
-|------|----------|------|------|
-| **HSL 单波段调色** | `hsl.glsl` | ffmpeg 没有"选中色相范围→只调该范围饱和/明度"的 filter。`hue` 是全局的，`colorchannelmixer` 是按通道不是按色相范围。 | 删除整个 HSL 面板 |
-| **色阶灰度点** | `levels.glsl` | `colorlevels` 只有输入黑/白点（rimin/rimax），没有灰度点和 gamma 参数。`eq=gamma` 是全局 gamma 不等价于色阶的灰度点 gamma。 | 色阶面板只保留黑/白点，去掉灰度点滑块 |
+| 功能 | 涉及 GLSL | ffmpeg filter | 结论 |
+|------|----------|--------------|------|
+| **HSL 连续色相范围** | `hsl.glsl` | `vf_huesaturation.c` 只支持 R/Y/G/C/B/M **6 个固定色区**（bitmask 模式），没有"任意目标色相 + 可变半径"的连续选择 | 删除 HSL 面板 |
+| **色阶灰度点** | `levels.glsl` | `vf_colorlevels.c` 只有 rimin/rimax（黑/白点），无 gray 参数 | 删除灰度点滑块 |
 
-其余所有功能都可以用 ffmpeg filter 精确或近似实现，Phase 1-5 逐一对齐。
+其余功能均可映射，具体见各 Phase。
 
 ---
 
