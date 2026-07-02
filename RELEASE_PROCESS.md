@@ -114,17 +114,6 @@ git pull origin v<版本号>
 
 > 每次推送 `v*` tag 到 GitHub 时，`.github/workflows/package-artifacts.yml` 会自动触发 CI 构建，生成 macOS DMG 和 Windows NSIS 安装包。
 
-### 6c. 构建并上传热更新资产
-
-GitCode 上传完成后，构建初始热更新包（供已有用户从上一版本升级后接收增量更新）：
-
-```bash
-# 构建并上传 hot.1（自动检测 build 号）
-./scripts/build-hot-update.sh
-```
-
-> 热更新包会自动上传到当前版本的 GitCode Release 附件中，客户端通过 GitCode API 自动发现最新版本。
-
 ## 日常热更新发布
 
 当只需要推送增量修复（不涉及版本号变更、Electron 升级或原生模块变更）时：
