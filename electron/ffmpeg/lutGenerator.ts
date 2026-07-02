@@ -258,6 +258,44 @@ export function parseCubeToFloatArray(cubePath: string): Float32Array {
   return new Float32Array(values)
 }
 
+function cubeValue(v: number): number {
+  return Math.round(clamp(v) * 1_000_000) / 1_000_000
+}
+
+/**
+ * 在内存中生成 3D LUT 数据，供 WebGL 预览直接上传纹理。
+ * 数据排布与 .cube 文件一致：B → G → R，每个节点存 RGB。
+ */
+export function bakeColorLutData(colorParams: Record<string, any>): Float32Array {
+  const N = LUT_SIZE
+  const values = new Float32Array(N * N * N * 3)
+  let offset = 0
+
+  logMainInfo('[LUT] 开始生成内存调色 LUT', {
+    lutSize: N,
+    hasCurve: !!colorParams.curve?.points,
+    hasGrading: colorParams.gradeShadowsAmount !== 0,
+  })
+
+  for (let b = 0; b < N; b++) {
+    for (let g = 0; g < N; g++) {
+      for (let r = 0; r < N; r++) {
+        const out = applyColorTransform([
+          r / (N - 1),
+          g / (N - 1),
+          b / (N - 1),
+        ], colorParams)
+        values[offset++] = cubeValue(out[0])
+        values[offset++] = cubeValue(out[1])
+        values[offset++] = cubeValue(out[2])
+      }
+    }
+  }
+
+  logMainInfo('[LUT] 内存生成完成', { entryCount: N * N * N })
+  return values
+}
+
 /**
  * 使用 ffmpeg 将颜色调色参数烘焙成 .cube 3D LUT 文件。
  *
@@ -274,8 +312,6 @@ export async function bakeColorLut(
   outputCubePath: string,
 ): Promise<void> {
   const N = LUT_SIZE
-  const width = N * N // 1089
-  const height = N    // 33
 
   logMainInfo('[LUT] 开始生成调色参数 .cube', {
     outputCubePath,
@@ -287,24 +323,16 @@ export async function bakeColorLut(
   const baseDir = path.dirname(outputCubePath)
   await fs.mkdir(baseDir, { recursive: true })
 
+  const lutData = bakeColorLutData(colorParams)
   let lutContent = `TITLE "Luna AI Cut Generated LUT (${Date.now()})"\n`
   lutContent += `LUT_3D_SIZE ${N}\n`
   lutContent += `DOMAIN_MIN 0 0 0\n`
   lutContent += `DOMAIN_MAX 1 1 1\n\n`
 
-  for (let b = 0; b < N; b++) {
-    for (let g = 0; g < N; g++) {
-      for (let r = 0; r < N; r++) {
-        const out = applyColorTransform([
-          r / (N - 1),
-          g / (N - 1),
-          b / (N - 1),
-        ], colorParams)
-        lutContent += `${out[0].toFixed(6)} ${out[1].toFixed(6)} ${out[2].toFixed(6)}\n`
-      }
-    }
+  for (let i = 0; i < lutData.length; i += 3) {
+    lutContent += `${lutData[i].toFixed(6)} ${lutData[i + 1].toFixed(6)} ${lutData[i + 2].toFixed(6)}\n`
   }
 
   await fs.writeFile(outputCubePath, lutContent)
-  logMainInfo('[LUT] 生成完成', { outputCubePath, entryCount: width * height })
+  logMainInfo('[LUT] 生成完成', { outputCubePath, entryCount: N * N * N })
 }
