@@ -37,8 +37,6 @@ export function CurvePanel({ value, modified, onChange }: CurvePanelProps) {
       />
       <CurvePreview points={activePoints} onChange={(points) => updateCurve(activeCurveChannel, points)} />
       <p className="workspace-help-text">点击曲线添加节点，拖动调整，双击或右键删除</p>
-      <ParamSlider label="曲线对比" value={value.curveContrast} {...sliderRange(EDIT_PARAMETER_RANGES.color.curveContrast)} onChange={(curveContrast) => onChange({ curveContrast })} />
-      <ParamSlider label="曲线中段" value={value.curveLift} {...sliderRange(EDIT_PARAMETER_RANGES.color.curveLift)} onChange={(curveLift) => onChange({ curveLift })} />
       <ParamSlider label="输入黑点" value={value.levelsBlack} {...sliderRange(EDIT_PARAMETER_RANGES.levels.black)} onChange={(levelsBlack) => onChange({ levelsBlack })} />
       <ParamSlider label="中间调" value={value.levelsGray} {...sliderRange(EDIT_PARAMETER_RANGES.levels.gray)} onChange={(levelsGray) => onChange({ levelsGray })} />
       <ParamSlider label="输入白点" value={value.levelsWhite} {...sliderRange(EDIT_PARAMETER_RANGES.levels.white)} onChange={(levelsWhite) => onChange({ levelsWhite })} />
