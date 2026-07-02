@@ -5,6 +5,10 @@ function clamp(v: number, mn: number, mx: number): number {
   return Math.max(mn, Math.min(mx, v ?? 0))
 }
 
+function normalizeDegrees(value: number): number {
+  return ((value % 360) + 360) % 360
+}
+
 /**
  * 将曲线点列表格式化为 ffmpeg curves filter 的参数字符串。
  */
@@ -60,34 +64,44 @@ export class FullPipelineModule implements FfmpegModule {
     // 主链：所有单输入滤镜用逗号串联
     const mainFilters: string[] = []
 
-    // ── 1. Transform: Crop ──
-    const crop = this.pipeline.transform?.crop
-    if (crop && typeof crop.x === 'number' && crop.w > 0 && crop.h > 0) {
-      const px = Math.round(crop.x * srcW)
-      const py = Math.round(crop.y * srcH)
-      const pw = Math.max(2, Math.round(crop.w * srcW))
-      const ph = Math.max(2, Math.round(crop.h * srcH))
-      const isFullFrame = px <= 0 && py <= 0 && pw >= srcW && ph >= srcH
-      if (!isFullFrame) {
-        mainFilters.push(`crop=${pw}:${ph}:${px}:${py}`)
+    // ── 1. Transform: direction / fine rotate / flip / crop ──
+    // 方向旋转会改变画面方向和尺寸；细旋转只在当前画框中旋转，超出画框的部分裁掉。
+    const orient = normalizeDegrees(this.pipeline.transform?.orientation ?? 0)
+    const manualRotate = this.pipeline.transform?.rotate ?? 0
+    let frameW = srcW
+    let frameH = srcH
+
+    if (orient !== 0) {
+      const angle = (orient * Math.PI / 180).toFixed(6)
+      mainFilters.push(`rotate=${angle}:ow=rotw(${angle}):oh=roth(${angle}):c=black`)
+      if (orient === 90 || orient === 270) {
+        frameW = srcH
+        frameH = srcW
       }
     }
 
-    // ── 2. Transform: Rotate ──
-    const orient = this.pipeline.transform?.orientation ?? 0
-    const manualRotate = this.pipeline.transform?.rotate ?? 0
-    const totalRotate = orient + manualRotate
-    if (totalRotate !== 0) {
-      const angle = (totalRotate * Math.PI / 180).toFixed(6)
-      mainFilters.push(`rotate=${angle}:ow=rotw(${angle}):oh=roth(${angle}):c=black`)
+    if (manualRotate !== 0) {
+      const angle = (manualRotate * Math.PI / 180).toFixed(6)
+      mainFilters.push(`rotate=${angle}:ow=iw:oh=ih:c=black`)
     }
 
-    // ── 3. Transform: Flip ──
     if (this.pipeline.transform?.flipV) {
       mainFilters.push('vflip')
     }
     if (this.pipeline.transform?.flipH) {
       mainFilters.push('hflip')
+    }
+
+    const crop = this.pipeline.transform?.crop
+    if (crop && typeof crop.x === 'number' && crop.w > 0 && crop.h > 0) {
+      const px = Math.round(crop.x * frameW)
+      const py = Math.round(crop.y * frameH)
+      const pw = Math.max(2, Math.round(crop.w * frameW))
+      const ph = Math.max(2, Math.round(crop.h * frameH))
+      const isFullFrame = px <= 0 && py <= 0 && pw >= frameW && ph >= frameH
+      if (!isFullFrame) {
+        mainFilters.push(`crop=${pw}:${ph}:${px}:${py}`)
+      }
     }
 
     // ── 4. Color adjustments（LUT 模式 vs 直接模式） ──
@@ -236,7 +250,8 @@ export class FullPipelineModule implements FfmpegModule {
     // 水印
     if (hasWatermark && this.watermarkImagePath) {
       inputs.push(this.watermarkImagePath)
-      const wScale = wmSettings.widthPercent ?? 0.15
+      const rawWidthRatio = wmSettings.widthPercent ?? 0.15
+      const widthRatio = rawWidthRatio > 1 ? rawWidthRatio / 100 : rawWidthRatio
       const [vPos, hPos] = (wmSettings.position ?? 'bottom-center').split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
       const marginX = 'W*0.03'
       const marginY = 'H*0.03'
@@ -245,8 +260,9 @@ export class FullPipelineModule implements FfmpegModule {
         : '(W-w)/2'
       const yExpr = vPos === 'top' ? marginY : `H-h-${marginY}`
 
-      filterParts.push(`[1:v]scale=iw*${wScale}:-1[wm]`)
-      filterParts.push(`[vmain][wm]overlay=${xExpr}:${yExpr}:format=auto[vout]`)
+      filterParts.push(`[1:v]format=rgba[wmraw]`)
+      filterParts.push(`[wmraw][vmain]scale2ref=w='max(main_w,main_h)*${widthRatio.toFixed(4)}':h=-1[wm][vref]`)
+      filterParts.push(`[vref][wm]overlay=${xExpr}:${yExpr}:format=auto[vout]`)
     } else {
       // 无水印，直接输出
       filterParts.push(`[vmain]null[vout]`)
