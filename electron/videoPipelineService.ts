@@ -123,10 +123,11 @@ export async function applyColorGradingToVideo(
   // 调色滤镜（插入在水印/缩放之前）
   pipeline.addModule(new ColorGradingModule(color))
 
-  // 编码器
+  // 编码器 — 工作台预览导出强制 H.264（比 HEVC 快 3-5x），和 Live Photo 导出一致
   pipeline.addModule(new CodecModule({
-    encoderH264: hwaccel.encoderNameH264,
-    encoderH265: hwaccel.encoderNameH265 ?? undefined,
+    encoderH264: hwaccel.encoderNameH264 ?? 'libx264',
+    // HEVC 源也用 H.264 编码加速
+    encoderH265: hwaccel.encoderNameH264 ?? 'libx264',
     encoderArgs: hwaccel.encoderArgs,
   }))
 
