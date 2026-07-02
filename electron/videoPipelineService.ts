@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import * as path from 'node:path'
 import { FfmpegPipeline, getFfmpegPath } from './ffmpeg/pipeline'
 import { detectHardwareAccel } from './ffmpeg/hwaccel'
 import { CodecModule } from './ffmpeg/codec'
@@ -104,76 +104,45 @@ export async function applyVideoExportSettings(
   await pipeline.execute(inputPath, outputPath, onProgress, signal)
 }
 
-// ─── 视频调色导出（工作台调用） ─────────────
+// ─── 调色导出（图片/视频共用，由文件扩展名决定编码） ─
 
-export async function applyColorGradingToVideo(
+export async function applyColorGrading(
   inputPath: string,
   outputPath: string,
   color: ColorGradingOptions,
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  logMainInfo(`[applyColorGradingToVideo] 开始`, { inputPath, outputPath, hasOnProgress: !!onProgress })
-  const pipeline = new FfmpegPipeline()
-  const hwaccel = await detectHardwareAccel(getFfmpegPath())
+  const ext = path.extname(outputPath).toLowerCase()
+  const isVid = ['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext)
+  logMainInfo(`[applyColorGrading] 开始`, { inputPath, outputPath, isVid })
 
-  if (hwaccel.preInputArgs.length > 0) {
-    pipeline.setPreInputArgs(hwaccel.preInputArgs)
+  const pipeline = new FfmpegPipeline()
+
+  if (isVid) {
+    const hwaccel = await detectHardwareAccel(getFfmpegPath())
+    if (hwaccel.preInputArgs.length > 0) pipeline.setPreInputArgs(hwaccel.preInputArgs)
+
+    // 调色滤镜
+    pipeline.addModule(new ColorGradingModule(color))
+
+    // 编码器 — 预览导出强制 H.264（比 HEVC 快 3-5x）
+    pipeline.addModule(new CodecModule({
+      encoderH264: hwaccel.encoderNameH264 ?? 'libx264',
+      encoderH265: hwaccel.encoderNameH264 ?? 'libx264',
+      encoderArgs: hwaccel.encoderArgs,
+    }))
+  } else {
+    // 图片：仅调色滤镜，不加编码器
+    pipeline.addModule(new ColorGradingModule(color))
   }
 
-  // 调色滤镜（插入在水印/缩放之前）
-  pipeline.addModule(new ColorGradingModule(color))
-
-  // 编码器 — 工作台预览导出强制 H.264（比 HEVC 快 3-5x），和 Live Photo 导出一致
-  pipeline.addModule(new CodecModule({
-    encoderH264: hwaccel.encoderNameH264 ?? 'libx264',
-    // HEVC 源也用 H.264 编码加速
-    encoderH265: hwaccel.encoderNameH264 ?? 'libx264',
-    encoderArgs: hwaccel.encoderArgs,
-  }))
-
-  logMainInfo(`[applyColorGradingToVideo] 执行 pipeline`)
+  logMainInfo(`[applyColorGrading] 执行 pipeline`)
   try {
     await pipeline.execute(inputPath, outputPath, onProgress, signal)
-    logMainInfo(`[applyColorGradingToVideo] 完成`)
+    logMainInfo(`[applyColorGrading] 完成`)
   } catch (err) {
-    logMainError(`[applyColorGradingToVideo] 失败`, { error: err instanceof Error ? err.message : String(err) })
+    logMainError(`[applyColorGrading] 失败`, { error: err instanceof Error ? err.message : String(err) })
     throw err
   }
-}
-
-/**
- * 图片调色导出 — 与视频共用同一套 pipeline(ColorGradingModule)
- * 仅输出 PNG，不加编码器/音频等视频专用参数
- */
-export async function applyColorGradingToImage(
-  inputPath: string,
-  outputPath: string,
-  color: ColorGradingOptions,
-): Promise<void> {
-  logMainInfo(`[applyColorGradingToImage] 开始`, { inputPath, outputPath })
-  const ffmpegPath = getFfmpegPath()
-  const module = new ColorGradingModule(color)
-  const ctx = {
-    prevLabel: '[0:v]',
-    probe: { videoWidth: 0, videoHeight: 0 },
-    videoWidth: 0,
-    videoHeight: 0,
-    outputWidth: 0,
-    outputHeight: 0,
-  }
-  const result = module.build(ctx as any)
-  const filter = result.filters?.[0]
-  // filter 格式: "[0:v]colorbalance=...[vout]"，-vf 不需要输入/输出标签
-  const cleanFilter = filter ? filter.replace(/^\[0:v\]/, '').replace(/\[vout\]$/, '') : ''
-  const args = [
-    '-i', inputPath,
-    ...(cleanFilter ? ['-vf', cleanFilter] : []),
-    '-pix_fmt', 'yuv420p',
-    '-y',
-    outputPath,
-  ]
-  logMainInfo(`[applyColorGradingToImage]`, { args, filter, cleanFilter })
-  await execFile(ffmpegPath, args)
-  logMainInfo(`[applyColorGradingToImage] 完成`)
 }
