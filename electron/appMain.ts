@@ -630,6 +630,9 @@ function registerIpc(): void {
     const settings = await getSettings()
     return saveWorkspaceProject(getLocalResourcesDir(settings), project)
   })
+  ipcMain.handle('workspace:createExportTask', async (_event, taskName: string, items: Array<{ exportId: string; fileName: string; kind: string }>) => {
+    return createExportTask(taskName, items)
+  })
   ipcMain.handle('workspace:exportImage', async (_event, name: string, dataUrl: string) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
@@ -806,7 +809,7 @@ function registerIpc(): void {
     return { lutBuffer: lutData.buffer as ArrayBuffer, lutSize: 33 }
   })
   // ── FFmpegFast 导出（直达 ffmpeg 完整管线，绕过 WebGL readPixels） ──
-  ipcMain.handle('workspace:exportFFmpeg', async (event, sourcePath: string, pipeline: Record<string, any>, exportMeta: { exportId: string; taskName: string }) => {
+  ipcMain.handle('workspace:exportFFmpeg', async (event, sourcePath: string, pipeline: Record<string, any>, exportMeta: { exportId: string; taskName: string; taskId?: string }) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
     await mkdir(settings.exportDir, { recursive: true })
@@ -851,7 +854,10 @@ function registerIpc(): void {
       watermark: pipeline.watermark ? JSON.stringify({ enabled: pipeline.watermark.enabled, style: pipeline.watermark.style, position: pipeline.watermark.position }) : 'no-watermark',
     })
 
-    const task = await createExportTask(taskName, [{ exportId, fileName, kind: isVid ? 'video' : 'image' }])
+    const task = exportMeta?.taskId
+      ? await getExportTaskById(exportMeta.taskId)
+      : await createExportTask(taskName, [{ exportId, fileName, kind: isVid ? 'video' : 'image' }])
+    if (!task) throw new Error('导出任务不存在')
     const taskStart = Date.now()
     const win = BrowserWindow.fromWebContents(event.sender)
     let lutPath: string | undefined
@@ -919,6 +925,7 @@ function registerIpc(): void {
           percent: pct,
           status: pct >= 100 ? 'done' : 'exporting' as const,
           fileName,
+          taskId: task.id,
           taskName,
           index: 0,
           totalFiles: 1,
