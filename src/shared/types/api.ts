@@ -87,10 +87,11 @@ export interface LunaApi {
      */
     /** 烘焙 LUT 并返回 float 数据给 WebGL 预览 */
     bakeAndGetLut(colorParams: Record<string, unknown>): Promise<{ lutBuffer: ArrayBuffer; lutSize: number }>
+    createExportTask(taskName: string, items: Array<{ exportId: string; fileName: string; kind: string }>): Promise<ExportTaskRecord>
     exportFFmpeg(
       sourcePath: string,
       pipeline: Record<string, unknown>,
-      exportMeta: { exportId: string; taskName: string },
+      exportMeta: { exportId: string; taskName: string; taskId?: string },
       onProgress?: (percent: number) => void,
     ): Promise<{ path: string; name: string }>
     startVideoExport(meta: { exportId: string; taskName: string; outputName: string; width: number; height: number; fps: number }): Promise<{ exportId: string; outputPath: string; rawFilePath: string; taskId: string; taskStart: number }>
