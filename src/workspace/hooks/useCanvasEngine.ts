@@ -187,7 +187,6 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     if (isVid) {
       // ── 视频：创建隐藏 <video> 元素 ──
       setIsVideo(true)
-      cleanupVideo()
 
       // 先用 ImageCache 帧快速占位，避免黑屏
       workspaceImageCache.generate(filePath).then((entry) => {
@@ -205,8 +204,10 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
       video.crossOrigin = 'anonymous'
       video.playsInline = true
 
-      const videoReady = (): void => {
-        if (canceled) return
+      let videoReady = false
+      const onVideoReady = (): void => {
+        if (canceled || videoReady) return
+        videoReady = true
         if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
         rendererRef.current?.loadVideo(video)
         updateImageRect()
@@ -214,13 +215,17 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
         setRenderKey((k) => k + 1)
       }
 
-      video.addEventListener('loadedmetadata', videoReady)
-      // canplay 作为后备（某些浏览器 loadedmetadata 后宽度仍未就绪）
-      video.addEventListener('canplay', videoReady, { once: true })
+      // loadedmetadata 是最关键的就绪信号（宽度/高度已确定）
+      video.addEventListener('loadedmetadata', () => {
+        clearTimeout(timeoutId)
+        onVideoReady()
+      }, { once: true })
+      // canplay 作为后备
+      video.addEventListener('canplay', onVideoReady, { once: true })
 
       video.addEventListener('timeupdate', () => {
         if (!canceled) setVideoCurrentTime(video.currentTime)
-      })
+      }, { passive: true })
 
       video.addEventListener('ended', () => {
         if (canceled) return
@@ -235,23 +240,21 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
         }
       })
 
-      // 视频加载失败 — fallback 到 ImageCache 帧
+      // 视频加载失败 — 保留 isVideo=true（控件可见），用 ImageCache 帧垫底
       video.addEventListener('error', () => {
         if (canceled) return
-        setImageError('视频加载失败')
+        clearTimeout(timeoutId)
         setImageLoading(false)
-        setIsVideo(false)
-        // 尝试用 ImageCache 帧（已有占位帧，直接触发渲染）
+        // 尝试用 ImageCache 帧触发渲染
         setRenderKey((k) => k + 1)
       })
 
-      // 10 秒超时 — 若视频仍未就绪则视为加载失败
+      // 10 秒超时 — 仍未就绪时 fallback 到 ImageCache 帧
       const timeoutId = window.setTimeout(() => {
-        if (canceled || video.readyState >= 2) return
-        video.dispatchEvent(new Event('error'))
+        if (canceled || videoReady) return
+        setImageLoading(false)
+        setRenderKey((k) => k + 1)
       }, 10000)
-
-      video.addEventListener('canplay', () => window.clearTimeout(timeoutId), { once: true })
 
       const url = filePathToPreviewUrl(filePath)
       if (url) video.src = url
