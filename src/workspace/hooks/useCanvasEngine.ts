@@ -119,8 +119,8 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
         img.onerror = () => {
           logger.warn('[CanvasEngine] 预览图片加载失败', { path: result.path })
         }
-        // Local file path → use file:// URL
-        img.src = `file://${result.path}`
+        // Local file path → file:// URL（路径中的空格等特殊字符编码）
+        img.src = `file://${result.path.replace(/ /g, '%20')}`
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
         logger.warn('[CanvasEngine] ffmpeg预览失败', { error: msg })
