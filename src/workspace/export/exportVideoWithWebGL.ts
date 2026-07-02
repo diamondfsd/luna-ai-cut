@@ -74,6 +74,7 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
     throw err
   }
   const outputPath = encoder.outputPath
+  const rawFilePath = encoder.rawFilePath
 
   // 3. 离屏 WebGL
   logger.info('[videoExport] step5 创建WebGL渲染器')
@@ -112,7 +113,7 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
 
       // IPC（首帧附带进度元数据）
       const ipcT0 = Date.now()
-      const frameMeta = frame === 0 ? { totalFrames, taskId: encoder.taskId, taskStart: encoder.taskStart } : undefined
+      const frameMeta = frame === 0 ? { totalFrames, taskId: encoder.taskId, taskStart: encoder.taskStart, rawFilePath } : undefined
       await window.luna.workspace.sendVideoExportFrame(exportId, flipped.buffer as ArrayBuffer, frameMeta)
       const ipcCost = Date.now() - ipcT0
 
@@ -150,6 +151,10 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
       taskId: encoder.taskId,
       taskStart: encoder.taskStart,
       outputPath,
+      rawFilePath,
+      width,
+      height,
+      fps,
     })
     logger.info('[videoExport] step8 编码结束', { result })
   } catch (err) {
