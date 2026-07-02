@@ -68,10 +68,11 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
   const renderer = new WebGLRenderer(canvas)
   const bufSize = width * height * 4
   const pixels = new Uint8Array(bufSize)
-  // 翻转 ping-pong 缓冲（IPC 异步读取时避免写冲突）
-  const flipBufs = [new Uint8Array(bufSize), new Uint8Array(bufSize)]
-  let flipIdx = 0
-  let ipcPending = Promise.resolve()
+  // 环形缓冲（4 个），IPC 异步发送不 await 也不写冲突
+  const POOL = 4
+  const flipBufs = Array.from({ length: POOL }, () => new Uint8Array(bufSize))
+  let writeIdx = 0
+  let pendingCount = 0
   const stride = width * 4
 
   let capturedCount = 0
@@ -95,7 +96,7 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
 
       let lastFrameIndex = -1
 
-      const captureLoop = async (): Promise<void> => {
+      const captureLoop = (): void => {
         if (video.paused || video.ended || exportError) return
 
         const currentFrame = Math.floor(video.currentTime / frameDuration)
@@ -103,20 +104,23 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
         if (currentFrame > lastFrameIndex && currentFrame < totalFrames) {
           lastFrameIndex = currentFrame
 
-          // 等待上一帧 IPC 完成
-          await ipcPending
+          // 环形缓冲：如果所有缓冲都在 IPC 发送中，跳过这一帧
+          if (pendingCount >= POOL) return
 
           // WebGL 渲染 → 读像素 → Y 翻转
           renderer.render(pipeline)
           renderer.readPixelsInto(pixels)
-          const fb = flipBufs[flipIdx]
+          const fb = flipBufs[writeIdx]
           for (let y = 0; y < height; y++) {
             fb.set(pixels.subarray(y * stride, (y + 1) * stride), (height - 1 - y) * stride)
           }
-          // IPC 发送（用 ping-pong 缓冲，避免写冲突）
-          ipcPending = window.luna.workspace.sendVideoExportFrame(exportId, fb.buffer as ArrayBuffer)
-            .catch((err: unknown) => { exportError = err instanceof Error ? err : new Error(String(err)) })
-          flipIdx ^= 1
+
+          // IPC 不 await（用环形缓冲避免写冲突）
+          pendingCount++
+          writeIdx = (writeIdx + 1) % POOL
+          window.luna.workspace.sendVideoExportFrame(exportId, fb.buffer as ArrayBuffer)
+            .then(() => { pendingCount-- })
+            .catch((err: unknown) => { exportError = err instanceof Error ? err : new Error(String(err)); pendingCount-- })
 
           capturedCount++
           const pct = Math.round((capturedCount / totalFrames) * 100)
@@ -134,15 +138,20 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
         }
       }
 
-      requestAnimationFrame(() => { captureLoop().catch((e) => { exportError = e; resolve() }) })
+      requestAnimationFrame(captureLoop)
     })
 
     if (exportError) throw exportError
 
     logger.info(`[videoExport] 播放捕获完成`, { capturedCount, totalFrames })
 
-    // 5. 补帧：RAF 可能漏掉少量帧（尤其是播放结束前后），用 seek 补
+    // 5. 补帧：RAF 漏掉少量帧，用 seek 补（每 5 帧 yield，避免页面卡死）
     while (capturedCount < totalFrames) {
+      // 等待 pending IPC 缓冲释放
+      while (pendingCount >= POOL) {
+        await new Promise((r) => setTimeout(r, 16))
+      }
+
       const time = Math.min(capturedCount * frameDuration, duration - 0.001)
       video.currentTime = time
       if (video.seeking) {
@@ -150,17 +159,26 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
       }
       renderer.render(pipeline)
       renderer.readPixelsInto(pixels)
-      const fb = flipBufs[flipIdx]
+      const fb = flipBufs[writeIdx]
       for (let y = 0; y < height; y++) {
         fb.set(pixels.subarray(y * stride, (y + 1) * stride), (height - 1 - y) * stride)
       }
-      await window.luna.workspace.sendVideoExportFrame(exportId, fb.buffer as ArrayBuffer)
-      flipIdx ^= 1
+      pendingCount++
+      writeIdx = (writeIdx + 1) % POOL
+      window.luna.workspace.sendVideoExportFrame(exportId, fb.buffer as ArrayBuffer)
+        .then(() => { pendingCount-- })
+        .catch((err: unknown) => { exportError = err instanceof Error ? err : new Error(String(err)); pendingCount-- })
+
       capturedCount++
       const pct = Math.round((capturedCount / totalFrames) * 100)
       if (pct >= lastReportedPct + 2 || capturedCount >= totalFrames) {
         lastReportedPct = pct
         onProgress?.(pct)
+      }
+
+      // 每 3 帧让出主线程
+      if (capturedCount % 3 === 0) {
+        await new Promise((r) => setTimeout(r, 0))
       }
     }
   } finally {
