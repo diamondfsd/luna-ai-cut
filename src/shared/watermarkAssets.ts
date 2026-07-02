@@ -1,6 +1,8 @@
 import goUltraConfig from '../../electron/deviceConfigs/go-ultra.json'
 import lunaUltraConfig from '../../electron/deviceConfigs/luna-ultra.json'
 
+import type { DeviceWatermarkStyleConfig } from './types'
+
 interface WatermarkStyleEntry {
   value: string
   label: string
@@ -8,11 +10,25 @@ interface WatermarkStyleEntry {
   imageFileName: string
 }
 
+/** 设备 ID → 设备 JSON 配置 */
+const DEVICE_CONFIGS: Record<string, { watermarkStyles?: WatermarkStyleEntry[] }> = {
+  'go-ultra': goUltraConfig as { watermarkStyles: WatermarkStyleEntry[] },
+  'luna-ultra': lunaUltraConfig as { watermarkStyles: WatermarkStyleEntry[] },
+}
+
 /** 所有设备配置中声明的水印样式（唯一数据源，与 electron/deviceConfigs 保持一致） */
 export const ALL_WATERMARK_STYLES: WatermarkStyleEntry[] = [
   ...(goUltraConfig as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
   ...(lunaUltraConfig as { watermarkStyles: WatermarkStyleEntry[] }).watermarkStyles,
 ]
+
+/** 根据设备 ID 获取该设备的水印样式选项 */
+export function watermarkStyleOptionsForDevice(deviceId?: string | null): DeviceWatermarkStyleConfig[] {
+  if (!deviceId) return []
+  const config = DEVICE_CONFIGS[deviceId]
+  if (!config?.watermarkStyles) return []
+  return config.watermarkStyles as DeviceWatermarkStyleConfig[]
+}
 
 /**
  * 水印图片 src 映射 — 由设备配置的 watermarkStyles 驱动。

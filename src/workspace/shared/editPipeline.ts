@@ -160,8 +160,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
   },
   watermark: {
     enabled: false,
-    style: 'auto',
-    watermarkPercent: 20,
+    style: 'luna_ultra',
     position: 'bottom-center',
   },
 }

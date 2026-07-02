@@ -1,12 +1,10 @@
-import type { WatermarkStyle } from './types'
-
 export interface Insta360DeviceProfile {
   id: string
   displayName: string
   cameraType: string
   deviceNamePatterns: RegExp[]
   exifModelPatterns: RegExp[]
-  defaultWatermarkStyle: Exclude<WatermarkStyle, 'auto'>
+  defaultWatermarkStyle: string
 }
 
 export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
@@ -57,10 +55,10 @@ export function inferDeviceProfile(params: {
     ?? deviceProfileForText(params.exifModel)
 }
 
-export function defaultWatermarkStyleForDevice(params: Parameters<typeof inferDeviceProfile>[0]): Exclude<WatermarkStyle, 'auto'> {
+export function defaultWatermarkStyleForDevice(params: Parameters<typeof inferDeviceProfile>[0]): string {
   return inferDeviceProfile(params)?.defaultWatermarkStyle ?? 'luna_ultra'
 }
 
-export function concreteWatermarkStyle(style: WatermarkStyle, params: Parameters<typeof inferDeviceProfile>[0]): Exclude<WatermarkStyle, 'auto'> {
-  return style === 'auto' ? defaultWatermarkStyleForDevice(params) : style
+export function concreteWatermarkStyle(style: string, _params: Parameters<typeof inferDeviceProfile>[0]): string {
+  return style
 }

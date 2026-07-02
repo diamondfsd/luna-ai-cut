@@ -626,7 +626,8 @@ async function watermarkCachePath(sourcePath: string, settings: WatermarkSetting
   const dir = await previewCacheDir()
   const ext = path.extname(sourcePath)
   const base = path.basename(sourcePath, ext)
-  const params = `wm_${settings.style}_${settings.watermarkPercent}_${settings.position}`
+  const widthPct = 'widthPercent' in settings ? (settings as any).widthPercent : 15
+  const params = `wm_${settings.style}_${widthPct}_${settings.position}`
   return path.join(dir, `${safeName(base)}_${params}${ext}`)
 }
 
@@ -654,9 +655,9 @@ export async function previewWithWatermark(
   try {
     await fs.mkdir(path.dirname(destPath), { recursive: true })
     if (file.kind === 'image') {
-      await applyWatermarkToImage(sourcePath, destPath, resolvedSettings.watermarkPercent, resolvedSettings.position, resolvedSettings.style)
+      await applyWatermarkToImage(sourcePath, destPath, resolvedSettings.widthPercent, resolvedSettings.position, resolvedSettings.style)
     } else {
-      await applyWatermarkToVideo(sourcePath, destPath, resolvedSettings.watermarkPercent, resolvedSettings.position, resolvedSettings.style)
+      await applyWatermarkToVideo(sourcePath, destPath, resolvedSettings.widthPercent, resolvedSettings.position, resolvedSettings.style)
     }
     return { fileName: file.name, kind: file.kind, source: localThumbnailUrl(destPath), cachedPath: destPath }
   } catch (error) {

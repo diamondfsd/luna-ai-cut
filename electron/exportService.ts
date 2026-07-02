@@ -197,7 +197,7 @@ export async function exportFiles(
         await applyWatermarkToVideo(
           localPath,
           tmpPath,
-          fileWatermarkSettings.watermarkPercent,
+          fileWatermarkSettings.widthPercent,
           fileWatermarkSettings.position,
           fileWatermarkSettings.style,
           (percent) => {
@@ -227,7 +227,7 @@ export async function exportFiles(
         await applyWatermarkToLivePhoto(
           localPath,
           tmpPath,
-          fileWatermarkSettings.watermarkPercent,
+          fileWatermarkSettings.widthPercent,
           fileWatermarkSettings.position,
           fileWatermarkSettings.style,
           (percent) => {
@@ -239,7 +239,7 @@ export async function exportFiles(
           appleExportFolder,
         )
       } else if (file.kind === 'image' && fileWatermarkSettings) {
-        await applyWatermarkToImage(localPath, tmpPath, fileWatermarkSettings.watermarkPercent, fileWatermarkSettings.position, fileWatermarkSettings.style)
+        await applyWatermarkToImage(localPath, tmpPath, fileWatermarkSettings.widthPercent, fileWatermarkSettings.position, fileWatermarkSettings.style)
         onProgress?.(prog(file, { percent: 95, status: 'exporting' }))
         await updateTaskItemProgress(taskId, file.exportId ?? file.name, itemStartTime, 95, 'exporting')
       } else {

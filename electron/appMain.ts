@@ -509,7 +509,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('luna:readExifModel', async (_event, localPath: string) => {
-    const { readExifModel } = await import('./watermarkResolver')
+    const { readExifModel } = await import('./exifReader')
     return readExifModel(localPath)
   })
   ipcMain.handle('luna:disconnect', (_event, host?: string) => {
