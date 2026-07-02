@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
+import { Ban, CheckCircle2, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
-import type { ExportTaskRecord, LunaFile } from '../shared/types'
+import type { ExportTaskRecord, ExportTaskItemRecord, LunaFile } from '../shared/types'
 import { useApp } from '../context/AppContext'
-import { Button, Dialog, IconButton } from '../ui'
+import { IconButton } from '../ui'
 import { filePathToPreviewUrl } from './previewModalUtils'
 import { PreviewModal } from './PreviewModal'
 import '../styles/export-tasks.css'
@@ -31,108 +31,7 @@ function formatDuration(ms: number | null | undefined): string {
   return `${minutes}分${seconds}秒`
 }
 
-/* ==================== 任务明细弹窗 ==================== */
-
-interface ExportTaskDetailDialogProps {
-  task: ExportTaskRecord | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onRevealFile?: (path: string) => void
-}
-
-function ExportTaskDetailDialog({ task, open, onOpenChange, onRevealFile, onPreviewItem }: ExportTaskDetailDialogProps & { onPreviewItem?: (item: ExportTaskRecord['items'][number]) => void }) {
-  if (!task) return null
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={`任务明细 — ${task.name}`}
-      className="et-detail-dialog"
-    >
-      <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: 13 }}>
-        共 <strong style={{ color: 'var(--ink)' }}>{task.totalCount}</strong> 个文件
-        ，开始于 {formatDate(task.startTime)}
-        {task.duration !== null && `，总耗时 ${formatDuration(task.duration)}`}
-      </p>
-      <div className="et-table-wrap">
-        <table className="et-table">
-          <thead>
-            <tr>
-              <th>文件名</th>
-              <th>类型</th>
-              <th>开始时间</th>
-              <th>完成时间</th>
-              <th>耗时</th>
-              <th>进度</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {task.items.map((item) => {
-              const pct = item.status === 'done' ? 100 : item.progress
-              const isVideo = item.kind === 'video' || item.kind === 'lrv'
-              return (
-                <tr key={item.exportId} className={`et-row et-status-${item.status}`}>
-                  <td>
-                    <span className="et-cell-name">
-                      {item.status === 'exporting' && <Loader2 className="spin" size={13} style={{ flexShrink: 0 }} />}
-                      {item.status === 'done' && <CheckCircle2 size={13} style={{ flexShrink: 0, color: '#34c759' }} />}
-                      {item.status === 'failed' && <XCircle size={13} style={{ flexShrink: 0, color: '#ff3b30' }} />}
-                      {item.status === 'queued' && <Clock size={13} style={{ flexShrink: 0, color: 'var(--muted)' }} />}
-                      {item.status === 'canceled' && <Ban size={13} style={{ flexShrink: 0, color: 'var(--muted)' }} />}
-                      <span className="et-item-name">{item.fileName}</span>
-                    </span>
-                  </td>
-                  <td className="et-cell-num">
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      {isVideo ? <Film size={13} /> : <ImageIcon size={13} />}
-                      {isVideo ? '视频' : '图片'}
-                    </span>
-                  </td>
-                  <td className="et-cell-time">{formatTime(item.startTime)}</td>
-                  <td className="et-cell-time">{formatTime(item.endTime)}</td>
-                  <td className="et-cell-num">{formatDuration(item.duration)}</td>
-                  <td>
-                    <div className="et-progress-inline">
-                      <span className="et-progress-track" style={{ width: 48 }}>
-                        <span className="et-progress-fill" style={{ width: `${Math.min(100, pct)}%` }} />
-                      </span>
-                      <span className="et-cell-num">{Math.round(pct)}%</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      {(item.status === 'exporting' || item.status === 'queued') && (
-                        <span className={`et-badge et-badge-${item.status}`}>
-                          {item.status === 'exporting' ? '导出中' : '等待中'}
-                        </span>
-                      )}
-                      {item.status === 'failed' && (
-                        <span className="et-badge et-badge-failed">{item.error ?? '失败'}</span>
-                      )}
-                      {item.status === 'canceled' && (
-                        <span className="et-badge et-badge-canceled">已取消</span>
-                      )}
-                      {item.status === 'done' && item.destinationPath && (
-                        <>
-                          <IconButton variant="ghost" onClick={() => onPreviewItem?.(item)} title="预览" icon={<Eye size={14} />} />
-                          <IconButton variant="ghost" onClick={() => onRevealFile?.(item.destinationPath!)} title="在文件夹中显示" icon={<FileDown size={14} />} />
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </Dialog>
-  )
-}
-
-/* ==================== 导出任务表格 ==================== */
+/* ==================== 导出任务表格（可展开式） ==================== */
 
 interface ExportTaskTableProps {
   onRevealFile?: (path: string) => void
@@ -143,9 +42,8 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   const [tasks, setTasks] = useState<ExportTaskRecord[]>([])
   const PAGE_SIZE = 10
   const [loading, setLoading] = useState(false)
-  const [detailTask, setDetailTask] = useState<ExportTaskRecord | null>(null)
-  const [detailOpen, setDetailOpen] = useState(false)
   const [page, setPage] = useState(1)
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
   const [previewFile, setPreviewFile] = useState<LunaFile | null>(null)
 
   const loadTasks = async () => {
@@ -168,6 +66,19 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
     return () => clearInterval(interval)
   }, [exporting])
 
+  // 首次加载或 tasks 变化时，默认展开最近的一个导出任务
+  useEffect(() => {
+    if (tasks.length > 0) {
+      setExpandedTasks(new Set([tasks[0].id]))
+    }
+  }, [tasks.length > 0 ? tasks[0].id : null])
+
+  useEffect(() => {
+    if (expandedTasks.size === 0 && tasks.length > 0) {
+      setExpandedTasks(new Set([tasks[0].id]))
+    }
+  }, [tasks.length])
+
   const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const pageTasks = tasks.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
@@ -177,7 +88,16 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
     if (exporting) setPage(1)
   }, [exporting])
 
-  const handlePreviewItem = (item: ExportTaskRecord['items'][number]): void => {
+  const toggleExpand = (taskId: string) => {
+    setExpandedTasks((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  const handlePreviewItem = (item: ExportTaskItemRecord): void => {
     if (!item.destinationPath) return
     const destUrl = filePathToPreviewUrl(item.destinationPath) ?? ''
     setPreviewFile({
@@ -245,6 +165,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         <table className="et-table">
           <thead>
             <tr>
+              <th style={{ width: 32 }}></th>
               <th>任务名称</th>
               <th>数量</th>
               <th>开始时间</th>
@@ -257,13 +178,22 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
           <tbody>
             {tasks.length === 0 ? (
               <tr>
-                <td colSpan={7} className="et-empty">暂无导出记录</td>
+                <td colSpan={8} className="et-empty">暂无导出记录</td>
               </tr>
             ) : pageTasks.map((task) => {
               const done = task.items.filter((i) => i.status === 'done').length
               const failed = task.items.filter((i) => i.status === 'failed').length
+              const isExpanded = expandedTasks.has(task.id)
+              const hasExpandable = task.items.length > 0
               return (
                 <tr key={task.id} className={`et-row et-status-${task.status}`}>
+                  <td style={{ textAlign: 'center' }}>
+                    {hasExpandable && (
+                      <button className="et-expand-btn" onClick={() => toggleExpand(task.id)} title={isExpanded ? '收起' : '展开'}>
+                        <ChevronRightIcon size={14} style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 150ms ease' }} />
+                      </button>
+                    )}
+                  </td>
                   <td>
                     <span className="et-cell-name">
                       {task.status === 'exporting' && <Loader2 className="spin" size={14} style={{ flexShrink: 0 }} />}
@@ -273,6 +203,44 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
                       {(task.status === 'pending' || task.status === 'exporting') && <Clock size={14} style={{ flexShrink: 0, color: 'var(--blue)' }} />}
                       <span className="et-item-name">{task.name}</span>
                     </span>
+                    {isExpanded && (
+                      <div className="et-task-items">
+                        {task.items.map((item) => (
+                          <div key={item.exportId} className={`et-task-item et-status-${item.status}`}>
+                            <span className="et-ti-icon">
+                              {item.status === 'exporting' && <Loader2 className="spin" size={12} />}
+                              {item.status === 'done' && <CheckCircle2 size={12} style={{ color: '#34c759' }} />}
+                              {item.status === 'failed' && <XCircle size={12} style={{ color: '#ff3b30' }} />}
+                              {item.status === 'queued' && <Clock size={12} style={{ color: 'var(--muted)' }} />}
+                              {item.status === 'canceled' && <Ban size={12} style={{ color: 'var(--muted)' }} />}
+                            </span>
+                            <span className="et-ti-kind">
+                              {item.kind === 'video' ? <Film size={12} /> : <ImageIcon size={12} />}
+                            </span>
+                            <span className="et-ti-name">{item.fileName}</span>
+                            <span className="et-ti-time">{formatTime(item.startTime)}</span>
+                            <span className="et-ti-dur">{formatDuration(item.duration)}</span>
+                            <span className="et-ti-progress">
+                              <span className="et-progress-track" style={{ width: 40 }}>
+                                <span className="et-progress-fill" style={{ width: `${Math.min(100, item.status === 'done' ? 100 : item.progress)}%` }} />
+                              </span>
+                              <span className="et-cell-num">{item.status === 'done' ? 100 : Math.round(item.progress)}%</span>
+                            </span>
+                            <span className="et-ti-actions">
+                              {item.status === 'failed' && (
+                                <span className="et-badge et-badge-failed">{item.error ?? '失败'}</span>
+                              )}
+                              {item.status === 'done' && item.destinationPath && (
+                                <>
+                                  <IconButton variant="ghost" onClick={() => handlePreviewItem(item)} title="预览" icon={<Eye size={13} />} />
+                                  <IconButton variant="ghost" onClick={() => onRevealFile?.(item.destinationPath!)} title="在文件夹中显示" icon={<FileDown size={13} />} />
+                                </>
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="et-cell-num">
                     {done}/{task.totalCount}
@@ -297,9 +265,6 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
                       {(task.status === 'exporting' || task.status === 'pending') && (
                         <IconButton variant="ghost" icon={<X size={12} />} onClick={() => void handleCancelTask(task.id)} title="取消导出" />
                       )}
-                      <Button variant="ghost" size="mini" icon={<Eye size={12} />} onClick={() => { setDetailTask(task); setDetailOpen(true) }}>
-                        查看
-                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -321,7 +286,6 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         </div>
       )}
 
-      <ExportTaskDetailDialog task={detailTask} open={detailOpen} onOpenChange={setDetailOpen} onRevealFile={onRevealFile} onPreviewItem={handlePreviewItem} />
       {previewFile && (
         <PreviewModal
           files={[previewFile]}
