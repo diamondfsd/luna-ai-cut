@@ -2,12 +2,19 @@
 
 ## 目标
 
-以 ffmpeg 的 filter 算法为唯一标准，GLSL 预览和 ffmpeg 导出共用同一套参数和数学，达到像素级一致。
+以 ffmpeg 的 filter 算法为**唯一标准**，GLSL 预览和 ffmpeg 导出共用同一套参数和数学，达到像素级一致。
 
 ```
 之前：  滑块 → darktable GLSL（预览）  ≠  滑块 → 手动映射 → ffmpeg（导出）
 之后：  滑块 → ffmpeg 算法 GLSL（预览）  =  滑块 → ffmpeg filter（导出）
 ```
+
+### 核心原则
+
+1. **每行 GLSL 代码都必须源自 ffmpeg 源码**，不得自行推导公式或系数
+2. 改写流程：读 `vf_*.c` 提取核心公式 → 翻译为 GLSL → 用相同输入验证像素输出一致
+3. 凡 ffmpeg 源码中不存在的算法，GLSL 中也不存在（即删除对应 UI 控件）
+4. `ColorGradingModule` 直传同组参数给 ffmpeg，不做二次映射
 
 ---
 
@@ -295,8 +302,8 @@ Phase 5 (cleanup)  → 删除 HSL 面板 + 色阶灰度点滑块
 ```
 
 每个 Phase 包含：
-1. 读 ffmpeg 对应 filter 源码（`vf_*.c`），提取核心公式
-2. 重写对应 GLSL shader
-3. 更新 `ColorGradingModule`
-4. 验证：ffmpeg 导出参考帧 vs WebGL 截图，像素级对比
+1. **读** `libavfilter/vf_*.c` 源码，提取核心公式和系数
+2. **写** GLSL 翻译，每行计算与 C 源码逐行对照
+3. **更新** `ColorGradingModule`（直传同参数给 ffmpeg）
+4. **验证**：ffmpeg 处理参考帧 → WebGL 渲染同参数 → pixelmatch 比较，容差 0
 5. 提交
