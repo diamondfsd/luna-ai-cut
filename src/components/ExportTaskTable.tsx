@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
-import type { ExportTaskItemRecord, ExportTaskRecord } from '../shared/types'
+import type { ExportTaskItemRecord, ExportTaskRecord, LunaFile, MediaKind } from '../shared/types'
+import { filePathToLunaFile } from './previewModalUtils'
 import { useApp } from '../context/AppContext'
 import { IconButton } from '../ui'
 import { Table, type Column } from '../ui/Table'
@@ -88,7 +89,8 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
-  const [previewPath, setPreviewPath] = useState<string | null>(null)
+  const [previewFiles, setPreviewFiles] = useState<LunaFile[] | null>(null)
+  const [previewIndex, setPreviewIndex] = useState(0)
 
   const loadTasks = async () => {
     setLoading(true)
@@ -127,7 +129,22 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
 
   const handlePreviewItem = (item: ExportTaskItemRecord): void => {
     if (!item.destinationPath) return
-    setPreviewPath(item.destinationPath)
+    // 收集所有导出任务中已完成的文件，构建可切换的文件列表
+    const allFiles = tasks.flatMap((t) =>
+      t.items
+        .filter((i) => i.destinationPath && i.status === 'done')
+        .map((i) =>
+          filePathToLunaFile(i.destinationPath!, {
+            id: i.exportId,
+            kind: i.kind as MediaKind,
+            downloadName: i.fileName,
+          }),
+        ),
+    )
+    if (allFiles.length === 0) return
+    const index = allFiles.findIndex((f) => f.id === item.exportId)
+    setPreviewFiles(allFiles)
+    setPreviewIndex(index >= 0 ? index : 0)
   }
 
   const handleCancelTask = async (taskId: string): Promise<void> => {
@@ -276,11 +293,17 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         </div>
       )}
 
-      {previewPath && (
+      {previewFiles && previewFiles.length > 0 && (
         <PreviewModal
-          filePath={previewPath}
-          onClose={() => setPreviewPath(null)}
-          onReveal={(f) => onRevealFile?.(f.downloadFilePath ?? f.localPath ?? previewPath)}
+          filePath={previewFiles[previewIndex].downloadFilePath ?? previewFiles[previewIndex].localPath ?? ''}
+          files={previewFiles}
+          currentFile={previewFiles[previewIndex]}
+          onFileChange={(f) => {
+            const idx = previewFiles.findIndex((pf) => pf.id === f.id)
+            if (idx >= 0) setPreviewIndex(idx)
+          }}
+          onClose={() => setPreviewFiles(null)}
+          onReveal={(f) => onRevealFile?.(f.downloadFilePath ?? f.localPath ?? '')}
         />
       )}
     </>
