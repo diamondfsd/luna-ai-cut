@@ -196,6 +196,94 @@
   font-size: 13px;
 }
 
+/* ====== 展开按钮 ====== */
+
+.et-expand-btn {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.et-expand-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink);
+}
+
+/* ====== 展开的任务明细列表 ====== */
+
+.et-task-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--hairline);
+}
+
+.et-task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.et-task-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.et-ti-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 14px;
+  place-content: center;
+}
+
+.et-ti-kind {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.et-ti-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.et-ti-time,
+.et-ti-dur {
+  white-space: nowrap;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.et-ti-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 60px;
+}
+
+.et-ti-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
 /* ====== 分页 ====== */
 
 .et-pagination {

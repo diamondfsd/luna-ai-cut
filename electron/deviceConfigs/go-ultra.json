@@ -38,6 +38,6 @@
   ],
   "watermarkStyles": [
     { "value": "go_ultra", "label": "标准", "videoFileName": "ic_watermark_go_ultra", "imageFileName": "ic_watermark_go_ultra_image" },
-    { "value": "go_ultra_cn", "label": "中文", "videoFileName": "ic_watermark_go_ultra_cn", "imageFileName": "ic_watermark_go_ultra_cn_image" }
+    { "value": "go_ultra_cn", "label": "中文", "videoFileName": "ic_watermark_go_ultra_cn", "imageFileName": "ic_watermark_go_ultra_image_cn" }
   ]
 }
