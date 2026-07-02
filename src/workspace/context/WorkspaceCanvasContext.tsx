@@ -25,7 +25,7 @@ interface WorkspaceCanvasValue {
   imageRect: { x: number; y: number; width: number; height: number }
   sourceAspect: number
   canRender: boolean
-  render: (pipeline: EditPipeline, opts?: { cropMode?: boolean }) => void
+  render: (pipeline: EditPipeline, opts?: { cropMode?: boolean; allowStaleLut?: boolean }) => void
   rendererReady: boolean
   renderKey: number
   loadedMediaPath: string | null

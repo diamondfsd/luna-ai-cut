@@ -190,10 +190,11 @@ export class WebGLRenderer {
     }
   }
 
-  render(pipeline: EditPipeline, options: { cropMode?: boolean } = {}): void {
+  render(pipeline: EditPipeline, options: { cropMode?: boolean; allowStaleLut?: boolean } = {}): void {
     if (!this.texture) return
     const gl = this.gl
     const lutValid = Boolean(this.useLut && this.lutTexture && this.lutKey === colorLutKey(pipeline.color))
+    const useLut = Boolean(lutValid || (options.allowStaleLut && this.useLut && this.lutTexture))
     gl.useProgram(this.program)
     gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
@@ -208,12 +209,12 @@ export class WebGLRenderer {
     if (err0 !== gl.NO_ERROR) glLog('texImage2D', err0)
 
     // 纹理单元 1：3D LUT
-    if (lutValid && this.lutTexture) {
+    if (useLut && this.lutTexture) {
       gl.activeTexture(gl.TEXTURE1)
       gl.bindTexture(gl.TEXTURE_3D, this.lutTexture)
     }
 
-    this.updateUniforms(pipeline, options, lutValid)
+    this.updateUniforms(pipeline, options, useLut)
     const err1 = gl.getError()
     if (err1 !== gl.NO_ERROR) glLog('updateUniforms', err1)
 

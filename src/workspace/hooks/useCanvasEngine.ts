@@ -150,10 +150,13 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
   //  渲染 — WorkspacePage pipeline 变化时触发
   // ═══════════════════════════════════════════════
 
-  const render = useCallback((pipeline: EditPipeline, opts?: { cropMode?: boolean }) => {
+  const render = useCallback((pipeline: EditPipeline, opts?: { cropMode?: boolean; allowStaleLut?: boolean }) => {
     lastPipelineRef.current = pipeline
     if (activeMedia && loadedMediaPathRef.current !== activeMedia.path) return
-    rendererRef.current?.render(pipeline, { cropMode: opts?.cropMode ?? false })
+    rendererRef.current?.render(pipeline, {
+      cropMode: opts?.cropMode ?? false,
+      allowStaleLut: opts?.allowStaleLut ?? false,
+    })
     updateImageRect()
   }, [activeMedia, updateImageRect])
 

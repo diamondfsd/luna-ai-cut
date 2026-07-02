@@ -83,7 +83,7 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
       const color = edit.pipeline.color
       if (!color) return
       void canvas.bakeAndLoadLut(buildColorLutParams(color), lutKey)
-    }, 500)
+    }, 80)
     return () => {
       if (lutTimerRef.current) window.clearTimeout(lutTimerRef.current)
     }
@@ -120,7 +120,7 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
   useEffect(() => {
     canvas.render(
       edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline,
-      { cropMode: edit.cropActive },
+      { cropMode: edit.cropActive, allowStaleLut: !edit.compareOriginal },
     )
   }, [edit.compareOriginal, edit.previewPipeline, edit.comparePipeline, edit.cropActive, canvas.render])
 
