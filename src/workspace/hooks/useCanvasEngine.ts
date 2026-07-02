@@ -81,11 +81,12 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
           maxSize: PREVIEW_MAX_SIZE,
           seekSeconds: videoRef.current?.currentTime,
         })
-        logger.info('[CanvasEngine] previewColor IPC returned', { hasResult: !!result, path: result?.path })
+        console.error('=== IPC RESULT PATH ===', result.path, result.path.length, '=== END ===')
         if (!result?.path || canceledRef.current) return
 
         // 用 filePathToPreviewUrl 加载预览（与初始图片加载同一套逻辑）
         const previewUrl = filePathToPreviewUrl(result.path)
+        console.error('=== PREVIEW URL ===', previewUrl, '=== END ===')
         if (!previewUrl) {
           logger.warn('[CanvasEngine] 无法生成预览URL', { path: result.path })
           return
