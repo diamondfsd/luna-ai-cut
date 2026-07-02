@@ -4,7 +4,8 @@ import lunaUltraConfig from '../../electron/deviceConfigs/luna-ultra.json'
 interface WatermarkStyleEntry {
   value: string
   label: string
-  fileName: string
+  videoFileName: string
+  imageFileName: string
 }
 
 /** 所有设备配置中声明的水印样式（唯一数据源，与 electron/deviceConfigs 保持一致） */
@@ -14,13 +15,8 @@ export const ALL_WATERMARK_STYLES: WatermarkStyleEntry[] = [
 ]
 
 /**
- * 水印图片 src 映射 — 由设备配置的 watermarkStyles[].fileName 驱动。
- *
- *    {fileName}.png             → video
- *    {fileName}_image.png       → image
- *
- * 新增水印只需在设备 JSON 的 watermarkStyles 配 { value, label, fileName }，
- * 并在 src/assets/watermark/ 放对应图片文件。
+ * 水印图片 src 映射 — 由设备配置的 watermarkStyles 驱动。
+ * videoFileName 和 imageFileName 直接在 JSON 中明确定义。
  */
 const rawModules = import.meta.glob<string>('../assets/watermark/ic_watermark_*.png', {
   eager: true,
@@ -30,13 +26,10 @@ const rawModules = import.meta.glob<string>('../assets/watermark/ic_watermark_*.
 
 const SRC: Record<string, Record<'image' | 'video', string>> = {}
 
-for (const { value, fileName } of ALL_WATERMARK_STYLES) {
-  // 从 import.meta.glob 结果中匹配对应图片
-  const videoFile = `../assets/watermark/${fileName}.png`
-  const imageFile = `../assets/watermark/${fileName}_image.png`
+for (const { value, videoFileName, imageFileName } of ALL_WATERMARK_STYLES) {
   SRC[value] = {
-    video: rawModules[videoFile] ?? '',
-    image: rawModules[imageFile] ?? '',
+    video: rawModules[`../assets/watermark/${videoFileName}.png`] ?? '',
+    image: rawModules[`../assets/watermark/${imageFileName}.png`] ?? '',
   }
 }
 

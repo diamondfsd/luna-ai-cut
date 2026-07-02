@@ -97,8 +97,10 @@ export interface DeviceStorageOption {
 export interface DeviceWatermarkStyleConfig {
   value: WatermarkStyle
   label: string
-  /** 水印文件名（不含目录和扩展名，如 ic_watermark_luna_ultra） */
-  fileName: string
+  /** 视频水印文件名（不含路径和扩展名，如 ic_watermark_luna_ultra） */
+  videoFileName: string
+  /** 图片水印文件名（不含路径和扩展名，如 ic_watermark_luna_ultra_image） */
+  imageFileName: string
 }
 
 export interface DeviceDefinition {

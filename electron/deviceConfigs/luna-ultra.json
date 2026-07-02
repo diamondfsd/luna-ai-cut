@@ -43,7 +43,7 @@
     }
   ],
   "watermarkStyles": [
-    { "value": "luna_ultra", "label": "标准", "fileName": "ic_watermark_luna_ultra" },
-    { "value": "luna_ultra_cn", "label": "中文", "fileName": "ic_watermark_luna_ultra_cn" }
+    { "value": "luna_ultra", "label": "标准", "videoFileName": "ic_watermark_luna_ultra", "imageFileName": "ic_watermark_luna_ultra_image" },
+    { "value": "luna_ultra_cn", "label": "中文", "videoFileName": "ic_watermark_luna_ultra_cn", "imageFileName": "ic_watermark_luna_ultra_cn_image" }
   ]
 }
