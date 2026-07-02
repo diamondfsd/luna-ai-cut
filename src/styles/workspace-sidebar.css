@@ -5,7 +5,7 @@
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 58px;
-  background: #fff;
+  background: #252525;
   border-left: 1px solid var(--hairline);
 }
 
@@ -68,7 +68,7 @@
   gap: 8px;
   padding-top: 12px;
   margin-top: 12px;
-  background: #fff;
+  background: #252525;
 }
 
 .workspace-tool-rail {
@@ -78,7 +78,7 @@
   flex-direction: column;
   align-items: center;
   padding: 12px 8px;
-  background: #f8f9fb;
+  background: #1e1e1e;
 }
 
 .workspace-tool-rail-main {
@@ -103,8 +103,8 @@
 
 .workspace-tool-rail .ui-icon-btn-outline {
   color: var(--blue);
-  background: rgba(0, 102, 204, 0.08);
-  border-color: rgba(0, 102, 204, 0.24);
+  background: rgba(74, 158, 255, 0.1);
+  border-color: rgba(74, 158, 255, 0.24);
 }
 
 .workspace-tool-rail .ui-icon-btn-outline::after {
