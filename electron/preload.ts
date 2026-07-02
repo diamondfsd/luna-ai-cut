@@ -79,6 +79,10 @@ const lunaApi: LunaApi = {
     ipcRenderer.invoke('ai:chat', config, systemPrompt, messages),
   readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),
   disconnect: (host?: string) => ipcRenderer.invoke('luna:disconnect', host),
+  getWifiStatus: () => ipcRenderer.invoke('wifiDebug:getStatus'),
+  scanWifi: () => ipcRenderer.invoke('wifiDebug:scan'),
+  connectWifi: (options: WifiConnectOptions) => ipcRenderer.invoke('wifiDebug:connect', options),
+  disconnectWifi: () => ipcRenderer.invoke('wifiDebug:disconnect'),
   cacheFile: (file: LunaFile) => ipcRenderer.invoke('luna:cacheFile', file),
   workspace: {
     loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
