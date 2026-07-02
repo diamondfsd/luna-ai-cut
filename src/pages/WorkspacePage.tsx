@@ -374,33 +374,6 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
           )}
         </div>
         <div className="workspace-toolbar-title">{media.currentProject?.name ?? '临时工作台'} · {media.activeIndex + 1}/{media.media.length}</div>
-
-        {canvas.isVideo && !canvas.imageLoading && (
-          <div className="workspace-toolbar-video">
-            <button
-              className="workspace-toolbar-video-btn"
-              type="button"
-              onClick={canvas.toggleVideoPlayback}
-              aria-label={canvas.videoPlaying ? '暂停' : '播放'}
-            >
-              {canvas.videoPlaying ? <Pause size={14} /> : <Play size={14} />}
-            </button>
-            <input
-              className="workspace-toolbar-video-progress"
-              type="range"
-              min={0}
-              max={canvas.videoDuration || 1}
-              step={0.1}
-              value={canvas.videoCurrentTime}
-              onChange={(e) => canvas.seekVideo(Number(e.target.value))}
-              aria-label="进度"
-            />
-            <span className="workspace-toolbar-video-time">
-              {formatTime(canvas.videoCurrentTime)} / {formatTime(canvas.videoDuration)}
-            </span>
-          </div>
-        )}
-
         <div className="workspace-toolbar-group">
           <Button
             variant={edit.compareOriginal ? 'primary' : 'secondary'}
