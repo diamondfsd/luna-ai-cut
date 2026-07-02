@@ -231,11 +231,9 @@ export function MediaLibraryPage({
 
       {pageActive && previewFile && !selectMode && (
         <PreviewModal
+          filePath={previewFile.downloadFilePath ?? previewFile.localPath ?? previewFile.sourceUrl}
           files={previewFiles.length > 0 ? previewFiles : filteredFiles}
           currentFile={previewFile}
-          currentFileId={previewFile.id}
-          preview={preview}
-          previewLoading={previewLoading}
           downloadProgress={progressForPreview}
           isDownloadsPage={isDownloadsPage}
           showWatermarkControls={isDownloadsPage && viewMode === 'download'}

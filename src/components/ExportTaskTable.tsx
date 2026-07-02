@@ -279,17 +279,9 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
 
       {previewFile && (
         <PreviewModal
-          files={[previewFile]}
-          currentFile={previewFile}
-          currentFileId={previewFile.id}
-          preview={null}
-          previewLoading={false}
-          downloadProgress={undefined}
-          isDownloadsPage={false}
+          filePath={previewFile.downloadFilePath ?? previewFile.localPath ?? ''}
           onClose={() => setPreviewFile(null)}
-          onDownload={() => {}}
           onReveal={(f) => onRevealFile?.(f.downloadFilePath ?? f.localPath ?? '')}
-          onFileChange={setPreviewFile}
         />
       )}
     </>
