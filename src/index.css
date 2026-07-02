@@ -14,6 +14,45 @@
   box-sizing: border-box;
 }
 
+/* ==================== ErrorBoundary fallback ==================== */
+
+.error-boundary-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: 40px;
+  text-align: center;
+  gap: 12px;
+}
+
+.error-boundary-fallback h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.error-boundary-fallback p {
+  margin: 0;
+  color: #888;
+  font-size: 14px;
+  max-width: 480px;
+}
+
+.error-boundary-fallback button {
+  padding: 8px 20px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.error-boundary-fallback button:hover {
+  background: #f0f0f0;
+}
+
 html,
 body,
 #root {

@@ -4,6 +4,7 @@ import * as path from 'node:path'
 import { lunaMediaAdapter } from './deviceMedia'
 import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
 import { readSourceRecord, withSourceMetadata } from './mediaSourceManifestService'
+import { logMainInfo } from './loggerService'
 import type { DownloadRecord, LunaFile } from '../src/shared/types'
 
 function isGeneratedLivePreviewName(name: string): boolean {
@@ -85,9 +86,12 @@ export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]
       const entryPath = path.join(outputDir, entry.name)
       if (entry.isFile()) await appendFile(entryPath)
     }
-  } catch {
+  } catch (err) {
+    logMainInfo(`[listDownloadedFiles] 读取失败`, { outputDir, error: err instanceof Error ? err.message : String(err) })
     return []
   }
 
-  return lunaMediaAdapter.attachRelatedFiles(files)
+  const result = lunaMediaAdapter.attachRelatedFiles(files)
+  logMainInfo(`[listDownloadedFiles] 完成`, { outputDir, fileCount: result.length })
+  return result
 }

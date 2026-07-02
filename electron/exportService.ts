@@ -9,7 +9,7 @@ import { getSettings, previewCacheDir } from './settingsService'
 import { generateThumbnail, safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
 import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToLivePhoto, applyWatermarkToVideo } from './watermarkService'
 import { resolveWatermarkSettingsForFile } from './watermarkResolver'
-import { logMainInfo, logMainError, logMainWarn, logExport } from './loggerService'
+import { logMainDebug, logMainInfo, logMainError, logMainWarn, logExport } from './loggerService'
 import type { ExportFileInput, LunaFile, VideoExportSettings, WatermarkSettings } from '../src/shared/types'
 import { createExportTask, getExportTaskById, updateTaskItemProgress } from './exportTaskService'
 
@@ -316,12 +316,16 @@ export async function listExportFiles(exportDir: string): Promise<LunaFile[]> {
   const files: LunaFile[] = []
   const cacheDir = await previewCacheDir()
   let thumbFileSet = new Set<string>()
+  const thumbDP = thumbnailDir(cacheDir)
+
+  logMainInfo(`[listExportFiles] 开始`, { exportDir, cacheDir, thumbDir: thumbDP })
 
   try {
-    const entries = await fs.readdir(thumbnailDir(cacheDir), { withFileTypes: true })
+    const entries = await fs.readdir(thumbDP, { withFileTypes: true })
     thumbFileSet = new Set(entries.filter((entry) => entry.isFile()).map((entry) => entry.name))
-  } catch {
-    // No thumbnails yet.
+    logMainDebug(`[listExportFiles] 读到缩略图`, { count: thumbFileSet.size, thumbDir: thumbDP })
+  } catch (err) {
+    logMainDebug(`[listExportFiles] 读取缩略图目录失败`, { thumbDir: thumbDP, error: err instanceof Error ? err.message : String(err) })
   }
 
   try {

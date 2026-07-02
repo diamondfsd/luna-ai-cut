@@ -462,14 +462,15 @@ function registerIpc(): void {
           const thumbnailKey = file.downloadName || file.name
           const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
           if (thumbPath) {
-            logMainInfo(`[缓存] 缩略图生成成功`, { key, fileName: file.name })
+            const thumbnailUrl = pathToFileURL(thumbPath).toString()
+            logMainInfo(`[缓存] 缩略图生成成功`, { key, fileName: file.name, thumbPath, thumbnailUrl })
             // 缩略图生成成功
             win?.webContents.send('luna:thumbnail-ready', {
               fileId: file.id,
               fileName: file.name,
               downloadName: file.downloadName,
               cacheFilePath,
-              thumbnailUrl: pathToFileURL(thumbPath).toString(),
+              thumbnailUrl,
             })
           } else {
             logMainWarn(`[缓存] 缩略图生成失败，清理损坏的缓存文件`, { key, fileName: file.name, cacheFilePath })
@@ -530,6 +531,10 @@ function registerIpc(): void {
     return task
   })
 
+  ipcMain.handle('luna:readExifModel', async (_event, localPath: string) => {
+    const { readExifModel } = await import('./watermarkResolver')
+    return readExifModel(localPath)
+  })
   ipcMain.handle('luna:disconnect', (_event, host?: string) => {
     const normalizedHost = (host?.trim() || DEFAULT_HOST)
     logMainInfo(`[设备断开] 断开设备连接`, { host: normalizedHost })

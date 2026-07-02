@@ -4,6 +4,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { AppNav } from '../components/AppNav'
 import { HotUpdateBanner } from '../components/HotUpdateBanner'
 import { UpdateBanner } from '../components/UpdateBanner'
+import { AppRoute } from '../ui'
 import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { DevPage } from '../pages/DevPage'
@@ -91,25 +92,27 @@ export function AppRoutes() {
   }
 
   const developerMode = settings?.developerMode ?? false
+  const debugVisible = import.meta.env.DEV || hiddenDevMode
   const location = useLocation()
   const activePath = location.pathname === '/' ? '/library' : location.pathname
-  const isDeveloperActive = developerMode && activePath === '/developer'
-  const isLibraryActive = activePath === '/library' && !isDeveloperActive
-  const isDownloadsLegacy = activePath === '/downloads'
-  const isDownloadsActive = activePath === '/local-resources'
-  const isWorkspaceActive = activePath === '/workspace'
-  const isSettingsActive = activePath === '/settings'
-  const isBluetoothDebugActive = (import.meta.env.DEV || hiddenDevMode) && activePath === '/ble-debug'
-  const isDeviceDebugActive = (import.meta.env.DEV || hiddenDevMode) && activePath === '/device-debug'
-  const isKnownRoute = isDeveloperActive || isLibraryActive || isDownloadsActive || isSettingsActive || isBluetoothDebugActive || isDeviceDebugActive
+  const isActive = (path: string) => activePath === path
 
-  if (isDownloadsLegacy) {
-    return <Navigate to="/local-resources" replace />
-  }
+  // ── 路由访问权限表：path → 是否有权访问 ──
+  // 加新路由时，在这里加一行，再在下面加 <section> 即可
+  const routeAccess: [string, boolean][] = [
+    ['/library', true],
+    ['/local-resources', true],
+    ['/workspace', true],
+    ['/settings', true],
+    ['/developer', developerMode],
+    ['/ble-debug', debugVisible],
+    ['/device-debug', debugVisible],
+  ]
+  const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
 
-  if (!isKnownRoute) {
-    return <Navigate to={developerMode ? '/developer' : '/library'} replace />
-  }
+  // ── 特殊处理 ──
+  if (isActive('/downloads')) return <Navigate to="/local-resources" replace />
+  if (!isKnownRoute) return <Navigate to={developerMode ? '/developer' : '/library'} replace />
 
   // 独立调试包：只渲染设备调试页面，无导航、无路由切换
   if (typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__) {
@@ -126,7 +129,7 @@ export function AppRoutes() {
         connection={connection}
         sourceMode={sourceMode}
         activeDevice={activeDevice}
-        showWorkspaceMode={isWorkspaceActive && workspaceEditing}
+        showWorkspaceMode={isActive('/workspace') && workspaceEditing}
         workspaceMode={workspaceMode}
         creativeModeId={creativeModeId}
         onModeChange={(mode) => {
@@ -140,7 +143,7 @@ export function AppRoutes() {
 
       <div className="route-stack" key={pagesKey}>
 
-        <section className="route-panel" hidden={!isLibraryActive}>
+        <AppRoute path="/library">
           {showDeviceConnect && (
             <DeviceConnectPage
               activeDevice={activeDevice}
@@ -154,7 +157,7 @@ export function AppRoutes() {
             <div hidden={showDeviceConnect}>
               <MediaLibraryPage
                 isDownloadsPage={false}
-                pageActive={isLibraryActive}
+                pageActive={isActive('/library')}
                 settings={settings}
                 downloadProgress={downloadProgress}
                 setDownloadProgress={setDownloadProgress}
@@ -171,12 +174,12 @@ export function AppRoutes() {
               />
             </div>
           )}
-        </section>
+        </AppRoute>
 
-        <section className="route-panel" hidden={!isDownloadsActive}>
+        <AppRoute path="/local-resources">
           <MediaLibraryPage
             isDownloadsPage={true}
-            pageActive={isDownloadsActive}
+            pageActive={isActive('/local-resources')}
             settings={settings}
             downloadProgress={downloadProgress}
             setDownloadProgress={setDownloadProgress}
@@ -190,50 +193,44 @@ export function AppRoutes() {
             setPreviewLoading={setPreviewLoading}
             refreshKey={localResourcesRefreshKey}
           />
-        </section>
+        </AppRoute>
 
-        <section className="route-panel" hidden={!isWorkspaceActive}>
+        <AppRoute path="/workspace">
           <WorkspacePage workspaceMode={workspaceMode} onEditingChange={setWorkspaceEditing} />
-        </section>
+        </AppRoute>
 
-        {isSettingsActive && (
-          <section className="route-panel">
-            <SettingsPage
-              activeDevice={activeDevice}
-              cacheStats={cacheStats}
-              chooseBaseDir={chooseBaseDir}
-              chooseLocalResourcesDir={chooseLocalResourcesDir}
-              chooseExportDir={chooseExportDir}
-              clearCache={clearCache}
-              connection={connection}
-              openDirectory={openDirectory}
-              settings={settings}
-              setSettings={setSettings}
-            />
-          </section>
-        )}
+        <AppRoute path="/settings" preserve={false}>
+          <SettingsPage
+            activeDevice={activeDevice}
+            cacheStats={cacheStats}
+            chooseBaseDir={chooseBaseDir}
+            chooseLocalResourcesDir={chooseLocalResourcesDir}
+            chooseExportDir={chooseExportDir}
+            clearCache={clearCache}
+            connection={connection}
+            openDirectory={openDirectory}
+            settings={settings}
+            setSettings={setSettings}
+          />
+        </AppRoute>
 
-        {isBluetoothDebugActive && (
-          <section className="route-panel">
-            <DevPage
-              activeDevice={activeDevice}
-              settings={settings}
-              setSettings={setSettings}
-              developerMode={settings?.developerMode ?? false}
-              mockServerStatus={mockServerStatus}
-              startMockServer={startMockServer}
-              stopMockServer={stopMockServer}
-              chooseMockMediaDir={chooseMockMediaDir}
-              openDirectory={openDirectory}
-            />
-          </section>
-        )}
+        <AppRoute path="/ble-debug" preserve={false}>
+          <DevPage
+            activeDevice={activeDevice}
+            settings={settings}
+            setSettings={setSettings}
+            developerMode={settings?.developerMode ?? false}
+            mockServerStatus={mockServerStatus}
+            startMockServer={startMockServer}
+            stopMockServer={stopMockServer}
+            chooseMockMediaDir={chooseMockMediaDir}
+            openDirectory={openDirectory}
+          />
+        </AppRoute>
 
-        {isDeviceDebugActive && (
-          <section className="route-panel">
-            <DeviceDebugPage />
-          </section>
-        )}
+        <AppRoute path="/device-debug" preserve={false}>
+          <DeviceDebugPage />
+        </AppRoute>
       </div>
     </main>
   )

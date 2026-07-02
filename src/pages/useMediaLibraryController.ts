@@ -171,6 +171,11 @@ export function useMediaLibraryController({
   // 监听缓存下载完成，更新卡片缩略图
   useEffect(() => {
     return window.luna.onThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
+      logger.info(`[缩略图] onThumbnailReady`, {
+        fileId, fileName, downloadName,
+        cacheFilePath: cacheFilePath?.slice(0, 200),
+        thumbnailUrl: thumbnailUrl?.slice(0, 300),
+      })
       const matches = (file: LunaFile): boolean =>
         file.id === fileId || file.name === fileName || file.downloadName === downloadName
       setCacheFailedIds((current) => {
@@ -251,7 +256,13 @@ export function useMediaLibraryController({
   }
 
   function handleThumbnailImageError(file: LunaFile): void {
-    logger.warn(`[缩略图] 图片 onError`, { fileId: file.id, fileName: file.name, kind: file.kind })
+    logger.warn(`[缩略图] 图片 onError`, {
+      fileId: file.id, fileName: file.name, kind: file.kind,
+      thumbnailUrl: file.thumbnailUrl?.slice(0, 300),
+      cacheFilePath: file.cacheFilePath,
+      downloadFilePath: file.downloadFilePath,
+      localPath: (file as any).localPath,
+    })
     // 缩略图加载失败（如文件损坏），清除请求记录允许重试
     requestedThumbnailIdsRef.current.delete(file.id)
     // 清除 thumbnailUrl 让卡片显示占位图，然后重新触发缓存 + 缩略图生成
