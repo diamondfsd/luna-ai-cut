@@ -827,11 +827,16 @@ function registerIpc(): void {
     return { exportId, outputPath, taskId: task.id, taskStart }
   })
 
+  let _frameCounter = 0
   ipcMain.handle('workspace:sendVideoExportFrame', async (_event, exportId: string, frameData: ArrayBuffer) => {
     const encoder = activeExportEncoders.get(exportId)
     if (!encoder || encoder.killed) {
       logMainWarn(`[videoExport] encoder not found for ${exportId}, skipping frame`)
       return
+    }
+    _frameCounter++
+    if (_frameCounter % 30 === 0 || _frameCounter === 1) {
+      logMainInfo(`[videoExport] 收到帧 #${_frameCounter}`, { size: frameData.byteLength })
     }
     return new Promise<void>((resolve, reject) => {
       const canContinue = encoder.stdin.write(Buffer.from(frameData), (err) => {
