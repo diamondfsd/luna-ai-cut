@@ -21,19 +21,27 @@ import type {
   VideoExportSettings,
   WatermarkPosition,
   WatermarkSettings,
-  WatermarkStyle,
 } from '../src/shared/types'
-
-type ConcreteWatermarkStyle = Exclude<WatermarkStyle, 'auto'>
+import { deviceDefinitions } from './deviceDefaults'
 
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
   return path.join(app.getAppPath(), 'src', 'assets', 'watermark')
 }
 
+/** 从设备配置构建 style → fileName 查找表 */
+const WATERMARK_FILE_NAMES = new Map<string, string>()
+for (const device of deviceDefinitions()) {
+  for (const ws of device.watermarkStyles ?? []) {
+    WATERMARK_FILE_NAMES.set(ws.value, ws.fileName)
+  }
+}
+
 function watermarkFileFor(kind: 'image' | 'video', style: string): string {
+  const fileName = WATERMARK_FILE_NAMES.get(style)
+  if (!fileName) throw new Error(`未知水印样式: ${style}`)
   const suffix = kind === 'image' ? '_image' : ''
-  return path.join(getWatermarkDir(), `ic_watermark_${style}${suffix}.png`)
+  return path.join(getWatermarkDir(), `${fileName}${suffix}.png`)
 }
 
 /** 将 JPEG 文件中的 EXIF Orientation 标签设为 1（正常方向），保留其他所有 EXIF */
@@ -200,7 +208,7 @@ export async function applyWatermarkToImage(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: ConcreteWatermarkStyle,
+  style: string,
 ): Promise<void> {
   return applyWatermarkToImageWithRef(inputPath, outputPath, watermarkPercent, position, style)
 }
@@ -215,7 +223,7 @@ async function applyWatermarkToImageWithRef(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: ConcreteWatermarkStyle,
+  style: string,
   refWidth?: number,
   refHeight?: number,
 ): Promise<void> {
@@ -511,7 +519,7 @@ export async function applyWatermarkToLivePhoto(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: ConcreteWatermarkStyle,
+  style: string,
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
   _videoExportSettings?: VideoExportSettings,
