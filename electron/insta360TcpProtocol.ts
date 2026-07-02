@@ -1,5 +1,4 @@
 import * as net from 'node:net'
-import { randomBytes } from 'node:crypto'
 
 import { logMainDebug, logMainInfo, logMainWarn } from './loggerService'
 
@@ -13,6 +12,7 @@ const CODE_GET_OPTIONS = 8
 const CODE_GET_FILE_LIST = 13
 const CODE_GET_CURRENT_CAPTURE_STATUS = 15
 const STATUS_OK = 200
+const PACKET_CHECKSUM_POLY = 0x04c11db7
 
 interface ExactCommand {
   label: string
@@ -95,6 +95,39 @@ function wireFieldVarint(field: number, value: number): Buffer {
   return Buffer.concat([wireVarint(field << 3), wireVarint(value)])
 }
 
+function buildPacketChecksumTable(): number[] {
+  const table: number[] = []
+  for (let i = 0; i < 256; i += 1) {
+    let value = (i << 24) | 0
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value & 0x80000000) !== 0
+        ? ((value << 1) ^ PACKET_CHECKSUM_POLY) | 0
+        : (value << 1) | 0
+    }
+    table.push(value >>> 0)
+  }
+  return table
+}
+
+const PACKET_CHECKSUM_TABLE = buildPacketChecksumTable()
+
+export function insta360PacketChecksum(frameWithoutTrailer: Buffer): number {
+  let checksum = 0xffffffff | 0
+  for (const byte of frameWithoutTrailer) {
+    checksum = (checksum ^ byte) | 0
+    for (let i = 0; i < 4; i += 1) {
+      checksum = ((checksum << 8) ^ PACKET_CHECKSUM_TABLE[(checksum >>> 24) & 0xff]) | 0
+    }
+  }
+  return checksum >>> 0
+}
+
+function checksumTrailer(frameWithoutTrailer: Buffer): Buffer {
+  const trailer = Buffer.alloc(4)
+  trailer.writeUInt32LE(insta360PacketChecksum(frameWithoutTrailer), 0)
+  return trailer
+}
+
 function buildUcd2(type: number, seq: number, payload: Buffer): Buffer {
   const header = Buffer.alloc(8)
   UCD2_MAGIC.copy(header, 0)
@@ -112,26 +145,27 @@ function buildRawCommand(code: number, requestId: number, body: Buffer): Buffer 
   raw.writeUInt16LE(requestId, 3)
   raw.writeUInt32LE(0x8000, 5)
   body.copy(raw, 9)
-  return Buffer.concat([raw, randomBytes(4)])
+  return raw
 }
 
 function buildFileCommand(seq: number, code: number, requestId: number, body: Buffer): Buffer {
-  const rawWithTrailer = buildRawCommand(code, requestId, body)
+  const raw = buildRawCommand(code, requestId, body)
   const length = Buffer.alloc(4)
-  length.writeUInt32LE(rawWithTrailer.length - 4, 0)
-  return buildUcd2(UCD2_FILE, seq, Buffer.concat([length, rawWithTrailer]))
+  length.writeUInt32LE(raw.length, 0)
+  const frameWithoutTrailer = buildUcd2(UCD2_FILE, seq, Buffer.concat([length, raw]))
+  return Buffer.concat([frameWithoutTrailer, checksumTrailer(frameWithoutTrailer)])
 }
 
 function buildStreamHello(seq: number): Buffer {
   return buildUcd2(UCD2_STREAM, seq, Buffer.concat([Buffer.alloc(4), Buffer.from('f6cc4f09', 'hex')]))
 }
 
-function exactCommand(label: string, code: number, requestId: number, hexText: string): ExactCommand {
+function builtCommand(label: string, seq: number, code: number, requestId: number, body: Buffer): ExactCommand {
   return {
     label,
     code,
     requestId,
-    packet: Buffer.from(hexText.replace(/\s+/g, ''), 'hex'),
+    packet: buildFileCommand(seq, code, requestId, body),
   }
 }
 
@@ -202,24 +236,26 @@ function fileListBody(storageSelector: number, offset: number, limit = 100): Buf
 }
 
 const EXACT_INFO_COMMANDS: ExactCommand[] = [
-  exactCommand(
+  builtCommand(
     'GET_OPTIONS small',
+    0x25,
     CODE_GET_OPTIONS,
     1,
-    '55 43 44 32 01 0c 04 25 0f 00 00 00 08 00 02 01 00 00 80 00 00 08 30 08 0f 08 0b df b8 54 92',
+    Buffer.concat([wireFieldVarint(1, 48), wireFieldVarint(1, 15), wireFieldVarint(1, 11)]),
   ),
-  exactCommand(
+  builtCommand(
     'GET_CURRENT_CAPTURE_STATUS',
+    0x26,
     CODE_GET_CURRENT_CAPTURE_STATUS,
     2,
-    '55 43 44 32 01 0c 04 26 09 00 00 00 0f 00 02 02 00 00 80 00 00 df da 21 59',
+    Buffer.alloc(0),
   ),
-  exactCommand(
+  builtCommand(
     'GET_OPTIONS large',
+    0x27,
     CODE_GET_OPTIONS,
     3,
-    `
-      55 43 44 32 01 0c 04 27 c0 00 00 00 08 00 02 03 00 00 80 00 00
+    Buffer.from(`
       08 01 08 03 08 02 08 4c 08 06 08 4e 08 4f 08 0b 08 55 08 0c
       08 0d 08 af 01 08 0e 08 0f 08 13 08 37 08 11 08 14 08 1e
       08 24 08 6e 08 72 08 75 08 59 08 74 08 73 08 25 08 26
@@ -230,38 +266,41 @@ const EXACT_INFO_COMMANDS: ExactCommand[] = [
       08 93 01 08 9b 01 08 9d 01 08 9e 01 08 a0 01 08 b3 01
       08 a1 01 08 16 08 50 08 51 08 a7 01 08 a9 01 08 ad 01
       08 b4 01 08 b0 01 08 b1 01 08 78 08 6f 08 79 08 ac 01
-      29 9b d4 0b
-    `,
+    `.replace(/\s+/g, ''), 'hex'),
   ),
 ]
 
 const EXACT_FILE_LIST_INTERNAL: ExactCommand[] = [
-  exactCommand(
+  builtCommand(
     'GET_FILE_LIST internal offset=0',
+    0x2c,
     CODE_GET_FILE_LIST,
     8,
-    '55 43 44 32 01 0c 04 2c 0f 00 00 00 0d 00 02 08 00 00 80 00 00 08 02 18 64 20 02 17 f7 50 6e',
+    fileListBody(2, 0),
   ),
-  exactCommand(
+  builtCommand(
     'GET_FILE_LIST internal offset=100',
+    0x2d,
     CODE_GET_FILE_LIST,
     9,
-    '55 43 44 32 01 0c 04 2d 11 00 00 00 0d 00 02 09 00 00 80 00 00 08 02 10 64 18 64 20 02 ef 05 69 4b',
+    fileListBody(2, 100),
   ),
-  exactCommand(
+  builtCommand(
     'GET_FILE_LIST internal offset=200',
+    0x2e,
     CODE_GET_FILE_LIST,
     10,
-    '55 43 44 32 01 0c 04 2e 12 00 00 00 0d 00 02 0a 00 00 80 00 00 08 02 10 c8 01 18 64 20 02 ff 8d 6f f2',
+    fileListBody(2, 200),
   ),
 ]
 
 const EXACT_FILE_LIST_SDCARD: ExactCommand[] = [
-  exactCommand(
+  builtCommand(
     'GET_FILE_LIST sdcard offset=0',
+    0x2f,
     CODE_GET_FILE_LIST,
     11,
-    '55 43 44 32 01 0c 04 2f 0f 00 00 00 0d 00 02 0b 00 00 80 00 00 08 03 18 64 20 02 94 32 e4 e6',
+    fileListBody(3, 0),
   ),
 ]
 

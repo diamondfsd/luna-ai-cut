@@ -277,10 +277,11 @@ export function DeviceDebugPage() {
   }
 
   const needsAuth = selectedDevice?.needsAuth ?? false
+  const debugStandalone = typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__
 
   return (
     <div className="device-debug-surface">
-      {!__DEBUG_STANDALONE__ && (
+      {!debugStandalone && (
         <div className="device-debug-topbar">
           <button className="device-debug-back" onClick={() => navigate(-1)}>
             <ArrowLeft size={18} />

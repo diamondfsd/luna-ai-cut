@@ -2,9 +2,9 @@ import { ipcRenderer, contextBridge } from 'electron'
 import type {
   AiConfig,
   AppSettings,
-  DeviceConnectOptions,
   DeviceDebugApi,
   DeviceDebugEvent,
+  DeviceConnectOptions,
   DownloadProgress,
   ExportProgress,
   HotUpdateCheckResult,
@@ -132,10 +132,6 @@ const wifiDebugApi: WifiDebugApi = {
   httpRequest: (options: WifiHttpRequestOptions) => ipcRenderer.invoke('wifiDebug:httpRequest', options),
 }
 
-// ============================================================
-// 统一设备调试 API
-// ============================================================
-
 const deviceDebugApi: DeviceDebugApi = {
   runTest: (params) => ipcRenderer.invoke('deviceDebug:runTest', params),
   checkPort: (params) => ipcRenderer.invoke('deviceDebug:checkPort', params),
@@ -157,7 +153,6 @@ const deviceDebugApi: DeviceDebugApi = {
 }
 
 contextBridge.exposeInMainWorld('luna', lunaApi)
-// deviceDebug 在开发环境和生产环境都需要可用（独立调试包）
 contextBridge.exposeInMainWorld('deviceDebug', deviceDebugApi)
 if (import.meta.env.DEV || process.env.VITE_DEV_SERVER_URL) {
   contextBridge.exposeInMainWorld('wifiDebug', wifiDebugApi)
