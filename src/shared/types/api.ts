@@ -19,6 +19,7 @@ import type {
 } from './debug'
 import type { UpdateInfo, HotUpdateCheckResult, ReleaseNoteItem } from './update'
 import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } from './workspace'
+import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 
 export interface LunaApi {
   log: (level: string, message: string, meta?: unknown) => void
@@ -70,6 +71,10 @@ export interface LunaApi {
   readExifModel(localPath: string): Promise<string | null>
   disconnect(host?: string): Promise<void>
   cacheFile(file: LunaFile): Promise<boolean>
+  getWifiStatus: () => Promise<WifiDebugResult<WifiDebugStatus>>
+  scanWifi: () => Promise<WifiDebugResult<WifiDebugNetwork[]>>
+  connectWifi: (options: WifiConnectOptions) => Promise<WifiDebugResult<WifiDebugStatus>>
+  disconnectWifi: () => Promise<WifiDebugResult<WifiDebugStatus>>
   workspace: {
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>

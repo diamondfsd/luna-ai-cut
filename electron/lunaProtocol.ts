@@ -220,7 +220,7 @@ export class LunaClient {
       httpOk = true
     } catch (error) {
       httpError = error instanceof Error ? error.message : String(error)
-      message = `HTTP 服务不可用：${httpError}`
+      message = `服务不可用：${httpError}`
     }
 
     if (this.controlSession?.isOpen) {

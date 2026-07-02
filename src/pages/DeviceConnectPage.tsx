@@ -57,7 +57,7 @@ export function DeviceConnectPage({
         ) : (
           <p className="device-connect-desc">
             {isChecking
-              ? '正在唤醒设备、检测 Wi-Fi 服务并建立控制会话'
+              ? '正在 检测 Wi-Fi 服务并建立控制会话'
               : connection?.message ?? ''}
           </p>
         )}
