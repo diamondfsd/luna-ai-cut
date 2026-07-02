@@ -4,7 +4,6 @@ import { useApp } from '../../context/AppContext'
 import type { LunaFile, MediaKind, WorkspaceMediaAsset } from '../../shared/types'
 import { toast } from '../../ui'
 import type { EditPipeline } from '../shared/editPipeline'
-import { composeWorkspaceExport } from './exportWorkspaceImage'
 import { logger } from '../../lib/rendererLogger'
 
 interface UseWorkspaceExportOptions {
@@ -91,9 +90,12 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
         logger.info(`[Export] 视频导出完成`, { exportId, result })
         setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path, 'video')))
       } else {
-        // 图片：捕获 canvas + 水印合成
-        const dataUrl = await composeWorkspaceExport(canvasRef.current, imageRect, pipeline.watermark)
-        result = await window.luna.workspace.exportImage(activeMedia.name, dataUrl)
+        // 图片：走 ffmpeg 调色导出（与视频同一套 filter）
+        const { whiteBalanceMode, gradeShadowsHue, gradeMidHue, gradeHighlightsHue, curve, ...rest } = pipeline.color
+        toast.success('已开始导出图片')
+        logger.info(`[Export] 开始导出图片`, { exportId, taskName, path: activeMedia.path })
+        result = await window.luna.workspace.exportImageWithColor(activeMedia.path, rest as Record<string, number>)
+        logger.info(`[Export] 图片导出完成`, { exportId, result })
         setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path)))
       }
 

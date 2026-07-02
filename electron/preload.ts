@@ -88,6 +88,7 @@ const lunaApi: LunaApi = {
     addAssetsToProject: (projectId: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:addAssetsToProject', projectId, assets),
     saveProject: (project: WorkspaceProject) => ipcRenderer.invoke('workspace:saveProject', project),
     exportImage: (name: string, dataUrl: string) => ipcRenderer.invoke('workspace:exportImage', name, dataUrl),
+    exportImageWithColor: (sourcePath: string, color: Record<string, number>) => ipcRenderer.invoke('workspace:exportImageWithColor', sourcePath, color),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
     exportVideo: (sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => ipcRenderer.invoke('workspace:exportVideo', sourcePath, color, exportMeta),
   },

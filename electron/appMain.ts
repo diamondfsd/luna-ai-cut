@@ -63,7 +63,7 @@ import { cancelBluetoothScan, scanBluetoothDevices } from './bluetoothDebugServi
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 import { safeName } from './filePathUtils'
-import { applyColorGradingToVideo } from './videoPipelineService'
+import { applyColorGradingToImage, applyColorGradingToVideo } from './videoPipelineService'
 import type {
   AiConfig,
   AppSettings,
@@ -670,6 +670,41 @@ function registerIpc(): void {
 
     return { path: destinationPath, name: fileName }
   })
+  // 图片调色导出（走 ffmpeg，与视频使用同一套 filter）
+  ipcMain.handle('workspace:exportImageWithColor', async (_event, sourcePath: string, color: Record<string, number>) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+    const baseName = path.basename(sourcePath)
+    const ext = path.extname(baseName).toLowerCase()
+    const nameBase = path.basename(baseName, ext) || 'workspace'
+    const fileName = safeName(`${nameBase}_workspace_color_${Date.now()}.png`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+
+    const colorOpts = {
+      exposure: color.exposure ?? 0,
+      brightness: color.brightness ?? 0,
+      temperature: color.temperature ?? 0,
+      tint: color.tint ?? 0,
+      contrast: color.contrast ?? 0,
+      saturation: color.saturation ?? 0,
+      vibrance: color.vibrance ?? 0,
+      shadows: color.shadows ?? 0,
+      highlights: color.highlights ?? 0,
+      whites: color.whites ?? 0,
+      blacks: color.blacks ?? 0,
+      levelsBlack: color.levelsBlack ?? 0,
+      levelsWhite: color.levelsWhite ?? 1,
+      clarity: color.clarity ?? 0,
+      texture: color.texture ?? 0,
+      sharpen: color.sharpen ?? 0,
+      denoise: color.denoise ?? 0,
+    }
+
+    await applyColorGradingToImage(sourcePath, destinationPath, colorOpts)
+    return { path: destinationPath, name: fileName }
+  })
+
   ipcMain.handle('workspace:exportVideo', async (event, sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
