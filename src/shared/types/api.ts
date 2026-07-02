@@ -80,7 +80,10 @@ export interface LunaApi {
     exportImage(name: string, dataUrl: string): Promise<{ path: string; name: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     exportColor(sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }): Promise<{ path: string; name: string }>
-    previewColor(sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }): Promise<{ path: string }>
+    previewColor(sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }): Promise<{ path: string; dataUrl: string }>
+    startVideoExport(meta: { exportId: string; taskName: string; outputName: string; width: number; height: number; fps: number }): Promise<{ exportId: string; outputPath: string; taskId: string; taskStart: number }>
+    sendVideoExportFrame(exportId: string, frameData: ArrayBuffer): Promise<void>
+    endVideoExport(exportId: string, meta: { taskId: string; taskStart: number; outputPath: string }): Promise<{ path: string; name: string }>
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void

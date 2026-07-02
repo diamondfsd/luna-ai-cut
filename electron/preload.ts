@@ -91,6 +91,9 @@ const lunaApi: LunaApi = {
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
     exportColor: (sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => ipcRenderer.invoke('workspace:exportColor', sourcePath, color, exportMeta),
     previewColor: (sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }) => ipcRenderer.invoke('workspace:previewColor', sourcePath, color, options),
+    startVideoExport: (meta) => ipcRenderer.invoke('workspace:startVideoExport', meta),
+    sendVideoExportFrame: (exportId, frameData) => ipcRenderer.invoke('workspace:sendVideoExportFrame', exportId, frameData),
+    endVideoExport: (exportId, meta) => ipcRenderer.invoke('workspace:endVideoExport', exportId, meta),
   },
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: DownloadProgress): void => callback(progress)
