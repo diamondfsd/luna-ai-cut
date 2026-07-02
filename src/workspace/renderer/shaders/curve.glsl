@@ -1,7 +1,6 @@
-// Parametric curves (RGB master, luminance, R/G/B channels) — adapted from darktable's WebGL color lab
-uniform float u_curveLift;
-uniform float u_curveContrast;
-
+// Parametric curves (5 channels: RGB master / luminance / R / G / B)
+// Point interpolation — derived from ffmpeg vf_curves.c
+// ffmpeg uses cubic spline (natural/PCHIP); GLSL uses linear for simplicity
 uniform int u_curveRgbPointCount;
 uniform int u_curveLuminancePointCount;
 uniform int u_curveRedPointCount;
@@ -21,13 +20,13 @@ float evalCurvePoints(float x, int count, vec2 points[12]) {
     if(i >= count) break;
     vec2 current = points[i];
     if(x <= current.x) {
-      float t = smoothstep(previous.x, current.x, x);
+      float t = (x - previous.x) / max(current.x - previous.x, 0.0001);
       return mix(previous.y, current.y, t);
     }
     previous = current;
   }
 
-  float t = smoothstep(previous.x, 1.0, x);
+  float t = (x - previous.x) / max(1.0 - previous.x, 0.0001);
   return mix(previous.y, 1.0, t);
 }
 
@@ -56,10 +55,5 @@ vec3 applyCurve(vec3 c) {
   if(u_curveGreenPointCount > 0) c.g = evalCurvePoints(clamp(c.g, 0.0, 1.0), u_curveGreenPointCount, u_curveGreenPoints);
   if(u_curveBluePointCount > 0) c.b = evalCurvePoints(clamp(c.b, 0.0, 1.0), u_curveBluePointCount, u_curveBluePoints);
 
-  float y = clamp(luma(c), 0.0, 1.0);
-  float sCurve = y * y * (3.0 - 2.0 * y);
-  float shaped = mix(y, sCurve, u_curveContrast);
-  shaped = sat(shaped + u_curveLift * (1.0 - abs(2.0 * y - 1.0)));
-  float ratio = y > 0.0001 ? shaped / y : 0.0;
-  return c * ratio;
+  return c;
 }

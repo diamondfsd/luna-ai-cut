@@ -59,7 +59,6 @@ void main() {
   c = applyLevels(c);
   c = applyColorBalanceRgb(c);
   c = applyCurve(c);
-  c = applyHsl(c);
   c = applySharpen(c, detail);
 
   fragColor = vec4(sat(c), 1.0);
