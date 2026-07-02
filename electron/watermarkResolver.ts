@@ -3,7 +3,7 @@ import exifr from 'exifr'
 import { concreteWatermarkStyle } from '../src/shared/insta360DeviceProfiles'
 import type { ExportFileInput, WatermarkSettings, WatermarkStyle } from '../src/shared/types'
 
-async function readExifModel(localPath?: string): Promise<string | null> {
+export async function readExifModel(localPath?: string): Promise<string | null> {
   if (!localPath) return null
   try {
     const parsed = await exifr.parse(localPath, { translateValues: false, pick: ['Model', 'Make'] }) as Record<string, unknown> | undefined

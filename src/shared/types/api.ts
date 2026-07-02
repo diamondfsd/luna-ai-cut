@@ -65,6 +65,7 @@ export interface LunaApi {
   openPath(targetPath: string): Promise<void>
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
   aiChat(config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>): Promise<string>
+  readExifModel(localPath: string): Promise<string | null>
   disconnect(host?: string): Promise<void>
   cacheFile(file: LunaFile): Promise<boolean>
   workspace: {

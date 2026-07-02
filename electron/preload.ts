@@ -76,6 +76,7 @@ const lunaApi: LunaApi = {
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
   aiChat: (config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) =>
     ipcRenderer.invoke('ai:chat', config, systemPrompt, messages),
+  readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),
   disconnect: (host?: string) => ipcRenderer.invoke('luna:disconnect', host),
   cacheFile: (file: LunaFile) => ipcRenderer.invoke('luna:cacheFile', file),
   workspace: {
