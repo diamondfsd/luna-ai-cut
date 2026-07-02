@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
-import { Button, Dialog, IconButton, Tooltip, toast } from '../ui'
+import { Button, Dialog, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
+import { logger } from '../lib/rendererLogger'
 import { WorkspaceEditProvider, useWorkspaceEdit } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
@@ -37,10 +38,12 @@ export function WorkspacePage({ workspaceMode, onEditingChange }: WorkspacePageP
     <WorkspaceEditProvider>
       <WorkspaceMediaProvider routeState={routeState} locationKey={location.key}>
         <WorkspaceCanvasProvider>
-          <WorkspacePageInner
-            workspaceMode={workspaceMode}
-            onEditingChange={onEditingChange}
-          />
+          <ErrorBoundary>
+            <WorkspacePageInner
+              workspaceMode={workspaceMode}
+              onEditingChange={onEditingChange}
+            />
+          </ErrorBoundary>
         </WorkspaceCanvasProvider>
       </WorkspaceMediaProvider>
     </WorkspaceEditProvider>
@@ -55,6 +58,20 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
   const canvas = useWorkspaceCanvas()
   const viewport = useViewport()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+
+  logger.info(`[WorkspacePage] render`, {
+    workspaceMode,
+    hasProject: !!media.currentProject,
+    projectName: media.currentProject?.name ?? null,
+    mediaCount: media.media.length,
+    activeIndex: media.activeIndex,
+    hasActiveMedia: !!media.activeMedia,
+    imageLoading: canvas.imageLoading,
+    imageError: canvas.imageError,
+    webglMessage: canvas.webglMessage,
+    canRender: canvas.canRender,
+    editorOpen: media.editorOpen,
+  })
 
   // ── Export ──
   const exportImage = useWorkspaceExport({

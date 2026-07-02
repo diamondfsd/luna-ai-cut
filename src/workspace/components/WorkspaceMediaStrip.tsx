@@ -1,10 +1,11 @@
 import { ImageOff } from 'lucide-react'
-import { type MouseEvent, useRef, useState } from 'react'
+import { type MouseEvent, useCallback, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset } from '../../shared/types'
 import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../shared/editPipeline'
 import type { PipelinePatch } from '../shared/editPipeline'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
+import { logger } from '../../lib/rendererLogger'
 
 /** 检查素材的 pipeline 是否有非默认的修改 */
 function isAssetModified(item: WorkspaceMediaAsset): boolean {
@@ -15,19 +16,39 @@ function isAssetModified(item: WorkspaceMediaAsset): boolean {
 }
 
 export function WorkspaceMediaStrip() {
-  const media = useWorkspaceMedia()
+  const { media: mediaList, setCurrentProject, setTransientMedia, brokenPaths, selectedIndices, setSelectedIndices, activeIndex, setActiveIndex, handleSelectionChange } = useWorkspaceMedia()
   const containerRef = useRef<HTMLDivElement>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [dragHighlighted, setDragHighlighted] = useState<Set<number>>(new Set())
+  const failedThumbPathsRef = useRef(new Set<string>())
+
+  // 缩略图加载失败时清除无效 URL，避免持续显示 broken image
+  const handleThumbError = useCallback((path: string) => {
+    if (failedThumbPathsRef.current.has(path)) return
+    failedThumbPathsRef.current.add(path)
+    logger.warn(`[WorkspaceMediaStrip] 缩略图加载失败，清除 URL`, { path })
+    setTransientMedia?.((prev) =>
+      prev.map((item) => (item.path === path ? { ...item, thumbnailUrl: null } : item)),
+    )
+    setCurrentProject?.((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        assets: prev.assets.map((item) =>
+          item.path === path ? { ...item, thumbnailUrl: null } : item,
+        ),
+      }
+    })
+  }, [setCurrentProject, setTransientMedia])
 
   function handleClick(index: number, event: MouseEvent): void {
     if (event.shiftKey || event.ctrlKey || event.metaKey) {
-      media.handleSelectionChange(index, { shift: event.shiftKey, ctrl: event.ctrlKey, meta: event.metaKey })
+      handleSelectionChange(index, { shift: event.shiftKey, ctrl: event.ctrlKey, meta: event.metaKey })
       return
     }
-    media.setActiveIndex(index)
-    media.setSelectedIndices(new Set([index]))
+    setActiveIndex(index)
+    setSelectedIndices(new Set([index]))
   }
 
   function handlePointerDown(e: React.PointerEvent): void {
@@ -75,12 +96,12 @@ export function WorkspaceMediaStrip() {
     setDragRect(null)
 
     if (dragHighlighted.size > 0) {
-      const toggled = new Set(media.selectedIndices)
+      const toggled = new Set(selectedIndices)
       for (const idx of dragHighlighted) {
         if (toggled.has(idx)) toggled.delete(idx)
         else toggled.add(idx)
       }
-      media.setSelectedIndices(toggled)
+      setSelectedIndices(toggled)
     }
     setDragHighlighted(new Set())
   }
@@ -94,10 +115,10 @@ export function WorkspaceMediaStrip() {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      {media.media.map((item, index) => {
-        const isBroken = media.brokenPaths.has(item.path)
-        const isActive = index === media.activeIndex
-        const isSelected = media.selectedIndices.has(index)
+      {mediaList.map((item, index) => {
+        const isBroken = brokenPaths.has(item.path)
+        const isActive = index === activeIndex
+        const isSelected = selectedIndices.has(index)
         const isDragHighlighted = dragHighlighted.has(index)
         const isModified = !isBroken && isAssetModified(item)
         return (
@@ -108,7 +129,7 @@ export function WorkspaceMediaStrip() {
             onClick={(e) => handleClick(index, e)}
           >
             {isModified && <span className="workspace-thumb-modified-dot" />}
-            {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" draggable={false} /> : <span className="workspace-thumb-label">{item.kind === 'video' ? '视频' : '图片'}</span>}
+            {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" draggable={false} onError={() => handleThumbError(item.path)} /> : <span className="workspace-thumb-label">{item.kind === 'video' ? '视频' : '图片'}</span>}
           </button>
         )
       })}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { forwardRef, useEffect, useRef } from 'react'
 import { Dialog as RadixDialog } from 'radix-ui'
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -7,9 +7,11 @@ import { acquireIndex, contentZ, overlayZ, releaseIndex } from './zIndexManager'
 
 /* ==================== Sub-components (internal, not exported) ==================== */
 
-function DialogOverlay({ style, ...props }: RadixDialog.DialogOverlayProps & { style?: React.CSSProperties }) {
-  return <RadixDialog.Overlay className="ui-dialog-overlay" style={style} {...props} />
-}
+const DialogOverlay = forwardRef<HTMLDivElement, RadixDialog.DialogOverlayProps & { style?: React.CSSProperties }>(
+  function DialogOverlay({ style, ...props }, ref) {
+    return <RadixDialog.Overlay ref={ref} className="ui-dialog-overlay" style={style} {...props} />
+  },
+)
 
 function DialogHeader({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={`ui-dialog-header ${className ?? ''}`}>{children}</div>

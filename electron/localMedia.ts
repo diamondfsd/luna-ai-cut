@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { lunaMediaAdapter } from './deviceMedia'
 import type { LunaFile } from '../src/shared/types'
+import { logMainDebug, logMainInfo } from './loggerService'
 
 function isPreviewCacheDirName(name: string): boolean {
   return name === 'cache_previews'
@@ -73,9 +74,13 @@ async function walk(dir: string): Promise<string[]> {
 }
 
 export async function listSampleFiles(sampleMediaDir?: string): Promise<LunaFile[]> {
-  if (!sampleMediaDir) return []
+  if (!sampleMediaDir) {
+    logMainInfo('[listSampleFiles] sampleMediaDir 为空，返回空数组')
+    return []
+  }
 
   const paths = await walk(sampleMediaDir)
+  logMainDebug(`[listSampleFiles] 扫描到 ${paths.length} 个文件`, { sampleMediaDir })
   const allFiles: LunaFile[] = []
 
   for (const filePath of paths) {
@@ -119,7 +124,7 @@ export async function listSampleFiles(sampleMediaDir?: string): Promise<LunaFile
     })
   }
 
-  return lunaMediaAdapter.attachRelatedFiles(allFiles)
+  const result = lunaMediaAdapter.attachRelatedFiles(allFiles)
     .map((file) => {
       const thumbnailUrl =
         file.kind === 'image'
@@ -132,4 +137,6 @@ export async function listSampleFiles(sampleMediaDir?: string): Promise<LunaFile
         canPreview: file.kind === 'image' || file.kind === 'video',
       }
     })
+  logMainInfo(`[listSampleFiles] 完成`, { sampleMediaDir, fileCount: result.length })
+  return result
 }
