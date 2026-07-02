@@ -8,7 +8,6 @@ function glLog(msg: string, err?: number): void {
 }
 
 const CROP_MODE_PREVIEW_SCALE = 0.88
-const MAX_CURVE_POINTS = 12
 
 const LUT_SIZE = 33
 
@@ -16,7 +15,6 @@ const UNIFORM_NAMES = [
   // Texture / Transform
   'u_image',
   'u_lut3d',
-  'u_useLut',
   'u_aspectRatio',
   'u_crop',
   'u_rotate',
@@ -25,49 +23,7 @@ const UNIFORM_NAMES = [
   'u_cropAspect',
   'u_frameSize',
   'u_fillScale',
-  // Exposure & Brightness
-  'u_exposure',
-  'u_brightness',
-  // White Balance
-  'u_temperature',
-  'u_tint',
-  // Tone Equalizer
-  'u_shadows',
-  'u_highlights',
-  'u_whites',
-  'u_blacks',
-  // Color Balance
-  'u_contrast',
-  'u_vibrance',
-  'u_saturation',
-  // Color Grading
-  'u_gradeShadowsHue',
-  'u_gradeShadowsAmount',
-  'u_gradeMidHue',
-  'u_gradeMidAmount',
-  'u_gradeHighlightsHue',
-  'u_gradeHighlightsAmount',
-  // Curves
-  'u_curveRgbPointCount',
-  'u_curveRgbPoints',
-  'u_curveLuminancePointCount',
-  'u_curveLuminancePoints',
-  'u_curveRedPointCount',
-  'u_curveRedPoints',
-  'u_curveGreenPointCount',
-  'u_curveGreenPoints',
-  'u_curveBluePointCount',
-  'u_curveBluePoints',
-  // Levels
-  'u_levelsBlack',
-  'u_levelsWhite',
-  'u_levelsGray',
-  // HSL (single-band)
-  'u_hue',
-  'u_hslHue',
-  'u_hslSat',
-  'u_hslLum',
-  // Detail
+  // Detail (空间滤镜不烘焙进 LUT)
   'u_texel',
   'u_clarity',
   'u_texture',
@@ -236,7 +192,7 @@ export class WebGLRenderer {
   render(pipeline: EditPipeline, options: { cropMode?: boolean } = {}): void {
     if (!this.texture) return
     const gl = this.gl
-    const activeLut = Boolean(this.useLut && this.lutTexture && this.lutKey === colorLutKey(pipeline.color))
+    const lutValid = Boolean(this.useLut && this.lutTexture && this.lutKey === colorLutKey(pipeline.color))
     gl.useProgram(this.program)
     gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
@@ -250,13 +206,13 @@ export class WebGLRenderer {
     const err0 = gl.getError()
     if (err0 !== gl.NO_ERROR) glLog('texImage2D', err0)
 
-    // 纹理单元 1：3D LUT（如果已加载）
-    if (activeLut && this.lutTexture) {
+    // 纹理单元 1：3D LUT
+    if (lutValid && this.lutTexture) {
       gl.activeTexture(gl.TEXTURE1)
       gl.bindTexture(gl.TEXTURE_3D, this.lutTexture)
     }
 
-    this.updateUniforms(pipeline, options, activeLut)
+    this.updateUniforms(pipeline, options)
     const err1 = gl.getError()
     if (err1 !== gl.NO_ERROR) glLog('updateUniforms', err1)
 
@@ -305,17 +261,13 @@ export class WebGLRenderer {
     return { r: pixels[0], g: pixels[1], b: pixels[2] }
   }
 
-  private updateUniforms(pipeline: EditPipeline, options: { cropMode?: boolean }, activeLut: boolean): void {
+  private updateUniforms(pipeline: EditPipeline, options: { cropMode?: boolean }): void {
     const gl = this.gl
 
-    // 主纹理在纹理单元 0
+    // 主纹理在纹理单元 0，3D LUT 在纹理单元 1
     gl.uniform1i(this.uniform('u_image'), 0)
-
-    // LUT 3D 纹理（可选 — 某些 GPU 驱动会优化掉未使用的 sampler3D 分支）
     const lutLoc = gl.getUniformLocation(this.program, 'u_lut3d')
-    const useLutLoc = gl.getUniformLocation(this.program, 'u_useLut')
     if (lutLoc) gl.uniform1i(lutLoc, 1)
-    if (useLutLoc) gl.uniform1f(useLutLoc, activeLut ? 1 : 0)
 
     const fullCrop = { x: 0, y: 0, w: 1, h: 1 }
     const selectionCrop = pipeline.transform.crop ?? fullCrop
@@ -355,72 +307,13 @@ export class WebGLRenderer {
     gl.uniform2f(this.uniform('u_frameSize'), currentFrameSize.width, currentFrameSize.height)
     gl.uniform1f(this.uniform('u_fillScale'), 1)
 
-    // --- Color uniforms (derived from ffmpeg filter source) ---
+    // Detail (空间滤镜不烘焙进 LUT)
     const color = pipeline.color
-
-    // Exposure (eq=gamma power law)
-    gl.uniform1f(this.uniform('u_exposure'), color.exposure)
-    // Brightness (eq=brightness — additive offset)
-    gl.uniform1f(this.uniform('u_brightness'), color.brightness)
-
-    // White Balance (colortemperature / hue)
-    gl.uniform1f(this.uniform('u_temperature'), color.temperature / 100)
-    gl.uniform1f(this.uniform('u_tint'), color.tint / 100)
-
-    // Tone Equalizer (colorbalance shadows/highlights/whites/blacks)
-    gl.uniform1f(this.uniform('u_shadows'), color.shadows / 100)
-    gl.uniform1f(this.uniform('u_highlights'), color.highlights / 100)
-    gl.uniform1f(this.uniform('u_whites'), color.whites / 100)
-    gl.uniform1f(this.uniform('u_blacks'), color.blacks / 100)
-
-    // Color Balance (eq=contrast / eq=saturation / vibrance / grading)
-    gl.uniform1f(this.uniform('u_contrast'), color.contrast / 100)
-    gl.uniform1f(this.uniform('u_vibrance'), color.vibrance / 100)
-    gl.uniform1f(this.uniform('u_saturation'), color.saturation / 100)
-
-    // Color Grading
-    gl.uniform1f(this.uniform('u_gradeShadowsHue'), color.gradeShadowsHue)
-    gl.uniform1f(this.uniform('u_gradeShadowsAmount'), color.gradeShadowsAmount / 100)
-    gl.uniform1f(this.uniform('u_gradeMidHue'), color.gradeMidHue)
-    gl.uniform1f(this.uniform('u_gradeMidAmount'), color.gradeMidAmount / 100)
-    gl.uniform1f(this.uniform('u_gradeHighlightsHue'), color.gradeHighlightsHue)
-    gl.uniform1f(this.uniform('u_gradeHighlightsAmount'), color.gradeHighlightsAmount / 100)
-
-    // Curves — per-channel point arrays
-    this.setCurvePoints('Rgb', color.curve.points.rgb)
-    this.setCurvePoints('Luminance', color.curve.points.luminance)
-    this.setCurvePoints('Red', color.curve.points.red)
-    this.setCurvePoints('Green', color.curve.points.green)
-    this.setCurvePoints('Blue', color.curve.points.blue)
-    // Levels (black / gray / white with gamma)
-    gl.uniform1f(this.uniform('u_levelsBlack'), color.levelsBlack)
-    gl.uniform1f(this.uniform('u_levelsWhite'), color.levelsWhite)
-    gl.uniform1f(this.uniform('u_levelsGray'), color.levelsGray)
-
-    // HSL single-band
-    gl.uniform1f(this.uniform('u_hue'), color.hue)
-    gl.uniform1f(this.uniform('u_hslHue'), color.hslHue)
-    gl.uniform1f(this.uniform('u_hslSat'), color.hslSat / 100)
-    gl.uniform1f(this.uniform('u_hslLum'), color.hslLum / 100)
-
-    // Detail
     gl.uniform2f(this.uniform('u_texel'), 1 / Math.max(1, this.sourceSize.width), 1 / Math.max(1, this.sourceSize.height))
     gl.uniform1f(this.uniform('u_clarity'), color.clarity / 100)
     gl.uniform1f(this.uniform('u_texture'), color.texture / 100)
     gl.uniform1f(this.uniform('u_sharpen'), color.sharpen / 100)
     gl.uniform1f(this.uniform('u_denoise'), color.denoise / 100)
-  }
-
-  private setCurvePoints(name: string, points: Array<{ x: number; y: number }>): void {
-    const gl = this.gl
-    const safe = points.slice(0, MAX_CURVE_POINTS)
-    gl.uniform1i(this.uniform(`u_curve${name}PointCount`), safe.length)
-    const data = new Float32Array(MAX_CURVE_POINTS * 2)
-    safe.forEach((point, index) => {
-      data[index * 2] = point.x
-      data[index * 2 + 1] = point.y
-    })
-    gl.uniform2fv(this.uniform(`u_curve${name}Points`), data)
   }
 
   private initGeometry(): void {
