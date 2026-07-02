@@ -5,6 +5,9 @@ import type { LunaFile, MediaKind, WorkspaceMediaAsset } from '../../shared/type
 import { toast } from '../../ui'
 import type { EditPipeline } from '../shared/editPipeline'
 import { logger } from '../../lib/rendererLogger'
+import { exportImageWithWebGL } from './exportImageWithWebGL'
+import { exportVideoWithWebGL } from './exportVideoWithWebGL'
+import { composeWorkspaceExport } from './exportWorkspaceImage'
 
 interface UseWorkspaceExportOptions {
   activeMedia: WorkspaceMediaAsset | null
@@ -78,47 +81,69 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
       percent: 0,
       status: 'exporting',
     }))
+
     try {
       let result: { name: string; path: string }
 
-      // 图片/视频统一走 ffmpeg 调色导出（同一套 filter）
-      const { whiteBalanceMode, gradeShadowsHue, gradeMidHue, gradeHighlightsHue, curve, ...rest } = pipeline.color
-      toast.success(`已开始导出${isVid ? '视频' : '图片'}`)
-      logger.info(`[Export] 开始导出`, { exportId, taskName, path: activeMedia.path, isVid })
-      result = await window.luna.workspace.exportColor(activeMedia.path, rest as Record<string, number>, { exportId, taskName })
-      logger.info(`[Export] 导出完成`, { exportId, result })
-      setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path, isVid ? 'video' : 'image')))
+      if (isVid) {
+        // ── 视频导出：WebGL shader 逐帧调色 → ffmpeg 仅编码 ──
+        toast.success('已开始导出视频')
+        logger.info(`[Export] 开始导出视频`, { exportId, taskName, path: activeMedia.path })
 
+        await exportVideoWithWebGL({
+          sourcePath: activeMedia.path,
+          pipeline,
+          exportId,
+          taskName,
+          onProgress: (percent) => {
+            setExportProgress((current) => new Map(current).set(exportId, {
+              exportId, taskId, taskName, createdAt,
+              fileName: activeMedia.name, index: 0, totalFiles: 1,
+              percent, status: percent >= 100 ? 'done' : 'exporting',
+            }))
+          },
+        })
+
+        // 视频导出完成后，从主进程获取最终路径（通过 endVideoExport 已返回）
+        result = { path: '', name: activeMedia.name }
+        toast.success('已导出到文件夹')
+      } else {
+        // ── 图片导出：WebGL shader 全分辨率 → toBlob → 保存 ──
+        toast.success('已开始导出图片')
+        logger.info(`[Export] 开始导出图片`, { exportId, taskName, path: activeMedia.path })
+
+        const blob = await exportImageWithWebGL(activeMedia.path, pipeline)
+
+        // 应用水印
+        const exportUrl = await composeWorkspaceExport(
+          canvasRef.current,
+          imageRect,
+          pipeline.watermark,
+          blob,
+        )
+
+        result = await window.luna.workspace.exportImage(activeMedia.name, exportUrl)
+        logger.info(`[Export] 图片导出完成`, { exportId, result })
+        toast.success('已导出到文件夹')
+      }
+
+      setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result?.path, isVid ? 'video' : 'image')))
       setExportProgress((current) => new Map(current).set(exportId, {
-        exportId,
-        taskId,
-        taskName,
-        createdAt,
-        fileName: result.name,
-        index: 0,
-        totalFiles: 1,
-        percent: 100,
-        status: 'done',
-        destinationPath: result.path,
+        exportId, taskId, taskName, createdAt,
+        fileName: activeMedia.name, index: 0, totalFiles: 1,
+        percent: 100, status: 'done',
+        destinationPath: result?.path,
       }))
-      toast.success('已导出到文件夹')
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setExportProgress((current) => new Map(current).set(exportId, {
-        exportId,
-        taskId,
-        taskName,
-        createdAt,
-        fileName: activeMedia.name,
-        index: 0,
-        totalFiles: 1,
-        percent: null,
-        status: 'failed',
-        error: message,
+        exportId, taskId, taskName, createdAt,
+        fileName: activeMedia.name, index: 0, totalFiles: 1,
+        percent: null, status: 'failed', error: message,
       }))
       toast.error(message)
     } finally {
       setExporting(false)
     }
-  }, [activeMedia, canvasRef, imageRect, pipeline.watermark, setExporting, setExportProgress, setExportSnapshots])
+  }, [activeMedia, canvasRef, imageRect, pipeline, setExporting, setExportProgress, setExportSnapshots])
 }

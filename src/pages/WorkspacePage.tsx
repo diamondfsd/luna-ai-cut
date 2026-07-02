@@ -78,7 +78,7 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
     hasActiveMedia: !!media.activeMedia,
     imageLoading: canvas.imageLoading,
     imageError: canvas.imageError,
-    previewMessage: canvas.previewMessage,
+    webglMessage: canvas.webglMessage,
     canRender: canvas.canRender,
     editorOpen: media.editorOpen,
   })
@@ -112,7 +112,7 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
       edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline,
       { cropMode: edit.cropActive },
     )
-  }, [edit.compareOriginal, edit.previewPipeline, edit.comparePipeline, edit.cropActive, canvas.render, canvas.renderKey])
+  }, [edit.compareOriginal, edit.previewPipeline, edit.comparePipeline, edit.cropActive, canvas.render])
 
   // ── Initialize pipeline / reset crop when active asset changes ──
   useEffect(() => {
@@ -280,11 +280,11 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
             {edit.cropActive && canvas.canRender && <CropOverlay />}
           </div>
           {/* Status overlay */}
-          {(canvas.imageLoading || canvas.imageError || canvas.previewMessage || !media.activeMedia) && (
+          {(canvas.imageLoading || canvas.imageError || canvas.webglMessage || !media.activeMedia) && (
             <div className="workspace-stage-status">
               {canvas.imageLoading && <span>加载预览中...</span>}
               {!canvas.imageLoading && canvas.imageError && <span>{canvas.imageError}</span>}
-              {!canvas.imageLoading && !canvas.imageError && canvas.previewMessage && <span>{canvas.previewMessage}</span>}
+              {!canvas.imageLoading && !canvas.imageError && canvas.webglMessage && <span>{canvas.webglMessage}</span>}
               {!canvas.imageLoading && !canvas.imageError && !media.activeMedia && <span>暂无素材</span>}
             </div>
           )}
