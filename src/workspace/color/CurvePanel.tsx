@@ -36,7 +36,6 @@ export function CurvePanel({ value, modified, onChange }: CurvePanelProps) {
         onChange={(activeChannel) => onChange({ curve: { ...value.curve, activeChannel: activeChannel as ToneCurveChannel } })}
       />
       <CurvePreview points={activePoints} onChange={(points) => updateCurve(activeCurveChannel, points)} />
-      <p className="workspace-help-text">点击曲线添加节点，拖动调整，双击或右键删除</p>
       <ParamSlider label="输入黑点" value={value.levelsBlack} {...sliderRange(EDIT_PARAMETER_RANGES.levels.black)} onChange={(levelsBlack) => onChange({ levelsBlack })} />
       <ParamSlider label="中间调" value={value.levelsGray} {...sliderRange(EDIT_PARAMETER_RANGES.levels.gray)} onChange={(levelsGray) => onChange({ levelsGray })} />
       <ParamSlider label="输入白点" value={value.levelsWhite} {...sliderRange(EDIT_PARAMETER_RANGES.levels.white)} onChange={(levelsWhite) => onChange({ levelsWhite })} />
