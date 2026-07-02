@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
-import type { ExportTaskItemRecord, ExportTaskRecord, LunaFile, MediaKind } from '../shared/types'
-import { filePathToLunaFile, filePathToPreviewUrl } from './previewModalUtils'
+import type { ExportTaskItemRecord, ExportTaskRecord } from '../shared/types'
+import { showPreviewModal } from './previewModalService'
 import { useApp } from '../context/AppContext'
 import { IconButton } from '../ui'
 import { Table, type Column } from '../ui/Table'
-import { PreviewModal } from './PreviewModal'
 import '../styles/export-tasks.css'
 
 function formatTime(ts: number | null | undefined): string {
@@ -89,8 +88,6 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
-  const [previewFiles, setPreviewFiles] = useState<LunaFile[] | null>(null)
-  const [previewIndex, setPreviewIndex] = useState(0)
 
   const loadTasks = async () => {
     setLoading(true)
@@ -129,23 +126,13 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
 
   const handlePreviewItem = (item: ExportTaskItemRecord): void => {
     if (!item.destinationPath) return
-    // 只收集被点击任务的文件，构建设可切换的列表
     const task = tasks.find((t) => t.items.some((i) => i.exportId === item.exportId))
     if (!task) return
-    const taskFiles = task.items
+    const filePaths = task.items
       .filter((i) => i.destinationPath && i.status === 'done')
-      .map((i) =>
-        filePathToLunaFile(i.destinationPath!, {
-          id: i.exportId,
-          kind: i.kind as MediaKind,
-          downloadName: i.fileName,
-          thumbnailUrl: filePathToPreviewUrl(i.destinationPath),
-        }),
-      )
-    if (taskFiles.length === 0) return
-    const index = taskFiles.findIndex((f) => f.id === item.exportId)
-    setPreviewFiles(taskFiles)
-    setPreviewIndex(index >= 0 ? index : 0)
+      .map((i) => i.destinationPath!)
+    if (filePaths.length === 0) return
+    showPreviewModal(item.destinationPath, filePaths)
   }
 
   const handleCancelTask = async (taskId: string): Promise<void> => {
@@ -294,19 +281,6 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         </div>
       )}
 
-      {previewFiles && previewFiles.length > 0 && (
-        <PreviewModal
-          filePath={previewFiles[previewIndex].downloadFilePath ?? previewFiles[previewIndex].localPath ?? ''}
-          files={previewFiles}
-          currentFile={previewFiles[previewIndex]}
-          onFileChange={(f) => {
-            const idx = previewFiles.findIndex((pf) => pf.id === f.id)
-            if (idx >= 0) setPreviewIndex(idx)
-          }}
-          onClose={() => setPreviewFiles(null)}
-          onReveal={(f) => onRevealFile?.(f.downloadFilePath ?? f.localPath ?? '')}
-        />
-      )}
     </>
   )
 }

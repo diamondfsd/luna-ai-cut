@@ -56,6 +56,7 @@ const lunaApi: LunaApi = {
   listExportFiles: (exportDir?: string) => ipcRenderer.invoke('exports:listFiles', exportDir),
   previewFile: (file: LunaFile, files: LunaFile[]) => ipcRenderer.invoke('luna:previewFile', file, files),
   previewLivePhoto: (file: LunaFile) => ipcRenderer.invoke('luna:previewLivePhoto', file),
+  resolveThumbnail: (filePath: string, kind?: string) => ipcRenderer.invoke('luna:resolveThumbnail', filePath, kind),
   getMediaMetadata: (file: LunaFile, cachedPath?: string | null) => ipcRenderer.invoke('luna:metadata', file, cachedPath),
   previewWithWatermark: (file: LunaFile, sourcePath: string, settings: WatermarkSettings) =>
     ipcRenderer.invoke('luna:previewWithWatermark', file, sourcePath, settings),

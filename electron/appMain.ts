@@ -559,6 +559,19 @@ function registerIpc(): void {
     return listExportFiles(resolvedDir)
   })
 
+  /** 根据文件路径解析缩略图 URL（图片用 file://，视频生成缩略图后返回） */
+  ipcMain.handle('luna:resolveThumbnail', async (_event, filePath: string, kind?: string) => {
+    const cacheDir = await previewCacheDir()
+    const thumbDir = thumbnailDir(cacheDir)
+    const fileId = path.basename(filePath).replace(path.extname(filePath), '')
+    // 检查或生成缩略图
+    const thumbPath = await enqueueThumbnailGeneration(filePath, thumbDir, fileId, kind, path.basename(filePath))
+    if (thumbPath) {
+      return pathToFileURL(thumbPath).toString()
+    }
+    return null
+  })
+
   ipcMain.handle('luna:previewFile', async (_event, file: LunaFile) => {
     return enqueuePreviewTask(async () => {
       await ensureCameraSessionForFile(file)
