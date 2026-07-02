@@ -706,11 +706,20 @@ function registerIpc(): void {
       denoise: color.denoise ?? 0,
     }
 
-    // 将 ffmpeg 进度推送到前端（同一 exportId）
     const win = BrowserWindow.fromWebContents(event.sender)
+    const kind = 'video'
+    const taskStart = Date.now()
+
+    // 先创建导出任务（table 能立刻看到）
+    logMainInfo(`[workspace:exportVideo] 创建导出任务`, { exportId, taskName })
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
+    logMainInfo(`[workspace:exportVideo] 任务已创建`, { taskId: task.id, exportId })
+
+    // 执行 ffmpeg，同时推进度到前端 + 更新后端任务
     await applyColorGradingToVideo(sourcePath, destinationPath, colorOpts, (percent) => {
       const pct = Math.round(percent)
       logMainDebug(`[workspace:exportVideo] 进度`, { exportId, percent: pct })
+      // 前端 React state
       win?.webContents.send('export:progress', {
         exportId,
         percent: pct,
@@ -720,18 +729,19 @@ function registerIpc(): void {
         index: 0,
         totalFiles: 1,
       })
+      // 后端 ExportTaskTable
+      updateTaskItemProgress(task.id, exportId, taskStart, pct, pct >= 100 ? 'done' : 'exporting', {
+        destinationPath,
+      }).catch(() => {})
     })
 
-    const kind = 'video'
-    logMainInfo(`[workspace:exportVideo] ffmpeg 完成，创建导出任务`, { exportId, destinationPath })
-    const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
-    const taskStart = Date.now()
+    // ffmpeg 完成 → 标记 100%
+    logMainInfo(`[workspace:exportVideo] ffmpeg 完成`)
     await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
       endTime: Date.now(),
       duration: Date.now() - taskStart,
       destinationPath,
     })
-    logMainInfo(`[workspace:exportVideo] 导出任务创建完成`, { taskId: task.id, exportId })
 
     return { path: destinationPath, name: fileName }
   })
