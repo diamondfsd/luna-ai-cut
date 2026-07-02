@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
 import type { ExportTaskItemRecord, ExportTaskRecord, LunaFile, MediaKind } from '../shared/types'
-import { filePathToLunaFile } from './previewModalUtils'
+import { filePathToLunaFile, filePathToPreviewUrl } from './previewModalUtils'
 import { useApp } from '../context/AppContext'
 import { IconButton } from '../ui'
 import { Table, type Column } from '../ui/Table'
@@ -129,21 +129,22 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
 
   const handlePreviewItem = (item: ExportTaskItemRecord): void => {
     if (!item.destinationPath) return
-    // 收集所有导出任务中已完成的文件，构建可切换的文件列表
-    const allFiles = tasks.flatMap((t) =>
-      t.items
-        .filter((i) => i.destinationPath && i.status === 'done')
-        .map((i) =>
-          filePathToLunaFile(i.destinationPath!, {
-            id: i.exportId,
-            kind: i.kind as MediaKind,
-            downloadName: i.fileName,
-          }),
-        ),
-    )
-    if (allFiles.length === 0) return
-    const index = allFiles.findIndex((f) => f.id === item.exportId)
-    setPreviewFiles(allFiles)
+    // 只收集被点击任务的文件，构建设可切换的列表
+    const task = tasks.find((t) => t.items.some((i) => i.exportId === item.exportId))
+    if (!task) return
+    const taskFiles = task.items
+      .filter((i) => i.destinationPath && i.status === 'done')
+      .map((i) =>
+        filePathToLunaFile(i.destinationPath!, {
+          id: i.exportId,
+          kind: i.kind as MediaKind,
+          downloadName: i.fileName,
+          thumbnailUrl: filePathToPreviewUrl(i.destinationPath),
+        }),
+      )
+    if (taskFiles.length === 0) return
+    const index = taskFiles.findIndex((f) => f.id === item.exportId)
+    setPreviewFiles(taskFiles)
     setPreviewIndex(index >= 0 ? index : 0)
   }
 
