@@ -827,16 +827,21 @@ function registerIpc(): void {
     return { exportId, outputPath, taskId: task.id, taskStart }
   })
 
-  let _frameCounter = 0
-  ipcMain.handle('workspace:sendVideoExportFrame', async (_event, exportId: string, frameData: ArrayBuffer) => {
+  const exportVideoFrameCount = new Map<string, number>()
+  ipcMain.handle('workspace:sendVideoExportFrame', async (_event, exportId: string, frameData: ArrayBuffer, meta?: { totalFrames: number; taskId: string; taskStart: number }) => {
     const encoder = activeExportEncoders.get(exportId)
     if (!encoder || encoder.killed) {
       logMainWarn(`[videoExport] encoder not found for ${exportId}, skipping frame`)
       return
     }
-    _frameCounter++
-    if (_frameCounter % 30 === 0 || _frameCounter === 1) {
-      logMainInfo(`[videoExport] 收到帧 #${_frameCounter}`, { size: frameData.byteLength })
+    const count = (exportVideoFrameCount.get(exportId) ?? 0) + 1
+    exportVideoFrameCount.set(exportId, count)
+
+    // 每 30 帧更新一次任务进度
+    if (meta && (count % 30 === 0 || count === 1)) {
+      const pct = Math.round((count / meta.totalFrames) * 100)
+      logMainInfo(`[videoExport] 任务进度 ${count}/${meta.totalFrames} (${pct}%)`, { exportId })
+      await updateTaskItemProgress(meta.taskId, exportId, meta.taskStart, pct, pct >= 100 ? 'done' : 'exporting', {}).catch(() => {})
     }
     return new Promise<void>((resolve, reject) => {
       const canContinue = encoder.stdin.write(Buffer.from(frameData), (err) => {
