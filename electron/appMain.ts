@@ -63,7 +63,7 @@ import { cancelBluetoothScan, scanBluetoothDevices } from './bluetoothDebugServi
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 import { safeName } from './filePathUtils'
-import { applyColorGrading } from './videoPipelineService'
+import { applyColorGrading, previewColorFrame } from './videoPipelineService'
 import type {
   AiConfig,
   AppSettings,
@@ -670,6 +670,32 @@ function registerIpc(): void {
 
     return { path: destinationPath, name: fileName }
   })
+  // 快速预览帧 — 降分辨率跑 ffmpeg 调色，替代 WebGL 预览
+  ipcMain.handle('workspace:previewColor', async (_event, sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }) => {
+    const cacheDir = await previewCacheDir()
+    const baseName = path.basename(sourcePath)
+    const ext = path.extname(baseName)
+    const nameBase = path.basename(baseName, ext)
+    const maxSize = options?.maxSize ?? 480
+    const fileName = safeName(`preview_${nameBase}_${maxSize}_${Date.now()}.jpg`)
+    const outputPath = path.join(cacheDir, fileName)
+
+    const colorOpts = {
+      exposure: color.exposure ?? 0, brightness: color.brightness ?? 0,
+      temperature: color.temperature ?? 0, tint: color.tint ?? 0,
+      contrast: color.contrast ?? 0, saturation: color.saturation ?? 0,
+      vibrance: color.vibrance ?? 0,
+      shadows: color.shadows ?? 0, highlights: color.highlights ?? 0,
+      whites: color.whites ?? 0, blacks: color.blacks ?? 0,
+      levelsBlack: color.levelsBlack ?? 0, levelsWhite: color.levelsWhite ?? 1,
+      clarity: color.clarity ?? 0, texture: color.texture ?? 0,
+      sharpen: color.sharpen ?? 0, denoise: color.denoise ?? 0,
+    }
+
+    await previewColorFrame(sourcePath, outputPath, colorOpts, { maxSize, seekSeconds: options?.seekSeconds })
+    return { path: outputPath }
+  })
+
   // 统一调色导出（图片/视频共用，由输出文件扩展名决定编码）
   ipcMain.handle('workspace:exportColor', async (event, sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => {
     const settings = await getSettings()

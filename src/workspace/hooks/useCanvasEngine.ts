@@ -1,25 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { EditPipeline } from '../shared/editPipeline'
-import { DEFAULT_PIPELINE } from '../shared/editPipeline'
 import type { ImageCacheEntry } from '../shared/imageCache'
 import { workspaceImageCache } from '../shared/imageCache'
-import { checkWebGLSupport } from '../renderer/webglCheck'
-import { WebGLRenderer } from '../renderer/webglRenderer'
 import { filePathToPreviewUrl } from '../../components/previewModalUtils'
+import { logger } from '../../lib/rendererLogger'
 
 export interface CanvasEngineOptions {
   editorOpen: boolean
   activeMedia: { path: string } | null
-  /** Called after an image loads successfully, to update thumbnail URL */
   onThumbnailReady?: (entry: ImageCacheEntry) => void
-  /** Called when image loading fails with a broken-path error */
   onBrokenPath?: (path: string) => void
-  /** Called when WebGL fails */
-  onWebglError?: (message: string) => void
+  /** Called when ffmpeg preview is unavailable */
+  /** Called when preview fails */
+  onPreviewError?: (message: string) => void
 }
 
 const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'mts', 'insv', 'lrv'])
+const PREVIEW_MAX_SIZE = 480
 
 function isVideoPath(path: string): boolean {
   const segments = path.split('.')
@@ -27,19 +25,29 @@ function isVideoPath(path: string): boolean {
   return VIDEO_EXTS.has(ext)
 }
 
+function colorParamsFromPipeline(color: EditPipeline['color']): Record<string, number> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { whiteBalanceMode, gradeShadowsHue, gradeMidHue, gradeHighlightsHue, curve, ...rest } = color
+  return rest as Record<string, number>
+}
+
 export function useCanvasEngine(options: CanvasEngineOptions) {
-  const { editorOpen, activeMedia, onThumbnailReady, onBrokenPath, onWebglError } = options
+  const { activeMedia, onPreviewError } = options
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
-  const rendererRef = useRef<WebGLRenderer | null>(null)
   const canceledRef = useRef(false)
+  const rafRef = useRef<number | null>(null)
+  const onThumbnailReadyRef = useRef(options.onThumbnailReady)
+  onThumbnailReadyRef.current = options.onThumbnailReady
+  // 防抖定时器
+  const debounceRef = useRef<number | null>(null)
+
+  // ── 当前预览图片的 URL（ffmpeg 输出） ──
+  const previewUrlRef = useRef<string | null>(null)
 
   // ── Video state ──
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const rafRef = useRef<number | null>(null)
-  // 存储最近一次渲染的 pipeline，供 RAF 循环使用
-  const lastPipelineRef = useRef<EditPipeline>(DEFAULT_PIPELINE)
   const [isVideo, setIsVideo] = useState(false)
   const [videoPlaying, setVideoPlaying] = useState(false)
   const [videoDuration, setVideoDuration] = useState(0)
@@ -48,20 +56,97 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
   // ── Core state ──
   const [imageLoading, setImageLoading] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
-  const [webglMessage, setWebglMessage] = useState<string | null>(null)
+  const [previewMessage, setPreviewMessage] = useState<string | null>(null)
   const [imageRect, setImageRect] = useState({ x: 0, y: 0, width: 1, height: 1 })
   const [sourceAspect, setSourceAspect] = useState(1)
   const [rendererReady, setRendererReady] = useState(false)
   const [renderKey, setRenderKey] = useState(0)
 
   // ═══════════════════════════════════════════════
-  //  RAF 循环
+  //  渲染 — ffmpeg 预览（替代 WebGL）
+  // ═══════════════════════════════════════════════
+
+  const render = useCallback((pipeline: EditPipeline, _opts?: { cropMode?: boolean }) => {
+    const colors = colorParamsFromPipeline(pipeline.color)
+    const srcPath = activeMedia?.path
+    if (!srcPath || !canvasRef.current) return
+
+    // 防抖 150ms，避免滑块拖动时频繁 IPC
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = window.setTimeout(async () => {
+      try {
+        const result = await window.luna.workspace.previewColor(srcPath, colors, {
+          maxSize: PREVIEW_MAX_SIZE,
+          seekSeconds: videoRef.current?.currentTime,
+        })
+        if (!result?.path || canceledRef.current) return
+
+        // Load the preview image onto canvas
+        const img = new Image()
+        img.onload = () => {
+          if (canceledRef.current) return
+          const canvas = canvasRef.current
+          if (!canvas) return
+          canvas.width = img.width
+          canvas.height = img.height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) return
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+          ctx.drawImage(img, 0, 0)
+
+          // Update display rect
+          const stage = stageRef.current
+          if (stage) {
+            const bounds = stage.getBoundingClientRect()
+            const containW = Math.min(bounds.width, bounds.height * (img.width / img.height))
+            const containH = Math.min(bounds.height, bounds.width / (img.width / img.height))
+            setImageRect({
+              x: (bounds.width - containW) / 2,
+              y: (bounds.height - containH) / 2,
+              width: containW,
+              height: containH,
+            })
+            setSourceAspect(img.width / img.height)
+          }
+          setImageLoading(false)
+          setRenderKey((k) => k + 1)
+          // Revoke old preview URL
+          if (previewUrlRef.current && previewUrlRef.current !== result.path) {
+            URL.revokeObjectURL(previewUrlRef.current)
+          }
+          previewUrlRef.current = result.path
+        }
+        img.onerror = () => {
+          logger.warn('[CanvasEngine] 预览图片加载失败', { path: result.path })
+        }
+        // Local file path → use file:// URL
+        img.src = `file://${result.path}`
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        logger.warn('[CanvasEngine] ffmpeg预览失败', { error: msg })
+        onPreviewError?.(msg)
+      }
+    }, 150)
+  }, [activeMedia?.path, onPreviewError])
+
+  // ═══════════════════════════════════════════════
+  //  RAF 循环（视频专用）
   // ═══════════════════════════════════════════════
 
   const startRafLoop = useCallback(() => {
     if (rafRef.current !== null) return
     function frame(): void {
-      rendererRef.current?.render(lastPipelineRef.current, { cropMode: false })
+      // 视频播放时，定期从 video 元素截帧到 canvas
+      const vid = videoRef.current
+      const canvas = canvasRef.current
+      if (vid && canvas && !vid.paused) {
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          canvas.width = vid.videoWidth
+          canvas.height = vid.videoHeight
+          ctx.drawImage(vid, 0, 0, canvas.width, canvas.height)
+        }
+      }
       rafRef.current = requestAnimationFrame(frame)
     }
     rafRef.current = requestAnimationFrame(frame)
@@ -95,107 +180,34 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
   }, [stopRafLoop])
 
   // ═══════════════════════════════════════════════
-  //  WebGL 检测
+  //  加载媒体文件（图片 → 直接显示；视频 → video element + ffmpeg 帧处理）
   // ═══════════════════════════════════════════════
 
   useEffect(() => {
-    const support = checkWebGLSupport()
-    if (!support.supported) {
-      setWebglMessage(support.message ?? '当前设备不支持工作台渲染')
-      onWebglError?.(support.message ?? '当前设备不支持工作台渲染')
-      return
-    }
-    if (support.message && !support.message.includes('不支持')) {
-      setWebglMessage(support.message)
-    }
-  }, [onWebglError])
-
-  // ═══════════════════════════════════════════════
-  //  WebGL 渲染器初始化
-  // ═══════════════════════════════════════════════
-
-  useEffect(() => {
-    if (!editorOpen || !canvasRef.current || rendererRef.current || webglMessage?.includes('不支持')) {
-      return
-    }
-    try {
-      rendererRef.current = new WebGLRenderer(canvasRef.current)
-      const bounds = canvasRef.current.getBoundingClientRect()
-      rendererRef.current.resize(bounds.width, bounds.height)
-      updateImageRect()
-      setRendererReady(true)
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      setWebglMessage(msg)
-      onWebglError?.(msg)
-    }
-    const renderer = rendererRef.current
-    return () => {
-      cleanupVideo()
-      renderer?.destroy()
-      rendererRef.current = null
-      setRendererReady(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorOpen, webglMessage])
-
-  // ═══════════════════════════════════════════════
-  //  更新显示区域
-  // ═══════════════════════════════════════════════
-
-  const updateImageRect = useCallback(() => {
-    const rect = rendererRef.current?.getDisplayRect()
-    if (rect) setImageRect(rect)
-    const aspect = rendererRef.current?.getSourceAspect()
-    if (aspect) setSourceAspect(aspect)
-  }, [])
-
-  // ═══════════════════════════════════════════════
-  //  渲染 — 外部调用（page 层 pipeline 变化时触发）
-  // ═══════════════════════════════════════════════
-
-  const render = useCallback((pipeline: EditPipeline, opts?: { cropMode?: boolean }) => {
-    lastPipelineRef.current = pipeline
-    rendererRef.current?.render(pipeline, { cropMode: opts?.cropMode ?? false })
-    // 每次渲染后更新裁剪区域坐标，确保 CropOverlay 跟随图片
-    updateImageRect()
-  }, [updateImageRect])
-
-  // ═══════════════════════════════════════════════
-  //  Callback refs（避免 effect 重复触发）
-  // ═══════════════════════════════════════════════
-
-  const onThumbnailReadyRef = useRef(onThumbnailReady)
-  onThumbnailReadyRef.current = onThumbnailReady
-  const onBrokenPathRef = useRef(onBrokenPath)
-  onBrokenPathRef.current = onBrokenPath
-
-  // ═══════════════════════════════════════════════
-  //  加载媒体文件（图片 → ImageCache； 视频 → ImageCache + video element）
-  // ═══════════════════════════════════════════════
-
-  useEffect(() => {
-    if (!activeMedia || !rendererReady) return
+    if (!activeMedia) return
     let canceled = false
     canceledRef.current = false
     setImageLoading(true)
     setImageError(null)
-
-    // 清除旧纹理，避免切换时旧纹理 + 新参数渲染
-    rendererRef.current?.clearSource()
+    setPreviewMessage(null)
 
     const filePath = activeMedia.path
     const isVid = isVideoPath(filePath)
 
     if (isVid) {
-      // ── 视频：创建隐藏 <video> 元素 ──
       setIsVideo(true)
 
-      // 先用 ImageCache 帧快速占位，避免黑屏
+      // 先用 ImageCache 帧快速占位
       workspaceImageCache.generate(filePath).then((entry) => {
-        if (!canceled && rendererRef.current && !rendererRef.current.hasVideoSource()) {
-          rendererRef.current?.loadImage(entry.previewBitmap)
-          updateImageRect()
+        if (!canceled) {
+          const canvas = canvasRef.current
+          if (canvas) {
+            canvas.width = entry.previewBitmap.width
+            canvas.height = entry.previewBitmap.height
+            const ctx = canvas.getContext('2d')
+            ctx?.drawImage(entry.previewBitmap, 0, 0)
+            updateImageRect(entry.previewBitmap.width, entry.previewBitmap.height)
+          }
           setRenderKey((k) => k + 1)
         }
         if (!canceled) onThumbnailReadyRef.current?.(entry)
@@ -212,18 +224,14 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
         if (canceled || videoReady) return
         videoReady = true
         if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
-        rendererRef.current?.loadVideo(video)
-        updateImageRect()
         setImageLoading(false)
         setRenderKey((k) => k + 1)
       }
 
-      // loadedmetadata：记录时长，但不触发渲染（此时尚无解码帧）
       video.addEventListener('loadedmetadata', () => {
         clearTimeout(timeoutId)
         if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
       }, { once: true })
-      // canplay：确保第一帧已解码，此时才绑定纹理到 WebGL
       video.addEventListener('canplay', onVideoReady, { once: true })
 
       video.addEventListener('timeupdate', () => {
@@ -238,21 +246,17 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
 
       video.addEventListener('seeked', () => {
         if (!canceled) {
-          setRenderKey((k) => k + 1)
           setVideoCurrentTime(video.currentTime)
         }
       })
 
-      // 视频加载失败 — 保留 isVideo=true（控件可见），用 ImageCache 帧垫底
       video.addEventListener('error', () => {
         if (canceled) return
         clearTimeout(timeoutId)
         setImageLoading(false)
-        // 尝试用 ImageCache 帧触发渲染
         setRenderKey((k) => k + 1)
       })
 
-      // 10 秒超时 — 仍未就绪时 fallback 到 ImageCache 帧
       const timeoutId = window.setTimeout(() => {
         if (canceled || videoReady) return
         setImageLoading(false)
@@ -263,53 +267,64 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
       if (url) video.src = url
       videoRef.current = video
     } else {
-      // ── 图片：走 ImageCache ──
-      workspaceImageCache.generate(filePath)
-        .then((entry) => {
-          if (canceled) return
-          rendererRef.current?.loadImage(entry.previewBitmap)
-          updateImageRect()
-          onThumbnailReadyRef.current?.(entry)
-          setRenderKey((k) => k + 1)
-        })
-        .catch((error) => {
-          if (canceled) return
-          const msg = error instanceof Error ? error.message : String(error)
-          setImageError(msg)
-          if (
-            msg.includes('Input file is missing') ||
-            msg.includes('文件不存在') ||
-            msg.includes('no such file') ||
-            msg.includes('ENOENT')
-          ) {
-            onBrokenPathRef.current?.(filePath)
-          }
-        })
-        .finally(() => {
-          if (!canceled) setImageLoading(false)
-        })
+      // 图片：直接加载原始图到 canvas
+      const img = new Image()
+      img.onload = () => {
+        if (canceled) return
+        const canvas = canvasRef.current
+        if (!canvas) return
+        canvas.width = img.width
+        canvas.height = img.height
+        const ctx = canvas.getContext('2d')
+        if (ctx) ctx.drawImage(img, 0, 0)
+        updateImageRect(img.width, img.height)
+        setImageLoading(false)
+        setRendererReady(true)
+        setRenderKey((k) => k + 1)
+      }
+      img.onerror = () => {
+        if (canceled) return
+        setImageError('加载失败')
+        setImageLoading(false)
+      }
+      img.src = filePathToPreviewUrl(filePath) ?? `file://${filePath}`
     }
 
     return () => {
       canceled = true
       canceledRef.current = true
-      if (isVid) {
-        cleanupVideo()
-      }
+      if (isVid) cleanupVideo()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMedia?.path, rendererReady, updateImageRect])
+  }, [activeMedia?.path])
+
+  // ═══════════════════════════════════════════════
+  //  更新显示区域
+  // ═══════════════════════════════════════════════
+
+  const updateImageRect = useCallback((w?: number, h?: number) => {
+    const stage = stageRef.current
+    if (!stage) return
+    const bounds = stage.getBoundingClientRect()
+    const aspect = (w && h) ? w / h : (sourceAspect || 1)
+    const containW = Math.min(bounds.width, bounds.height * aspect)
+    const containH = Math.min(bounds.height, bounds.width / aspect)
+    setImageRect({
+      x: (bounds.width - containW) / 2,
+      y: (bounds.height - containH) / 2,
+      width: containW,
+      height: containH,
+    })
+    if (w && h) setSourceAspect(aspect)
+  }, [sourceAspect])
 
   // ═══════════════════════════════════════════════
   //  窗口尺寸变化
   // ═══════════════════════════════════════════════
 
   useEffect(() => {
-    if (!stageRef.current || !rendererRef.current) return
+    if (!stageRef.current) return
     const observer = new ResizeObserver(() => {
-      const bounds = stageRef.current?.getBoundingClientRect()
-      if (!bounds) return
-      rendererRef.current?.resize(bounds.width, bounds.height)
       updateImageRect()
       setRenderKey((k) => k + 1)
     })
@@ -318,7 +333,7 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
   }, [updateImageRect])
 
   // ═══════════════════════════════════════════════
-  //  视频播放控制（暴露给外部）
+  //  视频播放控制
   // ═══════════════════════════════════════════════
 
   const playVideo = useCallback(() => {
@@ -349,29 +364,27 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     else playVideo()
   }, [videoPlaying, playVideo, pauseVideo])
 
-  // ── 当 activeMedia 从视频切换到其他时清理视频 ──
   useEffect(() => {
     if (isVideoPath(activeMedia?.path ?? '')) return
     cleanupVideo()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMedia?.path])
 
-  const canRender = Boolean(rendererRef.current && activeMedia && !webglMessage?.includes('不支持'))
+  const canRender = Boolean(activeMedia && !imageError)
 
   return {
     canvasRef,
     stageRef,
     imageLoading,
     imageError,
-    webglMessage,
+    previewMessage,
     imageRect,
     sourceAspect,
     canRender,
     render,
-    updateImageRect,
+    updateImageRect: () => updateImageRect(),
     rendererReady,
     renderKey,
-    // Video
     isVideo,
     videoPlaying,
     videoDuration,

@@ -78,7 +78,7 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
     hasActiveMedia: !!media.activeMedia,
     imageLoading: canvas.imageLoading,
     imageError: canvas.imageError,
-    webglMessage: canvas.webglMessage,
+    previewMessage: canvas.previewMessage,
     canRender: canvas.canRender,
     editorOpen: media.editorOpen,
   })
@@ -280,11 +280,11 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
             {edit.cropActive && canvas.canRender && <CropOverlay />}
           </div>
           {/* Status overlay */}
-          {(canvas.imageLoading || canvas.imageError || canvas.webglMessage || !media.activeMedia) && (
+          {(canvas.imageLoading || canvas.imageError || canvas.previewMessage || !media.activeMedia) && (
             <div className="workspace-stage-status">
               {canvas.imageLoading && <span>加载预览中...</span>}
               {!canvas.imageLoading && canvas.imageError && <span>{canvas.imageError}</span>}
-              {!canvas.imageLoading && !canvas.imageError && canvas.webglMessage?.includes('不支持') && <span>{canvas.webglMessage}</span>}
+              {!canvas.imageLoading && !canvas.imageError && canvas.previewMessage && <span>{canvas.previewMessage}</span>}
               {!canvas.imageLoading && !canvas.imageError && !media.activeMedia && <span>暂无素材</span>}
             </div>
           )}

@@ -90,6 +90,7 @@ const lunaApi: LunaApi = {
     exportImage: (name: string, dataUrl: string) => ipcRenderer.invoke('workspace:exportImage', name, dataUrl),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
     exportColor: (sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => ipcRenderer.invoke('workspace:exportColor', sourcePath, color, exportMeta),
+    previewColor: (sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }) => ipcRenderer.invoke('workspace:previewColor', sourcePath, color, options),
   },
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: DownloadProgress): void => callback(progress)
