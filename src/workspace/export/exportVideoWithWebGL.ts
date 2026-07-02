@@ -110,9 +110,10 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
         flipped.set(pixels.subarray(y * stride, (y + 1) * stride), (height - 1 - y) * stride)
       }
 
-      // IPC
+      // IPC（首帧附带进度元数据）
       const ipcT0 = Date.now()
-      await window.luna.workspace.sendVideoExportFrame(exportId, flipped.buffer as ArrayBuffer)
+      const frameMeta = frame === 0 ? { totalFrames, taskId: encoder.taskId, taskStart: encoder.taskStart } : undefined
+      await window.luna.workspace.sendVideoExportFrame(exportId, flipped.buffer as ArrayBuffer, frameMeta)
       const ipcCost = Date.now() - ipcT0
 
       // 进度
