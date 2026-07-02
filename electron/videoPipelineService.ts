@@ -7,6 +7,8 @@ import { BitrateModule } from './ffmpeg/bitrate'
 import { WatermarkModule } from './ffmpeg/watermark'
 import type { VideoExportSettings, WatermarkPosition, WatermarkStyle } from '../src/shared/types'
 
+type ConcreteWatermarkStyle = Exclude<WatermarkStyle, 'auto'>
+
 // ─── 视频水印（pipeline 包装） ───────────────
 
 export async function applyWatermarkToVideo(
@@ -14,7 +16,7 @@ export async function applyWatermarkToVideo(
   outputPath: string,
   watermarkPercent: number,
   position: WatermarkPosition,
-  style: WatermarkStyle,
+  style: ConcreteWatermarkStyle,
   onProgress?: (percent: number) => void,
   signal?: AbortSignal,
   videoExportSettings?: VideoExportSettings,

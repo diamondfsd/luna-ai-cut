@@ -1,0 +1,404 @@
+/* ============================================================
+   设备协议调试页面样式
+   ============================================================ */
+
+.device-debug-surface {
+  min-height: calc(100vh - 44px);
+  background: var(--parchment);
+  padding: 24px;
+}
+
+.device-debug-topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 1100px;
+  margin: 0 auto 20px;
+}
+
+.device-debug-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--canvas);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.device-debug-back:hover {
+  border-color: var(--blue);
+}
+
+.device-debug-topbar h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.device-debug-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  border: 1px solid #ff9500;
+  border-radius: 999px;
+  background: rgba(255, 149, 0, 0.1);
+  color: #b87000;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ---- 网格 ---- */
+
+.device-debug-grid {
+  display: grid;
+  max-width: 1100px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0 auto;
+}
+
+/* ---- 面板 ---- */
+
+.dd-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--canvas);
+  padding: 16px;
+}
+
+.dd-panel h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dd-panel-full {
+  grid-column: 1 / -1;
+}
+
+.dd-panel-wide {
+  grid-column: span 2;
+}
+
+/* ---- 字段 ---- */
+
+.dd-field {
+  display: grid;
+  gap: 4px;
+}
+
+.dd-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dd-select {
+  display: block;
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--canvas);
+  color: var(--ink);
+  padding: 0 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.dd-select:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+/* ---- 操作按钮 ---- */
+
+.dd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ---- 状态网格 ---- */
+
+.dd-status-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.dd-status-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dd-status-grid strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dd-ok {
+  color: #34c759 !important;
+}
+
+.dd-err {
+  color: #ff3b30 !important;
+}
+
+/* ---- 提示 ---- */
+
+.dd-tip {
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dd-tip p {
+  margin: 0;
+}
+
+.dd-tip-warn {
+  border-color: #ff9500;
+  background: rgba(255, 149, 0, 0.08);
+  color: #b87000;
+}
+
+.dd-tip-ok {
+  border-color: #34c759;
+  background: rgba(52, 199, 89, 0.08);
+  color: #248a3d;
+}
+
+.dd-diagnostics {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--canvas-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dd-diagnostics strong {
+  color: var(--ink);
+}
+
+.dd-diagnostics span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* ---- 文件列表 ---- */
+
+.dd-file-list {
+  display: grid;
+  gap: 2px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.dd-file-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--hairline);
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dd-file-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.dd-file-item:last-child {
+  border-bottom: 0;
+}
+
+.dd-file-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dd-file-item span {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.dd-file-more {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dd-hint {
+  color: #999;
+  font-size: 13px;
+  margin: 0;
+}
+
+/* ---- HTTP 验证 ---- */
+
+.dd-http-list {
+  display: grid;
+  gap: 6px;
+}
+
+.dd-http-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.dd-http-item span {
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dd-http-item em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+/* ---- 日志 ---- */
+
+.dd-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dd-log-content {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.dd-log-entry {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px;
+  padding: 3px 0;
+  border-top: 1px solid var(--hairline);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.dd-log-time {
+  color: #999;
+  white-space: nowrap;
+}
+
+.dd-log-msg {
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.dd-log-warn .dd-log-msg {
+  color: #b87000;
+}
+
+.dd-log-error .dd-log-msg {
+  color: #ff3b30;
+}
+
+.dd-log-data {
+  grid-column: 1 / -1;
+  display: block;
+  overflow-x: auto;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.04);
+  color: #666;
+  white-space: pre-wrap;
+}
+
+/* ---- 分割线 ---- */
+
+.dd-section-divider {
+  height: 1px;
+  background: var(--hairline);
+  margin: 4px 0;
+}
+
+/* ---- 日志路径 ---- */
+
+.dd-log-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #999;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ---- 日志 spinner ---- */
+
+.dd-log-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--hairline);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: dd-spin 0.8s linear infinite;
+}
+
+@keyframes dd-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- 响应式 ---- */
+
+@media (max-width: 920px) {
+  .device-debug-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dd-panel-wide {
+    grid-column: 1;
+  }
+}

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, FileQuestion } from 'lucide-react'
 
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkOverlay } from './WatermarkOverlay'
+import { concreteWatermarkStyle } from '../shared/insta360DeviceProfiles'
 import { getContainRect, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
 import type { LunaFile, WatermarkSettings } from '../shared/types'
 
@@ -47,6 +48,18 @@ export function MediaPreviewPanel({
   }, [])
 
   const showWatermark = watermarkSettings !== undefined
+  const previewWatermarkSettings = watermarkSettings
+    ? {
+        ...watermarkSettings,
+        style: concreteWatermarkStyle(watermarkSettings.style, {
+          sourceDeviceId: currentFile.sourceDeviceId,
+          sourceDeviceName: currentFile.sourceDeviceName,
+          cameraType: currentFile.cameraType,
+          cameraSerial: currentFile.cameraSerial,
+          watermarkProfileId: currentFile.watermarkProfileId,
+        }),
+      }
+    : undefined
 
   const currentFileId = currentFile.id
 
@@ -65,20 +78,20 @@ export function MediaPreviewPanel({
 
   // 计算水印布局（与后端一致：传感器宽算尺寸，展示方向算边距/位置，缩放至屏幕）
   let wmLayout: { x: number; y: number; width: number; height: number } | null = null
-  if (showWatermark && watermarkSettings && stageSize.width > 0 && contentSize.width > 0) {
+  if (showWatermark && previewWatermarkSettings && stageSize.width > 0 && contentSize.width > 0) {
     const cw = contentSize.width
     const ch = contentSize.height
     const rect = getContainRect(stageSize.width, stageSize.height, cw, ch)
     if (rect.width > 0 && rect.height > 0) {
       const sensorW = Math.max(cw, ch)
       const wmAspect = WM_IMAGE.height / WM_IMAGE.width
-      const pct = watermarkSettings.watermarkPercent / 100
+      const pct = previewWatermarkSettings.watermarkPercent / 100
       const targetW = Math.min(Math.round(sensorW * pct), WM_IMAGE.width)
       const targetH = Math.round(targetW * wmAspect)
       const mx = Math.round(cw * WATERMARK_MARGIN_X_RATIO)
       const my = Math.round(ch * WATERMARK_MARGIN_Y_RATIO)
 
-      const [vPos, hPos] = watermarkSettings.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
+      const [vPos, hPos] = previewWatermarkSettings.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
       const imgX = hPos === 'left' ? mx : hPos === 'right' ? cw - targetW - mx : Math.round((cw - targetW) / 2)
       const imgY = vPos === 'bottom' ? ch - targetH - my : my
 
@@ -134,7 +147,7 @@ export function MediaPreviewPanel({
 
         {wmLayout && (
           <WatermarkOverlay
-            settings={watermarkSettings!}
+            settings={previewWatermarkSettings!}
             kind={currentFile.kind === 'video' ? 'video' : 'image'}
             x={wmLayout.x}
             y={wmLayout.y}

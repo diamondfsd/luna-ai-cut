@@ -4,6 +4,11 @@ export interface LunaFile {
   id: string
   storageId?: string
   storageLabel?: string
+  sourceDeviceId?: string
+  sourceDeviceName?: string
+  cameraType?: string
+  cameraSerial?: string
+  watermarkProfileId?: string
   name: string
   href: string
   sourceUrl: string
@@ -32,6 +37,15 @@ export interface LunaFile {
   localPath?: string
   frameRate?: number
   duration?: number
+}
+
+export interface Insta360DeviceInfo {
+  serial?: string
+  deviceName?: string
+  firmware?: string
+  ssid?: string
+  wifiPassword?: string
+  rawStrings: string[]
 }
 
 export interface WorkspaceMediaAsset {
@@ -64,6 +78,7 @@ export interface WorkspaceProject {
 export interface ConnectionStatus {
   deviceId?: string
   deviceName?: string
+  deviceInfo?: Insta360DeviceInfo
   host: string
   httpOk: boolean
   controlOk: boolean
@@ -126,7 +141,7 @@ export interface AiConfig {
 }
 
 export type WatermarkPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
-export type WatermarkStyle = 'luna_ultra' | 'luna_ultra_cn'
+export type WatermarkStyle = 'auto' | 'luna_ultra' | 'luna_ultra_cn' | 'go_ultra' | 'go_ultra_cn'
 
 export interface WatermarkSettings {
   enabled: boolean
@@ -233,6 +248,26 @@ export interface DownloadRecord {
   path: string
   bytes: number | null
   downloadedAt: string
+  sourceDeviceId?: string
+  sourceDeviceName?: string
+  cameraType?: string
+  cameraSerial?: string
+  watermarkProfileId?: string
+}
+
+export interface ExportFileInput {
+  name: string
+  kind: string
+  localPath?: string
+  exportId?: string
+  taskId?: string
+  taskName?: string
+  createdAt?: number
+  sourceDeviceId?: string
+  sourceDeviceName?: string
+  cameraType?: string
+  cameraSerial?: string
+  watermarkProfileId?: string
 }
 
 export interface ExportProgress {
@@ -452,7 +487,7 @@ export interface LunaApi {
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
-  exportFiles(files: Array<{ name: string; kind: string; localPath?: string; exportId?: string; taskId?: string; taskName?: string; createdAt?: number }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
+  exportFiles(files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>
   cancelExportTask(taskId: string): Promise<void>
   getExportTasks(): Promise<ExportTaskRecord[]>
@@ -505,4 +540,126 @@ export interface LunaApi {
 export interface ReleaseNoteItem {
   version: string
   content: string
+}
+
+export interface DeviceDebugTestStep {
+  step: string
+  success: boolean
+  detail: string
+  elapsedMs: number
+}
+
+export interface DeviceDebugTestResult {
+  deviceId: string
+  host: string
+  overall: boolean
+  steps: DeviceDebugTestStep[]
+  authState: string
+  summary: string
+}
+
+export interface DeviceDebugEvent {
+  level: string
+  message: string
+  data?: unknown
+}
+
+export interface DeviceDebugPortResult {
+  httpOk: boolean
+  controlOk: boolean
+  httpPort: number | null
+  controlPort: number | null
+  message: string
+}
+
+export interface DeviceDebugConnectResult {
+  success: boolean
+  authState: string
+  message: string
+  httpOk: boolean
+  controlOk: boolean
+}
+
+export interface DeviceDebugAuthResult {
+  success: boolean
+  authState: string
+  message: string
+}
+
+export interface DeviceDebugFileListResult {
+  success: boolean
+  files: Array<{ name: string; size: number | null; url: string }>
+  http?: Array<{
+    path: string
+    ok: boolean
+    status?: number
+    server?: string | null
+    contentType?: string | null
+    error?: string
+  }>
+  message: string
+}
+
+export interface DeviceDebugDiagnosticsResult {
+  success: boolean
+  host: string
+  port: number
+  http: Array<{
+    path: string
+    ok: boolean
+    status?: number
+    server?: string | null
+    contentType?: string | null
+    directoryLinks?: number
+    mediaLinks?: number
+    preview?: string
+    error?: string
+  }>
+  tcp: Array<{
+    label: string
+    ok: boolean
+    code?: number
+    requestId?: number
+    bodyBytes?: number
+    trailer?: string
+    ascii?: string
+    error?: string
+  }>
+  auth: {
+    authorized: boolean | null
+    needsConfirm: boolean
+    message: string
+    requestId?: number
+    messageCode?: number
+    bodyHex?: string
+    bodyAscii?: string
+  } | null
+  files: Array<{ name: string; path: string; url: string; size: number | null }>
+  deviceInfo: Insta360DeviceInfo | null
+  summary: string
+}
+
+export interface DeviceDebugOption {
+  id: string
+  name: string
+  defaultHost: string
+  controlPort: number
+  needsAuth: boolean
+  protocolType: string
+}
+
+export interface DeviceDebugApi {
+  runTest(params: { deviceId: string; host: string }): Promise<DeviceDebugTestResult>
+  checkPort(params: { deviceId: string; host: string }): Promise<DeviceDebugPortResult>
+  connect(params: { deviceId: string; host: string }): Promise<DeviceDebugConnectResult>
+  disconnect(params: { deviceId: string; host: string }): Promise<{ success: boolean }>
+  checkAuth(params: { deviceId: string; host: string }): Promise<DeviceDebugAuthResult>
+  requestAuth(params: { deviceId: string; host: string }): Promise<DeviceDebugAuthResult>
+  getAuthState(params: { deviceId: string; host: string }): Promise<{ authState: string }>
+  listFiles(params: { deviceId: string; host: string }): Promise<DeviceDebugFileListResult>
+  runDiagnostics(params: { deviceId: string; host: string }): Promise<DeviceDebugDiagnosticsResult>
+  getDeviceOptions(): Promise<DeviceDebugOption[]>
+  log(params: { level: string; message: string; data?: unknown }): Promise<{ success: boolean }>
+  getLogPath(): Promise<string>
+  onLog(callback: (event: DeviceDebugEvent) => void): () => void
 }

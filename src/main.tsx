@@ -26,7 +26,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>,
 )
 
-// Use contextBridge
-window.ipcRenderer.on('main-process-message', (_event, message) => {
-  console.log(message)
-})
+// ipcRenderer 未在 contextBridge 中暴露，此监听无意义
+// 如有需要请通过 window.luna / window.deviceDebug API 通信

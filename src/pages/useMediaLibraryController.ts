@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppSettings, DeviceDefinition, DownloadProgress, LunaFile, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { useMediaLibraryTransferActions } from './useMediaLibraryTransferActions'
 import { useApp } from '../context/AppContext'
+import { logger } from '../lib/rendererLogger'
 
 type MediaFilter = 'all' | 'image' | 'video'
 type DownloadStatusFilter = 'all' | 'downloaded' | 'not-downloaded'
@@ -79,7 +80,7 @@ export function useMediaLibraryController({
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [exportWatermarkSettings, setExportWatermarkSettings] = useState<WatermarkSettingsType>(() => ({
     enabled: true,
-    style: 'luna_ultra_cn',
+    style: 'auto',
     watermarkPercent: 20,
     position: 'bottom-center',
   }))

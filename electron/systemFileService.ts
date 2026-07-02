@@ -20,8 +20,22 @@ export async function openPath(targetPath: string): Promise<void> {
     await shell.openExternal(targetPath)
     return
   }
-  await fs.mkdir(targetPath, { recursive: true })
-  await shell.openPath(targetPath)
+  // 检查目标是否已存在（可能是个文件或目录）
+  try {
+    const stat = await fs.stat(targetPath)
+    if (stat.isFile()) {
+      // 是文件 → 在 Finder 中选中它
+      shell.showItemInFolder(targetPath)
+      return
+    }
+    // 是目录 → 直接打开
+    await shell.openPath(targetPath)
+    return
+  } catch {
+    // 目标不存在 → 创建目录后打开
+    await fs.mkdir(targetPath, { recursive: true })
+    await shell.openPath(targetPath)
+  }
 }
 
 export async function deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }> {

@@ -16,6 +16,9 @@ interface AppContextValue {
   setExportSnapshots: React.Dispatch<React.SetStateAction<Map<string, LunaFile>>>
   exporting: boolean
   setExporting: (exporting: boolean) => void
+  /** 隐藏开发模式 — 在设置页连点 5 次相机地址激活，重启后失效 */
+  hiddenDevMode: boolean
+  setHiddenDevMode: (v: boolean) => void
 }
 
 const AppCtx = createContext<AppContextValue | null>(null)
@@ -27,6 +30,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [exportProgress, setExportProgress] = useState<Map<string, ExportProgress>>(new Map())
   const [exportSnapshots, setExportSnapshots] = useState<Map<string, LunaFile>>(new Map())
   const [exporting, setExporting] = useState(false)
+  const [hiddenDevMode, setHiddenDevMode] = useState(false)
 
   useEffect(() => {
     return window.luna.onExportProgress((progress) => {
@@ -53,6 +57,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setExportSnapshots,
         exporting,
         setExporting,
+        hiddenDevMode,
+        setHiddenDevMode,
       }}
     >
       {children}

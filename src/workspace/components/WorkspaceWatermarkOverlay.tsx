@@ -7,6 +7,9 @@ import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 const WATERMARK_IMAGE_SIZE: Record<WatermarkStyle, { width: number; height: number }> = {
   luna_ultra: { width: 1399, height: 252 },
   luna_ultra_cn: { width: 1605, height: 252 },
+  go_ultra: { width: 866, height: 254 },
+  go_ultra_cn: { width: 1002, height: 252 },
+  auto: { width: 1399, height: 252 },
 }
 
 export function WorkspaceWatermarkOverlay() {

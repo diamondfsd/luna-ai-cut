@@ -20,9 +20,9 @@ interface AppNavProps {
 }
 
 export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode, workspaceMode, creativeModeId, onModeChange, onCreativeModeChange }: AppNavProps) {
-  const { exportProgress } = useApp()
+  const { exportProgress, hiddenDevMode } = useApp()
   const connected = Boolean(connection?.httpOk && connection.controlOk)
-  const deviceName = connection?.deviceName ?? activeDevice?.name ?? '设备'
+  const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
     ? `已连接 ${deviceName}`
     : connection?.message ?? (sourceMode === 'demo' ? `已连接 ${deviceName}（模拟）` : `${deviceName} 未连接`)
@@ -43,9 +43,14 @@ export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>
-          {import.meta.env.DEV && (
+          {(import.meta.env.DEV || hiddenDevMode) && (
             <NavLink to="/ble-debug" className={({ isActive }) => (isActive ? 'active' : '')}>
               调试
+            </NavLink>
+          )}
+          {(import.meta.env.DEV || hiddenDevMode) && (
+            <NavLink to="/device-debug" className={({ isActive }) => (isActive ? 'active' : '')}>
+              设备调试
             </NavLink>
           )}
         </div>
