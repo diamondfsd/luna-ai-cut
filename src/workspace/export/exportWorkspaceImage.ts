@@ -1,5 +1,5 @@
 import type { WatermarkSettings } from '../../shared/types'
-import { calculateWatermarkLayout, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../../shared/watermark'
+import { resolveWatermarkRatios } from '../../shared/watermark/layoutConfig'
 import { loadWatermarkImage } from '../../shared/watermarkAssets'
 
 interface ImageRect {
@@ -33,21 +33,27 @@ export async function composeWorkspaceExport(canvas: HTMLCanvasElement, imageRec
 
   if (watermark.enabled) {
     const wmInfo = await loadWatermarkImage(watermark.style, 'image')
-    const layout = calculateWatermarkLayout({
-      contentWidth: outputWidth,
-      contentHeight: outputHeight,
-      watermarkWidth: wmInfo.width,
-      watermarkHeight: wmInfo.height,
-      widthRatio: watermark.watermarkPercent / 100,
-      marginXRatio: WATERMARK_MARGIN_X_RATIO,
-      marginYRatio: WATERMARK_MARGIN_Y_RATIO,
-      position: watermark.position,
-    })
+    const ratios = resolveWatermarkRatios(null, watermark.style, outputWidth, outputHeight, watermark.position)
+    const widthRatio = ratios?.widthRatio ?? 0.15
+
+    const sensorW = Math.max(outputWidth, outputHeight)
+    const wmAspect = wmInfo.height / wmInfo.width
+    const targetW = Math.min(Math.round(sensorW * widthRatio), wmInfo.width)
+    const targetH = Math.round(targetW * wmAspect)
+
+    const [vPos, hPos] = watermark.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
+    const marginX = Math.round(outputWidth * 0.03)
+    const marginY = Math.round(outputHeight * 0.03)
+    const x = hPos === 'left' ? marginX
+      : hPos === 'right' ? outputWidth - targetW - marginX
+      : Math.round((outputWidth - targetW) / 2)
+    const y = vPos === 'bottom' ? outputHeight - targetH - marginY : marginY
+
     const image = new Image()
     image.src = wmInfo.src
     await image.decode()
     context.globalAlpha = 0.85
-    context.drawImage(image, layout.x, layout.y, layout.width, layout.height)
+    context.drawImage(image, x, y, targetW, targetH)
     context.globalAlpha = 1
   }
 

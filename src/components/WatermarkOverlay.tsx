@@ -20,7 +20,7 @@ interface WatermarkOverlayProps {
 export function WatermarkOverlay({ settings, kind, x, y, width, height, className }: WatermarkOverlayProps) {
   // style 应已由调用方解析为具体值（如通过 concreteWatermarkStyle）
   const src = WM_SRC[settings.style]?.[kind]
-  if (!settings.enabled || settings.style === 'auto' || !src) return null
+  if (!settings.enabled || !src) return null
 
   return (
     <img

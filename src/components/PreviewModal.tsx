@@ -4,8 +4,9 @@ import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
-import { concreteWatermarkStyle } from '../shared/insta360DeviceProfiles'
 import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
+import { INSTA360_DEVICE_PROFILES } from '../shared/insta360DeviceProfiles'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
 
@@ -106,10 +107,10 @@ export function PreviewModal({
   const [baseScale, setBaseScale] = useState(1)
   const [imageDragging, setImageDragging] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
+  // 获取设备默认水印样式
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>(() => ({
     enabled: false,
-    style: 'auto',
-    watermarkPercent: 20,
+    style: 'luna_ultra',
     position: 'bottom-center',
   }))
   const [livePreview, setLivePreview] = useState<PreviewResult | null>(null)
@@ -138,43 +139,41 @@ export function PreviewModal({
   const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
   const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
 
-  // 从文件 EXIF 读取相机型号，用于确定 'auto' 水印样式
-  const [exifCameraModel, setExifCameraModel] = useState<string | null>(null)
-  useEffect(() => {
-    if (!effectiveWatermark || watermarkSettings.style !== 'auto' || !downloadedPath) {
-      setExifCameraModel(null)
-      return
+  // 水印样式已直接使用具体值（如 'luna_ultra'），无需 'auto' 解析
+  // 根据文件设备信息获取该设备的水印样式选项
+  // 优先使用 file.sourceDeviceId，其次从 metadata 的相机型号推导
+  const watermarkStyleOptions = useMemo(() => {
+    const deviceId = file.sourceDeviceId ?? file.watermarkProfileId ?? null
+    if (deviceId) return watermarkStyleOptionsForDevice(deviceId)
+    // 从 enrichedFile 的 metadata 回退：根据 cameraType 推断
+    const cameraModel = file.cameraType || file.sourceDeviceName || null
+    if (cameraModel) {
+      // "Luna Ultra" → "luna-ultra"
+      const profileMatch = INSTA360_DEVICE_PROFILES.find(
+        (p) => p.exifModelPatterns.some((re) => re.test(cameraModel)),
+      )
+      if (profileMatch) return watermarkStyleOptionsForDevice(profileMatch.id)
     }
-    let cancelled = false
-    window.luna.readExifModel(downloadedPath).then((model) => {
-      if (!cancelled) setExifCameraModel(model)
-    }).catch(() => {})
-    return () => { cancelled = true }
-  }, [effectiveWatermark, watermarkSettings.style, downloadedPath, file.id])
+    return watermarkStyleOptionsForDevice('luna-ultra') // 最后一个兜底
+  }, [file.sourceDeviceId, file.watermarkProfileId, file.cameraType, file.sourceDeviceName])
 
-  // 预览时使用的水印样式（从 EXIF 相机型号解析 'auto'）
-  const previewWmStyle = useMemo(() => {
-    if (!effectiveWatermark) return 'auto' as const
-    if (watermarkSettings.style !== 'auto') return watermarkSettings.style
-    return concreteWatermarkStyle('auto', {
-      sourceDeviceId: file.sourceDeviceId,
-      sourceDeviceName: file.sourceDeviceName,
-      cameraType: file.cameraType,
-      cameraSerial: file.cameraSerial,
-      watermarkProfileId: file.watermarkProfileId,
-      exifModel: exifCameraModel,
-    })
-  }, [effectiveWatermark, watermarkSettings.style, file.sourceDeviceId, file.sourceDeviceName, file.cameraType, file.cameraSerial, file.watermarkProfileId, exifCameraModel])
-
-  // 加载已保存的水印设置
+  // 加载已保存的水印设置，若无保存则设设备默认样式
   useEffect(() => {
     if (!isDownloadsPage) return
+    const deviceIdForWm = file.sourceDeviceId ?? file.watermarkProfileId ?? null
     window.luna.getSettings().then((s) => {
-      const deviceId = s.activeDeviceId
-      const wm = deviceId ? s.deviceWatermark?.[deviceId] : undefined
-      if (wm) setWatermarkSettings(wm)
+      const activeId = s.activeDeviceId
+      const wm = activeId ? s.deviceWatermark?.[activeId] : undefined
+      if (wm) {
+        setWatermarkSettings(wm)
+      } else if (deviceIdForWm) {
+        const opts = watermarkStyleOptionsForDevice(deviceIdForWm)
+        if (opts.length > 0) {
+          setWatermarkSettings((prev) => ({ ...prev, style: opts[0].value }))
+        }
+      }
     }).catch(() => {})
-  }, [isDownloadsPage])
+  }, [isDownloadsPage, file.sourceDeviceId, file.watermarkProfileId])
 
   function saveWatermarkSettings(next: WatermarkSettingsType): void {
     setWatermarkSettings(next)
@@ -400,7 +399,7 @@ export function PreviewModal({
               previewImageRef={previewImageRef}
               showWatermarkControls={effectiveWatermark}
               videoRef={videoRef}
-              watermarkSettings={{ ...watermarkSettings, style: previewWmStyle }}
+              watermarkSettings={watermarkSettings}
               finishImageDrag={finishImageDrag}
               handleImageDoubleClick={handleImageDoubleClick}
               handleImageLoaded={handleImageLoaded}
@@ -443,6 +442,7 @@ export function PreviewModal({
               onToggleCollapse={() => setInspectorOpen(false)}
               watermarkSettings={effectiveWatermark ? watermarkSettings : undefined}
               onWatermarkChange={effectiveWatermark ? saveWatermarkSettings : undefined}
+              watermarkStyleOptions={effectiveWatermark ? watermarkStyleOptions : undefined}
             />
           )}
         </div>

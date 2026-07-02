@@ -80,8 +80,7 @@ export function useMediaLibraryController({
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [exportWatermarkSettings, setExportWatermarkSettings] = useState<WatermarkSettingsType>(() => ({
     enabled: true,
-    style: 'auto',
-    watermarkPercent: 20,
+    style: 'luna_ultra',
     position: 'bottom-center',
   }))
 

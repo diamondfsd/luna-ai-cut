@@ -3,8 +3,8 @@ import { ChevronLeft, ChevronRight, FileQuestion } from 'lucide-react'
 
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkOverlay } from './WatermarkOverlay'
-import { concreteWatermarkStyle } from '../shared/insta360DeviceProfiles'
-import { getContainRect, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
+import { getContainRect } from '../shared/watermark'
+import { resolveWatermarkRatios } from '../shared/watermark/layoutConfig'
 import { loadWatermarkImage } from '../shared/watermarkAssets'
 import type { LunaFile, WatermarkSettings } from '../shared/types'
 
@@ -47,16 +47,7 @@ export function MediaPreviewPanel({
 
   const showWatermark = watermarkSettings !== undefined
   const previewWatermarkSettings = watermarkSettings
-    ? {
-        ...watermarkSettings,
-        style: concreteWatermarkStyle(watermarkSettings.style, {
-          sourceDeviceId: currentFile.sourceDeviceId,
-          sourceDeviceName: currentFile.sourceDeviceName,
-          cameraType: currentFile.cameraType,
-          cameraSerial: currentFile.cameraSerial,
-          watermarkProfileId: currentFile.watermarkProfileId,
-        }),
-      }
+    ? { ...watermarkSettings }
     : undefined
 
   const currentFileId = currentFile.id
@@ -91,7 +82,7 @@ export function MediaPreviewPanel({
     return () => { cancelled = true }
   }, [showWatermark, resolvedStyle])
 
-  // 计算水印布局（异步获取水印实际尺寸后计算）
+  // 计算水印布局（使用查表法）
   let wmLayout: { x: number; y: number; width: number; height: number } | null = null
   if (showWatermark && previewWatermarkSettings && stageSize.width > 0 && contentSize.width > 0 && wmSize) {
     const cw = contentSize.width
@@ -100,15 +91,16 @@ export function MediaPreviewPanel({
     if (rect.width > 0 && rect.height > 0) {
       const sensorW = Math.max(cw, ch)
       const wmAspect = wmSize.height / wmSize.width
-      const pct = previewWatermarkSettings.watermarkPercent / 100
-      const targetW = Math.min(Math.round(sensorW * pct), wmSize.width)
+      const ratios = resolveWatermarkRatios(currentFile.sourceDeviceId, previewWatermarkSettings.style, cw, ch, previewWatermarkSettings.position)
+      const widthRatio = ratios?.widthRatio ?? 0.15
+      const targetW = Math.min(Math.round(sensorW * widthRatio), wmSize.width)
       const targetH = Math.round(targetW * wmAspect)
-      const mx = Math.round(cw * WATERMARK_MARGIN_X_RATIO)
-      const my = Math.round(ch * WATERMARK_MARGIN_Y_RATIO)
 
-      const [vPos, hPos] = previewWatermarkSettings.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
-      const imgX = hPos === 'left' ? mx : hPos === 'right' ? cw - targetW - mx : Math.round((cw - targetW) / 2)
-      const imgY = vPos === 'bottom' ? ch - targetH - my : my
+      const [vPos] = previewWatermarkSettings.position.split('-') as ['top' | 'bottom']
+      const xRatio = ratios?.xRatio ?? 0.03
+      const yRatio = ratios?.yRatio ?? 0.03
+      const imgX = Math.round(xRatio * cw)
+      const imgY = vPos === 'bottom' ? ch - targetH - Math.round(yRatio * ch) : Math.round((1 - yRatio) * ch)
 
       const scale = rect.scale
       wmLayout = {
