@@ -51,6 +51,8 @@ export interface LunaApi {
   previewLivePhoto(file: LunaFile): Promise<PreviewResult>
   previewWithWatermark(file: LunaFile, sourcePath: string, settings: WatermarkSettings): Promise<PreviewResult>
   getMediaMetadata(file: LunaFile, cachedPath?: string | null): Promise<MediaMetadata>
+  /** 根据文件路径解析缩略图 URL（图片返回 file://，视频生成缩略图后返回） */
+  resolveThumbnail(filePath: string, kind?: string): Promise<string | null>
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>

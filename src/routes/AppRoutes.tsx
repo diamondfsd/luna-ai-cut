@@ -4,6 +4,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { AppNav } from '../components/AppNav'
 import { HotUpdateBanner } from '../components/HotUpdateBanner'
 import { UpdateBanner } from '../components/UpdateBanner'
+import { PreviewModalHost } from '../components/PreviewModalHost'
 import { AppRoute } from '../ui'
 import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
@@ -231,6 +232,7 @@ export function AppRoutes() {
         <AppRoute path="/device-debug" preserve={false}>
           <DeviceDebugPage />
         </AppRoute>
+        <PreviewModalHost />
       </div>
     </main>
   )

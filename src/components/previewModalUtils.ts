@@ -103,12 +103,6 @@ export function filePathToLunaFile(
   }
 }
 
-/** 根据文件路径生成 file:// 缩略图 URL */
-export function thumbnailForPath(filePath: string | null | undefined): string | null {
-  if (!filePath) return null
-  return filePathToPreviewUrl(filePath)
-}
-
 export function filePathToPreviewUrl(filePath: string | null | undefined): string | null {
   if (!filePath) return null
   if (filePath.startsWith('file://')) return filePath
@@ -116,4 +110,18 @@ export function filePathToPreviewUrl(filePath: string | null | undefined): strin
   const normalized = filePath.replace(/\\/g, '/')
   return encodeURI(`file://${normalized.startsWith('/') ? '' : '/'}${normalized}`)
     .replace(/#/g, '%23').replace(/\?/g, '%3F')
+}
+
+/** 根据文件路径生成 file:// 预览/缩略图 URL。视频文件返回 null（无法用 <img> 渲染）。 */
+export function thumbnailUrlForFile(file: { kind?: string }, filePath?: string | null): string | null {
+  if (!filePath) return null
+  // 视频文件直接用 file:// 路径无法作为 <img> 渲染
+  if (file.kind === 'video' || file.kind === 'lrv') return null
+  return filePathToPreviewUrl(filePath)
+}
+
+/** @deprecated Use thumbnailUrlForFile instead */
+export function thumbnailForPath(filePath: string | null | undefined): string | null {
+  if (!filePath) return null
+  return filePathToPreviewUrl(filePath)
 }
