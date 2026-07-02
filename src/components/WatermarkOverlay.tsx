@@ -1,35 +1,5 @@
-import type { WatermarkSettings, WatermarkStyle } from '../shared/types'
-
-import wmUltra from '../assets/watermark/ic_watermark_luna_ultra.png'
-import wmUltraCn from '../assets/watermark/ic_watermark_luna_ultra_cn.png'
-import wmUltraImage from '../assets/watermark/ic_watermark_luna_ultra_image.png'
-import wmUltraImageCn from '../assets/watermark/ic_watermark_luna_ultra_image_cn.png'
-import wmGoUltra from '../assets/watermark/ic_watermark_go_ultra.png'
-import wmGoUltraCn from '../assets/watermark/ic_watermark_go_ultra_cn.png'
-import wmGoUltraImage from '../assets/watermark/ic_watermark_go_ultra_image.png'
-import wmGoUltraImageCn from '../assets/watermark/ic_watermark_go_ultra_image_cn.png'
-
-type ConcreteWatermarkStyle = Exclude<WatermarkStyle, 'auto'>
-
-/** 水印资源映射：按样式 + 媒体类型区分 */
-const WM_SRC: Record<ConcreteWatermarkStyle, Record<'image' | 'video', string>> = {
-  luna_ultra: {
-    video: wmUltra,
-    image: wmUltraImage,
-  },
-  luna_ultra_cn: {
-    video: wmUltraCn,
-    image: wmUltraImageCn,
-  },
-  go_ultra: {
-    video: wmGoUltra,
-    image: wmGoUltraImage,
-  },
-  go_ultra_cn: {
-    video: wmGoUltraCn,
-    image: wmGoUltraImageCn,
-  },
-}
+import type { WatermarkSettings } from '../shared/types'
+import { WM_SRC } from '../shared/watermarkAssets'
 
 interface WatermarkOverlayProps {
   settings: WatermarkSettings
@@ -48,9 +18,9 @@ interface WatermarkOverlayProps {
  * 调用方需传入已算好的像素坐标（px），确保预览与导出视觉一致。
  */
 export function WatermarkOverlay({ settings, kind, x, y, width, height, className }: WatermarkOverlayProps) {
-  const style = settings.style === 'auto' ? 'luna_ultra' : settings.style
-  const src = WM_SRC[style]?.[kind]
-  if (!settings.enabled || !src) return null
+  // style 应已由调用方解析为具体值（如通过 concreteWatermarkStyle）
+  const src = WM_SRC[settings.style]?.[kind]
+  if (!settings.enabled || settings.style === 'auto' || !src) return null
 
   return (
     <img

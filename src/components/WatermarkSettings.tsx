@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
 import type { DeviceWatermarkStyleConfig, WatermarkSettings as WatermarkSettingsType, WatermarkPosition, WatermarkStyle } from '../shared/types'
+import { registeredWatermarkStyles } from '../shared/watermarkAssets'
 
 interface WatermarkSettingsProps {
   settings: WatermarkSettingsType
@@ -22,11 +23,13 @@ const V_OPTIONS = [
   { value: 'bottom' as const, label: '下' },
 ]
 
-/** 默认样式选项（无设备配置时兜底） */
+/** 默认样式选项（无设备配置时兜底，从已注册水印样式派生） */
 const DEFAULT_STYLE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'auto', label: '自动' },
-  { value: 'luna_ultra', label: '标准' },
-  { value: 'luna_ultra_cn', label: '中文' },
+  ...registeredWatermarkStyles().map((key) => {
+    const label = key.endsWith('_cn') ? '中文' : '标准'
+    return { value: key, label }
+  }),
 ]
 
 function WatermarkSettingsContent({ settings, styleOptions, onStyleChange, onPercentChange, onHPosChange, onVPosChange }: {

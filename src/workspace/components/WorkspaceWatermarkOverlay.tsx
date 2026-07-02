@@ -15,21 +15,24 @@ export function WorkspaceWatermarkOverlay() {
     : { settings: edit.pipeline.watermark }
   const { imageRect } = canvas
 
+  // 工作台无设备上下文，不渲染 'auto' 水印预览
+  const concreteStyle = settings.style === 'auto' ? null : settings.style
+
   const [wmImage, setWmImage] = useState<WatermarkImageInfo | null>(null)
 
   useEffect(() => {
-    if (!settings.enabled) {
+    if (!settings.enabled || !concreteStyle) {
       setWmImage(null)
       return
     }
     let cancelled = false
-    loadWatermarkImage(settings.style, 'image').then((info) => {
+    loadWatermarkImage(concreteStyle, 'image').then((info) => {
       if (!cancelled) setWmImage(info)
     })
     return () => { cancelled = true }
-  }, [settings.enabled, settings.style])
+  }, [settings.enabled, concreteStyle])
 
-  if (!settings.enabled || imageRect.width <= 1 || imageRect.height <= 1 || !wmImage) return null
+  if (!settings.enabled || !concreteStyle || imageRect.width <= 1 || imageRect.height <= 1 || !wmImage) return null
   const layout = calculateWatermarkLayout({
     contentWidth: imageRect.width,
     contentHeight: imageRect.height,
@@ -43,7 +46,7 @@ export function WorkspaceWatermarkOverlay() {
 
   return (
     <WatermarkOverlay
-      settings={settings}
+      settings={{ ...settings, style: concreteStyle }}
       kind="image"
       x={imageRect.x + layout.x}
       y={imageRect.y + layout.y}

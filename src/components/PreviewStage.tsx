@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, FileQuestion, Loader2 } from 'lucide-react'
 
 import { LivePhotoPlayer } from './LivePhotoPlayer'
 import { WatermarkOverlay } from './WatermarkOverlay'
+import { concreteWatermarkStyle } from '../shared/insta360DeviceProfiles'
 import { getContainRect, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
+import { loadWatermarkImage } from '../shared/watermarkAssets'
 import type { LunaFile, WatermarkSettings } from '../shared/types'
 
 interface PreviewStageProps {
@@ -46,9 +48,6 @@ interface WmLayout {
   height: number
 }
 
-/** 水印图片原始尺寸（项目内固定） */
-const WM_IMAGE = { width: 2560, height: 400 }
-
 /**
  * 计算水印在屏幕上的像素位置。
  *
@@ -61,6 +60,8 @@ function computeWatermarkLayout(
   contentW: number,
   contentH: number,
   settings: WatermarkSettings,
+  wmImageW: number,
+  wmImageH: number,
 ): WmLayout | null {
   if (!settings.enabled || containerW <= 0 || containerH <= 0 || contentW <= 0 || contentH <= 0) {
     return null
@@ -71,9 +72,9 @@ function computeWatermarkLayout(
   // ── 图片坐标空间计算水印 ──
   // 水印尺寸用传感器最长边（与后端一致）
   const sensorW = Math.max(contentW, contentH)
-  const wmAspect = WM_IMAGE.height / WM_IMAGE.width
+  const wmAspect = wmImageH / wmImageW
   const pct = settings.watermarkPercent / 100
-  const targetW = Math.min(Math.round(sensorW * pct), WM_IMAGE.width)
+  const targetW = Math.min(Math.round(sensorW * pct), wmImageW)
   const targetH = Math.round(targetW * wmAspect)
 
   // 边距用展示方向尺寸
@@ -175,12 +176,41 @@ export function PreviewStage({
     handleVideoLoaded(video)
   }, [handleVideoLoaded])
 
+  // 根据文件设备信息解析水印样式（resolve 'auto'）
+  const resolvedWmStyle = useMemo(() =>
+    concreteWatermarkStyle(watermarkSettings.style, {
+      sourceDeviceId: file.sourceDeviceId,
+      sourceDeviceName: file.sourceDeviceName,
+      cameraType: file.cameraType,
+      cameraSerial: file.cameraSerial,
+      watermarkProfileId: file.watermarkProfileId,
+    }),
+  [watermarkSettings.style, file.sourceDeviceId, file.sourceDeviceName, file.cameraType, file.cameraSerial, file.watermarkProfileId])
+
+  // 异步加载水印图片实际像素尺寸
+  const [wmSize, setWmSize] = useState<{ width: number; height: number } | null>(null)
+  useEffect(() => {
+    if (!watermarkSettings.enabled) {
+      setWmSize(null)
+      return
+    }
+    let cancelled = false
+    loadWatermarkImage(resolvedWmStyle, 'image').then((info) => {
+      if (!cancelled) setWmSize(info)
+    })
+    return () => { cancelled = true }
+  }, [watermarkSettings.enabled, resolvedWmStyle])
+
+  // 传给 WatermarkOverlay 的已解析设置
+  const resolvedWmSettings = useMemo(() => ({
+    ...watermarkSettings,
+    style: resolvedWmStyle,
+  }), [watermarkSettings, resolvedWmStyle])
+
   // 计算水印布局
-  const wmLayout = computeWatermarkLayout(
-    stageSize.width, stageSize.height,
-    contentSize.width, contentSize.height,
-    watermarkSettings,
-  )
+  const wmLayout = wmSize
+    ? computeWatermarkLayout(stageSize.width, stageSize.height, contentSize.width, contentSize.height, resolvedWmSettings, wmSize.width, wmSize.height)
+    : null
 
   return (
     <div className="preview-stage" ref={stageRef}>
@@ -240,7 +270,7 @@ export function PreviewStage({
           />
           {showWatermarkControls && wmLayout && (
             <WatermarkOverlay
-              settings={watermarkSettings}
+              settings={resolvedWmSettings}
               kind="image"
               x={wmLayout.x}
               y={wmLayout.y}
@@ -270,7 +300,7 @@ export function PreviewStage({
             />
             {showWatermarkControls && wmLayout && (
               <WatermarkOverlay
-                settings={watermarkSettings}
+                settings={resolvedWmSettings}
                 kind="image"
                 x={wmLayout.x}
                 y={wmLayout.y}
@@ -296,7 +326,7 @@ export function PreviewStage({
             />
             {showWatermarkControls && wmLayout && (
               <WatermarkOverlay
-                settings={watermarkSettings}
+                settings={resolvedWmSettings}
                 kind="video"
                 x={wmLayout.x}
                 y={wmLayout.y}
