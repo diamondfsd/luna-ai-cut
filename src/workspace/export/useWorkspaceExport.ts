@@ -81,23 +81,13 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
     try {
       let result: { name: string; path: string }
 
-      if (isVid) {
-        // 视频：ffmpeg 调色导出（传参数 + exportId 用于进度追踪）
-        const { whiteBalanceMode, gradeShadowsHue, gradeMidHue, gradeHighlightsHue, curve, ...rest } = pipeline.color
-        toast.success('已开始导出视频')
-        logger.info(`[Export] 开始导出视频`, { exportId, taskName, path: activeMedia.path, colorKeys: Object.keys(rest) })
-        result = await window.luna.workspace.exportVideo(activeMedia.path, rest as Record<string, number>, { exportId, taskName })
-        logger.info(`[Export] 视频导出完成`, { exportId, result })
-        setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path, 'video')))
-      } else {
-        // 图片：走 ffmpeg 调色导出（与视频同一套 filter）
-        const { whiteBalanceMode, gradeShadowsHue, gradeMidHue, gradeHighlightsHue, curve, ...rest } = pipeline.color
-        toast.success('已开始导出图片')
-        logger.info(`[Export] 开始导出图片`, { exportId, taskName, path: activeMedia.path })
-        result = await window.luna.workspace.exportImageWithColor(activeMedia.path, rest as Record<string, number>)
-        logger.info(`[Export] 图片导出完成`, { exportId, result })
-        setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path)))
-      }
+      // 图片/视频统一走 ffmpeg 调色导出（同一套 filter）
+      const { whiteBalanceMode, gradeShadowsHue, gradeMidHue, gradeHighlightsHue, curve, ...rest } = pipeline.color
+      toast.success(`已开始导出${isVid ? '视频' : '图片'}`)
+      logger.info(`[Export] 开始导出`, { exportId, taskName, path: activeMedia.path, isVid })
+      result = await window.luna.workspace.exportColor(activeMedia.path, rest as Record<string, number>, { exportId, taskName })
+      logger.info(`[Export] 导出完成`, { exportId, result })
+      setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(activeMedia, result.path, isVid ? 'video' : 'image')))
 
       setExportProgress((current) => new Map(current).set(exportId, {
         exportId,

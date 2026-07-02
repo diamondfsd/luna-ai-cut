@@ -63,7 +63,7 @@ import { cancelBluetoothScan, scanBluetoothDevices } from './bluetoothDebugServi
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 import { safeName } from './filePathUtils'
-import { applyColorGradingToImage, applyColorGradingToVideo } from './videoPipelineService'
+import { applyColorGrading } from './videoPipelineService'
 import type {
   AiConfig,
   AppSettings,
@@ -670,42 +670,8 @@ function registerIpc(): void {
 
     return { path: destinationPath, name: fileName }
   })
-  // 图片调色导出（走 ffmpeg，与视频使用同一套 filter）
-  ipcMain.handle('workspace:exportImageWithColor', async (_event, sourcePath: string, color: Record<string, number>) => {
-    const settings = await getSettings()
-    if (!settings.exportDir) throw new Error('未设置导出目录')
-    await mkdir(settings.exportDir, { recursive: true })
-    const baseName = path.basename(sourcePath)
-    const ext = path.extname(baseName).toLowerCase()
-    const nameBase = path.basename(baseName, ext) || 'workspace'
-    const fileName = safeName(`${nameBase}_workspace_color_${Date.now()}.png`)
-    const destinationPath = path.join(settings.exportDir, fileName)
-
-    const colorOpts = {
-      exposure: color.exposure ?? 0,
-      brightness: color.brightness ?? 0,
-      temperature: color.temperature ?? 0,
-      tint: color.tint ?? 0,
-      contrast: color.contrast ?? 0,
-      saturation: color.saturation ?? 0,
-      vibrance: color.vibrance ?? 0,
-      shadows: color.shadows ?? 0,
-      highlights: color.highlights ?? 0,
-      whites: color.whites ?? 0,
-      blacks: color.blacks ?? 0,
-      levelsBlack: color.levelsBlack ?? 0,
-      levelsWhite: color.levelsWhite ?? 1,
-      clarity: color.clarity ?? 0,
-      texture: color.texture ?? 0,
-      sharpen: color.sharpen ?? 0,
-      denoise: color.denoise ?? 0,
-    }
-
-    await applyColorGradingToImage(sourcePath, destinationPath, colorOpts)
-    return { path: destinationPath, name: fileName }
-  })
-
-  ipcMain.handle('workspace:exportVideo', async (event, sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => {
+  // 统一调色导出（图片/视频共用，由输出文件扩展名决定编码）
+  ipcMain.handle('workspace:exportColor', async (event, sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
     await mkdir(settings.exportDir, { recursive: true })
@@ -719,7 +685,7 @@ function registerIpc(): void {
     const exportId = exportMeta?.exportId ?? `workspace_${nameBase}_${Date.now()}`
     const taskName = exportMeta?.taskName ?? `${nameBase}导出`
 
-    logMainInfo(`[workspace:exportVideo] 开始导出`, { exportId, taskName, sourcePath, destinationPath, hasExportMeta: !!exportMeta })
+    logMainInfo(`[workspace:exportColor] 开始导出`, { exportId, taskName, sourcePath, destinationPath, hasExportMeta: !!exportMeta })
 
     const colorOpts = {
       exposure: color.exposure ?? 0,
@@ -746,14 +712,14 @@ function registerIpc(): void {
     const taskStart = Date.now()
 
     // 先创建导出任务（table 能立刻看到）
-    logMainInfo(`[workspace:exportVideo] 创建导出任务`, { exportId, taskName })
+    logMainInfo(`[workspace:exportColor] 创建导出任务`, { exportId, taskName })
     const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
-    logMainInfo(`[workspace:exportVideo] 任务已创建`, { taskId: task.id, exportId })
+    logMainInfo(`[workspace:exportColor] 任务已创建`, { taskId: task.id, exportId })
 
     // 执行 ffmpeg，同时推进度到前端 + 更新后端任务
-    await applyColorGradingToVideo(sourcePath, destinationPath, colorOpts, (percent) => {
+    await applyColorGrading(sourcePath, destinationPath, colorOpts, (percent) => {
       const pct = Math.round(percent)
-      logMainDebug(`[workspace:exportVideo] 进度`, { exportId, percent: pct })
+      logMainDebug(`[workspace:exportColor] 进度`, { exportId, percent: pct })
       // 前端 React state
       win?.webContents.send('export:progress', {
         exportId,
@@ -771,7 +737,7 @@ function registerIpc(): void {
     })
 
     // ffmpeg 完成 → 标记 100%
-    logMainInfo(`[workspace:exportVideo] ffmpeg 完成`)
+    logMainInfo(`[workspace:exportColor] ffmpeg 完成`)
     await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
       endTime: Date.now(),
       duration: Date.now() - taskStart,
