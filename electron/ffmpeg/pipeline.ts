@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import * as path from 'node:path'
 import { app } from 'electron'
+import { logMainInfo } from '../loggerService'
 import { createRequire } from 'node:module'
 
 const _require = createRequire(import.meta.url)
@@ -135,6 +136,8 @@ export class FfmpegPipeline {
       '-i', firstInput,
       ...restInputs.flatMap((f) => ['-i', f]),
       ...(allFilters.length > 0 ? ['-filter_complex', allFilters.join(';')] : []),
+      // 当 filter 链设置了输出标签时，显式 map 到编码器
+      ...(allFilters.length > 0 && ctx.prevLabel !== '[0:v]' ? ['-map', `[${ctx.prevLabel}]`] : []),
       ...allOutputArgs,
       '-map_metadata', '0',
       '-progress', 'pipe:2',
@@ -146,7 +149,7 @@ export class FfmpegPipeline {
     const ffmpegPath = getFfmpegPath()
     const duration = probe.durationSeconds
 
-    console.log('[FFMPEG pipeline]', {
+    logMainInfo(`[FFMPEG pipeline]`, {
       input: inputPath,
       output: outputPath,
       modules: this.modules.filter(m => m.isActive()).map(m => m.name),
@@ -154,6 +157,7 @@ export class FfmpegPipeline {
       filters: allFilters,
       outputArgs: allOutputArgs,
       prevLabel: ctx.prevLabel,
+      ffmpegArgs,
     })
 
     await new Promise<void>((resolve, reject) => {
