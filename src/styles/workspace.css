@@ -66,33 +66,33 @@
 
 .workspace-project-folder {
   width: 132px;
-  height: 104px;
+  height: 120px;
   position: relative;
   display: grid;
   place-items: center;
-  color: rgba(0, 102, 204, 0.58);
+  color: rgba(0, 102, 204, 0.52);
   overflow: visible;
 }
 
 .workspace-project-previews {
   position: absolute;
-  left: 26px;
-  top: 28px;
-  width: 80px;
-  height: 54px;
+  left: 32px;
+  top: 34px;
+  width: 68px;
+  height: 50px;
   pointer-events: none;
 }
 
 .workspace-project-previews img,
 .workspace-project-previews span {
   position: absolute;
-  width: 56px;
-  height: 38px;
-  border-radius: 4px;
+  width: 44px;
+  height: 30px;
+  border-radius: 3px;
   overflow: hidden;
   background: #2a2a2a;
-  border: 2px solid #363636;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  border: 1.5px solid #404040;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   display: grid;
   place-items: center;
   object-fit: cover;
@@ -101,22 +101,22 @@
 
 .workspace-project-previews img:nth-child(1),
 .workspace-project-previews span:nth-child(1) {
-  transform: translate(-8px, 5px) rotate(-7deg);
+  transform: translate(-6px, 4px) rotate(-7deg);
 }
 
 .workspace-project-previews img:nth-child(2),
 .workspace-project-previews span:nth-child(2) {
-  transform: translate(2px, -1px) rotate(4deg);
+  transform: translate(1px, -1px) rotate(4deg);
 }
 
 .workspace-project-previews img:nth-child(3),
 .workspace-project-previews span:nth-child(3) {
-  transform: translate(11px, 6px) rotate(8deg);
+  transform: translate(8px, 5px) rotate(8deg);
 }
 
 .workspace-project-previews img:nth-child(4),
 .workspace-project-previews span:nth-child(4) {
-  transform: translate(0, 10px) rotate(-2deg);
+  transform: translate(1px, 8px) rotate(-2deg);
 }
 
 .workspace-project-name {
