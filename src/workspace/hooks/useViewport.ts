@@ -58,6 +58,12 @@ export function useViewport() {
     [drag],
   )
 
+  const zoomTo = useCallback((z: number) => {
+    const next = Math.max(1, Math.min(4, z))
+    setZoom(next)
+    if (next === 1) setPan({ x: 0, y: 0 })
+  }, [])
+
   return {
     zoom,
     pan,
@@ -66,5 +72,6 @@ export function useViewport() {
     handlePointerMove,
     handlePointerUp,
     resetViewport,
+    zoomTo,
   }
 }

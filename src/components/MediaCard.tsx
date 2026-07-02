@@ -1,7 +1,7 @@
 import { type CSSProperties } from 'react'
-import { Check, FileQuestion, FolderOpen, Play, X } from 'lucide-react'
+import { Check, FileQuestion, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
-import { IconButton } from '../ui'
+import { IconButton, VideoPlayBadge } from '../ui'
 import { logger } from '../lib/rendererLogger'
 
 const THUMBNAIL_PLACEHOLDER =
@@ -125,11 +125,7 @@ export function MediaCard({
             </span>
           </span>
         ) : null}
-        {file.kind === 'video' && (
-          <span className="video-play-badge">
-            <Play size={14} fill="currentColor" />
-          </span>
-        )}
+        {file.kind === 'video' && <VideoPlayBadge size={26} />}
       </div>
     </article>
   )

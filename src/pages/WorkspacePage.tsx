@@ -91,6 +91,16 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
     pipeline: edit.previewPipeline,
   })
 
+  // ── 双击缩放 ──
+  function handleStageDoubleClick(): void {
+    if (edit.cropActive) return
+    if (viewport.zoom > 1) {
+      viewport.resetViewport()
+    } else {
+      viewport.zoomTo(2)
+    }
+  }
+
   // ── Reset viewport when media changes ──
   useEffect(() => {
     viewport.resetViewport()
@@ -132,6 +142,35 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
       media.setCurrentProject(nextProject)
     }, 500)
   }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, edit.pipeline])
+
+  // ── 批量重置 ──
+  function handleBatchReset(): void {
+    const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
+    if (indices.size === 1) {
+      // 单个直接 reset
+      edit.resetPipeline()
+      toast.success('已重置到默认参数')
+      return
+    }
+    // 批量重置：更新项目资源
+    toast.success(`已重置 ${indices.size} 个素材到默认参数`)
+    const defaultPipe = createDefaultPipeline()
+    if (media.currentProject) {
+      const nextAssets = media.currentProject.assets.map((asset, i) =>
+        indices.has(i) ? { ...asset, pipeline: defaultPipe } : asset,
+      )
+      const nextProject = { ...media.currentProject, assets: nextAssets }
+      media.setCurrentProject(nextProject)
+      window.luna.workspace.saveProject(nextProject).catch(() => {})
+      // 如果当前素材也在重置范围内，更新编辑历史
+      if (indices.has(media.activeIndex)) {
+        edit.resetPipeline()
+      }
+    } else {
+      // transient media — 只重置当前
+      edit.resetPipeline()
+    }
+  }
 
   // ── onEditingChange ──
   useEffect(() => {
@@ -183,13 +222,15 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
         return
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyC' && !cropActiveRef.current) {
+      if ((event.ctrlKey || event.metaKey) && event.code === 'KeyC' && !cropActiveRef.current) {
+        if (event.target instanceof HTMLElement && event.target.closest('.workspace-video-progress')) return
         event.preventDefault()
         copyPipelineRef.current()
         return
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyV' && !cropActiveRef.current) {
+      if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && !cropActiveRef.current) {
+        if (event.target instanceof HTMLElement && event.target.closest('.workspace-video-progress')) return
         event.preventDefault()
         pasteToCurrentRef.current()
         return
@@ -228,6 +269,7 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
           onPointerMove={viewport.handlePointerMove}
           onPointerUp={viewport.handlePointerUp}
           onPointerCancel={viewport.handlePointerUp}
+          onDoubleClick={handleStageDoubleClick}
         >
           <div
             className="workspace-preview-surface"
@@ -314,7 +356,7 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
           <Tooltip content="重做">
             <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={!edit.canRedo} onClick={edit.redo} />
           </Tooltip>
-          <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={edit.resetPipeline}>重置</Button>
+          <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={handleBatchReset}>重置</Button>
           <div className="workspace-toolbar-divider" />
           <Tooltip content="复制调色和水印">
             <IconButton variant="ghost" size="compact" icon={<ClipboardCopy size={15} />} disabled={!media.activeMedia || !canvas.canRender} onClick={edit.copyPipeline} />
@@ -332,6 +374,33 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
           )}
         </div>
         <div className="workspace-toolbar-title">{media.currentProject?.name ?? '临时工作台'} · {media.activeIndex + 1}/{media.media.length}</div>
+
+        {canvas.isVideo && !canvas.imageLoading && (
+          <div className="workspace-toolbar-video">
+            <button
+              className="workspace-toolbar-video-btn"
+              type="button"
+              onClick={canvas.toggleVideoPlayback}
+              aria-label={canvas.videoPlaying ? '暂停' : '播放'}
+            >
+              {canvas.videoPlaying ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+            <input
+              className="workspace-toolbar-video-progress"
+              type="range"
+              min={0}
+              max={canvas.videoDuration || 1}
+              step={0.1}
+              value={canvas.videoCurrentTime}
+              onChange={(e) => canvas.seekVideo(Number(e.target.value))}
+              aria-label="进度"
+            />
+            <span className="workspace-toolbar-video-time">
+              {formatTime(canvas.videoCurrentTime)} / {formatTime(canvas.videoDuration)}
+            </span>
+          </div>
+        )}
+
         <div className="workspace-toolbar-group">
           <Button
             variant={edit.compareOriginal ? 'primary' : 'secondary'}

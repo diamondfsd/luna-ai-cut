@@ -474,17 +474,20 @@
   color: var(--muted-dark);
 }
 
-.preview-thumb-badge {
+.preview-thumb-modified-dot {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
-  display: grid;
-  width: 16px;
-  height: 16px;
-  place-items: center;
+  top: 6px;
+  left: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  background: var(--blue);
+  z-index: 1;
+}
+
+.preview-thumb-item.modified {
+  border-color: rgba(0, 102, 204, 0.32);
+  background: rgba(0, 102, 204, 0.08);
 }
 
 .preview-thumb-live {
