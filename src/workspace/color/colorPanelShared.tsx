@@ -184,6 +184,10 @@ export function CurvePreview({
               style={{ cursor: dragging === index ? 'grabbing' : 'grab' }}
               onPointerDown={(event) => {
                 event.stopPropagation()
+                if (event.detail >= 2) {
+                  removePoint(index)
+                  return
+                }
                 setDragging(index)
                 event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId)
               }}
