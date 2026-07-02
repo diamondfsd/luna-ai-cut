@@ -4,6 +4,7 @@ import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails } from './previewModalUtils'
+import { concreteWatermarkStyle } from '../shared/insta360DeviceProfiles'
 import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
@@ -134,6 +135,34 @@ export function PreviewModal({
   const previewMatchesFile = preview?.fileName === file.name
   const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
   const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
+
+  // 从文件 EXIF 读取相机型号，用于确定 'auto' 水印样式
+  const [exifCameraModel, setExifCameraModel] = useState<string | null>(null)
+  useEffect(() => {
+    if (!effectiveWatermark || watermarkSettings.style !== 'auto' || !downloadedPath) {
+      setExifCameraModel(null)
+      return
+    }
+    let cancelled = false
+    window.luna.readExifModel(downloadedPath).then((model) => {
+      if (!cancelled) setExifCameraModel(model)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [effectiveWatermark, watermarkSettings.style, downloadedPath, file.id])
+
+  // 预览时使用的水印样式（从 EXIF 相机型号解析 'auto'）
+  const previewWmStyle = useMemo(() => {
+    if (!effectiveWatermark) return 'auto' as const
+    if (watermarkSettings.style !== 'auto') return watermarkSettings.style
+    return concreteWatermarkStyle('auto', {
+      sourceDeviceId: file.sourceDeviceId,
+      sourceDeviceName: file.sourceDeviceName,
+      cameraType: file.cameraType,
+      cameraSerial: file.cameraSerial,
+      watermarkProfileId: file.watermarkProfileId,
+      exifModel: exifCameraModel,
+    })
+  }, [effectiveWatermark, watermarkSettings.style, file.sourceDeviceId, file.sourceDeviceName, file.cameraType, file.cameraSerial, file.watermarkProfileId, exifCameraModel])
 
   // 加载已保存的水印设置
   useEffect(() => {
@@ -370,7 +399,7 @@ export function PreviewModal({
               previewImageRef={previewImageRef}
               showWatermarkControls={effectiveWatermark}
               videoRef={videoRef}
-              watermarkSettings={{ ...watermarkSettings, style: effectiveWatermark ? watermarkSettings.style : 'auto' }}
+              watermarkSettings={{ ...watermarkSettings, style: previewWmStyle }}
               finishImageDrag={finishImageDrag}
               handleImageDoubleClick={handleImageDoubleClick}
               handleImageLoaded={handleImageLoaded}
