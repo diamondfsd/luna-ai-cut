@@ -697,6 +697,7 @@ function registerIpc(): void {
 
     await previewColorFrame(sourcePath, outputPath, colorOpts, { maxSize, seekSeconds: options?.seekSeconds })
     logMainInfo(`[workspace:previewColor] 完成`, { outputPath })
+    console.error('=== DEBUGOUTPUTPATH ===', outputPath, '=== END ===')
     return { path: outputPath }
   })
 
