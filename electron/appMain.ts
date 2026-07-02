@@ -1258,6 +1258,58 @@ function scheduleUpdateCheck(): void {
   }, 2_000)
 }
 
+/** 创建应用菜单，保留文本编辑快捷键（剪切/复制/粘贴/全选） */
+function createAppMenu(): void {
+  const isMac = process.platform === 'darwin'
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' as const },
+        { type: 'separator' as const },
+        { role: 'hide' as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide' as const },
+        { type: 'separator' as const },
+        { role: 'quit' as const },
+      ],
+    }] : []),
+    ...(isMac ? [{
+      label: '文件',
+      submenu: [
+        { role: 'close' as const },
+      ],
+    }] : []),
+    {
+      label: 'Edit' as const,
+      submenu: [
+        { role: 'undo' as const, label: '撤销' },
+        { role: 'redo' as const, label: '重做' },
+        { type: 'separator' as const },
+        { role: 'cut' as const, label: '剪切' },
+        { role: 'copy' as const, label: '复制' },
+        { role: 'paste' as const, label: '粘贴' },
+        { role: 'selectAll' as const, label: '全选' },
+      ],
+    },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'reload' as const, label: '重新加载' },
+        { role: 'toggleDevTools' as const, label: '开发者工具' },
+        { type: 'separator' as const },
+        { role: 'resetZoom' as const, label: '重置缩放' },
+        { role: 'zoomIn' as const, label: '放大' },
+        { role: 'zoomOut' as const, label: '缩小' },
+        { type: 'separator' as const },
+        { role: 'togglefullscreen' as const, label: '全屏' },
+      ],
+    },
+  ]
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
+
 app.whenReady().then(() => {
   initLogger()
   logMainInfo('应用启动')
@@ -1271,7 +1323,7 @@ app.whenReady().then(() => {
     totalMemory: `${Math.round(os.totalmem() / (1024 ** 3))}G`,
     userData: app.getPath('userData').replace(process.env.USERPROFILE || process.env.HOME || '', '~'),
   })
-  Menu.setApplicationMenu(null)
+  createAppMenu()
   registerIpc()
   scheduleUpdateCheck()
   createWindow()

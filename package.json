@@ -21,7 +21,7 @@
     "test:workspace": "node scripts/test-workspace-geometry.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
     "test:insta360-tcp": "node scripts/test-insta360-tcp.mjs",
-    "pack:mac:arm64": "pnpm run build:app && node scripts/copy-ffmpeg.mjs --target darwin --arch arm64 && ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --mac dmg --arm64 --publish never",
+    "pack:mac:arm64": "pnpm run build:app && node scripts/copy-ffmpeg.mjs --target darwin --arch arm64 && CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --mac dmg --arm64 --publish never",
     "pack:win:x64": "pnpm run build:app && node scripts/copy-ffmpeg.mjs --target win32 --arch x64 && electron-builder --win nsis --x64 --publish never",
     "pack:mac:x64": "pnpm run build:app && node scripts/copy-ffmpeg.mjs --target darwin --arch x64 && ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --mac dmg --x64 --publish never",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
