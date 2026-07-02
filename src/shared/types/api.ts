@@ -81,9 +81,9 @@ export interface LunaApi {
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     exportColor(sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }): Promise<{ path: string; name: string }>
     previewColor(sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }): Promise<{ path: string; dataUrl: string }>
-    startVideoExport(meta: { exportId: string; taskName: string; outputName: string; width: number; height: number; fps: number }): Promise<{ exportId: string; outputPath: string; taskId: string; taskStart: number }>
-    sendVideoExportFrame(exportId: string, frameData: ArrayBuffer, meta?: { totalFrames: number; taskId: string; taskStart: number }): Promise<void>
-    endVideoExport(exportId: string, meta: { taskId: string; taskStart: number; outputPath: string }): Promise<{ path: string; name: string }>
+    startVideoExport(meta: { exportId: string; taskName: string; outputName: string; width: number; height: number; fps: number }): Promise<{ exportId: string; outputPath: string; rawFilePath: string; taskId: string; taskStart: number }>
+    sendVideoExportFrame(exportId: string, frameData: ArrayBuffer, meta?: { totalFrames: number; taskId: string; taskStart: number; rawFilePath: string }): Promise<void>
+    endVideoExport(exportId: string, meta: { taskId: string; taskStart: number; outputPath: string; rawFilePath: string; width: number; height: number; fps: number }): Promise<{ path: string; name: string }>
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void

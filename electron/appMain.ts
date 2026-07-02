@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { cp, mkdir, readFile, rm } from 'node:fs/promises'
+import { appendFile, cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { checkForUpdates } from './updateService'
 import type { HotUpdateCheckResult } from './hotUpdater'
@@ -804,38 +804,20 @@ function registerIpc(): void {
     const baseName = path.basename(outputName, path.extname(outputName)) || 'workspace'
     const fileName = safeName(`${baseName}_${taskName}_${Date.now()}.mp4`)
     const outputPath = path.join(settings.exportDir, fileName)
-    logMainInfo(`[videoExport] 开始 WebGL 视频导出`, { exportId, taskName, width, height, fps, outputPath })
-
-    const ffmpegPath = (await import('./ffmpeg/pipeline')).getFfmpegPath()
-    const hwaccel = await (await import('./ffmpeg/hwaccel')).detectHardwareAccel(ffmpegPath)
-    const encoder = spawn(ffmpegPath, [
-      '-f', 'rawvideo',
-      '-pix_fmt', 'rgba',
-      '-s', `${width}x${height}`,
-      '-r', String(fps),
-      '-i', 'pipe:0',
-      '-c:v', hwaccel.encoderNameH264,
-      '-pix_fmt', 'yuv420p',
-      ...hwaccel.encoderArgs,
-      '-y', outputPath,
-    ])
-    activeExportEncoders.set(exportId, encoder)
+    // 临时 raw 文件（避免 IPC → encoder.stdin 背压瓶颈）
+    const rawFilePath = outputPath.replace(/\.mp4$/, '.raw')
+    logMainInfo(`[videoExport] 开始 WebGL 视频导出`, { exportId, taskName, width, height, fps, outputPath, rawFilePath })
 
     const task = await createExportTask(taskName, [{ exportId, fileName, kind: 'video' }])
     const taskStart = Date.now()
 
-    return { exportId, outputPath, taskId: task.id, taskStart }
+    return { exportId, outputPath, rawFilePath, taskId: task.id, taskStart }
   })
 
   const exportVideoFrameCount = new Map<string, number>()
-  const exportVideoMeta = new Map<string, { totalFrames: number; taskId: string; taskStart: number }>()
-  ipcMain.handle('workspace:sendVideoExportFrame', async (_event, exportId: string, frameData: ArrayBuffer, meta?: { totalFrames: number; taskId: string; taskStart: number }) => {
-    const encoder = activeExportEncoders.get(exportId)
-    if (!encoder || encoder.killed) {
-      logMainWarn(`[videoExport] encoder not found for ${exportId}, skipping frame`)
-      return
-    }
-    // 首帧存储元数据，后续帧复用它（renderer 只传一次 meta）
+  const exportVideoMeta = new Map<string, { totalFrames: number; taskId: string; taskStart: number; rawFilePath: string }>()
+  ipcMain.handle('workspace:sendVideoExportFrame', async (_event, exportId: string, frameData: ArrayBuffer, meta?: { totalFrames: number; taskId: string; taskStart: number; rawFilePath: string }) => {
+    // 首帧存储元数据，后续帧复用
     if (meta) exportVideoMeta.set(exportId, meta)
     const exportMeta = exportVideoMeta.get(exportId)
     if (!exportMeta) return
@@ -843,27 +825,35 @@ function registerIpc(): void {
     const count = (exportVideoFrameCount.get(exportId) ?? 0) + 1
     exportVideoFrameCount.set(exportId, count)
 
+    // 写入 temp raw 文件（无背压，IPC 仅传输 33MB → ~30ms）
+    await appendFile(exportMeta.rawFilePath, Buffer.from(frameData))
+
     // 每 30 帧更新一次任务进度
     if (count % 30 === 0 || count === 1) {
       const pct = Math.round((count / exportMeta.totalFrames) * 100)
       logMainInfo(`[videoExport] 任务进度 ${count}/${exportMeta.totalFrames} (${pct}%)`, { exportId })
       await updateTaskItemProgress(exportMeta.taskId, exportId, exportMeta.taskStart, pct, pct >= 100 ? 'done' : 'exporting', {}).catch(() => {})
     }
-    return new Promise<void>((resolve, reject) => {
-      const canContinue = encoder.stdin.write(Buffer.from(frameData), (err) => {
-        if (err) reject(err)
-        else resolve()
-      })
-      if (!canContinue) {
-        encoder.stdin.once('drain', () => resolve())
-      }
-    })
   })
 
-  ipcMain.handle('workspace:endVideoExport', async (_event, exportId: string, meta: { taskId: string; taskStart: number; outputPath: string }) => {
-    const encoder = activeExportEncoders.get(exportId)
-    if (!encoder) throw new Error(`Export ${exportId} not found`)
-    const { outputPath } = meta
+  ipcMain.handle('workspace:endVideoExport', async (_event, exportId: string, meta: { taskId: string; taskStart: number; outputPath: string; rawFilePath: string; width: number; height: number; fps: number }) => {
+    const { outputPath, rawFilePath, width, height, fps: fpsMeta } = meta
+
+    logMainInfo(`[videoExport] 开始编码 temp raw 文件`, { exportId, rawFilePath, outputPath })
+
+    const ffmpegPath = (await import('./ffmpeg/pipeline')).getFfmpegPath()
+    const hwaccel = await (await import('./ffmpeg/hwaccel')).detectHardwareAccel(ffmpegPath)
+    const encoder = spawn(ffmpegPath, [
+      '-f', 'rawvideo',
+      '-pix_fmt', 'rgba',
+      '-s', `${width}x${height}`,
+      '-r', String(fpsMeta),
+      '-i', rawFilePath,
+      '-c:v', hwaccel.encoderNameH264,
+      '-pix_fmt', 'yuv420p',
+      ...hwaccel.encoderArgs,
+      '-y', outputPath,
+    ])
 
     return new Promise<{ path: string; name: string }>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -873,19 +863,25 @@ function registerIpc(): void {
 
       encoder.on('close', async (code) => {
         clearTimeout(timeout)
-        activeExportEncoders.delete(exportId)
         if (code !== 0) {
           logMainError(`[videoExport] ffmpeg 编码异常退出`, { exportId, code })
           reject(new Error(`ffmpeg 编码退出 (code=${code})`))
           return
         }
+        // 删除 temp raw 文件
+        try { await rm(rawFilePath) } catch {}
+
         logMainInfo(`[videoExport] 视频导出完成`, { exportId })
         exportVideoMeta.delete(exportId)
         exportVideoFrameCount.delete(exportId)
+        activeExportEncoders.delete(exportId)
         resolve({ path: outputPath, name: path.basename(outputPath) })
       })
 
-      encoder.stdin.end()
+      encoder.on('error', (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      })
     })
   })
 
