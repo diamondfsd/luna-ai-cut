@@ -1006,8 +1006,8 @@ function registerIpc(): void {
 
     logMainInfo(`[videoExport] 开始编码 temp raw 文件`, { exportId, rawFilePath, outputPath })
 
-    const ffmpegPath = (await import('./ffmpeg/pipeline')).getFfmpegPath()
-    const hwaccel = await (await import('./ffmpeg/hwaccel')).detectHardwareAccel(ffmpegPath)
+    const ffmpegPath = getFfmpegPath()
+    const hwaccel = await detectHardwareAccel(ffmpegPath)
     const encoder = spawn(ffmpegPath, [
       '-f', 'rawvideo',
       '-pix_fmt', 'rgba',
