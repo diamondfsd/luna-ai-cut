@@ -62,3 +62,47 @@ export function defaultWatermarkStyleForDevice(params: Parameters<typeof inferDe
 export function concreteWatermarkStyle(style: string, _params: Parameters<typeof inferDeviceProfile>[0]): string {
   return style
 }
+
+/**
+ * 统一设备检测函数。
+ * 优先级：sourceDeviceId > cameraType > sourceDeviceName > cameraSerial > EXIF Model
+ * EXIF 读取需传入 readExif 回调（前端的 IPC 调用）。
+ */
+export async function resolveDeviceId(
+  file: {
+    sourceDeviceId?: string | null
+    watermarkProfileId?: string | null
+    cameraType?: string | null
+    sourceDeviceName?: string | null
+    cameraSerial?: string | null
+  },
+  options?: {
+    /** 备用文件路径，用于 EXIF 读取 */
+    filePath?: string
+    /** EXIF 读取函数（由前端传入 window.luna.readExifModel） */
+    readExif?: (path: string) => Promise<string | null>
+  },
+): Promise<string | null> {
+  // 1. 从文件字段推断
+  const profile = inferDeviceProfile({
+    sourceDeviceId: file.sourceDeviceId,
+    sourceDeviceName: file.sourceDeviceName,
+    cameraType: file.cameraType,
+    cameraSerial: file.cameraSerial,
+    watermarkProfileId: file.watermarkProfileId,
+  })
+  if (profile) return profile.id
+
+  // 2. EXIF 兜底
+  if (options?.filePath && options?.readExif) {
+    try {
+      const exifModel = await options.readExif(options.filePath)
+      if (exifModel) {
+        const exifProfile = deviceProfileForText(exifModel)
+        if (exifProfile) return exifProfile.id
+      }
+    } catch { /* EXIF 读取失败，忽略 */ }
+  }
+
+  return null
+}

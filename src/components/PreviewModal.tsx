@@ -6,7 +6,6 @@ import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
 import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
-import { INSTA360_DEVICE_PROFILES } from '../shared/insta360DeviceProfiles'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
 
@@ -138,24 +137,6 @@ export function PreviewModal({
   const previewMatchesFile = preview?.fileName === file.name
   const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
   const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
-
-  // 水印样式已直接使用具体值（如 'luna_ultra'），无需 'auto' 解析
-  // 根据文件设备信息获取该设备的水印样式选项
-  // 优先使用 file.sourceDeviceId，其次从 metadata 的相机型号推导
-  const watermarkStyleOptions = useMemo(() => {
-    const deviceId = file.sourceDeviceId ?? file.watermarkProfileId ?? null
-    if (deviceId) return watermarkStyleOptionsForDevice(deviceId)
-    // 从 enrichedFile 的 metadata 回退：根据 cameraType 推断
-    const cameraModel = file.cameraType || file.sourceDeviceName || null
-    if (cameraModel) {
-      // "Luna Ultra" → "luna-ultra"
-      const profileMatch = INSTA360_DEVICE_PROFILES.find(
-        (p) => p.exifModelPatterns.some((re) => re.test(cameraModel)),
-      )
-      if (profileMatch) return watermarkStyleOptionsForDevice(profileMatch.id)
-    }
-    return watermarkStyleOptionsForDevice('luna-ultra') // 最后一个兜底
-  }, [file.sourceDeviceId, file.watermarkProfileId, file.cameraType, file.sourceDeviceName])
 
   // 加载已保存的水印设置，若无保存则设设备默认样式
   useEffect(() => {
@@ -442,7 +423,7 @@ export function PreviewModal({
               onToggleCollapse={() => setInspectorOpen(false)}
               watermarkSettings={effectiveWatermark ? watermarkSettings : undefined}
               onWatermarkChange={effectiveWatermark ? saveWatermarkSettings : undefined}
-              watermarkStyleOptions={effectiveWatermark ? watermarkStyleOptions : undefined}
+              watermarkFilePath={effectiveWatermark ? downloadedPath : undefined}
             />
           )}
         </div>

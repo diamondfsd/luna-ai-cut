@@ -8,7 +8,7 @@ import { ExportModal } from './ExportModal'
 import { AddToWorkspaceProjectDialog, CreateWorkspaceProjectDialog } from './WorkspaceProjectDialogs'
 import { formatBytes } from '../lib/format'
 import type { CardSize, SortOrder } from '../pages/useMediaLibraryController'
-import type { DeviceDefinition, DownloadProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { DownloadProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
   Button,
   ButtonGroup,
@@ -24,7 +24,6 @@ type DownloadStatusFilter = 'all' | 'downloaded' | 'not-downloaded'
 import type { ViewMode } from '../pages/useMediaLibraryController'
 
 interface MediaLibraryToolbarProps {
-  activeDevice?: DeviceDefinition
   activeDownloadFileNames: Set<string>
   cardSize: CardSize
   currentDate: string
@@ -74,7 +73,6 @@ interface MediaLibraryToolbarProps {
 }
 
 export function MediaLibraryToolbar({
-  activeDevice,
   activeDownloadFileNames,
   cardSize,
   currentDate,
@@ -400,7 +398,6 @@ export function MediaLibraryToolbar({
         <ExportModal
           files={selectedFiles}
           watermarkSettings={exportWatermarkSettings}
-          watermarkStyleOptions={activeDevice?.watermarkStyles}
           exporting={exporting}
           onClose={() => setShowExportDialog(false)}
           onConfirm={(settings, videoSettings) => { setShowExportDialog(false); void exportLocalFiles(selectedFiles, settings, videoSettings) }}

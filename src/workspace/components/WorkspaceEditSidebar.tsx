@@ -5,11 +5,10 @@ import { Accordion, Button, IconButton, Tooltip } from '../../ui'
 import { createDefaultPipeline, DEFAULT_PIPELINE } from '../shared/editPipeline'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
+import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ColorPanel } from '../color/ColorPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
-import { ALL_WATERMARK_STYLES } from '../../shared/watermarkAssets'
-import type { DeviceWatermarkStyleConfig } from '../../shared/types'
 
 export type WorkspaceTool = 'color' | 'crop' | 'watermark'
 
@@ -61,6 +60,7 @@ function titleForTool(tool: WorkspaceTool): string {
 export function WorkspaceEditSidebar() {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
+  const mediaCtx = useWorkspaceMedia()
 
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * 2160)
   const cropHeight = edit.cropSize.height || 2160
@@ -75,21 +75,7 @@ export function WorkspaceEditSidebar() {
     [edit.handleCropSizeChange, canvas.sourceAspect],
   )
 
-  // 工作台水印样式：从所有已注册水印构建选项
-  const wmStyleOptions: DeviceWatermarkStyleConfig[] = useMemo(
-    () =>
-      ALL_WATERMARK_STYLES.map((ws) => ({
-        value: ws.value,
-        label: ws.label,
-        videoFileName: ws.videoFileName,
-        imageFileName: ws.imageFileName,
-      })),
-    [],
-  )
-
-  // 调试日志
-  console.log('[workspace watermark] styleOptions:', wmStyleOptions.map((s) => s.value).join(', '))
-  console.log('[workspace watermark] current style:', edit.pipeline.watermark.style)
+  // 水印检测由 WatermarkSettings 内部根据 filePath 自动完成
 
   return (
     <aside className="workspace-edit-sidebar">
@@ -172,7 +158,7 @@ export function WorkspaceEditSidebar() {
               <WatermarkSettings
                 settings={edit.pipeline.watermark}
                 onChange={(watermark) => edit.updateWorkspacePanel({ watermark })}
-                styleOptions={wmStyleOptions}
+                filePath={mediaCtx.activeMedia?.path}
               />
             </Accordion>
           )}
