@@ -28,6 +28,7 @@ interface WorkspaceCanvasValue {
   render: (pipeline: EditPipeline, opts?: { cropMode?: boolean }) => void
   rendererReady: boolean
   renderKey: number
+  loadedMediaPath: string | null
   // Video
   isVideo: boolean
   videoPlaying: boolean
@@ -37,6 +38,9 @@ interface WorkspaceCanvasValue {
   pauseVideo: () => void
   seekVideo: (time: number) => void
   toggleVideoPlayback: () => void
+  // 3D LUT
+  bakeAndLoadLut: (colorParams: Record<string, unknown>, key: string) => Promise<boolean>
+  clearLut: () => void
 }
 
 const WorkspaceCanvasContext = createContext<WorkspaceCanvasValue | null>(null)
@@ -95,6 +99,7 @@ export function WorkspaceCanvasProvider({ children }: { children: ReactNode }) {
       render: engine.render,
       rendererReady: engine.rendererReady,
       renderKey: engine.renderKey,
+      loadedMediaPath: engine.loadedMediaPath,
       isVideo: engine.isVideo,
       videoPlaying: engine.videoPlaying,
       videoDuration: engine.videoDuration,
@@ -103,6 +108,8 @@ export function WorkspaceCanvasProvider({ children }: { children: ReactNode }) {
       pauseVideo: engine.pauseVideo,
       seekVideo: engine.seekVideo,
       toggleVideoPlayback: engine.toggleVideoPlayback,
+      bakeAndLoadLut: engine.bakeAndLoadLut,
+      clearLut: engine.clearLut,
     }),
     [engine],
   )

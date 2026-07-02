@@ -1,9 +1,9 @@
-import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, LayoutTemplate, Pause, Play, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, Pause, Play, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
-import { Button, Dialog, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
+import { Button, Dialog, ErrorBoundary, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
 import { logger } from '../lib/rendererLogger'
 import { WorkspaceEditProvider, useWorkspaceEdit } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
@@ -13,12 +13,14 @@ import { useViewport } from '../workspace/hooks/useViewport'
 import { useWorkspaceExport } from '../workspace/export/useWorkspaceExport'
 import { createDefaultPipeline, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
+import { buildColorLutParams, colorLutKey } from '../workspace/shared/colorLut'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
 import { WorkspaceWatermarkOverlay } from '../workspace/components/WorkspaceWatermarkOverlay'
 import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSidebar'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import type { WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
+import '../styles/workspace-loading.css'
 
 function normalizePipeline(value: unknown): EditPipeline {
   if (!value || typeof value !== 'object') return createDefaultPipeline()
@@ -27,6 +29,7 @@ function normalizePipeline(value: unknown): EditPipeline {
 
 interface WorkspacePageProps {
   workspaceMode: WorkspaceMode
+  pageActive: boolean
   onEditingChange?: (editing: boolean) => void
 }
 
@@ -40,7 +43,7 @@ function formatTime(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-export function WorkspacePage({ workspaceMode, onEditingChange }: WorkspacePageProps) {
+export function WorkspacePage({ workspaceMode, pageActive, onEditingChange }: WorkspacePageProps) {
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
 
@@ -51,6 +54,7 @@ export function WorkspacePage({ workspaceMode, onEditingChange }: WorkspacePageP
           <ErrorBoundary>
             <WorkspacePageInner
               workspaceMode={workspaceMode}
+              pageActive={pageActive}
               onEditingChange={onEditingChange}
             />
           </ErrorBoundary>
@@ -62,12 +66,13 @@ export function WorkspacePage({ workspaceMode, onEditingChange }: WorkspacePageP
 
 // ── inner page that consumes all three contexts ──
 
-function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePageProps) {
+function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: WorkspacePageProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
   const viewport = useViewport()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const activeMediaReady = Boolean(media.activeMedia && canvas.loadedMediaPath === media.activeMedia.path && !canvas.imageLoading)
 
   logger.info(`[WorkspacePage] render`, {
     workspaceMode,
@@ -90,6 +95,26 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
     imageRect: canvas.imageRect,
     pipeline: edit.previewPipeline,
   })
+
+  // ── 3D LUT 加载：color 参数变化时烘焙 LUT 并下发到 WebGL ──
+  const lutTimerRef = useRef<number | null>(null)
+  const lutKey = colorLutKey(edit.pipeline.color)
+  useEffect(() => {
+    if (!canvas.canRender) return
+    if (lutTimerRef.current) window.clearTimeout(lutTimerRef.current)
+    lutTimerRef.current = window.setTimeout(() => {
+      const color = edit.pipeline.color
+      if (!color) return
+      void canvas.bakeAndLoadLut(buildColorLutParams(color), lutKey)
+    }, 500)
+    return () => {
+      if (lutTimerRef.current) window.clearTimeout(lutTimerRef.current)
+    }
+  }, [
+    lutKey,
+    canvas.canRender,
+    canvas.bakeAndLoadLut,
+  ])
 
   // ── 双击缩放 ──
   function handleStageDoubleClick(): void {
@@ -199,6 +224,8 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
 
   // Stable keyboard handler (registered once, refs keep latest values)
   useEffect(() => {
+    if (!pageActive || workspaceMode !== 'edit') return
+
     function handleKeyDown(event: KeyboardEvent): void {
       // 全局阻止空格默认行为（使用捕获阶段在滑块内部处理前拦截）
       if (event.code === 'Space') {
@@ -251,7 +278,7 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
       window.removeEventListener('keydown', handleKeyDown, { capture: true })
       window.removeEventListener('keyup', handleKeyUp, { capture: true })
     }
-  }, [])
+  }, [pageActive, workspaceMode])
 
   // ── Empty state ──
   if (!media.currentProject && media.media.length === 0) {
@@ -263,7 +290,7 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
       <section className="workspace-canvas-shell">
         <div
           ref={canvas.stageRef as React.RefObject<HTMLDivElement>}
-          className={`workspace-canvas-stage${workspaceMode === 'creative' ? ' workspace-canvas-stage--hidden' : ''}${edit.cropActive ? ' cropping' : ''}${viewport.zoom > 1 && !edit.cropActive ? ' panning' : ''}`}
+          className={`workspace-canvas-stage${workspaceMode === 'creative' ? ' workspace-canvas-stage--hidden' : ''}${!activeMediaReady ? ' loading' : ''}${edit.cropActive ? ' cropping' : ''}${viewport.zoom > 1 && !edit.cropActive ? ' panning' : ''}`}
           onWheel={viewport.handleWheel}
           onPointerDown={viewport.handlePointerDown}
           onPointerMove={viewport.handlePointerMove}
@@ -272,7 +299,7 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
           onDoubleClick={handleStageDoubleClick}
         >
           <div
-            className="workspace-preview-surface"
+            className={`workspace-preview-surface${!activeMediaReady ? ' is-hidden' : ''}`}
             style={{ transform: `translate(${viewport.pan.x}px, ${viewport.pan.y}px) scale(${viewport.zoom})` }}
           >
             <canvas ref={canvas.canvasRef as React.RefObject<HTMLCanvasElement>} className="workspace-canvas" />
@@ -280,29 +307,21 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
             {edit.cropActive && canvas.canRender && <CropOverlay />}
           </div>
           {/* Status overlay */}
-          {(canvas.imageLoading || canvas.imageError || canvas.webglMessage || !media.activeMedia) && (
+          {(!activeMediaReady || canvas.imageError || canvas.webglMessage || !media.activeMedia) && (
             <div className="workspace-stage-status">
-              {canvas.imageLoading && <span>加载预览中...</span>}
-              {!canvas.imageLoading && canvas.imageError && <span>{canvas.imageError}</span>}
-              {!canvas.imageLoading && !canvas.imageError && canvas.webglMessage && <span>{canvas.webglMessage}</span>}
-              {!canvas.imageLoading && !canvas.imageError && !media.activeMedia && <span>暂无素材</span>}
+              {media.activeMedia && !canvas.imageError && !canvas.webglMessage && !activeMediaReady && (
+                <LoadingIndicator label="加载预览中" />
+              )}
+              {canvas.imageError && <span>{canvas.imageError}</span>}
+              {!canvas.imageError && canvas.webglMessage && <span>{canvas.webglMessage}</span>}
+              {!canvas.imageError && !media.activeMedia && <span>暂无素材</span>}
             </div>
           )}
         </div>
 
         {/* 视频播放控件 */}
-        {canvas.isVideo && !canvas.imageLoading && (
+        {canvas.isVideo && activeMediaReady && (
           <>
-            {!canvas.videoPlaying && (
-              <button
-                className="workspace-video-play-overlay"
-                type="button"
-                onClick={canvas.toggleVideoPlayback}
-                aria-label="播放"
-              >
-                <Play size={48} />
-              </button>
-            )}
             <div className="workspace-video-controls" onClick={(e) => e.stopPropagation()}>
               <button
                 className="workspace-video-btn"
@@ -328,21 +347,9 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
             </div>
           </>
         )}
-        {workspaceMode === 'creative' && (
-          <div className="workspace-creative-placeholder">
-            <div className="workspace-creative-placeholder-icon">
-              <LayoutTemplate size={28} />
-            </div>
-            <h2>开始你的 Live 三拼</h2>
-            <p>从下方素材面板拖拽三张竖版 Live 图或视频到三个格子中，松手即可完成拼接。</p>
-            <div className="workspace-creative-placeholder-hint">
-              也可以直接从电脑文件夹拖入文件
-            </div>
-          </div>
-        )}
       </section>
 
-      {workspaceMode !== 'creative' && <WorkspaceEditSidebar />}
+      <WorkspaceEditSidebar />
 
       {/* ── Toolbar ── */}
       <footer className="workspace-toolbar">

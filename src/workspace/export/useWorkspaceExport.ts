@@ -5,6 +5,8 @@ import type { LunaFile, MediaKind, WorkspaceMediaAsset } from '../../shared/type
 import { toast } from '../../ui'
 import type { EditPipeline } from '../shared/editPipeline'
 import { logger } from '../../lib/rendererLogger'
+import { canExportFFmpeg } from '../shared/canExportFFmpeg'
+import { exportWithFFmpeg } from './exportFFmpeg'
 import { exportImageWithWebGL } from './exportImageWithWebGL'
 import { exportVideoWithWebGL } from './exportVideoWithWebGL'
 import { composeWorkspaceExport } from './exportWorkspaceImage'
@@ -85,10 +87,31 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
     try {
       let result: { name: string; path: string }
 
-      if (isVid) {
-        // ── 视频导出：WebGL shader 逐帧调色 → ffmpeg 仅编码 ──
-        toast.success('已开始导出视频')
-        logger.info(`[Export] 开始导出视频`, { exportId, taskName, path: activeMedia.path })
+      // ── 后端选择：优先 FFmpegFast，回退 WebGLExact ──
+      const useFFmpeg = canExportFFmpeg(pipeline)
+
+      if (isVid && useFFmpeg) {
+        // ── FFmpegFast 视频导出：ffmpeg 解码→调色→编码，完全绕过 WebGL ──
+        toast.success('已开始极速导出')
+        logger.info(`[Export FFmpegFast] 开始导出视频`, { exportId, taskName, path: activeMedia.path })
+
+        result = await exportWithFFmpeg(
+          activeMedia.path,
+          pipeline,
+          { exportId, taskName, onProgress: (percent) => {
+            setExportProgress((current) => new Map(current).set(exportId, {
+              exportId, taskId, taskName, createdAt,
+              fileName: activeMedia.name, index: 0, totalFiles: 1,
+              percent, status: percent >= 100 ? 'done' : 'exporting',
+            }))
+          }},
+        )
+
+        toast.success('已导出到文件夹')
+      } else if (isVid) {
+        // ── WebGLExact 视频导出（兜底）：WebGL shader 逐帧调色 → ffmpeg 仅编码 ──
+        toast.success('已开始导出视频（高精度模式）')
+        logger.info(`[Export WebGLExact] 开始导出视频`, { exportId, taskName, path: activeMedia.path })
 
         await exportVideoWithWebGL({
           sourcePath: activeMedia.path,
@@ -107,10 +130,28 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
         // 视频导出完成后，从主进程获取最终路径（通过 endVideoExport 已返回）
         result = { path: '', name: activeMedia.name }
         toast.success('已导出到文件夹')
+      } else if (!isVid && useFFmpeg) {
+        // ── FFmpegFast 图片导出：ffmpeg 直接滤镜处理 ──
+        toast.success('已开始极速导出')
+        logger.info(`[Export FFmpegFast] 开始导出图片`, { exportId, taskName, path: activeMedia.path })
+
+        result = await exportWithFFmpeg(
+          activeMedia.path,
+          pipeline,
+          { exportId, taskName, onProgress: (percent) => {
+            setExportProgress((current) => new Map(current).set(exportId, {
+              exportId, taskId, taskName, createdAt,
+              fileName: activeMedia.name, index: 0, totalFiles: 1,
+              percent, status: percent >= 100 ? 'done' : 'exporting',
+            }))
+          }},
+        )
+
+        toast.success('已导出到文件夹')
       } else {
-        // ── 图片导出：WebGL shader 全分辨率 → toBlob → 保存 ──
-        toast.success('已开始导出图片')
-        logger.info(`[Export] 开始导出图片`, { exportId, taskName, path: activeMedia.path })
+        // ── WebGL 图片导出：WebGL shader 全分辨率 → toBlob → 保存 ──
+        toast.success('已开始导出图片（高精度模式）')
+        logger.info(`[Export WebGL] 开始导出图片`, { exportId, taskName, path: activeMedia.path })
 
         const blob = await exportImageWithWebGL(activeMedia.path, pipeline)
 
@@ -123,7 +164,7 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
         )
 
         result = await window.luna.workspace.exportImage(activeMedia.name, exportUrl)
-        logger.info(`[Export] 图片导出完成`, { exportId, result })
+        logger.info(`[Export WebGL] 图片导出完成`, { exportId, result })
         toast.success('已导出到文件夹')
       }
 

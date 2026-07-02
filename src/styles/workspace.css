@@ -213,22 +213,6 @@
   pointer-events: none;
 }
 
-/* ── 视频播放控件 ── */
-.workspace-video-play-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  z-index: 5;
-  color: #fff;
-  opacity: 0.8;
-  transition: opacity 0.15s;
-}
-.workspace-video-play-overlay:hover { opacity: 1; }
-
 .workspace-video-controls {
   position: absolute;
   bottom: 0;
@@ -617,4 +601,3 @@
 .workspace-curve-preview.dragging circle {
   cursor: grabbing;
 }
-

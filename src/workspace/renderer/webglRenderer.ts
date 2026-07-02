@@ -1,13 +1,22 @@
 import type { EditPipeline } from '../shared/editPipeline'
+import { colorLutKey } from '../shared/colorLut'
 import { containRect, displayAspectForCrop, frameSize } from '../transform/cropGeometry'
 import { fragmentSource, vertexSource } from './shaders/program'
+
+function glLog(msg: string, err?: number): void {
+  try { (window as any).luna?.log('error', '[WebGL] ' + msg + (err !== undefined ? ' code=' + err : '')) } catch {}
+}
 
 const CROP_MODE_PREVIEW_SCALE = 0.88
 const MAX_CURVE_POINTS = 12
 
+const LUT_SIZE = 33
+
 const UNIFORM_NAMES = [
   // Texture / Transform
   'u_image',
+  'u_lut3d',
+  'u_useLut',
   'u_aspectRatio',
   'u_crop',
   'u_rotate',
@@ -75,6 +84,9 @@ export class WebGLRenderer {
   private videoSrc: HTMLVideoElement | null = null
   private sourceSize = { width: 1, height: 1 }
   private displayRect = { x: 0, y: 0, width: 1, height: 1 }
+  private lutTexture: WebGLTexture | null = null
+  private useLut = false
+  private lutKey: string | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true })
@@ -139,6 +151,79 @@ export class WebGLRenderer {
     this.gl.viewport(0, 0, nextWidth, nextHeight)
   }
 
+  /**
+   * 加载 3D LUT 纹理 — 替代 GLSL 颜色计算。
+   * data: Float32Array，长度 N^3 * 3，按 B→G→R 平面顺序排列
+   */
+  loadLut(data: Float32Array, lutSize: number = LUT_SIZE, key: string | null = null): void {
+    const gl = this.gl
+    // 删除旧 LUT 纹理
+    if (this.lutTexture) gl.deleteTexture(this.lutTexture)
+
+    const tex = gl.createTexture()
+    if (!tex) return
+    this.lutTexture = tex
+
+    if (data.length !== lutSize * lutSize * lutSize * 3) {
+      gl.deleteTexture(tex)
+      this.lutTexture = null
+      this.useLut = false
+      this.lutKey = null
+      glLog('LUT data length mismatch, fallback to GLSL')
+      return
+    }
+
+    // 激活纹理单元 1（0 是主图）
+    gl.activeTexture(gl.TEXTURE1)
+    gl.bindTexture(gl.TEXTURE_3D, tex)
+
+    const rgba = new Uint8Array(lutSize * lutSize * lutSize * 4)
+    for (let i = 0, j = 0; i < data.length; i += 3, j += 4) {
+      rgba[j] = Math.round(Math.max(0, Math.min(1, data[i])) * 255)
+      rgba[j + 1] = Math.round(Math.max(0, Math.min(1, data[i + 1])) * 255)
+      rgba[j + 2] = Math.round(Math.max(0, Math.min(1, data[i + 2])) * 255)
+      rgba[j + 3] = 255
+    }
+
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, lutSize, lutSize, lutSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba)
+    let gle = gl.getError()
+    if (gle !== gl.NO_ERROR) {
+      glLog('texImage3D failed, fallback to GLSL', gle)
+      gl.deleteTexture(tex)
+      this.lutTexture = null
+      this.useLut = false
+      this.lutKey = null
+      return
+    }
+
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.bindTexture(gl.TEXTURE_3D, null)
+
+    this.useLut = true
+    this.lutKey = key
+    glLog('LUT loaded ok, size=' + lutSize)
+  }
+
+  /** 清除 LUT 纹理，回退到 GLSL 颜色计算 */
+  clearLut(): void {
+    if (this.lutTexture) {
+      this.gl.deleteTexture(this.lutTexture)
+      this.lutTexture = null
+    }
+    this.useLut = false
+    this.lutKey = null
+  }
+
+  /** 当前是否使用 LUT 预览 */
+  hasLut(): boolean {
+    return this.useLut && this.lutTexture !== null
+  }
+
   /** 清除当前纹理和视频源 — 切换媒体时调用，避免旧纹理 + 新参数渲染 */
   clearSource(): void {
     this.videoSrc = null
@@ -151,22 +236,39 @@ export class WebGLRenderer {
   render(pipeline: EditPipeline, options: { cropMode?: boolean } = {}): void {
     if (!this.texture) return
     const gl = this.gl
+    const activeLut = Boolean(this.useLut && this.lutTexture && this.lutKey === colorLutKey(pipeline.color))
     gl.useProgram(this.program)
     gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
+
+    // 纹理单元 0：主图/视频
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(gl.TEXTURE_2D, this.texture)
-    // 视频源：每帧上传当前视频帧到纹理
     if (this.videoSrc) {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.videoSrc)
     }
-    this.updateUniforms(pipeline, options)
+    const err0 = gl.getError()
+    if (err0 !== gl.NO_ERROR) glLog('texImage2D', err0)
+
+    // 纹理单元 1：3D LUT（如果已加载）
+    if (activeLut && this.lutTexture) {
+      gl.activeTexture(gl.TEXTURE1)
+      gl.bindTexture(gl.TEXTURE_3D, this.lutTexture)
+    }
+
+    this.updateUniforms(pipeline, options, activeLut)
+    const err1 = gl.getError()
+    if (err1 !== gl.NO_ERROR) glLog('updateUniforms', err1)
+
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    const err2 = gl.getError()
+    if (err2 !== gl.NO_ERROR) glLog('draw', err2)
   }
 
   destroy(): void {
     this.videoSrc = null
     if (this.texture) this.gl.deleteTexture(this.texture)
+    if (this.lutTexture) this.gl.deleteTexture(this.lutTexture)
     this.gl.deleteProgram(this.program)
   }
 
@@ -203,8 +305,18 @@ export class WebGLRenderer {
     return { r: pixels[0], g: pixels[1], b: pixels[2] }
   }
 
-  private updateUniforms(pipeline: EditPipeline, options: { cropMode?: boolean }): void {
+  private updateUniforms(pipeline: EditPipeline, options: { cropMode?: boolean }, activeLut: boolean): void {
     const gl = this.gl
+
+    // 主纹理在纹理单元 0
+    gl.uniform1i(this.uniform('u_image'), 0)
+
+    // LUT 3D 纹理（可选 — 某些 GPU 驱动会优化掉未使用的 sampler3D 分支）
+    const lutLoc = gl.getUniformLocation(this.program, 'u_lut3d')
+    const useLutLoc = gl.getUniformLocation(this.program, 'u_useLut')
+    if (lutLoc) gl.uniform1i(lutLoc, 1)
+    if (useLutLoc) gl.uniform1f(useLutLoc, activeLut ? 1 : 0)
+
     const fullCrop = { x: 0, y: 0, w: 1, h: 1 }
     const selectionCrop = pipeline.transform.crop ?? fullCrop
     const crop = options.cropMode ? fullCrop : selectionCrop
