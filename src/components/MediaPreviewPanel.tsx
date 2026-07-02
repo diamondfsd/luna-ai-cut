@@ -5,6 +5,7 @@ import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkOverlay } from './WatermarkOverlay'
 import { concreteWatermarkStyle } from '../shared/insta360DeviceProfiles'
 import { getContainRect, WATERMARK_MARGIN_X_RATIO, WATERMARK_MARGIN_Y_RATIO } from '../shared/watermark'
+import { loadWatermarkImage } from '../shared/watermarkAssets'
 import type { LunaFile, WatermarkSettings } from '../shared/types'
 
 interface MediaPreviewPanelProps {
@@ -14,9 +15,6 @@ interface MediaPreviewPanelProps {
   onFileChange: (file: LunaFile) => void
   watermarkSettings?: WatermarkSettings
 }
-
-/** 水印图片原始尺寸 */
-const WM_IMAGE = { width: 2560, height: 400 }
 
 export function MediaPreviewPanel({
   files,
@@ -76,17 +74,34 @@ export function MediaPreviewPanel({
     onFileChange(files[next])
   }
 
-  // 计算水印布局（与后端一致：传感器宽算尺寸，展示方向算边距/位置，缩放至屏幕）
+  // 已解析的水印样式
+  const resolvedStyle = previewWatermarkSettings?.style
+
+  // 异步加载水印图片实际像素尺寸
+  const [wmSize, setWmSize] = useState<{ width: number; height: number } | null>(null)
+  useEffect(() => {
+    if (!showWatermark || !resolvedStyle) {
+      setWmSize(null)
+      return
+    }
+    let cancelled = false
+    loadWatermarkImage(resolvedStyle, 'image').then((info) => {
+      if (!cancelled) setWmSize(info)
+    })
+    return () => { cancelled = true }
+  }, [showWatermark, resolvedStyle])
+
+  // 计算水印布局（异步获取水印实际尺寸后计算）
   let wmLayout: { x: number; y: number; width: number; height: number } | null = null
-  if (showWatermark && previewWatermarkSettings && stageSize.width > 0 && contentSize.width > 0) {
+  if (showWatermark && previewWatermarkSettings && stageSize.width > 0 && contentSize.width > 0 && wmSize) {
     const cw = contentSize.width
     const ch = contentSize.height
     const rect = getContainRect(stageSize.width, stageSize.height, cw, ch)
     if (rect.width > 0 && rect.height > 0) {
       const sensorW = Math.max(cw, ch)
-      const wmAspect = WM_IMAGE.height / WM_IMAGE.width
+      const wmAspect = wmSize.height / wmSize.width
       const pct = previewWatermarkSettings.watermarkPercent / 100
-      const targetW = Math.min(Math.round(sensorW * pct), WM_IMAGE.width)
+      const targetW = Math.min(Math.round(sensorW * pct), wmSize.width)
       const targetH = Math.round(targetW * wmAspect)
       const mx = Math.round(cw * WATERMARK_MARGIN_X_RATIO)
       const my = Math.round(ch * WATERMARK_MARGIN_Y_RATIO)
