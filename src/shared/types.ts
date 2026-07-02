@@ -141,7 +141,10 @@ export interface AiConfig {
 }
 
 export type WatermarkPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
-export type WatermarkStyle = 'auto' | 'luna_ultra' | 'luna_ultra_cn' | 'go_ultra' | 'go_ultra_cn'
+/** 水印样式标识符，由设备配置和多语言决定（如 luna_ultra、luna_ultra_cn、go_ultra、go_ultra_cn）。
+ *  'auto' 表示根据当前设备自动选择默认样式。
+ *  具体取值来自 insta360DeviceProfiles 中各设备的 defaultWatermarkStyle。 */
+export type WatermarkStyle = 'auto' | string
 
 export interface WatermarkSettings {
   enabled: boolean
