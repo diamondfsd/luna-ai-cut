@@ -69,16 +69,19 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
   const render = useCallback((pipeline: EditPipeline, _opts?: { cropMode?: boolean }) => {
     const colors = colorParamsFromPipeline(pipeline.color)
     const srcPath = activeMedia?.path
+    logger.info('[CanvasEngine] render called', { hasSrc: !!srcPath, hasCanvas: !!canvasRef.current, colorKeys: Object.keys(colors).join(',') })
     if (!srcPath || !canvasRef.current) return
 
     // 防抖 150ms，避免滑块拖动时频繁 IPC
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = window.setTimeout(async () => {
+      logger.info('[CanvasEngine] calling previewColor IPC', { srcPath, maxSize: PREVIEW_MAX_SIZE, colors: JSON.stringify(colors) })
       try {
         const result = await window.luna.workspace.previewColor(srcPath, colors, {
           maxSize: PREVIEW_MAX_SIZE,
           seekSeconds: videoRef.current?.currentTime,
         })
+        logger.info('[CanvasEngine] previewColor IPC returned', { hasResult: !!result, path: result?.path })
         if (!result?.path || canceledRef.current) return
 
         // Load the preview image onto canvas
