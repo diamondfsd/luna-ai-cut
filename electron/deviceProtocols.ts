@@ -54,11 +54,23 @@ export class LunaUltraProtocol implements DeviceProtocol {
     logMainInfo(`[设备协议] 开始连接设备`, { device: this.definition.name, host })
     await this.wakeDevice()
     const client = this.clientFor(host, this.controlPortForHost(host))
-    const status = await client.checkStatus()
-    logMainInfo(`[设备协议] 端口检测结果`, { host, httpOk: status.httpOk, controlOk: status.controlOk })
-    if (!status.controlOk) {
-      logMainWarn(`[设备协议] 控制端口检测未通过，放弃连接`, { host, controlOk: status.controlOk })
-      return withDeviceInfo(status, this.definition)
+
+    // 重试检测端口，最多 6 次共约 15 秒，给相机 WiFi 路由建立留足时间
+    let status: ConnectionStatus | null = null
+    const MAX_RETRIES = 6
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
+      status = await client.checkStatus()
+      if (status.controlOk) break
+      if (attempt < MAX_RETRIES - 1) {
+        logMainWarn(`[设备协议] 端口检测第 ${attempt + 1}/${MAX_RETRIES} 次未通过，${attempt === 0 ? '800ms' : '3s'} 后重试`, { host })
+        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 800 : 3000))
+      }
+    }
+
+    logMainInfo(`[设备协议] 端口检测结果`, { host, httpOk: status?.httpOk, controlOk: status?.controlOk })
+    if (!status?.controlOk) {
+      logMainWarn(`[设备协议] 控制端口检测未通过，放弃连接`, { host, controlOk: status?.controlOk })
+      return withDeviceInfo(status ?? { host, httpOk: false, controlOk: false, message: '控制端口不可用' }, this.definition)
     }
 
     await client.connect()
