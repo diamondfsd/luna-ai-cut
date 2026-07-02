@@ -103,14 +103,16 @@ export class ColorGradingModule implements FfmpegModule {
     }
 
     // ── colorbalance（三路色轮：shadows / highlights）─
-    // vf_colorbalance.c get_component()
+    // vf_colorbalance.c get_component() internal scale = 0.7
+    // GLSL toneEqualizer uses factor 0.9, so: factor * 0.7 ≈ 0.9 → factor ≈ 1.286
+    // Clamp rs/rh to [-1, 1] (ffmpeg internal limit), shadows/100 → rs gives ±1.0
     const cbParts: string[] = []
     if (o.shadows !== 0) {
-      const val = (clamp(o.shadows, -100, 100) / 100 * 0.15).toFixed(3)
+      const val = clamp(clamp(o.shadows, -100, 100) / 100 * 1.2, -1, 1).toFixed(3)
       cbParts.push(`rs=${val}:gs=${val}:bs=${val}`)
     }
     if (o.highlights !== 0) {
-      const val = (clamp(o.highlights, -100, 100) / 100 * 0.15).toFixed(3)
+      const val = clamp(clamp(o.highlights, -100, 100) / 100 * 1.2, -1, 1).toFixed(3)
       cbParts.push(`rh=${val}:gh=${val}:bh=${val}`)
     }
     if (cbParts.length > 0) {
