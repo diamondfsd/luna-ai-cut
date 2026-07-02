@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
-import type { ExportTaskItemRecord, ExportTaskRecord, LunaFile } from '../shared/types'
+import type { ExportTaskItemRecord, ExportTaskRecord, LunaFile, MediaKind } from '../shared/types'
 import { useApp } from '../context/AppContext'
 import { IconButton } from '../ui'
 import { Table, type Column } from '../ui/Table'
-import { filePathToPreviewUrl } from './previewModalUtils'
+import { filePathToLunaFile } from './previewModalUtils'
 import { PreviewModal } from './PreviewModal'
 import '../styles/export-tasks.css'
 
@@ -124,36 +124,11 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
 
   const handlePreviewItem = (item: ExportTaskItemRecord): void => {
     if (!item.destinationPath) return
-    const destUrl = filePathToPreviewUrl(item.destinationPath) ?? ''
-    setPreviewFile({
+    setPreviewFile(filePathToLunaFile(item.destinationPath, {
       id: item.exportId,
-      name: item.destinationPath.split(/[/\\]/).pop() ?? item.fileName,
-      href: item.fileName,
-      sourceUrl: destUrl,
-      url: destUrl,
-      dateText: '',
-      timeText: '',
-      sizeText: '',
-      bytes: null,
-      kind: item.kind as 'image' | 'video',
-      extension: '',
-      capturedAt: null,
-      groupDay: '',
-      groupHour: '',
-      videoKey: null,
-      previewName: null,
-      previewUrl: null,
-      cacheFilePath: null,
-      downloadFilePath: item.destinationPath,
-      thumbnailUrl: null,
-      isLivePhoto: false,
-      livePhotoVideoName: null,
-      livePhotoVideoUrl: null,
-      livePhotoCacheFilePath: null,
+      kind: item.kind as MediaKind,
       downloadName: item.fileName,
-      canPreview: true,
-      localPath: item.destinationPath,
-    })
+    }))
   }
 
   const handleCancelTask = async (taskId: string): Promise<void> => {

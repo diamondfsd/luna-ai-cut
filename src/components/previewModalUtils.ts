@@ -1,3 +1,5 @@
+import type { LunaFile, MediaKind } from '../shared/types'
+
 export interface MediaDetails {
   width: number | null
   height: number | null
@@ -47,6 +49,58 @@ export function buildHistogram(image: HTMLImageElement): MediaDetails['histogram
     b: bin.b / max,
     l: bin.l / max,
   }))
+}
+
+/**
+ * 根据文件路径和基础信息构建一个可用于预览的 LunaFile 对象。
+ * 适用于本地已下载/已导出文件的预览场景。
+ */
+export function filePathToLunaFile(
+  filePath: string,
+  extra?: Partial<LunaFile>,
+): LunaFile {
+  // 从路径中提取文件名和扩展名
+  const segments = filePath.replace(/\\/g, '/').split('/')
+  const fullName = segments.pop() ?? 'unknown'
+  const dotIndex = fullName.lastIndexOf('.')
+  const ext = dotIndex > 0 ? fullName.slice(dotIndex) : ''
+
+  // 根据扩展名猜测媒体类型
+  const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.heic', '.heif']
+  const videoExts = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv']
+  const lowerExt = ext.toLowerCase()
+  const kind: MediaKind = imageExts.includes(lowerExt) ? 'image' : videoExts.includes(lowerExt) ? 'video' : 'unknown'
+
+  return {
+    id: fullName,
+    name: fullName,
+    href: filePath,
+    sourceUrl: filePathToPreviewUrl(filePath) ?? '',
+    url: filePathToPreviewUrl(filePath) ?? '',
+    dateText: '',
+    timeText: '',
+    sizeText: '',
+    bytes: null,
+    kind,
+    extension: ext,
+    capturedAt: null,
+    groupDay: '',
+    groupHour: '',
+    videoKey: null,
+    previewName: null,
+    previewUrl: null,
+    cacheFilePath: null,
+    downloadFilePath: filePath,
+    thumbnailUrl: null,
+    isLivePhoto: false,
+    livePhotoVideoName: null,
+    livePhotoVideoUrl: null,
+    livePhotoCacheFilePath: null,
+    downloadName: fullName,
+    canPreview: kind === 'image' || kind === 'video',
+    localPath: filePath,
+    ...extra,
+  }
 }
 
 export function filePathToPreviewUrl(filePath: string | null | undefined): string | null {
