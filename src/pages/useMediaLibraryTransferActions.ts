@@ -354,7 +354,15 @@ export function useMediaLibraryTransferActions({
           const result = await window.luna.workspace.exportFFmpeg(
             sourcePath,
             JSON.parse(JSON.stringify(pipeline)),
-            { exportId, taskName, taskId: task.id },
+            {
+              exportId,
+              taskName,
+              taskId: task.id,
+              fileName: exportName,
+              index,
+              totalFiles: filesToExport.length,
+              createdAt: batchTs,
+            },
           )
 
           completed.push({ name: exportName, path: result.path })

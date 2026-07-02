@@ -16,10 +16,14 @@ export async function exportWithFFmpeg(
     exportId: string
     taskName: string
     taskId?: string
+    fileName?: string
+    index?: number
+    totalFiles?: number
+    createdAt?: number
     onProgress?: (percent: number) => void
   },
 ): Promise<{ path: string; name: string }> {
-  const { exportId, taskName, taskId, onProgress } = options
+  const { exportId, taskName, taskId, fileName, index, totalFiles, createdAt, onProgress } = options
 
   const hasColor = Object.values(pipeline.color).some(
     (v) => typeof v === 'number' && v !== 0,
@@ -86,7 +90,7 @@ export async function exportWithFFmpeg(
   const result = await window.luna.workspace.exportFFmpeg(
     sourcePath,
     serializedPipeline,
-    { exportId, taskName, taskId },
+    { exportId, taskName, taskId, fileName, index, totalFiles, createdAt },
     (percent: number) => {
       onProgress?.(percent)
     },
