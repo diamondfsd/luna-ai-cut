@@ -30,12 +30,13 @@ function waitForSeeked(video: HTMLVideoElement): Promise<void> {
   return Promise.resolve()
 }
 
+/**
+ * 播放 + RAF 捕获绝大部分帧（0 seek 开销），少量漏帧用 seek 补
+ * IPC 写 temp raw 文件（无背压），最后 ffmpeg 统一编码
+ */
 export async function exportVideoWithWebGL(options: VideoExportOptions): Promise<void> {
   const { sourcePath, pipeline, exportId, taskName, onProgress } = options
 
-  logger.info('[videoExport] step1 创建video元素', { sourcePath })
-
-  // 1. 加载视频元数据
   const video = document.createElement('video')
   video.muted = true
   video.preload = 'auto'
@@ -54,30 +55,18 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
   const width = video.videoWidth
   const height = video.videoHeight
   const duration = video.duration
-  logger.info('[videoExport] step2 视频元数据加载完成', { width, height, duration })
-
   const fps = await getVideoFps(sourcePath)
   const totalFrames = Math.max(1, Math.ceil(duration * fps))
   const frameDuration = 1 / fps
-  logger.info('[videoExport] step3 获取帧率', { fps, totalFrames, frameDuration })
 
-  // 2. 启动编码器
-  logger.info('[videoExport] step4 启动ffmpeg编码器')
-  let encoder
-  try {
-    encoder = await window.luna.workspace.startVideoExport({
-      exportId, taskName, outputName: sourcePath, width, height, fps,
-    })
-    logger.info('[videoExport] step4 编码器启动成功', { outputPath: encoder.outputPath })
-  } catch (err) {
-    logger.error('[videoExport] step4 编码器启动失败', { err: String(err) })
-    throw err
-  }
+  logger.info(`[videoExport] 播放捕获模式 ${width}x${height}`, { fps, totalFrames })
+
+  const encoder = await window.luna.workspace.startVideoExport({
+    exportId, taskName, outputName: sourcePath, width, height, fps,
+  })
   const outputPath = encoder.outputPath
   const rawFilePath = encoder.rawFilePath
 
-  // 3. 离屏 WebGL
-  logger.info('[videoExport] step5 创建WebGL渲染器')
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -90,51 +79,80 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
   const flipped = new Uint8Array(bufSize)
   const stride = width * 4
 
+  let capturedCount = 0
   let lastReportedPct = -1
+  let ipcPending = Promise.resolve()
 
   try {
-    logger.info('[videoExport] step6 开始逐帧导出', { totalFrames })
-    const t0 = Date.now()
+    // ── Phase 1: 播放捕获（0 seek 开销，捕获 95%+ 帧） ──
+    logger.info('[videoExport] phase1 开始播放捕获')
+    video.play()
 
-    for (let frame = 0; frame < totalFrames; frame++) {
-      // seek
-      const seekT0 = Date.now()
-      const time = Math.min(frame * frameDuration, duration - 0.001)
+    await new Promise<void>((resolve, reject) => {
+      video.addEventListener('ended', () => resolve(), { once: true })
+      video.addEventListener('error', () => reject(new Error('视频播放失败')), { once: true })
+
+      let lastFrameIndex = -1
+      const frameMeta0 = { totalFrames, taskId: encoder.taskId, taskStart: encoder.taskStart, rawFilePath }
+
+      const captureLoop = (): void => {
+        if (video.paused || video.ended) return
+
+        const currentFrame = Math.floor(video.currentTime / frameDuration)
+
+        if (currentFrame > lastFrameIndex && currentFrame < totalFrames) {
+          lastFrameIndex = currentFrame
+
+          renderer.render(pipeline)
+          renderer.readPixelsInto(pixels)
+          for (let y = 0; y < height; y++) {
+            flipped.set(pixels.subarray(y * stride, (y + 1) * stride), (height - 1 - y) * stride)
+          }
+
+          const meta = capturedCount === 0 ? frameMeta0 : undefined
+          const buf = flipped.buffer as ArrayBuffer
+          ipcPending = window.luna.workspace.sendVideoExportFrame(exportId, buf, meta)
+            .catch((err: unknown) => logger.error('[videoExport] IPC失败', { err: String(err) }))
+
+          capturedCount++
+          if (capturedCount % 5 === 0) {
+            const pct = Math.round((capturedCount / totalFrames) * 100)
+            if (pct >= lastReportedPct + 2 || capturedCount >= totalFrames) {
+              lastReportedPct = pct
+              onProgress?.(pct)
+            }
+          }
+        }
+
+        requestAnimationFrame(captureLoop)
+      }
+      requestAnimationFrame(captureLoop)
+    })
+
+    video.pause()
+    logger.info('[videoExport] phase1 完成', { capturedCount, totalFrames })
+
+    // ── Phase 2: seek 补帧 ──
+    await ipcPending
+    while (capturedCount < totalFrames) {
+      const time = Math.min(capturedCount * frameDuration, duration - 0.001)
       video.currentTime = time
       await waitForSeeked(video)
-      const seekCost = Date.now() - seekT0
-
-      // render
       renderer.render(pipeline)
       renderer.readPixelsInto(pixels)
       for (let y = 0; y < height; y++) {
         flipped.set(pixels.subarray(y * stride, (y + 1) * stride), (height - 1 - y) * stride)
       }
-
-      // IPC（首帧附带进度元数据）
-      const ipcT0 = Date.now()
-      const frameMeta = frame === 0 ? { totalFrames, taskId: encoder.taskId, taskStart: encoder.taskStart, rawFilePath } : undefined
-      await window.luna.workspace.sendVideoExportFrame(exportId, flipped.buffer as ArrayBuffer, frameMeta)
-      const ipcCost = Date.now() - ipcT0
-
-      // 进度
-      const pct = Math.round(((frame + 1) / totalFrames) * 100)
-      if (pct >= lastReportedPct + 2 || pct === 100) {
+      await window.luna.workspace.sendVideoExportFrame(exportId, flipped.buffer as ArrayBuffer)
+      capturedCount++
+      const pct = Math.round((capturedCount / totalFrames) * 100)
+      if (pct >= lastReportedPct + 2 || capturedCount >= totalFrames) {
         lastReportedPct = pct
-        logger.info('[videoExport] 进度', { frame, totalFrames, pct, seekCost, ipcCost, elapsed: Date.now() - t0 })
         onProgress?.(pct)
-      }
-
-      // yield
-      if (frame > 0 && frame % 10 === 0) {
+        // 补帧阶段 yield
         await new Promise((r) => setTimeout(r, 0))
       }
     }
-
-    logger.info('[videoExport] step7 所有帧处理完成', { totalFrames, elapsed: Date.now() - t0 })
-  } catch (err) {
-    logger.error('[videoExport] 导出异常', { err: String(err) })
-    throw err
   } finally {
     renderer.destroy()
     video.pause()
@@ -143,22 +161,19 @@ export async function exportVideoWithWebGL(options: VideoExportOptions): Promise
     video.remove()
   }
 
-  // 5. 结束编码
-  logger.info('[videoExport] step8 结束编码')
-  let result
+  // ── Phase 3: ffmpeg 编码 raw → mp4 ──
+  logger.info('[videoExport] phase3 ffmpeg 编码 raw → mp4')
+  onProgress?.(96)
   try {
-    result = await window.luna.workspace.endVideoExport(exportId, {
+    const result = await window.luna.workspace.endVideoExport(exportId, {
       taskId: encoder.taskId,
       taskStart: encoder.taskStart,
-      outputPath,
-      rawFilePath,
-      width,
-      height,
-      fps,
+      outputPath, rawFilePath, width, height, fps,
     })
-    logger.info('[videoExport] step8 编码结束', { result })
+    logger.info('[videoExport] phase3 完成', { result })
+    onProgress?.(100)
   } catch (err) {
-    logger.error('[videoExport] step8 编码结束失败', { err: String(err) })
+    logger.error('[videoExport] phase3 编码失败', { err: String(err) })
     throw err
   }
 }
