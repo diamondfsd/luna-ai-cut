@@ -31,7 +31,7 @@ function activeDeviceFor(settings: AppSettings | null, devices: DeviceDefinition
 
 function connectionTimeoutStatus(host: string): Promise<ConnectionStatus> {
   return new Promise((resolve) => {
-    setTimeout(() => resolve({ host, httpOk: false, controlOk: false, message: '连接超时' }), 4000)
+    setTimeout(() => resolve({ host, httpOk: false, controlOk: false, message: '连接超时' }), 30000)
   })
 }
 

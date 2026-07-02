@@ -3,6 +3,7 @@ import { FileQuestion, Film } from 'lucide-react'
 
 import type { LunaFile } from '../shared/types'
 import { VideoPlayBadge } from '../ui'
+import { logger } from '../lib/rendererLogger'
 
 interface PreviewThumbnailStripProps {
   activeThumbRef: RefObject<HTMLButtonElement>
@@ -15,11 +16,10 @@ interface PreviewThumbnailStripProps {
 }
 
 function thumbnailSrcFor(file: LunaFile, resolvedMap: Record<string, string>): string | null {
-  // 优先使用 IPC 已解析的缩略图
+  // 优先使用 IPC 已解析/更新的缩略图
   const resolved = resolvedMap[file.id]
   if (resolved) return resolved
-  // 图片可直接用 file://；视频走 IPC 解析
-  if (file.kind === 'video' || file.kind === 'lrv') return null
+  // 回退到已有的 thumbnailUrl
   return file.thumbnailUrl ?? null
 }
 
@@ -34,10 +34,11 @@ export function PreviewThumbnailStrip({
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const requestedRef = useRef<Set<string>>(new Set())
 
-  // 异步解析视频缩略图（检查缓存 → 生成 → 展示）
+  // 对所有无缩略图的文件（图片和视频）主动请求缩略图
   useEffect(() => {
     for (const file of files) {
-      if (file.kind !== 'video' && file.kind !== 'lrv') continue
+      // 已有缩略图则跳过
+      if (thumbnails[file.id] || file.thumbnailUrl) continue
       if (requestedRef.current.has(file.id)) continue
       requestedRef.current.add(file.id)
 
@@ -48,9 +49,20 @@ export function PreviewThumbnailStrip({
         if (url) {
           setThumbnails((prev) => ({ ...prev, [file.id]: url }))
         }
-      }).catch(() => { /* 缩略图生成失败，保持图标占位 */ })
+      }).catch(() => {
+        logger.warn(`[缩略图条] resolveThumbnail 失败`, { fileId: file.id, fileName: file.name, kind: file.kind })
+      })
     }
-  }, [files])
+  }, [files, thumbnails])
+
+  // 监听 onThumbnailReady，实时同步缩略图（主库 cacheFile 完成后推送）
+  useEffect(() => {
+    return window.luna.onThumbnailReady(({ fileId, thumbnailUrl }) => {
+      if (thumbnailUrl) {
+        setThumbnails((prev) => ({ ...prev, [fileId]: thumbnailUrl }))
+      }
+    })
+  }, [])
 
   return (
     <div className="preview-thumbnails" ref={stripRef}>
