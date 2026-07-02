@@ -6,6 +6,7 @@ import type {
   DeviceDebugEvent,
   DeviceConnectOptions,
   DownloadProgress,
+  ExportFileInput,
   ExportProgress,
   HotUpdateCheckResult,
   LunaApi,
@@ -60,7 +61,7 @@ const lunaApi: LunaApi = {
     ipcRenderer.invoke('luna:requestVideoFrameRate', file, cachedPath),
   downloadFiles: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('luna:downloadFiles', files, downloadDir),
   cancelDownloads: () => ipcRenderer.invoke('luna:cancelDownloads'),
-  exportFiles: (files: Array<{ name: string; kind: string; localPath?: string }>, exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
+  exportFiles: (files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
     ipcRenderer.invoke('luna:exportFiles', files, exportDir, watermarkSettings, videoExportSettings),
   cancelExports: () => ipcRenderer.invoke('luna:cancelExports'),
   getDownloadedRecords: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('downloads:records', files, downloadDir),

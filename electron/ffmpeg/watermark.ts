@@ -4,15 +4,19 @@ import type { FfmpegModule, BuildContext, ModuleArgs } from './pipeline'
 import type { WatermarkPosition, WatermarkStyle } from '../../src/shared/types'
 import { logExport } from '../loggerService'
 
+type ConcreteWatermarkStyle = Exclude<WatermarkStyle, 'auto'>
+
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
   return path.join(app.getAppPath(), 'src', 'assets', 'watermark')
 }
 
-function watermarkFileFor(style: WatermarkStyle): string {
-  const filenames: Record<WatermarkStyle, string> = {
+function watermarkFileFor(style: ConcreteWatermarkStyle): string {
+  const filenames: Record<ConcreteWatermarkStyle, string> = {
     luna_ultra: 'ic_watermark_luna_ultra.png',
     luna_ultra_cn: 'ic_watermark_luna_ultra_cn.png',
+    go_ultra: 'ic_watermark_go_ultra.png',
+    go_ultra_cn: 'ic_watermark_go_ultra_cn.png',
   }
   return path.join(getWatermarkDir(), filenames[style])
 }
@@ -30,7 +34,7 @@ export interface WatermarkOptions {
   /** 水印百分比（如 20 表示 20%） */
   watermarkPercent: number
   position: WatermarkPosition
-  style: WatermarkStyle
+  style: ConcreteWatermarkStyle
 }
 
 /**

@@ -81,7 +81,7 @@ export function useMediaLibraryController({
   const [exportSnapshots, setExportSnapshots] = useState<Map<string, LunaFile>>(new Map())
   const [exportWatermarkSettings, setExportWatermarkSettings] = useState<WatermarkSettingsType>(() => ({
     enabled: true,
-    style: 'luna_ultra_cn',
+    style: 'auto',
     watermarkPercent: 20,
     position: 'bottom-center',
   }))

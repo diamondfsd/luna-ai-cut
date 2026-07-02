@@ -8,8 +8,9 @@ import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
 import { getSettings, previewCacheDir } from './settingsService'
 import { generateThumbnail, safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
 import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToLivePhoto, applyWatermarkToVideo } from './watermarkService'
+import { resolveWatermarkSettingsForFile } from './watermarkResolver'
 import { logMainInfo, logMainError, logMainWarn, logExport } from './loggerService'
-import type { LunaFile, VideoExportSettings, WatermarkSettings } from '../src/shared/types'
+import type { ExportFileInput, LunaFile, VideoExportSettings, WatermarkSettings } from '../src/shared/types'
 
 export interface ExportProgress {
   fileName: string
@@ -59,7 +60,7 @@ function isDefaultVideoExportSettings(s?: VideoExportSettings): boolean {
 }
 
 export async function exportFiles(
-  files: Array<{ name: string; kind: string; localPath?: string; exportId?: string }>,
+  files: ExportFileInput[],
   exportDir: string,
   watermarkSettings: WatermarkSettings,
   onProgress?: (progress: ExportProgress) => void,
@@ -118,15 +119,26 @@ export async function exportFiles(
 
     try {
       onProgress?.(prog(file, { percent: 0, status: 'exporting' }))
-      logMainInfo('[EXPORT] 开始处理文件', { name: file.name, kind: file.kind, localPath })
-      if (file.kind === 'video' && watermarkSettings.enabled) {
+      const fileWatermarkSettings = watermarkSettings.enabled
+        ? await resolveWatermarkSettingsForFile(file, watermarkSettings)
+        : null
+      logMainInfo('[EXPORT] 开始处理文件', {
+        name: file.name,
+        kind: file.kind,
+        localPath,
+        sourceDeviceId: file.sourceDeviceId,
+        cameraType: file.cameraType,
+        requestedWatermarkStyle: watermarkSettings.style,
+        resolvedWatermarkStyle: fileWatermarkSettings?.style ?? null,
+      })
+      if (file.kind === 'video' && fileWatermarkSettings) {
         // 有水印的视频 — 需要 ffmpeg 合成水印
         await applyWatermarkToVideo(
           localPath,
           tmpPath,
-          watermarkSettings.watermarkPercent,
-          watermarkSettings.position,
-          watermarkSettings.style,
+          fileWatermarkSettings.watermarkPercent,
+          fileWatermarkSettings.position,
+          fileWatermarkSettings.style,
           (percent) => onProgress?.(prog(file, { percent, status: 'exporting' })),
           signal,
           videoExportSettings,
@@ -140,7 +152,7 @@ export async function exportFiles(
           (percent) => onProgress?.(prog(file, { percent, status: 'exporting' })),
           signal,
         )
-      } else if (file.kind === 'image' && watermarkSettings.enabled && /^LIV_/i.test(file.name)) {
+      } else if (file.kind === 'image' && fileWatermarkSettings && /^LIV_/i.test(file.name)) {
         // Live Photo — 给图片和内嵌视频都加水印，再合并回去
         // macOS 额外导出 Apple 配对格式（文件夹 + JPEG + MOV，默认关闭）
         const appleExportFolder = process.platform === 'darwin' && appSettings.exportAppleLivePhoto
@@ -149,16 +161,16 @@ export async function exportFiles(
         await applyWatermarkToLivePhoto(
           localPath,
           tmpPath,
-          watermarkSettings.watermarkPercent,
-          watermarkSettings.position,
-          watermarkSettings.style,
+          fileWatermarkSettings.watermarkPercent,
+          fileWatermarkSettings.position,
+          fileWatermarkSettings.style,
           (percent) => onProgress?.(prog(file, { percent, status: 'exporting' })),
           signal,
           videoExportSettings,
           appleExportFolder,
         )
-      } else if (file.kind === 'image' && watermarkSettings.enabled) {
-        await applyWatermarkToImage(localPath, tmpPath, watermarkSettings.watermarkPercent, watermarkSettings.position, watermarkSettings.style)
+      } else if (file.kind === 'image' && fileWatermarkSettings) {
+        await applyWatermarkToImage(localPath, tmpPath, fileWatermarkSettings.watermarkPercent, fileWatermarkSettings.position, fileWatermarkSettings.style)
         onProgress?.(prog(file, { percent: 95, status: 'exporting' }))
       } else {
         await fs.cp(localPath, tmpPath, { force: true })
