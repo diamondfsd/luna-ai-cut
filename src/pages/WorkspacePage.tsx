@@ -4,7 +4,6 @@ import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
 import { Button, Dialog, ErrorBoundary, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
-import { logger } from '../lib/rendererLogger'
 import { WorkspaceEditProvider, useWorkspaceEdit } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
@@ -74,28 +73,6 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const activeMediaReady = Boolean(media.activeMedia && canvas.loadedMediaPath === media.activeMedia.path && !canvas.imageLoading)
 
-  logger.info(`[WorkspacePage] render`, {
-    workspaceMode,
-    hasProject: !!media.currentProject,
-    projectName: media.currentProject?.name ?? null,
-    mediaCount: media.media.length,
-    activeIndex: media.activeIndex,
-    hasActiveMedia: !!media.activeMedia,
-    imageLoading: canvas.imageLoading,
-    imageError: canvas.imageError,
-    webglMessage: canvas.webglMessage,
-    canRender: canvas.canRender,
-    editorOpen: media.editorOpen,
-  })
-
-  // ── Export ──
-  const exportImage = useWorkspaceExport({
-    activeMedia: media.activeMedia,
-    canvasRef: canvas.canvasRef,
-    imageRect: canvas.imageRect,
-    pipeline: edit.previewPipeline,
-  })
-
   // ── 3D LUT 加载：color 参数变化时烘焙 LUT 并下发到 WebGL ──
   const lutTimerRef = useRef<number | null>(null)
   const lutKey = colorLutKey(edit.pipeline.color)
@@ -115,6 +92,14 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
     canvas.canRender,
     canvas.bakeAndLoadLut,
   ])
+
+  // ── Export ──
+  const exportImage = useWorkspaceExport({
+    activeMedia: media.activeMedia,
+    canvasRef: canvas.canvasRef,
+    imageRect: canvas.imageRect,
+    pipeline: edit.previewPipeline,
+  })
 
   // ── 双击缩放 ──
   function handleStageDoubleClick(): void {

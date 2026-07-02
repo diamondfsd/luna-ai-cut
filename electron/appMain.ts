@@ -70,7 +70,7 @@ import { detectHardwareAccel } from './ffmpeg/hwaccel'
 import { CodecModule } from './ffmpeg/codec'
 import { BitrateModule } from './ffmpeg/bitrate'
 import { FullPipelineModule } from './ffmpeg/pipelineCompiler'
-import { bakeColorLut, parseCubeToFloatArray } from './ffmpeg/lutGenerator'
+import { bakeColorLut, bakeColorLutData } from './ffmpeg/lutGenerator'
 import { watermarkFileFor } from './watermarkService'
 import type {
   AiConfig,
@@ -801,16 +801,9 @@ function registerIpc(): void {
   })
   // ── 为 WebGL 预览烘焙 LUT，返回 float 数据 ──
   ipcMain.handle('workspace:bakeAndGetLut', async (_event, colorParams: Record<string, any>) => {
-    const tempDir = await previewCacheDir()
-    const cubePath = path.join(tempDir, `.preview_lut_${Date.now()}.cube`)
-    try {
-      await bakeColorLut(colorParams, cubePath)
-      const lutData = parseCubeToFloatArray(cubePath)
-      // 返回 ArrayBuffer 给渲染进程
-      return { lutBuffer: lutData.buffer as ArrayBuffer, lutSize: 33 }
-    } finally {
-      rm(cubePath, { force: true }).catch(() => {})
-    }
+    const lutData = bakeColorLutData(colorParams)
+    // 返回 ArrayBuffer 给渲染进程，预览链路不再写临时 .cube 文件。
+    return { lutBuffer: lutData.buffer as ArrayBuffer, lutSize: 33 }
   })
   // ── FFmpegFast 导出（直达 ffmpeg 完整管线，绕过 WebGL readPixels） ──
   ipcMain.handle('workspace:exportFFmpeg', async (event, sourcePath: string, pipeline: Record<string, any>, exportMeta: { exportId: string; taskName: string }) => {
