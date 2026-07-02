@@ -10,10 +10,20 @@ import type { WorkspaceTool } from '../components/WorkspaceEditSidebar'
 
 const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
 
-interface ClipboardData {
+export interface WorkspacePipelineClipboardData {
   color: EditPipeline['color']
   effects: EditPipeline['effects']
   watermark: EditPipeline['watermark']
+}
+
+export function readWorkspacePipelineClipboard(): WorkspacePipelineClipboardData | null {
+  const raw = localStorage.getItem(PIPELINE_CLIPBOARD_KEY)
+  if (!raw) return null
+  try { return JSON.parse(raw) as WorkspacePipelineClipboardData } catch { return null }
+}
+
+export function writeWorkspacePipelineClipboard(data: WorkspacePipelineClipboardData): void {
+  localStorage.setItem(PIPELINE_CLIPBOARD_KEY, JSON.stringify(data))
 }
 
 interface WorkspaceEditValue {
@@ -109,7 +119,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   )
 
   // Clipboard
-  const pipelineClipboardRef = useRef<ClipboardData | null>(null)
+  const pipelineClipboardRef = useRef<WorkspacePipelineClipboardData | null>(null)
 
   const copyPipeline = useCallback(() => {
     pipelineClipboardRef.current = {
@@ -117,15 +127,15 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       effects: structuredClone(pipeline.effects),
       watermark: structuredClone(pipeline.watermark),
     }
-    localStorage.setItem(PIPELINE_CLIPBOARD_KEY, JSON.stringify(pipelineClipboardRef.current))
+    writeWorkspacePipelineClipboard(pipelineClipboardRef.current)
     toast.success('已复制调色和水印设置')
   }, [pipeline])
 
   const pasteToCurrent = useCallback(() => {
     const data = pipelineClipboardRef.current ?? (() => {
-      const raw = localStorage.getItem(PIPELINE_CLIPBOARD_KEY)
-      if (!raw) { toast.error('没有可粘贴的调色设置'); return null }
-      try { return JSON.parse(raw) as ClipboardData } catch { return null }
+      const stored = readWorkspacePipelineClipboard()
+      if (!stored) toast.error('没有可粘贴的调色设置')
+      return stored
     })()
     if (!data) return
     commitPatch({ color: data.color, effects: data.effects, watermark: data.watermark })

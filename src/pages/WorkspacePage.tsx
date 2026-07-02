@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
 import { Button, Dialog, ErrorBoundary, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
-import { WorkspaceEditProvider, useWorkspaceEdit } from '../workspace/context/WorkspaceEditContext'
+import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
 import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
@@ -182,6 +182,66 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
     }
   }
 
+  function handlePastePipeline(): void {
+    const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
+    if (indices.size === 1 && indices.has(media.activeIndex)) {
+      edit.pasteToCurrent()
+      return
+    }
+
+    const data = readWorkspacePipelineClipboard()
+    if (!data) {
+      toast.error('没有可粘贴的调色设置')
+      return
+    }
+    const patch: PipelinePatch = {
+      color: data.color,
+      effects: data.effects,
+      watermark: data.watermark,
+    }
+
+    if (media.currentProject) {
+      const nextAssets = media.currentProject.assets.map((asset, i) => {
+        if (!indices.has(i)) return asset
+        const nextPipeline = mergePipeline(normalizePipeline(asset.pipeline), patch)
+        return { ...asset, pipeline: nextPipeline }
+      })
+      const nextProject = { ...media.currentProject, assets: nextAssets, updatedAt: new Date().toISOString() }
+      media.setCurrentProject(nextProject)
+      window.luna.workspace.saveProject(nextProject).catch(() => undefined)
+    } else {
+      media.setTransientMedia((current) => current.map((asset, i) => {
+        if (!indices.has(i)) return asset
+        const nextPipeline = mergePipeline(normalizePipeline((asset as { pipeline?: unknown }).pipeline), patch)
+        return { ...asset, pipeline: nextPipeline }
+      }))
+    }
+
+    if (indices.has(media.activeIndex)) {
+      edit.commitPatch(patch)
+    }
+    toast.success(`已粘贴到 ${indices.size} 个素材`)
+  }
+
+  function handleCopyPipeline(): void {
+    if (media.selectedIndices.size === 1) {
+      const [selectedIndex] = [...media.selectedIndices]
+      if (selectedIndex !== media.activeIndex) {
+        const asset = media.media[selectedIndex]
+        if (!asset) return
+        const pipe = normalizePipeline((asset as { pipeline?: unknown }).pipeline)
+        writeWorkspacePipelineClipboard({
+          color: structuredClone(pipe.color),
+          effects: structuredClone(pipe.effects),
+          watermark: structuredClone(pipe.watermark),
+        })
+        toast.success('已复制调色和水印设置')
+        return
+      }
+    }
+    edit.copyPipeline()
+  }
+
   // ── onEditingChange ──
   useEffect(() => {
     onEditingChange?.(media.editorOpen)
@@ -194,8 +254,8 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
   const activeMediaRef = useRef(media.activeMedia)
   const mediaLengthRef = useRef(media.media.length)
   const selectedIndicesRef = useRef(new Set<number>())
-  const copyPipelineRef = useRef(edit.copyPipeline)
-  const pasteToCurrentRef = useRef(edit.pasteToCurrent)
+  const copyPipelineRef = useRef(handleCopyPipeline)
+  const pastePipelineRef = useRef(handlePastePipeline)
   const setCompareOriginalRef = useRef(edit.setCompareOriginal)
 
   // Sync refs with latest values
@@ -203,8 +263,8 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
   useEffect(() => { activeMediaRef.current = media.activeMedia }, [media.activeMedia])
   useEffect(() => { mediaLengthRef.current = media.media.length }, [media.media.length])
   useEffect(() => { selectedIndicesRef.current = media.selectedIndices }, [media.selectedIndices])
-  copyPipelineRef.current = edit.copyPipeline
-  pasteToCurrentRef.current = edit.pasteToCurrent
+  copyPipelineRef.current = handleCopyPipeline
+  pastePipelineRef.current = handlePastePipeline
   setCompareOriginalRef.current = edit.setCompareOriginal
 
   // Stable keyboard handler (registered once, refs keep latest values)
@@ -225,6 +285,8 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
 
       const inInput = event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable]')
       if (inInput) return
+      const hasTextSelection = (window.getSelection()?.toString() ?? '').length > 0
+      const workspaceStripActive = document.activeElement instanceof HTMLElement && Boolean(document.activeElement.closest('.workspace-media-strip'))
 
       if ((event.code === 'Delete' || event.code === 'Backspace') && activeMediaRef.current && !cropActiveRef.current) {
         const removalCount = selectedIndicesRef.current.size || 1
@@ -235,6 +297,7 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
       }
 
       if ((event.ctrlKey || event.metaKey) && event.code === 'KeyC' && !cropActiveRef.current) {
+        if (hasTextSelection || !workspaceStripActive) return
         if (event.target instanceof HTMLElement && event.target.closest('.workspace-video-progress')) return
         event.preventDefault()
         copyPipelineRef.current()
@@ -242,9 +305,10 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
       }
 
       if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && !cropActiveRef.current) {
+        if (hasTextSelection || !workspaceStripActive) return
         if (event.target instanceof HTMLElement && event.target.closest('.workspace-video-progress')) return
         event.preventDefault()
-        pasteToCurrentRef.current()
+        pastePipelineRef.current()
         return
       }
     }
@@ -351,10 +415,10 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
           <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={handleBatchReset}>重置</Button>
           <div className="workspace-toolbar-divider" />
           <Tooltip content="复制调色和水印">
-            <IconButton variant="ghost" size="compact" icon={<ClipboardCopy size={15} />} disabled={!media.activeMedia || !canvas.canRender} onClick={edit.copyPipeline} />
+            <IconButton variant="ghost" size="compact" icon={<ClipboardCopy size={15} />} disabled={!media.activeMedia || !canvas.canRender} onClick={handleCopyPipeline} />
           </Tooltip>
-          <Tooltip content="粘贴调色和水印到当前图片">
-            <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={15} />} disabled={!media.activeMedia || !canvas.canRender} onClick={edit.pasteToCurrent} />
+          <Tooltip content="粘贴调色和水印到所选素材">
+            <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={15} />} disabled={!media.activeMedia || !canvas.canRender} onClick={handlePastePipeline} />
           </Tooltip>
           {media.brokenPaths.size > 0 && (
             <>

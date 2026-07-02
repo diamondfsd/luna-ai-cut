@@ -87,10 +87,28 @@ function eventToPoint(event: React.PointerEvent<SVGSVGElement>): CurvePoint {
 
 function curvePath(points: CurvePoint[]): string {
   const ordered = [{ x: 0, y: 0 }, ...points, { x: 1, y: 1 }].sort((a, b) => a.x - b.x)
-  return ordered.map((point, index) => {
-    const svg = pointToSvg(point)
-    return `${index === 0 ? 'M' : 'L'}${svg.x.toFixed(1)} ${svg.y.toFixed(1)}`
-  }).join(' ')
+  if (ordered.length < 2) return ''
+
+  const svgPoints = ordered.map(pointToSvg)
+  const commands = [`M${svgPoints[0].x.toFixed(1)} ${svgPoints[0].y.toFixed(1)}`]
+
+  for (let i = 0; i < svgPoints.length - 1; i++) {
+    const prev = svgPoints[Math.max(0, i - 1)]
+    const current = svgPoints[i]
+    const next = svgPoints[i + 1]
+    const after = svgPoints[Math.min(svgPoints.length - 1, i + 2)]
+    const cp1 = {
+      x: current.x + (next.x - prev.x) / 6,
+      y: current.y + (next.y - prev.y) / 6,
+    }
+    const cp2 = {
+      x: next.x - (after.x - current.x) / 6,
+      y: next.y - (after.y - current.y) / 6,
+    }
+    commands.push(`C${cp1.x.toFixed(1)} ${cp1.y.toFixed(1)} ${cp2.x.toFixed(1)} ${cp2.y.toFixed(1)} ${next.x.toFixed(1)} ${next.y.toFixed(1)}`)
+  }
+
+  return commands.join(' ')
 }
 
 export function CurvePreview({
@@ -150,7 +168,7 @@ export function CurvePreview({
       >
         <rect className="workspace-curve-hit" x="0" y="0" width="180" height="132" fill="transparent" />
         <path className="workspace-curve-grid" d="M45 0V132M90 0V132M135 0V132M0 33H180M0 66H180M0 99H180" />
-        <path className="workspace-curve-line muted" d="M0 132L180 0" />
+        {points.length === 0 && <path className="workspace-curve-line muted" d="M0 132L180 0" />}
         <path className="workspace-curve-line" d={path} />
         {points.map((point, index) => {
           const svg = pointToSvg(point)
