@@ -177,9 +177,22 @@ export class LunaClient {
   }
 
   private async keepAliveTick(): Promise<void> {
+    // 1. HTTP 服务探测
     const endpoint = httpEndpoint(this.host)
     const socket = await connectSocket(endpoint.host, endpoint.port, 1500)
     socket.destroy()
+
+    // 2. TCP 控制会话保活 — 发送轻量命令确认 TCP 连接存活
+    if (this.controlSession?.isOpen) {
+      try {
+        // CODE_GET_CURRENT_CAPTURE_STATUS (15) — 轻量查询，用作 TCP 心跳
+        await this.controlSession.sendCommand(15, Buffer.alloc(0), 2000)
+      } catch {
+        logMainWarn(`[保活] TCP 控制会话心跳失败，重置连接`, { host: this.host })
+        this.resetControlSession()
+      }
+    }
+
     if (!this.controlSession?.isOpen) {
       this.resetControlSession()
       logMainDebug(`[保活] 控制会话已关闭，HTTP 服务仍可用`, { host: this.host })
