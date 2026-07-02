@@ -8,6 +8,8 @@ import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { ColorPanel } from '../color/ColorPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
+import { ALL_WATERMARK_STYLES } from '../../shared/watermarkAssets'
+import type { DeviceWatermarkStyleConfig } from '../../shared/types'
 
 export type WorkspaceTool = 'color' | 'crop' | 'watermark'
 
@@ -72,6 +74,22 @@ export function WorkspaceEditSidebar() {
     () => (size: { width?: number; height?: number }) => edit.handleCropSizeChange(size, canvas.sourceAspect),
     [edit.handleCropSizeChange, canvas.sourceAspect],
   )
+
+  // 工作台水印样式：从所有已注册水印构建选项
+  const wmStyleOptions: DeviceWatermarkStyleConfig[] = useMemo(
+    () =>
+      ALL_WATERMARK_STYLES.map((ws) => ({
+        value: ws.value,
+        label: ws.label,
+        videoFileName: ws.videoFileName,
+        imageFileName: ws.imageFileName,
+      })),
+    [],
+  )
+
+  // 调试日志
+  console.log('[workspace watermark] styleOptions:', wmStyleOptions.map((s) => s.value).join(', '))
+  console.log('[workspace watermark] current style:', edit.pipeline.watermark.style)
 
   return (
     <aside className="workspace-edit-sidebar">
@@ -154,6 +172,7 @@ export function WorkspaceEditSidebar() {
               <WatermarkSettings
                 settings={edit.pipeline.watermark}
                 onChange={(watermark) => edit.updateWorkspacePanel({ watermark })}
+                styleOptions={wmStyleOptions}
               />
             </Accordion>
           )}
