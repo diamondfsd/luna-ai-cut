@@ -133,6 +133,15 @@ export class WebGLRenderer {
     this.gl.viewport(0, 0, nextWidth, nextHeight)
   }
 
+  /** 清除当前纹理和视频源 — 切换媒体时调用，避免旧纹理 + 新参数渲染 */
+  clearSource(): void {
+    this.videoSrc = null
+    if (this.texture) {
+      this.gl.deleteTexture(this.texture)
+      this.texture = null
+    }
+  }
+
   render(pipeline: EditPipeline, options: { cropMode?: boolean } = {}): void {
     if (!this.texture) return
     const gl = this.gl
