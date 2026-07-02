@@ -28,6 +28,15 @@ interface WorkspaceCanvasValue {
   render: (pipeline: EditPipeline, opts?: { cropMode?: boolean }) => void
   rendererReady: boolean
   renderKey: number
+  // Video
+  isVideo: boolean
+  videoPlaying: boolean
+  videoDuration: number
+  videoCurrentTime: number
+  playVideo: () => void
+  pauseVideo: () => void
+  seekVideo: (time: number) => void
+  toggleVideoPlayback: () => void
 }
 
 const WorkspaceCanvasContext = createContext<WorkspaceCanvasValue | null>(null)
@@ -86,6 +95,14 @@ export function WorkspaceCanvasProvider({ children }: { children: ReactNode }) {
       render: engine.render,
       rendererReady: engine.rendererReady,
       renderKey: engine.renderKey,
+      isVideo: engine.isVideo,
+      videoPlaying: engine.videoPlaying,
+      videoDuration: engine.videoDuration,
+      videoCurrentTime: engine.videoCurrentTime,
+      playVideo: engine.playVideo,
+      pauseVideo: engine.pauseVideo,
+      seekVideo: engine.seekVideo,
+      toggleVideoPlayback: engine.toggleVideoPlayback,
     }),
     [engine],
   )

@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, LayoutTemplate, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, LayoutTemplate, Pause, Play, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
@@ -28,6 +28,16 @@ function normalizePipeline(value: unknown): EditPipeline {
 interface WorkspacePageProps {
   workspaceMode: WorkspaceMode
   onEditingChange?: (editing: boolean) => void
+}
+
+/** 格式化秒数为 mm:ss 或 hh:mm:ss */
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 export function WorkspacePage({ workspaceMode, onEditingChange }: WorkspacePageProps) {
@@ -237,6 +247,45 @@ function WorkspacePageInner({ workspaceMode, onEditingChange }: WorkspacePagePro
             </div>
           )}
         </div>
+
+        {/* 视频播放控件 */}
+        {canvas.isVideo && !canvas.imageLoading && (
+          <>
+            {!canvas.videoPlaying && (
+              <button
+                className="workspace-video-play-overlay"
+                type="button"
+                onClick={canvas.toggleVideoPlayback}
+                aria-label="播放"
+              >
+                <Play size={48} />
+              </button>
+            )}
+            <div className="workspace-video-controls" onClick={(e) => e.stopPropagation()}>
+              <button
+                className="workspace-video-btn"
+                type="button"
+                onClick={canvas.toggleVideoPlayback}
+                aria-label={canvas.videoPlaying ? '暂停' : '播放'}
+              >
+                {canvas.videoPlaying ? <Pause size={16} /> : <Play size={16} />}
+              </button>
+              <input
+                className="workspace-video-progress"
+                type="range"
+                min={0}
+                max={canvas.videoDuration || 1}
+                step={0.1}
+                value={canvas.videoCurrentTime}
+                onChange={(e) => canvas.seekVideo(Number(e.target.value))}
+                aria-label="进度"
+              />
+              <span className="workspace-video-time">
+                {formatTime(canvas.videoCurrentTime)} / {formatTime(canvas.videoDuration)}
+              </span>
+            </div>
+          </>
+        )}
         {workspaceMode === 'creative' && (
           <div className="workspace-creative-placeholder">
             <div className="workspace-creative-placeholder-icon">

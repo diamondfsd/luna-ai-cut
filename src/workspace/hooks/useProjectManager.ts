@@ -15,13 +15,21 @@ function fileNameFromPath(filePath: string): string {
   return filePath.split(/[\\/]/).pop() || filePath
 }
 
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'mts', 'insv', 'lrv'])
+
+function kindFromPath(filePath: string): 'image' | 'video' {
+  const segments = filePath.split('.')
+  const ext = segments.length > 1 ? segments[segments.length - 1].toLowerCase() : ''
+  return VIDEO_EXTS.has(ext) ? 'video' : 'image'
+}
+
 function mediaFromState(state: WorkspaceRouteState | null): WorkspaceMediaAsset[] {
   if (state?.media?.length) return state.media
   return (state?.mediaPaths ?? []).map((path, index) => ({
     id: `${path}:${index}`,
     name: fileNameFromPath(path),
     path,
-    kind: 'image' as const,
+    kind: kindFromPath(path),
   }))
 }
 

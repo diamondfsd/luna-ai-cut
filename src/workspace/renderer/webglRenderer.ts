@@ -75,6 +75,7 @@ export class WebGLRenderer {
   private readonly program: WebGLProgram
   private readonly uniforms = new Map<string, WebGLUniformLocation>()
   private texture: WebGLTexture | null = null
+  private videoSrc: HTMLVideoElement | null = null
   private sourceSize = { width: 1, height: 1 }
   private displayRect = { x: 0, y: 0, width: 1, height: 1 }
 
@@ -95,6 +96,7 @@ export class WebGLRenderer {
   }
 
   loadImage(bitmap: ImageBitmap): void {
+    this.videoSrc = null
     const gl = this.gl
     this.sourceSize = { width: bitmap.width, height: bitmap.height }
     if (!this.texture) this.texture = gl.createTexture()
@@ -106,6 +108,27 @@ export class WebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap)
+  }
+
+  /** 加载视频源 — 后续每帧 render() 时自动上传当前视频帧到纹理 */
+  loadVideo(video: HTMLVideoElement): void {
+    this.videoSrc = video
+    const gl = this.gl
+    if (!this.texture) this.texture = gl.createTexture()
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, this.texture)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video)
+    this.sourceSize = { width: video.videoWidth, height: video.videoHeight }
+  }
+
+  /** 是否有视频源加载 */
+  hasVideoSource(): boolean {
+    return this.videoSrc !== null
   }
 
   resize(width: number, height: number): void {
@@ -127,11 +150,16 @@ export class WebGLRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT)
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(gl.TEXTURE_2D, this.texture)
+    // 视频源：每帧上传当前视频帧到纹理
+    if (this.videoSrc) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.videoSrc)
+    }
     this.updateUniforms(pipeline, options)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   }
 
   destroy(): void {
+    this.videoSrc = null
     if (this.texture) this.gl.deleteTexture(this.texture)
     this.gl.deleteProgram(this.program)
   }
