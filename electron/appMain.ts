@@ -809,7 +809,7 @@ function registerIpc(): void {
     return { lutBuffer: lutData.buffer as ArrayBuffer, lutSize: 33 }
   })
   // ── FFmpegFast 导出（直达 ffmpeg 完整管线，绕过 WebGL readPixels） ──
-  ipcMain.handle('workspace:exportFFmpeg', async (event, sourcePath: string, pipeline: Record<string, any>, exportMeta: { exportId: string; taskName: string; taskId?: string }) => {
+  ipcMain.handle('workspace:exportFFmpeg', async (event, sourcePath: string, pipeline: Record<string, any>, exportMeta: { exportId: string; taskName: string; taskId?: string; fileName?: string; index?: number; totalFiles?: number; createdAt?: number }) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
     await mkdir(settings.exportDir, { recursive: true })
@@ -924,11 +924,12 @@ function registerIpc(): void {
           exportId,
           percent: pct,
           status: pct >= 100 ? 'done' : 'exporting' as const,
-          fileName,
+          fileName: exportMeta?.fileName ?? fileName,
           taskId: task.id,
           taskName,
-          index: 0,
-          totalFiles: 1,
+          createdAt: exportMeta?.createdAt,
+          index: exportMeta?.index ?? 0,
+          totalFiles: exportMeta?.totalFiles ?? 1,
         })
         updateTaskItemProgress(task.id, exportId, taskStart, pct, pct >= 100 ? 'done' : 'exporting', {
           destinationPath,

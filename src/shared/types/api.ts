@@ -91,7 +91,7 @@ export interface LunaApi {
     exportFFmpeg(
       sourcePath: string,
       pipeline: Record<string, unknown>,
-      exportMeta: { exportId: string; taskName: string; taskId?: string },
+      exportMeta: { exportId: string; taskName: string; taskId?: string; fileName?: string; index?: number; totalFiles?: number; createdAt?: number },
       onProgress?: (percent: number) => void,
     ): Promise<{ path: string; name: string }>
     startVideoExport(meta: { exportId: string; taskName: string; outputName: string; width: number; height: number; fps: number }): Promise<{ exportId: string; outputPath: string; rawFilePath: string; taskId: string; taskStart: number }>

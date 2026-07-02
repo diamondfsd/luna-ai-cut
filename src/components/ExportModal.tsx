@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ImagePlus, Monitor, Video, X } from 'lucide-react'
 
 import { MediaPreviewPanel } from './MediaPreviewPanel'
@@ -56,6 +56,7 @@ export function ExportModal({
   const [currentFile, setCurrentFile] = useState<LunaFile>(files[0])
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
   const [customBitrateText, setCustomBitrateText] = useState('')
+  const lastClickRef = useRef(0)
 
   const displaySource = useMemo(() => {
     const localPath = currentFile.downloadFilePath ?? currentFile.localPath
@@ -193,8 +194,12 @@ export function ExportModal({
               <Button
                 variant="primary"
                 size="compact"
-                disabled={exporting}
-                onClick={() => onConfirm(watermarkSettings, videoSettings)}
+                onClick={() => {
+                  const now = Date.now()
+                  if (now - lastClickRef.current < 1000) return
+                  lastClickRef.current = now
+                  onConfirm(watermarkSettings, videoSettings)
+                }}
               >
                 {exporting ? '导出中...' : '确认导出'}
               </Button>
