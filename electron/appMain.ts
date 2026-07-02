@@ -684,6 +684,8 @@ function registerIpc(): void {
     const exportId = exportMeta?.exportId ?? `workspace_${nameBase}_${Date.now()}`
     const taskName = exportMeta?.taskName ?? `${nameBase}导出`
 
+    logMainInfo(`[workspace:exportVideo] 开始导出`, { exportId, taskName, sourcePath, destinationPath, hasExportMeta: !!exportMeta })
+
     const colorOpts = {
       exposure: color.exposure ?? 0,
       brightness: color.brightness ?? 0,
@@ -707,10 +709,12 @@ function registerIpc(): void {
     // 将 ffmpeg 进度推送到前端（同一 exportId）
     const win = BrowserWindow.fromWebContents(event.sender)
     await applyColorGradingToVideo(sourcePath, destinationPath, colorOpts, (percent) => {
+      const pct = Math.round(percent)
+      logMainDebug(`[workspace:exportVideo] 进度`, { exportId, percent: pct })
       win?.webContents.send('export:progress', {
         exportId,
-        percent: Math.round(percent),
-        status: percent >= 100 ? 'done' : 'exporting',
+        percent: pct,
+        status: pct >= 100 ? 'done' : 'exporting',
         fileName,
         taskName,
         index: 0,
@@ -719,6 +723,7 @@ function registerIpc(): void {
     })
 
     const kind = 'video'
+    logMainInfo(`[workspace:exportVideo] ffmpeg 完成，创建导出任务`, { exportId, destinationPath })
     const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
     const taskStart = Date.now()
     await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
@@ -726,6 +731,7 @@ function registerIpc(): void {
       duration: Date.now() - taskStart,
       destinationPath,
     })
+    logMainInfo(`[workspace:exportVideo] 导出任务创建完成`, { taskId: task.id, exportId })
 
     return { path: destinationPath, name: fileName }
   })
