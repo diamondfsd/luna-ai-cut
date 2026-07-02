@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
-import type { ExportTaskItemRecord, ExportTaskRecord, LunaFile, MediaKind } from '../shared/types'
+import type { ExportTaskItemRecord, ExportTaskRecord } from '../shared/types'
 import { useApp } from '../context/AppContext'
 import { IconButton } from '../ui'
 import { Table, type Column } from '../ui/Table'
-import { filePathToLunaFile } from './previewModalUtils'
 import { PreviewModal } from './PreviewModal'
 import '../styles/export-tasks.css'
 
@@ -89,7 +88,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
-  const [previewFile, setPreviewFile] = useState<LunaFile | null>(null)
+  const [previewPath, setPreviewPath] = useState<string | null>(null)
 
   const loadTasks = async () => {
     setLoading(true)
@@ -128,11 +127,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
 
   const handlePreviewItem = (item: ExportTaskItemRecord): void => {
     if (!item.destinationPath) return
-    setPreviewFile(filePathToLunaFile(item.destinationPath, {
-      id: item.exportId,
-      kind: item.kind as MediaKind,
-      downloadName: item.fileName,
-    }))
+    setPreviewPath(item.destinationPath)
   }
 
   const handleCancelTask = async (taskId: string): Promise<void> => {
@@ -281,11 +276,11 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         </div>
       )}
 
-      {previewFile && (
+      {previewPath && (
         <PreviewModal
-          filePath={previewFile.downloadFilePath ?? previewFile.localPath ?? ''}
-          onClose={() => setPreviewFile(null)}
-          onReveal={(f) => onRevealFile?.(f.downloadFilePath ?? f.localPath ?? '')}
+          filePath={previewPath}
+          onClose={() => setPreviewPath(null)}
+          onReveal={(f) => onRevealFile?.(f.downloadFilePath ?? f.localPath ?? previewPath)}
         />
       )}
     </>
