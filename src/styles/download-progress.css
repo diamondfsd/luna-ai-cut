@@ -314,6 +314,81 @@
   -webkit-backdrop-filter: none;
 }
 
+/* 水印样式缩略图 — 纯图片无按钮样式 */
+.wm-style-selector.size-switch {
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.wm-style-selector.size-switch button {
+  flex: 0 0 calc(50% - 2px);
+  max-width: calc(50% - 2px);
+  overflow: hidden;
+  height: auto;
+  padding: 2px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1.5px solid transparent;
+  transition: border-color 0.15s;
+}
+.wm-style-selector.size-switch button:hover {
+  background: transparent;
+}
+.wm-style-selector.size-switch button.active {
+  background: transparent;
+  border-color: var(--blue);
+}
+.wm-style-thumb {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: brightness(0.85);
+  opacity: 0.7;
+  transition: opacity 0.15s, filter 0.15s;
+}
+button.active .wm-style-thumb {
+  filter: brightness(1);
+  opacity: 1;
+}
+
+/* 水印位置选择 — 3 列网格 */
+.wm-position-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: 100%;
+}
+.wm-pos-cell {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--parchment);
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  padding: 4px;
+  transition: background 0.12s, border-color 0.12s;
+  min-height: 36px;
+}
+.wm-pos-cell:hover {
+  background: #e8e8ed;
+}
+.wm-pos-cell.active {
+  background: #e0e7ff;
+  border-color: var(--blue);
+}
+.wm-pos-empty {
+  cursor: default;
+  pointer-events: none;
+  background: transparent;
+  border-color: transparent;
+}
+.wm-pos-frame {
+  width: 100%;
+  height: 100%;
+  color: var(--text);
+}
+
 /* ====== 导出错误提示 ====== */
 .export-error {
   display: inline-flex;

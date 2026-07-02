@@ -93,7 +93,13 @@ export function resolveWatermarkRatios(
   contentH: number,
   positionKey: string,
 ): { widthRatio: number; xRatio: number; yRatio: number } | null {
-  const tableName = deviceId ? DEVICE_TO_TABLE_NAME[deviceId] : null
+  // 从样式值反推设备名（如 'luna_ultra' → 'Luna Ultra'）
+  let tableName = deviceId ? DEVICE_TO_TABLE_NAME[deviceId] : null
+  if (!tableName) {
+    // 尝试从 styleValue 推导：'luna_ultra' → 包含 'luna' → Luna Ultra
+    if (styleValue.startsWith('luna_')) tableName = 'Luna Ultra'
+    else if (styleValue.startsWith('go_')) tableName = 'Go Ultra'
+  }
   const themeName = STYLE_TO_THEME[styleValue]
   if (!tableName || !themeName) return null
 
