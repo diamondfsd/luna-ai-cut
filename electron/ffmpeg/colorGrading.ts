@@ -167,7 +167,10 @@ export class ColorGradingModule implements FfmpegModule {
       parts.push(`hqdn3d=${s.toFixed(2)}:${s.toFixed(2)}:${(s * 0.5).toFixed(2)}:${(s * 0.5).toFixed(2)}`)
     }
 
-    const filter = `${ctx.prevLabel}${parts.join(',')}`
-    return { filters: [filter] }
+    const filter = `${ctx.prevLabel}${parts.join(',')}[vout]`
+    return {
+      filters: [filter],
+      outputLabel: 'vout',
+    }
   }
 }
