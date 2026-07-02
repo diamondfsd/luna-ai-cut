@@ -441,3 +441,107 @@ export interface ReleaseNoteItem {
   version: string
   content: string
 }
+
+export interface DeviceDebugTestStep {
+  step: string
+  success: boolean
+  detail: string
+  elapsedMs: number
+}
+
+export interface DeviceDebugTestResult {
+  deviceId: string
+  host: string
+  overall: boolean
+  steps: DeviceDebugTestStep[]
+  authState: string
+  summary: string
+}
+
+export interface DeviceDebugEvent {
+  level: string
+  message: string
+  data?: unknown
+}
+
+export interface DeviceDebugPortResult {
+  httpOk: boolean
+  controlOk: boolean
+  httpPort: number | null
+  controlPort: number | null
+  message: string
+}
+
+export interface DeviceDebugConnectResult {
+  success: boolean
+  authState: string
+  message: string
+  httpOk: boolean
+  controlOk: boolean
+}
+
+export interface DeviceDebugAuthResult {
+  success: boolean
+  authState: string
+  message: string
+}
+
+export interface DeviceDebugFileListResult {
+  success: boolean
+  files: Array<{ name: string; size: number | null; url: string }>
+  message: string
+}
+
+export interface DeviceDebugDiagnosticsResult {
+  success: boolean
+  host: string
+  port: number
+  http: Array<{
+    path: string
+    ok: boolean
+    status?: number
+    server?: string | null
+    contentType?: string | null
+    directoryLinks?: number
+    mediaLinks?: number
+    preview?: string
+    error?: string
+  }>
+  tcp: Array<{
+    label: string
+    ok: boolean
+    code?: number
+    requestId?: number
+    bodyBytes?: number
+    trailer?: string
+    ascii?: string
+    error?: string
+  }>
+  deviceInfo: Insta360DeviceInfo | null
+  summary: string
+}
+
+export interface DeviceDebugOption {
+  id: string
+  name: string
+  defaultHost: string
+  controlPort: number
+  needsAuth: boolean
+  protocolType: string
+}
+
+export interface DeviceDebugApi {
+  runTest(params: { deviceId: string; host: string }): Promise<DeviceDebugTestResult>
+  checkPort(params: { deviceId: string; host: string }): Promise<DeviceDebugPortResult>
+  connect(params: { deviceId: string; host: string }): Promise<DeviceDebugConnectResult>
+  disconnect(params: { deviceId: string; host: string }): Promise<{ success: boolean }>
+  checkAuth(params: { deviceId: string; host: string }): Promise<DeviceDebugAuthResult>
+  requestAuth(params: { deviceId: string; host: string }): Promise<DeviceDebugAuthResult>
+  getAuthState(params: { deviceId: string; host: string }): Promise<{ authState: string }>
+  listFiles(params: { deviceId: string; host: string }): Promise<DeviceDebugFileListResult>
+  runDiagnostics(params: { deviceId: string; host: string }): Promise<DeviceDebugDiagnosticsResult>
+  getDeviceOptions(): Promise<DeviceDebugOption[]>
+  log(params: { level: string; message: string; data?: unknown }): Promise<{ success: boolean }>
+  getLogPath(): Promise<string>
+  onLog(callback: (event: DeviceDebugEvent) => void): () => void
+}

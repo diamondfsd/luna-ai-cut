@@ -55,6 +55,7 @@ import {
   scanWifiNetworks,
 } from './wifiDebugService'
 import { cancelBluetoothScan, scanBluetoothDevices } from './bluetoothDebugService'
+import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 import type {
   AiConfig,
@@ -200,6 +201,7 @@ function createWindow(): void {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     stopAllKeepAlive()
+    cleanupDeviceDebug()
     void stopMockServer()
     app.quit()
     win = null
@@ -208,6 +210,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   stopAllKeepAlive()
+  cleanupDeviceDebug()
   void stopMockServer()
 })
 
@@ -220,6 +223,8 @@ app.on('activate', () => {
 })
 
 function registerIpc(): void {
+  registerDeviceDebugHandlers(() => win)
+
   // 渲染进程日志
   ipcMain.on('log:renderer', (_event, level: string, message: string, meta?: unknown) => {
     logRendererMessage(level, message, meta)

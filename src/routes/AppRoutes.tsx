@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { DevPage } from '../pages/DevPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
+import { DeviceDebugPage } from '../pages/DeviceDebugPage'
 import { MediaLibraryPage } from '../pages/MediaLibraryPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import type { CacheStats, LunaFile, PreviewResult } from '../shared/types'
@@ -93,10 +94,19 @@ export function AppRoutes() {
   const isDownloadsActive = activePath === '/local-resources'
   const isSettingsActive = activePath === '/settings'
   const isBluetoothDebugActive = import.meta.env.DEV && activePath === '/ble-debug'
-  const isKnownRoute = isDeveloperActive || isLibraryActive || isDownloadsActive || isSettingsActive || isBluetoothDebugActive
+  const isDeviceDebugActive = (import.meta.env.DEV || developerMode) && activePath === '/device-debug'
+  const isKnownRoute = isDeveloperActive || isLibraryActive || isDownloadsActive || isSettingsActive || isBluetoothDebugActive || isDeviceDebugActive
 
   if (isDownloadsLegacy) {
     return <Navigate to="/local-resources" replace />
+  }
+
+  if (typeof __DEBUG_STANDALONE__ !== 'undefined' && __DEBUG_STANDALONE__) {
+    return (
+      <main className="app">
+        <DeviceDebugPage />
+      </main>
+    )
   }
 
   if (!isKnownRoute) {
@@ -105,7 +115,7 @@ export function AppRoutes() {
 
   return (
     <main className="app">
-      <AppNav connection={connection} sourceMode={sourceMode} activeDevice={activeDevice} />
+      <AppNav connection={connection} sourceMode={sourceMode} activeDevice={activeDevice} developerMode={developerMode} />
       <UpdateBanner />
       <HotUpdateBanner />
 
@@ -194,6 +204,12 @@ export function AppRoutes() {
               chooseMockMediaDir={chooseMockMediaDir}
               openDirectory={openDirectory}
             />
+          </section>
+        )}
+
+        {isDeviceDebugActive && (
+          <section className="route-panel">
+            <DeviceDebugPage />
           </section>
         )}
       </div>
