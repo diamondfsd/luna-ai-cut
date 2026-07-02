@@ -157,7 +157,9 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
   const render = useCallback((pipeline: EditPipeline, opts?: { cropMode?: boolean }) => {
     lastPipelineRef.current = pipeline
     rendererRef.current?.render(pipeline, { cropMode: opts?.cropMode ?? false })
-  }, [])
+    // 每次渲染后更新裁剪区域坐标，确保 CropOverlay 跟随图片
+    updateImageRect()
+  }, [updateImageRect])
 
   // ═══════════════════════════════════════════════
   //  Callback refs（避免 effect 重复触发）
@@ -186,20 +188,35 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
       // ── 视频：创建隐藏 <video> 元素 ──
       setIsVideo(true)
       cleanupVideo()
+
+      // 先用 ImageCache 帧快速占位，避免黑屏
+      workspaceImageCache.generate(filePath).then((entry) => {
+        if (!canceled && rendererRef.current && !rendererRef.current.hasVideoSource()) {
+          rendererRef.current?.loadImage(entry.previewBitmap)
+          updateImageRect()
+          setRenderKey((k) => k + 1)
+        }
+        if (!canceled) onThumbnailReadyRef.current?.(entry)
+      }).catch(() => {})
+
       const video = document.createElement('video')
       video.muted = true
       video.preload = 'auto'
       video.crossOrigin = 'anonymous'
       video.playsInline = true
 
-      video.addEventListener('loadedmetadata', () => {
+      const videoReady = (): void => {
         if (canceled) return
-        setVideoDuration(video.duration)
+        if (Number.isFinite(video.duration)) setVideoDuration(video.duration)
         rendererRef.current?.loadVideo(video)
         updateImageRect()
         setImageLoading(false)
         setRenderKey((k) => k + 1)
-      })
+      }
+
+      video.addEventListener('loadedmetadata', videoReady)
+      // canplay 作为后备（某些浏览器 loadedmetadata 后宽度仍未就绪）
+      video.addEventListener('canplay', videoReady, { once: true })
 
       video.addEventListener('timeupdate', () => {
         if (!canceled) setVideoCurrentTime(video.currentTime)
@@ -212,38 +229,33 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
       })
 
       video.addEventListener('seeked', () => {
-        // seek 完成后触发一次渲染（seek 不会触发 pipeline change）
         if (!canceled) {
           setRenderKey((k) => k + 1)
           setVideoCurrentTime(video.currentTime)
         }
       })
 
+      // 视频加载失败 — fallback 到 ImageCache 帧
       video.addEventListener('error', () => {
         if (canceled) return
         setImageError('视频加载失败')
         setImageLoading(false)
-        // fallback: 尝试用 ImageCache 的帧
-        workspaceImageCache.generate(filePath)
-          .then((entry) => {
-            if (canceled) return
-            rendererRef.current?.loadImage(entry.previewBitmap)
-            updateImageRect()
-            setRenderKey((k) => k + 1)
-          })
-          .catch(() => {})
+        setIsVideo(false)
+        // 尝试用 ImageCache 帧（已有占位帧，直接触发渲染）
+        setRenderKey((k) => k + 1)
       })
+
+      // 10 秒超时 — 若视频仍未就绪则视为加载失败
+      const timeoutId = window.setTimeout(() => {
+        if (canceled || video.readyState >= 2) return
+        video.dispatchEvent(new Event('error'))
+      }, 10000)
+
+      video.addEventListener('canplay', () => window.clearTimeout(timeoutId), { once: true })
 
       const url = filePathToPreviewUrl(filePath)
       if (url) video.src = url
       videoRef.current = video
-
-      // 同时加载缩略图（不覆盖 video 纹理）
-      workspaceImageCache.generate(filePath)
-        .then((entry) => {
-          if (!canceled) onThumbnailReadyRef.current?.(entry)
-        })
-        .catch(() => {})
     } else {
       // ── 图片：走 ImageCache ──
       workspaceImageCache.generate(filePath)

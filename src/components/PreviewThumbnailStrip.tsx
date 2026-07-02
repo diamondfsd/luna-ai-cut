@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { FileQuestion, Film, Play } from 'lucide-react'
+import { FileQuestion, Film } from 'lucide-react'
 
 import type { LunaFile } from '../shared/types'
+import { VideoPlayBadge } from '../ui'
 
 interface PreviewThumbnailStripProps {
   activeThumbRef: RefObject<HTMLButtonElement>
@@ -9,6 +10,8 @@ interface PreviewThumbnailStripProps {
   files: LunaFile[]
   stripRef: RefObject<HTMLDivElement>
   onFileChange: (file: LunaFile) => void
+  /** 已修改（调色/水印有变更）的文件 ID 集合 */
+  modifiedFileIds?: Set<string>
 }
 
 function thumbnailSrcFor(file: LunaFile, resolvedMap: Record<string, string>): string | null {
@@ -26,6 +29,7 @@ export function PreviewThumbnailStrip({
   files,
   stripRef,
   onFileChange,
+  modifiedFileIds,
 }: PreviewThumbnailStripProps) {
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const requestedRef = useRef<Set<string>>(new Set())
@@ -53,14 +57,16 @@ export function PreviewThumbnailStrip({
       {files.map((file) => {
         const isActive = file.id === currentFileId
         const thumbSrc = thumbnailSrcFor(file, thumbnails)
+        const isModified = modifiedFileIds?.has(file.id)
         return (
           <button
             key={file.id}
             ref={isActive ? activeThumbRef : undefined}
-            className={`preview-thumb-item${isActive ? ' active' : ''}`}
+            className={`preview-thumb-item${isActive ? ' active' : ''}${isModified ? ' modified' : ''}`}
             onClick={() => onFileChange(file)}
             title={file.name}
           >
+            {isModified && <span className="preview-thumb-modified-dot" />}
             {thumbSrc ? (
               <img src={thumbSrc} alt={file.name} loading="lazy" />
             ) : (
@@ -68,11 +74,7 @@ export function PreviewThumbnailStrip({
                 {file.kind === 'video' ? <Film size={14} /> : <FileQuestion size={14} />}
               </span>
             )}
-            {file.kind === 'video' && (
-              <span className="preview-thumb-badge">
-                <Play size={8} fill="currentColor" />
-              </span>
-            )}
+            {file.kind === 'video' && <VideoPlayBadge size={16} />}
             {file.isLivePhoto && (
               <span className="preview-thumb-live">
                 <span /><span /><span />

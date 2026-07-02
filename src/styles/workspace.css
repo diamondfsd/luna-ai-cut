@@ -70,31 +70,29 @@
   position: relative;
   display: grid;
   place-items: center;
-  color: rgba(0, 102, 204, 0.72);
-  overflow: hidden;
+  color: rgba(0, 102, 204, 0.58);
+  overflow: visible;
 }
 
 .workspace-project-previews {
   position: absolute;
-  left: 34px;
-  top: 34px;
-  width: 72px;
-  height: 48px;
+  left: 26px;
+  top: 28px;
+  width: 80px;
+  height: 54px;
   pointer-events: none;
 }
 
 .workspace-project-previews img,
 .workspace-project-previews span {
   position: absolute;
-  left: 8px;
-  top: 6px;
-  width: 54px;
-  height: 36px;
+  width: 56px;
+  height: 38px;
   border-radius: 4px;
   overflow: hidden;
-  background: #333;
-  border: 2px solid #444;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  background: #2a2a2a;
+  border: 2px solid #363636;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
   display: grid;
   place-items: center;
   object-fit: cover;
@@ -282,6 +280,56 @@
 .workspace-video-time {
   font-size: 11px;
   color: rgba(255,255,255,0.7);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ── 工具栏视频控件 ── */
+.workspace-toolbar-video {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 300px;
+  margin: 0 auto;
+}
+.workspace-toolbar-video-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.workspace-toolbar-video-btn:hover { opacity: 1; }
+.workspace-toolbar-video-progress {
+  flex: 1;
+  height: 3px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--hairline);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.workspace-toolbar-video-progress::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--blue);
+  border: none;
+  cursor: pointer;
+}
+.workspace-toolbar-video-time {
+  font-size: 11px;
+  color: var(--muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
@@ -541,7 +589,7 @@
   padding: 4px;
   border: 2px solid transparent;
   border-radius: 8px;
-  background: #ededf0;
+  background: #2a2a2a;
   cursor: pointer;
   overflow: hidden;
   display: grid;
@@ -551,10 +599,10 @@
 
 .workspace-thumb-modified-dot {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 6px;
-  height: 6px;
+  top: 6px;
+  left: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--blue);
   z-index: 1;
@@ -590,6 +638,7 @@
   font-size: 11px;
 }
 
+/* 视频缩略图播放图标 */
 /* 拖拽框选 */
 .workspace-drag-select {
   position: absolute;

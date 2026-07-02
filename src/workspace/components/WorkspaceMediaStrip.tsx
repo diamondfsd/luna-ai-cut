@@ -5,6 +5,7 @@ import type { WorkspaceMediaAsset } from '../../shared/types'
 import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../shared/editPipeline'
 import type { PipelinePatch } from '../shared/editPipeline'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
+import { VideoPlayBadge } from '../../ui'
 import { logger } from '../../lib/rendererLogger'
 
 /** 检查素材的 pipeline 是否有非默认的修改 */
@@ -130,6 +131,7 @@ export function WorkspaceMediaStrip() {
           >
             {isModified && <span className="workspace-thumb-modified-dot" />}
             {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" draggable={false} onError={() => handleThumbError(item.path)} /> : <span className="workspace-thumb-label">{item.kind === 'video' ? '视频' : '图片'}</span>}
+            {item.kind === 'video' && <VideoPlayBadge size={20} />}
           </button>
         )
       })}
