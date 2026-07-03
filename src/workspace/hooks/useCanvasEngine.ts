@@ -146,6 +146,58 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     if (aspect) setSourceAspect(aspect)
   }, [])
 
+  /** 停止 Live Photo 视频播放，回到静态图片 */
+  const stopLiveVideo = useCallback(async () => {
+    cleanupVideo()
+    if (!activeMedia) return
+    const entry = await workspaceImageCache.generate(activeMedia.path)
+    rendererRef.current?.loadImage(entry.previewBitmap)
+    rendererRef.current?.render(lastPipelineRef.current)
+    setLoadedMediaPath(activeMedia.path)
+    updateImageRect()
+    setRenderKey((k) => k + 1)
+  }, [activeMedia, cleanupVideo, updateImageRect])
+
+  /** 加载 Live Photo 视频到 WebGL 渲染器（不走文件路径，直接给视频 URL） */
+  const loadLiveVideo = useCallback(async (videoUrl: string): Promise<void> => {
+    cleanupVideo()
+    const vid = document.createElement('video')
+    vid.muted = true
+    vid.preload = 'auto'
+    vid.crossOrigin = 'anonymous'
+    vid.playsInline = true
+    vid.src = videoUrl
+    videoRef.current = vid
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Live Photo 视频加载超时')), 15000)
+      vid.addEventListener('loadedmetadata', () => {
+        setVideoDuration(vid.duration)
+      }, { once: true })
+      vid.addEventListener('canplay', () => {
+        clearTimeout(timeout)
+        resolve()
+      }, { once: true })
+      vid.addEventListener('ended', () => {
+        setVideoPlaying(false)
+        stopRafLoop()
+        stopLiveVideo().catch(() => {})
+      })
+      vid.addEventListener('error', () => {
+        clearTimeout(timeout)
+        reject(new Error('Live Photo 视频加载失败'))
+      }, { once: true })
+    })
+
+    rendererRef.current?.loadVideo(vid)
+    rendererRef.current?.render(lastPipelineRef.current)
+    setIsVideo(true)
+    setVideoPlaying(false)
+    setVideoCurrentTime(0)
+    updateImageRect()
+    setRenderKey((k) => k + 1)
+  }, [cleanupVideo, updateImageRect, stopRafLoop, stopLiveVideo])
+
   // ═══════════════════════════════════════════════
   //  渲染 — WorkspacePage pipeline 变化时触发
   // ═══════════════════════════════════════════════
@@ -390,6 +442,8 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     pauseVideo,
     seekVideo,
     toggleVideoPlayback,
+    loadLiveVideo,
+    stopLiveVideo,
     bakeAndLoadLut,
     clearLut,
   }

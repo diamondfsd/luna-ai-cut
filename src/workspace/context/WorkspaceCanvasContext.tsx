@@ -41,6 +41,8 @@ interface WorkspaceCanvasValue {
   // 3D LUT
   bakeAndLoadLut: (colorParams: Record<string, unknown>, key: string) => Promise<boolean>
   clearLut: () => void
+  loadLiveVideo: (videoUrl: string) => Promise<void>
+  stopLiveVideo: () => Promise<void>
 }
 
 const WorkspaceCanvasContext = createContext<WorkspaceCanvasValue | null>(null)
@@ -108,6 +110,8 @@ export function WorkspaceCanvasProvider({ children }: { children: ReactNode }) {
       pauseVideo: engine.pauseVideo,
       seekVideo: engine.seekVideo,
       toggleVideoPlayback: engine.toggleVideoPlayback,
+      loadLiveVideo: engine.loadLiveVideo,
+      stopLiveVideo: engine.stopLiveVideo,
       bakeAndLoadLut: engine.bakeAndLoadLut,
       clearLut: engine.clearLut,
     }),
