@@ -25,6 +25,8 @@ interface WorkspaceMediaValue {
   removeSelected: (indices: Set<number>) => void
   removeBrokenAssets: () => void
   setActiveIndex: (index: number) => void
+  deleteProject: (projectId: string) => Promise<void>
+  renameProject: (projectId: string, newName: string) => Promise<void>
 }
 
 const WorkspaceMediaContext = createContext<WorkspaceMediaValue | null>(null)

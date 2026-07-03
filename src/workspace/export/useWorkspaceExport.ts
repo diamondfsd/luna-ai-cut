@@ -62,7 +62,7 @@ function snapshotForAsset(asset: WorkspaceMediaAsset, exportedPath?: string, kin
 export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline }: UseWorkspaceExportOptions) {
   const { setExportProgress, setExportSnapshots, setExporting } = useApp()
 
-  return useCallback(async () => {
+  const exportSingle = useCallback(async () => {
     if (!activeMedia || !canvasRef.current) return
     const createdAt = Date.now()
     const taskId = `workspace_export_${createdAt}`
@@ -187,4 +187,74 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
       setExporting(false)
     }
   }, [activeMedia, canvasRef, imageRect, pipeline, setExporting, setExportProgress, setExportSnapshots])
+
+  const exportBatch = useCallback(async (indices: number[], allMediaL: WorkspaceMediaAsset[]) => {
+    if (indices.length === 0) return
+    setExporting(true)
+    let exported = 0
+    const failed: string[] = []
+    for (let idx = 0; idx < indices.length; idx++) {
+      const mediaIdx = indices[idx]
+      const asset = allMediaL[mediaIdx]
+      if (!asset) { failed.push(`索引 ${mediaIdx} 无效`); continue }
+      const createdAt = Date.now()
+      const taskId = `workspace_batch_${createdAt}`
+      const exportId = `${asset.name}_batch_${createdAt}`
+      const taskName = `批量导出 (${idx + 1}/${indices.length})`
+
+      setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(asset)))
+      setExportProgress((current) => new Map(current).set(exportId, {
+        exportId, taskId, taskName, createdAt,
+        fileName: asset.name, index: idx, totalFiles: indices.length,
+        percent: 0, status: 'exporting',
+      }))
+
+      try {
+        const useFFmpeg = canExportFFmpeg(pipeline)
+        let result: { name: string; path: string }
+
+        if (useFFmpeg) {
+          result = await exportWithFFmpeg(asset.path, pipeline, {
+            exportId, taskName, onProgress: (percent) => {
+              setExportProgress((current) => new Map(current).set(exportId, {
+                exportId, taskId, taskName, createdAt,
+                fileName: asset.name, index: idx, totalFiles: indices.length,
+                percent, status: percent >= 100 ? 'done' : 'exporting',
+              }))
+            },
+          })
+        } else {
+          // 跳过不支持 FFmpegFast 的项（如需要 WebGL 的）
+          failed.push(`${asset.name}: 不支持批量导出`)
+          setExportProgress((current) => new Map(current).set(exportId, {
+            exportId, taskId, taskName, createdAt,
+            fileName: asset.name, index: idx, totalFiles: indices.length,
+            percent: null, status: 'failed', error: '不支持批量导出',
+          }))
+          continue
+        }
+
+        setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(asset, result.path)))
+        setExportProgress((current) => new Map(current).set(exportId, {
+          exportId, taskId, taskName, createdAt,
+          fileName: asset.name, index: idx, totalFiles: indices.length,
+          percent: 100, status: 'done', destinationPath: result.path,
+        }))
+        exported++
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        failed.push(`${asset.name}: ${message}`)
+        setExportProgress((current) => new Map(current).set(exportId, {
+          exportId, taskId, taskName, createdAt,
+          fileName: asset.name, index: idx, totalFiles: indices.length,
+          percent: null, status: 'failed', error: message,
+        }))
+      }
+    }
+    setExporting(false)
+    if (exported > 0) toast.success(`成功导出 ${exported} 个文件${failed.length > 0 ? `，${failed.length} 个失败` : ''}`)
+    if (failed.length > 0 && exported === 0) toast.error('批量导出全部失败')
+  }, [pipeline, setExporting, setExportProgress, setExportSnapshots])
+
+  return { exportSingle, exportBatch }
 }
