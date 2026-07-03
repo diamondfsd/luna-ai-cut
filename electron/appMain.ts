@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { appendFile, cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { checkForUpdates } from './updateService'
@@ -91,6 +91,14 @@ import type {
 } from '../src/shared/types'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+function fileSizeBytes(filePath: string): number | null {
+  try {
+    return statSync(filePath).size
+  } catch {
+    return null
+  }
+}
 
 // The built directory structure
 //
@@ -1026,11 +1034,17 @@ function registerIpc(): void {
       )
       if (hasColor) {
         try {
-          // 使用 app 缓存目录存放 LUT 文件，避免 Windows 上某些环境变量设置异常导致
-          // os.tmpdir() 返回裸盘符（如 C:）时 path.join 不添加分隔符
-          lutPath = path.join(lunaCacheDir, `.lut_${exportId}_${Date.now()}.cube`)
+          const lutFileName = `.lut_${exportId}_${Date.now()}.cube`
+          // 平台路径（含反斜杠），用于 bakeColorLut 写文件
+          lutPath = path.join(lunaCacheDir, lutFileName)
           await bakeColorLut(pipeline.color ?? {}, lutPath)
           logMainInfo(`[FFmpegFast] LUT 烘焙完成`, { lutPath })
+          const lutExists = existsSync(lutPath)
+          logMainInfo(`[FFmpegFast] LUT 文件状态`, {
+            lutPath,
+            lutExists,
+            sizeBytes: lutExists ? fileSizeBytes(lutPath) : null,
+          })
         } catch (lutErr) {
           logMainWarn(`[FFmpegFast] LUT 烘焙失败，回退直接滤镜模式`, { error: lutErr instanceof Error ? lutErr.message : String(lutErr) })
           lutPath = undefined
@@ -1038,6 +1052,8 @@ function registerIpc(): void {
       }
 
       // FullPipelineModule：transform(空间) + lut3d(颜色) + detail(锐化/降噪) + watermark
+      // 传入真实文件路径，filter_complex 所需转义在 FullPipelineModule 内统一处理。
+      logMainInfo(`[FFmpegFast] LUT 准备传入管线`, { lutPath, hasLutPath: !!lutPath })
       ffPipeline.addModule(new FullPipelineModule(pipeline, watermarkImagePath, lutPath))
 
       if (isVid) {

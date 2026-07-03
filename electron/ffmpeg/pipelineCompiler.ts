@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import type { BuildContext, FfmpegModule, ModuleArgs } from './pipeline'
 import { logMainInfo } from '../loggerService'
 import { resolveWatermarkRatios } from '../../src/shared/watermark/layoutConfig'
@@ -32,6 +32,30 @@ function curvePointsToString(points: Array<{ x: number; y: number }> | undefined
     .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
     .map((p) => `${clamp(p.x, 0, 1).toFixed(3)}/${clamp(p.y, 0, 1).toFixed(3)}`)
     .join(' ')
+}
+
+function buildFilterPath(filePath: string): { normalized: string; escaped: string; hadBareDrive: boolean } {
+  let normalized = filePath.replace(/\\/g, '/')
+  const hadBareDrive = /^[A-Za-z]:(?=[^/])/.test(normalized)
+
+  if (hadBareDrive) {
+    normalized = normalized.replace(/^([A-Za-z]):/, '$1:/')
+  }
+
+  const escaped = normalized
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/:/g, '\\:')
+
+  return { normalized, escaped, hadBareDrive }
+}
+
+function fileSizeBytes(filePath: string): number | null {
+  try {
+    return statSync(filePath).size
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -126,19 +150,21 @@ export class FullPipelineModule implements FfmpegModule {
 
     // ── 4. Color adjustments（LUT 模式 vs 直接模式） ──
     if (this.lutPath) {
-      // 诊断：记录进入 build() 时 this.lutPath 的原始值
-      logMainInfo('[FullPipelineModule] build LUT path 诊断', { lutPath: this.lutPath })
-
-      // Windows 路径包含反斜杠，ffmpeg filter_complex 解析器会将 \ 视为转义字符，导致路径错乱。
-      // 替换为前斜杠（ffmpeg on Windows 支持前斜杠路径）。
-      // 额外防御：裸盘符（如 E:.lut_...）的冒号会被 ffmpeg 误当作选项分隔符，补上前斜杠。
-      let lutFsPath = this.lutPath
-      if (process.platform === 'win32') {
-        const step1 = this.lutPath.replace(/\\/g, '/')
-        const step2 = step1.replace(/^([A-Za-z]):(?=[^/])/, '$1:/')
-        logMainInfo('[FullPipelineModule] Windows LUT 路径转换步骤', { original: this.lutPath, step1, step2 })
-        lutFsPath = step2
-      }
+      const lutPathInfo = buildFilterPath(this.lutPath)
+      const fileExists = existsSync(this.lutPath)
+      logMainInfo('[FullPipelineModule] LUT filter 路径', {
+        original: this.lutPath,
+        normalized: lutPathInfo.normalized,
+        escaped: lutPathInfo.escaped,
+        originalLen: this.lutPath.length,
+        normalizedLen: lutPathInfo.normalized.length,
+        escapedLen: lutPathInfo.escaped.length,
+        hadBackslash: this.lutPath.includes('\\'),
+        hadBareDrive: lutPathInfo.hadBareDrive,
+        fileExists,
+        sizeBytes: fileExists ? fileSizeBytes(this.lutPath) : null,
+      })
+      const lutFsPath = lutPathInfo.escaped
       mainFilters.push(`lut3d=file='${lutFsPath}':interp=tetrahedral`)
     } else {
       const colorParts: string[] = []
