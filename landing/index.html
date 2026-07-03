@@ -28,6 +28,7 @@
           <a href="#download">下载</a>
           <a href="#features">功能</a>
           <a href="#guide">使用指南</a>
+          <a href="changelog.html">更新日志</a>
           <a href="install_readme.html">安装指南</a>
           <a href="https://github.com/diamondfsd/luna-ai-cut" target="_blank" rel="noopener" class="nav-github">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -47,7 +48,7 @@
           <img class="hero-icon" src="assets/icon.png" alt="Luna AI Cut" width="100" height="100" />
           <h1 class="hero-title">Luna AI Cut</h1>
         </div>
-        <p class="hero-lead">Insta360 Luna Ultra 的桌面搭档<br/>媒体管理 · 水印导出 · 一站式完成</p>
+        <p class="hero-lead">Insta360 Luna Ultra 的桌面搭档<br/>媒体管理 · 工作台编辑 · 水印导出 · 一站式完成</p>
         <div class="hero-cta">
           <a href="#download" class="pill primary">免费下载</a>
           <a href="#features" class="pill secondary">了解功能</a>
@@ -58,31 +59,18 @@
               <span class="mockup-dot"></span>
               <span class="mockup-dot"></span>
               <span class="mockup-dot"></span>
-              <span class="mockup-text">Luna AI Cut — 媒体库</span>
+              <span class="mockup-text">Luna AI Cut — 工作台</span>
             </div>
             <div class="mockup-body">
-              <div class="mockup-nav">
-                <span class="mockup-nav-item active">设备媒体库</span>
-                <span class="mockup-nav-item">本地资源</span>
-                <span class="mockup-nav-item">设置</span>
-              </div>
-              <div class="mockup-toolbar">
-                <span class="mockup-toolbar-text" id="mockup-date"></span>
-                <div class="mockup-toolbar-right">
-                  <span class="mockup-chip active">全部</span>
-                  <span class="mockup-chip">照片</span>
-                  <span class="mockup-chip">视频</span>
+              <div class="mockup-app">
+                <div class="mockup-tabs">
+                  <span class="mockup-tab active" data-page="connect" role="button" tabindex="0">设备连接</span>
+                  <span class="mockup-tab" data-page="library" role="button" tabindex="0">素材库</span>
+                  <span class="mockup-tab" data-page="workspace" role="button" tabindex="0">工作台</span>
                 </div>
-              </div>
-              <div class="mockup-gallery">
-                <div class="mockup-card"></div>
-                <div class="mockup-card mockup-card-tall"></div>
-                <div class="mockup-card"></div>
-                <div class="mockup-card mockup-card-tall"></div>
-                <div class="mockup-card"></div>
-                <div class="mockup-card"></div>
-                <div class="mockup-card mockup-card-tall"></div>
-                <div class="mockup-card"></div>
+                <div class="mockup-content" id="mockup-content">
+                  <div class="mockup-gradient"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -148,24 +136,25 @@
       </div>
     </section>
 
-    <!-- ===== Contact ===== -->
-    <section id="contact" class="section section-parchment">
+    <!-- ===== What's New ===== -->
+    <section id="whatsnew" class="section section-parchment">
       <div class="section-inner">
-        <div class="section-label accent">联系与关注</div>
-        <h2 class="section-title">获取最新动态</h2>
-        <p class="section-desc">关注我的抖音，第一时间获取版本更新通知和使用技巧</p>
+        <div class="section-label">更新动态</div>
+        <h2 class="section-title">最新版本亮点</h2>
+        <p class="section-desc">持续迭代，带来更好的使用体验</p>
 
-        <div class="contact-card">
-          <img class="contact-qr" src="assets/my-douyin-qr-code.jpg" alt="抖音二维码" width="200" height="200" />
-          <div class="contact-info">
-            <h3>关注我，获取一手资讯</h3>
-            <ul>
-              <li>🔔 第一时间获取版本更新通知</li>
-              <li>📖 了解产品最新功能和使用技巧</li>
-              <li>💬 有任何疑问或建议，直接私信我</li>
-            </ul>
-            <p class="contact-tip">打开抖音扫码关注。</p>
-          </div>
+        <div class="whatsnew-list">
+          <article class="whatsnew-item">
+            <span class="whatsnew-tag">v1.4.0</span>
+            <h3>工作台编辑 &amp; 批量导出</h3>
+            <p>新增完整的工作台编辑功能，支持裁剪旋转、色彩调整、曲线调色。FFmpeg 全管道导出引擎，水印添加与批量导出，进度实时可查。</p>
+            <p class="whatsnew-meta">收录自 v1.2.4 起共 30+ 版本发布说明</p>
+          </article>
+        </div>
+        <div style="text-align:center;margin-top:20px;">
+          <a class="pill secondary" href="changelog.html" style="font-size:14px;min-height:36px;padding:6px 22px;">
+            查看完整更新历史 →
+          </a>
         </div>
       </div>
     </section>
@@ -195,17 +184,16 @@
               </svg>
             </div>
             <h3 class="feature-title">媒体浏览管理</h3>
-            <p class="feature-desc">按日期分组浏览照片和视频，支持全部/照片/视频快速筛选。三种缩略图尺寸自由切换，轻松管理数千个文件。</p>
+            <p class="feature-desc">按日期分组浏览照片和视频，支持全部/照片/视频快速筛选。三种缩略图尺寸自由切换，实况照片自动识别标注。</p>
           </article>
 
           <article class="feature-card">
             <div class="feature-icon">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="8,17 16,11 8,5"/>
-              </svg>
+                <path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
             </div>
-            <h3 class="feature-title">高效选择下载</h3>
-            <p class="feature-desc">框选、单选、组选灵活切换。拖动跨越半张卡片即选中，批量下载到本地日期目录，实时进度一目了然。</p>
+            <h3 class="feature-title">工作台编辑</h3>
+            <p class="feature-desc">裁剪旋转、色彩调整、曲线调色，一站式完成。原图/效果/对比三种预览模式，实时查看编辑效果。</p>
           </article>
 
           <article class="feature-card">
@@ -214,18 +202,8 @@
                 <circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/>
               </svg>
             </div>
-            <h3 class="feature-title">边到边预览</h3>
-            <p class="feature-desc">全屏暗色预览，媒体内容居中突出。右侧信息面板展示分辨率、文件大小、拍摄时间等关键元数据。</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-            </div>
-            <h3 class="feature-title">水印与导出</h3>
-            <p class="feature-desc">支持多种水印样式、位置和大小，导出时自动添加品牌标识。已下载文件跨会话保持状态，安全可靠。</p>
+            <h3 class="feature-title">预览与元数据</h3>
+            <p class="feature-desc">全屏暗色预览，键盘左右切换文件。右侧信息面板展示分辨率、文件大小、拍摄时间等关键元数据。</p>
           </article>
         </div>
       </div>
@@ -235,8 +213,8 @@
     <section id="guide" class="section section-white">
       <div class="section-inner">
         <div class="section-label">使用指南</div>
-        <h2 class="section-title">三步上手，轻松管理</h2>
-        <p class="section-desc">从连接到导出，简单直观</p>
+        <h2 class="section-title">四步上手，从管理到创作</h2>
+        <p class="section-desc">从连接到导出，每一步都精心设计</p>
 
         <div class="guide-steps">
           <div class="guide-step">
@@ -254,7 +232,7 @@
             <div class="guide-step-number">2</div>
             <div class="guide-step-content">
               <h3 class="guide-step-title">浏览与选择</h3>
-              <p class="guide-step-desc">媒体库按拍摄日期自动分组，可通过顶部标签在「全部」「照片」「视频」间快速筛选。点击缩略图可预览大图或播放视频，使用键盘左右键切换文件。</p>
+              <p class="guide-step-desc">媒体库按拍摄日期自动分组，可通过顶部标签在「全部」「照片」「视频」间快速筛选。实况照片自动标注，一目了然。点击缩略图可预览大图或播放视频，使用键盘左右键切换文件。</p>
               <p class="guide-step-desc">长按或拖动可框选多个文件，选中后可使用下载按钮批量保存到本地。</p>
               <div class="guide-step-tip">
                 <strong>提示：</strong>缩略图支持大、中、小三档尺寸，在日期标题栏即可切换。
@@ -265,13 +243,46 @@
           <div class="guide-step">
             <div class="guide-step-number">3</div>
             <div class="guide-step-content">
+              <h3 class="guide-step-title">工作台创作</h3>
+              <p class="guide-step-desc">在媒体库中选择一张照片或视频，点击「打开工作台」进入编辑模式。右侧面板提供裁剪旋转、色彩调整、曲线调色和水印导出等功能。</p>
+              <div class="guide-step-tip">
+                <strong>提示：</strong>编辑过程中可在原图/效果/对比三种预览模式间切换，实时查看调整效果。
+              </div>
+            </div>
+          </div>
+
+          <div class="guide-step">
+            <div class="guide-step-number">4</div>
+            <div class="guide-step-content">
               <h3 class="guide-step-title">下载与导出</h3>
               <p class="guide-step-desc">选中文件后点击下载按钮，文件会自动保存到设定的下载目录中，并按日期分文件夹存放。已下载的文件会出现蓝色文件夹标识，点击可定位到文件在系统中的位置。</p>
-              <p class="guide-step-desc">在导出时可以选择水印样式、位置和大小，添加品牌标识后导出最终版本。</p>
+              <p class="guide-step-desc">在导出时可以选择水印样式、位置和大小，添加品牌标识后导出最终版本。支持批量导出，进度实时可查。</p>
               <div class="guide-step-tip">
                 <strong>提示：</strong>已下载的文件在「本地资源」中可以随时浏览和管理，无需重复连接相机。
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Contact ===== -->
+    <section id="contact" class="section section-parchment">
+      <div class="section-inner">
+        <div class="section-label accent">联系与关注</div>
+        <h2 class="section-title">获取最新动态</h2>
+        <p class="section-desc">关注我的抖音，第一时间获取版本更新通知和使用技巧</p>
+
+        <div class="contact-card">
+          <img class="contact-qr" src="assets/my-douyin-qr-code.jpg" alt="抖音二维码" width="200" height="200" />
+          <div class="contact-info">
+            <h3>关注我，获取一手资讯</h3>
+            <ul>
+              <li>🔔 第一时间获取版本更新通知</li>
+              <li>📖 了解产品最新功能和使用技巧</li>
+              <li>💬 有任何疑问或建议，直接私信我</li>
+            </ul>
+            <p class="contact-tip">打开抖音扫码关注。</p>
           </div>
         </div>
       </div>
@@ -287,7 +298,8 @@
         <div class="footer-links">
           <a href="https://github.com/diamondfsd/luna-ai-cut" target="_blank" rel="noopener">GitHub</a>
           <a href="https://github.com/diamondfsd/luna-ai-cut/issues" target="_blank" rel="noopener">问题反馈</a>
-          <a href="https://github.com/diamondfsd/luna-ai-cut/releases" target="_blank" rel="noopener">更新日志</a>
+          <a href="changelog.html">更新日志</a>
+          <a href="https://github.com/diamondfsd/luna-ai-cut/releases" target="_blank" rel="noopener">发布列表</a>
         </div>
         <p class="footer-copy">
           开源项目 · 基于 MIT 协议发布。<br/>
