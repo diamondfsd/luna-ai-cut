@@ -1,12 +1,11 @@
 import { Download, Film, Image as ImageIcon, LayoutTemplate } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset } from '../../../shared/types'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
 import { Button, SegmentedControl, Select, Switch, toast } from '../../../ui'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import {
-  drawCoverImage,
   loadCreativeImageSource,
   loadCreativePreviewImageSource,
   loadCreativeVideoSource,
@@ -14,8 +13,10 @@ import {
   type CreativeSlotTransform,
   type CreativeSlotSource,
 } from '../shared/creativeMedia'
+import { TripleStitchGLSlot } from './TripleStitchGLSlot'
 import { TripleStitchSlotTools } from './TripleStitchSlotTools'
 import { TripleStitchTransformPanel } from './TripleStitchTransformPanel'
+import { createDefaultPipeline } from '../../shared/editPipeline'
 import './triple-stitch.css'
 
 function useTripleStitchSources(media: WorkspaceMediaAsset[], selectedIds: string[]): CreativeSlotSource[] {
@@ -41,7 +42,6 @@ const VIDEO_QUALITY_OPTIONS: Array<{ value: VideoQuality; label: string }> = [
 
 export function TripleStitchCreative() {
   const media = useWorkspaceMedia()
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const watermarkRef = useRef<HTMLImageElement | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>(() => media.media.slice(0, 3).map((asset) => asset.id))
   const [activeSlot, setActiveSlot] = useState(0)
@@ -52,7 +52,6 @@ export function TripleStitchCreative() {
   const [exportAppleLive, setExportAppleLive] = useState(false)
   const [videoDuration, setVideoDuration] = useState<VideoDuration>('5')
   const [videoQuality, setVideoQuality] = useState<VideoQuality>('high')
-  const [watermarkReady, setWatermarkReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [previewSources, setPreviewSources] = useState<Array<HTMLImageElement | HTMLVideoElement>>([])
   const [slotDurations, setSlotDurations] = useState([0, 0, 0])
@@ -70,14 +69,10 @@ export function TripleStitchCreative() {
   const activeTransform = slotTransforms[activeSlot] ?? DEFAULT_TRANSFORM
 
   useEffect(() => {
-    setWatermarkReady(false)
     const src = WM_SRC[watermarkStyle]?.image
     if (!src) return
     const img = new Image()
-    img.onload = () => {
-      watermarkRef.current = img
-      setWatermarkReady(true)
-    }
+    img.onload = () => { watermarkRef.current = img }
     img.src = src
   }, [watermarkStyle])
 
@@ -174,9 +169,6 @@ export function TripleStitchCreative() {
     if (event.button !== 0) return
     if ((event.target as HTMLElement).closest('.triple-stitch-slot-tool')) return
     const slot = slotFromPointer(event)
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const rect = event.currentTarget.getBoundingClientRect()
     const current = slotTransforms[slot] ?? DEFAULT_TRANSFORM
     setActiveSlot(slot)
     dragRef.current = {
@@ -185,7 +177,7 @@ export function TripleStitchCreative() {
       y: event.clientY,
       startX: current.offsetX,
       startY: current.offsetY,
-      ratio: canvas.width / rect.width,
+      ratio: Math.min(window.devicePixelRatio || 1, 2),
     }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -205,43 +197,7 @@ export function TripleStitchCreative() {
     event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
-  const renderCanvas = useCallback((options?: { sources?: Array<HTMLImageElement | HTMLVideoElement>; drawWatermark?: boolean }) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const width = canvas.width
-    const slotHeight = canvas.height / 3
-    ctx.fillStyle = '#111'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    const watermark = options?.drawWatermark !== false && watermarkEnabled ? watermarkRef.current : null
-
-    for (let index = 0; index < 3; index += 1) {
-      const y = index * slotHeight
-      ctx.fillStyle = '#1d1d1d'
-      ctx.fillRect(0, y, width, slotHeight)
-      const source = options?.sources?.[index]
-      if (source) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(0, y, width, slotHeight)
-        ctx.clip()
-        drawCoverImage(ctx, source, { x: 0, y, width, height: slotHeight }, slotTransforms[index])
-        if (watermark) {
-          const wmWidth = width * 0.3
-          const wmHeight = wmWidth * (watermark.naturalHeight / watermark.naturalWidth)
-          const bottomPadding = Math.max(34, slotHeight * 0.075)
-          ctx.drawImage(watermark, (width - wmWidth) / 2, y + slotHeight - wmHeight - bottomPadding, wmWidth, wmHeight)
-        }
-        ctx.restore()
-      }
-      ctx.strokeStyle = 'rgba(255,255,255,0.14)'
-      ctx.lineWidth = 2
-      if (index > 0) ctx.beginPath(), ctx.moveTo(0, y), ctx.lineTo(width, y), ctx.stroke()
-    }
-  }, [slotTransforms, watermarkEnabled, watermarkReady])
+  // Watermark is no longer rendered on the preview canvas — it's applied during export
 
   useEffect(() => {
     let canceled = false
@@ -284,21 +240,6 @@ export function TripleStitchCreative() {
     return () => window.cancelAnimationFrame(raf)
   }, [activeSlot, liveStarts, previewSources])
 
-  useEffect(() => {
-    const hasVideo = previewSources.some((source) => source instanceof HTMLVideoElement)
-    if (!hasVideo) {
-      renderCanvas({ sources: previewSources })
-      return
-    }
-    let raf = 0
-    const tick = () => {
-      renderCanvas({ sources: previewSources })
-      raf = window.requestAnimationFrame(tick)
-    }
-    tick()
-    return () => window.cancelAnimationFrame(raf)
-  }, [previewSources, renderCanvas])
-
   async function handleExport(): Promise<void> {
     if (!canExport || busy) return
     setBusy(true)
@@ -336,7 +277,6 @@ export function TripleStitchCreative() {
     <section className="triple-stitch-page">
       <div className="triple-stitch-preview">
         <div className="triple-stitch-board">
-          <canvas ref={canvasRef} width={1080} height={1920} className="triple-stitch-canvas" />
           <div
             className="triple-stitch-slot-buttons"
             onPointerDown={handleBoardPointerDown}
@@ -350,6 +290,11 @@ export function TripleStitchCreative() {
                 className={`triple-stitch-slot-button${activeSlot === index ? ' active' : ''}`}
                 onClick={() => setActiveSlot(index)}
               >
+                <TripleStitchGLSlot
+                  source={previewSources[index] ?? null}
+                  pipeline={slotSources[index]?.pipeline ?? createDefaultPipeline()}
+                  transform={slotTransforms[index]}
+                />
                 <TripleStitchSlotTools
                   slot={index}
                   onMove={swapSlots}
