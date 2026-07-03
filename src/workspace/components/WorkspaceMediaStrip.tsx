@@ -109,6 +109,14 @@ export function WorkspaceMediaStrip() {
     setDragHighlighted(new Set())
   }
 
+  function handleKeyDown(e: React.KeyboardEvent): void {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+      e.preventDefault()
+      const allIndices = new Set(mediaList.map((_, i) => i))
+      setSelectedIndices(allIndices)
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -118,6 +126,7 @@ export function WorkspaceMediaStrip() {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onKeyDown={handleKeyDown}
     >
       {mediaList.map((item, index) => {
         const isBroken = brokenPaths.has(item.path)
