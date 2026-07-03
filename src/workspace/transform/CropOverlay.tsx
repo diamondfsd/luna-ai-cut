@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CropRect } from '../shared/editPipeline'
-import { fitCropInsideImage, maxCropInsideImage, moveCropInsideImage, normalizeFineRotate, resizeCropInsideImage, sameCrop, frameAspect, type CropDragMode } from './cropGeometry'
+import { fitCropInsideImage, maxCropInsideImage, moveCropInsideImage, normalizeFineRotate, resizeCropInsideImage, rotateCropForOrientationChange, sameCrop, frameAspect, type CropDragMode } from './cropGeometry'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 
@@ -24,6 +24,8 @@ export function CropOverlay() {
   const cropFrameKeyRef = useRef('')
   const rotateKeyRef = useRef('')
   const [drag, setDrag] = useState<{ mode: CropDragMode; x: number; y: number; crop: CropRect; angle: number; rotate: number } | null>(null)
+  const initialMountRef = useRef(true)
+  const prevOrientationRef = useRef<number | null>(null)
 
   const activeTransform = edit.cropActive && edit.transformDraft ? edit.transformDraft : edit.pipeline.transform
   const crop = activeTransform.crop
@@ -62,7 +64,33 @@ export function CropOverlay() {
     const cropFrameKey = `${canvas.sourceAspect}:${orientation}:${aspectRatio ?? 'free'}`
     if (cropFrameKeyRef.current === cropFrameKey) return
     cropFrameKeyRef.current = cropFrameKey
-    const fitted = maxCropInsideImage({ sourceAspect: canvas.sourceAspect, orientation, rotate, aspectRatio })
+    if (initialMountRef.current) {
+      initialMountRef.current = false
+      prevOrientationRef.current = orientation
+      // On first mount, crop was already set by startCrop — preserve it from the pipeline
+      if (edit.pipeline.transform.crop) {
+        preferredCropRef.current = edit.pipeline.transform.crop
+        return
+      }
+      // First entry with no previous crop — start with centered max crop
+      const fitted = maxCropInsideImage({ sourceAspect: canvas.sourceAspect, orientation, rotate, aspectRatio })
+      preferredCropRef.current = fitted
+      if (!sameCrop(fitted, activeCropRef.current)) onCropChange(fitted)
+      return
+    }
+    // Frame characteristics changed during active crop — fit existing crop to new frame
+    const preferred = preferredCropRef.current ?? activeCropRef.current
+
+    // If orientation changed, rotate the crop around image center to follow the content
+    const oldOrientation = prevOrientationRef.current ?? orientation
+    const hasOrientationChange = orientation !== oldOrientation
+    prevOrientationRef.current = orientation
+
+    const cropToFit = hasOrientationChange
+      ? rotateCropForOrientationChange(preferred, canvas.sourceAspect, oldOrientation, orientation, rotate)
+      : preferred
+
+    const fitted = fitCropInsideImage(cropToFit, canvas.sourceAspect, orientation, rotate)
     preferredCropRef.current = fitted
     if (!sameCrop(fitted, activeCropRef.current)) onCropChange(fitted)
   }, [aspectRatio, canvas.sourceAspect, orientation, rotate, onCropChange])
@@ -78,11 +106,20 @@ export function CropOverlay() {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') edit.cancelCrop()
-      if (event.key === 'Enter') edit.confirmCrop()
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        edit.cancelCrop()
+      }
+      if (event.key === 'Enter') {
+        // preventDefault + stopPropagation 阻止焦点在按钮上时 Enter 触发 click 事件
+        event.preventDefault()
+        event.stopPropagation()
+        edit.confirmCrop()
+      }
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    // 使用 capture 阶段先于目标元素（如按钮）捕获键盘事件
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
   }, [edit.cancelCrop, edit.confirmCrop])
 
   useEffect(() => {

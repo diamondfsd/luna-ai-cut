@@ -118,7 +118,7 @@ export function WorkspaceEditSidebar() {
                 }
               >
                 <TransformPanel
-                  value={edit.pipeline.transform}
+                  value={edit.activeTransform}
                   cropPreset={edit.cropPreset}
                   cropWidth={cropWidth}
                   cropHeight={cropHeight}
