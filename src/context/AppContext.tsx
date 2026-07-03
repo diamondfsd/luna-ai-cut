@@ -34,7 +34,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return window.luna.onExportProgress((progress) => {
-      setExportProgress((current) => new Map(current).set(progress.exportId ?? progress.fileName, progress))
+      setExportProgress((current) => {
+        const next = new Map(current).set(progress.exportId ?? progress.fileName, progress)
+        setExporting([...next.values()].some((item) => item.status === 'queued' || item.status === 'exporting'))
+        return next
+      })
       if (progress.status === 'done') logger.info(`导出完成: ${progress.fileName}`, { destinationPath: progress.destinationPath })
       else if (progress.status === 'failed') logger.error(`导出失败: ${progress.fileName}`, { error: progress.error })
       else if (progress.status === 'canceled') logger.warn(`导出已取消: ${progress.fileName}`)

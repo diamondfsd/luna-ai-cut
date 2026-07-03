@@ -48,16 +48,18 @@ export function Accordion({ title, actions, children, defaultOpen, open, onOpenC
       open={open}
       onOpenChange={onOpenChange}
     >
-      <Collapsible.Trigger asChild>
-        <button className={cx('ui-accordion-header', headerClassName)} type="button">
-          <span className="ui-accordion-title">
-            {title}
-            {modified && <span className="ui-accordion-modified-dot" />}
-            {actions && <span className="ui-accordion-actions" onClick={(e) => e.stopPropagation()}>{actions}</span>}
-          </span>
-          <ChevronDown size={14} className="ui-accordion-chevron" />
-        </button>
-      </Collapsible.Trigger>
+      <div className="ui-accordion-header-row">
+        <Collapsible.Trigger asChild>
+          <button className={cx('ui-accordion-header', headerClassName)} type="button">
+            <span className="ui-accordion-title">
+              {title}
+              {modified && <span className="ui-accordion-modified-dot" />}
+            </span>
+            <ChevronDown size={14} className="ui-accordion-chevron" />
+          </button>
+        </Collapsible.Trigger>
+        {actions && <span className="ui-accordion-actions">{actions}</span>}
+      </div>
 
       <Collapsible.Content className="ui-accordion-body">
         {children}
