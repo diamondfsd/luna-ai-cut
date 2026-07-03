@@ -3,12 +3,17 @@ import { RotateCcw } from 'lucide-react'
 import { Button } from '../../../ui'
 import { ParamSlider } from '../../components/ParamSlider'
 import type { CreativeSlotTransform } from '../shared/creativeMedia'
+import { TripleStitchLiveRangeBar } from './TripleStitchLiveRangeBar'
 
 interface TripleStitchTransformPanelProps {
   activeSlot: number
   transform: CreativeSlotTransform
   onChange: (slot: number, patch: Partial<CreativeSlotTransform>) => void
   onReset: () => void
+  dynamic: boolean
+  duration: number
+  liveStart: number
+  onLiveChange: (value: number) => void
 }
 
 export function TripleStitchTransformPanel({
@@ -16,6 +21,10 @@ export function TripleStitchTransformPanel({
   transform,
   onChange,
   onReset,
+  dynamic,
+  duration,
+  liveStart,
+  onLiveChange,
 }: TripleStitchTransformPanelProps) {
   return (
     <aside className="triple-stitch-panel triple-stitch-adjust-panel">
@@ -48,6 +57,16 @@ export function TripleStitchTransformPanel({
       <Button variant="secondary" size="compact" icon={<RotateCcw size={14} />} onClick={onReset}>
         重置画面
       </Button>
+      {dynamic && (
+        <div className="triple-stitch-live-range-inline">
+          <TripleStitchLiveRangeBar
+            slot={activeSlot}
+            duration={duration}
+            value={liveStart}
+            onChange={onLiveChange}
+          />
+        </div>
+      )}
     </aside>
   )
 }

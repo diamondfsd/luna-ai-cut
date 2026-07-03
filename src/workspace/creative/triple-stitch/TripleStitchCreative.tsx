@@ -7,7 +7,6 @@ import { Button, SegmentedControl, Select, Switch, toast } from '../../../ui'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import {
   drawCoverImage,
-  loadCreativeImageAspect,
   loadCreativeImageSource,
   loadCreativePreviewImageSource,
   loadCreativeVideoSource,
@@ -15,7 +14,6 @@ import {
   type CreativeSlotTransform,
   type CreativeSlotSource,
 } from '../shared/creativeMedia'
-import { TripleStitchLiveRangeBar } from './TripleStitchLiveRangeBar'
 import { TripleStitchSlotTools } from './TripleStitchSlotTools'
 import { TripleStitchTransformPanel } from './TripleStitchTransformPanel'
 import './triple-stitch.css'
@@ -57,9 +55,7 @@ export function TripleStitchCreative() {
   const [watermarkReady, setWatermarkReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [previewSources, setPreviewSources] = useState<Array<HTMLImageElement | HTMLVideoElement>>([])
-  const [sourceAspects, setSourceAspects] = useState<Array<number | null>>([])
   const [slotDurations, setSlotDurations] = useState([0, 0, 0])
-  const [liveRangeSlot, setLiveRangeSlot] = useState<number | null>(null)
   const [slotTransforms, setSlotTransforms] = useState<CreativeSlotTransform[]>([
     { ...DEFAULT_TRANSFORM },
     { ...DEFAULT_TRANSFORM },
@@ -168,12 +164,6 @@ export function TripleStitchCreative() {
     }
   }
 
-  function openLiveRange(slot: number): void {
-    setActiveSlot(slot)
-    setLiveRangeSlot(slot)
-    updateLiveStart(slot, liveStarts[slot] ?? 0)
-  }
-
   function slotFromPointer(event: React.PointerEvent<HTMLDivElement>): number {
     const rect = event.currentTarget.getBoundingClientRect()
     const y = Math.min(rect.height - 1, Math.max(0, event.clientY - rect.top))
@@ -238,7 +228,7 @@ export function TripleStitchCreative() {
         ctx.beginPath()
         ctx.rect(0, y, width, slotHeight)
         ctx.clip()
-        drawCoverImage(ctx, source, { x: 0, y, width, height: slotHeight }, slotTransforms[index], sourceAspects[index] ?? undefined)
+        drawCoverImage(ctx, source, { x: 0, y, width, height: slotHeight }, slotTransforms[index])
         if (watermark) {
           const wmWidth = width * 0.3
           const wmHeight = wmWidth * (watermark.naturalHeight / watermark.naturalWidth)
@@ -251,7 +241,7 @@ export function TripleStitchCreative() {
       ctx.lineWidth = 2
       if (index > 0) ctx.beginPath(), ctx.moveTo(0, y), ctx.lineTo(width, y), ctx.stroke()
     }
-  }, [slotTransforms, sourceAspects, watermarkEnabled, watermarkReady])
+  }, [slotTransforms, watermarkEnabled, watermarkReady])
 
   useEffect(() => {
     let canceled = false
@@ -260,18 +250,11 @@ export function TripleStitchCreative() {
         ? loadCreativeVideoSource(asset)
         : loadCreativeImageSource(asset, pipeline)
       ).catch(() => loadCreativePreviewImageSource(asset))
-      const aspect = asset.kind === 'image' && !asset.isLivePhoto
-        ? await loadCreativeImageAspect(asset)
-        : source instanceof HTMLVideoElement
-        ? source.videoWidth / source.videoHeight
-        : source.naturalWidth / source.naturalHeight
-      return { source, aspect: typeof aspect === 'number' && Number.isFinite(aspect) && aspect > 0 ? aspect : null }
+      return source
     }))
-      .then((items) => {
+      .then((sources) => {
         if (canceled) return
-        const sources = items.map((item) => item.source)
         setPreviewSources(sources)
-        setSourceAspects(items.map((item) => item.aspect))
         setSlotDurations(sources.map((source) => (
           source instanceof HTMLVideoElement && Number.isFinite(source.duration) ? source.duration : 0
         )))
@@ -286,10 +269,9 @@ export function TripleStitchCreative() {
   }, [slotSources])
 
   useEffect(() => {
-    if (liveRangeSlot == null) return
-    const source = previewSources[liveRangeSlot]
+    const source = previewSources[activeSlot]
     if (!(source instanceof HTMLVideoElement)) return
-    const start = liveStarts[liveRangeSlot] ?? 0
+    const start = liveStarts[activeSlot] ?? 0
     const end = start + 3
     source.currentTime = start
     void source.play().catch(() => undefined)
@@ -300,7 +282,7 @@ export function TripleStitchCreative() {
     }
     tick()
     return () => window.cancelAnimationFrame(raf)
-  }, [liveRangeSlot, liveStarts, previewSources])
+  }, [activeSlot, liveStarts, previewSources])
 
   useEffect(() => {
     const hasVideo = previewSources.some((source) => source instanceof HTMLVideoElement)
@@ -370,27 +352,26 @@ export function TripleStitchCreative() {
               >
                 <TripleStitchSlotTools
                   slot={index}
-                  dynamic={slotSources[index]?.asset.kind === 'video' || Boolean(slotSources[index]?.asset.isLivePhoto)}
                   onMove={swapSlots}
                   onZoom={zoomSlot}
                   onReset={resetSlot}
-                  onLiveRange={openLiveRange}
                 />
               </div>
             ))}
           </div>
-          {liveRangeSlot != null && previewSources[liveRangeSlot] instanceof HTMLVideoElement && (
-            <TripleStitchLiveRangeBar
-              slot={liveRangeSlot}
-              duration={slotDurations[liveRangeSlot] || 33}
-              value={liveStarts[liveRangeSlot] ?? 0}
-              onChange={(value) => updateLiveStart(liveRangeSlot, value)}
-              onClose={() => setLiveRangeSlot(null)}
-            />
-          )}
         </div>
       </div>
 
+      <TripleStitchTransformPanel
+        activeSlot={activeSlot}
+        transform={activeTransform}
+        onChange={updateSlotTransform}
+        onReset={resetActiveTransform}
+        dynamic={slotSources[activeSlot]?.asset.kind === 'video' || Boolean(slotSources[activeSlot]?.asset.isLivePhoto)}
+        duration={slotDurations[activeSlot] ?? 0}
+        liveStart={liveStarts[activeSlot] ?? 0}
+        onLiveChange={(value) => updateLiveStart(activeSlot, value)}
+      />
       <aside className="triple-stitch-panel">
         <div className="triple-stitch-panel-head">
           <LayoutTemplate size={18} />
@@ -471,12 +452,6 @@ export function TripleStitchCreative() {
           </Button>
         </div>
       </aside>
-      <TripleStitchTransformPanel
-        activeSlot={activeSlot}
-        transform={activeTransform}
-        onChange={updateSlotTransform}
-        onReset={resetActiveTransform}
-      />
     </section>
   )
 }
