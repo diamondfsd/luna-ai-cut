@@ -1,10 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import path from 'node:path'
 
 import type { BluetoothDeviceCandidate } from '../src/shared/types'
+import { getSwiftScriptPath } from './swiftUtils'
 
-const CORE_BLUETOOTH_SCANNER_PATH = path.join(process.env.APP_ROOT || process.cwd(), 'electron', 'bluetoothCoreScanner.swift')
+const CORE_BLUETOOTH_SCANNER_PATH = getSwiftScriptPath('bluetoothCoreScanner.swift')
 
 /** Swift 扫描器返回的完整设备信息（比 BluetoothDeviceCandidate 多字段） */
 interface ExtendedDeviceInfo extends BluetoothDeviceCandidate {

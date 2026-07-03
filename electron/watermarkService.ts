@@ -15,6 +15,7 @@ import { previewCacheDir } from './settingsService'
 import { getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
 import { applyWatermarkToVideo, applyVideoExportSettings } from './videoPipelineService'
 import { resolveWatermarkSettingsForFile } from './watermarkResolver'
+import { getSwiftScriptPath } from './swiftUtils'
 import type {
   LunaFile,
   PreviewResult,
@@ -505,9 +506,7 @@ async function exportAppleLivePhotoPair(
 
   // 3. 用 livetool.swift 注入 Apple Live Photo 配对元数据（content identifier UUID）
   try {
-    const livetoolPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'livetool.swift')
-      : path.join(app.getAppPath(), 'electron', 'livetool.swift')
+    const livetoolPath = getSwiftScriptPath('livetool.swift')
     const tempPrefix = path.join(folderPath, `_${baseName}_live`)
     await execFileAsync('swift', [livetoolPath, imgDest, vidDest, tempPrefix], { timeout: 30000 })
     // 将注入元数据后的临时文件重命名为最终文件名
