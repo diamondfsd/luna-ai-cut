@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cx } from './utils'
 
@@ -21,16 +22,17 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: ReactNode
 }
 
-export function IconButton({
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton({
   variant = 'circle',
   size = 'default',
   icon,
   className,
   type = 'button',
   ...props
-}: IconButtonProps) {
+}, ref) {
   return (
     <button
+      ref={ref}
       className={cx(
         'ui-icon-btn',
         `ui-icon-btn-${variant}`,
@@ -43,4 +45,4 @@ export function IconButton({
       {icon}
     </button>
   )
-}
+})

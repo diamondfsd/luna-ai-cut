@@ -4,7 +4,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-columns: minmax(520px, 1fr) 292px 292px;
   background: #1a1a1a;
 }
 
@@ -42,13 +42,14 @@
   display: grid;
   grid-template-rows: repeat(3, 1fr);
   pointer-events: none;
+  cursor: move;
 }
 
 .triple-stitch-slot-button {
   position: relative;
   border: 2px solid transparent;
   background: transparent;
-  cursor: pointer;
+  cursor: move;
   pointer-events: auto;
 }
 
@@ -69,6 +70,7 @@
 
 .triple-stitch-slot-tool {
   opacity: 0.82;
+  cursor: pointer;
 }
 
 .triple-stitch-slot-button:not(.active) .triple-stitch-slot-tools {
@@ -81,6 +83,34 @@
   pointer-events: auto;
 }
 
+.triple-stitch-live-range {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(30, 30, 30, 0.92);
+  color: #e8e8e8;
+  backdrop-filter: blur(10px);
+}
+
+.triple-stitch-live-range-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.triple-stitch-live-range-head strong {
+  color: var(--blue);
+  font-weight: 600;
+}
+
 .triple-stitch-panel {
   min-width: 0;
   min-height: 0;
@@ -91,6 +121,11 @@
   padding: 14px;
   background: #252525;
   border-left: 1px solid #333;
+}
+
+.triple-stitch-adjust-panel {
+  gap: 12px;
+  background: #222;
 }
 
 .triple-stitch-panel-head {
@@ -133,14 +168,32 @@
   font-size: 13px;
 }
 
-.triple-stitch-transform-panel {
+.triple-stitch-select-row {
   display: grid;
-  gap: 12px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: #d8d8d8;
+  font-size: 13px;
+}
+
+.triple-stitch-select-row .ui-select-trigger {
+  width: 100%;
 }
 
 .triple-stitch-export-panel {
   display: grid;
   gap: 10px;
+}
+
+.triple-stitch-export-panel .segmented-pill {
+  width: 100%;
+}
+
+.triple-stitch-export-panel .segmented-pill button {
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .triple-stitch-section-title {

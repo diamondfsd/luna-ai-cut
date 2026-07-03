@@ -21,6 +21,32 @@ import type { UpdateInfo, HotUpdateCheckResult, ReleaseNoteItem } from './update
 import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } from './workspace'
 import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 
+export interface TripleStitchExportOptions {
+  name: string
+  slots: Array<{
+    name: string
+    path: string
+    kind: 'image' | 'video'
+    isLivePhoto?: boolean
+    transform: {
+      scale: number
+      offsetX: number
+      offsetY: number
+    }
+    liveStart?: number
+    pipeline?: Record<string, unknown>
+  }>
+  watermarkEnabled: boolean
+  watermarkStyle?: string
+  outputs: {
+    liveImage: boolean
+    video: boolean
+    appleLivePhoto: boolean
+  }
+  videoDuration: number
+  videoQuality: 'high' | 'medium' | 'low'
+}
+
 export interface LunaApi {
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
@@ -88,6 +114,7 @@ export interface LunaApi {
     exportImage(name: string, dataUrl: string): Promise<{ path: string; name: string }>
     exportCreativeDataUrl(name: string, dataUrl: string, kind: 'image' | 'video'): Promise<{ path: string; name: string }>
     exportCreativeLivePhoto(name: string, imageDataUrl: string, videoDataUrl: string, appleLivePhoto: boolean): Promise<{ path: string; name: string }>
+    exportTripleStitch(options: TripleStitchExportOptions): Promise<Array<{ path: string; name: string }>>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     exportColor(sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }): Promise<{ path: string; name: string }>
     previewColor(sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }): Promise<{ path: string; dataUrl: string }>

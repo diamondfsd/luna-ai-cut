@@ -14,6 +14,8 @@ export interface CreativeSlotTransform {
   offsetY: number
 }
 
+export type CreativePreviewSource = HTMLImageElement | HTMLVideoElement
+
 export function normalizeCreativePipeline(value: unknown): EditPipeline {
   if (!value || typeof value !== 'object') return createDefaultPipeline()
   return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
@@ -32,6 +34,7 @@ export function drawCoverImage(
   source: CanvasImageSource,
   area: { x: number; y: number; width: number; height: number },
   transform?: CreativeSlotTransform,
+  sourceAspect?: number,
 ): void {
   let width = 0
   let height = 0
@@ -46,13 +49,22 @@ export function drawCoverImage(
     height = source.height
   }
   if (!width || !height) return
+  if (sourceAspect && Number.isFinite(sourceAspect) && sourceAspect > 0) {
+    const currentAspect = width / height
+    if (currentAspect > sourceAspect) width = height * sourceAspect
+    else height = width / sourceAspect
+  }
+  const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : 'naturalWidth' in source ? source.naturalWidth : width
+  const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : 'naturalHeight' in source ? source.naturalHeight : height
+  const sx = (sourceWidth - width) / 2
+  const sy = (sourceHeight - height) / 2
   const scale = Math.max(area.width / width, area.height / height)
   const userScale = transform?.scale ?? 1
   const drawWidth = width * scale * userScale
   const drawHeight = height * scale * userScale
   const offsetX = transform?.offsetX ?? 0
   const offsetY = transform?.offsetY ?? 0
-  ctx.drawImage(source, area.x + (area.width - drawWidth) / 2 + offsetX, area.y + (area.height - drawHeight) / 2 + offsetY, drawWidth, drawHeight)
+  ctx.drawImage(source, sx, sy, width, height, area.x + (area.width - drawWidth) / 2 + offsetX, area.y + (area.height - drawHeight) / 2 + offsetY, drawWidth, drawHeight)
 }
 
 export async function loadCreativeImageSource(asset: WorkspaceMediaAsset, pipeline: EditPipeline): Promise<HTMLImageElement> {
@@ -80,6 +92,18 @@ export async function loadCreativePreviewImageSource(asset: WorkspaceMediaAsset)
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error(`无法加载「${asset.name}」`))
     img.src = assetPreviewUrl(asset)
+  })
+}
+
+export async function loadCreativeImageAspect(asset: WorkspaceMediaAsset): Promise<number | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const aspect = img.naturalWidth / img.naturalHeight
+      resolve(Number.isFinite(aspect) && aspect > 0 ? aspect : null)
+    }
+    img.onerror = () => resolve(null)
+    img.src = assetSourceUrl(asset)
   })
 }
 

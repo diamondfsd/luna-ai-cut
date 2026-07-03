@@ -65,6 +65,7 @@ import {
 import { cancelBluetoothScan, scanBluetoothDevices } from './bluetoothDebugService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
+import { exportTripleStitch, type TripleStitchExportOptions } from './creativeTripleStitchService'
 import { safeName } from './filePathUtils'
 import { applyColorGrading, previewColorFrame } from './videoPipelineService'
 import { FfmpegPipeline, getFfmpegPath } from './ffmpeg/pipeline'
@@ -757,6 +758,14 @@ function registerIpc(): void {
     })
 
     return { path: destinationPath, name: path.basename(destinationPath) }
+  })
+  ipcMain.handle('workspace:exportTripleStitch', async (event, options: TripleStitchExportOptions) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    if (options.outputs.appleLivePhoto && process.platform !== 'darwin') {
+      throw new Error('Apple Live 图仅支持在 Mac 上导出')
+    }
+    return exportTripleStitch(settings.exportDir, options, event.sender)
   })
   ipcMain.handle('workspace:copyFile', async (_event, sourcePath: string) => {
     const settings = await getSettings()
