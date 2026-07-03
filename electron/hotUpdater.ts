@@ -263,7 +263,8 @@ export async function applyHotUpdate(info: HotUpdateCheckResult): Promise<void> 
   // 5. 移动新文件
   const extractEntries = readdirSync(extractDir)
 
-  if (extractEntries.includes('dist-electron') && extractEntries.includes('dist')) {
+  const coreDirs = ['dist-electron', 'dist']
+  if (coreDirs.every(d => extractEntries.includes(d))) {
     for (const entry of extractEntries) {
       const src = join(extractDir, entry)
       const dest = join(hotDir, entry)

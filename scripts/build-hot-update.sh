@@ -137,6 +137,13 @@ if [ "$UPLOAD_ONLY" = false ]; then
   const zip = new AdmZip();
   zip.addLocalFolder('dist-electron', 'dist-electron', (f) => f !== 'dist-electron/main.js');
   zip.addLocalFolder('dist', 'dist');
+  if (require('fs').existsSync('electron')) {
+    const swiftFiles = require('fs').readdirSync('electron').filter(f => f.endsWith('.swift'));
+    for (const f of swiftFiles) {
+      zip.addLocalFile('electron/' + f, 'swift');
+    }
+    console.log('  ✓ 已添加 ' + swiftFiles.length + ' 个 Swift 文件');
+  }
   zip.writeZip('${ZIP_PATH}');
   console.log('  ✓ zip 已创建');
   "
