@@ -128,7 +128,13 @@ export class FullPipelineModule implements FfmpegModule {
     if (this.lutPath) {
       // Windows 路径包含反斜杠，ffmpeg filter_complex 解析器会将 \ 视为转义字符，导致路径错乱。
       // 替换为前斜杠（ffmpeg on Windows 支持前斜杠路径）。
-      const lutFsPath = process.platform === 'win32' ? this.lutPath.replace(/\\/g, '/') : this.lutPath
+      // 额外防御：裸盘符（如 E:.lut_...）的冒号会被 ffmpeg 误当作选项分隔符，补上前斜杠。
+      let lutFsPath = this.lutPath
+      if (process.platform === 'win32') {
+        lutFsPath = this.lutPath
+          .replace(/\\/g, '/')
+          .replace(/^([A-Za-z]):(?=[^/])/, '$1:/')
+      }
       mainFilters.push(`lut3d=file='${lutFsPath}':interp=tetrahedral`)
     } else {
       const colorParts: string[] = []

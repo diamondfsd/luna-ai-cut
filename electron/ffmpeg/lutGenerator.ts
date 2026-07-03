@@ -144,9 +144,9 @@ function applyColorTransform(input: Rgb, color: Record<string, any>): Rgb {
   const temperature = clamp(valueOf(color, 'temperature'), -100, 100) / 100
   const tint = clamp(valueOf(color, 'tint'), -100, 100) / 100
   c = [
-    c[0] * (1 + temperature * 0.18 - tint * 0.04),
-    c[1] * (1 + tint * 0.12),
-    c[2] * (1 - temperature * 0.18 - tint * 0.04),
+    c[0] * (1 + temperature * 0.18 + tint * 0.04),
+    c[1] * (1 - tint * 0.12),
+    c[2] * (1 - temperature * 0.18 + tint * 0.04),
   ]
 
   let y = luma(c)
