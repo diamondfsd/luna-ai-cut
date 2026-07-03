@@ -879,11 +879,16 @@ function registerIpc(): void {
     const win = BrowserWindow.fromWebContents(event.sender)
     let lutPath: string | undefined
 
+    // 创建缓存目录（用于存放 LUT 等临时文件），
+    // 避免 Windows 上 os.tmpdir() 可能返回裸盘符导致 path.join 不添加分隔符
+    const lunaCacheDir = path.join(app.getPath('userData'), '.luna-cache')
+    await mkdir(lunaCacheDir, { recursive: true })
+    logMainInfo(`[FFmpegFast] 导出诊断信息`, { exportDir: settings.exportDir, lunaCacheDir })
+
     // ── Live Photo 检测：对非视频文件检查 Google Motion Photo XMP ──
     if (!isVid && await isGoogleMotionPhoto(sourcePath)) {
       logMainInfo('[FFmpegFast] 检测到 Live Photo，转入专用处理流程', { sourcePath, exportId, taskId: task.id })
-      // 使用系统临时目录存放 Live Photo 临时文件，避免 Windows 裸盘符导致的路径问题
-      const liveTmpDir = path.join(os.tmpdir(), `.live_tmp_${exportId}`)
+      const liveTmpDir = path.join(lunaCacheDir, `.live_tmp_${exportId}`)
       await mkdir(liveTmpDir, { recursive: true })
       const appleExportFolder = process.platform === 'darwin' && settings.exportAppleLivePhoto
         ? path.join(liveTmpDir, `${nameBase}_apple_pair_${Date.now()}`)
@@ -1021,9 +1026,9 @@ function registerIpc(): void {
       )
       if (hasColor) {
         try {
-          // 使用系统临时目录存放 LUT 文件，避免 Windows 上 exportDir 为裸盘符（如 E:）时
-          // path.join 不添加分隔符导致路径错乱（E:.lut_... → ffmpeg 误将 : 当作选项分隔符）
-          lutPath = path.join(os.tmpdir(), `.lut_${exportId}_${Date.now()}.cube`)
+          // 使用 app 缓存目录存放 LUT 文件，避免 Windows 上某些环境变量设置异常导致
+          // os.tmpdir() 返回裸盘符（如 C:）时 path.join 不添加分隔符
+          lutPath = path.join(lunaCacheDir, `.lut_${exportId}_${Date.now()}.cube`)
           await bakeColorLut(pipeline.color ?? {}, lutPath)
           logMainInfo(`[FFmpegFast] LUT 烘焙完成`, { lutPath })
         } catch (lutErr) {
