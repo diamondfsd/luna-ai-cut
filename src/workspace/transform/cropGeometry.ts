@@ -31,6 +31,61 @@ export function normalizeFineRotate(value: number): number {
   return Math.round(normalized * 10) / 10
 }
 
+/**
+ * source UV → frame UV 逆变换
+ */
+export function sourceUvToFramePoint(
+  sourceUv: { x: number; y: number },
+  sourceAspect: number,
+  orientation: number,
+  rotate: number,
+): { x: number; y: number } {
+  const size = frameSize(sourceAspect, orientation)
+  const radiansValue = ((orientation + rotate) * Math.PI) / 180
+  const cos = Math.cos(radiansValue)
+  const sin = Math.sin(radiansValue)
+  const sx = sourceUv.x - 0.5
+  const sy = sourceUv.y - 0.5
+  // 2×2 矩阵求逆：M = [cos/aspect, sin/aspect; -sin, cos]
+  const px = sourceAspect * cos * sx - sin * sy
+  const py = sourceAspect * sin * sx + cos * sy
+  return {
+    x: px / size.width + 0.5,
+    y: py / size.height + 0.5,
+  }
+}
+
+/**
+ * 通过 source UV 映射保持 orientation 变化时裁剪框内容不变。
+ * 1) 旧 frame 角点 → source UV → 2) source UV → 新 frame 角点 → 3) 取包围盒
+ */
+export function rotateCropForOrientationChange(
+  crop: CropRect,
+  sourceAspect: number,
+  oldOrientation: number,
+  newOrientation: number,
+  rotate: number,
+): CropRect {
+  if (oldOrientation === newOrientation) return crop
+
+  const corners = [
+    { x: crop.x, y: crop.y },
+    { x: crop.x + crop.w, y: crop.y },
+    { x: crop.x, y: crop.y + crop.h },
+    { x: crop.x + crop.w, y: crop.y + crop.h },
+  ]
+  const sourceUvs = corners.map((c) => framePointToSourceUv(c, sourceAspect, oldOrientation, rotate))
+  const newPoints = sourceUvs.map((uv) => sourceUvToFramePoint(uv, sourceAspect, newOrientation, rotate))
+  const xs = newPoints.map((p) => p.x)
+  const ys = newPoints.map((p) => p.y)
+  return clampCrop({
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    w: Math.max(...xs) - Math.min(...xs),
+    h: Math.max(...ys) - Math.min(...ys),
+  })
+}
+
 export function shouldSwapOrientation(orientation: number): boolean {
   const angle = ((orientation % 180) + 180) % 180
   return angle >= 45 && angle <= 135

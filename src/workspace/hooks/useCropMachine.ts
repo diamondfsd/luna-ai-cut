@@ -112,7 +112,7 @@ export function useCropMachine(
   const cancelCrop = useCallback(() => {
     setTransformDraft(null)
     setCropActive(false)
-    setActiveTool(previousToolRef.current)
+    setActiveTool('color')
   }, [setActiveTool])
 
   const exitCropMode = useCallback(() => {
