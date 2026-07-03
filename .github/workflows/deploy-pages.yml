@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "landing/**"
+      - "RELEASE_NOTES_*.md"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -28,6 +29,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate Changelog Data
+        run: node landing/generate-changelog.cjs
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

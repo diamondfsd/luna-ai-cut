@@ -130,8 +130,9 @@ export function HelpDialog({ children }: HelpDialogProps) {
                 下载更新
               </Button>
             )}
-            {!updateInfo && !noUpdate && !checking && (
-              <Button variant="ghost" size="mini" onClick={() => void handleCheckUpdate()}>
+            {!checking && (
+              <Button variant="ghost" size="mini" onClick={() => void handleCheckUpdate()} title="手动检查更新">
+                <RefreshCw size={12} />
                 检查更新
               </Button>
             )}
