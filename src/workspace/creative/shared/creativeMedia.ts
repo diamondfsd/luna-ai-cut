@@ -34,37 +34,27 @@ export function drawCoverImage(
   source: CanvasImageSource,
   area: { x: number; y: number; width: number; height: number },
   transform?: CreativeSlotTransform,
-  sourceAspect?: number,
 ): void {
-  let width = 0
-  let height = 0
+  let w = 0
+  let h = 0
   if (source instanceof HTMLVideoElement) {
-    width = source.videoWidth
-    height = source.videoHeight
+    w = source.videoWidth
+    h = source.videoHeight
   } else if (source instanceof HTMLImageElement) {
-    width = source.naturalWidth
-    height = source.naturalHeight
+    w = source.naturalWidth
+    h = source.naturalHeight
   } else if (source instanceof HTMLCanvasElement || source instanceof ImageBitmap) {
-    width = source.width
-    height = source.height
+    w = source.width
+    h = source.height
   }
-  if (!width || !height) return
-  if (sourceAspect && Number.isFinite(sourceAspect) && sourceAspect > 0) {
-    const currentAspect = width / height
-    if (currentAspect > sourceAspect) width = height * sourceAspect
-    else height = width / sourceAspect
-  }
-  const sourceWidth = source instanceof HTMLVideoElement ? source.videoWidth : 'naturalWidth' in source ? source.naturalWidth : width
-  const sourceHeight = source instanceof HTMLVideoElement ? source.videoHeight : 'naturalHeight' in source ? source.naturalHeight : height
-  const sx = (sourceWidth - width) / 2
-  const sy = (sourceHeight - height) / 2
-  const scale = Math.max(area.width / width, area.height / height)
+  if (!w || !h) return
+  const scale = Math.max(area.width / w, area.height / h)
   const userScale = transform?.scale ?? 1
-  const drawWidth = width * scale * userScale
-  const drawHeight = height * scale * userScale
-  const offsetX = transform?.offsetX ?? 0
-  const offsetY = transform?.offsetY ?? 0
-  ctx.drawImage(source, sx, sy, width, height, area.x + (area.width - drawWidth) / 2 + offsetX, area.y + (area.height - drawHeight) / 2 + offsetY, drawWidth, drawHeight)
+  const drawW = w * scale * userScale
+  const drawH = h * scale * userScale
+  const ox = transform?.offsetX ?? 0
+  const oy = transform?.offsetY ?? 0
+  ctx.drawImage(source, 0, 0, w, h, area.x + (area.width - drawW) / 2 + ox, area.y + (area.height - drawH) / 2 + oy, drawW, drawH)
 }
 
 export async function loadCreativeImageSource(asset: WorkspaceMediaAsset, pipeline: EditPipeline): Promise<HTMLImageElement> {

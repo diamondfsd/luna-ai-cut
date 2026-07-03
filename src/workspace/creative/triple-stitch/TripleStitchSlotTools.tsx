@@ -1,23 +1,19 @@
-import { ArrowDown, ArrowUp, Play, RotateCcw, ZoomIn } from 'lucide-react'
+import { ArrowDown, ArrowUp, RotateCcw, ZoomIn } from 'lucide-react'
 
 import { IconButton } from '../../../ui'
 
 interface TripleStitchSlotToolsProps {
   slot: number
-  dynamic: boolean
   onMove: (from: number, to: number) => void
   onZoom: (slot: number) => void
   onReset: (slot: number) => void
-  onLiveRange: (slot: number) => void
 }
 
 export function TripleStitchSlotTools({
   slot,
-  dynamic,
   onMove,
   onZoom,
   onReset,
-  onLiveRange,
 }: TripleStitchSlotToolsProps) {
   return (
     <div className="triple-stitch-slot-tools">
@@ -55,19 +51,6 @@ export function TripleStitchSlotTools({
         }}
         title="重置"
       />
-      {dynamic && (
-        <IconButton
-          className="triple-stitch-slot-tool"
-          variant="light"
-          size="mini"
-          icon={<Play size={13} />}
-          onClick={(event) => {
-            event.stopPropagation()
-            onLiveRange(slot)
-          }}
-          title="Live 片段"
-        />
-      )}
       <IconButton
         className="triple-stitch-slot-tool"
         variant="light"
