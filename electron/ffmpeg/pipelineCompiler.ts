@@ -126,14 +126,18 @@ export class FullPipelineModule implements FfmpegModule {
 
     // ── 4. Color adjustments（LUT 模式 vs 直接模式） ──
     if (this.lutPath) {
+      // 诊断：记录进入 build() 时 this.lutPath 的原始值
+      logMainInfo('[FullPipelineModule] build LUT path 诊断', { lutPath: this.lutPath })
+
       // Windows 路径包含反斜杠，ffmpeg filter_complex 解析器会将 \ 视为转义字符，导致路径错乱。
       // 替换为前斜杠（ffmpeg on Windows 支持前斜杠路径）。
       // 额外防御：裸盘符（如 E:.lut_...）的冒号会被 ffmpeg 误当作选项分隔符，补上前斜杠。
       let lutFsPath = this.lutPath
       if (process.platform === 'win32') {
-        lutFsPath = this.lutPath
-          .replace(/\\/g, '/')
-          .replace(/^([A-Za-z]):(?=[^/])/, '$1:/')
+        const step1 = this.lutPath.replace(/\\/g, '/')
+        const step2 = step1.replace(/^([A-Za-z]):(?=[^/])/, '$1:/')
+        logMainInfo('[FullPipelineModule] Windows LUT 路径转换步骤', { original: this.lutPath, step1, step2 })
+        lutFsPath = step2
       }
       mainFilters.push(`lut3d=file='${lutFsPath}':interp=tetrahedral`)
     } else {
