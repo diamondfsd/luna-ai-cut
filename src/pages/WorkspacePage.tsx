@@ -1,9 +1,9 @@
 import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, Pause, Play, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
-import { Button, Dialog, ErrorBoundary, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
+import { Button, Dialog, ErrorBoundary, IconButton, LivePhotoBadge, LoadingIndicator, Tooltip, toast } from '../ui'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
@@ -71,6 +71,29 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
   const canvas = useWorkspaceCanvas()
   const viewport = useViewport()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [livePhotoPlaying, setLivePhotoPlaying] = useState(false)
+  const [livePhotoVideoUrl, setLivePhotoVideoUrl] = useState<string | null>(null)
+  const liveVideoRef = useRef<HTMLVideoElement | null>(null)
+  const handlePlayLivePhoto = useCallback(async () => {
+    if (!media.activeMedia?.path) return
+    try {
+      const result = await window.luna.previewLivePhoto({
+        name: media.activeMedia.name,
+        isLivePhoto: true,
+        localPath: media.activeMedia.path,
+        downloadFilePath: media.activeMedia.path,
+      } as any)
+      if (result?.source) {
+        setLivePhotoVideoUrl(result.source)
+        setLivePhotoPlaying(true)
+      }
+    } catch (err) {
+      toast.error('无法播放 Live Photo')
+    }
+  }, [media.activeMedia])
+  const handleLivePhotoEnded = useCallback(() => {
+    setLivePhotoPlaying(false)
+  }, [])
   const activeMediaReady = Boolean(media.activeMedia && canvas.loadedMediaPath === media.activeMedia.path && !canvas.imageLoading)
 
   // ── 3D LUT 加载：color 参数变化时烘焙 LUT 并下发到 WebGL ──
@@ -94,12 +117,21 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
   ])
 
   // ── Export ──
-  const exportImage = useWorkspaceExport({
+  const { exportSingle, exportBatch } = useWorkspaceExport({
     activeMedia: media.activeMedia,
     canvasRef: canvas.canvasRef,
     imageRect: canvas.imageRect,
     pipeline: edit.previewPipeline,
   })
+  const batchExport = useCallback(() => {
+    const indices = media.selectedIndices.size > 0 ? [...media.selectedIndices].filter((i) => i !== media.activeIndex) : []
+    if (indices.length === 0) {
+      void exportSingle()
+      return
+    }
+    void exportBatch(indices, media.media)
+  }, [media.selectedIndices, media.activeIndex, media.media, exportSingle, exportBatch])
+  const exportCount = media.selectedIndices.size > 0 ? media.selectedIndices.size : 1
 
   // ── 双击缩放 ──
   function handleStageDoubleClick(): void {
@@ -368,6 +400,32 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
           )}
         </div>
 
+        {/* Live Photo 播放按钮 */}
+        {media.activeMedia?.isLivePhoto && activeMediaReady && (
+          <Tooltip content="播放 Live Photo">
+            <button
+              className="workspace-live-btn"
+              type="button"
+              disabled={livePhotoPlaying}
+              onClick={handlePlayLivePhoto}
+              aria-label="播放 Live Photo"
+            >
+              <LivePhotoBadge size={36} />
+            </button>
+          </Tooltip>
+        )}
+        {/* Live Photo 视频覆盖 */}
+        {media.activeMedia?.isLivePhoto && activeMediaReady && livePhotoVideoUrl && (
+          <video
+            ref={liveVideoRef}
+            className="workspace-live-video"
+            src={livePhotoVideoUrl}
+            autoPlay
+            muted
+            playsInline
+            onEnded={handleLivePhotoEnded}
+          />
+        )}
         {/* 视频播放控件 */}
         {canvas.isVideo && activeMediaReady && (
           <>
@@ -441,8 +499,8 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
           >
             对比
           </Button>
-          <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!media.activeMedia || !canvas.canRender} onClick={() => void exportImage()}>
-            导出
+          <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!media.activeMedia || !canvas.canRender} onClick={() => void batchExport()}>
+            {exportCount > 1 ? `导出 (${exportCount})` : '导出'}
           </Button>
         </div>
       </footer>

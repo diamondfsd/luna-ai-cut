@@ -107,3 +107,23 @@ export async function saveWorkspaceProject(localResourcesDir: string, project: W
   }
   return writeProject(localResourcesDir, next)
 }
+
+export async function deleteWorkspaceProject(localResourcesDir: string, projectId: string): Promise<void> {
+  const dir = projectDir(localResourcesDir, projectId)
+  await fs.rm(dir, { recursive: true, force: true })
+}
+
+export async function renameWorkspaceProject(
+  localResourcesDir: string,
+  projectId: string,
+  newName: string,
+): Promise<WorkspaceProject> {
+  const project = await readProject(projectJsonPath(localResourcesDir, projectId))
+  if (!project) throw new Error('项目不存在')
+  const next: WorkspaceProject = {
+    ...project,
+    name: newName.trim() || project.name,
+    updatedAt: new Date().toISOString(),
+  }
+  return writeProject(localResourcesDir, next)
+}

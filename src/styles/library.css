@@ -306,6 +306,7 @@
 }
 
 .card-live-chip {
+  position: absolute;
   left: 12px;
   bottom: 12px;
 }

@@ -171,8 +171,8 @@ export function SettingsPage({
         {window.navigator.platform.includes('Mac') && (
           <article className="settings-row">
             <div className="settings-row-copy">
-              <span><Image size={15} /> Apple Live Photo</span>
-              <em>导出时同时生成 Apple 配对格式（JPG+MOV 文件夹），需导入照片应用后共享到 iPhone 才能识别</em>
+              <span><Image size={15} /> 保存到系统相册</span>
+              <em>导出 Live Photo 时自动保存到「照片」应用，可在 iPhone 上通过 iCloud 查看和分享</em>
             </div>
             <Switch
               checked={!!settings?.exportAppleLivePhoto}
@@ -180,7 +180,7 @@ export function SettingsPage({
                 setSettings((current) => (current ? { ...current, exportAppleLivePhoto: checked } : current))
                 window.luna.saveSettings({ exportAppleLivePhoto: checked }).then(setSettings)
               }}
-              ariaLabel="导出 Apple Live Photo"
+              ariaLabel="保存到系统相册"
             />
           </article>
         )}

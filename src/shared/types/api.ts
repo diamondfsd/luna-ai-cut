@@ -82,6 +82,8 @@ export interface LunaApi {
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     saveProject(project: WorkspaceProject): Promise<WorkspaceProject>
+    deleteProject(projectId: string): Promise<void>
+    renameProject(projectId: string, newName: string): Promise<WorkspaceProject>
     exportImage(name: string, dataUrl: string): Promise<{ path: string; name: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     exportColor(sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }): Promise<{ path: string; name: string }>

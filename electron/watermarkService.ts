@@ -441,10 +441,34 @@ function injectGoogleXmpIntoJpeg(jpegPath: string, videoPath: string): void {
 // ─── Apple Live Photo 配对导出 ──────────────
 
 /**
- * 在 MAC 上创建 Apple 格式的 Live Photo 配对文件。
- * - folder/ 目录
+ * 通过 osascript 将 JPG+MOV 配对导入 macOS「照片」应用。
+ * Live Photo 元数据（content identifier）已由 livetool.swift 注入，
+ * 导入后系统会自动识别为 Live Photo。
+ */
+async function importToPhotosApp(imagePath: string, videoPath: string): Promise<void> {
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  const script = [
+    'tell application "Photos"',
+    '  activate',
+    `  import POSIX file "${esc(imagePath)}"`,
+    `  import POSIX file "${esc(videoPath)}"`,
+    'end tell',
+  ].join('\n')
+  try {
+    await execFileAsync('osascript', ['-e', script], { timeout: 120000 })
+    logMainInfo('[LIVE Apple] 导入照片应用成功', { imagePath, videoPath })
+  } catch (err) {
+    // 非致命：用户可能拒绝了自动化权限，不影响主文件导出
+    logMainError('[LIVE Apple] 导入照片应用失败（非致命，继续导出主文件）', { error: err })
+  }
+}
+
+/**
+ * 在 MAC 上创建 Apple 格式的 Live Photo 配对文件，并导入到系统相册。
+ * - folder/ 目录（临时）
  *   - folder.jpg — 静态图片
  *   - folder.mov — 配套视频
+ * - 导入完成后不保留磁盘文件（由调用方 tmpDir 清理）
  */
 async function exportAppleLivePhotoPair(
   imagePath: string,
@@ -494,13 +518,51 @@ async function exportAppleLivePhotoPair(
     logMainError('[LIVE Apple] livetool metadata injection failed (non-fatal), using unmodified pair', { error: err })
   }
 
+  // 4. 导入到系统相册（替换原先的导出到文件夹行为）
+  await importToPhotosApp(imgDest, vidDest)
+
   onProgress?.(96)
-  logMainInfo('[LIVE Apple] pair complete', { imgDest, vidDest })
+  logMainInfo('[LIVE Apple] pair complete, imported to Photos', { imgDest, vidDest })
 }
 
 // ─── Live Photo 处理 ─────────────────────────
 
-async function extractLivePhotoVideo(livPath: string, destination: string): Promise<string | null> {
+/**
+ * 检测文件是否为 Google Motion Photo（内嵌视频的 JPEG）。
+ * 通过扫描文件头的 XMP APP1 段查找 GCamera 命名空间。
+ */
+export async function isGoogleMotionPhoto(filePath: string): Promise<boolean> {
+  try {
+    const fd = await fs.open(filePath, 'r')
+    const buf = Buffer.alloc(32768) // 32KB 足够扫描所有 JPEG header
+    const { bytesRead } = await fd.read(buf, 0, 32768, 0)
+    await fd.close()
+    const head = buf.subarray(0, bytesRead)
+    return head.includes('http://ns.google.com/photos/1.0/camera/')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 从 Live Photo 文件中提取纯 JPEG 图片部分（去除尾部的视频数据）。
+ */
+export async function extractImageFromLivePhoto(livPath: string, destPath: string): Promise<void> {
+  const data = await fs.readFile(livPath)
+  const marker = Buffer.from('ftyp', 'ascii')
+  const ftypOffset = data.indexOf(marker)
+  const mp4Offset = ftypOffset - 4
+  if (ftypOffset < 4 || mp4Offset <= 0) throw new Error('无法定位视频数据起始位置')
+  const imgData = data.subarray(0, mp4Offset)
+  // 确保以 JPEG EOI 结尾
+  if (imgData[imgData.length - 2] !== 0xFF || imgData[imgData.length - 1] !== 0xD9) {
+    throw new Error('图片数据不完整')
+  }
+  await fs.mkdir(path.dirname(destPath), { recursive: true })
+  await fs.writeFile(destPath, imgData)
+}
+
+export async function extractLivePhotoVideo(livPath: string, destination: string): Promise<string | null> {
   const data = await fs.readFile(livPath)
   const marker = Buffer.from('ftyp', 'ascii')
   const ftypOffset = data.indexOf(marker)
@@ -614,6 +676,45 @@ export async function applyWatermarkToLivePhoto(
     await fs.rm(watermarkedImage, { force: true }).catch(() => {})
     await fs.rm(processedVideo, { force: true }).catch(() => {})
   }
+}
+
+// ─── Live Photo 组合（接收已管线处理过的图片和视频） ──────────
+
+/**
+ * 将已处理好的图片和视频组合成 Live Photo 输出。
+ * 不处理图片/视频本身，只负责：
+ *   - Apple Live Photo 配对 + 导入相册（如开启）
+ *   - Google Motion Photo XMP 注入
+ *   - 拼接为 .liv 文件
+ */
+export async function combineLivePhoto(
+  processedImage: string,
+  processedVideo: string,
+  outputPath: string,
+  appleExportFolder?: string,
+  onProgress?: (percent: number) => void,
+): Promise<void> {
+  // Apple Live Photo 配对导出（macOS 专用）
+  if (appleExportFolder) {
+    const baseName = path.basename(appleExportFolder)
+    await exportAppleLivePhotoPair(processedImage, processedVideo, appleExportFolder, baseName, onProgress)
+  }
+  onProgress?.(50)
+
+  // Google Motion Photo XMP 注入
+  try {
+    injectGoogleXmpIntoJpeg(processedImage, processedVideo)
+  } catch (err) {
+    logMainError('[LIVE] Google XMP injection failed (non-fatal)', { error: err })
+  }
+  onProgress?.(60)
+
+  // 拼接图片+视频 → 符合 Google 协议的 Live Photo
+  const imgBytes = await fs.readFile(processedImage)
+  const vidBytes = await fs.readFile(processedVideo)
+  await fs.writeFile(outputPath, Buffer.concat([imgBytes, vidBytes]))
+  logMainInfo('[LIVE] combineLivePhoto complete', { outputPath })
+  onProgress?.(100)
 }
 
 // 视频流水线函数定义在 videoPipelineService.ts 中

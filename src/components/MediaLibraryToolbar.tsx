@@ -140,6 +140,7 @@ export function MediaLibraryToolbar({
         path,
         kind: file.kind as 'image' | 'video',
         thumbnailUrl: file.thumbnailUrl,
+        isLivePhoto: file.isLivePhoto ?? false,
       }
     })
     .filter((file): file is NonNullable<typeof file> => Boolean(file))
