@@ -613,6 +613,9 @@ function registerIpc(): void {
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
     return loadWorkspacePreview(filePath)
   })
+  ipcMain.handle('workspace:isLivePhoto', async (_event, filePath: string) => {
+    return isGoogleMotionPhoto(filePath)
+  })
   ipcMain.handle('workspace:readColorMetadata', async (_event, filePath: string) => {
     return readWorkspaceColorMetadata(filePath)
   })

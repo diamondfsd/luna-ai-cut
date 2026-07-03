@@ -367,7 +367,7 @@ export async function listExportFiles(exportDir: string): Promise<LunaFile[]> {
         cacheFilePath: null,
         downloadFilePath: filePath,
         thumbnailUrl: thumbnailPath ? localThumbnailUrl(thumbnailPath) : null,
-        isLivePhoto: false,
+        isLivePhoto: kind === 'image' ? await isGoogleMotionPhoto(filePath) : false,
         livePhotoVideoName: null,
         livePhotoVideoUrl: null,
         livePhotoCacheFilePath: null,
