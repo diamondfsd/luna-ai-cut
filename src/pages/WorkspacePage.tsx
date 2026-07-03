@@ -42,6 +42,13 @@ function formatTime(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+/** 判断素材是否为 Live Photo（兼容旧项目没有 isLivePhoto 字段的情况） */
+function isLiveAsset(asset: { isLivePhoto?: boolean; name?: string } | null): boolean {
+  if (!asset) return false
+  if (asset.isLivePhoto) return true
+  return /^LIV_/i.test(asset.name ?? '')
+}
+
 export function WorkspacePage({ workspaceMode, pageActive, onEditingChange }: WorkspacePageProps) {
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
@@ -71,11 +78,10 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
   const canvas = useWorkspaceCanvas()
   const viewport = useViewport()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [livePhotoPlaying, setLivePhotoPlaying] = useState(false)
-  const [livePhotoVideoUrl, setLivePhotoVideoUrl] = useState<string | null>(null)
-  const liveVideoRef = useRef<HTMLVideoElement | null>(null)
+  const [livePhotoLoading, setLivePhotoLoading] = useState(false)
   const handlePlayLivePhoto = useCallback(async () => {
     if (!media.activeMedia?.path) return
+    setLivePhotoLoading(true)
     try {
       const result = await window.luna.previewLivePhoto({
         name: media.activeMedia.name,
@@ -84,16 +90,16 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
         downloadFilePath: media.activeMedia.path,
       } as any)
       if (result?.source) {
-        setLivePhotoVideoUrl(result.source)
-        setLivePhotoPlaying(true)
+        // 视频通过 WebGL 渲染器播放，调色管线自动应用
+        await canvas.loadLiveVideo(result.source)
+        canvas.playVideo()
       }
     } catch (err) {
       toast.error('无法播放 Live Photo')
+    } finally {
+      setLivePhotoLoading(false)
     }
-  }, [media.activeMedia])
-  const handleLivePhotoEnded = useCallback(() => {
-    setLivePhotoPlaying(false)
-  }, [])
+  }, [media.activeMedia, canvas])
   const activeMediaReady = Boolean(media.activeMedia && canvas.loadedMediaPath === media.activeMedia.path && !canvas.imageLoading)
 
   // ── 3D LUT 加载：color 参数变化时烘焙 LUT 并下发到 WebGL ──
@@ -400,13 +406,13 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
           )}
         </div>
 
-        {/* Live Photo 播放按钮 */}
-        {media.activeMedia?.isLivePhoto && activeMediaReady && (
+        {/* Live Photo 播放按钮（视频通过 WebGL 渲染，调色自动生效） */}
+        {isLiveAsset(media.activeMedia) && activeMediaReady && !canvas.isVideo && (
           <Tooltip content="播放 Live Photo">
             <button
               className="workspace-live-btn"
               type="button"
-              disabled={livePhotoPlaying}
+              disabled={livePhotoLoading}
               onClick={handlePlayLivePhoto}
               aria-label="播放 Live Photo"
             >
@@ -414,19 +420,7 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
             </button>
           </Tooltip>
         )}
-        {/* Live Photo 视频覆盖 */}
-        {media.activeMedia?.isLivePhoto && activeMediaReady && livePhotoVideoUrl && (
-          <video
-            ref={liveVideoRef}
-            className="workspace-live-video"
-            src={livePhotoVideoUrl}
-            autoPlay
-            muted
-            playsInline
-            onEnded={handleLivePhotoEnded}
-          />
-        )}
-        {/* 视频播放控件 */}
+        {/* 视频播放控件（含 Live Photo 视频播放） */}
         {canvas.isVideo && activeMediaReady && (
           <>
             <div className="workspace-video-controls" onClick={(e) => e.stopPropagation()}>
