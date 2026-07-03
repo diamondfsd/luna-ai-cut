@@ -69,6 +69,37 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
     }
   }, [locationKey])
 
+  // ── 异步检测 Live Photo（走 Google Motion Photo XMP，不走文件名） ──
+  useEffect(() => {
+    const items = currentProject?.assets ?? transientMedia
+    if (items.length === 0) return
+    let canceled = false
+    const pending = items.map(async (asset, index) => {
+      // 已有 isLivePhoto 值则跳过
+      if (asset.isLivePhoto !== undefined) return
+      try {
+        const isLive = await window.luna.workspace.isLivePhoto(asset.path)
+        if (canceled || !isLive) return
+        // 更新对应项的 isLivePhoto
+        if (currentProject) {
+          setCurrentProject((prev) => {
+            if (!prev) return prev
+            const nextAssets = [...prev.assets]
+            if (nextAssets[index]) nextAssets[index] = { ...nextAssets[index], isLivePhoto: true }
+            return { ...prev, assets: nextAssets }
+          })
+        } else {
+          setTransientMedia((prev) =>
+            prev.map((item, i) => (i === index ? { ...item, isLivePhoto: true } : item)),
+          )
+        }
+      } catch { /* 忽略检测失败 */ }
+    })
+    Promise.all(pending).catch(() => {})
+    return () => { canceled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject?.id, transientMedia.length])
+
   // Multi-select: Shift range, Ctrl/Cmd toggle
   const handleSelectionChange = useCallback(
     (clickedIndex: number, modifiers: { shift: boolean; ctrl: boolean; meta: boolean }) => {

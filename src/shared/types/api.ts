@@ -77,6 +77,7 @@ export interface LunaApi {
   disconnectWifi: () => Promise<WifiDebugResult<WifiDebugStatus>>
   workspace: {
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
+    isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     listProjects(): Promise<WorkspaceProject[]>
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>

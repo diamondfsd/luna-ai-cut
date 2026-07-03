@@ -31,6 +31,7 @@ interface WorkspaceCanvasValue {
   loadedMediaPath: string | null
   // Video
   isVideo: boolean
+  isLivePlayback: boolean
   videoPlaying: boolean
   videoDuration: number
   videoCurrentTime: number
@@ -103,6 +104,7 @@ export function WorkspaceCanvasProvider({ children }: { children: ReactNode }) {
       renderKey: engine.renderKey,
       loadedMediaPath: engine.loadedMediaPath,
       isVideo: engine.isVideo,
+      isLivePlayback: engine.isLivePlayback,
       videoPlaying: engine.videoPlaying,
       videoDuration: engine.videoDuration,
       videoCurrentTime: engine.videoCurrentTime,

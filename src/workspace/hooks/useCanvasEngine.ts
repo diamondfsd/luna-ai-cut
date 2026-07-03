@@ -39,6 +39,7 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
   const lastPipelineRef = useRef<EditPipeline>(createDefaultPipeline())
   const [isVideo, setIsVideo] = useState(false)
   const [videoPlaying, setVideoPlaying] = useState(false)
+  const [isLivePlayback, setIsLivePlayback] = useState(false)
   const [videoDuration, setVideoDuration] = useState(0)
   const [videoCurrentTime, setVideoCurrentTime] = useState(0)
 
@@ -148,6 +149,7 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
 
   /** 停止 Live Photo 视频播放，回到静态图片 */
   const stopLiveVideo = useCallback(async () => {
+    setIsLivePlayback(false)
     cleanupVideo()
     if (!activeMedia) return
     const entry = await workspaceImageCache.generate(activeMedia.path)
@@ -192,6 +194,7 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     rendererRef.current?.loadVideo(vid)
     rendererRef.current?.render(lastPipelineRef.current)
     setIsVideo(true)
+    setIsLivePlayback(true)
     setVideoPlaying(false)
     setVideoCurrentTime(0)
     updateImageRect()
@@ -435,6 +438,7 @@ export function useCanvasEngine(options: CanvasEngineOptions) {
     renderKey,
     loadedMediaPath,
     isVideo,
+    isLivePlayback,
     videoPlaying,
     videoDuration,
     videoCurrentTime,
