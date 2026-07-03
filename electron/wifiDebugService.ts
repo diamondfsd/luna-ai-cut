@@ -15,10 +15,11 @@ import type {
   WifiPortCheckOptions,
   WifiPortCheckResult,
 } from '../src/shared/types'
+import { getSwiftScriptPath } from './swiftUtils'
 
 const execFileAsync = promisify(execFile)
 const DEFAULT_WIFI_TIMEOUT_MS = 15000
-const COREWLAN_HELPER_PATH = path.join(process.env.APP_ROOT || process.cwd(), 'electron', 'wifiCoreWlan.swift')
+const COREWLAN_HELPER_PATH = getSwiftScriptPath('wifiCoreWlan.swift')
 
 async function runCommand(command: string, args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_MS): Promise<string> {
   const { stdout, stderr } = await execFileAsync(command, args, {
