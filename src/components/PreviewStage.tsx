@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, FileQuestion, Loader2 } from 'lucide-react'
 
 import { LivePhotoPlayer } from './LivePhotoPlayer'
+import { LivePhotoBadge } from '../ui'
 import { WatermarkOverlay } from './WatermarkOverlay'
 import { getContainRect } from '../shared/watermark'
 import { resolveWatermarkRatios } from '../shared/watermark/layoutConfig'
@@ -212,11 +213,7 @@ export function PreviewStage({
           {liveLoading ? (
             <Loader2 className="spin" size={13} />
           ) : (
-            <span className="live-photo-symbol" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
+            <LivePhotoBadge size={42} />
           )}
         </button>
       )}

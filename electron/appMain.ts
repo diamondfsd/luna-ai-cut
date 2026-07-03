@@ -47,7 +47,9 @@ import { openWifiSettings } from './wifiService'
 import {
   addAssetsToWorkspaceProject,
   createWorkspaceProject,
+  deleteWorkspaceProject,
   listWorkspaceProjects,
+  renameWorkspaceProject,
   saveWorkspaceProject,
 } from './workspaceProjectService'
 import { loadWorkspacePreview } from './workspacePreviewService'
@@ -71,7 +73,7 @@ import { CodecModule } from './ffmpeg/codec'
 import { BitrateModule } from './ffmpeg/bitrate'
 import { FullPipelineModule } from './ffmpeg/pipelineCompiler'
 import { bakeColorLut, bakeColorLutData } from './ffmpeg/lutGenerator'
-import { watermarkFileFor } from './watermarkService'
+import { watermarkFileFor, isGoogleMotionPhoto, combineLivePhoto, extractImageFromLivePhoto, extractLivePhotoVideo } from './watermarkService'
 import type {
   AiConfig,
   AppSettings,
@@ -630,6 +632,14 @@ function registerIpc(): void {
     const settings = await getSettings()
     return saveWorkspaceProject(getLocalResourcesDir(settings), project)
   })
+  ipcMain.handle('workspace:deleteProject', async (_event, projectId: string) => {
+    const settings = await getSettings()
+    return deleteWorkspaceProject(getLocalResourcesDir(settings), projectId)
+  })
+  ipcMain.handle('workspace:renameProject', async (_event, projectId: string, newName: string) => {
+    const settings = await getSettings()
+    return renameWorkspaceProject(getLocalResourcesDir(settings), projectId, newName)
+  })
   ipcMain.handle('workspace:createExportTask', async (_event, taskName: string, items: Array<{ exportId: string; fileName: string; kind: string }>) => {
     return createExportTask(taskName, items)
   })
@@ -861,6 +871,122 @@ function registerIpc(): void {
     const taskStart = Date.now()
     const win = BrowserWindow.fromWebContents(event.sender)
     let lutPath: string | undefined
+
+    // ── Live Photo 检测：对非视频文件检查 Google Motion Photo XMP ──
+    if (!isVid && await isGoogleMotionPhoto(sourcePath)) {
+      logMainInfo('[FFmpegFast] 检测到 Live Photo，转入专用处理流程', { sourcePath, exportId, taskId: task.id })
+      const liveTmpDir = path.join(settings.exportDir, `.live_tmp_${exportId}`)
+      await mkdir(liveTmpDir, { recursive: true })
+      const appleExportFolder = process.platform === 'darwin' && settings.exportAppleLivePhoto
+        ? path.join(liveTmpDir, 'apple_pair')
+        : undefined
+
+      // 进度报告辅助函数
+      const sendProgress = (pct: number): void => {
+        win?.webContents.send('export:progress', {
+          exportId, percent: pct,
+          status: pct >= 100 ? 'done' : 'exporting' as const,
+          fileName: exportMeta?.fileName ?? fileName,
+          taskId: task.id, taskName,
+          createdAt: exportMeta?.createdAt,
+          index: exportMeta?.index ?? 0,
+          totalFiles: exportMeta?.totalFiles ?? 1,
+        })
+        void updateTaskItemProgress(task.id, exportId, taskStart, pct, pct >= 100 ? 'done' : 'exporting', { destinationPath })
+      }
+
+      try {
+        // 1. 提取图片和视频到临时目录
+        const extractedImage = path.join(liveTmpDir, 'image.jpg')
+        const extractedVideo = path.join(liveTmpDir, 'video.mp4')
+        const processedImage = path.join(liveTmpDir, 'processed.jpg')
+        const processedVideo = path.join(liveTmpDir, 'processed.mp4')
+        await extractImageFromLivePhoto(sourcePath, extractedImage)
+        await extractLivePhotoVideo(sourcePath, extractedVideo)
+        sendProgress(2)
+
+        // 2. 图片走图片管线
+        const imgPipeline = new FfmpegPipeline()
+        let imgWatermarkPath: string | undefined
+        if (pipeline.watermark?.enabled && pipeline.watermark?.style) {
+          try {
+            imgWatermarkPath = watermarkFileFor('image', pipeline.watermark.style)
+          } catch (wmErr) {
+            logMainWarn(`[FFmpegFast/Live] 图片水印解析失败，跳过`, { error: wmErr instanceof Error ? wmErr.message : String(wmErr) })
+          }
+        }
+        let imgLutPath: string | undefined
+        const hasColor = pipeline.color && Object.values(pipeline.color as Record<string, unknown>).some(
+          (v) => typeof v === 'number' && v !== 0,
+        )
+        if (hasColor) {
+          try {
+            imgLutPath = path.join(liveTmpDir, `.lut_img_${exportId}.cube`)
+            await bakeColorLut(pipeline.color ?? {}, imgLutPath)
+          } catch { imgLutPath = undefined }
+        }
+        imgPipeline.addModule(new FullPipelineModule(pipeline, imgWatermarkPath, imgLutPath))
+        await imgPipeline.execute(extractedImage, processedImage, (percent) => {
+          sendProgress(Math.round(percent * 0.38) + 2) // 2-40%
+        })
+        if (imgLutPath) await rm(imgLutPath, { force: true }).catch(() => {})
+        sendProgress(40)
+
+        // 3. 视频走视频管线（含硬件编码、码率控制、音频透传）
+        const vidHwaccel = await detectHardwareAccel(getFfmpegPath())
+        const vidPipeline = new FfmpegPipeline()
+        if (vidHwaccel.preInputArgs.length > 0) {
+          vidPipeline.setPreInputArgs(vidHwaccel.preInputArgs)
+        }
+        let vidWatermarkPath: string | undefined
+        if (pipeline.watermark?.enabled && pipeline.watermark?.style) {
+          try {
+            vidWatermarkPath = watermarkFileFor('video', pipeline.watermark.style)
+          } catch (wmErr) {
+            logMainWarn(`[FFmpegFast/Live] 视频水印解析失败，跳过`, { error: wmErr instanceof Error ? wmErr.message : String(wmErr) })
+          }
+        }
+        let vidLutPath: string | undefined
+        if (hasColor) {
+          try {
+            vidLutPath = path.join(liveTmpDir, `.lut_vid_${exportId}.cube`)
+            await bakeColorLut(pipeline.color ?? {}, vidLutPath)
+          } catch { vidLutPath = undefined }
+        }
+        vidPipeline.addModule(new FullPipelineModule(pipeline, vidWatermarkPath, vidLutPath))
+        vidPipeline.addModule(new BitrateModule({ quality: 'original', useSourceBitrate: true }))
+        vidPipeline.addModule(new CodecModule({
+          encoderH264: vidHwaccel.encoderNameH264,
+          encoderH265: vidHwaccel.encoderNameH265 ?? undefined,
+          encoderArgs: vidHwaccel.encoderArgs,
+        }))
+        vidPipeline.addModule({
+          name: 'audioPassthrough',
+          isActive: () => true,
+          build: () => ({ outputArgs: ['-map', '0:a?'] }),
+        })
+        await vidPipeline.execute(extractedVideo, processedVideo, (percent) => {
+          sendProgress(Math.round(percent * 0.4) + 40) // 40-80%
+        })
+        if (vidLutPath) await rm(vidLutPath, { force: true }).catch(() => {})
+        sendProgress(80)
+
+        // 4. 组合 Live Photo：Apple 配对 + 导入相册 + XMP + 拼接 .liv
+        await combineLivePhoto(processedImage, processedVideo, destinationPath, appleExportFolder, (percent) => {
+          sendProgress(Math.round(percent * 0.2) + 80) // 80-100%
+        })
+      } finally {
+        await rm(liveTmpDir, { recursive: true, force: true }).catch(() => {})
+      }
+
+      await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+        endTime: Date.now(),
+        duration: Date.now() - taskStart,
+        destinationPath,
+      }).catch(() => {})
+      logMainInfo('[FFmpegFast] Live Photo 导出完成', { exportId, destinationPath })
+      return { path: destinationPath, name: fileName }
+    }
 
     try {
       const ffPipeline = new FfmpegPipeline()

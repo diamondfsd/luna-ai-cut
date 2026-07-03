@@ -7,7 +7,7 @@ import { lunaMediaAdapter } from './deviceMedia'
 import { labelsFor, localThumbnailUrl, safeName } from './filePathUtils'
 import { getSettings, previewCacheDir } from './settingsService'
 import { generateThumbnail, safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
-import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToLivePhoto, applyWatermarkToVideo } from './watermarkService'
+import { applyVideoExportSettings, applyWatermarkToImage, applyWatermarkToLivePhoto, applyWatermarkToVideo, isGoogleMotionPhoto } from './watermarkService'
 import { resolveWatermarkSettingsForFile } from './watermarkResolver'
 import { logMainDebug, logMainInfo, logMainError, logMainWarn, logExport } from './loggerService'
 import type { ExportFileInput, LunaFile, VideoExportSettings, WatermarkSettings } from '../src/shared/types'
@@ -218,11 +218,11 @@ export async function exportFiles(
           },
           signal,
         )
-      } else if (file.kind === 'image' && fileWatermarkSettings && /^LIV_/i.test(file.name)) {
+      } else if (file.kind === 'image' && fileWatermarkSettings && await isGoogleMotionPhoto(localPath)) {
         // Live Photo — 给图片和内嵌视频都加水印，再合并回去
-	        // macOS 额外导出 Apple 配对格式（文件夹 + JPEG + MOV，默认关闭）
+	        // macOS 额外导出 Apple Live Photo 并导入到系统相册（默认关闭）
 	        const appleExportFolder = process.platform === 'darwin' && appSettings.exportAppleLivePhoto
-          ? path.join(exportDir, safeName(path.basename(destName, ext)))
+          ? path.join(tmpDir, safeName(path.basename(destName, ext)))
           : undefined
         await applyWatermarkToLivePhoto(
           localPath,

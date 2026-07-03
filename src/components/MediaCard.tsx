@@ -1,7 +1,7 @@
 import { type CSSProperties, useEffect, useRef } from 'react'
 import { Check, FileQuestion, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
-import { IconButton, VideoPlayBadge } from '../ui'
+import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { logger } from '../lib/rendererLogger'
 
 const THUMBNAIL_PLACEHOLDER =
@@ -142,13 +142,7 @@ export function MediaCard({
         {file.kind === 'video' && file.duration != null ? (
           <span className="duration-badge">{formatDuration(file.duration)}</span>
         ) : file.isLivePhoto ? (
-          <span className="live-photo-chip card-live-chip">
-            <span className="live-photo-symbol" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
-          </span>
+          <LivePhotoBadge size={28} className="card-live-chip" />
         ) : null}
         {file.kind === 'video' && <VideoPlayBadge size={26} />}
       </div>

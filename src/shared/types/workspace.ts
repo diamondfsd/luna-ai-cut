@@ -4,6 +4,7 @@ export interface WorkspaceMediaAsset {
   path: string
   kind: 'image' | 'video'
   thumbnailUrl?: string | null
+  isLivePhoto?: boolean
 }
 
 export interface WorkspaceColorMetadata {
