@@ -87,7 +87,7 @@ interface ExportTaskTableProps {
 }
 
 export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
-  const { exporting } = useApp()
+  const { exportProgress, exporting } = useApp()
   const [tasks, setTasks] = useState<ExportTaskRecord[]>([])
   const PAGE_SIZE = 10
   const [loading, setLoading] = useState(false)
@@ -107,6 +107,10 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   }
 
   useEffect(() => { void loadTasks() }, [])
+  useEffect(() => {
+    if (exportProgress.size === 0) return
+    void loadTasks()
+  }, [exportProgress])
   const prevExportingRef = useRef(exporting)
   useEffect(() => {
     if (!exporting) return

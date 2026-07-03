@@ -97,6 +97,7 @@ const lunaApi: LunaApi = {
     exportImage: (name: string, dataUrl: string) => ipcRenderer.invoke('workspace:exportImage', name, dataUrl),
     exportCreativeDataUrl: (name: string, dataUrl: string, kind: 'image' | 'video') => ipcRenderer.invoke('workspace:exportCreativeDataUrl', name, dataUrl, kind),
     exportCreativeLivePhoto: (name: string, imageDataUrl: string, videoDataUrl: string, appleLivePhoto: boolean) => ipcRenderer.invoke('workspace:exportCreativeLivePhoto', name, imageDataUrl, videoDataUrl, appleLivePhoto),
+    exportTripleStitch: (options) => ipcRenderer.invoke('workspace:exportTripleStitch', options),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
     exportColor: (sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => ipcRenderer.invoke('workspace:exportColor', sourcePath, color, exportMeta),
     createExportTask: (taskName: string, items: Array<{ exportId: string; fileName: string; kind: string }>) => ipcRenderer.invoke('workspace:createExportTask', taskName, items),

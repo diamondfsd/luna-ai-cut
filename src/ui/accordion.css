@@ -10,6 +10,11 @@
   border-top: none;
 }
 
+/* 标题栏行容器 — 相对定位以容纳 actions 的绝对定位 */
+.ui-accordion-header-row {
+  position: relative;
+}
+
 /* 可点击标题栏 */
 .ui-accordion-header {
   display: flex;
@@ -47,12 +52,15 @@
   transition: transform 180ms ease;
 }
 
-/* 标题右侧操作按钮（如重置） */
+/* 标题右侧操作按钮（如重置）— 绝对定位于标题栏右侧，避免 <button> 嵌套 */
 .ui-accordion-actions {
+  position: absolute;
+  right: 28px;
+  top: 50%;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
 }
 
 .ui-accordion[data-state="open"] .ui-accordion-chevron {
