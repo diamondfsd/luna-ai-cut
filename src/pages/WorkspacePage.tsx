@@ -42,11 +42,9 @@ function formatTime(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-/** 判断素材是否为 Live Photo（兼容旧项目没有 isLivePhoto 字段的情况） */
-function isLiveAsset(asset: { isLivePhoto?: boolean; name?: string } | null): boolean {
-  if (!asset) return false
-  if (asset.isLivePhoto) return true
-  return /^LIV_/i.test(asset.name ?? '')
+/** 判断素材是否为 Live Photo（由 useProjectManager 异步检测 XMP 后填入 isLivePhoto 字段） */
+function isLiveAsset(asset: { isLivePhoto?: boolean } | null): boolean {
+  return asset?.isLivePhoto === true
 }
 
 export function WorkspacePage({ workspaceMode, pageActive, onEditingChange }: WorkspacePageProps) {
@@ -420,8 +418,8 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
             </button>
           </Tooltip>
         )}
-        {/* 视频播放控件（含 Live Photo 视频播放） */}
-        {canvas.isVideo && activeMediaReady && (
+        {/* 视频播放控件（Live Photo 播放时隐藏） */}
+        {canvas.isVideo && !canvas.isLivePlayback && activeMediaReady && (
           <>
             <div className="workspace-video-controls" onClick={(e) => e.stopPropagation()}>
               <button
