@@ -45,6 +45,7 @@ export function WorkspaceMediaStrip() {
 
   function handleClick(index: number, event: MouseEvent): void {
     containerRef.current?.focus({ preventScroll: true })
+    window.dispatchEvent(new CustomEvent('workspace-media-strip-click', { detail: { index } }))
     if (event.shiftKey || event.ctrlKey || event.metaKey) {
       handleSelectionChange(index, { shift: event.shiftKey, ctrl: event.ctrlKey, meta: event.metaKey })
       return

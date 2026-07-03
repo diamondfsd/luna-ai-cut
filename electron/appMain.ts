@@ -671,6 +671,93 @@ function registerIpc(): void {
 
     return { path: destinationPath, name: fileName }
   })
+  ipcMain.handle('workspace:exportCreativeDataUrl', async (_event, name: string, dataUrl: string, kind: 'image' | 'video') => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    mkdirSync(settings.exportDir, { recursive: true })
+
+    const match = /^data:(image\/png|image\/jpeg|video\/webm);base64,(.+)$/i.exec(dataUrl)
+    if (!match) throw new Error('导出内容无效')
+
+    const mime = match[1].toLowerCase()
+    const ext = mime === 'image/jpeg' ? '.jpg' : mime === 'video/webm' ? '.webm' : '.png'
+    const baseName = path.basename(name, path.extname(name)) || 'creative'
+    const fileName = safeName(`${baseName}_${Date.now()}${ext}`)
+    const destinationPath = path.join(settings.exportDir, fileName)
+    writeFileSync(destinationPath, Buffer.from(match[2], 'base64'))
+
+    const exportId = `creative_${baseName}_${Date.now()}`
+    const taskName = kind === 'video' ? '创意短视频导出' : '创意图片导出'
+    const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
+    const taskStart = Date.now()
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    })
+
+    return { path: destinationPath, name: fileName }
+  })
+  ipcMain.handle('workspace:exportCreativeLivePhoto', async (_event, name: string, imageDataUrl: string, videoDataUrl: string, appleLivePhoto: boolean) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+
+    if (appleLivePhoto && process.platform !== 'darwin') {
+      throw new Error('Apple Live 图仅支持在 Mac 上导出')
+    }
+
+    const imageMatch = /^data:image\/jpeg;base64,(.+)$/i.exec(imageDataUrl)
+    const videoMatch = /^data:video\/webm;base64,(.+)$/i.exec(videoDataUrl)
+    if (!imageMatch || !videoMatch) throw new Error('导出内容无效')
+
+    const baseName = safeName(path.basename(name, path.extname(name)) || 'creative-live')
+    const tmpDir = path.join(settings.exportDir, `.creative_live_${Date.now()}`)
+    await mkdir(tmpDir, { recursive: true })
+    const imagePath = path.join(tmpDir, `${baseName}.jpg`)
+    const webmPath = path.join(tmpDir, `${baseName}.webm`)
+    const mp4Path = path.join(tmpDir, `${baseName}.mp4`)
+    const destinationPath = path.join(settings.exportDir, `${baseName}_${Date.now()}.jpg`)
+
+    writeFileSync(imagePath, Buffer.from(imageMatch[1], 'base64'))
+    writeFileSync(webmPath, Buffer.from(videoMatch[1], 'base64'))
+
+    await new Promise<void>((resolve, reject) => {
+      const ffmpeg = spawn(getFfmpegPath(), [
+        '-y',
+        '-i', webmPath,
+        '-t', '3',
+        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', 'faststart',
+        mp4Path,
+      ])
+      let stderr = ''
+      ffmpeg.stderr.on('data', (chunk) => { stderr += String(chunk) })
+      ffmpeg.on('error', reject)
+      ffmpeg.on('close', (code) => {
+        if (code === 0) resolve()
+        else reject(new Error(stderr || 'Live 图视频生成失败'))
+      })
+    })
+
+    const appleFolder = appleLivePhoto ? path.join(tmpDir, `${baseName}_apple`) : undefined
+    await combineLivePhoto(imagePath, mp4Path, destinationPath, appleFolder)
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined)
+
+    const exportId = `creative_live_${baseName}_${Date.now()}`
+    const taskName = appleLivePhoto ? 'Apple Live 图导出' : 'Live 图片导出'
+    const task = await createExportTask(taskName, [{ exportId, fileName: path.basename(destinationPath), kind: 'image' }])
+    const taskStart = Date.now()
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    })
+
+    return { path: destinationPath, name: path.basename(destinationPath) }
+  })
   ipcMain.handle('workspace:copyFile', async (_event, sourcePath: string) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
