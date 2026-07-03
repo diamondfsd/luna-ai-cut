@@ -57,8 +57,39 @@ export function PreviewModal({
   const internalFile = useMemo(() => filePathToLunaFile(filePath, {
     thumbnailUrl: thumbnailForPath(filePath),
   }), [filePath])
-  const file = propCurrentFile ?? internalFile
   const showWatermarkControls = propShowWatermarkControls ?? isDownloadsPage
+
+  // ── Live Photo 检测（异步读文件判断是否为 Google Motion Photo） ──
+  const [fileIsLivePhoto, setFileIsLivePhoto] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    const base = propCurrentFile ?? internalFile
+    if (propCurrentFile?.isLivePhoto) {
+      // propCurrentFile 已确认是 Live Photo，直接沿用
+      setFileIsLivePhoto(true)
+    } else if (base.kind === 'image' && filePath) {
+      setFileIsLivePhoto(false) // 重置
+      console.log('[PreviewModal] checking isLivePhoto for', filePath)
+      window.luna.workspace.isLivePhoto(filePath).then((live) => {
+        console.log('[PreviewModal] isLivePhoto result:', live)
+        if (!cancelled) setFileIsLivePhoto(live)
+      }).catch((err) => {
+        console.error('[PreviewModal] isLivePhoto error:', err)
+      })
+    } else {
+      setFileIsLivePhoto(false)
+    }
+    return () => { cancelled = true }
+  }, [filePath, propCurrentFile, internalFile.kind])
+
+  // 若异步检测发现是 Live Photo，合并到 file 对象中
+  const file = useMemo(() => {
+    const base = propCurrentFile ?? internalFile
+    if (fileIsLivePhoto && !base.isLivePhoto) {
+      return { ...base, isLivePhoto: true }
+    }
+    return base
+  }, [propCurrentFile, internalFile, fileIsLivePhoto])
 
   // ── 导航 ──
   const modalFiles = useMemo(() => {
