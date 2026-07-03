@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 
 import { useApp } from '../../context/AppContext'
-import type { LunaFile, MediaKind, WorkspaceMediaAsset } from '../../shared/types'
+import type { ExportProgress, LunaFile, MediaKind, WorkspaceMediaAsset } from '../../shared/types'
 import { toast } from '../../ui'
 import type { EditPipeline } from '../shared/editPipeline'
 import { logger } from '../../lib/rendererLogger'
@@ -10,6 +10,22 @@ import { exportWithFFmpeg } from './exportFFmpeg'
 import { exportImageWithWebGL } from './exportImageWithWebGL'
 import { exportVideoWithWebGL } from './exportVideoWithWebGL'
 import { composeWorkspaceExport } from './exportWorkspaceImage'
+
+/** 带并发限制的异步 map */
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++
+      await worker(items[index], index)
+    }
+  })
+  await Promise.all(workers)
+}
 
 interface UseWorkspaceExportOptions {
   activeMedia: WorkspaceMediaAsset | null
@@ -91,7 +107,6 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
       const useFFmpeg = canExportFFmpeg(pipeline)
 
       if (isVid && useFFmpeg) {
-        // ── FFmpegFast 视频导出：ffmpeg 解码→调色→编码，完全绕过 WebGL ──
         toast.success('已开始极速导出')
         logger.info(`[Export FFmpegFast] 开始导出视频`, { exportId, taskName, path: activeMedia.path })
 
@@ -109,7 +124,6 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
 
         toast.success('已导出到文件夹')
       } else if (isVid) {
-        // ── WebGLExact 视频导出（兜底）：WebGL shader 逐帧调色 → ffmpeg 仅编码 ──
         toast.success('已开始导出视频（高精度模式）')
         logger.info(`[Export WebGLExact] 开始导出视频`, { exportId, taskName, path: activeMedia.path })
 
@@ -127,11 +141,9 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
           },
         })
 
-        // 视频导出完成后，从主进程获取最终路径（通过 endVideoExport 已返回）
         result = { path: '', name: activeMedia.name }
         toast.success('已导出到文件夹')
       } else if (!isVid && useFFmpeg) {
-        // ── FFmpegFast 图片导出：ffmpeg 直接滤镜处理 ──
         toast.success('已开始极速导出')
         logger.info(`[Export FFmpegFast] 开始导出图片`, { exportId, taskName, path: activeMedia.path })
 
@@ -149,13 +161,10 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
 
         toast.success('已导出到文件夹')
       } else {
-        // ── WebGL 图片导出：WebGL shader 全分辨率 → toBlob → 保存 ──
         toast.success('已开始导出图片（高精度模式）')
         logger.info(`[Export WebGL] 开始导出图片`, { exportId, taskName, path: activeMedia.path })
 
         const blob = await exportImageWithWebGL(activeMedia.path, pipeline)
-
-        // 应用水印
         const exportUrl = await composeWorkspaceExport(
           canvasRef.current,
           imageRect,
@@ -190,70 +199,117 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
 
   const exportBatch = useCallback(async (indices: number[], allMediaL: WorkspaceMediaAsset[]) => {
     if (indices.length === 0) return
+    console.log('[exportBatch] 开始批量导出', { indices, totalMedia: allMediaL.length })
     setExporting(true)
-    let exported = 0
-    const failed: string[] = []
-    for (let idx = 0; idx < indices.length; idx++) {
-      const mediaIdx = indices[idx]
+
+    // 收集有效导出项
+    const exportItems: Array<{ asset: WorkspaceMediaAsset; exportId: string; createdAt: number }> = []
+    const failedItems: Array<{ name: string; error: string }> = []
+    for (const mediaIdx of indices) {
       const asset = allMediaL[mediaIdx]
-      if (!asset) { failed.push(`索引 ${mediaIdx} 无效`); continue }
+      if (!asset) { failedItems.push({ name: `索引 ${mediaIdx}`, error: '无效' }); continue }
+      if (!canExportFFmpeg(pipeline)) { failedItems.push({ name: asset.name, error: '不支持批量导出' }); continue }
       const createdAt = Date.now()
-      const taskId = `workspace_batch_${createdAt}`
       const exportId = `${asset.name}_batch_${createdAt}`
-      const taskName = `批量导出 (${idx + 1}/${indices.length})`
+      exportItems.push({ asset, exportId, createdAt })
+    }
 
-      setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(asset)))
+    if (exportItems.length === 0) {
+      setExporting(false)
+      toast.error('批量导出全部失败')
+      return
+    }
+
+    const batchTs = Date.now()
+    const taskName = `批量导出 ${exportItems.length} 个文件`
+
+    console.log('[exportBatch] 准备创建任务', {
+      taskName,
+      items: exportItems.map(i => ({ exportId: i.exportId, name: i.asset.name, kind: i.asset.kind })),
+    })
+
+    // 1. 创建任务，包含所有明细
+    const task = await window.luna.workspace.createExportTask(
+      taskName,
+      exportItems.map(({ asset, exportId }) => ({
+        exportId,
+        fileName: asset.name,
+        kind: asset.kind === 'video' ? 'video' : 'image',
+      })),
+    )
+
+    console.log('[exportBatch] 任务创建完成', { taskId: task.id, totalCount: task.totalCount, itemCount: task.items.length, itemExportIds: task.items.map(i => i.exportId) })
+
+    // 2. 初始化进度（全部 queued）+ snapshots
+    const snapshots = new Map<string, LunaFile>()
+    const queued = new Map<string, ExportProgress>()
+    for (const { asset, exportId } of exportItems) {
+      snapshots.set(exportId, snapshotForAsset(asset))
+      queued.set(exportId, {
+        exportId,
+        taskId: task.id,
+        taskName,
+        createdAt: batchTs,
+        fileName: asset.name,
+        index: 0,
+        totalFiles: exportItems.length,
+        percent: 0,
+        status: 'queued',
+      })
+    }
+    setExportSnapshots((current) => new Map([...current, ...snapshots]))
+    setExportProgress((current) => new Map([...current, ...queued]))
+
+    // 3. 并发导出（图片 4 路，视频 1 路）
+    const serializedPipeline = JSON.parse(JSON.stringify(pipeline))
+    const completed: Array<{ name: string; path: string }> = []
+    const failed: Array<{ name: string; error: string }> = [...failedItems]
+
+    const exportOne = async ({ asset, exportId, createdAt }: typeof exportItems[number]) => {
       setExportProgress((current) => new Map(current).set(exportId, {
-        exportId, taskId, taskName, createdAt,
-        fileName: asset.name, index: idx, totalFiles: indices.length,
-        percent: 0, status: 'exporting',
+        ...current.get(exportId)!,
+        status: 'exporting',
       }))
-
       try {
-        const useFFmpeg = canExportFFmpeg(pipeline)
-        let result: { name: string; path: string }
-
-        if (useFFmpeg) {
-          result = await exportWithFFmpeg(asset.path, pipeline, {
-            exportId, taskName, onProgress: (percent) => {
-              setExportProgress((current) => new Map(current).set(exportId, {
-                exportId, taskId, taskName, createdAt,
-                fileName: asset.name, index: idx, totalFiles: indices.length,
-                percent, status: percent >= 100 ? 'done' : 'exporting',
-              }))
-            },
-          })
-        } else {
-          // 跳过不支持 FFmpegFast 的项（如需要 WebGL 的）
-          failed.push(`${asset.name}: 不支持批量导出`)
-          setExportProgress((current) => new Map(current).set(exportId, {
-            exportId, taskId, taskName, createdAt,
-            fileName: asset.name, index: idx, totalFiles: indices.length,
-            percent: null, status: 'failed', error: '不支持批量导出',
-          }))
-          continue
-        }
-
+        console.log('[exportBatch] 开始导出:', { exportId, name: asset.name, kind: asset.kind, path: asset.path, taskId: task.id })
+        const result = await window.luna.workspace.exportFFmpeg(
+          asset.path,
+          serializedPipeline,
+          { exportId, taskName, taskId: task.id, fileName: asset.name, index: 0, totalFiles: exportItems.length, createdAt },
+        )
+        console.log('[exportBatch] 导出成功:', { exportId, name: asset.name, result })
+        completed.push({ name: asset.name, path: result.path })
         setExportSnapshots((current) => new Map(current).set(exportId, snapshotForAsset(asset, result.path)))
         setExportProgress((current) => new Map(current).set(exportId, {
-          exportId, taskId, taskName, createdAt,
-          fileName: asset.name, index: idx, totalFiles: indices.length,
-          percent: 100, status: 'done', destinationPath: result.path,
+          ...current.get(exportId)!,
+          percent: 100,
+          status: 'done',
+          destinationPath: result.path,
         }))
-        exported++
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        failed.push(`${asset.name}: ${message}`)
+        failed.push({ name: asset.name, error: message })
         setExportProgress((current) => new Map(current).set(exportId, {
-          exportId, taskId, taskName, createdAt,
-          fileName: asset.name, index: idx, totalFiles: indices.length,
-          percent: null, status: 'failed', error: message,
+          ...current.get(exportId)!,
+          percent: null,
+          status: 'failed',
+          error: message,
         }))
       }
     }
+
+    const imageItems = exportItems.filter(({ asset }) => asset.kind !== 'video')
+    const videoItems = exportItems.filter(({ asset }) => asset.kind === 'video')
+    await Promise.all([
+      runWithConcurrency(imageItems, 4, exportOne),
+      runWithConcurrency(videoItems, 1, exportOne),
+    ])
+
+    console.log('[exportBatch] 全部完成', { completed, failed })
+
     setExporting(false)
-    if (exported > 0) toast.success(`成功导出 ${exported} 个文件${failed.length > 0 ? `，${failed.length} 个失败` : ''}`)
-    if (failed.length > 0 && exported === 0) toast.error('批量导出全部失败')
+    if (completed.length > 0) toast.success(`成功导出 ${completed.length} 个文件${failed.length > 0 ? `，${failed.length} 个失败` : ''}`)
+    if (failed.length > 0 && completed.length === 0) toast.error('批量导出全部失败')
   }, [pipeline, setExporting, setExportProgress, setExportSnapshots])
 
   return { exportSingle, exportBatch }

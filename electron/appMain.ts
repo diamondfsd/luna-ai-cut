@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
 import { initLogger, logMainDebug, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
-import { createExportTask, getExportTasks, getExportTaskById, clearExportTasks, updateTaskItemProgress } from './exportTaskService'
+import { createExportTask, getExportTasks, getExportTaskById, clearExportTasks, updateTaskItemProgress, addTaskItem } from './exportTaskService'
 
 import {
   cacheFile,
@@ -868,9 +868,13 @@ function registerIpc(): void {
     })
 
     const task = exportMeta?.taskId
-      ? await getExportTaskById(exportMeta.taskId)
+      ? await getExportTaskById(exportMeta.taskId) ?? await createExportTask(taskName, [{ exportId, fileName, kind: isVid ? 'video' : 'image' }], exportMeta.taskId)
       : await createExportTask(taskName, [{ exportId, fileName, kind: isVid ? 'video' : 'image' }])
     if (!task) throw new Error('导出任务不存在')
+    // 批量导出时，后续项追加到已存在的任务中
+    if (exportMeta?.taskId && !task.items.some((i) => i.exportId === exportId)) {
+      await addTaskItem(task.id, { exportId, fileName: exportMeta.fileName ?? fileName, kind: isVid ? 'video' : 'image' })
+    }
     const taskStart = Date.now()
     const win = BrowserWindow.fromWebContents(event.sender)
     let lutPath: string | undefined
@@ -881,7 +885,7 @@ function registerIpc(): void {
       const liveTmpDir = path.join(settings.exportDir, `.live_tmp_${exportId}`)
       await mkdir(liveTmpDir, { recursive: true })
       const appleExportFolder = process.platform === 'darwin' && settings.exportAppleLivePhoto
-        ? path.join(liveTmpDir, 'apple_pair')
+        ? path.join(liveTmpDir, `${nameBase}_apple_pair_${Date.now()}`)
         : undefined
 
       // 进度报告辅助函数

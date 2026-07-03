@@ -63,12 +63,13 @@ async function writeTasks(tasks: ExportTaskRecord[]): Promise<void> {
 export async function createExportTask(
   name: string,
   items: Array<{ exportId: string; fileName: string; kind: string }>,
+  taskId?: string,
 ): Promise<ExportTaskRecord> {
   return withLock(async () => {
     const tasks = await readTasks()
     const now = Date.now()
     const task: ExportTaskRecord = {
-      id: `export_task_${now}_${Math.random().toString(36).slice(2, 8)}`,
+      id: taskId ?? `export_task_${now}_${Math.random().toString(36).slice(2, 8)}`,
       name,
       totalCount: items.length,
       startTime: now,
@@ -87,7 +88,13 @@ export async function createExportTask(
         status: 'queued',
       })),
     }
-    tasks.unshift(task)
+    // 如果指定了 taskId，覆盖已有同名任务（避免批量导出多次创建）
+    const existingIndex = tasks.findIndex((t) => t.id === task.id)
+    if (existingIndex >= 0) {
+      tasks[existingIndex] = task
+    } else {
+      tasks.unshift(task)
+    }
     const trimmed = tasks.slice(0, MAX_TASKS)
     await writeTasks(trimmed)
     return task
@@ -161,6 +168,35 @@ export async function updateTaskItemProgress(
   if (extra?.destinationPath !== undefined) update.destinationPath = extra.destinationPath
   if (extra?.error !== undefined) update.error = extra.error
   await updateTaskItem(taskId, exportId, update)
+}
+
+/**
+ * 向已有任务中添加明细项（如果 exportId 已存在则跳过）
+ */
+export async function addTaskItem(
+  taskId: string,
+  item: { exportId: string; fileName: string; kind: string },
+): Promise<void> {
+  return withLock(async () => {
+    const tasks = await readTasks()
+    const taskIndex = tasks.findIndex((t) => t.id === taskId)
+    if (taskIndex === -1) return
+    const task = tasks[taskIndex]
+    if (task.items.some((i) => i.exportId === item.exportId)) return // 已存在，跳过
+    task.items.push({
+      exportId: item.exportId,
+      fileName: item.fileName,
+      kind: item.kind,
+      startTime: null,
+      endTime: null,
+      duration: null,
+      progress: 0,
+      status: 'queued',
+    })
+    task.totalCount = task.items.length
+    tasks[taskIndex] = task
+    await writeTasks(tasks)
+  })
 }
 
 /**

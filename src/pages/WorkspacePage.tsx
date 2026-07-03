@@ -128,13 +128,12 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
     pipeline: edit.previewPipeline,
   })
   const batchExport = useCallback(() => {
-    const indices = media.selectedIndices.size > 0 ? [...media.selectedIndices].filter((i) => i !== media.activeIndex) : []
-    if (indices.length === 0) {
+    if (media.selectedIndices.size > 1) {
+      void exportBatch([...media.selectedIndices], media.media)
+    } else {
       void exportSingle()
-      return
     }
-    void exportBatch(indices, media.media)
-  }, [media.selectedIndices, media.activeIndex, media.media, exportSingle, exportBatch])
+  }, [media.selectedIndices, media.media, exportSingle, exportBatch])
   const exportCount = media.selectedIndices.size > 0 ? media.selectedIndices.size : 1
 
   // ── 双击缩放 ──
