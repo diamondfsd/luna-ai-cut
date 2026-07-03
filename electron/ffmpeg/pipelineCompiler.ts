@@ -126,7 +126,10 @@ export class FullPipelineModule implements FfmpegModule {
 
     // ── 4. Color adjustments（LUT 模式 vs 直接模式） ──
     if (this.lutPath) {
-      mainFilters.push(`lut3d=file='${this.lutPath}':interp=tetrahedral`)
+      // Windows 路径包含反斜杠，ffmpeg filter_complex 解析器会将 \ 视为转义字符，导致路径错乱。
+      // 替换为前斜杠（ffmpeg on Windows 支持前斜杠路径）。
+      const lutFsPath = process.platform === 'win32' ? this.lutPath.replace(/\\/g, '/') : this.lutPath
+      mainFilters.push(`lut3d=file='${lutFsPath}':interp=tetrahedral`)
     } else {
       const colorParts: string[] = []
 
