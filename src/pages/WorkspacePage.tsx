@@ -3,23 +3,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
-import { Button, ErrorBoundary, IconButton, LivePhotoBadge, LoadingIndicator, Tooltip, toast } from '../ui'
+import { Button, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
-import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
-import { useViewport } from '../workspace/hooks/useViewport'
+import { WorkspaceCanvasProvider } from '../workspace/context/WorkspaceCanvasContext'
 import { useWorkspaceExport } from '../workspace/export/useWorkspaceExport'
 import { createDefaultPipeline, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
-import { buildColorLutParams, colorLutKey } from '../workspace/shared/colorLut'
+import { ImagePreview } from '../workspace/components/ImagePreview'
+import type { ImagePreviewHandle } from '../workspace/components/ImagePreview'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
 import { WorkspaceRemoveDialog } from '../workspace/components/WorkspaceRemoveDialog'
-import { WorkspaceVideoControls } from '../workspace/components/WorkspaceVideoControls'
-import { WorkspaceWatermarkOverlay } from '../workspace/components/WorkspaceWatermarkOverlay'
 import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSidebar'
-import { CropOverlay } from '../workspace/transform/CropOverlay'
 import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import '../styles/workspace-loading.css'
@@ -63,58 +60,17 @@ export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEdi
 function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
-  const canvas = useWorkspaceCanvas()
-  const viewport = useViewport()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [livePhotoLoading, setLivePhotoLoading] = useState(false)
-  const handlePlayLivePhoto = useCallback(async () => {
-    if (!media.activeMedia?.path) return
-    setLivePhotoLoading(true)
-    try {
-      const result = await window.luna.previewLivePhoto({
-        name: media.activeMedia.name,
-        isLivePhoto: true,
-        localPath: media.activeMedia.path,
-        downloadFilePath: media.activeMedia.path,
-      } as any)
-      if (result?.source) {
-        // 视频通过 WebGL 渲染器播放，调色管线自动应用
-        await canvas.loadLiveVideo(result.source)
-        canvas.playVideo()
-      }
-    } catch (err) {
-      toast.error('无法播放 Live Photo')
-    } finally {
-      setLivePhotoLoading(false)
-    }
-  }, [media.activeMedia, canvas])
-  const activeMediaReady = Boolean(media.activeMedia && canvas.loadedMediaPath === media.activeMedia.path && !canvas.imageLoading)
 
-  // ── 3D LUT 加载：color 参数变化时烘焙 LUT 并下发到 WebGL ──
-  const lutTimerRef = useRef<number | null>(null)
-  const lutKey = colorLutKey(edit.pipeline.color)
-  useEffect(() => {
-    if (!canvas.canRender) return
-    if (lutTimerRef.current) window.clearTimeout(lutTimerRef.current)
-    lutTimerRef.current = window.setTimeout(() => {
-      const color = edit.pipeline.color
-      if (!color) return
-      void canvas.bakeAndLoadLut(buildColorLutParams(color), lutKey)
-    }, 80)
-    return () => {
-      if (lutTimerRef.current) window.clearTimeout(lutTimerRef.current)
-    }
-  }, [
-    lutKey,
-    canvas.canRender,
-    canvas.bakeAndLoadLut,
-  ])
+  // ── ImagePreview ref（用于导出时访问 canvas） ──
+  const previewRef = useRef<ImagePreviewHandle>(null)
+  const nullCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   // ── Export ──
   const { exportSingle, exportBatch } = useWorkspaceExport({
     activeMedia: media.activeMedia,
-    canvasRef: canvas.canvasRef,
-    imageRect: canvas.imageRect,
+    canvasRef: previewRef.current?.canvasRef ?? nullCanvasRef,
+    imageRect: previewRef.current?.imageRect ?? { x: 0, y: 0, width: 1, height: 1 },
     pipeline: edit.previewPipeline,
   })
   const batchExport = useCallback(() => {
@@ -125,29 +81,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     }
   }, [media.selectedIndices, media.media, exportSingle, exportBatch])
   const exportCount = media.selectedIndices.size > 0 ? media.selectedIndices.size : 1
-
-  // ── 双击缩放 ──
-  function handleStageDoubleClick(): void {
-    if (edit.cropActive) return
-    if (viewport.zoom > 1) {
-      viewport.resetViewport()
-    } else {
-      viewport.zoomTo(2)
-    }
-  }
-
-  // ── Reset viewport when media changes ──
-  useEffect(() => {
-    viewport.resetViewport()
-  }, [media.activeMedia?.path])
-
-  // ── Re-render canvas when pipeline / comparison / crop changes ──
-  useEffect(() => {
-    canvas.render(
-      edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline,
-      { cropMode: edit.cropActive, allowStaleLut: !edit.compareOriginal },
-    )
-  }, [edit.compareOriginal, edit.previewPipeline, edit.comparePipeline, edit.cropActive, canvas.render])
 
   // ── Initialize pipeline / reset crop when active asset changes ──
   useEffect(() => {
@@ -359,6 +292,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     return <WorkspaceProjectPicker />
   }
 
+  // ── derive active media readiness for toolbar buttons ──
+  const hasActiveMedia = Boolean(media.activeMedia)
+
   return (
     <div className="workspace-layout">
       {workspaceMode === 'creative' ? (
@@ -368,114 +304,67 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         </>
       ) : (
         <>
-      <section className="workspace-canvas-shell">
-        <div
-          ref={canvas.stageRef as React.RefObject<HTMLDivElement>}
-          className={`workspace-canvas-stage${!activeMediaReady ? ' loading' : ''}${edit.cropActive ? ' cropping' : ''}${viewport.zoom > 1 && !edit.cropActive ? ' panning' : ''}`}
-          onWheel={viewport.handleWheel}
-          onPointerDown={viewport.handlePointerDown}
-          onPointerMove={viewport.handlePointerMove}
-          onPointerUp={viewport.handlePointerUp}
-          onPointerCancel={viewport.handlePointerUp}
-          onDoubleClick={handleStageDoubleClick}
-        >
-          <div
-            className={`workspace-preview-surface${!activeMediaReady ? ' is-hidden' : ''}`}
-            style={{ transform: `translate(${viewport.pan.x}px, ${viewport.pan.y}px) scale(${viewport.zoom})` }}
-          >
-            <canvas ref={canvas.canvasRef as React.RefObject<HTMLCanvasElement>} className="workspace-canvas" />
-            <WorkspaceWatermarkOverlay />
-            {edit.cropActive && canvas.canRender && <CropOverlay />}
-          </div>
-          {/* Status overlay */}
-          {(!activeMediaReady || canvas.imageError || canvas.webglMessage || !media.activeMedia) && (
-            <div className="workspace-stage-status">
-              {media.activeMedia && !canvas.imageError && !canvas.webglMessage && !activeMediaReady && (
-                <LoadingIndicator label="加载预览中" />
-              )}
-              {canvas.imageError && <span>{canvas.imageError}</span>}
-              {!canvas.imageError && canvas.webglMessage && <span>{canvas.webglMessage}</span>}
-              {!canvas.imageError && !media.activeMedia && <span>暂无素材</span>}
-            </div>
-          )}
-        </div>
-
-        {/* Live Photo 播放按钮（视频通过 WebGL 渲染，调色自动生效） */}
-        {media.activeMedia?.isLivePhoto === true && activeMediaReady && !canvas.isVideo && (
-          <Tooltip content="播放 Live Photo">
-            <button
-              className="workspace-live-btn"
-              type="button"
-              disabled={livePhotoLoading}
-              onClick={handlePlayLivePhoto}
-              aria-label="播放 Live Photo"
-            >
-              <LivePhotoBadge size={36} />
-            </button>
-          </Tooltip>
-        )}
-        {/* 视频播放控件（Live Photo 播放时隐藏） */}
-        {canvas.isVideo && !canvas.isLivePlayback && activeMediaReady && (
-          <WorkspaceVideoControls
-            playing={canvas.videoPlaying}
-            currentTime={canvas.videoCurrentTime}
-            duration={canvas.videoDuration}
-            onToggle={canvas.toggleVideoPlayback}
-            onSeek={canvas.seekVideo}
+          {/* ── 自包含预览组件 ── */}
+          <ImagePreview
+            ref={previewRef}
+            filePath={media.activeMedia?.path ?? ''}
+            isLivePhoto={media.activeMedia?.isLivePhoto}
+            pipeline={edit.previewPipeline}
+            cropActive={edit.cropActive}
+            // 裁剪模式下拦截双击（阻止缩放），否则使用 ImagePreview 默认的缩放行为
+            onDoubleClick={edit.cropActive ? () => {} : undefined}
           />
-        )}
-      </section>
 
-      <WorkspaceEditSidebar />
+          <WorkspaceEditSidebar />
 
-      {/* ── Toolbar ── */}
-      <footer className="workspace-toolbar">
-        <div className="workspace-toolbar-group">
-          <Tooltip content="返回项目列表">
-            <IconButton variant="ghost" size="compact" icon={<ArrowLeft size={16} />} onClick={media.backToProjects} />
-          </Tooltip>
-          <Tooltip content="撤销">
-            <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={!edit.canUndo} onClick={edit.undo} />
-          </Tooltip>
-          <Tooltip content="重做">
-            <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={!edit.canRedo} onClick={edit.redo} />
-          </Tooltip>
-          <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={handleBatchReset}>重置</Button>
-          <div className="workspace-toolbar-divider" />
-          <Tooltip content="复制调色和水印">
-            <IconButton variant="ghost" size="compact" icon={<ClipboardCopy size={15} />} disabled={!media.activeMedia || !canvas.canRender} onClick={handleCopyPipeline} />
-          </Tooltip>
-          <Tooltip content="粘贴调色和水印到所选素材">
-            <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={15} />} disabled={!media.activeMedia || !canvas.canRender} onClick={handlePastePipeline} />
-          </Tooltip>
-          {media.brokenPaths.size > 0 && (
-            <>
+          {/* ── Toolbar ── */}
+          <footer className="workspace-toolbar">
+            <div className="workspace-toolbar-group">
+              <Tooltip content="返回项目列表">
+                <IconButton variant="ghost" size="compact" icon={<ArrowLeft size={16} />} onClick={media.backToProjects} />
+              </Tooltip>
+              <Tooltip content="撤销">
+                <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={!edit.canUndo} onClick={edit.undo} />
+              </Tooltip>
+              <Tooltip content="重做">
+                <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={!edit.canRedo} onClick={edit.redo} />
+              </Tooltip>
+              <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={handleBatchReset}>重置</Button>
               <div className="workspace-toolbar-divider" />
-              <Button variant="danger" size="compact" icon={<Trash2 size={13} />} onClick={media.removeBrokenAssets}>
-                移除 {media.brokenPaths.size} 个失效素材
+              <Tooltip content="复制调色和水印">
+                <IconButton variant="ghost" size="compact" icon={<ClipboardCopy size={15} />} disabled={!hasActiveMedia} onClick={handleCopyPipeline} />
+              </Tooltip>
+              <Tooltip content="粘贴调色和水印到所选素材">
+                <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={15} />} disabled={!hasActiveMedia} onClick={handlePastePipeline} />
+              </Tooltip>
+              {media.brokenPaths.size > 0 && (
+                <>
+                  <div className="workspace-toolbar-divider" />
+                  <Button variant="danger" size="compact" icon={<Trash2 size={13} />} onClick={media.removeBrokenAssets}>
+                    移除 {media.brokenPaths.size} 个失效素材
+                  </Button>
+                </>
+              )}
+            </div>
+            <div className="workspace-toolbar-title">{media.currentProject?.name ?? '临时工作台'} · {media.activeIndex + 1}/{media.media.length}</div>
+            <div className="workspace-toolbar-group">
+              <Button
+                variant={edit.compareOriginal ? 'primary' : 'secondary'}
+                size="compact"
+                icon={edit.compareOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
+                onMouseDown={() => edit.setCompareOriginal(true)}
+                onMouseUp={() => edit.setCompareOriginal(false)}
+                onMouseLeave={() => edit.setCompareOriginal(false)}
+              >
+                对比
               </Button>
-            </>
-          )}
-        </div>
-        <div className="workspace-toolbar-title">{media.currentProject?.name ?? '临时工作台'} · {media.activeIndex + 1}/{media.media.length}</div>
-        <div className="workspace-toolbar-group">
-          <Button
-            variant={edit.compareOriginal ? 'primary' : 'secondary'}
-            size="compact"
-            icon={edit.compareOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
-            onMouseDown={() => edit.setCompareOriginal(true)}
-            onMouseUp={() => edit.setCompareOriginal(false)}
-            onMouseLeave={() => edit.setCompareOriginal(false)}
-          >
-            对比
-          </Button>
-          <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!media.activeMedia || !canvas.canRender} onClick={() => void batchExport()}>
-            {exportCount > 1 ? `导出 (${exportCount})` : '导出'}
-          </Button>
-        </div>
-      </footer>
+              <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!hasActiveMedia} onClick={() => void batchExport()}>
+                {exportCount > 1 ? `导出 (${exportCount})` : '导出'}
+              </Button>
+            </div>
+          </footer>
 
-      <WorkspaceMediaStrip />
+          <WorkspaceMediaStrip />
         </>
       )}
 
