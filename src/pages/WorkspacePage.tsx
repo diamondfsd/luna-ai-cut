@@ -1,9 +1,9 @@
-import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, Pause, Play, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
-import { Button, Dialog, ErrorBoundary, IconButton, LivePhotoBadge, LoadingIndicator, Tooltip, toast } from '../ui'
+import { Button, ErrorBoundary, IconButton, LivePhotoBadge, LoadingIndicator, Tooltip, toast } from '../ui'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
@@ -15,10 +15,13 @@ import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeli
 import { buildColorLutParams, colorLutKey } from '../workspace/shared/colorLut'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
+import { WorkspaceRemoveDialog } from '../workspace/components/WorkspaceRemoveDialog'
+import { WorkspaceVideoControls } from '../workspace/components/WorkspaceVideoControls'
 import { WorkspaceWatermarkOverlay } from '../workspace/components/WorkspaceWatermarkOverlay'
 import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSidebar'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
-import type { WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
+import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
+import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import '../styles/workspace-loading.css'
 
 function normalizePipeline(value: unknown): EditPipeline {
@@ -28,36 +31,23 @@ function normalizePipeline(value: unknown): EditPipeline {
 
 interface WorkspacePageProps {
   workspaceMode: WorkspaceMode
+  creativeModeId: CreativeModeId | null
   pageActive: boolean
   onEditingChange?: (editing: boolean) => void
 }
 
-/** 格式化秒数为 mm:ss 或 hh:mm:ss */
-function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '00:00'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-/** 判断素材是否为 Live Photo（由 useProjectManager 异步检测 XMP 后填入 isLivePhoto 字段） */
-function isLiveAsset(asset: { isLivePhoto?: boolean } | null): boolean {
-  return asset?.isLivePhoto === true
-}
-
-export function WorkspacePage({ workspaceMode, pageActive, onEditingChange }: WorkspacePageProps) {
+export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
 
   return (
     <WorkspaceEditProvider>
       <WorkspaceMediaProvider routeState={routeState} locationKey={location.key}>
-        <WorkspaceCanvasProvider>
+        <WorkspaceCanvasProvider key={workspaceMode}>
           <ErrorBoundary>
             <WorkspacePageInner
               workspaceMode={workspaceMode}
+              creativeModeId={creativeModeId}
               pageActive={pageActive}
               onEditingChange={onEditingChange}
             />
@@ -70,7 +60,7 @@ export function WorkspacePage({ workspaceMode, pageActive, onEditingChange }: Wo
 
 // ── inner page that consumes all three contexts ──
 
-function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: WorkspacePageProps) {
+function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
@@ -371,10 +361,17 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
 
   return (
     <div className="workspace-layout">
+      {workspaceMode === 'creative' ? (
+        <>
+          <WorkspaceCreativeFactory creativeModeId={creativeModeId ?? 'triple-stitch'} />
+          <WorkspaceMediaStrip />
+        </>
+      ) : (
+        <>
       <section className="workspace-canvas-shell">
         <div
           ref={canvas.stageRef as React.RefObject<HTMLDivElement>}
-          className={`workspace-canvas-stage${workspaceMode === 'creative' ? ' workspace-canvas-stage--hidden' : ''}${!activeMediaReady ? ' loading' : ''}${edit.cropActive ? ' cropping' : ''}${viewport.zoom > 1 && !edit.cropActive ? ' panning' : ''}`}
+          className={`workspace-canvas-stage${!activeMediaReady ? ' loading' : ''}${edit.cropActive ? ' cropping' : ''}${viewport.zoom > 1 && !edit.cropActive ? ' panning' : ''}`}
           onWheel={viewport.handleWheel}
           onPointerDown={viewport.handlePointerDown}
           onPointerMove={viewport.handlePointerMove}
@@ -404,7 +401,7 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
         </div>
 
         {/* Live Photo 播放按钮（视频通过 WebGL 渲染，调色自动生效） */}
-        {isLiveAsset(media.activeMedia) && activeMediaReady && !canvas.isVideo && (
+        {media.activeMedia?.isLivePhoto === true && activeMediaReady && !canvas.isVideo && (
           <Tooltip content="播放 Live Photo">
             <button
               className="workspace-live-btn"
@@ -419,31 +416,13 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
         )}
         {/* 视频播放控件（Live Photo 播放时隐藏） */}
         {canvas.isVideo && !canvas.isLivePlayback && activeMediaReady && (
-          <>
-            <div className="workspace-video-controls" onClick={(e) => e.stopPropagation()}>
-              <button
-                className="workspace-video-btn"
-                type="button"
-                onClick={canvas.toggleVideoPlayback}
-                aria-label={canvas.videoPlaying ? '暂停' : '播放'}
-              >
-                {canvas.videoPlaying ? <Pause size={16} /> : <Play size={16} />}
-              </button>
-              <input
-                className="workspace-video-progress"
-                type="range"
-                min={0}
-                max={canvas.videoDuration || 1}
-                step={0.1}
-                value={canvas.videoCurrentTime}
-                onChange={(e) => canvas.seekVideo(Number(e.target.value))}
-                aria-label="进度"
-              />
-              <span className="workspace-video-time">
-                {formatTime(canvas.videoCurrentTime)} / {formatTime(canvas.videoDuration)}
-              </span>
-            </div>
-          </>
+          <WorkspaceVideoControls
+            playing={canvas.videoPlaying}
+            currentTime={canvas.videoCurrentTime}
+            duration={canvas.videoDuration}
+            onToggle={canvas.toggleVideoPlayback}
+            onSeek={canvas.seekVideo}
+          />
         )}
       </section>
 
@@ -497,29 +476,22 @@ function WorkspacePageInner({ workspaceMode, pageActive, onEditingChange }: Work
       </footer>
 
       <WorkspaceMediaStrip />
+        </>
+      )}
 
-      <Dialog
+      <WorkspaceRemoveDialog
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
-        title={media.selectedIndices.size > 1 ? `移除 ${media.selectedIndices.size} 个素材` : '移除此素材'}
-        description={
-          media.selectedIndices.size > 1
-            ? `确定从工作台移除这 ${media.selectedIndices.size} 个素材？不会删除文件，只会从列表中移除。`
-            : `确定从工作台移除「${media.activeMedia?.name ?? ''}」？不会删除文件，只会从列表中移除。`
-        }
-        footer={
-          <>
-            <Button variant="secondary" size="compact" onClick={() => setDeleteConfirmOpen(false)}>取消</Button>
-            <Button variant="danger" size="compact" onClick={() => {
-              if (media.selectedIndices.size > 1) {
-                media.removeSelected(media.selectedIndices)
-              } else {
-                media.removeMedia(media.activeIndex)
-              }
-              setDeleteConfirmOpen(false)
-            }}>移除</Button>
-          </>
-        }
+        selectedCount={media.selectedIndices.size}
+        activeName={media.activeMedia?.name ?? ''}
+        onConfirm={() => {
+          if (media.selectedIndices.size > 1) {
+            media.removeSelected(media.selectedIndices)
+          } else {
+            media.removeMedia(media.activeIndex)
+          }
+          setDeleteConfirmOpen(false)
+        }}
       />
     </div>
   )
