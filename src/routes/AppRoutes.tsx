@@ -39,8 +39,8 @@ export function AppRoutes() {
   const [downloading, setDownloading] = useState(false)
   const [localResourcesRefreshKey, setLocalResourcesRefreshKey] = useState(0)
   const [pagesKey, setPagesKey] = useState(0)
-  const [workspaceMode] = useState<WorkspaceMode>('edit')
-  const [creativeModeId] = useState<CreativeModeId | null>(null)
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('edit')
+  const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -129,9 +129,11 @@ export function AppRoutes() {
         connection={connection}
         sourceMode={sourceMode}
         activeDevice={activeDevice}
-        showWorkspaceMode={false}
+        showWorkspaceMode={isActive('/workspace')}
         workspaceMode={workspaceMode}
         creativeModeId={creativeModeId}
+        onModeChange={setWorkspaceMode}
+        onCreativeModeChange={setCreativeModeId}
       />
       <UpdateBanner />
       <HotUpdateBanner />
@@ -191,7 +193,7 @@ export function AppRoutes() {
         </AppRoute>
 
         <AppRoute path="/workspace">
-          <WorkspacePage workspaceMode={workspaceMode} pageActive={isActive('/workspace')} />
+          <WorkspacePage workspaceMode={workspaceMode} creativeModeId={creativeModeId} pageActive={isActive('/workspace')} />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>

@@ -86,6 +86,8 @@ export interface LunaApi {
     deleteProject(projectId: string): Promise<void>
     renameProject(projectId: string, newName: string): Promise<WorkspaceProject>
     exportImage(name: string, dataUrl: string): Promise<{ path: string; name: string }>
+    exportCreativeDataUrl(name: string, dataUrl: string, kind: 'image' | 'video'): Promise<{ path: string; name: string }>
+    exportCreativeLivePhoto(name: string, imageDataUrl: string, videoDataUrl: string, appleLivePhoto: boolean): Promise<{ path: string; name: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     exportColor(sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }): Promise<{ path: string; name: string }>
     previewColor(sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }): Promise<{ path: string; dataUrl: string }>
