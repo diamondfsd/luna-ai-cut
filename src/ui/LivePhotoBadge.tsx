@@ -16,7 +16,9 @@ export function LivePhotoBadge({ size = 36, className }: LivePhotoBadgeProps) {
   // 同心圆 inset 按比例缩放，确保各尺寸下居中
   const ring1 = Math.round(symbolSize * 0.23)
   const ring2 = Math.round(symbolSize * 0.35)
-  const center = Math.round(symbolSize * 0.58)
+  // 中心圆点：用 border 做小点，inset 需精确居中
+  // 点可视大小 = 2px（2 个 1px border），居中 inset = (symbolSize - 2) / 2
+  const center = (symbolSize - 2) / 2
   return (
     <span
       className={`live-photo-badge${className ? ` ${className}` : ''}`}
