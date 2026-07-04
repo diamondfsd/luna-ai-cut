@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { LrcRender, LrcLayer } from './LrcRender'
 import './PreviewStage.css'
 
@@ -32,19 +32,51 @@ export interface MediaResolution {
   height: number
 }
 
+interface StageSize {
+  width: number
+  height: number
+}
+
+function isValidSize(size: MediaResolution | StageSize | null): size is MediaResolution | StageSize {
+  return !!size && Number.isFinite(size.width) && Number.isFinite(size.height) && size.width > 0 && size.height > 0
+}
+
+function containFrame(media: MediaResolution, stage: StageSize): Pick<LrcLayer, 'dstX' | 'dstY' | 'dstW' | 'dstH'> {
+  const mediaAspect = media.width / media.height
+  const stageAspect = stage.width / stage.height
+
+  if (stageAspect > mediaAspect) {
+    const dstW = mediaAspect / stageAspect
+    return { dstX: (1 - dstW) / 2, dstY: 0, dstW, dstH: 1 }
+  }
+
+  const dstH = stageAspect / mediaAspect
+  return { dstX: 0, dstY: (1 - dstH) / 2, dstW: 1, dstH }
+}
+
 /**
  * 统一构建层数据 — 根据媒体 URL 和缩放模式生成 LrcLayer[]
  *
- * @param url       媒体文件路径
- * @param scaleMode 缩放模式（fill: 拉伸填满 / contain: 保持比例完整显示）
+ * @param url        媒体文件路径
+ * @param scaleMode  缩放模式（fill: 拉伸填满 / contain: 保持比例完整显示）
+ * @param resolution 媒体真实分辨率，用于按资源比例构建 layer
+ * @param stageSize  预览舞台尺寸，用于把资源比例换算成归一化 layer 坐标
  */
-export function buildLayers(url: string, scaleMode: ScaleMode): LrcLayer[] {
+export function buildLayers(
+  url: string,
+  scaleMode: ScaleMode,
+  resolution: MediaResolution | null = null,
+  stageSize: StageSize | null = null,
+): LrcLayer[] {
+  const hasMeasuredFrame = scaleMode === 'contain' && isValidSize(resolution) && isValidSize(stageSize)
+  const frame = hasMeasuredFrame
+    ? containFrame(resolution, stageSize)
+    : { dstX: 0, dstY: 0, dstW: 1, dstH: 1 }
+  const fit: ScaleMode = hasMeasuredFrame ? 'fill' : scaleMode
+
   const baseLayer = {
-    dstX: 0,
-    dstY: 0,
-    dstW: 1,
-    dstH: 1,
-    fit: scaleMode,
+    ...frame,
+    fit,
   }
 
   if (isImage(url)) {
@@ -65,8 +97,8 @@ export function calcAspectRatio(width: number, height: number): number {
 }
 
 export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) {
-  // ── 层数据状态管理 ──
-  const [layers, setLayers] = useState<LrcLayer[]>([])
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const [stageSize, setStageSize] = useState<StageSize | null>(null)
   // ── 媒体分辨率 ──
   const [resolution, setResolution] = useState<MediaResolution | null>(null)
 
@@ -76,15 +108,34 @@ export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) 
     return calcAspectRatio(resolution.width, resolution.height)
   }, [resolution])
 
-  // 当 url 或 scaleMode 变化时，重新构建层数据
+  // 监听舞台尺寸，按当前视口比例构建 layer，避免资源被拉伸。
   useEffect(() => {
-    if (!url) {
-      setLayers([])
-      setResolution(null)
+    const element = stageRef.current
+    if (!element) {
+      setStageSize(null)
       return
     }
-    setLayers(buildLayers(url, scaleMode))
-  }, [url, scaleMode])
+
+    const updateStageSize = () => {
+      const { clientWidth, clientHeight } = element
+      if (clientWidth <= 0 || clientHeight <= 0) return
+      setStageSize((current) => (
+        current?.width === clientWidth && current?.height === clientHeight
+          ? current
+          : { width: clientWidth, height: clientHeight }
+      ))
+    }
+
+    updateStageSize()
+    const resizeObserver = new ResizeObserver(updateStageSize)
+    resizeObserver.observe(element)
+    return () => resizeObserver.disconnect()
+  }, [url])
+
+  const layers = useMemo(() => {
+    if (!url) return []
+    return buildLayers(url, scaleMode, resolution, stageSize)
+  }, [url, scaleMode, resolution, stageSize])
 
   // 通过 IPC 获取媒体文件实际分辨率
   useEffect(() => {
@@ -101,6 +152,7 @@ export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) 
 
   return (
     <div
+      ref={stageRef}
       className="preview-stage"
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
