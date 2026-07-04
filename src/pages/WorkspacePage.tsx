@@ -62,6 +62,10 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const media = useWorkspaceMedia()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
+  // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
+  const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
+  const allowStaleLut = !edit.compareOriginal
+
   // ── ImagePreview ref（用于导出时访问 canvas） ──
   const previewRef = useRef<ImagePreviewHandle>(null)
   const nullCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -71,7 +75,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     activeMedia: media.activeMedia,
     canvasRef: previewRef.current?.canvasRef ?? nullCanvasRef,
     imageRect: previewRef.current?.imageRect ?? { x: 0, y: 0, width: 1, height: 1 },
-    pipeline: edit.previewPipeline,
+    pipeline: displayPipeline,
   })
   const batchExport = useCallback(() => {
     if (media.selectedIndices.size > 1) {
@@ -309,7 +313,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
             ref={previewRef}
             filePath={media.activeMedia?.path ?? ''}
             isLivePhoto={media.activeMedia?.isLivePhoto}
-            pipeline={edit.previewPipeline}
+            pipeline={displayPipeline}
+            allowStaleLut={allowStaleLut}
             cropActive={edit.cropActive}
             // 裁剪模式下拦截双击（阻止缩放），否则使用 ImagePreview 默认的缩放行为
             onDoubleClick={edit.cropActive ? () => {} : undefined}
