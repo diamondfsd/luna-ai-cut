@@ -55,7 +55,18 @@ async function ensureExportThumbnail(filePath: string, fileName: string, kind: s
     const thumbDir = thumbnailDir(cacheDir)
     return await generateThumbnail(filePath, thumbDir, fileName, kind)
   } catch (error) {
-    console.warn('[export] 缩略图生成失败:', fileName, error)
+    let size: number | null = null
+    try {
+      size = (await fs.stat(filePath)).size
+    } catch {}
+    logMainWarn('[export] 缩略图生成失败', {
+      fileName,
+      filePath,
+      kind,
+      size,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
     return null
   }
 }

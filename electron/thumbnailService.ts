@@ -66,6 +66,39 @@ const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bm
 /** 视频扩展名集合 */
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.mts', '.m2ts'])
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function waitForStableFile(filePath: string, attempts = 6, intervalMs = 300): Promise<{ size: number }> {
+  let previousSize = -1
+  for (let i = 0; i < attempts; i += 1) {
+    const stats = await fs.stat(filePath)
+    if (stats.size > 0 && stats.size === previousSize) {
+      return { size: stats.size }
+    }
+    previousSize = stats.size
+    await sleep(intervalMs)
+  }
+  const stats = await fs.stat(filePath)
+  return { size: stats.size }
+}
+
+function ffmpegErrorText(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const err = error as { message?: unknown; stderr?: unknown }
+    return `${typeof err.message === 'string' ? err.message : ''}\n${typeof err.stderr === 'string' ? err.stderr : ''}`
+  }
+  return String(error)
+}
+
+function isTemporarilyUnreadableVideo(error: unknown): boolean {
+  const text = ffmpegErrorText(error)
+  return text.includes('moov atom not found')
+    || text.includes('Invalid data found when processing input')
+    || text.includes('Error opening input')
+}
+
 // ====== 队列系统（多 worker 并发） ======
 
 interface ThumbnailTask {
@@ -231,23 +264,40 @@ export async function generateVideoThumbnail(
   const ffmpegPath = getFfmpegPath()
 
   try {
+    const ready = await waitForStableFile(sourcePath)
+    logMainDebug(`[缩略图] 视频文件就绪检查`, { sourcePath, size: ready.size })
     // 取视频第一帧，等比缩放到最长边 400px
-    await execFileAsync(
-      ffmpegPath,
-      [
-        '-ss', '0',
-        '-i', sourcePath,
-        '-vframes', '1',
-        '-vf', `scale=${THUMBNAIL_MAX}:${THUMBNAIL_MAX}:force_original_aspect_ratio=decrease`,
-        '-c:v', 'libwebp',
-        '-lossless', '0',
-        '-q:v', '80',
-        '-f', 'webp',
-        '-y',
-        tmp,
-      ],
-      { timeout: 15000 },
-    )
+    const args = [
+      '-ss', '0',
+      '-i', sourcePath,
+      '-vframes', '1',
+      '-vf', `scale=${THUMBNAIL_MAX}:${THUMBNAIL_MAX}:force_original_aspect_ratio=decrease`,
+      '-c:v', 'libwebp',
+      '-lossless', '0',
+      '-q:v', '80',
+      '-f', 'webp',
+      '-y',
+      tmp,
+    ]
+    let lastError: unknown
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      try {
+        await execFileAsync(ffmpegPath, args, { timeout: 15000 })
+        lastError = undefined
+        break
+      } catch (err) {
+        lastError = err
+        if (!isTemporarilyUnreadableVideo(err) || attempt === 5) break
+        logMainWarn(`[缩略图] 视频暂不可读，稍后重试`, {
+          sourcePath,
+          fileId,
+          attempt,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        await sleep(500)
+      }
+    }
+    if (lastError) throw lastError
     // 生成成功，原子 rename
     await fs.rename(tmp, dest)
   } catch (err) {
