@@ -5,7 +5,7 @@ import path from 'node:path'
 import { createExportTask, getExportTaskById, updateTaskItemProgress, addTaskItem } from './exportTaskService'
 import { getSettings } from './fileService'
 import { safeName } from './filePathUtils'
-import { FfmpegPipeline, getFfmpegPath } from './ffmpeg/pipeline'
+import { FfmpegPipeline, getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
 import { detectHardwareAccel } from './ffmpeg/hwaccel'
 import { CodecModule } from './ffmpeg/codec'
 import { BitrateModule } from './ffmpeg/bitrate'
@@ -300,11 +300,46 @@ export function register(_ctx?: IpcContext): void {
 
       if (!isVid && ['.jpg', '.jpeg'].includes(outExt.toLowerCase())) {
         logMainInfo('[FFmpegFast] 图片 JPEG 高质量导出', { exportId, outputExt: outExt, qscale: 1 })
-        ffPipeline.addModule({
-          name: 'jpegQuality',
-          isActive: () => true,
-          build: () => ({ outputArgs: ['-q:v', '1'] }),
-        })
+
+        // 检测源图片尺寸，超大图（任一维 > 12000）需要特殊编码参数
+        let isLargeImage = false
+        try {
+          const imageProbe = await probeMedia(sourcePath)
+          const iw = imageProbe.videoWidth
+          const ih = imageProbe.videoHeight
+          isLargeImage = iw > 12000 || ih > 12000
+          logMainInfo('[FFmpegFast] 图片尺寸探测', { exportId, iw, ih, isLargeImage })
+        } catch (probeErr) {
+          logMainWarn('[FFmpegFast] 图片尺寸探测失败', { error: String(probeErr) })
+        }
+
+        if (isLargeImage) {
+          // 超大图使用 yuvj420p（全范围）避免 mjpeg 编码器帧线程初始化失败，
+          // 同时使用单线程编码降低内存占用
+          logMainInfo('[FFmpegFast] 超大图应用特殊编码参数', { exportId })
+          ffPipeline.addModule({
+            name: 'largeImageJpegFix',
+            isActive: () => true,
+            build: () => ({
+              outputArgs: ['-c:v', 'mjpeg', '-q:v', '1', '-pix_fmt', 'yuvj420p', '-threads', '1'],
+            }),
+          })
+          // 在滤镜链末尾覆盖像素格式为 yuvj420p，避免 pipelineCompiler 中的 format=yuv420p
+          ffPipeline.addModule({
+            name: 'largeImageFormatOverride',
+            isActive: () => true,
+            build: (ctx) => ({
+              filters: [`[${ctx.prevLabel}]format=yuvj420p[vout]`],
+              outputLabel: 'vout',
+            }),
+          })
+        } else {
+          ffPipeline.addModule({
+            name: 'jpegQuality',
+            isActive: () => true,
+            build: () => ({ outputArgs: ['-q:v', '1'] }),
+          })
+        }
       }
 
       if (isVid) {

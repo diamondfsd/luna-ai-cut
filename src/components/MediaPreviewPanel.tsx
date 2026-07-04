@@ -93,7 +93,7 @@ export function MediaPreviewPanel({
       const wmAspect = wmSize.height / wmSize.width
       const ratios = resolveWatermarkRatios(currentFile.sourceDeviceId, previewWatermarkSettings.style, cw, ch, previewWatermarkSettings.position)
       const widthRatio = ratios?.widthRatio ?? 0.15
-      const targetW = Math.min(Math.round(sensorW * widthRatio), wmSize.width)
+      const targetW = Math.round(sensorW * widthRatio)
       const targetH = Math.round(targetW * wmAspect)
 
       const [vPos] = previewWatermarkSettings.position.split('-') as ['top' | 'bottom']
