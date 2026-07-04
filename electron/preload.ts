@@ -207,6 +207,7 @@ const lunaRenderCoreApi = {
   releaseTexture: (textureId: number) => ipcRenderer.invoke('lrc:releaseTexture', textureId),
   renderFrame: (canvasWidth: number, canvasHeight: number, layers: RenderLayer[]) =>
     ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
+  renderPreview: (input: any) => ipcRenderer.invoke('lrc:renderPreview', input),
   exportVideo: (
     inputPath: string, outputPath: string,
     canvasWidth: number, canvasHeight: number,

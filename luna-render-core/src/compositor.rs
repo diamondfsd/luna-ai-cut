@@ -1,6 +1,6 @@
 use crate::RenderLayer;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
@@ -8,6 +8,11 @@ use std::sync::Mutex;
 use wgpu::TexelCopyBufferInfo;
 use wgpu::TexelCopyBufferLayout;
 use wgpu::TexelCopyTextureInfo;
+
+/// 静态图纹理 LRU 缓存上限
+const MAX_TEXTURE_CACHE: usize = 10;
+/// 预览纹理最大边长
+const PREVIEW_MAX_SIZE: u32 = 1920;
 
 // ── 文件日志 ──
 static LOG_FILE: Mutex<Option<std::fs::File>> = Mutex::new(None);
@@ -151,6 +156,18 @@ struct TextureEntry {
     height: u32,
 }
 
+// ── render_preview 层输入 ──
+
+/// 单个渲染层描述（静态图或视频帧）
+pub struct PreviewLayerInput {
+    pub file_path: String,
+    pub is_video: bool,
+    pub video_time: f64,
+    pub dst_x: f64, pub dst_y: f64, pub dst_w: f64, pub dst_h: f64,
+    pub src_x: f64, pub src_y: f64, pub src_w: f64, pub src_h: f64,
+    pub opacity: f64, pub z_index: i32,
+}
+
 // ── Compositor ──
 
 pub struct Compositor {
@@ -165,6 +182,14 @@ pub struct Compositor {
     max_texture_size: u32,
 
     output_texture: Option<(wgpu::Texture, u32, u32)>,
+
+    // ── render_preview 内部状态 ──
+    /// 静态图路径→纹理ID LRU 缓存
+    texture_cache: HashMap<String, u32>,
+    /// LRU 顺序（前=最旧，后=最新）
+    cache_order: VecDeque<String>,
+    /// 已探测过的视频文件信息 <path → (width, height)>
+    video_probed: HashMap<String, (u32, u32)>,
 }
 
 /// 创建 bind group layout（每个 layer 一个）
@@ -363,6 +388,9 @@ impl Compositor {
             next_texture_id: 1,
             max_texture_size,
             output_texture: None,
+            texture_cache: HashMap::new(),
+            cache_order: VecDeque::new(),
+            video_probed: HashMap::new(),
         })
     }
 
@@ -758,4 +786,194 @@ impl Compositor {
 
         Ok(result)
     }
+
+    // ───────────── render_preview 统一入口 ─────────────
+
+    /// 从 LRU 缓存中取静态纹理，命中后移到 MRU 位置
+    fn get_cached_texture(&mut self, path: &str) -> Option<u32> {
+        let tex_id = self.texture_cache.get(path).copied()?;
+        // 移到 cache_order 末尾（最近使用）
+        if let Some(pos) = self.cache_order.iter().position(|k| k == path) {
+            let key = self.cache_order.remove(pos).unwrap();
+            self.cache_order.push_back(key);
+        }
+        Some(tex_id)
+    }
+
+    /// 将静态纹理加入 LRU 缓存，超出上限时淘汰最旧的
+    fn cache_static_texture(&mut self, path: String, tex_id: u32) -> Result<(), String> {
+        self.texture_cache.insert(path.clone(), tex_id);
+        self.cache_order.push_back(path);
+        while self.cache_order.len() > MAX_TEXTURE_CACHE {
+            let oldest = self.cache_order.pop_front().unwrap();
+            if let Some(tid) = self.texture_cache.remove(&oldest) {
+                self.release_texture(tid)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// 探测视频文件尺寸（结果缓存，避免重复 ffprobe）
+    fn probe_video(&mut self, ffprobe: &str, path: &str) -> Result<(u32, u32), String> {
+        if let Some(&dims) = self.video_probed.get(path) {
+            return Ok(dims);
+        }
+        let output = Command::new(ffprobe)
+            .args(["-v", "quiet", "-print_format", "json", "-show_streams", path])
+            .output().map_err(|e| format!("ffprobe {}: {}", path, e))?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&stdout).map_err(|e| format!("ffprobe json: {}", e))?;
+        let streams = parsed["streams"]
+            .as_array().ok_or_else(|| "no streams".to_string())?;
+        let vs = streams
+            .iter().find(|s| s["codec_type"].as_str() == Some("video"))
+            .ok_or_else(|| "no video stream".to_string())?;
+        let w = vs["width"].as_u64().unwrap_or(0) as u32;
+        let h = vs["height"].as_u64().unwrap_or(0) as u32;
+        if w == 0 || h == 0 {
+            return Err(format!("invalid video dimensions in {}", path));
+        }
+        self.video_probed.insert(path.to_string(), (w, h));
+        Ok((w, h))
+    }
+
+    /// 统一渲染预览帧：静态图走 LRU 缓存，视频逐帧 seek 解码
+    pub fn render_preview(
+        &mut self,
+        ffmpeg: &str,
+        ffprobe: &str,
+        width: u32,
+        height: u32,
+        layers: &[PreviewLayerInput],
+    ) -> Result<Vec<u8>, String> {
+        let mut result_layers = Vec::with_capacity(layers.len());
+
+        for layer in layers {
+            let tex_id = if layer.is_video {
+                // ── 视频帧：ffprobe 探测 → ffmpeg seek → 一次性纹理 ──
+                let (vw, vh) = self.probe_video(ffprobe, &layer.file_path)?;
+                let max_edge = vw.max(vh);
+                let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
+                    let s = PREVIEW_MAX_SIZE as f64 / max_edge as f64;
+                    ((vw as f64 * s).round().max(1.0) as u32,
+                     (vh as f64 * s).round().max(1.0) as u32)
+                } else {
+                    (vw, vh)
+                };
+                let mut proc = Command::new(ffmpeg)
+                    .args([
+                        "-ss", &format!("{:.3}", layer.video_time),
+                        "-i", &layer.file_path,
+                        "-vf", &format!("scale={}:{}:flags=lanczos", dw, dh),
+                        "-pix_fmt", "rgba",
+                        "-f", "rawvideo",
+                        "-vframes", "1",
+                        "-loglevel", "error",
+                        "pipe:1",
+                    ])
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .map_err(|e| format!("ffmpeg spawn {}: {}", layer.file_path, e))?;
+                let expected = (dw * dh * 4) as usize;
+                let mut rgba = vec![0u8; expected];
+                proc.stdout
+                    .take().ok_or_else(|| "no stdout".to_string())?
+                    .read_exact(&mut rgba)
+                    .map_err(|e| format!("read frame: {}", e))?;
+                proc.wait().ok();
+                self.load_texture(&rgba, dw, dh)?
+            } else {
+                // ── 静态图：LRU 缓存 ──
+                let cached = self.get_cached_texture(&layer.file_path);
+                if let Some(tid) = cached {
+                    tid
+                } else {
+                    let (rgba, w, h) = decode_static_image(ffmpeg, ffprobe, &layer.file_path)?;
+                    let tid = self.load_texture(&rgba, w, h)?;
+                    self.cache_static_texture(layer.file_path.clone(), tid)?;
+                    tid
+                }
+            };
+
+            result_layers.push(crate::RenderLayer {
+                texture_id: tex_id,
+                dst_x: layer.dst_x,
+                dst_y: layer.dst_y,
+                dst_w: layer.dst_w,
+                dst_h: layer.dst_h,
+                src_x: layer.src_x,
+                src_y: layer.src_y,
+                src_w: layer.src_w,
+                src_h: layer.src_h,
+                opacity: layer.opacity,
+                z_index: layer.z_index,
+            });
+        }
+
+        let result = self.render(width, height, &result_layers)?;
+
+        // 释放视频帧的临时纹理（静态图纹理保留在缓存中）
+        for (i, layer) in layers.iter().enumerate() {
+            if layer.is_video {
+                self.release_texture(result_layers[i].texture_id)?;
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+/// 使用 ffmpeg 解码静态图片到 RGBA（按 PREVIEW_MAX_SIZE 等比缩小）
+fn decode_static_image(ffmpeg: &str, ffprobe: &str, path: &str) -> Result<(Vec<u8>, u32, u32), String> {
+    let output = Command::new(ffprobe)
+        .args(["-v", "quiet", "-print_format", "json", "-show_streams", path])
+        .output().map_err(|e| format!("ffprobe {}: {}", path, e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).map_err(|e| format!("ffprobe json: {}", e))?;
+    let streams = parsed["streams"]
+        .as_array().ok_or_else(|| "no streams".to_string())?;
+    let vs = streams
+        .iter().find(|s| s["codec_type"].as_str() == Some("video"))
+        .ok_or_else(|| "no video stream".to_string())?;
+    let source_w = vs["width"].as_u64().unwrap_or(0) as u32;
+    let source_h = vs["height"].as_u64().unwrap_or(0) as u32;
+    if source_w == 0 || source_h == 0 {
+        return Err(format!("invalid image size in {}", path));
+    }
+
+    let max_edge = source_w.max(source_h);
+    let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
+        let s = PREVIEW_MAX_SIZE as f64 / max_edge as f64;
+        ((source_w as f64 * s).round().max(1.0) as u32,
+         (source_h as f64 * s).round().max(1.0) as u32)
+    } else {
+        (source_w, source_h)
+    };
+
+    let mut proc = Command::new(ffmpeg)
+        .args([
+            "-i", path,
+            "-vf", &format!("scale={}:{}:flags=lanczos", dw, dh),
+            "-pix_fmt", "rgba",
+            "-f", "rawvideo",
+            "-vframes", "1",
+            "-loglevel", "error",
+            "pipe:1",
+        ])
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("ffmpeg spawn {}: {}", path, e))?;
+
+    let expected = (dw * dh * 4) as usize;
+    let mut rgba = vec![0u8; expected];
+    proc.stdout
+        .take().ok_or_else(|| "no stdout".to_string())?
+        .read_exact(&mut rgba)
+        .map_err(|e| format!("read {}: {}", path, e))?;
+    proc.wait().ok();
+
+    log!("decode_static_image {} {}x{} -> {}x{}", path, source_w, source_h, dw, dh);
+    Ok((rgba, dw, dh))
 }
