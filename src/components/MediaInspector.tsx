@@ -1,9 +1,9 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
 import { IconButton } from '../ui'
 import { formatBytes } from '../lib/format'
-import { WatermarkSettings } from './WatermarkSettings'
-import type { LunaFile, MediaMetadata, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { filePathToLunaFile, emptyDetails } from './previewModalUtils'
+import type { MediaMetadata } from '../shared/types'
 
 // ─── MediaDetails ──────────────────────────────────────
 // (shared with PreviewModal.tsx)
@@ -27,21 +27,8 @@ export interface MediaDetails {
 // ─── Props ─────────────────────────────────────────────
 
 interface MediaInspectorProps {
-  file: LunaFile
-  mediaDetails: MediaDetails
-  mediaMetadata: MediaMetadata | null
-  metadataLoading: boolean
-  isDownloaded: boolean
-  imageZoom: number
-  baseScale: number
-  onZoomIn: () => void
-  onZoomOut: () => void
-  onResetZoom: () => void
+  filePath: string
   onToggleCollapse?: () => void
-  watermarkSettings?: WatermarkSettingsType
-  onWatermarkChange?: (settings: WatermarkSettingsType) => void
-  /** 水印预览文件路径，用于自动检测设备 */
-  watermarkFilePath?: string
 }
 
 // ─── Helpers ───────────────────────────────────────────
@@ -301,23 +288,33 @@ function MetadataSection({ section, metaMap }: { section: SectionDef; metaMap: M
 
 // ─── Component ─────────────────────────────────────────
 
-export function MediaInspector({
-  file,
-  mediaDetails,
-  mediaMetadata,
-  metadataLoading,
-  isDownloaded,
-  imageZoom,
-  baseScale,
-  onZoomIn,
-  onZoomOut,
-  onResetZoom,
-  onToggleCollapse,
-  watermarkSettings,
-  onWatermarkChange,
-  watermarkFilePath,
-}: MediaInspectorProps) {
+export function MediaInspector({ filePath, onToggleCollapse }: MediaInspectorProps) {
+  const file = useMemo(() => filePathToLunaFile(filePath), [filePath])
+
+  const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null)
+  const [metadataLoading, setMetadataLoading] = useState(false)
+  const [mediaDetails] = useState<MediaDetails>(() => emptyDetails())
+  const [imageZoom, setImageZoom] = useState(1)
+  const [baseScale] = useState(1)
+
+  const isDownloaded = !!file.downloadFilePath
+
   const metaMap = useMemo(() => buildMetadataMap(mediaMetadata), [mediaMetadata])
+
+  // 加载元数据
+  useEffect(() => {
+    if (file.kind === 'unknown') {
+      setMediaMetadata(null)
+      return
+    }
+    const metaPath = file.downloadFilePath ?? file.localPath
+    if (!metaPath) return
+    setMetadataLoading(true)
+    window.luna.getMediaMetadata(file, metaPath)
+      .then(setMediaMetadata)
+      .catch(() => setMediaMetadata({ groups: [] }))
+      .finally(() => setMetadataLoading(false))
+  }, [file.id, file.kind, file.downloadFilePath, file.localPath])
 
   const histogram = mediaDetails.histogram
   const histogramWidth = 280
@@ -336,13 +333,16 @@ export function MediaInspector({
     })
   })
 
+  const handleZoomIn = () => setImageZoom((z) => Math.min(8, z * 1.5))
+  const handleZoomOut = () => setImageZoom((z) => {
+    const next = z / 1.5
+    if (next <= 1) return 1
+    return next
+  })
+  const handleResetZoom = () => setImageZoom(1)
+
   return (
     <aside className="media-inspector">
-      {/* ── 水印设置（顶部） ── */}
-      {watermarkSettings && onWatermarkChange && (
-        <WatermarkSettings settings={watermarkSettings} onChange={onWatermarkChange} filePath={watermarkFilePath} />
-      )}
-
       {/* ── 文件信息（通用） ── */}
       <section>
         <div className="inspector-section-header">
@@ -402,25 +402,9 @@ export function MediaInspector({
               </div>
             </dl>
             <div className="zoom-tools">
-              <IconButton
-                variant="light"
-                onClick={onZoomOut}
-                title="缩小"
-                icon={<ZoomOut size={14} />}
-              />
-              <IconButton
-                variant="light"
-                style={{ fontSize: 12, fontWeight: 400 }}
-                icon="1x"
-                onClick={onResetZoom}
-                title="适配屏幕"
-              />
-              <IconButton
-                variant="light"
-                onClick={onZoomIn}
-                title="放大"
-                icon={<ZoomIn size={14} />}
-              />
+              <IconButton variant="light" onClick={handleZoomOut} title="缩小" icon={<ZoomOut size={14} />} />
+              <IconButton variant="light" style={{ fontSize: 12, fontWeight: 400 }} icon="1x" onClick={handleResetZoom} title="适配屏幕" />
+              <IconButton variant="light" onClick={handleZoomIn} title="放大" icon={<ZoomIn size={14} />} />
             </div>
           </section>
 

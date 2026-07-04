@@ -3,8 +3,8 @@ import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
-import { emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
-import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { filePathToLunaFile, filePathToPreviewUrl, thumbnailForPath } from './previewModalUtils'
+import type { DownloadProgress, LunaFile, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
@@ -41,7 +41,6 @@ export function PreviewModal({
   onDownload,
   preview: deprecatedPreview,
   downloadProgress,
-  isDownloadsPage = false,
 }: PreviewModalProps) {
   const thumbStripRef = useRef<HTMLDivElement | null>(null)
   const activeThumbRef = useRef<HTMLButtonElement | null>(null)
@@ -120,13 +119,10 @@ export function PreviewModal({
   }, [file.id])
 
   // ── 状态 ──
-  const [mediaDetails, setMediaDetails] = useState<MediaDetails>(() => emptyDetails())
-  const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null)
-  const [metadataLoading, setMetadataLoading] = useState(false)
-  const [imageZoom, setImageZoom] = useState(1)
+  const [, setImageZoom] = useState(1)
   const [, setImagePan] = useState({ x: 0, y: 0 })
-  const [baseScale, setBaseScale] = useState(1)
-  const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
+  const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [watermarkSettings] = useState<WatermarkSettingsType>({
     enabled: true,
     style: 'luna_ultra',
     position: 'BottomCenter' as any,
@@ -135,12 +131,9 @@ export function PreviewModal({
   const completedDownloadPath = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists'
     ? downloadProgress.destinationPath ?? null
     : null
-  const isDownloadingCurrentFile = downloadProgress?.status === 'queued' || downloadProgress?.status === 'downloading'
   const downloadedPath = file.downloadFilePath ?? file.localPath ?? completedDownloadPath
-  const isDownloaded = !!downloadedPath
   const previewMatchesFile = preview?.fileName === file.name
   const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
-  const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
 
   // 切换文件时打印水印参数
   useEffect(() => {
@@ -157,68 +150,6 @@ export function PreviewModal({
       ratios,
     })
   }, [file.id, watermarkSettings.enabled, watermarkSettings.style, watermarkSettings.position])
-
-  useEffect(() => {
-    setImageZoom(1)
-    setImagePan({ x: 0, y: 0 })
-    setBaseScale(1)
-  }, [file.id])
-
-  // 从元数据回填文件信息
-  const enrichedFile = useMemo(() => {
-    if (!mediaMetadata) return file
-    const map = new Map<string, string>()
-    for (const group of mediaMetadata.groups) {
-      for (const entry of group.entries) map.set(entry.key, entry.value)
-    }
-    let bytes = file.bytes
-    let capturedAt = file.capturedAt
-    if (bytes === null || bytes === undefined) {
-      const fileSizeStr = map.get('size')
-      if (fileSizeStr) {
-        const num = Number(fileSizeStr)
-        if (!Number.isNaN(num)) bytes = Math.round(num)
-      }
-    }
-    if (!capturedAt) {
-      capturedAt = map.get('DateTimeOriginal') ?? map.get('CreateDate') ?? map.get('ModifyDate') ?? null
-    }
-    if (bytes === file.bytes && capturedAt === file.capturedAt) return file
-    return { ...file, bytes, capturedAt }
-  }, [file, mediaMetadata])
-
-  // 元数据懒加载
-  useEffect(() => {
-    if (file.kind === 'unknown') {
-      setMediaMetadata(null)
-      return
-    }
-    if (file.kind === 'image') {
-      const metaPath = downloadedPath
-      if (!metaPath) return
-      setMetadataLoading(true)
-      window.luna.getMediaMetadata(file, metaPath)
-        .then(setMediaMetadata)
-        .catch(() => setMediaMetadata({ groups: [] }))
-        .finally(() => setMetadataLoading(false))
-      return
-    }
-    if (file.kind === 'video' && isDownloaded) {
-      setMetadataLoading(true)
-      window.luna.getMediaMetadata(file, downloadedPath)
-        .then((meta) => {
-          setMediaMetadata(meta)
-          const videoGroup = meta.groups.find((g) => g.name === '视频')
-          const fpsEntry = videoGroup?.entries.find((e) => e.key === '帧率')
-          if (fpsEntry) {
-            const fps = Number.parseFloat(fpsEntry.value)
-            if (!Number.isNaN(fps)) setMediaDetails((prev) => ({ ...prev, frameRate: fps }))
-          }
-        })
-        .catch(() => {})
-        .finally(() => setMetadataLoading(false))
-    }
-  }, [file.id, file.kind, isDownloaded, downloadedPath])
 
   useEffect(() => {
     function handleWheel(event: WheelEvent): void {
@@ -251,18 +182,16 @@ export function PreviewModal({
     <Dialog open variant="fullscreen" onOpenChange={(o) => !o && onClose()}>
       <section className="preview-modal">
         <PreviewModalHeader
+          file={file}
           downloadProgress={downloadProgress}
-          file={enrichedFile}
-          isDownloaded={isDownloaded}
-          isDownloadingCurrentFile={isDownloadingCurrentFile}
-          isDownloadsPage={isDownloadsPage}
-          progressPercent={progressPercent}
+          inspectorOpen={inspectorOpen}
+          onSetInspectorOpen={setInspectorOpen}
           onClose={onClose}
           onDownload={onDownload}
           onReveal={onReveal}
         />
 
-        <div className="preview-body inspector-collapsed">
+        <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
           <div className="preview-stage-col">
             <PreviewStage url={displaySource} />
 
@@ -275,29 +204,7 @@ export function PreviewModal({
             />
           </div>
 
-          {false && (
-            <MediaInspector
-              file={enrichedFile}
-              mediaDetails={mediaDetails}
-              mediaMetadata={mediaMetadata}
-              metadataLoading={metadataLoading}
-              isDownloaded={isDownloaded}
-              imageZoom={imageZoom}
-              baseScale={baseScale}
-              watermarkSettings={watermarkSettings}
-              onWatermarkChange={setWatermarkSettings}
-              watermarkFilePath={downloadedPath ?? undefined}
-              onZoomIn={() => setImageZoom((z) => Math.min(8, z * 1.5))}
-              onZoomOut={() => {
-                setImageZoom((z) => {
-                  const next = z / 1.5
-                  if (next <= 1) { setImagePan({ x: 0, y: 0 }); return 1 }
-                  return next
-                })
-              }}
-              onResetZoom={() => { setImageZoom(1); setImagePan({ x: 0, y: 0 }) }}
-            />
-          )}
+          {inspectorOpen && <MediaInspector filePath={filePath} onToggleCollapse={() => setInspectorOpen(false)} />}
         </div>
       </section>
     </Dialog>
