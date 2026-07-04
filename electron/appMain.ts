@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { appendFile, cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { checkForUpdates } from './updateService'
@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
 import { initLogger, logMainDebug, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
-import { createExportTask, getExportTasks, getExportTaskById, clearExportTasks, updateTaskItemProgress, addTaskItem } from './exportTaskService'
+import { createExportTask, getExportTasks, getExportTaskById, clearExportTasks, updateTaskItemProgress } from './exportTaskService'
 
 import {
   cacheFile,
@@ -67,13 +67,11 @@ import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHa
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 import { safeName } from './filePathUtils'
 import { applyColorGrading, previewColorFrame } from './videoPipelineService'
-import { FfmpegPipeline, getFfmpegPath } from './ffmpeg/pipeline'
+import { getFfmpegPath } from './ffmpeg/pipeline'
 import { detectHardwareAccel } from './ffmpeg/hwaccel'
-import { CodecModule } from './ffmpeg/codec'
-import { BitrateModule } from './ffmpeg/bitrate'
-import { FullPipelineModule } from './ffmpeg/pipelineCompiler'
-import { bakeColorLut, bakeColorLutData } from './ffmpeg/lutGenerator'
-import { watermarkFileFor, isGoogleMotionPhoto, combineLivePhoto, extractImageFromLivePhoto, extractLivePhotoVideo } from './watermarkService'
+import { bakeColorLutData } from './ffmpeg/lutGenerator'
+import { isGoogleMotionPhoto } from './watermarkService'
+import { registerWorkspaceFfmpegExport } from './workspaceFfmpegExport'
 import type {
   AiConfig,
   AppSettings,
@@ -91,14 +89,6 @@ import type {
 } from '../src/shared/types'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
-function fileSizeBytes(filePath: string): number | null {
-  try {
-    return statSync(filePath).size
-  } catch {
-    return null
-  }
-}
 
 // The built directory structure
 //
@@ -829,291 +819,8 @@ function registerIpc(): void {
     // 返回 ArrayBuffer 给渲染进程，预览链路不再写临时 .cube 文件。
     return { lutBuffer: lutData.buffer as ArrayBuffer, lutSize: 33 }
   })
-  // ── FFmpegFast 导出（直达 ffmpeg 完整管线，绕过 WebGL readPixels） ──
-  ipcMain.handle('workspace:exportFFmpeg', async (event, sourcePath: string, pipeline: Record<string, any>, exportMeta: { exportId: string; taskName: string; taskId?: string; fileName?: string; index?: number; totalFiles?: number; createdAt?: number }) => {
-    const settings = await getSettings()
-    if (!settings.exportDir) throw new Error('未设置导出目录')
-    await mkdir(settings.exportDir, { recursive: true })
-    const baseName = path.basename(sourcePath)
-    const ext = path.extname(baseName)
-    const nameBase = path.basename(baseName, ext) || 'workspace'
-    const isVid = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv'].includes(ext.toLowerCase())
-    const outExt = isVid ? '.mp4' : ext
-    const fileName = safeName(`${nameBase}_ffmpeg_fast_${Date.now()}${outExt}`)
-    const destinationPath = path.join(settings.exportDir, fileName)
+  registerWorkspaceFfmpegExport()
 
-    const exportId = exportMeta?.exportId ?? `ffmpeg_fast_${nameBase}_${Date.now()}`
-    const taskName = exportMeta?.taskName ?? `${nameBase}导出`
-
-    logMainInfo(`[FFmpegFast] 收到导出请求`, {
-      exportId, taskName, sourcePath, destinationPath, isVid,
-      color: pipeline.color ? JSON.stringify({
-        exposure: pipeline.color.exposure,
-        brightness: pipeline.color.brightness,
-        contrast: pipeline.color.contrast,
-        saturation: pipeline.color.saturation,
-        temperature: pipeline.color.temperature,
-        tint: pipeline.color.tint,
-        shadows: pipeline.color.shadows,
-        highlights: pipeline.color.highlights,
-        whites: pipeline.color.whites,
-        blacks: pipeline.color.blacks,
-        vibrance: pipeline.color.vibrance,
-        clarity: pipeline.color.clarity,
-        texture: pipeline.color.texture,
-        sharpen: pipeline.color.sharpen,
-        denoise: pipeline.color.denoise,
-        gradeShadowsAmount: pipeline.color.gradeShadowsAmount,
-        gradeMidAmount: pipeline.color.gradeMidAmount,
-        gradeHighlightsAmount: pipeline.color.gradeHighlightsAmount,
-        levelsBlack: pipeline.color.levelsBlack,
-        levelsWhite: pipeline.color.levelsWhite,
-        hslSat: pipeline.color.hslSat,
-      }) : 'no-color',
-      hasCurve: !!pipeline.color?.curve?.points,
-      transform: pipeline.transform ? JSON.stringify(pipeline.transform) : 'no-transform',
-      watermark: pipeline.watermark ? JSON.stringify({ enabled: pipeline.watermark.enabled, style: pipeline.watermark.style, position: pipeline.watermark.position }) : 'no-watermark',
-    })
-
-    const task = exportMeta?.taskId
-      ? await getExportTaskById(exportMeta.taskId) ?? await createExportTask(taskName, [{ exportId, fileName, kind: isVid ? 'video' : 'image' }], exportMeta.taskId)
-      : await createExportTask(taskName, [{ exportId, fileName, kind: isVid ? 'video' : 'image' }])
-    if (!task) throw new Error('导出任务不存在')
-    // 批量导出时，后续项追加到已存在的任务中
-    if (exportMeta?.taskId && !task.items.some((i) => i.exportId === exportId)) {
-      await addTaskItem(task.id, { exportId, fileName: exportMeta.fileName ?? fileName, kind: isVid ? 'video' : 'image' })
-    }
-    const taskStart = Date.now()
-    const win = BrowserWindow.fromWebContents(event.sender)
-    let lutPath: string | undefined
-
-    // 创建缓存目录（用于存放 LUT 等临时文件），
-    // 避免 Windows 上 os.tmpdir() 可能返回裸盘符导致 path.join 不添加分隔符
-    const lunaCacheDir = path.join(app.getPath('userData'), '.luna-cache')
-    await mkdir(lunaCacheDir, { recursive: true })
-    logMainInfo(`[FFmpegFast] 导出诊断信息`, { exportDir: settings.exportDir, lunaCacheDir })
-
-    // ── Live Photo 检测：对非视频文件检查 Google Motion Photo XMP ──
-    if (!isVid && await isGoogleMotionPhoto(sourcePath)) {
-      logMainInfo('[FFmpegFast] 检测到 Live Photo，转入专用处理流程', { sourcePath, exportId, taskId: task.id })
-      const liveTmpDir = path.join(lunaCacheDir, `.live_tmp_${exportId}`)
-      await mkdir(liveTmpDir, { recursive: true })
-      const appleExportFolder = process.platform === 'darwin' && settings.exportAppleLivePhoto
-        ? path.join(liveTmpDir, `${nameBase}_apple_pair_${Date.now()}`)
-        : undefined
-
-      // 进度报告辅助函数
-      const sendProgress = (pct: number): void => {
-        win?.webContents.send('export:progress', {
-          exportId, percent: pct,
-          status: pct >= 100 ? 'done' : 'exporting' as const,
-          fileName: exportMeta?.fileName ?? fileName,
-          taskId: task.id, taskName,
-          createdAt: exportMeta?.createdAt,
-          index: exportMeta?.index ?? 0,
-          totalFiles: exportMeta?.totalFiles ?? 1,
-        })
-        void updateTaskItemProgress(task.id, exportId, taskStart, pct, pct >= 100 ? 'done' : 'exporting', { destinationPath })
-      }
-
-      try {
-        // 1. 提取图片和视频到临时目录
-        const extractedImage = path.join(liveTmpDir, 'image.jpg')
-        const extractedVideo = path.join(liveTmpDir, 'video.mp4')
-        const processedImage = path.join(liveTmpDir, 'processed.jpg')
-        const processedVideo = path.join(liveTmpDir, 'processed.mp4')
-        await extractImageFromLivePhoto(sourcePath, extractedImage)
-        await extractLivePhotoVideo(sourcePath, extractedVideo)
-        sendProgress(2)
-
-        // 2. 图片走图片管线
-        const imgPipeline = new FfmpegPipeline()
-        let imgWatermarkPath: string | undefined
-        if (pipeline.watermark?.enabled && pipeline.watermark?.style) {
-          try {
-            imgWatermarkPath = watermarkFileFor('image', pipeline.watermark.style)
-          } catch (wmErr) {
-            logMainWarn(`[FFmpegFast/Live] 图片水印解析失败，跳过`, { error: wmErr instanceof Error ? wmErr.message : String(wmErr) })
-          }
-        }
-        let imgLutPath: string | undefined
-        const hasColor = pipeline.color && Object.values(pipeline.color as Record<string, unknown>).some(
-          (v) => typeof v === 'number' && v !== 0,
-        )
-        if (hasColor) {
-          try {
-            imgLutPath = path.join(liveTmpDir, `.lut_img_${exportId}.cube`)
-            await bakeColorLut(pipeline.color ?? {}, imgLutPath)
-          } catch { imgLutPath = undefined }
-        }
-        imgPipeline.addModule(new FullPipelineModule(pipeline, imgWatermarkPath, imgLutPath))
-        await imgPipeline.execute(extractedImage, processedImage, (percent) => {
-          sendProgress(Math.round(percent * 0.38) + 2) // 2-40%
-        })
-        if (imgLutPath) await rm(imgLutPath, { force: true }).catch(() => {})
-        sendProgress(40)
-
-        // 3. 视频走视频管线（含硬件编码、码率控制、音频透传）
-        const vidHwaccel = await detectHardwareAccel(getFfmpegPath())
-        const vidPipeline = new FfmpegPipeline()
-        if (vidHwaccel.preInputArgs.length > 0) {
-          vidPipeline.setPreInputArgs(vidHwaccel.preInputArgs)
-        }
-        let vidWatermarkPath: string | undefined
-        if (pipeline.watermark?.enabled && pipeline.watermark?.style) {
-          try {
-            vidWatermarkPath = watermarkFileFor('video', pipeline.watermark.style)
-          } catch (wmErr) {
-            logMainWarn(`[FFmpegFast/Live] 视频水印解析失败，跳过`, { error: wmErr instanceof Error ? wmErr.message : String(wmErr) })
-          }
-        }
-        let vidLutPath: string | undefined
-        if (hasColor) {
-          try {
-            vidLutPath = path.join(liveTmpDir, `.lut_vid_${exportId}.cube`)
-            await bakeColorLut(pipeline.color ?? {}, vidLutPath)
-          } catch { vidLutPath = undefined }
-        }
-        vidPipeline.addModule(new FullPipelineModule(pipeline, vidWatermarkPath, vidLutPath))
-        vidPipeline.addModule(new BitrateModule({ quality: 'original', useSourceBitrate: true }))
-        vidPipeline.addModule(new CodecModule({
-          encoderH264: vidHwaccel.encoderNameH264,
-          encoderH265: vidHwaccel.encoderNameH265 ?? undefined,
-          encoderArgs: vidHwaccel.encoderArgs,
-        }))
-        vidPipeline.addModule({
-          name: 'audioPassthrough',
-          isActive: () => true,
-          build: () => ({ outputArgs: ['-map', '0:a?'] }),
-        })
-        await vidPipeline.execute(extractedVideo, processedVideo, (percent) => {
-          sendProgress(Math.round(percent * 0.4) + 40) // 40-80%
-        })
-        if (vidLutPath) await rm(vidLutPath, { force: true }).catch(() => {})
-        sendProgress(80)
-
-        // 4. 组合 Live Photo：Apple 配对 + 导入相册 + XMP + 拼接 .liv
-        await combineLivePhoto(processedImage, processedVideo, destinationPath, appleExportFolder, (percent) => {
-          sendProgress(Math.round(percent * 0.2) + 80) // 80-100%
-        })
-      } finally {
-        await rm(liveTmpDir, { recursive: true, force: true }).catch(() => {})
-      }
-
-      await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
-        endTime: Date.now(),
-        duration: Date.now() - taskStart,
-        destinationPath,
-      }).catch(() => {})
-      logMainInfo('[FFmpegFast] Live Photo 导出完成', { exportId, destinationPath })
-      return { path: destinationPath, name: fileName }
-    }
-
-    try {
-      const ffPipeline = new FfmpegPipeline()
-      const hwaccel = isVid ? await detectHardwareAccel(getFfmpegPath()) : { type: null as string | null, preInputArgs: [] as string[], encoderNameH264: 'libx264', encoderNameH265: null, encoderArgs: [] as string[], overlayFilter: 'overlay' }
-
-      if (hwaccel.preInputArgs.length > 0) {
-        ffPipeline.setPreInputArgs(hwaccel.preInputArgs)
-      }
-
-      // 解析水印路径
-      let watermarkImagePath: string | undefined
-      if (pipeline.watermark?.enabled && pipeline.watermark?.style) {
-        try {
-          watermarkImagePath = watermarkFileFor(isVid ? 'video' : 'image', pipeline.watermark.style)
-          logMainInfo(`[FFmpegFast] 水印图片路径`, { watermarkImagePath, style: pipeline.watermark.style })
-        } catch (wmErr) {
-          logMainWarn(`[FFmpegFast] 水印图片解析失败，跳过水印`, { error: wmErr instanceof Error ? wmErr.message : String(wmErr) })
-        }
-      }
-
-      // 烘焙颜色调色参数到 .cube LUT（使预览和导出一致）
-      const hasColor = pipeline.color && Object.values(pipeline.color as Record<string, unknown>).some(
-        (v) => typeof v === 'number' && v !== 0,
-      )
-      if (hasColor) {
-        try {
-          const lutFileName = `.lut_${exportId}_${Date.now()}.cube`
-          // 平台路径（含反斜杠），用于 bakeColorLut 写文件
-          lutPath = path.join(lunaCacheDir, lutFileName)
-          await bakeColorLut(pipeline.color ?? {}, lutPath)
-          logMainInfo(`[FFmpegFast] LUT 烘焙完成`, { lutPath })
-          const lutExists = existsSync(lutPath)
-          logMainInfo(`[FFmpegFast] LUT 文件状态`, {
-            lutPath,
-            lutExists,
-            sizeBytes: lutExists ? fileSizeBytes(lutPath) : null,
-          })
-        } catch (lutErr) {
-          logMainWarn(`[FFmpegFast] LUT 烘焙失败，回退直接滤镜模式`, { error: lutErr instanceof Error ? lutErr.message : String(lutErr) })
-          lutPath = undefined
-        }
-      }
-
-      // FullPipelineModule：transform(空间) + lut3d(颜色) + detail(锐化/降噪) + watermark
-      // 传入真实文件路径，filter_complex 所需转义在 FullPipelineModule 内统一处理。
-      logMainInfo(`[FFmpegFast] LUT 准备传入管线`, { lutPath, hasLutPath: !!lutPath })
-      ffPipeline.addModule(new FullPipelineModule(pipeline, watermarkImagePath, lutPath))
-
-      if (isVid) {
-        // 视频编码器 — 使用源视频码率确保硬件编码器不会用过低默认值
-        ffPipeline.addModule(new BitrateModule({
-          quality: 'original',
-          useSourceBitrate: true,
-        }))
-        ffPipeline.addModule(new CodecModule({
-          encoderH264: hwaccel.encoderNameH264,
-          encoderH265: hwaccel.encoderNameH265 ?? undefined,
-          encoderArgs: hwaccel.encoderArgs,
-        }))
-        // 显式映射音频流（when using -map for video via filter_complex）
-        ffPipeline.addModule({
-          name: 'audioPassthrough',
-          isActive: () => true,
-          build: () => ({ outputArgs: ['-map', '0:a?'] }),
-        })
-      }
-
-      await ffPipeline.execute(sourcePath, destinationPath, (percent) => {
-        const pct = Math.round(percent)
-        win?.webContents.send('export:progress', {
-          exportId,
-          percent: pct,
-          status: pct >= 100 ? 'done' : 'exporting' as const,
-          fileName: exportMeta?.fileName ?? fileName,
-          taskId: task.id,
-          taskName,
-          createdAt: exportMeta?.createdAt,
-          index: exportMeta?.index ?? 0,
-          totalFiles: exportMeta?.totalFiles ?? 1,
-        })
-        updateTaskItemProgress(task.id, exportId, taskStart, pct, pct >= 100 ? 'done' : 'exporting', {
-          destinationPath,
-        }).catch(() => {})
-      })
-    } catch (err) {
-      logMainError(`[FFmpegFast] 导出失败`, { exportId, error: err instanceof Error ? err.message : String(err) })
-      await updateTaskItemProgress(task.id, exportId, taskStart, 0, 'failed', {
-        error: err instanceof Error ? err.message : String(err),
-      }).catch(() => {})
-      throw err
-    } finally {
-      // 清理临时 LUT 文件
-      if (lutPath) {
-        rm(lutPath, { force: true }).catch(() => {})
-      }
-    }
-
-    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
-      endTime: Date.now(),
-      duration: Date.now() - taskStart,
-      destinationPath,
-    }).catch(() => {})
-
-    logMainInfo(`[FFmpegFast] 导出完成`, { exportId, destinationPath })
-    return { path: destinationPath, name: fileName }
-  })
   // ── WebGL 视频导出（渲染器逐帧 WebGL shader 调色 → ffmpeg 仅编码） ──
   ipcMain.handle('workspace:startVideoExport', async (_event, meta: {
     exportId: string; taskName: string; outputName: string;
