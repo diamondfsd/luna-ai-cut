@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { DownloadProgress, LunaFile, WatermarkSettings } from '../src/shared/types'
+import type { DownloadProgress, LunaFile } from '../src/shared/types'
 import {
   cacheFile,
   deleteLocalFiles,
@@ -17,7 +17,6 @@ import {
   previewCacheDir,
   previewFile,
   previewLivePhoto,
-  previewWithWatermark,
   resolveLocalThumbnails,
   revealFile,
 } from './fileService'
@@ -120,7 +119,7 @@ export function register(ctx: IpcContext): void {
   })
 
   ipcMain.handle('luna:getWatermarkPath', async (_event, style: string, kind: 'image' | 'video') => {
-    const { watermarkFileFor } = await import('./watermarkService')
+    const { watermarkFileFor } = await import('./watermarkAssets')
     const { nativeImage } = await import('electron')
     const filePath = watermarkFileFor(kind, style)
     const img = nativeImage.createFromPath(filePath)
@@ -171,10 +170,6 @@ export function register(ctx: IpcContext): void {
       await ctx.ensureCameraSessionForFile(file)
       return previewLivePhoto(file)
     }, 2)
-  })
-
-  ipcMain.handle('luna:previewWithWatermark', async (_event, file: LunaFile, sourcePath: string, settings: WatermarkSettings) => {
-    return previewWithWatermark(file, sourcePath, settings)
   })
 
   ipcMain.handle('luna:metadata', async (_event, file: LunaFile, cachedPath?: string | null) => {

@@ -17,8 +17,8 @@ import {
   extractImageFromLivePhoto,
   extractLivePhotoVideo,
   isGoogleMotionPhoto,
-  watermarkFileFor,
-} from './watermarkService'
+} from './livePhotoService'
+import { watermarkFileFor } from './watermarkAssets'
 import type { IpcContext } from './ipcContext'
 
 interface WorkspaceExportMeta {

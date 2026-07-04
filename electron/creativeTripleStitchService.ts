@@ -7,7 +7,8 @@ import { runExportJob, type ExportJobItem } from './exportStubs'
 import { safeName } from './filePathUtils'
 import { getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
 import { bakeColorLut } from './ffmpeg/lutGenerator'
-import { combineLivePhoto, extractLivePhotoVideo, watermarkFileFor } from './watermarkService'
+import { combineLivePhoto, extractLivePhotoVideo } from './livePhotoService'
+import { watermarkFileFor } from './watermarkAssets'
 
 export interface TripleStitchExportSlot {
   name: string
