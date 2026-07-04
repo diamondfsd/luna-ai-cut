@@ -114,6 +114,14 @@ interface LunaRenderCoreNative {
     videoLayer: NativeLayer, staticLayers: NativeStaticLayer[],
     taskId: string | null, qualityPreset: string | null,
   ): void
+  exportFileAsync?(
+    ffmpegPath: string, ffprobePath: string,
+    inputPath: string, outputPath: string,
+    canvasWidth: number, canvasHeight: number,
+    fps: number | null, hardware: boolean,
+    videoLayer: NativeLayer, staticLayers: NativeStaticLayer[],
+    taskId: string | null, qualityPreset: string | null,
+  ): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
   destroyCompositor(): void
@@ -286,6 +294,42 @@ export function exportFile(
 ): void {
   ensureInit()
   getNative().exportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, normalizeLayer(videoLayer), staticLayers.map(normalizeStaticLayer), taskId ?? null, qualityPreset ?? null)
+}
+
+export function exportFileAsync(
+  ffmpegPath: string,
+  ffprobePath: string,
+  inputPath: string,
+  outputPath: string,
+  canvasWidth: number,
+  canvasHeight: number,
+  fps: number | null,
+  hardware: boolean,
+  videoLayer: RenderCoreLayerInput,
+  staticLayers: StaticLayerInput[],
+  taskId?: string,
+  qualityPreset?: string,
+): Promise<void> {
+  ensureInit()
+  const native = getNative()
+  const run = native.exportFileAsync ?? ((...args: Parameters<LunaRenderCoreNative['exportFile']>) => {
+    native.exportFile(...args)
+    return Promise.resolve()
+  })
+  return run(
+    ffmpegPath,
+    ffprobePath,
+    inputPath,
+    outputPath,
+    canvasWidth,
+    canvasHeight,
+    fps,
+    hardware,
+    normalizeLayer(videoLayer),
+    staticLayers.map(normalizeStaticLayer),
+    taskId ?? null,
+    qualityPreset ?? null,
+  )
 }
 
 export function cancelExportTask(taskId: string): void {
