@@ -1,128 +1,193 @@
-# Export 模块设计文档
+# Export 模块设计文档 V2
 
 `export.rs` — Rust 内部完成全部加载 + 渲染 + 编码的统一导出入口。
 
-## 整体架构
+## 设计原则
 
-```
-JS 调用层 (IPC)
-    │
-    ▼
-expor_file()          render_layers_to_file()
-    │                         │
-    ├─ export_image()         └─ 直接渲染已有纹理 (GPU)→编码→写文件
-    └─ export_video()
+```text
+FFmpeg 负责媒体 I/O（解码/编码/封装/音频）
+wgpu 负责画面渲染（合成/缩放/旋转/透明度/水印/调色）
 ```
 
-所有导出路径共用同一个核心技术：**`Compositor::render()`**（wgpu 合成管线），区别仅在于输入源和输出方式。
+不要让 FFmpeg 做视觉逻辑，避免预览和导出两套算法。
+
+---
+
+## 总体架构
+
+```text
+JS / React
+  │  IPC 调用，只传参数，不传像素
+  ▼
+Electron Main
+  │
+  ▼
+Rust napi
+  │
+  ├─ render_layers_to_file()
+  │     └─ 已有 GPU 纹理 → wgpu 渲染 → FFmpeg 编码图片
+  │
+  └─ export_file()
+        ├─ export_image()   → FFmpeg 解码图片 → wgpu 渲染 → FFmpeg 编码图片
+        └─ export_video()   → FFmpeg 逐帧解码 → wgpu 渲染 → FFmpeg 编码 + 音频封装
+```
+
+---
+
+## 核心渲染方法
+
+所有导出路径最终调用同一个合成方法：
+
+```rust
+Compositor::render(canvas_width, canvas_height, &layers)
+```
+
+| 维度   | 预览                  | 导出                    |
+|-------|----------------------|------------------------|
+| 渲染核心 | `Compositor::render()` | `Compositor::render()` |
+| 输入   | 已加载 GPU 纹理          | 图片/视频解码后上传 GPU        |
+| 输出   | RGBA → JS / Canvas   | RGBA → FFmpeg 编码 → 文件 |
+| 分辨率  | 预览尺寸 (≤1440px)      | 导出尺寸 (原始分辨率)          |
+| 目标   | 实时显示                 | 写入磁盘                  |
 
 ---
 
 ## 函数说明
 
-### 1. `render_layers_to_file()` — 新增（预览导出入口）
+### 1. `render_layers_to_file()` — 预览导出入口
+
+GPU 纹理已由 JS 预加载，此函数不做任何文件加载，一次 IPC 完成全部工作。
 
 ```
-输入: 已加载的 GPU 纹理 + 坐标参数 + 输出路径 + 格式 + 质量
-流程: c.render() → ffmpeg 编码 → 写入磁盘
-输出: 无（直接写文件）
+已有 GPU 纹理
+  ↓  Compositor::render()
+渲染后 RGBA
+  ↓  FFmpeg encode image
+JPEG/PNG/WebP → 写入磁盘
 ```
 
-- 纹理已由 JS 侧通过 `loadTexture`/`loadTextureFromPath` 预加载到 GPU
-- 不做任何文件加载，**一次 IPC 完成全部工作**，无像素数据回传
-- 支持 `jpeg` / `png` / `webp` 三种格式
-- JPEG 质量映射：`quality(1-100)` → ffmpeg `-q:v(2-25)`，值越低质量越高
-- PNG 无损，WebP 用 `-quality` 参数
+### 2. `export_file()` → `export_image()` / `export_video()`
 
-**调用栈**: `PreviewStage.export()` → `LrcRender.exportImage()` → `lrc:renderLayersToFile` IPC → `render_layers_to_file()`
-
-### 2. `export_file()` — 统一导出入口（旧入口，保留）
-
-```
-输入: 源文件路径 + 输出路径 + 画布尺寸 + 视频参数 + 叠加层
-```
-
-根据文件后缀自动判断：
-- `.png/.jpg/.jpeg/.webp` → `export_image()` 
-- 其他（含 `.mp4/.mov/.insv` 等）→ `export_video()`
+根据输入文件后缀自动分流。
 
 ### 3. `export_image()` — 图片导出
 
 ```
-输入: ffmpeg路径 / ffprobe路径 / 源图路径 / 输出路径 / 尺寸 / 叠加层
-流程: decode_image() → c.load_texture() → c.render() → encode_to_file() → 清理
+源图 → FFmpeg decode RGBA → upload wgpu → Compositor::render() → readback → FFmpeg encode → 文件
 ```
 
-- FFmpeg 解码源图为 RGBA rawvideo
-- 上传到 wgpu 纹理
-- 渲染 + 叠加层
-- 回读像素 → ffmpeg 编码为输出格式 → 写文件
-- 用完释放纹理
+图片只需 readback 一次，性能压力小。
 
-**局限**: 只支持 1 个主图 + N 个静态叠加层，不支持视频源
-
-### 4. `export_video()` — 视频导出
+### 4. `export_video()` — 视频导出（V2 升级）
 
 ```
-输入: ffmpeg路径 / ffprobe路径 / 源视频路径 / 输出路径 / 尺寸 / 帧率 / 硬件编码 / 叠加层
-流程: 
-  1. probe_video() 获取视频信息（宽高、帧率、时长）
-  2. 创建 ffmpeg decode pipe（逐帧输出 RGBA rawvideo）
-  3. 创建 ffmpeg encode pipe（接收 RGBA 帧，编码为 H.264）
-  4. 循环:
-     dout.read_exact() → c.update_texture() → c.render() → ein.write_all()
-  5. 关闭 pipe，清理纹理
+1. ffprobe 探测 → VideoInfo { 宽高/帧率/源码率/音频信息 }
+2. detect_h264_encoders() 探测本机可用编码器
+3. choose_bitrate() 按分辨率+帧率+源码率+质量预设计算码率
+4. 创建 FFmpeg decode pipe（逐帧 RGBA rawvideo）
+5. 创建 wgpu 动态纹理（每帧复用）
+6. 创建 FFmpeg encode pipe（双输入：pipe:0 视频帧 + 源文件音频）
+7. 逐帧循环：read → update_texture → render → write encode stdin
+8. 关闭 pipe，检查退出码，清理纹理
 ```
 
-**关键设计**:
-- **双管道并行**: ffmpeg decode → wgpu render → ffmpeg encode，解码和编码解耦
-- **逐帧流式**: 不缓存全部帧，保持 GPU 纹理复用，内存 O(1)
-- **硬件编码**: macOS → `h264_videotoolbox`，Windows → `h264_nvenc`，其他 → `libx264`
-- **码率固定**: `-b:v 12M`，H.264 yuv420p
-- **渲染分辨率独立**: 视频解码按原始尺寸，渲染输出按 `canvas_w x canvas_h`（可缩放）
-- 每 30 帧输出速度日志
+**每帧处理**：
+```rust
+decode_pipe.read_exact(frame_rgba)
+  → compositor.update_texture(video_texture, frame_rgba)
+  → compositor.render(canvas_width, canvas_height, layers)
+  → readback(output_rgba)
+  → encode_pipe.write_all(output_rgba)
+```
 
-### 5. 辅助函数
+---
+
+## V2 新增功能
+
+### 编码器探测
+
+运行时执行 `ffmpeg -hide_banner -encoders`，解析输出中是否包含硬件编码器。
+
+优先级（按平台）：
+
+| macOS | Windows | Linux |
+|-------|---------|-------|
+| h264_videotoolbox | h264_nvenc | h264_nvenc |
+| libx264 | h264_qsv | h264_qsv |
+| | h264_amf | h264_vaapi |
+| | libx264 | libx264 |
+
+### 码率策略
+
+经验公式：`default_bitrate = (width × height × fps) / 10`，限幅 5Mbps–100Mbps。
+
+质量预设：
+
+| 预设 | 倍数 | 说明 |
+|------|------|------|
+| Small | default × 0.5 | 适合分享 |
+| Standard | default × 1.0 | 平衡体积和画质 |
+| High | default × 1.5 | 适合二次编辑 |
+| OriginalLike | max(源码率, default) | 尽量接近原视频 |
+
+### 音频处理
+
+FFmpeg 命令使用双输入架构：
+
+```bash
+ffmpeg \
+  -f rawvideo -pix_fmt rgba -s 1920x1080 -r 30 -i pipe:0 \
+  -i input.mp4 \
+  -map 0:v:0 -map 1:a:0? \
+  -c:v h264_videotoolbox -b:v 20M \
+  -pix_fmt yuv420p \
+  -c:a copy \
+  -shortest \
+  output.mp4
+```
+
+关键参数：
+- `-map 1:a:0?` — 尝试取第一个音频流，没有音频不报错
+- `-c:a copy` — 直接复制音频，不重编码
+- `-shortest` — 音视频取最短时长
+
+---
+
+## 辅助函数
 
 | 函数 | 作用 |
 |------|------|
-| `probe_video()` | ffprobe 探测视频宽高/帧率/时长，结果缓存 |
-| `decode_image()` | ffmpeg 解码单张图片为 RGBA（原始尺寸，不做缩放） |
-| `load_static_layers()` | 遍历 StaticLayer 列表，逐个 decode + upload wgpu |
-| `encode_to_file()` | ffmpeg 编码单帧 RGBA 到图片文件 |
-| `choose_encoder()` | 根据平台选择 H.264 硬件编码器 |
+| `probe_video()` | ffprobe 探测宽高/帧率/时长/码率/音频信息 |
+| `detect_h264_encoders()` | 运行时探测可用 H.264 编码器 |
+| `choose_encoder()` | 按平台优先级选择最佳可用编码器 |
+| `choose_bitrate()` | 按分辨率/帧率/源码率/质量预设计算码率 |
+| `default_bitrate()` | 像素 × 帧率经验公式估算码率 |
+| `decode_image()` | ffmpeg 解码图片为 RGBA |
+| `load_static_layers()` | 加载所有静态叠加层 |
+| `encode_to_file()` | 单帧 RGBA → FFmpeg 编码图片 |
 
 ---
 
-## 与预览共享的算法
+## 编码器特定参数
 
-所有导出函数的核心渲染步骤都调用了同一个方法：
-
-```rust
-c.render(canvas_width, canvas_height, &layers)
-```
-
-即 `Compositor::render()` — 它包含：
-- wgpu render pipeline（顶点/片元着色器）
-- 纹理采样（线性过滤）
-- Alpha 混合（PREMULTIPLIED_ALPHA_BLENDING）
-- 逐层渲染（按 z_index 排序）
-
-**预览和导出的差异仅在于**：
-| 维度 | 预览 | 导出 |
-|------|------|------|
-| 分辨率 | ≤ 1440px（受 MAX_RENDER_PX 限制） | 原始媒体分辨率 |
-| 输出 | RGBA → JS → canvas | 编码为 JPEG/PNG/H.264 → 磁盘 |
-| 加载 | 预览尺度（maxSize=1920） | 原始尺寸 |
+| 编码器 | 参数 |
+|--------|------|
+| libx264 | `-preset veryfast -crf 18` |
+| h264_videotoolbox | 仅用 `-b:v` 控制码率 |
+| h264_nvenc | `-preset p5 -rc vbr` |
+| 其他 (qsv/amf/vaapi) | 无额外参数 |
 
 ---
 
-## 新增导出的步骤（模板）
+## 第一版暂不做的功能
 
-需要添加新的导出方式时（例如逐帧推送编码）：
-
-1. 在 `export.rs` 实现 `pub fn new_export(...)` 函数
-2. 在 `lib.rs` 添加 `#[napi] pub fn export_xxx(...)` 导出
-3. 在 `electron/lunaRenderCore.ts` 添加桥接方法
-4. 在 `electron/ipcLunaRenderCore.ts` 注册 IPC handler
-5. 在 `electron/preload.ts` 的 `lunaRenderCoreApi` 添加方法
+- 真正 GPU 零拷贝（metal texture → videotoolbox）
+- 硬件解码 surface 直接接 wgpu
+- 多视频源精确时间线同步
+- VFR 时间戳精确保留
+- 音频混音 / 多音轨
+- 字幕轨
+- 动效关键帧 / 转场
+- GPU 异步多缓冲流水线
+- 取消导出 / 进度回调（留 V3）
+- 临时文件 rename 策略
