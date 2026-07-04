@@ -16,6 +16,7 @@
   "homepage": "https://github.com/diamondfsd/luna-ai-cut#readme",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/build-native.mjs",
     "dev": "vite",
     "build": "tsc && vite build && node scripts/copy-ffmpeg.mjs && electron-builder",
     "build:app": "tsc && vite build",
