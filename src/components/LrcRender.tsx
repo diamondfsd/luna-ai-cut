@@ -74,6 +74,7 @@ interface LunaRenderCore {
   releaseTexture: (id: number) => Promise<void>
   renderFrame: (w: number, h: number, layers: LrcTextureLayer[]) => Promise<Uint8Array>
   exportImage: (outputPath: string, width: number, height: number, layers: LrcTextureLayer[], format: string, quality: number) => Promise<void>
+  exportImageFromSources: (outputPath: string, width: number, height: number, layers: PreviewLayer[], format: string, quality: number) => Promise<void>
 }
 
 function getLRC(): LunaRenderCore | undefined {
@@ -371,12 +372,17 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       const lrc = getLRC()
       if (!lrc) throw new Error('渲染引擎未初始化')
 
+      // 不走预览纹理缓存，直接把图层参数+文件路径传给 Rust
+      // Rust 内部按导出分辨率独立加载纹理、渲染、编码、落盘、自动释放
       const currentLayers = layersRef.current
-      // 与预览使用完全相同的算法和层数据
-      const renderLayers = buildExportLayers(currentLayers, width, height, texMapRef.current)
-      if (renderLayers.length === 0) throw new Error('无可用图层')
-
-      await lrc.exportImage(outputPath, width, height, renderLayers, format, quality)
+      await lrc.exportImageFromSources(
+        outputPath,
+        width,
+        height,
+        currentLayers,
+        format,
+        quality,
+      )
     },
   }), [])
 

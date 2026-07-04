@@ -294,8 +294,23 @@ pub fn export_file(
     })
 }
 
-/// 销毁 compositor
+/// 从素材源文件直接导出图片（独立加载纹理，不依赖预览纹理缓存）
 #[napi]
+pub fn export_image_from_sources(
+    ffmpeg_path: String,
+    ffprobe_path: String,
+    output: String,
+    width: u32,
+    height: u32,
+    layers: Vec<PreviewLayer>,
+    format: String,
+    quality: f64,
+) -> napi::Result<()> {
+    lock(|c| {
+        export::export_image_from_sources(&ffmpeg_path, &ffprobe_path, &output, width, height, &layers, &format, quality, c)
+    })
+}
+
 pub fn destroy_compositor() -> napi::Result<()> {
     let mut guard = COMPOSITOR
         .lock()

@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use crate::compositor::Compositor;
-use crate::{RenderLayer, StaticLayer};
+use crate::{PreviewLayer, RenderLayer, StaticLayer};
 
 // ── 多任务导出状态 ──
 
@@ -266,6 +266,109 @@ fn decode_image(ffmpeg: &str, ffprobe: &str, path: &str) -> Result<(Vec<u8>, u32
     proc.wait().ok();
     Ok((buf, w, h))
 }
+
+/// 用 FFmpeg 解码图片到 RGBA，限制最大边长（保持宽高比）
+fn decode_image_scaled(ffmpeg: &str, ffprobe: &str, path: &str, max_size: u32) -> Result<(Vec<u8>, u32, u32), String> {
+    let (_, src_w, src_h) = decode_image(ffmpeg, ffprobe, path)?;
+    let max_edge = src_w.max(src_h);
+    let (dw, dh) = if max_edge > max_size {
+        let s = max_size as f64 / max_edge as f64;
+        ((src_w as f64 * s).round().max(1.0) as u32, (src_h as f64 * s).round().max(1.0) as u32)
+    } else {
+        (src_w, src_h)
+    };
+    let expected = (dw * dh * 4) as usize;
+    let mut proc = Command::new(ffmpeg)
+        .args(["-i", path, "-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{}x{}", dw, dh), "-vframes", "1", "pipe:1", "-loglevel", "error"])
+        .stdout(Stdio::piped()).spawn().map_err(|e| format!("spawn: {}", e))?;
+    let mut buf = vec![0u8; expected];
+    proc.stdout.take().unwrap().read_exact(&mut buf).map_err(|e| format!("read: {}", e))?;
+    proc.wait().ok();
+    Ok((buf, dw, dh))
+}
+
+/// 从素材源文件直接导出图片（独立加载纹理，不依赖预览纹理缓存）
+///
+/// 预览和导出算法完全一致，但资源完全隔离：
+/// - 不接受 textureId，只接受 filePath
+/// - Rust 内部按目标分辨率加载纹理
+/// - 导出结束自动释放纹理，不影响预览缓存
+pub fn export_image_from_sources(
+    ffmpeg: &str,
+    ffprobe: &str,
+    output: &str,
+    width: u32,
+    height: u32,
+    layers: &[PreviewLayer],
+    format: &str,
+    quality: f64,
+    c: &mut Compositor,
+) -> Result<(), String> {
+    crate::log!("export_image_from_sources: out={} {}x{} layers={} fmt={} q={}", output, width, height, layers.len(), format, quality);
+
+    let target_max = width.max(height);
+    let mut temp_tex = Vec::new();
+    let mut render_layers = Vec::new();
+
+    for layer in layers {
+        // 跳过视频层（视频纹理由浏览器解码，不支持导出时重新加载）
+        if layer.is_video { continue; }
+
+        let (rgba, iw, ih) = decode_image_scaled(ffmpeg, ffprobe, &layer.file_path, target_max)
+            .map_err(|e| format!("decode {}: {}", layer.file_path, e))?;
+        let tex_id = c.load_texture(&rgba, iw, ih)?;
+        temp_tex.push(tex_id);
+
+        render_layers.push(RenderLayer {
+            texture_id: tex_id,
+            dst_x: layer.dst_x, dst_y: layer.dst_y,
+            dst_w: layer.dst_w, dst_h: layer.dst_h,
+            src_x: layer.src_x, src_y: layer.src_y,
+            src_w: layer.src_w, src_h: layer.src_h,
+            opacity: layer.opacity, z_index: layer.z_index,
+        });
+    }
+
+    if render_layers.is_empty() {
+        return Err("no valid layers for export".to_string());
+    }
+
+    let result = c.render(width, height, &render_layers)?;
+
+    // 编码写文件（复用 render_layers_to_file 的编码逻辑）
+    let q = format!("{:.0}", quality.clamp(1.0, 100.0));
+    let mut args: Vec<String> = vec![
+        "-f".into(), "rawvideo".into(),
+        "-pix_fmt".into(), "rgba".into(),
+        "-s".into(), format!("{}x{}", width, height),
+        "-i".into(), "pipe:0".into(),
+        "-frames:v".into(), "1".into(),
+        "-y".into(), "-loglevel".into(), "error".into(),
+    ];
+    match format {
+        "jpeg" | "jpg" => {
+            let ffmpeg_q = ((100.0 - quality.clamp(1.0, 100.0)) * 24.0 / 99.0 + 1.0) as u32;
+            args.extend_from_slice(&["-c:v".into(), "mjpeg".into(), "-q:v".into(), ffmpeg_q.to_string()]);
+        }
+        "png" => { args.extend_from_slice(&["-c:v".into(), "png".into()]); }
+        "webp" => { args.extend_from_slice(&["-c:v".into(), "libwebp".into(), "-quality".into(), q]); }
+        _ => return Err(format!("unsupported format: {}", format)),
+    }
+    args.push(output.into());
+
+    let mut proc = Command::new(ffmpeg)
+        .args(&args).stdin(Stdio::piped()).spawn()
+        .map_err(|e| format!("encode spawn: {}", e))?;
+    proc.stdin.take().unwrap().write_all(&result).map_err(|e| format!("encode write: {}", e))?;
+    proc.wait().ok();
+
+    // 清理临时纹理
+    for tex_id in temp_tex { c.release_texture(tex_id).ok(); }
+
+    crate::log!("  export_image_from_sources done: {}", output);
+    Ok(())
+}
+
 
 /// 预览一帧 — 和 export_file 同样的加载+渲染，返回 RGBA Buffer
 pub fn preview_file(
