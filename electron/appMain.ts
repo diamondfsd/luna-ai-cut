@@ -382,6 +382,9 @@ function scheduleUpdateCheck(): void {
 
   // 延迟 2s 执行首次检查
   setTimeout(async () => {
+    // 开发环境下跳过所有更新检查
+    if (!app.isPackaged) return
+
     // 全量更新检查：受每日限制
     if (existsSync(CHECK_FILE) && readFileSync(CHECK_FILE, 'utf-8').trim() === today) {
       // 今天已检查过全量更新，跳过
