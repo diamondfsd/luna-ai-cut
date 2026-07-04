@@ -204,7 +204,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     const ch = cvs.parentElement?.clientHeight ?? cvs.height
     let pw = Math.round(cw * dpr)
     let ph = Math.round(ch * dpr)
-    const MAX_RENDER_PX = 1440
+    const MAX_RENDER_PX = 2560
     if (pw > MAX_RENDER_PX) { const s = MAX_RENDER_PX / pw; pw = MAX_RENDER_PX; ph = Math.round(ph * s) }
     if (ph > MAX_RENDER_PX) { const s = MAX_RENDER_PX / ph; ph = MAX_RENDER_PX; pw = Math.round(pw * s) }
     if (pw <= 0 || ph <= 0) return
@@ -266,17 +266,13 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     }
 
     // ── 静态图片层 ──
-    // 估算画布像素宽度用于计算纹理加载尺寸
-    const estCanvasW = Math.round((canvasRef.current?.parentElement?.clientWidth ?? 960) * (window.devicePixelRatio || 1))
+    // 直接用 PREVIEW_TEXTURE_MAX_SIZE 加载，不依赖实时容器尺寸
     for (const layer of layers.filter((l) => !l.isVideo)) {
       const key = layerKey(layer)
       if (texMapRef.current.has(key)) continue
       texMapRef.current.set(key, { texId: null, width: 0, height: 0 })
 
-      // 精确按渲染尺寸加载，ffmpeg Lanczos 一步到位，wgpu 1:1 无缩放
-      const renderPx = Math.round(Math.max(layer.dstW * estCanvasW, layer.dstH * estCanvasW))
-      const maxSize = Math.min(Math.max(renderPx, 16), PREVIEW_TEXTURE_MAX_SIZE)
-      lrc.loadTextureFromPath(layer.filePath, maxSize)
+      lrc.loadTextureFromPath(layer.filePath, PREVIEW_TEXTURE_MAX_SIZE)
         .then(({ textureId, width, height }) => {
           if (destroyRef.current) return
           const current = texMapRef.current.get(key)

@@ -372,6 +372,7 @@ fn probe_color_info(ffprobe: &str, path: &str) -> Result<ColorInfo, String> {
         return Err(format!("ffprobe exit: {}", output.status));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
+    crate::log!("resolve_render_source: ffprobe output: {}", stdout);
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .map_err(|e| format!("json: {}", e))?;
     let streams = parsed["streams"].as_array().ok_or("no streams")?;
@@ -450,11 +451,19 @@ pub fn resolve_render_source(
     use std::path::Path;
     use std::process::{Command, Stdio};
 
+    crate::log!("resolve_render_source: input path={} cache={}", original_path, cache_dir);
+
     let color_info = probe_color_info(&ffprobe_path, &original_path)
         .map_err(|e| napi::Error::from_reason(format!("探测颜色信息失败: {}", e)))?;
 
+    crate::log!("resolve_render_source: color_info is_hdr={} is_wide_gamut={} is_high_bit_depth={} primaries={} transfer={} colorspace={} bit_depth={} size={}x{}",
+        color_info.is_hdr, color_info.is_wide_gamut, color_info.is_high_bit_depth,
+        color_info.color_primaries, color_info.color_transfer, color_info.color_space,
+        color_info.bit_depth, color_info.width, color_info.height);
+
     // 普通 sRGB SDR → 直接返回原路径
     if !color_info.is_hdr && !color_info.is_wide_gamut {
+        crate::log!("resolve_render_source: sRGB SDR, using original path");
         return Ok(ResolvedRenderSource {
             render_path: original_path.clone(),
             normalized: false,
@@ -477,8 +486,9 @@ pub fn resolve_render_source(
     let cache_path = cache_dir.join(format!("{:016x}_sdr_srgb.png", hash));
     let cache_str = cache_path.to_string_lossy().to_string();
 
-    // 如果缓存已存在，直接返回
+    crate::log!("resolve_render_source: checking cache {}", cache_str);
     if cache_path.exists() {
+        crate::log!("resolve_render_source: cache HIT");
         return Ok(ResolvedRenderSource {
             render_path: cache_str,
             normalized: true,
@@ -494,28 +504,41 @@ pub fn resolve_render_source(
         .args(["-filters"])
         .stderr(Stdio::piped()).stdout(Stdio::null())
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stderr).contains("zscale"))
+        .map(|o| {
+            let avail = String::from_utf8_lossy(&o.stderr).contains("zscale");
+            crate::log!("resolve_render_source: zscale_available={}", avail);
+            avail
+        })
         .unwrap_or(false);
 
     let mut cmd = Command::new(&ffmpeg_path);
     cmd.args(["-y", "-i", &original_path]);
 
+    let mut cmd_log = format!("{} -y -i {}", ffmpeg_path, original_path);
+
     if color_info.is_hdr {
         crate::log!("resolve_render_source: HDR detected, tone mapping {} → {}", original_path, cache_str);
         if zscale_available {
             cmd.args(["-vf", "zscale=transfer=linear,tonemap=hable,zscale=transfer=bt709:p=bt709:m=bt709,format=rgb24"]);
+            cmd_log += " -vf zscale=transfer=linear,tonemap=hable,zscale=transfer=bt709:p=bt709:m=bt709,format=rgb24";
         } else {
             crate::log!("resolve_render_source: zscale not available, using basic conversion");
             cmd.args(["-vf", "setparams=color_primaries=bt709:color_trc=bt709,format=rgb24"]);
+            cmd_log += " -vf setparams=color_primaries=bt709:color_trc=bt709,format=rgb24";
         }
     } else if color_info.is_wide_gamut {
         crate::log!("resolve_render_source: wide gamut SDR detected, gamut convert {} → {}", original_path, cache_str);
         if zscale_available {
             cmd.args(["-vf", "zscale=p=bt709:t=bt709:m=bt709,format=rgb24"]);
+            cmd_log += " -vf zscale=p=bt709:t=bt709:m=bt709,format=rgb24";
         } else {
             cmd.args(["-vf", "setparams=color_primaries=bt709:color_trc=bt709,format=rgb24"]);
+            cmd_log += " -vf setparams=color_primaries=bt709:color_trc=bt709,format=rgb24";
         }
     }
+
+    cmd_log += " "; cmd_log += &cache_str;
+    crate::log!("resolve_render_source: ffmpeg cmd: {}", cmd_log);
 
     cmd.arg(&cache_str).stdout(Stdio::null()).stderr(Stdio::piped());
 
@@ -525,7 +548,7 @@ pub fn resolve_render_source(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let msg = format!("ffmpeg normalize 失败：{}\n{}", output.status, stderr);
+        let msg = format!("ffmpeg normalize 失败：{} stderr={}", output.status, stderr);
         crate::log!("{}", msg);
         return Ok(ResolvedRenderSource {
             render_path: original_path.clone(),
@@ -537,7 +560,7 @@ pub fn resolve_render_source(
         });
     }
 
-    crate::log!("resolve_render_source: normalized OK → {}", cache_str);
+    crate::log!("resolve_render_source: normalized OK → {} width={} height={}", cache_str, color_info.width, color_info.height);
 
     Ok(ResolvedRenderSource {
         render_path: cache_str,
