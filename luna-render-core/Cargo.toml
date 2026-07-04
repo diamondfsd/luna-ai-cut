@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 napi = { version = "2", features = ["full"] }
 napi-derive = "2"
 wgpu = "30"
-image = "0.25"
+# 图片解码已迁移至 ffmpeg pipe，不再使用 image crate
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.3"
 chrono = "0.4"
