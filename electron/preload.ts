@@ -78,7 +78,7 @@ const lunaApi: LunaApi = {
   aiChat: (config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) =>
     ipcRenderer.invoke('ai:chat', config, systemPrompt, messages),
   readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),
-  getWatermarkPath: (style: string, kind: 'image' | 'video') => ipcRenderer.invoke('luna:getWatermarkPath', style, kind),
+  getWatermarkPath: (style: string, kind: 'image' | 'video') => ipcRenderer.invoke('luna:getWatermarkPath', style, kind) as Promise<{ filePath: string; width: number; height: number }>,
   disconnect: (host?: string) => ipcRenderer.invoke('luna:disconnect', host),
   getWifiStatus: () => ipcRenderer.invoke('wifiDebug:getStatus'),
   scanWifi: () => ipcRenderer.invoke('wifiDebug:scan'),

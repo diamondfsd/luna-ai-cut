@@ -4,8 +4,48 @@ import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } fro
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
 import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
-import type { WatermarkPosition, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { RenderStaticLayer, WatermarkPosition, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
+
+// ─── re-export ─────────────────────────────────────────
+export type { RenderStaticLayer } from '../shared/types'
+
+/**
+ * 根据画布尺寸 + WatermarkSettings 构建 RenderStaticLayer
+ * @param settings 水印设置（WatermarkSettings 类型）
+ * @param cw 画布宽度
+ * @param ch 画布高度
+ * @param wmW 水印图片原始宽度
+ * @param wmH 水印图片原始高度
+ * @param imagePath 水印图片文件路径
+ * @param widthRatio 映射表 widthRatio
+ * @param xRatio 映射表 xRatio
+ * @param yRatio 映射表 yRatio
+ */
+export function buildWatermarkStaticLayer(
+  settings: WatermarkSettingsType,
+  cw: number, ch: number,
+  wmW: number, wmH: number,
+  imagePath: string,
+  widthRatio: number,
+  xRatio: number,
+  yRatio: number,
+): RenderStaticLayer {
+  const sensorW = Math.max(cw, ch)
+  const dstW = widthRatio * sensorW / cw
+  const dstH = dstW * (wmH / wmW) * (cw / ch)
+  const dstX = xRatio
+  const vPos = settings.position.startsWith('Bottom') ? 'bottom' : 'top'
+  const dstY = vPos === 'bottom' ? 1 - dstH - yRatio : 1 - yRatio
+
+  return {
+    imagePath,
+    dstX: Math.min(1, Math.max(0, dstX)),
+    dstY: Math.min(1, Math.max(0, dstY)),
+    dstW: Math.min(1, Math.max(0, dstW)),
+    dstH: Math.min(1, Math.max(0, dstH)),
+  }
+}
 
 const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }> = [
   { value: 'TopLeft', label: '左上', cx: 27, cy: 22.5 },
@@ -30,29 +70,29 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   onStyleChange: (v: string) => void
   onPositionChange: (v: string) => void
 }) {
-  // 水印变更时输出映射表原始数据和水印文件路径
+  // 水印变更时输出映射表原始数据、文件路径和水印图片尺寸
   useEffect(() => {
     if (!settings.enabled) return
     const theme = STYLE_TO_THEME[settings.style]
     if (!theme) return
     const key = `${theme}|16:9|${settings.position}`
     const raw = luna_ultra_layout[key]
-    window.luna.getWatermarkPath(settings.style, 'image').then((filePath) => {
+    let cancelled = false
+    ;(async () => {
+      const info = await window.luna.getWatermarkPath(settings.style, 'image').catch(() => undefined)
+      if (cancelled || !info) return
       console.log('[WatermarkSettings] 映射表原始数据:', {
         key,
         widthRatio: raw?.[0],
         xRatio: raw?.[1],
         yRatio: raw?.[2],
-        filePath,
+        filePath: info.filePath,
+        wmWidth: info.width,
+        wmHeight: info.height,
+        wmAspect: info.width / info.height,
       })
-    }).catch(() => {
-      console.log('[WatermarkSettings] 映射表原始数据:', {
-        key,
-        widthRatio: raw?.[0],
-        xRatio: raw?.[1],
-        yRatio: raw?.[2],
-      })
-    })
+    })()
+    return () => { cancelled = true }
   }, [settings.enabled, settings.style, settings.position])
 
   return (
