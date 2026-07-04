@@ -505,6 +505,7 @@ impl Compositor {
             .args([
                 "-v", "quiet",
                 "-print_format", "json",
+                "-show_streams",
                 "-show_frames",
                 "-read_intervals", "%+#1",
                 path,
@@ -569,6 +570,71 @@ impl Compositor {
         } else {
             (source_w, source_h)
         };
+
+        // ── HDR / 宽色域 自动 normalize → SDR sRGB ──
+        fn contains_any(s: &str, keys: &[&str]) -> bool {
+            let lower = s.to_lowercase();
+            keys.iter().any(|k| lower.contains(k))
+        }
+        // color_primaries/transfer 在 stream 级别更可靠，frame 级别可能为空
+        let stream = parsed["streams"].as_array().and_then(|ss| ss.iter().find(|s| s["codec_type"].as_str() == Some("video")));
+        let primaries = stream.and_then(|s| s["color_primaries"].as_str()).or_else(|| frame["color_primaries"].as_str()).unwrap_or("");
+        let transfer = stream.and_then(|s| s["color_transfer"].as_str()).or_else(|| frame["color_transfer"].as_str()).unwrap_or("");
+        let bit_depth = frame["bits_per_raw_sample"].as_u64().unwrap_or(8) as u32;
+        let is_pq = contains_any(transfer, &["2084", "smpte2084", "smpte st 2084", "pq", "perceptual quantizer"]);
+        let is_hlg = contains_any(transfer, &["hlg", "arib", "b67", "arib-std-b67"]);
+        let is_bt2020 = contains_any(primaries, &["2020", "bt2020", "bt.2020", "rec.2020"]);
+        let is_display_p3 = contains_any(primaries, &["p3", "display-p3", "display p3", "dcip3"]);
+        let is_hdr_transfer = is_pq || is_hlg;
+        let is_wide_gamut = is_bt2020 || is_display_p3;
+        let is_high_bit_depth = bit_depth > 8;
+        log!("load_texture_from_path color_info: primaries={} transfer={} bit_depth={} is_hdr={} is_wide_gamut={} is_high_bit_depth={}",
+            primaries, transfer, bit_depth, is_hdr_transfer || is_wide_gamut, is_wide_gamut, is_high_bit_depth);
+
+        let use_path = if is_hdr_transfer || is_wide_gamut {
+            let cache_dir = std::env::temp_dir().join("luna-rc/color-normalized");
+            let _ = std::fs::create_dir_all(&cache_dir);
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            path.hash(&mut hasher);
+            let hash = hasher.finish();
+            let cache_path = cache_dir.join(format!("{:016x}_sdr_srgb.png", hash));
+            let cache_str = cache_path.to_string_lossy().to_string();
+            if !cache_path.exists() {
+                log!("load_texture_from_path: normalizing {} → {}", path, cache_str);
+                let zscale_avail = Command::new(ffmpeg)
+                    .args(["-filters"])
+                    .stderr(std::process::Stdio::piped()).stdout(std::process::Stdio::null())
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stderr).contains("zscale"))
+                    .unwrap_or(false);
+                let mut norm = Command::new(ffmpeg);
+                norm.args(["-y", "-i", path]);
+                if is_hdr_transfer && zscale_avail {
+                    norm.args(["-vf", "zscale=transfer=linear,tonemap=hable,zscale=transfer=bt709:p=bt709:m=bt709,format=rgb24"]);
+                } else if zscale_avail {
+                    norm.args(["-vf", "zscale=p=bt709:t=bt709:m=bt709,format=rgb24"]);
+                } else {
+                    norm.args(["-vf", "setparams=color_primaries=bt709:color_trc=bt709,format=rgb24"]);
+                }
+                norm.args([&cache_str]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
+                let norm_out = norm.output().map_err(|e| format!("normalize: {}", e))?;
+                if !norm_out.status.success() {
+                    let stderr = String::from_utf8_lossy(&norm_out.stderr);
+                    log!("load_texture_from_path: normalize FAILED, using original: {}", stderr);
+                    path.to_string()
+                } else {
+                    log!("load_texture_from_path: normalize OK → {}", cache_str);
+                    cache_str
+                }
+            } else {
+                log!("load_texture_from_path: normalize cache HIT: {}", cache_str);
+                cache_str
+            }
+        } else {
+            path.to_string()
+        };
+
         // ── 计算缩放后尺寸 ──
         let (width, height) = {
             let max_edge = source_w.max(source_h);
@@ -586,7 +652,7 @@ impl Compositor {
         // ── ffmpeg 解码 + resize → rawvideo ──
         let mut proc = Command::new(ffmpeg)
             .args([
-                "-i", path,
+                "-i", &use_path,
                 "-vf", &format!("scale={}:{}:flags=lanczos", width, height),
                 "-pix_fmt", "rgba",
                 "-f", "rawvideo",
@@ -603,12 +669,12 @@ impl Compositor {
             .take()
             .ok_or_else(|| "ffmpeg: no stdout".to_string())?
             .read_to_end(&mut rgba)
-            .map_err(|e| format!("ffmpeg read {}: {}", path, e))?;
+            .map_err(|e| format!("ffmpeg read {}: {}", use_path, e))?;
         let status = proc
             .wait()
             .map_err(|e| format!("ffmpeg wait {}: {}", path, e))?;
         if !status.success() {
-            return Err(format!("ffmpeg exit {} for {}", status, path));
+            return Err(format!("ffmpeg exit {} for {}", status, use_path));
         }
 
         log!(
