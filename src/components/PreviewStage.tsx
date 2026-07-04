@@ -271,6 +271,21 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       const res = resolution
       if (!res) throw new Error('媒体分辨率未就绪')
 
+      // 导出画布宽高比与 Stage 一致，保证 contain 算法输出完全相同
+      const ss = stageSize
+      let exportW = res.width
+      let exportH = res.height
+      if (ss) {
+        const stageAspect = ss.width / ss.height
+        if (exportW / exportH > stageAspect) {
+          // 素材更宽 → 以高度为准，宽度按 stage 比例
+          exportW = Math.round(exportH * stageAspect)
+        } else {
+          // 素材更高或相等 → 以宽度为准，高度按 stage 比例
+          exportH = Math.round(exportW / stageAspect)
+        }
+      }
+
       // 从设置中获取导出目录
       const settings = await window.luna.getSettings()
       const exportDir = settings.exportDir
@@ -291,11 +306,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       // 通过 LrcRender 的 Rust 渲染管线直接导出
       const lrcHandle = lrcRef.current
       if (!lrcHandle) throw new Error('LrcRender 未就绪')
-      await lrcHandle.exportImage(outputPath, res.width, res.height, format, quality)
+      await lrcHandle.exportImage(outputPath, exportW, exportH, format, quality)
 
       return { path: outputPath, name: filename }
     },
-  }), [exportOptions, resolution, url])
+  }), [exportOptions, resolution, url, stageSize])
 
   if (!url || layers.length === 0) return null
 

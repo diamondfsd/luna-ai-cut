@@ -372,13 +372,8 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       if (!lrc) throw new Error('渲染引擎未初始化')
 
       const currentLayers = layersRef.current
-      // 导出时第一层（主素材）铺满全画布不留黑边，水印等叠加层保持原位置
-      const exportLayers = currentLayers.map((l, i) =>
-        i === 0
-          ? { ...l, dstX: 0, dstY: 0, dstW: 1, dstH: 1, fit: 'fill' as const }
-          : l,
-      )
-      const renderLayers = buildExportLayers(exportLayers, width, height, texMapRef.current)
+      // 与预览使用完全相同的算法和层数据
+      const renderLayers = buildExportLayers(currentLayers, width, height, texMapRef.current)
       if (renderLayers.length === 0) throw new Error('无可用图层')
 
       await lrc.exportImage(outputPath, width, height, renderLayers, format, quality)
