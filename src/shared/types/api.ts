@@ -104,6 +104,8 @@ export interface LunaApi {
   disconnectWifi: () => Promise<WifiDebugResult<WifiDebugStatus>>
   workspace: {
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
+    /** 获取媒体文件分辨率（图片/视频统一接口） */
+    getMediaResolution(filePath: string): Promise<{ width: number; height: number }>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     listProjects(): Promise<WorkspaceProject[]>
