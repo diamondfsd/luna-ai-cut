@@ -4,9 +4,7 @@ import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
-import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import { WatermarkLayerBuilder, type WatermarkStaticLayer } from './WatermarkLayerBuilder'
-import { watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
+import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult } from '../shared/types'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
 
@@ -22,7 +20,6 @@ interface PreviewModalProps {
   onClose: () => void
   onReveal?: (file: LunaFile) => void
   onDownload?: (file: LunaFile) => void
-  onExportWithWatermark?: (file: LunaFile, settings: WatermarkSettingsType) => void
   autoPlayLive?: boolean
 
   /** @deprecated 逐渐淘汰 */
@@ -30,7 +27,6 @@ interface PreviewModalProps {
   previewLoading?: boolean
   downloadProgress?: DownloadProgress
   isDownloadsPage?: boolean
-  showWatermarkControls?: boolean
 }
 
 export function PreviewModal({
@@ -41,13 +37,11 @@ export function PreviewModal({
   onClose,
   onReveal,
   onDownload,
-  onExportWithWatermark,
   autoPlayLive = false,
   preview: deprecatedPreview,
   previewLoading: deprecatedPreviewLoading,
   downloadProgress,
   isDownloadsPage = false,
-  showWatermarkControls: propShowWatermarkControls,
 }: PreviewModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const previewImageRef = useRef<HTMLImageElement | null>(null)
@@ -58,7 +52,6 @@ export function PreviewModal({
   const internalFile = useMemo(() => filePathToLunaFile(filePath, {
     thumbnailUrl: thumbnailForPath(filePath),
   }), [filePath])
-  const showWatermarkControls = propShowWatermarkControls ?? true
 
   // ── Live Photo 检测（异步读文件判断是否为 Google Motion Photo） ──
   const [fileIsLivePhoto, setFileIsLivePhoto] = useState(false)
@@ -138,13 +131,6 @@ export function PreviewModal({
   const [baseScale, setBaseScale] = useState(1)
   const [imageDragging, setImageDragging] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
-  // 获取设备默认水印样式
-  const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>(() => ({
-    enabled: false,
-    style: 'luna_ultra',
-    position: 'bottom-center',
-  }))
-  const [nativeLayers, setNativeLayers] = useState<WatermarkStaticLayer[] | null>(null)
   const [livePreview, setLivePreview] = useState<PreviewResult | null>(null)
   const [liveLoading, setLiveLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
@@ -166,40 +152,9 @@ export function PreviewModal({
   const isDownloadingCurrentFile = downloadProgress?.status === 'queued' || downloadProgress?.status === 'downloading'
   const downloadedPath = file.downloadFilePath ?? file.localPath ?? completedDownloadPath
   const isDownloaded = !!downloadedPath
-  const effectiveWatermark = showWatermarkControls
   const previewMatchesFile = preview?.fileName === file.name
   const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
   const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
-
-  // 加载已保存的水印设置，若无保存则设设备默认样式
-  useEffect(() => {
-    if (!isDownloadsPage) return
-    const deviceIdForWm = file.sourceDeviceId ?? file.watermarkProfileId ?? null
-    window.luna.getSettings().then((s) => {
-      const activeId = s.activeDeviceId
-      const wm = activeId ? s.deviceWatermark?.[activeId] : undefined
-      if (wm) {
-        setWatermarkSettings(wm)
-      } else if (deviceIdForWm) {
-        const opts = watermarkStyleOptionsForDevice(deviceIdForWm)
-        if (opts.length > 0) {
-          setWatermarkSettings((prev) => ({ ...prev, style: opts[0].value }))
-        }
-      }
-    }).catch(() => {})
-  }, [isDownloadsPage, file.sourceDeviceId, file.watermarkProfileId])
-
-  function saveWatermarkSettings(next: WatermarkSettingsType): void {
-    setWatermarkSettings(next)
-    window.luna.getSettings().then((s) => {
-      const deviceId = s.activeDeviceId
-      if (deviceId) {
-        window.luna.saveSettings({
-          deviceWatermark: { ...s.deviceWatermark, [deviceId]: next },
-        }).catch(() => {})
-      }
-    }).catch(() => {})
-  }
 
   useEffect(() => {
     setLivePreview(null)
@@ -292,7 +247,6 @@ export function PreviewModal({
     setMediaDetails((current) => ({ ...current, currentTime: video.currentTime }))
   }, [])
 
-  // 水印加载相关
   const playLivePhoto = useCallback(async () => {
     if (liveLoading) return
     setLiveLoading(true)
@@ -382,11 +336,8 @@ export function PreviewModal({
           isDownloadingCurrentFile={isDownloadingCurrentFile}
           isDownloadsPage={isDownloadsPage}
           progressPercent={progressPercent}
-          showWatermarkControls={effectiveWatermark}
-          watermarkSettings={watermarkSettings}
           onClose={onClose}
           onDownload={onDownload}
-          onExportWithWatermark={onExportWithWatermark}
           onReveal={onReveal}
           onSetInspectorOpen={setInspectorOpen}
         />
@@ -411,11 +362,7 @@ export function PreviewModal({
               previewLoading={previewLoading}
               previewMessage={preview?.message}
               previewImageRef={previewImageRef}
-              showWatermarkControls={effectiveWatermark}
               videoRef={videoRef}
-              watermarkSettings={watermarkSettings}
-              nativeLayers={nativeLayers}
-              localPath={downloadedPath}
               finishImageDrag={finishImageDrag}
               handleImageDoubleClick={handleImageDoubleClick}
               handleImageLoaded={handleImageLoaded}
@@ -456,18 +403,6 @@ export function PreviewModal({
               }}
               onResetZoom={() => { setImageZoom(1); setImagePan({ x: 0, y: 0 }) }}
               onToggleCollapse={() => setInspectorOpen(false)}
-              watermarkSettings={watermarkSettings}
-              onWatermarkChange={saveWatermarkSettings}
-              watermarkFilePath={downloadedPath ?? undefined}
-            />
-          )}
-          {effectiveWatermark && (
-            <WatermarkLayerBuilder
-              value={nativeLayers}
-              onChange={setNativeLayers}
-              filePath={downloadedPath}
-              sourceDeviceId={file.sourceDeviceId ?? file.watermarkProfileId}
-              compact
             />
           )}
         </div>

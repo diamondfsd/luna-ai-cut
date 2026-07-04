@@ -114,7 +114,6 @@ export function ExportModal({
             currentFile={currentFile}
             displaySource={displaySource}
             onFileChange={setCurrentFile}
-            watermarkSettings={watermarkSettings}
           />
 
           {/* Right: export options */}
