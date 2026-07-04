@@ -195,7 +195,7 @@ pub fn render_layers_to_file(
     quality: f64,
 ) -> napi::Result<()> {
     lock(|c| {
-        export::render_layers_to_file(&ffmpeg_path, &output, width, height, &layers, &format, quality)
+        export::render_layers_to_file(&ffmpeg_path, &output, width, height, &layers, &format, quality, c)
     })
 }
 
