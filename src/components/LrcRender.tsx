@@ -163,9 +163,19 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       let { dstX, dstY, dstW, dstH } = layer
 
       if (layer.fit === 'contain') {
-        const ar = info.width / info.height
-        let w = dstW, h = dstW / ar
-        if (h > dstH) { h = dstH; w = dstH * ar }
+        const mediaAspect = info.width / info.height
+        const framePixelW = dstW * pw
+        const framePixelH = dstH * ph
+        const frameAspect = framePixelW / framePixelH
+        let w = dstW
+        let h = dstH
+
+        if (frameAspect > mediaAspect) {
+          w = (framePixelH * mediaAspect) / pw
+        } else {
+          h = (framePixelW / mediaAspect) / ph
+        }
+
         dstX += (dstW - w) / 2
         dstY += (dstH - h) / 2
         dstW = w; dstH = h
