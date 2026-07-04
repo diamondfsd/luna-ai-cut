@@ -45,3 +45,4 @@ release*/
 # Worktrees
 .worktrees/
 luna-render-core/target/
+*.node
