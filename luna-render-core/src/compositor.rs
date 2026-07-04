@@ -190,6 +190,21 @@ pub struct Compositor {
     cache_order: VecDeque<String>,
     /// 已探测过的视频文件信息 <path → (width, height)>
     video_probed: HashMap<String, (u32, u32)>,
+    /// 持久 ffmpeg pipe 解码器 <path → VideoDecoder>
+    video_decoders: HashMap<String, VideoDecoder>,
+}
+
+/// 持久 ffmpeg pipe 视频解码器，保持进程存活按序读帧
+///
+/// 字段顺序重要：stdout 必须在 process 之前 drop，
+/// 否则 process.wait() 因 pipe 未关闭而阻塞。
+struct VideoDecoder {
+    stdout: std::process::ChildStdout,
+    process: std::process::Child,
+    scaled_w: u32,
+    scaled_h: u32,
+    frame_bytes: usize,
+    current_time: f64,
 }
 
 /// 创建 bind group layout（每个 layer 一个）
@@ -391,6 +406,7 @@ impl Compositor {
             texture_cache: HashMap::new(),
             cache_order: VecDeque::new(),
             video_probed: HashMap::new(),
+            video_decoders: HashMap::new(),
         })
     }
 
@@ -456,6 +472,16 @@ impl Compositor {
         max_size: u32,
     ) -> Result<(u32, u32, u32), String> {
         let max_size = max_size.max(1).min(self.max_texture_size);
+
+        // ── LRU 缓存命中 → 直接返回 ──
+        if let Some(tex_id) = self.get_cached_texture(path) {
+            let (w, h) = {
+                let entry = self.textures.get(&tex_id);
+                (entry.map(|e| e.width).unwrap_or(0), entry.map(|e| e.height).unwrap_or(0))
+            };
+            log!("load_texture_from_path [CACHE] {} tex_id={} {}x{}", path, tex_id, w, h);
+            return Ok((tex_id, w, h));
+        }
 
         // ── ffprobe 获取原始尺寸 ──
         let probe_output = Command::new(ffprobe)
@@ -534,6 +560,7 @@ impl Compositor {
             rgba.len(),
         );
         let id = self.load_texture(&rgba, width, height)?;
+        self.cache_static_texture(path.to_string(), id)?;
         Ok((id, width, height))
     }
 
@@ -838,7 +865,86 @@ impl Compositor {
         Ok((w, h))
     }
 
-    /// 统一渲染预览帧：静态图走 LRU 缓存，视频逐帧 seek 解码
+    /// 获取视频帧：保持 ffmpeg pipe 存活，逐帧顺序读取。
+    /// 初次 spawn + `-ss {time}` 定位起始位置，之后每次只读 pipe 的下一帧。
+    /// 重新 spawn 只在视频文件切换或 pipe 异常时发生。
+    fn read_video_frame(
+        &mut self,
+        ffmpeg: &str,
+        ffprobe: &str,
+        file_path: &str,
+        video_time: f64,
+    ) -> Result<(Vec<u8>, u32, u32), String> {
+        // 已有 decoder 且文件路径匹配 → 从 pipe 顺序读下一帧
+        if let Some(dec) = self.video_decoders.get_mut(file_path) {
+            let mut rgba = vec![0u8; dec.frame_bytes];
+            // read_exact 可能因管道关闭失败（eof），此时需要重新 spawn
+            if dec.stdout.read_exact(&mut rgba).is_err() {
+                log!("read_video_frame [{}] pipe EOF, restarting", file_path);
+                self.video_decoders.remove(file_path);
+                return self.read_video_frame(ffmpeg, ffprobe, file_path, video_time);
+            }
+            dec.current_time = video_time;
+            return Ok((rgba, dec.scaled_w, dec.scaled_h));
+        }
+
+        // ── 首次或换文件：spawn 持久 pipe ──
+        let (vw, vh) = self.probe_video(ffprobe, file_path)?;
+        let max_edge = vw.max(vh);
+        let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
+            let s = PREVIEW_MAX_SIZE as f64 / max_edge as f64;
+            ((vw as f64 * s).round().max(1.0) as u32,
+             (vh as f64 * s).round().max(1.0) as u32)
+        } else {
+            (vw, vh)
+        };
+        let frame_bytes = (dw * dh * 4) as usize;
+
+        // 不带 -vframes N，ffmpeg 持续输出帧直到 pipe 关闭
+        let mut proc = Command::new(ffmpeg)
+            .args([
+                "-ss", &format!("{:.3}", video_time),
+                "-i", file_path,
+                "-vf", &format!("scale={}:{}:flags=lanczos", dw, dh),
+                "-pix_fmt", "rgba",
+                "-f", "rawvideo",
+                "-loglevel", "error",
+                "pipe:1",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("ffmpeg spawn {}: {}", file_path, e))?;
+
+        let stdout = proc.stdout.take().ok_or_else(|| "no stdout".to_string())?;
+
+        // 读第1帧
+        let mut rgba = vec![0u8; frame_bytes];
+        let mut child_stdout = stdout;
+        child_stdout
+            .read_exact(&mut rgba)
+            .map_err(|e| format!("read first frame {}: {}", file_path, e))?;
+
+        self.video_decoders.insert(
+            file_path.to_string(),
+            VideoDecoder {
+                process: proc,
+                stdout: child_stdout,
+                scaled_w: dw,
+                scaled_h: dh,
+                frame_bytes,
+                current_time: video_time,
+            },
+        );
+
+        log!(
+            "read_video_frame [{}] started at {:.3}s {}x{}",
+            file_path, video_time, dw, dh,
+        );
+        Ok((rgba, dw, dh))
+    }
+
+    /// 统一渲染预览帧：静态图走 LRU 缓存，视频帧保持 ffmpeg pipe 持续读
     pub fn render_preview(
         &mut self,
         ffmpeg: &str,
@@ -847,41 +953,21 @@ impl Compositor {
         height: u32,
         layers: &[PreviewLayerInput],
     ) -> Result<Vec<u8>, String> {
+        // ── 清理已不再使用的视频 decoder ──
+        let active_video_paths: std::collections::HashSet<&str> = layers
+            .iter()
+            .filter(|l| l.is_video)
+            .map(|l| l.file_path.as_str())
+            .collect();
+        self.video_decoders
+            .retain(|path, _| active_video_paths.contains(path.as_str()));
+
         let mut result_layers = Vec::with_capacity(layers.len());
 
         for layer in layers {
             let tex_id = if layer.is_video {
-                // ── 视频帧：ffprobe 探测 → ffmpeg seek → 一次性纹理 ──
-                let (vw, vh) = self.probe_video(ffprobe, &layer.file_path)?;
-                let max_edge = vw.max(vh);
-                let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
-                    let s = PREVIEW_MAX_SIZE as f64 / max_edge as f64;
-                    ((vw as f64 * s).round().max(1.0) as u32,
-                     (vh as f64 * s).round().max(1.0) as u32)
-                } else {
-                    (vw, vh)
-                };
-                let mut proc = Command::new(ffmpeg)
-                    .args([
-                        "-ss", &format!("{:.3}", layer.video_time),
-                        "-i", &layer.file_path,
-                        "-vf", &format!("scale={}:{}:flags=lanczos", dw, dh),
-                        "-pix_fmt", "rgba",
-                        "-f", "rawvideo",
-                        "-vframes", "1",
-                        "-loglevel", "error",
-                        "pipe:1",
-                    ])
-                    .stdout(Stdio::piped())
-                    .spawn()
-                    .map_err(|e| format!("ffmpeg spawn {}: {}", layer.file_path, e))?;
-                let expected = (dw * dh * 4) as usize;
-                let mut rgba = vec![0u8; expected];
-                proc.stdout
-                    .take().ok_or_else(|| "no stdout".to_string())?
-                    .read_exact(&mut rgba)
-                    .map_err(|e| format!("read frame: {}", e))?;
-                proc.wait().ok();
+                // ── 视频帧：持久 ffmpeg pipe 依次读帧 ──
+                let (rgba, dw, dh) = self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time)?;
                 self.load_texture(&rgba, dw, dh)?
             } else {
                 // ── 静态图：LRU 缓存 ──
