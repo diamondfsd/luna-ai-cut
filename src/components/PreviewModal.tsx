@@ -91,8 +91,14 @@ export function PreviewModal({
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === 'Escape') onClose()
-      if ((event.key === 'ArrowLeft' || event.key === 'ArrowUp') && hasPrevious) navigateFile(-1)
-      if ((event.key === 'ArrowRight' || event.key === 'ArrowDown') && hasNext) navigateFile(1)
+      if ((event.key === 'ArrowLeft' || event.key === 'ArrowUp') && hasPrevious) {
+        event.preventDefault()
+        navigateFile(-1)
+      }
+      if ((event.key === 'ArrowRight' || event.key === 'ArrowDown') && hasNext) {
+        event.preventDefault()
+        navigateFile(1)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
