@@ -237,9 +237,27 @@ export function MediaLibraryPage({
             setPreviewFiles([])
           }}
           onDownload={(file) => downloadOne(file)}
-          onExportWithWatermark={(file, watermarkSettings) => {
+          onExportWithWatermark={async (file, watermarkSettings) => {
+            const exportId = `${file.name}_${Date.now()}`
+            const lunaExport = (window as any).lunaExport
+            if (!lunaExport) { toast.error('导出服务未就绪'); return }
             toast.success('已加入导出队列')
-            void exportLocalFiles([file], { ...watermarkSettings, enabled: true })
+
+            const dlPath = file.downloadFilePath || file.localPath
+            lunaExport.start({
+              id: exportId, kind: file.kind,
+              localPath: dlPath || null,
+              // 未下载时传入下载方法
+              downloadMethod: dlPath ? null : async () => {
+                await downloadOne(file)
+                // 下载完成后从 progress 中取路径
+                const p = downloadProgress.get(file.name)
+                return p?.destinationPath || dlPath || ''
+              },
+              watermark: watermarkSettings,
+              outputDir: settings?.downloadDir || settings?.exportDir || '',
+              outputName: (file.downloadName || file.name).replace(/\.[^.]+$/, '_wm' + (/\.[^.]+$/.exec(file.name)?.[0] || '.jpg')),
+            }).catch((err: Error) => toast.error(`导出失败: ${err.message}`))
           }}
           onReveal={(file) => {
             const localPath = file.downloadFilePath ?? file.localPath

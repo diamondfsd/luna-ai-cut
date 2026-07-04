@@ -189,7 +189,44 @@ const deviceDebugApi: DeviceDebugApi = {
   },
 }
 
+interface RenderLayer {
+  textureId: number
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX: number; srcY: number; srcW: number; srcH: number
+  opacity: number
+  zIndex: number
+}
+
+const lunaRenderCoreApi = {
+  init: () => ipcRenderer.invoke('lrc:init'),
+  pickVideo: () => ipcRenderer.invoke('lrc:pickVideo'),
+  loadTexture: (data: Buffer, width: number, height: number) => ipcRenderer.invoke('lrc:loadTexture', data, width, height),
+  updateTexture: (textureId: number, data: Buffer) => ipcRenderer.invoke('lrc:updateTexture', textureId, data),
+  releaseTexture: (textureId: number) => ipcRenderer.invoke('lrc:releaseTexture', textureId),
+  renderFrame: (canvasWidth: number, canvasHeight: number, layers: RenderLayer[]) =>
+    ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
+  exportVideo: (
+    inputPath: string, outputPath: string,
+    canvasWidth: number, canvasHeight: number,
+    fps: number | null, hardware: boolean,
+    videoLayer: RenderLayer, overlayLayers: RenderLayer[],
+  ) => ipcRenderer.invoke('lrc:exportVideo', inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers),
+  destroy: () => ipcRenderer.invoke('lrc:destroy'),
+}
+
+const lunaExportApi = {
+  start: (input: any) => { ipcRenderer.send('luna-export:start', input) },
+  cancel: (exportId: string) => { ipcRenderer.send('luna-export:cancel', exportId) },
+  onProgress: (callback: (state: any) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: any) => callback(state)
+    ipcRenderer.on('luna-export:progress', listener)
+    return () => ipcRenderer.off('luna-export:progress', listener)
+  },
+}
+
 contextBridge.exposeInMainWorld('luna', lunaApi)
+contextBridge.exposeInMainWorld('lunaRenderCore', lunaRenderCoreApi)
+contextBridge.exposeInMainWorld('lunaExport', lunaExportApi)
 contextBridge.exposeInMainWorld('deviceDebug', deviceDebugApi)
 if (import.meta.env.DEV || process.env.VITE_DEV_SERVER_URL) {
   contextBridge.exposeInMainWorld('wifiDebug', wifiDebugApi)

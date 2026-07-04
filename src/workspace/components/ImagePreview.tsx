@@ -1,17 +1,11 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react'
 
 import { LivePhotoBadge, LoadingIndicator, Tooltip } from '../../ui'
 import type { EditPipeline } from '../shared/editPipeline'
 import { createDefaultPipeline } from '../shared/editPipeline'
-import { buildColorLutParams, colorLutKey } from '../shared/colorLut'
-import { useCanvasEngine } from '../hooks/useCanvasEngine'
+import { useNativeCanvasEngine } from '../hooks/useNativeCanvasEngine'
 import { useViewport } from '../hooks/useViewport'
 import { WorkspaceVideoControls } from './WorkspaceVideoControls'
-// Watermark（自包含，不依赖 context）
-import { WatermarkOverlay } from '../../components/WatermarkOverlay'
-import { resolveWatermarkRatios } from '../../shared/watermark/layoutConfig'
-import { loadWatermarkImage } from '../../shared/watermarkAssets'
-import type { WatermarkImageInfo } from '../../shared/watermarkAssets'
 
 // ── Public handle 类型 ──
 
@@ -72,9 +66,7 @@ export const ImagePreview = forwardRef<ImagePreviewHandle, ImagePreviewProps>(fu
   name,
   isLivePhoto = false,
   pipeline: externalPipeline,
-  watermark: watermarkProp,
   cropActive = false,
-  allowStaleLut = true,
   onDoubleClick,
   className = 'workspace-canvas-shell',
   renderOverlay,
@@ -86,9 +78,9 @@ export const ImagePreview = forwardRef<ImagePreviewHandle, ImagePreviewProps>(fu
   // ── Viewport ──
   const viewport = useViewport()
 
-  // ── Canvas engine（内部管理 WebGL 渲染器、媒体加载、视频） ──
+  // ── Native Canvas engine（替代 WebGL） ──
   const activeMedia = useMemo(() => ({ path: filePath }), [filePath])
-  const canvas = useCanvasEngine({ editorOpen: true, activeMedia })
+  const canvas = useNativeCanvasEngine({ editorOpen: true, activeMedia })
 
   const activeMediaReady = Boolean(
     activeMedia && canvas.loadedMediaPath === activeMedia.path && !canvas.imageLoading,
@@ -114,27 +106,10 @@ export const ImagePreview = forwardRef<ImagePreviewHandle, ImagePreviewProps>(fu
   // ── 重置视口（媒体切换时） ──
   useEffect(() => { viewport.resetViewport() }, [filePath])
 
-  // ── 3D LUT 加载（放在渲染前，与旧 WorkspacePage 保持一致顺序） ──
-  const lutTimerRef = useRef<number | null>(null)
-  const lutKey = colorLutKey(resolvedPipeline.color)
+  // ── 渲染管线（pipeline / crop 变化时触发） ──
   useEffect(() => {
-    if (!canvas.canRender) return
-    if (lutTimerRef.current) window.clearTimeout(lutTimerRef.current)
-    lutTimerRef.current = window.setTimeout(() => {
-      const color = resolvedPipeline.color
-      if (!color) return
-      void canvas.bakeAndLoadLut(buildColorLutParams(color), lutKey)
-    }, 80)
-    return () => {
-      if (lutTimerRef.current) window.clearTimeout(lutTimerRef.current)
-    }
-  }, [lutKey, canvas.canRender, canvas.bakeAndLoadLut])
-
-  // ── 渲染管线（pipeline / crop / allowStaleLut 变化时触发）。
-  //     allowStaleLut 控制新 LUT 烘焙完成前是否用旧 LUT 过渡 ──
-  useEffect(() => {
-    canvas.render(resolvedPipeline, { cropMode: cropActive, allowStaleLut })
-  }, [resolvedPipeline, cropActive, allowStaleLut, canvas.render])
+    canvas.render(resolvedPipeline, { cropMode: cropActive })
+  }, [resolvedPipeline, cropActive, canvas.render])
 
   // ── 双击缩放 ──
   const handleDoubleClick = useCallback(() => {
@@ -167,48 +142,7 @@ export const ImagePreview = forwardRef<ImagePreviewHandle, ImagePreviewProps>(fu
     }
   }, [filePath, name, canvas])
 
-  // ── 水印 ──
-  const watermarkSettings = watermarkProp ?? resolvedPipeline.watermark
-  const [wmImage, setWmImage] = useState<WatermarkImageInfo | null>(null)
-
-  useEffect(() => {
-    if (!watermarkSettings?.enabled) { setWmImage(null); return }
-    let cancelled = false
-    loadWatermarkImage(watermarkSettings.style, 'image').then((info) => {
-      if (!cancelled) setWmImage(info)
-    })
-    return () => { cancelled = true }
-  }, [watermarkSettings?.enabled, watermarkSettings?.style])
-
-  const wmRender = useMemo(() => {
-    if (!watermarkSettings?.enabled || !wmImage || canvas.imageRect.width <= 1 || canvas.imageRect.height <= 1) return null
-    const { imageRect } = canvas
-    const ratios = resolveWatermarkRatios(null, watermarkSettings.style, imageRect.width, imageRect.height, watermarkSettings.position)
-    const widthRatio = ratios?.widthRatio ?? 0.15
-    const sensorW = Math.max(imageRect.width, imageRect.height)
-    const wmAspect = wmImage.height / wmImage.width
-    const targetW = Math.min(Math.round(sensorW * widthRatio), wmImage.width)
-    const targetH = Math.round(targetW * wmAspect)
-    const [vPos] = watermarkSettings.position.split('-') as ['top' | 'bottom', string]
-    const xRatio = ratios?.xRatio ?? 0.03
-    const yRatio = ratios?.yRatio ?? 0.03
-    const x = Math.round(imageRect.width * xRatio)
-    const y = vPos === 'bottom'
-      ? Math.round(imageRect.height - targetH - imageRect.height * yRatio)
-      : Math.round(imageRect.height * (1 - yRatio))
-    return (
-      <WatermarkOverlay
-        settings={watermarkSettings}
-        kind="image"
-        x={imageRect.x + x}
-        y={imageRect.y + y}
-        width={targetW}
-        height={targetH}
-        className="workspace-watermark-overlay"
-      />
-    )
-  }, [watermarkSettings, wmImage, canvas.imageRect])
-
+  // ── 水印（Native Core 内部合成，不需要 HTML overlay） ──
   return (
     <section className={className}>
       <div
@@ -229,7 +163,6 @@ export const ImagePreview = forwardRef<ImagePreviewHandle, ImagePreviewProps>(fu
             ref={canvas.canvasRef as React.RefObject<HTMLCanvasElement>}
             className="workspace-canvas"
           />
-          {wmRender}
           {renderOverlay?.()}
         </div>
 

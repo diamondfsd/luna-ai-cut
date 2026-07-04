@@ -217,7 +217,7 @@ export class FfmpegPipeline {
 
 // ─── ffprobe 探测 ────────────────────────────────
 
-function getFfprobePath(): string {
+export function getFfprobePath(): string {
   if (app.isPackaged) {
     const ext = process.platform === 'win32' ? '.exe' : ''
     return path.join(process.resourcesPath, 'ffmpeg', `ffprobe${ext}`)
