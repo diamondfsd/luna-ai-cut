@@ -312,15 +312,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       const dotIndex = lastPart.lastIndexOf('.')
       const baseName = dotIndex > 0 ? lastPart.substring(0, dotIndex) : lastPart
       const format = exportOptions.format || 'jpeg'
-      const quality = exportOptions.quality ?? 1.0
       const ext = format === 'jpeg' ? 'jpg' : format
-      const filename = `${baseName}.${ext}`
+      const filename = `${baseName}_${Date.now()}.${ext}`
 
       const outputPath = exportDir.endsWith('/') ? `${exportDir}${filename}` : `${exportDir}/${filename}`
 
       const lrcHandle = lrcRef.current
       if (!lrcHandle) throw new Error('LrcRender 未就绪')
-      await lrcHandle.exportImage(outputPath, res.width, res.height, format, quality)
+      await lrcHandle.exportImage(outputPath, res.width, res.height, format, 100)
 
       return { path: outputPath, name: filename }
     },

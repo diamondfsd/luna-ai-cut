@@ -225,6 +225,7 @@ const lunaRenderCoreApi = {
     format: string,
     quality: number,
   ) => ipcRenderer.invoke('lrc:renderLayersToFile', outputPath, width, height, layers, format, quality),
+  resolveRenderSource: (originalPath: string, cacheDir: string) => ipcRenderer.invoke('lrc:resolveRenderSource', originalPath, cacheDir),
   exportImageFromSources: (
     outputPath: string,
     width: number,

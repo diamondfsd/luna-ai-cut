@@ -15,6 +15,7 @@ import {
   renderPreview as lrcRenderPreview,
   exportFile as lrcExportFile,
   renderLayersToFile as lrcRenderLayersToFile,
+  resolveRenderSource as lrcResolveRenderSource,
   exportImageFromSources as lrcExportImageFromSources,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
@@ -25,6 +26,15 @@ import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
+}
+
+interface PreviewLayerArg {
+  filePath: string
+  isVideo?: boolean
+  videoTime?: number
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX?: number; srcY?: number; srcW?: number; srcH?: number
+  opacity?: number; zIndex?: number
 }
 
 interface RenderLayerArg {
@@ -130,7 +140,7 @@ export function register(_ctx: RegisterContext): void {
       outputPath: string,
       width: number,
       height: number,
-      layers: RenderLayerArg[],
+      layers: PreviewLayerArg[],
       format: string,
       quality: number,
     ) => {
@@ -139,6 +149,15 @@ export function register(_ctx: RegisterContext): void {
       rcLog(`lrc:exportImageFromSources out=${outputPath} ${width}x${height} layers=${layers.length} fmt=${format}`)
       lrcExportImageFromSources(ffmpegPath, ffprobePath, outputPath, width, height, layers, format, quality)
       rcLog('lrc:exportImageFromSources done')
+    },
+  ))
+
+  ipcMain.handle('lrc:resolveRenderSource', safe('resolveRenderSource',
+    async (_event: IpcMainInvokeEvent, originalPath: string, cacheDir: string) => {
+      const ffmpegPath = getFfmpegPath()
+      const ffprobePath = getFfprobePath()
+      rcLog(`lrc:resolveRenderSource path=${originalPath}`)
+      return lrcResolveRenderSource(ffmpegPath, ffprobePath, originalPath, cacheDir)
     },
   ))
 
