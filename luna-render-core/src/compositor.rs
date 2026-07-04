@@ -43,9 +43,9 @@ fn log_init(log_path: &str) {
 }
 
 pub fn log_write(msg: &str) {
-    let ts = chrono::Local::now().format("%H:%M:%S%.3f");
+    let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
     let line = format!("[{}] {}", ts, msg);
-    eprintln!("[LunaRC] {}", msg);
+    eprintln!("[LunaRC] {}", line);
     if let Ok(mut guard) = LOG_FILE.lock() {
         if let Some(ref mut file) = *guard {
             let _ = writeln!(file, "{}", line);
