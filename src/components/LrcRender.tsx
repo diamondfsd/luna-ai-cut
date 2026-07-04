@@ -116,6 +116,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       cancelAnimationFrame(rafRef.current)
       const lrc2 = getLRC()
       if (!lrc2) return
+      // 组件卸载：释放所有纹理（包括 Rust 缓存中的）
       for (const [, t] of texMapRef.current) { if (t.texId != null) lrc2.releaseTexture(t.texId).catch(() => {}) }
       texMapRef.current.clear()
       for (const [, v] of videoMapRef.current) v.video.pause()
@@ -192,10 +193,14 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     if (!lrc) return
 
     // ── 清理已移除的层 ──
+    // 注意：静态图纹理不在此 release，由 Rust 侧 LRU 缓存自动管理；
+    // 只有视频纹理（帧内容实时变化）才需要主动释放。
     const currentKeys = new Set(layers.map(layerKey))
     for (const [key, t] of texMapRef.current) {
-      if (!currentKeys.has(key) && t.texId != null) {
+      if (!currentKeys.has(key) && t.texId != null && key.startsWith('v:')) {
         lrc.releaseTexture(t.texId).catch(() => {})
+        texMapRef.current.delete(key)
+      } else if (!currentKeys.has(key)) {
         texMapRef.current.delete(key)
       }
     }
