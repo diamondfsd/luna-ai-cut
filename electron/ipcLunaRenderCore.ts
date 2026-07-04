@@ -83,7 +83,7 @@ export function register(_ctx: RegisterContext): void {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       const result = lrcLoadTextureFromPath(ffmpegPath, ffprobePath, path, maxSize)
-      rcLog(`lrc:loadTextureFromPath -> id=${result.textureId} ${result.width}x${result.height}`)
+      rcLog(`lrc:loadTextureFromPath -> id=${result.textureId} ${result.width}x${result.height} (maxSize=${maxSize})`)
       return result
     },
   ))
