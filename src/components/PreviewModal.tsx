@@ -65,16 +65,6 @@ export function PreviewModal({
 
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
-    console.log('[PreviewModal] handleWatermarkChange', {
-      enabled: settings.enabled,
-      position: settings.position,
-      imagePath: settings.imagePath,
-      wmAspect: settings.wmAspect,
-      widthRatio: settings.widthRatio,
-      xRatio: settings.xRatio,
-      yRatio: settings.yRatio,
-      layer,
-    })
     setWatermarkSettings(settings)
     setWatermarkLayers(layer ? [layer] : [])
   }

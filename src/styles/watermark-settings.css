@@ -39,3 +39,16 @@
   height: 100%;
   color: var(--text);
 }
+.wm-pos-frame rect {
+  fill: #c4c4c6;
+  opacity: 0.6;
+  transition: fill 0.12s, opacity 0.12s;
+}
+.wm-pos-cell:hover .wm-pos-frame rect {
+  fill: #8e8e93;
+  opacity: 0.8;
+}
+.wm-pos-cell.active .wm-pos-frame rect {
+  fill: var(--blue);
+  opacity: 1;
+}

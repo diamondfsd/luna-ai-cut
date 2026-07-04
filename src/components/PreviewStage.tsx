@@ -161,9 +161,7 @@ export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: Previe
       dstW: l.dstW * cW,
       dstH: l.dstH * cH,
     }))
-    const merged = [...main, ...adjusted]
-    console.log('[PreviewStage] layers', JSON.stringify(merged.map(l => ({ file: l.filePath?.slice(-30), dstX: +l.dstX.toFixed(3), dstY: +l.dstY.toFixed(3), dstW: +l.dstW.toFixed(3), dstH: +l.dstH.toFixed(3), fit: l.fit }))))
-    return merged
+    return [...main, ...adjusted]
   }, [url, scaleMode, resolution, stageSize, extraLayers])
 
   // 通过 IPC 获取媒体文件实际分辨率

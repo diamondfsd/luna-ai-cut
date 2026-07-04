@@ -497,7 +497,6 @@ impl Compositor {
         }
 
         // ── ffprobe 获取原始尺寸 ──
-        let _t0 = std::time::Instant::now();
         let probe_output = Command::new(ffprobe)
             .args([
                 "-v", "quiet",
@@ -521,8 +520,6 @@ impl Compositor {
         if source_w == 0 || source_h == 0 {
             return Err(format!("ffprobe: invalid image size in {}", path));
         }
-        log!("  → ffprobe {}x{} done in {}ms", source_w, source_h, _t0.elapsed().as_millis());
-
         // ── 计算缩放后尺寸 ──
         let (width, height) = {
             let max_edge = source_w.max(source_h);
@@ -565,20 +562,16 @@ impl Compositor {
             return Err(format!("ffmpeg exit {} for {}", status, path));
         }
 
-        let elapsed = _t0.elapsed();
         log!(
-            "load_texture_from_path ffmpeg path={} source={}x{} texture={}x{} rgba={}bytes elapsed={}ms",
+            "load_texture_from_path ffmpeg path={} source={}x{} texture={}x{} rgba={}bytes",
             path,
             source_w,
             source_h,
             width,
             height,
             rgba.len(),
-            elapsed.as_millis(),
         );
-        let _t_upload = std::time::Instant::now();
         let id = self.load_texture(&rgba, width, height)?;
-        log!("  → load_texture upload {}ms", _t_upload.elapsed().as_millis());
         self.cache_static_texture(path.to_string(), id)?;
         Ok((id, width, height))
     }
