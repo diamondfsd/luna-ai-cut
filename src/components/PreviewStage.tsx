@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
 import type { PreviewLayer } from '../shared/types'
 import './PreviewStage.css'
@@ -70,7 +71,10 @@ export function buildLayers(
   const frame = hasMeasuredFrame
     ? containFrame(resolution, stageSize)
     : { dstX: 0, dstY: 0, dstW: 1, dstH: 1 }
-  const fit: ScaleMode = hasMeasuredFrame ? 'fill' : scaleMode
+  const fit: ScaleMode = scaleMode
+  if (hasMeasuredFrame) {
+    console.log(`[PreviewStage] buildLayers resolution=${resolution!.width}x${resolution!.height} stage=${stageSize!.width}x${stageSize!.height} frame=${JSON.stringify(frame)} fit=${fit}`)
+  }
 
   const baseLayer = { ...frame, fit, srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 1, zIndex: 0 }
 
@@ -100,6 +104,63 @@ export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: Previe
   // ── 加载状态（url 切换时自动 loading） ──
   const [loading, setLoading] = useState(false)
   const prevUrlRef = useRef<string | null>(null)
+
+  // ── 视频控件状态 ──
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const isVideoUrl = url ? isVideo(url) : false
+
+  // 暴露 video 元素并绑定事件
+  const handleVideoElement = useCallback((el: HTMLVideoElement | null) => {
+    if (videoRef.current === el) return
+    // 解绑旧元素
+    if (videoRef.current) {
+      videoRef.current.onplay = null
+      videoRef.current.onpause = null
+      videoRef.current.ontimeupdate = null
+      videoRef.current.onloadedmetadata = null
+    }
+    videoRef.current = el
+    if (el) {
+      setPlaying(!el.paused)
+      setCurrentTime(el.currentTime)
+      setDuration(el.duration || 0)
+      el.onplay = () => setPlaying(true)
+      el.onpause = () => setPlaying(false)
+      el.ontimeupdate = () => setCurrentTime(el.currentTime)
+      el.onloadedmetadata = () => setDuration(el.duration || 0)
+    } else {
+      setPlaying(false)
+      setCurrentTime(0)
+      setDuration(0)
+    }
+  }, [])
+
+  function togglePlay() {
+    if (!videoRef.current) return
+    if (videoRef.current.paused) {
+      videoRef.current.play().catch(() => {})
+    } else {
+      videoRef.current.pause()
+    }
+  }
+
+  function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
+    const time = Number(e.target.value)
+    if (videoRef.current) {
+      videoRef.current.currentTime = time
+    }
+    setCurrentTime(time)
+  }
+
+  function formatTime(t: number): string {
+    if (!Number.isFinite(t) || t < 0) return '0:00'
+    const m = Math.floor(t / 60)
+    const s = Math.floor(t % 60)
+    return `${m}:${String(s).padStart(2, '0')}`
+  }
 
   // url 变化时显示 loading，onRender 时取消
   useEffect(() => {
@@ -171,7 +232,10 @@ export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: Previe
       return
     }
     window.luna.workspace.getMediaResolution(url)
-      .then(setResolution)
+      .then((res) => {
+        console.log(`[PreviewStage] getMediaResolution: ${url} -> ${res.width}x${res.height}`)
+        setResolution(res)
+      })
       .catch(() => setResolution(null))
   }, [url])
 
@@ -183,10 +247,28 @@ export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: Previe
       className="preview-stage"
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
-      <LrcRender layers={layers} onRender={handleRender} />
+      <LrcRender layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
       {loading && (
         <div className="preview-loading-overlay">
           <div className="preview-loading-spinner" />
+        </div>
+      )}
+      {isVideoUrl && videoRef.current && (
+        <div className="preview-video-controls">
+          <button className="preview-video-btn" onClick={togglePlay} title={playing ? '暂停' : '播放'}>
+            {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+          </button>
+          <input
+            className="preview-video-progress"
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={0.1}
+            value={currentTime}
+            onChange={handleSeek}
+            aria-label="进度"
+          />
+          <span className="preview-video-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
         </div>
       )}
     </div>
