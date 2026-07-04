@@ -23,7 +23,7 @@ const AUTH_PAYLOADS = [
 const EXPECTED_AUTH = Buffer.concat(AUTH_PAYLOADS)
 const AUTH_TTL_MS = 15_000
 const DEFAULT_MOCK = DEVICE_CONFIG.mock
-const CAMERA_DIR_NAMES = ['Camera01', 'Camera02']
+const CAMERA_DIR_NAMES = ['Camera01', 'Camera02', 'Camera03']
 const UCD2_MAGIC = Buffer.from('UCD2')
 const UCD2_FILE = 0x04
 const UCD2_STREAM = 0x05
@@ -244,7 +244,12 @@ async function filesForCameraDir(cameraDir) {
     const stats = await stat(explicitDir)
     if (stats.isDirectory()) return walk(explicitDir)
   } catch {}
-  return walk(rootDir)
+  // 没有显式子目录时，将 root 下的文件分片分配给各 Camera 目录，避免重复
+  const allFiles = await walk(rootDir)
+  const dirIndex = cameraDir ? CAMERA_DIR_NAMES.indexOf(cameraDir) : 0
+  if (dirIndex < 0) return allFiles
+  const chunkSize = Math.max(1, Math.ceil(allFiles.length / CAMERA_DIR_NAMES.length))
+  return allFiles.slice(dirIndex * chunkSize, (dirIndex + 1) * chunkSize)
 }
 
 function hrefForIndex(relative, cameraDir) {
