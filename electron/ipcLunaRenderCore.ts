@@ -15,6 +15,7 @@ import {
   renderPreview as lrcRenderPreview,
   exportFile as lrcExportFile,
   renderLayersToFile as lrcRenderLayersToFile,
+  exportImageFromSources as lrcExportImageFromSources,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
   destroy as lrcDestroy,
@@ -120,6 +121,24 @@ export function register(_ctx: RegisterContext): void {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       return lrcRenderPreview({ ...input, ffmpegPath, ffprobePath })
+    },
+  ))
+
+  ipcMain.handle('lrc:exportImageFromSources', safe('exportImageFromSources',
+    async (
+      _event: IpcMainInvokeEvent,
+      outputPath: string,
+      width: number,
+      height: number,
+      layers: RenderLayerArg[],
+      format: string,
+      quality: number,
+    ) => {
+      const ffmpegPath = getFfmpegPath()
+      const ffprobePath = getFfprobePath()
+      rcLog(`lrc:exportImageFromSources out=${outputPath} ${width}x${height} layers=${layers.length} fmt=${format}`)
+      lrcExportImageFromSources(ffmpegPath, ffprobePath, outputPath, width, height, layers, format, quality)
+      rcLog('lrc:exportImageFromSources done')
     },
   ))
 
