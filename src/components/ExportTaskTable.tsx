@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
+import { AlertCircle, Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Eye, FileDown, Film, ImageIcon, Loader2, X, XCircle } from 'lucide-react'
 
 import type { ExportTaskItemRecord, ExportTaskRecord } from '../shared/types'
 import { showPreviewModal } from './previewModalService'
 import { useApp } from '../context/AppContext'
-import { IconButton } from '../ui'
+import { Dialog, IconButton, toast } from '../ui'
 import { Table, type Column } from '../ui/Table'
 import '../styles/export-tasks.css'
 
@@ -44,6 +44,7 @@ function TaskItemRow({ item, onPreview, onRevealFile }: {
   onRevealFile?: (path: string) => void
 }) {
   const isVideo = item.kind === 'video' || item.kind === 'lrv'
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false)
   // 导出后的文件名：优先用 destinationPath，回退到 fileName
   const displayName = item.destinationPath
     ? item.destinationPath.split(/[/\\]/).pop() ?? item.fileName
@@ -68,7 +69,11 @@ function TaskItemRow({ item, onPreview, onRevealFile }: {
       </span>
       <span className="et-ti-eta">{item.status === 'exporting' ? formatETA(item) : null}</span>
       <span className="et-ti-actions">
-        {item.status === 'failed' && <span className="et-badge et-badge-failed">{item.error ?? '失败'}</span>}
+        {item.status === 'failed' && (
+          <button className="et-badge et-badge-failed" onClick={() => setErrorDialogOpen(true)} title="点击查看错误详情" style={{ cursor: 'pointer', border: 'none' }}>
+            失败
+          </button>
+        )}
         {item.status === 'done' && item.destinationPath && (
           <>
             <IconButton variant="ghost" onClick={() => onPreview(item)} title="预览" icon={<Eye size={13} />} />
@@ -76,6 +81,29 @@ function TaskItemRow({ item, onPreview, onRevealFile }: {
           </>
         )}
       </span>
+
+      {errorDialogOpen && (
+        <Dialog
+          open={errorDialogOpen}
+          onOpenChange={setErrorDialogOpen}
+          title="导出错误详情"
+          className="et-detail-dialog"
+        >
+          <pre style={{ maxHeight: 400, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 13, lineHeight: 1.5, background: 'var(--bg-subtle)', padding: 12, borderRadius: 8, fontFamily: 'monospace', margin: '0 0 12px' }}>
+            {item.error ?? '未知错误'}
+          </pre>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              className="ui-btn ui-btn-primary"
+              onClick={() => { navigator.clipboard.writeText(item.error ?? '未知错误').catch(() => {}); toast.success('已复制') }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, padding: '4px 12px' }}
+            >
+              <Copy size={14} />
+              复制
+            </button>
+          </div>
+        </Dialog>
+      )}
     </div>
   )
 }
@@ -93,6 +121,8 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
+  // 任务级错误详情弹窗
+  const [taskErrorDialog, setTaskErrorDialog] = useState<{ task: ExportTaskRecord; errorText: string } | null>(null)
 
   const loadTasks = async () => {
     setLoading(true)
@@ -237,13 +267,31 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
     {
       key: 'actions',
       label: '操作',
-      render: (task) => (
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {(task.status === 'exporting' || task.status === 'pending') && (
-            <IconButton variant="ghost" icon={<X size={12} />} onClick={() => void handleCancelTask(task.id)} title="取消导出" />
-          )}
-        </div>
-      ),
+      render: (task) => {
+        const failedItems = task.items.filter((i) => i.status === 'failed')
+        return (
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            {(task.status === 'exporting' || task.status === 'pending') && (
+              <IconButton variant="ghost" icon={<X size={12} />} onClick={() => void handleCancelTask(task.id)} title="取消导出" />
+            )}
+            {failedItems.length > 0 && (
+              <IconButton
+                variant="ghost"
+                icon={<AlertCircle size={13} style={{ color: '#ff3b30' }} />}
+                onClick={() => {
+                  const lines = failedItems.map((item) => {
+                    const name = item.fileName
+                    const err = item.error ?? '未知错误'
+                    return `【${name}】\n${err}`
+                  })
+                  setTaskErrorDialog({ task, errorText: lines.join('\n\n---\n\n') })
+                }}
+                title={`${failedItems.length} 个文件导出失败，点击查看详情`}
+              />
+            )}
+          </div>
+        )
+      },
     },
   ]
 
@@ -294,6 +342,29 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
             <ChevronRight size={14} />
           </button>
         </div>
+      )}
+
+      {taskErrorDialog && (
+        <Dialog
+          open={!!taskErrorDialog}
+          onOpenChange={(open) => { if (!open) setTaskErrorDialog(null) }}
+          title={`导出错误详情 - ${taskErrorDialog.task.name}`}
+          className="et-detail-dialog"
+        >
+          <pre style={{ maxHeight: 400, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 13, lineHeight: 1.5, background: 'var(--bg-subtle)', padding: 12, borderRadius: 8, fontFamily: 'monospace', margin: '0 0 12px' }}>
+            {taskErrorDialog.errorText}
+          </pre>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              className="ui-btn ui-btn-primary"
+              onClick={() => { navigator.clipboard.writeText(taskErrorDialog.errorText).catch(() => {}); toast.success('已复制') }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, padding: '4px 12px' }}
+            >
+              <Copy size={14} />
+              复制错误日志
+            </button>
+          </div>
+        </Dialog>
       )}
 
     </>

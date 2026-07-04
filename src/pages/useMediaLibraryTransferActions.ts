@@ -15,7 +15,6 @@ interface TransferActionProps {
   setDownloadProgress: Dispatch<SetStateAction<Map<string, DownloadProgress>>>
   setDownloadQueue: Dispatch<SetStateAction<LunaFile[]>>
   setDownloadedFiles: Dispatch<SetStateAction<LunaFile[]>>
-  setExportError: (value: string | null) => void
   setExportedFiles: Dispatch<SetStateAction<LunaFile[]>>
   setExporting: (value: boolean) => void
   setExportProgress: Dispatch<SetStateAction<Map<string, ExportProgress>>>
@@ -78,7 +77,6 @@ export function useMediaLibraryTransferActions({
   setDownloadProgress,
   setDownloadQueue,
   setDownloadedFiles,
-  setExportError,
   setExportedFiles,
   setExporting,
   setExportProgress,
@@ -245,11 +243,9 @@ export function useMediaLibraryTransferActions({
 
   async function exportLocalFiles(filesToExport: LunaFile[], watermarkSettings: WatermarkSettingsType, _videoExportSettings?: VideoExportSettings): Promise<void> {
     if (filesToExport.length === 0) return
-    setExportError(null)
     setExporting(true)
     try {
       if (!settings?.exportDir) {
-        setExportError('未设置导出目录，请在设置中配置')
         logger.error('导出失败：未设置导出目录')
         return
       }
@@ -275,7 +271,7 @@ export function useMediaLibraryTransferActions({
       const runnableEntries = exportEntries.filter(({ file }) => exportSourcePath(file))
       const missingEntries = exportEntries.filter(({ file }) => !exportSourcePath(file))
       if (runnableEntries.length === 0) {
-        setExportError('本地文件不存在')
+        logger.error('导出失败：本地文件不存在')
         return
       }
       const task = await window.luna.workspace.createExportTask(
@@ -409,15 +405,12 @@ export function useMediaLibraryTransferActions({
         })
       }
       if (failed.length > 0) {
-        const firstError = failed[0]
-        setExportError(`${firstError.name}: ${firstError.error}`)
         logger.error('导出文件失败', { files: failed })
       }
       setSelected(new Set())
       await loadExportLibrary()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      setExportError(`导出失败: ${message}`)
       logger.error('导出异常', { error: message })
     } finally {
       setExporting(false)
