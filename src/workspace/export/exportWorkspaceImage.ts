@@ -1,11 +1,6 @@
-import type { WatermarkSettings } from '../../shared/types'
-import { resolveWatermarkRatios } from '../../shared/watermark/layoutConfig'
-import { loadWatermarkImage } from '../../shared/watermarkAssets'
-
 export async function composeWorkspaceExport(
   canvas: HTMLCanvasElement,
   imageRect: { x: number; y: number; width: number; height: number },
-  watermark: WatermarkSettings,
   /** 可选的 WebGL 全分辨率渲染 Blob，有则直接解码使用，无则从 canvas 截取 */
   fullResBlob?: Blob,
 ): Promise<string> {
@@ -47,29 +42,7 @@ export async function composeWorkspaceExport(
 
   if (imageData instanceof ImageBitmap) imageData.close()
 
-  // 水印
-  if (watermark.enabled) {
-    const wmInfo = await loadWatermarkImage(watermark.style, 'image')
-    const ratios = resolveWatermarkRatios(null, watermark.style, width, height, watermark.position)
-    const widthRatio = ratios?.widthRatio ?? 0.15
-    const sensorW = Math.max(width, height)
-    const wmAspect = wmInfo.height / wmInfo.width
-    const targetW = Math.round(sensorW * widthRatio)
-    const targetH = Math.round(targetW * wmAspect)
-    const [vPos] = watermark.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
-    const xRatio = ratios?.xRatio ?? 0.03
-    const yRatio = ratios?.yRatio ?? 0.03
-    const x = Math.round(width * xRatio)
-    const y = vPos === 'bottom'
-      ? Math.round(height - targetH - height * yRatio)
-      : Math.round(height * (1 - yRatio))
-    const image = new Image()
-    image.src = wmInfo.src
-    await image.decode()
-    context.globalAlpha = 0.85
-    context.drawImage(image, x, y, targetW, targetH)
-    context.globalAlpha = 1
-  }
+  // 水印渲染已移除，由 Native Core 后端完成
 
   return exportCanvas.toDataURL('image/png')
 }
