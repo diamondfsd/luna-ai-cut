@@ -308,14 +308,6 @@ fn upload_rgba(queue: &wgpu::Queue, texture: &wgpu::Texture, data: &[u8], width:
     upload_rgba_ex(queue, texture, data, width, height, 0);
 }
 
-/// 计算纹理需要的 mip 级数
-fn mip_levels_count(width: u32, height: u32) -> u32 {
-    let max_edge = width.max(height);
-    (max_edge as f64).log2().floor() as u32 + 1
-}
-
-/// 对 RGBA 图像进行 2×2 块平均生成下一级 mip（输出尺寸 = w>>1, h>>1）
-
 /// 对齐
 fn align_to(v: u32, align: u32) -> u32 {
     ((v + align - 1) / align) * align
@@ -373,7 +365,7 @@ impl Compositor {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
 
@@ -465,7 +457,7 @@ impl Compositor {
             expected
         );
 
-        // 单 mip level，静态预览图不需要 mipmap（保持锐利度）
+        // 单 level + bilinear，Lanczos 预缩到接近渲染尺寸
         let texture = create_rgba_texture(
             &self.device,
             "layer",
