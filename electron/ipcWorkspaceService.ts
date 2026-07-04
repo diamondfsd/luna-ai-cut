@@ -8,7 +8,7 @@ import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import { getLocalResourcesDir, getSettings, previewCacheDir } from './fileService'
 import { safeName } from './filePathUtils'
 import { detectHardwareAccel } from './ffmpeg/hwaccel'
-import { getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
+import { getFfmpegPath, getFfprobePath, probeMedia } from './ffmpeg/pipeline'
 import { bakeColorLutData } from './ffmpeg/lutGenerator'
 import type { IpcContext } from './ipcContext'
 import { logMainDebug, logMainError, logMainInfo } from './loggerService'
@@ -56,6 +56,7 @@ export function register(ctx: IpcContext): void {
   })
 
   ipcMain.handle('workspace:getMediaResolution', async (_event, filePath: string) => {
+    logMainInfo(`[workspace:getMediaResolution] REQUEST filePath=${filePath}`)
     // 统一使用 ffprobe（非阻塞，只读文件头），
     // 避免 nativeImage.createFromPath() 同步解码大图阻塞主进程
     try {
@@ -65,15 +66,19 @@ export function register(ctx: IpcContext): void {
         let h = probe.videoHeight
         // ── 检测 EXIF 旋转，若旋转则交换宽高 ──
         try {
+          const ffprobeBin = getFfprobePath()
+          logMainInfo(`[workspace:getMediaResolution] exif ffprobe=${ffprobeBin}`)
           const { execFile } = await import('node:child_process')
           const { promisify } = await import('node:util')
           const execFileAsync = promisify(execFile)
-          const { stdout } = await execFileAsync(getFfprobePath(), [
+          const { stdout } = await execFileAsync(ffprobeBin, [
             '-v', 'quiet', '-print_format', 'json',
             '-show_frames', '-read_intervals', '%+#1', filePath,
           ])
+          logMainInfo(`[workspace:getMediaResolution] exif stdout=${stdout.length > 500 ? stdout.substring(0,500)+'...' : stdout}`)
           const parsed = JSON.parse(stdout)
           const frame = parsed.frames?.find((f: any) => f.media_type === 'video')
+          logMainInfo(`[workspace:getMediaResolution] exif frame=${JSON.stringify(frame?.tags)} sd=${JSON.stringify(frame?.side_data_list)}`)
           if (frame) {
             // 检查 side_data_list.displaymatrix.rotation
             const dmRotate = frame.side_data_list
@@ -83,12 +88,15 @@ export function register(ctx: IpcContext): void {
             const exifOrientation = String(frame.tags?.Orientation ?? '').trim()
             const exifRotate = exifOrientation === '6' ? 90 : exifOrientation === '8' ? 270 : 0
             const rotate = dmRotate ?? exifRotate ?? 0
+            logMainInfo(`[workspace:getMediaResolution] exif dm=${dmRotate} ori='${exifOrientation}' er=${exifRotate} rot=${rotate}`)
             if (rotate === 90 || rotate === 270) {
               ;[w, h] = [h, w]
-              logMainInfo(`[workspace:getMediaResolution] EXIF rotate=${rotate} -> ${w}x${h}`)
+              logMainInfo(`[workspace:getMediaResolution] exif SWAP -> ${w}x${h}`)
             }
           }
-        } catch { /* ffprobe rotate check failed, use raw dimensions */ }
+        } catch (e: any) {
+          logMainInfo(`[workspace:getMediaResolution] exif FAILED: ${e.message}`)
+        }
         logMainInfo(`[workspace:getMediaResolution] ${filePath} -> ${w}x${h}`)
         return { width: w, height: h }
       }
