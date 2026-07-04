@@ -15,6 +15,8 @@ import {
   renderPreview as lrcRenderPreview,
   exportFile as lrcExportFile,
   renderLayersToFile as lrcRenderLayersToFile,
+  cancelExportTask as lrcCancelExportTask,
+  getExportTaskProgress as lrcGetExportTaskProgress,
   destroy as lrcDestroy,
 } from './lunaRenderCore'
 import { dialog } from 'electron'
@@ -149,12 +151,27 @@ export function register(_ctx: RegisterContext): void {
       hardware: boolean,
       videoLayer: RenderLayerArg,
       overlayLayers: RenderLayerArg[],
+      taskId?: string,
+      qualityPreset?: string,
     ) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
-      rcLog(`lrc:exportVideo f=${ffmpegPath} p=${ffprobePath} ${inputPath} → ${outputPath}`)
-      lrcExportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers)
+      rcLog(`lrc:exportVideo f=${ffmpegPath} p=${ffprobePath} ${inputPath} → ${outputPath} task=${taskId} qp=${qualityPreset}`)
+      lrcExportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, taskId, qualityPreset)
       rcLog('lrc:exportVideo done')
+    },
+  ))
+
+  ipcMain.handle('lrc:cancelExportTask', safe('cancelExportTask',
+    async (_event: IpcMainInvokeEvent, taskId: string) => {
+      lrcCancelExportTask(taskId)
+      rcLog(`lrc:cancelExportTask task=${taskId}`)
+    },
+  ))
+
+  ipcMain.handle('lrc:getExportTaskProgress', safe('getExportTaskProgress',
+    async (_event: IpcMainInvokeEvent, taskId: string) => {
+      return lrcGetExportTaskProgress(taskId)
     },
   ))
 

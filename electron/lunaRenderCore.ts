@@ -71,7 +71,10 @@ interface LunaRenderCoreNative {
     canvasWidth: number, canvasHeight: number,
     fps: number | null, hardware: boolean,
     videoLayer: NativeLayer, staticLayers: NativeLayer[],
+    taskId: string | null, qualityPreset: string | null,
   ): void
+  cancelExportTask(taskId: string): void
+  getExportTaskProgress(taskId: string): [number, number] | null
   destroyCompositor(): void
 }
 
@@ -175,9 +178,21 @@ export function exportFile(
   hardware: boolean,
   videoLayer: RenderCoreLayerInput,
   staticLayers: RenderCoreLayerInput[],
+  taskId?: string,
+  qualityPreset?: string,
 ): void {
   ensureInit()
-  getNative().exportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, normalizeLayer(videoLayer), staticLayers.map(normalizeLayer))
+  getNative().exportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, normalizeLayer(videoLayer), staticLayers.map(normalizeLayer), taskId ?? null, qualityPreset ?? null)
+}
+
+export function cancelExportTask(taskId: string): void {
+  getNative().cancelExportTask(taskId)
+}
+
+export function getExportTaskProgress(taskId: string): [number, number] | null {
+  const result = getNative().getExportTaskProgress(taskId)
+  if (!result) return null
+  return [result[0], result[1]]
 }
 
 export function destroy(): void {

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { X, CircleAlert, FolderOpen } from 'lucide-react'
+import { X, CircleAlert, FolderOpen, Download } from 'lucide-react'
 
 import type { LunaFile } from '../shared/types'
 import { IconButton } from '../ui'
@@ -9,6 +9,10 @@ interface PreviewModalHeaderProps {
   inspectorOpen?: boolean
   onClose: () => void
   onSetInspectorOpen?: (open: boolean) => void
+  /** 导出按钮回调 */
+  onExport?: () => void
+  /** 导出是否正在进行中 */
+  exporting?: boolean
 }
 
 function mediaLabel(file: LunaFile): string {
@@ -22,6 +26,8 @@ export function PreviewModalHeader({
   inspectorOpen,
   onClose,
   onSetInspectorOpen,
+  onExport,
+  exporting,
 }: PreviewModalHeaderProps) {
   const revealPath = useMemo(
     () => file.downloadFilePath ?? file.localPath ?? null,
@@ -39,6 +45,15 @@ export function PreviewModalHeader({
         <h2>{file.name}</h2>
       </div>
       <div className="preview-actions">
+        {onExport && (
+          <IconButton
+            variant="light"
+            icon={<Download size={16} />}
+            onClick={onExport}
+            disabled={exporting}
+            title={exporting ? '导出中...' : '导出当前帧'}
+          />
+        )}
         {!inspectorOpen && (
           <IconButton
             variant="light"

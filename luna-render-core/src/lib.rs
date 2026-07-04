@@ -5,6 +5,7 @@ use std::sync::{LazyLock, Mutex};
 
 use compositor::Compositor;
 use napi::bindgen_prelude::Buffer;
+use crate::export::QualityPreset;
 use napi_derive::napi;
 
 #[napi(object)]
@@ -272,27 +273,22 @@ pub fn export_file(
     hardware: bool,
     video_layer: RenderLayer,
     static_layers: Vec<StaticLayer>,
+    task_id: Option<String>,
+    quality_preset: Option<String>,
 ) -> napi::Result<()> {
     lock(|c| {
         crate::log!(
-            "export: in={} out={} {}x{} static={}",
-            input,
-            output,
-            width,
-            height,
-            static_layers.len()
+            "export: in={} out={} {}x{} static={} task={:?} preset={:?}",
+            input, output, width, height, static_layers.len(), task_id, quality_preset
         );
+        let preset = quality_preset.as_deref().map(QualityPreset::from_str);
         export::export_file(
-            &ffmpeg_path,
-            &ffprobe_path,
-            &input,
-            &output,
-            width,
-            height,
-            fps,
-            hardware,
-            &video_layer,
-            &static_layers,
+            &ffmpeg_path, &ffprobe_path,
+            &input, &output,
+            width, height,
+            fps, hardware,
+            &video_layer, &static_layers,
+            task_id.as_deref(), preset,
             c,
         )
     })
@@ -307,3 +303,17 @@ pub fn destroy_compositor() -> napi::Result<()> {
     *guard = None;
     Ok(())
 }
+/// 取消指定导出任务
+#[napi]
+pub fn cancel_export_task(task_id: String) -> napi::Result<()> {
+    export::cancel_task(&task_id);
+    Ok(())
+}
+
+/// 查询导出任务进度（current_frame, total_frames）
+#[napi]
+pub fn get_export_task_progress(task_id: String) -> napi::Result<Option<Vec<u64>>> {
+    let progress = export::task_progress(&task_id);
+    Ok(progress.map(|(c, t)| vec![c, t]))
+}
+

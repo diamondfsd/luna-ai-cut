@@ -3,7 +3,7 @@
  *
  * Google Motion Photo（内嵌视频的 JPEG）的检测、提取、组合。
  */
-import { createReadStream, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { execFile } from 'node:child_process'

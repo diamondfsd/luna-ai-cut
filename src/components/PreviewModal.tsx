@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
+import type { PreviewStageHandle } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToLunaFile } from './previewModalUtils'
 import type { PreviewLayer, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Dialog, LivePhotoBadge } from '../ui'
+import { useIsLivePhoto } from '../shared/livePhoto'
 import '../styles/modal.css'
 
 interface PreviewModalProps {
@@ -52,7 +54,6 @@ export function PreviewModal({
   })
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
-  const [isLivePhoto, setIsLivePhoto] = useState(false)
 
   // 获取媒体分辨率用于水印布局匹配
   useEffect(() => {
@@ -62,20 +63,33 @@ export function PreviewModal({
       .catch(() => setMediaSize(null))
   }, [currentFilePath])
 
-  // 检测 Live Photo
-  useEffect(() => {
-    if (!currentFilePath) { setIsLivePhoto(false); return }
-    window.luna.isLivePhoto(currentFilePath)
-      .then(setIsLivePhoto)
-      .catch(() => setIsLivePhoto(false))
-  }, [currentFilePath])
-
   const displaySource = internalPreview?.source ?? null
+  const isLivePhoto = useIsLivePhoto(displaySource)
 
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
     setWatermarkSettings(settings)
     setWatermarkLayers(layer ? [layer] : [])
+  }
+
+  // ── 导出 ──
+  const stageRef = useRef<PreviewStageHandle>(null)
+  const [exporting, setExporting] = useState(false)
+
+  async function handleExport() {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const result = await stageRef.current?.export()
+      if (result) {
+        window.luna.log('info', `导出成功: ${result.path}`)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      window.luna.log('error', `导出失败: ${msg}`)
+    } finally {
+      setExporting(false)
+    }
   }
 
   // Escape 关闭
@@ -95,11 +109,18 @@ export function PreviewModal({
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
           onClose={onClose}
+          onExport={handleExport}
+          exporting={exporting}
         />
 
         <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
           <div className="preview-stage-col">
-            <PreviewStage url={displaySource} extraLayers={watermarkLayers} />
+            <PreviewStage
+              ref={stageRef}
+              url={displaySource}
+              extraLayers={watermarkLayers}
+              exportOptions={{ enable: true }}
+            />
 
             {isLivePhoto && (
               <span style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 10 }}>
