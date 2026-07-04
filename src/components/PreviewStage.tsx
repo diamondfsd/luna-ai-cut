@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { LrcRender, LrcLayer } from './LrcRender'
 import './PreviewStage.css'
 
@@ -27,6 +27,11 @@ interface PreviewStageProps {
   scaleMode?: ScaleMode
 }
 
+export interface MediaResolution {
+  width: number
+  height: number
+}
+
 /**
  * 统一构建层数据 — 根据媒体 URL 和缩放模式生成 LrcLayer[]
  *
@@ -51,23 +56,54 @@ export function buildLayers(url: string, scaleMode: ScaleMode): LrcLayer[] {
   return []
 }
 
+/**
+ * 计算宽高比（保留两位小数）
+ */
+export function calcAspectRatio(width: number, height: number): number {
+  if (height === 0) return 1
+  return Math.round((width / height) * 100) / 100
+}
+
 export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) {
   // ── 层数据状态管理 ──
   const [layers, setLayers] = useState<LrcLayer[]>([])
+  // ── 媒体分辨率 ──
+  const [resolution, setResolution] = useState<MediaResolution | null>(null)
+
+  // 宽高比（由 resolution 派生）
+  const aspectRatio = useMemo(() => {
+    if (!resolution) return null
+    return calcAspectRatio(resolution.width, resolution.height)
+  }, [resolution])
 
   // 当 url 或 scaleMode 变化时，重新构建层数据
   useEffect(() => {
     if (!url) {
       setLayers([])
+      setResolution(null)
       return
     }
     setLayers(buildLayers(url, scaleMode))
   }, [url, scaleMode])
 
+  // 通过 IPC 获取媒体文件实际分辨率
+  useEffect(() => {
+    if (!url) {
+      setResolution(null)
+      return
+    }
+    window.luna.workspace.getMediaResolution(url)
+      .then(setResolution)
+      .catch(() => setResolution(null))
+  }, [url])
+
   if (!url || layers.length === 0) return null
 
   return (
-    <div className="preview-stage">
+    <div
+      className="preview-stage"
+      data-media-aspect-ratio={aspectRatio ?? undefined}
+    >
       <LrcRender layers={layers} />
     </div>
   )
