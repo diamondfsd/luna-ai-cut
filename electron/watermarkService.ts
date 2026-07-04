@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process'
 import { createReadStream, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { app } from 'electron'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
@@ -24,6 +23,8 @@ import type {
   WatermarkSettings,
 } from '../src/shared/types'
 import { deviceDefinitions } from './deviceDefaults'
+
+import { app } from 'electron'
 
 function getWatermarkDir(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'watermark')
