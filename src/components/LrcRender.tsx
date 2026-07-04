@@ -171,13 +171,19 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     if (resultLayers.length === 0) return
 
     try {
+      const t0 = performance.now()
       const result = await lrc.renderFrame(pw, ph, resultLayers)
+      const t1 = performance.now()
       cvs.width = pw; cvs.height = ph
       cvs.style.width = `${cw}px`
       cvs.style.height = `${ch}px`
       cvs.getContext('2d')!.putImageData(
         new ImageData(new Uint8ClampedArray(result), pw, ph), 0, 0,
       )
+      const t2 = performance.now()
+      if ((t1 - t0) > 5 || (t2 - t1) > 5) {
+        console.log(`[LrcRender] perf: renderFrame=${(t1-t0).toFixed(1)}ms putImageData=${(t2-t1).toFixed(1)}ms total=${(t2-t0).toFixed(1)}ms ${pw}x${ph}`)
+      }
       onRender?.()
     } catch { /* 静默 */ }
   }
