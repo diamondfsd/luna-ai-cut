@@ -4,26 +4,25 @@ import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } fro
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
 import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
-import type { StaticLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
 
-// ─── re-export ─────────────────────────────────────────
-export type { StaticLayer } from '../shared/types'
-
 /**
- * 根据 WatermarkSettings 构建 RenderStaticLayer
+ * 根据 WatermarkSettings 构建 PreviewLayer
  * 需要 settings 中已填充 imagePath、wmAspect、widthRatio、xRatio、yRatio
  */
-export function buildWatermarkStaticLayer(settings: WatermarkSettingsType): StaticLayer | null {
+export function buildWatermarkStaticLayer(settings: WatermarkSettingsType): PreviewLayer | null {
   if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
-  const { imagePath, wmAspect, widthRatio = 0, xRatio = 0, yRatio = 0 } = settings
+  const { imagePath: filePath, wmAspect, widthRatio = 0, xRatio = 0, yRatio = 0 } = settings
   const vPos = settings.position.startsWith('Bottom') ? 'bottom' : 'top'
   return {
-    imagePath,
+    filePath,
     dstX: xRatio,
     dstY: vPos === 'bottom' ? 1 - widthRatio / wmAspect - yRatio : 1 - yRatio,
     dstW: widthRatio,
     dstH: widthRatio / wmAspect,
+    srcX: 0, srcY: 0, srcW: 1, srcH: 1,
+    opacity: 1, zIndex: 1,
   }
 }
 
@@ -35,7 +34,7 @@ const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }>
   { value: 'BottomRight', label: '右下', cx: 133, cy: 67.5 },
 ]
 
-export type WatermarkChangeHandler = (settings: WatermarkSettingsType, layer?: StaticLayer) => void
+export type WatermarkChangeHandler = (settings: WatermarkSettingsType, layer?: PreviewLayer) => void
 
 interface WatermarkSettingsProps {
   settings: WatermarkSettingsType

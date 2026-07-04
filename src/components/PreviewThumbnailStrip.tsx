@@ -1,18 +1,18 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { FileQuestion, Film } from 'lucide-react'
 
 import type { LunaFile } from '../shared/types'
 import { VideoPlayBadge } from '../ui'
 import { logger } from '../lib/rendererLogger'
+import { filePathToLunaFile } from './previewModalUtils'
 
 interface PreviewThumbnailStripProps {
-  activeThumbRef: RefObject<HTMLButtonElement>
-  currentFileId: string
-  files: LunaFile[]
-  stripRef: RefObject<HTMLDivElement>
-  onFileChange: (file: LunaFile) => void
+  filePathList: string[]
+  initialFilePath?: string
   /** 已修改（调色/水印有变更）的文件 ID 集合 */
   modifiedFileIds?: Set<string>
+  /** 当前选中文件变化时回调 */
+  onChange?: (filePath: string) => void
 }
 
 function thumbnailSrcFor(file: LunaFile, resolvedMap: Record<string, string>): string | null {
@@ -100,16 +100,40 @@ function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, 
 }
 
 export function PreviewThumbnailStrip({
-  activeThumbRef,
-  currentFileId,
-  files,
-  stripRef,
-  onFileChange,
+  filePathList,
+  initialFilePath,
   modifiedFileIds,
+  onChange,
 }: PreviewThumbnailStripProps) {
+  const stripRef = useRef<HTMLDivElement | null>(null)
+  const activeThumbRef = useRef<HTMLButtonElement | null>(null)
+
+  // ── 文件列表（内部转为 LunaFile） ──
+  const files = useMemo(() => filePathList.map((p) => filePathToLunaFile(p)), [filePathList]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 当前选中索引 ──
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    if (initialFilePath) {
+      const idx = filePathList.indexOf(initialFilePath)
+      if (idx >= 0) return idx
+    }
+    return 0
+  })
+
+  const currentFileId = files[currentIndex]?.id
+
+  // 同步外部 initialFilePath
+  useEffect(() => {
+    if (!initialFilePath) return
+    const idx = filePathList.indexOf(initialFilePath)
+    if (idx >= 0 && idx !== currentIndex) {
+      setCurrentIndex(idx)
+    }
+  }, [initialFilePath, filePathList]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 缩略图解析 ──
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
 
-  // 监听 onThumbnailReady，实时同步缩略图
   useEffect(() => {
     return window.luna.onThumbnailReady(({ fileId, thumbnailUrl }) => {
       if (thumbnailUrl) {
@@ -122,6 +146,59 @@ export function PreviewThumbnailStrip({
     setThumbnails((prev) => ({ ...prev, [fileId]: url }))
   }
 
+  // ── 点击切换 ──
+  function handleFileClick(file: LunaFile): void {
+    const idx = files.findIndex((x) => x.id === file.id)
+    if (idx >= 0 && idx !== currentIndex) {
+      setCurrentIndex(idx)
+    }
+  }
+
+  // ── 键盘导航 ──
+  // 用 ref 持有回调，避免 effect 需要重复注册
+  const onChangeRef = useRef(onChange)
+  useEffect(() => { onChangeRef.current = onChange })
+  const filePathListLengthRef = useRef(filePathList.length)
+  useEffect(() => { filePathListLengthRef.current = filePathList.length })
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        setCurrentIndex((prev) => {
+          const next = prev - 1
+          return next < 0 ? prev : next
+        })
+      }
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        event.preventDefault()
+        setCurrentIndex((prev) => {
+          const next = prev + 1
+          return next >= filePathListLengthRef.current ? prev : next
+        })
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  // ── currentIndex 变化时通知父级 ──
+  const isFirstIndexChange = useRef(true)
+  useEffect(() => {
+    if (isFirstIndexChange.current) {
+      isFirstIndexChange.current = false
+      return
+    }
+    onChangeRef.current?.(filePathList[currentIndex])
+  }, [currentIndex, filePathList])
+
+  // ── 当前缩略图滚动到可视区域 ──
+  useEffect(() => {
+    if (activeThumbRef.current) {
+      activeThumbRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    }
+  }, [currentIndex])
+
   return (
     <div className="preview-thumbnails" ref={stripRef}>
       {files.map((file) => (
@@ -131,7 +208,7 @@ export function PreviewThumbnailStrip({
           isActive={file.id === currentFileId}
           isModified={modifiedFileIds?.has(file.id) ?? false}
           resolvedMap={thumbnails}
-          onFileChange={onFileChange}
+          onFileChange={handleFileClick}
           onThumbnailResolved={handleThumbnailResolved}
           activeThumbRef={file.id === currentFileId ? activeThumbRef : undefined}
         />

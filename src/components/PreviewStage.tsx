@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { LrcRender, LrcLayer } from './LrcRender'
+import { LrcRender } from './LrcRender'
+import type { PreviewLayer } from '../shared/types'
 import './PreviewStage.css'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif']
@@ -41,7 +42,7 @@ function isValidSize(size: MediaResolution | StageSize | null): size is MediaRes
   return !!size && Number.isFinite(size.width) && Number.isFinite(size.height) && size.width > 0 && size.height > 0
 }
 
-function containFrame(media: MediaResolution, stage: StageSize): Pick<LrcLayer, 'dstX' | 'dstY' | 'dstW' | 'dstH'> {
+function containFrame(media: MediaResolution, stage: StageSize): Pick<PreviewLayer, 'dstX' | 'dstY' | 'dstW' | 'dstH'> {
   const mediaAspect = media.width / media.height
   const stageAspect = stage.width / stage.height
 
@@ -55,35 +56,27 @@ function containFrame(media: MediaResolution, stage: StageSize): Pick<LrcLayer, 
 }
 
 /**
- * 统一构建层数据 — 根据媒体 URL 和缩放模式生成 LrcLayer[]
- *
- * @param url        媒体文件路径
- * @param scaleMode  缩放模式（fill: 拉伸填满 / contain: 保持比例完整显示）
- * @param resolution 媒体真实分辨率，用于按资源比例构建 layer
- * @param stageSize  预览舞台尺寸，用于把资源比例换算成归一化 layer 坐标
+ * 统一构建层数据 — 根据媒体 URL 和缩放模式生成 PreviewLayer[]
  */
 export function buildLayers(
   url: string,
   scaleMode: ScaleMode,
   resolution: MediaResolution | null = null,
   stageSize: StageSize | null = null,
-): LrcLayer[] {
+): PreviewLayer[] {
   const hasMeasuredFrame = scaleMode === 'contain' && isValidSize(resolution) && isValidSize(stageSize)
   const frame = hasMeasuredFrame
     ? containFrame(resolution, stageSize)
     : { dstX: 0, dstY: 0, dstW: 1, dstH: 1 }
   const fit: ScaleMode = hasMeasuredFrame ? 'fill' : scaleMode
 
-  const baseLayer = {
-    ...frame,
-    fit,
-  }
+  const baseLayer = { ...frame, fit, srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 1, zIndex: 0 }
 
   if (isImage(url)) {
-    return [{ ...baseLayer, imagePath: url }]
+    return [{ ...baseLayer, filePath: url }]
   }
   if (isVideo(url)) {
-    return [{ ...baseLayer, videoPath: url }]
+    return [{ ...baseLayer, filePath: url, isVideo: true }]
   }
   return []
 }
