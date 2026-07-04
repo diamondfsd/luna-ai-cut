@@ -46,9 +46,11 @@ export function PreviewModal({
   const hasNext = filePathList ? currentIndex < filePathList.length - 1 : false
 
   function navigateFile(direction: -1 | 1): void {
-    const next = currentIndex + direction
-    if (next < 0 || next >= (filePathList?.length ?? 1)) return
-    setCurrentIndex(next)
+    setCurrentIndex((prev) => {
+      const next = prev + direction
+      if (next < 0 || next >= (filePathList?.length ?? 1)) return prev
+      return next
+    })
   }
 
   // ── 预览加载 ──

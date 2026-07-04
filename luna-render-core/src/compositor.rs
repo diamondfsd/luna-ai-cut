@@ -473,14 +473,15 @@ impl Compositor {
     ) -> Result<(u32, u32, u32), String> {
         let max_size = max_size.max(1).min(self.max_texture_size);
 
-        // ── LRU 缓存命中 → 直接返回 ──
+        // ── LRU 缓存命中 → 验证纹理仍存在，直接返回 ──
         if let Some(tex_id) = self.get_cached_texture(path) {
-            let (w, h) = {
-                let entry = self.textures.get(&tex_id);
-                (entry.map(|e| e.width).unwrap_or(0), entry.map(|e| e.height).unwrap_or(0))
-            };
-            log!("load_texture_from_path [CACHE] {} tex_id={} {}x{}", path, tex_id, w, h);
-            return Ok((tex_id, w, h));
+            if let Some(entry) = self.textures.get(&tex_id) {
+                log!("load_texture_from_path [CACHE] {} tex_id={} {}x{}", path, tex_id, entry.width, entry.height);
+                return Ok((tex_id, entry.width, entry.height));
+            }
+            // 纹理已被外部 release，从缓存清理
+            self.texture_cache.remove(path);
+            self.cache_order.retain(|k| k != path);
         }
 
         // ── ffprobe 获取原始尺寸 ──
@@ -593,6 +594,16 @@ impl Compositor {
         self.textures
             .remove(&texture_id)
             .ok_or_else(|| format!("texture {} not found", texture_id))?;
+        // 同步清理缓存中的条目
+        if let Some(path) = self
+            .texture_cache
+            .iter()
+            .find(|(_, &tid)| tid == texture_id)
+            .map(|(p, _)| p.clone())
+        {
+            self.texture_cache.remove(&path);
+            self.cache_order.retain(|k| k != &path);
+        }
         log!("release_texture id={}", texture_id);
         Ok(())
     }
