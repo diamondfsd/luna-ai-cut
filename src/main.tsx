@@ -1,4 +1,3 @@
-import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import App from './App.tsx'
@@ -19,11 +18,9 @@ initRendererLogger()
 document.title = `Luna AI Cut v${__APP_VERSION__}`
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
     <HashRouter>
       <App />
     </HashRouter>
-  </React.StrictMode>,
 )
 
 // ipcRenderer 未在 contextBridge 中暴露，此监听无意义

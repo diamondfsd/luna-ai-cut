@@ -3,9 +3,16 @@ mod export;
 
 use std::sync::{LazyLock, Mutex};
 
+use compositor::Compositor;
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
-use compositor::Compositor;
+
+#[napi(object)]
+pub struct TextureLoadResult {
+    pub texture_id: u32,
+    pub width: u32,
+    pub height: u32,
+}
 
 // ── 跨模块日志宏 ──
 macro_rules! log {
@@ -16,8 +23,7 @@ macro_rules! log {
 pub(crate) use log;
 
 /// 全局单例 compositor
-static COMPOSITOR: LazyLock<Mutex<Option<Compositor>>> =
-    LazyLock::new(|| Mutex::new(None));
+static COMPOSITOR: LazyLock<Mutex<Option<Compositor>>> = LazyLock::new(|| Mutex::new(None));
 
 fn lock<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> napi::Result<T> {
     let mut guard = COMPOSITOR.lock().map_err(|e| {
@@ -43,8 +49,14 @@ fn lock<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> napi::Result
 #[derive(Clone)]
 pub struct RenderLayer {
     pub texture_id: u32,
-    pub dst_x: f64, pub dst_y: f64, pub dst_w: f64, pub dst_h: f64,
-    pub src_x: f64, pub src_y: f64, pub src_w: f64, pub src_h: f64,
+    pub dst_x: f64,
+    pub dst_y: f64,
+    pub dst_w: f64,
+    pub dst_h: f64,
+    pub src_x: f64,
+    pub src_y: f64,
+    pub src_w: f64,
+    pub src_h: f64,
     pub opacity: f64,
     pub z_index: i32,
 }
@@ -56,9 +68,15 @@ pub struct StaticLayer {
     /// 图片文件绝对路径（水印、贴纸等）
     pub image_path: String,
     /// 目标区域（归一化 0-1）
-    pub dst_x: f64, pub dst_y: f64, pub dst_w: f64, pub dst_h: f64,
+    pub dst_x: f64,
+    pub dst_y: f64,
+    pub dst_w: f64,
+    pub dst_h: f64,
     /// 源裁剪区域（归一化 0-1）
-    pub src_x: f64, pub src_y: f64, pub src_w: f64, pub src_h: f64,
+    pub src_x: f64,
+    pub src_y: f64,
+    pub src_w: f64,
+    pub src_h: f64,
     pub opacity: f64,
     pub z_index: i32,
 }
@@ -70,14 +88,13 @@ pub struct StaticLayer {
 /// - `log_path`: 日志文件路径（可选，默认 luna-rc.log）
 #[napi]
 pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
-    let mut guard = COMPOSITOR.lock().map_err(|e| {
-        napi::Error::from_reason(format!("lock: {}", e))
-    })?;
+    let mut guard = COMPOSITOR
+        .lock()
+        .map_err(|e| napi::Error::from_reason(format!("lock: {}", e)))?;
     if guard.is_some() {
         return Ok(());
     }
-    let c = Compositor::new(log_path.as_deref())
-        .map_err(|e| napi::Error::from_reason(e))?;
+    let c = Compositor::new(log_path.as_deref()).map_err(|e| napi::Error::from_reason(e))?;
     *guard = Some(c);
     Ok(())
 }
@@ -87,6 +104,19 @@ pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
 pub fn load_texture(data: Buffer, width: u32, height: u32) -> napi::Result<u32> {
     let bytes: Vec<u8> = data.into();
     lock(|c| c.load_texture(&bytes, width, height))
+}
+
+/// 从本地图片路径加载预览纹理，native 内部按 max_size 等比缩小后上传 GPU。
+#[napi]
+pub fn load_texture_from_path(path: String, max_size: u32) -> napi::Result<TextureLoadResult> {
+    lock(|c| {
+        let (texture_id, width, height) = c.load_texture_from_path(&path, max_size)?;
+        Ok(TextureLoadResult {
+            texture_id,
+            width,
+            height,
+        })
+    })
 }
 
 /// 更新已有纹理的内容（用于视频逐帧更新）
@@ -127,9 +157,13 @@ pub fn preview_file(
 ) -> napi::Result<Buffer> {
     lock(|c| {
         let result = export::preview_file(
-            &ffmpeg_path, &ffprobe_path,
-            &input, width, height,
-            &static_layers, c,
+            &ffmpeg_path,
+            &ffprobe_path,
+            &input,
+            width,
+            height,
+            &static_layers,
+            c,
         )?;
         Ok(result.into())
     })
@@ -150,12 +184,25 @@ pub fn export_file(
     static_layers: Vec<StaticLayer>,
 ) -> napi::Result<()> {
     lock(|c| {
-        crate::log!("export: in={} out={} {}x{} static={}", input, output, width, height, static_layers.len());
+        crate::log!(
+            "export: in={} out={} {}x{} static={}",
+            input,
+            output,
+            width,
+            height,
+            static_layers.len()
+        );
         export::export_file(
-            &ffmpeg_path, &ffprobe_path,
-            &input, &output,
-            width, height, fps, hardware,
-            &video_layer, &static_layers,
+            &ffmpeg_path,
+            &ffprobe_path,
+            &input,
+            &output,
+            width,
+            height,
+            fps,
+            hardware,
+            &video_layer,
+            &static_layers,
             c,
         )
     })
@@ -164,9 +211,9 @@ pub fn export_file(
 /// 销毁 compositor
 #[napi]
 pub fn destroy_compositor() -> napi::Result<()> {
-    let mut guard = COMPOSITOR.lock().map_err(|e| {
-        napi::Error::from_reason(format!("lock: {}", e))
-    })?;
+    let mut guard = COMPOSITOR
+        .lock()
+        .map_err(|e| napi::Error::from_reason(format!("lock: {}", e)))?;
     *guard = None;
     Ok(())
 }
