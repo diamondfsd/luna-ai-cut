@@ -255,6 +255,7 @@ fn create_rgba_texture(
     width: u32,
     height: u32,
     usage: wgpu::TextureUsages,
+    mip_level_count: u32,
 ) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
@@ -263,7 +264,7 @@ fn create_rgba_texture(
             height,
             depth_or_array_layers: 1,
         },
-        mip_level_count: 1,
+        mip_level_count,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba8Unorm,
@@ -272,12 +273,19 @@ fn create_rgba_texture(
     })
 }
 
-/// 上传 RGBA 数据到纹理
-fn upload_rgba(queue: &wgpu::Queue, texture: &wgpu::Texture, data: &[u8], width: u32, height: u32) {
+/// 上传 RGBA 数据到纹理（可指定 mip_level）
+fn upload_rgba_ex(
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    data: &[u8],
+    width: u32,
+    height: u32,
+    mip_level: u32,
+) {
     queue.write_texture(
         TexelCopyTextureInfo {
             texture,
-            mip_level: 0,
+            mip_level,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
@@ -294,6 +302,19 @@ fn upload_rgba(queue: &wgpu::Queue, texture: &wgpu::Texture, data: &[u8], width:
         },
     );
 }
+
+/// 上传 RGBA 数据到纹理 mip 0
+fn upload_rgba(queue: &wgpu::Queue, texture: &wgpu::Texture, data: &[u8], width: u32, height: u32) {
+    upload_rgba_ex(queue, texture, data, width, height, 0);
+}
+
+/// 计算纹理需要的 mip 级数
+fn mip_levels_count(width: u32, height: u32) -> u32 {
+    let max_edge = width.max(height);
+    (max_edge as f64).log2().floor() as u32 + 1
+}
+
+/// 对 RGBA 图像进行 2×2 块平均生成下一级 mip（输出尺寸 = w>>1, h>>1）
 
 /// 对齐
 fn align_to(v: u32, align: u32) -> u32 {
@@ -352,7 +373,7 @@ impl Compositor {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
 
@@ -444,12 +465,14 @@ impl Compositor {
             expected
         );
 
+        // 单 mip level，静态预览图不需要 mipmap（保持锐利度）
         let texture = create_rgba_texture(
             &self.device,
             "layer",
             width,
             height,
             wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            1,
         );
         upload_rgba(&self.queue, &texture, &data[..expected], width, height);
 
@@ -655,6 +678,7 @@ impl Compositor {
                     canvas_width,
                     canvas_height,
                     wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                    1,
                 ),
                 canvas_width,
                 canvas_height,
