@@ -1,6 +1,5 @@
 import { filePathToPreviewUrl } from '../../../components/previewModalUtils'
 import type { WorkspaceMediaAsset } from '../../../shared/types'
-import { exportImageWithWebGL } from '../../export/exportImageWithWebGL'
 import { createDefaultPipeline, mergePipeline, type EditPipeline, type PipelinePatch } from '../../shared/editPipeline'
 
 export interface CreativeSlotSource {
@@ -57,23 +56,8 @@ export function drawCoverImage(
   ctx.drawImage(source, 0, 0, w, h, area.x + (area.width - drawW) / 2 + ox, area.y + (area.height - drawH) / 2 + oy, drawW, drawH)
 }
 
-export async function loadCreativeImageSource(asset: WorkspaceMediaAsset, pipeline: EditPipeline): Promise<HTMLImageElement> {
-  let src = assetPreviewUrl(asset)
-  if (asset.kind === 'image') {
-    try {
-      const blob = await exportImageWithWebGL(asset.path, pipeline)
-      src = URL.createObjectURL(blob)
-    } catch {
-      src = assetPreviewUrl(asset)
-    }
-  }
-
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error(`无法加载「${asset.name}」`))
-    img.src = src
-  })
+export async function loadCreativeImageSource(asset: WorkspaceMediaAsset, _pipeline: EditPipeline): Promise<HTMLImageElement> {
+  return loadCreativePreviewImageSource(asset)
 }
 
 export async function loadCreativePreviewImageSource(asset: WorkspaceMediaAsset): Promise<HTMLImageElement> {

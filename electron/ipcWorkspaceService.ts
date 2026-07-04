@@ -61,8 +61,36 @@ export function register(ctx: IpcContext): void {
     try {
       const probe = await probeMedia(filePath)
       if (probe.videoWidth > 0 && probe.videoHeight > 0) {
-        logMainInfo(`[workspace:getMediaResolution] ${filePath} -> ${probe.videoWidth}x${probe.videoHeight}`)
-        return { width: probe.videoWidth, height: probe.videoHeight }
+        let w = probe.videoWidth
+        let h = probe.videoHeight
+        // ── 检测 EXIF 旋转，若旋转则交换宽高 ──
+        try {
+          const { execFile } = await import('node:child_process')
+          const { promisify } = await import('node:util')
+          const execFileAsync = promisify(execFile)
+          const { stdout } = await execFileAsync(getFfprobePath(), [
+            '-v', 'quiet', '-print_format', 'json',
+            '-show_frames', '-read_intervals', '%+#1', filePath,
+          ])
+          const parsed = JSON.parse(stdout)
+          const frame = parsed.frames?.find((f: any) => f.media_type === 'video')
+          if (frame) {
+            // 检查 side_data_list.displaymatrix.rotation
+            const dmRotate = frame.side_data_list
+              ?.map((sd: any) => sd.rotation)
+              .find((r: number) => r === 90 || r === 270)
+            // 检查 EXIF tags.Orientation
+            const exifOrientation = String(frame.tags?.Orientation ?? '').trim()
+            const exifRotate = exifOrientation === '6' ? 90 : exifOrientation === '8' ? 270 : 0
+            const rotate = dmRotate ?? exifRotate ?? 0
+            if (rotate === 90 || rotate === 270) {
+              ;[w, h] = [h, w]
+              logMainInfo(`[workspace:getMediaResolution] EXIF rotate=${rotate} -> ${w}x${h}`)
+            }
+          }
+        } catch { /* ffprobe rotate check failed, use raw dimensions */ }
+        logMainInfo(`[workspace:getMediaResolution] ${filePath} -> ${w}x${h}`)
+        return { width: w, height: h }
       }
     } catch { /* fallback below */ }
 

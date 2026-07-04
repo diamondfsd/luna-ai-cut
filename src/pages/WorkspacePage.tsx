@@ -1,5 +1,5 @@
-import { ArrowLeft, ClipboardCopy, ClipboardPaste, Download, Eye, EyeOff, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowLeft, ClipboardCopy, ClipboardPaste, Eye, EyeOff, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
@@ -8,7 +8,6 @@ import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
 import { WorkspaceCanvasProvider } from '../workspace/context/WorkspaceCanvasContext'
-import { useWorkspaceExport } from '../workspace/export/useWorkspaceExport'
 import { createDefaultPipeline, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
 import { ImagePreview } from '../workspace/components/ImagePreview'
@@ -66,25 +65,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
   const allowStaleLut = !edit.compareOriginal
 
-  // ── ImagePreview ref（用于导出时访问 canvas） ──
+  // ── ImagePreview ref ──
   const previewRef = useRef<ImagePreviewHandle>(null)
-  const nullCanvasRef = useRef<HTMLCanvasElement | null>(null)
-
-  // ── Export ──
-  const { exportSingle, exportBatch } = useWorkspaceExport({
-    activeMedia: media.activeMedia,
-    canvasRef: previewRef.current?.canvasRef ?? nullCanvasRef,
-    imageRect: previewRef.current?.imageRect ?? { x: 0, y: 0, width: 1, height: 1 },
-    pipeline: displayPipeline,
-  })
-  const batchExport = useCallback(() => {
-    if (media.selectedIndices.size > 1) {
-      void exportBatch([...media.selectedIndices], media.media)
-    } else {
-      void exportSingle()
-    }
-  }, [media.selectedIndices, media.media, exportSingle, exportBatch])
-  const exportCount = media.selectedIndices.size > 0 ? media.selectedIndices.size : 1
 
   // ── Initialize pipeline / reset crop when active asset changes ──
   useEffect(() => {
@@ -362,9 +344,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
                 onMouseLeave={() => edit.setCompareOriginal(false)}
               >
                 对比
-              </Button>
-              <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!hasActiveMedia} onClick={() => void batchExport()}>
-                {exportCount > 1 ? `导出 (${exportCount})` : '导出'}
               </Button>
             </div>
           </footer>
