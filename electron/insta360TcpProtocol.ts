@@ -1,4 +1,5 @@
 import * as net from 'node:net'
+import * as os from 'node:os'
 
 import { logMainDebug, logMainInfo, logMainWarn } from './loggerService'
 
@@ -51,9 +52,36 @@ function tcpHost(host: string): string {
   }
 }
 
-export function connectSocket(host: string, port: number, timeoutMs: number): Promise<net.Socket> {
+/**
+ * 查找与目标主机在同一子网的本地 IPv4 地址。
+ * 用于多网卡场景（如同时连了普通 WiFi 和 Luna 相机网络），
+ * 强制 socket 绑定到正确接口，绕过 macOS 服务顺序导致的路由问题。
+ * 返回 null 表示无需绑定（目标非 IPv4 地址或未找到匹配接口）。
+ */
+function resolveLocalAddress(targetHost: string): string | null {
+  const parts = targetHost.split('.')
+  if (parts.length !== 4 || parts.some((p) => !/^\d{1,3}$/.test(p))) return null
+
+  const ip4toInt = (ip: string): number =>
+    ip.split('.').reduce((acc, oct) => ((acc << 8) | parseInt(oct, 10)) >>> 0, 0)
+
+  const target = ip4toInt(targetHost)
+  for (const addrs of Object.values(os.networkInterfaces())) {
+    if (!addrs) continue
+    for (const a of addrs) {
+      if (a.internal || a.family !== 'IPv4' || !a.netmask) continue
+      if ((target & ip4toInt(a.netmask)) === (ip4toInt(a.address) & ip4toInt(a.netmask))) {
+        return a.address
+      }
+    }
+  }
+  return null
+}
+
+export function connectSocket(host: string, port: number, timeoutMs: number, localAddress?: string): Promise<net.Socket> {
   return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ host, port })
+    const addr = localAddress ?? resolveLocalAddress(host)
+    const socket = net.createConnection(addr ? { host, port, localAddress: addr } : { host, port })
     let settled = false
 
     const finish = (err?: Error): void => {
