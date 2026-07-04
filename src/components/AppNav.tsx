@@ -40,9 +40,6 @@ export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode
           <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>
             工作台
           </NavLink>
-          <NavLink to="/watermark-demo" className={({ isActive }) => (isActive ? 'active' : '')}>
-            水印 Demo
-          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>

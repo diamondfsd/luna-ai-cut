@@ -1,11 +1,9 @@
-import type { LunaFile, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { LunaFile } from '../shared/types'
 
 export interface PreviewOptions {
   onReveal?: (filePath: string) => void
   onDownload?: (file: LunaFile) => void
-  onExportWithWatermark?: (file: LunaFile, settings: WatermarkSettingsType) => void
   isDownloadsPage?: boolean
-  showWatermarkControls?: boolean
   autoPlayLive?: boolean
 }
 

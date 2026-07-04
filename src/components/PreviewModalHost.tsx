@@ -2,14 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PreviewModal } from './PreviewModal'
 import { filePathToLunaFile, thumbnailUrlForFile } from './previewModalUtils'
 import { registerPreviewHost } from './previewModalService'
-import type { LunaFile, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { LunaFile } from '../shared/types'
 
 export interface PreviewOptions {
   onReveal?: (filePath: string) => void
   onDownload?: (file: LunaFile) => void
-  onExportWithWatermark?: (file: LunaFile, settings: WatermarkSettingsType) => void
   isDownloadsPage?: boolean
-  showWatermarkControls?: boolean
   autoPlayLive?: boolean
 }
 
@@ -72,9 +70,7 @@ export function PreviewModalHost() {
       onClose={handleClose}
       onReveal={handleReveal}
       onDownload={state.options.onDownload}
-      onExportWithWatermark={state.options.onExportWithWatermark}
       isDownloadsPage={state.options.isDownloadsPage}
-      showWatermarkControls={state.options.showWatermarkControls}
       autoPlayLive={state.options.autoPlayLive}
     />
   )
