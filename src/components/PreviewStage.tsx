@@ -146,7 +146,24 @@ export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: Previe
 
   const layers = useMemo(() => {
     const main = url ? buildLayers(url, scaleMode, resolution, stageSize) : []
-    return extraLayers?.length ? [...main, ...extraLayers] : main
+    if (!extraLayers?.length) return main
+
+    // 叠加层的坐标相对于主图内容区（解决 contain 黑边导致水印跑出画面）
+    const m = main[0]
+    const cX = m?.dstX ?? 0
+    const cY = m?.dstY ?? 0
+    const cW = m?.dstW ?? 1
+    const cH = m?.dstH ?? 1
+    const adjusted = extraLayers.map((l) => ({
+      ...l,
+      dstX: cX + l.dstX * cW,
+      dstY: cY + l.dstY * cH,
+      dstW: l.dstW * cW,
+      dstH: l.dstH * cH,
+    }))
+    const merged = [...main, ...adjusted]
+    console.log('[PreviewStage] layers', JSON.stringify(merged.map(l => ({ file: l.filePath?.slice(-30), dstX: +l.dstX.toFixed(3), dstY: +l.dstY.toFixed(3), dstW: +l.dstW.toFixed(3), dstH: +l.dstH.toFixed(3), fit: l.fit }))))
+    return merged
   }, [url, scaleMode, resolution, stageSize, extraLayers])
 
   // 通过 IPC 获取媒体文件实际分辨率

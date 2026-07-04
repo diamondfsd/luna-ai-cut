@@ -51,11 +51,30 @@ export function PreviewModal({
     position: 'BottomCenter' as any,
   })
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
+  const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
+
+  // 获取媒体分辨率用于水印布局匹配
+  useEffect(() => {
+    if (!currentFilePath) { setMediaSize(null); return }
+    window.luna.workspace.getMediaResolution(currentFilePath)
+      .then(({ width, height }) => setMediaSize({ w: width, h: height }))
+      .catch(() => setMediaSize(null))
+  }, [currentFilePath])
 
   const displaySource = internalPreview?.source ?? null
 
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
+    console.log('[PreviewModal] handleWatermarkChange', {
+      enabled: settings.enabled,
+      position: settings.position,
+      imagePath: settings.imagePath,
+      wmAspect: settings.wmAspect,
+      widthRatio: settings.widthRatio,
+      xRatio: settings.xRatio,
+      yRatio: settings.yRatio,
+      layer,
+    })
     setWatermarkSettings(settings)
     setWatermarkLayers(layer ? [layer] : [])
   }
@@ -96,6 +115,8 @@ export function PreviewModal({
                 settings={watermarkSettings}
                 onChange={handleWatermarkChange}
                 filePath={currentFilePath}
+                mediaWidth={mediaSize?.w}
+                mediaHeight={mediaSize?.h}
               />
               <MediaInspector filePath={currentFilePath} onToggleCollapse={() => setInspectorOpen(false)} />
             </div>

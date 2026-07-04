@@ -116,6 +116,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
   // ═══════════════════════════════════════
   //  合成渲染
   // ═══════════════════════════════════════
+  let _renderCount = 0
   async function compositeRender() {
     const lrc = getLRC()
     const cvs = canvasRef.current
@@ -127,12 +128,20 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
 
     const currentLayers = layersRef.current
     const sorted = [...currentLayers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    _renderCount++
+    const watermarkLayer = sorted.find(l => !l.isVideo && l.zIndex === 1)
+    console.log(`[LrcRender] compositeRender #${_renderCount} ${pw}x${ph} layers=${sorted.length}` +
+      (watermarkLayer ? ` wm={dstX:${watermarkLayer.dstX.toFixed(3)} dstY:${watermarkLayer.dstY.toFixed(3)} dstW:${watermarkLayer.dstW.toFixed(3)} dstH:${watermarkLayer.dstH.toFixed(3)} fit:${watermarkLayer.fit}}` : ''))
+
     const resultLayers: LrcTextureLayer[] = []
 
     for (const layer of sorted) {
       const key = layerKey(layer)
       const info = texMapRef.current.get(key)
-      if (!info || info.texId == null) continue
+      if (!info || info.texId == null) {
+        console.log(`[LrcRender]   skip ${key}: no texture loaded`)
+        continue
+      }
       let { dstX, dstY, dstW, dstH } = layer
 
       if (layer.fit === 'contain') {
@@ -180,6 +189,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     if (!ready) return
     const lrc = getLRC()
     if (!lrc) return
+    console.log('[LrcRender] layers effect fired', layers.map(l => l.filePath?.slice(-25)))
 
     // ── 清理已移除的层 ──
     // 注意：静态图纹理不在此 release，由 Rust 侧 LRU 缓存自动管理；
@@ -213,6 +223,10 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
         })
         .catch((e) => console.error('[LrcRender] 图片加载失败:', layer.filePath, e))
     }
+
+    // 无论是否有新纹理加载，都触发一次合成（层参数可能变了，如水印位置）
+    // 如果有新纹理在加载中，它们各自的 .then() 会再触发合成
+    compositeRender()
 
     // ── 视频层：浏览器 <video> 硬件解码 ──
     for (const layer of layers.filter((l) => l.isVideo)) {

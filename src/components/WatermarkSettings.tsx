@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
-import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
+import { luna_ultra_layout, closestAspectRatio, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
@@ -10,19 +10,27 @@ import '../styles/watermark-settings.css'
 /**
  * 根据 WatermarkSettings 构建 PreviewLayer
  * 需要 settings 中已填充 imagePath、wmAspect、widthRatio、xRatio、yRatio
+ * @param settings 水印设置
+ * @param layoutAspect 布局参考宽高比，如 "16:9"，与 luna_ultra_layout key 中的 aspect 一致
  */
-export function buildWatermarkStaticLayer(settings: WatermarkSettingsType): PreviewLayer | null {
+export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, layoutAspect?: string): PreviewLayer | null {
   if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
   const { imagePath: filePath, wmAspect, widthRatio = 0, xRatio = 0, yRatio = 0 } = settings
   const vPos = settings.position.startsWith('Bottom') ? 'bottom' : 'top'
+  const dstW = widthRatio
+  // 从 layout key 中获取参考宽高比，与查表一致
+  const parts = (layoutAspect ?? '16:9').split(':').map(Number)
+  const refAspect = parts[0] && parts[1] ? parts[0] / parts[1] : 16 / 9
+  const dstH = dstW * refAspect / wmAspect
   return {
     filePath,
     dstX: xRatio,
-    dstY: vPos === 'bottom' ? 1 - widthRatio / wmAspect - yRatio : 1 - yRatio,
-    dstW: widthRatio,
-    dstH: widthRatio / wmAspect,
+    dstY: vPos === 'bottom' ? 1 - dstH - yRatio : 1 - yRatio,
+    dstW,
+    dstH,
     srcX: 0, srcY: 0, srcW: 1, srcH: 1,
     opacity: 1, zIndex: 1,
+    fit: 'contain',
   }
 }
 
@@ -43,6 +51,9 @@ interface WatermarkSettingsProps {
   showToggle?: boolean
   /** 传文件路径即可自动按设备过滤水印样式 */
   filePath?: string
+  /** 媒体分辨率（用于按实际宽高比匹配水印布局） */
+  mediaWidth?: number
+  mediaHeight?: number
 }
 
 function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPositionChange }: {
@@ -51,31 +62,6 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   onStyleChange: (v: string) => void
   onPositionChange: (v: string) => void
 }) {
-  // 水印变更时输出映射表原始数据、文件路径和水印图片尺寸
-  useEffect(() => {
-    if (!settings.enabled) return
-    const theme = STYLE_TO_THEME[settings.style]
-    if (!theme) return
-    const key = `${theme}|16:9|${settings.position}`
-    const raw = luna_ultra_layout[key]
-    let cancelled = false
-    ;(async () => {
-      const info = await window.luna.getWatermarkPath(settings.style, 'image').catch(() => undefined)
-      if (cancelled || !info) return
-      console.log('[WatermarkSettings] 映射表原始数据:', {
-        key,
-        widthRatio: raw?.[0],
-        xRatio: raw?.[1],
-        yRatio: raw?.[2],
-        filePath: info.filePath,
-        wmWidth: info.width,
-        wmHeight: info.height,
-        wmAspect: info.width / info.height,
-      })
-    })()
-    return () => { cancelled = true }
-  }, [settings.enabled, settings.style, settings.position])
-
   return (
     <div style={{ display: 'grid', gap: 10 }}>
       {stylePills.length > 0 && (
@@ -117,7 +103,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   )
 }
 
-export function WatermarkSettings({ settings, onChange, compact, showToggle = true, filePath }: WatermarkSettingsProps) {
+export function WatermarkSettings({ settings, onChange, compact, showToggle = true, filePath, mediaWidth, mediaHeight }: WatermarkSettingsProps) {
   // 从文件路径自动检测设备 → 水印样式选项
   const [deviceId, setDeviceId] = useState<string | null>(null)
   useEffect(() => {
@@ -141,6 +127,16 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     })
   }, [deviceId])
 
+  // 首次挂载触发初始水印层生成
+  const initRef = useRef(true)
+  useEffect(() => {
+    if (initRef.current) {
+      initRef.current = false
+      enrichAndChange({})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   /** 获取水印路径和尺寸，与映射表比例合并后触发 onChange */
   const enrichAndChange = useCallback(async (patch: Partial<WatermarkSettingsType>) => {
     const next = { ...settings, ...patch }
@@ -149,7 +145,10 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       window.luna.getWatermarkPath(next.style, 'image').catch(() => null),
       Promise.resolve(STYLE_TO_THEME[next.style]),
     ])
-    const raw = theme ? luna_ultra_layout[`${theme}|16:9|${next.position}`] : null
+    // 根据实际媒体宽高比查找布局（从 props 传入）
+    const aspectKey = (mediaWidth && mediaHeight) ? closestAspectRatio(mediaWidth, mediaHeight) : '16:9'
+    const layoutKey = theme ? `${theme}|${aspectKey}|${next.position}` : null
+    const raw = layoutKey ? luna_ultra_layout[layoutKey] : null
     const enriched: WatermarkSettingsType = {
       ...next,
       imagePath: info?.filePath,
@@ -159,10 +158,10 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       yRatio: raw?.[2],
     }
     const layer = enriched.imagePath && enriched.wmAspect
-      ? buildWatermarkStaticLayer(enriched)
+      ? buildWatermarkStaticLayer(enriched, aspectKey)
       : undefined
     onChange(enriched, layer ?? undefined)
-  }, [settings, onChange])
+  }, [settings, onChange, filePath, mediaWidth, mediaHeight])
 
   const handleToggle = useCallback(
     (enabled: boolean) => enrichAndChange({ enabled }),
