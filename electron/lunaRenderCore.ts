@@ -13,6 +13,15 @@ const require = createRequire(import.meta.url)
 
 // ── 对外暴露的接口（可选字段由本层补默认值） ──
 
+export interface PreviewLayerInputForExport {
+  filePath: string
+  isVideo?: boolean
+  videoTime?: number
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX?: number; srcY?: number; srcW?: number; srcH?: number
+  opacity?: number; zIndex?: number
+}
+
 export interface RenderCoreLayerInput {
   textureId: number
   dstX: number; dstY: number; dstW: number; dstH: number
@@ -41,6 +50,15 @@ export interface RenderPreviewInput {
 
 // ── Native 内部全字段类型 ──
 
+interface PreviewNativeLayer {
+  filePath: string
+  isVideo: boolean
+  videoTime: number
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX: number; srcY: number; srcW: number; srcH: number
+  opacity: number; zIndex: number
+}
+
 interface NativeLayer {
   textureId: number
   dstX: number; dstY: number; dstW: number; dstH: number
@@ -56,13 +74,19 @@ interface LunaRenderCoreNative {
   releaseTexture(textureId: number): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: NativeLayer[]): Buffer
   renderPreview(input: any): Buffer
+  resolveRenderSource(
+    ffmpegPath: string,
+    ffprobePath: string,
+    originalPath: string,
+    cacheDir: string,
+  ): { renderPath: string; normalized: boolean; width: number; height: number }
   exportImageFromSources(
     ffmpegPath: string,
     ffprobePath: string,
     outputPath: string,
     width: number,
     height: number,
-    layers: NativeLayer[],
+    layers: PreviewNativeLayer[],
     format: string,
     quality: number,
   ): void
@@ -89,6 +113,19 @@ interface LunaRenderCoreNative {
 }
 
 /** 补全可选字段的默认值 */
+function normalizePreviewLayer(l: PreviewLayerInputForExport): PreviewNativeLayer {
+  return {
+    filePath: l.filePath,
+    isVideo: l.isVideo ?? false,
+    videoTime: l.videoTime ?? 0,
+    dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
+    srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
+    srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
+    opacity: l.opacity ?? 1,
+    zIndex: l.zIndex ?? 0,
+  }
+}
+
 function normalizeLayer(l: RenderCoreLayerInput): NativeLayer {
   return {
     textureId: l.textureId,
@@ -159,18 +196,35 @@ export function renderFrame(
   return getNative().renderFrame(canvasWidth, canvasHeight, layers.map(normalizeLayer))
 }
 
+export interface ResolvedRenderSource {
+  renderPath: string
+  normalized: boolean
+  width: number
+  height: number
+}
+
+export function resolveRenderSource(
+  ffmpegPath: string,
+  ffprobePath: string,
+  originalPath: string,
+  cacheDir: string,
+): ResolvedRenderSource {
+  ensureInit()
+  return getNative().resolveRenderSource(ffmpegPath, ffprobePath, originalPath, cacheDir)
+}
+
 export function exportImageFromSources(
   ffmpegPath: string,
   ffprobePath: string,
   outputPath: string,
   width: number,
   height: number,
-  layers: RenderCoreLayerInput[],
+  layers: PreviewLayerInputForExport[],
   format: string,
   quality: number,
 ): void {
   ensureInit()
-  getNative().exportImageFromSources(ffmpegPath, ffprobePath, outputPath, width, height, layers.map(normalizeLayer), format, quality)
+  getNative().exportImageFromSources(ffmpegPath, ffprobePath, outputPath, width, height, layers.map(normalizePreviewLayer), format, quality)
 }
 
 export function renderLayersToFile(
