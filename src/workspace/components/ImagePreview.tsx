@@ -41,6 +41,8 @@ export interface ImagePreviewProps {
   watermark?: EditPipeline['watermark']
   /** 裁剪模式（仅控制 CSS 类名） */
   cropActive?: boolean
+  /** 渲染时是否允许使用旧 LUT 过渡（对比模式应为 false） */
+  allowStaleLut?: boolean
   /** 双击回调（默认：缩放切换） */
   onDoubleClick?: () => void
   /** 容器 className（默认 workspace-canvas-shell） */
@@ -72,6 +74,7 @@ export const ImagePreview = forwardRef<ImagePreviewHandle, ImagePreviewProps>(fu
   pipeline: externalPipeline,
   watermark: watermarkProp,
   cropActive = false,
+  allowStaleLut = true,
   onDoubleClick,
   className = 'workspace-canvas-shell',
   renderOverlay,
@@ -127,11 +130,11 @@ export const ImagePreview = forwardRef<ImagePreviewHandle, ImagePreviewProps>(fu
     }
   }, [lutKey, canvas.canRender, canvas.bakeAndLoadLut])
 
-  // ── 渲染管线（pipeline / crop 变化时触发）。
-  //     allowStaleLut:true 确保新 LUT 烘焙完成前使用旧 LUT 过渡，避免闪回默认状态 ──
+  // ── 渲染管线（pipeline / crop / allowStaleLut 变化时触发）。
+  //     allowStaleLut 控制新 LUT 烘焙完成前是否用旧 LUT 过渡 ──
   useEffect(() => {
-    canvas.render(resolvedPipeline, { cropMode: cropActive, allowStaleLut: true })
-  }, [resolvedPipeline, cropActive, canvas.render])
+    canvas.render(resolvedPipeline, { cropMode: cropActive, allowStaleLut })
+  }, [resolvedPipeline, cropActive, allowStaleLut, canvas.render])
 
   // ── 双击缩放 ──
   const handleDoubleClick = useCallback(() => {
