@@ -19,6 +19,7 @@
     "predev": "node scripts/build-native.mjs",
     "dev": "vite",
     "build": "tsc && vite build && node scripts/copy-ffmpeg.mjs && electron-builder",
+    "build:rust": "node scripts/build-native.mjs",
     "build:app": "tsc && vite build",
     "test:workspace": "node scripts/test-workspace-geometry.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
