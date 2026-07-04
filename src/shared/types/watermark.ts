@@ -7,15 +7,11 @@ export interface WatermarkSettings {
   enabled: boolean
   style: WatermarkStyle
   position: WatermarkPosition
+  /** 以下字段由 onChange 时自动填充 */
+  imagePath?: string
+  wmAspect?: number     // watermark width / height
+  widthRatio?: number
+  xRatio?: number
+  yRatio?: number
 }
 
-/**
- * luna-render-core 静态层：lrc 内部加载 imagePath 为纹理并渲染
- * dstX/dstY/dstW/dstH 均为归一化坐标 [0, 1]
- */
-export interface RenderStaticLayer {
-  imagePath: string
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-}

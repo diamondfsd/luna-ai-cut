@@ -8,8 +8,8 @@ import { createRequire } from 'node:module'
 const _require = createRequire(import.meta.url)
 
 // ── Native Core ──
-interface StaticLayer { imagePath: string; dstX: number; dstY: number; dstW: number; dstH: number; srcX: number; srcY: number; srcW: number; srcH: number; opacity: number; zIndex: number }
-interface RenderLayer { textureId: number; dstX: number; dstY: number; dstW: number; dstH: number; srcX: number; srcY: number; srcW: number; srcH: number; opacity: number; zIndex: number }
+interface StaticLayer { imagePath: string; dstX: number; dstY: number; dstW: number; dstH: number; srcX?: number; srcY?: number; srcW?: number; srcH?: number; opacity?: number; zIndex?: number }
+interface RenderLayer { textureId: number; dstX: number; dstY: number; dstW: number; dstH: number; srcX?: number; srcY?: number; srcW?: number; srcH?: number; opacity?: number; zIndex?: number }
 interface LunaRC {
   initCompositor(logPath?: string): void
   exportFile(ffmpeg: string, ffprobe: string, input: string, output: string,
@@ -54,7 +54,7 @@ export async function runExport(input: ExportInput, cb: ExportCallbacks): Promis
     try { lrc.initCompositor() } catch {}
 
     // 构建 JSON：视频帧 + 静态层（Rust 内部加载渲染）
-    const videoLayer: RenderLayer = { textureId: 0, dstX: 0, dstY: 0, dstW: 1, dstH: 1, srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 1, zIndex: 0 }
+    const videoLayer: RenderLayer = { textureId: 0, dstX: 0, dstY: 0, dstW: 1, dstH: 1 }
     const staticLayers: StaticLayer[] = []
 
     if (input.watermark?.enabled && input.watermark.overlayPath && existsSync(input.watermark.overlayPath)) {
@@ -64,7 +64,7 @@ export async function runExport(input: ExportInput, cb: ExportCallbacks): Promis
       else if (pos === 'top-left') { x = m; y = m }
       else if (pos === 'bottom-left') { x = m; y = 1 - wmW - m }
       else { x = (1 - wmW) / 2; y = (1 - wmW) / 2 }
-      staticLayers.push({ imagePath: input.watermark.overlayPath, dstX: x, dstY: y, dstW: wmW, dstH: wmW, srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 0.85, zIndex: 10 })
+      staticLayers.push({ imagePath: input.watermark.overlayPath, dstX: x, dstY: y, dstW: wmW, dstH: wmW })
       log(`  static layer: ${input.watermark.overlayPath}`)
     }
 

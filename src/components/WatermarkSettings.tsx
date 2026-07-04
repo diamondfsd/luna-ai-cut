@@ -4,46 +4,26 @@ import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } fro
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
 import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
-import type { RenderStaticLayer, WatermarkPosition, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { StaticLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
 
 // ─── re-export ─────────────────────────────────────────
-export type { RenderStaticLayer } from '../shared/types'
+export type { StaticLayer } from '../shared/types'
 
 /**
- * 根据画布尺寸 + WatermarkSettings 构建 RenderStaticLayer
- * @param settings 水印设置（WatermarkSettings 类型）
- * @param cw 画布宽度
- * @param ch 画布高度
- * @param wmW 水印图片原始宽度
- * @param wmH 水印图片原始高度
- * @param imagePath 水印图片文件路径
- * @param widthRatio 映射表 widthRatio
- * @param xRatio 映射表 xRatio
- * @param yRatio 映射表 yRatio
+ * 根据 WatermarkSettings 构建 RenderStaticLayer
+ * 需要 settings 中已填充 imagePath、wmAspect、widthRatio、xRatio、yRatio
  */
-export function buildWatermarkStaticLayer(
-  settings: WatermarkSettingsType,
-  cw: number, ch: number,
-  wmW: number, wmH: number,
-  imagePath: string,
-  widthRatio: number,
-  xRatio: number,
-  yRatio: number,
-): RenderStaticLayer {
-  const sensorW = Math.max(cw, ch)
-  const dstW = widthRatio * sensorW / cw
-  const dstH = dstW * (wmH / wmW) * (cw / ch)
-  const dstX = xRatio
+export function buildWatermarkStaticLayer(settings: WatermarkSettingsType): StaticLayer | null {
+  if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
+  const { imagePath, wmAspect, widthRatio = 0, xRatio = 0, yRatio = 0 } = settings
   const vPos = settings.position.startsWith('Bottom') ? 'bottom' : 'top'
-  const dstY = vPos === 'bottom' ? 1 - dstH - yRatio : 1 - yRatio
-
   return {
     imagePath,
-    dstX: Math.min(1, Math.max(0, dstX)),
-    dstY: Math.min(1, Math.max(0, dstY)),
-    dstW: Math.min(1, Math.max(0, dstW)),
-    dstH: Math.min(1, Math.max(0, dstH)),
+    dstX: xRatio,
+    dstY: vPos === 'bottom' ? 1 - widthRatio / wmAspect - yRatio : 1 - yRatio,
+    dstW: widthRatio,
+    dstH: widthRatio / wmAspect,
   }
 }
 
@@ -55,9 +35,11 @@ const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }>
   { value: 'BottomRight', label: '右下', cx: 133, cy: 67.5 },
 ]
 
+export type WatermarkChangeHandler = (settings: WatermarkSettingsType, layer?: StaticLayer) => void
+
 interface WatermarkSettingsProps {
   settings: WatermarkSettingsType
-  onChange: (settings: WatermarkSettingsType) => void
+  onChange: WatermarkChangeHandler
   compact?: boolean
   showToggle?: boolean
   /** 传文件路径即可自动按设备过滤水印样式 */
@@ -160,19 +142,42 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     })
   }, [deviceId])
 
+  /** 获取水印路径和尺寸，与映射表比例合并后触发 onChange */
+  const enrichAndChange = useCallback(async (patch: Partial<WatermarkSettingsType>) => {
+    const next = { ...settings, ...patch }
+    if (!next.enabled) { onChange(next); return }
+    const [info, theme] = await Promise.all([
+      window.luna.getWatermarkPath(next.style, 'image').catch(() => null),
+      Promise.resolve(STYLE_TO_THEME[next.style]),
+    ])
+    const raw = theme ? luna_ultra_layout[`${theme}|16:9|${next.position}`] : null
+    const enriched: WatermarkSettingsType = {
+      ...next,
+      imagePath: info?.filePath,
+      wmAspect: info ? info.width / info.height : undefined,
+      widthRatio: raw?.[0],
+      xRatio: raw?.[1],
+      yRatio: raw?.[2],
+    }
+    const layer = enriched.imagePath && enriched.wmAspect
+      ? buildWatermarkStaticLayer(enriched)
+      : undefined
+    onChange(enriched, layer ?? undefined)
+  }, [settings, onChange])
+
   const handleToggle = useCallback(
-    (enabled: boolean) => onChange({ ...settings, enabled }),
-    [settings, onChange],
+    (enabled: boolean) => enrichAndChange({ enabled }),
+    [enrichAndChange],
   )
 
   const handleStyleChange = useCallback(
-    (style: string) => onChange({ ...settings, style }),
-    [settings, onChange],
+    (style: string) => enrichAndChange({ style }),
+    [enrichAndChange],
   )
 
   const handlePositionChange = useCallback(
-    (position: string) => onChange({ ...settings, position: position as WatermarkPosition }),
-    [settings, onChange],
+    (position: string) => enrichAndChange({ position: position as WatermarkSettingsType['position'] }),
+    [enrichAndChange],
   )
 
   const content = (
