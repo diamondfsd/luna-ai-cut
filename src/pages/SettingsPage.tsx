@@ -34,6 +34,7 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
+  const [logDir, setLogDir] = useState('')
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -59,6 +60,20 @@ export function SettingsPage({
   useEffect(() => {
     return () => {
       if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    let canceled = false
+    window.luna.getLogDir()
+      .then((dir) => {
+        if (!canceled) setLogDir(dir)
+      })
+      .catch(() => {
+        if (!canceled) setLogDir('')
+      })
+    return () => {
+      canceled = true
     }
   }, [])
 
@@ -127,12 +142,16 @@ export function SettingsPage({
 
         <article className="settings-row">
           <div className="settings-row-copy">
-            <span>日志目录</span>
-            <em>主进程和渲染进程的运行日志，按天轮转</em>
+            <span>日志</span>
+            <strong>{logDir || '正在读取日志目录'}</strong>
           </div>
           <div className="settings-row-actions">
             <Button variant="secondary" size="compact" onClick={() => {
-              void window.luna.getLogDir().then(dir => openDirectory(dir))
+              if (logDir) openDirectory(logDir)
+              else void window.luna.getLogDir().then(dir => {
+                setLogDir(dir)
+                openDirectory(dir)
+              })
             }} icon={<FolderOpen size={15} />}>
               打开
             </Button>
