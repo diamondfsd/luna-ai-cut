@@ -30,40 +30,30 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   onStyleChange: (v: string) => void
   onPositionChange: (v: string) => void
 }) {
-  // 加载水印图片获取实际长宽比
-  const [wmSize, setWmSize] = useState<{ w: number; h: number } | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    const src = WM_SRC[settings.style]?.image
-    if (!src) { setWmSize(null); return }
-    const img = new Image()
-    img.onload = () => { if (!cancelled) setWmSize({ w: img.naturalWidth, h: img.naturalHeight }) }
-    img.onerror = () => { if (!cancelled) setWmSize(null) }
-    img.src = src
-    return () => { cancelled = true }
-  }, [settings.style])
-
-  // 从 WATERMARK_LAYOUT 中直接查找当前设置的参数
+  // 水印变更时输出映射表原始数据和水印文件路径
   useEffect(() => {
     if (!settings.enabled) return
     const theme = STYLE_TO_THEME[settings.style]
     if (!theme) return
     const key = `${theme}|16:9|${settings.position}`
-    const ratios = luna_ultra_layout[key]
-    console.log('[WatermarkSettings] WATERMARK_LAYOUT 查找:', { key, ratios, wmSize })
-  }, [settings.enabled, settings.style, settings.position, wmSize])
-
-  // 在 160×90 视口中计算水印预览矩形
-  const wmPreview = useMemo(() => {
-    if (!wmSize) return null
-    const aspect = wmSize.w / wmSize.h
-    const maxArea = 1400 // 约 50×28 的像素面积
-    let w = Math.sqrt(maxArea * aspect)
-    let h = w / aspect
-    if (w > 50) { w = 50; h = w / aspect }
-    if (h > 28) { h = 28; w = h * aspect }
-    return { w, h }
-  }, [wmSize])
+    const raw = luna_ultra_layout[key]
+    window.luna.getWatermarkPath(settings.style, 'image').then((filePath) => {
+      console.log('[WatermarkSettings] 映射表原始数据:', {
+        key,
+        widthRatio: raw?.[0],
+        xRatio: raw?.[1],
+        yRatio: raw?.[2],
+        filePath,
+      })
+    }).catch(() => {
+      console.log('[WatermarkSettings] 映射表原始数据:', {
+        key,
+        widthRatio: raw?.[0],
+        xRatio: raw?.[1],
+        yRatio: raw?.[2],
+      })
+    })
+  }, [settings.enabled, settings.style, settings.position])
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
@@ -83,17 +73,13 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
           <button key={POSITIONS[0].value}
             className={`wm-pos-cell ${settings.position === POSITIONS[0].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[0].value)} title={POSITIONS[0].label}>
-            <svg viewBox="0 0 160 90" className="wm-pos-frame">
-              {wmPreview && <rect x={POSITIONS[0].cx - wmPreview.w / 2} y={POSITIONS[0].cy - wmPreview.h / 2} width={wmPreview.w} height={wmPreview.h} fill="currentColor" rx={2} opacity={0.4} />}
-            </svg>
+            <svg viewBox="0 0 160 90" className="wm-pos-frame" />
           </button>
           <div className="wm-pos-cell wm-pos-placeholder" />
           <button key={POSITIONS[1].value}
             className={`wm-pos-cell ${settings.position === POSITIONS[1].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[1].value)} title={POSITIONS[1].label}>
-            <svg viewBox="0 0 160 90" className="wm-pos-frame">
-              {wmPreview && <rect x={POSITIONS[1].cx - wmPreview.w / 2} y={POSITIONS[1].cy - wmPreview.h / 2} width={wmPreview.w} height={wmPreview.h} fill="currentColor" rx={2} opacity={0.4} />}
-            </svg>
+            <svg viewBox="0 0 160 90" className="wm-pos-frame" />
           </button>
         </div>
         <div className="wm-position-row">
@@ -101,9 +87,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
             <button key={pos.value}
               className={`wm-pos-cell ${settings.position === pos.value ? 'active' : ''}`}
               onClick={() => onPositionChange(pos.value)} title={pos.label}>
-              <svg viewBox="0 0 160 90" className="wm-pos-frame">
-                {wmPreview && <rect x={pos.cx - wmPreview.w / 2} y={pos.cy - wmPreview.h / 2} width={wmPreview.w} height={wmPreview.h} fill="currentColor" rx={2} opacity={0.4} />}
-              </svg>
+              <svg viewBox="0 0 160 90" className="wm-pos-frame" />
             </button>
           ))}
         </div>

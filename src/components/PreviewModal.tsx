@@ -5,6 +5,7 @@ import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
 import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
 
@@ -132,7 +133,7 @@ export function PreviewModal({
   const [imageDragging, setImageDragging] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
-    enabled: false,
+    enabled: true,
     style: 'luna_ultra',
     position: 'BottomCenter' as any,
   })
@@ -169,6 +170,22 @@ export function PreviewModal({
     setLiveError(null)
     autoPlayLiveRef.current = null
   }, [file.id])
+
+  // 切换文件时打印水印参数
+  useEffect(() => {
+    if (!watermarkSettings.enabled) return
+    const theme = STYLE_TO_THEME[watermarkSettings.style]
+    if (!theme) return
+    const key = `${theme}|16:9|${watermarkSettings.position}`
+    const ratios = luna_ultra_layout[key]
+    console.log(`[PreviewModal] 切换文件: ${file.name}`, {
+      style: watermarkSettings.style,
+      position: watermarkSettings.position,
+      deviceId: file.sourceDeviceId,
+      layoutKey: key,
+      ratios,
+    })
+  }, [file.id, watermarkSettings.enabled, watermarkSettings.style, watermarkSettings.position])
 
   useEffect(() => {
     setImageZoom(1)

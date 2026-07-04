@@ -119,6 +119,11 @@ export function register(ctx: IpcContext): void {
     return readExifModel(localPath)
   })
 
+  ipcMain.handle('luna:getWatermarkPath', async (_event, style: string, kind: 'image' | 'video') => {
+    const { watermarkFileFor } = await import('./watermarkService')
+    return watermarkFileFor(kind, style)
+  })
+
   ipcMain.handle('luna:listSampleFiles', async () => {
     const settings = await getSettings()
     return listSampleFiles(settings.mockMediaDir)
