@@ -5,6 +5,7 @@ import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
 import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { WatermarkLayerBuilder, type WatermarkStaticLayer } from './WatermarkLayerBuilder'
 import { watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
@@ -143,6 +144,7 @@ export function PreviewModal({
     style: 'luna_ultra',
     position: 'bottom-center',
   }))
+  const [nativeLayers, setNativeLayers] = useState<WatermarkStaticLayer[] | null>(null)
   const [livePreview, setLivePreview] = useState<PreviewResult | null>(null)
   const [liveLoading, setLiveLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
@@ -412,6 +414,8 @@ export function PreviewModal({
               showWatermarkControls={effectiveWatermark}
               videoRef={videoRef}
               watermarkSettings={watermarkSettings}
+              nativeLayers={nativeLayers}
+              localPath={downloadedPath}
               finishImageDrag={finishImageDrag}
               handleImageDoubleClick={handleImageDoubleClick}
               handleImageLoaded={handleImageLoaded}
@@ -452,9 +456,18 @@ export function PreviewModal({
               }}
               onResetZoom={() => { setImageZoom(1); setImagePan({ x: 0, y: 0 }) }}
               onToggleCollapse={() => setInspectorOpen(false)}
-              watermarkSettings={effectiveWatermark ? watermarkSettings : undefined}
-              onWatermarkChange={effectiveWatermark ? saveWatermarkSettings : undefined}
-              watermarkFilePath={effectiveWatermark ? (downloadedPath ?? undefined) : undefined}
+              watermarkSettings={watermarkSettings}
+              onWatermarkChange={saveWatermarkSettings}
+              watermarkFilePath={downloadedPath ?? undefined}
+            />
+          )}
+          {effectiveWatermark && (
+            <WatermarkLayerBuilder
+              value={nativeLayers}
+              onChange={setNativeLayers}
+              filePath={downloadedPath}
+              sourceDeviceId={file.sourceDeviceId ?? file.watermarkProfileId}
+              compact
             />
           )}
         </div>

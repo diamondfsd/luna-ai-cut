@@ -168,7 +168,6 @@ export function useWorkspaceExport({ activeMedia, canvasRef, imageRect, pipeline
         const exportUrl = await composeWorkspaceExport(
           canvasRef.current,
           imageRect,
-          pipeline.watermark,
           blob,
         )
 

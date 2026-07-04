@@ -15,11 +15,6 @@ const POSITIONS: Array<{ value: string; label: string; row: number; col: number 
   { value: 'bottom-right', label: '右下', row: 1, col: 2 },
 ]
 
-const POSITION_GRID_ROWS = 2
-const POSITION_GRID_COLS = 3
-const FRAME_W = 160
-const FRAME_H = 90
-
 interface WatermarkSettingsProps {
   settings: WatermarkSettingsType
   onChange: (settings: WatermarkSettingsType) => void
@@ -35,21 +30,16 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   onStyleChange: (v: string) => void
   onPositionChange: (v: string) => void
 }) {
-  const wmPreviewRects = useMemo(() => {
-    const sensorW = Math.max(FRAME_W, FRAME_H)
-    return POSITIONS.map((pos) => {
-      const ratios = resolveWatermarkRatios(null, settings.style, FRAME_W, FRAME_H, pos.value)
-      if (!ratios) return null
-      const w = Math.round(sensorW * ratios.widthRatio)
-      const h = Math.round(w * 0.3)
-      const [vPos] = pos.value.split('-') as ['top' | 'bottom']
-      const x = Math.round(ratios.xRatio * FRAME_W)
-      const y = vPos === 'bottom'
-        ? FRAME_H - h - Math.round(ratios.yRatio * FRAME_H)
-        : Math.round((1 - ratios.yRatio) * FRAME_H)
-      return { x, y, w, h }
+  // 打印映射表参数
+  useEffect(() => {
+    if (!settings.enabled) return
+    const ratios = resolveWatermarkRatios(null, settings.style, 160, 90, settings.position)
+    console.log('[WatermarkSettings] 映射表参数:', {
+      style: settings.style,
+      position: settings.position,
+      ratios,
     })
-  }, [settings.style])
+  }, [settings.enabled, settings.style, settings.position])
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
@@ -65,14 +55,8 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
       )}
 
       <div className="wm-position-grid">
-        {Array.from({ length: POSITION_GRID_ROWS * POSITION_GRID_COLS }, (_, i) => {
-          const row = Math.floor(i / POSITION_GRID_COLS)
-          const col = i % POSITION_GRID_COLS
-          const posIdx = POSITIONS.findIndex((p) => p.row === row && p.col === col)
-          if (posIdx < 0) return <div key={i} className="wm-pos-cell wm-pos-empty" />
-          const pos = POSITIONS[posIdx]
+        {POSITIONS.map((pos) => {
           const active = settings.position === pos.value
-          const rect = wmPreviewRects[posIdx]
           return (
             <button
               key={pos.value}
@@ -80,18 +64,8 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
               onClick={() => onPositionChange(pos.value)}
               title={pos.label}
             >
-              <svg viewBox={`0 0 ${FRAME_W} ${FRAME_H}`} className="wm-pos-frame">
-                {rect && (
-                  <rect
-                    x={Math.max(0, rect.x)}
-                    y={Math.max(0, rect.y)}
-                    width={Math.min(rect.w, FRAME_W - rect.x)}
-                    height={Math.min(rect.h, FRAME_H - rect.y)}
-                    fill="currentColor"
-                    rx={2}
-                    opacity={0.4}
-                  />
-                )}
+              <svg viewBox="0 0 160 90" className="wm-pos-frame">
+                <rect x={pos.col * 53} y={pos.row * 45} width={54} height={45} fill="currentColor" rx={2} opacity={0.4} />
               </svg>
             </button>
           )
