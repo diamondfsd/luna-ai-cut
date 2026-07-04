@@ -1,10 +1,9 @@
 use crate::RenderLayer;
-use image::imageops::FilterType;
-use image::ImageReader;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Read, Write};
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use wgpu::TexelCopyBufferInfo;
 use wgpu::TexelCopyBufferLayout;
@@ -423,40 +422,90 @@ impl Compositor {
 
     pub fn load_texture_from_path(
         &mut self,
+        ffmpeg: &str,
+        ffprobe: &str,
         path: &str,
         max_size: u32,
     ) -> Result<(u32, u32, u32), String> {
         let max_size = max_size.max(1).min(self.max_texture_size);
-        let image = ImageReader::open(path)
-            .map_err(|e| format!("open image {}: {}", path, e))?
-            .with_guessed_format()
-            .map_err(|e| format!("detect image format {}: {}", path, e))?
-            .decode()
-            .map_err(|e| format!("decode image {}: {}", path, e))?;
-        let source_w = image.width();
-        let source_h = image.height();
+
+        // ── ffprobe 获取原始尺寸 ──
+        let probe_output = Command::new(ffprobe)
+            .args([
+                "-v", "quiet",
+                "-print_format", "json",
+                "-show_streams", path,
+            ])
+            .output()
+            .map_err(|e| format!("ffprobe {}: {}", path, e))?;
+        let probe_stdout = String::from_utf8_lossy(&probe_output.stdout);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&probe_stdout).map_err(|e| format!("ffprobe json: {}", e))?;
+        let streams = parsed["streams"]
+            .as_array()
+            .ok_or_else(|| format!("ffprobe: no streams in {}", path))?;
+        let vs = streams
+            .iter()
+            .find(|s| s["codec_type"].as_str() == Some("video"))
+            .ok_or_else(|| format!("ffprobe: no video stream in {}", path))?;
+        let source_w = vs["width"].as_u64().unwrap_or(0) as u32;
+        let source_h = vs["height"].as_u64().unwrap_or(0) as u32;
         if source_w == 0 || source_h == 0 {
-            return Err(format!("image has invalid size: {}", path));
+            return Err(format!("ffprobe: invalid image size in {}", path));
         }
 
-        let max_source_edge = source_w.max(source_h);
-        let image = if max_source_edge > max_size {
-            image.resize(max_size, max_size, FilterType::Triangle)
-        } else {
-            image
+        // ── 计算缩放后尺寸 ──
+        let (width, height) = {
+            let max_edge = source_w.max(source_h);
+            if max_edge > max_size {
+                let scale = max_size as f64 / max_edge as f64;
+                (
+                    (source_w as f64 * scale).round().max(1.0) as u32,
+                    (source_h as f64 * scale).round().max(1.0) as u32,
+                )
+            } else {
+                (source_w, source_h)
+            }
         };
-        let width = image.width();
-        let height = image.height();
-        let rgba = image.to_rgba8();
+
+        // ── ffmpeg 解码 + resize → rawvideo ──
+        let mut proc = Command::new(ffmpeg)
+            .args([
+                "-i", path,
+                "-vf", &format!("scale={}:{}:flags=lanczos", width, height),
+                "-pix_fmt", "rgba",
+                "-f", "rawvideo",
+                "-vframes", "1",
+                "-loglevel", "error",
+                "pipe:1",
+            ])
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("ffmpeg spawn {}: {}", path, e))?;
+
+        let mut rgba = vec![];
+        proc.stdout
+            .take()
+            .ok_or_else(|| "ffmpeg: no stdout".to_string())?
+            .read_to_end(&mut rgba)
+            .map_err(|e| format!("ffmpeg read {}: {}", path, e))?;
+        let status = proc
+            .wait()
+            .map_err(|e| format!("ffmpeg wait {}: {}", path, e))?;
+        if !status.success() {
+            return Err(format!("ffmpeg exit {} for {}", status, path));
+        }
+
         log!(
-            "load_texture_from_path path={} source={}x{} texture={}x{}",
+            "load_texture_from_path ffmpeg path={} source={}x{} texture={}x{} rgba={}bytes",
             path,
             source_w,
             source_h,
             width,
-            height
+            height,
+            rgba.len(),
         );
-        let id = self.load_texture(rgba.as_raw(), width, height)?;
+        let id = self.load_texture(&rgba, width, height)?;
         Ok((id, width, height))
     }
 

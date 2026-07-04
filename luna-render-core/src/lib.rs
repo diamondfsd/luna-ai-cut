@@ -106,11 +106,17 @@ pub fn load_texture(data: Buffer, width: u32, height: u32) -> napi::Result<u32> 
     lock(|c| c.load_texture(&bytes, width, height))
 }
 
-/// 从本地图片路径加载预览纹理，native 内部按 max_size 等比缩小后上传 GPU。
+/// 从本地图片路径加载预览纹理，native 内部通过 ffmpeg 解码并等比缩小后上传 GPU。
 #[napi]
-pub fn load_texture_from_path(path: String, max_size: u32) -> napi::Result<TextureLoadResult> {
+pub fn load_texture_from_path(
+    ffmpeg_path: String,
+    ffprobe_path: String,
+    path: String,
+    max_size: u32,
+) -> napi::Result<TextureLoadResult> {
     lock(|c| {
-        let (texture_id, width, height) = c.load_texture_from_path(&path, max_size)?;
+        let (texture_id, width, height) =
+            c.load_texture_from_path(&ffmpeg_path, &ffprobe_path, &path, max_size)?;
         Ok(TextureLoadResult {
             texture_id,
             width,

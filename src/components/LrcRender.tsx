@@ -149,6 +149,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
   // ═══════════════════════════════════════
   //  合成渲染（读 layersRef 做最终合成）
   // ═══════════════════════════════════════
+  let _compositeCounter = 0
   async function compositeRender() {
     const lrc = getLRC()
     const cvs = canvasRef.current
@@ -200,13 +201,23 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
 
     if (resultLayers.length === 0) return
 
+    _compositeCounter++
+    const label = `[LrcRender] compositeRender #${_compositeCounter} (${pw}x${ph}, ${resultLayers.length} layers)`
+    console.time(label)
     try {
       const result = await lrc.renderFrame(pw, ph, resultLayers)
+      console.timeLog(label, 'renderFrame OK, size:', result.byteLength, 'bytes')
       cvs.width = pw; cvs.height = ph
-      cvs.getContext('2d')!.putImageData(
+      const ctx = cvs.getContext('2d')
+      console.timeLog(label, 'putImageData start')
+      ctx!.putImageData(
         new ImageData(new Uint8ClampedArray(result), pw, ph), 0, 0,
       )
-    } catch { /* 渲染错误静默 */ }
+      console.timeEnd(label)
+    } catch {
+      console.timeEnd(label)
+      /* 渲染错误静默 */
+    }
   }
 
   // ═══════════════════════════════════════
@@ -235,14 +246,21 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       if (texMapRef.current.has(key)) continue
       texMapRef.current.set(key, { texId: null, width: 0, height: 0 })
 
+      const loadLabel = `[LrcRender] loadTextureFromPath: ${key}`
+      console.time(loadLabel)
       lrc.loadTextureFromPath(layer.imagePath, PREVIEW_TEXTURE_MAX_SIZE)
         .then(({ textureId, width, height }) => {
+          console.timeEnd(loadLabel)
+          console.log(`[LrcRender] 图片加载完成: ${key} → texId=${textureId} ${width}x${height}`)
           if (destroyRef.current) return
           const current = texMapRef.current.get(key)
           if (current) { current.texId = textureId; current.width = width; current.height = height }
           compositeRender()
         })
-        .catch((e) => console.error('[LrcRender] 图片加载失败:', layer.imagePath, e))
+        .catch((e) => {
+          console.timeEnd(loadLabel)
+          console.error('[LrcRender] 图片加载失败:', layer.imagePath, e)
+        })
     }
 
     // ── 视频层 ──
@@ -256,20 +274,25 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       const offscreen = document.createElement('canvas')
       videoMapRef.current.set(key, { video, offscreen })
 
+      const videoLoadLabel = `[LrcRender] videoLoad: ${key}`
+      console.time(videoLoadLabel)
       video.src = layer.videoPath
       video.load()
 
       video.oncanplay = () => {
+        console.timeLog(videoLoadLabel, 'oncanplay triggered')
         const frame = drawVideoFrame(video, offscreen)
         if (!frame) return
         if (destroyRef.current) return
         lrc.loadTexture(frame.rgba, frame.width, frame.height)
           .then((texId) => {
+            console.timeLog(videoLoadLabel, `loadTexture OK, texId=${texId} ${frame.width}x${frame.height}`)
             const t = texMapRef.current.get(key)
             if (t) { t.texId = texId; t.width = frame.width; t.height = frame.height }
             compositeRender()
+            console.timeEnd(videoLoadLabel)
           })
-          .catch(() => {})
+          .catch(() => console.timeEnd(videoLoadLabel))
       }
 
       video.play().catch(() => {})
@@ -279,6 +302,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     if (layers.some(isVideo)) {
       if (rafRef.current !== 0) cancelAnimationFrame(rafRef.current)
 
+      let videoFrameCount = 0
       function videoLoop() {
         const lrc2 = getLRC()
         const pending: Promise<void>[] = []
@@ -289,11 +313,17 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
           const v = videoMapRef.current.get(key)
           if (!info || !v || info.texId == null || v.video.paused || v.video.readyState < 2) continue
 
+          const frameLabel = `[LrcRender] videoFrame #${++videoFrameCount}`
+          console.time(frameLabel)
           const frame = drawVideoFrame(v.video, v.offscreen)
-          if (!frame) continue
+          if (!frame) { console.timeEnd(frameLabel); continue }
 
           if (lrc2) {
-            pending.push(lrc2.updateTexture(info.texId, frame.rgba))
+            pending.push(
+              lrc2.updateTexture(info.texId, frame.rgba)
+                .then(() => console.timeLog(frameLabel, `updateTexture ${frame.width}x${frame.height}`))
+                .catch(() => {}),
+            )
           }
         }
 

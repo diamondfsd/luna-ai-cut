@@ -79,7 +79,9 @@ export function register(_ctx: RegisterContext): void {
 
   ipcMain.handle('lrc:loadTextureFromPath', safe('loadTextureFromPath',
     async (_event: IpcMainInvokeEvent, path: string, maxSize: number) => {
-      const result = lrcLoadTextureFromPath(path, maxSize)
+      const ffmpegPath = getFfmpegPath()
+      const ffprobePath = getFfprobePath()
+      const result = lrcLoadTextureFromPath(ffmpegPath, ffprobePath, path, maxSize)
       rcLog(`lrc:loadTextureFromPath -> id=${result.textureId} ${result.width}x${result.height}`)
       return result
     },
