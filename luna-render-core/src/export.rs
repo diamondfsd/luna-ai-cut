@@ -1,10 +1,98 @@
 //! 统一导出 — Rust 内部完成全部加载+渲染+编码
 
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use crate::compositor::Compositor;
 use crate::{RenderLayer, StaticLayer};
+
+// ── 多任务导出状态 ──
+
+struct TaskProcs {
+    decode: Option<std::process::Child>,
+    encode: Option<std::process::Child>,
+}
+
+pub struct TaskState {
+    cancel: AtomicBool,
+    pub current_frame: AtomicU64,
+    pub total_frames: AtomicU64,
+    procs: Mutex<TaskProcs>,
+}
+
+impl TaskState {
+    fn new() -> Self {
+        Self {
+            cancel: AtomicBool::new(false),
+            current_frame: AtomicU64::new(0),
+            total_frames: AtomicU64::new(0),
+            procs: Mutex::new(TaskProcs { decode: None, encode: None }),
+        }
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+
+    pub fn store_procs(&self, decode: std::process::Child, encode: std::process::Child) {
+        if let Ok(mut procs) = self.procs.lock() {
+            procs.decode = Some(decode);
+            procs.encode = Some(encode);
+        }
+    }
+
+    pub fn take_procs(&self) -> (Option<std::process::Child>, Option<std::process::Child>) {
+        if let Ok(mut procs) = self.procs.lock() {
+            (procs.decode.take(), procs.encode.take())
+        } else {
+            (None, None)
+        }
+    }
+}
+
+static EXPORT_TASKS: LazyLock<Mutex<HashMap<String, Arc<TaskState>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// 注册导出任务，返回 TaskState 供内部读写
+pub fn register_task(task_id: &str) -> Arc<TaskState> {
+    let state = Arc::new(TaskState::new());
+    if let Ok(mut map) = EXPORT_TASKS.lock() {
+        map.insert(task_id.to_string(), state.clone());
+    }
+    state
+}
+
+/// 取消指定任务
+pub fn cancel_task(task_id: &str) {
+    if let Ok(map) = EXPORT_TASKS.lock() {
+        if let Some(state) = map.get(task_id) {
+            state.cancel.store(true, Ordering::SeqCst);
+            if let Ok(mut procs) = state.procs.lock() {
+                if let Some(ref mut p) = procs.decode { let _ = p.kill(); }
+                if let Some(ref mut p) = procs.encode { let _ = p.kill(); }
+            }
+        }
+    }
+}
+
+/// 查询任务进度
+pub fn task_progress(task_id: &str) -> Option<(u64, u64)> {
+    EXPORT_TASKS.lock().ok().and_then(|map| {
+        map.get(task_id).map(|s| {
+            (s.current_frame.load(Ordering::Relaxed), s.total_frames.load(Ordering::Relaxed))
+        })
+    })
+}
+
+/// 清理已完成的任务状态
+pub fn cleanup_task(task_id: &str) {
+    if let Ok(mut map) = EXPORT_TASKS.lock() {
+        map.remove(task_id);
+    }
+}
 
 // ── 质量预设 ──
 
@@ -214,20 +302,33 @@ pub fn export_file(
     fps: Option<f64>, hardware: bool,
     video_layer: &RenderLayer,
     static_layers: &[StaticLayer],
+    task_id: Option<&str>,
+    quality_preset: Option<QualityPreset>,
     c: &mut Compositor,
 ) -> Result<(), String> {
-    let is_img = input.to_lowercase().ends_with(".png")
+    // 注册任务
+    let task = task_id.and_then(|id| {
+        let s = register_task(id);
+        s.total_frames.store(1, Ordering::SeqCst); // 占位，视频导出时会覆盖
+        Some(s)
+    });
+    let preset = quality_preset.unwrap_or(QualityPreset::High);
+
+    let result = if input.to_lowercase().ends_with(".png")
         || input.to_lowercase().ends_with(".jpg")
         || input.to_lowercase().ends_with(".jpeg")
-        || input.to_lowercase().ends_with(".webp");
-
-    if is_img {
+        || input.to_lowercase().ends_with(".webp")
+    {
         crate::log!("export: image mode {} → {}", input, output);
         export_image(ffmpeg, ffprobe, input, output, canvas_w, canvas_h, video_layer, static_layers, c)
     } else {
-        crate::log!("export: video mode {} → {}", input, output);
-        export_video(ffmpeg, ffprobe, input, output, canvas_w, canvas_h, fps, hardware, video_layer, static_layers, c)
-    }
+        crate::log!("export: video mode {} → {} preset={:?}", input, output, preset);
+        export_video(ffmpeg, ffprobe, input, output, canvas_w, canvas_h, fps, hardware, video_layer, static_layers, c, preset, task.as_deref())
+    };
+
+    // 清理任务状态
+    if let Some(id) = task_id { cleanup_task(id); }
+    result
 }
 
 /// 加载所有静态层（内部 FFmpeg decode + 上传 wgpu）
@@ -351,6 +452,8 @@ fn export_video(
     fps: Option<f64>, hardware: bool,
     _vl: &RenderLayer,
     sl: &[StaticLayer], c: &mut Compositor,
+    preset: QualityPreset,
+    task: Option<&TaskState>,
 ) -> Result<(), String> {
     let info = probe_video(ffprobe, input)?;
     let fps_val = fps.unwrap_or(info.fps);
@@ -377,7 +480,7 @@ fn export_video(
     crate::log!("  encoder={}", encoder);
 
     // ── 码率计算 ──
-    let bitrate = choose_bitrate(cw, ch, fps_val, info.src_bitrate, QualityPreset::High);
+    let bitrate = choose_bitrate(cw, ch, fps_val, info.src_bitrate, preset);
     crate::log!("  bitrate={}kbps", bitrate / 1000);
 
     // ── 加载视频纹理 + 静态层 ──
@@ -427,12 +530,16 @@ fn export_video(
         .map_err(|e| format!("encode: {}", e))?;
     let mut ein = encode.stdin.take().ok_or("no encode stdin")?;
 
+    // ── 存储进程句柄供取消 ──
+    if let Some(t) = task { t.store_procs(decode, encode); }
+
     // ── 逐帧循环 ──
     let mut in_buf = vec![0u8; frame_size];
     let t0 = std::time::Instant::now();
     let mut idx: u64 = 0;
 
     loop {
+        if task.as_ref().map_or(false, |t| t.is_cancelled()) { return Err("导出已取消".to_string()); }
         match dout.read_exact(&mut in_buf) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
@@ -442,16 +549,19 @@ fn export_video(
         let rendered = c.render(cw, ch, &layers).map_err(|e| format!("render {}: {}", idx, e))?;
         ein.write_all(&rendered[..out_size]).map_err(|e| format!("write {}: {}", idx, e))?;
         idx += 1;
+        if let Some(t) = task { t.current_frame.store(idx, Ordering::SeqCst); }
         if idx % 30 == 0 {
             let elapsed = t0.elapsed().as_secs_f64().max(0.001);
             crate::log!("  {}/{} {:.1}fps {:.0}%", idx, total, idx as f64 / elapsed, (idx as f64 / total as f64) * 100.0);
         }
     }
-    drop(ein); drop(dout);
-    decode.wait().ok();
-    let encode_exit = encode.wait().map_err(|e| format!("encode wait: {}", e))?;
-    if !encode_exit.success() {
-        return Err(format!("ffmpeg encode exit: {}", encode_exit));
+
+    let (mut decode_out, mut encode_out) = if let Some(t) = task { t.take_procs() } else { (None, None) };
+    drop(ein);
+    if let Some(ref mut d) = decode_out { d.wait().ok(); }
+    if let Some(ref mut e) = encode_out {
+        let exit = e.wait().map_err(|e2| format!("encode wait: {}", e2))?;
+        if !exit.success() { return Err(format!("ffmpeg encode exit: {}", exit)); }
     }
 
     c.release_texture(video_tex).ok();

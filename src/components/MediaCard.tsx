@@ -3,6 +3,7 @@ import { Check, FileQuestion, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
 import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { logger } from '../lib/rendererLogger'
+import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 
 const THUMBNAIL_PLACEHOLDER =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect width="400" height="300" fill="%23f4f2ee"/%3E%3Cpath d="M168 116h64a16 16 0 0 1 16 16v36a16 16 0 0 1-16 16h-64a16 16 0 0 1-16-16v-36a16 16 0 0 1 16-16Z" fill="none" stroke="%23948f87" stroke-width="10"/%3E%3Ccircle cx="180" cy="142" r="10" fill="%23948f87"/%3E%3Cpath d="m164 174 34-32 20 19 16-14 18 27" fill="none" stroke="%23948f87" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/%3E%3C/svg%3E'
@@ -57,6 +58,7 @@ export function MediaCard({
   const showProgress = Boolean(
     progress && ['queued', 'downloading', 'failed'].includes(progress.status) && !downloadedPath,
   )
+  const isLive = useLivePhotoWhenVisible(file.href, cardRef, '300px')
 
   // 视口可见时再请求缩略图，避免清空缓存后瞬间发起大量 cacheFile IPC
   useEffect(() => {
@@ -124,7 +126,6 @@ export function MediaCard({
             alt={file.name}
             loading="lazy"
             onLoad={() => {
-              // 占位 data-uri 加载不触发，由 IntersectionObserver 按需发起
               if (!localThumbnailUrl) return
               onThumbnailLoad(file, downloadedPath)
             }}
@@ -141,7 +142,7 @@ export function MediaCard({
         {!localThumbnailUrl && cacheFailed && <FileQuestion size={34} />}
         {file.kind === 'video' && file.duration != null ? (
           <span className="duration-badge">{formatDuration(file.duration)}</span>
-        ) : file.isLivePhoto ? (
+        ) : isLive ? (
           <LivePhotoBadge size={28} className="card-live-chip" />
         ) : null}
         {file.kind === 'video' && <VideoPlayBadge size={26} />}
