@@ -80,13 +80,17 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
           <button key={POSITIONS[0].value}
             className={`wm-pos-cell ${settings.position === POSITIONS[0].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[0].value)} title={POSITIONS[0].label}>
-            <svg viewBox="0 0 160 90" className="wm-pos-frame" />
+            <svg viewBox="0 0 160 90" className="wm-pos-frame">
+              <rect x={POSITIONS[0].cx - 10} y={POSITIONS[0].cy - 7} width={20} height={14} rx={3} />
+            </svg>
           </button>
           <div className="wm-pos-cell wm-pos-placeholder" />
           <button key={POSITIONS[1].value}
             className={`wm-pos-cell ${settings.position === POSITIONS[1].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[1].value)} title={POSITIONS[1].label}>
-            <svg viewBox="0 0 160 90" className="wm-pos-frame" />
+            <svg viewBox="0 0 160 90" className="wm-pos-frame">
+              <rect x={POSITIONS[1].cx - 10} y={POSITIONS[1].cy - 7} width={20} height={14} rx={3} />
+            </svg>
           </button>
         </div>
         <div className="wm-position-row">
@@ -94,7 +98,9 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
             <button key={pos.value}
               className={`wm-pos-cell ${settings.position === pos.value ? 'active' : ''}`}
               onClick={() => onPositionChange(pos.value)} title={pos.label}>
-              <svg viewBox="0 0 160 90" className="wm-pos-frame" />
+              <svg viewBox="0 0 160 90" className="wm-pos-frame">
+                <rect x={pos.cx - 10} y={pos.cy - 7} width={20} height={14} rx={3} />
+              </svg>
             </button>
           ))}
         </div>
