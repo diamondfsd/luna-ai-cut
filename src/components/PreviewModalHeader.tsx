@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { X, CircleAlert, FolderOpen } from 'lucide-react'
 
 import type { LunaFile } from '../shared/types'
@@ -22,9 +23,13 @@ export function PreviewModalHeader({
   onClose,
   onSetInspectorOpen,
 }: PreviewModalHeaderProps) {
+  const revealPath = useMemo(
+    () => file.downloadFilePath ?? file.localPath ?? null,
+    [file.downloadFilePath, file.localPath],
+  )
+
   function handleRevealInFolder() {
-    const path = file.downloadFilePath ?? file.localPath ?? null
-    if (path) window.luna.revealFile(path)
+    if (revealPath) window.luna.revealFile(revealPath)
   }
 
   return (
@@ -42,12 +47,14 @@ export function PreviewModalHeader({
             icon={<CircleAlert size={15} />}
           />
         )}
-        <IconButton
-          variant="light"
-          icon={<FolderOpen size={16} />}
-          onClick={handleRevealInFolder}
-          title="在文件夹中显示"
-        />
+        {revealPath && (
+          <IconButton
+            variant="light"
+            icon={<FolderOpen size={16} />}
+            onClick={handleRevealInFolder}
+            title="在文件夹中显示"
+          />
+        )}
         <IconButton variant="light" icon={<X size={18} />} onClick={onClose} title="关闭" />
       </div>
     </header>
