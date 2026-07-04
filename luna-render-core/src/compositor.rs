@@ -594,7 +594,6 @@ impl Compositor {
             );
             return Err(format!("data too small: {} < {}", data.len(), expected));
         }
-        log!("update_texture id={} {}bytes", texture_id, expected);
         upload_rgba(
             &self.queue,
             &entry.texture,
