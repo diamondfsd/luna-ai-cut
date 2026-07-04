@@ -22,6 +22,8 @@ interface LrcRenderProps {
   onError?: (error: string) => void
   onReady?: () => void
   onRender?: () => void
+  /** 有视频层时，向外暴露第一个 video 元素用于外部控制 */
+  onVideoElement?: (el: HTMLVideoElement | null) => void
 }
 
 // ── 工具 ──
@@ -67,7 +69,7 @@ function getLRC(): LunaRenderCore | undefined {
 
 // ── LrcRender ──
 
-export function LrcRender({ layers, canvasRef: extRef, className, onError, onReady, onRender }: LrcRenderProps) {
+export function LrcRender({ layers, canvasRef: extRef, className, onError, onReady, onRender, onVideoElement }: LrcRenderProps) {
   const internalRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
@@ -77,6 +79,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
 
   const texMapRef = useRef<Map<string, { texId: number | null; width: number; height: number }>>(new Map())
   const videoMapRef = useRef<Map<string, { video: HTMLVideoElement; offscreen: HTMLCanvasElement }>>(new Map())
+  const videoElementCalledRef = useRef(false)
 
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
@@ -166,6 +169,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
         dstX += (dstW - w) / 2
         dstY += (dstH - h) / 2
         dstW = w; dstH = h
+        console.log(`[LrcRender] contain result: media=${info.width}x${info.height} mAsp=${mediaAspect.toFixed(4)} fAsp=${frameAspect.toFixed(4)} -> dst=${dstX.toFixed(3)},${dstY.toFixed(3)} ${dstW.toFixed(3)}x${dstH.toFixed(3)}`)
       }
 
       resultLayers.push({
@@ -181,6 +185,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     if (resultLayers.length === 0) return
 
     try {
+      console.log(`[LrcRender] renderFrame: canvas=${pw}x${ph} layers=${resultLayers.length} [${resultLayers.map(l => `${l.textureId}:${l.dstW.toFixed(3)}x${l.dstH.toFixed(3)}`).join(', ')}]`)
       const result = await lrc.renderFrame(pw, ph, resultLayers)
       cvs.width = pw; cvs.height = ph
       cvs.style.width = `${cw}px`
@@ -225,6 +230,12 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       if (!currentKeys.has(key)) { v.video.pause(); videoMapRef.current.delete(key) }
     }
 
+    // 被暴露的 video 元素已被移除，通知外部
+    if (videoMapRef.current.size === 0) {
+      videoElementCalledRef.current = false
+      onVideoElement?.(null)
+    }
+
     // ── 静态图片层 ──
     // 估算画布像素宽度用于计算纹理加载尺寸
     const estCanvasW = Math.round((canvasRef.current?.parentElement?.clientWidth ?? 960) * (window.devicePixelRatio || 1))
@@ -241,6 +252,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
           if (destroyRef.current) return
           const current = texMapRef.current.get(key)
           if (current) { current.texId = textureId; current.width = width; current.height = height }
+          console.log(`[LrcRender] texture loaded: key=${key} ${width}x${height} dstW=${layer.dstW.toFixed(3)} dstH=${layer.dstH.toFixed(3)} fit=${layer.fit}`)
           compositeRender()
         })
         .catch((e) => console.error('[LrcRender] 图片加载失败:', layer.filePath, e))
@@ -260,6 +272,12 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       video.muted = true; video.loop = true; video.playsInline = true
       const offscreen = document.createElement('canvas')
       videoMapRef.current.set(key, { video, offscreen })
+
+      // 对外暴露第一个 video 元素用于外部控制器
+      if (onVideoElement && !videoElementCalledRef.current) {
+        videoElementCalledRef.current = true
+        onVideoElement(video)
+      }
 
       video.src = layer.filePath
       video.load()
