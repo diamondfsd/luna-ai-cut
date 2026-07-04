@@ -3,7 +3,7 @@ import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
-import { filePathToLunaFile, filePathToPreviewUrl, thumbnailForPath } from './previewModalUtils'
+import { filePathToLunaFile, thumbnailForPath } from './previewModalUtils'
 import type { DownloadProgress, LunaFile, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { Dialog } from '../ui'
@@ -27,6 +27,7 @@ interface PreviewModalProps {
   preview?: PreviewResult | null
   /** @deprecated 不再使用 */
   previewLoading?: boolean
+  /** @deprecated 不再使用 */
   downloadProgress?: DownloadProgress
   isDownloadsPage?: boolean
 }
@@ -40,7 +41,6 @@ export function PreviewModal({
   onReveal,
   onDownload,
   preview: deprecatedPreview,
-  downloadProgress,
 }: PreviewModalProps) {
   const thumbStripRef = useRef<HTMLDivElement | null>(null)
   const activeThumbRef = useRef<HTMLButtonElement | null>(null)
@@ -119,8 +119,6 @@ export function PreviewModal({
   }, [file.id])
 
   // ── 状态 ──
-  const [, setImageZoom] = useState(1)
-  const [, setImagePan] = useState({ x: 0, y: 0 })
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [watermarkSettings] = useState<WatermarkSettingsType>({
     enabled: true,
@@ -128,12 +126,7 @@ export function PreviewModal({
     position: 'BottomCenter' as any,
   })
 
-  const completedDownloadPath = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists'
-    ? downloadProgress.destinationPath ?? null
-    : null
-  const downloadedPath = file.downloadFilePath ?? file.localPath ?? completedDownloadPath
-  const previewMatchesFile = preview?.fileName === file.name
-  const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
+  const displaySource = preview?.source ?? null
 
   // 切换文件时打印水印参数
   useEffect(() => {
@@ -151,22 +144,6 @@ export function PreviewModal({
     })
   }, [file.id, watermarkSettings.enabled, watermarkSettings.style, watermarkSettings.position])
 
-  useEffect(() => {
-    function handleWheel(event: WheelEvent): void {
-      const target = event.target as HTMLElement | null
-      const inPreviewModal = Boolean(target?.closest('.preview-modal'))
-      if (!inPreviewModal || target?.closest('.media-inspector') || target?.closest('.preview-thumbnails')) return
-      event.preventDefault()
-      setImageZoom((current) => {
-        const next = Math.min(8, Math.max(1, current + (event.deltaY < 0 ? 0.18 : -0.18)))
-        if (next <= 1) setImagePan({ x: 0, y: 0 })
-        return next
-      })
-    }
-    document.addEventListener('wheel', handleWheel, { capture: true, passive: false })
-    return () => document.removeEventListener('wheel', handleWheel, { capture: true })
-  }, [file.kind])
-
   // 键盘导航
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -183,7 +160,6 @@ export function PreviewModal({
       <section className="preview-modal">
         <PreviewModalHeader
           file={file}
-          downloadProgress={downloadProgress}
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
           onClose={onClose}
