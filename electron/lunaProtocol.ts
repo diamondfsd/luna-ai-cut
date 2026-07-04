@@ -59,6 +59,21 @@ function groupLabels(date: Date | null): Pick<LunaFile, 'capturedAt' | 'groupDay
   }
 }
 
+function wireVarint(value: number): Buffer {
+  const out: number[] = []
+  let v = value >>> 0
+  while (v > 0x7f) {
+    out.push((v & 0x7f) | 0x80)
+    v >>>= 7
+  }
+  out.push(v & 0x7f)
+  return Buffer.from(out)
+}
+
+function wireFieldVarint(field: number, value: number): Buffer {
+  return Buffer.concat([wireVarint(field << 3), wireVarint(value)])
+}
+
 function cameraUrl(host: string, cameraPath = CAMERA_PATH): string {
   return `http://${host}${cameraPath}`
 }
@@ -86,6 +101,7 @@ function httpEndpoint(host: string, cameraPath = CAMERA_PATH): { host: string; p
 export class LunaClient {
   private controlSession: Insta360TcpSession | null = null
   private keeperTimer: ReturnType<typeof setInterval> | null = null
+  private keepAliveInFlight = false
   private keepAliveFailures = 0
   private authLock: Promise<void> = Promise.resolve()
   private listFilesPromises = new Map<string, Promise<LunaFile[]>>()
@@ -156,6 +172,11 @@ export class LunaClient {
     logMainInfo(`[保活] 启动后台保活`, { host: this.host, intervalMs })
     this.stopKeepAlive()
     this.keeperTimer = setInterval(async () => {
+      if (this.keepAliveInFlight) {
+        logMainDebug(`[保活] 上一次保活仍在执行，跳过本轮`, { host: this.host })
+        return
+      }
+      this.keepAliveInFlight = true
       try {
         await this.keepAliveTick()
         this.keepAliveFailures = 0
@@ -172,6 +193,8 @@ export class LunaClient {
           this.stopKeepAlive()
           this.onKeepAliveFailed?.()
         }
+      } finally {
+        this.keepAliveInFlight = false
       }
     }, intervalMs)
   }
@@ -182,21 +205,34 @@ export class LunaClient {
     const socket = await connectSocket(endpoint.host, endpoint.port, 1500)
     socket.destroy()
 
-    // 2. TCP 控制会话保活 — 发送轻量命令确认 TCP 连接存活
-    if (this.controlSession?.isOpen) {
-      try {
-        // CODE_GET_CURRENT_CAPTURE_STATUS (15) — 轻量查询，用作 TCP 心跳
-        await this.controlSession.sendCommand(15, Buffer.alloc(0), 2000)
-      } catch {
-        logMainWarn(`[保活] TCP 控制会话心跳失败，重置连接`, { host: this.host })
+    await this.runAuthExclusive(async () => {
+      if (!this.controlSession?.isOpen) {
         this.resetControlSession()
+        logMainInfo(`[保活] 控制会话已关闭，尝试重新建立`, { host: this.host })
+        await this.connectUnlocked()
       }
-    }
+      const session = this.controlSession
+      if (!session) throw new Error('控制会话未打开')
 
-    if (!this.controlSession?.isOpen) {
-      this.resetControlSession()
-      logMainDebug(`[保活] 控制会话已关闭，HTTP 服务仍可用`, { host: this.host })
-    }
+      try {
+        // UCD2 STREAM hello — 刷新控制通道活跃状态。
+        await session.refresh()
+
+        // CODE_GET_CURRENT_CAPTURE_STATUS (15) — 轻量状态查询，用作主心跳。
+        await session.sendCommand(15, Buffer.alloc(0), 2000)
+
+        // CODE_GET_OPTIONS (8) — 追加一个轻量 options 查询，模拟真实操作流量，降低相机休眠/断链概率。
+        const optionsBody = Buffer.concat([wireFieldVarint(1, 48), wireFieldVarint(1, 15), wireFieldVarint(1, 11)])
+        await session.sendCommand(8, optionsBody, 2000)
+      } catch (error) {
+        logMainWarn(`[保活] TCP 控制会话心跳失败，重置后重连`, {
+          host: this.host,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        this.resetControlSession()
+        await this.connectUnlocked()
+      }
+    })
   }
 
   stopKeepAlive(): void {

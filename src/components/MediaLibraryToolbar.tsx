@@ -33,7 +33,6 @@ interface MediaLibraryToolbarProps {
   downloadDir: string | undefined
   downloading: boolean
   downloadStatusFilter: DownloadStatusFilter
-  exportError: string | null
   exporting: boolean
   exportWatermarkSettings: WatermarkSettingsType
   isDownloadsPage: boolean
@@ -53,7 +52,6 @@ interface MediaLibraryToolbarProps {
   setDownloadQueue: Dispatch<SetStateAction<LunaFile[]>>
   setDownloading: (downloading: boolean) => void
   setDownloadStatusFilter: (value: DownloadStatusFilter) => void
-  setExportError: (value: string | null) => void
   setExportWatermarkSettings: (settings: WatermarkSettingsType) => void
   setSelected: Dispatch<SetStateAction<Set<string>>>
   setShowDeleteDialog: (value: boolean) => void
@@ -82,7 +80,6 @@ export function MediaLibraryToolbar({
   downloadDir,
   downloading,
   downloadStatusFilter,
-  exportError,
   exporting,
   exportWatermarkSettings,
   isDownloadsPage,
@@ -102,7 +99,6 @@ export function MediaLibraryToolbar({
   setDownloadQueue,
   setDownloading,
   setDownloadStatusFilter,
-  setExportError,
   setExportWatermarkSettings,
   setSelected,
   setShowDeleteDialog,
@@ -350,9 +346,6 @@ export function MediaLibraryToolbar({
           )}
         </div>
 
-        {isDownloadsPage && exportError && (
-          <span className="export-error">{exportError}<button onClick={() => setExportError(null)} title="关闭">&times;</button></span>
-        )}
         {isDownloadsPage && deleteError && (
           <span className="export-error">{deleteError}<button onClick={() => setDeleteError(null)} title="关闭">&times;</button></span>
         )}

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createReadStream, readFileSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createTcpServer } from 'node:net'
@@ -23,6 +23,10 @@ const AUTH_PAYLOADS = [
 const EXPECTED_AUTH = Buffer.concat(AUTH_PAYLOADS)
 const AUTH_TTL_MS = 15_000
 const DEFAULT_MOCK = DEVICE_CONFIG.mock
+const CAMERA_DIR_NAMES = ['Camera01', 'Camera02', 'Camera03']
+const UCD2_MAGIC = Buffer.from('UCD2')
+const UCD2_FILE = 0x04
+const UCD2_STREAM = 0x05
 
 function argValue(name) {
   const prefix = `${name}=`
@@ -52,6 +56,68 @@ function isAuthorized() {
 
 function authorize() {
   authorizedUntil = Date.now() + AUTH_TTL_MS
+}
+
+function buildUcd2(type, seq, payload) {
+  const header = Buffer.alloc(8)
+  UCD2_MAGIC.copy(header, 0)
+  header[4] = 0x01
+  header[5] = 0x0c
+  header[6] = type
+  header[7] = seq & 0xff
+  return Buffer.concat([header, payload])
+}
+
+function buildRawResponse(code, requestId, body = Buffer.alloc(0)) {
+  const raw = Buffer.alloc(9 + body.length)
+  raw.writeUInt16LE(code, 0)
+  raw[2] = 0x03
+  raw.writeUInt16LE(requestId, 3)
+  raw.writeUInt32LE(0x8000, 5)
+  body.copy(raw, 9)
+
+  const length = Buffer.alloc(4)
+  length.writeUInt32LE(raw.length, 0)
+  return Buffer.concat([length, raw, Buffer.alloc(4)])
+}
+
+function parseUcd2Frames(buffer) {
+  const frames = []
+  let rest = buffer
+  while (rest.length >= 8) {
+    const start = rest.indexOf(UCD2_MAGIC)
+    if (start < 0) return { frames, rest: Buffer.alloc(0) }
+    if (start > 0) rest = rest.subarray(start)
+    if (rest.length < 8) break
+
+    const type = rest[6]
+    const frameLen = type === UCD2_STREAM
+      ? 16
+      : type === UCD2_FILE && rest.length >= 12
+        ? 12 + rest.readUInt32LE(8) + 4
+        : 0
+    if (frameLen === 0) {
+      rest = rest.subarray(8)
+      continue
+    }
+    if (rest.length < frameLen) break
+    frames.push(rest.subarray(0, frameLen))
+    rest = rest.subarray(frameLen)
+  }
+  return { frames, rest }
+}
+
+function responseForUcd2Frame(frame) {
+  const type = frame[6]
+  const seq = frame[7]
+  if (type !== UCD2_FILE || frame.length < 25) return null
+  const rawLen = frame.readUInt32LE(8)
+  const rawOffset = 12
+  if (rawLen < 9 || frame.length < rawOffset + rawLen) return null
+  const raw = frame.subarray(rawOffset, rawOffset + rawLen)
+  const code = raw.readUInt16LE(0)
+  const requestId = raw.readUInt16LE(3)
+  return buildUcd2(UCD2_FILE, seq, buildRawResponse(code, requestId))
 }
 
 function extensionOf(name) {
@@ -132,15 +198,101 @@ async function walk(dir) {
   return files
 }
 
-async function indexHtml() {
-  const files = await walk(rootDir)
+function cameraDirFor(relative) {
+  const [first] = relative.split('/')
+  return CAMERA_DIR_NAMES.includes(first) ? first : null
+}
+
+function hasExplicitCameraDir(cameraDir) {
+  if (!cameraDir) return false
+  const dirPath = path.join(rootDir, cameraDir)
+  try {
+    return existsSync(dirPath) && statSync(dirPath).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function stripCameraDir(relative) {
+  const normalized = relative.replace(/^\/+/, '')
+  const dir = cameraDirFor(normalized)
+  return dir && !hasExplicitCameraDir(dir) ? normalized.slice(dir.length).replace(/^\/+/, '') : normalized
+}
+
+function storagePathForRequest(pathname) {
+  const matchedStorage = STORAGE_PATHS.find((sp) => pathname.startsWith(sp))
+  if (matchedStorage) return matchedStorage
+  const firstSegment = pathname.replace(/^\/+/, '').split('/')[0]
+  return CAMERA_DIR_NAMES.includes(firstSegment) ? '/' : null
+}
+
+function requestRelativePath(pathname, matchedStorage) {
+  const decodedPath = decodeURIComponent(pathname)
+  return matchedStorage === '/'
+    ? decodedPath.slice(1)
+    : decodedPath.slice(matchedStorage.length)
+}
+
+function isIndexRequest(pathname, matchedStorage) {
+  const relative = requestRelativePath(pathname, matchedStorage).replace(/^\/+|\/+$/g, '')
+  return relative === '' || CAMERA_DIR_NAMES.includes(relative)
+}
+
+async function filesForCameraDir(cameraDir) {
+  const explicitDir = cameraDir ? path.join(rootDir, cameraDir) : rootDir
+  try {
+    const stats = await stat(explicitDir)
+    if (stats.isDirectory()) return walk(explicitDir)
+  } catch {}
+  // 没有显式子目录时，将 root 下的文件分片分配给各 Camera 目录，避免重复
+  const allFiles = await walk(rootDir)
+  const dirIndex = cameraDir ? CAMERA_DIR_NAMES.indexOf(cameraDir) : 0
+  if (dirIndex < 0) return allFiles
+  const chunkSize = Math.max(1, Math.ceil(allFiles.length / CAMERA_DIR_NAMES.length))
+  return allFiles.slice(dirIndex * chunkSize, (dirIndex + 1) * chunkSize)
+}
+
+function hrefForIndex(relative, cameraDir) {
+  const normalized = relative.split(path.sep).join('/')
+  return cameraDir ? encodeURI(normalized) : encodeURI(normalized)
+}
+
+async function indexHtml(requestPath = CAMERA_PATH) {
+  const normalizedPath = requestPath.endsWith('/') ? requestPath : `${requestPath}/`
+  const cameraDir = CAMERA_DIR_NAMES.find((name) => normalizedPath.endsWith(`/${name}/`)) ?? null
   const rows = []
+  if (!cameraDir) {
+    const now = new Date()
+    for (const dir of CAMERA_DIR_NAMES) {
+      rows.push({
+        time: Number.MAX_SAFE_INTEGER - rows.length,
+        html: `<a href="${dir}/">${dir}/</a> ${formatIndexDate(now)} ${pad(now.getHours())}:${pad(now.getMinutes())} -`,
+      })
+    }
+    rows.sort((a, b) => b.time - a.time)
+    return `<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Luna Mock</title></head>
+<body>
+<h1>Index of ${escapeHtml(normalizedPath)}</h1>
+<pre>
+<a href="../">../</a>
+${rows.map((row) => row.html).join('\n')}
+</pre>
+</body>
+</html>
+`
+  }
+  const files = await filesForCameraDir(cameraDir)
   for (const filePath of files) {
     const stats = await stat(filePath)
     const name = path.basename(filePath)
-    const relative = path.relative(rootDir, filePath).split(path.sep).join('/')
+    const baseDir = cameraDir && filePath.startsWith(path.join(rootDir, cameraDir) + path.sep)
+      ? path.join(rootDir, cameraDir)
+      : rootDir
+    const relative = path.relative(baseDir, filePath).split(path.sep).join('/')
     const date = parseTimestamp(name) || stats.mtime
-    const href = encodeURI(relative)
+    const href = hrefForIndex(relative, cameraDir)
     rows.push({
       time: date.getTime(),
       html: `<a href="${escapeHtml(href)}">${escapeHtml(name)}</a> ${formatIndexDate(date)} ${pad(date.getHours())}:${pad(date.getMinutes())} ${formatSize(stats.size)}`,
@@ -151,7 +303,7 @@ async function indexHtml() {
 <html>
 <head><meta charset="utf-8"><title>Luna Mock</title></head>
 <body>
-<h1>Index of ${CAMERA_PATH}</h1>
+<h1>Index of ${escapeHtml(normalizedPath)}</h1>
 <pre>
 <a href="../">../</a>
 ${rows.map((row) => row.html).join('\n')}
@@ -162,10 +314,9 @@ ${rows.map((row) => row.html).join('\n')}
 }
 
 function filePathForRequest(url) {
-  const decodedPath = decodeURIComponent(url.pathname)
-  const matchedStorage = STORAGE_PATHS.find((sp) => decodedPath.startsWith(sp))
+  const matchedStorage = storagePathForRequest(url.pathname)
   if (!matchedStorage) return null
-  const relative = decodedPath.slice(matchedStorage.length)
+  const relative = stripCameraDir(requestRelativePath(url.pathname, matchedStorage))
   if (!relative) return null
   const filePath = path.resolve(rootDir, relative)
   if (!filePath.startsWith(`${rootDir}${path.sep}`) && filePath !== rootDir) return null
@@ -248,7 +399,7 @@ function sendThrottledFile(request, response, filePath, stats) {
 const httpServer = createHttpServer(async (request, response) => {
   try {
     const url = new URL(request.url || '/', `http://${request.headers.host || `${host}:${httpPort}`}`)
-    const matchedStorage = STORAGE_PATHS.find((sp) => url.pathname.startsWith(sp))
+    const matchedStorage = storagePathForRequest(url.pathname)
     if (!matchedStorage) {
       response.writeHead(404)
       response.end('Not found')
@@ -261,10 +412,10 @@ const httpServer = createHttpServer(async (request, response) => {
       return
     }
 
-    if (url.pathname === matchedStorage) {
+    if (isIndexRequest(url.pathname, matchedStorage)) {
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
       // 非默认存储路径返回空目录，避免素材重复
-      response.end(matchedStorage === CAMERA_PATH ? await indexHtml() : '<!doctype html><html><body><pre></pre></body></html>')
+      response.end(matchedStorage === CAMERA_PATH || matchedStorage === '/' ? await indexHtml(url.pathname) : '<!doctype html><html><body><pre></pre></body></html>')
       return
     }
 
@@ -290,18 +441,26 @@ const httpServer = createHttpServer(async (request, response) => {
 
 const tcpServer = createTcpServer((socket) => {
   let received = Buffer.alloc(0)
-  socket.setTimeout(2000)
+  socket.setTimeout(60_000)
   socket.on('data', (chunk) => {
     received = Buffer.concat([received, chunk])
-    const expectedPrefix = EXPECTED_AUTH.subarray(0, received.length)
-    if (received.length > EXPECTED_AUTH.length || !received.equals(expectedPrefix)) {
-      socket.destroy()
-      return
-    }
-    if (received.length === EXPECTED_AUTH.length) {
+
+    if (received.length <= EXPECTED_AUTH.length && received.equals(EXPECTED_AUTH.subarray(0, received.length))) {
+      if (received.length < EXPECTED_AUTH.length) return
       authorize()
       socket.write(Buffer.from([0x55, 0x43, 0x44, 0x32, 0x00]))
       received = Buffer.alloc(0)
+      return
+    }
+
+    const parsed = parseUcd2Frames(received)
+    received = parsed.rest
+    if (parsed.frames.length === 0) return
+
+    authorize()
+    for (const frame of parsed.frames) {
+      const response = responseForUcd2Frame(frame)
+      if (response) socket.write(response)
     }
   })
   socket.on('timeout', () => socket.destroy())

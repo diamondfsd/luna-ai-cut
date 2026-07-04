@@ -246,7 +246,7 @@ async function applyWatermarkToImageWithRef(
   // ── 水印像素尺寸用传感器最长边（横竖图统一） ──
   const sensorW = refWidth ?? Math.max(imgInfo.width, imgInfo.height)
   const wmAspect = wmInfo.height / wmInfo.width
-  const actualWmWidth = Math.min(Math.round(sensorW * watermarkPercent / 100), wmInfo.width)
+  const actualWmWidth = Math.round(sensorW * watermarkPercent / 100)
   const actualWmHeight = Math.round(actualWmWidth * wmAspect)
 
   // ── 边距和位置用展示方向坐标 ──

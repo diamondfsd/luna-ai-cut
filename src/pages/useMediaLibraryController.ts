@@ -74,7 +74,6 @@ export function useMediaLibraryController({
   const [viewMode, setViewMode] = useState<ViewMode>('download')
   const [exportedFiles, setExportedFiles] = useState<LunaFile[]>([])
   const [showExportDialog, setShowExportDialog] = useState(false)
-  const [exportError, setExportError] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deletingLocalFiles, setDeletingLocalFiles] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -376,7 +375,6 @@ export function useMediaLibraryController({
     setDownloadProgress,
     setDownloadQueue,
     setDownloadedFiles,
-    setExportError,
     setExportedFiles,
     setExporting,
     setExportProgress,
@@ -475,7 +473,6 @@ export function useMediaLibraryController({
     deletingLocalFiles,
     downloadQueue,
     downloadStatusFilter,
-    exportError,
     exportProgress,
     exportSnapshots,
     exporting,
@@ -516,7 +513,6 @@ export function useMediaLibraryController({
     setDeleteError,
     setDownloadQueue,
     setDownloadStatusFilter,
-    setExportError,
     setExporting,
     setExportProgress,
     setExportWatermarkSettings,

@@ -36,7 +36,7 @@ export function WorkspaceWatermarkOverlay() {
 
   const sensorW = Math.max(imageRect.width, imageRect.height)
   const wmAspect = wmImage.height / wmImage.width
-  const targetW = Math.min(Math.round(sensorW * widthRatio), wmImage.width)
+  const targetW = Math.round(sensorW * widthRatio)
   const targetH = Math.round(targetW * wmAspect)
 
   const [vPos] = settings.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']

@@ -81,7 +81,7 @@ function computeWatermarkLayout(
 
   const sensorW = Math.max(contentW, contentH)
   const wmAspect = wmImageH / wmImageW
-  const targetW = Math.min(Math.round(sensorW * ratios.widthRatio), wmImageW)
+  const targetW = Math.round(sensorW * ratios.widthRatio)
   const targetH = Math.round(targetW * wmAspect)
 
   const [vPos] = settings.position.split('-') as ['top' | 'bottom']
