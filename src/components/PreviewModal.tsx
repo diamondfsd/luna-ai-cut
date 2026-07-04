@@ -110,16 +110,19 @@ export function PreviewModal({
           </div>
 
           {inspectorOpen && (
-            <div className="preview-sidebar">
-              <WatermarkSettings
-                settings={watermarkSettings}
-                onChange={handleWatermarkChange}
-                filePath={currentFilePath}
-                mediaWidth={mediaSize?.w}
-                mediaHeight={mediaSize?.h}
-              />
-              <MediaInspector filePath={currentFilePath} onToggleCollapse={() => setInspectorOpen(false)} />
-            </div>
+            <MediaInspector
+              filePath={currentFilePath}
+              onToggleCollapse={() => setInspectorOpen(false)}
+              header={
+                <WatermarkSettings
+                  settings={watermarkSettings}
+                  onChange={handleWatermarkChange}
+                  filePath={currentFilePath}
+                  mediaWidth={mediaSize?.w}
+                  mediaHeight={mediaSize?.h}
+                />
+              }
+            />
           )}
         </div>
       </section>

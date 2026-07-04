@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronRight, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
-import { IconButton } from '../ui'
+import { ChevronRight, Loader2 } from 'lucide-react'
 import { formatBytes } from '../lib/format'
-import { filePathToLunaFile, emptyDetails } from './previewModalUtils'
+import { filePathToLunaFile, emptyDetails, buildHistogram } from './previewModalUtils'
 import type { MediaMetadata } from '../shared/types'
+import '../styles/media-inspector.css'
 
 // ─── MediaDetails ──────────────────────────────────────
 // (shared with PreviewModal.tsx)
@@ -29,16 +29,11 @@ export interface MediaDetails {
 interface MediaInspectorProps {
   filePath: string
   onToggleCollapse?: () => void
+  /** 顶部额外内容（如水印设置） */
+  header?: React.ReactNode
 }
 
 // ─── Helpers ───────────────────────────────────────────
-
-function formatDuration(seconds: number | null | undefined): string {
-  if (!seconds || !Number.isFinite(seconds)) return '-'
-  const minutes = Math.floor(seconds / 60)
-  const rest = Math.floor(seconds % 60)
-  return `${minutes}:${String(rest).padStart(2, '0')}`
-}
 
 function formatCapturedAt(value: string | null): string {
   if (!value) return '未知'
@@ -50,11 +45,6 @@ function formatCapturedAt(value: string | null): string {
     minute: '2-digit',
     second: '2-digit',
   }).format(new Date(value))
-}
-
-function formatBitrate(bytes: number | null | undefined, duration: number | null): string {
-  if (!bytes || !duration) return '-'
-  return `${((bytes * 8) / duration / 1_000_000).toFixed(1)} Mbps`
 }
 
 function areaPath(values: number[], width = 280, height = 72): string {
@@ -288,18 +278,38 @@ function MetadataSection({ section, metaMap }: { section: SectionDef; metaMap: M
 
 // ─── Component ─────────────────────────────────────────
 
-export function MediaInspector({ filePath, onToggleCollapse }: MediaInspectorProps) {
+export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInspectorProps) {
   const file = useMemo(() => filePathToLunaFile(filePath), [filePath])
 
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
-  const [mediaDetails] = useState<MediaDetails>(() => emptyDetails())
-  const [imageZoom, setImageZoom] = useState(1)
-  const [baseScale] = useState(1)
+  const [mediaDetails, setMediaDetails] = useState<MediaDetails>(() => emptyDetails())
 
   const isDownloaded = !!file.downloadFilePath
 
   const metaMap = useMemo(() => buildMetadataMap(mediaMetadata), [mediaMetadata])
+
+  // 获取媒体分辨率
+  useEffect(() => {
+    if (!filePath) return
+    window.luna.workspace.getMediaResolution(filePath)
+      .then(({ width, height }) => setMediaDetails(prev => ({ ...prev, width, height })))
+      .catch(() => {})
+  }, [filePath])
+
+  // 构建直方图
+  useEffect(() => {
+    if (!filePath || file.kind !== 'image') return
+    let cancelled = false
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      if (cancelled) return
+      setMediaDetails(prev => ({ ...prev, histogram: buildHistogram(img) }))
+    }
+    img.src = filePath.startsWith('file://') ? filePath : `file://${filePath}`
+    return () => { cancelled = true }
+  }, [filePath, file.kind])
 
   // 加载元数据
   useEffect(() => {
@@ -333,39 +343,36 @@ export function MediaInspector({ filePath, onToggleCollapse }: MediaInspectorPro
     })
   })
 
-  const handleZoomIn = () => setImageZoom((z) => Math.min(8, z * 1.5))
-  const handleZoomOut = () => setImageZoom((z) => {
-    const next = z / 1.5
-    if (next <= 1) return 1
-    return next
-  })
-  const handleResetZoom = () => setImageZoom(1)
-
   return (
     <aside className="media-inspector">
+      <div className="inspector-section-header">
+        <span className="eyebrow">文件信息</span>
+        {onToggleCollapse && (
+          <button className="inspector-collapse-btn" onClick={onToggleCollapse} title="收起信息面板">
+            <ChevronRight size={16} />
+          </button>
+        )}
+      </div>
+      {header && <div className="media-inspector-header">{header}</div>}
       {/* ── 文件信息（通用） ── */}
       <section>
-        <div className="inspector-section-header">
-          <span className="eyebrow">文件信息</span>
-          {onToggleCollapse && (
-            <button className="inspector-collapse-btn" onClick={onToggleCollapse} title="收起信息面板">
-              <ChevronRight size={16} />
-            </button>
-          )}
-        </div>
         <dl>
           <div>
             <dt>文件大小</dt>
-            <dd>{formatBytes(file.bytes)}</dd>
+            <dd>{formatBytes(file.bytes ?? Number(metaMap.get('size') ?? 0))}</dd>
           </div>
           <div>
             <dt>拍摄时间</dt>
-            <dd>{formatCapturedAt(file.capturedAt)}</dd>
+            <dd>{formatCapturedAt(file.capturedAt ?? metaMap.get('DateTimeOriginal') ?? metaMap.get('ModifyDate') ?? null)}</dd>
           </div>
           {(file.kind !== 'video' || isDownloaded) && (
             <div>
               <dt>分辨率</dt>
-              <dd>{mediaDetails.width && mediaDetails.height ? `${mediaDetails.width} x ${mediaDetails.height}` : '-'}</dd>
+              <dd>{mediaDetails.width && mediaDetails.height
+                ? `${mediaDetails.width} x ${mediaDetails.height}`
+                : (metaMap.get('ImageWidth') && metaMap.get('ImageHeight')
+                  ? `${metaMap.get('ImageWidth')} x ${metaMap.get('ImageHeight')}`
+                  : '-')}</dd>
             </div>
           )}
         </dl>
@@ -395,17 +402,6 @@ export function MediaInspector({ filePath, onToggleCollapse }: MediaInspectorPro
               <span>绿</span>
               <span>蓝</span>
             </div>
-            <dl>
-              <div>
-                <dt>缩放</dt>
-                <dd>{Math.round(imageZoom * baseScale * 100)}%</dd>
-              </div>
-            </dl>
-            <div className="zoom-tools">
-              <IconButton variant="light" onClick={handleZoomOut} title="缩小" icon={<ZoomOut size={14} />} />
-              <IconButton variant="light" style={{ fontSize: 12, fontWeight: 400 }} icon="1x" onClick={handleResetZoom} title="适配屏幕" />
-              <IconButton variant="light" onClick={handleZoomIn} title="放大" icon={<ZoomIn size={14} />} />
-            </div>
           </section>
 
           {/* EXIF 元数据区域 */}
@@ -429,36 +425,15 @@ export function MediaInspector({ filePath, onToggleCollapse }: MediaInspectorPro
           )}
         </>
       ) : (
-        /* ── 视频参数 ── */
+        /* ── 视频参数（数据来自 getMediaMetadata → ffprobe） ── */
         <section>
           <span className="eyebrow">视频参数</span>
           <dl>
-            <div>
-              <dt>时长</dt>
-              <dd>{formatDuration(mediaDetails.duration)}</dd>
-            </div>
-            <div>
-              <dt>播放</dt>
-              <dd>
-                {formatDuration(mediaDetails.currentTime)} / {formatDuration(mediaDetails.duration)}
-              </dd>
-            </div>
-            <div>
-              <dt>码率</dt>
-              <dd>{formatBitrate(file.bytes, mediaDetails.duration)}</dd>
-            </div>
-            {isDownloaded && (
-              <>
-                <div>
-                  <dt>分辨率</dt>
-                  <dd>{mediaDetails.width && mediaDetails.height ? `${mediaDetails.width} x ${mediaDetails.height}` : '-'}</dd>
-                </div>
-                <div>
-                  <dt>帧率</dt>
-                  <dd>{mediaDetails.frameRate ? `${mediaDetails.frameRate} fps` : '-'}</dd>
-                </div>
-              </>
-            )}
+            {metaMap.get('时长') && <div><dt>时长</dt><dd>{metaMap.get('时长')}</dd></div>}
+            {metaMap.get('分辨率') && <div><dt>分辨率</dt><dd>{metaMap.get('分辨率')}</dd></div>}
+            {metaMap.get('帧率') && <div><dt>帧率</dt><dd>{metaMap.get('帧率')}</dd></div>}
+            {metaMap.get('码率') && <div><dt>码率</dt><dd>{metaMap.get('码率')}</dd></div>}
+            {metaMap.get('视频编码') && <div><dt>编码</dt><dd>{metaMap.get('视频编码')}</dd></div>}
           </dl>
         </section>
       )}
