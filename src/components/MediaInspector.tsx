@@ -338,8 +338,8 @@ export function MediaInspector({
 
   return (
     <aside className="media-inspector">
-      {/* ── 水印设置（图片/视频） ── */}
-      {file.kind !== 'unknown' && watermarkSettings && onWatermarkChange && (
+      {/* ── 水印设置（顶部） ── */}
+      {watermarkSettings && onWatermarkChange && (
         <WatermarkSettings settings={watermarkSettings} onChange={onWatermarkChange} filePath={watermarkFilePath} />
       )}
 

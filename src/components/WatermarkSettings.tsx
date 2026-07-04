@@ -5,28 +5,15 @@ import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAsset
 import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
 import type { WatermarkPosition, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import '../styles/watermark-settings.css'
 
-const POSITION_LABELS: Record<string, string> = {
-  BottomLeft: '左下', BottomRight: '右上', BottomCenter: '底中',
-  TopLeft: '左上', TopRight: '右上', TopCenter: '上中',
-}
-function posRow(pos: string): number { return pos.startsWith('Bottom') ? 1 : 0 }
-function posCol(pos: string): number { return pos.includes('Center') ? 1 : pos.endsWith('Right') ? 2 : 0 }
-
-/** 从 luna_ultra_layout 中提取该主题下的所有位置 */
-function positionsForStyle(styleValue: string): Array<{ value: string; label: string; row: number; col: number }> {
-  const theme = STYLE_TO_THEME[styleValue]
-  if (!theme) return []
-  const seen = new Set<string>()
-  const result: Array<{ value: string; label: string; row: number; col: number }> = []
-  for (const key of Object.keys(luna_ultra_layout)) {
-    const [t, , pos] = key.split('|')
-    if (t !== theme || seen.has(pos)) continue
-    seen.add(pos)
-    result.push({ value: pos, label: POSITION_LABELS[pos] ?? pos, row: posRow(pos), col: posCol(pos) })
-  }
-  return result
-}
+const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }> = [
+  { value: 'TopLeft', label: '左上', cx: 27, cy: 22.5 },
+  { value: 'TopRight', label: '右上', cx: 133, cy: 22.5 },
+  { value: 'BottomLeft', label: '左下', cx: 27, cy: 67.5 },
+  { value: 'BottomCenter', label: '底中', cx: 80, cy: 67.5 },
+  { value: 'BottomRight', label: '右下', cx: 133, cy: 67.5 },
+]
 
 interface WatermarkSettingsProps {
   settings: WatermarkSettingsType
@@ -43,7 +30,18 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   onStyleChange: (v: string) => void
   onPositionChange: (v: string) => void
 }) {
-  const positions = useMemo(() => positionsForStyle(settings.style), [settings.style])
+  // 加载水印图片获取实际长宽比
+  const [wmSize, setWmSize] = useState<{ w: number; h: number } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const src = WM_SRC[settings.style]?.image
+    if (!src) { setWmSize(null); return }
+    const img = new Image()
+    img.onload = () => { if (!cancelled) setWmSize({ w: img.naturalWidth, h: img.naturalHeight }) }
+    img.onerror = () => { if (!cancelled) setWmSize(null) }
+    img.src = src
+    return () => { cancelled = true }
+  }, [settings.style])
 
   // 从 WATERMARK_LAYOUT 中直接查找当前设置的参数
   useEffect(() => {
@@ -52,8 +50,20 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
     if (!theme) return
     const key = `${theme}|16:9|${settings.position}`
     const ratios = luna_ultra_layout[key]
-    console.log('[WatermarkSettings] WATERMARK_LAYOUT 查找:', { key, ratios })
-  }, [settings.enabled, settings.style, settings.position])
+    console.log('[WatermarkSettings] WATERMARK_LAYOUT 查找:', { key, ratios, wmSize })
+  }, [settings.enabled, settings.style, settings.position, wmSize])
+
+  // 在 160×90 视口中计算水印预览矩形
+  const wmPreview = useMemo(() => {
+    if (!wmSize) return null
+    const aspect = wmSize.w / wmSize.h
+    const maxArea = 1400 // 约 50×28 的像素面积
+    let w = Math.sqrt(maxArea * aspect)
+    let h = w / aspect
+    if (w > 50) { w = 50; h = w / aspect }
+    if (h > 28) { h = 28; w = h * aspect }
+    return { w, h }
+  }, [wmSize])
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
@@ -69,21 +79,34 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
       )}
 
       <div className="wm-position-grid">
-        {positions.map((pos) => {
-          const active = settings.position === pos.value
-          return (
-            <button
-              key={pos.value}
-              className={`wm-pos-cell ${active ? 'active' : ''}`}
-              onClick={() => onPositionChange(pos.value)}
-              title={pos.label}
-            >
+        <div className="wm-position-row">
+          <button key={POSITIONS[0].value}
+            className={`wm-pos-cell ${settings.position === POSITIONS[0].value ? 'active' : ''}`}
+            onClick={() => onPositionChange(POSITIONS[0].value)} title={POSITIONS[0].label}>
+            <svg viewBox="0 0 160 90" className="wm-pos-frame">
+              {wmPreview && <rect x={POSITIONS[0].cx - wmPreview.w / 2} y={POSITIONS[0].cy - wmPreview.h / 2} width={wmPreview.w} height={wmPreview.h} fill="currentColor" rx={2} opacity={0.4} />}
+            </svg>
+          </button>
+          <div className="wm-pos-cell wm-pos-placeholder" />
+          <button key={POSITIONS[1].value}
+            className={`wm-pos-cell ${settings.position === POSITIONS[1].value ? 'active' : ''}`}
+            onClick={() => onPositionChange(POSITIONS[1].value)} title={POSITIONS[1].label}>
+            <svg viewBox="0 0 160 90" className="wm-pos-frame">
+              {wmPreview && <rect x={POSITIONS[1].cx - wmPreview.w / 2} y={POSITIONS[1].cy - wmPreview.h / 2} width={wmPreview.w} height={wmPreview.h} fill="currentColor" rx={2} opacity={0.4} />}
+            </svg>
+          </button>
+        </div>
+        <div className="wm-position-row">
+          {POSITIONS.slice(2).map(pos => (
+            <button key={pos.value}
+              className={`wm-pos-cell ${settings.position === pos.value ? 'active' : ''}`}
+              onClick={() => onPositionChange(pos.value)} title={pos.label}>
               <svg viewBox="0 0 160 90" className="wm-pos-frame">
-                <rect x={pos.col * 53} y={pos.row * 45} width={54} height={45} fill="currentColor" rx={2} opacity={0.4} />
+                {wmPreview && <rect x={pos.cx - wmPreview.w / 2} y={pos.cy - wmPreview.h / 2} width={wmPreview.w} height={wmPreview.h} fill="currentColor" rx={2} opacity={0.4} />}
               </svg>
             </button>
-          )
-        })}
+          ))}
+        </div>
       </div>
     </div>
   )

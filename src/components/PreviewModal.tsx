@@ -4,7 +4,7 @@ import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
-import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult } from '../shared/types'
+import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
 
@@ -131,6 +131,11 @@ export function PreviewModal({
   const [baseScale, setBaseScale] = useState(1)
   const [imageDragging, setImageDragging] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
+    enabled: false,
+    style: 'luna_ultra',
+    position: 'BottomCenter' as any,
+  })
   const [livePreview, setLivePreview] = useState<PreviewResult | null>(null)
   const [liveLoading, setLiveLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
@@ -393,6 +398,9 @@ export function PreviewModal({
               isDownloaded={isDownloaded}
               imageZoom={imageZoom}
               baseScale={baseScale}
+              watermarkSettings={watermarkSettings}
+              onWatermarkChange={setWatermarkSettings}
+              watermarkFilePath={downloadedPath ?? undefined}
               onZoomIn={() => setImageZoom((z) => Math.min(8, z * 1.5))}
               onZoomOut={() => {
                 setImageZoom((z) => {
