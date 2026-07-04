@@ -179,6 +179,26 @@ pub fn render_frame(
     Ok(result.into())
 }
 
+/// 渲染已有纹理并直接编码保存到文件（不返回像素数据）
+///
+/// 和 render_frame 使用相同的渲染算法，区别在于：
+/// - 渲染后直接通过 ffmpeg 编码为 JPEG/PNG/WebP 写入磁盘
+/// - 不返回像素数据到 JS，避免大块内存传输
+#[napi]
+pub fn render_layers_to_file(
+    ffmpeg_path: String,
+    output: String,
+    width: u32,
+    height: u32,
+    layers: Vec<RenderLayer>,
+    format: String,
+    quality: f64,
+) -> napi::Result<()> {
+    lock(|c| {
+        export::render_layers_to_file(&ffmpeg_path, &output, width, height, &layers, &format, quality)
+    })
+}
+
 /// 预览一帧 — 和 export_file 同样的参数，但返回 RGBA Buffer 而非编码输出
 ///
 /// JS 只传 JSON：文件路径 + 层参数。Rust 解码 → renderFrame → 返回 RGBA。
