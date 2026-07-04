@@ -38,29 +38,28 @@ fn lock<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> napi::Result
 
 // ─────────────── napi 结构体 ───────────────
 
-/// 画布上的一个渲染层
+/// 画布上的一个渲染层（预览用，纹理已由 JS 预加载）
 #[napi(object)]
 #[derive(Clone)]
 pub struct RenderLayer {
-    /// 纹理 ID（通过 loadTexture / updateTexture 管理）
     pub texture_id: u32,
-
-    /// 目标区域在画布上的位置和大小（归一化 0.0-1.0，相对画布宽高）
-    pub dst_x: f64,
-    pub dst_y: f64,
-    pub dst_w: f64,
-    pub dst_h: f64,
-
-    /// 源裁剪区域（归一化 0.0-1.0，相对纹理自身宽高）
-    pub src_x: f64,
-    pub src_y: f64,
-    pub src_w: f64,
-    pub src_h: f64,
-
-    /// 透明度 0.0-1.0
+    pub dst_x: f64, pub dst_y: f64, pub dst_w: f64, pub dst_h: f64,
+    pub src_x: f64, pub src_y: f64, pub src_w: f64, pub src_h: f64,
     pub opacity: f64,
+    pub z_index: i32,
+}
 
-    /// 层级（数值越大越在上层）
+/// 静态叠加层 — 导出用，传文件绝对路径，Rust 内部加载+渲染
+#[napi(object)]
+#[derive(Clone)]
+pub struct StaticLayer {
+    /// 图片文件绝对路径（水印、贴纸等）
+    pub image_path: String,
+    /// 目标区域（归一化 0-1）
+    pub dst_x: f64, pub dst_y: f64, pub dst_w: f64, pub dst_h: f64,
+    /// 源裁剪区域（归一化 0-1）
+    pub src_x: f64, pub src_y: f64, pub src_w: f64, pub src_h: f64,
+    pub opacity: f64,
     pub z_index: i32,
 }
 
@@ -114,41 +113,49 @@ pub fn render_frame(
     Ok(result.into())
 }
 
-/// 导出视频
+/// 预览一帧 — 和 export_file 同样的参数，但返回 RGBA Buffer 而非编码输出
 ///
-/// - `ffmpeg_path`: FFmpeg 二进制路径（由 Electron 主进程传入）
-/// - `input_path`: 输入视频路径
-/// - `output_path`: 输出视频路径
-/// - `canvas_width` / `canvas_height`: 画布尺寸
-/// - `fps`: 导出帧率（可选，默认取源视频帧率）
-/// - `hardware`: 是否使用硬件编码
-/// - `video_layer`: 视频帧的布局（纹理 ID 由 Rust 侧创建，忽略传入的 texture_id）
-/// - `overlay_layers`: 静态叠加层（水印等，纹理已预加载，texture_id 保持不变）
+/// JS 只传 JSON：文件路径 + 层参数。Rust 解码 → renderFrame → 返回 RGBA。
 #[napi]
-pub fn export_video(
+pub fn preview_file(
     ffmpeg_path: String,
     ffprobe_path: String,
-    input_path: String,
-    output_path: String,
-    canvas_width: u32,
-    canvas_height: u32,
+    input: String,
+    width: u32,
+    height: u32,
+    static_layers: Vec<StaticLayer>,
+) -> napi::Result<Buffer> {
+    lock(|c| {
+        let result = export::preview_file(
+            &ffmpeg_path, &ffprobe_path,
+            &input, width, height,
+            &static_layers, c,
+        )?;
+        Ok(result.into())
+    })
+}
+
+/// 导出视频/图片（统一入口）
+#[napi]
+pub fn export_file(
+    ffmpeg_path: String,
+    ffprobe_path: String,
+    input: String,
+    output: String,
+    width: u32,
+    height: u32,
     fps: Option<f64>,
     hardware: bool,
     video_layer: RenderLayer,
-    overlay_layers: Vec<RenderLayer>,
+    static_layers: Vec<StaticLayer>,
 ) -> napi::Result<()> {
     lock(|c| {
-        export::export_video(
-            &ffmpeg_path,
-            &ffprobe_path,
-            &input_path,
-            &output_path,
-            canvas_width,
-            canvas_height,
-            fps,
-            hardware,
-            &video_layer,
-            &overlay_layers,
+        crate::log!("export: in={} out={} {}x{} static={}", input, output, width, height, static_layers.len());
+        export::export_file(
+            &ffmpeg_path, &ffprobe_path,
+            &input, &output,
+            width, height, fps, hardware,
+            &video_layer, &static_layers,
             c,
         )
     })

@@ -11,7 +11,7 @@ import {
   updateTexture as lrcUpdateTexture,
   releaseTexture as lrcReleaseTexture,
   renderFrame as lrcRenderFrame,
-  exportVideo as lrcExportVideo,
+  exportFile as lrcExportFile,
   destroy as lrcDestroy,
 } from './lunaRenderCore'
 import { dialog } from 'electron'
@@ -116,7 +116,7 @@ export function register(_ctx: RegisterContext): void {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       rcLog(`lrc:exportVideo f=${ffmpegPath} p=${ffprobePath} ${inputPath} → ${outputPath}`)
-      lrcExportVideo(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers)
+      lrcExportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers)
       rcLog('lrc:exportVideo done')
     },
   ))

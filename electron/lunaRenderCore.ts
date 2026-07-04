@@ -23,12 +23,12 @@ interface LunaRenderCoreNative {
   updateTexture(textureId: number, data: Buffer): void
   releaseTexture(textureId: number): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: RenderLayer[]): Buffer
-  exportVideo(
+  exportFile(
     ffmpegPath: string, ffprobePath: string,
     inputPath: string, outputPath: string,
     canvasWidth: number, canvasHeight: number,
     fps: number | null, hardware: boolean,
-    videoLayer: RenderLayer, overlayLayers: RenderLayer[],
+    videoLayer: RenderLayer, staticLayers: RenderLayer[],
   ): void
   destroyCompositor(): void
 }
@@ -89,7 +89,7 @@ export function renderFrame(
   return getNative().renderFrame(canvasWidth, canvasHeight, layers)
 }
 
-export function exportVideo(
+export function exportFile(
   ffmpegPath: string,
   ffprobePath: string,
   inputPath: string,
@@ -99,10 +99,10 @@ export function exportVideo(
   fps: number | null,
   hardware: boolean,
   videoLayer: RenderCoreLayer,
-  overlayLayers: RenderCoreLayer[],
+  staticLayers: RenderCoreLayer[],
 ): void {
   ensureInit()
-  getNative().exportVideo(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers)
+  getNative().exportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, staticLayers)
 }
 
 export function destroy(): void {
