@@ -7,6 +7,7 @@
  */
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
 
@@ -31,6 +32,7 @@ interface NativeLayer {
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
   loadTexture(data: Buffer, width: number, height: number): number
+  loadTextureFromPath(path: string, maxSize: number): { textureId?: number; texture_id?: number; width: number; height: number }
   updateTexture(textureId: number, data: Buffer): void
   releaseTexture(textureId: number): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: NativeLayer[]): Buffer
@@ -83,6 +85,15 @@ export function ensureInit(logPath?: string): void {
 export function loadTexture(data: Buffer, width: number, height: number): number {
   ensureInit()
   return getNative().loadTexture(data, width, height)
+}
+
+export function loadTextureFromPath(path: string, maxSize: number): { textureId: number; width: number; height: number } {
+  ensureInit()
+  const filePath = path.startsWith('file://') ? fileURLToPath(path) : path
+  const result = getNative().loadTextureFromPath(filePath, maxSize)
+  const textureId = result.textureId ?? result.texture_id
+  if (textureId == null) throw new Error('Native render core did not return a texture id')
+  return { textureId, width: result.width, height: result.height }
 }
 
 export function updateTexture(textureId: number, data: Buffer): void {

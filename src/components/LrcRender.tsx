@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
+const PREVIEW_TEXTURE_MAX_SIZE = 1920
+
 // ── 导出类型 ──
 
 /** 纹理层（已加载的 textureId）— 供外部直接使用 LRC API 时参考 */
@@ -49,6 +51,7 @@ interface LrcRenderProps {
 interface LunaRenderCore {
   init: () => Promise<void>
   loadTexture: (data: Uint8Array, w: number, h: number) => Promise<number>
+  loadTextureFromPath: (path: string, maxSize: number) => Promise<{ textureId: number; width: number; height: number }>
   updateTexture: (id: number, data: Uint8Array) => Promise<void>
   releaseTexture: (id: number) => Promise<void>
   renderFrame: (w: number, h: number, layers: LrcTextureLayer[]) => Promise<Uint8Array>
@@ -71,22 +74,27 @@ function layerKey(l: LrcLayer): string {
   return isStatic(l) ? `s:${l.imagePath}` : `v:${l.videoPath}`
 }
 
-async function loadImageAsRGBA(path: string): Promise<{
-  rgba: Uint8Array; width: number; height: number
-}> {
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve()
-    img.onerror = () => reject(new Error(`图片加载失败: ${path}`))
-    img.src = path
-  })
-  const w = img.naturalWidth; const h = img.naturalHeight
-  const c = document.createElement('canvas')
-  c.width = w; c.height = h
-  c.getContext('2d')!.drawImage(img, 0, 0, w, h)
-  const idata = c.getContext('2d')!.getImageData(0, 0, w, h)
-  return { rgba: new Uint8Array(idata.data.buffer), width: w, height: h }
+function fitPreviewSize(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(1, PREVIEW_TEXTURE_MAX_SIZE / Math.max(width, height))
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
+}
+
+function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): { rgba: Uint8Array; width: number; height: number } | null {
+  const sourceWidth = video.videoWidth
+  const sourceHeight = video.videoHeight
+  if (sourceWidth <= 0 || sourceHeight <= 0) return null
+
+  const { width, height } = fitPreviewSize(sourceWidth, sourceHeight)
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) return null
+  context.drawImage(video, 0, 0, width, height)
+  const imageData = context.getImageData(0, 0, width, height)
+  return { rgba: new Uint8Array(imageData.data.buffer), width, height }
 }
 
 // ── LrcRender ──
@@ -135,7 +143,6 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       texMapRef.current.clear()
       for (const [, v] of videoMapRef.current) v.video.pause()
       videoMapRef.current.clear()
-      lrc2.destroy().catch(() => {})
     }
   }, [])
 
@@ -228,12 +235,11 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       if (texMapRef.current.has(key)) continue
       texMapRef.current.set(key, { texId: null, width: 0, height: 0 })
 
-      loadImageAsRGBA(layer.imagePath)
-        .then(async ({ rgba, width, height }) => {
+      lrc.loadTextureFromPath(layer.imagePath, PREVIEW_TEXTURE_MAX_SIZE)
+        .then(({ textureId, width, height }) => {
           if (destroyRef.current) return
-          const texId = await lrc.loadTexture(rgba, width, height)
           const current = texMapRef.current.get(key)
-          if (current) { current.texId = texId; current.width = width; current.height = height }
+          if (current) { current.texId = textureId; current.width = width; current.height = height }
           compositeRender()
         })
         .catch((e) => console.error('[LrcRender] 图片加载失败:', layer.imagePath, e))
@@ -254,16 +260,13 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       video.load()
 
       video.oncanplay = () => {
-        const vw = video.videoWidth; const vh = video.videoHeight
-        if (vw <= 0 || vh <= 0) return
-        offscreen.width = vw; offscreen.height = vh
-        offscreen.getContext('2d')!.drawImage(video, 0, 0, vw, vh)
-        const idata = offscreen.getContext('2d')!.getImageData(0, 0, vw, vh)
+        const frame = drawVideoFrame(video, offscreen)
+        if (!frame) return
         if (destroyRef.current) return
-        lrc.loadTexture(new Uint8Array(idata.data.buffer), vw, vh)
+        lrc.loadTexture(frame.rgba, frame.width, frame.height)
           .then((texId) => {
             const t = texMapRef.current.get(key)
-            if (t) { t.texId = texId; t.width = vw; t.height = vh }
+            if (t) { t.texId = texId; t.width = frame.width; t.height = frame.height }
             compositeRender()
           })
           .catch(() => {})
@@ -286,14 +289,11 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
           const v = videoMapRef.current.get(key)
           if (!info || !v || info.texId == null || v.video.paused || v.video.readyState < 2) continue
 
-          const vw = v.video.videoWidth; const vh = v.video.videoHeight
-          if (vw <= 0 || vh <= 0) continue
-          v.offscreen.width = vw; v.offscreen.height = vh
-          v.offscreen.getContext('2d')!.drawImage(v.video, 0, 0, vw, vh)
-          const idata = v.offscreen.getContext('2d')!.getImageData(0, 0, vw, vh)
+          const frame = drawVideoFrame(v.video, v.offscreen)
+          if (!frame) continue
 
           if (lrc2) {
-            pending.push(lrc2.updateTexture(info.texId, new Uint8Array(idata.data.buffer)))
+            pending.push(lrc2.updateTexture(info.texId, frame.rgba))
           }
         }
 

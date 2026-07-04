@@ -156,7 +156,7 @@ export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) 
       className="preview-stage"
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
-      {aspectRatio && <LrcRender layers={layers} />}
+      <LrcRender layers={layers} />
     </div>
   )
 }

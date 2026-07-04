@@ -1,12 +1,14 @@
+use crate::RenderLayer;
+use image::imageops::FilterType;
+use image::ImageReader;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Mutex;
-use wgpu::TexelCopyTextureInfo;
-use wgpu::TexelCopyBufferLayout;
 use wgpu::TexelCopyBufferInfo;
-use crate::RenderLayer;
+use wgpu::TexelCopyBufferLayout;
+use wgpu::TexelCopyTextureInfo;
 
 // ── 文件日志 ──
 static LOG_FILE: Mutex<Option<std::fs::File>> = Mutex::new(None);
@@ -21,7 +23,10 @@ fn log_init(log_path: &str) {
         } else {
             "unknown panic".to_string()
         };
-        let loc = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_default();
         log_write(&format!("PANIC at {} — {}", loc, msg));
     }));
 
@@ -129,8 +134,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuLayerParams {
-    dst_x: f32, dst_y: f32, dst_w: f32, dst_h: f32,
-    src_x: f32, src_y: f32, src_w: f32, src_h: f32,
+    dst_x: f32,
+    dst_y: f32,
+    dst_w: f32,
+    dst_h: f32,
+    src_x: f32,
+    src_y: f32,
+    src_w: f32,
+    src_h: f32,
     opacity: f32,
     _pad: [f32; 3],
 }
@@ -152,6 +163,7 @@ pub struct Compositor {
 
     textures: HashMap<u32, TextureEntry>,
     next_texture_id: u32,
+    max_texture_size: u32,
 
     output_texture: Option<(wgpu::Texture, u32, u32)>,
 }
@@ -187,10 +199,8 @@ fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
                     min_binding_size: Some(
-                        std::num::NonZeroU64::new(
-                            std::mem::size_of::<GpuLayerParams>() as u64,
-                        )
-                        .unwrap(),
+                        std::num::NonZeroU64::new(std::mem::size_of::<GpuLayerParams>() as u64)
+                            .unwrap(),
                     ),
                 },
                 count: None,
@@ -209,7 +219,11 @@ fn create_rgba_texture(
 ) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
-        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -234,7 +248,11 @@ fn upload_rgba(queue: &wgpu::Queue, texture: &wgpu::Texture, data: &[u8], width:
             bytes_per_row: Some(width * 4),
             rows_per_image: Some(height),
         },
-        wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
     );
 }
 
@@ -249,38 +267,39 @@ impl Compositor {
         let path = log_path.unwrap_or("luna-rc.log");
         log_init(path);
         log!("Creating wgpu instance...");
-        let instance = wgpu::Instance::new(
-            wgpu::InstanceDescriptor::new_without_display_handle(),
-        );
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
 
         log!("Requesting GPU adapter (LowPower, no surface)...");
-        let adapter = pollster::block_on(instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            },
-        ))
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+            apply_limit_buckets: false,
+        }))
         .map_err(|e| format!("No suitable GPU adapter: {}", e))?;
 
         let info = adapter.get_info();
         log!(
             "GPU adapter: name={} vendor={} device={} backend={:?}",
-            info.name, info.vendor, info.device, info.backend
+            info.name,
+            info.vendor,
+            info.device,
+            info.backend
         );
 
         log!("Requesting GPU device...");
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("Luna Render Core"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                ..Default::default()
-            },
-        ))
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("Luna Render Core"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            ..Default::default()
+        }))
         .map_err(|e| format!("Failed to create device: {}", e))?;
-        log!("GPU device created OK");
+        let max_texture_size = device.limits().max_texture_dimension_2d;
+        log!(
+            "GPU device created OK max_texture_dimension_2d={}",
+            max_texture_size
+        );
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("compositor"),
@@ -343,6 +362,7 @@ impl Compositor {
             bind_group_layout: bgl,
             textures: HashMap::new(),
             next_texture_id: 1,
+            max_texture_size,
             output_texture: None,
         })
     }
@@ -350,7 +370,22 @@ impl Compositor {
     // ── 纹理管理 ──
 
     pub fn load_texture(&mut self, data: &[u8], width: u32, height: u32) -> Result<u32, String> {
-        let expected = (width * height * 4) as usize;
+        if width == 0 || height == 0 {
+            return Err("texture size must be greater than 0".to_string());
+        }
+        if width > self.max_texture_size || height > self.max_texture_size {
+            let msg = format!(
+                "texture size {}x{} exceeds GPU limit {}",
+                width, height, self.max_texture_size
+            );
+            log_error!("{}", msg);
+            return Err(msg);
+        }
+        let expected = width
+            .checked_mul(height)
+            .and_then(|v| v.checked_mul(4))
+            .ok_or_else(|| format!("texture size overflow: {}x{}", width, height))?
+            as usize;
         if data.len() < expected {
             log_error!("load_texture data too small: {} < {}", data.len(), expected);
             return Err(format!("data too small: {} < {}", data.len(), expected));
@@ -358,7 +393,13 @@ impl Compositor {
 
         let id = self.next_texture_id;
         self.next_texture_id += 1;
-        log!("load_texture id={} size={}x{} data={}bytes", id, width, height, expected);
+        log!(
+            "load_texture id={} size={}x{} data={}bytes",
+            id,
+            width,
+            height,
+            expected
+        );
 
         let texture = create_rgba_texture(
             &self.device,
@@ -369,27 +410,84 @@ impl Compositor {
         );
         upload_rgba(&self.queue, &texture, &data[..expected], width, height);
 
-        let id = self.next_texture_id;
-        self.next_texture_id += 1;
-        self.textures.insert(id, TextureEntry { texture, width, height });
+        self.textures.insert(
+            id,
+            TextureEntry {
+                texture,
+                width,
+                height,
+            },
+        );
         Ok(id)
     }
 
+    pub fn load_texture_from_path(
+        &mut self,
+        path: &str,
+        max_size: u32,
+    ) -> Result<(u32, u32, u32), String> {
+        let max_size = max_size.max(1).min(self.max_texture_size);
+        let image = ImageReader::open(path)
+            .map_err(|e| format!("open image {}: {}", path, e))?
+            .with_guessed_format()
+            .map_err(|e| format!("detect image format {}: {}", path, e))?
+            .decode()
+            .map_err(|e| format!("decode image {}: {}", path, e))?;
+        let source_w = image.width();
+        let source_h = image.height();
+        if source_w == 0 || source_h == 0 {
+            return Err(format!("image has invalid size: {}", path));
+        }
+
+        let max_source_edge = source_w.max(source_h);
+        let image = if max_source_edge > max_size {
+            image.resize(max_size, max_size, FilterType::Triangle)
+        } else {
+            image
+        };
+        let width = image.width();
+        let height = image.height();
+        let rgba = image.to_rgba8();
+        log!(
+            "load_texture_from_path path={} source={}x{} texture={}x{}",
+            path,
+            source_w,
+            source_h,
+            width,
+            height
+        );
+        let id = self.load_texture(rgba.as_raw(), width, height)?;
+        Ok((id, width, height))
+    }
+
     pub fn update_texture(&mut self, texture_id: u32, data: &[u8]) -> Result<(), String> {
-        let entry = self.textures.get(&texture_id)
+        let entry = self
+            .textures
+            .get(&texture_id)
             .ok_or_else(|| format!("texture {} not found", texture_id))?;
         let expected = (entry.width * entry.height * 4) as usize;
         if data.len() < expected {
-            log_error!("update_texture data too small: {} < {}", data.len(), expected);
+            log_error!(
+                "update_texture data too small: {} < {}",
+                data.len(),
+                expected
+            );
             return Err(format!("data too small: {} < {}", data.len(), expected));
         }
         log!("update_texture id={} {}bytes", texture_id, expected);
-        upload_rgba(&self.queue, &entry.texture, &data[..expected], entry.width, entry.height);
+        upload_rgba(
+            &self.queue,
+            &entry.texture,
+            &data[..expected],
+            entry.width,
+            entry.height,
+        );
         Ok(())
     }
 
     pub fn release_texture(&mut self, texture_id: u32) -> Result<(), String> {
-        self.textures.remove(&texture_id)
+        self.textures
+            .remove(&texture_id)
             .ok_or_else(|| format!("texture {} not found", texture_id))?;
         log!("release_texture id={}", texture_id);
         Ok(())
@@ -437,7 +535,10 @@ impl Compositor {
         if recreate {
             self.output_texture = Some((
                 create_rgba_texture(
-                    &self.device, "output", canvas_width, canvas_height,
+                    &self.device,
+                    "output",
+                    canvas_width,
+                    canvas_height,
                     wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
                 ),
                 canvas_width,
@@ -451,9 +552,11 @@ impl Compositor {
         let mut sorted: Vec<&RenderLayer> = layers.iter().collect();
         sorted.sort_by_key(|l| l.z_index);
 
-        let mut encoder = self.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { label: Some("encoder") },
-        );
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("encoder"),
+            });
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -476,11 +579,10 @@ impl Compositor {
             rpass.set_pipeline(&self.pipeline);
 
             for layer in &sorted {
-                let tex_entry = self.textures.get(&layer.texture_id)
-                    .ok_or_else(|| {
-                        log_error!("render: texture {} not found", layer.texture_id);
-                        format!("texture {} not found", layer.texture_id)
-                    })?;
+                let tex_entry = self.textures.get(&layer.texture_id).ok_or_else(|| {
+                    log_error!("render: texture {} not found", layer.texture_id);
+                    format!("texture {} not found", layer.texture_id)
+                })?;
 
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
@@ -503,9 +605,12 @@ impl Compositor {
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
-                self.queue.write_buffer(&params_buf, 0, bytemuck::bytes_of(&params));
+                self.queue
+                    .write_buffer(&params_buf, 0, bytemuck::bytes_of(&params));
 
-                let tex_view = tex_entry.texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let tex_view = tex_entry
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
 
                 let bg_entries = [
                     wgpu::BindGroupEntry {
@@ -584,7 +689,8 @@ impl Compositor {
             .map_err(|_| "channel closed".to_string())?
             .map_err(|e| format!("map_async: {}", e))?;
 
-        let mapped = slice.get_mapped_range()
+        let mapped = slice
+            .get_mapped_range()
             .map_err(|e| format!("get_mapped_range: {}", e))?;
 
         let mut result = vec![0u8; pixel_count];
