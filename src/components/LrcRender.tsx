@@ -44,6 +44,8 @@ interface LrcRenderProps {
   className?: string
   onError?: (error: string) => void
   onReady?: () => void
+  /** 每次合成渲染完成后触发 */
+  onRender?: () => void
 }
 
 // ── lunaRenderCore 类型 ──
@@ -99,7 +101,7 @@ function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): { r
 
 // ── LrcRender ──
 
-export function LrcRender({ layers, canvasRef: extRef, className, onError, onReady }: LrcRenderProps) {
+export function LrcRender({ layers, canvasRef: extRef, className, onError, onReady, onRender }: LrcRenderProps) {
   const internalRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
@@ -214,6 +216,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
         new ImageData(new Uint8ClampedArray(result), pw, ph), 0, 0,
       )
       console.timeEnd(label)
+      onRender?.()
     } catch {
       console.timeEnd(label)
       /* 渲染错误静默 */
