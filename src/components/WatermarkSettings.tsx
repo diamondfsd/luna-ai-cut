@@ -2,18 +2,31 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
-import { resolveWatermarkRatios } from '../shared/watermark/layoutConfig'
+import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
 import type { WatermarkPosition, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 
-/** 5 个固定位置（对应原版 App） */
-const POSITIONS: Array<{ value: string; label: string; row: number; col: number }> = [
-  { value: 'top-left', label: '左上', row: 0, col: 0 },
-  { value: 'top-right', label: '右上', row: 0, col: 2 },
-  { value: 'bottom-left', label: '左下', row: 1, col: 0 },
-  { value: 'bottom-center', label: '底中', row: 1, col: 1 },
-  { value: 'bottom-right', label: '右下', row: 1, col: 2 },
-]
+const POSITION_LABELS: Record<string, string> = {
+  BottomLeft: '左下', BottomRight: '右上', BottomCenter: '底中',
+  TopLeft: '左上', TopRight: '右上', TopCenter: '上中',
+}
+function posRow(pos: string): number { return pos.startsWith('Bottom') ? 1 : 0 }
+function posCol(pos: string): number { return pos.includes('Center') ? 1 : pos.endsWith('Right') ? 2 : 0 }
+
+/** 从 luna_ultra_layout 中提取该主题下的所有位置 */
+function positionsForStyle(styleValue: string): Array<{ value: string; label: string; row: number; col: number }> {
+  const theme = STYLE_TO_THEME[styleValue]
+  if (!theme) return []
+  const seen = new Set<string>()
+  const result: Array<{ value: string; label: string; row: number; col: number }> = []
+  for (const key of Object.keys(luna_ultra_layout)) {
+    const [t, , pos] = key.split('|')
+    if (t !== theme || seen.has(pos)) continue
+    seen.add(pos)
+    result.push({ value: pos, label: POSITION_LABELS[pos] ?? pos, row: posRow(pos), col: posCol(pos) })
+  }
+  return result
+}
 
 interface WatermarkSettingsProps {
   settings: WatermarkSettingsType
@@ -30,15 +43,16 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   onStyleChange: (v: string) => void
   onPositionChange: (v: string) => void
 }) {
-  // 打印映射表参数
+  const positions = useMemo(() => positionsForStyle(settings.style), [settings.style])
+
+  // 从 WATERMARK_LAYOUT 中直接查找当前设置的参数
   useEffect(() => {
     if (!settings.enabled) return
-    const ratios = resolveWatermarkRatios(null, settings.style, 160, 90, settings.position)
-    console.log('[WatermarkSettings] 映射表参数:', {
-      style: settings.style,
-      position: settings.position,
-      ratios,
-    })
+    const theme = STYLE_TO_THEME[settings.style]
+    if (!theme) return
+    const key = `${theme}|16:9|${settings.position}`
+    const ratios = luna_ultra_layout[key]
+    console.log('[WatermarkSettings] WATERMARK_LAYOUT 查找:', { key, ratios })
   }, [settings.enabled, settings.style, settings.position])
 
   return (
@@ -55,7 +69,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
       )}
 
       <div className="wm-position-grid">
-        {POSITIONS.map((pos) => {
+        {positions.map((pos) => {
           const active = settings.position === pos.value
           return (
             <button
