@@ -202,6 +202,7 @@ const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
   pickVideo: () => ipcRenderer.invoke('lrc:pickVideo'),
   loadTexture: (data: Buffer, width: number, height: number) => ipcRenderer.invoke('lrc:loadTexture', data, width, height),
+  loadTextureFromPath: (path: string, maxSize: number) => ipcRenderer.invoke('lrc:loadTextureFromPath', path, maxSize),
   updateTexture: (textureId: number, data: Buffer) => ipcRenderer.invoke('lrc:updateTexture', textureId, data),
   releaseTexture: (textureId: number) => ipcRenderer.invoke('lrc:releaseTexture', textureId),
   renderFrame: (canvasWidth: number, canvasHeight: number, layers: RenderLayer[]) =>

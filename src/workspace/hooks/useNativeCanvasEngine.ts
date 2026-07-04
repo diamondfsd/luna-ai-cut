@@ -80,7 +80,6 @@ export function useNativeCanvasEngine(options: CanvasEngineOptions) {
     lrc.init().then(() => setRendererReady(true)).catch((e: Error) => setWebglMessage(e.message))
     return () => {
       if (mediaTexIdRef.current != null) lrc.releaseTexture(mediaTexIdRef.current).catch(() => {})
-      lrc.destroy().catch(() => {})
     }
   }, [])
 
