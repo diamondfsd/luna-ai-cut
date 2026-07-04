@@ -61,6 +61,7 @@ export function register(ctx: IpcContext): void {
     try {
       const probe = await probeMedia(filePath)
       if (probe.videoWidth > 0 && probe.videoHeight > 0) {
+        logMainInfo(`[workspace:getMediaResolution] ${filePath} -> ${probe.videoWidth}x${probe.videoHeight}`)
         return { width: probe.videoWidth, height: probe.videoHeight }
       }
     } catch { /* fallback below */ }

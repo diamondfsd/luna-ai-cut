@@ -491,35 +491,84 @@ impl Compositor {
         // ── LRU 缓存命中 → 验证纹理仍存在，直接返回 ──
         if let Some(tex_id) = self.get_cached_texture(path) {
             if let Some(entry) = self.textures.get(&tex_id) {
-                log!("load_texture_from_path [CACHE] {} tex_id={} {}x{}", path, tex_id, entry.width, entry.height);
+                log!("load_texture_from_path [CACHE HIT] {} tex_id={} {}x{}", path, tex_id, entry.width, entry.height);
                 return Ok((tex_id, entry.width, entry.height));
+            } else {
+                log!("load_texture_from_path [CACHE MISS:texture_gone] {} tex_id={}", path, tex_id);
             }
+        } else {
+            log!("load_texture_from_path [CACHE MISS] {}", path);
         }
 
-        // ── ffprobe 获取原始尺寸 ──
+        // ── ffprobe 获取原始尺寸 + EXIF 旋转 ──
         let probe_output = Command::new(ffprobe)
             .args([
                 "-v", "quiet",
                 "-print_format", "json",
-                "-show_streams", path,
+                "-show_frames",
+                "-read_intervals", "%+#1",
+                path,
             ])
             .output()
             .map_err(|e| format!("ffprobe {}: {}", path, e))?;
         let probe_stdout = String::from_utf8_lossy(&probe_output.stdout);
         let parsed: serde_json::Value =
             serde_json::from_str(&probe_stdout).map_err(|e| format!("ffprobe json: {}", e))?;
-        let streams = parsed["streams"]
+        log!("load_texture_from_path ffprobe stdout={}", probe_stdout);
+        // 从 frames[0] 取宽高
+        let frames = parsed["frames"]
             .as_array()
-            .ok_or_else(|| format!("ffprobe: no streams in {}", path))?;
-        let vs = streams
+            .ok_or_else(|| format!("ffprobe: no frames in {}", path))?;
+        let frame = frames
             .iter()
-            .find(|s| s["codec_type"].as_str() == Some("video"))
-            .ok_or_else(|| format!("ffprobe: no video stream in {}", path))?;
-        let source_w = vs["width"].as_u64().unwrap_or(0) as u32;
-        let source_h = vs["height"].as_u64().unwrap_or(0) as u32;
+            .find(|f| f["media_type"].as_str() == Some("video"))
+            .ok_or_else(|| format!("ffprobe: no video frame in {}", path))?;
+        let source_w = frame["width"].as_u64().unwrap_or(0) as u32;
+        let source_h = frame["height"].as_u64().unwrap_or(0) as u32;
         if source_w == 0 || source_h == 0 {
             return Err(format!("ffprobe: invalid image size in {}", path));
         }
+        // ── 从 side_data_list.displaymatrix.rotation 提取旋转角度 ──
+        let displaymatrix_rotation = frame["side_data_list"]
+            .as_array()
+            .and_then(|list| {
+                list.iter()
+                    .filter_map(|sd| sd["rotation"].as_f64())
+                    .map(|r| r as i32)
+                    .find(|&r| r == 90 || r == 270)
+            })
+            .unwrap_or(0);
+        // ── 从 EXIF tags.Orientation 提取（值 6=90°CW, 8=270°CW/90°CCW）──
+        let exif_orientation = frame["tags"]["Orientation"]
+            .as_str()
+            .and_then(|s| s.trim().parse::<i32>().ok())
+            .unwrap_or(0);
+        let exif_rotate = match exif_orientation {
+            6 => 90,   // Rotate 90° CW
+            8 => 270,  // Rotate 270° CW (90° CCW)
+            _ => 0,
+        };
+        let rotate_raw = frame["side_data_list"]
+            .as_array()
+            .map(|list| {
+                let vals: Vec<String> = list.iter().map(|sd| {
+                    format!("{} r={}", sd["side_data_type"].as_str().unwrap_or("?"), sd["rotation"])
+                }).collect();
+                vals.join(" | ")
+            })
+            .unwrap_or_default();
+        let rotate = if displaymatrix_rotation != 0 {
+            displaymatrix_rotation
+        } else {
+            exif_rotate
+        };
+        log!("load_texture_from_path side_data=[{}] orientation={} rotate={}", rotate_raw, exif_orientation, rotate);
+        let (source_w, source_h) = if rotate == 90 || rotate == 270 {
+            log!("load_texture_from_path SWAP {}x{} -> {}x{}", source_w, source_h, source_h, source_w);
+            (source_h, source_w)
+        } else {
+            (source_w, source_h)
+        };
         // ── 计算缩放后尺寸 ──
         let (width, height) = {
             let max_edge = source_w.max(source_h);
@@ -573,6 +622,7 @@ impl Compositor {
         );
         let id = self.load_texture(&rgba, width, height)?;
         self.cache_static_texture(path.to_string(), id)?;
+        log!("load_texture_from_path RETURN id={} {}x{}", id, width, height);
         Ok((id, width, height))
     }
 
