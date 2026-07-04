@@ -5,6 +5,7 @@ import type { LunaFile } from '../shared/types'
 import { VideoPlayBadge } from '../ui'
 import { logger } from '../lib/rendererLogger'
 import { filePathToLunaFile } from './previewModalUtils'
+import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 
 interface PreviewThumbnailStripProps {
   filePathList: string[]
@@ -32,14 +33,17 @@ function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, 
 }) {
   const btnRef = useRef<HTMLButtonElement>(null)
   const requestedRef = useRef(false)
+  const isLive = useLivePhotoWhenVisible(file.href, btnRef, '200px')
   const thumbSrc = thumbnailSrcFor(file, resolvedMap)
   const showThumb = Boolean(thumbSrc)
 
-  // 进入视口时才请求缩略图
+  // 进入视口时请求缩略图
   useEffect(() => {
-    if (showThumb || requestedRef.current) return
+    if (requestedRef.current) return
     const el = btnRef.current
     if (!el) return
+
+    if (showThumb) { requestedRef.current = true; return }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -47,14 +51,12 @@ function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, 
           observer.disconnect()
           const localPath = file.downloadFilePath ?? file.localPath
           if (localPath) {
-            // 有本地文件 → resolveThumbnail 直接生成缩略图
             window.luna.resolveThumbnail(localPath, file.kind).then((url) => {
               if (url) onThumbnailResolved(file.id, url)
             }).catch(() => {
               logger.warn('[缩略图条] resolveThumbnail 失败', { fileId: file.id, fileName: file.name })
             })
           } else {
-            // 无本地路径（相机文件）→ cacheFile 先下载再生成缩略图
             window.luna.cacheFile(file).then((ok) => {
               if (!ok) logger.warn('[缩略图条] cacheFile 返回 false', { fileId: file.id, fileName: file.name })
             }).catch(() => {
@@ -67,7 +69,7 @@ function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, 
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [file.id, showThumb])
+  }, [file.href, showThumb])
 
   return (
     <button
@@ -90,7 +92,7 @@ function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, 
         </span>
       )}
       {file.kind === 'video' && <VideoPlayBadge size={16} />}
-      {file.isLivePhoto && (
+      {isLive && (
         <span className="preview-thumb-live">
           <span /><span /><span />
         </span>
@@ -155,7 +157,6 @@ export function PreviewThumbnailStrip({
   }
 
   // ── 键盘导航 ──
-  // 用 ref 持有回调，避免 effect 需要重复注册
   const onChangeRef = useRef(onChange)
   useEffect(() => { onChangeRef.current = onChange })
   const filePathListLengthRef = useRef(filePathList.length)
