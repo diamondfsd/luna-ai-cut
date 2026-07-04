@@ -80,6 +80,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
 
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
+  const [renderKey, setRenderKey] = useState(0)
 
   // ═══════════════════════════════════════
   //  初始化
@@ -92,6 +93,8 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       return
     }
     destroyRef.current = false
+    // 清除残留的旧 texMapRef 条目（来自上次挂载周期，texId 已失效）
+    texMapRef.current.clear()
     lrc.init()
       .then(() => { if (!destroyRef.current) { setReady(true); onReady?.() } })
       .catch((e: Error) => {
@@ -144,6 +147,11 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       }
       let { dstX, dstY, dstW, dstH } = layer
 
+      if (info.height > info.width && layer.fit === 'contain') {
+        const pxW = (dstW * pw).toFixed(0), pxH = (dstH * ph).toFixed(0)
+        console.log(`[LrcRender] portrait tex=${info.width}x${info.height} dst=${dstW.toFixed(3)}x${dstH.toFixed(3)} → ${pxW}x${pxH}`)
+      }
+
       if (layer.fit === 'contain') {
         const mediaAspect = info.width / info.height
         const framePixelW = dstW * pw
@@ -181,7 +189,16 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
         new ImageData(new Uint8ClampedArray(result), pw, ph), 0, 0,
       )
       onRender?.()
-    } catch { /* 静默 */ }
+    } catch {
+      // 纹理被 Rust LRU 淘汰 → 清理失效条目，通知 effect 重载
+      const failed = new Set(resultLayers.map((l) => l.textureId))
+      for (const [k, v] of texMapRef.current) {
+        if (v.texId != null && failed.has(v.texId)) {
+          texMapRef.current.delete(k)
+        }
+      }
+      setRenderKey((k) => k + 1)
+    }
   }
 
   // ═══════════════════════════════════════
@@ -294,7 +311,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       rafRef.current = requestAnimationFrame(videoLoop)
     }
 
-  }, [layers, ready])
+  }, [layers, ready, renderKey])
 
   // ═══════════════════════════════════════
   //  Render
