@@ -175,7 +175,11 @@ pub fn render_frame(
     canvas_height: u32,
     layers: Vec<RenderLayer>,
 ) -> napi::Result<Buffer> {
+    let _t0 = std::time::Instant::now();
     let result = lock(|c| c.render(canvas_width, canvas_height, &layers))?;
+    let elapsed = _t0.elapsed();
+    crate::log!("render_frame {}x{} {}layers {}bytes {}ms",
+        canvas_width, canvas_height, layers.len(), result.len(), elapsed.as_millis());
     Ok(result.into())
 }
 
