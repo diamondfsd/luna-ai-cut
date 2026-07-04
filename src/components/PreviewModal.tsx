@@ -6,7 +6,7 @@ import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToLunaFile } from './previewModalUtils'
 import type { PreviewLayer, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import { Dialog } from '../ui'
+import { Dialog, LivePhotoBadge } from '../ui'
 import '../styles/modal.css'
 
 interface PreviewModalProps {
@@ -52,6 +52,7 @@ export function PreviewModal({
   })
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
+  const [isLivePhoto, setIsLivePhoto] = useState(false)
 
   // 获取媒体分辨率用于水印布局匹配
   useEffect(() => {
@@ -59,6 +60,14 @@ export function PreviewModal({
     window.luna.workspace.getMediaResolution(currentFilePath)
       .then(({ width, height }) => setMediaSize({ w: width, h: height }))
       .catch(() => setMediaSize(null))
+  }, [currentFilePath])
+
+  // 检测 Live Photo
+  useEffect(() => {
+    if (!currentFilePath) { setIsLivePhoto(false); return }
+    window.luna.isLivePhoto(currentFilePath)
+      .then(setIsLivePhoto)
+      .catch(() => setIsLivePhoto(false))
   }, [currentFilePath])
 
   const displaySource = internalPreview?.source ?? null
@@ -91,6 +100,12 @@ export function PreviewModal({
         <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
           <div className="preview-stage-col">
             <PreviewStage url={displaySource} extraLayers={watermarkLayers} />
+
+            {isLivePhoto && (
+              <span style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 10 }}>
+                <LivePhotoBadge size={32} />
+              </span>
+            )}
 
             <PreviewThumbnailStrip
               filePathList={filePathList ?? [currentFilePath]}

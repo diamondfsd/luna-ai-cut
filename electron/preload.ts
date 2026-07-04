@@ -214,6 +214,14 @@ const lunaRenderCoreApi = {
     fps: number | null, hardware: boolean,
     videoLayer: RenderLayer, overlayLayers: RenderLayer[],
   ) => ipcRenderer.invoke('lrc:exportVideo', inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers),
+  exportImage: (
+    outputPath: string,
+    width: number,
+    height: number,
+    layers: RenderLayer[],
+    format: string,
+    quality: number,
+  ) => ipcRenderer.invoke('lrc:renderLayersToFile', outputPath, width, height, layers, format, quality),
   destroy: () => ipcRenderer.invoke('lrc:destroy'),
 }
 

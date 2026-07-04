@@ -125,6 +125,73 @@ fn load_static_layers(ffmpeg: &str, ffprobe: &str, layers: &[StaticLayer], c: &m
     Ok(result)
 }
 
+/// 直接渲染已有纹理到文件（不重新加载源文件）
+///
+/// JS 侧已有纹理（通过 loadTexture / loadTextureFromPath 加载），
+/// 此函数只做：render → encode → save，全部在 Rust 完成。
+pub fn render_layers_to_file(
+    ffmpeg: &str,
+    output: &str,
+    width: u32,
+    height: u32,
+    layers: &[RenderLayer],
+    format: &str,
+    quality: f64,
+    c: &mut Compositor,
+) -> Result<(), String> {
+    crate::log!(
+        "render_layers_to_file: out={} {}x{} layers={} fmt={} q={}",
+        output, width, height, layers.len(), format, quality
+    );
+
+    let result = c.render(width, height, layers)?;
+
+    // ── ffmpeg 编码 ──
+    // JPEG: -q:v 2-31 (2=最高质量), PNG: 无损
+    let q = format!("{:.0}", quality.clamp(1.0, 100.0));
+    let mut args: Vec<String> = vec![
+        "-f".into(), "rawvideo".into(),
+        "-pix_fmt".into(), "rgba".into(),
+        "-s".into(), format!("{}x{}", width, height),
+        "-i".into(), "pipe:0".into(),
+        "-frames:v".into(), "1".into(),
+        "-y".into(),
+        "-loglevel".into(), "error".into(),
+    ];
+
+    match format {
+        "jpeg" | "jpg" => {
+            // ffmpeg JPEG 质量：1-31，数值越低质量越高。将 quality(1-100)映射到 2-25
+            let ffmpeg_q = ((100.0 - quality.clamp(1.0, 100.0)) * 23.0 / 99.0 + 2.0) as u32;
+            args.extend_from_slice(&["-c:v".into(), "mjpeg".into(), "-q:v".into(), ffmpeg_q.to_string()]);
+        }
+        "png" => {
+            args.extend_from_slice(&["-c:v".into(), "png".into()]);
+        }
+        "webp" => {
+            args.extend_from_slice(&["-c:v".into(), "libwebp".into(), "-quality".into(), q]);
+        }
+        _ => return Err(format!("unsupported export format: {}", format)),
+    }
+    args.push(output.into());
+
+    let mut proc = Command::new(ffmpeg)
+        .args(&args)
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("encode spawn: {}", e))?;
+
+    proc.stdin
+        .take()
+        .ok_or("no encode stdin")?
+        .write_all(&result)
+        .map_err(|e| format!("encode write: {}", e))?;
+    proc.wait().ok();
+
+    crate::log!("  render_layers_to_file done: {}", output);
+    Ok(())
+}
+/// 导出图片（单主图 + 静态叠加层）
 fn export_image(
     ffmpeg: &str, ffprobe: &str,
     input: &str, output: &str,

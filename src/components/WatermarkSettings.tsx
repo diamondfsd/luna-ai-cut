@@ -133,15 +133,15 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     })
   }, [deviceId])
 
-  // 首次挂载触发初始水印层生成
+  // 媒体宽高比变化时重新计算水印层（如图片从横图切到竖图）
   const initRef = useRef(true)
   useEffect(() => {
     if (initRef.current) {
       initRef.current = false
-      enrichAndChange({})
     }
+    enrichAndChange({})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [mediaWidth, mediaHeight])
 
   /** 获取水印路径和尺寸，与映射表比例合并后触发 onChange */
   const enrichAndChange = useCallback(async (patch: Partial<WatermarkSettingsType>) => {
