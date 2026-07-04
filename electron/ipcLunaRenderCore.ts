@@ -24,9 +24,8 @@ interface RegisterContext {
 interface RenderLayerArg {
   textureId: number
   dstX: number; dstY: number; dstW: number; dstH: number
-  srcX: number; srcY: number; srcW: number; srcH: number
-  opacity: number
-  zIndex: number
+  srcX?: number; srcY?: number; srcW?: number; srcH?: number
+  opacity?: number; zIndex?: number
 }
 
 /** 写日志到文件（追加模式），APP_ROOT 在 appMain.ts 中设置 */
