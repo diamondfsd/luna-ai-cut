@@ -12,6 +12,7 @@ import {
   updateTexture as lrcUpdateTexture,
   releaseTexture as lrcReleaseTexture,
   renderFrame as lrcRenderFrame,
+  renderPreview as lrcRenderPreview,
   exportFile as lrcExportFile,
   destroy as lrcDestroy,
 } from './lunaRenderCore'
@@ -108,6 +109,14 @@ export function register(_ctx: RegisterContext): void {
       layers: RenderLayerArg[],
     ) => {
       return lrcRenderFrame(canvasWidth, canvasHeight, layers)
+    },
+  ))
+
+  ipcMain.handle('lrc:renderPreview', safe('renderPreview',
+    async (_event: IpcMainInvokeEvent, input: any) => {
+      const ffmpegPath = getFfmpegPath()
+      const ffprobePath = getFfprobePath()
+      return lrcRenderPreview({ ...input, ffmpegPath, ffprobePath })
     },
   ))
 
