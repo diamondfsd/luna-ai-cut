@@ -13,6 +13,13 @@ export interface LrcTextureLayer {
   opacity?: number; zIndex?: number
 }
 
+export interface LrcStaticLayer {
+  imagePath: string
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX?: number; srcY?: number; srcW?: number; srcH?: number
+  opacity?: number; zIndex?: number
+}
+
 /** LrcRender 暴露给父组件的方法 */
 export interface LrcRenderHandle {
   /** 以指定分辨率导出当前帧图片到文件（Rust 直接渲染+编码+写入） */
@@ -22,6 +29,13 @@ export interface LrcRenderHandle {
     height: number,
     format: string,
     quality: number,
+  ): Promise<void>
+  /** 以指定分辨率导出当前视频到文件（Rust/LRC 逐帧合成） */
+  exportVideo(
+    outputPath: string,
+    width: number,
+    height: number,
+    options?: { fps?: number | null; hardware?: boolean; taskId?: string; qualityPreset?: string },
   ): Promise<void>
 }
 
@@ -75,6 +89,18 @@ interface LunaRenderCore {
   renderFrame: (w: number, h: number, layers: LrcTextureLayer[]) => Promise<Uint8Array>
   exportImage: (outputPath: string, width: number, height: number, layers: LrcTextureLayer[], format: string, quality: number) => Promise<void>
   exportImageFromSources: (outputPath: string, width: number, height: number, layers: PreviewLayer[], format: string, quality: number) => Promise<void>
+  exportVideo: (
+    inputPath: string,
+    outputPath: string,
+    canvasWidth: number,
+    canvasHeight: number,
+    fps: number | null,
+    hardware: boolean,
+    videoLayer: LrcTextureLayer,
+    overlayLayers: LrcStaticLayer[],
+    taskId?: string,
+    qualityPreset?: string,
+  ) => Promise<void>
 }
 
 function getLRC(): LunaRenderCore | undefined {
@@ -133,6 +159,44 @@ function buildExportLayers(
     })
   }
 
+  return result
+}
+
+function buildStaticExportLayers(
+  layers: PreviewLayer[],
+  renderW: number,
+  renderH: number,
+  texMap: Map<string, { texId: number | null; width: number; height: number }>,
+): LrcStaticLayer[] {
+  const sorted = [...layers].filter((layer) => !layer.isVideo).sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+  const result: LrcStaticLayer[] = []
+  for (const layer of sorted) {
+    const info = texMap.get(layerKey(layer))
+    let { dstX, dstY, dstW, dstH } = layer
+    if (info && info.width > 0 && info.height > 0 && layer.fit === 'contain') {
+      const mediaAspect = info.width / info.height
+      const framePixelW = dstW * renderW
+      const framePixelH = dstH * renderH
+      const frameAspect = framePixelW / framePixelH
+      let w = dstW; let h = dstH
+      if (frameAspect > mediaAspect) {
+        w = (framePixelH * mediaAspect) / renderW
+      } else {
+        h = (framePixelW / mediaAspect) / renderH
+      }
+      dstX += (dstW - w) / 2
+      dstY += (dstH - h) / 2
+      dstW = w; dstH = h
+    }
+    result.push({
+      imagePath: layer.filePath,
+      dstX, dstY, dstW, dstH,
+      srcX: layer.srcX ?? 0, srcY: layer.srcY ?? 0,
+      srcW: layer.srcW ?? 1, srcH: layer.srcH ?? 1,
+      opacity: layer.opacity ?? 1,
+      zIndex: layer.zIndex ?? 0,
+    })
+  }
   return result
 }
 
@@ -378,6 +442,39 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
         currentLayers,
         format,
         quality,
+      )
+    },
+    async exportVideo(
+      outputPath: string,
+      width: number,
+      height: number,
+      options?: { fps?: number | null; hardware?: boolean; taskId?: string; qualityPreset?: string },
+    ): Promise<void> {
+      const lrc = getLRC()
+      if (!lrc) throw new Error('渲染引擎未初始化')
+
+      const currentLayers = [...layersRef.current].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+      const videoSourceLayer = currentLayers.find((layer) => layer.isVideo)
+      if (!videoSourceLayer) throw new Error('未找到视频图层')
+
+      const exportLayers = buildExportLayers(currentLayers, width, height, texMapRef.current)
+      const videoKey = layerKey(videoSourceLayer)
+      const videoTextureId = texMapRef.current.get(videoKey)?.texId
+      const videoLayer = exportLayers.find((layer) => layer.textureId === videoTextureId)
+      if (!videoLayer) throw new Error('视频还未准备好，请稍后再导出')
+
+      const overlayLayers = buildStaticExportLayers(currentLayers, width, height, texMapRef.current)
+      await lrc.exportVideo(
+        videoSourceLayer.filePath,
+        outputPath,
+        width,
+        height,
+        options?.fps ?? null,
+        options?.hardware ?? true,
+        videoLayer,
+        overlayLayers,
+        options?.taskId,
+        options?.qualityPreset,
       )
     },
   }), [])

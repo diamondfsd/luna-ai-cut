@@ -1,5 +1,5 @@
 import { app, ipcMain } from 'electron'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HotUpdateCheckResult } from './hotUpdater'
 import { applyHotUpdate, checkForHotUpdates, clearHotUpdate, getCurrentHotVersion } from './hotUpdater'

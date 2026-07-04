@@ -5,6 +5,7 @@ import { ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   ensureInit,
   loadTexture as lrcLoadTexture,
@@ -44,6 +45,13 @@ interface RenderLayerArg {
   opacity?: number; zIndex?: number
 }
 
+interface StaticLayerArg {
+  imagePath: string
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX?: number; srcY?: number; srcW?: number; srcH?: number
+  opacity?: number; zIndex?: number
+}
+
 /** 写日志到文件（追加模式），APP_ROOT 在 appMain.ts 中设置 */
 function rcLog(msg: string): void {
   const appRoot = process.env.APP_ROOT || join(import.meta.dirname, '..')
@@ -65,6 +73,10 @@ function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
       throw err
     }
   }) as unknown as T
+}
+
+function normalizeInputPath(inputPath: string): string {
+  return inputPath.startsWith('file:') ? fileURLToPath(inputPath) : inputPath
 }
 
 export function register(_ctx: RegisterContext): void {
@@ -188,14 +200,15 @@ export function register(_ctx: RegisterContext): void {
       fps: number | null,
       hardware: boolean,
       videoLayer: RenderLayerArg,
-      overlayLayers: RenderLayerArg[],
+      overlayLayers: StaticLayerArg[],
       taskId?: string,
       qualityPreset?: string,
     ) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
-      rcLog(`lrc:exportVideo f=${ffmpegPath} p=${ffprobePath} ${inputPath} → ${outputPath} task=${taskId} qp=${qualityPreset}`)
-      lrcExportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, taskId, qualityPreset)
+      const sourcePath = normalizeInputPath(inputPath)
+      rcLog(`lrc:exportVideo f=${ffmpegPath} p=${ffprobePath} ${sourcePath} → ${outputPath} task=${taskId} qp=${qualityPreset}`)
+      lrcExportFile(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, taskId, qualityPreset)
       rcLog('lrc:exportVideo done')
     },
   ))

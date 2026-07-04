@@ -66,6 +66,13 @@ interface NativeLayer {
   opacity: number; zIndex: number
 }
 
+interface NativeStaticLayer {
+  imagePath: string
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX: number; srcY: number; srcW: number; srcH: number
+  opacity: number; zIndex: number
+}
+
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
   loadTexture(data: Buffer, width: number, height: number): number
@@ -104,7 +111,7 @@ interface LunaRenderCoreNative {
     inputPath: string, outputPath: string,
     canvasWidth: number, canvasHeight: number,
     fps: number | null, hardware: boolean,
-    videoLayer: NativeLayer, staticLayers: NativeLayer[],
+    videoLayer: NativeLayer, staticLayers: NativeStaticLayer[],
     taskId: string | null, qualityPreset: string | null,
   ): void
   cancelExportTask(taskId: string): void
@@ -129,6 +136,24 @@ function normalizePreviewLayer(l: PreviewLayerInputForExport): PreviewNativeLaye
 function normalizeLayer(l: RenderCoreLayerInput): NativeLayer {
   return {
     textureId: l.textureId,
+    dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
+    srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
+    srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
+    opacity: l.opacity ?? 1,
+    zIndex: l.zIndex ?? 0,
+  }
+}
+
+export interface StaticLayerInput {
+  imagePath: string
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX?: number; srcY?: number; srcW?: number; srcH?: number
+  opacity?: number; zIndex?: number
+}
+
+function normalizeStaticLayer(l: StaticLayerInput): NativeStaticLayer {
+  return {
+    imagePath: l.imagePath,
     dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
     srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
     srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
@@ -255,12 +280,12 @@ export function exportFile(
   fps: number | null,
   hardware: boolean,
   videoLayer: RenderCoreLayerInput,
-  staticLayers: RenderCoreLayerInput[],
+  staticLayers: StaticLayerInput[],
   taskId?: string,
   qualityPreset?: string,
 ): void {
   ensureInit()
-  getNative().exportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, normalizeLayer(videoLayer), staticLayers.map(normalizeLayer), taskId ?? null, qualityPreset ?? null)
+  getNative().exportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, normalizeLayer(videoLayer), staticLayers.map(normalizeStaticLayer), taskId ?? null, qualityPreset ?? null)
 }
 
 export function cancelExportTask(taskId: string): void {

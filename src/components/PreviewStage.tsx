@@ -6,7 +6,7 @@ import type { PreviewLayer } from '../shared/types'
 import './PreviewStage.css'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif']
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v']
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v', '.lrv', '.insv']
 
 function getExtension(url: string): string {
   const match = url.match(/\.([a-z0-9]+)(?:[?#]|$)/i)
@@ -19,6 +19,20 @@ function isImage(url: string): boolean {
 
 function isVideo(url: string): boolean {
   return VIDEO_EXTENSIONS.includes(getExtension(url))
+}
+
+function baseNameFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const lastPart = parsed.pathname.split('/').pop() || 'export'
+    const decoded = decodeURIComponent(lastPart)
+    const dotIndex = decoded.lastIndexOf('.')
+    return dotIndex > 0 ? decoded.substring(0, dotIndex) : decoded
+  } catch {
+    const lastPart = url.split(/[\\/]/).pop() || 'export'
+    const dotIndex = lastPart.lastIndexOf('.')
+    return dotIndex > 0 ? lastPart.substring(0, dotIndex) : lastPart
+  }
 }
 
 /** 缩放模式 */
@@ -306,20 +320,21 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       const exportDir = settings.exportDir
       if (!exportDir) throw new Error('导出目录未配置')
 
-      // 从 URL 提取文件名
-      const urlParts = url!.split('/')
-      const lastPart = urlParts[urlParts.length - 1] || 'export'
-      const dotIndex = lastPart.lastIndexOf('.')
-      const baseName = dotIndex > 0 ? lastPart.substring(0, dotIndex) : lastPart
+      const baseName = baseNameFromUrl(url!)
+      const exportingVideo = isVideo(url!)
       const format = exportOptions.format || 'jpeg'
-      const ext = format === 'jpeg' ? 'jpg' : format
+      const ext = exportingVideo ? 'mp4' : format === 'jpeg' ? 'jpg' : format
       const filename = `${baseName}_${Date.now()}.${ext}`
 
       const outputPath = exportDir.endsWith('/') ? `${exportDir}${filename}` : `${exportDir}/${filename}`
 
       const lrcHandle = lrcRef.current
       if (!lrcHandle) throw new Error('LrcRender 未就绪')
-      await lrcHandle.exportImage(outputPath, res.width, res.height, format, 100)
+      if (exportingVideo) {
+        await lrcHandle.exportVideo(outputPath, res.width, res.height, { hardware: true, qualityPreset: 'high' })
+      } else {
+        await lrcHandle.exportImage(outputPath, res.width, res.height, format, 100)
+      }
 
       return { path: outputPath, name: filename }
     },

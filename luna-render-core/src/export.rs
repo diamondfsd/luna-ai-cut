@@ -523,7 +523,7 @@ fn export_image(
     ffmpeg: &str, ffprobe: &str,
     input: &str, output: &str,
     cw: u32, ch: u32,
-    _vl: &RenderLayer,
+    vl: &RenderLayer,
     sl: &[StaticLayer], c: &mut Compositor,
 ) -> Result<(), String> {
     let (rgba, iw, ih) = decode_image(ffmpeg, ffprobe, input)?;
@@ -532,9 +532,9 @@ fn export_image(
 
     let mut layers = vec![RenderLayer {
         texture_id: img_tex,
-        dst_x: 0.0, dst_y: 0.0, dst_w: 1.0, dst_h: 1.0,
-        src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0,
-        opacity: 1.0, z_index: 0,
+        dst_x: vl.dst_x, dst_y: vl.dst_y, dst_w: vl.dst_w, dst_h: vl.dst_h,
+        src_x: vl.src_x, src_y: vl.src_y, src_w: vl.src_w, src_h: vl.src_h,
+        opacity: vl.opacity, z_index: vl.z_index,
     }];
     layers.extend(load_static_layers(ffmpeg, ffprobe, sl, c)?);
 
@@ -553,7 +553,7 @@ fn export_video(
     input: &str, output: &str,
     cw: u32, ch: u32,
     fps: Option<f64>, hardware: bool,
-    _vl: &RenderLayer,
+    vl: &RenderLayer,
     sl: &[StaticLayer], c: &mut Compositor,
     preset: QualityPreset,
     task: Option<&TaskState>,
@@ -593,9 +593,9 @@ fn export_video(
 
     let mut layers = vec![RenderLayer {
         texture_id: video_tex,
-        dst_x: 0.0, dst_y: 0.0, dst_w: 1.0, dst_h: 1.0,
-        src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0,
-        opacity: 1.0, z_index: 0,
+        dst_x: vl.dst_x, dst_y: vl.dst_y, dst_w: vl.dst_w, dst_h: vl.dst_h,
+        src_x: vl.src_x, src_y: vl.src_y, src_w: vl.src_w, src_h: vl.src_h,
+        opacity: vl.opacity, z_index: vl.z_index,
     }];
     layers.extend(static_render.clone());
 
