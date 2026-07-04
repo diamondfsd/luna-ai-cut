@@ -1,6 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-
-const PREVIEW_TEXTURE_MAX_SIZE = 1920
+import { useEffect, useRef, useCallback, useState } from 'react'
 
 // ── 导出类型 ──
 
@@ -48,22 +46,6 @@ interface LrcRenderProps {
   onRender?: () => void
 }
 
-// ── lunaRenderCore 类型 ──
-
-interface LunaRenderCore {
-  init: () => Promise<void>
-  loadTexture: (data: Uint8Array, w: number, h: number) => Promise<number>
-  loadTextureFromPath: (path: string, maxSize: number) => Promise<{ textureId: number; width: number; height: number }>
-  updateTexture: (id: number, data: Uint8Array) => Promise<void>
-  releaseTexture: (id: number) => Promise<void>
-  renderFrame: (w: number, h: number, layers: LrcTextureLayer[]) => Promise<Uint8Array>
-  destroy: () => Promise<void>
-}
-
-function getLRC(): LunaRenderCore | undefined {
-  return (window as any).lunaRenderCore
-}
-
 // ── 工具 ──
 
 function isStatic(l: LrcLayer): l is LrcStaticLayer {
@@ -72,31 +54,22 @@ function isStatic(l: LrcLayer): l is LrcStaticLayer {
 function isVideo(l: LrcLayer): l is LrcVideoLayer {
   return 'videoPath' in l
 }
-function layerKey(l: LrcLayer): string {
-  return isStatic(l) ? `s:${l.imagePath}` : `v:${l.videoPath}`
-}
 
-function fitPreviewSize(width: number, height: number): { width: number; height: number } {
-  const scale = Math.min(1, PREVIEW_TEXTURE_MAX_SIZE / Math.max(width, height))
+/** 将 LrcLayer 转为 renderPreview 的层输入 */
+function toPreviewLayer(
+  l: LrcLayer,
+  videoTime: number,
+): any {
   return {
-    width: Math.max(1, Math.round(width * scale)),
-    height: Math.max(1, Math.round(height * scale)),
+    filePath: isStatic(l) ? l.imagePath : l.videoPath,
+    isVideo: isVideo(l),
+    videoTime,
+    dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
+    srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
+    srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
+    opacity: l.opacity ?? 1,
+    zIndex: l.zIndex ?? 0,
   }
-}
-
-function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): { rgba: Uint8Array; width: number; height: number } | null {
-  const sourceWidth = video.videoWidth
-  const sourceHeight = video.videoHeight
-  if (sourceWidth <= 0 || sourceHeight <= 0) return null
-
-  const { width, height } = fitPreviewSize(sourceWidth, sourceHeight)
-  canvas.width = width
-  canvas.height = height
-  const context = canvas.getContext('2d')
-  if (!context) return null
-  context.drawImage(video, 0, 0, width, height)
-  const imageData = context.getImageData(0, 0, width, height)
-  return { rgba: new Uint8Array(imageData.data.buffer), width, height }
 }
 
 // ── LrcRender ──
@@ -109,13 +82,11 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
   const layersRef = useRef<LrcLayer[]>(layers)
   layersRef.current = layers
 
-  // key → { texId, width, height }
-  const texMapRef = useRef<Map<string, { texId: number | null; width: number; height: number }>>(new Map())
-  // key → { video, offscreen }
-  const videoMapRef = useRef<Map<string, { video: HTMLVideoElement; offscreen: HTMLCanvasElement }>>(new Map())
-
   const [ready, setReady] = useState(false)
-  const [fatalError, setFatalError] = useState<string | null>(null)
+
+  // ── 视频播放时间追踪 ──
+  const videoTimeRef = useRef(0)
+  const lastFrameRef = useRef(0)
 
   // ═══════════════════════════════════════
   //  初始化 lunaRenderCore
@@ -124,7 +95,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     const lrc = getLRC()
     if (!lrc) {
       const msg = 'lunaRenderCore 未加载'
-      setFatalError(msg); onError?.(msg)
+      onError?.(msg)
       return
     }
     destroyRef.current = false
@@ -132,27 +103,19 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       .then(() => { if (!destroyRef.current) { setReady(true); onReady?.() } })
       .catch((e: Error) => {
         if (destroyRef.current) return
-        const msg = `渲染引擎初始化失败: ${e.message}`
-        setFatalError(msg); onError?.(msg)
+        onError?.(`渲染引擎初始化失败: ${e.message}`)
       })
 
     return () => {
       destroyRef.current = true
       cancelAnimationFrame(rafRef.current)
-      const lrc2 = getLRC()
-      if (!lrc2) return
-      for (const [, t] of texMapRef.current) { if (t.texId != null) lrc2.releaseTexture(t.texId).catch(() => {}) }
-      texMapRef.current.clear()
-      for (const [, v] of videoMapRef.current) v.video.pause()
-      videoMapRef.current.clear()
     }
   }, [])
 
   // ═══════════════════════════════════════
-  //  合成渲染（读 layersRef 做最终合成）
+  //  统一渲染：调 renderPreview
   // ═══════════════════════════════════════
-  let _compositeCounter = 0
-  async function compositeRender() {
+  const renderScene = useCallback(async (videoTime: number) => {
     const lrc = getLRC()
     const cvs = canvasRef.current
     if (!lrc || !cvs) return
@@ -162,200 +125,72 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     if (pw <= 0 || ph <= 0) return
 
     const currentLayers = layersRef.current
+    if (currentLayers.length === 0) return
+
     const sorted = [...currentLayers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-    const resultLayers: LrcTextureLayer[] = []
-
-    for (const layer of sorted) {
-      const key = layerKey(layer)
-      const info = texMapRef.current.get(key)
-      if (!info || info.texId == null) continue
-
-      let { dstX, dstY, dstW, dstH } = layer
-
-      if (layer.fit === 'contain') {
-        const mediaAspect = info.width / info.height
-        const framePixelW = dstW * pw
-        const framePixelH = dstH * ph
-        const frameAspect = framePixelW / framePixelH
-        let w = dstW
-        let h = dstH
-
-        if (frameAspect > mediaAspect) {
-          w = (framePixelH * mediaAspect) / pw
-        } else {
-          h = (framePixelW / mediaAspect) / ph
-        }
-
-        dstX += (dstW - w) / 2
-        dstY += (dstH - h) / 2
-        dstW = w; dstH = h
+    const layersInput = sorted.map((l) => {
+      if (isVideo(l)) {
+        return toPreviewLayer(l, videoTime)
       }
+      // contain 适配在 renderPreview 内由 Rust 处理（纹理尺寸已知）
+      // 但 dstX/dstY/dstW/dstH 的 contain 计算仍需前端做
+      return toPreviewLayer(l, 0)
+    })
 
-      resultLayers.push({
-        textureId: info.texId,
-        dstX, dstY, dstW, dstH,
-        srcX: layer.srcX ?? 0, srcY: layer.srcY ?? 0,
-        srcW: layer.srcW ?? 1, srcH: layer.srcH ?? 1,
-        opacity: layer.opacity ?? 1,
-        zIndex: layer.zIndex ?? 0,
-      })
-    }
-
-    if (resultLayers.length === 0) return
-
-    _compositeCounter++
-    const label = `[LrcRender] compositeRender #${_compositeCounter} (${pw}x${ph}, ${resultLayers.length} layers)`
-    console.time(label)
     try {
-      const result = await lrc.renderFrame(pw, ph, resultLayers)
-      console.timeLog(label, 'renderFrame OK, size:', result.byteLength, 'bytes')
+      const result = await lrc.renderPreview({
+        width: pw,
+        height: ph,
+        layers: layersInput,
+      })
       cvs.width = pw; cvs.height = ph
-      const ctx = cvs.getContext('2d')
-      console.timeLog(label, 'putImageData start')
-      ctx!.putImageData(
+      cvs.getContext('2d')!.putImageData(
         new ImageData(new Uint8ClampedArray(result), pw, ph), 0, 0,
       )
-      console.timeEnd(label)
       onRender?.()
-    } catch {
-      console.timeEnd(label)
-      /* 渲染错误静默 */
-    }
-  }
+    } catch { /* 渲染错误静默 */ }
+  }, [canvasRef, onRender])
 
   // ═══════════════════════════════════════
-  //  加载图层 / 启动视频
+  //  layers 变化 -> 渲染一帧
   // ═══════════════════════════════════════
   useEffect(() => {
     if (!ready) return
-    const lrc = getLRC()
-    if (!lrc) return
+    videoTimeRef.current = 0
+    lastFrameRef.current = 0
+    renderScene(0)
+  }, [layers, ready])
 
-    // ── 清理已移除的层 ──
-    const currentKeys = new Set(layers.map(layerKey))
-    for (const [key, t] of texMapRef.current) {
-      if (!currentKeys.has(key) && t.texId != null) {
-        lrc.releaseTexture(t.texId).catch(() => {})
-        texMapRef.current.delete(key)
+  // ═══════════════════════════════════════
+  //  RAF 循环（有视频层时）
+  // ═══════════════════════════════════════
+  useEffect(() => {
+    if (!ready || !layers.some(isVideo)) return
+    if (rafRef.current !== 0) cancelAnimationFrame(rafRef.current)
+
+    function loop(timestamp: number) {
+      if (lastFrameRef.current > 0) {
+        videoTimeRef.current += (timestamp - lastFrameRef.current) / 1000
       }
-    }
-    for (const [key, v] of videoMapRef.current) {
-      if (!currentKeys.has(key)) { v.video.pause(); videoMapRef.current.delete(key) }
-    }
-
-    // ── 静态图片层 ──
-    for (const layer of layers.filter(isStatic)) {
-      const key = layerKey(layer)
-      if (texMapRef.current.has(key)) continue
-      texMapRef.current.set(key, { texId: null, width: 0, height: 0 })
-
-      const loadLabel = `[LrcRender] loadTextureFromPath: ${key}`
-      console.time(loadLabel)
-      lrc.loadTextureFromPath(layer.imagePath, PREVIEW_TEXTURE_MAX_SIZE)
-        .then(({ textureId, width, height }) => {
-          console.timeEnd(loadLabel)
-          console.log(`[LrcRender] 图片加载完成: ${key} → texId=${textureId} ${width}x${height}`)
-          if (destroyRef.current) return
-          const current = texMapRef.current.get(key)
-          if (current) { current.texId = textureId; current.width = width; current.height = height }
-          compositeRender()
-        })
-        .catch((e) => {
-          console.timeEnd(loadLabel)
-          console.error('[LrcRender] 图片加载失败:', layer.imagePath, e)
-        })
+      lastFrameRef.current = timestamp
+      renderScene(videoTimeRef.current)
+      rafRef.current = requestAnimationFrame(loop)
     }
 
-    // ── 视频层 ──
-    for (const layer of layers.filter(isVideo)) {
-      const key = layerKey(layer)
-      if (videoMapRef.current.has(key)) continue
-      if (!texMapRef.current.has(key)) texMapRef.current.set(key, { texId: null, width: 0, height: 0 })
-
-      const video = document.createElement('video')
-      video.muted = true; video.loop = true; video.playsInline = true
-      const offscreen = document.createElement('canvas')
-      videoMapRef.current.set(key, { video, offscreen })
-
-      const videoLoadLabel = `[LrcRender] videoLoad: ${key}`
-      console.time(videoLoadLabel)
-      video.src = layer.videoPath
-      video.load()
-
-      video.oncanplay = () => {
-        console.timeLog(videoLoadLabel, 'oncanplay triggered')
-        const frame = drawVideoFrame(video, offscreen)
-        if (!frame) return
-        if (destroyRef.current) return
-        lrc.loadTexture(frame.rgba, frame.width, frame.height)
-          .then((texId) => {
-            console.timeLog(videoLoadLabel, `loadTexture OK, texId=${texId} ${frame.width}x${frame.height}`)
-            const t = texMapRef.current.get(key)
-            if (t) { t.texId = texId; t.width = frame.width; t.height = frame.height }
-            compositeRender()
-            console.timeEnd(videoLoadLabel)
-          })
-          .catch(() => console.timeEnd(videoLoadLabel))
-      }
-
-      video.play().catch(() => {})
-    }
-
-    // ── 启动 RAF 循环（有视频层时） ──
-    if (layers.some(isVideo)) {
-      if (rafRef.current !== 0) cancelAnimationFrame(rafRef.current)
-
-      let videoFrameCount = 0
-      function videoLoop() {
-        const lrc2 = getLRC()
-        const pending: Promise<void>[] = []
-
-        for (const layer of layersRef.current.filter(isVideo)) {
-          const key = layerKey(layer)
-          const info = texMapRef.current.get(key)
-          const v = videoMapRef.current.get(key)
-          if (!info || !v || info.texId == null || v.video.paused || v.video.readyState < 2) continue
-
-          const frameLabel = `[LrcRender] videoFrame #${++videoFrameCount}`
-          console.time(frameLabel)
-          const frame = drawVideoFrame(v.video, v.offscreen)
-          if (!frame) { console.timeEnd(frameLabel); continue }
-
-          if (lrc2) {
-            pending.push(
-              lrc2.updateTexture(info.texId, frame.rgba)
-                .then(() => console.timeLog(frameLabel, `updateTexture ${frame.width}x${frame.height}`))
-                .catch(() => {}),
-            )
-          }
-        }
-
-        if (pending.length > 0) {
-          Promise.all(pending).then(() => compositeRender()).catch(() => {})
-        }
-        rafRef.current = requestAnimationFrame(videoLoop)
-      }
-
-      rafRef.current = requestAnimationFrame(videoLoop)
-    }
-
+    rafRef.current = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(rafRef.current)
   }, [layers, ready])
 
   // ═══════════════════════════════════════
   //  Render
   // ═══════════════════════════════════════
-  if (fatalError) {
-    return (
-      <div className={className} style={{
-        width: '100%', height: '100%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <p style={{ color: 'var(--red, #e53e3e)', fontSize: 14, textAlign: 'center', padding: 16 }}>
-          {fatalError}
-        </p>
-      </div>
-    )
-  }
-
   return <canvas ref={canvasRef as React.Ref<HTMLCanvasElement>} className={className} />
+}
+
+/** 获取 lunaRenderCore 实例 */
+function getLRC() {
+  return (window as any).lunaRenderCore as undefined | {
+    init: () => Promise<void>
+    renderPreview: (input: any) => Promise<Uint8Array>
+  }
 }

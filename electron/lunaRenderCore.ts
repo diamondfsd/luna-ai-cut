@@ -20,6 +20,25 @@ export interface RenderCoreLayerInput {
   opacity?: number; zIndex?: number
 }
 
+/** render_preview 的单个层 */
+export interface PreviewLayerInput {
+  filePath: string
+  isVideo: boolean
+  videoTime: number
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX: number; srcY: number; srcW: number; srcH: number
+  opacity: number; zIndex: number
+}
+
+/** render_preview 输入 */
+export interface RenderPreviewInput {
+  ffmpegPath: string
+  ffprobePath: string
+  width: number
+  height: number
+  layers: PreviewLayerInput[]
+}
+
 // ── Native 内部全字段类型 ──
 
 interface NativeLayer {
@@ -36,6 +55,7 @@ interface LunaRenderCoreNative {
   updateTexture(textureId: number, data: Buffer): void
   releaseTexture(textureId: number): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: NativeLayer[]): Buffer
+  renderPreview(input: any): Buffer
   exportFile(
     ffmpegPath: string, ffprobePath: string,
     inputPath: string, outputPath: string,
@@ -115,6 +135,11 @@ export function renderFrame(
   layers: RenderCoreLayerInput[],
 ): Buffer {
   return getNative().renderFrame(canvasWidth, canvasHeight, layers.map(normalizeLayer))
+}
+
+export function renderPreview(input: RenderPreviewInput): Buffer {
+  ensureInit()
+  return getNative().renderPreview(input)
 }
 
 export function exportFile(

@@ -81,6 +81,36 @@ pub struct StaticLayer {
     pub z_index: i32,
 }
 
+/// 预览层 — render_preview 的统一层描述
+#[napi(object)]
+#[derive(Clone)]
+pub struct PreviewLayer {
+    pub file_path: String,
+    pub is_video: bool,
+    pub video_time: f64,
+    pub dst_x: f64,
+    pub dst_y: f64,
+    pub dst_w: f64,
+    pub dst_h: f64,
+    pub src_x: f64,
+    pub src_y: f64,
+    pub src_w: f64,
+    pub src_h: f64,
+    pub opacity: f64,
+    pub z_index: i32,
+}
+
+/// render_preview 的输入
+#[napi(object)]
+#[derive(Clone)]
+pub struct RenderPreviewInput {
+    pub ffmpeg_path: String,
+    pub ffprobe_path: String,
+    pub width: u32,
+    pub height: u32,
+    pub layers: Vec<PreviewLayer>,
+}
+
 // ─────────────── napi exports ───────────────
 
 /// 初始化 GPU compositor
@@ -170,6 +200,40 @@ pub fn preview_file(
             height,
             &static_layers,
             c,
+        )?;
+        Ok(result.into())
+    })
+}
+
+/// 统一预览入口：传路径列表，Rust 内部解码 + 缓存 + 合成，返回 RGBA Buffer。
+#[napi]
+pub fn render_preview(input: RenderPreviewInput) -> napi::Result<Buffer> {
+    let layers: Vec<compositor::PreviewLayerInput> = input
+        .layers
+        .iter()
+        .map(|l| compositor::PreviewLayerInput {
+            file_path: l.file_path.clone(),
+            is_video: l.is_video,
+            video_time: l.video_time,
+            dst_x: l.dst_x,
+            dst_y: l.dst_y,
+            dst_w: l.dst_w,
+            dst_h: l.dst_h,
+            src_x: l.src_x,
+            src_y: l.src_y,
+            src_w: l.src_w,
+            src_h: l.src_h,
+            opacity: l.opacity,
+            z_index: l.z_index,
+        })
+        .collect();
+    lock(|c| {
+        let result = c.render_preview(
+            &input.ffmpeg_path,
+            &input.ffprobe_path,
+            input.width,
+            input.height,
+            &layers,
         )?;
         Ok(result.into())
     })
