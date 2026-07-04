@@ -116,31 +116,20 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
   // ═══════════════════════════════════════
   //  合成渲染
   // ═══════════════════════════════════════
-  let _renderCount = 0
   async function compositeRender() {
     const lrc = getLRC()
     const cvs = canvasRef.current
     if (!lrc || !cvs) return
 
-    const pw = cvs.parentElement?.clientWidth ?? cvs.width
-    const ph = cvs.parentElement?.clientHeight ?? cvs.height
+    const dpr = window.devicePixelRatio || 1
+    const cw = cvs.parentElement?.clientWidth ?? cvs.width
+    const ch = cvs.parentElement?.clientHeight ?? cvs.height
+    const pw = Math.round(cw * dpr)
+    const ph = Math.round(ch * dpr)
     if (pw <= 0 || ph <= 0) return
 
     const currentLayers = layersRef.current
     const sorted = [...currentLayers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-    _renderCount++
-    const watermarkLayer = sorted.find(l => !l.isVideo && l.zIndex === 1)
-    if (watermarkLayer) {
-      const pw_ = pw, ph_ = ph
-      const wPx = (watermarkLayer.dstW * pw_).toFixed(1)
-      const hPx = (watermarkLayer.dstH * ph_).toFixed(1)
-      const aspect = (+wPx / +hPx).toFixed(3)
-      console.log(`[LrcRender] compositeRender #${_renderCount} ${pw_}x${ph_} layers=${sorted.length}` +
-        ` wm={dstX:${watermarkLayer.dstX.toFixed(3)} dstY:${watermarkLayer.dstY.toFixed(3)} dstW:${watermarkLayer.dstW.toFixed(3)} dstH:${watermarkLayer.dstH.toFixed(3)}}` +
-        ` → ${wPx}x${hPx} aspect=${aspect}`)
-    } else {
-      console.log(`[LrcRender] compositeRender #${_renderCount} ${pw}x${ph} layers=${sorted.length}`)
-    }
 
     const resultLayers: LrcTextureLayer[] = []
 
@@ -184,6 +173,8 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     try {
       const result = await lrc.renderFrame(pw, ph, resultLayers)
       cvs.width = pw; cvs.height = ph
+      cvs.style.width = `${cw}px`
+      cvs.style.height = `${ch}px`
       cvs.getContext('2d')!.putImageData(
         new ImageData(new Uint8ClampedArray(result), pw, ph), 0, 0,
       )
@@ -198,7 +189,6 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     if (!ready) return
     const lrc = getLRC()
     if (!lrc) return
-    console.log('[LrcRender] layers effect fired', layers.map(l => l.filePath?.slice(-25)))
 
     // ── 清理已移除的层 ──
     // 注意：静态图纹理不在此 release，由 Rust 侧 LRU 缓存自动管理；
@@ -218,7 +208,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
 
     // ── 静态图片层 ──
     // 估算画布像素宽度用于计算纹理加载尺寸
-    const estCanvasW = canvasRef.current?.parentElement?.clientWidth ?? 960
+    const estCanvasW = Math.round((canvasRef.current?.parentElement?.clientWidth ?? 960) * (window.devicePixelRatio || 1))
     for (const layer of layers.filter((l) => !l.isVideo)) {
       const key = layerKey(layer)
       if (texMapRef.current.has(key)) continue
