@@ -3,9 +3,9 @@ import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
+import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToLunaFile } from './previewModalUtils'
-import type { PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
+import type { PreviewLayer, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
 
@@ -45,29 +45,20 @@ export function PreviewModal({
 
   // ── 状态 ──
   const [inspectorOpen, setInspectorOpen] = useState(true)
-  const [watermarkSettings] = useState<WatermarkSettingsType>({
+  const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
     enabled: true,
     style: 'luna_ultra',
     position: 'BottomCenter' as any,
   })
+  const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
 
   const displaySource = internalPreview?.source ?? null
 
-  // 切换文件时打印水印参数
-  useEffect(() => {
-    if (!watermarkSettings.enabled) return
-    const theme = STYLE_TO_THEME[watermarkSettings.style]
-    if (!theme) return
-    const key = `${theme}|16:9|${watermarkSettings.position}`
-    const ratios = luna_ultra_layout[key]
-    console.log(`[PreviewModal] 切换文件: ${file.name}`, {
-      style: watermarkSettings.style,
-      position: watermarkSettings.position,
-      deviceId: file.sourceDeviceId,
-      layoutKey: key,
-      ratios,
-    })
-  }, [file.id, watermarkSettings.enabled, watermarkSettings.style, watermarkSettings.position])
+  // WatermarkSettings onChange 回调
+  function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
+    setWatermarkSettings(settings)
+    setWatermarkLayers(layer ? [layer] : [])
+  }
 
   // Escape 关闭
   useEffect(() => {
@@ -90,7 +81,7 @@ export function PreviewModal({
 
         <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
           <div className="preview-stage-col">
-            <PreviewStage url={displaySource} />
+            <PreviewStage url={displaySource} extraLayers={watermarkLayers} />
 
             <PreviewThumbnailStrip
               filePathList={filePathList ?? [currentFilePath]}
@@ -99,7 +90,16 @@ export function PreviewModal({
             />
           </div>
 
-          {inspectorOpen && <MediaInspector filePath={currentFilePath} onToggleCollapse={() => setInspectorOpen(false)} />}
+          {inspectorOpen && (
+            <div className="preview-sidebar">
+              <WatermarkSettings
+                settings={watermarkSettings}
+                onChange={handleWatermarkChange}
+                filePath={currentFilePath}
+              />
+              <MediaInspector filePath={currentFilePath} onToggleCollapse={() => setInspectorOpen(false)} />
+            </div>
+          )}
         </div>
       </section>
     </Dialog>
