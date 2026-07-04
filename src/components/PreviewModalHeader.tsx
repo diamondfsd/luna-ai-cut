@@ -5,15 +5,11 @@ import type { DownloadProgress, LunaFile } from '../shared/types'
 import { Button, IconButton } from '../ui'
 
 interface PreviewModalHeaderProps {
-  downloadProgress: DownloadProgress | undefined
   file: LunaFile
+  downloadProgress?: DownloadProgress
   inspectorOpen?: boolean
-  isDownloaded: boolean
-  isDownloadingCurrentFile: boolean
-  isDownloadsPage: boolean
-  progressPercent: number
-  onDownload?: (file: LunaFile) => void
   onClose: () => void
+  onDownload?: (file: LunaFile) => void
   onReveal?: (file: LunaFile) => void
   onSetInspectorOpen?: (open: boolean) => void
 }
@@ -25,18 +21,17 @@ function mediaLabel(file: LunaFile): string {
 }
 
 export function PreviewModalHeader({
-  downloadProgress,
   file,
+  downloadProgress,
   inspectorOpen,
-  isDownloaded,
-  isDownloadingCurrentFile,
-  isDownloadsPage,
-  progressPercent,
-  onDownload,
   onClose,
+  onDownload,
   onReveal,
   onSetInspectorOpen,
 }: PreviewModalHeaderProps) {
+  const isDownloaded = !!file.downloadFilePath
+  const isDownloadingCurrentFile = downloadProgress?.status === 'queued' || downloadProgress?.status === 'downloading'
+  const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
   const progressStyle = { '--progress': `${progressPercent * 3.6}deg` } as CSSProperties
 
   return (
@@ -49,7 +44,7 @@ export function PreviewModalHeader({
         </h2>
       </div>
       <div className="preview-actions">
-        {!isDownloadsPage && onDownload && (
+        {onDownload && (
           <Button
             variant="primary"
             size="compact"
