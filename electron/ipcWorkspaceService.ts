@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { appendFile, cp, mkdir, readFile, rm } from 'node:fs/promises'
@@ -8,7 +8,7 @@ import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import { getLocalResourcesDir, getSettings, previewCacheDir } from './fileService'
 import { safeName } from './filePathUtils'
 import { detectHardwareAccel } from './ffmpeg/hwaccel'
-import { getFfmpegPath } from './ffmpeg/pipeline'
+import { getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
 import { bakeColorLutData } from './ffmpeg/lutGenerator'
 import type { IpcContext } from './ipcContext'
 import { logMainDebug, logMainError, logMainInfo } from './loggerService'
@@ -53,6 +53,30 @@ function colorOptions(color: Record<string, number>) {
 export function register(ctx: IpcContext): void {
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
     return loadWorkspacePreview(filePath)
+  })
+
+  ipcMain.handle('workspace:getMediaResolution', async (_event, filePath: string) => {
+    const ext = path.extname(filePath).toLowerCase()
+    const imgExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.heic', '.heif', '.avif']
+    const isImage = imgExts.includes(ext)
+
+    if (isImage) {
+      try {
+        const img = nativeImage.createFromPath(filePath)
+        const size = img.getSize()
+        if (size.width > 0 && size.height > 0) return size
+      } catch { /* fallback below */ }
+    }
+
+    // 视频（或图片回退）：使用 ffprobe
+    try {
+      const probe = await probeMedia(filePath)
+      if (probe.videoWidth > 0 && probe.videoHeight > 0) {
+        return { width: probe.videoWidth, height: probe.videoHeight }
+      }
+    } catch { /* fallback below */ }
+
+    throw new Error(`无法获取文件分辨率: ${filePath}`)
   })
 
   ipcMain.handle('workspace:isLivePhoto', async (_event, filePath: string) => {
