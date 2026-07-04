@@ -161,6 +161,9 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
  * 返回 null 表示没有新版本
  */
 export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null> {
+  // 开发模式跳过热更新检查，避免本地开发时弹通知
+  if (!app.isPackaged) return null
+
   const appVersion = app.getVersion()
   const releaseTag = `v${appVersion}`
 
