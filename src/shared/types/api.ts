@@ -95,7 +95,7 @@ export interface LunaApi {
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
   aiChat(config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>): Promise<string>
   readExifModel(localPath: string): Promise<string | null>
-  getWatermarkPath(style: string, kind: 'image' | 'video'): Promise<string>
+  getWatermarkPath(style: string, kind: 'image' | 'video'): Promise<{ filePath: string; width: number; height: number }>
   disconnect(host?: string): Promise<void>
   cacheFile(file: LunaFile): Promise<boolean>
   getWifiStatus: () => Promise<WifiDebugResult<WifiDebugStatus>>
