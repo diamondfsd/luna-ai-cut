@@ -121,7 +121,11 @@ export function register(ctx: IpcContext): void {
 
   ipcMain.handle('luna:getWatermarkPath', async (_event, style: string, kind: 'image' | 'video') => {
     const { watermarkFileFor } = await import('./watermarkService')
-    return watermarkFileFor(kind, style)
+    const { nativeImage } = await import('electron')
+    const filePath = watermarkFileFor(kind, style)
+    const img = nativeImage.createFromPath(filePath)
+    const size = img.getSize()
+    return { filePath, width: size.width, height: size.height }
   })
 
   ipcMain.handle('luna:listSampleFiles', async () => {
