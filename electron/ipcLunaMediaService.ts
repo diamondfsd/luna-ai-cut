@@ -1,0 +1,197 @@
+import { ipcMain } from 'electron'
+import { rm } from 'node:fs/promises'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+import type { DownloadProgress, LunaFile, WatermarkSettings } from '../src/shared/types'
+import {
+  cacheFile,
+  deleteLocalFiles,
+  downloadFiles,
+  getLocalResourcesDir,
+  getMediaMetadata,
+  getSettings,
+  getVideoFrameRate,
+  listDownloadedFiles,
+  listExportFiles,
+  openPath,
+  previewCacheDir,
+  previewFile,
+  previewLivePhoto,
+  previewWithWatermark,
+  resolveLocalThumbnails,
+  revealFile,
+} from './fileService'
+import type { IpcContext } from './ipcContext'
+import { listSampleFiles } from './localMedia'
+import { logMainDebug, logMainError, logMainInfo, logMainWarn } from './loggerService'
+import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
+
+export function register(ctx: IpcContext): void {
+  ipcMain.handle('luna:cacheFile', async (_event, file: LunaFile) => {
+    const key = file.id || file.name
+    const existingTask = ctx.previewCacheTasks.get(key)
+    if (existingTask) {
+      logMainDebug(`[缓存] 缓存任务已存在，复用`, { key, fileName: file.name })
+      return existingTask
+    }
+    logMainInfo(`[缓存] 开始缓存文件`, { key, fileName: file.name, kind: file.kind })
+
+    const task = ctx.enqueuePreviewTask(async () => {
+      let cacheFilePath: string | null = null
+      try {
+        cacheFilePath = await cacheFile(file)
+        if (cacheFilePath) {
+          logMainInfo(`[缓存] 文件缓存成功，开始生成缩略图`, { key, fileName: file.name, cacheFilePath })
+          const cacheDir = await previewCacheDir()
+          const thumbDir = thumbnailDir(cacheDir)
+          const thumbnailKey = file.downloadName || file.name
+          const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
+          if (thumbPath) {
+            const thumbnailUrl = pathToFileURL(thumbPath).toString()
+            logMainInfo(`[缓存] 缩略图生成成功`, { key, fileName: file.name, thumbPath, thumbnailUrl })
+            ctx.win?.webContents.send('luna:thumbnail-ready', {
+              fileId: file.id,
+              fileName: file.name,
+              downloadName: file.downloadName,
+              cacheFilePath,
+              thumbnailUrl,
+            })
+          } else {
+            logMainWarn(`[缓存] 缩略图生成失败，清理损坏的缓存文件`, { key, fileName: file.name, cacheFilePath })
+            await rm(cacheFilePath, { force: true, maxRetries: 3 }).catch(() => {})
+            ctx.win?.webContents.send('luna:thumbnail-ready', {
+              fileId: file.id,
+              fileName: file.name,
+              downloadName: file.downloadName,
+              cacheFilePath: null,
+              thumbnailUrl: null,
+            })
+          }
+        }
+        if (!cacheFilePath) {
+          logMainWarn(`[缓存] 缓存文件失败`, { key, fileName: file.name })
+        }
+        return cacheFilePath !== null
+      } catch (err) {
+        logMainError(`[缓存] 缓存任务异常`, {
+          key,
+          fileName: file.name,
+          kind: file.kind,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        })
+        return false
+      }
+    }, 0).finally(() => {
+      ctx.previewCacheTasks.delete(key)
+      logMainDebug(`[缓存] 缓存任务结束`, { key, fileName: file.name })
+    })
+    ctx.previewCacheTasks.set(key, task)
+    return task
+  })
+
+  ipcMain.handle('luna:requestVideoFrameRate', async (_event, file: LunaFile, cachedPath?: string | null) => {
+    const sourcePath = cachedPath ?? file.downloadFilePath ?? file.localPath ?? null
+    const key = `${file.id || file.name}:${sourcePath ?? ''}`
+    const existingTask = ctx.videoFrameRateTasks.get(key)
+    if (existingTask) return existingTask
+
+    const task = ctx.enqueuePreviewTask(async () => {
+      const result = await getVideoFrameRate(file, sourcePath)
+      if (result.frameRate !== null || result.duration !== null) {
+        ctx.win?.webContents.send('luna:video-frame-rate-ready', {
+          fileId: file.id,
+          fileName: file.name,
+          frameRate: result.frameRate,
+          duration: result.duration,
+        })
+      }
+      return result.frameRate
+    }, 0).finally(() => {
+      ctx.videoFrameRateTasks.delete(key)
+    })
+    ctx.videoFrameRateTasks.set(key, task)
+    return task
+  })
+
+  ipcMain.handle('luna:readExifModel', async (_event, localPath: string) => {
+    const { readExifModel } = await import('./exifReader')
+    return readExifModel(localPath)
+  })
+
+  ipcMain.handle('luna:listSampleFiles', async () => {
+    const settings = await getSettings()
+    return listSampleFiles(settings.mockMediaDir)
+  })
+
+  ipcMain.handle('downloads:listFiles', async (_event, _downloadDir?: string) => {
+    const settings = await getSettings()
+    const resolvedDir = getLocalResourcesDir(settings)
+    logMainInfo('[下载列表] 读取目录', { resolvedDir, localResourcesDir: settings.localResourcesDir, downloadDir: settings.downloadDir })
+    const files = await listDownloadedFiles(resolvedDir)
+    if (resolvedDir) {
+      await resolveLocalThumbnails(files, resolvedDir)
+    }
+    return files
+  })
+
+  ipcMain.handle('exports:listFiles', async (_event, exportDir?: string) => {
+    const settings = await getSettings()
+    const resolvedDir = exportDir || settings.exportDir || ''
+    if (!resolvedDir) return []
+    return listExportFiles(resolvedDir)
+  })
+
+  ipcMain.handle('luna:resolveThumbnail', async (_event, filePath: string, kind?: string) => {
+    const cacheDir = await previewCacheDir()
+    const thumbDir = thumbnailDir(cacheDir)
+    const fileId = path.basename(filePath).replace(path.extname(filePath), '')
+    const thumbPath = await enqueueThumbnailGeneration(filePath, thumbDir, fileId, kind, path.basename(filePath))
+    return thumbPath ? pathToFileURL(thumbPath).toString() : null
+  })
+
+  ipcMain.handle('luna:previewFile', async (_event, file: LunaFile) => {
+    return ctx.enqueuePreviewTask(async () => {
+      await ctx.ensureCameraSessionForFile(file)
+      return previewFile(file)
+    }, 2)
+  })
+
+  ipcMain.handle('luna:previewLivePhoto', async (_event, file: LunaFile) => {
+    return ctx.enqueuePreviewTask(async () => {
+      await ctx.ensureCameraSessionForFile(file)
+      return previewLivePhoto(file)
+    }, 2)
+  })
+
+  ipcMain.handle('luna:previewWithWatermark', async (_event, file: LunaFile, sourcePath: string, settings: WatermarkSettings) => {
+    return previewWithWatermark(file, sourcePath, settings)
+  })
+
+  ipcMain.handle('luna:metadata', async (_event, file: LunaFile, cachedPath?: string | null) => {
+    return ctx.enqueuePreviewTask(async () => {
+      await ctx.ensureCameraSessionForFile(file)
+      return getMediaMetadata(file, cachedPath)
+    }, 1)
+  })
+
+  ipcMain.handle('files:reveal', (_event, filePath: string) => revealFile(filePath))
+  ipcMain.handle('files:openPath', (_event, targetPath: string) => openPath(targetPath))
+  ipcMain.handle('files:deleteLocal', (_event, filePaths: string[]) => deleteLocalFiles(filePaths))
+
+  ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[], _downloadDir?: string) => {
+    const settings = await getSettings()
+    logMainInfo(`[下载] 开始下载文件`, { fileCount: files.length, fileNames: files.map((file) => file.name).slice(0, 5).join(', ') + (files.length > 5 ? `...(+${files.length - 5})` : '') })
+    await ctx.prepareDownloadSession(files, settings)
+
+    const controller = new AbortController()
+    ctx.activeDownloadControllers.add(controller)
+    try {
+      return await downloadFiles(files, getLocalResourcesDir(settings), (progress: DownloadProgress) => {
+        ctx.win?.webContents.send('download:progress', progress)
+      }, controller.signal)
+    } finally {
+      ctx.activeDownloadControllers.delete(controller)
+    }
+  })
+}

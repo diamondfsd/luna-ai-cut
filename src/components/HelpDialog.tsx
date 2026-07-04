@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Code2, FileText, HelpCircle, Loader2, Zap } from 'lucide-react'
+import { Code2, ExternalLink, FileText, HelpCircle, Loader2, RefreshCw, Trash2, Zap, X as XIcon } from 'lucide-react'
 
-import type { UpdateInfo } from '../shared/types'
+import type { HotUpdateCheckResult, UpdateInfo } from '../shared/types'
 import { Button, Dialog } from '../ui'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog'
 
@@ -17,9 +17,28 @@ export function HelpDialog({ children }: HelpDialogProps) {
   const [hotVersion, setHotVersion] = useState<string | null>(null)
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
 
+  // 热更新状态
+  const [hotUpdateCheck, setHotUpdateCheck] = useState<HotUpdateCheckResult | null>(null)
+  const [hotPhase, setHotPhase] = useState<'idle' | 'downloading' | 'ready' | 'error'>('idle')
+  const [hotError, setHotError] = useState<string | null>(null)
+  const [showHotNotes, setShowHotNotes] = useState(false)
+
   useEffect(() => {
     window.luna.getHotUpdateVersion().then(v => setHotVersion(v)).catch(() => {})
+    window.luna.checkForHotUpdates()
+      .then(result => { if (result) setHotUpdateCheck(result) })
+      .catch(() => {})
+    checkForUpdatesSilently()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function checkForUpdatesSilently(): Promise<void> {
+    try {
+      const info = await window.luna.checkForUpdates()
+      if (info) setUpdateInfo(info)
+      else setNoUpdate(true)
+    } catch { setNoUpdate(true) }
+  }
 
   async function handleCheckUpdate(): Promise<void> {
     setChecking(true)
@@ -27,21 +46,41 @@ export function HelpDialog({ children }: HelpDialogProps) {
     setUpdateInfo(null)
     try {
       const info = await window.luna.checkForUpdates()
-      if (info) {
-        setUpdateInfo(info)
-      } else {
-        setNoUpdate(true)
-      }
-    } catch {
-      setNoUpdate(true)
-    } finally {
-      setChecking(false)
-    }
+      if (info) setUpdateInfo(info)
+      else setNoUpdate(true)
+    } catch { setNoUpdate(true) }
+    finally { setChecking(false) }
   }
 
   function handleDownload(): void {
     const url = updateInfo?.downloadUrl || updateInfo?.releaseUrl
     if (url) void window.luna.openPath(url)
+  }
+
+  async function handleApplyHotUpdate(): Promise<void> {
+    if (!hotUpdateCheck) return
+    setHotPhase('downloading')
+    setHotError(null)
+    try {
+      const result = await window.luna.applyHotUpdate(hotUpdateCheck)
+      if (result.success) setHotPhase('ready')
+      else { setHotError(result.error ?? '应用失败'); setHotPhase('error') }
+    } catch (err) {
+      setHotError(err instanceof Error ? err.message : String(err))
+      setHotPhase('error')
+    }
+  }
+
+  function handleRelaunch(): void {
+    void window.luna.relaunchApp()
+  }
+
+  async function handleDeleteHotUpdate(): Promise<void> {
+    try { await window.luna.clearHotUpdate() } catch { /* ignore */ }
+    setHotVersion(null)
+    window.luna.checkForHotUpdates()
+      .then(result => { if (result) setHotUpdateCheck(result) })
+      .catch(() => {})
   }
 
   return (
@@ -53,76 +92,145 @@ export function HelpDialog({ children }: HelpDialogProps) {
           </button>
         )}
         title="帮助与反馈"
-        description="有疑问或需要帮助？扫码关注我的抖音加入讨论群"
+        description="有疑问或需要帮助？扫码关注抖音，获取使用技巧和问题反馈支持。"
       >
         <div className="help-dialog-body">
 
-          {/* 版本与更新 */}
-          <div className="help-section">
-            <div className="help-version-row">
-              <span className="help-version-text">
+          {/* ── 版本信息 ── */}
+          <div className="help-version-section">
+            <span className="help-section-label">当前版本</span>
+            <span className="help-version">
               v{__APP_VERSION__}
               {hotVersion && (
-                <span style={{ fontSize: 11, color: 'var(--blue)', marginLeft: 6, fontWeight: 600 }}>
-                  <Zap size={11} style={{ verticalAlign: 'middle', marginRight: 2 }} />
+                <span className="help-hot-badge">
+                  <Zap size={11} />
                   {hotVersion.split('-').pop()}
+                  <button className="help-hot-delete" onClick={() => void handleDeleteHotUpdate()} title="删除当前热更新（用于测试）">
+                    <Trash2 size={12} />
+                  </button>
                 </span>
               )}
             </span>
-              {updateInfo ? (
-                <span className="help-update-available">
-                  <span>新版本 <strong>v{updateInfo.version}</strong> 可用</span>
-                  <Button variant="primary" size="compact" onClick={handleDownload}>
-                    下载更新
-                  </Button>
-                </span>
-              ) : noUpdate ? (
-                <span className="help-no-update">已是最新版本</span>
-              ) : (
-                <Button
-                  variant="secondary"
-                  size="compact"
-                  onClick={() => void handleCheckUpdate()}
-                  disabled={checking}
-                  icon={checking ? <Loader2 className="spin" size={14} /> : undefined}
-                >
-                  {checking ? '检查中...' : '检查更新'}
-                </Button>
-              )}
+            {updateInfo ? (
+              <span className="help-version-status">
+                <span className="help-status-dot" />
+                新版本 <strong>v{updateInfo.version}</strong> 可用
+              </span>
+            ) : noUpdate ? (
+              <span className="help-version-status muted">已是最新版本</span>
+            ) : checking ? (
+              <span className="help-version-status muted">
+                <Loader2 size={12} className="spin" />
+                检查中
+              </span>
+            ) : null}
+            {updateInfo && (
+              <Button variant="primary" size="compact" className="help-update-btn" onClick={handleDownload}>
+                <ExternalLink size={14} />
+                下载更新
+              </Button>
+            )}
+            {!checking && (
+              <Button variant="ghost" size="mini" onClick={() => void handleCheckUpdate()} title="手动检查更新">
+                <RefreshCw size={12} />
+                检查更新
+              </Button>
+            )}
+          </div>
+
+          {/* ── 热更新（条件渲染） ── */}
+          {hotUpdateCheck && hotPhase !== 'ready' && hotPhase !== 'error' && (
+            <div className="help-hot-section">
+              <span className="help-hot-text">
+                <Zap size={14} />
+                {hotPhase === 'downloading'
+                  ? '正在下载热更新...'
+                  : <>热更新 <strong>v{hotUpdateCheck.version}</strong> 可用</>
+                }
+              </span>
+              <div className="help-hot-actions">
+                {hotPhase === 'idle' && (
+                  <>
+                    {hotUpdateCheck.notes && (
+                      <Button variant="ghost" size="mini" onClick={() => setShowHotNotes(true)}>更新内容</Button>
+                    )}
+                    <Button variant="primary" size="compact" onClick={() => void handleApplyHotUpdate()}>立即更新</Button>
+                  </>
+                )}
+                {hotPhase === 'downloading' && (
+                  <span className="help-hot-downloading"><RefreshCw size={14} className="spin" /> 下载中...</span>
+                )}
+              </div>
             </div>
-            <button className="help-link-btn" onClick={() => setReleaseNotesOpen(true)}>
+          )}
+          {hotPhase === 'ready' && (
+            <div className="help-hot-section">
+              <span className="help-hot-text"><Zap size={14} /> 热更新已就绪，重启后生效</span>
+              <Button variant="primary" size="compact" onClick={handleRelaunch}>立即重启</Button>
+            </div>
+          )}
+          {hotPhase === 'error' && (
+            <div className="help-hot-section error">
+              <span className="help-hot-text">热更新失败：{hotError}</span>
+              <Button variant="secondary" size="compact" onClick={() => void handleApplyHotUpdate()}>重试</Button>
+            </div>
+          )}
+
+          {/* ── 更新说明 ── */}
+          <div className="help-notes-section">
+            <Button variant="secondary" size="compact" onClick={() => setReleaseNotesOpen(true)}>
               <FileText size={14} />
-              <span>更新说明</span>
-              <small>查看各版本变更内容</small>
-            </button>
+              更新说明
+            </Button>
+            <span className="help-notes-desc">查看各版本变更内容</span>
           </div>
 
-          {/* 关注与反馈 */}
-          <div className="help-section">
-            <img
-              src="./my-douyin-qr-code.jpg"
-              alt="抖音二维码"
-              className="help-qr-code"
-            />
-            <p className="help-qr-tip">
-              打开抖音扫码关注，获取更多使用技巧和帮助
-            </p>
+          {/* ── 分隔线 ── */}
+          <div className="help-divider" />
+
+          {/* ── 关注抖音 ── */}
+          <div className="help-douyin-section">
+            <span className="help-section-label">关注抖音</span>
+            <p className="help-douyin-desc">获取使用技巧、问题反馈和更新动态</p>
+            <img src="./my-douyin-qr-code.jpg" alt="抖音二维码" className="help-qr-code" />
+            <span className="help-douyin-id">抖音号：62542925</span>
           </div>
 
-          {/* 资源链接 */}
-          <div className="help-section help-links-row">
-            <a className="help-link-btn" href="#" onClick={(e) => { e.preventDefault(); void window.luna.openPath('https://diamondfsd.github.io/luna-ai-cut/') }}>
-              <span>官方网站</span>
-            </a>
-            <button className="help-devtools-btn" onClick={() => void window.luna.openDevTools()} title="开发者工具">
-              <Code2 size={13} />
-              <span>开发者工具</span>
-            </button>
+          {/* ── 分隔线 ── */}
+          <div className="help-divider" />
+
+          {/* ── 底部操作区 ── */}
+          <div className="help-footer-actions">
+            <Button variant="secondary" size="compact" className="help-footer-btn" onClick={() => void window.luna.openPath('https://diamondfsd.github.io/luna-ai-cut/')}>
+              <ExternalLink size={14} />
+              官方网站
+            </Button>
+            <Button variant="secondary" size="compact" className="help-footer-btn" onClick={() => void window.luna.openDevTools()}>
+              <Code2 size={14} />
+              开发者工具
+            </Button>
           </div>
 
         </div>
       </Dialog>
       <ReleaseNotesDialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen} />
+
+      {/* 热更新内容详情弹窗 */}
+      {showHotNotes && hotUpdateCheck?.notes && (
+        <div className="update-notes-overlay" onClick={() => setShowHotNotes(false)}>
+          <div className="update-notes-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="update-notes-header">
+              <h3>更新内容 · v{hotUpdateCheck.version}</h3>
+              <button className="update-banner-close" onClick={() => setShowHotNotes(false)} aria-label="关闭"><XIcon size={16} /></button>
+            </div>
+            <div className="update-notes-body">
+              {hotUpdateCheck.notes.split('\n').map((line, i) => (
+                <p key={i} className={line.startsWith('#') ? 'notes-heading' : line.startsWith('-') ? 'notes-item' : ''}>{line}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

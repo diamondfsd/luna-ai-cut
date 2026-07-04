@@ -148,6 +148,7 @@ export class FfmpegPipeline {
 
     const ffmpegPath = getFfmpegPath()
     const duration = probe.durationSeconds
+    const startedAt = Date.now()
 
     logMainInfo(`[FFMPEG pipeline]`, {
       input: inputPath,
@@ -190,7 +191,24 @@ export class FfmpegPipeline {
       child.on('close', (code) => {
         signal?.removeEventListener('abort', abort)
         if (signal?.aborted) return
-        if (code === 0) { onProgress?.(100); resolve(); return }
+        const elapsedMs = Date.now() - startedAt
+        if (code === 0) {
+          logMainInfo(`[FFMPEG pipeline] 完成`, {
+            input: inputPath,
+            output: outputPath,
+            elapsedMs,
+            modules: this.modules.filter(m => m.isActive()).map(m => m.name),
+          })
+          onProgress?.(100)
+          resolve()
+          return
+        }
+        logMainInfo(`[FFMPEG pipeline] 失败`, {
+          input: inputPath,
+          output: outputPath,
+          elapsedMs,
+          code,
+        })
         reject(new Error(stderr.trim() || `ffmpeg exited with code ${code}`))
       })
     })

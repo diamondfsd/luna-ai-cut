@@ -54,7 +54,7 @@ export async function composeWorkspaceExport(
     const widthRatio = ratios?.widthRatio ?? 0.15
     const sensorW = Math.max(width, height)
     const wmAspect = wmInfo.height / wmInfo.width
-    const targetW = Math.min(Math.round(sensorW * widthRatio), wmInfo.width)
+    const targetW = Math.round(sensorW * widthRatio)
     const targetH = Math.round(targetW * wmAspect)
     const [vPos] = watermark.position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
     const xRatio = ratios?.xRatio ?? 0.03

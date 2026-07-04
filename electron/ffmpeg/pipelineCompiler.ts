@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import type { BuildContext, FfmpegModule, ModuleArgs } from './pipeline'
 import { logMainInfo } from '../loggerService'
 import { resolveWatermarkRatios } from '../../src/shared/watermark/layoutConfig'
@@ -32,6 +32,30 @@ function curvePointsToString(points: Array<{ x: number; y: number }> | undefined
     .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
     .map((p) => `${clamp(p.x, 0, 1).toFixed(3)}/${clamp(p.y, 0, 1).toFixed(3)}`)
     .join(' ')
+}
+
+function buildFilterPath(filePath: string): { normalized: string; escaped: string; hadBareDrive: boolean } {
+  let normalized = filePath.replace(/\\/g, '/')
+  const hadBareDrive = /^[A-Za-z]:(?=[^/])/.test(normalized)
+
+  if (hadBareDrive) {
+    normalized = normalized.replace(/^([A-Za-z]):/, '$1:/')
+  }
+
+  const escaped = normalized
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/:/g, '\\:')
+
+  return { normalized, escaped, hadBareDrive }
+}
+
+function fileSizeBytes(filePath: string): number | null {
+  try {
+    return statSync(filePath).size
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -126,7 +150,22 @@ export class FullPipelineModule implements FfmpegModule {
 
     // ── 4. Color adjustments（LUT 模式 vs 直接模式） ──
     if (this.lutPath) {
-      mainFilters.push(`lut3d=file='${this.lutPath}':interp=tetrahedral`)
+      const lutPathInfo = buildFilterPath(this.lutPath)
+      const fileExists = existsSync(this.lutPath)
+      logMainInfo('[FullPipelineModule] LUT filter 路径', {
+        original: this.lutPath,
+        normalized: lutPathInfo.normalized,
+        escaped: lutPathInfo.escaped,
+        originalLen: this.lutPath.length,
+        normalizedLen: lutPathInfo.normalized.length,
+        escapedLen: lutPathInfo.escaped.length,
+        hadBackslash: this.lutPath.includes('\\'),
+        hadBareDrive: lutPathInfo.hadBareDrive,
+        fileExists,
+        sizeBytes: fileExists ? fileSizeBytes(this.lutPath) : null,
+      })
+      const lutFsPath = lutPathInfo.escaped
+      mainFilters.push(`lut3d=file='${lutFsPath}':interp=tetrahedral`)
     } else {
       const colorParts: string[] = []
 
@@ -275,7 +314,7 @@ export class FullPipelineModule implements FfmpegModule {
       const rawWidthRatio = ratios?.widthRatio ?? wmSettings.widthPercent ?? 0.15
       const widthRatio = rawWidthRatio > 1 ? rawWidthRatio / 100 : rawWidthRatio
       const wmSize = pngSize(this.watermarkImagePath)
-      const targetW = Math.min(Math.round(Math.max(outputW, outputH) * widthRatio), wmSize.width)
+      const targetW = Math.round(Math.max(outputW, outputH) * widthRatio)
       const targetH = Math.round(targetW * wmSize.height / wmSize.width)
       const [vPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
       const xRatio = ratios?.xRatio ?? 0.03
@@ -284,6 +323,19 @@ export class FullPipelineModule implements FfmpegModule {
       const yExpr = vPos === 'top' ? `H*${(1 - yRatio).toFixed(4)}`
         : `H-h-H*${yRatio.toFixed(4)}`
 
+      logMainInfo('[FullPipelineModule] 水印布局', {
+        outputW,
+        outputH,
+        widthRatio,
+        xRatio,
+        yRatio,
+        watermarkOriginalW: wmSize.width,
+        watermarkOriginalH: wmSize.height,
+        targetW,
+        targetH,
+        upscaled: targetW > wmSize.width,
+        position,
+      })
       filterParts.push(`[1:v]format=rgba,scale=${targetW}:${targetH}:flags=lanczos,setsar=1[wm]`)
       filterParts.push(`[vmain][wm]overlay=${xExpr}:${yExpr}:format=auto[vout]`)
     } else {
