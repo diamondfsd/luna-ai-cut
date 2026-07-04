@@ -1,0 +1,26 @@
+[package]
+name = "luna-render-core"
+version = "0.1.0"
+edition = "2021"
+description = "Luna AI Cut Native Render Core — wgpu-based compositor for video watermark rendering"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["full"] }
+napi-derive = "2"
+wgpu = "30"
+image = "0.25"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.3"
+chrono = "0.4"
+serde_json = "1"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+opt-level = 2
+strip = "symbols"
