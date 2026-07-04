@@ -1,4 +1,4 @@
-import { X, CircleAlert } from 'lucide-react'
+import { X, CircleAlert, FolderOpen } from 'lucide-react'
 
 import type { LunaFile } from '../shared/types'
 import { IconButton } from '../ui'
@@ -22,6 +22,11 @@ export function PreviewModalHeader({
   onClose,
   onSetInspectorOpen,
 }: PreviewModalHeaderProps) {
+  function handleRevealInFolder() {
+    const path = file.downloadFilePath ?? file.localPath ?? null
+    if (path) window.luna.revealFile(path)
+  }
+
   return (
     <header>
       <div>
@@ -37,6 +42,12 @@ export function PreviewModalHeader({
             icon={<CircleAlert size={15} />}
           />
         )}
+        <IconButton
+          variant="light"
+          icon={<FolderOpen size={16} />}
+          onClick={handleRevealInFolder}
+          title="在文件夹中显示"
+        />
         <IconButton variant="light" icon={<X size={18} />} onClick={onClose} title="关闭" />
       </div>
     </header>
