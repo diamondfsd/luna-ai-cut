@@ -289,12 +289,15 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
 
   const metaMap = useMemo(() => buildMetadataMap(mediaMetadata), [mediaMetadata])
 
-  // 获取媒体分辨率
+  // 获取媒体分辨率（延迟 100ms 避免与渲染 IPC 竞争主进程）
   useEffect(() => {
     if (!filePath) return
-    window.luna.workspace.getMediaResolution(filePath)
-      .then(({ width, height }) => setMediaDetails(prev => ({ ...prev, width, height })))
-      .catch(() => {})
+    const timer = setTimeout(() => {
+      window.luna.workspace.getMediaResolution(filePath)
+        .then(({ width, height }) => setMediaDetails(prev => ({ ...prev, width, height })))
+        .catch(() => {})
+    }, 100)
+    return () => clearTimeout(timer)
   }, [filePath])
 
   // 构建直方图
@@ -311,7 +314,7 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
     return () => { cancelled = true }
   }, [filePath, file.kind])
 
-  // 加载元数据
+  // 加载元数据（延迟 200ms 避免大文件 IPC 阻塞渲染）
   useEffect(() => {
     if (file.kind === 'unknown') {
       setMediaMetadata(null)
@@ -319,11 +322,14 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
     }
     const metaPath = file.downloadFilePath ?? file.localPath
     if (!metaPath) return
-    setMetadataLoading(true)
-    window.luna.getMediaMetadata(file, metaPath)
-      .then(setMediaMetadata)
-      .catch(() => setMediaMetadata({ groups: [] }))
-      .finally(() => setMetadataLoading(false))
+    const timer = setTimeout(() => {
+      setMetadataLoading(true)
+      window.luna.getMediaMetadata(file, metaPath)
+        .then(setMediaMetadata)
+        .catch(() => setMediaMetadata({ groups: [] }))
+        .finally(() => setMetadataLoading(false))
+    }, 200)
+    return () => clearTimeout(timer)
   }, [file.id, file.kind, file.downloadFilePath, file.localPath])
 
   const histogram = mediaDetails.histogram

@@ -14,6 +14,40 @@
   gap: 12px;
 }
 
+.inspector-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inspector-collapse-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+  color: var(--muted-dark);
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    background 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+  -webkit-appearance: none;
+}
+
+.inspector-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.inspector-collapse-btn:active {
+  transform: scale(0.9);
+}
+
 .media-inspector dl {
   display: grid;
   gap: 10px;
