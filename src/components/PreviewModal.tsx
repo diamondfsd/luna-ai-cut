@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
-import { buildHistogram, emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
+import { emptyDetails, filePathToLunaFile, filePathToPreviewUrl, type MediaDetails, thumbnailForPath } from './previewModalUtils'
 import type { DownloadProgress, LunaFile, MediaMetadata, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { Dialog } from '../ui'
@@ -25,6 +25,7 @@ interface PreviewModalProps {
 
   /** @deprecated 逐渐淘汰 */
   preview?: PreviewResult | null
+  /** @deprecated 不再使用 */
   previewLoading?: boolean
   downloadProgress?: DownloadProgress
   isDownloadsPage?: boolean
@@ -38,14 +39,10 @@ export function PreviewModal({
   onClose,
   onReveal,
   onDownload,
-  autoPlayLive = false,
   preview: deprecatedPreview,
-  previewLoading: deprecatedPreviewLoading,
   downloadProgress,
   isDownloadsPage = false,
 }: PreviewModalProps) {
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const previewImageRef = useRef<HTMLImageElement | null>(null)
   const thumbStripRef = useRef<HTMLDivElement | null>(null)
   const activeThumbRef = useRef<HTMLButtonElement | null>(null)
 
@@ -108,10 +105,9 @@ export function PreviewModal({
 
   // ── 预览加载 ──
   const [internalPreview, setInternalPreview] = useState<PreviewResult | null>(null)
-  const [internalPreviewLoading, setInternalPreviewLoading] = useState(false)
+  const [, setInternalPreviewLoading] = useState(false)
 
   const preview = deprecatedPreview ?? internalPreview
-  const previewLoading = deprecatedPreviewLoading ?? internalPreviewLoading
 
   // 内部自动加载预览
   useEffect(() => {
@@ -128,29 +124,13 @@ export function PreviewModal({
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
   const [imageZoom, setImageZoom] = useState(1)
-  const [imagePan, setImagePan] = useState({ x: 0, y: 0 })
+  const [, setImagePan] = useState({ x: 0, y: 0 })
   const [baseScale, setBaseScale] = useState(1)
-  const [imageDragging, setImageDragging] = useState(false)
-  const [inspectorOpen, setInspectorOpen] = useState(true)
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
     enabled: true,
     style: 'luna_ultra',
     position: 'BottomCenter' as any,
   })
-  const [livePreview, setLivePreview] = useState<PreviewResult | null>(null)
-  const [liveLoading, setLiveLoading] = useState(false)
-  const [livePlaying, setLivePlaying] = useState(false)
-  const [liveReplayKey, setLiveReplayKey] = useState(0)
-  const [liveError, setLiveError] = useState<string | null>(null)
-  const liveSource = livePreview?.source ?? null
-  const autoPlayLiveRef = useRef<string | null>(null)
-  const imageDragRef = useRef<{
-    pointerId: number
-    startX: number
-    startY: number
-    originX: number
-    originY: number
-  } | null>(null)
 
   const completedDownloadPath = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists'
     ? downloadProgress.destinationPath ?? null
@@ -161,15 +141,6 @@ export function PreviewModal({
   const previewMatchesFile = preview?.fileName === file.name
   const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
   const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
-
-  useEffect(() => {
-    setLivePreview(null)
-    setLiveLoading(false)
-    setLivePlaying(false)
-    setLiveReplayKey(0)
-    setLiveError(null)
-    autoPlayLiveRef.current = null
-  }, [file.id])
 
   // 切换文件时打印水印参数
   useEffect(() => {
@@ -191,7 +162,6 @@ export function PreviewModal({
     setImageZoom(1)
     setImagePan({ x: 0, y: 0 })
     setBaseScale(1)
-    setImageDragging(false)
   }, [file.id])
 
   // 从元数据回填文件信息
@@ -217,9 +187,9 @@ export function PreviewModal({
     return { ...file, bytes, capturedAt }
   }, [file, mediaMetadata])
 
-  // 元数据懒加载 — inspector 打开时才加载
+  // 元数据懒加载
   useEffect(() => {
-    if (!inspectorOpen || file.kind === 'unknown') {
+    if (file.kind === 'unknown') {
       setMediaMetadata(null)
       return
     }
@@ -248,77 +218,7 @@ export function PreviewModal({
         .catch(() => {})
         .finally(() => setMetadataLoading(false))
     }
-  }, [inspectorOpen, file.id, file.kind, isDownloaded, downloadedPath])
-
-  const handleImageLoaded = useCallback((image: HTMLImageElement) => {
-    let histogram: MediaDetails['histogram'] = []
-    try { histogram = buildHistogram(image) } catch { histogram = [] }
-    setMediaDetails((current) => ({ ...current, width: image.naturalWidth, height: image.naturalHeight, histogram }))
-  }, [])
-
-  const handleVideoLoaded = useCallback((video: HTMLVideoElement) => {
-    setMediaDetails((current) => ({
-      ...current,
-      width: video.videoWidth,
-      height: video.videoHeight,
-      duration: video.duration,
-    }))
-  }, [])
-
-  const handleVideoTimeUpdate = useCallback((video: HTMLVideoElement) => {
-    setMediaDetails((current) => ({ ...current, currentTime: video.currentTime }))
-  }, [])
-
-  const playLivePhoto = useCallback(async () => {
-    if (liveLoading) return
-    setLiveLoading(true)
-    setLiveError(null)
-    try {
-      const result = livePreview ?? await window.luna.previewLivePhoto(file)
-      setLivePreview(result)
-      setLivePlaying(true)
-    } catch (e: any) {
-      setLiveError(e?.message ?? 'Live Photo 加载失败')
-    } finally {
-      setLiveLoading(false)
-      setLiveReplayKey((k) => k + 1)
-    }
-  }, [liveLoading, livePreview, file])
-
-  useEffect(() => {
-    if (!autoPlayLive || previewLoading || autoPlayLiveRef.current === file.id) return
-    autoPlayLiveRef.current = file.id
-    const timer = setTimeout(() => void playLivePhoto(), 200)
-    return () => clearTimeout(timer)
-  }, [autoPlayLive, file.id, previewLoading, playLivePhoto])
-
-  // 手势相关
-  function handleImagePointerDown(event: ReactPointerEvent): void {
-    if (imageZoom <= 1) return
-    imageDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: imagePan.x,
-      originY: imagePan.y,
-    }
-  }
-
-  function handleImagePointerMove(event: ReactPointerEvent): void {
-    const drag = imageDragRef.current
-    if (!drag || event.pointerId !== drag.pointerId) return
-    setImagePan({
-      x: drag.originX + (event.clientX - drag.startX),
-      y: drag.originY + (event.clientY - drag.startY),
-    })
-  }
-
-  function finishImageDrag(): void { imageDragRef.current = null }
-
-  function handleImageDoubleClick(_event: React.MouseEvent): void {
-    setImageZoom((current) => current > 1 ? 1 : 3)
-    setImagePan({ x: 0, y: 0 })
-  }
+  }, [file.id, file.kind, isDownloaded, downloadedPath])
 
   useEffect(() => {
     function handleWheel(event: WheelEvent): void {
@@ -353,7 +253,6 @@ export function PreviewModal({
         <PreviewModalHeader
           downloadProgress={downloadProgress}
           file={enrichedFile}
-          inspectorOpen={inspectorOpen}
           isDownloaded={isDownloaded}
           isDownloadingCurrentFile={isDownloadingCurrentFile}
           isDownloadsPage={isDownloadsPage}
@@ -361,41 +260,11 @@ export function PreviewModal({
           onClose={onClose}
           onDownload={onDownload}
           onReveal={onReveal}
-          onSetInspectorOpen={setInspectorOpen}
         />
 
-        <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
+        <div className="preview-body inspector-collapsed">
           <div className="preview-stage-col">
-            <PreviewStage
-              displaySource={displaySource}
-              file={enrichedFile}
-              hasNext={hasNext}
-              hasPrevious={hasPrevious}
-              imageDragging={imageDragging}
-              imagePan={imagePan}
-              imageZoom={imageZoom}
-              liveError={liveError}
-              liveLoading={liveLoading}
-              livePlaying={livePlaying}
-              livePreviewMessage={undefined}
-              liveReplayKey={liveReplayKey}
-              liveSource={liveSource}
-              previewFileName={preview?.fileName}
-              previewLoading={previewLoading}
-              previewMessage={preview?.message}
-              previewImageRef={previewImageRef}
-              videoRef={videoRef}
-              finishImageDrag={finishImageDrag}
-              handleImageDoubleClick={handleImageDoubleClick}
-              handleImageLoaded={handleImageLoaded}
-              handleImagePointerDown={handleImagePointerDown}
-              handleImagePointerMove={handleImagePointerMove}
-              handleVideoLoaded={handleVideoLoaded}
-              handleVideoTimeUpdate={handleVideoTimeUpdate}
-              navigateFile={navigateFile}
-              playLivePhoto={playLivePhoto}
-              setLiveError={setLiveError}
-            />
+            <PreviewStage url={displaySource} />
 
             <PreviewThumbnailStrip
               activeThumbRef={activeThumbRef}
@@ -406,7 +275,7 @@ export function PreviewModal({
             />
           </div>
 
-          {inspectorOpen && (
+          {false && (
             <MediaInspector
               file={enrichedFile}
               mediaDetails={mediaDetails}
@@ -427,7 +296,6 @@ export function PreviewModal({
                 })
               }}
               onResetZoom={() => { setImageZoom(1); setImagePan({ x: 0, y: 0 }) }}
-              onToggleCollapse={() => setInspectorOpen(false)}
             />
           )}
         </div>

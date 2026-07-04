@@ -7,7 +7,7 @@ import { Button, IconButton } from '../ui'
 interface PreviewModalHeaderProps {
   downloadProgress: DownloadProgress | undefined
   file: LunaFile
-  inspectorOpen: boolean
+  inspectorOpen?: boolean
   isDownloaded: boolean
   isDownloadingCurrentFile: boolean
   isDownloadsPage: boolean
@@ -15,7 +15,7 @@ interface PreviewModalHeaderProps {
   onDownload?: (file: LunaFile) => void
   onClose: () => void
   onReveal?: (file: LunaFile) => void
-  onSetInspectorOpen: (open: boolean) => void
+  onSetInspectorOpen?: (open: boolean) => void
 }
 
 function mediaLabel(file: LunaFile): string {
@@ -65,7 +65,7 @@ export function PreviewModalHeader({
             {!inspectorOpen && (
               <IconButton
                 variant="light"
-                onClick={() => onSetInspectorOpen(true)}
+                onClick={() => onSetInspectorOpen?.(true)}
                 title="查看详细信息"
                 icon={<CircleAlert size={15} />}
               />
