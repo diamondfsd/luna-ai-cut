@@ -5,7 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
 import { promisify } from 'node:util'
-import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
+import { logMainDebug, logMainWarn, logMainError } from './loggerService'
 
 const execFileAsync = promisify(execFile)
 const _require = createRequire(import.meta.url)
@@ -120,13 +120,8 @@ async function runWorker(): Promise<void> {
     if (!task) break
 
     const label = task.fileName || task.fileId
-    const start = Date.now()
-    logMainInfo(`[缩略图] worker 开始生成`, { label, kind: task.kind, sourcePath: task.sourcePath, worker: `${activeWorkers}/${WORKER_COUNT}` })
-
     try {
       const result = await generateThumbnail(task.sourcePath, task.thumbDir, task.fileId, task.kind)
-      const elapsed = Date.now() - start
-      logMainInfo(`[缩略图] worker 完成`, { label, result: path.basename(result), elapsedMs: elapsed })
       task.resolve(result)
     } catch (err) {
       logMainError(`[缩略图] worker 失败`, {
@@ -170,7 +165,6 @@ export function enqueueThumbnailGeneration(
   return fs.stat(destPath).then(
     (stats) => {
       if (stats.size > 200) {
-        logMainInfo(`[缩略图] 已存在，跳过生成`, { fileId, fileName, destPath })
         return destPath
       }
       // 文件太小，视为损坏，删除后重新生成
@@ -183,8 +177,6 @@ export function enqueueThumbnailGeneration(
       })
     },
     () => {
-      // 不存在，入队生成
-      logMainDebug(`[缩略图] 文件不存在，入队生成`, { fileId, fileName, kind })
       return new Promise<string | null>((resolve) => {
         taskQueue.push({ sourcePath, thumbDir, fileId, kind, fileName, resolve })
         spawnWorkers()
@@ -264,8 +256,7 @@ export async function generateVideoThumbnail(
   const ffmpegPath = getFfmpegPath()
 
   try {
-    const ready = await waitForStableFile(sourcePath)
-    logMainDebug(`[缩略图] 视频文件就绪检查`, { sourcePath, size: ready.size })
+    await waitForStableFile(sourcePath)
     // 取视频第一帧，等比缩放到最长边 400px
     const args = [
       '-ss', '0',

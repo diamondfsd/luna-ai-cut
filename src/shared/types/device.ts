@@ -29,6 +29,7 @@ export interface ConnectionStatus {
   deviceId?: string
   deviceName?: string
   deviceInfo?: Insta360DeviceInfo
+  diagnosticsRaw?: string
   host: string
   httpOk: boolean
   controlOk: boolean

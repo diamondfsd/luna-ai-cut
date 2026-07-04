@@ -23,7 +23,7 @@ import {
 } from './fileService'
 import type { IpcContext } from './ipcContext'
 import { listSampleFiles } from './localMedia'
-import { logMainDebug, logMainError, logMainInfo, logMainWarn } from './loggerService'
+import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 
 export function register(ctx: IpcContext): void {
@@ -31,24 +31,20 @@ export function register(ctx: IpcContext): void {
     const key = file.id || file.name
     const existingTask = ctx.previewCacheTasks.get(key)
     if (existingTask) {
-      logMainDebug(`[缓存] 缓存任务已存在，复用`, { key, fileName: file.name })
       return existingTask
     }
-    logMainInfo(`[缓存] 开始缓存文件`, { key, fileName: file.name, kind: file.kind })
 
     const task = ctx.enqueuePreviewTask(async () => {
       let cacheFilePath: string | null = null
       try {
         cacheFilePath = await cacheFile(file)
         if (cacheFilePath) {
-          logMainInfo(`[缓存] 文件缓存成功，开始生成缩略图`, { key, fileName: file.name, cacheFilePath })
           const cacheDir = await previewCacheDir()
           const thumbDir = thumbnailDir(cacheDir)
           const thumbnailKey = file.downloadName || file.name
           const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
           if (thumbPath) {
             const thumbnailUrl = pathToFileURL(thumbPath).toString()
-            logMainInfo(`[缓存] 缩略图生成成功`, { key, fileName: file.name, thumbPath, thumbnailUrl })
             ctx.win?.webContents.send('luna:thumbnail-ready', {
               fileId: file.id,
               fileName: file.name,
@@ -84,7 +80,6 @@ export function register(ctx: IpcContext): void {
       }
     }, 0).finally(() => {
       ctx.previewCacheTasks.delete(key)
-      logMainDebug(`[缓存] 缓存任务结束`, { key, fileName: file.name })
     })
     ctx.previewCacheTasks.set(key, task)
     return task
