@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { LrcRender, LrcLayer } from './LrcRender'
 import './PreviewStage.css'
 
@@ -25,6 +25,8 @@ interface PreviewStageProps {
   url: string | null
   /** 缩放模式，默认 contain */
   scaleMode?: ScaleMode
+  /** 外层数据加载中，显示 loading 遮罩 */
+  loading?: boolean
 }
 
 export interface MediaResolution {
@@ -96,7 +98,7 @@ export function calcAspectRatio(width: number, height: number): number {
   return Math.round((width / height) * 100) / 100
 }
 
-export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) {
+export function PreviewStage({ url, scaleMode = 'contain', loading = false }: PreviewStageProps) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [stageSize, setStageSize] = useState<StageSize | null>(null)
   // ── 媒体分辨率 ──
@@ -157,6 +159,11 @@ export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) 
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
       <LrcRender layers={layers} />
+      {loading && (
+        <div className="preview-loading-overlay">
+          <div className="preview-loading-spinner" />
+        </div>
+      )}
     </div>
   )
 }

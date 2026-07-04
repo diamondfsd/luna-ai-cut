@@ -93,6 +93,30 @@
   touch-action: none;
 }
 
+.preview-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.preview-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: lrc-spin 0.7s linear infinite;
+}
+
+@keyframes lrc-spin {
+  to { transform: rotate(360deg); }
+}
+
 .preview-media-wrapper {
   position: absolute;
   inset: 0;

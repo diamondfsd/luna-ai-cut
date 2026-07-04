@@ -39,6 +39,11 @@
       "filter": ["RELEASE_NOTES_*.md"]
     },
     {
+      "from": "old-release-log",
+      "to": "old-release-log",
+      "filter": ["RELEASE_NOTES_*.md"]
+    },
+    {
       "from": "electron",
       "to": "swift",
       "filter": ["*.swift"]

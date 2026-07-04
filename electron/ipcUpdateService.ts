@@ -54,15 +54,28 @@ export function register(ctx: IpcContext): void {
     const notesDir = app.isPackaged
       ? join(process.resourcesPath)
       : join(app.getAppPath())
+    const oldDir = join(notesDir, 'old-release-log')
     const prefix = 'RELEASE_NOTES_v'
     try {
-      const files = readdirSync(notesDir)
-        .filter((file) => file.startsWith(prefix) && file.endsWith('.md'))
+      // 同时扫描根目录和 old-release-log/ 目录
+      const scanDirs = [notesDir]
+      if (existsSync(oldDir)) {
+        scanDirs.push(oldDir)
+      }
+
+      type FileEntry = { name: string; dir: string }
+      const files: FileEntry[] = []
+      for (const dir of scanDirs) {
+        const entries = readdirSync(dir)
+          .filter((file) => file.startsWith(prefix) && file.endsWith('.md'))
+          .map((file) => ({ name: file, dir }))
+        files.push(...entries)
+      }
 
       files.sort((a, b) => {
-        const va = a.match(/(\d+)\.(\d+)\.(\d+)/)
-        const vb = b.match(/(\d+)\.(\d+)\.(\d+)/)
-        if (!va || !vb) return b.localeCompare(a)
+        const va = a.name.match(/(\d+)\.(\d+)\.(\d+)/)
+        const vb = b.name.match(/(\d+)\.(\d+)\.(\d+)/)
+        if (!va || !vb) return b.name.localeCompare(a.name)
         for (let i = 1; i <= 3; i += 1) {
           const diff = Number(vb[i]) - Number(va[i])
           if (diff !== 0) return diff
@@ -70,9 +83,9 @@ export function register(ctx: IpcContext): void {
         return 0
       })
 
-      return files.slice(0, 5).map((file) => {
-        const version = file.slice(prefix.length, -'.md'.length)
-        const content = readFileSync(join(notesDir, file), 'utf-8')
+      return files.slice(0, 5).map(({ name, dir }) => {
+        const version = name.slice(prefix.length, -'.md'.length)
+        const content = readFileSync(join(dir, name), 'utf-8')
         return { version, content }
       })
     } catch {
