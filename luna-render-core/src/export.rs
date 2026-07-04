@@ -385,8 +385,8 @@ pub fn render_layers_to_file(
 
     match format {
         "jpeg" | "jpg" => {
-            // ffmpeg JPEG 质量：1-31，数值越低质量越高。将 quality(1-100)映射到 2-25
-            let ffmpeg_q = ((100.0 - quality.clamp(1.0, 100.0)) * 23.0 / 99.0 + 2.0) as u32;
+            // ffmpeg -q:v 1-31，1=最高。将 quality(1-100)映射到 1-25
+            let ffmpeg_q = ((100.0 - quality.clamp(1.0, 100.0)) * 24.0 / 99.0 + 1.0) as u32;
             args.extend_from_slice(&["-c:v".into(), "mjpeg".into(), "-q:v".into(), ffmpeg_q.to_string()]);
         }
         "png" => {

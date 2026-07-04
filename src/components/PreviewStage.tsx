@@ -45,7 +45,7 @@ export interface ExportOptions {
   enable: boolean
   /** 图片格式，默认 jpeg */
   format?: 'jpeg' | 'png' | 'webp'
-  /** 图片质量（仅 jpeg/webp 有效），0-1，默认 0.95 */
+  /** 图片质量（仅 jpeg/webp 有效），0-1，默认 1.0 */
   quality?: number
 }
 
@@ -78,7 +78,8 @@ function containFrame(media: MediaResolution, stage: StageSize): Pick<PreviewLay
 }
 
 /**
- * 统一构建层数据 — 根据媒体 URL 和缩放模式生成 PreviewLayer[]
+ * 根据媒体 URL 和缩放模式生成 PreviewLayer[]
+ * @param stageSize - Project Canvas 尺寸（非 UI Stage 尺寸）
  */
 export function buildLayers(
   url: string,
@@ -204,6 +205,20 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     return calcAspectRatio(resolution.width, resolution.height)
   }, [resolution])
 
+  // ── Project Canvas：统一布局画布，预览和导出共用同一比例 ──
+  // 预览时渲染到 projectCanvas 尺寸，CSS 等比例显示在 Stage 容器内
+  // 导出时渲染到原始分辨率（比例一致，结果相同）
+  const projectCanvas = useMemo(() => {
+    if (!resolution) return null
+    const MAX = 1440
+    const aspect = resolution.width / resolution.height
+    if (aspect >= 1) {
+      return { width: MAX, height: Math.round(MAX / aspect) }
+    } else {
+      return { width: Math.round(MAX * aspect), height: MAX }
+    }
+  }, [resolution])
+
   // 监听舞台尺寸，按当前视口比例构建 layer，避免资源被拉伸。
   useEffect(() => {
     const element = stageRef.current
@@ -229,10 +244,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   }, [url])
 
   const layers = useMemo(() => {
-    const main = url ? buildLayers(url, scaleMode, resolution, stageSize) : []
+    // 基于 Project Canvas 计算布局，Stage 不参与
+    const canvas = projectCanvas ?? { width: 1440, height: 1440 }
+    const main = url ? buildLayers(url, scaleMode, resolution, canvas) : []
     if (!extraLayers?.length) return main
 
-    // 叠加层的坐标相对于主图内容区（解决 contain 黑边导致水印跑出画面）
     const m = main[0]
     const cX = m?.dstX ?? 0
     const cY = m?.dstY ?? 0
@@ -246,7 +262,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       dstH: l.dstH * cH,
     }))
     return [...main, ...adjusted]
-  }, [url, scaleMode, resolution, stageSize, extraLayers])
+  }, [url, scaleMode, resolution, projectCanvas, extraLayers])
 
   // 通过 IPC 获取媒体文件实际分辨率
   useEffect(() => {
@@ -262,29 +278,28 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       .catch(() => setResolution(null))
   }, [url])
 
+  // Canvas 包裹层样式 — 在 Stage 内保持 Project Canvas 比例
+  const canvasWrapperStyle = useMemo(() => {
+    if (!projectCanvas || !stageSize) return {}
+    const stageAspect = stageSize.width / stageSize.height
+    const canvasAspect = projectCanvas.width / projectCanvas.height
+    if (canvasAspect > stageAspect) {
+      // 画布更宽 → 宽度撑满，高度自适应
+      return { width: '100%', height: `${stageAspect / canvasAspect * 100}%` }
+    } else {
+      // 画布更高 → 高度撑满，宽度自适应
+      return { width: `${canvasAspect / stageAspect * 100}%`, height: '100%' }
+    }
+  }, [projectCanvas, stageSize])
+
   // 暴露导出方法
   useImperativeHandle(ref, () => ({
     async export() {
       if (!exportOptions?.enable) throw new Error('导出未启用')
 
-      // 获取原始分辨率
+      // 导出在原始分辨率上渲染（与 preview 相同 projectCanvas 比例）
       const res = resolution
       if (!res) throw new Error('媒体分辨率未就绪')
-
-      // 导出画布宽高比与 Stage 一致，保证 contain 算法输出完全相同
-      const ss = stageSize
-      let exportW = res.width
-      let exportH = res.height
-      if (ss) {
-        const stageAspect = ss.width / ss.height
-        if (exportW / exportH > stageAspect) {
-          // 素材更宽 → 以高度为准，宽度按 stage 比例
-          exportW = Math.round(exportH * stageAspect)
-        } else {
-          // 素材更高或相等 → 以宽度为准，高度按 stage 比例
-          exportH = Math.round(exportW / stageAspect)
-        }
-      }
 
       // 从设置中获取导出目录
       const settings = await window.luna.getSettings()
@@ -297,20 +312,19 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       const dotIndex = lastPart.lastIndexOf('.')
       const baseName = dotIndex > 0 ? lastPart.substring(0, dotIndex) : lastPart
       const format = exportOptions.format || 'jpeg'
-      const quality = exportOptions.quality ?? 0.95
-      const filename = `${baseName}.${format}`
+      const quality = exportOptions.quality ?? 1.0
+      const ext = format === 'jpeg' ? 'jpg' : format
+      const filename = `${baseName}.${ext}`
 
-      // 构造输出路径（统一用 /，Node.js 跨平台兼容）
       const outputPath = exportDir.endsWith('/') ? `${exportDir}${filename}` : `${exportDir}/${filename}`
 
-      // 通过 LrcRender 的 Rust 渲染管线直接导出
       const lrcHandle = lrcRef.current
       if (!lrcHandle) throw new Error('LrcRender 未就绪')
-      await lrcHandle.exportImage(outputPath, exportW, exportH, format, quality)
+      await lrcHandle.exportImage(outputPath, res.width, res.height, format, quality)
 
       return { path: outputPath, name: filename }
     },
-  }), [exportOptions, resolution, url, stageSize])
+  }), [exportOptions, resolution, url])
 
   if (!url || layers.length === 0) return null
 
@@ -320,7 +334,9 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       className="preview-stage"
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
-      <LrcRender ref={lrcRef} layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
+      <div className="preview-canvas-wrapper" style={canvasWrapperStyle}>
+          <LrcRender ref={lrcRef} layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
+        </div>
       {loading && (
         <div className="preview-loading-overlay">
           <div className="preview-loading-spinner" />
