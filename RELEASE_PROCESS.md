@@ -177,6 +177,19 @@ git push origin hot/v<版本号>-hot.<build号>
 
 > 客户端每次启动会自动检查热更新（2 秒后），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效。
 
+## 旧版发布说明归档
+
+当根目录下积累较多 `RELEASE_NOTES_*.md` 文件时，可以将其归档到 `old-release-log/` 目录下：
+
+```bash
+# 保留当前版本的发布说明在根目录，其余移至 old-release-log/
+mv RELEASE_NOTES_v1.*.md old-release-log/
+mv RELEASE_NOTES_v2.0.*.md old-release-log/  # （不含当前最新版本）
+```
+
+> 应用发布说明对话框（`release-notes:list`）会同时扫描根目录和 `old-release-log/` 目录，归档后用户仍可查看历史发布记录。
+> 构建打包时两个目录下的发布说明文件均会被包含在 `extraResources` 中。
+
 ## 查看热更新发布记录
 
 热更新发布说明文件以 `RELEASE_NOTES_v<版本号>-hot.<build号>.md` 命名，与正式版发布说明放在同一目录下。GitCode Release 的附件中也会同步上传最新的发布说明。
