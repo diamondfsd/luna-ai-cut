@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { LrcRender, LrcLayer } from './LrcRender'
 import './PreviewStage.css'
 
@@ -25,8 +25,6 @@ interface PreviewStageProps {
   url: string | null
   /** 缩放模式，默认 contain */
   scaleMode?: ScaleMode
-  /** 外层数据加载中，显示 loading 遮罩 */
-  loading?: boolean
 }
 
 export interface MediaResolution {
@@ -98,11 +96,28 @@ export function calcAspectRatio(width: number, height: number): number {
   return Math.round((width / height) * 100) / 100
 }
 
-export function PreviewStage({ url, scaleMode = 'contain', loading = false }: PreviewStageProps) {
+export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [stageSize, setStageSize] = useState<StageSize | null>(null)
   // ── 媒体分辨率 ──
   const [resolution, setResolution] = useState<MediaResolution | null>(null)
+
+  // ── 加载状态（url 切换时自动 loading） ──
+  const [loading, setLoading] = useState(false)
+  const prevUrlRef = useRef<string | null>(null)
+
+  // url 变化时显示 loading，onRender 时取消
+  useEffect(() => {
+    if (!url) { setLoading(false); return }
+    if (url !== prevUrlRef.current) {
+      prevUrlRef.current = url
+      setLoading(true)
+    }
+  }, [url])
+
+  function handleRender() {
+    setLoading(false)
+  }
 
   // 宽高比（由 resolution 派生）
   const aspectRatio = useMemo(() => {
@@ -158,7 +173,7 @@ export function PreviewStage({ url, scaleMode = 'contain', loading = false }: Pr
       className="preview-stage"
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
-      <LrcRender layers={layers} />
+      <LrcRender layers={layers} onRender={handleRender} />
       {loading && (
         <div className="preview-loading-overlay">
           <div className="preview-loading-spinner" />

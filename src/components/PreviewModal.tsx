@@ -53,15 +53,12 @@ export function PreviewModal({
 
   // ── 预览加载 ──
   const [internalPreview, setInternalPreview] = useState<PreviewResult | null>(null)
-  const [internalPreviewLoading, setInternalPreviewLoading] = useState(false)
 
   useEffect(() => {
     // 不立即清空，保持旧图可见，等新图加载完成再替换
-    setInternalPreviewLoading(true)
     window.luna.previewFile(file, files)
       .then(setInternalPreview)
       .catch(() => {})
-      .finally(() => setInternalPreviewLoading(false))
   }, [file.id])
 
   // ── 状态 ──
@@ -113,7 +110,7 @@ export function PreviewModal({
 
         <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
           <div className="preview-stage-col">
-            <PreviewStage url={displaySource} loading={internalPreviewLoading} />
+            <PreviewStage url={displaySource} />
 
             <PreviewThumbnailStrip
               activeThumbRef={activeThumbRef}
