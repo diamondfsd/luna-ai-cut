@@ -14,10 +14,10 @@ import {
   releaseTexture as lrcReleaseTexture,
   renderFrame as lrcRenderFrame,
   renderPreview as lrcRenderPreview,
-  exportFile as lrcExportFile,
   renderLayersToFile as lrcRenderLayersToFile,
   resolveRenderSource as lrcResolveRenderSource,
   exportImageFromSources as lrcExportImageFromSources,
+  exportFileAsync as lrcExportFileAsync,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
   destroy as lrcDestroy,
@@ -77,6 +77,10 @@ function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
 
 function normalizeInputPath(inputPath: string): string {
   return inputPath.startsWith('file:') ? fileURLToPath(inputPath) : inputPath
+}
+
+function fileNameFromPath(filePath: string): string {
+  return filePath.split(/[\\/]/).pop() || 'export.mp4'
 }
 
 export function register(_ctx: RegisterContext): void {
@@ -207,9 +211,40 @@ export function register(_ctx: RegisterContext): void {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       const sourcePath = normalizeInputPath(inputPath)
-      rcLog(`lrc:exportVideo f=${ffmpegPath} p=${ffprobePath} ${sourcePath} → ${outputPath} task=${taskId} qp=${qualityPreset}`)
-      lrcExportFile(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, taskId, qualityPreset)
-      rcLog('lrc:exportVideo done')
+      const exportId = taskId ?? `lrc_${Date.now()}`
+      const fileName = fileNameFromPath(outputPath)
+      rcLog(`lrc:exportVideo start f=${ffmpegPath} p=${ffprobePath} ${sourcePath} → ${outputPath} task=${exportId} qp=${qualityPreset}`)
+      _ctx.win?.webContents.send('export:progress', {
+        exportId,
+        fileName,
+        percent: 0,
+        status: 'exporting',
+        destinationPath: outputPath,
+      })
+      lrcExportFileAsync(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, exportId, qualityPreset)
+        .then(() => {
+          rcLog(`lrc:exportVideo done out=${outputPath}`)
+          _ctx.win?.webContents.send('export:progress', {
+            exportId,
+            fileName,
+            percent: 100,
+            status: 'done',
+            destinationPath: outputPath,
+          })
+        })
+        .catch((err: unknown) => {
+          const error = err instanceof Error ? err.message : String(err)
+          rcLog(`ERROR in exportVideo async: ${error} out=${outputPath}`)
+          _ctx.win?.webContents.send('export:progress', {
+            exportId,
+            fileName,
+            percent: 100,
+            status: 'failed',
+            destinationPath: outputPath,
+            error,
+          })
+        })
+      return { outputPath, exportId }
     },
   ))
 

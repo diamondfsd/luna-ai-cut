@@ -129,6 +129,7 @@ pub struct VideoInfo {
     pub height: u32,
     pub fps: f64,
     pub duration_secs: f64,
+    pub frame_count: Option<u64>,
     pub src_bitrate: u32,
     pub audio: AudioInfo,
 }
@@ -152,7 +153,11 @@ fn probe_video(ffprobe: &str, input: &str) -> Result<VideoInfo, String> {
         if parts.len() == 2 { let n: f64 = parts[0].parse().unwrap_or(30.0); let d: f64 = parts[1].parse().unwrap_or(1.0); if d > 0.0 { n / d } else { 30.0 } }
         else { fps_str.parse().unwrap_or(30.0) }
     };
-    let duration = parsed["format"]["duration"].as_str().and_then(|d| d.parse::<f64>().ok()).unwrap_or(0.0);
+    let duration = video["duration"].as_str()
+        .or_else(|| parsed["format"]["duration"].as_str())
+        .and_then(|d| d.parse::<f64>().ok())
+        .unwrap_or(0.0);
+    let frame_count = video["nb_frames"].as_str().and_then(|n| n.parse::<u64>().ok());
     let src_bitrate = parsed["format"]["bit_rate"].as_str().and_then(|b| b.parse::<u32>().ok()).unwrap_or(0);
 
     // ── 音频流 ──
@@ -162,7 +167,7 @@ fn probe_video(ffprobe: &str, input: &str) -> Result<VideoInfo, String> {
         codec: audio_stream.and_then(|s| s["codec_name"].as_str().map(|c| c.to_string())).unwrap_or_default(),
     };
 
-    Ok(VideoInfo { width: w, height: h, fps, duration_secs: duration, src_bitrate, audio })
+    Ok(VideoInfo { width: w, height: h, fps, duration_secs: duration, frame_count, src_bitrate, audio })
 }
 
 // ── 编码器探测 ──
@@ -562,7 +567,8 @@ fn export_video(
     let fps_val = fps.unwrap_or(info.fps);
     let frame_size = (info.width * info.height * 4) as usize;
     let out_size = (cw * ch * 4) as usize;
-    let total = (info.duration_secs * fps_val).ceil() as u64;
+    let total = info.frame_count.unwrap_or_else(|| (info.duration_secs * fps_val).round() as u64);
+    let output_duration = if total > 0 { total as f64 / fps_val } else { info.duration_secs };
 
     crate::log!("  src={}x{} {}fps {}kbps audio={} {} → {}x{} frames={}",
         info.width, info.height, fps_val,
@@ -613,7 +619,7 @@ fn export_video(
         encode_cmd.arg(arg);
     }
     encode_cmd
-        .args(["-pix_fmt", pix_fmt, "-c:a", "copy", "-shortest", "-y", output]);
+        .args(["-pix_fmt", pix_fmt, "-c:a", "copy", "-t", &format!("{:.6}", output_duration), "-y", output]);
 
     // ── 解码 pipe ──
     let mut decode = Command::new(ffmpeg)
@@ -634,7 +640,11 @@ fn export_video(
     let mut ein = encode.stdin.take().ok_or("no encode stdin")?;
 
     // ── 存储进程句柄供取消 ──
-    if let Some(t) = task { t.store_procs(decode, encode); }
+    let mut decode_proc = Some(decode);
+    let mut encode_proc = Some(encode);
+    if let Some(t) = task {
+        t.store_procs(decode_proc.take().unwrap(), encode_proc.take().unwrap());
+    }
 
     // ── 逐帧循环 ──
     let mut in_buf = vec![0u8; frame_size];
@@ -659,7 +669,7 @@ fn export_video(
         }
     }
 
-    let (mut decode_out, mut encode_out) = if let Some(t) = task { t.take_procs() } else { (None, None) };
+    let (mut decode_out, mut encode_out) = if let Some(t) = task { t.take_procs() } else { (decode_proc, encode_proc) };
     drop(ein);
     if let Some(ref mut d) = decode_out { d.wait().ok(); }
     if let Some(ref mut e) = encode_out {
@@ -669,7 +679,7 @@ fn export_video(
 
     c.release_texture(video_tex).ok();
     for l in &static_render { c.release_texture(l.texture_id).ok(); }
-    crate::log!("  video done: {} frames {:.1}s", idx, t0.elapsed().as_secs_f64());
+    crate::log!("  video done: {} frames {:.1}s out={}", idx, t0.elapsed().as_secs_f64(), output);
     Ok(())
 }
 

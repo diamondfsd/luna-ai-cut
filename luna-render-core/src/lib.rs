@@ -4,7 +4,8 @@ mod export;
 use std::sync::{LazyLock, Mutex};
 
 use compositor::Compositor;
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{AsyncTask, Buffer};
+use napi::{Env, Task};
 use crate::export::QualityPreset;
 use napi_derive::napi;
 
@@ -294,6 +295,81 @@ pub fn export_file(
     })
 }
 
+pub struct ExportFileTask {
+    ffmpeg_path: String,
+    ffprobe_path: String,
+    input: String,
+    output: String,
+    width: u32,
+    height: u32,
+    fps: Option<f64>,
+    hardware: bool,
+    video_layer: RenderLayer,
+    static_layers: Vec<StaticLayer>,
+    task_id: Option<String>,
+    quality_preset: Option<String>,
+}
+
+impl Task for ExportFileTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        lock(|c| {
+            crate::log!(
+                "export async: in={} out={} {}x{} static={} task={:?} preset={:?}",
+                self.input, self.output, self.width, self.height, self.static_layers.len(), self.task_id, self.quality_preset
+            );
+            let preset = self.quality_preset.as_deref().map(QualityPreset::from_str);
+            export::export_file(
+                &self.ffmpeg_path, &self.ffprobe_path,
+                &self.input, &self.output,
+                self.width, self.height,
+                self.fps, self.hardware,
+                &self.video_layer, &self.static_layers,
+                self.task_id.as_deref(), preset,
+                c,
+            )
+        })
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(())
+    }
+}
+
+/// 异步导出视频/图片（统一入口），避免阻塞 Electron 主进程事件循环。
+#[napi]
+pub fn export_file_async(
+    ffmpeg_path: String,
+    ffprobe_path: String,
+    input: String,
+    output: String,
+    width: u32,
+    height: u32,
+    fps: Option<f64>,
+    hardware: bool,
+    video_layer: RenderLayer,
+    static_layers: Vec<StaticLayer>,
+    task_id: Option<String>,
+    quality_preset: Option<String>,
+) -> AsyncTask<ExportFileTask> {
+    AsyncTask::new(ExportFileTask {
+        ffmpeg_path,
+        ffprobe_path,
+        input,
+        output,
+        width,
+        height,
+        fps,
+        hardware,
+        video_layer,
+        static_layers,
+        task_id,
+        quality_preset,
+    })
+}
+
 /// 从素材源文件直接导出图片（独立加载纹理，不依赖预览纹理缓存）
 #[napi]
 pub fn export_image_from_sources(
@@ -571,4 +647,3 @@ pub fn resolve_render_source(
         color_transfer: "bt709".to_string(),
     })
 }
-
