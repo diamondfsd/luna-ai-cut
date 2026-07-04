@@ -15,13 +15,15 @@ export default defineConfig({
     react(),
     electron({
       main: {
-        // bootstrap 入口，它会动态 import ./appMain.ts
-        entry: 'electron/main.ts',
+        // bootstrap 入口 + export worker
+        entry: {
+          main: 'electron/main.ts',
+          'luna-exportWorker': 'electron/exportWorker.ts',
+        },
         vite: {
           build: {
             rollupOptions: {
               output: {
-                // 让 appMain 的 chunk 有可预测的文件名，方便热更新构建
                 chunkFileNames: 'luna-[name].js',
               },
             },
