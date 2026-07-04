@@ -4,7 +4,7 @@ import { MediaGallery } from '../components/MediaGallery'
 import { MediaLibraryToolbar } from '../components/MediaLibraryToolbar'
 import { PreviewModal } from '../components/PreviewModal'
 import { useMediaLibraryController, type MediaLibraryPageProps } from './useMediaLibraryController'
-import { Modal, toast } from '../ui'
+import { Modal } from '../ui'
 import '../styles/library.css'
 
 /** 格式化日期，年月日和星期之间加空格 */
@@ -231,35 +231,11 @@ export function MediaLibraryPage({
           currentFile={previewFile}
           downloadProgress={progressForPreview}
           isDownloadsPage={isDownloadsPage}
-          showWatermarkControls={isDownloadsPage && viewMode === 'download'}
           onClose={() => {
             setPreviewFile(null)
             setPreviewFiles([])
           }}
           onDownload={(file) => downloadOne(file)}
-          onExportWithWatermark={async (file, watermarkSettings) => {
-            const exportId = `${file.name}_${Date.now()}`
-            const lunaExport = (window as any).lunaExport
-            if (!lunaExport) { toast.error('导出服务未就绪'); return }
-            toast.success('已加入导出队列')
-
-            let dlPath = file.downloadFilePath || file.localPath
-            // 未下载 → 先下载
-            if (!dlPath) {
-              await downloadOne(file)
-              // 等一小会儿让 progress 更新
-              await new Promise(r => setTimeout(r, 500))
-              dlPath = downloadProgress.get(file.name)?.destinationPath || ''
-            }
-            if (!dlPath) { toast.error('无法获取文件路径'); return }
-
-            lunaExport.start({
-              id: exportId, kind: file.kind, localPath: dlPath,
-              watermark: watermarkSettings,
-              outputDir: settings?.downloadDir || settings?.exportDir || '',
-              outputName: (file.downloadName || file.name).replace(/\.[^.]+$/, '_wm' + (/\.[^.]+$/.exec(file.name)?.[0] || '.jpg')),
-            })
-          }}
           onReveal={(file) => {
             const localPath = file.downloadFilePath ?? file.localPath
             if (localPath) {

@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { CircleAlert, Download, FolderOpen, Loader2, X } from 'lucide-react'
 
-import type { DownloadProgress, LunaFile, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { DownloadProgress, LunaFile } from '../shared/types'
 import { Button, IconButton } from '../ui'
 
 interface PreviewModalHeaderProps {
@@ -12,11 +12,8 @@ interface PreviewModalHeaderProps {
   isDownloadingCurrentFile: boolean
   isDownloadsPage: boolean
   progressPercent: number
-  showWatermarkControls: boolean
-  watermarkSettings: WatermarkSettingsType
   onDownload?: (file: LunaFile) => void
   onClose: () => void
-  onExportWithWatermark?: (file: LunaFile, settings: WatermarkSettingsType) => void
   onReveal?: (file: LunaFile) => void
   onSetInspectorOpen: (open: boolean) => void
 }
@@ -35,11 +32,8 @@ export function PreviewModalHeader({
   isDownloadingCurrentFile,
   isDownloadsPage,
   progressPercent,
-  showWatermarkControls,
-  watermarkSettings,
   onDownload,
   onClose,
-  onExportWithWatermark,
   onReveal,
   onSetInspectorOpen,
 }: PreviewModalHeaderProps) {
@@ -64,17 +58,6 @@ export function PreviewModalHeader({
             icon={isDownloadingCurrentFile ? <Loader2 className="spin" size={15} /> : <Download size={15} />}
           >
             {isDownloaded ? '已下载' : '下载'}
-          </Button>
-        )}
-        {showWatermarkControls && (
-          <Button
-            variant="primary"
-            size="compact"
-            disabled={!watermarkSettings.enabled || !onExportWithWatermark}
-            icon={<Download size={15} />}
-            onClick={() => onExportWithWatermark?.(file, watermarkSettings)}
-          >
-            导出
           </Button>
         )}
         {isDownloaded && (

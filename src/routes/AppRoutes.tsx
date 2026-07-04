@@ -13,7 +13,6 @@ import { DeviceDebugPage } from '../pages/DeviceDebugPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
 import { MediaLibraryPage } from '../pages/MediaLibraryPage'
 import { SettingsPage } from '../pages/SettingsPage'
-import { WatermarkDemoPage } from '../pages/WatermarkDemoPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import type { CacheStats, LunaFile, PreviewResult } from '../shared/types'
 import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
@@ -105,7 +104,6 @@ export function AppRoutes() {
     ['/local-resources', true],
     ['/workspace', true],
     ['/settings', true],
-    ['/watermark-demo', true],
     ['/developer', developerMode],
     ['/ble-debug', debugVisible],
     ['/device-debug', debugVisible],
@@ -231,9 +229,6 @@ export function AppRoutes() {
           <DeviceDebugPage />
         </AppRoute>
 
-        <AppRoute path="/watermark-demo" preserve={false}>
-          <WatermarkDemoPage />
-        </AppRoute>
         <PreviewModalHost />
       </div>
     </main>
