@@ -169,11 +169,6 @@ export function useMediaLibraryController({
   // 监听缓存下载完成，更新卡片缩略图
   useEffect(() => {
     return window.luna.onThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
-      logger.info(`[缩略图] onThumbnailReady`, {
-        fileId, fileName, downloadName,
-        cacheFilePath: cacheFilePath?.slice(0, 200),
-        thumbnailUrl: thumbnailUrl?.slice(0, 300),
-      })
       const matches = (file: LunaFile): boolean =>
         file.id === fileId || file.name === fileName || file.downloadName === downloadName
       setCacheFailedIds((current) => {

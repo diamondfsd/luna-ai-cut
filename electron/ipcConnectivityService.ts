@@ -20,9 +20,9 @@ export function register(_ctx?: IpcContext): void {
   })
 
   ipcMain.handle('wifi:openSettings', () => openWifiSettings())
+  ipcMain.handle('wifiDebug:getStatus', () => getWifiDebugStatus())
 
   if (process.platform === 'win32') {
-    ipcMain.handle('wifiDebug:getStatus', () => getWifiDebugStatus())
     ipcMain.handle('wifiDebug:scan', () => scanWifiNetworks())
     ipcMain.handle('wifiDebug:connect', (_event, options: WifiConnectOptions) => connectWifiNetwork(options))
     ipcMain.handle('wifiDebug:disconnect', () => disconnectWifiNetwork())

@@ -6,7 +6,7 @@ import { localThumbnailUrl, safeName } from './filePathUtils'
 import { downloadToFile, downloadToFileWithRetry, isAbortError } from './fileDownloadService'
 import { previewCacheDir } from './settingsService'
 import { safeId, THUMB_EXT, thumbnailDir, thumbnailPathFor } from './thumbnailService'
-import { logMainDebug, logMainInfo, logMainWarn } from './loggerService'
+import { logMainWarn } from './loggerService'
 import { recordDownloadedFileSource } from './mediaSourceManifestService'
 import type {
   DownloadProgress,
@@ -233,9 +233,6 @@ export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: str
     }
   } catch { /* thumbnails 目录可能还不存在 */ }
 
-  let foundLocal = 0
-  let foundThumb = 0
-
   for (const file of files) {
     // --- 下载目录中已存在 ---
     try {
@@ -244,7 +241,6 @@ export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: str
       if (stats.isFile()) {
         file.localPath = dest
         file.downloadFilePath = dest
-        foundLocal++
       }
     } catch { /* not in download dir */ }
 
@@ -253,21 +249,8 @@ export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: str
     if (thumbFileSet.has(thumbName)) {
       const thumbPath = thumbnailPathFor(cacheDir, file.downloadName || file.name)
       file.thumbnailUrl = localThumbnailUrl(thumbPath)
-      foundThumb++
-      if (foundThumb <= 3) {
-        logMainDebug(`[resolveLocalThumbnails] 找到缩略图`, {
-          fileName: file.name, thumbName, thumbPath, url: file.thumbnailUrl,
-        })
-      }
     }
   }
-
-  logMainInfo(`[resolveLocalThumbnails] 检查完成`, {
-    total: files.length, foundLocal, foundThumb,
-    cacheDir,
-    thumbDirPath: thumbnailDir(cacheDir),
-    thumbFileCount: thumbFileSet.size,
-  })
 }
 
 /**
@@ -296,7 +279,6 @@ export async function cacheFile(file: LunaFile): Promise<string | null> {
     }
 
     const sourceUrl = sourceUrlFor(file)
-    logMainInfo(`[cacheFile] 开始下载`, { fileName: file.name, kind: file.kind, hasPreview: Boolean(file.previewName) })
 
     if (file.kind === 'video' && file.previewName && file.previewUrl) {
       const lrvPath = path.join(cacheDir, safeName(file.previewName))
