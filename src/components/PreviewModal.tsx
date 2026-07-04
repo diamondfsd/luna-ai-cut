@@ -3,116 +3,62 @@ import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
-import { filePathToLunaFile, thumbnailForPath } from './previewModalUtils'
-import type { DownloadProgress, LunaFile, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { filePathToLunaFile } from './previewModalUtils'
+import type { PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { luna_ultra_layout, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
 
 interface PreviewModalProps {
-  /** 文件路径 — 必须，组件从路径推导所有文件信息 */
   filePath: string
-  /** 可选文件列表，用于缩略图导航 */
-  files?: LunaFile[]
-  /** 当前文件（当 files 传入时需要） */
-  currentFile?: LunaFile
-  onFileChange?: (file: LunaFile) => void
-
+  filePathList?: string[]
   onClose: () => void
-  onReveal?: (file: LunaFile) => void
-  onDownload?: (file: LunaFile) => void
-  autoPlayLive?: boolean
-
-  /** @deprecated 逐渐淘汰 */
-  preview?: PreviewResult | null
-  /** @deprecated 不再使用 */
-  previewLoading?: boolean
-  /** @deprecated 不再使用 */
-  downloadProgress?: DownloadProgress
-  isDownloadsPage?: boolean
 }
 
 export function PreviewModal({
   filePath,
-  files: propFiles,
-  currentFile: propCurrentFile,
-  onFileChange,
+  filePathList,
   onClose,
-  onReveal,
-  onDownload,
-  preview: deprecatedPreview,
 }: PreviewModalProps) {
   const thumbStripRef = useRef<HTMLDivElement | null>(null)
   const activeThumbRef = useRef<HTMLButtonElement | null>(null)
 
-  // ── 从文件路径推导文件信息 ──
-  const internalFile = useMemo(() => filePathToLunaFile(filePath, {
-    thumbnailUrl: thumbnailForPath(filePath),
-  }), [filePath])
+  // ── 内部文件索引导航 ──
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const idx = filePathList?.indexOf(filePath) ?? -1
+    return idx >= 0 ? idx : 0
+  })
 
-  // ── Live Photo 检测（异步读文件判断是否为 Google Motion Photo） ──
-  const [fileIsLivePhoto, setFileIsLivePhoto] = useState(false)
+  const currentFilePath = filePathList?.[currentIndex] ?? filePath
+
+  // 外部 filePath 变化时重置索引
   useEffect(() => {
-    let cancelled = false
-    const base = propCurrentFile ?? internalFile
-    if (propCurrentFile?.isLivePhoto) {
-      // propCurrentFile 已确认是 Live Photo，直接沿用
-      setFileIsLivePhoto(true)
-    } else if (base.kind === 'image' && filePath) {
-      setFileIsLivePhoto(false) // 重置
-      console.log('[PreviewModal] checking isLivePhoto for', filePath)
-      window.luna.workspace.isLivePhoto(filePath).then((live) => {
-        console.log('[PreviewModal] isLivePhoto result:', live)
-        if (!cancelled) setFileIsLivePhoto(live)
-      }).catch((err) => {
-        console.error('[PreviewModal] isLivePhoto error:', err)
-      })
-    } else {
-      setFileIsLivePhoto(false)
-    }
-    return () => { cancelled = true }
-  }, [filePath, propCurrentFile, internalFile.kind])
+    const idx = filePathList?.indexOf(filePath) ?? -1
+    setCurrentIndex(idx >= 0 ? idx : 0)
+  }, [filePath, filePathList])
 
-  // 若异步检测发现是 Live Photo，合并到 file 对象中
-  const file = useMemo(() => {
-    const base = propCurrentFile ?? internalFile
-    if (fileIsLivePhoto && !base.isLivePhoto) {
-      return { ...base, isLivePhoto: true }
-    }
-    return base
-  }, [propCurrentFile, internalFile, fileIsLivePhoto])
+  // ── 文件信息 ──
+  const file = useMemo(() => filePathToLunaFile(currentFilePath), [currentFilePath])
 
-  // ── 导航 ──
-  const modalFiles = useMemo(() => {
-    if (propFiles && propFiles.some((item) => item.id === file.id)) return propFiles
-    if (propFiles) return [...propFiles, file]
-    return [file]
-  }, [file, propFiles])
+  const files = useMemo(() => filePathList?.map((p) => filePathToLunaFile(p)) ?? [file], [filePathList, file])
 
-  const [hasPrevious, hasNext] = useMemo(() => {
-    const idx = modalFiles.findIndex((f) => f.id === file.id)
-    return [idx > 0, idx >= 0 && idx < modalFiles.length - 1]
-  }, [modalFiles, file.id])
+  const hasPrevious = currentIndex > 0
+  const hasNext = filePathList ? currentIndex < filePathList.length - 1 : false
 
   function navigateFile(direction: -1 | 1): void {
-    const idx = modalFiles.findIndex((f) => f.id === file.id)
-    if (idx < 0) return
-    const next = idx + direction
-    if (next < 0 || next >= modalFiles.length) return
-    onFileChange?.(modalFiles[next])
+    const next = currentIndex + direction
+    if (next < 0 || next >= (filePathList?.length ?? 1)) return
+    setCurrentIndex(next)
   }
 
   // ── 预览加载 ──
   const [internalPreview, setInternalPreview] = useState<PreviewResult | null>(null)
   const [, setInternalPreviewLoading] = useState(false)
 
-  const preview = deprecatedPreview ?? internalPreview
-
-  // 内部自动加载预览
   useEffect(() => {
-    if (deprecatedPreview !== undefined) return // 外部提供了就用外部的
+    setInternalPreview(null)
     setInternalPreviewLoading(true)
-    window.luna.previewFile(file, modalFiles)
+    window.luna.previewFile(file, files)
       .then(setInternalPreview)
       .catch(() => {})
       .finally(() => setInternalPreviewLoading(false))
@@ -126,7 +72,7 @@ export function PreviewModal({
     position: 'BottomCenter' as any,
   })
 
-  const displaySource = preview?.source ?? null
+  const displaySource = internalPreview?.source ?? null
 
   // 切换文件时打印水印参数
   useEffect(() => {
@@ -153,7 +99,7 @@ export function PreviewModal({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [modalFiles, file.id, onFileChange, onClose])
+  }, [hasPrevious, hasNext, onClose])
 
   return (
     <Dialog open variant="fullscreen" onOpenChange={(o) => !o && onClose()}>
@@ -163,8 +109,6 @@ export function PreviewModal({
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
           onClose={onClose}
-          onDownload={onDownload}
-          onReveal={onReveal}
         />
 
         <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
@@ -174,13 +118,16 @@ export function PreviewModal({
             <PreviewThumbnailStrip
               activeThumbRef={activeThumbRef}
               currentFileId={file.id}
-              files={modalFiles}
+              files={files}
               stripRef={thumbStripRef}
-              onFileChange={(f) => onFileChange?.(f)}
+              onFileChange={(f) => {
+                const idx = files.findIndex((x) => x.id === f.id)
+                if (idx >= 0) setCurrentIndex(idx)
+              }}
             />
           </div>
 
-          {inspectorOpen && <MediaInspector filePath={filePath} onToggleCollapse={() => setInspectorOpen(false)} />}
+          {inspectorOpen && <MediaInspector filePath={currentFilePath} onToggleCollapse={() => setInspectorOpen(false)} />}
         </div>
       </section>
     </Dialog>

@@ -179,9 +179,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
       .filter((i) => i.destinationPath && i.status === 'done')
       .map((i) => i.destinationPath!)
     if (filePaths.length === 0) return
-    showPreviewModal(item.destinationPath, filePaths, {
-      onReveal: (fp) => onRevealFile?.(fp),
-    })
+    showPreviewModal(item.destinationPath, filePaths)
   }
 
   const handleCancelTask = async (taskId: string): Promise<void> => {

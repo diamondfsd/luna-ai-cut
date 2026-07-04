@@ -1,16 +1,6 @@
-import type { LunaFile } from '../shared/types'
-
-export interface PreviewOptions {
-  onReveal?: (filePath: string) => void
-  onDownload?: (file: LunaFile) => void
-  isDownloadsPage?: boolean
-  autoPlayLive?: boolean
-}
-
 export interface PreviewState {
   filePath: string
   fileList: string[]
-  options: PreviewOptions
 }
 
 type SetStateFn = (state: PreviewState | null) => void
@@ -24,9 +14,8 @@ export function registerPreviewHost(setter: SetStateFn): void {
 export function showPreviewModal(
   filePath: string,
   fileList?: string[],
-  options: PreviewOptions = {},
 ): void {
-  setPreviewState?.({ filePath, fileList: fileList ?? [filePath], options })
+  setPreviewState?.({ filePath, fileList: fileList ?? [filePath] })
 }
 
 export function closePreviewModal(): void {

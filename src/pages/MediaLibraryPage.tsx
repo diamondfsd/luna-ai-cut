@@ -44,7 +44,6 @@ export function MediaLibraryPage({
 }: MediaLibraryPageProps) {
   const {
     activeDownloadFileNames,
-    autoPlayLiveFileId,
     cacheFailedIds,
     cardSize,
     deleteError,
@@ -58,7 +57,6 @@ export function MediaLibraryPage({
     isCurrentLoading,
     mediaFilter,
     previewFiles,
-    progressForPreview,
     selected,
     selectedFiles,
     showDeleteDialog,
@@ -69,7 +67,6 @@ export function MediaLibraryPage({
     totalSelectedBytes,
     viewMode,
     deleteSelectedLocalFiles,
-    downloadOne,
     exportLocalFiles,
     handlePreviewClick,
     handleStorageFilterChange,
@@ -79,7 +76,6 @@ export function MediaLibraryPage({
     loadDownloadedLibrary,
     loadExportLibrary,
     markFileDownloaded,
-    openPreview,
     restoreDownloadedRecords,
     revealDownloadedFile,
     revealFileByPath,
@@ -226,26 +222,14 @@ export function MediaLibraryPage({
 
       {pageActive && previewFile && !selectMode && (
         <PreviewModal
-          filePath={previewFile.downloadFilePath ?? previewFile.localPath ?? previewFile.sourceUrl}
-          files={previewFiles.length > 0 ? previewFiles : filteredFiles}
-          currentFile={previewFile}
-          downloadProgress={progressForPreview}
-          isDownloadsPage={isDownloadsPage}
+          filePath={previewFile.downloadFilePath ?? previewFile.localPath ?? previewFile.sourceUrl ?? ''}
+          filePathList={(previewFiles.length > 0 ? previewFiles : filteredFiles).map(
+            (f) => f.downloadFilePath ?? f.localPath ?? f.sourceUrl ?? f.id,
+          )}
           onClose={() => {
             setPreviewFile(null)
             setPreviewFiles([])
           }}
-          onDownload={(file) => downloadOne(file)}
-          onReveal={(file) => {
-            const localPath = file.downloadFilePath ?? file.localPath
-            if (localPath) {
-              revealFileByPath(localPath)
-              return
-            }
-            revealDownloadedFile(downloadProgress.get(file.name))
-          }}
-          onFileChange={(file) => void openPreview(file, { keepPreviewFiles: true })}
-          autoPlayLive={autoPlayLiveFileId === previewFile.id}
         />
       )}
 
