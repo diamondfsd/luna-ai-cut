@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
@@ -20,38 +20,18 @@ export function PreviewModal({
   filePathList,
   onClose,
 }: PreviewModalProps) {
-  const thumbStripRef = useRef<HTMLDivElement | null>(null)
-  const activeThumbRef = useRef<HTMLButtonElement | null>(null)
+  // ── 当前预览文件路径 ──
+  const [currentFilePath, setCurrentFilePath] = useState(filePath)
 
-  // ── 内部文件索引导航 ──
-  const [currentIndex, setCurrentIndex] = useState(() => {
-    const idx = filePathList?.indexOf(filePath) ?? -1
-    return idx >= 0 ? idx : 0
-  })
-
-  const currentFilePath = filePathList?.[currentIndex] ?? filePath
-
-  // 外部 filePath 变化时重置索引
+  // 外部 filePath 变化时重置
   useEffect(() => {
-    const idx = filePathList?.indexOf(filePath) ?? -1
-    setCurrentIndex(idx >= 0 ? idx : 0)
-  }, [filePath, filePathList])
+    setCurrentFilePath(filePath)
+  }, [filePath])
 
   // ── 文件信息 ──
   const file = useMemo(() => filePathToLunaFile(currentFilePath), [currentFilePath])
 
   const files = useMemo(() => filePathList?.map((p) => filePathToLunaFile(p)) ?? [file], [filePathList, file])
-
-  const hasPrevious = currentIndex > 0
-  const hasNext = filePathList ? currentIndex < filePathList.length - 1 : false
-
-  function navigateFile(direction: -1 | 1): void {
-    setCurrentIndex((prev) => {
-      const next = prev + direction
-      if (next < 0 || next >= (filePathList?.length ?? 1)) return prev
-      return next
-    })
-  }
 
   // ── 预览加载 ──
   const [internalPreview, setInternalPreview] = useState<PreviewResult | null>(null)
@@ -89,22 +69,14 @@ export function PreviewModal({
     })
   }, [file.id, watermarkSettings.enabled, watermarkSettings.style, watermarkSettings.position])
 
-  // 键盘导航
+  // Escape 关闭
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === 'Escape') onClose()
-      if ((event.key === 'ArrowLeft' || event.key === 'ArrowUp') && hasPrevious) {
-        event.preventDefault()
-        navigateFile(-1)
-      }
-      if ((event.key === 'ArrowRight' || event.key === 'ArrowDown') && hasNext) {
-        event.preventDefault()
-        navigateFile(1)
-      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [hasPrevious, hasNext, onClose])
+  }, [onClose])
 
   return (
     <Dialog open variant="fullscreen" onOpenChange={(o) => !o && onClose()}>
@@ -121,14 +93,9 @@ export function PreviewModal({
             <PreviewStage url={displaySource} />
 
             <PreviewThumbnailStrip
-              activeThumbRef={activeThumbRef}
-              currentFileId={file.id}
-              files={files}
-              stripRef={thumbStripRef}
-              onFileChange={(f) => {
-                const idx = files.findIndex((x) => x.id === f.id)
-                if (idx >= 0) setCurrentIndex(idx)
-              }}
+              filePathList={filePathList ?? [currentFilePath]}
+              initialFilePath={currentFilePath}
+              onChange={(fp) => setCurrentFilePath(fp)}
             />
           </div>
 

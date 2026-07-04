@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { PreviewLayer } from '../shared/types'
 
 const PREVIEW_TEXTURE_MAX_SIZE = 1920
 
@@ -12,20 +13,10 @@ export interface LrcTextureLayer {
   opacity?: number; zIndex?: number
 }
 
-interface LrcLayerBase {
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number
-  zIndex?: number
-  fit?: 'fill' | 'contain'
-}
-
-export interface LrcStaticLayer extends LrcLayerBase { imagePath: string }
-export interface LrcVideoLayer extends LrcLayerBase { videoPath: string }
-export type LrcLayer = LrcStaticLayer | LrcVideoLayer
+export type { PreviewLayer }
 
 interface LrcRenderProps {
-  layers: LrcLayer[]
+  layers: PreviewLayer[]
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
   className?: string
   onError?: (error: string) => void
@@ -35,10 +26,8 @@ interface LrcRenderProps {
 
 // ── 工具 ──
 
-function isStatic(l: LrcLayer): l is LrcStaticLayer { return 'imagePath' in l }
-function isVideo(l: LrcLayer): l is LrcVideoLayer { return 'videoPath' in l }
-function layerKey(l: LrcLayer): string {
-  return isStatic(l) ? `s:${l.imagePath}` : `v:${l.videoPath}`
+function layerKey(l: PreviewLayer): string {
+  return l.isVideo ? `v:${l.filePath}` : `s:${l.filePath}`
 }
 
 function fitPreviewSize(width: number, height: number): { width: number; height: number } {
@@ -83,7 +72,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
   const rafRef = useRef(0)
-  const layersRef = useRef<LrcLayer[]>(layers)
+  const layersRef = useRef<PreviewLayer[]>(layers)
   layersRef.current = layers
 
   const texMapRef = useRef<Map<string, { texId: number | null; width: number; height: number }>>(new Map())
@@ -209,24 +198,24 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     }
 
     // ── 静态图片层 ──
-    for (const layer of layers.filter(isStatic)) {
+    for (const layer of layers.filter((l) => !l.isVideo)) {
       const key = layerKey(layer)
       if (texMapRef.current.has(key)) continue
       texMapRef.current.set(key, { texId: null, width: 0, height: 0 })
 
       // loadTextureFromPath 内部使用 ffmpeg 解码 + LRU 缓存（已在 Rust 侧实现）
-      lrc.loadTextureFromPath(layer.imagePath, PREVIEW_TEXTURE_MAX_SIZE)
+      lrc.loadTextureFromPath(layer.filePath, PREVIEW_TEXTURE_MAX_SIZE)
         .then(({ textureId, width, height }) => {
           if (destroyRef.current) return
           const current = texMapRef.current.get(key)
           if (current) { current.texId = textureId; current.width = width; current.height = height }
           compositeRender()
         })
-        .catch((e) => console.error('[LrcRender] 图片加载失败:', layer.imagePath, e))
+        .catch((e) => console.error('[LrcRender] 图片加载失败:', layer.filePath, e))
     }
 
     // ── 视频层：浏览器 <video> 硬件解码 ──
-    for (const layer of layers.filter(isVideo)) {
+    for (const layer of layers.filter((l) => l.isVideo)) {
       const key = layerKey(layer)
       if (videoMapRef.current.has(key)) continue
       if (!texMapRef.current.has(key)) texMapRef.current.set(key, { texId: null, width: 0, height: 0 })
@@ -236,7 +225,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
       const offscreen = document.createElement('canvas')
       videoMapRef.current.set(key, { video, offscreen })
 
-      video.src = layer.videoPath
+      video.src = layer.filePath
       video.load()
 
       video.oncanplay = () => {
@@ -256,14 +245,14 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     }
 
     // ── RAF 循环（有视频层时）──
-    if (layers.some(isVideo)) {
+    if (layers.some((l) => l.isVideo)) {
       if (rafRef.current !== 0) cancelAnimationFrame(rafRef.current)
 
       function videoLoop() {
         const lrc2 = getLRC()
         const pending: Promise<void>[] = []
 
-        for (const layer of layersRef.current.filter(isVideo)) {
+        for (const layer of layersRef.current.filter((l) => l.isVideo)) {
           const key = layerKey(layer)
           const info = texMapRef.current.get(key)
           const v = videoMapRef.current.get(key)

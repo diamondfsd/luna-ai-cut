@@ -1,7 +1,6 @@
 import { useMemo, useRef } from 'react'
 import { ChevronLeft, ChevronRight, FileQuestion } from 'lucide-react'
 
-import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import type { LunaFile } from '../shared/types'
 
 interface MediaPreviewPanelProps {
@@ -17,8 +16,6 @@ export function MediaPreviewPanel({
   displaySource,
   onFileChange,
 }: MediaPreviewPanelProps) {
-  const thumbStripRef = useRef<HTMLDivElement>(null)
-  const activeThumbRef = useRef<HTMLButtonElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
 
@@ -80,14 +77,6 @@ export function MediaPreviewPanel({
           </button>
         )}
       </div>
-
-      <PreviewThumbnailStrip
-        activeThumbRef={activeThumbRef}
-        currentFileId={currentFileId}
-        files={files}
-        stripRef={thumbStripRef}
-        onFileChange={onFileChange}
-      />
     </div>
   )
 }
