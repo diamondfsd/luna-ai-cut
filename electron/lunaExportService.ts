@@ -8,11 +8,9 @@
  */
 import { spawn } from 'node:child_process'
 import { appendFileSync, existsSync } from 'node:fs'
-import { join, basename, extname } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { createRequire } from 'node:module'
-import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import { watermarkFileFor } from './watermarkService'
-import { logMainError } from './loggerService'
 
 const _require = createRequire(import.meta.url)
 
@@ -47,11 +45,11 @@ function getLRC(): LunaRC {
 
 // ── 日志 ──
 
+let _logPath = ''
 function log(msg: string) {
   try {
     const ts = new Date().toISOString().slice(11, 23)
-    const root = process.env.APP_ROOT || join(import.meta.dirname, '..')
-    appendFileSync(join(root, 'luna-render-core', 'luna-rc.log'), `[${ts}] [export] ${msg}\n`)
+    if (_logPath) appendFileSync(_logPath, `[${ts}] [export] ${msg}\n`)
   } catch {}
 }
 
@@ -71,24 +69,15 @@ export interface ExportState {
 export interface ExportInput {
   id: string
   kind: 'image' | 'video'
-  /** 已下载的本地路径（可选，和 downloadMethod 二选一） */
   localPath?: string | null
-  /** 未下载时传下载方法（完成后再导出） */
-  downloadMethod?: (() => Promise<string>) | null
-  /** 水印配置 */
-  watermark?: {
-    enabled: boolean
-    style: string
-    position: string
-  } | null
-  /** 输出目录 */
+  watermark?: { enabled: boolean; style: string; position: string; overlayPath?: string } | null
   outputDir: string
-  /** 输出文件名（可选） */
   outputName?: string
-  /** 视频选项 */
-  canvasW?: number
-  canvasH?: number
-  fps?: number
+  canvasW?: number; canvasH?: number; fps?: number
+  /** 由主进程在 IPC handler 中解析后传入 */
+  ffmpegPath: string
+  ffprobePath: string
+  logPath?: string
 }
 
 export interface ExportCallbacks {
@@ -101,6 +90,8 @@ export interface ExportCallbacks {
 // ═══════════════════════════════════════════
 
 export async function runExport(input: ExportInput, cb: ExportCallbacks): Promise<ExportState> {
+  if (input.logPath) _logPath = input.logPath
+
   const state: ExportState = { id: input.id, fileName: input.outputName || 'export', status: 'queued', progress: 0 }
   const emit = (s: ExportStatus, p: number, extra?: Partial<ExportState>) => {
     Object.assign(state, { status: s, progress: p, ...extra })
@@ -108,15 +99,8 @@ export async function runExport(input: ExportInput, cb: ExportCallbacks): Promis
   }
 
   try {
-    // ── 1. 下载 ──
     if (cb.signal.aborted) return state
-    let filePath = input.localPath || ''
-    if (!filePath && input.downloadMethod) {
-      emit('downloading', 10)
-      log(`[${input.id}] downloading...`)
-      filePath = await input.downloadMethod()
-      emit('downloading', 20)
-    }
+    const filePath = input.localPath || ''
     if (!filePath || !existsSync(filePath)) {
       emit('failed', 100, { error: '文件不存在' })
       return state
@@ -144,7 +128,7 @@ export async function runExport(input: ExportInput, cb: ExportCallbacks): Promis
       emit('canceled', 100)
     } else {
       log(`[${input.id}] ERROR: ${msg}`)
-      logMainError(`[export] ${input.id}`, { error: msg })
+      log(`[${input.id}] ERROR: ${msg}`)
       emit('failed', 100, { error: msg })
     }
     return state
@@ -173,7 +157,7 @@ async function exportImage(
     const lrc = getLRC()
 
     // 解码图片到 RGBA（用 FFmpeg）
-    const rgba = await decodeImageToRGBA(inputPath)
+    const rgba = await decodeImageToRGBA(inputPath, input.ffmpegPath, input.ffprobePath)
     if (!rgba) throw new Error('图片解码失败')
 
     const lrcLayers: RenderLayer[] = [
@@ -183,7 +167,7 @@ async function exportImage(
     // 水印
     if (input.watermark.enabled) {
       const wmPath = watermarkFileFor('image', input.watermark.style)
-      const wmRgba = existsSync(wmPath) ? await decodeImageToRGBA(wmPath) : null
+      const wmRgba = existsSync(wmPath) ? await decodeImageToRGBA(wmPath, input.ffmpegPath, input.ffprobePath) : null
       if (wmRgba) {
         // 水印尺寸和位置（归一化）
         const margin = 0.03; const wmW = 0.2
@@ -208,7 +192,7 @@ async function exportImage(
     const result = lrc.renderFrame(rgba.width, rgba.height, lrcLayers)
 
     // 保存 PNG
-    await encodeImageFromRGBA(result, rgba.width, rgba.height, outPath)
+    await encodeImageFromRGBA(result, rgba.width, rgba.height, outPath, input.ffmpegPath)
 
     lrc.releaseTexture(imgTexId)
     log(`[${input.id}] image done: ${outPath}`)
@@ -229,8 +213,8 @@ async function exportVideo(
   if (cb.signal.aborted) return
 
   const lrc = getLRC()
-  const ffmpeg = getFfmpegPath()
-  const ffprobe = getFfprobePath()
+  const ffmpeg = input.ffmpegPath
+  const ffprobe = input.ffprobePath
 
   const cw = input.canvasW || 1920
   const ch = input.canvasH || 1080
@@ -241,7 +225,7 @@ async function exportVideo(
   if (input.watermark?.enabled) {
     const wmPath = watermarkFileFor('video', input.watermark.style)
     if (existsSync(wmPath)) {
-      const wmRgba = await decodeImageToRGBA(wmPath)
+      const wmRgba = await decodeImageToRGBA(wmPath, input.ffmpegPath, input.ffprobePath)
       if (wmRgba) {
         const wmTexId = lrc.loadTexture(wmRgba.data, wmRgba.width, wmRgba.height)
         const margin = 0.03; const wmW = 0.2
@@ -271,11 +255,7 @@ interface ImageRGBA {
   height: number
 }
 
-async function decodeImageToRGBA(filePath: string): Promise<ImageRGBA | null> {
-  const ffmpeg = getFfmpegPath()
-
-  // 先用 ffprobe 获取尺寸
-  const ffprobe = getFfprobePath()
+async function decodeImageToRGBA(filePath: string, ffmpeg: string, ffprobe: string): Promise<ImageRGBA | null> {
   const { promisify } = await import('node:util')
   const { execFile } = await import('node:child_process')
   const execAsync = promisify(execFile)
@@ -309,8 +289,7 @@ async function decodeImageToRGBA(filePath: string): Promise<ImageRGBA | null> {
   }
 }
 
-async function encodeImageFromRGBA(data: Buffer, width: number, height: number, outPath: string): Promise<void> {
-  const ffmpeg = getFfmpegPath()
+async function encodeImageFromRGBA(data: Buffer, width: number, height: number, outPath: string, ffmpeg: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(ffmpeg, [
       '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${width}x${height}`,

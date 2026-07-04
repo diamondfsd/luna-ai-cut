@@ -3,7 +3,7 @@ import path from 'node:path'
 import { mkdir, rm } from 'node:fs/promises'
 import type { WebContents } from 'electron'
 
-import { runExportJob, type ExportJobItem } from './exportJobService'
+import { runExportJob, type ExportJobItem } from './exportStubs'
 import { safeName } from './filePathUtils'
 import { getFfmpegPath, probeMedia } from './ffmpeg/pipeline'
 import { bakeColorLut } from './ffmpeg/lutGenerator'

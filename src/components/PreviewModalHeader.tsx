@@ -66,7 +66,7 @@ export function PreviewModalHeader({
             {isDownloaded ? '已下载' : '下载'}
           </Button>
         )}
-        {showWatermarkControls && isDownloaded && (
+        {showWatermarkControls && (
           <Button
             variant="primary"
             size="compact"
