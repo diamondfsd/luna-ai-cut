@@ -195,8 +195,6 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     const status = await window.luna.stopMockServer()
     setMockServerStatus(status)
     setSettings(await window.luna.saveSettings({ developerMode: false }))
-    setConnection(null)
-    setDevicePhase('idle')
   }
 
   return (
