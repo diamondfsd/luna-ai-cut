@@ -130,8 +130,17 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     const sorted = [...currentLayers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
     _renderCount++
     const watermarkLayer = sorted.find(l => !l.isVideo && l.zIndex === 1)
-    console.log(`[LrcRender] compositeRender #${_renderCount} ${pw}x${ph} layers=${sorted.length}` +
-      (watermarkLayer ? ` wm={dstX:${watermarkLayer.dstX.toFixed(3)} dstY:${watermarkLayer.dstY.toFixed(3)} dstW:${watermarkLayer.dstW.toFixed(3)} dstH:${watermarkLayer.dstH.toFixed(3)} fit:${watermarkLayer.fit}}` : ''))
+    if (watermarkLayer) {
+      const pw_ = pw, ph_ = ph
+      const wPx = (watermarkLayer.dstW * pw_).toFixed(1)
+      const hPx = (watermarkLayer.dstH * ph_).toFixed(1)
+      const aspect = (+wPx / +hPx).toFixed(3)
+      console.log(`[LrcRender] compositeRender #${_renderCount} ${pw_}x${ph_} layers=${sorted.length}` +
+        ` wm={dstX:${watermarkLayer.dstX.toFixed(3)} dstY:${watermarkLayer.dstY.toFixed(3)} dstW:${watermarkLayer.dstW.toFixed(3)} dstH:${watermarkLayer.dstH.toFixed(3)}}` +
+        ` → ${wPx}x${hPx} aspect=${aspect}`)
+    } else {
+      console.log(`[LrcRender] compositeRender #${_renderCount} ${pw}x${ph} layers=${sorted.length}`)
+    }
 
     const resultLayers: LrcTextureLayer[] = []
 
@@ -208,13 +217,17 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     }
 
     // ── 静态图片层 ──
+    // 估算画布像素宽度用于计算纹理加载尺寸
+    const estCanvasW = canvasRef.current?.parentElement?.clientWidth ?? 960
     for (const layer of layers.filter((l) => !l.isVideo)) {
       const key = layerKey(layer)
       if (texMapRef.current.has(key)) continue
       texMapRef.current.set(key, { texId: null, width: 0, height: 0 })
 
-      // loadTextureFromPath 内部使用 ffmpeg 解码 + LRU 缓存（已在 Rust 侧实现）
-      lrc.loadTextureFromPath(layer.filePath, PREVIEW_TEXTURE_MAX_SIZE)
+      // 精确按渲染尺寸加载，ffmpeg Lanczos 一步到位，wgpu 1:1 无缩放
+      const renderPx = Math.round(Math.max(layer.dstW * estCanvasW, layer.dstH * estCanvasW))
+      const maxSize = Math.min(Math.max(renderPx, 16), PREVIEW_TEXTURE_MAX_SIZE)
+      lrc.loadTextureFromPath(layer.filePath, maxSize)
         .then(({ textureId, width, height }) => {
           if (destroyRef.current) return
           const current = texMapRef.current.get(key)
