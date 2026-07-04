@@ -6,6 +6,45 @@ use std::process::{Command, Stdio};
 use crate::compositor::Compositor;
 use crate::{RenderLayer, StaticLayer};
 
+// ── 质量预设 ──
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum QualityPreset {
+    Small,
+    Standard,
+    High,
+    OriginalLike,
+}
+
+impl QualityPreset {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "small" => QualityPreset::Small,
+            "high" => QualityPreset::High,
+            "original-like" | "originallike" => QualityPreset::OriginalLike,
+            _ => QualityPreset::Standard,
+        }
+    }
+}
+
+// ── 音频信息 ──
+
+pub struct AudioInfo {
+    pub has_audio: bool,
+    pub codec: String,
+}
+
+// ── 视频信息 ──
+
+pub struct VideoInfo {
+    pub width: u32,
+    pub height: u32,
+    pub fps: f64,
+    pub duration_secs: f64,
+    pub src_bitrate: u32,
+    pub audio: AudioInfo,
+}
+
 fn probe_video(ffprobe: &str, input: &str) -> Result<VideoInfo, String> {
     let output = Command::new(ffprobe)
         .args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", input])
@@ -14,6 +53,8 @@ fn probe_video(ffprobe: &str, input: &str) -> Result<VideoInfo, String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value = serde_json::from_str(&stdout).map_err(|e| format!("json: {}", e))?;
     let streams = parsed["streams"].as_array().ok_or("no streams")?;
+
+    // ── 视频流 ──
     let video = streams.iter().find(|s| s["codec_type"].as_str() == Some("video")).ok_or("no video stream")?;
     let w = video["width"].as_u64().unwrap_or(1920) as u32;
     let h = video["height"].as_u64().unwrap_or(1080) as u32;
@@ -24,15 +65,97 @@ fn probe_video(ffprobe: &str, input: &str) -> Result<VideoInfo, String> {
         else { fps_str.parse().unwrap_or(30.0) }
     };
     let duration = parsed["format"]["duration"].as_str().and_then(|d| d.parse::<f64>().ok()).unwrap_or(0.0);
-    Ok(VideoInfo { width: w, height: h, fps, duration_secs: duration })
+    let src_bitrate = parsed["format"]["bit_rate"].as_str().and_then(|b| b.parse::<u32>().ok()).unwrap_or(0);
+
+    // ── 音频流 ──
+    let audio_stream = streams.iter().find(|s| s["codec_type"].as_str() == Some("audio"));
+    let audio = AudioInfo {
+        has_audio: audio_stream.is_some(),
+        codec: audio_stream.and_then(|s| s["codec_name"].as_str().map(|c| c.to_string())).unwrap_or_default(),
+    };
+
+    Ok(VideoInfo { width: w, height: h, fps, duration_secs: duration, src_bitrate, audio })
 }
 
-pub struct VideoInfo { pub width: u32, pub height: u32, pub fps: f64, pub duration_secs: f64 }
+// ── 编码器探测 ──
 
-fn choose_encoder(_hw: bool) -> &'static str {
-    if cfg!(target_os = "macos") { "h264_videotoolbox" }
-    else if cfg!(target_os = "windows") { "h264_nvenc" }
-    else { "libx264" }
+/// 运行时探测 FFmpeg 支持的 h264 编码器，按优先级返回可用列表
+fn detect_h264_encoders(ffmpeg: &str) -> Vec<String> {
+    let output = match Command::new(ffmpeg)
+        .args(["-hide_banner", "-encoders"])
+        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => return vec!["libx264".to_string()],
+    };
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut available: Vec<String> = Vec::new();
+
+    // 硬件编码器匹配检测
+    let hw_encoders = ["h264_videotoolbox", "h264_nvenc", "h264_qsv", "h264_amf", "h264_vaapi"];
+    for name in &hw_encoders {
+        if stderr.contains(name) {
+            available.push(name.to_string());
+        }
+    }
+
+    // libx264 是万能降级（ffmpeg 几乎一定有）
+    available.push("libx264".to_string());
+
+    crate::log!("detect_h264_encoders: available={:?}", available);
+    available
+}
+
+/// 选择最佳编码器
+fn choose_encoder(ffmpeg: &str, prefer_hw: bool) -> String {
+    let available = detect_h264_encoders(ffmpeg);
+    if !prefer_hw {
+        return "libx264".to_string();
+    }
+    // 按平台偏好排序
+    let pref_order: &[&str] = if cfg!(target_os = "macos") {
+        &["h264_videotoolbox", "h264_nvenc", "h264_qsv", "libx264"]
+    } else if cfg!(target_os = "windows") {
+        &["h264_nvenc", "h264_qsv", "h264_amf", "libx264"]
+    } else {
+        &["h264_nvenc", "h264_qsv", "h264_vaapi", "libx264"]
+    };
+    for name in pref_order {
+        if available.iter().any(|a| a == name) {
+            return name.to_string();
+        }
+    }
+    "libx264".to_string()
+}
+
+// ── 码率计算 ──
+
+/// 按分辨率和帧率估算默认码率（bps）
+fn default_bitrate(width: u32, height: u32, fps: f64) -> u32 {
+    let pixels = width as u64 * height as u64;
+    let fps_val = fps as u64;
+    // 经验公式：每像素约 0.1 bit/frame，再乘以系数
+    let base = (pixels * fps_val) / 10;
+    // 限幅
+    if base < 5_000_000 { 5_000_000 }
+    else if base > 100_000_000 { 100_000_000 }
+    else { base as u32 }
+}
+
+/// 按质量预设计算目标码率
+fn choose_bitrate(width: u32, height: u32, fps: f64, src_bitrate: u32, preset: QualityPreset) -> u32 {
+    let default = default_bitrate(width, height, fps);
+    match preset {
+        QualityPreset::Small => default / 2,
+        QualityPreset::Standard => default,
+        QualityPreset::High => (default * 15) / 10,
+        QualityPreset::OriginalLike => {
+            if src_bitrate > 0 { src_bitrate.max(default) }
+            else { default * 2 }
+        }
+    }
 }
 
 /// 用 FFmpeg 解码图片到 RGBA
@@ -235,29 +358,76 @@ fn export_video(
     let out_size = (cw * ch * 4) as usize;
     let total = (info.duration_secs * fps_val).ceil() as u64;
 
-    crate::log!("  src={}x{} {}fps → {}x{} frames={}", info.width, info.height, fps_val, cw, ch, total);
+    crate::log!("  src={}x{} {}fps {}kbps audio={} {} → {}x{} frames={}",
+        info.width, info.height, fps_val,
+        info.src_bitrate / 1000, info.audio.has_audio, info.audio.codec,
+        cw, ch, total);
 
-    // 加载视频纹理 + 静态层
+    // ── 编码器选择 ──
+    let encoder = choose_encoder(ffmpeg, hardware);
+    let (enc_args, pix_fmt) = if encoder == "libx264" {
+        (vec!["-preset".to_string(), "veryfast".to_string(), "-crf".to_string(), "18".to_string()], "yuv420p")
+    } else if encoder == "h264_videotoolbox" {
+        (vec![], "yuv420p")
+    } else if encoder == "h264_nvenc" {
+        (vec!["-preset".to_string(), "p5".to_string(), "-rc".to_string(), "vbr".to_string()], "yuv420p")
+    } else {
+        (vec![], "yuv420p")
+    };
+    crate::log!("  encoder={}", encoder);
+
+    // ── 码率计算 ──
+    let bitrate = choose_bitrate(cw, ch, fps_val, info.src_bitrate, QualityPreset::High);
+    crate::log!("  bitrate={}kbps", bitrate / 1000);
+
+    // ── 加载视频纹理 + 静态层 ──
     let dummy = vec![0u8; frame_size];
     let video_tex = c.load_texture(&dummy, info.width, info.height).map_err(|e| format!("video tex: {}", e))?;
     let static_render = load_static_layers(ffmpeg, ffprobe, sl, c)?;
 
-    let mut layers = vec![RenderLayer { texture_id: video_tex, dst_x: 0.0, dst_y: 0.0, dst_w: 1.0, dst_h: 1.0, src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0, opacity: 1.0, z_index: 0 }];
+    let mut layers = vec![RenderLayer {
+        texture_id: video_tex,
+        dst_x: 0.0, dst_y: 0.0, dst_w: 1.0, dst_h: 1.0,
+        src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0,
+        opacity: 1.0, z_index: 0,
+    }];
     layers.extend(static_render.clone());
 
-    let encoder = choose_encoder(hardware);
-    crate::log!("  encoder={}", encoder);
+    // ── FFmpeg 编码命令 ──
+    // 输入 0: Rust pipe 渲染后的视频帧 rawvideo
+    // 输入 1: 原始视频文件（用于读取音频流）
+    let mut encode_cmd = Command::new(ffmpeg);
+    encode_cmd
+        .args(["-y", "-hide_banner", "-loglevel", "error"])
+        .args(["-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{}x{}", cw, ch), "-r", &format!("{}", fps_val), "-i", "pipe:0"])
+        .args(["-i", input])
+        .args(["-map", "0:v:0", "-map", "1:a:0?"])
+        .args(["-c:v", &encoder, "-b:v", &format!("{}k", bitrate / 1000)]);
+    for arg in &enc_args {
+        encode_cmd.arg(arg);
+    }
+    encode_cmd
+        .args(["-pix_fmt", pix_fmt, "-c:a", "copy", "-shortest", "-y", output]);
 
+    // ── 解码 pipe ──
     let mut decode = Command::new(ffmpeg)
-        .args(["-hide_banner", "-loglevel", "error", "-i", input, "-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{}x{}", info.width, info.height), "-r", &format!("{}", fps_val), "pipe:1"])
-        .stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn().map_err(|e| format!("decode: {}", e))?;
+        .args(["-hide_banner", "-loglevel", "error", "-i", input,
+            "-f", "rawvideo", "-pix_fmt", "rgba",
+            "-s", &format!("{}x{}", info.width, info.height),
+            "-r", &format!("{}", fps_val), "pipe:1"])
+        .stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn()
+        .map_err(|e| format!("decode: {}", e))?;
     let mut dout = decode.stdout.take().ok_or("no decode stdout")?;
 
-    let mut encode = Command::new(ffmpeg)
-        .args(["-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", &format!("{}x{}", cw, ch), "-r", &format!("{}", fps_val), "-i", "pipe:0", "-c:v", encoder, "-b:v", "12M", "-pix_fmt", "yuv420p", "-y", output])
-        .stdin(Stdio::piped()).stderr(Stdio::inherit()).spawn().map_err(|e| format!("encode: {}", e))?;
+    // ── 编码 pipe ──
+    let mut encode = encode_cmd
+        .stdin(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| format!("encode: {}", e))?;
     let mut ein = encode.stdin.take().ok_or("no encode stdin")?;
 
+    // ── 逐帧循环 ──
     let mut in_buf = vec![0u8; frame_size];
     let t0 = std::time::Instant::now();
     let mut idx: u64 = 0;
@@ -273,11 +443,16 @@ fn export_video(
         ein.write_all(&rendered[..out_size]).map_err(|e| format!("write {}: {}", idx, e))?;
         idx += 1;
         if idx % 30 == 0 {
-            crate::log!("  {}/{} {:.1}fps", idx, total, idx as f64 / t0.elapsed().as_secs_f64().max(0.001));
+            let elapsed = t0.elapsed().as_secs_f64().max(0.001);
+            crate::log!("  {}/{} {:.1}fps {:.0}%", idx, total, idx as f64 / elapsed, (idx as f64 / total as f64) * 100.0);
         }
     }
     drop(ein); drop(dout);
-    decode.wait().ok(); encode.wait().ok();
+    decode.wait().ok();
+    let encode_exit = encode.wait().map_err(|e| format!("encode wait: {}", e))?;
+    if !encode_exit.success() {
+        return Err(format!("ffmpeg encode exit: {}", encode_exit));
+    }
 
     c.release_texture(video_tex).ok();
     for l in &static_render { c.release_texture(l.texture_id).ok(); }
