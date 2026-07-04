@@ -57,7 +57,7 @@ export function PreviewModal({
   const internalFile = useMemo(() => filePathToLunaFile(filePath, {
     thumbnailUrl: thumbnailForPath(filePath),
   }), [filePath])
-  const showWatermarkControls = propShowWatermarkControls ?? isDownloadsPage
+  const showWatermarkControls = propShowWatermarkControls ?? true
 
   // ── Live Photo 检测（异步读文件判断是否为 Google Motion Photo） ──
   const [fileIsLivePhoto, setFileIsLivePhoto] = useState(false)
@@ -164,7 +164,7 @@ export function PreviewModal({
   const isDownloadingCurrentFile = downloadProgress?.status === 'queued' || downloadProgress?.status === 'downloading'
   const downloadedPath = file.downloadFilePath ?? file.localPath ?? completedDownloadPath
   const isDownloaded = !!downloadedPath
-  const effectiveWatermark = showWatermarkControls && isDownloaded
+  const effectiveWatermark = showWatermarkControls
   const previewMatchesFile = preview?.fileName === file.name
   const displaySource = downloadedPath ? filePathToPreviewUrl(downloadedPath) : previewMatchesFile ? preview?.source ?? null : null
   const progressPercent = downloadProgress?.status === 'done' || downloadProgress?.status === 'exists' ? 100 : downloadProgress?.percent ?? 0
@@ -454,7 +454,7 @@ export function PreviewModal({
               onToggleCollapse={() => setInspectorOpen(false)}
               watermarkSettings={effectiveWatermark ? watermarkSettings : undefined}
               onWatermarkChange={effectiveWatermark ? saveWatermarkSettings : undefined}
-              watermarkFilePath={effectiveWatermark ? downloadedPath : undefined}
+              watermarkFilePath={effectiveWatermark ? (downloadedPath ?? undefined) : undefined}
             />
           )}
         </div>

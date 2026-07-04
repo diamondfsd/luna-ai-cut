@@ -1,0 +1,251 @@
+.watermark-demo {
+  display: flex;
+  height: 100%;
+  gap: 0;
+  background: var(--parchment);
+}
+
+/* ── 左侧预览区 ── */
+.wd-preview-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #1a1a1c;
+  min-width: 0;
+}
+
+.wd-canvas-shell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+}
+
+.wd-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.wd-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--muted-dark);
+}
+
+.wd-empty-state p {
+  font-size: 14px;
+  color: #999;
+}
+
+.wd-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 8px;
+  margin-top: 12px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.wd-play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: white;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.wd-play-btn:hover { opacity: 0.85; }
+
+.wd-seek {
+  flex: 1;
+  accent-color: var(--blue);
+  height: 4px;
+  cursor: pointer;
+}
+
+.wd-time {
+  font-size: 12px;
+  color: #999;
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.wd-resolution {
+  font-size: 11px;
+  color: #666;
+  flex-shrink: 0;
+}
+
+.wd-file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 8px;
+  margin-top: 12px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.wd-file-name {
+  flex: 1;
+  font-size: 13px;
+  color: #ccc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wd-error {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(220, 50, 50, 0.9);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* ── 右侧配置面板 ── */
+.wd-config-panel {
+  width: 300px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--canvas);
+  border-left: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wd-panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+
+.wd-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.wd-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--blue);
+}
+
+.wd-val {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 36px;
+  text-align: right;
+}
+
+.wd-label {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+.wd-divider {
+  height: 1px;
+  background: var(--hairline);
+  margin: 8px 0;
+}
+
+.wd-color-input {
+  width: 32px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ── 位置选择 grid ── */
+.wd-position-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.wd-pos-btn {
+  padding: 8px 4px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wd-pos-btn:hover {
+  border-color: var(--blue);
+}
+
+.wd-pos-btn.active {
+  background: var(--blue);
+  color: white;
+  border-color: var(--blue);
+}
+
+/* ── 水印预览缩略图 ── */
+.wd-wm-preview {
+  width: 100%;
+  max-height: 80px;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0f0;
+}
+
+.wd-wm-preview img {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+}
+
+/* ── 导出状态 ── */
+.wd-export-msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-top: 8px;
+}
+.wd-export-ok { background: rgba(0, 180, 80, 0.12); color: #0a0; }
+.wd-export-err { background: rgba(220, 50, 50, 0.12); color: #d22; }
