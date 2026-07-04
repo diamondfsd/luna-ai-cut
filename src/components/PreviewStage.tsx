@@ -26,6 +26,8 @@ interface PreviewStageProps {
   url: string | null
   /** 缩放模式，默认 contain */
   scaleMode?: ScaleMode
+  /** 叠加层（水印、贴纸等） */
+  extraLayers?: PreviewLayer[]
 }
 
 export interface MediaResolution {
@@ -89,7 +91,7 @@ export function calcAspectRatio(width: number, height: number): number {
   return Math.round((width / height) * 100) / 100
 }
 
-export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) {
+export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: PreviewStageProps) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [stageSize, setStageSize] = useState<StageSize | null>(null)
   // ── 媒体分辨率 ──
@@ -143,9 +145,9 @@ export function PreviewStage({ url, scaleMode = 'contain' }: PreviewStageProps) 
   }, [url])
 
   const layers = useMemo(() => {
-    if (!url) return []
-    return buildLayers(url, scaleMode, resolution, stageSize)
-  }, [url, scaleMode, resolution, stageSize])
+    const main = url ? buildLayers(url, scaleMode, resolution, stageSize) : []
+    return extraLayers?.length ? [...main, ...extraLayers] : main
+  }, [url, scaleMode, resolution, stageSize, extraLayers])
 
   // 通过 IPC 获取媒体文件实际分辨率
   useEffect(() => {
