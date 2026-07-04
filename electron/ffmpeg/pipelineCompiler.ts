@@ -314,7 +314,7 @@ export class FullPipelineModule implements FfmpegModule {
       const rawWidthRatio = ratios?.widthRatio ?? wmSettings.widthPercent ?? 0.15
       const widthRatio = rawWidthRatio > 1 ? rawWidthRatio / 100 : rawWidthRatio
       const wmSize = pngSize(this.watermarkImagePath)
-      const targetW = Math.min(Math.round(Math.max(outputW, outputH) * widthRatio), wmSize.width)
+      const targetW = Math.round(Math.max(outputW, outputH) * widthRatio)
       const targetH = Math.round(targetW * wmSize.height / wmSize.width)
       const [vPos] = position.split('-') as ['top' | 'bottom', 'left' | 'center' | 'right']
       const xRatio = ratios?.xRatio ?? 0.03
@@ -323,6 +323,19 @@ export class FullPipelineModule implements FfmpegModule {
       const yExpr = vPos === 'top' ? `H*${(1 - yRatio).toFixed(4)}`
         : `H-h-H*${yRatio.toFixed(4)}`
 
+      logMainInfo('[FullPipelineModule] 水印布局', {
+        outputW,
+        outputH,
+        widthRatio,
+        xRatio,
+        yRatio,
+        watermarkOriginalW: wmSize.width,
+        watermarkOriginalH: wmSize.height,
+        targetW,
+        targetH,
+        upscaled: targetW > wmSize.width,
+        position,
+      })
       filterParts.push(`[1:v]format=rgba,scale=${targetW}:${targetH}:flags=lanczos,setsar=1[wm]`)
       filterParts.push(`[vmain][wm]overlay=${xExpr}:${yExpr}:format=auto[vout]`)
     } else {
