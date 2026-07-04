@@ -19,6 +19,7 @@ import {
   isGoogleMotionPhoto,
   watermarkFileFor,
 } from './watermarkService'
+import type { IpcContext } from './ipcContext'
 
 interface WorkspaceExportMeta {
   exportId: string
@@ -93,7 +94,7 @@ function addAudioPassthrough(pipeline: FfmpegPipeline): void {
   })
 }
 
-export function registerWorkspaceFfmpegExport(): void {
+export function register(_ctx?: IpcContext): void {
   ipcMain.handle('workspace:exportFFmpeg', async (event, sourcePath: string, pipeline: Record<string, any>, exportMeta?: WorkspaceExportMeta) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
