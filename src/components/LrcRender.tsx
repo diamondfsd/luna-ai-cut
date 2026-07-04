@@ -124,8 +124,11 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     const dpr = window.devicePixelRatio || 1
     const cw = cvs.parentElement?.clientWidth ?? cvs.width
     const ch = cvs.parentElement?.clientHeight ?? cvs.height
-    const pw = Math.round(cw * dpr)
-    const ph = Math.round(ch * dpr)
+    let pw = Math.round(cw * dpr)
+    let ph = Math.round(ch * dpr)
+    const MAX_RENDER_PX = 1440
+    if (pw > MAX_RENDER_PX) { const s = MAX_RENDER_PX / pw; pw = MAX_RENDER_PX; ph = Math.round(ph * s) }
+    if (ph > MAX_RENDER_PX) { const s = MAX_RENDER_PX / ph; ph = MAX_RENDER_PX; pw = Math.round(pw * s) }
     if (pw <= 0 || ph <= 0) return
 
     const currentLayers = layersRef.current
@@ -233,9 +236,9 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
         .catch((e) => console.error('[LrcRender] 图片加载失败:', layer.filePath, e))
     }
 
-    // 无论是否有新纹理加载，都触发一次合成（层参数可能变了，如水印位置）
-    // 如果有新纹理在加载中，它们各自的 .then() 会再触发合成
-    compositeRender()
+    // 静态纹理全部已缓存时触发一次合成（如水印位置变化）
+    const allCached = layers.filter((l) => !l.isVideo).every((l) => texMapRef.current.get(layerKey(l))?.texId != null)
+    if (allCached) compositeRender()
 
     // ── 视频层：浏览器 <video> 硬件解码 ──
     for (const layer of layers.filter((l) => l.isVideo)) {

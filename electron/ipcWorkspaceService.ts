@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, nativeImage } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { appendFile, cp, mkdir, readFile, rm } from 'node:fs/promises'
@@ -56,19 +56,8 @@ export function register(ctx: IpcContext): void {
   })
 
   ipcMain.handle('workspace:getMediaResolution', async (_event, filePath: string) => {
-    const ext = path.extname(filePath).toLowerCase()
-    const imgExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.heic', '.heif', '.avif']
-    const isImage = imgExts.includes(ext)
-
-    if (isImage) {
-      try {
-        const img = nativeImage.createFromPath(filePath)
-        const size = img.getSize()
-        if (size.width > 0 && size.height > 0) return size
-      } catch { /* fallback below */ }
-    }
-
-    // 视频（或图片回退）：使用 ffprobe
+    // 统一使用 ffprobe（非阻塞，只读文件头），
+    // 避免 nativeImage.createFromPath() 同步解码大图阻塞主进程
     try {
       const probe = await probeMedia(filePath)
       if (probe.videoWidth > 0 && probe.videoHeight > 0) {

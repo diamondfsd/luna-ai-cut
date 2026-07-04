@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import { execFile } from 'node:child_process'
+import * as crypto from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,6 +15,74 @@ import type { LunaFile, MediaMetadata, MetadataEntry } from '../src/shared/types
 
 const _require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
+
+// ─── EXIF 元数据缓存（持久化 JSON） ─────────────────────
+// 缓存文件以 source URL 的 MD5 命名，存放于 cache_metadata 目录
+// 同时记录源文件 mtime，源文件变更时自动失效
+
+interface MetadataCacheEntry {
+  mtime: number | null
+  data: MediaMetadata
+}
+
+function metadataCacheDir(): string {
+  return path.join(app.getPath('userData'), 'cache_metadata')
+}
+
+function cacheKeyFor(file: LunaFile): string {
+  return crypto.createHash('md5').update(sourceUrlFor(file)).digest('hex')
+}
+
+async function readMetadataCache(file: LunaFile, sourcePath: string | null): Promise<MediaMetadata | null> {
+  const cachePath = path.join(metadataCacheDir(), `${cacheKeyFor(file)}.json`)
+  try {
+    const raw = await fs.readFile(cachePath, 'utf-8')
+    const entry = JSON.parse(raw) as MetadataCacheEntry
+
+    // 源文件存在时校验 mtime，文件已修改则失效
+    if (sourcePath !== null && entry.mtime !== null) {
+      try {
+        const stat = await fs.stat(sourcePath)
+        if (stat.mtimeMs !== entry.mtime) return null
+      } catch {
+        return null
+      }
+    }
+
+    return entry.data as MediaMetadata
+  } catch {
+    return null
+  }
+}
+
+async function writeMetadataCache(file: LunaFile, sourcePath: string | null, data: MediaMetadata): Promise<void> {
+  const dir = metadataCacheDir()
+  try {
+    await fs.mkdir(dir, { recursive: true })
+  } catch {
+    return
+  }
+
+  let mtime: number | null = null
+  if (sourcePath !== null) {
+    try {
+      const stat = await fs.stat(sourcePath)
+      mtime = stat.mtimeMs
+    } catch { /* ignore */ }
+  }
+
+  const cachePath = path.join(dir, `${cacheKeyFor(file)}.json`)
+  const entry: MetadataCacheEntry = { mtime, data }
+  try {
+    await fs.writeFile(cachePath, JSON.stringify(entry), 'utf-8')
+  } catch { /* ignore */ }
+}
+
+/** 写入缓存并返回结果（在每个返回点调用，确保结果持久化） */
+async function cacheReturn(file: LunaFile, sourcePath: string | null, data: MediaMetadata): Promise<MediaMetadata> {
+  await writeMetadataCache(file, sourcePath, data)
+  return data
+}
 
 function getFfprobePath(): string {
   if (app.isPackaged) {
@@ -165,9 +234,13 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
     sourcePath = fileURLToPath(sourceUrl)
   }
 
+  // ── 优先读取 JSON 缓存 ──
+  const cached = await readMetadataCache(file, sourcePath)
+  if (cached) return cached
+
   // 视频：使用 ffprobe 提取元数据
   if (file.kind === 'video') {
-    if (!sourcePath) return { groups: [] }
+    if (!sourcePath) return cacheReturn(file, sourcePath, { groups: [] })
     try {
       const ffprobePath = getFfprobePath()
       const { stdout } = await execFileAsync(ffprobePath, [
@@ -194,7 +267,7 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
       }
 
       const videoStream = data.streams?.find((s) => s.codec_type === 'video')
-      if (!videoStream) return { groups: [] }
+      if (!videoStream) return cacheReturn(file, sourcePath, { groups: [] })
 
       const entries: MetadataEntry[] = []
 
@@ -249,9 +322,9 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
         entries.push({ key: 'ModifyDate', value: new Date(ts).toISOString() })
       } catch { /* ignore */ }
 
-      return { groups: [{ name: '视频', entries }] }
+      return cacheReturn(file, sourcePath, { groups: [{ name: '视频', entries }] })
     } catch {
-      return { groups: [] }
+      return cacheReturn(file, sourcePath, { groups: [] })
     }
   }
 
@@ -285,12 +358,12 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
   if (!parsed || typeof parsed !== 'object') {
     if (fileBytesFallback != null) {
       const mb = (fileBytesFallback / 1_000_000).toFixed(1)
-      return { groups: [{ name: '文件', entries: [
+      return cacheReturn(file, sourcePath, { groups: [{ name: '文件', entries: [
         { key: 'size', value: String(fileBytesFallback) },
         { key: '文件大小', value: `${mb} MB` },
-      ]}]}
+      ]}]})
     }
-    return { groups: [] }
+    return cacheReturn(file, sourcePath, { groups: [] })
   }
 
   const groups: Array<{ name: string; entries: Array<{ key: string; value: string }> }> = []
@@ -319,5 +392,5 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
     }
   }
 
-  return { groups }
+  return cacheReturn(file, sourcePath, { groups })
 }
