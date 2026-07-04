@@ -13,7 +13,7 @@ import { bakeColorLutData } from './ffmpeg/lutGenerator'
 import type { IpcContext } from './ipcContext'
 import { logMainDebug, logMainError, logMainInfo } from './loggerService'
 import { applyColorGrading, previewColorFrame } from './videoPipelineService'
-import { combineLivePhoto, isGoogleMotionPhoto } from './watermarkService'
+import { combineLivePhoto, isGoogleMotionPhoto } from './livePhotoService'
 import { exportTripleStitch, type TripleStitchExportOptions } from './creativeTripleStitchService'
 import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
 import {

@@ -27,7 +27,7 @@ export {
   previewCacheDir,
   saveSettings,
 } from './settingsService'
-export { previewWithWatermark } from './watermarkService'
+// watermark 处理已迁移至 Rust compositor
 export { getDownloadedRecords, listDownloadedFiles } from './downloadedLibraryService'
 export { getMediaMetadata, getVideoFrameRate } from './mediaMetadataService'
 export { clearCache, deleteLocalFiles, getCacheStats, openPath, revealFile } from './systemFileService'

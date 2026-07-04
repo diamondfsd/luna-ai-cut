@@ -6,7 +6,7 @@ import { Worker } from 'node:worker_threads'
 import { join } from 'node:path'
 import type { ExportInput, ExportState, ExportStatus } from './lunaExportService'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
-import { watermarkFileFor } from './watermarkService'
+import { watermarkFileFor } from './watermarkAssets'
 import { getExportTasks, clearExportTasks, createExportTask, updateTaskItemProgress } from './exportStubs'
 
 interface RegisterContext { win: Electron.BrowserWindow | null }
