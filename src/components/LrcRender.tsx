@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import type { PreviewLayer } from '../shared/types'
 
 const PREVIEW_TEXTURE_MAX_SIZE = 1920
@@ -11,6 +11,18 @@ export interface LrcTextureLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+}
+
+/** LrcRender 暴露给父组件的方法 */
+export interface LrcRenderHandle {
+  /** 以指定分辨率导出当前帧图片到文件（Rust 直接渲染+编码+写入） */
+  exportImage(
+    outputPath: string,
+    width: number,
+    height: number,
+    format: string,
+    quality: number,
+  ): Promise<void>
 }
 
 export type { PreviewLayer }
@@ -61,15 +73,74 @@ interface LunaRenderCore {
   updateTexture: (id: number, data: Uint8Array) => Promise<void>
   releaseTexture: (id: number) => Promise<void>
   renderFrame: (w: number, h: number, layers: LrcTextureLayer[]) => Promise<Uint8Array>
+  exportImage: (outputPath: string, width: number, height: number, layers: LrcTextureLayer[], format: string, quality: number) => Promise<void>
 }
 
 function getLRC(): LunaRenderCore | undefined {
   return (window as any).lunaRenderCore
 }
 
+/**
+ * 从当前图层和纹理映射构建渲染层列表，供 compositeRender 和 exportImage 共用。
+ * 包含 contain 适配计算。
+ */
+function buildExportLayers(
+  layers: PreviewLayer[],
+  renderW: number,
+  renderH: number,
+  texMap: Map<string, { texId: number | null; width: number; height: number }>,
+): LrcTextureLayer[] {
+  const sorted = [...layers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+  const result: LrcTextureLayer[] = []
+
+  for (const layer of sorted) {
+    const key = layerKey(layer)
+    const info = texMap.get(key)
+    if (!info || info.texId == null) continue
+
+    let { dstX, dstY, dstW, dstH } = layer
+
+    if (info.height > info.width && layer.fit === 'contain') {
+      const pxW = (dstW * renderW).toFixed(0)
+      const pxH = (dstH * renderH).toFixed(0)
+      console.log(`[LrcRender] portrait tex=${info.width}x${info.height} dst=${dstW.toFixed(3)}x${dstH.toFixed(3)} → ${pxW}x${pxH}`)
+    }
+
+    if (layer.fit === 'contain') {
+      const mediaAspect = info.width / info.height
+      const framePixelW = dstW * renderW
+      const framePixelH = dstH * renderH
+      const frameAspect = framePixelW / framePixelH
+      let w = dstW; let h = dstH
+      if (frameAspect > mediaAspect) {
+        w = (framePixelH * mediaAspect) / renderW
+      } else {
+        h = (framePixelW / mediaAspect) / renderH
+      }
+      dstX += (dstW - w) / 2
+      dstY += (dstH - h) / 2
+      dstW = w; dstH = h
+    }
+
+    result.push({
+      textureId: info.texId,
+      dstX, dstY, dstW, dstH,
+      srcX: layer.srcX ?? 0, srcY: layer.srcY ?? 0,
+      srcW: layer.srcW ?? 1, srcH: layer.srcH ?? 1,
+      opacity: layer.opacity ?? 1,
+      zIndex: layer.zIndex ?? 0,
+    })
+  }
+
+  return result
+}
+
 // ── LrcRender ──
 
-export function LrcRender({ layers, canvasRef: extRef, className, onError, onReady, onRender, onVideoElement }: LrcRenderProps) {
+export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
+  { layers, canvasRef: extRef, className, onError, onReady, onRender, onVideoElement },
+  ref,
+) {
   const internalRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
@@ -138,50 +209,7 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
     if (pw <= 0 || ph <= 0) return
 
     const currentLayers = layersRef.current
-    const sorted = [...currentLayers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-
-    const resultLayers: LrcTextureLayer[] = []
-
-    for (const layer of sorted) {
-      const key = layerKey(layer)
-      const info = texMapRef.current.get(key)
-      if (!info || info.texId == null) {
-        continue
-      }
-      let { dstX, dstY, dstW, dstH } = layer
-
-      if (info.height > info.width && layer.fit === 'contain') {
-        const pxW = (dstW * pw).toFixed(0), pxH = (dstH * ph).toFixed(0)
-        console.log(`[LrcRender] portrait tex=${info.width}x${info.height} dst=${dstW.toFixed(3)}x${dstH.toFixed(3)} → ${pxW}x${pxH}`)
-      }
-
-      if (layer.fit === 'contain') {
-        const mediaAspect = info.width / info.height
-        const framePixelW = dstW * pw
-        const framePixelH = dstH * ph
-        const frameAspect = framePixelW / framePixelH
-        let w = dstW, h = dstH
-        if (frameAspect > mediaAspect) {
-          w = (framePixelH * mediaAspect) / pw
-        } else {
-          h = (framePixelW / mediaAspect) / ph
-        }
-        dstX += (dstW - w) / 2
-        dstY += (dstH - h) / 2
-        dstW = w; dstH = h
-        console.log(`[LrcRender] contain result: media=${info.width}x${info.height} mAsp=${mediaAspect.toFixed(4)} fAsp=${frameAspect.toFixed(4)} -> dst=${dstX.toFixed(3)},${dstY.toFixed(3)} ${dstW.toFixed(3)}x${dstH.toFixed(3)}`)
-      }
-
-      resultLayers.push({
-        textureId: info.texId,
-        dstX, dstY, dstW, dstH,
-        srcX: layer.srcX ?? 0, srcY: layer.srcY ?? 0,
-        srcW: layer.srcW ?? 1, srcH: layer.srcH ?? 1,
-        opacity: layer.opacity ?? 1,
-        zIndex: layer.zIndex ?? 0,
-      })
-    }
-
+    const resultLayers = buildExportLayers(currentLayers, pw, ph, texMapRef.current)
     if (resultLayers.length === 0) return
 
     try {
@@ -331,6 +359,26 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
 
   }, [layers, ready, renderKey])
 
+  // 暴露导出方法
+  useImperativeHandle(ref, () => ({
+    async exportImage(
+      outputPath: string,
+      width: number,
+      height: number,
+      format: string,
+      quality: number,
+    ): Promise<void> {
+      const lrc = getLRC()
+      if (!lrc) throw new Error('渲染引擎未初始化')
+
+      const currentLayers = layersRef.current
+      const renderLayers = buildExportLayers(currentLayers, width, height, texMapRef.current)
+      if (renderLayers.length === 0) throw new Error('无可用图层')
+
+      await lrc.exportImage(outputPath, width, height, renderLayers, format, quality)
+    },
+  }), [])
+
   // ═══════════════════════════════════════
   //  Render
   // ═══════════════════════════════════════
@@ -348,4 +396,4 @@ export function LrcRender({ layers, canvasRef: extRef, className, onError, onRea
   }
 
   return <canvas ref={canvasRef as React.Ref<HTMLCanvasElement>} className={className} />
-}
+})

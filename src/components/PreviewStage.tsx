@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
+import type { LrcRenderHandle } from './LrcRender'
 import type { PreviewLayer } from '../shared/types'
 import './PreviewStage.css'
 
@@ -29,11 +30,29 @@ interface PreviewStageProps {
   scaleMode?: ScaleMode
   /** 叠加层（水印、贴纸等） */
   extraLayers?: PreviewLayer[]
+  /** 导出选项（启用后可通过 ref.export() 导出当前帧） */
+  exportOptions?: ExportOptions
 }
 
 export interface MediaResolution {
   width: number
   height: number
+}
+
+/** 导出选项 */
+export interface ExportOptions {
+  /** 是否启用导出功能 */
+  enable: boolean
+  /** 图片格式，默认 jpeg */
+  format?: 'jpeg' | 'png' | 'webp'
+  /** 图片质量（仅 jpeg/webp 有效），0-1，默认 0.95 */
+  quality?: number
+}
+
+/** PreviewStage 暴露给父组件的方法 */
+export interface PreviewStageHandle {
+  /** 导出当前预览帧为图片文件 */
+  export(): Promise<{ path: string; name: string }>
 }
 
 interface StageSize {
@@ -95,8 +114,12 @@ export function calcAspectRatio(width: number, height: number): number {
   return Math.round((width / height) * 100) / 100
 }
 
-export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: PreviewStageProps) {
+export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
+  { url, scaleMode = 'contain', extraLayers, exportOptions },
+  ref,
+) {
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const lrcRef = useRef<LrcRenderHandle | null>(null)
   const [stageSize, setStageSize] = useState<StageSize | null>(null)
   // ── 媒体分辨率 ──
   const [resolution, setResolution] = useState<MediaResolution | null>(null)
@@ -239,6 +262,41 @@ export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: Previe
       .catch(() => setResolution(null))
   }, [url])
 
+  // 暴露导出方法
+  useImperativeHandle(ref, () => ({
+    async export() {
+      if (!exportOptions?.enable) throw new Error('导出未启用')
+
+      // 获取原始分辨率
+      const res = resolution
+      if (!res) throw new Error('媒体分辨率未就绪')
+
+      // 从设置中获取导出目录
+      const settings = await window.luna.getSettings()
+      const exportDir = settings.exportDir
+      if (!exportDir) throw new Error('导出目录未配置')
+
+      // 从 URL 提取文件名
+      const urlParts = url!.split('/')
+      const lastPart = urlParts[urlParts.length - 1] || 'export'
+      const dotIndex = lastPart.lastIndexOf('.')
+      const baseName = dotIndex > 0 ? lastPart.substring(0, dotIndex) : lastPart
+      const format = exportOptions.format || 'jpeg'
+      const quality = exportOptions.quality ?? 0.95
+      const filename = `${baseName}.${format}`
+
+      // 构造输出路径（统一用 /，Node.js 跨平台兼容）
+      const outputPath = exportDir.endsWith('/') ? `${exportDir}${filename}` : `${exportDir}/${filename}`
+
+      // 通过 LrcRender 的 Rust 渲染管线直接导出
+      const lrcHandle = lrcRef.current
+      if (!lrcHandle) throw new Error('LrcRender 未就绪')
+      await lrcHandle.exportImage(outputPath, res.width, res.height, format, quality)
+
+      return { path: outputPath, name: filename }
+    },
+  }), [exportOptions, resolution, url])
+
   if (!url || layers.length === 0) return null
 
   return (
@@ -247,7 +305,7 @@ export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: Previe
       className="preview-stage"
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
-      <LrcRender layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
+      <LrcRender ref={lrcRef} layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
       {loading && (
         <div className="preview-loading-overlay">
           <div className="preview-loading-spinner" />
@@ -273,4 +331,4 @@ export function PreviewStage({ url, scaleMode = 'contain', extraLayers }: Previe
       )}
     </div>
   )
-}
+})

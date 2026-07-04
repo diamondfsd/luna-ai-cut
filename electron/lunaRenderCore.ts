@@ -56,6 +56,15 @@ interface LunaRenderCoreNative {
   releaseTexture(textureId: number): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: NativeLayer[]): Buffer
   renderPreview(input: any): Buffer
+  renderLayersToFile(
+    ffmpegPath: string,
+    outputPath: string,
+    width: number,
+    height: number,
+    layers: NativeLayer[],
+    format: string,
+    quality: number,
+  ): void
   exportFile(
     ffmpegPath: string, ffprobePath: string,
     inputPath: string, outputPath: string,
@@ -135,6 +144,19 @@ export function renderFrame(
   layers: RenderCoreLayerInput[],
 ): Buffer {
   return getNative().renderFrame(canvasWidth, canvasHeight, layers.map(normalizeLayer))
+}
+
+export function renderLayersToFile(
+  ffmpegPath: string,
+  outputPath: string,
+  width: number,
+  height: number,
+  layers: RenderCoreLayerInput[],
+  format: string,
+  quality: number,
+): void {
+  ensureInit()
+  getNative().renderLayersToFile(ffmpegPath, outputPath, width, height, layers.map(normalizeLayer), format, quality)
 }
 
 export function renderPreview(input: RenderPreviewInput): Buffer {
