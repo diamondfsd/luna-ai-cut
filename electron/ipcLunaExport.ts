@@ -7,6 +7,8 @@ import { ipcMain } from 'electron'
 import { Worker } from 'node:worker_threads'
 import { join } from 'node:path'
 import type { ExportInput, ExportState } from './lunaExportService'
+import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
+import { getExportTasks, clearExportTasks } from './exportStubs'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
@@ -44,12 +46,21 @@ function getWorkerPath(): string {
 }
 
 export function register(ctx: RegisterContext): void {
+  // 旧导出查询兼容（ExportProgressModal 弹窗需要）
+  ipcMain.handle('exports:getTasks', async () => getExportTasks())
+  ipcMain.handle('exports:clearTasks', async () => { clearExportTasks() })
+
   ipcMain.on('luna-export:start', (_event, input: ExportInput) => {
     const existing = activeWorkers.get(input.id)
     if (existing) {
       existing.postMessage({ type: 'cancel', id: input.id })
       existing.terminate()
     }
+
+    // 解析 FFmpeg 路径（Worker 不能 import electron）
+    input.ffmpegPath = getFfmpegPath()
+    input.ffprobePath = getFfprobePath()
+    input.logPath = join(process.env.APP_ROOT || join(import.meta.dirname, '..'), 'luna-render-core', 'luna-rc.log')
 
     // 先发 queued 让弹窗可见
     sendProgress(ctx, { id: input.id, fileName: input.outputName || '', status: 'queued', progress: 0 })

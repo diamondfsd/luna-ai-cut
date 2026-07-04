@@ -28,11 +28,32 @@ export {
   saveSettings,
 } from './settingsService'
 export { previewWithWatermark } from './watermarkService'
-export { exportFiles, listExportFiles } from './exportService'
 export { getDownloadedRecords, listDownloadedFiles } from './downloadedLibraryService'
 export { getMediaMetadata, getVideoFrameRate } from './mediaMetadataService'
 export { clearCache, deleteLocalFiles, getCacheStats, openPath, revealFile } from './systemFileService'
-export type { ExportProgress, ExportSummary } from './exportService'
+
+// listExportFiles — moved from deleted exportService.ts
+export async function listExportFiles(exportDir: string): Promise<import('../src/shared/types').LunaFile[]> {
+  const { readdir, stat } = await import('node:fs/promises')
+  const { join } = await import('node:path')
+  const files: import('../src/shared/types').LunaFile[] = []
+  try {
+    const entries = await readdir(exportDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || !entry.isFile()) continue
+      const fullPath = join(exportDir, entry.name)
+      const s = await stat(fullPath)
+      files.push({
+        id: entry.name, name: entry.name, downloadName: entry.name,
+        url: '', sourceUrl: '', kind: 'image',
+        extension: entry.name.split('.').pop() || '',
+        bytes: s.size, width: 0, height: 0,
+        downloadFilePath: fullPath, localPath: fullPath,
+      } as any)
+    }
+  } catch { /* ignore */ }
+  return files
+}
 
 function partialPathFor(destination: string): string {
   return `${destination}.tmp`

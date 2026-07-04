@@ -53,7 +53,7 @@ export function useMediaLibraryController({
   activeDevice,
   refreshKey,
 }: MediaLibraryPageProps) {
-  const { exportProgress, exportSnapshots, exporting, setExportProgress, setExportSnapshots, setExporting } = useApp()
+  const { exportProgress } = useApp()
   const [files, setFiles] = useState<LunaFile[]>([])
   const [downloadedFiles, setDownloadedFiles] = useState<LunaFile[]>([])
   const [previewFiles, setPreviewFiles] = useState<LunaFile[]>([])
@@ -376,9 +376,6 @@ export function useMediaLibraryController({
     setDownloadQueue,
     setDownloadedFiles,
     setExportedFiles,
-    setExporting,
-    setExportProgress,
-    setExportSnapshots,
     setFiles,
     setPreviewFile,
     setPreviewFiles,
@@ -474,8 +471,7 @@ export function useMediaLibraryController({
     downloadQueue,
     downloadStatusFilter,
     exportProgress,
-    exportSnapshots,
-    exporting,
+    exporting: false,  // 旧导出状态已废弃，始终 false
     exportWatermarkSettings,
     filteredFiles,
     firstGroup,
@@ -513,8 +509,6 @@ export function useMediaLibraryController({
     setDeleteError,
     setDownloadQueue,
     setDownloadStatusFilter,
-    setExporting,
-    setExportProgress,
     setExportWatermarkSettings,
     setMediaFilter,
     setPreviewFiles,

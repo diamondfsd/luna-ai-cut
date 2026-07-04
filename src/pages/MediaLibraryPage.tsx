@@ -243,21 +243,22 @@ export function MediaLibraryPage({
             if (!lunaExport) { toast.error('导出服务未就绪'); return }
             toast.success('已加入导出队列')
 
-            const dlPath = file.downloadFilePath || file.localPath
+            let dlPath = file.downloadFilePath || file.localPath
+            // 未下载 → 先下载
+            if (!dlPath) {
+              await downloadOne(file)
+              // 等一小会儿让 progress 更新
+              await new Promise(r => setTimeout(r, 500))
+              dlPath = downloadProgress.get(file.name)?.destinationPath || ''
+            }
+            if (!dlPath) { toast.error('无法获取文件路径'); return }
+
             lunaExport.start({
-              id: exportId, kind: file.kind,
-              localPath: dlPath || null,
-              // 未下载时传入下载方法
-              downloadMethod: dlPath ? null : async () => {
-                await downloadOne(file)
-                // 下载完成后从 progress 中取路径
-                const p = downloadProgress.get(file.name)
-                return p?.destinationPath || dlPath || ''
-              },
+              id: exportId, kind: file.kind, localPath: dlPath,
               watermark: watermarkSettings,
               outputDir: settings?.downloadDir || settings?.exportDir || '',
               outputName: (file.downloadName || file.name).replace(/\.[^.]+$/, '_wm' + (/\.[^.]+$/.exec(file.name)?.[0] || '.jpg')),
-            }).catch((err: Error) => toast.error(`导出失败: ${err.message}`))
+            })
           }}
           onReveal={(file) => {
             const localPath = file.downloadFilePath ?? file.localPath
