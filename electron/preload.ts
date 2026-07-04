@@ -193,9 +193,8 @@ const deviceDebugApi: DeviceDebugApi = {
 interface RenderLayer {
   textureId: number
   dstX: number; dstY: number; dstW: number; dstH: number
-  srcX: number; srcY: number; srcW: number; srcH: number
-  opacity: number
-  zIndex: number
+  srcX?: number; srcY?: number; srcW?: number; srcH?: number
+  opacity?: number; zIndex?: number
 }
 
 const lunaRenderCoreApi = {

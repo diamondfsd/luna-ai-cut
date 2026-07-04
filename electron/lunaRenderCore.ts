@@ -3,18 +3,29 @@
  *
  * 在 Electron 主进程中加载 .node addon，
  * 为 IPC 层提供类型安全的调用接口。
+ * 可选字段在此层填充默认值后传入 Rust。
  */
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 
 const require = createRequire(import.meta.url)
 
-interface RenderLayer {
+// ── 对外暴露的接口（可选字段由本层补默认值） ──
+
+export interface RenderCoreLayerInput {
+  textureId: number
+  dstX: number; dstY: number; dstW: number; dstH: number
+  srcX?: number; srcY?: number; srcW?: number; srcH?: number
+  opacity?: number; zIndex?: number
+}
+
+// ── Native 内部全字段类型 ──
+
+interface NativeLayer {
   textureId: number
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
-  opacity: number
-  zIndex: number
+  opacity: number; zIndex: number
 }
 
 interface LunaRenderCoreNative {
@@ -22,15 +33,27 @@ interface LunaRenderCoreNative {
   loadTexture(data: Buffer, width: number, height: number): number
   updateTexture(textureId: number, data: Buffer): void
   releaseTexture(textureId: number): void
-  renderFrame(canvasWidth: number, canvasHeight: number, layers: RenderLayer[]): Buffer
+  renderFrame(canvasWidth: number, canvasHeight: number, layers: NativeLayer[]): Buffer
   exportFile(
     ffmpegPath: string, ffprobePath: string,
     inputPath: string, outputPath: string,
     canvasWidth: number, canvasHeight: number,
     fps: number | null, hardware: boolean,
-    videoLayer: RenderLayer, staticLayers: RenderLayer[],
+    videoLayer: NativeLayer, staticLayers: NativeLayer[],
   ): void
   destroyCompositor(): void
+}
+
+/** 补全可选字段的默认值 */
+function normalizeLayer(l: RenderCoreLayerInput): NativeLayer {
+  return {
+    textureId: l.textureId,
+    dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
+    srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
+    srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
+    opacity: l.opacity ?? 1,
+    zIndex: l.zIndex ?? 0,
+  }
 }
 
 let native: LunaRenderCoreNative | null = null
@@ -38,7 +61,6 @@ let native: LunaRenderCoreNative | null = null
 function getNative(): LunaRenderCoreNative {
   if (native) return native
 
-  // APP_ROOT 在 appMain.ts 中设为项目根目录
   const appRoot = process.env.APP_ROOT || join(import.meta.dirname, '..')
   const nodePath = join(appRoot, 'luna-render-core', 'luna-render-core.node')
   try {
@@ -47,16 +69,6 @@ function getNative(): LunaRenderCoreNative {
   } catch (err) {
     throw new Error(`Failed to load native render core from ${nodePath}: ${err}`)
   }
-}
-
-// ── 公开接口 ──
-
-export interface RenderCoreLayer {
-  textureId: number
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX: number; srcY: number; srcW: number; srcH: number
-  opacity: number
-  zIndex: number
 }
 
 let initialized = false
@@ -84,9 +96,9 @@ export function releaseTexture(textureId: number): void {
 export function renderFrame(
   canvasWidth: number,
   canvasHeight: number,
-  layers: RenderCoreLayer[],
+  layers: RenderCoreLayerInput[],
 ): Buffer {
-  return getNative().renderFrame(canvasWidth, canvasHeight, layers)
+  return getNative().renderFrame(canvasWidth, canvasHeight, layers.map(normalizeLayer))
 }
 
 export function exportFile(
@@ -98,11 +110,11 @@ export function exportFile(
   canvasHeight: number,
   fps: number | null,
   hardware: boolean,
-  videoLayer: RenderCoreLayer,
-  staticLayers: RenderCoreLayer[],
+  videoLayer: RenderCoreLayerInput,
+  staticLayers: RenderCoreLayerInput[],
 ): void {
   ensureInit()
-  getNative().exportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, staticLayers)
+  getNative().exportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, normalizeLayer(videoLayer), staticLayers.map(normalizeLayer))
 }
 
 export function destroy(): void {
