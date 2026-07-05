@@ -598,7 +598,12 @@ impl Task for ExportImageFromSourcesTask {
         lock(|c| {
             crate::log!(
                 "export_image_from_sources async: out={} {}x{} layers={} fmt={} q={}",
-                self.output, self.width, self.height, self.layers.len(), self.format, self.quality
+                self.output,
+                self.width,
+                self.height,
+                self.layers.len(),
+                self.format,
+                self.quality
             );
             export::export_image_from_sources(
                 &self.ffmpeg_path,

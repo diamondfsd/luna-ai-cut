@@ -9,6 +9,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 use crate::compositor::Compositor;
 use crate::{PreviewLayer, RenderLayer, StaticLayer};
 
+const IMAGE_EXPORT_MAX_EDGE: u32 = 8192;
+
 // ── 多任务导出状态 ──
 
 struct TaskProcs {
@@ -423,6 +425,27 @@ fn decode_image_scaled(
     Ok((buf, dw, dh))
 }
 
+fn capped_image_export_size(width: u32, height: u32, c: &Compositor) -> (u32, u32) {
+    let max_edge = IMAGE_EXPORT_MAX_EDGE.min(c.max_texture_size()).max(1);
+    let current_edge = width.max(height);
+    if current_edge <= max_edge {
+        return (width, height);
+    }
+
+    let scale = max_edge as f64 / current_edge as f64;
+    let capped_width = (width as f64 * scale).round().max(1.0) as u32;
+    let capped_height = (height as f64 * scale).round().max(1.0) as u32;
+    crate::log!(
+        "  image export size capped: {}x{} -> {}x{} max_edge={}",
+        width,
+        height,
+        capped_width,
+        capped_height,
+        max_edge
+    );
+    (capped_width, capped_height)
+}
+
 /// 从素材源文件直接导出图片（独立加载纹理，不依赖预览纹理缓存）
 ///
 /// 预览和导出算法完全一致，但资源完全隔离：
@@ -450,7 +473,8 @@ pub fn export_image_from_sources(
         quality
     );
 
-    let target_max = width.max(height);
+    let (render_width, render_height) = capped_image_export_size(width, height, c);
+    let target_max = render_width.max(render_height);
     let mut temp_tex = Vec::new();
     let mut render_layers = Vec::new();
 
@@ -486,7 +510,7 @@ pub fn export_image_from_sources(
         return Err("no valid layers for export".to_string());
     }
 
-    let result = c.render(width, height, &render_layers)?;
+    let result = c.render(render_width, render_height, &render_layers)?;
 
     // 编码写文件（复用 render_layers_to_file 的编码逻辑）
     let q = format!("{:.0}", quality.clamp(1.0, 100.0));
@@ -496,7 +520,7 @@ pub fn export_image_from_sources(
         "-pix_fmt".into(),
         "rgba".into(),
         "-s".into(),
-        format!("{}x{}", width, height),
+        format!("{}x{}", render_width, render_height),
         "-i".into(),
         "pipe:0".into(),
         "-frames:v".into(),
@@ -727,7 +751,8 @@ pub fn render_layers_to_file(
         quality
     );
 
-    let result = c.render(width, height, layers)?;
+    let (render_width, render_height) = capped_image_export_size(width, height, c);
+    let result = c.render(render_width, render_height, layers)?;
 
     // ── ffmpeg 编码 ──
     // JPEG: -q:v 2-31 (2=最高质量), PNG: 无损
@@ -738,7 +763,7 @@ pub fn render_layers_to_file(
         "-pix_fmt".into(),
         "rgba".into(),
         "-s".into(),
-        format!("{}x{}", width, height),
+        format!("{}x{}", render_width, render_height),
         "-i".into(),
         "pipe:0".into(),
         "-frames:v".into(),
@@ -797,7 +822,9 @@ fn export_image(
     sl: &[StaticLayer],
     c: &mut Compositor,
 ) -> Result<(), String> {
-    let (rgba, iw, ih) = decode_image(ffmpeg, ffprobe, input)?;
+    let (render_width, render_height) = capped_image_export_size(cw, ch, c);
+    let target_max = render_width.max(render_height);
+    let (rgba, iw, ih) = decode_image_scaled(ffmpeg, ffprobe, input, target_max)?;
     let img_tex = c
         .load_texture(&rgba, iw, ih)
         .map_err(|e| format!("img: {}", e))?;
@@ -821,9 +848,9 @@ fn export_image(
     layers.extend(load_static_layers(ffmpeg, ffprobe, sl, c)?);
 
     let result = c
-        .render(cw, ch, &layers)
+        .render(render_width, render_height, &layers)
         .map_err(|e| format!("render: {}", e))?;
-    encode_to_file(ffmpeg, &result, cw, ch, output)?;
+    encode_to_file(ffmpeg, &result, render_width, render_height, output)?;
 
     // 清理
     c.release_texture(img_tex).ok();
