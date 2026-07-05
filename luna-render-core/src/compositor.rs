@@ -186,7 +186,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     );
 
     var color = textureSample(src_texture, src_sampler, tex_coord);
-    color.rgb = apply_color(color.rgb);
+    color = vec4<f32>(apply_color(color.rgb), color.a);
     color.a = color.a * params.opacity;
     return color;
 }
