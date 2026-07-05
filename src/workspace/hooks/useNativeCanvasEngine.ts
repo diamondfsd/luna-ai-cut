@@ -9,7 +9,7 @@ import type { EditPipeline } from '../shared/editPipeline'
 import { createDefaultPipeline } from '../shared/editPipeline'
 import type { ImageCacheEntry } from '../shared/imageCache'
 import { workspaceImageCache } from '../shared/imageCache'
-import { filePathToPreviewUrl } from '../../components/previewModalUtils'
+import { filePathToPreviewUrl } from '../../lib/fileUtils'
 
 interface RenderLayer {
   textureId: number

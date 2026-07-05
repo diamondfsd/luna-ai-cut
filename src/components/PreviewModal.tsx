@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import type { PreviewStageHandle } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
-import { filePathToLunaFile } from './previewModalUtils'
-import type { PreviewLayer, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { filePathToPreviewUrl } from '../lib/fileUtils'
+import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Dialog } from '../ui'
 import '../styles/modal.css'
 
@@ -29,21 +29,6 @@ export function PreviewModal({
     setCurrentFilePath(filePath)
   }, [filePath])
 
-  // ── 文件信息 ──
-  const file = useMemo(() => filePathToLunaFile(currentFilePath), [currentFilePath])
-
-  const files = useMemo(() => filePathList?.map((p) => filePathToLunaFile(p)) ?? [file], [filePathList, file])
-
-  // ── 预览加载 ──
-  const [internalPreview, setInternalPreview] = useState<PreviewResult | null>(null)
-
-  useEffect(() => {
-    // 不立即清空，保持旧图可见，等新图加载完成再替换
-    window.luna.previewFile(file, files)
-      .then(setInternalPreview)
-      .catch(() => {})
-  }, [file.id])
-
   // ── 状态 ──
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
@@ -62,7 +47,7 @@ export function PreviewModal({
       .catch(() => setMediaSize(null))
   }, [currentFilePath])
 
-  const displaySource = internalPreview?.source ?? null
+  const displaySource = filePathToPreviewUrl(currentFilePath) ?? currentFilePath
 
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
@@ -103,7 +88,7 @@ export function PreviewModal({
     <Dialog open variant="fullscreen" onOpenChange={(o) => !o && onClose()}>
       <section className="preview-modal">
         <PreviewModalHeader
-          file={file}
+          filePath={currentFilePath}
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
           onClose={onClose}

@@ -6,7 +6,7 @@ import type { ImageCacheEntry } from '../shared/imageCache'
 import { workspaceImageCache } from '../shared/imageCache'
 import { checkWebGLSupport } from '../renderer/webglCheck'
 import { WebGLRenderer } from '../renderer/webglRenderer'
-import { filePathToPreviewUrl } from '../../components/previewModalUtils'
+import { filePathToPreviewUrl } from '../../lib/fileUtils'
 
 export interface CanvasEngineOptions {
   editorOpen: boolean
