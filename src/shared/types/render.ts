@@ -4,8 +4,22 @@
  */
 
 /** 统一层描述 — Rust 渲染层输入 */
+export interface RenderCurvePoint {
+  x: number
+  y: number
+}
+
+export interface RenderToneCurveAdjust {
+  rgb: RenderCurvePoint[]
+  luminance: RenderCurvePoint[]
+  red: RenderCurvePoint[]
+  green: RenderCurvePoint[]
+  blue: RenderCurvePoint[]
+}
+
 export interface RenderColorAdjustments {
   exposure: number
+  black: number
   brightness: number
   contrast: number
   saturation: number
@@ -20,6 +34,22 @@ export interface RenderColorAdjustments {
   texture: number
   sharpen: number
   denoise: number
+  gradeShadowsHue: number
+  gradeShadowsAmount: number
+  gradeMidHue: number
+  gradeMidAmount: number
+  gradeHighlightsHue: number
+  gradeHighlightsAmount: number
+  curveLift: number
+  curveContrast: number
+  curve: RenderToneCurveAdjust
+  levelsBlack: number
+  levelsGray: number
+  levelsWhite: number
+  hue: number
+  hslHue: number
+  hslSat: number
+  hslLum: number
 }
 
 export interface RenderCropRect {
