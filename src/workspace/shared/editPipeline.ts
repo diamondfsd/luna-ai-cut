@@ -10,6 +10,7 @@ export interface CropRect {
 
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
 export type ToneCurveChannel = 'rgb' | 'luminance' | 'red' | 'green' | 'blue'
+export type HslChannelKey = 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'magenta'
 
 export interface CurvePoint {
   x: number
@@ -19,6 +20,13 @@ export interface CurvePoint {
 export interface ToneCurveAdjust {
   activeChannel: ToneCurveChannel
   points: Record<ToneCurveChannel, CurvePoint[]>
+}
+
+export interface HslChannelAdjust {
+  hue: number
+  hueShift: number
+  saturation: number
+  luminance: number
 }
 
 export interface EditPipeline {
@@ -69,11 +77,8 @@ export interface EditPipeline {
     levelsGray: number
     levelsWhite: number
 
-    // HSL (single-band)
-    hue: number
-    hslHue: number
-    hslSat: number
-    hslLum: number
+    // HSL (multi-band)
+    hslChannels: Record<HslChannelKey, HslChannelAdjust>
 
     // Detail
     clarity: number
@@ -96,12 +101,29 @@ export type PipelinePatch = {
 }
 
 export const TONE_CURVE_CHANNELS: ToneCurveChannel[] = ['rgb', 'luminance', 'red', 'green', 'blue']
+export const HSL_CHANNELS: Array<{ key: HslChannelKey; label: string; hue: number; color: string }> = [
+  { key: 'red', label: '红色', hue: 0, color: '#ff453a' },
+  { key: 'orange', label: '橙色', hue: 30, color: '#ff9f0a' },
+  { key: 'yellow', label: '黄色', hue: 60, color: '#ffd60a' },
+  { key: 'green', label: '绿色', hue: 120, color: '#30d158' },
+  { key: 'cyan', label: '青色', hue: 180, color: '#64d2ff' },
+  { key: 'blue', label: '蓝色', hue: 240, color: '#0a84ff' },
+  { key: 'purple', label: '紫色', hue: 285, color: '#bf5af2' },
+  { key: 'magenta', label: '洋红', hue: 320, color: '#ff2d9a' },
+]
 
 export function createDefaultCurve(): ToneCurveAdjust {
   return {
     activeChannel: 'rgb',
     points: Object.fromEntries(TONE_CURVE_CHANNELS.map((channel) => [channel, [] as CurvePoint[]])) as Record<ToneCurveChannel, CurvePoint[]>,
   }
+}
+
+export function createDefaultHslChannels(): Record<HslChannelKey, HslChannelAdjust> {
+  return Object.fromEntries(HSL_CHANNELS.map((channel) => [
+    channel.key,
+    { hue: channel.hue, hueShift: 0, saturation: 0, luminance: 0 },
+  ])) as Record<HslChannelKey, HslChannelAdjust>
 }
 
 export const DEFAULT_PIPELINE: EditPipeline = {
@@ -142,10 +164,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     levelsGray: 0.5,
     levelsWhite: 1,
 
-    hue: 0,
-    hslHue: 30,
-    hslSat: 0,
-    hslLum: 0,
+    hslChannels: createDefaultHslChannels(),
 
     clarity: 0,
     texture: 0,
@@ -195,10 +214,7 @@ export const CURVE_DEFAULTS: Partial<EditPipeline['color']> = {
 }
 
 export const HSL_DEFAULTS: Partial<EditPipeline['color']> = {
-  hue: 0,
-  hslHue: 30,
-  hslSat: 0,
-  hslLum: 0,
+  hslChannels: createDefaultHslChannels(),
 }
 
 export const GRADING_DEFAULTS: Partial<EditPipeline['color']> = {
@@ -253,6 +269,19 @@ function normalizeCurve(curve: ToneCurveAdjust): ToneCurveAdjust {
   }
 }
 
+function normalizeHslChannels(channels: Record<HslChannelKey, HslChannelAdjust>): Record<HslChannelKey, HslChannelAdjust> {
+  const hslRanges = EDIT_PARAMETER_RANGES.hsl
+  return Object.fromEntries(HSL_CHANNELS.map((channel) => {
+    const current = channels[channel.key] ?? { hue: channel.hue, hueShift: 0, saturation: 0, luminance: 0 }
+    return [channel.key, {
+      hue: channel.hue,
+      hueShift: clampNumber(current.hueShift, hslRanges.hue),
+      saturation: clampNumber(current.saturation, hslRanges.saturation),
+      luminance: clampNumber(current.luminance, hslRanges.luminance),
+    }]
+  })) as Record<HslChannelKey, HslChannelAdjust>
+}
+
 function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   const color = EDIT_PARAMETER_RANGES.color
   const levels = EDIT_PARAMETER_RANGES.levels
@@ -290,10 +319,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
       levelsGray: clampNumber(pipeline.color.levelsGray, levels.gray),
       levelsWhite: clampNumber(pipeline.color.levelsWhite, levels.white),
 
-      hue: clampNumber(pipeline.color.hue, EDIT_PARAMETER_RANGES.hsl.hue),
-      hslHue: clampNumber(pipeline.color.hslHue, EDIT_PARAMETER_RANGES.hsl.hslHue),
-      hslSat: clampNumber(pipeline.color.hslSat, EDIT_PARAMETER_RANGES.hsl.saturation),
-      hslLum: clampNumber(pipeline.color.hslLum, EDIT_PARAMETER_RANGES.hsl.luminance),
+      hslChannels: normalizeHslChannels(pipeline.color.hslChannels),
 
       clarity: clampNumber(pipeline.color.clarity, color.clarity),
       texture: clampNumber(pipeline.color.texture, color.texture),

@@ -17,6 +17,13 @@ export interface RenderToneCurveAdjust {
   blue: RenderCurvePoint[]
 }
 
+export interface RenderHslChannelAdjust {
+  hue: number
+  hueShift: number
+  saturation: number
+  luminance: number
+}
+
 export interface RenderColorAdjustments {
   exposure: number
   black: number
@@ -46,10 +53,7 @@ export interface RenderColorAdjustments {
   levelsBlack: number
   levelsGray: number
   levelsWhite: number
-  hue: number
-  hslHue: number
-  hslSat: number
-  hslLum: number
+  hslChannels: RenderHslChannelAdjust[]
 }
 
 export interface RenderCropRect {

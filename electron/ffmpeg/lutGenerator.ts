@@ -201,17 +201,18 @@ function applyColorTransform(input: Rgb, color: Record<string, any>): Rgb {
   if (Array.isArray(curve?.green) && curve.green.length > 0) c[1] = evalCurvePoint(clamp(c[1]), curve.green)
   if (Array.isArray(curve?.blue) && curve.blue.length > 0) c[2] = evalCurvePoint(clamp(c[2]), curve.blue)
 
-  const hslSat = clamp(valueOf(color, 'hslSat'), -100, 100) / 100
-  const hslLum = clamp(valueOf(color, 'hslLum'), -100, 100) / 100
-  const hueShift = clamp(valueOf(color, 'hue'), -180, 180)
-  if (hslSat !== 0 || hslLum !== 0 || hueShift !== 0) {
+  const hslChannels = Array.isArray(color.hslChannels) ? color.hslChannels : []
+  if (hslChannels.some((channel) => channel && (channel.hueShift || channel.saturation || channel.luminance))) {
     const hsl = rgbToHsl([clamp(c[0]), clamp(c[1]), clamp(c[2])])
-    const targetHue = clamp(valueOf(color, 'hslHue', 30), 0, 360) / 360
-    const distanceToTarget = Math.abs(fract(hsl[0] - targetHue + 0.5) - 0.5)
-    const band = 1 - smoothstep(0.08, 0.28, distanceToTarget)
-    hsl[0] = fract(hsl[0] + hueShift / 360)
-    hsl[1] = clamp(hsl[1] + hslSat * band)
-    hsl[2] = clamp(hsl[2] + hslLum * band)
+    for (const channel of hslChannels) {
+      if (!channel) continue
+      const targetHue = clamp(valueOf(channel, 'hue'), 0, 360) / 360
+      const distanceToTarget = Math.abs(fract(hsl[0] - targetHue + 0.5) - 0.5)
+      const band = 1 - smoothstep(0.08, 0.28, distanceToTarget)
+      hsl[0] = fract(hsl[0] + clamp(valueOf(channel, 'hueShift'), -180, 180) / 360 * band)
+      hsl[1] = clamp(hsl[1] + clamp(valueOf(channel, 'saturation'), -100, 100) / 100 * band)
+      hsl[2] = clamp(hsl[2] + clamp(valueOf(channel, 'luminance'), -100, 100) / 100 * band)
+    }
     c = hslToRgb(hsl)
   }
 
