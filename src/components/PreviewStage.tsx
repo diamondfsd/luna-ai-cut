@@ -117,6 +117,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   ref,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const lastStageDebugRef = useRef('')
   const [stageSize, setStageSize] = useState<StageSize | null>(null)
   // ── 媒体分辨率 ──
   const [resolution, setResolution] = useState<MediaResolution | null>(null)
@@ -147,6 +149,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       videoRef.current.onpause = null
       videoRef.current.ontimeupdate = null
       videoRef.current.onloadedmetadata = null
+      videoRef.current.onended = null
     }
     videoRef.current = el
     if (el) {
@@ -157,6 +160,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       el.onpause = () => setPlaying(false)
       el.ontimeupdate = () => setCurrentTime(el.currentTime)
       el.onloadedmetadata = () => setDuration(el.duration || 0)
+      el.onended = () => {
+        setPlaying(false)
+        setCurrentTime(el.duration || el.currentTime)
+        if (livePlaying) setLivePlaying(false)
+      }
       if (livePlaying && isDisplayVideo) {
         el.currentTime = 0
         el.play().catch(() => {})
@@ -263,6 +271,16 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     const updateStageSize = () => {
       const { clientWidth, clientHeight } = element
       if (clientWidth <= 0 || clientHeight <= 0) return
+      const debugKey = `${clientWidth}x${clientHeight}|display=${displayUrl}|layout=${layoutUrl}`
+      if (debugKey !== lastStageDebugRef.current) {
+        lastStageDebugRef.current = debugKey
+        console.log('[PreviewStage:stageSize]', {
+          stage: `${clientWidth}x${clientHeight}`,
+          displayUrl,
+          layoutUrl,
+          livePlaying,
+        })
+      }
       setStageSize((current) => (
         current?.width === clientWidth && current?.height === clientHeight
           ? current
@@ -274,7 +292,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     const resizeObserver = new ResizeObserver(updateStageSize)
     resizeObserver.observe(element)
     return () => resizeObserver.disconnect()
-  }, [displayUrl])
+  }, [displayUrl, layoutUrl, livePlaying])
 
   const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution, forceBaseFit?: ScaleMode): PreviewLayer[] => {
     // 基于 Project Canvas 计算布局，Stage 不参与
@@ -320,13 +338,27 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     const stageAspect = stageSize.width / stageSize.height
     const canvasAspect = projectCanvas.width / projectCanvas.height
     if (canvasAspect > stageAspect) {
-      // 画布更宽 → 宽度撑满，高度自适应
-      return { width: '100%', height: `${stageAspect / canvasAspect * 100}%` }
-    } else {
-      // 画布更高 → 高度撑满，宽度自适应
-      return { width: `${canvasAspect / stageAspect * 100}%`, height: '100%' }
+      const width = stageSize.width
+      return { width: `${width}px`, height: `${width / canvasAspect}px` }
     }
+    const height = stageSize.height
+    return { width: `${height * canvasAspect}px`, height: `${height}px` }
   }, [projectCanvas, stageSize])
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper || !projectCanvas || !stageSize) return
+    const rect = wrapper.getBoundingClientRect()
+    console.log('[PreviewStage:wrapper]', {
+      stage: `${stageSize.width}x${stageSize.height}`,
+      projectCanvas: `${projectCanvas.width}x${projectCanvas.height}`,
+      style: canvasWrapperStyle,
+      wrapperRect: `${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`,
+      displayUrl,
+      layoutUrl,
+      livePlaying,
+    })
+  }, [canvasWrapperStyle, projectCanvas, stageSize, displayUrl, layoutUrl, livePlaying])
 
   // 暴露导出方法
   useImperativeHandle(ref, () => ({
@@ -383,7 +415,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       className="preview-stage"
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
-      <div className="preview-canvas-wrapper" style={canvasWrapperStyle}>
+      <div ref={wrapperRef} className="preview-canvas-wrapper" style={canvasWrapperStyle}>
           <LrcRender layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
         </div>
       {loading && (
@@ -416,7 +448,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
           <LivePhotoBadge size={32} />
         </button>
       )}
-      {isDisplayVideo && videoRef.current && (
+      {isDisplayVideo && !livePlaying && videoRef.current && (
         <div className="preview-video-controls">
           <button className="preview-video-btn" onClick={togglePlay} title={playing ? '暂停' : '播放'}>
             {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
