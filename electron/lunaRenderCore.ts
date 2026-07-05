@@ -17,6 +17,7 @@ export interface PreviewLayerInputForExport {
   filePath: string
   isVideo?: boolean
   videoTime?: number
+  fit?: 'fill' | 'contain'
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
@@ -38,6 +39,7 @@ export interface PreviewLayerInput {
   filePath: string
   isVideo: boolean
   videoTime: number
+  fit?: string
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number; zIndex: number
@@ -61,12 +63,32 @@ export interface RenderPreviewOutput {
   data: Buffer
 }
 
+export interface PreviewTextureInput {
+  textureId: number
+  width: number
+  height: number
+}
+
+export interface PreviewPlanInput {
+  width?: number
+  height?: number
+  maxSide?: number
+  layers: Array<{ layer: PreviewLayerInputForExport; texture: PreviewTextureInput }>
+}
+
+export interface PreviewPlanOutput {
+  width: number
+  height: number
+  layers: RenderCoreLayerInput[]
+}
+
 // ── Native 内部全字段类型 ──
 
 interface PreviewNativeLayer {
   filePath: string
   isVideo: boolean
   videoTime: number
+  fit?: string
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number; zIndex: number
@@ -159,6 +181,7 @@ interface LunaRenderCoreNative {
   releaseTexture(textureId: number): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: NativeLayer[]): Buffer
   renderPreview(input: any): RenderPreviewOutput
+  planPreview(input: any): { width: number; height: number; layers: NativeLayer[] }
   resolveRenderSource(
     ffmpegPath: string,
     ffprobePath: string,
@@ -221,6 +244,7 @@ function normalizePreviewLayer(l: PreviewLayerInputForExport): PreviewNativeLaye
     filePath: l.filePath,
     isVideo: l.isVideo ?? false,
     videoTime: l.videoTime ?? 0,
+    fit: l.fit,
     dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
     srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
     srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
@@ -495,6 +519,23 @@ export function renderPreview(input: RenderPreviewInput): RenderPreviewOutput {
   return getNative().renderPreview({
     ...input,
     layers: input.layers.map(normalizePreviewLayer),
+  })
+}
+
+export function planPreview(input: PreviewPlanInput): PreviewPlanOutput {
+  ensureInit()
+  return getNative().planPreview({
+    width: input.width,
+    height: input.height,
+    maxSide: input.maxSide,
+    layers: input.layers.map((item) => ({
+      layer: normalizePreviewLayer(item.layer),
+      texture: {
+        textureId: item.texture.textureId,
+        width: item.texture.width,
+        height: item.texture.height,
+      },
+    })),
   })
 }
 

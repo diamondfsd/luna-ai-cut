@@ -14,6 +14,7 @@ import {
   releaseTexture as lrcReleaseTexture,
   renderFrame as lrcRenderFrame,
   renderPreview as lrcRenderPreview,
+  planPreview as lrcPlanPreview,
   renderLayersToFile as lrcRenderLayersToFile,
   resolveRenderSource as lrcResolveRenderSource,
   exportImageFromSourcesAsync as lrcExportImageFromSourcesAsync,
@@ -154,6 +155,12 @@ export function register(_ctx: RegisterContext): void {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       return lrcRenderPreview({ ...input, ffmpegPath, ffprobePath })
+    },
+  ))
+
+  ipcMain.handle('lrc:planPreview', safe('planPreview',
+    async (_event: IpcMainInvokeEvent, input: any) => {
+      return lrcPlanPreview(input)
     },
   ))
 

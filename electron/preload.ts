@@ -249,6 +249,7 @@ const lunaRenderCoreApi = {
   renderFrame: (canvasWidth: number, canvasHeight: number, layers: RenderLayer[]) =>
     ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
   renderPreview: (input: any) => ipcRenderer.invoke('lrc:renderPreview', input),
+  planPreview: (input: any) => ipcRenderer.invoke('lrc:planPreview', input),
   exportVideo: (
     inputPath: string, outputPath: string,
     canvasWidth: number, canvasHeight: number,
