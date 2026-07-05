@@ -2,7 +2,7 @@ import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 're
 import type { PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 
-const PREVIEW_TEXTURE_MAX_SIDE = 1920
+const PREVIEW_TEXTURE_MAX_SIDE = 1080
 const VIDEO_RENDER_FPS = 30
 
 export interface LrcRenderHandle {
