@@ -16,7 +16,7 @@ interface PreviewThumbnailStripProps {
 }
 
 function thumbnailSrcFor(filePath: string, resolvedMap: Record<string, string>): string | null {
-  return resolvedMap[filePath] ?? (mediaKindFromPath(filePath) === 'image' ? filePath : null)
+  return resolvedMap[filePath] ?? null
 }
 
 function ThumbnailItem({ filePath, isActive, isModified, resolvedMap, onFileChange, onThumbnailResolved, activeThumbRef }: {

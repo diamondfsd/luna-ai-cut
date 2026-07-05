@@ -212,6 +212,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   const rafRef = useRef(0)
   const layersRef = useRef<PreviewLayer[]>(layers)
   layersRef.current = layers
+  const lastDebugLogRef = useRef(0)
 
   const texMapRef = useRef<Map<string, { texId: number | null; width: number; height: number }>>(new Map())
   const videoMapRef = useRef<Map<string, { video: HTMLVideoElement; offscreen: HTMLCanvasElement }>>(new Map())
@@ -278,11 +279,38 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     if (resultLayers.length === 0) return
 
     try {
-      console.log(`[LrcRender] renderFrame: canvas=${pw}x${ph} layers=${resultLayers.length} [${resultLayers.map(l => `${l.textureId}:${l.dstW.toFixed(3)}x${l.dstH.toFixed(3)}`).join(', ')}]`)
+      const now = performance.now()
+      if (now - lastDebugLogRef.current > 1000) {
+        lastDebugLogRef.current = now
+        const parent = cvs.parentElement
+        const parentRect = parent?.getBoundingClientRect()
+        const canvasRect = cvs.getBoundingClientRect()
+        console.log('[LrcRender:size]', {
+          parentClient: parent ? `${parent.clientWidth}x${parent.clientHeight}` : null,
+          parentRect: parentRect ? `${parentRect.width.toFixed(2)}x${parentRect.height.toFixed(2)}` : null,
+          canvasBufferBefore: `${cvs.width}x${cvs.height}`,
+          canvasRect: `${canvasRect.width.toFixed(2)}x${canvasRect.height.toFixed(2)}`,
+          renderPixels: `${pw}x${ph}`,
+          dpr,
+          previewLayers: currentLayers.map((l) => ({
+            src: l.filePath.split('/').pop(),
+            isVideo: !!l.isVideo,
+            fit: l.fit,
+            dst: `${l.dstX.toFixed(4)},${l.dstY.toFixed(4)},${l.dstW.toFixed(4)},${l.dstH.toFixed(4)}`,
+          })),
+          exportLayers: resultLayers.map((l) => ({
+            tex: l.textureId,
+            dst: `${l.dstX.toFixed(4)},${l.dstY.toFixed(4)},${l.dstW.toFixed(4)},${l.dstH.toFixed(4)}`,
+          })),
+          textures: Array.from(texMapRef.current.entries()).map(([key, value]) => ({
+            key: key.split('/').pop(),
+            texId: value.texId,
+            size: `${value.width}x${value.height}`,
+          })),
+        })
+      }
       const result = await lrc.renderFrame(pw, ph, resultLayers)
       cvs.width = pw; cvs.height = ph
-      cvs.style.width = `${cw}px`
-      cvs.style.height = `${ch}px`
       cvs.getContext('2d')!.putImageData(
         new ImageData(new Uint8ClampedArray(result), pw, ph), 0, 0,
       )
@@ -358,7 +386,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       if (!texMapRef.current.has(key)) texMapRef.current.set(key, { texId: null, width: 0, height: 0 })
 
       const video = document.createElement('video')
-      video.muted = true; video.loop = true; video.playsInline = true
+      video.muted = true; video.loop = false; video.playsInline = true
       const offscreen = document.createElement('canvas')
       videoMapRef.current.set(key, { video, offscreen })
 
