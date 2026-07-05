@@ -24,6 +24,7 @@ interface LrcRenderProps {
   onError?: (error: string) => void
   onReady?: () => void
   onRender?: () => void
+  onMediaSize?: (width: number, height: number) => void
   maxSide?: number
   onVideoElement?: (el: HTMLVideoElement | null) => void
 }
@@ -164,7 +165,7 @@ function videoRenderLayer(layer: PreviewLayer): RenderLayer {
 }
 
 export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
-  { layers, canvasRef: extRef, className, onError, onReady, onRender, maxSide, onVideoElement },
+  { layers, canvasRef: extRef, className, onError, onReady, onRender, onMediaSize, maxSide, onVideoElement },
   ref,
 ) {
   const internalRef = useRef<HTMLCanvasElement>(null)
@@ -178,6 +179,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   const renderingRef = useRef(false)
   const lastVideoFrameAtRef = useRef(0)
   const lastDebugAtRef = useRef(0)
+  const lastMediaSizeRef = useRef<[number, number]>([0, 0])
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
   const [renderKey, setRenderKey] = useState(0)
@@ -242,6 +244,12 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     try {
       const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
       const plan = await lrc.planPreview({ maxSide: effectiveMaxSide, layers: plannedLayers })
+      if (destroyRef.current) return
+      // 通知外部素材的实际渲染尺寸
+      if (plan.width !== lastMediaSizeRef.current[0] || plan.height !== lastMediaSizeRef.current[1]) {
+        lastMediaSizeRef.current = [plan.width, plan.height]
+        onMediaSize?.(plan.width, plan.height)
+      }
       const result = await lrc.renderFrame(plan.width, plan.height, plan.layers)
       if (destroyRef.current) return
       canvas.width = plan.width

@@ -43,25 +43,6 @@ export function PreviewModal({
   const isVideo = isVideoPath(currentFilePath)
   const isImage = isImagePath(currentFilePath)
 
-  // 获取媒体分辨率用于水印布局匹配
-  useEffect(() => {
-    if (previewOnly) return
-    setMediaSize(null)
-    setWatermarkLayers([])
-    if (!currentFilePath) return
-    let canceled = false
-    window.luna.workspace.getMediaResolution(currentFilePath)
-      .then(({ width, height }) => {
-        if (!canceled) setMediaSize({ w: width, h: height })
-      })
-      .catch(() => {
-        if (!canceled) setMediaSize(null)
-      })
-    return () => {
-      canceled = true
-    }
-  }, [currentFilePath, previewOnly])
-
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(_settings: WatermarkSettingsType, layer?: PreviewLayer) {
     setWatermarkLayers(layer ? [layer] : [])
@@ -135,6 +116,7 @@ export function PreviewModal({
                 extraLayers={watermarkLayers}
                 pending={mediaSize == null}
                 exportOptions={{ enable: true }}
+                onMediaSize={(w, h) => setMediaSize({ w, h })}
               />
             )}
 

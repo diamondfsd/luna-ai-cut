@@ -28,6 +28,7 @@ interface PreviewStageProps {
   cropActive?: boolean
   /** 预览几何信息变化，用于裁切 UI 等编辑控件。 */
   onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void
+  onMediaSize?: (width: number, height: number) => void
   renderOverlay?: () => ReactNode
 }
 
@@ -127,7 +128,7 @@ function projectCanvasFor(resolution: MediaResolution | null): StageSize | null 
 }
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
-  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, onMetricsChange, renderOverlay },
+  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, onMetricsChange, onMediaSize, renderOverlay },
   ref,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -479,7 +480,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     >
       {renderState && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          <LrcRender layers={renderState.layers} onRender={handleRender} onVideoElement={handleVideoElement} />
+          <LrcRender layers={renderState.layers} onRender={handleRender} onVideoElement={handleVideoElement} onMediaSize={onMediaSize} />
         </div>
       )}
       {renderOverlay?.()}
