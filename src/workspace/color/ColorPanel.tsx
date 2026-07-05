@@ -2,6 +2,7 @@ import type { EditPipeline } from '../shared/editPipeline'
 import { CurvePanel } from './CurvePanel'
 import { DetailPanel } from './DetailPanel'
 import { GradingPanel } from './GradingPanel'
+import { HslPanel } from './HslPanel'
 import { TonePanel } from './TonePanel'
 import { WhiteBalancePanel } from './WhiteBalancePanel'
 
@@ -22,6 +23,7 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
       value.vibrance !== 0 || value.saturation !== 0,
     curve: activeCurve.length > 0 ||
       value.levelsBlack !== 0 || value.levelsWhite !== 1,
+    hsl: value.hue !== 0 || value.hslHue !== 30 || value.hslSat !== 0 || value.hslLum !== 0,
     grading: value.gradeShadowsAmount !== 0 || value.gradeMidAmount !== 0 || value.gradeHighlightsAmount !== 0,
     detail: value.sharpen !== 0 || value.denoise !== 0,
   }
@@ -31,6 +33,7 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
       <WhiteBalancePanel value={value} modified={modified.whiteBalance} onChange={onChange} onActivatePipette={onActivatePipette} />
       <TonePanel value={value} modified={modified.tone} onChange={onChange} />
       <CurvePanel value={value} modified={modified.curve} onChange={onChange} />
+      <HslPanel value={value} modified={modified.hsl} onChange={onChange} />
       <GradingPanel value={value} modified={modified.grading} onChange={onChange} />
       <DetailPanel value={value} modified={modified.detail} onChange={onChange} />
     </div>

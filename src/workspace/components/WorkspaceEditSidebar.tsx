@@ -33,6 +33,8 @@ function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
     color.levelsBlack !== d.levelsBlack ||
     color.levelsGray !== d.levelsGray ||
     color.levelsWhite !== d.levelsWhite ||
+    color.hue !== d.hue ||
+    color.hslHue !== d.hslHue ||
     color.hslSat !== d.hslSat ||
     color.hslLum !== d.hslLum ||
     color.clarity !== d.clarity ||
