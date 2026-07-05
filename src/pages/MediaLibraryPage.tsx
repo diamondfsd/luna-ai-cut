@@ -213,7 +213,7 @@ export function MediaLibraryPage({
       {pageActive && previewFile && !selectMode && (
         <PreviewModal
           filePath={previewFile.downloadFilePath ?? previewFile.localPath ?? previewFile.sourceUrl ?? ''}
-          filePathList={(previewFiles.length > 0 ? previewFiles : filteredFiles).map(
+          filePathList={(filteredFiles).map(
             (f) => f.downloadFilePath ?? f.localPath ?? f.sourceUrl ?? f.id,
           )}
           onClose={() => {
