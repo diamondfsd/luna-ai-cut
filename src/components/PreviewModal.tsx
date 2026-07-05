@@ -146,7 +146,7 @@ export function PreviewModal({
           </div>
 
           {inspectorOpen && (
-            <div className={batchExportMode ? 'batch-export-sidebar' : undefined}>
+            <div className={`preview-sidebar${batchExportMode ? ' batch-export-sidebar' : ''}`}>
               <MediaInspector
                 filePath={currentFilePath}
                 onToggleCollapse={() => setInspectorOpen(false)}

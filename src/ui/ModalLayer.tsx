@@ -9,7 +9,7 @@ interface ModalLayerProps {
   children: ReactNode
   /**
    * 遮罩层视觉风格
-   * - `fullscreen`（默认）: 深色遮罩 + 强毛玻璃，用于 ExportModal / PreviewModal
+   * - `fullscreen`（默认）: 深色遮罩 + 强毛玻璃，用于 PreviewModal
    * - `dropdown`: 浅色遮罩 + 弱毛玻璃，用于下载 / 导出进度下拉面板
    */
   variant?: 'fullscreen' | 'dropdown'
