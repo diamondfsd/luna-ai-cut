@@ -16,6 +16,59 @@ pub struct TextureLoadResult {
     pub height: u32,
 }
 
+#[napi(object)]
+#[derive(Clone, Default)]
+pub struct RenderColorAdjustments {
+    pub exposure: f64,
+    pub brightness: f64,
+    pub contrast: f64,
+    pub saturation: f64,
+    pub vibrance: f64,
+    pub temperature: f64,
+    pub tint: f64,
+    pub highlights: f64,
+    pub shadows: f64,
+    pub whites: f64,
+    pub blacks: f64,
+    pub clarity: f64,
+    pub texture: f64,
+    pub sharpen: f64,
+    pub denoise: f64,
+}
+
+#[napi(object)]
+#[derive(Clone)]
+pub struct RenderCropRect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+#[napi(object)]
+#[derive(Clone)]
+pub struct RenderLayerTransform {
+    pub crop: Option<RenderCropRect>,
+    pub orientation: f64,
+    pub rotate: f64,
+    pub flip_h: bool,
+    pub flip_v: bool,
+    pub scale: f64,
+}
+
+impl Default for RenderLayerTransform {
+    fn default() -> Self {
+        Self {
+            crop: None,
+            orientation: 0.0,
+            rotate: 0.0,
+            flip_h: false,
+            flip_v: false,
+            scale: 1.0,
+        }
+    }
+}
+
 // ── 跨模块日志宏 ──
 macro_rules! log {
     ($($arg:tt)*) => {
@@ -61,6 +114,8 @@ pub struct RenderLayer {
     pub src_h: f64,
     pub opacity: f64,
     pub z_index: i32,
+    pub color: Option<RenderColorAdjustments>,
+    pub transform: Option<RenderLayerTransform>,
 }
 
 /// 静态叠加层 — 导出用，传文件绝对路径，Rust 内部加载+渲染
@@ -81,6 +136,8 @@ pub struct StaticLayer {
     pub src_h: f64,
     pub opacity: f64,
     pub z_index: i32,
+    pub color: Option<RenderColorAdjustments>,
+    pub transform: Option<RenderLayerTransform>,
 }
 
 /// 预览层 — render_preview 的统一层描述
@@ -100,6 +157,8 @@ pub struct PreviewLayer {
     pub src_h: f64,
     pub opacity: f64,
     pub z_index: i32,
+    pub color: Option<RenderColorAdjustments>,
+    pub transform: Option<RenderLayerTransform>,
 }
 
 /// render_preview 的输入
@@ -247,6 +306,8 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<Buffer> {
             src_h: l.src_h,
             opacity: l.opacity,
             z_index: l.z_index,
+            color: l.color.clone().unwrap_or_default(),
+            transform: l.transform.clone().unwrap_or_default(),
         })
         .collect();
     lock(|c| {

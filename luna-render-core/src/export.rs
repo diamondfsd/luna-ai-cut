@@ -331,6 +331,8 @@ pub fn export_image_from_sources(
             src_x: layer.src_x, src_y: layer.src_y,
             src_w: layer.src_w, src_h: layer.src_h,
             opacity: layer.opacity, z_index: layer.z_index,
+            color: layer.color.clone(),
+            transform: layer.transform.clone(),
         });
     }
 
@@ -392,6 +394,8 @@ pub fn preview_file(
         dst_x: 0.0, dst_y: 0.0, dst_w: 1.0, dst_h: 1.0,
         src_x: 0.0, src_y: 0.0, src_w: 1.0, src_h: 1.0,
         opacity: 1.0, z_index: 0,
+        color: None,
+        transform: None,
     }];
     layers.extend(load_static_layers(ffmpeg, ffprobe, static_layers, c)?);
 
@@ -452,6 +456,8 @@ fn load_static_layers(ffmpeg: &str, ffprobe: &str, layers: &[StaticLayer], c: &m
             dst_x: sl.dst_x, dst_y: sl.dst_y, dst_w: sl.dst_w, dst_h: sl.dst_h,
             src_x: sl.src_x, src_y: sl.src_y, src_w: sl.src_w, src_h: sl.src_h,
             opacity: sl.opacity, z_index: sl.z_index,
+            color: sl.color.clone(),
+            transform: sl.transform.clone(),
         });
     }
     Ok(result)
@@ -540,6 +546,8 @@ fn export_image(
         dst_x: vl.dst_x, dst_y: vl.dst_y, dst_w: vl.dst_w, dst_h: vl.dst_h,
         src_x: vl.src_x, src_y: vl.src_y, src_w: vl.src_w, src_h: vl.src_h,
         opacity: vl.opacity, z_index: vl.z_index,
+        color: vl.color.clone(),
+        transform: vl.transform.clone(),
     }];
     layers.extend(load_static_layers(ffmpeg, ffprobe, sl, c)?);
 
@@ -602,6 +610,8 @@ fn export_video(
         dst_x: vl.dst_x, dst_y: vl.dst_y, dst_w: vl.dst_w, dst_h: vl.dst_h,
         src_x: vl.src_x, src_y: vl.src_y, src_w: vl.src_w, src_h: vl.src_h,
         opacity: vl.opacity, z_index: vl.z_index,
+        color: vl.color.clone(),
+        transform: vl.transform.clone(),
     }];
     layers.extend(static_render.clone());
 

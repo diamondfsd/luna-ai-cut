@@ -114,7 +114,11 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     [cropMachine.cropActive, cropMachine.transformDraft, pipeline],
   )
   const comparePipeline = useMemo(
-    () => mergePipeline(previewPipeline, { color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects }),
+    () => mergePipeline(previewPipeline, {
+      transform: DEFAULT_PIPELINE.transform,
+      color: DEFAULT_PIPELINE.color,
+      effects: DEFAULT_PIPELINE.effects,
+    }),
     [previewPipeline],
   )
 

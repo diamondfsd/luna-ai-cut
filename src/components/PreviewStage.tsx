@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, type CSSProperties, type ReactNode } from 'react'
 import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
 import { exportPreviewImage, exportPreviewLivePhoto, exportPreviewVideo } from './previewStageExport'
@@ -6,6 +6,8 @@ import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge } from '../ui'
 import { baseNameFromPath, isImagePath, isVideoPath } from '../lib/fileUtils'
+import type { EditPipeline } from '../workspace/shared/editPipeline'
+import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import './PreviewStage.css'
 
 /** 缩放模式 */
@@ -20,6 +22,11 @@ interface PreviewStageProps {
   extraLayers?: PreviewLayer[]
   /** 导出选项（启用后可通过 ref.export() 导出当前帧） */
   exportOptions?: ExportOptions
+  /** 编辑工作台管线。传入后会写入主媒体 layer，由 Rust/wgpu 统一处理。 */
+  pipeline?: EditPipeline
+  /** 预览几何信息变化，用于裁切 UI 等编辑控件。 */
+  onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void
+  renderOverlay?: () => ReactNode
 }
 
 export interface MediaResolution {
@@ -119,7 +126,7 @@ function projectCanvasFor(resolution: MediaResolution | null): StageSize | null 
 }
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
-  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions },
+  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, onMetricsChange, renderOverlay },
   ref,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -310,6 +317,13 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     const canvas = projectCanvasFor(layerResolution) ?? { width: 1440, height: 1440 }
     const main = sourceUrl ? buildLayers(sourceUrl, scaleMode, layerResolution, canvas) : []
     if (forceBaseFit && main[0]) main[0] = { ...main[0], fit: forceBaseFit }
+    if (main[0] && pipeline) {
+      main[0] = {
+        ...main[0],
+        color: pipelineColorToRenderColor(pipeline.color),
+        transform: pipelineTransformToRenderTransform(pipeline.transform),
+      }
+    }
     if (!extraLayers?.length) return main
 
     const m = main[0]
@@ -325,7 +339,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       dstH: l.dstH * cH,
     }))
     return [...main, ...adjusted]
-  }, [scaleMode, resolution, extraLayers])
+  }, [scaleMode, resolution, extraLayers, pipeline])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []
@@ -387,6 +401,25 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     })
   }, [canvasWrapperStyle, projectCanvas, stageSize, displayUrl, layoutUrl, livePlaying])
 
+  useEffect(() => {
+    const stage = stageRef.current
+    const wrapper = wrapperRef.current
+    const mainLayer = renderState?.layers[0]
+    if (!stage || !wrapper || !resolution || !mainLayer) return
+
+    const stageRect = stage.getBoundingClientRect()
+    const wrapperRect = wrapper.getBoundingClientRect()
+    onMetricsChange?.({
+      sourceAspect: resolution.width / resolution.height,
+      imageRect: {
+        x: wrapperRect.left - stageRect.left + mainLayer.dstX * wrapperRect.width,
+        y: wrapperRect.top - stageRect.top + mainLayer.dstY * wrapperRect.height,
+        width: mainLayer.dstW * wrapperRect.width,
+        height: mainLayer.dstH * wrapperRect.height,
+      },
+    })
+  }, [onMetricsChange, renderState, resolution, canvasWrapperStyle])
+
   // 暴露导出方法
   useImperativeHandle(ref, () => ({
     async export() {
@@ -447,6 +480,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
           <LrcRender layers={renderState.layers} onRender={handleRender} onVideoElement={handleVideoElement} />
         </div>
       )}
+      {renderOverlay?.()}
       {loading && (
         <div className="preview-loading-overlay">
           <div className="preview-loading-spinner" />
