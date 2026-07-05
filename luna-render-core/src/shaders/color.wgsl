@@ -9,9 +9,9 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>) -> vec3<f32> {
     c = c + vec3<f32>(params.brightness / 100.0);
 
     let wb = vec3<f32>(
-        1.0 + params.temperature / 100.0 * 0.18 - params.tint / 100.0 * 0.04,
-        1.0 + params.tint / 100.0 * 0.12,
-        1.0 - params.temperature / 100.0 * 0.18 - params.tint / 100.0 * 0.04,
+        1.0 + params.temperature / 100.0 * 0.18 + params.tint / 100.0 * 0.04,
+        1.0 - params.tint / 100.0 * 0.12,
+        1.0 - params.temperature / 100.0 * 0.18 + params.tint / 100.0 * 0.04,
     );
     c = c * wb;
 
@@ -79,4 +79,3 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>) -> vec3<f32> {
     c = c + detail * params.sharpen / 100.0 * 1.5;
     return sat3(c);
 }
-
