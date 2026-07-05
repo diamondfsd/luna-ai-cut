@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, type CSSProperties } from 'react'
 import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
 import { exportPreviewImage, exportPreviewLivePhoto, exportPreviewVideo } from './previewStageExport'
@@ -13,6 +13,7 @@ export type ScaleMode = 'fill' | 'contain'
 
 interface PreviewStageProps {
   url: string | null
+  pending?: boolean
   /** 缩放模式，默认 contain */
   scaleMode?: ScaleMode
   /** 叠加层（水印、贴纸等） */
@@ -45,6 +46,11 @@ export interface PreviewStageHandle {
 interface StageSize {
   width: number
   height: number
+}
+
+interface RenderState {
+  layers: PreviewLayer[]
+  wrapperStyle: CSSProperties
 }
 
 function isValidSize(size: MediaResolution | StageSize | null): size is MediaResolution | StageSize {
@@ -113,7 +119,7 @@ function projectCanvasFor(resolution: MediaResolution | null): StageSize | null 
 }
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
-  { url, scaleMode = 'contain', extraLayers, exportOptions },
+  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions },
   ref,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -136,6 +142,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
+  const [renderState, setRenderState] = useState<RenderState | null>(null)
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
@@ -243,6 +250,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     }
   }, [displayUrl])
 
+  useEffect(() => {
+    if (pending) setLoading(true)
+  }, [pending])
+
   function handleRender() {
     setLoading(false)
   }
@@ -316,7 +327,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     return [...main, ...adjusted]
   }, [scaleMode, resolution, extraLayers])
 
-  const layers = useMemo(() => buildAdjustedLayers(displayUrl, resolution, livePlaying ? 'fill' : undefined), [buildAdjustedLayers, displayUrl, resolution, livePlaying])
+  const layers = useMemo(() => {
+    if (pending || !resolution) return []
+    return buildAdjustedLayers(displayUrl, resolution, livePlaying ? 'fill' : undefined)
+  }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
 
   // 通过 IPC 获取媒体文件实际分辨率
   useEffect(() => {
@@ -324,12 +338,20 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       setResolution(null)
       return
     }
+    let canceled = false
+    setResolution(null)
     window.luna.workspace.getMediaResolution(layoutUrl)
       .then((res) => {
+        if (canceled) return
         console.log(`[PreviewStage] getMediaResolution: ${layoutUrl} -> ${res.width}x${res.height}`)
         setResolution(res)
       })
-      .catch(() => setResolution(null))
+      .catch(() => {
+        if (!canceled) setResolution(null)
+      })
+    return () => {
+      canceled = true
+    }
   }, [layoutUrl])
 
   // Canvas 包裹层样式 — 在 Stage 内保持 Project Canvas 比例
@@ -344,6 +366,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     const height = stageSize.height
     return { width: `${height * canvasAspect}px`, height: `${height}px` }
   }, [projectCanvas, stageSize])
+
+  useEffect(() => {
+    if (layers.length === 0 || !('width' in canvasWrapperStyle) || !('height' in canvasWrapperStyle)) return
+    setRenderState({ layers, wrapperStyle: canvasWrapperStyle })
+  }, [layers, canvasWrapperStyle])
 
   useEffect(() => {
     const wrapper = wrapperRef.current
@@ -407,7 +434,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     },
   }), [exportOptions, displayUrl, isLivePhoto, url, liveVideoUrl, buildAdjustedLayers])
 
-  if (!displayUrl || layers.length === 0) return null
+  if (!displayUrl && !renderState) return null
 
   return (
     <div
@@ -415,9 +442,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       className="preview-stage"
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
-      <div ref={wrapperRef} className="preview-canvas-wrapper" style={canvasWrapperStyle}>
-          <LrcRender layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
+      {renderState && (
+        <div ref={wrapperRef} className="preview-canvas-wrapper" style={renderState.wrapperStyle}>
+          <LrcRender layers={renderState.layers} onRender={handleRender} onVideoElement={handleVideoElement} />
         </div>
+      )}
       {loading && (
         <div className="preview-loading-overlay">
           <div className="preview-loading-spinner" />

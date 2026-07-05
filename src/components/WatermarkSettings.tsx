@@ -135,6 +135,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
 
   // 媒体宽高比变化时重新计算水印层（如图片从横图切到竖图）
   const initRef = useRef(true)
+  const enrichSeqRef = useRef(0)
   useEffect(() => {
     if (initRef.current) {
       initRef.current = false
@@ -145,12 +146,14 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
 
   /** 获取水印路径和尺寸，与映射表比例合并后触发 onChange */
   const enrichAndChange = useCallback(async (patch: Partial<WatermarkSettingsType>) => {
+    const seq = ++enrichSeqRef.current
     const next = { ...settings, ...patch }
-    if (!next.enabled) { onChange(next); return }
+    if (!next.enabled) { if (seq === enrichSeqRef.current) onChange(next); return }
     const [info, theme] = await Promise.all([
       window.luna.getWatermarkPath(next.style, 'image').catch(() => null),
       Promise.resolve(STYLE_TO_THEME[next.style]),
     ])
+    if (seq !== enrichSeqRef.current) return
     // 根据实际媒体宽高比查找布局（从 props 传入）
     const aspectKey = (mediaWidth && mediaHeight) ? closestAspectRatio(mediaWidth, mediaHeight) : '16:9'
     const layoutKey = theme ? `${theme}|${aspectKey}|${next.position}` : null
