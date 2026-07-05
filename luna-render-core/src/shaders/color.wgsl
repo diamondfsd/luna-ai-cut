@@ -69,11 +69,15 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>) -> vec3<f32> {
     c = c * ratio;
 
     var hsl = rgb_to_hsl(sat3(c));
-    let distance_to_target = abs(fract(hsl.x - params.hsl_hue / 360.0 + 0.5) - 0.5);
-    let band = 1.0 - smoothstep(0.08, 0.28, distance_to_target);
-    hsl.x = fract(hsl.x + params.hue / 360.0);
-    hsl.y = sat1(hsl.y + params.hsl_sat / 100.0 * band);
-    hsl.z = sat1(hsl.z + params.hsl_lum / 100.0 * band);
+    for (var i = 0u; i < 8u; i = i + 1u) {
+        let channel = params.hsl_data[i];
+        let target_hue = channel.x / 360.0;
+        let distance_to_target = abs(fract(hsl.x - target_hue + 0.5) - 0.5);
+        let band = 1.0 - smoothstep(0.08, 0.28, distance_to_target);
+        hsl.x = fract(hsl.x + channel.y / 360.0 * band);
+        hsl.y = sat1(hsl.y + channel.z / 100.0 * band);
+        hsl.z = sat1(hsl.z + channel.w / 100.0 * band);
+    }
     c = hsl_to_rgb(hsl);
 
     c = c + detail * params.sharpen / 100.0 * 1.5;

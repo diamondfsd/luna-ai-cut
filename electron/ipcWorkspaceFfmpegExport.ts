@@ -78,7 +78,7 @@ function logExportRequest(
       gradeHighlightsAmount: pipeline.color.gradeHighlightsAmount,
       levelsBlack: pipeline.color.levelsBlack,
       levelsWhite: pipeline.color.levelsWhite,
-      hslSat: pipeline.color.hslSat,
+      hslChannels: pipeline.color.hslChannels,
     }) : 'no-color',
     hasCurve: !!pipeline.color?.curve?.points,
     transform: pipeline.transform ? JSON.stringify(pipeline.transform) : 'no-transform',

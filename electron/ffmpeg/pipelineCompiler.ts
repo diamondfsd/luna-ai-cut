@@ -269,14 +269,6 @@ export class FullPipelineModule implements FfmpegModule {
         if (cpList.length > 0) colorParts.push(`curves=${cpList.join(':')}`)
       }
 
-      // HSL
-      if (color.hslSat != null && color.hslSat !== 0) {
-        const h = clamp(color.hslHue ?? 30, 0, 360) / 360
-        const s = clamp(color.hslSat, -100, 100) / 100
-        const l = clamp(color.hslLum ?? 0, -100, 100) / 100
-        colorParts.push(`hsl=h=${(h * 360).toFixed(1)}:s=${s.toFixed(3)}:l=${l.toFixed(3)}`)
-      }
-
       mainFilters.push(...colorParts)
     }
 

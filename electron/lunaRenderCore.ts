@@ -120,10 +120,12 @@ interface RenderColorAdjustments {
   levelsBlack: number
   levelsGray: number
   levelsWhite: number
-  hue: number
-  hslHue: number
-  hslSat: number
-  hslLum: number
+  hslChannels: Array<{
+    hue: number
+    hueShift: number
+    saturation: number
+    luminance: number
+  }>
 }
 
 interface RenderCropRect {
@@ -284,11 +286,27 @@ function normalizeColor(color?: Partial<RenderColorAdjustments>): RenderColorAdj
     levelsBlack: color?.levelsBlack ?? 0,
     levelsGray: color?.levelsGray ?? 0.5,
     levelsWhite: color?.levelsWhite ?? 1,
-    hue: color?.hue ?? 0,
-    hslHue: color?.hslHue ?? 30,
-    hslSat: color?.hslSat ?? 0,
-    hslLum: color?.hslLum ?? 0,
+    hslChannels: normalizeHslChannels(color?.hslChannels),
   }
+}
+
+const DEFAULT_HSL_CHANNELS = [0, 30, 60, 120, 180, 240, 285, 320]
+
+function normalizeHslChannels(channels?: Array<{ hue?: number; hueShift?: number; saturation?: number; luminance?: number }>): RenderColorAdjustments['hslChannels'] {
+  return DEFAULT_HSL_CHANNELS.map((defaultHue, index) => {
+    const channel = Array.isArray(channels) ? channels[index] : undefined
+    return {
+      hue: clampNumber(channel?.hue ?? defaultHue, 0, 360),
+      hueShift: clampNumber(channel?.hueShift ?? 0, -180, 180),
+      saturation: clampNumber(channel?.saturation ?? 0, -100, 100),
+      luminance: clampNumber(channel?.luminance ?? 0, -100, 100),
+    }
+  })
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min <= 0 && max >= 0 ? 0 : min
+  return Math.min(max, Math.max(min, value))
 }
 
 function normalizeCurvePoints(points?: Array<{ x?: number; y?: number }>): Array<{ x: number; y: number }> {

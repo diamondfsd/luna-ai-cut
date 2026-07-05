@@ -130,10 +130,6 @@ struct GpuLayerParams {
     levels_black: f32,
     levels_gray: f32,
     levels_white: f32,
-    hue: f32,
-    hsl_hue: f32,
-    hsl_sat: f32,
-    hsl_lum: f32,
     curve_rgb_count: f32,
     curve_luminance_count: f32,
     curve_red_count: f32,
@@ -148,6 +144,7 @@ struct GpuLayerParams {
     scale: f32,
     _pad: [f32; 1],
     curve_data: [[f32; 4]; 30],
+    hsl_data: [[f32; 4]; 8],
 }
 
 struct TextureEntry {
@@ -169,6 +166,21 @@ fn pack_curve_points(
         curve_data[packed][offset + 1] = point.y.clamp(0.0, 1.0) as f32;
     }
     count as f32
+}
+
+fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 8] {
+    let defaults = [0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 285.0, 320.0];
+    let mut data = [[0.0; 4]; 8];
+    for (index, default_hue) in defaults.iter().enumerate() {
+        let channel = channels.get(index);
+        data[index] = [
+            channel.map(|c| c.hue).unwrap_or(*default_hue).clamp(0.0, 360.0) as f32,
+            channel.map(|c| c.hue_shift).unwrap_or(0.0).clamp(-180.0, 180.0) as f32,
+            channel.map(|c| c.saturation).unwrap_or(0.0).clamp(-100.0, 100.0) as f32,
+            channel.map(|c| c.luminance).unwrap_or(0.0).clamp(-100.0, 100.0) as f32,
+        ];
+    }
+    data
 }
 
 // ── render_preview 层输入 ──
@@ -945,6 +957,7 @@ impl Compositor {
                 let curve_red_count = pack_curve_points(&mut curve_data, 12, &color.curve.red);
                 let curve_green_count = pack_curve_points(&mut curve_data, 18, &color.curve.green);
                 let curve_blue_count = pack_curve_points(&mut curve_data, 24, &color.curve.blue);
+                let hsl_data = pack_hsl_channels(&color.hsl_channels);
 
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
@@ -1012,10 +1025,6 @@ impl Compositor {
                     levels_black: color.levels_black as f32,
                     levels_gray: color.levels_gray as f32,
                     levels_white: color.levels_white as f32,
-                    hue: color.hue as f32,
-                    hsl_hue: color.hsl_hue as f32,
-                    hsl_sat: color.hsl_sat as f32,
-                    hsl_lum: color.hsl_lum as f32,
                     curve_rgb_count,
                     curve_luminance_count,
                     curve_red_count,
@@ -1046,6 +1055,7 @@ impl Compositor {
                         .unwrap_or(1.0),
                     _pad: [0.0; 1],
                     curve_data,
+                    hsl_data,
                 };
 
                 let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {

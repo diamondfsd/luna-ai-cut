@@ -34,6 +34,15 @@ pub struct RenderToneCurveAdjust {
 }
 
 #[napi(object)]
+#[derive(Clone, Default)]
+pub struct RenderHslChannelAdjust {
+    pub hue: f64,
+    pub hue_shift: f64,
+    pub saturation: f64,
+    pub luminance: f64,
+}
+
+#[napi(object)]
 #[derive(Clone)]
 pub struct RenderColorAdjustments {
     pub exposure: f64,
@@ -64,10 +73,7 @@ pub struct RenderColorAdjustments {
     pub levels_black: f64,
     pub levels_gray: f64,
     pub levels_white: f64,
-    pub hue: f64,
-    pub hsl_hue: f64,
-    pub hsl_sat: f64,
-    pub hsl_lum: f64,
+    pub hsl_channels: Vec<RenderHslChannelAdjust>,
 }
 
 impl Default for RenderColorAdjustments {
@@ -101,12 +107,21 @@ impl Default for RenderColorAdjustments {
             levels_black: 0.0,
             levels_gray: 0.5,
             levels_white: 1.0,
-            hue: 0.0,
-            hsl_hue: 30.0,
-            hsl_sat: 0.0,
-            hsl_lum: 0.0,
+            hsl_channels: default_hsl_channels(),
         }
     }
+}
+
+fn default_hsl_channels() -> Vec<RenderHslChannelAdjust> {
+    [0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 285.0, 320.0]
+        .iter()
+        .map(|hue| RenderHslChannelAdjust {
+            hue: *hue,
+            hue_shift: 0.0,
+            saturation: 0.0,
+            luminance: 0.0,
+        })
+        .collect()
 }
 
 #[napi(object)]

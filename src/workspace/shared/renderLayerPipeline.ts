@@ -1,5 +1,5 @@
 import type { RenderColorAdjustments, RenderLayerTransform } from '../../shared/types'
-import type { EditPipeline } from './editPipeline'
+import { HSL_CHANNELS, type EditPipeline } from './editPipeline'
 
 export function pipelineColorToRenderColor(color: EditPipeline['color']): RenderColorAdjustments {
   return {
@@ -37,10 +37,7 @@ export function pipelineColorToRenderColor(color: EditPipeline['color']): Render
     levelsBlack: color.levelsBlack,
     levelsGray: color.levelsGray,
     levelsWhite: color.levelsWhite,
-    hue: color.hue,
-    hslHue: color.hslHue,
-    hslSat: color.hslSat,
-    hslLum: color.hslLum,
+    hslChannels: HSL_CHANNELS.map((channel) => color.hslChannels[channel.key]),
   }
 }
 

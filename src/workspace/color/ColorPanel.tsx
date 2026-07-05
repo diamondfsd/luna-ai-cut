@@ -23,7 +23,7 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
       value.vibrance !== 0 || value.saturation !== 0,
     curve: activeCurve.length > 0 ||
       value.levelsBlack !== 0 || value.levelsWhite !== 1,
-    hsl: value.hue !== 0 || value.hslHue !== 30 || value.hslSat !== 0 || value.hslLum !== 0,
+    hsl: Object.values(value.hslChannels).some((channel) => channel.hueShift !== 0 || channel.saturation !== 0 || channel.luminance !== 0),
     grading: value.gradeShadowsAmount !== 0 || value.gradeMidAmount !== 0 || value.gradeHighlightsAmount !== 0,
     detail: value.sharpen !== 0 || value.denoise !== 0,
   }
