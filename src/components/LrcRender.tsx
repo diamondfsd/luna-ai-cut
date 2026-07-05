@@ -346,12 +346,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       video.src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
       const offscreen = document.createElement('canvas')
       videosRef.current.set(key, { video, offscreen })
-      if (onVideoElement && !videoElementCalledRef.current) {
-        videoElementCalledRef.current = true
-        onVideoElement(video)
-      }
-      // 元数据加载完成后，seek 到 0.001s 强制解码第一帧
-      // 使用 addEventListener 避免覆盖父组件的 onloadedmetadata 等 handler
+      // 先绑定事件监听，再 load()，确保不错过 loadedmetadata 等事件
       const onLoadedMetadata = () => {
         if (canceled || destroyRef.current) return
         video.currentTime = 0.001
@@ -367,7 +362,13 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       video.addEventListener('loadedmetadata', onLoadedMetadata)
       video.addEventListener('seeked', onSeeked)
       video.addEventListener('loadeddata', onLoadedData)
+      // 先 load() 启动加载，再通知父组件
+      // 防止父组件的 play() 被后续的 load() 取消（load() 会中止当前加载重新开始）
       video.load()
+      if (onVideoElement && !videoElementCalledRef.current) {
+        videoElementCalledRef.current = true
+        onVideoElement(video)
+      }
     }
 
     const staticReady = layers

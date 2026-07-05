@@ -331,7 +331,10 @@ export function moveCropInsideImage(crop: CropRect, dx: number, dy: number, opti
   const next = { ...base, x: base.x + dx, y: base.y + dy }
   if (isCropInsideImage(next, options.sourceAspect, options.orientation, options.rotate)) return clampCrop(next)
   const point = projectIntoHalfPlanes({ x: next.x, y: next.y }, base, options)
-  return { ...base, x: point.x, y: point.y }
+  const projected = { ...base, x: point.x, y: point.y }
+  if (isCropInsideImage(projected, options.sourceAspect, options.orientation, options.rotate)) return projected
+  // Fallback: 缩小裁剪框以适应素材区域
+  return fitCropInsideImage(base, options.sourceAspect, options.orientation, options.rotate)
 }
 
 function resizeCandidate(crop: CropRect, mode: CropDragMode, dx: number, dy: number, aspectInFrame: number | null): CropRect {
