@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../../shared/types'
 import { toast } from '../../ui'
+import { fileNameFromPath, mediaKindFromPath } from '../../lib/fileUtils'
 
 export interface WorkspaceRouteState {
   project?: WorkspaceProject
@@ -10,16 +11,8 @@ export interface WorkspaceRouteState {
   initialIndex?: number
 }
 
-function fileNameFromPath(filePath: string): string {
-  return filePath.split(/[\\/]/).pop() || filePath
-}
-
-const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'mts', 'insv', 'lrv'])
-
 function kindFromPath(filePath: string): 'image' | 'video' {
-  const segments = filePath.split('.')
-  const ext = segments.length > 1 ? segments[segments.length - 1].toLowerCase() : ''
-  return VIDEO_EXTS.has(ext) ? 'video' : 'image'
+  return mediaKindFromPath(filePath) === 'video' ? 'video' : 'image'
 }
 
 function mediaFromState(state: WorkspaceRouteState | null): WorkspaceMediaAsset[] {

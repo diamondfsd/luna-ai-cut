@@ -11,11 +11,21 @@ import { useEffect, useState } from 'react'
 // ── 全局缓存（模块级 Map，持久化） ──
 const cache = new Map<string, boolean>()
 
+function normalizeLivePhotoPath(fileUrl: string): string {
+  try {
+    const parsed = new URL(fileUrl)
+    if (parsed.protocol === 'file:') return decodeURIComponent(parsed.pathname)
+  } catch {
+    // 保持原始路径
+  }
+  return fileUrl
+}
+
 /** 检测并缓存 */
 export function getIsLivePhoto(fileUrl: string): Promise<boolean> {
   const cached = cache.get(fileUrl)
   if (cached !== undefined) return Promise.resolve(cached)
-  return window.luna.workspace.isLivePhoto(fileUrl).then((v: boolean) => {
+  return window.luna.workspace.isLivePhoto(normalizeLivePhotoPath(fileUrl)).then((v: boolean) => {
     cache.set(fileUrl, v)
     return v
   }).catch(() => {

@@ -58,6 +58,7 @@ const lunaApi: LunaApi = {
   previewLivePhoto: (sourceUrl: string) => ipcRenderer.invoke('luna:previewLivePhoto', sourceUrl),
   resolveThumbnail: (filePath: string, kind?: string) => ipcRenderer.invoke('luna:resolveThumbnail', filePath, kind),
   getMediaMetadata: (file: LunaFile, cachedPath?: string | null) => ipcRenderer.invoke('luna:metadata', file, cachedPath),
+  getMediaMetadataByPath: (filePath: string) => ipcRenderer.invoke('luna:metadataByPath', filePath),
   previewWithWatermark: (file: LunaFile, sourcePath: string, settings: WatermarkSettings) =>
     ipcRenderer.invoke('luna:previewWithWatermark', file, sourcePath, settings),
   requestVideoFrameRate: (file: LunaFile, cachedPath?: string | null) =>

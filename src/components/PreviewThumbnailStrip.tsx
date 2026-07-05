@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { FileQuestion, Film } from 'lucide-react'
 
-import type { LunaFile } from '../shared/types'
-import { VideoPlayBadge } from '../ui'
+import { LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { logger } from '../lib/rendererLogger'
-import { filePathToLunaFile } from './previewModalUtils'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
+import { fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
 
 interface PreviewThumbnailStripProps {
   filePathList: string[]
@@ -16,25 +15,24 @@ interface PreviewThumbnailStripProps {
   onChange?: (filePath: string) => void
 }
 
-function thumbnailSrcFor(file: LunaFile, resolvedMap: Record<string, string>): string | null {
-  const resolved = resolvedMap[file.id]
-  if (resolved) return resolved
-  return file.thumbnailUrl ?? null
+function thumbnailSrcFor(filePath: string, resolvedMap: Record<string, string>): string | null {
+  return resolvedMap[filePath] ?? (mediaKindFromPath(filePath) === 'image' ? filePath : null)
 }
 
-function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, onThumbnailResolved, activeThumbRef }: {
-  file: LunaFile
+function ThumbnailItem({ filePath, isActive, isModified, resolvedMap, onFileChange, onThumbnailResolved, activeThumbRef }: {
+  filePath: string
   isActive: boolean
   isModified: boolean
   resolvedMap: Record<string, string>
-  onFileChange: (file: LunaFile) => void
-  onThumbnailResolved: (fileId: string, url: string) => void
+  onFileChange: (filePath: string) => void
+  onThumbnailResolved: (filePath: string, url: string) => void
   activeThumbRef?: RefObject<HTMLButtonElement>
 }) {
   const btnRef = useRef<HTMLButtonElement>(null)
   const requestedRef = useRef(false)
-  const isLive = useLivePhotoWhenVisible(file.href, btnRef, '200px')
-  const thumbSrc = thumbnailSrcFor(file, resolvedMap)
+  const kind = mediaKindFromPath(filePath)
+  const isLive = useLivePhotoWhenVisible(filePath, btnRef, '200px')
+  const thumbSrc = thumbnailSrcFor(filePath, resolvedMap)
   const showThumb = Boolean(thumbSrc)
 
   // 进入视口时请求缩略图
@@ -49,27 +47,18 @@ function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, 
         if (entry.isIntersecting) {
           requestedRef.current = true
           observer.disconnect()
-          const localPath = file.downloadFilePath ?? file.localPath
-          if (localPath) {
-            window.luna.resolveThumbnail(localPath, file.kind).then((url) => {
-              if (url) onThumbnailResolved(file.id, url)
-            }).catch(() => {
-              logger.warn('[缩略图条] resolveThumbnail 失败', { fileId: file.id, fileName: file.name })
-            })
-          } else {
-            window.luna.cacheFile(file).then((ok) => {
-              if (!ok) logger.warn('[缩略图条] cacheFile 返回 false', { fileId: file.id, fileName: file.name })
-            }).catch(() => {
-              logger.warn('[缩略图条] cacheFile 异常', { fileId: file.id, fileName: file.name })
-            })
-          }
+          window.luna.resolveThumbnail(filePath, kind).then((url) => {
+            if (url) onThumbnailResolved(filePath, url)
+          }).catch(() => {
+            logger.warn('[缩略图条] resolveThumbnail 失败', { filePath })
+          })
         }
       },
       { rootMargin: '100px' },
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [file.href, showThumb])
+  }, [filePath, showThumb, kind])
 
   return (
     <button
@@ -80,23 +69,19 @@ function ThumbnailItem({ file, isActive, isModified, resolvedMap, onFileChange, 
         }
       }}
       className={`preview-thumb-item${isActive ? ' active' : ''}${isModified ? ' modified' : ''}`}
-      onClick={() => onFileChange(file)}
-      title={file.name}
+      onClick={() => onFileChange(filePath)}
+      title={fileNameFromPath(filePath)}
     >
       {isModified && <span className="preview-thumb-modified-dot" />}
       {showThumb ? (
-        <img src={thumbSrc ?? undefined} alt={file.name} loading="lazy" />
+        <img src={thumbSrc ?? undefined} alt={fileNameFromPath(filePath)} loading="lazy" />
       ) : (
         <span className="preview-thumb-placeholder">
-          {file.kind === 'video' ? <Film size={14} /> : <FileQuestion size={14} />}
+          {kind === 'video' ? <Film size={14} /> : <FileQuestion size={14} />}
         </span>
       )}
-      {file.kind === 'video' && <VideoPlayBadge size={16} />}
-      {isLive && (
-        <span className="preview-thumb-live">
-          <span /><span /><span />
-        </span>
-      )}
+      {kind === 'video' && <VideoPlayBadge size={16} />}
+      {isLive && <LivePhotoBadge size={18} className="preview-thumb-live" />}
     </button>
   )
 }
@@ -110,8 +95,7 @@ export function PreviewThumbnailStrip({
   const stripRef = useRef<HTMLDivElement | null>(null)
   const activeThumbRef = useRef<HTMLButtonElement | null>(null)
 
-  // ── 文件列表（内部转为 LunaFile） ──
-  const files = useMemo(() => filePathList.map((p) => filePathToLunaFile(p)), [filePathList]) // eslint-disable-line react-hooks/exhaustive-deps
+  const files = useMemo(() => filePathList, [filePathList])
 
   // ── 当前选中索引 ──
   const [currentIndex, setCurrentIndex] = useState(() => {
@@ -122,7 +106,7 @@ export function PreviewThumbnailStrip({
     return 0
   })
 
-  const currentFileId = files[currentIndex]?.id
+  const currentFilePath = files[currentIndex]
 
   // 同步外部 initialFilePath
   useEffect(() => {
@@ -144,13 +128,13 @@ export function PreviewThumbnailStrip({
     })
   }, [])
 
-  function handleThumbnailResolved(fileId: string, url: string): void {
-    setThumbnails((prev) => ({ ...prev, [fileId]: url }))
+  function handleThumbnailResolved(filePath: string, url: string): void {
+    setThumbnails((prev) => ({ ...prev, [filePath]: url }))
   }
 
   // ── 点击切换 ──
-  function handleFileClick(file: LunaFile): void {
-    const idx = files.findIndex((x) => x.id === file.id)
+  function handleFileClick(filePath: string): void {
+    const idx = files.indexOf(filePath)
     if (idx >= 0 && idx !== currentIndex) {
       setCurrentIndex(idx)
     }
@@ -202,16 +186,16 @@ export function PreviewThumbnailStrip({
 
   return (
     <div className="preview-thumbnails" ref={stripRef}>
-      {files.map((file) => (
+      {files.map((filePath) => (
         <ThumbnailItem
-          key={file.id}
-          file={file}
-          isActive={file.id === currentFileId}
-          isModified={modifiedFileIds?.has(file.id) ?? false}
+          key={filePath}
+          filePath={filePath}
+          isActive={filePath === currentFilePath}
+          isModified={modifiedFileIds?.has(filePath) ?? false}
           resolvedMap={thumbnails}
           onFileChange={handleFileClick}
           onThumbnailResolved={handleThumbnailResolved}
-          activeThumbRef={file.id === currentFileId ? activeThumbRef : undefined}
+          activeThumbRef={filePath === currentFilePath ? activeThumbRef : undefined}
         />
       ))}
     </div>

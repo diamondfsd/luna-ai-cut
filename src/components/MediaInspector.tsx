@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, Loader2 } from 'lucide-react'
 import { formatBytes } from '../lib/format'
-import { filePathToLunaFile, emptyDetails, buildHistogram } from './previewModalUtils'
+import { emptyDetails, buildHistogram } from './previewModalUtils'
 import type { MediaMetadata } from '../shared/types'
+import { mediaKindFromPath } from '../lib/fileUtils'
 import '../styles/media-inspector.css'
 
 // ─── MediaDetails ──────────────────────────────────────
@@ -279,13 +280,13 @@ function MetadataSection({ section, metaMap }: { section: SectionDef; metaMap: M
 // ─── Component ─────────────────────────────────────────
 
 export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInspectorProps) {
-  const file = useMemo(() => filePathToLunaFile(filePath), [filePath])
+  const kind = useMemo(() => mediaKindFromPath(filePath), [filePath])
 
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
   const [mediaDetails, setMediaDetails] = useState<MediaDetails>(() => emptyDetails())
 
-  const isDownloaded = !!file.downloadFilePath
+  const isDownloaded = true
 
   const metaMap = useMemo(() => buildMetadataMap(mediaMetadata), [mediaMetadata])
 
@@ -302,7 +303,7 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
 
   // 构建直方图
   useEffect(() => {
-    if (!filePath || file.kind !== 'image') return
+    if (!filePath || kind !== 'image') return
     let cancelled = false
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -312,25 +313,23 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
     }
     img.src = filePath.startsWith('file://') ? filePath : `file://${filePath}`
     return () => { cancelled = true }
-  }, [filePath, file.kind])
+  }, [filePath, kind])
 
   // 加载元数据（延迟 200ms 避免大文件 IPC 阻塞渲染）
   useEffect(() => {
-    if (file.kind === 'unknown') {
+    if (kind === 'unknown') {
       setMediaMetadata(null)
       return
     }
-    const metaPath = file.downloadFilePath ?? file.localPath
-    if (!metaPath) return
     const timer = setTimeout(() => {
       setMetadataLoading(true)
-      window.luna.getMediaMetadata(file, metaPath)
+      window.luna.getMediaMetadataByPath(filePath)
         .then(setMediaMetadata)
         .catch(() => setMediaMetadata({ groups: [] }))
         .finally(() => setMetadataLoading(false))
     }, 200)
     return () => clearTimeout(timer)
-  }, [file.id, file.kind, file.downloadFilePath, file.localPath])
+  }, [filePath, kind])
 
   const histogram = mediaDetails.histogram
   const histogramWidth = 280
@@ -365,13 +364,13 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
         <dl>
           <div>
             <dt>文件大小</dt>
-            <dd>{formatBytes(file.bytes ?? Number(metaMap.get('size') ?? 0))}</dd>
+            <dd>{formatBytes(Number(metaMap.get('size') ?? 0))}</dd>
           </div>
           <div>
             <dt>拍摄时间</dt>
-            <dd>{formatCapturedAt(file.capturedAt ?? metaMap.get('DateTimeOriginal') ?? metaMap.get('ModifyDate') ?? null)}</dd>
+            <dd>{formatCapturedAt(metaMap.get('DateTimeOriginal') ?? metaMap.get('ModifyDate') ?? null)}</dd>
           </div>
-          {(file.kind !== 'video' || isDownloaded) && (
+          {(kind !== 'video' || isDownloaded) && (
             <div>
               <dt>分辨率</dt>
               <dd>{mediaDetails.width && mediaDetails.height
@@ -385,7 +384,7 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
       </section>
 
       {/* ── 图片特有内容 ── */}
-      {file.kind === 'image' ? (
+      {kind === 'image' ? (
         <>
           {/* 颜色与亮度（直方图） */}
           <section>

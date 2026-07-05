@@ -55,10 +55,12 @@ export function MediaCard({
   const localPath = file.downloadFilePath ?? file.localPath
   const downloadedPath = !selected ? localPath : undefined
   const thumbnailSource = localThumbnailUrl ?? thumbnailPlaceholderFor(file)
+  const liveDetectSource = file.downloadFilePath ?? file.localPath ?? file.cacheFilePath ?? file.sourceUrl ?? file.url ?? file.href
   const showProgress = Boolean(
     progress && ['queued', 'downloading', 'failed'].includes(progress.status) && !downloadedPath,
   )
-  const isLive = useLivePhotoWhenVisible(file.href, cardRef, '300px')
+  const detectedLive = useLivePhotoWhenVisible(liveDetectSource, cardRef, '300px')
+  const isLive = file.isLivePhoto || detectedLive
 
   // 视口可见时再请求缩略图，避免清空缓存后瞬间发起大量 cacheFile IPC
   useEffect(() => {

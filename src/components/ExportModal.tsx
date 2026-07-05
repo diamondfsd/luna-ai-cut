@@ -3,7 +3,7 @@ import { ImagePlus, Monitor, Video, X } from 'lucide-react'
 
 import { MediaPreviewPanel } from './MediaPreviewPanel'
 import { WatermarkSettings } from './WatermarkSettings'
-import { filePathToPreviewUrl } from './previewModalUtils'
+import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
 import { Accordion, Button, Dialog, IconButton, Input, Select } from '../ui'
