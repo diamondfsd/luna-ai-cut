@@ -9,6 +9,7 @@ import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ColorPanel } from '../color/ColorPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
+import type { PreviewLayer } from '../../shared/types'
 
 export type WorkspaceTool = 'color' | 'crop' | 'watermark'
 
@@ -54,7 +55,12 @@ function titleForTool(tool: WorkspaceTool): string {
   return '色彩调节'
 }
 
-export function WorkspaceEditSidebar() {
+interface WorkspaceEditSidebarProps {
+  mediaSize?: { w: number; h: number } | null
+  onWatermarkLayerChange?: (layer?: PreviewLayer) => void
+}
+
+export function WorkspaceEditSidebar({ mediaSize, onWatermarkLayerChange }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -154,8 +160,13 @@ export function WorkspaceEditSidebar() {
             >
               <WatermarkSettings
                 settings={edit.pipeline.watermark}
-                onChange={(watermark) => edit.updateWorkspacePanel({ watermark })}
+                onChange={(watermark, layer) => {
+                  edit.updateWorkspacePanel({ watermark })
+                  onWatermarkLayerChange?.(layer)
+                }}
                 filePath={mediaCtx.activeMedia?.path}
+                mediaWidth={mediaSize?.w}
+                mediaHeight={mediaSize?.h}
               />
             </Accordion>
           )}

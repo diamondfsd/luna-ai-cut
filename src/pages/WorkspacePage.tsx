@@ -1,8 +1,8 @@
 import { ArrowLeft, ClipboardCopy, ClipboardPaste, Eye, EyeOff, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import type { WorkspaceProject } from '../shared/types'
+import type { PreviewLayer, WorkspaceProject } from '../shared/types'
 import { Button, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
@@ -62,21 +62,52 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
+  const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
 
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
   const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
+  const stagePipeline = useMemo(() => {
+    if (edit.compareOriginal) return edit.comparePipeline
+    if (!edit.cropActive) return displayPipeline
+    const activeTransform = edit.transformDraft ?? edit.pipeline.transform
+    return mergePipeline(edit.pipeline, {
+      transform: {
+        ...activeTransform,
+        crop: null,
+      },
+    })
+  }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft])
 
   // ── PreviewStage ref ──
   const previewRef = useRef<PreviewStageHandle>(null)
 
   // ── Initialize pipeline / reset crop when active asset changes ──
-  useEffect(() => {
+  useLayoutEffect(() => {
     const asset = media.currentProject?.assets[media.activeIndex]
     edit.setCropActive(false)
     edit.setTransformDraft(null)
     edit.setCropPreset('original')
     edit.initializePipeline(normalizePipeline(asset?.pipeline))
-  }, [media.activeIndex, media.currentProject?.id])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id])
+
+  useEffect(() => {
+    setMediaSize(null)
+    setWatermarkLayers([])
+    const filePath = media.activeMedia?.path
+    if (!filePath) return
+    let canceled = false
+    window.luna.workspace.getMediaResolution(filePath)
+      .then(({ width, height }) => {
+        if (!canceled) setMediaSize({ w: width, h: height })
+      })
+      .catch(() => {
+        if (!canceled) setMediaSize(null)
+      })
+    return () => {
+      canceled = true
+    }
+  }, [media.activeMedia?.path])
 
   // ── Auto-save project when pipeline changes ──
   const saveTimerRef = useRef<number | null>(null)
@@ -296,13 +327,18 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
             ref={previewRef}
             url={media.activeMedia?.path ?? null}
             pending={!media.activeMedia}
-            pipeline={displayPipeline}
+            pipeline={stagePipeline}
+            extraLayers={watermarkLayers}
+            cropActive={edit.cropActive}
             scaleMode="contain"
             onMetricsChange={canvas.setPreviewMetrics}
             renderOverlay={() => (edit.cropActive ? <CropOverlay /> : null)}
           />
 
-          <WorkspaceEditSidebar />
+          <WorkspaceEditSidebar
+            mediaSize={mediaSize}
+            onWatermarkLayerChange={(layer) => setWatermarkLayers(layer ? [layer] : [])}
+          />
 
           {/* ── Toolbar ── */}
           <footer className="workspace-toolbar">

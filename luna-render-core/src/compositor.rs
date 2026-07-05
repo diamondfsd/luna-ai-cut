@@ -103,6 +103,9 @@ struct LayerParams {
     crop_y: f32,
     crop_w: f32,
     crop_h: f32,
+    source_aspect: f32,
+    frame_w: f32,
+    frame_h: f32,
     opacity: f32,
     exposure: f32,
     brightness: f32,
@@ -146,14 +149,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let local_x = (pixel_x - params.dst_x) / params.dst_w;
     let local_y = (pixel_y - params.dst_y) / params.dst_h;
-    var local = vec2<f32>(local_x, local_y);
-    var centered = (local - vec2<f32>(0.5, 0.5)) / max(params.scale, 0.0001);
-    let radians_value = -params.rotate * 0.017453292519943295;
+    let frame_uv = vec2<f32>(
+        params.crop_x + local_x * params.crop_w,
+        params.crop_y + local_y * params.crop_h,
+    );
+    var centered = (frame_uv - vec2<f32>(0.5, 0.5)) * vec2<f32>(
+        max(params.frame_w, 0.0001),
+        max(params.frame_h, 0.0001),
+    );
+    centered = centered / max(params.scale, 0.0001);
+    let radians_value = (params.orientation + params.rotate) * 0.017453292519943295;
     let s = sin(radians_value);
     let c = cos(radians_value);
     centered = vec2<f32>(
-        centered.x * c - centered.y * s,
-        centered.x * s + centered.y * c,
+        centered.x * c + centered.y * s,
+        -centered.x * s + centered.y * c,
     );
     if (params.flip_h > 0.5) {
         centered.x = -centered.x;
@@ -161,28 +171,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (params.flip_v > 0.5) {
         centered.y = -centered.y;
     }
-    let oriented = centered + vec2<f32>(0.5, 0.5);
-    if (oriented.x < 0.0 || oriented.x > 1.0 || oriented.y < 0.0 || oriented.y > 1.0) {
+    let source_local = centered / vec2<f32>(max(params.source_aspect, 0.0001), 1.0) + vec2<f32>(0.5, 0.5);
+    if (source_local.x < 0.0 || source_local.x > 1.0 || source_local.y < 0.0 || source_local.y > 1.0) {
         discard;
     }
-
-    var source_local = oriented;
-    let o = i32(round(params.orientation)) % 360;
-    if (o == 90 || o == -270) {
-        source_local = vec2<f32>(oriented.y, 1.0 - oriented.x);
-    } else if (o == 180 || o == -180) {
-        source_local = vec2<f32>(1.0 - oriented.x, 1.0 - oriented.y);
-    } else if (o == 270 || o == -90) {
-        source_local = vec2<f32>(1.0 - oriented.y, oriented.x);
-    }
-
-    let cropped = vec2<f32>(
-        params.crop_x + source_local.x * params.crop_w,
-        params.crop_y + source_local.y * params.crop_h,
-    );
     let tex_coord = vec2<f32>(
-        params.src_x + cropped.x * params.src_w,
-        params.src_y + cropped.y * params.src_h,
+        params.src_x + source_local.x * params.src_w,
+        params.src_y + source_local.y * params.src_h,
     );
 
     var color = textureSample(src_texture, src_sampler, tex_coord);
@@ -240,6 +235,9 @@ struct GpuLayerParams {
     crop_y: f32,
     crop_w: f32,
     crop_h: f32,
+    source_aspect: f32,
+    frame_w: f32,
+    frame_h: f32,
     opacity: f32,
     exposure: f32,
     brightness: f32,
@@ -941,6 +939,15 @@ impl Compositor {
                     log_error!("render: texture {} not found", layer.texture_id);
                     format!("texture {} not found", layer.texture_id)
                 })?;
+                let source_aspect = (tex_entry.width as f32 / tex_entry.height.max(1) as f32).max(0.0001);
+                let orientation = layer.transform.as_ref().map(|t| t.orientation as f32).unwrap_or(0.0);
+                let normalized_orientation = ((orientation % 180.0) + 180.0) % 180.0;
+                let swap_orientation = normalized_orientation >= 45.0 && normalized_orientation <= 135.0;
+                let (frame_w, frame_h) = if swap_orientation {
+                    (1.0, source_aspect)
+                } else {
+                    (source_aspect, 1.0)
+                };
 
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
@@ -957,6 +964,9 @@ impl Compositor {
                     crop_y: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.y as f32).unwrap_or(0.0),
                     crop_w: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.w as f32).unwrap_or(1.0),
                     crop_h: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.h as f32).unwrap_or(1.0),
+                    source_aspect,
+                    frame_w,
+                    frame_h,
                     opacity: layer.opacity as f32,
                     exposure: layer.color.as_ref().map(|c| c.exposure as f32).unwrap_or(0.0),
                     brightness: layer.color.as_ref().map(|c| c.brightness as f32).unwrap_or(0.0),
@@ -973,7 +983,7 @@ impl Compositor {
                     texture: layer.color.as_ref().map(|c| c.texture as f32).unwrap_or(0.0),
                     sharpen: layer.color.as_ref().map(|c| c.sharpen as f32).unwrap_or(0.0),
                     denoise: layer.color.as_ref().map(|c| c.denoise as f32).unwrap_or(0.0),
-                    orientation: layer.transform.as_ref().map(|t| t.orientation as f32).unwrap_or(0.0),
+                    orientation,
                     rotate: layer.transform.as_ref().map(|t| t.rotate as f32).unwrap_or(0.0),
                     flip_h: layer.transform.as_ref().map(|t| if t.flip_h { 1.0 } else { 0.0 }).unwrap_or(0.0),
                     flip_v: layer.transform.as_ref().map(|t| if t.flip_v { 1.0 } else { 0.0 }).unwrap_or(0.0),

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform } from '../shared/types'
+import { filePathToPreviewUrl } from '../lib/fileUtils'
 
 const PREVIEW_TEXTURE_MAX_SIZE = 1920
 
@@ -404,7 +405,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
         onVideoElement(video)
       }
 
-      video.src = layer.filePath
+      video.src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
       video.load()
 
       video.oncanplay = () => {

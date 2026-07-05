@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
-import { luna_ultra_layout, closestAspectRatio, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
+import { luna_ultra_layout, closestAspectRatio, POSITION_TO_KEY, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
@@ -16,7 +16,7 @@ import '../styles/watermark-settings.css'
 export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, layoutAspect?: string): PreviewLayer | null {
   if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
   const { imagePath: filePath, wmAspect, widthRatio = 0, xRatio = 0, yRatio = 0 } = settings
-  const vPos = settings.position.startsWith('Bottom') ? 'bottom' : 'top'
+  const vPos = positionKeyFor(settings.position).startsWith('Bottom') ? 'bottom' : 'top'
   const dstW = widthRatio
   // 从 layout key 中获取参考宽高比，与查表一致
   const parts = (layoutAspect ?? '16:9').split(':').map(Number)
@@ -34,6 +34,10 @@ export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, layou
   }
 }
 
+function positionKeyFor(position: string): string {
+  return POSITION_TO_KEY[position] ?? position
+}
+
 const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }> = [
   { value: 'TopLeft', label: '左上', cx: 27, cy: 22.5 },
   { value: 'TopRight', label: '右上', cx: 133, cy: 22.5 },
@@ -45,7 +49,7 @@ const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }>
 export type WatermarkChangeHandler = (settings: WatermarkSettingsType, layer?: PreviewLayer) => void
 
 interface WatermarkSettingsProps {
-  settings: WatermarkSettingsType
+  settings?: WatermarkSettingsType
   onChange: WatermarkChangeHandler
   compact?: boolean
   showToggle?: boolean
@@ -78,7 +82,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
       <div className="wm-position-grid">
         <div className="wm-position-row">
           <button key={POSITIONS[0].value}
-            className={`wm-pos-cell ${settings.position === POSITIONS[0].value ? 'active' : ''}`}
+              className={`wm-pos-cell ${positionKeyFor(settings.position) === POSITIONS[0].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[0].value)} title={POSITIONS[0].label}>
             <svg viewBox="0 0 160 90" className="wm-pos-frame">
               <rect x={POSITIONS[0].cx - 10} y={POSITIONS[0].cy - 7} width={20} height={14} rx={3} />
@@ -86,7 +90,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
           </button>
           <div className="wm-pos-cell wm-pos-placeholder" />
           <button key={POSITIONS[1].value}
-            className={`wm-pos-cell ${settings.position === POSITIONS[1].value ? 'active' : ''}`}
+              className={`wm-pos-cell ${positionKeyFor(settings.position) === POSITIONS[1].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[1].value)} title={POSITIONS[1].label}>
             <svg viewBox="0 0 160 90" className="wm-pos-frame">
               <rect x={POSITIONS[1].cx - 10} y={POSITIONS[1].cy - 7} width={20} height={14} rx={3} />
@@ -96,7 +100,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
         <div className="wm-position-row">
           {POSITIONS.slice(2).map(pos => (
             <button key={pos.value}
-              className={`wm-pos-cell ${settings.position === pos.value ? 'active' : ''}`}
+              className={`wm-pos-cell ${positionKeyFor(settings.position) === pos.value ? 'active' : ''}`}
               onClick={() => onPositionChange(pos.value)} title={pos.label}>
               <svg viewBox="0 0 160 90" className="wm-pos-frame">
                 <rect x={pos.cx - 10} y={pos.cy - 7} width={20} height={14} rx={3} />
@@ -110,6 +114,13 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
 }
 
 export function WatermarkSettings({ settings, onChange, compact, showToggle = true, filePath, mediaWidth, mediaHeight }: WatermarkSettingsProps) {
+  const [internalSettings, setInternalSettings] = useState<WatermarkSettingsType>({
+    enabled: true,
+    style: 'luna_ultra_cn',
+    position: 'BottomCenter' as WatermarkSettingsType['position'],
+  })
+  const currentSettings = settings ?? internalSettings
+
   // 从文件路径自动检测设备 → 水印样式选项
   const [deviceId, setDeviceId] = useState<string | null>(null)
   useEffect(() => {
@@ -147,8 +158,14 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   /** 获取水印路径和尺寸，与映射表比例合并后触发 onChange */
   const enrichAndChange = useCallback(async (patch: Partial<WatermarkSettingsType>) => {
     const seq = ++enrichSeqRef.current
-    const next = { ...settings, ...patch }
-    if (!next.enabled) { if (seq === enrichSeqRef.current) onChange(next); return }
+    const next = { ...currentSettings, ...patch }
+    if (!next.enabled) {
+      if (seq === enrichSeqRef.current) {
+        setInternalSettings(next)
+        onChange(next)
+      }
+      return
+    }
     const [info, theme] = await Promise.all([
       window.luna.getWatermarkPath(next.style, 'image').catch(() => null),
       Promise.resolve(STYLE_TO_THEME[next.style]),
@@ -156,7 +173,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     if (seq !== enrichSeqRef.current) return
     // 根据实际媒体宽高比查找布局（从 props 传入）
     const aspectKey = (mediaWidth && mediaHeight) ? closestAspectRatio(mediaWidth, mediaHeight) : '16:9'
-    const layoutKey = theme ? `${theme}|${aspectKey}|${next.position}` : null
+    const layoutKey = theme ? `${theme}|${aspectKey}|${positionKeyFor(next.position)}` : null
     const raw = layoutKey ? luna_ultra_layout[layoutKey] : null
     const enriched: WatermarkSettingsType = {
       ...next,
@@ -169,8 +186,9 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     const layer = enriched.imagePath && enriched.wmAspect
       ? buildWatermarkStaticLayer(enriched, aspectKey)
       : undefined
+    setInternalSettings(enriched)
     onChange(enriched, layer ?? undefined)
-  }, [settings, onChange, filePath, mediaWidth, mediaHeight])
+  }, [currentSettings, onChange, filePath, mediaWidth, mediaHeight])
 
   const handleToggle = useCallback(
     (enabled: boolean) => enrichAndChange({ enabled }),
@@ -190,7 +208,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   const content = (
     <WatermarkSettingsContent
       stylePills={stylePills}
-      settings={settings}
+      settings={currentSettings}
       onStyleChange={handleStyleChange}
       onPositionChange={handlePositionChange}
     />
@@ -200,11 +218,11 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     return (
       <div className="watermark-toolbar">
         <label className="watermark-toolbar-toggle">
-          <Switch checked={settings.enabled} onCheckedChange={handleToggle} ariaLabel="启用水印" />
+          <Switch checked={currentSettings.enabled} onCheckedChange={handleToggle} ariaLabel="启用水印" />
           <ImagePlus size={14} />
           <span>水印</span>
         </label>
-        {settings.enabled && (
+        {currentSettings.enabled && (
           <Popover>
             <PopoverTrigger asChild>
               <button className="watermark-settings-btn" title="水印参数设置">
@@ -229,10 +247,10 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
             <ImagePlus size={14} />
             水印设置
           </span>
-          <Switch checked={settings.enabled} onCheckedChange={handleToggle} ariaLabel="启用水印" />
+          <Switch checked={currentSettings.enabled} onCheckedChange={handleToggle} ariaLabel="启用水印" />
         </div>
       )}
-      {(!showToggle || settings.enabled) && content}
+      {(!showToggle || currentSettings.enabled) && content}
     </section>
   )
 }

@@ -31,11 +31,6 @@ export function PreviewModal({
 
   // ── 状态 ──
   const [inspectorOpen, setInspectorOpen] = useState(true)
-  const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
-    enabled: true,
-    style: 'luna_ultra_cn',
-    position: 'BottomCenter' as any,
-  })
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
 
@@ -60,8 +55,7 @@ export function PreviewModal({
   const displaySource = filePathToPreviewUrl(currentFilePath) ?? currentFilePath
 
   // WatermarkSettings onChange 回调
-  function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
-    setWatermarkSettings(settings)
+  function handleWatermarkChange(_settings: WatermarkSettingsType, layer?: PreviewLayer) {
     setWatermarkLayers(layer ? [layer] : [])
   }
 
@@ -129,7 +123,6 @@ export function PreviewModal({
               onToggleCollapse={() => setInspectorOpen(false)}
               header={
                 <WatermarkSettings
-                  settings={watermarkSettings}
                   onChange={handleWatermarkChange}
                   filePath={currentFilePath}
                   mediaWidth={mediaSize?.w}
