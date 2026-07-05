@@ -434,6 +434,21 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       const exportDir = settings.exportDir
       if (!exportDir) throw new Error('导出目录未配置')
 
+      const res = await window.luna.workspace.getMediaResolution(displayUrl)
+      const baseName = baseNameFromPath(displayUrl)
+      const exportingVideo = isVideoPath(displayUrl)
+      const format = exportOptions.format || 'jpeg'
+      const ext = exportingVideo ? 'mp4' : format === 'jpeg' ? 'jpg' : format
+      const filename = `${baseName}_${Date.now()}.${ext}`
+      const outputPath = exportDir.endsWith('/') ? `${exportDir}${filename}` : `${exportDir}/${filename}`
+      const exportLayers = buildAdjustedLayers(displayUrl, res)
+
+      // 创建导出任务记录
+      const itemId = `preview_${baseName}_${Date.now()}`
+      const task = await window.luna.exportTask.create('单帧导出', [
+        { id: itemId, sourcePath: displayUrl, outputPath },
+      ])
+
       if (isLivePhoto && url) {
         let exportLiveVideoUrl = liveVideoUrl
         if (!exportLiveVideoUrl) {
@@ -443,7 +458,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
         }
         if (!exportLiveVideoUrl) throw new Error('Live 图视频还未准备好')
 
-        const baseName = baseNameFromPath(url)
         const liveResolution = await window.luna.workspace.getMediaResolution(url)
         return exportPreviewLivePhoto({
           name: baseName,
@@ -456,17 +470,18 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
         })
       }
 
-      const res = await window.luna.workspace.getMediaResolution(displayUrl)
-      const baseName = baseNameFromPath(displayUrl)
-      const exportingVideo = isVideoPath(displayUrl)
-      const format = exportOptions.format || 'jpeg'
-      const ext = exportingVideo ? 'mp4' : format === 'jpeg' ? 'jpg' : format
-      const filename = `${baseName}_${Date.now()}.${ext}`
-      const exportLayers = buildAdjustedLayers(displayUrl, res)
       if (exportingVideo) {
-        return exportPreviewVideo({ exportDir, fileName: filename, width: res.width, height: res.height, layers: exportLayers, qualityPreset: 'high' })
+        return exportPreviewVideo({
+          exportDir, fileName: filename, width: res.width, height: res.height,
+          layers: exportLayers, qualityPreset: 'high',
+          exportTaskId: task.id, exportItemId: itemId,
+        })
       }
-      return exportPreviewImage({ exportDir, fileName: filename, width: res.width, height: res.height, layers: exportLayers, format, quality: 100 })
+      return exportPreviewImage({
+        exportDir, fileName: filename, width: res.width, height: res.height,
+        layers: exportLayers, format, quality: 100,
+        exportTaskId: task.id, exportItemId: itemId,
+      })
     },
   }), [exportOptions, displayUrl, isLivePhoto, url, liveVideoUrl, buildAdjustedLayers])
 

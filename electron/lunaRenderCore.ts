@@ -168,6 +168,16 @@ interface LunaRenderCoreNative {
     format: string,
     quality: number,
   ): void
+  exportImageFromSourcesAsync?(
+    ffmpegPath: string,
+    ffprobePath: string,
+    outputPath: string,
+    width: number,
+    height: number,
+    layers: PreviewNativeLayer[],
+    format: string,
+    quality: number,
+  ): Promise<void>
   renderLayersToFile(
     ffmpegPath: string,
     outputPath: string,
@@ -439,6 +449,25 @@ export function exportImageFromSources(
 ): void {
   ensureInit()
   getNative().exportImageFromSources(ffmpegPath, ffprobePath, outputPath, width, height, layers.map(normalizePreviewLayer), format, quality)
+}
+
+export function exportImageFromSourcesAsync(
+  ffmpegPath: string,
+  ffprobePath: string,
+  outputPath: string,
+  width: number,
+  height: number,
+  layers: PreviewLayerInputForExport[],
+  format: string,
+  quality: number,
+): Promise<void> {
+  ensureInit()
+  const native = getNative()
+  const run = native.exportImageFromSourcesAsync ?? ((...args: Parameters<LunaRenderCoreNative['exportImageFromSources']>) => {
+    native.exportImageFromSources(...args)
+    return Promise.resolve()
+  })
+  return run(ffmpegPath, ffprobePath, outputPath, width, height, layers.map(normalizePreviewLayer), format, quality)
 }
 
 export function renderLayersToFile(

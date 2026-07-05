@@ -1,5 +1,5 @@
 /** 旧导出兼容 stub — workspace 导出后续统一改造为 Native Core */
-import type { ExportTaskRecord, ExportTaskItemRecord } from '../src/shared/types'
+import type { ExportTaskRecord, ExportTaskItemRecord, ExportTaskItem } from '../src/shared/types'
 
 const tasks = new Map<string, ExportTaskRecord>()
 
@@ -10,7 +10,8 @@ export async function createExportTask(name: string, items: Array<{ exportId: st
     name, startTime: now, endTime: null, duration: null,
     totalCount: items.length, progress: 0, status: 'pending',
     items: items.map((item) => ({
-      exportId: item.exportId, fileName: item.fileName, kind: item.kind,
+      id: item.exportId,
+      fileName: item.fileName, kind: item.kind as ExportTaskItem['kind'],
       startTime: now, endTime: null, duration: null,
       progress: 0, status: 'queued' as const,
     })),
@@ -27,13 +28,13 @@ export async function updateTaskItemProgress(
   _extra?: Record<string, unknown>,
 ): Promise<void> {
   const t = tasks.get(taskId); if (!t) return
-  const item = t.items.find((i) => i.exportId === exportId); if (!item) return
+  const item = t.items.find((i) => i.id === exportId); if (!item) return
   item.progress = progress; item.status = status
 }
 
 export async function addTaskItem(taskId: string, item: { exportId: string; fileName: string; kind: string }): Promise<void> {
   const t = tasks.get(taskId); if (!t) return
-  t.items.push({ exportId: item.exportId, fileName: item.fileName, kind: item.kind, startTime: Date.now(), endTime: null, duration: null, progress: 0, status: 'queued' })
+  t.items.push({ id: item.exportId, fileName: item.fileName, kind: item.kind as ExportTaskItem['kind'], startTime: Date.now(), endTime: null, duration: null, progress: 0, status: 'queued' })
   t.totalCount = t.items.length
 }
 

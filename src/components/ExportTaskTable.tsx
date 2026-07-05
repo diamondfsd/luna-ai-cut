@@ -127,7 +127,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   const loadTasks = async () => {
     setLoading(true)
     try {
-      const result = await window.luna.getExportTasks()
+      const result = await window.luna.exportTask.list()
       setTasks(result)
     } catch {
       // silent
@@ -173,7 +173,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
 
   const handlePreviewItem = (item: ExportTaskItemRecord): void => {
     if (!item.destinationPath) return
-    const task = tasks.find((t) => t.items.some((i) => i.exportId === item.exportId))
+    const task = tasks.find((t) => t.items.some((i) => i.id === item.id))
     if (!task) return
     const filePaths = task.items
       .filter((i) => i.destinationPath && i.status === 'done')
@@ -198,7 +198,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         }
       }),
     )
-    await window.luna.cancelExportTask(taskId)
+    await window.luna.exportTask.cancel(taskId)
   }
 
   const statusIcon = (task: ExportTaskRecord) => {
@@ -319,7 +319,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         expandContent={(task) => (
           <div className="et-task-items" style={{ borderTop: 'none', marginTop: 0, paddingTop: 0 }}>
             {task.items.map((item) => (
-              <TaskItemRow key={item.exportId} item={item} onPreview={handlePreviewItem} onRevealFile={onRevealFile} />
+              <TaskItemRow key={item.id} item={item} onPreview={handlePreviewItem} onRevealFile={onRevealFile} />
             ))}
           </div>
         )}
