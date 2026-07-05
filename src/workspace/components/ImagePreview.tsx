@@ -125,12 +125,7 @@ export const ImagePreview = forwardRef<ImagePreviewHandle, ImagePreviewProps>(fu
   const handlePlayLivePhoto = useCallback(async () => {
     setLivePhotoLoading(true)
     try {
-      const result = await (window as any).luna.previewLivePhoto({
-        name: name ?? filePath,
-        isLivePhoto: true,
-        localPath: filePath,
-        downloadFilePath: filePath,
-      })
+      const result = await window.luna.previewLivePhoto(filePath)
       if (result?.source) {
         await canvas.loadLiveVideo(result.source)
         canvas.playVideo()

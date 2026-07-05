@@ -75,7 +75,7 @@ export interface LunaApi {
   listDownloadedFiles(downloadDir?: string): Promise<LunaFile[]>
   listExportFiles(exportDir?: string): Promise<LunaFile[]>
   previewFile(file: LunaFile, files: LunaFile[]): Promise<PreviewResult>
-  previewLivePhoto(file: LunaFile): Promise<PreviewResult>
+  previewLivePhoto(sourceUrl: string): Promise<PreviewResult>
   previewWithWatermark(file: LunaFile, sourcePath: string, settings: WatermarkSettings): Promise<PreviewResult>
   getMediaMetadata(file: LunaFile, cachedPath?: string | null): Promise<MediaMetadata>
   /** 根据文件路径解析缩略图 URL（图片返回 file://，视频生成缩略图后返回） */
@@ -117,6 +117,7 @@ export interface LunaApi {
     exportImage(name: string, dataUrl: string): Promise<{ path: string; name: string }>
     exportCreativeDataUrl(name: string, dataUrl: string, kind: 'image' | 'video'): Promise<{ path: string; name: string }>
     exportCreativeLivePhoto(name: string, imageDataUrl: string, videoDataUrl: string, appleLivePhoto: boolean): Promise<{ path: string; name: string }>
+    exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean): Promise<{ path: string; name: string }>
     exportTripleStitch(options: TripleStitchExportOptions): Promise<Array<{ path: string; name: string }>>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     exportColor(sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }): Promise<{ path: string; name: string }>

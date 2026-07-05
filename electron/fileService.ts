@@ -97,10 +97,6 @@ function localPathForPreview(file: LunaFile): string | null {
   return file.downloadFilePath ?? file.localPath ?? file.cacheFilePath ?? null
 }
 
-function embeddedLiveVideoPathFor(cacheDir: string, file: LunaFile): string {
-  return path.join(cacheDir, `${safeName(file.name)}.live.mp4`)
-}
-
 async function extractEmbeddedLivePhotoVideo(livPath: string, destination: string): Promise<string | null> {
   const data = await fs.readFile(livPath)
   const marker = Buffer.from('ftyp', 'ascii')
@@ -347,60 +343,29 @@ export async function cacheFile(file: LunaFile): Promise<string | null> {
   return null
 }
 
-export async function previewLivePhoto(file: LunaFile): Promise<PreviewResult> {
-  if (!file.isLivePhoto) {
-    return {
-      fileName: file.name,
-      kind: file.kind,
-      source: null,
-      cachedPath: null,
-      message: '这不是 LIVE 照片',
-    }
-  }
-
+export async function previewLivePhoto(source: string): Promise<PreviewResult> {
+  const fileName = path.basename(source.startsWith('file:') ? fileURLToPath(source) : source)
+  const videoName = `${fileName}.live.mp4`
   const cacheDir = await previewCacheDir()
   await fs.mkdir(cacheDir, { recursive: true })
-  const embeddedLivePath = embeddedLiveVideoPathFor(cacheDir, file)
+  const embeddedLivePath = path.join(cacheDir, `${safeName(fileName)}.live.mp4`)
 
   if (await fileExists(embeddedLivePath)) {
-    return {
-      fileName: `${file.name}.live.mp4`,
-      kind: 'video',
-      source: localThumbnailUrl(embeddedLivePath),
-      cachedPath: embeddedLivePath,
-    }
+    return { fileName: videoName, kind: 'video', source: localThumbnailUrl(embeddedLivePath), cachedPath: embeddedLivePath }
   }
 
-  let livPath = localPathForPreview(file)
-  if (!livPath || !(await fileExists(livPath))) {
-    const sourceUrl = sourceUrlFor(file)
-    if (isFileUrl(sourceUrl)) {
-      livPath = fileURLToPath(sourceUrl)
-    } else {
-      livPath = path.join(cacheDir, safeName(file.name))
-      await downloadToFile({ ...file, sourceUrl }, livPath)
-    }
+  const livPath = source.startsWith('file:') ? fileURLToPath(source) : source
+  if (!(await fileExists(livPath))) {
+    return { fileName, kind: 'image', source: null, cachedPath: null, message: 'Live 图文件不存在' }
   }
 
   const extractedPath = await extractEmbeddedLivePhotoVideo(livPath, embeddedLivePath)
   if (!extractedPath) {
-    return {
-      fileName: file.name,
-      kind: file.kind,
-      source: null,
-      cachedPath: null,
-      message: '没有在 LIV 文件中找到内嵌视频',
-    }
+    return { fileName, kind: 'image', source: null, cachedPath: null, message: '没有在 Live 图中找到视频片段' }
   }
 
-  return {
-    fileName: `${file.name}.live.mp4`,
-    kind: 'video',
-    source: localThumbnailUrl(extractedPath),
-    cachedPath: extractedPath,
-  }
+  return { fileName: videoName, kind: 'video', source: localThumbnailUrl(extractedPath), cachedPath: extractedPath }
 }
-
 
 export async function downloadFiles(
   files: LunaFile[],

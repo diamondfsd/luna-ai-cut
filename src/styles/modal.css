@@ -223,41 +223,6 @@
   right: 18px;
 }
 
-.preview-live-chip {
-  left: 18px;
-  bottom: 18px;
-  width: 42px;
-  height: 42px;
-}
-
-.preview-live-chip.is-playing {
-  color: rgba(255, 255, 255, 0.86);
-}
-
-.preview-live-chip:disabled {
-  cursor: wait;
-  opacity: 0.78;
-}
-
-.preview-live-chip .live-photo-symbol {
-  width: 30px;
-  height: 30px;
-}
-
-.preview-live-chip .live-photo-symbol span {
-  inset: 7px;
-  border-width: 1px;
-  box-sizing: border-box;
-}
-
-.preview-live-chip .live-photo-symbol span:nth-child(2) {
-  inset: 11px;
-}
-
-.preview-live-chip .live-photo-symbol span:nth-child(3) {
-  inset: 14px;
-}
-
 .live-photo-player-host,
 .live-photo-player-photo,
 .live-photo-player-video {

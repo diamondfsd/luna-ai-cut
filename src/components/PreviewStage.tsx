@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
-import type { LrcRenderHandle } from './LrcRender'
+import { exportPreviewImage, exportPreviewLivePhoto, exportPreviewVideo } from './previewStageExport'
 import type { PreviewLayer } from '../shared/types'
+import { useIsLivePhoto } from '../shared/livePhoto'
+import { LivePhotoBadge } from '../ui'
 import './PreviewStage.css'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif']
@@ -129,12 +131,21 @@ export function calcAspectRatio(width: number, height: number): number {
   return Math.round((width / height) * 100) / 100
 }
 
+function projectCanvasFor(resolution: MediaResolution | null): StageSize | null {
+  if (!resolution) return null
+  const MAX = 1440
+  const aspect = resolution.width / resolution.height
+  if (aspect >= 1) {
+    return { width: MAX, height: Math.round(MAX / aspect) }
+  }
+  return { width: Math.round(MAX * aspect), height: MAX }
+}
+
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
   { url, scaleMode = 'contain', extraLayers, exportOptions },
   ref,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
-  const lrcRef = useRef<LrcRenderHandle | null>(null)
   const [stageSize, setStageSize] = useState<StageSize | null>(null)
   // ── 媒体分辨率 ──
   const [resolution, setResolution] = useState<MediaResolution | null>(null)
@@ -148,7 +159,12 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const isVideoUrl = url ? isVideo(url) : false
+  const isLivePhoto = useIsLivePhoto(url)
+  const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
+  const [liveVideoLoading, setLiveVideoLoading] = useState(false)
+  const [livePlaying, setLivePlaying] = useState(false)
+  const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
+  const isDisplayVideo = displayUrl ? isVideo(displayUrl) : false
 
   // 暴露 video 元素并绑定事件
   const handleVideoElement = useCallback((el: HTMLVideoElement | null) => {
@@ -169,12 +185,39 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       el.onpause = () => setPlaying(false)
       el.ontimeupdate = () => setCurrentTime(el.currentTime)
       el.onloadedmetadata = () => setDuration(el.duration || 0)
+      if (livePlaying && isDisplayVideo) {
+        el.currentTime = 0
+        el.play().catch(() => {})
+      }
     } else {
       setPlaying(false)
       setCurrentTime(0)
       setDuration(0)
     }
-  }, [])
+  }, [livePlaying, isDisplayVideo])
+
+  useEffect(() => {
+    let canceled = false
+    setLivePlaying(false)
+    setLiveVideoUrl(null)
+    if (!isLivePhoto || !url) return
+
+    setLiveVideoLoading(true)
+    window.luna.previewLivePhoto(url)
+      .then((result) => {
+        if (!canceled) setLiveVideoUrl(result.source ?? null)
+      })
+      .catch(() => {
+        if (!canceled) setLiveVideoUrl(null)
+      })
+      .finally(() => {
+        if (!canceled) setLiveVideoLoading(false)
+      })
+
+    return () => {
+      canceled = true
+    }
+  }, [url, isLivePhoto])
 
   function togglePlay() {
     if (!videoRef.current) return
@@ -193,6 +236,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     setCurrentTime(time)
   }
 
+  function toggleLivePhoto() {
+    if (!liveVideoUrl) return
+    setLivePlaying((current) => !current)
+  }
+
   function formatTime(t: number): string {
     if (!Number.isFinite(t) || t < 0) return '0:00'
     const m = Math.floor(t / 60)
@@ -200,14 +248,20 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     return `${m}:${String(s).padStart(2, '0')}`
   }
 
+  useEffect(() => {
+    if (!livePlaying || !isDisplayVideo || !videoRef.current) return
+    videoRef.current.currentTime = 0
+    videoRef.current.play().catch(() => {})
+  }, [livePlaying, isDisplayVideo, displayUrl])
+
   // url 变化时显示 loading，onRender 时取消
   useEffect(() => {
-    if (!url) { setLoading(false); return }
-    if (url !== prevUrlRef.current) {
-      prevUrlRef.current = url
+    if (!displayUrl) { setLoading(false); return }
+    if (displayUrl !== prevUrlRef.current) {
+      prevUrlRef.current = displayUrl
       setLoading(true)
     }
-  }, [url])
+  }, [displayUrl])
 
   function handleRender() {
     setLoading(false)
@@ -223,14 +277,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   // 预览时渲染到 projectCanvas 尺寸，CSS 等比例显示在 Stage 容器内
   // 导出时渲染到原始分辨率（比例一致，结果相同）
   const projectCanvas = useMemo(() => {
-    if (!resolution) return null
-    const MAX = 1440
-    const aspect = resolution.width / resolution.height
-    if (aspect >= 1) {
-      return { width: MAX, height: Math.round(MAX / aspect) }
-    } else {
-      return { width: Math.round(MAX * aspect), height: MAX }
-    }
+    return projectCanvasFor(resolution)
   }, [resolution])
 
   // 监听舞台尺寸，按当前视口比例构建 layer，避免资源被拉伸。
@@ -255,12 +302,12 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     const resizeObserver = new ResizeObserver(updateStageSize)
     resizeObserver.observe(element)
     return () => resizeObserver.disconnect()
-  }, [url])
+  }, [displayUrl])
 
-  const layers = useMemo(() => {
+  const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution): PreviewLayer[] => {
     // 基于 Project Canvas 计算布局，Stage 不参与
-    const canvas = projectCanvas ?? { width: 1440, height: 1440 }
-    const main = url ? buildLayers(url, scaleMode, resolution, canvas) : []
+    const canvas = projectCanvasFor(layerResolution) ?? { width: 1440, height: 1440 }
+    const main = sourceUrl ? buildLayers(sourceUrl, scaleMode, layerResolution, canvas) : []
     if (!extraLayers?.length) return main
 
     const m = main[0]
@@ -276,21 +323,23 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       dstH: l.dstH * cH,
     }))
     return [...main, ...adjusted]
-  }, [url, scaleMode, resolution, projectCanvas, extraLayers])
+  }, [scaleMode, resolution, extraLayers])
+
+  const layers = useMemo(() => buildAdjustedLayers(displayUrl), [buildAdjustedLayers, displayUrl])
 
   // 通过 IPC 获取媒体文件实际分辨率
   useEffect(() => {
-    if (!url) {
+    if (!displayUrl) {
       setResolution(null)
       return
     }
-    window.luna.workspace.getMediaResolution(url)
+    window.luna.workspace.getMediaResolution(displayUrl)
       .then((res) => {
-        console.log(`[PreviewStage] getMediaResolution: ${url} -> ${res.width}x${res.height}`)
+        console.log(`[PreviewStage] getMediaResolution: ${displayUrl} -> ${res.width}x${res.height}`)
         setResolution(res)
       })
       .catch(() => setResolution(null))
-  }, [url])
+  }, [displayUrl])
 
   // Canvas 包裹层样式 — 在 Stage 内保持 Project Canvas 比例
   const canvasWrapperStyle = useMemo(() => {
@@ -310,37 +359,50 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   useImperativeHandle(ref, () => ({
     async export() {
       if (!exportOptions?.enable) throw new Error('导出未启用')
-
-      // 导出在原始分辨率上渲染（与 preview 相同 projectCanvas 比例）
-      const res = resolution
-      if (!res) throw new Error('媒体分辨率未就绪')
+      if (!displayUrl) throw new Error('预览内容未就绪')
 
       // 从设置中获取导出目录
       const settings = await window.luna.getSettings()
       const exportDir = settings.exportDir
       if (!exportDir) throw new Error('导出目录未配置')
 
-      const baseName = baseNameFromUrl(url!)
-      const exportingVideo = isVideo(url!)
+      if (isLivePhoto && url) {
+        let exportLiveVideoUrl = liveVideoUrl
+        if (!exportLiveVideoUrl) {
+          const result = await window.luna.previewLivePhoto(url)
+          exportLiveVideoUrl = result.source ?? null
+          setLiveVideoUrl(exportLiveVideoUrl)
+        }
+        if (!exportLiveVideoUrl) throw new Error('Live 图视频还未准备好')
+
+        const baseName = baseNameFromUrl(url)
+        const liveResolution = await window.luna.workspace.getMediaResolution(url)
+        return exportPreviewLivePhoto({
+          name: baseName,
+          exportDir,
+          width: liveResolution.width,
+          height: liveResolution.height,
+          imageLayers: buildAdjustedLayers(url, liveResolution),
+          videoLayers: buildAdjustedLayers(exportLiveVideoUrl, liveResolution),
+          appleLivePhoto: Boolean(settings.exportAppleLivePhoto),
+        })
+      }
+
+      const res = await window.luna.workspace.getMediaResolution(displayUrl)
+      const baseName = baseNameFromUrl(displayUrl)
+      const exportingVideo = isVideo(displayUrl)
       const format = exportOptions.format || 'jpeg'
       const ext = exportingVideo ? 'mp4' : format === 'jpeg' ? 'jpg' : format
       const filename = `${baseName}_${Date.now()}.${ext}`
-
-      const outputPath = exportDir.endsWith('/') ? `${exportDir}${filename}` : `${exportDir}/${filename}`
-
-      const lrcHandle = lrcRef.current
-      if (!lrcHandle) throw new Error('LrcRender 未就绪')
+      const exportLayers = buildAdjustedLayers(displayUrl, res)
       if (exportingVideo) {
-        await lrcHandle.exportVideo(outputPath, res.width, res.height, { hardware: true, qualityPreset: 'high' })
-      } else {
-        await lrcHandle.exportImage(outputPath, res.width, res.height, format, 100)
+        return exportPreviewVideo({ exportDir, fileName: filename, width: res.width, height: res.height, layers: exportLayers, qualityPreset: 'high' })
       }
-
-      return { path: outputPath, name: filename }
+      return exportPreviewImage({ exportDir, fileName: filename, width: res.width, height: res.height, layers: exportLayers, format, quality: 100 })
     },
-  }), [exportOptions, resolution, url])
+  }), [exportOptions, displayUrl, isLivePhoto, url, liveVideoUrl, buildAdjustedLayers])
 
-  if (!url || layers.length === 0) return null
+  if (!displayUrl || layers.length === 0) return null
 
   return (
     <div
@@ -349,14 +411,40 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
       <div className="preview-canvas-wrapper" style={canvasWrapperStyle}>
-          <LrcRender ref={lrcRef} layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
+          <LrcRender layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
         </div>
       {loading && (
         <div className="preview-loading-overlay">
           <div className="preview-loading-spinner" />
         </div>
       )}
-      {isVideoUrl && videoRef.current && (
+      {isLivePhoto && (
+        <button
+          type="button"
+          disabled={liveVideoLoading || !liveVideoUrl}
+          onClick={toggleLivePhoto}
+          aria-label={livePlaying ? '停止 Live 图播放' : '播放 Live 图'}
+          style={{
+            position: 'absolute',
+            left: 18,
+            bottom: 18,
+            zIndex: 5,
+            display: 'grid',
+            width: 44,
+            height: 44,
+            placeItems: 'center',
+            border: 0,
+            borderRadius: '50%',
+            background: livePlaying ? 'rgba(0, 102, 204, 0.78)' : 'rgba(255, 255, 255, 0.16)',
+            color: '#fff',
+            cursor: liveVideoLoading || !liveVideoUrl ? 'wait' : 'pointer',
+            opacity: liveVideoLoading || !liveVideoUrl ? 0.72 : 1,
+          }}
+        >
+          <LivePhotoBadge size={32} />
+        </button>
+      )}
+      {isDisplayVideo && videoRef.current && (
         <div className="preview-video-controls">
           <button className="preview-video-btn" onClick={togglePlay} title={playing ? '暂停' : '播放'}>
             {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
