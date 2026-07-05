@@ -236,6 +236,7 @@ pub struct PreviewLayer {
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
+    pub fit: Option<String>,
     pub dst_x: f64,
     pub dst_y: f64,
     pub dst_w: f64,
@@ -267,6 +268,37 @@ pub struct RenderPreviewOutput {
     pub width: u32,
     pub height: u32,
     pub data: Buffer,
+}
+
+#[napi(object)]
+#[derive(Clone)]
+pub struct PreviewTexture {
+    pub texture_id: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[napi(object)]
+#[derive(Clone)]
+pub struct PreviewPlanLayer {
+    pub layer: PreviewLayer,
+    pub texture: PreviewTexture,
+}
+
+#[napi(object)]
+#[derive(Clone)]
+pub struct PreviewPlanInput {
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub max_side: Option<u32>,
+    pub layers: Vec<PreviewPlanLayer>,
+}
+
+#[napi(object)]
+pub struct PreviewPlanOutput {
+    pub width: u32,
+    pub height: u32,
+    pub layers: Vec<RenderLayer>,
 }
 
 // ─────────────── napi exports ───────────────
@@ -402,6 +434,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             file_path: l.file_path.clone(),
             is_video: l.is_video,
             video_time: l.video_time,
+            fit: l.fit.clone(),
             dst_x: l.dst_x,
             dst_y: l.dst_y,
             dst_w: l.dst_w,
@@ -429,6 +462,51 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             width,
             height,
             data: data.into(),
+        })
+    })
+}
+
+/// 只计算预览输出尺寸和图层布局，不解码、不渲染。
+/// 前端可以缓存 texture/video frame，但 contain/fill 等布局由 Rust 统一规划。
+#[napi]
+pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> {
+    let layers: Vec<(compositor::PreviewLayerInput, compositor::PreviewTextureInfo)> = input
+        .layers
+        .iter()
+        .map(|item| {
+            (
+                compositor::PreviewLayerInput {
+                    file_path: item.layer.file_path.clone(),
+                    is_video: item.layer.is_video,
+                    video_time: item.layer.video_time,
+                    fit: item.layer.fit.clone(),
+                    dst_x: item.layer.dst_x,
+                    dst_y: item.layer.dst_y,
+                    dst_w: item.layer.dst_w,
+                    dst_h: item.layer.dst_h,
+                    src_x: item.layer.src_x,
+                    src_y: item.layer.src_y,
+                    src_w: item.layer.src_w,
+                    src_h: item.layer.src_h,
+                    opacity: item.layer.opacity,
+                    z_index: item.layer.z_index,
+                    color: item.layer.color.clone().unwrap_or_default(),
+                    transform: item.layer.transform.clone().unwrap_or_default(),
+                },
+                compositor::PreviewTextureInfo {
+                    texture_id: item.texture.texture_id,
+                    width: item.texture.width,
+                    height: item.texture.height,
+                },
+            )
+        })
+        .collect();
+    lock(|c| {
+        let planned = c.plan_preview(input.width, input.height, input.max_side, &layers)?;
+        Ok(PreviewPlanOutput {
+            width: planned.width,
+            height: planned.height,
+            layers: planned.layers,
         })
     })
 }
