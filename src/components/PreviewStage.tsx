@@ -24,6 +24,8 @@ interface PreviewStageProps {
   exportOptions?: ExportOptions
   /** 编辑工作台管线。传入后会写入主媒体 layer，由 Rust/wgpu 统一处理。 */
   pipeline?: EditPipeline
+  /** 裁剪编辑态：预览画面缩小留出操作边距，底图仍由传入 pipeline 决定。 */
+  cropActive?: boolean
   /** 预览几何信息变化，用于裁切 UI 等编辑控件。 */
   onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void
   renderOverlay?: () => ReactNode
@@ -126,7 +128,7 @@ function projectCanvasFor(resolution: MediaResolution | null): StageSize | null 
 }
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
-  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, onMetricsChange, renderOverlay },
+  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, cropActive = false, onMetricsChange, renderOverlay },
   ref,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -371,15 +373,16 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   // Canvas 包裹层样式 — 在 Stage 内保持 Project Canvas 比例
   const canvasWrapperStyle = useMemo(() => {
     if (!projectCanvas || !stageSize) return {}
+    const cropScale = cropActive ? 0.82 : 1
     const stageAspect = stageSize.width / stageSize.height
     const canvasAspect = projectCanvas.width / projectCanvas.height
     if (canvasAspect > stageAspect) {
-      const width = stageSize.width
+      const width = stageSize.width * cropScale
       return { width: `${width}px`, height: `${width / canvasAspect}px` }
     }
-    const height = stageSize.height
+    const height = stageSize.height * cropScale
     return { width: `${height * canvasAspect}px`, height: `${height}px` }
-  }, [projectCanvas, stageSize])
+  }, [projectCanvas, stageSize, cropActive])
 
   useEffect(() => {
     if (layers.length === 0 || !('width' in canvasWrapperStyle) || !('height' in canvasWrapperStyle)) return
