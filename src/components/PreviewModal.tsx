@@ -149,30 +149,6 @@ export function PreviewModal({
               />
             )}
 
-            {batchExportMode && (
-              <div className="batch-export-footer">
-                <div className="batch-file-info">
-                  <span className="batch-file-name">{currentFilePath.split(/[/\\]/).pop()}</span>
-                  {currentResolution && (
-                    <span className="batch-file-resolution">
-                      {currentResolution.width} × {currentResolution.height}
-                    </span>
-                  )}
-                  <span className={`batch-file-kind ${isVideo ? 'video' : 'image'}`}>
-                    {isVideo ? '视频' : '图片'}
-                  </span>
-                </div>
-                <button
-                  className="ui-btn ui-btn-primary batch-export-btn"
-                  disabled={batchExporting}
-                  onClick={handleBatchExport}
-                  type="button"
-                >
-                  {batchExporting ? '导出中...' : `确认导出 (${filePathList?.length ?? 0} 个文件)`}
-                </button>
-              </div>
-            )}
-
             <PreviewThumbnailStrip
               filePathList={filePathList ?? [currentFilePath]}
               initialFilePath={currentFilePath}
@@ -181,18 +157,42 @@ export function PreviewModal({
           </div>
 
           {inspectorOpen && (
-            <MediaInspector
-              filePath={currentFilePath}
-              onToggleCollapse={() => setInspectorOpen(false)}
-              header={!previewOnly ? (
-                <WatermarkSettings
-                  onChange={handleWatermarkChange}
-                  filePath={currentFilePath}
-                  mediaWidth={mediaSize?.w}
-                  mediaHeight={mediaSize?.h}
-                />
-              ) : undefined}
-            />
+            <div className={batchExportMode ? 'batch-export-sidebar' : undefined}>
+              <MediaInspector
+                filePath={currentFilePath}
+                onToggleCollapse={() => setInspectorOpen(false)}
+                header={!previewOnly ? (
+                  <WatermarkSettings
+                    onChange={handleWatermarkChange}
+                    filePath={currentFilePath}
+                    mediaWidth={mediaSize?.w}
+                    mediaHeight={mediaSize?.h}
+                  />
+                ) : undefined}
+              />
+              {batchExportMode && (
+                <div className="batch-export-actions">
+                  <div className="batch-export-file-info">
+                    <span className="batch-file-name">{currentFilePath.split(/[/\\]/).pop()}</span>
+                    {currentResolution && (
+                      <span className="batch-file-resolution">{currentResolution.width} × {currentResolution.height}</span>
+                    )}
+                    <span className={`batch-file-kind ${isVideo ? 'video' : 'image'}`}>
+                      {isVideo ? '视频' : '图片'}
+                    </span>
+                  </div>
+                  <button
+                    className="ui-btn ui-btn-primary"
+                    disabled={batchExporting}
+                    onClick={handleBatchExport}
+                    type="button"
+                    style={{ width: '100%' }}
+                  >
+                    {batchExporting ? '导出中...' : `确认导出 (${filePathList?.length ?? 0} 个文件)`}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </section>
