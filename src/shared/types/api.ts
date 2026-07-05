@@ -103,6 +103,16 @@ export interface LunaApi {
   scanWifi: () => Promise<WifiDebugResult<WifiDebugNetwork[]>>
   connectWifi: (options: WifiConnectOptions) => Promise<WifiDebugResult<WifiDebugStatus>>
   disconnectWifi: () => Promise<WifiDebugResult<WifiDebugStatus>>
+  /** 导出任务记录服务 */
+  exportTask: {
+    create(name: string, items?: Array<{ id: string; sourcePath: string; outputPath: string }>, taskId?: string): Promise<ExportTaskRecord>
+    addItems(taskId: string, items: Array<{ id: string; sourcePath: string; outputPath: string }>): Promise<void>
+    updateItem(taskId: string, itemId: string, data: { progress?: number; status?: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'; error?: string; destinationPath?: string }): Promise<void>
+    cancel(taskId: string): Promise<void>
+    get(taskId: string): Promise<ExportTaskRecord | undefined>
+    list(): Promise<ExportTaskRecord[]>
+    clear(): Promise<void>
+  }
   workspace: {
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
@@ -121,24 +131,8 @@ export interface LunaApi {
     exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean): Promise<{ path: string; name: string }>
     exportTripleStitch(options: TripleStitchExportOptions): Promise<Array<{ path: string; name: string }>>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
-    exportColor(sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }): Promise<{ path: string; name: string }>
-    previewColor(sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }): Promise<{ path: string; dataUrl: string }>
-    /**
-     * FFmpegFast 导出 —— 将 pipeline 完整参数传给 ffmpeg，一次完成解码→调色→编码。
-     * 支持图片和视频，完全绕过 WebGL readPixels 链路。
-     */
     /** 烘焙 LUT 并返回 float 数据给 WebGL 预览 */
     bakeAndGetLut(colorParams: Record<string, unknown>): Promise<{ lutBuffer: ArrayBuffer; lutSize: number }>
-    createExportTask(taskName: string, items: Array<{ exportId: string; fileName: string; kind: string }>): Promise<ExportTaskRecord>
-    exportFFmpeg(
-      sourcePath: string,
-      pipeline: Record<string, unknown>,
-      exportMeta: { exportId: string; taskName: string; taskId?: string; fileName?: string; index?: number; totalFiles?: number; createdAt?: number },
-      onProgress?: (percent: number) => void,
-    ): Promise<{ path: string; name: string }>
-    startVideoExport(meta: { exportId: string; taskName: string; outputName: string; width: number; height: number; fps: number }): Promise<{ exportId: string; outputPath: string; rawFilePath: string; taskId: string; taskStart: number }>
-    sendVideoExportFrame(exportId: string, frameData: ArrayBuffer, meta?: { totalFrames: number; taskId: string; taskStart: number; rawFilePath: string }): Promise<void>
-    endVideoExport(exportId: string, meta: { taskId: string; taskStart: number; outputPath: string; rawFilePath: string; width: number; height: number; fps: number }): Promise<{ path: string; name: string }>
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void

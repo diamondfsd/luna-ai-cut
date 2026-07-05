@@ -579,6 +579,70 @@ pub fn export_image_from_sources(
     })
 }
 
+pub struct ExportImageFromSourcesTask {
+    ffmpeg_path: String,
+    ffprobe_path: String,
+    output: String,
+    width: u32,
+    height: u32,
+    layers: Vec<PreviewLayer>,
+    format: String,
+    quality: f64,
+}
+
+impl Task for ExportImageFromSourcesTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        lock(|c| {
+            crate::log!(
+                "export_image_from_sources async: out={} {}x{} layers={} fmt={} q={}",
+                self.output, self.width, self.height, self.layers.len(), self.format, self.quality
+            );
+            export::export_image_from_sources(
+                &self.ffmpeg_path,
+                &self.ffprobe_path,
+                &self.output,
+                self.width,
+                self.height,
+                &self.layers,
+                &self.format,
+                self.quality,
+                c,
+            )
+        })
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(())
+    }
+}
+
+/// 异步从素材源文件导出图片（避免阻塞主进程）
+#[napi]
+pub fn export_image_from_sources_async(
+    ffmpeg_path: String,
+    ffprobe_path: String,
+    output: String,
+    width: u32,
+    height: u32,
+    layers: Vec<PreviewLayer>,
+    format: String,
+    quality: f64,
+) -> AsyncTask<ExportImageFromSourcesTask> {
+    AsyncTask::new(ExportImageFromSourcesTask {
+        ffmpeg_path,
+        ffprobe_path,
+        output,
+        width,
+        height,
+        layers,
+        format,
+        quality,
+    })
+}
+
 pub fn destroy_compositor() -> napi::Result<()> {
     let mut guard = COMPOSITOR
         .lock()

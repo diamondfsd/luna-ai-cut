@@ -1,3 +1,48 @@
+/** 创建/追加子任务的输入 */
+export interface ExportItemInput {
+  id: string
+  sourcePath: string
+  outputPath: string
+}
+
+/** 子任务记录 */
+export interface ExportTaskItem {
+  id: string
+  fileName: string
+  kind: 'image' | 'video' | 'lrv'
+  status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
+  progress: number
+  startTime: number
+  endTime: number | null
+  duration: number | null
+  destinationPath?: string
+  error?: string
+}
+
+/** 父任务记录 */
+export interface ExportTaskRecord {
+  id: string
+  name: string
+  totalCount: number
+  status: 'pending' | 'exporting' | 'completed' | 'failed' | 'canceled'
+  progress: number
+  startTime: number
+  endTime: number | null
+  duration: number | null
+  items: ExportTaskItem[]
+}
+
+/** 子项更新参数 */
+export interface ExportItemUpdate {
+  progress?: number
+  status?: ExportTaskItem['status']
+  error?: string
+  destinationPath?: string
+}
+
+// ── 旧兼容类型（待清理） ──
+
+/** @deprecated 使用 ExportItemInput */
 export interface ExportFileInput {
   name: string
   kind: string
@@ -13,6 +58,7 @@ export interface ExportFileInput {
   watermarkProfileId?: string
 }
 
+/** @deprecated 使用 ExportTaskRecord 的进度字段 */
 export interface ExportProgress {
   fileName: string
   index: number
@@ -27,33 +73,12 @@ export interface ExportProgress {
   createdAt?: number
 }
 
+/** @deprecated 使用 ExportTaskItem */
+export type ExportTaskItemRecord = ExportTaskItem
+
+/** @deprecated 不再使用 */
 export interface ExportSummary {
   completed: Array<{ name: string; path: string }>
   failed: Array<{ name: string; error: string }>
   canceled: Array<{ name: string }>
-}
-
-export interface ExportTaskItemRecord {
-  exportId: string
-  fileName: string
-  kind: string
-  startTime: number | null
-  endTime: number | null
-  duration: number | null
-  progress: number
-  status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
-  error?: string
-  destinationPath?: string
-}
-
-export interface ExportTaskRecord {
-  id: string
-  name: string
-  totalCount: number
-  startTime: number
-  endTime: number | null
-  duration: number | null
-  progress: number
-  status: 'pending' | 'exporting' | 'completed' | 'failed' | 'canceled'
-  items: ExportTaskItemRecord[]
 }

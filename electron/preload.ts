@@ -20,9 +20,33 @@ import type {
   WifiDebugApi,
   WifiHttpRequestOptions,
   WifiPortCheckOptions,
+  ExportTaskRecord,
 } from '../src/shared/types'
 
-const lunaApi: LunaApi = {
+interface ExportItemInput {
+  id: string
+  sourcePath: string
+  outputPath: string
+}
+
+interface ExportItemUpdate {
+  progress?: number
+  status?: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
+  error?: string
+  destinationPath?: string
+}
+
+interface LunaExportTaskApi {
+  create(name: string, items?: ExportItemInput[], taskId?: string): Promise<ExportTaskRecord>
+  addItems(taskId: string, items: ExportItemInput[]): Promise<void>
+  updateItem(taskId: string, itemId: string, data: ExportItemUpdate): Promise<void>
+  cancel(taskId: string): Promise<void>
+  get(taskId: string): Promise<ExportTaskRecord | undefined>
+  list(): Promise<ExportTaskRecord[]>
+  clear(): Promise<void>
+}
+
+const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   // 日志
   log: (level: string, message: string, meta?: unknown) => {
     ipcRenderer.send('log:renderer', level, message, meta)
@@ -68,10 +92,10 @@ const lunaApi: LunaApi = {
   exportFiles: (files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
     ipcRenderer.invoke('luna:exportFiles', files, exportDir, watermarkSettings, videoExportSettings),
   cancelExports: () => ipcRenderer.invoke('luna:cancelExports'),
-  cancelExportTask: (taskId: string) => ipcRenderer.invoke('luna:cancelExportTask', taskId),
-  getExportTasks: () => ipcRenderer.invoke('exports:getTasks'),
-  getExportTask: (taskId: string) => ipcRenderer.invoke('exports:getTask', taskId),
-  clearExportTasks: () => ipcRenderer.invoke('exports:clearTasks'),
+  cancelExportTask: (taskId: string) => ipcRenderer.invoke('lrc:cancelExportTask', taskId),
+  getExportTasks: () => ipcRenderer.invoke('export-task:list'),
+  getExportTask: (taskId: string) => ipcRenderer.invoke('export-task:get', taskId),
+  clearExportTasks: () => ipcRenderer.invoke('export-task:clear'),
   getDownloadedRecords: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('downloads:records', files, downloadDir),
   revealFile: (filePath: string) => ipcRenderer.invoke('files:reveal', filePath),
   openPath: (targetPath: string) => ipcRenderer.invoke('files:openPath', targetPath),
@@ -103,14 +127,7 @@ const lunaApi: LunaApi = {
     exportRenderedLivePhoto: (name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean) => ipcRenderer.invoke('workspace:exportRenderedLivePhoto', name, imagePath, videoPath, appleLivePhoto),
     exportTripleStitch: (options) => ipcRenderer.invoke('workspace:exportTripleStitch', options),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
-    exportColor: (sourcePath: string, color: Record<string, number>, exportMeta?: { exportId: string; taskName: string }) => ipcRenderer.invoke('workspace:exportColor', sourcePath, color, exportMeta),
-    createExportTask: (taskName: string, items: Array<{ exportId: string; fileName: string; kind: string }>) => ipcRenderer.invoke('workspace:createExportTask', taskName, items),
-    exportFFmpeg: (sourcePath: string, pipeline: Record<string, unknown>, exportMeta: { exportId: string; taskName: string; taskId?: string; fileName?: string; index?: number; totalFiles?: number; createdAt?: number }) => ipcRenderer.invoke('workspace:exportFFmpeg', sourcePath, pipeline, exportMeta),
     bakeAndGetLut: (colorParams: Record<string, unknown>) => ipcRenderer.invoke('workspace:bakeAndGetLut', colorParams),
-    previewColor: (sourcePath: string, color: Record<string, number>, options?: { maxSize?: number; seekSeconds?: number }) => ipcRenderer.invoke('workspace:previewColor', sourcePath, color, options),
-    startVideoExport: (meta) => ipcRenderer.invoke('workspace:startVideoExport', meta),
-    sendVideoExportFrame: (exportId, frameData, meta) => ipcRenderer.invoke('workspace:sendVideoExportFrame', exportId, frameData, meta),
-    endVideoExport: (exportId, meta) => ipcRenderer.invoke('workspace:endVideoExport', exportId, meta),
   },
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: DownloadProgress): void => callback(progress)
@@ -150,6 +167,17 @@ const lunaApi: LunaApi = {
     return () => ipcRenderer.off('update:available', listener)
   },
   listReleaseNotes: () => ipcRenderer.invoke('release-notes:list'),
+
+  // ── 导出任务记录（统一 API） ──
+  exportTask: {
+    create: (name: string, items?: ExportItemInput[], taskId?: string) => ipcRenderer.invoke('export-task:create', name, items, taskId),
+    addItems: (taskId: string, items: ExportItemInput[]) => ipcRenderer.invoke('export-task:add-items', taskId, items),
+    updateItem: (taskId: string, itemId: string, data: ExportItemUpdate) => ipcRenderer.invoke('export-task:update-item', taskId, itemId, data),
+    cancel: (taskId: string) => ipcRenderer.invoke('export-task:cancel', taskId),
+    get: (taskId: string) => ipcRenderer.invoke('export-task:get', taskId),
+    list: () => ipcRenderer.invoke('export-task:list'),
+    clear: () => ipcRenderer.invoke('export-task:clear'),
+  },
 
   // ── 热更新 ──
   getHotUpdateVersion: () => ipcRenderer.invoke('hot-update:current-version'),
@@ -227,7 +255,8 @@ const lunaRenderCoreApi = {
     fps: number | null, hardware: boolean,
     videoLayer: RenderLayer, overlayLayers: StaticLayer[],
     taskId?: string, qualityPreset?: string,
-  ) => ipcRenderer.invoke('lrc:exportVideo', inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, taskId, qualityPreset),
+    exportTaskId?: string, exportItemId?: string,
+  ) => ipcRenderer.invoke('lrc:exportVideo', inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, taskId, qualityPreset, exportTaskId, exportItemId),
   cancelExportTask: (taskId: string) => ipcRenderer.invoke('lrc:cancelExportTask', taskId),
   getExportTaskProgress: (taskId: string) => ipcRenderer.invoke('lrc:getExportTaskProgress', taskId),
   exportImage: (
@@ -246,7 +275,9 @@ const lunaRenderCoreApi = {
     layers: unknown[],
     format: string,
     quality: number,
-  ) => ipcRenderer.invoke('lrc:exportImageFromSources', outputPath, width, height, layers, format, quality),
+    exportTaskId?: string,
+    exportItemId?: string,
+  ) => ipcRenderer.invoke('lrc:exportImageFromSources', outputPath, width, height, layers, format, quality, exportTaskId, exportItemId),
   destroy: () => ipcRenderer.invoke('lrc:destroy'),
 }
 

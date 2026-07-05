@@ -11,7 +11,7 @@ import type { ExportProgress } from '../shared/types'
 
 /** 单个导出项定义 */
 export interface ExportTaskItem {
-  exportId: string
+  id: string
   fileName: string
   kind: 'image' | 'video'
   /** 执行导出，返回结果路径 */
@@ -50,19 +50,10 @@ async function runWithConcurrency<T>(
  * const result = await runExportTask({
  *   taskName: '批量导出 5 个文件',
  *   items: files.map(f => ({
- *     exportId: f.id,
- *     fileName: f.name,
- *     kind: f.kind,
- *     execute: async ({ taskId }) => {
- *       return window.luna.workspace.exportFFmpeg(f.path, pipeline, {
- *         exportId: f.id, taskName: '...', taskId,
- *         fileName: f.name, index: 0, totalFiles: files.length,
- *       })
- *     },
+ *     id: f.id,
+ *     sourcePath: f.path,
+ *     outputPath: outputPath,
  *   })),
- *   onProgressInit: (initItems) => {
- *     // 可选：设置初始进度状态
- *   },
  * })
  * ```
  */
@@ -80,18 +71,18 @@ export function useExportTaskRunner() {
 
     setExporting(true)
 
-    // 1. 创建任务（所有明细一次写入）
-    const task = await window.luna.workspace.createExportTask(
+    // 1. 创建任务（通过统一 exportTask API）
+    const task = await window.luna.exportTask.create(
       taskName,
-      items.map((i) => ({ exportId: i.exportId, fileName: i.fileName, kind: i.kind })),
+      items.map((i) => ({ id: i.id, sourcePath: `file://${i.fileName}`, outputPath: `file://${i.fileName}` })),
     )
 
-    // 2. 初始 queued 状态
+    // 2. 初始 queued 状态（前端实时进度）
     const ts = Date.now()
     const initProgress = new Map<string, ExportProgress>()
     for (const item of items) {
-      initProgress.set(item.exportId, {
-        exportId: item.exportId,
+      initProgress.set(item.id, {
+        exportId: item.id,
         taskId: task.id,
         taskName,
         createdAt: ts,
@@ -106,7 +97,7 @@ export function useExportTaskRunner() {
 
     // 3. 通知调用方（设置 snapshot 等）
     options.onProgressInit?.(items.map((i) => ({
-      exportId: i.exportId, taskId: task.id, fileName: i.fileName, kind: i.kind,
+      exportId: i.id, taskId: task.id, fileName: i.fileName, kind: i.kind,
     })))
 
     // 4. 并发调度
@@ -114,8 +105,8 @@ export function useExportTaskRunner() {
     const failed: ExportTaskResult['failed'] = []
 
     const exportOne = async (item: ExportTaskItem) => {
-      setExportProgress((current) => new Map(current).set(item.exportId, {
-        ...current.get(item.exportId)!,
+      setExportProgress((current) => new Map(current).set(item.id, {
+        ...current.get(item.id)!,
         status: 'exporting' as const,
       }))
       try {
@@ -124,8 +115,8 @@ export function useExportTaskRunner() {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         failed.push({ name: item.fileName, error: message })
-        setExportProgress((current) => new Map(current).set(item.exportId, {
-          ...current.get(item.exportId)!,
+        setExportProgress((current) => new Map(current).set(item.id, {
+          ...current.get(item.id)!,
           status: 'failed' as const,
           error: message,
         }))

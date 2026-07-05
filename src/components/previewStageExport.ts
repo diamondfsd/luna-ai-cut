@@ -8,6 +8,8 @@ interface LunaRenderCoreApi {
     layers: PreviewLayer[],
     format: string,
     quality: number,
+    exportTaskId?: string,
+    exportItemId?: string,
   ): Promise<void>
   exportVideo(
     inputPath: string,
@@ -20,6 +22,8 @@ interface LunaRenderCoreApi {
     overlayLayers: StaticLayer[],
     taskId?: string,
     qualityPreset?: string,
+    exportTaskId?: string,
+    exportItemId?: string,
   ): Promise<void>
 }
 
@@ -62,9 +66,13 @@ export async function exportPreviewImage(params: {
   layers: PreviewLayer[]
   format: 'jpeg' | 'png' | 'webp'
   quality: number
+  /** 导出任务 ID（写入任务记录） */
+  exportTaskId?: string
+  /** 子任务 ID */
+  exportItemId?: string
 }): Promise<{ path: string; name: string }> {
   const path = outputPath(params.exportDir, params.fileName)
-  await lrc().exportImageFromSources(path, params.width, params.height, params.layers, params.format, params.quality)
+  await lrc().exportImageFromSources(path, params.width, params.height, params.layers, params.format, params.quality, params.exportTaskId, params.exportItemId)
   return { path, name: params.fileName }
 }
 
@@ -75,6 +83,10 @@ export async function exportPreviewVideo(params: {
   height: number
   layers: PreviewLayer[]
   qualityPreset?: string
+  /** 导出任务 ID（写入任务记录） */
+  exportTaskId?: string
+  /** 子任务 ID */
+  exportItemId?: string
 }): Promise<{ path: string; name: string }> {
   const videoSourceLayer = params.layers.find((layer) => layer.isVideo)
   if (!videoSourceLayer) throw new Error('未找到视频图层')
@@ -107,6 +119,8 @@ export async function exportPreviewVideo(params: {
     staticLayers(params.layers),
     undefined,
     params.qualityPreset ?? 'high',
+    params.exportTaskId,
+    params.exportItemId,
   )
   return { path, name: params.fileName }
 }
