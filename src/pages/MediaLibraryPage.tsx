@@ -51,7 +51,6 @@ export function MediaLibraryPage({
     downloadQueue,
     downloadStatusFilter,
     exporting,
-    exportWatermarkSettings,
     filteredFiles,
     groups,
     isCurrentLoading,
@@ -60,14 +59,12 @@ export function MediaLibraryPage({
     selected,
     selectedFiles,
     showDeleteDialog,
-    showExportDialog,
     sortOrder,
     storageFilter,
     storageOptions,
     totalSelectedBytes,
     viewMode,
     deleteSelectedLocalFiles,
-    exportLocalFiles,
     handlePreviewClick,
     handleStorageFilterChange,
     handleThumbnailImageLoad,
@@ -84,12 +81,10 @@ export function MediaLibraryPage({
     setDeleteError,
     setDownloadQueue,
     setDownloadStatusFilter,
-    setExportWatermarkSettings,
     setMediaFilter,
     setPreviewFiles,
     setSelected,
     setShowDeleteDialog,
-    setShowExportDialog,
     setSortOrder,
     setViewMode,
     startDownload,
@@ -161,7 +156,6 @@ export function MediaLibraryPage({
         downloading={downloading}
         downloadStatusFilter={downloadStatusFilter}
         exporting={exporting}
-        exportWatermarkSettings={exportWatermarkSettings}
         isDownloadsPage={isDownloadsPage}
         mediaFilter={mediaFilter}
         selectedCount={selectedFiles.length}
@@ -178,16 +172,12 @@ export function MediaLibraryPage({
         setDownloadQueue={setDownloadQueue}
         setDownloading={setDownloading}
         setDownloadStatusFilter={setDownloadStatusFilter}
-        setExportWatermarkSettings={setExportWatermarkSettings}
         setMediaFilter={setMediaFilter}
         setSelected={setSelected}
         setShowDeleteDialog={setShowDeleteDialog}
-        setShowExportDialog={setShowExportDialog}
         setSortOrder={setSortOrder}
         setViewMode={setViewMode}
-        showExportDialog={showExportDialog}
         startDownload={startDownload}
-        exportLocalFiles={exportLocalFiles}
         handleStorageFilterChange={handleStorageFilterChange}
         loadCameraLibrary={loadCameraLibrary}
         loadDownloadedLibrary={loadDownloadedLibrary}

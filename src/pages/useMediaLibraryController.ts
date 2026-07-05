@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import type { AppSettings, DeviceDefinition, DownloadProgress, LunaFile, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { AppSettings, DeviceDefinition, DownloadProgress, LunaFile, PreviewResult } from '../shared/types'
 import { useMediaLibraryTransferActions } from './useMediaLibraryTransferActions'
 import { useApp } from '../context/AppContext'
 import { logger } from '../lib/rendererLogger'
@@ -73,15 +73,9 @@ export function useMediaLibraryController({
   const [storageFilter, setStorageFilter] = useState<StorageFilter>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('download')
   const [exportedFiles, setExportedFiles] = useState<LunaFile[]>([])
-  const [showExportDialog, setShowExportDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deletingLocalFiles, setDeletingLocalFiles] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [exportWatermarkSettings, setExportWatermarkSettings] = useState<WatermarkSettingsType>(() => ({
-    enabled: true,
-    style: 'luna_ultra_cn',
-    position: 'bottom-center',
-  }))
 
   const loadingCameraRef = useRef(false)
   const loadingDownloadsRef = useRef(false)
@@ -361,7 +355,6 @@ export function useMediaLibraryController({
   const {
     deleteSelectedLocalFiles,
     downloadOne,
-    exportLocalFiles,
     markFileDownloaded,
     restoreDownloadedRecords,
     startDownload,
@@ -472,7 +465,6 @@ export function useMediaLibraryController({
     downloadStatusFilter,
     exportProgress,
     exporting: false,  // 旧导出状态已废弃，始终 false
-    exportWatermarkSettings,
     filteredFiles,
     firstGroup,
     groups,
@@ -483,7 +475,6 @@ export function useMediaLibraryController({
     selected,
     selectedFiles,
     showDeleteDialog,
-    showExportDialog,
     sortOrder,
     storageFilter,
     storageOptions,
@@ -491,7 +482,6 @@ export function useMediaLibraryController({
     viewMode,
     deleteSelectedLocalFiles,
     downloadOne,
-    exportLocalFiles,
     handlePreviewClick,
     handleStorageFilterChange,
     handleThumbnailImageLoad,
@@ -509,12 +499,10 @@ export function useMediaLibraryController({
     setDeleteError,
     setDownloadQueue,
     setDownloadStatusFilter,
-    setExportWatermarkSettings,
     setMediaFilter,
     setPreviewFiles,
     setSelected,
     setShowDeleteDialog,
-    setShowExportDialog,
     setSortOrder,
     setViewMode,
     startDownload,

@@ -3,6 +3,8 @@ export interface PreviewState {
   fileList: string[]
   /** true 表示仅查看已导出的文件，隐藏水印配置和导出按钮，用原生 img/video 渲染 */
   previewOnly?: boolean
+  /** true 表示批量导出模式，显示"导出全部"按钮 */
+  batchExportMode?: boolean
 }
 
 type SetStateFn = (state: PreviewState | null) => void
@@ -22,6 +24,10 @@ export function showPreviewModal(
   setPreviewState?.({ filePath, fileList: fileList ?? [filePath], previewOnly })
 }
 
-export function closePreviewModal(): void {
-  setPreviewState?.(null)
+/** 打开批量导出弹窗 */
+export function showBatchExportModal(
+  filePath: string,
+  fileList: string[],
+): void {
+  setPreviewState?.({ filePath, fileList, batchExportMode: true })
 }

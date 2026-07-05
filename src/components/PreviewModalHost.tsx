@@ -21,6 +21,7 @@ export function PreviewModalHost() {
       filePath={state.filePath}
       filePathList={state.fileList}
       previewOnly={state.previewOnly}
+      batchExportMode={state.batchExportMode}
       onClose={handleClose}
     />
   )
