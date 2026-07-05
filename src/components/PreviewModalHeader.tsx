@@ -13,6 +13,8 @@ interface PreviewModalHeaderProps {
   onExport?: () => void
   /** 导出是否正在进行中 */
   exporting?: boolean
+  /** 仅查看模式（隐藏导出按钮和水印配置入口） */
+  previewOnly?: boolean
 }
 
 function mediaLabel(filePath: string): string {
@@ -29,6 +31,7 @@ export function PreviewModalHeader({
   onSetInspectorOpen,
   onExport,
   exporting,
+  previewOnly,
 }: PreviewModalHeaderProps) {
   const revealPath = useMemo(
     () => filePath.startsWith('file://') ? decodeURIComponent(new URL(filePath).pathname) : filePath,
@@ -46,7 +49,7 @@ export function PreviewModalHeader({
         <h2>{fileNameFromPath(filePath)}</h2>
       </div>
       <div className="preview-actions">
-        {onExport && (
+        {!previewOnly && onExport && (
           <IconButton
             variant="light"
             icon={<Download size={16} />}
