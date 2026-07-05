@@ -114,7 +114,6 @@ export function PreviewModal({
               <PreviewStage
                 url={displaySource}
                 extraLayers={watermarkLayers}
-                pending={mediaSize == null}
                 exportOptions={{ enable: true }}
                 onMediaSize={(w, h) => setMediaSize({ w, h })}
               />
