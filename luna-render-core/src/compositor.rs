@@ -1385,6 +1385,17 @@ impl Compositor {
             height.unwrap_or(source_height).max(1),
             max_side.unwrap_or(PREVIEW_MAX_SIZE),
         );
+        log!(
+            "render_preview output source={}x{} requested={:?}x{:?} max_side={:?} -> {}x{} layers={}",
+            source_width,
+            source_height,
+            width,
+            height,
+            max_side,
+            output_width,
+            output_height,
+            layers.len()
+        );
         let result = self.render(output_width, output_height, &result_layers)?;
 
         // 释放视频帧的临时纹理（静态图纹理保留在缓存中）
@@ -1411,6 +1422,9 @@ fn decode_static_image(
             "-print_format",
             "json",
             "-show_streams",
+            "-show_frames",
+            "-read_intervals",
+            "%+#1",
             path,
         ])
         .output()
@@ -1418,18 +1432,42 @@ fn decode_static_image(
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).map_err(|e| format!("ffprobe json: {}", e))?;
-    let streams = parsed["streams"]
-        .as_array()
-        .ok_or_else(|| "no streams".to_string())?;
-    let vs = streams
-        .iter()
-        .find(|s| s["codec_type"].as_str() == Some("video"))
-        .ok_or_else(|| "no video stream".to_string())?;
-    let source_w = vs["width"].as_u64().unwrap_or(0) as u32;
-    let source_h = vs["height"].as_u64().unwrap_or(0) as u32;
-    if source_w == 0 || source_h == 0 {
+    let frame = parsed["frames"].as_array().and_then(|frames| {
+        frames
+            .iter()
+            .find(|f| f["media_type"].as_str() == Some("video"))
+    });
+    let stream = parsed["streams"].as_array().and_then(|streams| {
+        streams
+            .iter()
+            .find(|s| s["codec_type"].as_str() == Some("video"))
+    });
+    let encoded_w = frame
+        .and_then(|f| f["width"].as_u64())
+        .or_else(|| stream.and_then(|s| s["width"].as_u64()))
+        .unwrap_or(0) as u32;
+    let encoded_h = frame
+        .and_then(|f| f["height"].as_u64())
+        .or_else(|| stream.and_then(|s| s["height"].as_u64()))
+        .unwrap_or(0) as u32;
+    if encoded_w == 0 || encoded_h == 0 {
         return Err(format!("invalid image size in {}", path));
     }
+    let rotation = image_rotation_degrees(frame, stream);
+    let (source_w, source_h) = if rotation == 90 || rotation == 270 {
+        log!(
+            "decode_static_image rotation={} swap {}x{} -> {}x{} path={}",
+            rotation,
+            encoded_w,
+            encoded_h,
+            encoded_h,
+            encoded_w,
+            path
+        );
+        (encoded_h, encoded_w)
+    } else {
+        (encoded_w, encoded_h)
+    };
 
     let max_edge = source_w.max(source_h);
     let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
@@ -1472,12 +1510,50 @@ fn decode_static_image(
     proc.wait().ok();
 
     log!(
-        "decode_static_image {} {}x{} -> {}x{}",
+        "decode_static_image {} encoded={}x{} display={}x{} output={}x{} rotation={} bytes={}",
         path,
+        encoded_w,
+        encoded_h,
         source_w,
         source_h,
         dw,
-        dh
+        dh,
+        rotation,
+        rgba.len()
     );
     Ok((rgba, dw, dh))
+}
+
+fn image_rotation_degrees(
+    frame: Option<&serde_json::Value>,
+    stream: Option<&serde_json::Value>,
+) -> i32 {
+    let displaymatrix_rotation = frame
+        .and_then(rotation_from_side_data)
+        .or_else(|| stream.and_then(rotation_from_side_data))
+        .unwrap_or(0);
+    if displaymatrix_rotation != 0 {
+        return displaymatrix_rotation;
+    }
+    frame
+        .and_then(rotation_from_orientation_tag)
+        .or_else(|| stream.and_then(rotation_from_orientation_tag))
+        .unwrap_or(0)
+}
+
+fn rotation_from_side_data(value: &serde_json::Value) -> Option<i32> {
+    value["side_data_list"].as_array().and_then(|list| {
+        list.iter()
+            .filter_map(|side_data| side_data["rotation"].as_f64())
+            .map(|rotation| ((rotation.round() as i32 % 360) + 360) % 360)
+            .find(|rotation| *rotation == 90 || *rotation == 270)
+    })
+}
+
+fn rotation_from_orientation_tag(value: &serde_json::Value) -> Option<i32> {
+    match value["tags"]["Orientation"].as_str()?.trim() {
+        "6" => Some(90),
+        "8" => Some(270),
+        _ => None,
+    }
 }
