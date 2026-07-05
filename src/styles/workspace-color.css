@@ -25,6 +25,11 @@
   background: rgba(255, 255, 255, 0.38);
 }
 
+.workspace-hsl-channel-list {
+  display: grid;
+  gap: 4px;
+}
+
 .workspace-curve-toolbar,
 .workspace-color-swatches,
 .workspace-radio-row {
