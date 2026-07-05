@@ -351,18 +351,22 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
         onVideoElement(video)
       }
       // 元数据加载完成后，seek 到 0.001s 强制解码第一帧
-      video.onloadedmetadata = () => {
+      // 使用 addEventListener 避免覆盖父组件的 onloadedmetadata 等 handler
+      const onLoadedMetadata = () => {
         if (canceled || destroyRef.current) return
         video.currentTime = 0.001
       }
-      video.onseeked = () => {
+      const onSeeked = () => {
         const info = videosRef.current.get(key)
         if (!info || canceled || destroyRef.current) return
         void upsertVideoTexture(layer, info, true).then((updated) => {
           if (updated) void compositeRender()
         })
       }
-      video.onloadeddata = video.onseeked
+      const onLoadedData = onSeeked
+      video.addEventListener('loadedmetadata', onLoadedMetadata)
+      video.addEventListener('seeked', onSeeked)
+      video.addEventListener('loadeddata', onLoadedData)
       video.load()
     }
 
