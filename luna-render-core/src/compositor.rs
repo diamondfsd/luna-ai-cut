@@ -174,10 +174,22 @@ fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 8
     for (index, default_hue) in defaults.iter().enumerate() {
         let channel = channels.get(index);
         data[index] = [
-            channel.map(|c| c.hue).unwrap_or(*default_hue).clamp(0.0, 360.0) as f32,
-            channel.map(|c| c.hue_shift).unwrap_or(0.0).clamp(-180.0, 180.0) as f32,
-            channel.map(|c| c.saturation).unwrap_or(0.0).clamp(-100.0, 100.0) as f32,
-            channel.map(|c| c.luminance).unwrap_or(0.0).clamp(-100.0, 100.0) as f32,
+            channel
+                .map(|c| c.hue)
+                .unwrap_or(*default_hue)
+                .clamp(0.0, 360.0) as f32,
+            channel
+                .map(|c| c.hue_shift)
+                .unwrap_or(0.0)
+                .clamp(-180.0, 180.0) as f32,
+            channel
+                .map(|c| c.saturation)
+                .unwrap_or(0.0)
+                .clamp(-100.0, 100.0) as f32,
+            channel
+                .map(|c| c.luminance)
+                .unwrap_or(0.0)
+                .clamp(-100.0, 100.0) as f32,
         ];
     }
     data
@@ -460,6 +472,10 @@ impl Compositor {
     }
 
     // ── 纹理管理 ──
+
+    pub fn max_texture_size(&self) -> u32 {
+        self.max_texture_size
+    }
 
     pub fn load_texture(&mut self, data: &[u8], width: u32, height: u32) -> Result<u32, String> {
         if width == 0 || height == 0 {
