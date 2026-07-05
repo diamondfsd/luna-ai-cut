@@ -111,7 +111,7 @@ interface RenderCropRect {
 }
 
 interface RenderLayerTransform {
-  crop: RenderCropRect | null
+  crop?: RenderCropRect
   orientation: number
   rotate: number
   flipH: boolean
@@ -249,8 +249,8 @@ function normalizeDegrees(value: number): number {
   return ((rounded % 360) + 360) % 360
 }
 
-function normalizeCrop(crop?: Partial<RenderCropRect> | null): RenderCropRect | null {
-  if (!crop) return null
+function normalizeCrop(crop?: Partial<RenderCropRect> | null): RenderCropRect | undefined {
+  if (!crop) return undefined
   const x = clamp01(crop.x ?? 0)
   const y = clamp01(crop.y ?? 0)
   const w = Math.max(0.001, Math.min(1 - x, crop.w ?? 1))
@@ -259,8 +259,9 @@ function normalizeCrop(crop?: Partial<RenderCropRect> | null): RenderCropRect | 
 }
 
 function normalizeTransform(transform?: Partial<RenderLayerTransform>): RenderLayerTransform {
+  const crop = normalizeCrop(transform?.crop)
   return {
-    crop: normalizeCrop(transform?.crop),
+    ...(crop ? { crop } : {}),
     orientation: normalizeDegrees(transform?.orientation ?? 0),
     rotate: transform?.rotate ?? 0,
     flipH: Boolean(transform?.flipH),
