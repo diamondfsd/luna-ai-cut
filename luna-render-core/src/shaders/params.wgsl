@@ -42,10 +42,6 @@ struct LayerParams {
     levels_black: f32,
     levels_gray: f32,
     levels_white: f32,
-    hue: f32,
-    hsl_hue: f32,
-    hsl_sat: f32,
-    hsl_lum: f32,
     curve_rgb_count: f32,
     curve_luminance_count: f32,
     curve_red_count: f32,
@@ -59,9 +55,9 @@ struct LayerParams {
     flip_v: f32,
     scale: f32,
     curve_data: array<vec4<f32>, 30>,
+    hsl_data: array<vec4<f32>, 8>,
 }
 
 @group(0) @binding(0) var src_texture: texture_2d<f32>;
 @group(0) @binding(1) var src_sampler: sampler;
 @group(0) @binding(2) var<uniform> params: LayerParams;
-

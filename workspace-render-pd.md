@@ -107,10 +107,7 @@ export interface RenderColorAdjustments {
   levelsBlack: number
   levelsGray: number
   levelsWhite: number
-  hue: number
-  hslHue: number
-  hslSat: number
-  hslLum: number
+  hslChannels: RenderHslChannelAdjust[]
 }
 
 export interface RenderCropRect {

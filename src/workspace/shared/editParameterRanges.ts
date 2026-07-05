@@ -52,7 +52,6 @@ export const EDIT_PARAMETER_RANGES = {
   },
   hsl: {
     hue: { min: -180, max: 180, step: 1 },
-    hslHue: { min: 0, max: 360, step: 1 },
     saturation: signedPercent,
     luminance: signedPercent,
   },
