@@ -1,6 +1,8 @@
 import { RotateCcw } from 'lucide-react'
 
 import { GRADING_DEFAULTS, type EditPipeline } from '../shared/editPipeline'
+import { EDIT_PARAMETER_RANGES, sliderRange } from '../shared/editParameterRanges'
+import { ParamSlider } from '../components/ParamSlider'
 import { Accordion } from '../../ui'
 import { ColorWheel } from './colorPanelShared'
 
@@ -35,6 +37,9 @@ export function GradingPanel({ value, modified, onChange }: GradingPanelProps) {
           <ColorWheel size="mini" label="高光颜色" hue={value.gradeHighlightsHue} saturation={Math.abs(value.gradeHighlightsAmount)} onChange={(gradeHighlightsHue, gradeHighlightsAmount) => onChange({ gradeHighlightsHue, gradeHighlightsAmount })} />
         </div>
       </div>
+      <ParamSlider label="阴影染色" value={value.gradeShadowsAmount} {...sliderRange(EDIT_PARAMETER_RANGES.grading.amount)} onChange={(gradeShadowsAmount) => onChange({ gradeShadowsAmount })} />
+      <ParamSlider label="中间调染色" value={value.gradeMidAmount} {...sliderRange(EDIT_PARAMETER_RANGES.grading.amount)} onChange={(gradeMidAmount) => onChange({ gradeMidAmount })} />
+      <ParamSlider label="高光染色" value={value.gradeHighlightsAmount} {...sliderRange(EDIT_PARAMETER_RANGES.grading.amount)} onChange={(gradeHighlightsAmount) => onChange({ gradeHighlightsAmount })} />
     </Accordion>
   )
 }
