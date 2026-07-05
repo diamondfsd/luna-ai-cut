@@ -1,4 +1,5 @@
 import type { PreviewLayer, RenderLayer, StaticLayer } from '../shared/types'
+import { buildLayers } from './PreviewStage'
 
 interface LunaRenderCoreApi {
   exportImageFromSources(
@@ -150,4 +151,92 @@ export async function exportPreviewLivePhoto(params: {
   })
 
   return window.luna.workspace.exportRenderedLivePhoto(params.name, imagePath, videoPath, params.appleLivePhoto)
+}
+
+// ── 公共批量导出 ──
+
+/**
+ * 批量导出多个文件
+ *
+ * 职责：
+ * - 创建导出任务（exportTask）
+ * - 为每个文件获取分辨率、构建渲染层
+ * - 调用 lrc 逐文件导出（图片/视频自动分流）
+ * - 返回 taskId 和 items 信息
+ *
+ * PreviewModal 等 UI 组件调用此方法，不直接处理 lrc 细节。
+ */
+export async function exportBatchFiles(
+  sourcePaths: string[],
+  exportDir: string,
+  overlayLayers: PreviewLayer[],
+): Promise<{ taskId: string; completed: number; failed: number; items: Array<{ id: string; outputPath: string }> }> {
+  // 生成子任务列表
+  const items = sourcePaths.map((fp) => {
+    const baseName = fp.split(/[/\\]/).pop() || 'export'
+    const isVid = isVideoPathCached(fp)
+    const ext = isVid ? '.mp4' : '.jpg'
+    return {
+      id: `batch_${baseName}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      sourcePath: fp,
+      outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName.replace(/\.[^.]+$/, '')}_${Date.now()}${ext}`,
+    }
+  })
+
+  // 创建导出任务
+  const task = await window.luna.exportTask.create(
+    `批量导出 ${sourcePaths.length} 个文件`,
+    items.map((i) => ({ id: i.id, sourcePath: i.sourcePath, outputPath: i.outputPath })),
+  )
+
+  let completed = 0
+  let failed = 0
+
+  // 逐个导出，单个失败不影响后续
+  for (let i = 0; i < sourcePaths.length; i++) {
+    const fp = sourcePaths[i]
+    const item = items[i]
+    const isVid = isVideoPathCached(fp)
+
+    try {
+      const res = await window.luna.workspace.getMediaResolution(fp)
+      const mainLayers = buildLayers(fp)
+      const exportLayers = overlayLayers.length > 0 ? [...mainLayers, ...overlayLayers] : mainLayers
+
+      if (isVid) {
+        await exportPreviewVideo({
+          exportDir,
+          fileName: item.outputPath.split('/').pop() || 'export.mp4',
+          width: res.width, height: res.height,
+          layers: exportLayers, qualityPreset: 'high',
+          exportTaskId: task.id, exportItemId: item.id,
+        })
+      } else {
+        await exportPreviewImage({
+          exportDir,
+          fileName: item.outputPath.split('/').pop() || 'export.jpg',
+          width: res.width, height: res.height,
+          layers: exportLayers, format: 'jpeg', quality: 100,
+          exportTaskId: task.id, exportItemId: item.id,
+        })
+      }
+      completed++
+    } catch (err) {
+      failed++
+      const message = err instanceof Error ? err.message : String(err)
+      // 记录失败信息到通用导出任务
+      await window.luna.exportTask.updateItem(task.id, item.id, {
+        status: 'failed',
+        error: message,
+      }).catch(() => {})
+    }
+  }
+
+  return { taskId: task.id, completed, failed, items: items.map((i) => ({ id: i.id, outputPath: i.outputPath })) }
+}
+
+/** 内部：根据扩展名判断是否视频 */
+function isVideoPathCached(path: string): boolean {
+  const ext = path.split('.').pop()?.toLowerCase() ?? ''
+  return ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'mts', 'insv', 'lrv'].includes(ext)
 }
