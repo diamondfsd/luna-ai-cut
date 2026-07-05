@@ -334,7 +334,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       video.muted = true
       video.loop = false
       video.playsInline = true
-      video.preload = 'metadata'
+      video.preload = 'auto'
       video.src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
       const offscreen = document.createElement('canvas')
       videosRef.current.set(key, { video, offscreen })
@@ -342,15 +342,19 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
         videoElementCalledRef.current = true
         onVideoElement(video)
       }
-      video.onloadeddata = () => {
+      // 元数据加载完成后，seek 到 0.001s 强制解码第一帧
+      video.onloadedmetadata = () => {
+        if (canceled || destroyRef.current) return
+        video.currentTime = 0.001
+      }
+      video.onseeked = () => {
         const info = videosRef.current.get(key)
         if (!info || canceled || destroyRef.current) return
         void upsertVideoTexture(layer, info, true).then((updated) => {
           if (updated) void compositeRender()
         })
       }
-      video.oncanplay = video.onloadeddata
-      video.onseeked = video.onloadeddata
+      video.onloadeddata = video.onseeked
       video.load()
     }
 
