@@ -87,6 +87,7 @@ interface NativeStaticLayer {
 
 interface RenderColorAdjustments {
   exposure: number
+  black: number
   brightness: number
   contrast: number
   saturation: number
@@ -101,6 +102,28 @@ interface RenderColorAdjustments {
   texture: number
   sharpen: number
   denoise: number
+  gradeShadowsHue: number
+  gradeShadowsAmount: number
+  gradeMidHue: number
+  gradeMidAmount: number
+  gradeHighlightsHue: number
+  gradeHighlightsAmount: number
+  curveLift: number
+  curveContrast: number
+  curve: {
+    rgb: Array<{ x: number; y: number }>
+    luminance: Array<{ x: number; y: number }>
+    red: Array<{ x: number; y: number }>
+    green: Array<{ x: number; y: number }>
+    blue: Array<{ x: number; y: number }>
+  }
+  levelsBlack: number
+  levelsGray: number
+  levelsWhite: number
+  hue: number
+  hslHue: number
+  hslSat: number
+  hslLum: number
 }
 
 interface RenderCropRect {
@@ -225,8 +248,10 @@ function normalizeStaticLayer(l: StaticLayerInput): NativeStaticLayer {
 }
 
 function normalizeColor(color?: Partial<RenderColorAdjustments>): RenderColorAdjustments {
+  const curve = color?.curve
   return {
     exposure: color?.exposure ?? 0,
+    black: color?.black ?? 0,
     brightness: color?.brightness ?? 0,
     contrast: color?.contrast ?? 0,
     saturation: color?.saturation ?? 0,
@@ -241,7 +266,41 @@ function normalizeColor(color?: Partial<RenderColorAdjustments>): RenderColorAdj
     texture: color?.texture ?? 0,
     sharpen: color?.sharpen ?? 0,
     denoise: color?.denoise ?? 0,
+    gradeShadowsHue: color?.gradeShadowsHue ?? 220,
+    gradeShadowsAmount: color?.gradeShadowsAmount ?? 0,
+    gradeMidHue: color?.gradeMidHue ?? 35,
+    gradeMidAmount: color?.gradeMidAmount ?? 0,
+    gradeHighlightsHue: color?.gradeHighlightsHue ?? 42,
+    gradeHighlightsAmount: color?.gradeHighlightsAmount ?? 0,
+    curveLift: color?.curveLift ?? 0,
+    curveContrast: color?.curveContrast ?? 0,
+    curve: {
+      rgb: normalizeCurvePoints(curve?.rgb),
+      luminance: normalizeCurvePoints(curve?.luminance),
+      red: normalizeCurvePoints(curve?.red),
+      green: normalizeCurvePoints(curve?.green),
+      blue: normalizeCurvePoints(curve?.blue),
+    },
+    levelsBlack: color?.levelsBlack ?? 0,
+    levelsGray: color?.levelsGray ?? 0.5,
+    levelsWhite: color?.levelsWhite ?? 1,
+    hue: color?.hue ?? 0,
+    hslHue: color?.hslHue ?? 30,
+    hslSat: color?.hslSat ?? 0,
+    hslLum: color?.hslLum ?? 0,
   }
+}
+
+function normalizeCurvePoints(points?: Array<{ x?: number; y?: number }>): Array<{ x: number; y: number }> {
+  if (!Array.isArray(points)) return []
+  return points
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .map((point) => ({
+      x: clamp01(point.x ?? 0),
+      y: clamp01(point.y ?? 0),
+    }))
+    .sort((a, b) => a.x - b.x)
+    .slice(0, 12)
 }
 
 function normalizeDegrees(value: number): number {

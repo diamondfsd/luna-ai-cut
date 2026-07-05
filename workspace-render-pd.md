@@ -65,8 +65,22 @@ keyframes?: RenderLayerKeyframe[]
 在 `src/shared/types/render.ts` 中为 `PreviewLayer` 增加调色和 transform 字段。
 
 ```ts
+export interface RenderCurvePoint {
+  x: number
+  y: number
+}
+
+export interface RenderToneCurveAdjust {
+  rgb: RenderCurvePoint[]
+  luminance: RenderCurvePoint[]
+  red: RenderCurvePoint[]
+  green: RenderCurvePoint[]
+  blue: RenderCurvePoint[]
+}
+
 export interface RenderColorAdjustments {
   exposure: number
+  black: number
   brightness: number
   contrast: number
   saturation: number
@@ -81,6 +95,22 @@ export interface RenderColorAdjustments {
   texture: number
   sharpen: number
   denoise: number
+  gradeShadowsHue: number
+  gradeShadowsAmount: number
+  gradeMidHue: number
+  gradeMidAmount: number
+  gradeHighlightsHue: number
+  gradeHighlightsAmount: number
+  curveLift: number
+  curveContrast: number
+  curve: RenderToneCurveAdjust
+  levelsBlack: number
+  levelsGray: number
+  levelsWhite: number
+  hue: number
+  hslHue: number
+  hslSat: number
+  hslLum: number
 }
 
 export interface RenderCropRect {
@@ -128,14 +158,46 @@ export interface PreviewLayer {
 }
 ```
 
-后续可继续扩展：
+调色字段按当前工作台 `EditPipeline.color` 展开，复杂结构也必须属于 layer 数据本身。曲线按五通道传入，每通道最多 12 个点，避免后续多视频、多布局时调色状态只能绑定单一页面。
 
-- `curve`
-- `levels`
-- `hsl`
-- `grading`
+## 调色算法
 
-这些复杂结构不要在第一批迁移里一次性塞入，避免同时扩大 TypeScript、IPC、Rust struct 和 shader 的改动面。
+工作台调色算法参考 `/Users/zhouchao/projects/darktable/webgl-color-lab/src/colorEngine/shaders` 的模块顺序和核心公式，但不直接运行 GLSL。Rust/wgpu 使用 WGSL 重写并在同一个 layer shader 中执行：
+
+1. detail 采样：邻域 blur、detail、denoise、local contrast、sharpen。
+2. exposure：`(c - black) * exp2(exposure)`。
+3. white balance：temperature/tint RGB 系数。
+4. tone equalizer：shadows/highlights/whites/blacks 按亮度 mask 处理。
+5. levels：black/gray/white 和 gamma。
+6. color balance RGB：三路色轮、contrast、saturation、vibrance。
+7. curve：rgb、luminance、red、green、blue 五通道曲线。
+8. HSL：全局 hue 和目标色带 sat/lum。
+
+所有调色、裁切、旋转、缩放、翻转都在 Rust/wgpu 层完成。前端不再生成 LUT，也不再用 WebGL shader 预览编辑结果。
+
+WGSL 不使用运行时 include。Rust 侧通过 `include_str!` 和 `concat!` 在编译期拼接 shader 文件：
+
+```rust
+const SHADER: &str = concat!(
+    include_str!("shaders/vertex.wgsl"),
+    include_str!("shaders/params.wgsl"),
+    include_str!("shaders/common.wgsl"),
+    include_str!("shaders/detail.wgsl"),
+    include_str!("shaders/curve.wgsl"),
+    include_str!("shaders/color.wgsl"),
+    include_str!("shaders/fragment.wgsl"),
+);
+```
+
+文件职责：
+
+- `vertex.wgsl`：全屏 quad 顶点入口。
+- `params.wgsl`：layer uniform、纹理和 sampler 绑定。
+- `common.wgsl`：亮度、clamp、HSL、色轮等公共函数。
+- `detail.wgsl`：邻域采样、blur、detail 基础函数。
+- `curve.wgsl`：五通道曲线求值。
+- `color.wgsl`：调色算法主链路。
+- `fragment.wgsl`：图层命中、裁切、旋转、翻转、缩放和最终采样。
 
 ## Pipeline 到 Layer 的转换
 
