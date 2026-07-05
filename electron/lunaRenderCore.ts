@@ -49,9 +49,16 @@ export interface PreviewLayerInput {
 export interface RenderPreviewInput {
   ffmpegPath: string
   ffprobePath: string
+  width?: number
+  height?: number
+  maxSide?: number
+  layers: PreviewLayerInputForExport[]
+}
+
+export interface RenderPreviewOutput {
   width: number
   height: number
-  layers: PreviewLayerInput[]
+  data: Buffer
 }
 
 // ── Native 内部全字段类型 ──
@@ -151,7 +158,7 @@ interface LunaRenderCoreNative {
   updateTexture(textureId: number, data: Buffer): void
   releaseTexture(textureId: number): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: NativeLayer[]): Buffer
-  renderPreview(input: any): Buffer
+  renderPreview(input: any): RenderPreviewOutput
   resolveRenderSource(
     ffmpegPath: string,
     ffprobePath: string,
@@ -483,9 +490,12 @@ export function renderLayersToFile(
   getNative().renderLayersToFile(ffmpegPath, outputPath, width, height, layers.map(normalizeLayer), format, quality)
 }
 
-export function renderPreview(input: RenderPreviewInput): Buffer {
+export function renderPreview(input: RenderPreviewInput): RenderPreviewOutput {
   ensureInit()
-  return getNative().renderPreview(input)
+  return getNative().renderPreview({
+    ...input,
+    layers: input.layers.map(normalizePreviewLayer),
+  })
 }
 
 export function exportFile(
