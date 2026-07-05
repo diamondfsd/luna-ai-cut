@@ -7,17 +7,18 @@ import { Button, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
-import { WorkspaceCanvasProvider } from '../workspace/context/WorkspaceCanvasContext'
+import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
 import { createDefaultPipeline, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
-import { ImagePreview } from '../workspace/components/ImagePreview'
-import type { ImagePreviewHandle } from '../workspace/components/ImagePreview'
+import { PreviewStage } from '../components/PreviewStage'
+import type { PreviewStageHandle } from '../components/PreviewStage'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
 import { WorkspaceRemoveDialog } from '../workspace/components/WorkspaceRemoveDialog'
 import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSidebar'
 import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
+import { CropOverlay } from '../workspace/transform/CropOverlay'
 import '../styles/workspace-loading.css'
 
 function normalizePipeline(value: unknown): EditPipeline {
@@ -59,14 +60,14 @@ export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEdi
 function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
+  const canvas = useWorkspaceCanvas()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
   const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
-  const allowStaleLut = !edit.compareOriginal
 
-  // ── ImagePreview ref ──
-  const previewRef = useRef<ImagePreviewHandle>(null)
+  // ── PreviewStage ref ──
+  const previewRef = useRef<PreviewStageHandle>(null)
 
   // ── Initialize pipeline / reset crop when active asset changes ──
   useEffect(() => {
@@ -290,16 +291,15 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         </>
       ) : (
         <>
-          {/* ── 自包含预览组件 ── */}
-          <ImagePreview
+          {/* ── Rust/wgpu 预览组件 ── */}
+          <PreviewStage
             ref={previewRef}
-            filePath={media.activeMedia?.path ?? ''}
-            isLivePhoto={media.activeMedia?.isLivePhoto}
+            url={media.activeMedia?.path ?? null}
+            pending={!media.activeMedia}
             pipeline={displayPipeline}
-            allowStaleLut={allowStaleLut}
-            cropActive={edit.cropActive}
-            // 裁剪模式下拦截双击（阻止缩放），否则使用 ImagePreview 默认的缩放行为
-            onDoubleClick={edit.cropActive ? () => {} : undefined}
+            scaleMode="contain"
+            onMetricsChange={canvas.setPreviewMetrics}
+            renderOverlay={() => (edit.cropActive ? <CropOverlay /> : null)}
           />
 
           <WorkspaceEditSidebar />

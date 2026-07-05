@@ -99,7 +99,31 @@ struct LayerParams {
     src_y: f32,
     src_w: f32,
     src_h: f32,
+    crop_x: f32,
+    crop_y: f32,
+    crop_w: f32,
+    crop_h: f32,
     opacity: f32,
+    exposure: f32,
+    brightness: f32,
+    contrast: f32,
+    saturation: f32,
+    vibrance: f32,
+    temperature: f32,
+    tint: f32,
+    highlights: f32,
+    shadows: f32,
+    whites: f32,
+    blacks: f32,
+    clarity: f32,
+    texture: f32,
+    sharpen: f32,
+    denoise: f32,
+    orientation: f32,
+    rotate: f32,
+    flip_h: f32,
+    flip_v: f32,
+    scale: f32,
 }
 
 @group(0) @binding(0) var src_texture: texture_2d<f32>;
@@ -122,14 +146,80 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let local_x = (pixel_x - params.dst_x) / params.dst_w;
     let local_y = (pixel_y - params.dst_y) / params.dst_h;
+    var local = vec2<f32>(local_x, local_y);
+    var centered = (local - vec2<f32>(0.5, 0.5)) / max(params.scale, 0.0001);
+    let radians_value = -params.rotate * 0.017453292519943295;
+    let s = sin(radians_value);
+    let c = cos(radians_value);
+    centered = vec2<f32>(
+        centered.x * c - centered.y * s,
+        centered.x * s + centered.y * c,
+    );
+    if (params.flip_h > 0.5) {
+        centered.x = -centered.x;
+    }
+    if (params.flip_v > 0.5) {
+        centered.y = -centered.y;
+    }
+    let oriented = centered + vec2<f32>(0.5, 0.5);
+    if (oriented.x < 0.0 || oriented.x > 1.0 || oriented.y < 0.0 || oriented.y > 1.0) {
+        discard;
+    }
+
+    var source_local = oriented;
+    let o = i32(round(params.orientation)) % 360;
+    if (o == 90 || o == -270) {
+        source_local = vec2<f32>(oriented.y, 1.0 - oriented.x);
+    } else if (o == 180 || o == -180) {
+        source_local = vec2<f32>(1.0 - oriented.x, 1.0 - oriented.y);
+    } else if (o == 270 || o == -90) {
+        source_local = vec2<f32>(1.0 - oriented.y, oriented.x);
+    }
+
+    let cropped = vec2<f32>(
+        params.crop_x + source_local.x * params.crop_w,
+        params.crop_y + source_local.y * params.crop_h,
+    );
     let tex_coord = vec2<f32>(
-        params.src_x + local_x * params.src_w,
-        params.src_y + local_y * params.src_h,
+        params.src_x + cropped.x * params.src_w,
+        params.src_y + cropped.y * params.src_h,
     );
 
     var color = textureSample(src_texture, src_sampler, tex_coord);
+    color.rgb = apply_color(color.rgb);
     color.a = color.a * params.opacity;
     return color;
+}
+
+fn luminance(c: vec3<f32>) -> f32 {
+    return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
+fn apply_color(input: vec3<f32>) -> vec3<f32> {
+    var c = input;
+    c = c * pow(2.0, params.exposure);
+    c = c + vec3<f32>(params.brightness / 100.0);
+    c = (c - vec3<f32>(0.5)) * (1.0 + params.contrast / 100.0) + vec3<f32>(0.5);
+
+    let l = luminance(c);
+    let sat = max(0.0, 1.0 + params.saturation / 100.0);
+    c = mix(vec3<f32>(l), c, sat);
+    let vib = params.vibrance / 100.0;
+    let maxc = max(c.r, max(c.g, c.b));
+    let minc = min(c.r, min(c.g, c.b));
+    let current_sat = clamp(maxc - minc, 0.0, 1.0);
+    c = mix(vec3<f32>(luminance(c)), c, 1.0 + vib * (1.0 - current_sat));
+
+    c.r = c.r + params.temperature / 300.0 + params.tint / 600.0;
+    c.b = c.b - params.temperature / 300.0;
+    c.g = c.g - params.tint / 600.0;
+
+    let lum = luminance(c);
+    c = mix(c, c + vec3<f32>(params.shadows / 100.0) * (1.0 - smoothstep(0.0, 0.55, lum)), abs(params.shadows) / 100.0);
+    c = mix(c, c + vec3<f32>(params.highlights / 100.0) * smoothstep(0.45, 1.0, lum), abs(params.highlights) / 100.0);
+    c = c + vec3<f32>(params.whites / 200.0) * smoothstep(0.7, 1.0, lum);
+    c = c + vec3<f32>(params.blacks / 200.0) * (1.0 - smoothstep(0.0, 0.3, lum));
+    return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 "#;
 
@@ -146,7 +236,31 @@ struct GpuLayerParams {
     src_y: f32,
     src_w: f32,
     src_h: f32,
+    crop_x: f32,
+    crop_y: f32,
+    crop_w: f32,
+    crop_h: f32,
     opacity: f32,
+    exposure: f32,
+    brightness: f32,
+    contrast: f32,
+    saturation: f32,
+    vibrance: f32,
+    temperature: f32,
+    tint: f32,
+    highlights: f32,
+    shadows: f32,
+    whites: f32,
+    blacks: f32,
+    clarity: f32,
+    texture: f32,
+    sharpen: f32,
+    denoise: f32,
+    orientation: f32,
+    rotate: f32,
+    flip_h: f32,
+    flip_v: f32,
+    scale: f32,
     _pad: [f32; 3],
 }
 
@@ -166,6 +280,8 @@ pub struct PreviewLayerInput {
     pub dst_x: f64, pub dst_y: f64, pub dst_w: f64, pub dst_h: f64,
     pub src_x: f64, pub src_y: f64, pub src_w: f64, pub src_h: f64,
     pub opacity: f64, pub z_index: i32,
+    pub color: crate::RenderColorAdjustments,
+    pub transform: crate::RenderLayerTransform,
 }
 
 // ── Compositor ──
@@ -837,7 +953,31 @@ impl Compositor {
                     src_y: layer.src_y as f32,
                     src_w: layer.src_w as f32,
                     src_h: layer.src_h as f32,
+                    crop_x: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.x as f32).unwrap_or(0.0),
+                    crop_y: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.y as f32).unwrap_or(0.0),
+                    crop_w: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.w as f32).unwrap_or(1.0),
+                    crop_h: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.h as f32).unwrap_or(1.0),
                     opacity: layer.opacity as f32,
+                    exposure: layer.color.as_ref().map(|c| c.exposure as f32).unwrap_or(0.0),
+                    brightness: layer.color.as_ref().map(|c| c.brightness as f32).unwrap_or(0.0),
+                    contrast: layer.color.as_ref().map(|c| c.contrast as f32).unwrap_or(0.0),
+                    saturation: layer.color.as_ref().map(|c| c.saturation as f32).unwrap_or(0.0),
+                    vibrance: layer.color.as_ref().map(|c| c.vibrance as f32).unwrap_or(0.0),
+                    temperature: layer.color.as_ref().map(|c| c.temperature as f32).unwrap_or(0.0),
+                    tint: layer.color.as_ref().map(|c| c.tint as f32).unwrap_or(0.0),
+                    highlights: layer.color.as_ref().map(|c| c.highlights as f32).unwrap_or(0.0),
+                    shadows: layer.color.as_ref().map(|c| c.shadows as f32).unwrap_or(0.0),
+                    whites: layer.color.as_ref().map(|c| c.whites as f32).unwrap_or(0.0),
+                    blacks: layer.color.as_ref().map(|c| c.blacks as f32).unwrap_or(0.0),
+                    clarity: layer.color.as_ref().map(|c| c.clarity as f32).unwrap_or(0.0),
+                    texture: layer.color.as_ref().map(|c| c.texture as f32).unwrap_or(0.0),
+                    sharpen: layer.color.as_ref().map(|c| c.sharpen as f32).unwrap_or(0.0),
+                    denoise: layer.color.as_ref().map(|c| c.denoise as f32).unwrap_or(0.0),
+                    orientation: layer.transform.as_ref().map(|t| t.orientation as f32).unwrap_or(0.0),
+                    rotate: layer.transform.as_ref().map(|t| t.rotate as f32).unwrap_or(0.0),
+                    flip_h: layer.transform.as_ref().map(|t| if t.flip_h { 1.0 } else { 0.0 }).unwrap_or(0.0),
+                    flip_v: layer.transform.as_ref().map(|t| if t.flip_v { 1.0 } else { 0.0 }).unwrap_or(0.0),
+                    scale: layer.transform.as_ref().map(|t| t.scale.max(0.0001) as f32).unwrap_or(1.0),
                     _pad: [0.0; 3],
                 };
 
@@ -1132,6 +1272,8 @@ impl Compositor {
                 src_h: layer.src_h,
                 opacity: layer.opacity,
                 z_index: layer.z_index,
+                color: Some(layer.color.clone()),
+                transform: Some(layer.transform.clone()),
             });
         }
 

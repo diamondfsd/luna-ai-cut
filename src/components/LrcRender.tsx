@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
-import type { PreviewLayer } from '../shared/types'
+import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform } from '../shared/types'
 
 const PREVIEW_TEXTURE_MAX_SIZE = 1920
 
@@ -11,6 +11,8 @@ export interface LrcTextureLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+  color?: RenderColorAdjustments
+  transform?: RenderLayerTransform
 }
 
 export interface LrcStaticLayer {
@@ -18,6 +20,8 @@ export interface LrcStaticLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+  color?: RenderColorAdjustments
+  transform?: RenderLayerTransform
 }
 
 /** LrcRender 暴露给父组件的方法 */
@@ -156,6 +160,8 @@ function buildExportLayers(
       srcW: layer.srcW ?? 1, srcH: layer.srcH ?? 1,
       opacity: layer.opacity ?? 1,
       zIndex: layer.zIndex ?? 0,
+      color: layer.color,
+      transform: layer.transform,
     })
   }
 
@@ -195,6 +201,8 @@ function buildStaticExportLayers(
       srcW: layer.srcW ?? 1, srcH: layer.srcH ?? 1,
       opacity: layer.opacity ?? 1,
       zIndex: layer.zIndex ?? 0,
+      color: layer.color,
+      transform: layer.transform,
     })
   }
   return result

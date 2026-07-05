@@ -20,6 +20,8 @@ export interface PreviewLayerInputForExport {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+  color?: Partial<RenderColorAdjustments>
+  transform?: Partial<RenderLayerTransform>
 }
 
 export interface RenderCoreLayerInput {
@@ -27,6 +29,8 @@ export interface RenderCoreLayerInput {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+  color?: Partial<RenderColorAdjustments>
+  transform?: Partial<RenderLayerTransform>
 }
 
 /** render_preview 的单个层 */
@@ -37,6 +41,8 @@ export interface PreviewLayerInput {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number; zIndex: number
+  color: RenderColorAdjustments
+  transform: RenderLayerTransform
 }
 
 /** render_preview 输入 */
@@ -57,6 +63,8 @@ interface PreviewNativeLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number; zIndex: number
+  color: RenderColorAdjustments
+  transform: RenderLayerTransform
 }
 
 interface NativeLayer {
@@ -64,6 +72,8 @@ interface NativeLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number; zIndex: number
+  color: RenderColorAdjustments
+  transform: RenderLayerTransform
 }
 
 interface NativeStaticLayer {
@@ -71,6 +81,42 @@ interface NativeStaticLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number; zIndex: number
+  color: RenderColorAdjustments
+  transform: RenderLayerTransform
+}
+
+interface RenderColorAdjustments {
+  exposure: number
+  brightness: number
+  contrast: number
+  saturation: number
+  vibrance: number
+  temperature: number
+  tint: number
+  highlights: number
+  shadows: number
+  whites: number
+  blacks: number
+  clarity: number
+  texture: number
+  sharpen: number
+  denoise: number
+}
+
+interface RenderCropRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+interface RenderLayerTransform {
+  crop: RenderCropRect | null
+  orientation: number
+  rotate: number
+  flipH: boolean
+  flipV: boolean
+  scale: number
 }
 
 interface LunaRenderCoreNative {
@@ -138,6 +184,8 @@ function normalizePreviewLayer(l: PreviewLayerInputForExport): PreviewNativeLaye
     srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
     opacity: l.opacity ?? 1,
     zIndex: l.zIndex ?? 0,
+    color: normalizeColor(l.color),
+    transform: normalizeTransform(l.transform),
   }
 }
 
@@ -149,6 +197,8 @@ function normalizeLayer(l: RenderCoreLayerInput): NativeLayer {
     srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
     opacity: l.opacity ?? 1,
     zIndex: l.zIndex ?? 0,
+    color: normalizeColor(l.color),
+    transform: normalizeTransform(l.transform),
   }
 }
 
@@ -157,6 +207,8 @@ export interface StaticLayerInput {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+  color?: Partial<RenderColorAdjustments>
+  transform?: Partial<RenderLayerTransform>
 }
 
 function normalizeStaticLayer(l: StaticLayerInput): NativeStaticLayer {
@@ -167,7 +219,58 @@ function normalizeStaticLayer(l: StaticLayerInput): NativeStaticLayer {
     srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
     opacity: l.opacity ?? 1,
     zIndex: l.zIndex ?? 0,
+    color: normalizeColor(l.color),
+    transform: normalizeTransform(l.transform),
   }
+}
+
+function normalizeColor(color?: Partial<RenderColorAdjustments>): RenderColorAdjustments {
+  return {
+    exposure: color?.exposure ?? 0,
+    brightness: color?.brightness ?? 0,
+    contrast: color?.contrast ?? 0,
+    saturation: color?.saturation ?? 0,
+    vibrance: color?.vibrance ?? 0,
+    temperature: color?.temperature ?? 0,
+    tint: color?.tint ?? 0,
+    highlights: color?.highlights ?? 0,
+    shadows: color?.shadows ?? 0,
+    whites: color?.whites ?? 0,
+    blacks: color?.blacks ?? 0,
+    clarity: color?.clarity ?? 0,
+    texture: color?.texture ?? 0,
+    sharpen: color?.sharpen ?? 0,
+    denoise: color?.denoise ?? 0,
+  }
+}
+
+function normalizeDegrees(value: number): number {
+  const rounded = Math.round(value / 90) * 90
+  return ((rounded % 360) + 360) % 360
+}
+
+function normalizeCrop(crop?: Partial<RenderCropRect> | null): RenderCropRect | null {
+  if (!crop) return null
+  const x = clamp01(crop.x ?? 0)
+  const y = clamp01(crop.y ?? 0)
+  const w = Math.max(0.001, Math.min(1 - x, crop.w ?? 1))
+  const h = Math.max(0.001, Math.min(1 - y, crop.h ?? 1))
+  return { x, y, w, h }
+}
+
+function normalizeTransform(transform?: Partial<RenderLayerTransform>): RenderLayerTransform {
+  return {
+    crop: normalizeCrop(transform?.crop),
+    orientation: normalizeDegrees(transform?.orientation ?? 0),
+    rotate: transform?.rotate ?? 0,
+    flipH: Boolean(transform?.flipH),
+    flipV: Boolean(transform?.flipV),
+    scale: Math.max(0.01, transform?.scale ?? 1),
+  }
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value))
 }
 
 let native: LunaRenderCoreNative | null = null
