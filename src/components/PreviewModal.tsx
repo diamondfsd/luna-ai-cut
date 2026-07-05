@@ -62,17 +62,6 @@ export function PreviewModal({
     }
   }, [currentFilePath, previewOnly])
 
-  // 当前文件分辨率（用于批量导出时展示文件信息）
-  const [currentResolution, setCurrentResolution] = useState<{ width: number; height: number } | null>(null)
-  useEffect(() => {
-    if (!currentFilePath) return
-    let canceled = false
-    window.luna.workspace.getMediaResolution(currentFilePath)
-      .then((res) => { if (!canceled) setCurrentResolution(res) })
-      .catch(() => { if (!canceled) setCurrentResolution(null) })
-    return () => { canceled = true }
-  }, [currentFilePath])
-
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(_settings: WatermarkSettingsType, layer?: PreviewLayer) {
     setWatermarkLayers(layer ? [layer] : [])
@@ -172,15 +161,6 @@ export function PreviewModal({
               />
               {batchExportMode && (
                 <div className="batch-export-actions">
-                  <div className="batch-export-file-info">
-                    <span className="batch-file-name">{currentFilePath.split(/[/\\]/).pop()}</span>
-                    {currentResolution && (
-                      <span className="batch-file-resolution">{currentResolution.width} × {currentResolution.height}</span>
-                    )}
-                    <span className={`batch-file-kind ${isVideo ? 'video' : 'image'}`}>
-                      {isVideo ? '视频' : '图片'}
-                    </span>
-                  </div>
                   <button
                     className="ui-btn ui-btn-primary"
                     disabled={batchExporting}
