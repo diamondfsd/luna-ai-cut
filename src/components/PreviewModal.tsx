@@ -41,10 +41,20 @@ export function PreviewModal({
 
   // 获取媒体分辨率用于水印布局匹配
   useEffect(() => {
-    if (!currentFilePath) { setMediaSize(null); return }
+    setMediaSize(null)
+    setWatermarkLayers([])
+    if (!currentFilePath) return
+    let canceled = false
     window.luna.workspace.getMediaResolution(currentFilePath)
-      .then(({ width, height }) => setMediaSize({ w: width, h: height }))
-      .catch(() => setMediaSize(null))
+      .then(({ width, height }) => {
+        if (!canceled) setMediaSize({ w: width, h: height })
+      })
+      .catch(() => {
+        if (!canceled) setMediaSize(null)
+      })
+    return () => {
+      canceled = true
+    }
   }, [currentFilePath])
 
   const displaySource = filePathToPreviewUrl(currentFilePath) ?? currentFilePath
@@ -102,6 +112,7 @@ export function PreviewModal({
               ref={stageRef}
               url={displaySource}
               extraLayers={watermarkLayers}
+              pending={mediaSize == null}
               exportOptions={{ enable: true }}
             />
 
