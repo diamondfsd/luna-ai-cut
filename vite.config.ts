@@ -15,11 +15,7 @@ export default defineConfig({
     react(),
     electron({
       main: {
-        // bootstrap 入口 + export worker
-        entry: {
-          main: 'electron/main.ts',
-          'luna-exportWorker': 'electron/exportWorker.ts',
-        },
+        entry: 'electron/main.ts',
         vite: {
           build: {
             rollupOptions: {

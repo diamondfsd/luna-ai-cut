@@ -16,7 +16,7 @@ import {
   renderPreview as lrcRenderPreview,
   renderLayersToFile as lrcRenderLayersToFile,
   resolveRenderSource as lrcResolveRenderSource,
-  exportImageFromSources as lrcExportImageFromSources,
+  exportImageFromSourcesAsync as lrcExportImageFromSourcesAsync,
   exportFileAsync as lrcExportFileAsync,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
@@ -24,6 +24,7 @@ import {
 } from './lunaRenderCore'
 import { dialog } from 'electron'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
+import * as exportTaskService from './exportTaskService'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
@@ -165,11 +166,34 @@ export function register(_ctx: RegisterContext): void {
       layers: PreviewLayerArg[],
       format: string,
       quality: number,
+      exportTaskId?: string,
+      exportItemId?: string,
     ) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       rcLog(`lrc:exportImageFromSources out=${outputPath} ${width}x${height} layers=${layers.length} fmt=${format}`)
-      lrcExportImageFromSources(ffmpegPath, ffprobePath, outputPath, width, height, layers, format, quality)
+
+      // 通知 exportTaskService（开始导出）
+      if (exportTaskId && exportItemId) {
+        await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
+      }
+
+      await lrcExportImageFromSourcesAsync(ffmpegPath, ffprobePath, outputPath, width, height, layers, format, quality)
+
+      // 发送进度事件
+      _event.sender?.send('export:progress', {
+        exportId: exportItemId,
+        fileName: outputPath.split(/[\\/]/).pop(),
+        percent: 100,
+        status: 'done',
+        destinationPath: outputPath,
+      })
+
+      // 通知 exportTaskService（完成）
+      if (exportTaskId && exportItemId) {
+        await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
+      }
+
       rcLog('lrc:exportImageFromSources done')
     },
   ))
@@ -213,6 +237,8 @@ export function register(_ctx: RegisterContext): void {
       overlayLayers: StaticLayerArg[],
       taskId?: string,
       qualityPreset?: string,
+      exportTaskId?: string,
+      exportItemId?: string,
     ) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
@@ -220,6 +246,12 @@ export function register(_ctx: RegisterContext): void {
       const exportId = taskId ?? `lrc_${Date.now()}`
       const fileName = fileNameFromPath(outputPath)
       rcLog(`lrc:exportVideo start f=${ffmpegPath} p=${ffprobePath} ${sourcePath} → ${outputPath} task=${exportId} qp=${qualityPreset}`)
+
+      // 通知 exportTaskService（开始导出）
+      if (exportTaskId && exportItemId) {
+        exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
+      }
+
       _ctx.win?.webContents.send('export:progress', {
         exportId,
         fileName,
@@ -230,6 +262,10 @@ export function register(_ctx: RegisterContext): void {
       lrcExportFileAsync(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, exportId, qualityPreset)
         .then(() => {
           rcLog(`lrc:exportVideo done out=${outputPath}`)
+          // 通知 exportTaskService（完成）
+          if (exportTaskId && exportItemId) {
+            exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
+          }
           _ctx.win?.webContents.send('export:progress', {
             exportId,
             fileName,
@@ -241,6 +277,10 @@ export function register(_ctx: RegisterContext): void {
         .catch((err: unknown) => {
           const error = err instanceof Error ? err.message : String(err)
           rcLog(`ERROR in exportVideo async: ${error} out=${outputPath}`)
+          // 通知 exportTaskService（失败）
+          if (exportTaskId && exportItemId) {
+            exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'failed', error }).catch(() => {})
+          }
           _ctx.win?.webContents.send('export:progress', {
             exportId,
             fileName,
