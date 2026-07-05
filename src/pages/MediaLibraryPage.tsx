@@ -55,7 +55,6 @@ export function MediaLibraryPage({
     groups,
     isCurrentLoading,
     mediaFilter,
-    previewFiles,
     selected,
     selectedFiles,
     showDeleteDialog,

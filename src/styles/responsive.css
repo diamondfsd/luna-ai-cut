@@ -80,12 +80,19 @@
   }
 
   .preview-body {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .preview-sidebar {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: 260px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
   }
 
   .media-inspector {
-    max-height: 260px;
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    max-height: none;
+    border-top: 0;
     border-left: 0;
   }
 }
