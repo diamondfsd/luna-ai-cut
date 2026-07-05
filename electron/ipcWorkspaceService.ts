@@ -448,6 +448,38 @@ export function register(ctx: IpcContext): void {
     return { path: destinationPath, name: path.basename(destinationPath) }
   })
 
+  ipcMain.handle('workspace:exportRenderedLivePhoto', async (_event, name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean) => {
+    const settings = await getSettings()
+    if (!settings.exportDir) throw new Error('未设置导出目录')
+    await mkdir(settings.exportDir, { recursive: true })
+
+    if (appleLivePhoto && process.platform !== 'darwin') {
+      throw new Error('Apple Live 图仅支持在 Mac 上导出')
+    }
+
+    const baseName = safeName(path.basename(name, path.extname(name)) || 'preview-live')
+    const destinationPath = path.join(settings.exportDir, `${baseName}_${Date.now()}.jpg`)
+    const appleFolder = appleLivePhoto ? path.join(settings.exportDir, `${baseName}_apple_${Date.now()}`) : undefined
+    try {
+      await combineLivePhoto(imagePath, videoPath, destinationPath, appleFolder)
+    } finally {
+      await rm(imagePath, { force: true }).catch(() => undefined)
+      await rm(videoPath, { force: true }).catch(() => undefined)
+    }
+
+    const exportId = `preview_live_${baseName}_${Date.now()}`
+    const taskName = appleLivePhoto ? 'Apple Live 图导出' : 'Live 图片导出'
+    const task = await createExportTask(taskName, [{ exportId, fileName: path.basename(destinationPath), kind: 'image' }])
+    const taskStart = Date.now()
+    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
+      endTime: Date.now(),
+      duration: Date.now() - taskStart,
+      destinationPath,
+    })
+
+    return { path: destinationPath, name: path.basename(destinationPath) }
+  })
+
   // ── 创意工坊：三联画导出 ──
   ipcMain.handle('workspace:exportTripleStitch', async (event, options: TripleStitchExportOptions) => {
     const settings = await getSettings()

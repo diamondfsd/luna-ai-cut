@@ -7,8 +7,7 @@ import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToLunaFile } from './previewModalUtils'
 import type { PreviewLayer, PreviewResult, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import { Dialog, LivePhotoBadge } from '../ui'
-import { useIsLivePhoto } from '../shared/livePhoto'
+import { Dialog } from '../ui'
 import '../styles/modal.css'
 
 interface PreviewModalProps {
@@ -64,7 +63,6 @@ export function PreviewModal({
   }, [currentFilePath])
 
   const displaySource = internalPreview?.source ?? null
-  const isLivePhoto = useIsLivePhoto(displaySource)
 
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
@@ -121,12 +119,6 @@ export function PreviewModal({
               extraLayers={watermarkLayers}
               exportOptions={{ enable: true }}
             />
-
-            {isLivePhoto && (
-              <span style={{ position: 'absolute', right: 12, bottom: 12, zIndex: 10 }}>
-                <LivePhotoBadge size={32} />
-              </span>
-            )}
 
             <PreviewThumbnailStrip
               filePathList={filePathList ?? [currentFilePath]}

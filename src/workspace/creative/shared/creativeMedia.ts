@@ -84,35 +84,7 @@ export async function loadCreativeImageAspect(asset: WorkspaceMediaAsset): Promi
 export async function loadCreativeVideoSource(asset: WorkspaceMediaAsset): Promise<HTMLVideoElement> {
   let sourceUrl = assetSourceUrl(asset)
   if (asset.isLivePhoto) {
-    const result = await window.luna.previewLivePhoto({
-      id: asset.id,
-      name: asset.name,
-      href: asset.name,
-      sourceUrl,
-      url: sourceUrl,
-      dateText: '',
-      timeText: '',
-      sizeText: '',
-      bytes: null,
-      kind: 'image',
-      extension: '',
-      capturedAt: null,
-      groupDay: '',
-      groupHour: '',
-      videoKey: null,
-      previewName: null,
-      previewUrl: null,
-      cacheFilePath: null,
-      downloadFilePath: asset.path,
-      thumbnailUrl: asset.thumbnailUrl ?? null,
-      isLivePhoto: true,
-      livePhotoVideoName: null,
-      livePhotoVideoUrl: null,
-      livePhotoCacheFilePath: null,
-      downloadName: asset.name,
-      canPreview: true,
-      localPath: asset.path,
-    })
+    const result = await window.luna.previewLivePhoto(sourceUrl)
     if (result.source) sourceUrl = result.source
   }
 

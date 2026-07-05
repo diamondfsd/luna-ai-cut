@@ -165,10 +165,9 @@ export function register(ctx: IpcContext): void {
     }, 2)
   })
 
-  ipcMain.handle('luna:previewLivePhoto', async (_event, file: LunaFile) => {
+  ipcMain.handle('luna:previewLivePhoto', async (_event, sourceUrl: string) => {
     return ctx.enqueuePreviewTask(async () => {
-      await ctx.ensureCameraSessionForFile(file)
-      return previewLivePhoto(file)
+      return previewLivePhoto(sourceUrl)
     }, 2)
   })
 
