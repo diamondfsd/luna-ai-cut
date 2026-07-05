@@ -57,7 +57,7 @@ export interface DialogProps {
   /**
    * 视觉变体：
    * - `'dialog'`（默认）：居中弹窗，带标题/描述/底部操作栏/关闭按钮
-   * - `'fullscreen'`：全屏弹窗，由内容自行管理布局（用于 PreviewModal / ExportModal）
+   * - `'fullscreen'`：全屏弹窗，由内容自行管理布局（用于 PreviewModal）
    */
   variant?: 'dialog' | 'fullscreen'
 }

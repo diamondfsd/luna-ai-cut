@@ -2,8 +2,9 @@
   position: fixed;
   inset: 0;
   z-index: 40;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: rgba(0, 0, 0, 0.58);
   backdrop-filter: blur(18px) saturate(130%);
   -webkit-backdrop-filter: blur(18px) saturate(130%);
@@ -11,10 +12,13 @@
 }
 
 .preview-modal {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  --preview-thumbnail-strip-height: 72px;
+  display: flex;
+  flex-direction: column;
   width: 100vw;
   height: 100vh;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   border-radius: 0;
   background: var(--tile-dark);
@@ -23,6 +27,7 @@
 }
 
 .preview-modal header {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -68,21 +73,36 @@
 }
 
 .preview-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .preview-sidebar {
+  flex: 0 0 320px;
+  width: 320px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
   min-height: 0;
 }
 
+.preview-sidebar > .media-inspector {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .preview-stage-col {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
   min-height: 0;
   min-width: 0;
   position: relative;
@@ -90,14 +110,23 @@
 
 .preview-stage {
   position: relative;
-  display: grid;
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: auto;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   overscroll-behavior: contain;
-  place-items: center;
   background: #000;
   touch-action: none;
+}
+
+.preview-stage-col > .preview-stage {
+  flex: 1 1 0;
+  height: auto;
 }
 
 .preview-loading-overlay {
@@ -200,10 +229,11 @@
   position: absolute;
   z-index: 2;
   top: 50%;
-  display: grid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 44px;
   height: 44px;
-  place-items: center;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
@@ -232,8 +262,9 @@
 
 .live-photo-player-host {
   position: relative;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
 }
 
@@ -270,8 +301,15 @@
 
 /* ====== 缩略图条 ====== */
 .preview-thumbnails {
+  box-sizing: border-box;
+  flex: 0 0 var(--preview-thumbnail-strip-height);
   display: flex;
+  align-items: center;
   gap: 6px;
+  width: 100%;
+  height: var(--preview-thumbnail-strip-height);
+  min-height: var(--preview-thumbnail-strip-height);
+  max-height: var(--preview-thumbnail-strip-height);
   padding: 8px 18px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -289,8 +327,9 @@
   position: relative;
   width: 72px;
   aspect-ratio: 4 / 3;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   border: 0;
   border-radius: 6px;
@@ -322,8 +361,9 @@
 }
 
 .preview-thumb-placeholder {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted-dark);
 }
 
@@ -370,13 +410,12 @@
 }
 
 .preview-body.inspector-collapsed {
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
 }
 
 /* ── 批量导出侧栏 ── */
 
 .batch-export-sidebar {
-  display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
