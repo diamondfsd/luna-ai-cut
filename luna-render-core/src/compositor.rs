@@ -1341,10 +1341,11 @@ impl Compositor {
         &mut self,
         ffmpeg: &str,
         ffprobe: &str,
-        width: u32,
-        height: u32,
+        width: Option<u32>,
+        height: Option<u32>,
+        max_side: Option<u32>,
         layers: &[PreviewLayerInput],
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<(Vec<u8>, u32, u32), String> {
         // ── 清理已不再使用的视频 decoder ──
         let active_video_paths: std::collections::HashSet<&str> = layers
             .iter()
@@ -1355,6 +1356,7 @@ impl Compositor {
             .retain(|path, _| active_video_paths.contains(path.as_str()));
 
         let mut result_layers = Vec::with_capacity(layers.len());
+        let mut first_layer_size: Option<(u32, u32)> = None;
 
         for layer in layers {
             let tex_id = if layer.is_video {
@@ -1375,6 +1377,14 @@ impl Compositor {
                 }
             };
 
+            if first_layer_size.is_none() {
+                let entry = self
+                    .textures
+                    .get(&tex_id)
+                    .ok_or_else(|| format!("texture {} not found", tex_id))?;
+                first_layer_size = Some((entry.width, entry.height));
+            }
+
             result_layers.push(crate::RenderLayer {
                 texture_id: tex_id,
                 dst_x: layer.dst_x,
@@ -1392,7 +1402,14 @@ impl Compositor {
             });
         }
 
-        let result = self.render(width, height, &result_layers)?;
+        let (source_width, source_height) =
+            first_layer_size.ok_or_else(|| "no valid layers for preview".to_string())?;
+        let (output_width, output_height) = fit_output_size(
+            width.unwrap_or(source_width).max(1),
+            height.unwrap_or(source_height).max(1),
+            max_side.unwrap_or(PREVIEW_MAX_SIZE),
+        );
+        let result = self.render(output_width, output_height, &result_layers)?;
 
         // 释放视频帧的临时纹理（静态图纹理保留在缓存中）
         for (i, layer) in layers.iter().enumerate() {
@@ -1401,8 +1418,21 @@ impl Compositor {
             }
         }
 
-        Ok(result)
+        Ok((result, output_width, output_height))
     }
+}
+
+fn fit_output_size(width: u32, height: u32, max_side: u32) -> (u32, u32) {
+    let max_side = max_side.max(1);
+    let edge = width.max(height);
+    if edge <= max_side {
+        return (width.max(1), height.max(1));
+    }
+    let scale = max_side as f64 / edge as f64;
+    (
+        (width as f64 * scale).round().max(1.0) as u32,
+        (height as f64 * scale).round().max(1.0) as u32,
+    )
 }
 
 /// 使用 ffmpeg 解码静态图片到 RGBA（按 PREVIEW_MAX_SIZE 等比缩小）

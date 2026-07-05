@@ -255,9 +255,17 @@ pub struct PreviewLayer {
 pub struct RenderPreviewInput {
     pub ffmpeg_path: String,
     pub ffprobe_path: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub max_side: Option<u32>,
+    pub layers: Vec<PreviewLayer>,
+}
+
+#[napi(object)]
+pub struct RenderPreviewOutput {
     pub width: u32,
     pub height: u32,
-    pub layers: Vec<PreviewLayer>,
+    pub data: Buffer,
 }
 
 // ─────────────── napi exports ───────────────
@@ -383,9 +391,9 @@ pub fn preview_file(
     })
 }
 
-/// 统一预览入口：传路径列表，Rust 内部解码 + 缓存 + 合成，返回 RGBA Buffer。
+/// 统一预览入口：传路径列表，Rust 内部解码 + 缓存 + 合成，返回 RGBA Buffer 和实际输出尺寸。
 #[napi]
-pub fn render_preview(input: RenderPreviewInput) -> napi::Result<Buffer> {
+pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOutput> {
     let layers: Vec<compositor::PreviewLayerInput> = input
         .layers
         .iter()
@@ -408,14 +416,19 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<Buffer> {
         })
         .collect();
     lock(|c| {
-        let result = c.render_preview(
+        let (data, width, height) = c.render_preview(
             &input.ffmpeg_path,
             &input.ffprobe_path,
             input.width,
             input.height,
+            input.max_side,
             &layers,
         )?;
-        Ok(result.into())
+        Ok(RenderPreviewOutput {
+            width,
+            height,
+            data: data.into(),
+        })
     })
 }
 
