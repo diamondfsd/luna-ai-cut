@@ -72,151 +72,15 @@ pub fn log_error(msg: &str) {
 
 // ── WGSL 着色器 ──
 
-const SHADER: &str = r#"
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-}
-
-@vertex
-fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
-    let xi = idx & 1u;
-    let yi = (idx & 2u) >> 1u;
-    let x = f32(xi * 2u) - 1.0;
-    let y = 1.0 - f32(yi * 2u);
-    var out: VertexOutput;
-    out.position = vec4<f32>(x, y, 0.0, 1.0);
-    out.uv = vec2<f32>((x + 1.0) * 0.5, (1.0 - y) * 0.5);
-    return out;
-}
-
-struct LayerParams {
-    dst_x: f32,
-    dst_y: f32,
-    dst_w: f32,
-    dst_h: f32,
-    src_x: f32,
-    src_y: f32,
-    src_w: f32,
-    src_h: f32,
-    crop_x: f32,
-    crop_y: f32,
-    crop_w: f32,
-    crop_h: f32,
-    source_aspect: f32,
-    frame_w: f32,
-    frame_h: f32,
-    opacity: f32,
-    exposure: f32,
-    brightness: f32,
-    contrast: f32,
-    saturation: f32,
-    vibrance: f32,
-    temperature: f32,
-    tint: f32,
-    highlights: f32,
-    shadows: f32,
-    whites: f32,
-    blacks: f32,
-    clarity: f32,
-    texture: f32,
-    sharpen: f32,
-    denoise: f32,
-    orientation: f32,
-    rotate: f32,
-    flip_h: f32,
-    flip_v: f32,
-    scale: f32,
-}
-
-@group(0) @binding(0) var src_texture: texture_2d<f32>;
-@group(0) @binding(1) var src_sampler: sampler;
-@group(0) @binding(2) var<uniform> params: LayerParams;
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let pixel_x = in.position.x;
-    let pixel_y = in.position.y;
-
-    let in_rect = pixel_x >= params.dst_x
-        && pixel_x < params.dst_x + params.dst_w
-        && pixel_y >= params.dst_y
-        && pixel_y < params.dst_y + params.dst_h;
-
-    if (!in_rect) {
-        discard;
-    }
-
-    let local_x = (pixel_x - params.dst_x) / params.dst_w;
-    let local_y = (pixel_y - params.dst_y) / params.dst_h;
-    let frame_uv = vec2<f32>(
-        params.crop_x + local_x * params.crop_w,
-        params.crop_y + local_y * params.crop_h,
-    );
-    var centered = (frame_uv - vec2<f32>(0.5, 0.5)) * vec2<f32>(
-        max(params.frame_w, 0.0001),
-        max(params.frame_h, 0.0001),
-    );
-    centered = centered / max(params.scale, 0.0001);
-    let radians_value = (params.orientation + params.rotate) * 0.017453292519943295;
-    let s = sin(radians_value);
-    let c = cos(radians_value);
-    centered = vec2<f32>(
-        centered.x * c + centered.y * s,
-        -centered.x * s + centered.y * c,
-    );
-    if (params.flip_h > 0.5) {
-        centered.x = -centered.x;
-    }
-    if (params.flip_v > 0.5) {
-        centered.y = -centered.y;
-    }
-    let source_local = centered / vec2<f32>(max(params.source_aspect, 0.0001), 1.0) + vec2<f32>(0.5, 0.5);
-    if (source_local.x < 0.0 || source_local.x > 1.0 || source_local.y < 0.0 || source_local.y > 1.0) {
-        discard;
-    }
-    let tex_coord = vec2<f32>(
-        params.src_x + source_local.x * params.src_w,
-        params.src_y + source_local.y * params.src_h,
-    );
-
-    var color = textureSample(src_texture, src_sampler, tex_coord);
-    color = vec4<f32>(apply_color(color.rgb), color.a);
-    color.a = color.a * params.opacity;
-    return color;
-}
-
-fn luminance(c: vec3<f32>) -> f32 {
-    return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
-}
-
-fn apply_color(input: vec3<f32>) -> vec3<f32> {
-    var c = input;
-    c = c * pow(2.0, params.exposure);
-    c = c + vec3<f32>(params.brightness / 100.0);
-    c = (c - vec3<f32>(0.5)) * (1.0 + params.contrast / 100.0) + vec3<f32>(0.5);
-
-    let l = luminance(c);
-    let sat = max(0.0, 1.0 + params.saturation / 100.0);
-    c = mix(vec3<f32>(l), c, sat);
-    let vib = params.vibrance / 100.0;
-    let maxc = max(c.r, max(c.g, c.b));
-    let minc = min(c.r, min(c.g, c.b));
-    let current_sat = clamp(maxc - minc, 0.0, 1.0);
-    c = mix(vec3<f32>(luminance(c)), c, 1.0 + vib * (1.0 - current_sat));
-
-    c.r = c.r + params.temperature / 300.0 + params.tint / 600.0;
-    c.b = c.b - params.temperature / 300.0;
-    c.g = c.g - params.tint / 600.0;
-
-    let lum = luminance(c);
-    c = mix(c, c + vec3<f32>(params.shadows / 100.0) * (1.0 - smoothstep(0.0, 0.55, lum)), abs(params.shadows) / 100.0);
-    c = mix(c, c + vec3<f32>(params.highlights / 100.0) * smoothstep(0.45, 1.0, lum), abs(params.highlights) / 100.0);
-    c = c + vec3<f32>(params.whites / 200.0) * smoothstep(0.7, 1.0, lum);
-    c = c + vec3<f32>(params.blacks / 200.0) * (1.0 - smoothstep(0.0, 0.3, lum));
-    return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
-}
-"#;
+const SHADER: &str = concat!(
+    include_str!("shaders/vertex.wgsl"),
+    include_str!("shaders/params.wgsl"),
+    include_str!("shaders/common.wgsl"),
+    include_str!("shaders/detail.wgsl"),
+    include_str!("shaders/curve.wgsl"),
+    include_str!("shaders/color.wgsl"),
+    include_str!("shaders/fragment.wgsl"),
+);
 
 // ── GPU 数据结构 ──
 
@@ -240,6 +104,7 @@ struct GpuLayerParams {
     frame_h: f32,
     opacity: f32,
     exposure: f32,
+    black: f32,
     brightness: f32,
     contrast: f32,
     saturation: f32,
@@ -254,18 +119,56 @@ struct GpuLayerParams {
     texture: f32,
     sharpen: f32,
     denoise: f32,
+    grade_shadows_hue: f32,
+    grade_shadows_amount: f32,
+    grade_mid_hue: f32,
+    grade_mid_amount: f32,
+    grade_highlights_hue: f32,
+    grade_highlights_amount: f32,
+    curve_lift: f32,
+    curve_contrast: f32,
+    levels_black: f32,
+    levels_gray: f32,
+    levels_white: f32,
+    hue: f32,
+    hsl_hue: f32,
+    hsl_sat: f32,
+    hsl_lum: f32,
+    curve_rgb_count: f32,
+    curve_luminance_count: f32,
+    curve_red_count: f32,
+    curve_green_count: f32,
+    curve_blue_count: f32,
+    texel_x: f32,
+    texel_y: f32,
     orientation: f32,
     rotate: f32,
     flip_h: f32,
     flip_v: f32,
     scale: f32,
-    _pad: [f32; 3],
+    _pad: [f32; 1],
+    curve_data: [[f32; 4]; 30],
 }
 
 struct TextureEntry {
     texture: wgpu::Texture,
     width: u32,
     height: u32,
+}
+
+fn pack_curve_points(
+    curve_data: &mut [[f32; 4]; 30],
+    base: usize,
+    points: &[crate::RenderCurvePoint],
+) -> f32 {
+    let count = points.len().min(12);
+    for (index, point) in points.iter().take(count).enumerate() {
+        let packed = base + index / 2;
+        let offset = if index % 2 == 0 { 0 } else { 2 };
+        curve_data[packed][offset] = point.x.clamp(0.0, 1.0) as f32;
+        curve_data[packed][offset + 1] = point.y.clamp(0.0, 1.0) as f32;
+    }
+    count as f32
 }
 
 // ── render_preview 层输入 ──
@@ -275,9 +178,16 @@ pub struct PreviewLayerInput {
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
-    pub dst_x: f64, pub dst_y: f64, pub dst_w: f64, pub dst_h: f64,
-    pub src_x: f64, pub src_y: f64, pub src_w: f64, pub src_h: f64,
-    pub opacity: f64, pub z_index: i32,
+    pub dst_x: f64,
+    pub dst_y: f64,
+    pub dst_w: f64,
+    pub dst_h: f64,
+    pub src_x: f64,
+    pub src_y: f64,
+    pub src_w: f64,
+    pub src_h: f64,
+    pub opacity: f64,
+    pub z_index: i32,
     pub color: crate::RenderColorAdjustments,
     pub transform: crate::RenderLayerTransform,
 }
@@ -605,10 +515,20 @@ impl Compositor {
         // ── LRU 缓存命中 → 验证纹理仍存在，直接返回 ──
         if let Some(tex_id) = self.get_cached_texture(path) {
             if let Some(entry) = self.textures.get(&tex_id) {
-                log!("load_texture_from_path [CACHE HIT] {} tex_id={} {}x{}", path, tex_id, entry.width, entry.height);
+                log!(
+                    "load_texture_from_path [CACHE HIT] {} tex_id={} {}x{}",
+                    path,
+                    tex_id,
+                    entry.width,
+                    entry.height
+                );
                 return Ok((tex_id, entry.width, entry.height));
             } else {
-                log!("load_texture_from_path [CACHE MISS:texture_gone] {} tex_id={}", path, tex_id);
+                log!(
+                    "load_texture_from_path [CACHE MISS:texture_gone] {} tex_id={}",
+                    path,
+                    tex_id
+                );
             }
         } else {
             log!("load_texture_from_path [CACHE MISS] {}", path);
@@ -617,11 +537,14 @@ impl Compositor {
         // ── ffprobe 获取原始尺寸 + EXIF 旋转 ──
         let probe_output = Command::new(ffprobe)
             .args([
-                "-v", "quiet",
-                "-print_format", "json",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
                 "-show_streams",
                 "-show_frames",
-                "-read_intervals", "%+#1",
+                "-read_intervals",
+                "%+#1",
                 path,
             ])
             .output()
@@ -659,16 +582,23 @@ impl Compositor {
             .and_then(|s| s.trim().parse::<i32>().ok())
             .unwrap_or(0);
         let exif_rotate = match exif_orientation {
-            6 => 90,   // Rotate 90° CW
-            8 => 270,  // Rotate 270° CW (90° CCW)
+            6 => 90,  // Rotate 90° CW
+            8 => 270, // Rotate 270° CW (90° CCW)
             _ => 0,
         };
         let rotate_raw = frame["side_data_list"]
             .as_array()
             .map(|list| {
-                let vals: Vec<String> = list.iter().map(|sd| {
-                    format!("{} r={}", sd["side_data_type"].as_str().unwrap_or("?"), sd["rotation"])
-                }).collect();
+                let vals: Vec<String> = list
+                    .iter()
+                    .map(|sd| {
+                        format!(
+                            "{} r={}",
+                            sd["side_data_type"].as_str().unwrap_or("?"),
+                            sd["rotation"]
+                        )
+                    })
+                    .collect();
                 vals.join(" | ")
             })
             .unwrap_or_default();
@@ -677,9 +607,20 @@ impl Compositor {
         } else {
             exif_rotate
         };
-        log!("load_texture_from_path side_data=[{}] orientation={} rotate={}", rotate_raw, exif_orientation, rotate);
+        log!(
+            "load_texture_from_path side_data=[{}] orientation={} rotate={}",
+            rotate_raw,
+            exif_orientation,
+            rotate
+        );
         let (source_w, source_h) = if rotate == 90 || rotate == 270 {
-            log!("load_texture_from_path SWAP {}x{} -> {}x{}", source_w, source_h, source_h, source_w);
+            log!(
+                "load_texture_from_path SWAP {}x{} -> {}x{}",
+                source_w,
+                source_h,
+                source_h,
+                source_w
+            );
             (source_h, source_w)
         } else {
             (source_w, source_h)
@@ -691,11 +632,29 @@ impl Compositor {
             keys.iter().any(|k| lower.contains(k))
         }
         // color_primaries/transfer 在 stream 级别更可靠，frame 级别可能为空
-        let stream = parsed["streams"].as_array().and_then(|ss| ss.iter().find(|s| s["codec_type"].as_str() == Some("video")));
-        let primaries = stream.and_then(|s| s["color_primaries"].as_str()).or_else(|| frame["color_primaries"].as_str()).unwrap_or("");
-        let transfer = stream.and_then(|s| s["color_transfer"].as_str()).or_else(|| frame["color_transfer"].as_str()).unwrap_or("");
+        let stream = parsed["streams"].as_array().and_then(|ss| {
+            ss.iter()
+                .find(|s| s["codec_type"].as_str() == Some("video"))
+        });
+        let primaries = stream
+            .and_then(|s| s["color_primaries"].as_str())
+            .or_else(|| frame["color_primaries"].as_str())
+            .unwrap_or("");
+        let transfer = stream
+            .and_then(|s| s["color_transfer"].as_str())
+            .or_else(|| frame["color_transfer"].as_str())
+            .unwrap_or("");
         let bit_depth = frame["bits_per_raw_sample"].as_u64().unwrap_or(8) as u32;
-        let is_pq = contains_any(transfer, &["2084", "smpte2084", "smpte st 2084", "pq", "perceptual quantizer"]);
+        let is_pq = contains_any(
+            transfer,
+            &[
+                "2084",
+                "smpte2084",
+                "smpte st 2084",
+                "pq",
+                "perceptual quantizer",
+            ],
+        );
         let is_hlg = contains_any(transfer, &["hlg", "arib", "b67", "arib-std-b67"]);
         let is_bt2020 = contains_any(primaries, &["2020", "bt2020", "bt.2020", "rec.2020"]);
         let is_display_p3 = contains_any(primaries, &["p3", "display-p3", "display p3", "dcip3"]);
@@ -715,10 +674,15 @@ impl Compositor {
             let cache_path = cache_dir.join(format!("{:016x}_sdr_srgb.png", hash));
             let cache_str = cache_path.to_string_lossy().to_string();
             if !cache_path.exists() {
-                log!("load_texture_from_path: normalizing {} → {}", path, cache_str);
+                log!(
+                    "load_texture_from_path: normalizing {} → {}",
+                    path,
+                    cache_str
+                );
                 let zscale_avail = Command::new(ffmpeg)
                     .args(["-filters"])
-                    .stderr(std::process::Stdio::piped()).stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::null())
                     .output()
                     .map(|o| String::from_utf8_lossy(&o.stderr).contains("zscale"))
                     .unwrap_or(false);
@@ -729,13 +693,21 @@ impl Compositor {
                 } else if zscale_avail {
                     norm.args(["-vf", "zscale=p=bt709:t=bt709:m=bt709,format=rgb24"]);
                 } else {
-                    norm.args(["-vf", "setparams=color_primaries=bt709:color_trc=bt709,format=rgb24"]);
+                    norm.args([
+                        "-vf",
+                        "setparams=color_primaries=bt709:color_trc=bt709,format=rgb24",
+                    ]);
                 }
-                norm.args([&cache_str]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
+                norm.args([&cache_str])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::piped());
                 let norm_out = norm.output().map_err(|e| format!("normalize: {}", e))?;
                 if !norm_out.status.success() {
                     let stderr = String::from_utf8_lossy(&norm_out.stderr);
-                    log!("load_texture_from_path: normalize FAILED, using original: {}", stderr);
+                    log!(
+                        "load_texture_from_path: normalize FAILED, using original: {}",
+                        stderr
+                    );
                     path.to_string()
                 } else {
                     log!("load_texture_from_path: normalize OK → {}", cache_str);
@@ -766,12 +738,18 @@ impl Compositor {
         // ── ffmpeg 解码 + resize → rawvideo ──
         let mut proc = Command::new(ffmpeg)
             .args([
-                "-i", &use_path,
-                "-vf", &format!("scale={}:{}:flags=lanczos", width, height),
-                "-pix_fmt", "rgba",
-                "-f", "rawvideo",
-                "-vframes", "1",
-                "-loglevel", "error",
+                "-i",
+                &use_path,
+                "-vf",
+                &format!("scale={}:{}:flags=lanczos", width, height),
+                "-pix_fmt",
+                "rgba",
+                "-f",
+                "rawvideo",
+                "-vframes",
+                "1",
+                "-loglevel",
+                "error",
                 "pipe:1",
             ])
             .stdout(Stdio::piped())
@@ -802,7 +780,12 @@ impl Compositor {
         );
         let id = self.load_texture(&rgba, width, height)?;
         self.cache_static_texture(path.to_string(), id)?;
-        log!("load_texture_from_path RETURN id={} {}x{}", id, width, height);
+        log!(
+            "load_texture_from_path RETURN id={} {}x{}",
+            id,
+            width,
+            height
+        );
         Ok((id, width, height))
     }
 
@@ -939,15 +922,29 @@ impl Compositor {
                     log_error!("render: texture {} not found", layer.texture_id);
                     format!("texture {} not found", layer.texture_id)
                 })?;
-                let source_aspect = (tex_entry.width as f32 / tex_entry.height.max(1) as f32).max(0.0001);
-                let orientation = layer.transform.as_ref().map(|t| t.orientation as f32).unwrap_or(0.0);
+                let source_aspect =
+                    (tex_entry.width as f32 / tex_entry.height.max(1) as f32).max(0.0001);
+                let orientation = layer
+                    .transform
+                    .as_ref()
+                    .map(|t| t.orientation as f32)
+                    .unwrap_or(0.0);
                 let normalized_orientation = ((orientation % 180.0) + 180.0) % 180.0;
-                let swap_orientation = normalized_orientation >= 45.0 && normalized_orientation <= 135.0;
+                let swap_orientation =
+                    normalized_orientation >= 45.0 && normalized_orientation <= 135.0;
                 let (frame_w, frame_h) = if swap_orientation {
                     (1.0, source_aspect)
                 } else {
                     (source_aspect, 1.0)
                 };
+                let color = layer.color.clone().unwrap_or_default();
+                let mut curve_data = [[0.0; 4]; 30];
+                let curve_rgb_count = pack_curve_points(&mut curve_data, 0, &color.curve.rgb);
+                let curve_luminance_count =
+                    pack_curve_points(&mut curve_data, 6, &color.curve.luminance);
+                let curve_red_count = pack_curve_points(&mut curve_data, 12, &color.curve.red);
+                let curve_green_count = pack_curve_points(&mut curve_data, 18, &color.curve.green);
+                let curve_blue_count = pack_curve_points(&mut curve_data, 24, &color.curve.blue);
 
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
@@ -960,35 +957,95 @@ impl Compositor {
                     src_y: layer.src_y as f32,
                     src_w: layer.src_w as f32,
                     src_h: layer.src_h as f32,
-                    crop_x: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.x as f32).unwrap_or(0.0),
-                    crop_y: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.y as f32).unwrap_or(0.0),
-                    crop_w: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.w as f32).unwrap_or(1.0),
-                    crop_h: layer.transform.as_ref().and_then(|t| t.crop.as_ref()).map(|c| c.h as f32).unwrap_or(1.0),
+                    crop_x: layer
+                        .transform
+                        .as_ref()
+                        .and_then(|t| t.crop.as_ref())
+                        .map(|c| c.x as f32)
+                        .unwrap_or(0.0),
+                    crop_y: layer
+                        .transform
+                        .as_ref()
+                        .and_then(|t| t.crop.as_ref())
+                        .map(|c| c.y as f32)
+                        .unwrap_or(0.0),
+                    crop_w: layer
+                        .transform
+                        .as_ref()
+                        .and_then(|t| t.crop.as_ref())
+                        .map(|c| c.w as f32)
+                        .unwrap_or(1.0),
+                    crop_h: layer
+                        .transform
+                        .as_ref()
+                        .and_then(|t| t.crop.as_ref())
+                        .map(|c| c.h as f32)
+                        .unwrap_or(1.0),
                     source_aspect,
                     frame_w,
                     frame_h,
                     opacity: layer.opacity as f32,
-                    exposure: layer.color.as_ref().map(|c| c.exposure as f32).unwrap_or(0.0),
-                    brightness: layer.color.as_ref().map(|c| c.brightness as f32).unwrap_or(0.0),
-                    contrast: layer.color.as_ref().map(|c| c.contrast as f32).unwrap_or(0.0),
-                    saturation: layer.color.as_ref().map(|c| c.saturation as f32).unwrap_or(0.0),
-                    vibrance: layer.color.as_ref().map(|c| c.vibrance as f32).unwrap_or(0.0),
-                    temperature: layer.color.as_ref().map(|c| c.temperature as f32).unwrap_or(0.0),
-                    tint: layer.color.as_ref().map(|c| c.tint as f32).unwrap_or(0.0),
-                    highlights: layer.color.as_ref().map(|c| c.highlights as f32).unwrap_or(0.0),
-                    shadows: layer.color.as_ref().map(|c| c.shadows as f32).unwrap_or(0.0),
-                    whites: layer.color.as_ref().map(|c| c.whites as f32).unwrap_or(0.0),
-                    blacks: layer.color.as_ref().map(|c| c.blacks as f32).unwrap_or(0.0),
-                    clarity: layer.color.as_ref().map(|c| c.clarity as f32).unwrap_or(0.0),
-                    texture: layer.color.as_ref().map(|c| c.texture as f32).unwrap_or(0.0),
-                    sharpen: layer.color.as_ref().map(|c| c.sharpen as f32).unwrap_or(0.0),
-                    denoise: layer.color.as_ref().map(|c| c.denoise as f32).unwrap_or(0.0),
+                    exposure: color.exposure as f32,
+                    black: color.black as f32,
+                    brightness: color.brightness as f32,
+                    contrast: color.contrast as f32,
+                    saturation: color.saturation as f32,
+                    vibrance: color.vibrance as f32,
+                    temperature: color.temperature as f32,
+                    tint: color.tint as f32,
+                    highlights: color.highlights as f32,
+                    shadows: color.shadows as f32,
+                    whites: color.whites as f32,
+                    blacks: color.blacks as f32,
+                    clarity: color.clarity as f32,
+                    texture: color.texture as f32,
+                    sharpen: color.sharpen as f32,
+                    denoise: color.denoise as f32,
+                    grade_shadows_hue: color.grade_shadows_hue as f32,
+                    grade_shadows_amount: color.grade_shadows_amount as f32,
+                    grade_mid_hue: color.grade_mid_hue as f32,
+                    grade_mid_amount: color.grade_mid_amount as f32,
+                    grade_highlights_hue: color.grade_highlights_hue as f32,
+                    grade_highlights_amount: color.grade_highlights_amount as f32,
+                    curve_lift: color.curve_lift as f32,
+                    curve_contrast: color.curve_contrast as f32,
+                    levels_black: color.levels_black as f32,
+                    levels_gray: color.levels_gray as f32,
+                    levels_white: color.levels_white as f32,
+                    hue: color.hue as f32,
+                    hsl_hue: color.hsl_hue as f32,
+                    hsl_sat: color.hsl_sat as f32,
+                    hsl_lum: color.hsl_lum as f32,
+                    curve_rgb_count,
+                    curve_luminance_count,
+                    curve_red_count,
+                    curve_green_count,
+                    curve_blue_count,
+                    texel_x: 1.0 / (tex_entry.width.max(1) as f32),
+                    texel_y: 1.0 / (tex_entry.height.max(1) as f32),
                     orientation,
-                    rotate: layer.transform.as_ref().map(|t| t.rotate as f32).unwrap_or(0.0),
-                    flip_h: layer.transform.as_ref().map(|t| if t.flip_h { 1.0 } else { 0.0 }).unwrap_or(0.0),
-                    flip_v: layer.transform.as_ref().map(|t| if t.flip_v { 1.0 } else { 0.0 }).unwrap_or(0.0),
-                    scale: layer.transform.as_ref().map(|t| t.scale.max(0.0001) as f32).unwrap_or(1.0),
-                    _pad: [0.0; 3],
+                    rotate: layer
+                        .transform
+                        .as_ref()
+                        .map(|t| t.rotate as f32)
+                        .unwrap_or(0.0),
+                    flip_h: layer
+                        .transform
+                        .as_ref()
+                        .map(|t| if t.flip_h { 1.0 } else { 0.0 })
+                        .unwrap_or(0.0),
+                    flip_v: layer
+                        .transform
+                        .as_ref()
+                        .map(|t| if t.flip_v { 1.0 } else { 0.0 })
+                        .unwrap_or(0.0),
+                    scale: layer
+                        .transform
+                        .as_ref()
+                        .map(|t| t.scale.max(0.0001) as f32)
+                        .unwrap_or(1.0),
+                    _pad: [0.0; 1],
+                    curve_data,
                 };
 
                 let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1134,15 +1191,25 @@ impl Compositor {
             return Ok(dims);
         }
         let output = Command::new(ffprobe)
-            .args(["-v", "quiet", "-print_format", "json", "-show_streams", path])
-            .output().map_err(|e| format!("ffprobe {}: {}", path, e))?;
+            .args([
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_streams",
+                path,
+            ])
+            .output()
+            .map_err(|e| format!("ffprobe {}: {}", path, e))?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let parsed: serde_json::Value =
             serde_json::from_str(&stdout).map_err(|e| format!("ffprobe json: {}", e))?;
         let streams = parsed["streams"]
-            .as_array().ok_or_else(|| "no streams".to_string())?;
+            .as_array()
+            .ok_or_else(|| "no streams".to_string())?;
         let vs = streams
-            .iter().find(|s| s["codec_type"].as_str() == Some("video"))
+            .iter()
+            .find(|s| s["codec_type"].as_str() == Some("video"))
             .ok_or_else(|| "no video stream".to_string())?;
         let w = vs["width"].as_u64().unwrap_or(0) as u32;
         let h = vs["height"].as_u64().unwrap_or(0) as u32;
@@ -1181,8 +1248,10 @@ impl Compositor {
         let max_edge = vw.max(vh);
         let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
             let s = PREVIEW_MAX_SIZE as f64 / max_edge as f64;
-            ((vw as f64 * s).round().max(1.0) as u32,
-             (vh as f64 * s).round().max(1.0) as u32)
+            (
+                (vw as f64 * s).round().max(1.0) as u32,
+                (vh as f64 * s).round().max(1.0) as u32,
+            )
         } else {
             (vw, vh)
         };
@@ -1191,12 +1260,18 @@ impl Compositor {
         // 不带 -vframes N，ffmpeg 持续输出帧直到 pipe 关闭
         let mut proc = Command::new(ffmpeg)
             .args([
-                "-ss", &format!("{:.3}", video_time),
-                "-i", file_path,
-                "-vf", &format!("scale={}:{}:flags=lanczos", dw, dh),
-                "-pix_fmt", "rgba",
-                "-f", "rawvideo",
-                "-loglevel", "error",
+                "-ss",
+                &format!("{:.3}", video_time),
+                "-i",
+                file_path,
+                "-vf",
+                &format!("scale={}:{}:flags=lanczos", dw, dh),
+                "-pix_fmt",
+                "rgba",
+                "-f",
+                "rawvideo",
+                "-loglevel",
+                "error",
                 "pipe:1",
             ])
             .stdout(Stdio::piped())
@@ -1227,7 +1302,10 @@ impl Compositor {
 
         log!(
             "read_video_frame [{}] started at {:.3}s {}x{}",
-            file_path, video_time, dw, dh,
+            file_path,
+            video_time,
+            dw,
+            dh,
         );
         Ok((rgba, dw, dh))
     }
@@ -1255,7 +1333,8 @@ impl Compositor {
         for layer in layers {
             let tex_id = if layer.is_video {
                 // ── 视频帧：持久 ffmpeg pipe 依次读帧 ──
-                let (rgba, dw, dh) = self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time)?;
+                let (rgba, dw, dh) =
+                    self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time)?;
                 self.load_texture(&rgba, dw, dh)?
             } else {
                 // ── 静态图：LRU 缓存 ──
@@ -1301,17 +1380,31 @@ impl Compositor {
 }
 
 /// 使用 ffmpeg 解码静态图片到 RGBA（按 PREVIEW_MAX_SIZE 等比缩小）
-fn decode_static_image(ffmpeg: &str, ffprobe: &str, path: &str) -> Result<(Vec<u8>, u32, u32), String> {
+fn decode_static_image(
+    ffmpeg: &str,
+    ffprobe: &str,
+    path: &str,
+) -> Result<(Vec<u8>, u32, u32), String> {
     let output = Command::new(ffprobe)
-        .args(["-v", "quiet", "-print_format", "json", "-show_streams", path])
-        .output().map_err(|e| format!("ffprobe {}: {}", path, e))?;
+        .args([
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_streams",
+            path,
+        ])
+        .output()
+        .map_err(|e| format!("ffprobe {}: {}", path, e))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).map_err(|e| format!("ffprobe json: {}", e))?;
     let streams = parsed["streams"]
-        .as_array().ok_or_else(|| "no streams".to_string())?;
+        .as_array()
+        .ok_or_else(|| "no streams".to_string())?;
     let vs = streams
-        .iter().find(|s| s["codec_type"].as_str() == Some("video"))
+        .iter()
+        .find(|s| s["codec_type"].as_str() == Some("video"))
         .ok_or_else(|| "no video stream".to_string())?;
     let source_w = vs["width"].as_u64().unwrap_or(0) as u32;
     let source_h = vs["height"].as_u64().unwrap_or(0) as u32;
@@ -1322,20 +1415,28 @@ fn decode_static_image(ffmpeg: &str, ffprobe: &str, path: &str) -> Result<(Vec<u
     let max_edge = source_w.max(source_h);
     let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
         let s = PREVIEW_MAX_SIZE as f64 / max_edge as f64;
-        ((source_w as f64 * s).round().max(1.0) as u32,
-         (source_h as f64 * s).round().max(1.0) as u32)
+        (
+            (source_w as f64 * s).round().max(1.0) as u32,
+            (source_h as f64 * s).round().max(1.0) as u32,
+        )
     } else {
         (source_w, source_h)
     };
 
     let mut proc = Command::new(ffmpeg)
         .args([
-            "-i", path,
-            "-vf", &format!("scale={}:{}:flags=lanczos", dw, dh),
-            "-pix_fmt", "rgba",
-            "-f", "rawvideo",
-            "-vframes", "1",
-            "-loglevel", "error",
+            "-i",
+            path,
+            "-vf",
+            &format!("scale={}:{}:flags=lanczos", dw, dh),
+            "-pix_fmt",
+            "rgba",
+            "-f",
+            "rawvideo",
+            "-vframes",
+            "1",
+            "-loglevel",
+            "error",
             "pipe:1",
         ])
         .stdout(Stdio::piped())
@@ -1345,11 +1446,19 @@ fn decode_static_image(ffmpeg: &str, ffprobe: &str, path: &str) -> Result<(Vec<u
     let expected = (dw * dh * 4) as usize;
     let mut rgba = vec![0u8; expected];
     proc.stdout
-        .take().ok_or_else(|| "no stdout".to_string())?
+        .take()
+        .ok_or_else(|| "no stdout".to_string())?
         .read_exact(&mut rgba)
         .map_err(|e| format!("read {}: {}", path, e))?;
     proc.wait().ok();
 
-    log!("decode_static_image {} {}x{} -> {}x{}", path, source_w, source_h, dw, dh);
+    log!(
+        "decode_static_image {} {}x{} -> {}x{}",
+        path,
+        source_w,
+        source_h,
+        dw,
+        dh
+    );
     Ok((rgba, dw, dh))
 }

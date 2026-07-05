@@ -147,16 +147,6 @@ export function WorkspaceEditSidebar({ mediaSize, onWatermarkLayerChange }: Work
             <Accordion
               title="水印"
               defaultOpen
-              actions={
-                <button
-                  className="workspace-acc-reset"
-                  type="button"
-                  onClick={() => edit.updateWorkspacePanel({ watermark: createDefaultPipeline().watermark })}
-                  title="重置水印"
-                >
-                  <RotateCcw size={11} />
-                </button>
-              }
             >
               <WatermarkSettings
                 onChange={(_watermark, layer) => {

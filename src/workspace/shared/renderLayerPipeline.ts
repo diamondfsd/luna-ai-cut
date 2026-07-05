@@ -4,6 +4,7 @@ import type { EditPipeline } from './editPipeline'
 export function pipelineColorToRenderColor(color: EditPipeline['color']): RenderColorAdjustments {
   return {
     exposure: color.exposure,
+    black: 0,
     brightness: color.brightness,
     contrast: color.contrast,
     saturation: color.saturation,
@@ -18,6 +19,28 @@ export function pipelineColorToRenderColor(color: EditPipeline['color']): Render
     texture: color.texture,
     sharpen: color.sharpen,
     denoise: color.denoise,
+    gradeShadowsHue: color.gradeShadowsHue,
+    gradeShadowsAmount: color.gradeShadowsAmount,
+    gradeMidHue: color.gradeMidHue,
+    gradeMidAmount: color.gradeMidAmount,
+    gradeHighlightsHue: color.gradeHighlightsHue,
+    gradeHighlightsAmount: color.gradeHighlightsAmount,
+    curveLift: color.curveLift,
+    curveContrast: color.curveContrast,
+    curve: {
+      rgb: color.curve.points.rgb,
+      luminance: color.curve.points.luminance,
+      red: color.curve.points.red,
+      green: color.curve.points.green,
+      blue: color.curve.points.blue,
+    },
+    levelsBlack: color.levelsBlack,
+    levelsGray: color.levelsGray,
+    levelsWhite: color.levelsWhite,
+    hue: color.hue,
+    hslHue: color.hslHue,
+    hslSat: color.hslSat,
+    hslLum: color.hslLum,
   }
 }
 

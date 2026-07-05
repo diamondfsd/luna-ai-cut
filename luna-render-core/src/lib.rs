@@ -3,10 +3,10 @@ mod export;
 
 use std::sync::{LazyLock, Mutex};
 
+use crate::export::QualityPreset;
 use compositor::Compositor;
 use napi::bindgen_prelude::{AsyncTask, Buffer};
 use napi::{Env, Task};
-use crate::export::QualityPreset;
 use napi_derive::napi;
 
 #[napi(object)]
@@ -18,8 +18,26 @@ pub struct TextureLoadResult {
 
 #[napi(object)]
 #[derive(Clone, Default)]
+pub struct RenderCurvePoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[napi(object)]
+#[derive(Clone, Default)]
+pub struct RenderToneCurveAdjust {
+    pub rgb: Vec<RenderCurvePoint>,
+    pub luminance: Vec<RenderCurvePoint>,
+    pub red: Vec<RenderCurvePoint>,
+    pub green: Vec<RenderCurvePoint>,
+    pub blue: Vec<RenderCurvePoint>,
+}
+
+#[napi(object)]
+#[derive(Clone)]
 pub struct RenderColorAdjustments {
     pub exposure: f64,
+    pub black: f64,
     pub brightness: f64,
     pub contrast: f64,
     pub saturation: f64,
@@ -34,6 +52,61 @@ pub struct RenderColorAdjustments {
     pub texture: f64,
     pub sharpen: f64,
     pub denoise: f64,
+    pub grade_shadows_hue: f64,
+    pub grade_shadows_amount: f64,
+    pub grade_mid_hue: f64,
+    pub grade_mid_amount: f64,
+    pub grade_highlights_hue: f64,
+    pub grade_highlights_amount: f64,
+    pub curve_lift: f64,
+    pub curve_contrast: f64,
+    pub curve: RenderToneCurveAdjust,
+    pub levels_black: f64,
+    pub levels_gray: f64,
+    pub levels_white: f64,
+    pub hue: f64,
+    pub hsl_hue: f64,
+    pub hsl_sat: f64,
+    pub hsl_lum: f64,
+}
+
+impl Default for RenderColorAdjustments {
+    fn default() -> Self {
+        Self {
+            exposure: 0.0,
+            black: 0.0,
+            brightness: 0.0,
+            contrast: 0.0,
+            saturation: 0.0,
+            vibrance: 0.0,
+            temperature: 0.0,
+            tint: 0.0,
+            highlights: 0.0,
+            shadows: 0.0,
+            whites: 0.0,
+            blacks: 0.0,
+            clarity: 0.0,
+            texture: 0.0,
+            sharpen: 0.0,
+            denoise: 0.0,
+            grade_shadows_hue: 220.0,
+            grade_shadows_amount: 0.0,
+            grade_mid_hue: 35.0,
+            grade_mid_amount: 0.0,
+            grade_highlights_hue: 42.0,
+            grade_highlights_amount: 0.0,
+            curve_lift: 0.0,
+            curve_contrast: 0.0,
+            curve: RenderToneCurveAdjust::default(),
+            levels_black: 0.0,
+            levels_gray: 0.5,
+            levels_white: 1.0,
+            hue: 0.0,
+            hsl_hue: 30.0,
+            hsl_sat: 0.0,
+            hsl_lum: 0.0,
+        }
+    }
 }
 
 #[napi(object)]
@@ -256,7 +329,16 @@ pub fn render_layers_to_file(
     quality: f64,
 ) -> napi::Result<()> {
     lock(|c| {
-        export::render_layers_to_file(&ffmpeg_path, &output, width, height, &layers, &format, quality, c)
+        export::render_layers_to_file(
+            &ffmpeg_path,
+            &output,
+            width,
+            height,
+            &layers,
+            &format,
+            quality,
+            c,
+        )
     })
 }
 
@@ -341,16 +423,28 @@ pub fn export_file(
     lock(|c| {
         crate::log!(
             "export: in={} out={} {}x{} static={} task={:?} preset={:?}",
-            input, output, width, height, static_layers.len(), task_id, quality_preset
+            input,
+            output,
+            width,
+            height,
+            static_layers.len(),
+            task_id,
+            quality_preset
         );
         let preset = quality_preset.as_deref().map(QualityPreset::from_str);
         export::export_file(
-            &ffmpeg_path, &ffprobe_path,
-            &input, &output,
-            width, height,
-            fps, hardware,
-            &video_layer, &static_layers,
-            task_id.as_deref(), preset,
+            &ffmpeg_path,
+            &ffprobe_path,
+            &input,
+            &output,
+            width,
+            height,
+            fps,
+            hardware,
+            &video_layer,
+            &static_layers,
+            task_id.as_deref(),
+            preset,
             c,
         )
     })
@@ -379,16 +473,28 @@ impl Task for ExportFileTask {
         lock(|c| {
             crate::log!(
                 "export async: in={} out={} {}x{} static={} task={:?} preset={:?}",
-                self.input, self.output, self.width, self.height, self.static_layers.len(), self.task_id, self.quality_preset
+                self.input,
+                self.output,
+                self.width,
+                self.height,
+                self.static_layers.len(),
+                self.task_id,
+                self.quality_preset
             );
             let preset = self.quality_preset.as_deref().map(QualityPreset::from_str);
             export::export_file(
-                &self.ffmpeg_path, &self.ffprobe_path,
-                &self.input, &self.output,
-                self.width, self.height,
-                self.fps, self.hardware,
-                &self.video_layer, &self.static_layers,
-                self.task_id.as_deref(), preset,
+                &self.ffmpeg_path,
+                &self.ffprobe_path,
+                &self.input,
+                &self.output,
+                self.width,
+                self.height,
+                self.fps,
+                self.hardware,
+                &self.video_layer,
+                &self.static_layers,
+                self.task_id.as_deref(),
+                preset,
                 c,
             )
         })
@@ -444,7 +550,17 @@ pub fn export_image_from_sources(
     quality: f64,
 ) -> napi::Result<()> {
     lock(|c| {
-        export::export_image_from_sources(&ffmpeg_path, &ffprobe_path, &output, width, height, &layers, &format, quality, c)
+        export::export_image_from_sources(
+            &ffmpeg_path,
+            &ffprobe_path,
+            &output,
+            width,
+            height,
+            &layers,
+            &format,
+            quality,
+            c,
+        )
     })
 }
 
@@ -503,17 +619,30 @@ fn probe_color_info(ffprobe: &str, path: &str) -> Result<ColorInfo, String> {
     use std::process::{Command, Stdio};
 
     let output = Command::new(ffprobe)
-        .args(["-v", "quiet", "-print_format", "json", "-show_streams", "-show_frames", "-read_intervals", "%+#1", path])
-        .output().map_err(|e| format!("ffprobe: {}", e))?;
+        .args([
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_streams",
+            "-show_frames",
+            "-read_intervals",
+            "%+#1",
+            path,
+        ])
+        .output()
+        .map_err(|e| format!("ffprobe: {}", e))?;
     if !output.status.success() {
         return Err(format!("ffprobe exit: {}", output.status));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     crate::log!("resolve_render_source: ffprobe output: {}", stdout);
-    let parsed: serde_json::Value = serde_json::from_str(&stdout)
-        .map_err(|e| format!("json: {}", e))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).map_err(|e| format!("json: {}", e))?;
     let streams = parsed["streams"].as_array().ok_or("no streams")?;
-    let vs = streams.iter().find(|s| s["codec_type"].as_str() == Some("video"))
+    let vs = streams
+        .iter()
+        .find(|s| s["codec_type"].as_str() == Some("video"))
         .ok_or("no video stream")?;
     let frames = parsed["frames"].as_array();
 
@@ -525,7 +654,16 @@ fn probe_color_info(ffprobe: &str, path: &str) -> Result<ColorInfo, String> {
     let bit_depth = vs["bits_per_raw_sample"].as_u64().unwrap_or(8) as u32;
 
     // ── 传输函数判断（HDR 强信号）──
-    let is_pq = contains_any(&transfer, &["2084", "smpte2084", "smpte st 2084", "pq", "perceptual quantizer"]);
+    let is_pq = contains_any(
+        &transfer,
+        &[
+            "2084",
+            "smpte2084",
+            "smpte st 2084",
+            "pq",
+            "perceptual quantizer",
+        ],
+    );
     let is_hlg = contains_any(&transfer, &["hlg", "arib", "b67", "arib-std-b67"]);
 
     // ── 色域判断 ──
@@ -541,16 +679,24 @@ fn probe_color_info(ffprobe: &str, path: &str) -> Result<ColorInfo, String> {
                 for (k, v) in tags {
                     let key = k.to_lowercase();
                     let val = v.as_str().unwrap_or("").to_lowercase();
-                    if key.contains("gain") || val.contains("gain") { has_gain_map = true; }
-                    if key.contains("adaptive") || val.contains("adaptive") { has_adaptive_gain_curve = true; }
+                    if key.contains("gain") || val.contains("gain") {
+                        has_gain_map = true;
+                    }
+                    if key.contains("adaptive") || val.contains("adaptive") {
+                        has_adaptive_gain_curve = true;
+                    }
                 }
             }
             if let Some(sd_list) = frame["side_data_list"].as_array() {
                 for sd in sd_list {
                     if let Some(st) = sd["side_data_type"].as_str() {
                         let stl = st.to_lowercase();
-                        if stl.contains("gain") || stl.contains("hdr") { has_gain_map = true; }
-                        if stl.contains("adaptive") { has_adaptive_gain_curve = true; }
+                        if stl.contains("gain") || stl.contains("hdr") {
+                            has_gain_map = true;
+                        }
+                        if stl.contains("adaptive") {
+                            has_adaptive_gain_curve = true;
+                        }
                     }
                 }
             }
@@ -564,9 +710,15 @@ fn probe_color_info(ffprobe: &str, path: &str) -> Result<ColorInfo, String> {
     let is_hdr = is_hdr_transfer || has_gain_map || has_adaptive_gain_curve;
 
     Ok(ColorInfo {
-        is_hdr, is_wide_gamut, is_high_bit_depth,
-        color_primaries: primaries, color_transfer: transfer,
-        color_space: colorspace, bit_depth, width: w, height: h,
+        is_hdr,
+        is_wide_gamut,
+        is_high_bit_depth,
+        color_primaries: primaries,
+        color_transfer: transfer,
+        color_space: colorspace,
+        bit_depth,
+        width: w,
+        height: h,
     })
 }
 
@@ -588,7 +740,11 @@ pub fn resolve_render_source(
     use std::path::Path;
     use std::process::{Command, Stdio};
 
-    crate::log!("resolve_render_source: input path={} cache={}", original_path, cache_dir);
+    crate::log!(
+        "resolve_render_source: input path={} cache={}",
+        original_path,
+        cache_dir
+    );
 
     let color_info = probe_color_info(&ffprobe_path, &original_path)
         .map_err(|e| napi::Error::from_reason(format!("探测颜色信息失败: {}", e)))?;
@@ -639,7 +795,8 @@ pub fn resolve_render_source(
     // ── 构造 ffmpeg normalize 命令 ──
     let zscale_available = Command::new(&ffmpeg_path)
         .args(["-filters"])
-        .stderr(Stdio::piped()).stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
         .output()
         .map(|o| {
             let avail = String::from_utf8_lossy(&o.stderr).contains("zscale");
@@ -654,34 +811,51 @@ pub fn resolve_render_source(
     let mut cmd_log = format!("{} -y -i {}", ffmpeg_path, original_path);
 
     if color_info.is_hdr {
-        crate::log!("resolve_render_source: HDR detected, tone mapping {} → {}", original_path, cache_str);
+        crate::log!(
+            "resolve_render_source: HDR detected, tone mapping {} → {}",
+            original_path,
+            cache_str
+        );
         if zscale_available {
             cmd.args(["-vf", "zscale=transfer=linear,tonemap=hable,zscale=transfer=bt709:p=bt709:m=bt709,format=rgb24"]);
             cmd_log += " -vf zscale=transfer=linear,tonemap=hable,zscale=transfer=bt709:p=bt709:m=bt709,format=rgb24";
         } else {
             crate::log!("resolve_render_source: zscale not available, using basic conversion");
-            cmd.args(["-vf", "setparams=color_primaries=bt709:color_trc=bt709,format=rgb24"]);
+            cmd.args([
+                "-vf",
+                "setparams=color_primaries=bt709:color_trc=bt709,format=rgb24",
+            ]);
             cmd_log += " -vf setparams=color_primaries=bt709:color_trc=bt709,format=rgb24";
         }
     } else if color_info.is_wide_gamut {
-        crate::log!("resolve_render_source: wide gamut SDR detected, gamut convert {} → {}", original_path, cache_str);
+        crate::log!(
+            "resolve_render_source: wide gamut SDR detected, gamut convert {} → {}",
+            original_path,
+            cache_str
+        );
         if zscale_available {
             cmd.args(["-vf", "zscale=p=bt709:t=bt709:m=bt709,format=rgb24"]);
             cmd_log += " -vf zscale=p=bt709:t=bt709:m=bt709,format=rgb24";
         } else {
-            cmd.args(["-vf", "setparams=color_primaries=bt709:color_trc=bt709,format=rgb24"]);
+            cmd.args([
+                "-vf",
+                "setparams=color_primaries=bt709:color_trc=bt709,format=rgb24",
+            ]);
             cmd_log += " -vf setparams=color_primaries=bt709:color_trc=bt709,format=rgb24";
         }
     }
 
-    cmd_log += " "; cmd_log += &cache_str;
+    cmd_log += " ";
+    cmd_log += &cache_str;
     crate::log!("resolve_render_source: ffmpeg cmd: {}", cmd_log);
 
-    cmd.arg(&cache_str).stdout(Stdio::null()).stderr(Stdio::piped());
+    cmd.arg(&cache_str)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
 
-    let output = cmd.output().map_err(|e| {
-        napi::Error::from_reason(format!("ffmpeg normalize 启动失败: {}", e))
-    })?;
+    let output = cmd
+        .output()
+        .map_err(|e| napi::Error::from_reason(format!("ffmpeg normalize 启动失败: {}", e)))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -697,7 +871,12 @@ pub fn resolve_render_source(
         });
     }
 
-    crate::log!("resolve_render_source: normalized OK → {} width={} height={}", cache_str, color_info.width, color_info.height);
+    crate::log!(
+        "resolve_render_source: normalized OK → {} width={} height={}",
+        cache_str,
+        color_info.width,
+        color_info.height
+    );
 
     Ok(ResolvedRenderSource {
         render_path: cache_str,
