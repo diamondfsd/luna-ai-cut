@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use crate::compositor::Compositor;
+use crate::media::probe_video_info;
 use crate::{PreviewLayer, RenderLayer, StaticLayer};
 
 const IMAGE_EXPORT_MAX_EDGE: u32 = 8192;
@@ -125,103 +126,6 @@ impl QualityPreset {
             _ => QualityPreset::Standard,
         }
     }
-}
-
-// ── 音频信息 ──
-
-pub struct AudioInfo {
-    pub has_audio: bool,
-    pub codec: String,
-}
-
-// ── 视频信息 ──
-
-pub struct VideoInfo {
-    pub width: u32,
-    pub height: u32,
-    pub fps: f64,
-    pub duration_secs: f64,
-    pub frame_count: Option<u64>,
-    pub src_bitrate: u32,
-    pub audio: AudioInfo,
-}
-
-fn probe_video(ffprobe: &str, input: &str) -> Result<VideoInfo, String> {
-    let output = Command::new(ffprobe)
-        .args([
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_format",
-            "-show_streams",
-            input,
-        ])
-        .output()
-        .map_err(|e| format!("ffprobe: {}", e))?;
-    if !output.status.success() {
-        return Err(format!("ffprobe exit: {}", output.status));
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value =
-        serde_json::from_str(&stdout).map_err(|e| format!("json: {}", e))?;
-    let streams = parsed["streams"].as_array().ok_or("no streams")?;
-
-    // ── 视频流 ──
-    let video = streams
-        .iter()
-        .find(|s| s["codec_type"].as_str() == Some("video"))
-        .ok_or("no video stream")?;
-    let w = video["width"].as_u64().unwrap_or(1920) as u32;
-    let h = video["height"].as_u64().unwrap_or(1080) as u32;
-    let fps_str = video["r_frame_rate"].as_str().unwrap_or("30/1");
-    let fps = {
-        let parts: Vec<&str> = fps_str.split('/').collect();
-        if parts.len() == 2 {
-            let n: f64 = parts[0].parse().unwrap_or(30.0);
-            let d: f64 = parts[1].parse().unwrap_or(1.0);
-            if d > 0.0 {
-                n / d
-            } else {
-                30.0
-            }
-        } else {
-            fps_str.parse().unwrap_or(30.0)
-        }
-    };
-    let duration = video["duration"]
-        .as_str()
-        .or_else(|| parsed["format"]["duration"].as_str())
-        .and_then(|d| d.parse::<f64>().ok())
-        .unwrap_or(0.0);
-    let frame_count = video["nb_frames"]
-        .as_str()
-        .and_then(|n| n.parse::<u64>().ok());
-    let src_bitrate = parsed["format"]["bit_rate"]
-        .as_str()
-        .and_then(|b| b.parse::<u32>().ok())
-        .unwrap_or(0);
-
-    // ── 音频流 ──
-    let audio_stream = streams
-        .iter()
-        .find(|s| s["codec_type"].as_str() == Some("audio"));
-    let audio = AudioInfo {
-        has_audio: audio_stream.is_some(),
-        codec: audio_stream
-            .and_then(|s| s["codec_name"].as_str().map(|c| c.to_string()))
-            .unwrap_or_default(),
-    };
-
-    Ok(VideoInfo {
-        width: w,
-        height: h,
-        fps,
-        duration_secs: duration,
-        frame_count,
-        src_bitrate,
-        audio,
-    })
 }
 
 // ── 编码器探测 ──
@@ -876,7 +780,7 @@ fn export_video(
     preset: QualityPreset,
     task: Option<&TaskState>,
 ) -> Result<(), String> {
-    let info = probe_video(ffprobe, input)?;
+    let info = probe_video_info(ffprobe, input)?;
     let fps_val = fps.unwrap_or(info.fps);
     let frame_size = (info.width * info.height * 4) as usize;
     let out_size = (cw * ch * 4) as usize;

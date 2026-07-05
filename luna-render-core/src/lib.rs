@@ -1,5 +1,6 @@
 mod compositor;
 mod export;
+mod media;
 
 use std::sync::{LazyLock, Mutex};
 

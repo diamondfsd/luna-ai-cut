@@ -1,3 +1,4 @@
+use crate::media::{fit_output_size, probe_video_dimensions};
 use crate::RenderLayer;
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
@@ -1216,34 +1217,9 @@ impl Compositor {
         if let Some(&dims) = self.video_probed.get(path) {
             return Ok(dims);
         }
-        let output = Command::new(ffprobe)
-            .args([
-                "-v",
-                "quiet",
-                "-print_format",
-                "json",
-                "-show_streams",
-                path,
-            ])
-            .output()
-            .map_err(|e| format!("ffprobe {}: {}", path, e))?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let parsed: serde_json::Value =
-            serde_json::from_str(&stdout).map_err(|e| format!("ffprobe json: {}", e))?;
-        let streams = parsed["streams"]
-            .as_array()
-            .ok_or_else(|| "no streams".to_string())?;
-        let vs = streams
-            .iter()
-            .find(|s| s["codec_type"].as_str() == Some("video"))
-            .ok_or_else(|| "no video stream".to_string())?;
-        let w = vs["width"].as_u64().unwrap_or(0) as u32;
-        let h = vs["height"].as_u64().unwrap_or(0) as u32;
-        if w == 0 || h == 0 {
-            return Err(format!("invalid video dimensions in {}", path));
-        }
-        self.video_probed.insert(path.to_string(), (w, h));
-        Ok((w, h))
+        let dims = probe_video_dimensions(ffprobe, path)?;
+        self.video_probed.insert(path.to_string(), dims);
+        Ok(dims)
     }
 
     /// 获取视频帧：保持 ffmpeg pipe 存活，逐帧顺序读取。
@@ -1420,19 +1396,6 @@ impl Compositor {
 
         Ok((result, output_width, output_height))
     }
-}
-
-fn fit_output_size(width: u32, height: u32, max_side: u32) -> (u32, u32) {
-    let max_side = max_side.max(1);
-    let edge = width.max(height);
-    if edge <= max_side {
-        return (width.max(1), height.max(1));
-    }
-    let scale = max_side as f64 / edge as f64;
-    (
-        (width as f64 * scale).round().max(1.0) as u32,
-        (height as f64 * scale).round().max(1.0) as u32,
-    )
 }
 
 /// 使用 ffmpeg 解码静态图片到 RGBA（按 PREVIEW_MAX_SIZE 等比缩小）
