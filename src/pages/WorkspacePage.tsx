@@ -94,19 +94,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   useEffect(() => {
     setMediaSize(null)
     setWatermarkLayers([])
-    const filePath = media.activeMedia?.path
-    if (!filePath) return
-    let canceled = false
-    window.luna.workspace.getMediaResolution(filePath)
-      .then(({ width, height }) => {
-        if (!canceled) setMediaSize({ w: width, h: height })
-      })
-      .catch(() => {
-        if (!canceled) setMediaSize(null)
-      })
-    return () => {
-      canceled = true
-    }
   }, [media.activeMedia?.path])
 
   // ── Auto-save project when pipeline changes ──
@@ -332,6 +319,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
             cropActive={edit.cropActive}
             scaleMode="contain"
             onMetricsChange={canvas.setPreviewMetrics}
+            onMediaSize={(w, h) => setMediaSize({ w, h })}
             renderOverlay={() => (edit.cropActive ? <CropOverlay /> : null)}
           />
 
