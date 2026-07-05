@@ -1,21 +1,25 @@
 export interface PreviewState {
   filePath: string
   fileList: string[]
+  /** true 表示仅查看已导出的文件，隐藏水印配置和导出按钮，用原生 img/video 渲染 */
+  previewOnly?: boolean
 }
 
 type SetStateFn = (state: PreviewState | null) => void
 let setPreviewState: SetStateFn | null = null
 
-export function registerPreviewHost(setter: SetStateFn): void {
+export function registerPreviewHost(setter: SetStateFn): () => void {
   setPreviewState = setter
+  return () => { setPreviewState = null }
 }
 
 /** 打开预览弹窗。fileList 传文件路径数组用于导航，不传则只有单文件预览。 */
 export function showPreviewModal(
   filePath: string,
   fileList?: string[],
+  previewOnly?: boolean,
 ): void {
-  setPreviewState?.({ filePath, fileList: fileList ?? [filePath] })
+  setPreviewState?.({ filePath, fileList: fileList ?? [filePath], previewOnly })
 }
 
 export function closePreviewModal(): void {
