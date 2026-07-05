@@ -3,12 +3,12 @@ import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { showBatchExportModal } from './previewModalService'
 import { DownloadProgressModal } from './DownloadProgressModal'
-import { ExportModal } from './ExportModal'
 import { AddToWorkspaceProjectDialog, CreateWorkspaceProjectDialog } from './WorkspaceProjectDialogs'
 import { formatBytes } from '../lib/format'
 import type { CardSize, SortOrder } from '../pages/useMediaLibraryController'
-import type { DownloadProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { DownloadProgress, LunaFile } from '../shared/types'
 import {
   Button,
   ButtonGroup,
@@ -34,7 +34,6 @@ interface MediaLibraryToolbarProps {
   downloading: boolean
   downloadStatusFilter: DownloadStatusFilter
   exporting: boolean
-  exportWatermarkSettings: WatermarkSettingsType
   isDownloadsPage: boolean
   mediaFilter: 'all' | 'image' | 'video'
   selectedCount: number
@@ -52,15 +51,11 @@ interface MediaLibraryToolbarProps {
   setDownloadQueue: Dispatch<SetStateAction<LunaFile[]>>
   setDownloading: (downloading: boolean) => void
   setDownloadStatusFilter: (value: DownloadStatusFilter) => void
-  setExportWatermarkSettings: (settings: WatermarkSettingsType) => void
   setSelected: Dispatch<SetStateAction<Set<string>>>
   setShowDeleteDialog: (value: boolean) => void
-  setShowExportDialog: (value: boolean) => void
   setSortOrder: Dispatch<SetStateAction<SortOrder>>
   setViewMode: (value: ViewMode) => void
-  showExportDialog: boolean
   startDownload: () => Promise<void>
-  exportLocalFiles: (files: LunaFile[], settings: WatermarkSettingsType, videoSettings: VideoExportSettings) => Promise<void>
   handleStorageFilterChange: (value: string) => Promise<void>
   loadCameraLibrary: () => Promise<void>
   loadDownloadedLibrary: () => Promise<void>
@@ -81,7 +76,6 @@ export function MediaLibraryToolbar({
   downloading,
   downloadStatusFilter,
   exporting,
-  exportWatermarkSettings,
   isDownloadsPage,
   mediaFilter,
   selectedCount,
@@ -99,15 +93,11 @@ export function MediaLibraryToolbar({
   setDownloadQueue,
   setDownloading,
   setDownloadStatusFilter,
-  setExportWatermarkSettings,
   setSelected,
   setShowDeleteDialog,
-  setShowExportDialog,
   setSortOrder,
   setViewMode,
-  showExportDialog,
   startDownload,
-  exportLocalFiles,
   handleStorageFilterChange,
   loadCameraLibrary,
   loadDownloadedLibrary,
@@ -227,7 +217,12 @@ export function MediaLibraryToolbar({
                       <Trash2 size={14} />
                       删除 ({selectedCount})
                     </Button>
-                    <Button variant="primary" size="compact" disabled={exporting} onClick={() => setShowExportDialog(true)}>
+                    <Button variant="primary" size="compact" disabled={exporting} onClick={() => {
+                      const paths = selectedFiles
+                        .map((f) => f.downloadFilePath ?? f.localPath ?? '')
+                        .filter(Boolean)
+                      if (paths.length > 0) showBatchExportModal(paths[0], paths)
+                    }}>
                       导出 ({selectedCount})
                     </Button>
                   </>
@@ -388,16 +383,7 @@ export function MediaLibraryToolbar({
         onConfirm={() => void handleAddToProject()}
       />
 
-      {showExportDialog && (
-        <ExportModal
-          files={selectedFiles}
-          watermarkSettings={exportWatermarkSettings}
-          exporting={exporting}
-          onClose={() => setShowExportDialog(false)}
-          onConfirm={(settings, videoSettings) => { setShowExportDialog(false); void exportLocalFiles(selectedFiles, settings, videoSettings) }}
-          onSettingsChange={setExportWatermarkSettings}
-        />
-      )}
+      {/* 导出弹窗已迁移到 PreviewModal（showBatchExportModal） */}
     </>
   )
 }

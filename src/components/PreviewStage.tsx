@@ -85,7 +85,7 @@ function containFrame(media: MediaResolution, stage: StageSize): Pick<PreviewLay
  */
 export function buildLayers(
   url: string,
-  scaleMode: ScaleMode,
+  scaleMode: ScaleMode = 'contain',
   resolution: MediaResolution | null = null,
   stageSize: StageSize | null = null,
 ): PreviewLayer[] {

@@ -372,3 +372,61 @@
 .preview-body.inspector-collapsed {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* ── 批量导出底部操作栏 ── */
+
+.batch-export-footer {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 10px;
+  z-index: 10;
+}
+
+.batch-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.batch-file-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.batch-file-resolution {
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+}
+
+.batch-file-kind {
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.batch-file-kind.video {
+  color: #5ac8fa;
+}
+
+.batch-file-kind.image {
+  color: #ffd60a;
+}
+
+.batch-export-btn {
+  flex-shrink: 0;
+}
