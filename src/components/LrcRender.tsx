@@ -1,14 +1,12 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
 import type { PreviewLayer } from '../shared/types'
+import { filePathToPreviewUrl } from '../lib/fileUtils'
+
+const PREVIEW_TEXTURE_MAX_SIDE = 1920
+const VIDEO_RENDER_FPS = 30
 
 export interface LrcRenderHandle {
-  exportImage(
-    outputPath: string,
-    width: number,
-    height: number,
-    format: string,
-    quality: number,
-  ): Promise<void>
+  exportImage(outputPath: string, width: number, height: number, format: string, quality: number): Promise<void>
   exportVideo(
     outputPath: string,
     width: number,
@@ -27,21 +25,7 @@ interface LrcRenderProps {
   onReady?: () => void
   onRender?: () => void
   maxSide?: number
-  /** @deprecated 预览不再暴露浏览器 video 元素，视频帧由 native 渲染层读取。 */
   onVideoElement?: (el: HTMLVideoElement | null) => void
-}
-
-interface RenderPreviewInput {
-  width?: number
-  height?: number
-  maxSide?: number
-  layers: PreviewLayer[]
-}
-
-interface RenderPreviewOutput {
-  width: number
-  height: number
-  data: Uint8Array
 }
 
 interface RenderLayer {
@@ -62,9 +46,38 @@ interface StaticLayer {
   transform?: unknown
 }
 
+interface TextureInfo {
+  textureId: number | null
+  width: number
+  height: number
+}
+
+interface VideoInfo {
+  video: HTMLVideoElement
+  offscreen: HTMLCanvasElement
+}
+
+interface PlanPreviewInput {
+  width?: number
+  height?: number
+  maxSide?: number
+  layers: Array<{ layer: PreviewLayer; texture: { textureId: number; width: number; height: number } }>
+}
+
+interface PlanPreviewOutput {
+  width: number
+  height: number
+  layers: RenderLayer[]
+}
+
 interface LunaRenderCore {
   init: () => Promise<void>
-  renderPreview: (input: RenderPreviewInput) => Promise<RenderPreviewOutput>
+  loadTexture: (data: Uint8Array, width: number, height: number) => Promise<number>
+  loadTextureFromPath: (path: string, maxSize: number) => Promise<{ textureId: number; width: number; height: number }>
+  updateTexture: (textureId: number, data: Uint8Array) => Promise<void>
+  releaseTexture: (textureId: number) => Promise<void>
+  renderFrame: (canvasWidth: number, canvasHeight: number, layers: RenderLayer[]) => Promise<Uint8Array>
+  planPreview: (input: PlanPreviewInput) => Promise<PlanPreviewOutput>
   exportImageFromSources: (outputPath: string, width: number, height: number, layers: PreviewLayer[], format: string, quality: number) => Promise<void>
   exportVideo: (
     inputPath: string,
@@ -84,8 +97,32 @@ function getLRC(): LunaRenderCore | undefined {
   return (window as unknown as { lunaRenderCore?: LunaRenderCore }).lunaRenderCore
 }
 
+function layerKey(layer: PreviewLayer): string {
+  return `${layer.isVideo ? 'v' : 's'}:${layer.filePath}`
+}
+
 function sortedLayers(layers: PreviewLayer[]): PreviewLayer[] {
   return [...layers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+}
+
+function fitTextureSize(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(1, PREVIEW_TEXTURE_MAX_SIDE / Math.max(width, height))
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
+}
+
+function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): { data: Uint8Array; width: number; height: number } | null {
+  if (video.videoWidth <= 0 || video.videoHeight <= 0) return null
+  const { width, height } = fitTextureSize(video.videoWidth, video.videoHeight)
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) return null
+  context.drawImage(video, 0, 0, width, height)
+  const imageData = context.getImageData(0, 0, width, height)
+  return { data: new Uint8Array(imageData.data.buffer), width, height }
 }
 
 function staticLayers(layers: PreviewLayer[]): StaticLayer[] {
@@ -127,7 +164,7 @@ function videoRenderLayer(layer: PreviewLayer): RenderLayer {
 }
 
 export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
-  { layers, canvasRef: extRef, className, onError, onReady, onRender, maxSide = 1920, onVideoElement },
+  { layers, canvasRef: extRef, className, onError, onReady, onRender, maxSide, onVideoElement },
   ref,
 ) {
   const internalRef = useRef<HTMLCanvasElement>(null)
@@ -135,9 +172,15 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   const destroyRef = useRef(false)
   const rafRef = useRef(0)
   const layersRef = useRef<PreviewLayer[]>(layers)
-  const lastDebugLogRef = useRef(0)
+  const texturesRef = useRef<Map<string, TextureInfo>>(new Map())
+  const videosRef = useRef<Map<string, VideoInfo>>(new Map())
+  const videoElementCalledRef = useRef(false)
+  const renderingRef = useRef(false)
+  const lastVideoFrameAtRef = useRef(0)
+  const lastDebugAtRef = useRef(0)
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
+  const [renderKey, setRenderKey] = useState(0)
   layersRef.current = layers
 
   useEffect(() => {
@@ -149,7 +192,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       return
     }
     destroyRef.current = false
-    onVideoElement?.(null)
+    texturesRef.current.clear()
     lrc.init()
       .then(() => {
         if (!destroyRef.current) {
@@ -166,84 +209,186 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     return () => {
       destroyRef.current = true
       cancelAnimationFrame(rafRef.current)
+      const currentLrc = getLRC()
+      for (const [, texture] of texturesRef.current) {
+        if (texture.textureId != null) currentLrc?.releaseTexture(texture.textureId).catch(() => {})
+      }
+      for (const [, video] of videosRef.current) video.video.pause()
+      texturesRef.current.clear()
+      videosRef.current.clear()
       onVideoElement?.(null)
     }
   }, [])
 
+  async function compositeRender() {
+    const lrc = getLRC()
+    const canvas = canvasRef.current
+    if (!lrc || !canvas || renderingRef.current || destroyRef.current) return
+    const renderLayers = sortedLayers(layersRef.current)
+    const plannedLayers = renderLayers.flatMap((layer) => {
+      const texture = texturesRef.current.get(layerKey(layer))
+      if (!texture || texture.textureId == null) return []
+      return [{
+        layer,
+        texture: {
+          textureId: texture.textureId,
+          width: texture.width,
+          height: texture.height,
+        },
+      }]
+    })
+    if (plannedLayers.length === 0) return
+    renderingRef.current = true
+    try {
+      const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
+      const plan = await lrc.planPreview({ maxSide: effectiveMaxSide, layers: plannedLayers })
+      const result = await lrc.renderFrame(plan.width, plan.height, plan.layers)
+      if (destroyRef.current) return
+      canvas.width = plan.width
+      canvas.height = plan.height
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('画布不可用')
+      context.putImageData(new ImageData(new Uint8ClampedArray(result), plan.width, plan.height), 0, 0)
+      const now = performance.now()
+      if (now - lastDebugAtRef.current > 1000) {
+        lastDebugAtRef.current = now
+        console.log('[LrcRender:plan]', {
+          maxSide: effectiveMaxSide,
+          output: `${plan.width}x${plan.height}`,
+          layers: plan.layers.length,
+          canvasCss: `${canvas.clientWidth}x${canvas.clientHeight}`,
+          parent: canvas.parentElement ? `${canvas.parentElement.clientWidth}x${canvas.parentElement.clientHeight}` : null,
+        })
+      }
+      onRender?.()
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      onError?.(msg)
+      setRenderKey((key) => key + 1)
+    } finally {
+      renderingRef.current = false
+    }
+  }
+
+  async function upsertVideoTexture(layer: PreviewLayer, info: VideoInfo, allowPaused = false): Promise<boolean> {
+    const lrc = getLRC()
+    if (!lrc || (!allowPaused && info.video.paused) || info.video.readyState < 2) return false
+    const frame = drawVideoFrame(info.video, info.offscreen)
+    if (!frame) return false
+    const key = layerKey(layer)
+    const current = texturesRef.current.get(key)
+    if (current?.textureId != null && current.width === frame.width && current.height === frame.height) {
+      await lrc.updateTexture(current.textureId, frame.data)
+      return true
+    }
+    if (current?.textureId != null) await lrc.releaseTexture(current.textureId).catch(() => {})
+    const textureId = await lrc.loadTexture(frame.data, frame.width, frame.height)
+    texturesRef.current.set(key, { textureId, width: frame.width, height: frame.height })
+    return true
+  }
+
   useEffect(() => {
     if (!ready) return
-    const currentCanvas = canvasRef.current
-    const renderCore = getLRC()
-    if (!currentCanvas || !renderCore || layers.length === 0) return
-    const renderCanvas: HTMLCanvasElement = currentCanvas
-    const lrc: LunaRenderCore = renderCore
-
+    const lrc = getLRC()
+    if (!lrc) return
     let canceled = false
-    let rendering = false
-    const hasVideo = layers.some((layer) => layer.isVideo)
+    const currentKeys = new Set(layers.map(layerKey))
 
-    async function renderOnce() {
-      if (rendering || canceled || destroyRef.current) return
-      rendering = true
-      try {
-        const renderLayers = sortedLayers(layersRef.current)
-        const now = performance.now()
-        const shouldLog = now - lastDebugLogRef.current > 1000
-        if (shouldLog) {
-          lastDebugLogRef.current = now
-          console.log('[LrcRender:request]', {
-            maxSide,
-            layers: renderLayers.map((layer) => ({
-              filePath: layer.filePath,
-              isVideo: Boolean(layer.isVideo),
-              videoTime: layer.videoTime ?? 0,
-              dst: `${layer.dstX},${layer.dstY},${layer.dstW},${layer.dstH}`,
-              src: `${layer.srcX ?? 0},${layer.srcY ?? 0},${layer.srcW ?? 1},${layer.srcH ?? 1}`,
-              opacity: layer.opacity ?? 1,
-              zIndex: layer.zIndex ?? 0,
-            })),
-          })
-        }
-        const result = await lrc.renderPreview({
-          maxSide,
-          layers: renderLayers,
-        })
-        if (canceled || destroyRef.current) return
-        renderCanvas.width = result.width
-        renderCanvas.height = result.height
-        const context = renderCanvas.getContext('2d')
-        if (!context) throw new Error('画布不可用')
-        context.putImageData(new ImageData(new Uint8ClampedArray(result.data), result.width, result.height), 0, 0)
-        if (shouldLog) {
-          console.log('[LrcRender:response]', {
-            resultSize: `${result.width}x${result.height}`,
-            dataLength: result.data.length,
-            canvasBuffer: `${renderCanvas.width}x${renderCanvas.height}`,
-            canvasCss: `${renderCanvas.clientWidth}x${renderCanvas.clientHeight}`,
-            parent: renderCanvas.parentElement ? `${renderCanvas.parentElement.clientWidth}x${renderCanvas.parentElement.clientHeight}` : null,
-          })
-        }
-        onRender?.()
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        onError?.(msg)
-      } finally {
-        rendering = false
+    for (const [key, texture] of texturesRef.current) {
+      if (!currentKeys.has(key)) {
+        if (texture.textureId != null) lrc.releaseTexture(texture.textureId).catch(() => {})
+        texturesRef.current.delete(key)
+      }
+    }
+    for (const [key, video] of videosRef.current) {
+      if (!currentKeys.has(key)) {
+        video.video.pause()
+        videosRef.current.delete(key)
       }
     }
 
+    if (videosRef.current.size === 0) {
+      videoElementCalledRef.current = false
+      onVideoElement?.(null)
+    }
+
+    for (const layer of layers.filter((item) => !item.isVideo)) {
+      const key = layerKey(layer)
+      if (texturesRef.current.has(key)) continue
+      texturesRef.current.set(key, { textureId: null, width: 0, height: 0 })
+      lrc.loadTextureFromPath(layer.filePath, PREVIEW_TEXTURE_MAX_SIDE)
+        .then((texture) => {
+          if (canceled || destroyRef.current) return
+          texturesRef.current.set(key, texture)
+          void compositeRender()
+        })
+        .catch((error) => {
+          if (!canceled) onError?.(error instanceof Error ? error.message : String(error))
+        })
+    }
+
+    for (const layer of layers.filter((item) => item.isVideo)) {
+      const key = layerKey(layer)
+      if (videosRef.current.has(key)) continue
+      const video = document.createElement('video')
+      video.muted = true
+      video.loop = false
+      video.playsInline = true
+      video.preload = 'metadata'
+      video.src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
+      const offscreen = document.createElement('canvas')
+      videosRef.current.set(key, { video, offscreen })
+      if (onVideoElement && !videoElementCalledRef.current) {
+        videoElementCalledRef.current = true
+        onVideoElement(video)
+      }
+      video.onloadeddata = () => {
+        const info = videosRef.current.get(key)
+        if (!info || canceled || destroyRef.current) return
+        void upsertVideoTexture(layer, info, true).then((updated) => {
+          if (updated) void compositeRender()
+        })
+      }
+      video.oncanplay = video.onloadeddata
+      video.onseeked = video.onloadeddata
+      video.load()
+    }
+
+    const staticReady = layers
+      .filter((item) => !item.isVideo)
+      .every((layer) => texturesRef.current.get(layerKey(layer))?.textureId != null)
+    if (staticReady) void compositeRender()
+
+    return () => {
+      canceled = true
+    }
+  }, [layers, ready, renderKey])
+
+  useEffect(() => {
+    if (!ready || !layers.some((layer) => layer.isVideo)) return
+
     function loop() {
-      void renderOnce()
+      const now = performance.now()
+      if (now - lastVideoFrameAtRef.current >= 1000 / VIDEO_RENDER_FPS) {
+        lastVideoFrameAtRef.current = now
+        const pending = layersRef.current
+          .filter((layer) => layer.isVideo)
+          .map((layer) => {
+            const info = videosRef.current.get(layerKey(layer))
+            return info ? upsertVideoTexture(layer, info) : Promise.resolve(false)
+          })
+        Promise.all(pending)
+          .then((updated) => {
+            if (updated.some(Boolean)) void compositeRender()
+          })
+          .catch(() => {})
+      }
       rafRef.current = requestAnimationFrame(loop)
     }
 
-    void renderOnce()
-    if (hasVideo) rafRef.current = requestAnimationFrame(loop)
-    return () => {
-      canceled = true
-      cancelAnimationFrame(rafRef.current)
-    }
-  }, [layers, ready, maxSide])
+    rafRef.current = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [ready, layers])
 
   useImperativeHandle(ref, () => ({
     async exportImage(outputPath: string, width: number, height: number, format: string, quality: number) {

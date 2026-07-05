@@ -199,10 +199,12 @@ fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 8
 // ── render_preview 层输入 ──
 
 /// 单个渲染层描述（静态图或视频帧）
+#[derive(Clone)]
 pub struct PreviewLayerInput {
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
+    pub fit: Option<String>,
     pub dst_x: f64,
     pub dst_y: f64,
     pub dst_w: f64,
@@ -215,6 +217,48 @@ pub struct PreviewLayerInput {
     pub z_index: i32,
     pub color: crate::RenderColorAdjustments,
     pub transform: crate::RenderLayerTransform,
+}
+
+#[derive(Clone, Debug)]
+pub struct PreviewTextureInfo {
+    pub texture_id: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone)]
+pub struct PlannedPreview {
+    pub width: u32,
+    pub height: u32,
+    pub layers: Vec<crate::RenderLayer>,
+}
+
+fn plan_layer_rect(
+    layer: &PreviewLayerInput,
+    texture: &PreviewTextureInfo,
+    output_width: u32,
+    output_height: u32,
+) -> (f64, f64, f64, f64) {
+    let mut dst_x = layer.dst_x;
+    let mut dst_y = layer.dst_y;
+    let mut dst_w = layer.dst_w;
+    let mut dst_h = layer.dst_h;
+    if layer.fit.as_deref() == Some("contain") {
+        let media_aspect = texture.width as f64 / texture.height.max(1) as f64;
+        let frame_pixel_w = dst_w * output_width as f64;
+        let frame_pixel_h = dst_h * output_height as f64;
+        let frame_aspect = frame_pixel_w / frame_pixel_h.max(1.0);
+        let (fitted_w, fitted_h) = if frame_aspect > media_aspect {
+            ((frame_pixel_h * media_aspect) / output_width as f64, dst_h)
+        } else {
+            (dst_w, (frame_pixel_w / media_aspect) / output_height as f64)
+        };
+        dst_x += (dst_w - fitted_w) / 2.0;
+        dst_y += (dst_h - fitted_h) / 2.0;
+        dst_w = fitted_w;
+        dst_h = fitted_h;
+    }
+    (dst_x, dst_y, dst_w, dst_h)
 }
 
 // ── Compositor ──
@@ -241,6 +285,7 @@ pub struct Compositor {
     video_probed: HashMap<String, (u32, u32)>,
     /// 持久 ffmpeg pipe 解码器 <path → VideoDecoder>
     video_decoders: HashMap<String, VideoDecoder>,
+    last_preview_log: Option<(u32, u32, u32, u32, std::time::Instant)>,
 }
 
 /// 持久 ffmpeg pipe 视频解码器，保持进程存活按序读帧
@@ -254,6 +299,7 @@ struct VideoDecoder {
     scaled_h: u32,
     frame_bytes: usize,
     current_time: f64,
+    texture_id: Option<u32>,
 }
 
 /// 创建 bind group layout（每个 layer 一个）
@@ -469,6 +515,7 @@ impl Compositor {
             cache_order: VecDeque::new(),
             video_probed: HashMap::new(),
             video_decoders: HashMap::new(),
+            last_preview_log: None,
         })
     }
 
@@ -1222,6 +1269,14 @@ impl Compositor {
         Ok(dims)
     }
 
+    fn remove_video_decoder(&mut self, path: &str) {
+        if let Some(decoder) = self.video_decoders.remove(path) {
+            if let Some(texture_id) = decoder.texture_id {
+                let _ = self.release_texture(texture_id);
+            }
+        }
+    }
+
     /// 获取视频帧：保持 ffmpeg pipe 存活，逐帧顺序读取。
     /// 初次 spawn + `-ss {time}` 定位起始位置，之后每次只读 pipe 的下一帧。
     /// 重新 spawn 只在视频文件切换或 pipe 异常时发生。
@@ -1238,7 +1293,7 @@ impl Compositor {
             // read_exact 可能因管道关闭失败（eof），此时需要重新 spawn
             if dec.stdout.read_exact(&mut rgba).is_err() {
                 log!("read_video_frame [{}] pipe EOF, restarting", file_path);
-                self.video_decoders.remove(file_path);
+                self.remove_video_decoder(file_path);
                 return self.read_video_frame(ffmpeg, ffprobe, file_path, video_time);
             }
             dec.current_time = video_time;
@@ -1299,6 +1354,7 @@ impl Compositor {
                 scaled_h: dh,
                 frame_bytes,
                 current_time: video_time,
+                texture_id: None,
             },
         );
 
@@ -1328,10 +1384,17 @@ impl Compositor {
             .filter(|l| l.is_video)
             .map(|l| l.file_path.as_str())
             .collect();
-        self.video_decoders
-            .retain(|path, _| active_video_paths.contains(path.as_str()));
+        let inactive_video_paths: Vec<String> = self
+            .video_decoders
+            .keys()
+            .filter(|path| !active_video_paths.contains(path.as_str()))
+            .cloned()
+            .collect();
+        for path in inactive_video_paths {
+            self.remove_video_decoder(&path);
+        }
 
-        let mut result_layers = Vec::with_capacity(layers.len());
+        let mut source_layers = Vec::with_capacity(layers.len());
         let mut first_layer_size: Option<(u32, u32)> = None;
 
         for layer in layers {
@@ -1339,7 +1402,23 @@ impl Compositor {
                 // ── 视频帧：持久 ffmpeg pipe 依次读帧 ──
                 let (rgba, dw, dh) =
                     self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time)?;
-                self.load_texture(&rgba, dw, dh)?
+                let existing_texture = self
+                    .video_decoders
+                    .get(&layer.file_path)
+                    .and_then(|decoder| decoder.texture_id);
+                match existing_texture {
+                    Some(texture_id) => {
+                        self.update_texture(texture_id, &rgba)?;
+                        texture_id
+                    }
+                    None => {
+                        let texture_id = self.load_texture(&rgba, dw, dh)?;
+                        if let Some(decoder) = self.video_decoders.get_mut(&layer.file_path) {
+                            decoder.texture_id = Some(texture_id);
+                        }
+                        texture_id
+                    }
+                }
             } else {
                 // ── 静态图：LRU 缓存 ──
                 let cached = self.get_cached_texture(&layer.file_path);
@@ -1361,51 +1440,101 @@ impl Compositor {
                 first_layer_size = Some((entry.width, entry.height));
             }
 
-            result_layers.push(crate::RenderLayer {
-                texture_id: tex_id,
-                dst_x: layer.dst_x,
-                dst_y: layer.dst_y,
-                dst_w: layer.dst_w,
-                dst_h: layer.dst_h,
-                src_x: layer.src_x,
-                src_y: layer.src_y,
-                src_w: layer.src_w,
-                src_h: layer.src_h,
-                opacity: layer.opacity,
-                z_index: layer.z_index,
-                color: Some(layer.color.clone()),
-                transform: Some(layer.transform.clone()),
-            });
+            let entry = self
+                .textures
+                .get(&tex_id)
+                .ok_or_else(|| format!("texture {} not found", tex_id))?;
+            source_layers.push((
+                (*layer).clone(),
+                PreviewTextureInfo {
+                    texture_id: tex_id,
+                    width: entry.width,
+                    height: entry.height,
+                },
+            ));
         }
 
         let (source_width, source_height) =
             first_layer_size.ok_or_else(|| "no valid layers for preview".to_string())?;
+        let planned = self.plan_preview(width, height, max_side, &source_layers)?;
+        let now = std::time::Instant::now();
+        let should_log = match self.last_preview_log {
+            Some((last_source_w, last_source_h, last_output_w, last_output_h, last_at)) => {
+                last_source_w != source_width
+                    || last_source_h != source_height
+                    || last_output_w != planned.width
+                    || last_output_h != planned.height
+                    || now.duration_since(last_at).as_millis() >= 1000
+            }
+            None => true,
+        };
+        if should_log {
+            self.last_preview_log = Some((
+                source_width,
+                source_height,
+                planned.width,
+                planned.height,
+                now,
+            ));
+            log!(
+                "render_preview output source={}x{} requested={:?}x{:?} max_side={:?} -> {}x{} layers={}",
+                source_width,
+                source_height,
+                width,
+                height,
+                max_side,
+                planned.width,
+                planned.height,
+                layers.len()
+            );
+        }
+        let result = self.render(planned.width, planned.height, &planned.layers)?;
+
+        Ok((result, planned.width, planned.height))
+    }
+
+    pub fn plan_preview(
+        &mut self,
+        width: Option<u32>,
+        height: Option<u32>,
+        max_side: Option<u32>,
+        layers: &[(PreviewLayerInput, PreviewTextureInfo)],
+    ) -> Result<PlannedPreview, String> {
+        let (_, first_texture) = layers
+            .first()
+            .ok_or_else(|| "no valid layers for preview plan".to_string())?;
         let (output_width, output_height) = fit_output_size(
-            width.unwrap_or(source_width).max(1),
-            height.unwrap_or(source_height).max(1),
+            width.unwrap_or(first_texture.width).max(1),
+            height.unwrap_or(first_texture.height).max(1),
             max_side.unwrap_or(PREVIEW_MAX_SIZE),
         );
-        log!(
-            "render_preview output source={}x{} requested={:?}x{:?} max_side={:?} -> {}x{} layers={}",
-            source_width,
-            source_height,
-            width,
-            height,
-            max_side,
-            output_width,
-            output_height,
-            layers.len()
-        );
-        let result = self.render(output_width, output_height, &result_layers)?;
-
-        // 释放视频帧的临时纹理（静态图纹理保留在缓存中）
-        for (i, layer) in layers.iter().enumerate() {
-            if layer.is_video {
-                self.release_texture(result_layers[i].texture_id)?;
-            }
-        }
-
-        Ok((result, output_width, output_height))
+        let result_layers = layers
+            .iter()
+            .map(|(layer, texture)| {
+                let (dst_x, dst_y, dst_w, dst_h) =
+                    plan_layer_rect(layer, texture, output_width, output_height);
+                crate::RenderLayer {
+                    texture_id: texture.texture_id,
+                    dst_x,
+                    dst_y,
+                    dst_w,
+                    dst_h,
+                    src_x: layer.src_x,
+                    src_y: layer.src_y,
+                    src_w: layer.src_w,
+                    src_h: layer.src_h,
+                    opacity: layer.opacity,
+                    z_index: layer.z_index,
+                    color: Some(layer.color.clone()),
+                    transform: Some(layer.transform.clone()),
+                }
+            })
+            .collect();
+        Ok(PlannedPreview {
+            width: output_width,
+            height: output_height,
+            layers: result_layers,
+        })
     }
 }
 
