@@ -115,7 +115,6 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   )
   const comparePipeline = useMemo(
     () => mergePipeline(previewPipeline, {
-      transform: DEFAULT_PIPELINE.transform,
       color: DEFAULT_PIPELINE.color,
       effects: DEFAULT_PIPELINE.effects,
     }),
