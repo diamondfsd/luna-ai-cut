@@ -4,6 +4,7 @@ import type { CropRect } from '../shared/editPipeline'
 import { fitCropInsideImage, maxCropInsideImage, moveCropInsideImage, normalizeFineRotate, resizeCropInsideImage, rotateCropForOrientationChange, sameCrop, frameAspect, type CropDragMode } from './cropGeometry'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
+import '../../styles/workspace-crop.css'
 
 const DEFAULT_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 }
 

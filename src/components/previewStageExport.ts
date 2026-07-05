@@ -49,6 +49,8 @@ function staticLayers(layers: PreviewLayer[]): StaticLayer[] {
       srcH: layer.srcH ?? 1,
       opacity: layer.opacity ?? 1,
       zIndex: layer.zIndex ?? 0,
+      color: layer.color,
+      transform: layer.transform,
     }))
 }
 
@@ -90,6 +92,8 @@ export async function exportPreviewVideo(params: {
     srcH: videoSourceLayer.srcH ?? 1,
     opacity: videoSourceLayer.opacity ?? 1,
     zIndex: videoSourceLayer.zIndex ?? 0,
+    color: videoSourceLayer.color,
+    transform: videoSourceLayer.transform,
   }
 
   await lrc().exportVideo(

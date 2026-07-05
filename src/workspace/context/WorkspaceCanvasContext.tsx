@@ -1,50 +1,15 @@
-import { createContext, useContext, useCallback, useMemo, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 
-import type { EditPipeline } from '../shared/editPipeline'
-import { useCanvasEngine } from '../hooks/useCanvasEngine'
-import type { ImageCacheEntry } from '../shared/imageCache'
-import { useWorkspaceMedia } from './WorkspaceMediaContext'
-
-// ── helper: apply thumbnail to a media list ──
-function applyThumb<T extends { path: string; thumbnailUrl?: string | null }>(
-  items: T[],
-  targetPath: string,
-  thumbnailUrl: string,
-): T[] {
-  return items.map((item) =>
-    item.path === targetPath ? { ...item, thumbnailUrl } : item,
-  ) as T[]
-}
-
-interface WorkspaceCanvasValue {
-  canvasRef: React.RefObject<HTMLCanvasElement | null>
-  stageRef: React.RefObject<HTMLDivElement | null>
-  imageLoading: boolean
-  imageError: string | null
-  webglMessage: string | null
+interface PreviewMetrics {
   imageRect: { x: number; y: number; width: number; height: number }
   sourceAspect: number
-  canRender: boolean
-  render: (pipeline: EditPipeline, opts?: { cropMode?: boolean; allowStaleLut?: boolean }) => void
-  rendererReady: boolean
-  renderKey: number
-  loadedMediaPath: string | null
-  // Video
-  isVideo: boolean
-  isLivePlayback: boolean
-  videoPlaying: boolean
-  videoDuration: number
-  videoCurrentTime: number
-  playVideo: () => void
-  pauseVideo: () => void
-  seekVideo: (time: number) => void
-  toggleVideoPlayback: () => void
-  // 3D LUT
-  bakeAndLoadLut: (colorParams: Record<string, unknown>, key: string) => Promise<boolean>
-  clearLut: () => void
-  loadLiveVideo: (videoUrl: string) => Promise<void>
-  stopLiveVideo: () => Promise<void>
 }
+
+interface WorkspaceCanvasValue extends PreviewMetrics {
+  setPreviewMetrics: (metrics: PreviewMetrics) => void
+}
+
+const DEFAULT_IMAGE_RECT = { x: 0, y: 0, width: 1, height: 1 }
 
 const WorkspaceCanvasContext = createContext<WorkspaceCanvasValue | null>(null)
 
@@ -55,69 +20,29 @@ export function useWorkspaceCanvas(): WorkspaceCanvasValue {
 }
 
 export function WorkspaceCanvasProvider({ children }: { children: ReactNode }) {
-  const { activeMedia, editorOpen, setCurrentProject, setTransientMedia, setBrokenPaths } = useWorkspaceMedia()
-
-  const onThumbnailReady = useCallback(
-    (entry: ImageCacheEntry) => {
-      if (!activeMedia) return
-      // Only works when inside WorkspaceMediaProvider
-      setCurrentProject?.((prev) => {
-        if (!prev) return prev
-        const next = {
-          ...prev,
-          assets: applyThumb(prev.assets, activeMedia.path, entry.thumbnailUrl),
-        }
-        window.luna.workspace.saveProject(next).catch(() => undefined)
-        return next
-      })
-      setTransientMedia?.((prev) => applyThumb(prev, activeMedia.path, entry.thumbnailUrl))
-    },
-    [activeMedia, setCurrentProject, setTransientMedia],
-  )
-
-  const onBrokenPath = useCallback(
-    (path: string) => {
-      setBrokenPaths?.((prev) => new Set(prev).add(path))
-    },
-    [setBrokenPaths],
-  )
-
-  const engine = useCanvasEngine({
-    editorOpen,
-    activeMedia,
-    onThumbnailReady,
-    onBrokenPath,
+  const [metrics, setMetrics] = useState<PreviewMetrics>({
+    imageRect: DEFAULT_IMAGE_RECT,
+    sourceAspect: 1,
   })
+
+  const setPreviewMetrics = useCallback((next: PreviewMetrics) => {
+    setMetrics((current) => {
+      const sameRect =
+        Math.abs(current.imageRect.x - next.imageRect.x) < 0.5 &&
+        Math.abs(current.imageRect.y - next.imageRect.y) < 0.5 &&
+        Math.abs(current.imageRect.width - next.imageRect.width) < 0.5 &&
+        Math.abs(current.imageRect.height - next.imageRect.height) < 0.5
+      const sameAspect = Math.abs(current.sourceAspect - next.sourceAspect) < 0.0001
+      return sameRect && sameAspect ? current : next
+    })
+  }, [])
 
   const value = useMemo<WorkspaceCanvasValue>(
     () => ({
-      canvasRef: engine.canvasRef,
-      stageRef: engine.stageRef,
-      imageLoading: engine.imageLoading,
-      imageError: engine.imageError,
-      webglMessage: engine.webglMessage,
-      imageRect: engine.imageRect,
-      sourceAspect: engine.sourceAspect,
-      canRender: engine.canRender,
-      render: engine.render,
-      rendererReady: engine.rendererReady,
-      renderKey: engine.renderKey,
-      loadedMediaPath: engine.loadedMediaPath,
-      isVideo: engine.isVideo,
-      isLivePlayback: engine.isLivePlayback,
-      videoPlaying: engine.videoPlaying,
-      videoDuration: engine.videoDuration,
-      videoCurrentTime: engine.videoCurrentTime,
-      playVideo: engine.playVideo,
-      pauseVideo: engine.pauseVideo,
-      seekVideo: engine.seekVideo,
-      toggleVideoPlayback: engine.toggleVideoPlayback,
-      loadLiveVideo: engine.loadLiveVideo,
-      stopLiveVideo: engine.stopLiveVideo,
-      bakeAndLoadLut: engine.bakeAndLoadLut,
-      clearLut: engine.clearLut,
+      ...metrics,
+      setPreviewMetrics,
     }),
-    [engine],
+    [metrics, setPreviewMetrics],
   )
 
   return (

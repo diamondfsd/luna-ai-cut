@@ -198,6 +198,8 @@ interface RenderLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+  color?: unknown
+  transform?: unknown
 }
 
 interface StaticLayer {
@@ -205,6 +207,8 @@ interface StaticLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+  color?: unknown
+  transform?: unknown
 }
 
 const lunaRenderCoreApi = {
@@ -239,7 +243,7 @@ const lunaRenderCoreApi = {
     outputPath: string,
     width: number,
     height: number,
-    layers: RenderLayer[],
+    layers: unknown[],
     format: string,
     quality: number,
   ) => ipcRenderer.invoke('lrc:exportImageFromSources', outputPath, width, height, layers, format, quality),
