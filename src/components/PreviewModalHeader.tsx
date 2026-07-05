@@ -1,11 +1,11 @@
 import { useMemo } from 'react'
 import { X, CircleAlert, FolderOpen, Download } from 'lucide-react'
 
-import type { LunaFile } from '../shared/types'
 import { IconButton } from '../ui'
+import { extensionFromPath, fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
 
 interface PreviewModalHeaderProps {
-  file: LunaFile
+  filePath: string
   inspectorOpen?: boolean
   onClose: () => void
   onSetInspectorOpen?: (open: boolean) => void
@@ -15,14 +15,15 @@ interface PreviewModalHeaderProps {
   exporting?: boolean
 }
 
-function mediaLabel(file: LunaFile): string {
-  if (file.kind === 'image') return '图片'
-  if (file.kind === 'video') return '视频'
-  return file.extension.toUpperCase() || '未知'
+function mediaLabel(filePath: string): string {
+  const kind = mediaKindFromPath(filePath)
+  if (kind === 'image') return '图片'
+  if (kind === 'video') return '视频'
+  return extensionFromPath(filePath).replace('.', '').toUpperCase() || '未知'
 }
 
 export function PreviewModalHeader({
-  file,
+  filePath,
   inspectorOpen,
   onClose,
   onSetInspectorOpen,
@@ -30,8 +31,8 @@ export function PreviewModalHeader({
   exporting,
 }: PreviewModalHeaderProps) {
   const revealPath = useMemo(
-    () => file.downloadFilePath ?? file.localPath ?? null,
-    [file.downloadFilePath, file.localPath],
+    () => filePath.startsWith('file://') ? decodeURIComponent(new URL(filePath).pathname) : filePath,
+    [filePath],
   )
 
   function handleRevealInFolder() {
@@ -41,8 +42,8 @@ export function PreviewModalHeader({
   return (
     <header>
       <div>
-        <span className="eyebrow">{mediaLabel(file)}</span>
-        <h2>{file.name}</h2>
+        <span className="eyebrow">{mediaLabel(filePath)}</span>
+        <h2>{fileNameFromPath(filePath)}</h2>
       </div>
       <div className="preview-actions">
         {onExport && (

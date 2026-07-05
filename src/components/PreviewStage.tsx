@@ -5,37 +5,8 @@ import { exportPreviewImage, exportPreviewLivePhoto, exportPreviewVideo } from '
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge } from '../ui'
+import { baseNameFromPath, isImagePath, isVideoPath } from '../lib/fileUtils'
 import './PreviewStage.css'
-
-const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif']
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v', '.lrv', '.insv']
-
-function getExtension(url: string): string {
-  const match = url.match(/\.([a-z0-9]+)(?:[?#]|$)/i)
-  return match ? `.${match[1].toLowerCase()}` : ''
-}
-
-function isImage(url: string): boolean {
-  return IMAGE_EXTENSIONS.includes(getExtension(url))
-}
-
-function isVideo(url: string): boolean {
-  return VIDEO_EXTENSIONS.includes(getExtension(url))
-}
-
-function baseNameFromUrl(url: string): string {
-  try {
-    const parsed = new URL(url)
-    const lastPart = parsed.pathname.split('/').pop() || 'export'
-    const decoded = decodeURIComponent(lastPart)
-    const dotIndex = decoded.lastIndexOf('.')
-    return dotIndex > 0 ? decoded.substring(0, dotIndex) : decoded
-  } catch {
-    const lastPart = url.split(/[\\/]/).pop() || 'export'
-    const dotIndex = lastPart.lastIndexOf('.')
-    return dotIndex > 0 ? lastPart.substring(0, dotIndex) : lastPart
-  }
-}
 
 /** 缩放模式 */
 export type ScaleMode = 'fill' | 'contain'
@@ -114,10 +85,10 @@ export function buildLayers(
 
   const baseLayer = { ...frame, fit, srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 1, zIndex: 0 }
 
-  if (isImage(url)) {
+  if (isImagePath(url)) {
     return [{ ...baseLayer, filePath: url }]
   }
-  if (isVideo(url)) {
+  if (isVideoPath(url)) {
     return [{ ...baseLayer, filePath: url, isVideo: true }]
   }
   return []
@@ -164,7 +135,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
-  const isDisplayVideo = displayUrl ? isVideo(displayUrl) : false
+  const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
+  const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
 
   // 暴露 video 元素并绑定事件
   const handleVideoElement = useCallback((el: HTMLVideoElement | null) => {
@@ -304,10 +276,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     return () => resizeObserver.disconnect()
   }, [displayUrl])
 
-  const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution): PreviewLayer[] => {
+  const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution, forceBaseFit?: ScaleMode): PreviewLayer[] => {
     // 基于 Project Canvas 计算布局，Stage 不参与
     const canvas = projectCanvasFor(layerResolution) ?? { width: 1440, height: 1440 }
     const main = sourceUrl ? buildLayers(sourceUrl, scaleMode, layerResolution, canvas) : []
+    if (forceBaseFit && main[0]) main[0] = { ...main[0], fit: forceBaseFit }
     if (!extraLayers?.length) return main
 
     const m = main[0]
@@ -325,21 +298,21 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     return [...main, ...adjusted]
   }, [scaleMode, resolution, extraLayers])
 
-  const layers = useMemo(() => buildAdjustedLayers(displayUrl), [buildAdjustedLayers, displayUrl])
+  const layers = useMemo(() => buildAdjustedLayers(displayUrl, resolution, livePlaying ? 'fill' : undefined), [buildAdjustedLayers, displayUrl, resolution, livePlaying])
 
   // 通过 IPC 获取媒体文件实际分辨率
   useEffect(() => {
-    if (!displayUrl) {
+    if (!layoutUrl) {
       setResolution(null)
       return
     }
-    window.luna.workspace.getMediaResolution(displayUrl)
+    window.luna.workspace.getMediaResolution(layoutUrl)
       .then((res) => {
-        console.log(`[PreviewStage] getMediaResolution: ${displayUrl} -> ${res.width}x${res.height}`)
+        console.log(`[PreviewStage] getMediaResolution: ${layoutUrl} -> ${res.width}x${res.height}`)
         setResolution(res)
       })
       .catch(() => setResolution(null))
-  }, [displayUrl])
+  }, [layoutUrl])
 
   // Canvas 包裹层样式 — 在 Stage 内保持 Project Canvas 比例
   const canvasWrapperStyle = useMemo(() => {
@@ -375,7 +348,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
         }
         if (!exportLiveVideoUrl) throw new Error('Live 图视频还未准备好')
 
-        const baseName = baseNameFromUrl(url)
+        const baseName = baseNameFromPath(url)
         const liveResolution = await window.luna.workspace.getMediaResolution(url)
         return exportPreviewLivePhoto({
           name: baseName,
@@ -383,14 +356,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
           width: liveResolution.width,
           height: liveResolution.height,
           imageLayers: buildAdjustedLayers(url, liveResolution),
-          videoLayers: buildAdjustedLayers(exportLiveVideoUrl, liveResolution),
+          videoLayers: buildAdjustedLayers(exportLiveVideoUrl, liveResolution, 'fill'),
           appleLivePhoto: Boolean(settings.exportAppleLivePhoto),
         })
       }
 
       const res = await window.luna.workspace.getMediaResolution(displayUrl)
-      const baseName = baseNameFromUrl(displayUrl)
-      const exportingVideo = isVideo(displayUrl)
+      const baseName = baseNameFromPath(displayUrl)
+      const exportingVideo = isVideoPath(displayUrl)
       const format = exportOptions.format || 'jpeg'
       const ext = exportingVideo ? 'mp4' : format === 'jpeg' ? 'jpg' : format
       const filename = `${baseName}_${Date.now()}.${ext}`
@@ -428,7 +401,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
             position: 'absolute',
             left: 18,
             bottom: 18,
-            zIndex: 5,
             display: 'grid',
             width: 44,
             height: 44,

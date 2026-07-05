@@ -25,6 +25,46 @@ import { listSampleFiles } from './localMedia'
 import { logMainDebug, logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 
+function mediaKindForPath(filePath: string): LunaFile['kind'] {
+  const ext = path.extname(filePath).toLowerCase()
+  if (['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.m4v', '.lrv'].includes(ext)) return 'video'
+  if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.heic', '.heif', '.avif'].includes(ext)) return 'image'
+  return 'unknown'
+}
+
+function localFileForPath(filePath: string): LunaFile {
+  const name = path.basename(filePath)
+  return {
+    id: filePath,
+    name,
+    href: filePath,
+    sourceUrl: filePath,
+    url: filePath,
+    dateText: '',
+    timeText: '',
+    sizeText: '',
+    bytes: null,
+    kind: mediaKindForPath(filePath),
+    extension: path.extname(filePath),
+    capturedAt: null,
+    groupDay: '',
+    groupHour: '',
+    videoKey: null,
+    previewName: null,
+    previewUrl: null,
+    cacheFilePath: null,
+    downloadFilePath: filePath,
+    thumbnailUrl: null,
+    isLivePhoto: false,
+    livePhotoVideoName: null,
+    livePhotoVideoUrl: null,
+    livePhotoCacheFilePath: null,
+    downloadName: name,
+    canPreview: true,
+    localPath: filePath,
+  }
+}
+
 export function register(ctx: IpcContext): void {
   ipcMain.handle('luna:cacheFile', async (_event, file: LunaFile) => {
     const key = file.id || file.name
@@ -175,6 +215,12 @@ export function register(ctx: IpcContext): void {
     return ctx.enqueuePreviewTask(async () => {
       await ctx.ensureCameraSessionForFile(file)
       return getMediaMetadata(file, cachedPath)
+    }, 1)
+  })
+
+  ipcMain.handle('luna:metadataByPath', async (_event, filePath: string) => {
+    return ctx.enqueuePreviewTask(async () => {
+      return getMediaMetadata(localFileForPath(filePath), filePath)
     }, 1)
   })
 

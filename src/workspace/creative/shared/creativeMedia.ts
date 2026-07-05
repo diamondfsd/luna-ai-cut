@@ -1,4 +1,4 @@
-import { filePathToPreviewUrl } from '../../../components/previewModalUtils'
+import { filePathToPreviewUrl } from '../../../lib/fileUtils'
 import type { WorkspaceMediaAsset } from '../../../shared/types'
 import { createDefaultPipeline, mergePipeline, type EditPipeline, type PipelinePatch } from '../../shared/editPipeline'
 
