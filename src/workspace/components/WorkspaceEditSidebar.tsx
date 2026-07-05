@@ -159,9 +159,7 @@ export function WorkspaceEditSidebar({ mediaSize, onWatermarkLayerChange }: Work
               }
             >
               <WatermarkSettings
-                settings={edit.pipeline.watermark}
-                onChange={(watermark, layer) => {
-                  edit.updateWorkspacePanel({ watermark })
+                onChange={(_watermark, layer) => {
                   onWatermarkLayerChange?.(layer)
                 }}
                 filePath={mediaCtx.activeMedia?.path}
