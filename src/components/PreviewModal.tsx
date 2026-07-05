@@ -33,7 +33,7 @@ export function PreviewModal({
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
     enabled: true,
-    style: 'luna_ultra',
+    style: 'luna_ultra_cn',
     position: 'BottomCenter' as any,
   })
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])

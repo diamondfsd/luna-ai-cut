@@ -14,7 +14,7 @@ export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
     cameraType: 'Insta360 Luna Ultra',
     deviceNamePatterns: [/Insta360\s+Luna\s+Ultra/i, /Luna\s+Ultra/i, /Z03/i],
     exifModelPatterns: [/Insta360\s+Luna\s+Ultra/i, /Luna\s+Ultra/i, /Z03/i],
-    defaultWatermarkStyle: 'luna_ultra',
+    defaultWatermarkStyle: 'luna_ultra_cn',
   },
   {
     id: 'go-ultra',
@@ -22,7 +22,7 @@ export const INSTA360_DEVICE_PROFILES: Insta360DeviceProfile[] = [
     cameraType: 'Insta360 GO Ultra',
     deviceNamePatterns: [/Insta360\s+GO\s+Ultra/i, /GO\s+Ultra/i, /TC4/i, /IBE/i],
     exifModelPatterns: [/Insta360\s+GO\s+Ultra/i, /GO\s+Ultra/i, /TC4/i, /IBE/i],
-    defaultWatermarkStyle: 'go_ultra',
+    defaultWatermarkStyle: 'go_ultra_cn',
   },
 ]
 
@@ -56,7 +56,7 @@ export function inferDeviceProfile(params: {
 }
 
 export function defaultWatermarkStyleForDevice(params: Parameters<typeof inferDeviceProfile>[0]): string {
-  return inferDeviceProfile(params)?.defaultWatermarkStyle ?? 'luna_ultra'
+  return inferDeviceProfile(params)?.defaultWatermarkStyle ?? 'luna_ultra_cn'
 }
 
 export function concreteWatermarkStyle(style: string, _params: Parameters<typeof inferDeviceProfile>[0]): string {
