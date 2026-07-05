@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, type CSSProperties, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
 import { exportPreviewImage, exportPreviewLivePhoto, exportPreviewVideo } from './previewStageExport'
@@ -59,7 +59,6 @@ interface StageSize {
 
 interface RenderState {
   layers: PreviewLayer[]
-  wrapperStyle: CSSProperties
 }
 
 function isValidSize(size: MediaResolution | StageSize | null): size is MediaResolution | StageSize {
@@ -128,7 +127,7 @@ function projectCanvasFor(resolution: MediaResolution | null): StageSize | null 
 }
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
-  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, cropActive = false, onMetricsChange, renderOverlay },
+  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, onMetricsChange, renderOverlay },
   ref,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -370,24 +369,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     }
   }, [layoutUrl])
 
-  // Canvas 包裹层样式 — 在 Stage 内保持 Project Canvas 比例
-  const canvasWrapperStyle = useMemo(() => {
-    if (!projectCanvas || !stageSize) return {}
-    const cropScale = cropActive ? 0.82 : 1
-    const stageAspect = stageSize.width / stageSize.height
-    const canvasAspect = projectCanvas.width / projectCanvas.height
-    if (canvasAspect > stageAspect) {
-      const width = stageSize.width * cropScale
-      return { width: `${width}px`, height: `${width / canvasAspect}px` }
-    }
-    const height = stageSize.height * cropScale
-    return { width: `${height * canvasAspect}px`, height: `${height}px` }
-  }, [projectCanvas, stageSize, cropActive])
-
   useEffect(() => {
-    if (layers.length === 0 || !('width' in canvasWrapperStyle) || !('height' in canvasWrapperStyle)) return
-    setRenderState({ layers, wrapperStyle: canvasWrapperStyle })
-  }, [layers, canvasWrapperStyle])
+    if (layers.length === 0) return
+    setRenderState({ layers })
+  }, [layers])
 
   useEffect(() => {
     const wrapper = wrapperRef.current
@@ -396,13 +381,12 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     console.log('[PreviewStage:wrapper]', {
       stage: `${stageSize.width}x${stageSize.height}`,
       projectCanvas: `${projectCanvas.width}x${projectCanvas.height}`,
-      style: canvasWrapperStyle,
       wrapperRect: `${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`,
       displayUrl,
       layoutUrl,
       livePlaying,
     })
-  }, [canvasWrapperStyle, projectCanvas, stageSize, displayUrl, layoutUrl, livePlaying])
+  }, [projectCanvas, stageSize, displayUrl, layoutUrl, livePlaying])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -421,7 +405,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
         height: mainLayer.dstH * wrapperRect.height,
       },
     })
-  }, [onMetricsChange, renderState, resolution, canvasWrapperStyle])
+  }, [onMetricsChange, renderState, resolution])
 
   // 暴露导出方法
   useImperativeHandle(ref, () => ({
@@ -494,7 +478,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
       {renderState && (
-        <div ref={wrapperRef} className="preview-canvas-wrapper" style={renderState.wrapperStyle}>
+        <div ref={wrapperRef} className="preview-canvas-wrapper">
           <LrcRender layers={renderState.layers} onRender={handleRender} onVideoElement={handleVideoElement} />
         </div>
       )}

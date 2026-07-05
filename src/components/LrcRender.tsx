@@ -126,16 +126,6 @@ function videoRenderLayer(layer: PreviewLayer): RenderLayer {
   }
 }
 
-function canvasOutputSize(canvas: HTMLCanvasElement): { width: number; height: number } | null {
-  const dpr = window.devicePixelRatio || 1
-  const cssWidth = canvas.parentElement?.clientWidth ?? canvas.clientWidth
-  const cssHeight = canvas.parentElement?.clientHeight ?? canvas.clientHeight
-  const width = Math.round(cssWidth * dpr)
-  const height = Math.round(cssHeight * dpr)
-  if (width <= 0 || height <= 0) return null
-  return { width, height }
-}
-
 export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
   { layers, canvasRef: extRef, className, onError, onReady, onRender, maxSide = 1920, onVideoElement },
   ref,
@@ -145,6 +135,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   const destroyRef = useRef(false)
   const rafRef = useRef(0)
   const layersRef = useRef<PreviewLayer[]>(layers)
+  const lastDebugLogRef = useRef(0)
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
   layersRef.current = layers
@@ -193,15 +184,29 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
 
     async function renderOnce() {
       if (rendering || canceled || destroyRef.current) return
-      const output = canvasOutputSize(renderCanvas)
-      if (!output) return
       rendering = true
       try {
+        const renderLayers = sortedLayers(layersRef.current)
+        const now = performance.now()
+        const shouldLog = now - lastDebugLogRef.current > 1000
+        if (shouldLog) {
+          lastDebugLogRef.current = now
+          console.log('[LrcRender:request]', {
+            maxSide,
+            layers: renderLayers.map((layer) => ({
+              filePath: layer.filePath,
+              isVideo: Boolean(layer.isVideo),
+              videoTime: layer.videoTime ?? 0,
+              dst: `${layer.dstX},${layer.dstY},${layer.dstW},${layer.dstH}`,
+              src: `${layer.srcX ?? 0},${layer.srcY ?? 0},${layer.srcW ?? 1},${layer.srcH ?? 1}`,
+              opacity: layer.opacity ?? 1,
+              zIndex: layer.zIndex ?? 0,
+            })),
+          })
+        }
         const result = await lrc.renderPreview({
-          width: output.width,
-          height: output.height,
           maxSide,
-          layers: sortedLayers(layersRef.current),
+          layers: renderLayers,
         })
         if (canceled || destroyRef.current) return
         renderCanvas.width = result.width
@@ -209,6 +214,15 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
         const context = renderCanvas.getContext('2d')
         if (!context) throw new Error('画布不可用')
         context.putImageData(new ImageData(new Uint8ClampedArray(result.data), result.width, result.height), 0, 0)
+        if (shouldLog) {
+          console.log('[LrcRender:response]', {
+            resultSize: `${result.width}x${result.height}`,
+            dataLength: result.data.length,
+            canvasBuffer: `${renderCanvas.width}x${renderCanvas.height}`,
+            canvasCss: `${renderCanvas.clientWidth}x${renderCanvas.clientHeight}`,
+            parent: renderCanvas.parentElement ? `${renderCanvas.parentElement.clientWidth}x${renderCanvas.parentElement.clientHeight}` : null,
+          })
+        }
         onRender?.()
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
