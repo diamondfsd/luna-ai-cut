@@ -36,6 +36,11 @@
   object-fit: contain;
 }
 
+/* 裁剪模式下缩小预览区域，留出旋转操作边距 */
+.preview-stage[data-crop-active] {
+  padding: 60px;
+}
+
 .preview-stage-error {
   color: var(--red, #e53e3e);
   font-size: 14px;

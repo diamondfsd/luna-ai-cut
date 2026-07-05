@@ -62,17 +62,17 @@ interface WorkspaceEditValue {
   setCropPreset: (v: CropPreset) => void
   setCropSize: (v: { width: number; height: number }) => void
   setPreviousTool: (tool: WorkspaceTool) => void
-  startCrop: (sourceAspect: number) => void
+  startCrop: (sourceAspect: number, mediaSize?: { w: number; h: number }) => void
   applyCropAspect: (targetAspect: number, sourceAspect: number, nextSize?: { width: number; height: number }) => void
-  handleCropPresetChange: (preset: CropPreset, sourceAspect: number) => void
-  handleCropSizeChange: (size: { width?: number; height?: number }, sourceAspect: number) => void
+  handleCropPresetChange: (preset: CropPreset, sourceAspect: number, mediaSize?: { w: number; h: number }) => void
+  handleCropSizeChange: (size: { width?: number; height?: number }, sourceAspect: number, mediaSize?: { w: number; h: number }) => void
   handleRotateChange: (rotate: number) => void
   confirmCrop: () => void
   cancelCrop: () => void
   exitCropMode: () => void
 
   // Crop-aware pipeline update
-  selectTool: (tool: WorkspaceTool, sourceAspect?: number) => void
+  selectTool: (tool: WorkspaceTool, sourceAspect?: number, mediaSize?: { w: number; h: number }) => void
   updateWorkspacePanel: (patch: PipelinePatch) => void
 
   // Clipboard
@@ -157,12 +157,12 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   }, [cropMachine.cropActive, cropMachine.setTransformDraft, pipeline.transform, commitPatch])
 
   // Tool switching with optional crop start (needs sourceAspect from Canvas context)
-  const selectTool = useCallback((tool: WorkspaceTool, sourceAspect: number = 1) => {
+  const selectTool = useCallback((tool: WorkspaceTool, sourceAspect: number = 1, mediaSize?: { w: number; h: number }) => {
     if (tool === 'crop') {
       if (activeTool !== 'crop') cropMachine.setPreviousTool(activeTool)
       setActiveTool('crop')
       if (cropMachine.cropActive) return
-      cropMachine.startCrop(sourceAspect)
+      cropMachine.startCrop(sourceAspect, mediaSize)
       return
     }
     if (cropMachine.cropActive) {

@@ -64,17 +64,18 @@ export function WorkspaceEditSidebar({ mediaSize, onWatermarkLayerChange }: Work
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
 
-  const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * 2160)
-  const cropHeight = edit.cropSize.height || 2160
+  const refH = mediaSize?.h ?? 2160
+  const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
+  const cropHeight = edit.cropSize.height || refH
 
   // Wrap crop preset/size handlers to inject sourceAspect from canvas context
   const onCropPresetChange = useMemo(
-    () => (preset: CropPreset) => edit.handleCropPresetChange(preset, canvas.sourceAspect),
-    [edit.handleCropPresetChange, canvas.sourceAspect],
+    () => (preset: CropPreset) => edit.handleCropPresetChange(preset, canvas.sourceAspect, mediaSize ?? undefined),
+    [edit.handleCropPresetChange, canvas.sourceAspect, mediaSize],
   )
   const onCropSizeChange = useMemo(
-    () => (size: { width?: number; height?: number }) => edit.handleCropSizeChange(size, canvas.sourceAspect),
-    [edit.handleCropSizeChange, canvas.sourceAspect],
+    () => (size: { width?: number; height?: number }) => edit.handleCropSizeChange(size, canvas.sourceAspect, mediaSize ?? undefined),
+    [edit.handleCropSizeChange, canvas.sourceAspect, mediaSize],
   )
 
   // 水印检测由 WatermarkSettings 内部根据 filePath 自动完成
@@ -168,7 +169,7 @@ export function WorkspaceEditSidebar({ mediaSize, onWatermarkLayerChange }: Work
                 size="compact"
                 icon={item.icon}
                 aria-label={item.label}
-                onClick={() => edit.selectTool(item.value, canvas.sourceAspect)}
+                onClick={() => edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)}
               />
             </Tooltip>
           ))}

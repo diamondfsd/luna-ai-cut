@@ -23,11 +23,12 @@ export function useCropMachine(
   }, [])
 
   const startCrop = useCallback(
-    (sourceAspect: number) => {
+    (sourceAspect: number, mediaSize?: { w: number; h: number }) => {
+      const refH = mediaSize?.h ?? 2160
       const aspectRatio = cropPreset === 'original'
         ? frameAspect(sourceAspect, pipeline.transform.orientation)
         : cropPreset === 'free' ? null
-        : (cropSize.width || Math.round(sourceAspect * 2160)) / Math.max(cropSize.height || 2160, 1)
+        : (cropSize.width || Math.round(sourceAspect * refH)) / Math.max(cropSize.height || refH, 1)
       const crop = pipeline.transform.crop ?? maxCropInsideImage({
         sourceAspect,
         orientation: pipeline.transform.orientation,
@@ -36,7 +37,7 @@ export function useCropMachine(
       })
       setTransformDraft({ ...pipeline.transform, crop })
       if (cropSize.width <= 0 || cropSize.height <= 0) {
-        setCropSize({ width: Math.round(sourceAspect * 2160), height: 2160 })
+        setCropSize({ width: Math.round(sourceAspect * refH), height: refH })
       }
       setCropActive(true)
     },
@@ -56,17 +57,18 @@ export function useCropMachine(
   )
 
   const handleCropPresetChange = useCallback(
-    (preset: CropPreset, sourceAspect: number) => {
+    (preset: CropPreset, sourceAspect: number, mediaSize?: { w: number; h: number }) => {
+      const refH = mediaSize?.h ?? 2160
       setCropPreset(preset)
       if (!cropActive) setCropActive(true)
       if (preset === 'free') return
       if (preset === 'original') {
-        applyCropAspect(sourceAspect, sourceAspect, { width: Math.round(sourceAspect * 2160), height: 2160 })
+        applyCropAspect(sourceAspect, sourceAspect, { width: Math.round(sourceAspect * refH), height: refH })
         return
       }
       if (preset === 'custom') {
-        const width = cropSize.width || Math.round(sourceAspect * 2160)
-        const height = cropSize.height || 2160
+        const width = cropSize.width || Math.round(sourceAspect * refH)
+        const height = cropSize.height || refH
         applyCropAspect(width / Math.max(height, 1), sourceAspect, { width, height })
         return
       }
@@ -77,9 +79,10 @@ export function useCropMachine(
   )
 
   const handleCropSizeChange = useCallback(
-    (size: { width?: number; height?: number }, sourceAspect: number) => {
-      const width = Math.max(1, Math.round(size.width ?? (cropSize.width || Math.round(sourceAspect * 2160))))
-      const height = Math.max(1, Math.round(size.height ?? (cropSize.height || 2160)))
+    (size: { width?: number; height?: number }, sourceAspect: number, mediaSize?: { w: number; h: number }) => {
+      const refH = mediaSize?.h ?? 2160
+      const width = Math.max(1, Math.round(size.width ?? (cropSize.width || Math.round(sourceAspect * refH))))
+      const height = Math.max(1, Math.round(size.height ?? (cropSize.height || refH)))
       setCropPreset('custom')
       applyCropAspect(width / height, sourceAspect, { width, height })
     },

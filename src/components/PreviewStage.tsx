@@ -128,7 +128,7 @@ function projectCanvasFor(resolution: MediaResolution | null): StageSize | null 
 }
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
-  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, onMetricsChange, onMediaSize, renderOverlay },
+  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, cropActive, onMetricsChange, onMediaSize, renderOverlay },
   ref,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -476,6 +476,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     <div
       ref={stageRef}
       className="preview-stage"
+      data-crop-active={cropActive ? '' : undefined}
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
       {renderState && (
