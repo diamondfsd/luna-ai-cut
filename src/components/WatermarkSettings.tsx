@@ -19,27 +19,40 @@ function posToAnchor(pos: string): WatermarkPositioning['anchor'] {
 }
 
 /** 根据方向返回合适的定位参数 */
-function positioningForOrient(isLandscape: boolean, anchor: WatermarkPositioning['anchor']): WatermarkPositioning {
+function positioningForOrient(
+  isLandscape: boolean,
+  anchor: WatermarkPositioning['anchor'],
+  refWidth: number,
+  refHeight: number,
+): WatermarkPositioning {
   return {
     anchor,
     targetWidth: isLandscape ? 0.15 : 0.2,
     marginX: 0.02,
     marginY: 0.02,
+    refWidth,
+    refHeight,
   }
 }
 
 /**
  * 构建水印 PreviewLayer，使用 positioning 让 Rust 自动定位
  */
-export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, isLandscape: boolean): PreviewLayer | null {
+export function buildWatermarkStaticLayer(
+  settings: WatermarkSettingsType,
+  isLandscape: boolean,
+  refWidth: number,
+  refHeight: number,
+): PreviewLayer | null {
   if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
   const { imagePath: filePath } = settings
-  const positioning = positioningForOrient(isLandscape, posToAnchor(settings.position))
+  const positioning = positioningForOrient(isLandscape, posToAnchor(settings.position), refWidth, refHeight)
   console.log('[WatermarkStaticLayer] build', {
     filePath,
     wmAspect: settings.wmAspect,
     isLandscape,
     position: settings.position,
+    refSize: `${refWidth}x${refHeight}`,
     positioning,
   })
   return {
@@ -57,7 +70,7 @@ export function buildResolvedWatermarkStaticLayer(
   height: number,
 ): PreviewLayer | null {
   if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
-  return buildWatermarkStaticLayer(settings, width >= height)
+  return buildWatermarkStaticLayer(settings, width >= height, width, height)
 }
 
 const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }> = [
@@ -229,7 +242,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       wmAspect: info ? info.width / info.height : undefined,
     }
     const layer = enriched.imagePath && enriched.wmAspect
-      ? buildWatermarkStaticLayer(enriched, isLandscape)
+      ? buildWatermarkStaticLayer(enriched, isLandscape, effectiveMediaWidth ?? 1920, effectiveMediaHeight ?? 1080)
       : undefined
     console.log('[WatermarkSettings] computed layer', {
       filePath,

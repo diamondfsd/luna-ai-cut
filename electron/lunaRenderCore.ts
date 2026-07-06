@@ -88,6 +88,8 @@ interface LayerPositioningData {
   targetWidth: number
   marginX: number
   marginY: number
+  refWidth: number
+  refHeight: number
 }
 
 // ── Native 内部全字段类型 ──
