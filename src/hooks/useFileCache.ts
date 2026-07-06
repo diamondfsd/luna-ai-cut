@@ -16,9 +16,9 @@ interface FileCache {
 /**
  * 根据 sourceUrl 获取本地缓存文件和缩略图。
  *
- * 与 MediaCard 一致的缓存逻辑：
- * - HTTP URL → 调用 cacheFile 下载到本地、生成缩略图
- * - 本地路径 → 直接返回，无需缓存
+ * 同时支持 HTTP 和 file:// 路径：
+ * - HTTP → cacheFile 下载到本地 + 生成缩略图
+ * - file:// → cacheFile 跳过下载，直接生成本地缩略图
  *
  * @param sourceUrl 文件 URL
  * @param enabled 是否允许触发缓存（设为 false 可延迟缓存，适合列表滚动懒加载）
@@ -43,16 +43,15 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
       return
     }
 
-    // 非 HTTP 路径直接使用，无需缓存
-    if (!sourceUrl.startsWith('http')) {
+    const isHttp = sourceUrl.startsWith('http')
+
+    // file:// 路径：文件已在本地，直接设置路径，但仍需 cacheFile 触发缩略图生成
+    if (!isHttp) {
       setCacheFilePath(sourceUrl)
-      setIsLoading(false)
-      return
     }
 
-    // HTTP 路径：触发缓存
-    setIsLoading(true)
-
+    // 触发缓存（HTTP 下载 + 缩略图生成，或 file:// 缩略图生成）
+    setIsLoading(isHttp)
     window.luna
       .cacheFile(sourceUrl)
       .catch(() => {
