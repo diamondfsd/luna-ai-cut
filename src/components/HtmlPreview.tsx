@@ -41,7 +41,7 @@ export function HtmlPreview({ url }: HtmlPreviewProps) {
   if (!url) {
     return (
       <div className="preview-loading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>
-        正在缓存文件...
+        正在加载...
       </div>
     )
   }
