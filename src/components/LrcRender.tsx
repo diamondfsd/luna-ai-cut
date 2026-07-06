@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
-import type { PreviewLayer } from '../shared/types'
+import type { PreviewLayer, RenderLayer, StaticLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 
 const PREVIEW_TEXTURE_MAX_SIDE = 1920
@@ -29,56 +29,15 @@ interface LrcRenderProps {
   onVideoElement?: (el: HTMLVideoElement | null) => void
 }
 
-interface RenderLayer {
-  textureId: number
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-  color?: unknown
-  transform?: unknown
-}
-
-interface StaticLayer {
-  imagePath: string
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-  color?: unknown
-  transform?: unknown
-}
-
-interface TextureInfo {
-  textureId: number | null
+interface RenderPreviewOutput {
   width: number
   height: number
-}
-
-interface VideoInfo {
-  video: HTMLVideoElement
-  offscreen: HTMLCanvasElement
-}
-
-interface PlanPreviewInput {
-  width?: number
-  height?: number
-  maxSide?: number
-  layers: Array<{ layer: PreviewLayer; texture: { textureId: number; width: number; height: number } }>
-}
-
-interface PlanPreviewOutput {
-  width: number
-  height: number
-  layers: RenderLayer[]
+  data: Uint8Array | ArrayBuffer | { data?: number[] }
 }
 
 interface LunaRenderCore {
   init: () => Promise<void>
-  loadTexture: (data: Uint8Array, width: number, height: number) => Promise<number>
-  loadTextureFromPath: (path: string, maxSize: number) => Promise<{ textureId: number; width: number; height: number }>
-  updateTexture: (textureId: number, data: Uint8Array) => Promise<void>
-  releaseTexture: (textureId: number) => Promise<void>
-  renderFrame: (canvasWidth: number, canvasHeight: number, layers: RenderLayer[]) => Promise<Uint8Array>
-  planPreview: (input: PlanPreviewInput) => Promise<PlanPreviewOutput>
+  renderPreview: (input: { maxSide?: number; width?: number; height?: number; layers: PreviewLayer[] }) => Promise<RenderPreviewOutput>
   exportImageFromSources: (outputPath: string, width: number, height: number, layers: PreviewLayer[], format: string, quality: number) => Promise<void>
   exportVideo: (
     inputPath: string,
@@ -102,72 +61,21 @@ function layerKey(layer: PreviewLayer): string {
   return `${layer.isVideo ? 'v' : 's'}:${layer.filePath}`
 }
 
+function summarizeLayer(layer: PreviewLayer) {
+  return {
+    filePath: layer.filePath,
+    isVideo: Boolean(layer.isVideo),
+    videoTime: layer.videoTime ?? 0,
+    zIndex: layer.zIndex ?? 0,
+    dst: [layer.dstX, layer.dstY, layer.dstW, layer.dstH],
+    src: [layer.srcX, layer.srcY, layer.srcW, layer.srcH],
+    fit: layer.fit,
+    opacity: layer.opacity,
+  }
+}
+
 function sortedLayers(layers: PreviewLayer[]): PreviewLayer[] {
   return [...layers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-}
-
-function fitTextureSize(width: number, height: number): { width: number; height: number } {
-  const scale = Math.min(1, PREVIEW_TEXTURE_MAX_SIDE / Math.max(width, height))
-  return {
-    width: Math.max(1, Math.round(width * scale)),
-    height: Math.max(1, Math.round(height * scale)),
-  }
-}
-
-function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): { data: Uint8Array; width: number; height: number } | null {
-  if (video.videoWidth <= 0 || video.videoHeight <= 0) {
-    console.debug('[lrc-video-first-frame]', {
-      event: 'no-video-size',
-      readyState: video.readyState,
-      currentTime: video.currentTime,
-      src: video.currentSrc || video.src,
-    })
-    return null
-  }
-  const { width, height } = fitTextureSize(video.videoWidth, video.videoHeight)
-  canvas.width = width
-  canvas.height = height
-  const context = canvas.getContext('2d')
-  if (!context) return null
-  context.drawImage(video, 0, 0, width, height)
-  const imageData = context.getImageData(0, 0, width, height)
-  return { data: new Uint8Array(imageData.data.buffer), width, height }
-}
-
-type VideoFrameCallbackVideo = HTMLVideoElement & {
-  requestVideoFrameCallback?: (callback: () => void) => number
-  cancelVideoFrameCallback?: (handle: number) => void
-}
-
-function requestDecodedVideoFrame(video: HTMLVideoElement, callback: () => void): () => void {
-  const frameVideo = video as VideoFrameCallbackVideo
-  let canceled = false
-  let frameHandle: number | null = null
-  const timeoutHandle = window.setTimeout(() => {
-    if (!canceled) {
-      console.debug('[lrc-video-first-frame]', { event: 'fallback-timeout', src: video.currentSrc || video.src, readyState: video.readyState })
-      callback()
-    }
-  }, 80)
-
-  if (typeof frameVideo.requestVideoFrameCallback === 'function') {
-    frameHandle = frameVideo.requestVideoFrameCallback(() => {
-      if (!canceled) {
-        console.debug('[lrc-video-first-frame]', { event: 'video-frame-callback', src: video.currentSrc || video.src, readyState: video.readyState })
-        callback()
-      }
-    })
-  } else {
-    console.debug('[lrc-video-first-frame]', { event: 'no-video-frame-callback', src: video.currentSrc || video.src })
-  }
-
-  return () => {
-    canceled = true
-    window.clearTimeout(timeoutHandle)
-    if (frameHandle != null && typeof frameVideo.cancelVideoFrameCallback === 'function') {
-      frameVideo.cancelVideoFrameCallback(frameHandle)
-    }
-  }
 }
 
 function staticLayers(layers: PreviewLayer[]): StaticLayer[] {
@@ -208,6 +116,13 @@ function videoRenderLayer(layer: PreviewLayer): RenderLayer {
   }
 }
 
+function bytesFromRenderData(data: RenderPreviewOutput['data']): Uint8ClampedArray {
+  if (data instanceof Uint8Array) return new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength)
+  if (data instanceof ArrayBuffer) return new Uint8ClampedArray(data)
+  if (Array.isArray(data.data)) return new Uint8ClampedArray(data.data)
+  return new Uint8ClampedArray(data as ArrayBuffer)
+}
+
 export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
   { layers, canvasRef: extRef, className, onError, onReady, onRender, onMediaSize, maxSide, onVideoElement },
   ref,
@@ -217,17 +132,15 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   const destroyRef = useRef(false)
   const rafRef = useRef(0)
   const layersRef = useRef<PreviewLayer[]>(layers)
-  const texturesRef = useRef<Map<string, TextureInfo>>(new Map())
-  const videosRef = useRef<Map<string, VideoInfo>>(new Map())
+  const videosRef = useRef<Map<string, HTMLVideoElement>>(new Map())
   const videoElementCalledRef = useRef(false)
   const renderingRef = useRef(false)
+  const renderQueuedRef = useRef(false)
   const lastVideoFrameAtRef = useRef(0)
   const lastDebugAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
-  const cancelInitialFrameRef = useRef<(() => void) | null>(null)
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
-  const [renderKey, setRenderKey] = useState(0)
   layersRef.current = layers
 
   useEffect(() => {
@@ -239,7 +152,6 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       return
     }
     destroyRef.current = false
-    texturesRef.current.clear()
     lrc.init()
       .then(() => {
         if (!destroyRef.current) {
@@ -256,61 +168,61 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     return () => {
       destroyRef.current = true
       cancelAnimationFrame(rafRef.current)
-      const currentLrc = getLRC()
-      for (const [, texture] of texturesRef.current) {
-        if (texture.textureId != null) currentLrc?.releaseTexture(texture.textureId).catch(() => {})
-      }
-      for (const [, video] of videosRef.current) video.video.pause()
-      cancelInitialFrameRef.current?.()
-      cancelInitialFrameRef.current = null
-      texturesRef.current.clear()
+      for (const [, video] of videosRef.current) video.pause()
       videosRef.current.clear()
       onVideoElement?.(null)
     }
   }, [])
 
-  async function compositeRender() {
+  function layersWithVideoTime(): PreviewLayer[] {
+    return sortedLayers(layersRef.current).map((layer) => {
+      if (!layer.isVideo) return layer
+      const video = videosRef.current.get(layerKey(layer))
+      return { ...layer, videoTime: video?.currentTime ?? layer.videoTime ?? 0 }
+    })
+  }
+
+  async function renderPreviewFrame() {
     const lrc = getLRC()
     const canvas = canvasRef.current
-    if (!lrc || !canvas || renderingRef.current || destroyRef.current) return
-    const renderLayers = sortedLayers(layersRef.current)
-    const plannedLayers = renderLayers.flatMap((layer) => {
-      const texture = texturesRef.current.get(layerKey(layer))
-      if (!texture || texture.textureId == null) return []
-      return [{
-        layer,
-        texture: {
-          textureId: texture.textureId,
-          width: texture.width,
-          height: texture.height,
-        },
-      }]
-    })
-    if (plannedLayers.length === 0) return
+    if (!lrc || !canvas || destroyRef.current) return
+    if (renderingRef.current) {
+      renderQueuedRef.current = true
+      return
+    }
+
+    const renderLayers = layersWithVideoTime()
+    if (renderLayers.length === 0) return
+
     renderingRef.current = true
+    renderQueuedRef.current = false
     try {
       const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
-      const plan = await lrc.planPreview({ maxSide: effectiveMaxSide, layers: plannedLayers })
+      console.log('[LrcRender] renderPreview -> rust', {
+        maxSide: effectiveMaxSide,
+        layers: renderLayers.map(summarizeLayer),
+      })
+      const result = await lrc.renderPreview({ maxSide: effectiveMaxSide, layers: renderLayers })
       if (destroyRef.current) return
-      // 通知外部素材的实际渲染尺寸
-      if (plan.width !== lastMediaSizeRef.current[0] || plan.height !== lastMediaSizeRef.current[1]) {
-        lastMediaSizeRef.current = [plan.width, plan.height]
-        onMediaSize?.(plan.width, plan.height)
+
+      if (result.width !== lastMediaSizeRef.current[0] || result.height !== lastMediaSizeRef.current[1]) {
+        lastMediaSizeRef.current = [result.width, result.height]
+        onMediaSize?.(result.width, result.height)
       }
-      const result = await lrc.renderFrame(plan.width, plan.height, plan.layers)
-      if (destroyRef.current) return
-      canvas.width = plan.width
-      canvas.height = plan.height
+
+      canvas.width = result.width
+      canvas.height = result.height
       const context = canvas.getContext('2d')
       if (!context) throw new Error('画布不可用')
-      context.putImageData(new ImageData(new Uint8ClampedArray(result), plan.width, plan.height), 0, 0)
+      context.putImageData(new ImageData(bytesFromRenderData(result.data), result.width, result.height), 0, 0)
+
       const now = performance.now()
       if (now - lastDebugAtRef.current > 1000) {
         lastDebugAtRef.current = now
-        console.log('[LrcRender:plan]', {
+        console.log('[LrcRender:renderPreview]', {
           maxSide: effectiveMaxSide,
-          output: `${plan.width}x${plan.height}`,
-          layers: plan.layers.length,
+          output: `${result.width}x${result.height}`,
+          layers: renderLayers.length,
           canvasCss: `${canvas.clientWidth}x${canvas.clientHeight}`,
           parent: canvas.parentElement ? `${canvas.parentElement.clientWidth}x${canvas.parentElement.clientHeight}` : null,
         })
@@ -319,48 +231,26 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       onError?.(msg)
-      setRenderKey((key) => key + 1)
     } finally {
       renderingRef.current = false
+      if (renderQueuedRef.current && !destroyRef.current) {
+        renderQueuedRef.current = false
+        void renderPreviewFrame()
+      }
     }
-  }
-
-  async function upsertVideoTexture(layer: PreviewLayer, info: VideoInfo, allowPaused = false): Promise<boolean> {
-    const lrc = getLRC()
-    if (!lrc || (!allowPaused && info.video.paused) || info.video.readyState < 2) return false
-    const frame = drawVideoFrame(info.video, info.offscreen)
-    if (!frame) return false
-    const key = layerKey(layer)
-    const current = texturesRef.current.get(key)
-    if (current?.textureId != null && current.width === frame.width && current.height === frame.height) {
-      await lrc.updateTexture(current.textureId, frame.data)
-      return true
-    }
-    if (current?.textureId != null) await lrc.releaseTexture(current.textureId).catch(() => {})
-    const textureId = await lrc.loadTexture(frame.data, frame.width, frame.height)
-    texturesRef.current.set(key, { textureId, width: frame.width, height: frame.height })
-    return true
   }
 
   useEffect(() => {
-    // 图层变化时重置媒体尺寸跟踪，确保 onMediaSize 回调总能触发
     lastMediaSizeRef.current = [0, 0]
+    console.log('[LrcRender] received layers', layers.map(summarizeLayer))
 
     if (!ready) return
-    const lrc = getLRC()
-    if (!lrc) return
-    let canceled = false
-    const currentKeys = new Set(layers.map(layerKey))
+    const currentKeys = new Set(layers.filter((layer) => layer.isVideo).map(layerKey))
 
-    for (const [key, texture] of texturesRef.current) {
-      if (!currentKeys.has(key)) {
-        if (texture.textureId != null) lrc.releaseTexture(texture.textureId).catch(() => {})
-        texturesRef.current.delete(key)
-      }
-    }
     for (const [key, video] of videosRef.current) {
       if (!currentKeys.has(key)) {
-        video.video.pause()
+        console.log('[LrcRender] release video clock', { key })
+        video.pause()
         videosRef.current.delete(key)
       }
     }
@@ -370,125 +260,47 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       onVideoElement?.(null)
     }
 
-    for (const layer of layers.filter((item) => !item.isVideo)) {
-      const key = layerKey(layer)
-      if (texturesRef.current.has(key)) continue
-      texturesRef.current.set(key, { textureId: null, width: 0, height: 0 })
-      lrc.loadTextureFromPath(layer.filePath, PREVIEW_TEXTURE_MAX_SIDE)
-        .then((texture) => {
-          if (canceled || destroyRef.current) return
-          texturesRef.current.set(key, texture)
-          void compositeRender()
-        })
-        .catch((error) => {
-          if (!canceled) onError?.(error instanceof Error ? error.message : String(error))
-        })
-    }
-
     for (const layer of layers.filter((item) => item.isVideo)) {
       const key = layerKey(layer)
       if (videosRef.current.has(key)) continue
+      console.log('[LrcRender] create video clock', { key, layer: summarizeLayer(layer) })
       const video = document.createElement('video')
       video.muted = false
       video.loop = false
       video.playsInline = true
       video.preload = 'auto'
       video.src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
-      const offscreen = document.createElement('canvas')
-      videosRef.current.set(key, { video, offscreen })
-      const renderVideoFrame = () => {
-        const info = videosRef.current.get(key)
-        if (!info || destroyRef.current) return
-        void upsertVideoTexture(layer, info, true).then((updated) => {
-          console.debug('[lrc-video-first-frame]', {
-            event: 'upsert-video-texture',
-            updated,
-            readyState: video.readyState,
-            currentTime: video.currentTime,
-            paused: video.paused,
-            size: `${video.videoWidth}x${video.videoHeight}`,
-            key,
-          })
-          if (updated) void compositeRender()
-        })
-      }
-      const scheduleVideoFrame = () => {
-        cancelInitialFrameRef.current?.()
-        cancelInitialFrameRef.current = requestDecodedVideoFrame(video, renderVideoFrame)
-      }
-      const onLoadedMetadata = () => {
+      videosRef.current.set(key, video)
+      video.addEventListener('loadedmetadata', () => {
         if (destroyRef.current) return
-        console.debug('[lrc-video-first-frame]', {
-          event: 'loadedmetadata',
-          readyState: video.readyState,
-          duration: video.duration,
-          size: `${video.videoWidth}x${video.videoHeight}`,
-          key,
-        })
-        try {
-          const firstFrameTime = Number.isFinite(video.duration) && video.duration > 0.05 ? 0.001 : 0
-          video.currentTime = firstFrameTime
-        } catch {
-          scheduleVideoFrame()
-        }
-        scheduleVideoFrame()
-      }
-      const onSeeked = scheduleVideoFrame
-      const onLoadedData = scheduleVideoFrame
-      const onCanPlay = scheduleVideoFrame
-      video.addEventListener('error', () => {
-        console.debug('[lrc-video-first-frame]', {
-          event: 'video-error',
-          error: video.error?.message,
-          code: video.error?.code,
-          src: video.currentSrc || video.src,
-          key,
-        })
+        void renderPreviewFrame()
       })
-      video.addEventListener('loadedmetadata', onLoadedMetadata)
-      video.addEventListener('seeked', onSeeked)
-      video.addEventListener('loadeddata', onLoadedData)
-      video.addEventListener('canplay', onCanPlay)
-      video.addEventListener('playing', onCanPlay)
+      video.addEventListener('seeked', () => {
+        if (destroyRef.current) return
+        void renderPreviewFrame()
+      })
+      video.addEventListener('play', () => void renderPreviewFrame())
       video.load()
-      scheduleVideoFrame()
       if (onVideoElement && !videoElementCalledRef.current) {
         videoElementCalledRef.current = true
         onVideoElement(video)
       }
     }
 
-    const staticReady = layers
-      .filter((item) => !item.isVideo)
-      .every((layer) => texturesRef.current.get(layerKey(layer))?.textureId != null)
-    const videoReady = layers
-      .filter((item) => item.isVideo)
-      .every((layer) => texturesRef.current.get(layerKey(layer))?.textureId != null)
-    if (staticReady && videoReady) void compositeRender()
-
-    return () => {
-      canceled = true
-    }
-  }, [layers, ready, renderKey])
+    void renderPreviewFrame()
+  }, [layers, ready])
 
   useEffect(() => {
     if (!ready || !layers.some((layer) => layer.isVideo)) return
 
     function loop() {
-      const now = performance.now()
-      if (now - lastVideoFrameAtRef.current >= 1000 / VIDEO_RENDER_FPS) {
-        lastVideoFrameAtRef.current = now
-        const pending = layersRef.current
-          .filter((layer) => layer.isVideo)
-          .map((layer) => {
-            const info = videosRef.current.get(layerKey(layer))
-            return info ? upsertVideoTexture(layer, info) : Promise.resolve(false)
-          })
-        Promise.all(pending)
-          .then((updated) => {
-            if (updated.some(Boolean)) void compositeRender()
-          })
-          .catch(() => {})
+      const hasPlayingVideo = [...videosRef.current.values()].some((video) => !video.paused && !video.ended)
+      if (hasPlayingVideo) {
+        const now = performance.now()
+        if (now - lastVideoFrameAtRef.current >= 1000 / VIDEO_RENDER_FPS) {
+          lastVideoFrameAtRef.current = now
+          void renderPreviewFrame()
+        }
       }
       rafRef.current = requestAnimationFrame(loop)
     }

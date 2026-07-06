@@ -10,23 +10,16 @@ import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import './PreviewStage.css'
 
-/** 缩放模式 */
 export type ScaleMode = 'fill' | 'contain'
 
 interface PreviewStageProps {
   url: string | null
   pending?: boolean
-  /** 缩放模式，默认 contain */
   scaleMode?: ScaleMode
-  /** 叠加层（水印、贴纸等） */
   extraLayers?: PreviewLayer[]
-  /** 导出选项（启用后可通过 ref.export() 导出当前帧） */
   exportOptions?: ExportOptions
-  /** 编辑工作台管线。传入后会写入主媒体 layer，由 Rust/wgpu 统一处理。 */
   pipeline?: EditPipeline
-  /** 裁剪编辑态：预览画面缩小留出操作边距，底图仍由传入 pipeline 决定。 */
   cropActive?: boolean
-  /** 预览几何信息变化，用于裁切 UI 等编辑控件。 */
   onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void
   onMediaSize?: (width: number, height: number) => void
   renderOverlay?: () => ReactNode
@@ -37,19 +30,13 @@ export interface MediaResolution {
   height: number
 }
 
-/** 导出选项 */
 export interface ExportOptions {
-  /** 是否启用导出功能 */
   enable: boolean
-  /** 图片格式，默认 jpeg */
   format?: 'jpeg' | 'png' | 'webp'
-  /** 图片质量（仅 jpeg/webp 有效），0-1，默认 1.0 */
   quality?: number
 }
 
-/** PreviewStage 暴露给父组件的方法 */
 export interface PreviewStageHandle {
-  /** 导出当前预览帧为图片文件 */
   export(): Promise<{ path: string; name: string }>
 }
 
@@ -79,10 +66,6 @@ function containFrame(media: MediaResolution, stage: StageSize): Pick<PreviewLay
   return { dstX: 0, dstY: (1 - dstH) / 2, dstW: 1, dstH }
 }
 
-/**
- * 根据媒体 URL 和缩放模式生成 PreviewLayer[]
- * @param stageSize - Project Canvas 尺寸（非 UI Stage 尺寸）
- */
 export function buildLayers(
   url: string,
   scaleMode: ScaleMode = 'contain',
@@ -105,9 +88,6 @@ export function buildLayers(
   return []
 }
 
-/**
- * 计算宽高比（保留两位小数）
- */
 export function calcAspectRatio(width: number, height: number): number {
   if (height === 0) return 1
   return Math.round((width / height) * 100) / 100
@@ -279,9 +259,15 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
         transform: pipelineTransformToRenderTransform(pipeline.transform),
       }
     }
+    const m = main[0]
+    if (!m) {
+      if (extraLayers?.length) {
+        console.log('[PreviewStage] skip overlay-only render', { sourceUrl, extraLayers: extraLayers.length })
+      }
+      return main
+    }
     if (!extraLayers?.length) return main
 
-    const m = main[0]
     const cX = m?.dstX ?? 0
     const cY = m?.dstY ?? 0
     const cW = m?.dstW ?? 1
@@ -293,12 +279,29 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       dstW: l.dstW * cW,
       dstH: l.dstH * cH,
     }))
-    return [...main, ...adjusted]
+    const finalLayers = [...main, ...adjusted]
+    console.log('[PreviewStage] build adjusted layers', {
+      sourceUrl,
+      resolution: layerResolution ? `${layerResolution.width}x${layerResolution.height}` : null,
+      canvas,
+      main,
+      extraLayers,
+      finalLayers,
+    })
+    return finalLayers
   }, [scaleMode, resolution, extraLayers, pipeline])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []
-    return buildAdjustedLayers(displayUrl, resolution, livePlaying ? 'fill' : undefined)
+    const nextLayers = buildAdjustedLayers(displayUrl, resolution, livePlaying ? 'fill' : undefined)
+    console.log('[PreviewStage] render layers', {
+      displayUrl,
+      layoutUrl,
+      pending,
+      resolution: `${resolution.width}x${resolution.height}`,
+      layers: nextLayers,
+    })
+    return nextLayers
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
 
   // 通过 IPC 获取媒体文件实际分辨率
@@ -328,7 +331,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   }, [resolution, onMediaSize])
 
   useEffect(() => {
-    if (layers.length === 0) return
+    if (layers.length === 0) {
+      setRenderState(null)
+      return
+    }
     setRenderState({ layers })
   }, [layers])
 

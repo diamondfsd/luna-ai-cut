@@ -20,6 +20,20 @@ interface PreviewModalProps {
   onClose: () => void
 }
 
+function toLocalPath(filePath: string | null): string | null {
+  if (!filePath) return null
+  if (!filePath.startsWith('file://')) return filePath
+  try {
+    return decodeURIComponent(new URL(filePath).pathname)
+  } catch {
+    return filePath
+  }
+}
+
+function isHttpPath(filePath: string | null): boolean {
+  return Boolean(filePath?.startsWith('http'))
+}
+
 export function PreviewModal({
   filePath,
   filePathList,
@@ -43,13 +57,21 @@ export function PreviewModal({
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
   const { cacheFilePath: resolvedPath } = useFileCache(currentFilePath)
 
-  const displaySource = resolvedPath
-    ? (filePathToPreviewUrl(resolvedPath) ?? resolvedPath)
-    : (currentFilePath?.startsWith('http') ? null : filePathToPreviewUrl(currentFilePath) ?? currentFilePath)
+  const isRemoteSource = isHttpPath(currentFilePath)
+  const activeSourcePath = isRemoteSource ? resolvedPath : currentFilePath
+  const displaySource = activeSourcePath ? (filePathToPreviewUrl(activeSourcePath) ?? activeSourcePath) : null
+  const stageSource = toLocalPath(activeSourcePath)
 
   useEffect(() => {
+    console.log('[PreviewModal] source changed', {
+      currentFilePath,
+      resolvedPath,
+      activeSourcePath,
+      displaySource,
+      stageSource,
+    })
     setWatermarkLayers([])
-  }, [currentFilePath])
+  }, [currentFilePath, displaySource, resolvedPath, stageSource])
 
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(_settings: WatermarkSettingsType, layer?: PreviewLayer) {
@@ -104,7 +126,7 @@ export function PreviewModal({
               </div>
             ) : (
               <PreviewStage
-                url={displaySource}
+                url={stageSource}
                 extraLayers={watermarkLayers}
                 exportOptions={{ enable: true }}
               />

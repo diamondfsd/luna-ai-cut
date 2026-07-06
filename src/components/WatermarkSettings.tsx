@@ -159,7 +159,14 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     setResolvedMediaSize(null)
     window.luna.workspace.getMediaResolution(filePath)
       .then((resolution) => {
-        if (!cancelled) setResolvedMediaSize({ w: resolution.width, h: resolution.height })
+        if (!cancelled) {
+          console.log('[WatermarkSettings] media resolution', {
+            filePath,
+            width: resolution.width,
+            height: resolution.height,
+          })
+          setResolvedMediaSize({ w: resolution.width, h: resolution.height })
+        }
       })
       .catch(() => {
         if (!cancelled) setResolvedMediaSize(null)
@@ -226,6 +233,23 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     const layer = enriched.imagePath && enriched.wmAspect
       ? buildWatermarkStaticLayer(enriched, aspectKey)
       : undefined
+    console.log('[WatermarkSettings] computed layer', {
+      filePath,
+      mediaSize: effectiveMediaWidth && effectiveMediaHeight ? `${effectiveMediaWidth}x${effectiveMediaHeight}` : null,
+      aspectKey,
+      layoutKey,
+      raw,
+      style: next.style,
+      position: next.position,
+      watermarkSize: info ? `${info.width}x${info.height}` : null,
+      wmAspect: enriched.wmAspect,
+      ratios: {
+        widthRatio: enriched.widthRatio,
+        xRatio: enriched.xRatio,
+        yRatio: enriched.yRatio,
+      },
+      layer,
+    })
     setInternalSettings(enriched)
     onChange(enriched, layer ?? undefined)
   }, [currentSettings, onChange, filePath, effectiveMediaWidth, effectiveMediaHeight])
