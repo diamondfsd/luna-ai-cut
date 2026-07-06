@@ -12,7 +12,6 @@ import { bakeColorLutData } from './ffmpeg/lutGenerator'
 import type { IpcContext } from './ipcContext'
 import { logMainInfo } from './loggerService'
 import { combineLivePhoto, isGoogleMotionPhoto } from './livePhotoService'
-import { exportTripleStitch, type TripleStitchExportOptions } from './creativeTripleStitchService'
 import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
 import {
   addAssetsToWorkspaceProject,
@@ -332,13 +331,4 @@ export function register(_ctx: IpcContext): void {
     return { path: destinationPath, name: path.basename(destinationPath) }
   })
 
-  // ── 创意工坊：三联画导出 ──
-  ipcMain.handle('workspace:exportTripleStitch', async (event, options: TripleStitchExportOptions) => {
-    const settings = await getSettings()
-    if (!settings.exportDir) throw new Error('未设置导出目录')
-    if (options.outputs.appleLivePhoto && process.platform !== 'darwin') {
-      throw new Error('Apple Live 图仅支持在 Mac 上导出')
-    }
-    return exportTripleStitch(settings.exportDir, options, event.sender)
-  })
 }

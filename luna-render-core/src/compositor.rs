@@ -143,7 +143,9 @@ struct GpuLayerParams {
     flip_h: f32,
     flip_v: f32,
     scale: f32,
-    _pad: [f32; 1],
+    translate_x: f32,
+    translate_y: f32,
+    _pad: [f32; 3],
     curve_data: [[f32; 4]; 30],
     hsl_data: [[f32; 4]; 8],
 }
@@ -1158,7 +1160,17 @@ impl Compositor {
                         .as_ref()
                         .map(|t| t.scale.max(0.0001) as f32)
                         .unwrap_or(1.0),
-                    _pad: [0.0; 1],
+                    translate_x: layer
+                        .transform
+                        .as_ref()
+                        .and_then(|t| t.translate_x)
+                        .unwrap_or(0.0) as f32,
+                    translate_y: layer
+                        .transform
+                        .as_ref()
+                        .and_then(|t| t.translate_y)
+                        .unwrap_or(0.0) as f32,
+                    _pad: [0.0; 3],
                     curve_data,
                     hsl_data,
                 };
@@ -1318,6 +1330,13 @@ impl Compositor {
         }
     }
 
+    pub fn clear_video_decoders(&mut self) {
+        let paths: Vec<String> = self.video_decoders.keys().cloned().collect();
+        for path in paths {
+            self.remove_video_decoder(&path);
+        }
+    }
+
     /// 获取视频帧：保持 ffmpeg pipe 存活，逐帧顺序读取。
     /// 初次 spawn + `-ss {time}` 定位起始位置，之后每次只读 pipe 的下一帧。
     /// 重新 spawn 只在视频文件切换或 pipe 异常时发生。
@@ -1330,6 +1349,16 @@ impl Compositor {
     ) -> Result<(Vec<u8>, u32, u32), String> {
         // 已有 decoder 且文件路径匹配 → 从 pipe 顺序读下一帧
         if let Some(dec) = self.video_decoders.get_mut(file_path) {
+            if video_time + 0.05 < dec.current_time || (video_time - dec.current_time).abs() > 0.75 {
+                log!(
+                    "read_video_frame [{}] seek jump {:.3} -> {:.3}, restarting",
+                    file_path,
+                    dec.current_time,
+                    video_time,
+                );
+                self.remove_video_decoder(file_path);
+                return self.read_video_frame(ffmpeg, ffprobe, file_path, video_time);
+            }
             let mut rgba = vec![0u8; dec.frame_bytes];
             // read_exact 可能因管道关闭失败（eof），此时需要重新 spawn
             if dec.stdout.read_exact(&mut rgba).is_err() {

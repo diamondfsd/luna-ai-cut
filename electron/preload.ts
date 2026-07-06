@@ -125,7 +125,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     exportCreativeDataUrl: (name: string, dataUrl: string, kind: 'image' | 'video') => ipcRenderer.invoke('workspace:exportCreativeDataUrl', name, dataUrl, kind),
     exportCreativeLivePhoto: (name: string, imageDataUrl: string, videoDataUrl: string, appleLivePhoto: boolean) => ipcRenderer.invoke('workspace:exportCreativeLivePhoto', name, imageDataUrl, videoDataUrl, appleLivePhoto),
     exportRenderedLivePhoto: (name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean) => ipcRenderer.invoke('workspace:exportRenderedLivePhoto', name, imagePath, videoPath, appleLivePhoto),
-    exportTripleStitch: (options) => ipcRenderer.invoke('workspace:exportTripleStitch', options),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
     bakeAndGetLut: (colorParams: Record<string, unknown>) => ipcRenderer.invoke('workspace:bakeAndGetLut', colorParams),
   },
@@ -230,6 +229,26 @@ interface RenderLayer {
   transform?: unknown
 }
 
+interface CompositionInput {
+  version?: number
+  canvas: { width: number; height: number; fps?: number; duration?: number }
+  layers: Array<{
+    id?: string
+    source: {
+      path: string
+      sourceType?: string
+      time?: { offset?: number; start?: number; duration?: number; loopEnabled?: boolean }
+    }
+    rect: { x: number; y: number; w: number; h: number }
+    fit?: string
+    opacity?: number
+    zIndex?: number
+    color?: unknown
+    transform?: unknown
+    positioning?: unknown
+  }>
+}
+
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
   pickVideo: () => ipcRenderer.invoke('lrc:pickVideo'),
@@ -240,6 +259,8 @@ const lunaRenderCoreApi = {
   renderFrame: (canvasWidth: number, canvasHeight: number, layers: RenderLayer[]) =>
     ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
   renderPreview: (input: any) => ipcRenderer.invoke('lrc:renderPreview', input),
+  renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) =>
+    ipcRenderer.invoke('lrc:renderCompositionFrame', composition, time, maxSide),
   planPreview: (input: any) => ipcRenderer.invoke('lrc:planPreview', input),
   exportVideo: (
     inputPath: string, outputPath: string,
@@ -249,6 +270,17 @@ const lunaRenderCoreApi = {
     taskId?: string, qualityPreset?: string,
     exportTaskId?: string, exportItemId?: string,
   ) => ipcRenderer.invoke('lrc:exportVideo', inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, layers, taskId, qualityPreset, exportTaskId, exportItemId),
+  exportCompositionVideo: (
+    outputPath: string,
+    composition: CompositionInput,
+    fps: number | null,
+    duration: number | null,
+    hardware: boolean,
+    taskId?: string,
+    qualityPreset?: string,
+    exportTaskId?: string,
+    exportItemId?: string,
+  ) => ipcRenderer.invoke('lrc:exportCompositionVideo', outputPath, composition, fps, duration, hardware, taskId, qualityPreset, exportTaskId, exportItemId),
   cancelExportTask: (taskId: string) => ipcRenderer.invoke('lrc:cancelExportTask', taskId),
   getExportTaskProgress: (taskId: string) => ipcRenderer.invoke('lrc:getExportTaskProgress', taskId),
   resolveRenderSource: (originalPath: string, cacheDir: string) => ipcRenderer.invoke('lrc:resolveRenderSource', originalPath, cacheDir),

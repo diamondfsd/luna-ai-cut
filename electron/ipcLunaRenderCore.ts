@@ -14,10 +14,12 @@ import {
   releaseTexture as lrcReleaseTexture,
   renderFrame as lrcRenderFrame,
   renderPreview as lrcRenderPreview,
+  renderCompositionFrame as lrcRenderCompositionFrame,
   planPreview as lrcPlanPreview,
   resolveRenderSource as lrcResolveRenderSource,
   exportImageFromSourcesAsync as lrcExportImageFromSourcesAsync,
   exportFileAsync as lrcExportFileAsync,
+  exportCompositionVideoAsync as lrcExportCompositionVideoAsync,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
   destroy as lrcDestroy,
@@ -160,6 +162,14 @@ export function register(_ctx: RegisterContext): void {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       return lrcRenderPreview({ ...input, ffmpegPath, ffprobePath })
+    },
+  ))
+
+  ipcMain.handle('lrc:renderCompositionFrame', safe('renderCompositionFrame',
+    async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
+      const ffmpegPath = getFfmpegPath()
+      const ffprobePath = getFfprobePath()
+      return lrcRenderCompositionFrame(ffmpegPath, ffprobePath, composition, time, maxSide)
     },
   ))
 
@@ -337,6 +347,99 @@ export function register(_ctx: RegisterContext): void {
         clearInterval(progressTimer)
       }
       return { outputPath, exportId: progressExportId }
+    },
+  ))
+
+  ipcMain.handle('lrc:exportCompositionVideo', safe('exportCompositionVideo',
+    async (
+      _event: IpcMainInvokeEvent,
+      outputPath: string,
+      composition: any,
+      fps: number | null,
+      duration: number | null,
+      hardware: boolean,
+      taskId?: string,
+      qualityPreset?: string,
+      exportTaskId?: string,
+      exportItemId?: string,
+    ) => {
+      const ffmpegPath = getFfmpegPath()
+      const ffprobePath = getFfprobePath()
+      const renderTaskId = taskId ?? exportItemId ?? `composition_${Date.now()}`
+      const progressExportId = exportItemId ?? renderTaskId
+      const fileName = fileNameFromPath(outputPath)
+      rcLog(`lrc:exportCompositionVideo start out=${outputPath} task=${renderTaskId} layers=${composition?.layers?.length ?? 0}`)
+      if (exportTaskId && exportItemId) {
+        await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
+      }
+      _event.sender?.send('export:progress', {
+        exportId: progressExportId,
+        taskId: exportTaskId,
+        fileName,
+        percent: 0,
+        status: 'exporting',
+        destinationPath: outputPath,
+      })
+      const progressTimer = setInterval(() => {
+        const progress = lrcGetExportTaskProgress(renderTaskId)
+        if (!progress) return
+        const currentFrame = Number(progress[0])
+        const totalFrames = Number(progress[1])
+        if (totalFrames <= 1) return
+        const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
+        if (exportTaskId && exportItemId) {
+          exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting', progress: percent }).catch(() => {})
+        }
+        _event.sender?.send('export:progress', {
+          exportId: progressExportId,
+          taskId: exportTaskId,
+          fileName,
+          percent,
+          status: 'exporting',
+          destinationPath: outputPath,
+        })
+      }, 500)
+      try {
+        await lrcExportCompositionVideoAsync({
+          ffmpegPath,
+          ffprobePath,
+          outputPath,
+          composition,
+          fps,
+          duration,
+          hardware,
+          taskId: renderTaskId,
+          qualityPreset,
+        })
+        if (exportTaskId && exportItemId) {
+          await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
+        }
+        _event.sender?.send('export:progress', {
+          exportId: progressExportId,
+          taskId: exportTaskId,
+          fileName,
+          percent: 100,
+          status: 'done',
+          destinationPath: outputPath,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (exportTaskId && exportItemId) {
+          await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'failed', error: message }).catch(() => {})
+        }
+        _event.sender?.send('export:progress', {
+          exportId: progressExportId,
+          taskId: exportTaskId,
+          fileName,
+          percent: 100,
+          status: 'failed',
+          destinationPath: outputPath,
+          error: message,
+        })
+        throw error
+      } finally {
+        clearInterval(progressTimer)
+      }
     },
   ))
 
