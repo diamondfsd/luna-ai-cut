@@ -153,8 +153,6 @@ pub struct LayerPositioning {
     pub target_width: f64,
     pub margin_x: f64,
     pub margin_y: f64,
-    pub ref_width: f64,
-    pub ref_height: f64,
 }
 
 impl Default for RenderLayerTransform {
