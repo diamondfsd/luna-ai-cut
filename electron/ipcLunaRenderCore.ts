@@ -286,7 +286,9 @@ export function register(_ctx: RegisterContext): void {
           }
           return
         }
-        const [currentFrame, totalFrames] = progress
+        const [rawCurrentFrame, rawTotalFrames] = progress
+        const currentFrame = Number(rawCurrentFrame)
+        const totalFrames = Number(rawTotalFrames)
         if (progressLogCount < 12 || currentFrame === totalFrames || currentFrame % 30 === 0) {
           progressLogCount += 1
           rcLog(`[export-progress-debug] rust progress exportId=${exportId} frame=${currentFrame}/${totalFrames} exportTaskId=${exportTaskId ?? ''} exportItemId=${exportItemId ?? ''}`)
