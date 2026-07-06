@@ -386,7 +386,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       const key = layerKey(layer)
       if (videosRef.current.has(key)) continue
       const video = document.createElement('video')
-      video.muted = true
+      video.muted = false
       video.loop = false
       video.playsInline = true
       video.preload = 'auto'
