@@ -248,17 +248,21 @@ export function register(_ctx: RegisterContext): void {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       const sourcePath = normalizeInputPath(inputPath)
-      const exportId = taskId ?? `lrc_${Date.now()}`
+      const renderTaskId = taskId ?? exportItemId ?? `lrc_${Date.now()}`
+      const progressExportId = exportItemId ?? renderTaskId
       const fileName = fileNameFromPath(outputPath)
-      rcLog(`lrc:exportVideo start f=${ffmpegPath} p=${ffprobePath} ${sourcePath} → ${outputPath} task=${exportId} qp=${qualityPreset}`)
+      const sendProgress = (progress: Parameters<typeof sendExportProgress>[1]): void => {
+        _event.sender?.send('export:progress', progress)
+      }
+      rcLog(`lrc:exportVideo start f=${ffmpegPath} p=${ffprobePath} ${sourcePath} → ${outputPath} task=${renderTaskId} item=${progressExportId} qp=${qualityPreset}`)
 
       // 通知 exportTaskService（开始导出）
       if (exportTaskId && exportItemId) {
         exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
       }
 
-      sendExportProgress(_ctx.win, {
-        exportId,
+      sendProgress({
+        exportId: progressExportId,
         taskId: exportTaskId,
         fileName,
         percent: 0,
@@ -268,11 +272,11 @@ export function register(_ctx: RegisterContext): void {
       let lastPercent = 0
       let progressLogCount = 0
       const progressTimer = setInterval(() => {
-        const progress = lrcGetExportTaskProgress(exportId)
+        const progress = lrcGetExportTaskProgress(renderTaskId)
         if (!progress) {
           if (progressLogCount < 6) {
             progressLogCount += 1
-            rcLog(`[export-progress-debug] no rust progress exportId=${exportId} exportTaskId=${exportTaskId ?? ''} exportItemId=${exportItemId ?? ''}`)
+            rcLog(`[export-progress-debug] no rust progress renderTaskId=${renderTaskId} exportTaskId=${exportTaskId ?? ''} exportItemId=${exportItemId ?? ''}`)
           }
           return
         }
@@ -281,33 +285,33 @@ export function register(_ctx: RegisterContext): void {
         const totalFrames = Number(rawTotalFrames)
         if (progressLogCount < 12 || currentFrame === totalFrames || currentFrame % 30 === 0) {
           progressLogCount += 1
-          rcLog(`[export-progress-debug] rust progress exportId=${exportId} frame=${currentFrame}/${totalFrames} exportTaskId=${exportTaskId ?? ''} exportItemId=${exportItemId ?? ''}`)
+          rcLog(`[export-progress-debug] rust progress renderTaskId=${renderTaskId} frame=${currentFrame}/${totalFrames} exportTaskId=${exportTaskId ?? ''} exportItemId=${exportItemId ?? ''}`)
         }
-        if (totalFrames <= 0) return
+        if (totalFrames <= 1) return
         const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
         if (percent <= lastPercent) return
         lastPercent = percent
         if (exportTaskId && exportItemId) {
           exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting', progress: percent }).catch(() => {})
         }
-        sendExportProgress(_ctx.win, {
-          exportId,
+        sendProgress({
+          exportId: progressExportId,
           taskId: exportTaskId,
           fileName,
           percent,
           status: 'exporting',
           destinationPath: outputPath,
         })
-        rcLog(`[export-progress-debug] sent ui progress exportId=${exportId} percent=${percent}`)
+        rcLog(`[export-progress-debug] sent ui progress exportId=${progressExportId} renderTaskId=${renderTaskId} percent=${percent}`)
       }, 500)
       try {
-        await lrcExportFileAsync(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, layers, exportId, qualityPreset)
+        await lrcExportFileAsync(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, layers, renderTaskId, qualityPreset)
         rcLog(`lrc:exportVideo done out=${outputPath}`)
         if (exportTaskId && exportItemId) {
           await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
         }
-        sendExportProgress(_ctx.win, {
-          exportId,
+        sendProgress({
+          exportId: progressExportId,
           taskId: exportTaskId,
           fileName,
           percent: 100,
@@ -320,8 +324,8 @@ export function register(_ctx: RegisterContext): void {
         if (exportTaskId && exportItemId) {
           await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'failed', error }).catch(() => {})
         }
-        sendExportProgress(_ctx.win, {
-          exportId,
+        sendProgress({
+          exportId: progressExportId,
           taskId: exportTaskId,
           fileName,
           percent: 100,
@@ -332,7 +336,7 @@ export function register(_ctx: RegisterContext): void {
       } finally {
         clearInterval(progressTimer)
       }
-      return { outputPath, exportId }
+      return { outputPath, exportId: progressExportId }
     },
   ))
 

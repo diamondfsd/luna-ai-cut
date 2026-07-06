@@ -82,7 +82,7 @@ export function buildExportLayers(
   ]
 }
 
-function emitLocalExportProgress(progress: {
+export function emitLocalExportProgress(progress: {
   exportId: string
   taskId: string
   taskName: string
@@ -130,24 +130,61 @@ export async function exportPreviewVideo(params: {
   exportTaskId?: string
   /** 子任务 ID */
   exportItemId?: string
+  taskName?: string
+  index?: number
+  totalFiles?: number
 }): Promise<{ path: string; name: string }> {
   const videoSourceLayer = params.layers.find((layer) => layer.isVideo)
   if (!videoSourceLayer) throw new Error('未找到视频图层')
 
   const path = outputPath(params.exportDir, params.fileName)
-  await lrc().exportVideo(
-    videoSourceLayer.filePath,
-    path,
-    params.width,
-    params.height,
-    null,
-    true,
-    params.layers,
-    params.exportItemId,
-    params.qualityPreset ?? 'high',
-    params.exportTaskId,
-    params.exportItemId,
-  )
+  const taskId = params.exportTaskId
+  const itemId = params.exportItemId
+  const taskName = params.taskName ?? '导出任务'
+  const index = params.index ?? 0
+  const totalFiles = params.totalFiles ?? 1
+  const emitVideoProgress = (percent: number, status: 'exporting' | 'done' | 'failed', error?: string) => {
+    if (!taskId || !itemId) return
+    emitLocalExportProgress({ exportId: itemId, taskId, taskName, fileName: params.fileName, index, totalFiles, percent, status, destinationPath: path, error })
+  }
+  let stopProgressWatcher = false
+  let lastPercent = 0
+  const progressWatcher = taskId && itemId ? (async () => {
+    while (!stopProgressWatcher) {
+      const progress = await renderCoreProgress(itemId).catch(() => null)
+      if (progress) {
+        const currentFrame = Number(progress[0])
+        const totalFrames = Number(progress[1])
+        if (totalFrames > 1) {
+          const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
+          if (percent > lastPercent) {
+            lastPercent = percent
+            await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: percent }).catch(() => {})
+            emitVideoProgress(percent, 'exporting')
+          }
+        }
+      }
+      await wait(500)
+    }
+  })() : null
+
+  try {
+    await lrc().exportVideo(videoSourceLayer.filePath, path, params.width, params.height, null, true, params.layers, itemId, params.qualityPreset ?? 'high', taskId, itemId)
+    if (taskId && itemId) {
+      await window.luna.exportTask.updateItem(taskId, itemId, { status: 'done', progress: 100, destinationPath: path }).catch(() => {})
+      emitVideoProgress(100, 'done')
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (taskId && itemId) {
+      await window.luna.exportTask.updateItem(taskId, itemId, { status: 'failed', error: message }).catch(() => {})
+      emitVideoProgress(100, 'failed', message)
+    }
+    throw error
+  } finally {
+    stopProgressWatcher = true
+    await progressWatcher?.catch(() => {})
+  }
   return { path, name: params.fileName }
 }
 
@@ -229,7 +266,7 @@ async function waitForExportItem(
     if (progress) {
       const currentFrame = Number(progress[0])
       const totalFrames = Number(progress[1])
-      if (totalFrames > 0) {
+      if (totalFrames > 1) {
         const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
         if (percent > lastPercent) {
           lastPercent = percent
@@ -317,6 +354,9 @@ async function runBatchExportQueue(
           qualityPreset: 'high',
           exportTaskId: taskId,
           exportItemId: entry.id,
+          taskName,
+          index: entry.index,
+          totalFiles: entries.length,
         })
         await waitForExportItem(taskId, taskName, entry, entries.length)
         return

@@ -78,6 +78,10 @@ function inferKind(outputPath: string): ExportTaskItem['kind'] {
   return VIDEO_EXTENSIONS.has(ext) ? 'video' : 'image'
 }
 
+function isTerminalStatus(status: ExportTaskItem['status']): boolean {
+  return status === 'done' || status === 'failed' || status === 'canceled'
+}
+
 function inputToItem(input: ExportItemInput, ts: number): ExportTaskItem {
   return {
     id: input.id,
@@ -155,8 +159,12 @@ export async function updateItem(
   const item = task.items.find((i) => i.id === itemId)
   if (!item) return
 
-  if (data.progress !== undefined) item.progress = data.progress
+  if (isTerminalStatus(item.status) && data.status === 'exporting') {
+    return
+  }
+
   if (data.status !== undefined) item.status = data.status
+  if (data.progress !== undefined) item.progress = data.progress
   if (data.error !== undefined) item.error = data.error
   if (data.destinationPath !== undefined) item.destinationPath = data.destinationPath
 
@@ -252,9 +260,8 @@ function recalcTask(task: ExportTaskRecord): void {
   else if (anyActive) task.status = 'exporting'
   else task.status = 'pending'
 
-  task.progress = Math.round(
-    items.reduce((sum, i) => sum + i.progress, 0) / items.length,
-  )
+  const averageProgress = items.reduce((sum, i) => sum + i.progress, 0) / items.length
+  task.progress = allDone ? 100 : Math.floor(averageProgress)
 
   const endTimes = items
     .filter((i) => i.endTime != null)
