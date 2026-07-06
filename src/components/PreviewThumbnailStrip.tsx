@@ -26,10 +26,11 @@ function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThu
   const [visible, setVisible] = useState(false)
   const requestedRef = useRef(false)
   const kind = mediaKindFromPath(filePath)
-  const isLive = useLivePhotoWhenVisible(filePath, btnRef, '200px')
 
-  // 进入视口时启用缓存
-  const { thumbnailUrl: thumbSrc } = useFileCache(filePath, visible)
+  // 进入视口时启用缓存（HTTP URL → 本地文件）
+  const { thumbnailUrl: thumbSrc, cacheFilePath: cachedPath } = useFileCache(filePath, visible)
+  const detectPath = cachedPath || filePath
+  const isLive = useLivePhotoWhenVisible(detectPath, btnRef, '200px')
   const showThumb = Boolean(thumbSrc)
 
   useEffect(() => {
