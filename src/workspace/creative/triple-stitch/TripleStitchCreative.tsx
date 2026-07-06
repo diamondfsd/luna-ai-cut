@@ -130,6 +130,10 @@ export function TripleStitchCreative() {
   const activeDuration = (activeAsset as { duration?: number } | undefined)?.duration
   const startMax = Math.max(0, (typeof activeDuration === 'number' ? activeDuration : 33) - EXPORT_DURATION)
 
+  function pausePreviewForEdit(): void {
+    setPreviewPlaying(false)
+  }
+
   useEffect(() => {
     setSelectedIds((current) => {
       const valid = current.filter((id) => media.media.some((asset) => asset.id === id))
@@ -144,6 +148,7 @@ export function TripleStitchCreative() {
       if (index == null) return
       const asset = media.media[index]
       if (!asset) return
+      pausePreviewForEdit()
       setSelectedIds((current) => {
         const next = [...current]
         next[activeSlot] = asset.id
@@ -157,6 +162,7 @@ export function TripleStitchCreative() {
   }, [activeSlot, media.media])
 
   function updateSlotEdit(slot: number, patch: Partial<SlotEdit>): void {
+    pausePreviewForEdit()
     setSlotEdits((current) => current.map((item, index) => {
       if (index !== slot) return item
       const nextScale = Math.min(3, Math.max(1, patch.scale ?? item.scale))
@@ -182,6 +188,7 @@ export function TripleStitchCreative() {
   function moveActiveSlot(delta: -1 | 1): void {
     const target = activeSlot + delta
     if (target < 0 || target > 2) return
+    pausePreviewForEdit()
     setSelectedIds((current) => {
       const next = [...current]
       ;[next[activeSlot], next[target]] = [next[target], next[activeSlot]]
@@ -207,6 +214,7 @@ export function TripleStitchCreative() {
 
   function handleBoardPointerDown(event: PointerEvent<HTMLDivElement>): void {
     if (event.button !== 0) return
+    pausePreviewForEdit()
     const slot = slotFromPointer(event)
     const rect = event.currentTarget.getBoundingClientRect()
     const current = slotEdits[slot] ?? DEFAULT_SLOT_EDIT
@@ -280,6 +288,7 @@ export function TripleStitchCreative() {
             className="triple-stitch-canvas"
             composition={composition}
             playing={previewPlaying}
+            onPlaybackEnd={() => setPreviewPlaying(false)}
             onError={(message) => toast.error(message)}
           />
           <div className="triple-stitch-preview-actions">
@@ -403,42 +412,48 @@ export function TripleStitchCreative() {
               title="重置"
             />
           </div>
-          <ParamSlider
-            label="缩放"
-            value={activeEdit.scale}
-            min={1}
-            max={3}
-            step={0.01}
-            onChange={(scale) => updateSlotEdit(activeSlot, { scale })}
-            formatValue={(value) => `${value.toFixed(2)}x`}
-          />
-          <ParamSlider
-            label="水平"
-            value={activeEdit.translateX}
-            min={-0.5}
-            max={0.5}
-            step={0.001}
-            onChange={(translateX) => updateSlotEdit(activeSlot, { translateX })}
-            formatValue={(value) => value.toFixed(3)}
-          />
-          <ParamSlider
-            label="垂直"
-            value={activeEdit.translateY}
-            min={-0.5}
-            max={0.5}
-            step={0.001}
-            onChange={(translateY) => updateSlotEdit(activeSlot, { translateY })}
-            formatValue={(value) => value.toFixed(3)}
-          />
-          <ParamSlider
-            label="起始"
-            value={activeEdit.startTime}
-            min={0}
-            max={startMax}
-            step={0.1}
-            onChange={(startTime) => updateSlotEdit(activeSlot, { startTime })}
-            formatValue={(value) => `${value.toFixed(1)}s`}
-          />
+          <div
+            className="triple-stitch-param-list"
+            onFocusCapture={pausePreviewForEdit}
+            onPointerDownCapture={pausePreviewForEdit}
+          >
+            <ParamSlider
+              label="缩放"
+              value={activeEdit.scale}
+              min={1}
+              max={3}
+              step={0.01}
+              onChange={(scale) => updateSlotEdit(activeSlot, { scale })}
+              formatValue={(value) => `${value.toFixed(2)}x`}
+            />
+            <ParamSlider
+              label="水平"
+              value={activeEdit.translateX}
+              min={-0.5}
+              max={0.5}
+              step={0.001}
+              onChange={(translateX) => updateSlotEdit(activeSlot, { translateX })}
+              formatValue={(value) => value.toFixed(3)}
+            />
+            <ParamSlider
+              label="垂直"
+              value={activeEdit.translateY}
+              min={-0.5}
+              max={0.5}
+              step={0.001}
+              onChange={(translateY) => updateSlotEdit(activeSlot, { translateY })}
+              formatValue={(value) => value.toFixed(3)}
+            />
+            <ParamSlider
+              label="起始"
+              value={activeEdit.startTime}
+              min={0}
+              max={startMax}
+              step={0.1}
+              onChange={(startTime) => updateSlotEdit(activeSlot, { startTime })}
+              formatValue={(value) => `${value.toFixed(1)}s`}
+            />
+          </div>
         </div>
 
         <div className="triple-stitch-section">
