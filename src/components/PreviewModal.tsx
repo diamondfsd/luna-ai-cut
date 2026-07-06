@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { exportBatchFiles } from './previewStageExport'
+import { HtmlPreview } from './HtmlPreview'
 import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { useFileCache } from '../hooks/useFileCache'
-import { filePathToPreviewUrl, isImagePath, isVideoPath } from '../lib/fileUtils'
+import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Button, Dialog, toast } from '../ui'
 import '../styles/modal.css'
@@ -41,13 +42,11 @@ export function PreviewModal({
   const [batchEnqueuing, setBatchEnqueuing] = useState(false)
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
-  const { cacheFilePath: resolvedPath, isLoading: pathLoading } = useFileCache(currentFilePath)
+  const { cacheFilePath: resolvedPath } = useFileCache(currentFilePath)
 
   const displaySource = resolvedPath
     ? (filePathToPreviewUrl(resolvedPath) ?? resolvedPath)
     : (currentFilePath?.startsWith('http') ? null : filePathToPreviewUrl(currentFilePath) ?? currentFilePath)
-  const isVideo = isVideoPath(currentFilePath)
-  const isImage = isImagePath(currentFilePath)
 
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(_settings: WatermarkSettingsType, layer?: PreviewLayer) {
@@ -98,30 +97,7 @@ export function PreviewModal({
           <div className="preview-stage-col">
             {previewOnly ? (
               <div className="preview-stage">
-                {pathLoading ? (
-                  <div className="preview-loading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>
-                    正在缓存文件...
-                  </div>
-                ) : isVideo && displaySource ? (
-                  <video
-                    key={currentFilePath}
-                    src={displaySource}
-                    controls
-                    autoPlay
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
-                ) : isImage && displaySource ? (
-                  <img
-                    key={currentFilePath}
-                    src={displaySource}
-                    alt=""
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
-                ) : (
-                  <div className="preview-loading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>
-                    无法预览此文件
-                  </div>
-                )}
+                <HtmlPreview url={displaySource} />
               </div>
             ) : (
               <PreviewStage
