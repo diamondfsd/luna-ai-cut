@@ -160,8 +160,6 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
                 settings={edit.pipeline.watermark}
                 onChange={handleWatermarkChange}
                 filePath={mediaCtx.activeMedia?.path}
-                mediaWidth={mediaSize?.w}
-                mediaHeight={mediaSize?.h}
               />
             </Accordion>
           )}

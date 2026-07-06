@@ -310,41 +310,38 @@ export function register(_ctx: RegisterContext): void {
         })
         rcLog(`[export-progress-debug] sent ui progress exportId=${exportId} percent=${percent}`)
       }, 500)
-      lrcExportFileAsync(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, exportId, qualityPreset)
-        .then(() => {
-          clearInterval(progressTimer)
-          rcLog(`lrc:exportVideo done out=${outputPath}`)
-          // 通知 exportTaskService（完成）
-          if (exportTaskId && exportItemId) {
-            exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
-          }
-          sendExportProgress(_ctx.win, {
-            exportId,
-            taskId: exportTaskId,
-            fileName,
-            percent: 100,
-            status: 'done',
-            destinationPath: outputPath,
-          })
+      try {
+        await lrcExportFileAsync(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, exportId, qualityPreset)
+        rcLog(`lrc:exportVideo done out=${outputPath}`)
+        if (exportTaskId && exportItemId) {
+          await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
+        }
+        sendExportProgress(_ctx.win, {
+          exportId,
+          taskId: exportTaskId,
+          fileName,
+          percent: 100,
+          status: 'done',
+          destinationPath: outputPath,
         })
-        .catch((err: unknown) => {
-          clearInterval(progressTimer)
-          const error = err instanceof Error ? err.message : String(err)
-          rcLog(`ERROR in exportVideo async: ${error} out=${outputPath}`)
-          // 通知 exportTaskService（失败）
-          if (exportTaskId && exportItemId) {
-            exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'failed', error }).catch(() => {})
-          }
-          sendExportProgress(_ctx.win, {
-            exportId,
-            taskId: exportTaskId,
-            fileName,
-            percent: 100,
-            status: 'failed',
-            destinationPath: outputPath,
-            error,
-          })
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err.message : String(err)
+        rcLog(`ERROR in exportVideo async: ${error} out=${outputPath}`)
+        if (exportTaskId && exportItemId) {
+          await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'failed', error }).catch(() => {})
+        }
+        sendExportProgress(_ctx.win, {
+          exportId,
+          taskId: exportTaskId,
+          fileName,
+          percent: 100,
+          status: 'failed',
+          destinationPath: outputPath,
+          error,
         })
+      } finally {
+        clearInterval(progressTimer)
+      }
       return { outputPath, exportId }
     },
   ))

@@ -2,7 +2,7 @@ import { ArrowLeft, ClipboardCopy, ClipboardPaste, Eye, EyeOff, FileDown, Redo2,
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import type { PreviewLayer, WorkspaceProject } from '../shared/types'
+import type { WorkspaceProject } from '../shared/types'
 import { Button, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
 import { exportBatchFiles, type BatchExportSource } from '../components/previewStageExport'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
@@ -11,7 +11,7 @@ import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
 import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
 import { createDefaultPipeline, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
-import { buildLayers, PreviewStage } from '../components/PreviewStage'
+import { PreviewStage } from '../components/PreviewStage'
 import type { PreviewStageHandle } from '../components/PreviewStage'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
@@ -21,52 +21,12 @@ import type { CreativeModeId, WorkspaceMode } from '../workspace/components/Work
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
-import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import '../styles/workspace-loading.css'
 
 function normalizePipeline(value: unknown): EditPipeline {
   if (!value || typeof value !== 'object') return createDefaultPipeline()
   return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
-}
-
-function exportCanvasFor(resolution: { width: number; height: number }): { width: number; height: number } {
-  const max = 1440
-  const aspect = resolution.width / resolution.height
-  if (aspect >= 1) return { width: max, height: Math.round(max / aspect) }
-  return { width: Math.round(max * aspect), height: max }
-}
-
-function buildWorkspaceExportLayers(
-  sourcePath: string,
-  resolution: { width: number; height: number },
-  pipeline: EditPipeline,
-): PreviewLayer[] {
-  const main = buildLayers(sourcePath, 'contain', resolution, exportCanvasFor(resolution))
-  if (main[0]) {
-    main[0] = {
-      ...main[0],
-      color: pipelineColorToRenderColor(pipeline.color),
-      transform: pipelineTransformToRenderTransform(pipeline.transform),
-    }
-  }
-
-  const wm = pipeline.watermark
-  if (!wm?.enabled || !wm?.imagePath || !wm.wmAspect) return main
-
-  const watermarkLayer = buildResolvedWatermarkStaticLayer(wm, resolution.width, resolution.height)
-  const baseLayer = main[0]
-  if (!watermarkLayer || !baseLayer) return main
-
-  return [
-    ...main,
-    {
-      ...watermarkLayer,
-      dstX: baseLayer.dstX + watermarkLayer.dstX * baseLayer.dstW,
-      dstY: baseLayer.dstY + watermarkLayer.dstY * baseLayer.dstH,
-      dstW: watermarkLayer.dstW * baseLayer.dstW,
-      dstH: watermarkLayer.dstH * baseLayer.dstH,
-    },
-  ]
 }
 
 interface WorkspacePageProps {
@@ -106,6 +66,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const canvas = useWorkspaceCanvas()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
+  const [watermarkMediaSize, setWatermarkMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [exportEnqueuing, setExportEnqueuing] = useState(false)
 
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
@@ -126,10 +87,10 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const watermarkLayer = useMemo(() => {
     const wm = edit.pipeline.watermark
     if (!wm?.enabled || !wm?.imagePath || !wm.wmAspect) return []
-    if (!mediaSize) return []
-    const layer = buildResolvedWatermarkStaticLayer(wm, mediaSize.w, mediaSize.h)
+    if (!watermarkMediaSize) return []
+    const layer = buildResolvedWatermarkStaticLayer(wm, watermarkMediaSize.w, watermarkMediaSize.h)
     return layer ? [layer] : []
-  }, [edit.pipeline.watermark, mediaSize])
+  }, [edit.pipeline.watermark, watermarkMediaSize])
 
   // ── PreviewStage ref ──
   const previewRef = useRef<PreviewStageHandle>(null)
@@ -145,6 +106,22 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
   useEffect(() => {
     setMediaSize(null)
+  }, [media.activeMedia?.path])
+
+  useEffect(() => {
+    const filePath = media.activeMedia?.path
+    setWatermarkMediaSize(null)
+    if (!filePath) return
+
+    let cancelled = false
+    window.luna.workspace.getMediaResolution(filePath)
+      .then((resolution) => {
+        if (!cancelled) setWatermarkMediaSize({ w: resolution.width, h: resolution.height })
+      })
+      .catch(() => {
+        if (!cancelled) setWatermarkMediaSize(null)
+      })
+    return () => { cancelled = true }
   }, [media.activeMedia?.path])
 
   // ── Auto-save project when pipeline changes ──
