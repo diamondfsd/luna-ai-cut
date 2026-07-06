@@ -36,13 +36,13 @@ export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, layou
 
 export function buildResolvedWatermarkStaticLayer(
   settings: WatermarkSettingsType,
-  mediaWidth: number,
-  mediaHeight: number,
+  width: number,
+  height: number,
 ): PreviewLayer | null {
   if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
-  const aspectKey = closestAspectRatio(mediaWidth, mediaHeight)
+  const aspectKey = closestAspectRatio(width, height)
   const positionKey = settings.position.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()
-  const ratios = resolveWatermarkRatios(null, settings.style, mediaWidth, mediaHeight, positionKey)
+  const ratios = resolveWatermarkRatios(null, settings.style, width, height, positionKey)
   const enriched = ratios
     ? { ...settings, widthRatio: ratios.widthRatio, xRatio: ratios.xRatio, yRatio: ratios.yRatio }
     : settings
@@ -70,9 +70,6 @@ interface WatermarkSettingsProps {
   showToggle?: boolean
   /** 传文件路径即可自动按设备过滤水印样式 */
   filePath?: string
-  /** 媒体分辨率（用于按实际宽高比匹配水印布局） */
-  mediaWidth?: number
-  mediaHeight?: number
 }
 
 function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPositionChange }: {
@@ -128,13 +125,17 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   )
 }
 
-export function WatermarkSettings({ settings, onChange, compact, showToggle = true, filePath, mediaWidth, mediaHeight }: WatermarkSettingsProps) {
+export function WatermarkSettings({ settings, onChange, compact, showToggle = true, filePath }: WatermarkSettingsProps) {
   const [internalSettings, setInternalSettings] = useState<WatermarkSettingsType>({
     enabled: true,
     style: 'luna_ultra_cn',
     position: 'BottomCenter' as WatermarkSettingsType['position'],
   })
   const currentSettings = settings ?? internalSettings
+  const [resolvedMediaSize, setResolvedMediaSize] = useState<{ w: number; h: number } | null>(null)
+  const effectiveMediaWidth = resolvedMediaSize?.w
+  const effectiveMediaHeight = resolvedMediaSize?.h
+  const waitingForMediaSize = Boolean(filePath) && (!effectiveMediaWidth || !effectiveMediaHeight)
 
   // 从文件路径自动检测设备 → 水印样式选项
   const [deviceId, setDeviceId] = useState<string | null>(null)
@@ -145,6 +146,24 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       { sourceDeviceId: null, cameraType: null, sourceDeviceName: null, cameraSerial: null, watermarkProfileId: null },
       { filePath, readExif: window.luna.readExifModel.bind(window.luna) },
     ).then((id) => { if (!cancelled) setDeviceId(id) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [filePath])
+
+  useEffect(() => {
+    if (!filePath) {
+      setResolvedMediaSize(null)
+      return
+    }
+
+    let cancelled = false
+    setResolvedMediaSize(null)
+    window.luna.workspace.getMediaResolution(filePath)
+      .then((resolution) => {
+        if (!cancelled) setResolvedMediaSize({ w: resolution.width, h: resolution.height })
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedMediaSize(null)
+      })
     return () => { cancelled = true }
   }, [filePath])
 
@@ -163,17 +182,23 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   const initRef = useRef(true)
   const enrichSeqRef = useRef(0)
   useEffect(() => {
+    if (waitingForMediaSize) return
     if (initRef.current) {
       initRef.current = false
     }
     enrichAndChange({})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaWidth, mediaHeight])
+  }, [effectiveMediaWidth, effectiveMediaHeight, waitingForMediaSize])
 
   /** 获取水印路径和尺寸，与映射表比例合并后触发 onChange */
   const enrichAndChange = useCallback(async (patch: Partial<WatermarkSettingsType>) => {
     const seq = ++enrichSeqRef.current
     const next = { ...currentSettings, ...patch }
+    if (filePath && (!effectiveMediaWidth || !effectiveMediaHeight)) {
+      setInternalSettings(next)
+      onChange(next)
+      return
+    }
     if (!next.enabled) {
       if (seq === enrichSeqRef.current) {
         setInternalSettings(next)
@@ -186,8 +211,8 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       Promise.resolve(STYLE_TO_THEME[next.style]),
     ])
     if (seq !== enrichSeqRef.current) return
-    // 根据实际媒体宽高比查找布局（从 props 传入）
-    const aspectKey = (mediaWidth && mediaHeight) ? closestAspectRatio(mediaWidth, mediaHeight) : '16:9'
+    // 根据实际媒体宽高比查找布局；优先使用文件路径解析出的旋转后尺寸。
+    const aspectKey = (effectiveMediaWidth && effectiveMediaHeight) ? closestAspectRatio(effectiveMediaWidth, effectiveMediaHeight) : '16:9'
     const layoutKey = theme ? `${theme}|${aspectKey}|${positionKeyFor(next.position)}` : null
     const raw = layoutKey ? luna_ultra_layout[layoutKey] : null
     const enriched: WatermarkSettingsType = {
@@ -203,7 +228,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       : undefined
     setInternalSettings(enriched)
     onChange(enriched, layer ?? undefined)
-  }, [currentSettings, onChange, filePath, mediaWidth, mediaHeight])
+  }, [currentSettings, onChange, filePath, effectiveMediaWidth, effectiveMediaHeight])
 
   const handleToggle = useCallback(
     (enabled: boolean) => enrichAndChange({ enabled }),
