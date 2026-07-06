@@ -145,6 +145,16 @@ pub struct RenderLayerTransform {
     pub scale: f64,
 }
 
+/// 层相对定位：Rust 根据画布比例自动计算 dst，保证纹理比例不变形
+#[napi(object)]
+#[derive(Clone)]
+pub struct LayerPositioning {
+    pub anchor: String,
+    pub target_width: f64,
+    pub margin_x: f64,
+    pub margin_y: f64,
+}
+
 impl Default for RenderLayerTransform {
     fn default() -> Self {
         Self {
@@ -206,6 +216,7 @@ pub struct RenderLayer {
     pub z_index: i32,
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
+    pub positioning: Option<LayerPositioning>,
 }
 
 /// 预览层 — render_preview 的统一层描述
@@ -227,6 +238,7 @@ pub struct PreviewLayer {
     pub z_index: i32,
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
+    pub positioning: Option<LayerPositioning>,
 }
 
 /// render_preview 的输入
@@ -377,6 +389,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             z_index: l.z_index,
             color: l.color.clone().unwrap_or_default(),
             transform: l.transform.clone().unwrap_or_default(),
+            positioning: l.positioning.clone(),
         })
         .collect();
     lock(|c| {
@@ -421,6 +434,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     z_index: item.layer.z_index,
                     color: item.layer.color.clone().unwrap_or_default(),
                     transform: item.layer.transform.clone().unwrap_or_default(),
+                    positioning: item.layer.positioning.clone(),
                 },
                 compositor::PreviewTextureInfo {
                     texture_id: item.texture.texture_id,

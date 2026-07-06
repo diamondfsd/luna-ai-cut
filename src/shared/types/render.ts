@@ -3,6 +3,18 @@
  * 所有坐标均为归一化 [0, 1]
  */
 
+/** 水印相对定位：横屏/竖屏各一套 */
+export interface WatermarkPositioning {
+  /** 锚点位置 */
+  anchor: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center'
+  /** 宽度占画布比例 0-1 */
+  targetWidth: number
+  /** 水平边距 0-1 */
+  marginX?: number
+  /** 垂直边距 0-1 */
+  marginY?: number
+}
+
 /** 统一层描述 — Rust 渲染层输入 */
 export interface RenderCurvePoint {
   x: number
@@ -82,6 +94,8 @@ export interface PreviewLayer {
   zIndex: number
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
+  /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
+  positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
 }
 
 /** 纹理层（需先通过 lrc.loadTexture 加载） */
@@ -92,4 +106,5 @@ export interface RenderLayer {
   opacity?: number; zIndex?: number
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
+  positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
 }
