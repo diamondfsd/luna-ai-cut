@@ -1554,6 +1554,53 @@ impl Compositor {
         Ok((rgba, dw, dh))
     }
 
+    fn video_texture_for_layer(
+        &mut self,
+        ffmpeg: &str,
+        ffprobe: &str,
+        layer: &PreviewLayerInput,
+    ) -> Result<u32, String> {
+        if let Some((texture_id, current_time)) = self
+            .video_decoders
+            .get(&layer.file_path)
+            .and_then(|decoder| {
+                decoder
+                    .texture_id
+                    .map(|texture_id| (texture_id, decoder.current_time))
+            })
+        {
+            if (layer.video_time - current_time).abs() < 0.001 {
+                log!(
+                    "read_video_frame [{}] reuse paused frame at {:.3}s tex={}",
+                    layer.file_path,
+                    current_time,
+                    texture_id,
+                );
+                return Ok(texture_id);
+            }
+        }
+
+        let (rgba, dw, dh) =
+            self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time)?;
+        let existing_texture = self
+            .video_decoders
+            .get(&layer.file_path)
+            .and_then(|decoder| decoder.texture_id);
+        match existing_texture {
+            Some(texture_id) => {
+                self.update_texture(texture_id, &rgba)?;
+                Ok(texture_id)
+            }
+            None => {
+                let texture_id = self.load_texture(&rgba, dw, dh)?;
+                if let Some(decoder) = self.video_decoders.get_mut(&layer.file_path) {
+                    decoder.texture_id = Some(texture_id);
+                }
+                Ok(texture_id)
+            }
+        }
+    }
+
     /// 统一渲染预览帧：静态图走 LRU 缓存，视频帧保持 ffmpeg pipe 持续读
     pub fn render_preview(
         &mut self,
@@ -1585,26 +1632,7 @@ impl Compositor {
 
         for layer in layers {
             let tex_id = if layer.is_video {
-                // ── 视频帧：持久 ffmpeg pipe 依次读帧 ──
-                let (rgba, dw, dh) =
-                    self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time)?;
-                let existing_texture = self
-                    .video_decoders
-                    .get(&layer.file_path)
-                    .and_then(|decoder| decoder.texture_id);
-                match existing_texture {
-                    Some(texture_id) => {
-                        self.update_texture(texture_id, &rgba)?;
-                        texture_id
-                    }
-                    None => {
-                        let texture_id = self.load_texture(&rgba, dw, dh)?;
-                        if let Some(decoder) = self.video_decoders.get_mut(&layer.file_path) {
-                            decoder.texture_id = Some(texture_id);
-                        }
-                        texture_id
-                    }
-                }
+                self.video_texture_for_layer(ffmpeg, ffprobe, layer)?
             } else {
                 // ── 静态图：LRU 缓存 ──
                 let cached = self.get_cached_texture(&layer.file_path);

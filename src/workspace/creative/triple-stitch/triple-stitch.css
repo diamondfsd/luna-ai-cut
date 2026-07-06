@@ -180,6 +180,11 @@
   min-width: 0;
 }
 
+.triple-stitch-param-list {
+  display: grid;
+  gap: 10px;
+}
+
 .triple-stitch-select-row {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);

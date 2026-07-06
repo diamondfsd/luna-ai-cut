@@ -32,17 +32,30 @@ interface CompositionPreviewCanvasProps {
   playing?: boolean
   startTime?: number
   onTimeChange?: (time: number) => void
+  onPlaybackEnd?: () => void
   onError?: (message: string) => void
 }
 
-export function CompositionPreviewCanvas({ composition, className, playing = true, startTime = 0, onTimeChange, onError }: CompositionPreviewCanvasProps) {
+export function CompositionPreviewCanvas({
+  composition,
+  className,
+  playing = true,
+  startTime = 0,
+  onTimeChange,
+  onPlaybackEnd,
+  onError,
+}: CompositionPreviewCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const compositionRef = useRef<CompositionInput | null>(composition)
   const readyRef = useRef(false)
   const renderingRef = useRef(false)
+  const pendingRenderTimeRef = useRef<number | null>(null)
   const timeRef = useRef(0)
+  const startTimeRef = useRef(startTime)
   const rafRef = useRef(0)
   const lastFrameAtRef = useRef(0)
+  const endedRef = useRef(false)
+  const wasPlayingRef = useRef(playing)
   const [fatalError, setFatalError] = useState<string | null>(null)
   compositionRef.current = composition
 
@@ -50,10 +63,15 @@ export function CompositionPreviewCanvas({ composition, className, playing = tru
     const api = lrc()
     const canvas = canvasRef.current
     const current = compositionRef.current
-    if (!api || !canvas || !current || !readyRef.current || renderingRef.current) return
+    if (renderingRef.current) {
+      pendingRenderTimeRef.current = time
+      return
+    }
+    if (!api || !canvas || !current || !readyRef.current) return
     renderingRef.current = true
     try {
       const result = await api.renderCompositionFrame(current, time, PREVIEW_MAX_SIDE)
+      if (pendingRenderTimeRef.current !== null) return
       const context = canvas.getContext('2d')
       if (!context) throw new Error('画布不可用')
       canvas.width = result.width
@@ -63,6 +81,9 @@ export function CompositionPreviewCanvas({ composition, className, playing = tru
       onError?.(error instanceof Error ? error.message : String(error))
     } finally {
       renderingRef.current = false
+      const pendingTime = pendingRenderTimeRef.current
+      pendingRenderTimeRef.current = null
+      if (pendingTime !== null) void renderAt(pendingTime)
     }
   }
 
@@ -77,7 +98,7 @@ export function CompositionPreviewCanvas({ composition, className, playing = tru
     api.init()
       .then(() => {
         readyRef.current = true
-        void renderAt(0)
+        void renderAt(timeRef.current)
       })
       .catch((error: Error) => {
         const message = `渲染引擎初始化失败: ${error.message}`
@@ -88,18 +109,61 @@ export function CompositionPreviewCanvas({ composition, className, playing = tru
   }, [])
 
   useEffect(() => {
+    void renderAt(timeRef.current)
+  }, [composition])
+
+  useEffect(() => {
+    if (startTimeRef.current === startTime) return
+    startTimeRef.current = startTime
     timeRef.current = startTime
+    endedRef.current = false
     onTimeChange?.(startTime)
     void renderAt(startTime)
-  }, [composition, startTime])
+  }, [startTime, onTimeChange])
+
+  useEffect(() => {
+    const current = compositionRef.current
+    const duration = current?.canvas.duration ?? 5
+    if (playing && !wasPlayingRef.current && endedRef.current) {
+      timeRef.current = 0
+      endedRef.current = false
+      lastFrameAtRef.current = 0
+      onTimeChange?.(0)
+      void renderAt(0)
+    }
+    if (playing && duration > 0 && timeRef.current >= duration) {
+      timeRef.current = 0
+      endedRef.current = false
+      lastFrameAtRef.current = 0
+      onTimeChange?.(0)
+      void renderAt(0)
+    }
+    wasPlayingRef.current = playing
+  }, [playing, onTimeChange])
 
   useEffect(() => {
     function tick(now: number) {
       const current = compositionRef.current
-      if (playing && current && readyRef.current && now - lastFrameAtRef.current >= 1000 / PREVIEW_FPS) {
+      if (
+        playing
+        && current
+        && readyRef.current
+        && !renderingRef.current
+        && now - lastFrameAtRef.current >= 1000 / PREVIEW_FPS
+      ) {
         lastFrameAtRef.current = now
         const duration = current.canvas.duration ?? 5
-        timeRef.current = duration > 0 ? (timeRef.current + 1 / PREVIEW_FPS) % duration : 0
+        const nextTime = duration > 0 ? timeRef.current + 1 / PREVIEW_FPS : 0
+        if (duration > 0 && nextTime >= duration) {
+          timeRef.current = duration
+          endedRef.current = true
+          onTimeChange?.(duration)
+          onPlaybackEnd?.()
+          void renderAt(Math.max(0, duration - 1 / PREVIEW_FPS))
+          rafRef.current = requestAnimationFrame(tick)
+          return
+        }
+        timeRef.current = nextTime
         onTimeChange?.(timeRef.current)
         void renderAt(timeRef.current)
       }
