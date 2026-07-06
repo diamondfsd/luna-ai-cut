@@ -260,14 +260,6 @@ const lunaRenderCoreApi = {
   ) => ipcRenderer.invoke('lrc:exportVideo', inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, taskId, qualityPreset, exportTaskId, exportItemId),
   cancelExportTask: (taskId: string) => ipcRenderer.invoke('lrc:cancelExportTask', taskId),
   getExportTaskProgress: (taskId: string) => ipcRenderer.invoke('lrc:getExportTaskProgress', taskId),
-  exportImage: (
-    outputPath: string,
-    width: number,
-    height: number,
-    layers: RenderLayer[],
-    format: string,
-    quality: number,
-  ) => ipcRenderer.invoke('lrc:renderLayersToFile', outputPath, width, height, layers, format, quality),
   resolveRenderSource: (originalPath: string, cacheDir: string) => ipcRenderer.invoke('lrc:resolveRenderSource', originalPath, cacheDir),
   exportImageFromSources: (
     outputPath: string,

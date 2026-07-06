@@ -23,7 +23,7 @@ export function ExportProgressModal({
   const completedCount = entries.filter((progress) => progress.status === 'done').length
   const failedCount = entries.filter((progress) => progress.status === 'failed').length
   const canceledCount = entries.filter((progress) => progress.status === 'canceled').length
-  const activeCount = entries.filter((progress) => progress.status === 'exporting').length
+  const activeCount = entries.filter((progress) => progress.status === 'queued' || progress.status === 'exporting').length
 
   const icon =
     entries.length === 0 ? <Clock size={15} /> :

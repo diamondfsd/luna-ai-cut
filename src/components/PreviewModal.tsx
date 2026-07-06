@@ -7,7 +7,7 @@ import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { filePathToPreviewUrl, isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import { Dialog, toast } from '../ui'
+import { Button, Dialog, toast } from '../ui'
 import '../styles/modal.css'
 
 interface PreviewModalProps {
@@ -37,7 +37,7 @@ export function PreviewModal({
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
-  const [batchExporting, setBatchExporting] = useState(false)
+  const [batchEnqueuing, setBatchEnqueuing] = useState(false)
 
   const displaySource = filePathToPreviewUrl(currentFilePath) ?? currentFilePath
   const isVideo = isVideoPath(currentFilePath)
@@ -50,21 +50,21 @@ export function PreviewModal({
 
   // ── 批量导出（委托给公共方法） ──
   const handleBatchExport = useCallback(async () => {
-    if (batchExporting || !filePathList?.length) return
-    setBatchExporting(true)
+    if (batchEnqueuing || !filePathList?.length) return
+    setBatchEnqueuing(true)
 
     try {
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) { toast.error('导出目录未配置'); return }
 
       await exportBatchFiles(filePathList, settings.exportDir, watermarkLayers)
-      toast.success(`导出完成: ${filePathList.length} 个文件`)
+      toast.success(`已加入导出队列: ${filePathList.length} 个文件`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '导出失败')
     } finally {
-      setBatchExporting(false)
+      setBatchEnqueuing(false)
     }
-  }, [batchExporting, filePathList, watermarkLayers])
+  }, [batchEnqueuing, filePathList, watermarkLayers])
 
   // Escape 关闭
   useEffect(() => {
@@ -142,15 +142,15 @@ export function PreviewModal({
               />
               {batchExportMode && (
                 <div className="batch-export-actions">
-                  <button
-                    className="ui-btn ui-btn-primary"
-                    disabled={batchExporting}
+                  <Button
+                    variant="primary"
+                    disabled={batchEnqueuing}
                     onClick={handleBatchExport}
                     type="button"
                     style={{ width: '100%' }}
                   >
-                    {batchExporting ? '导出中...' : `确认导出 (${filePathList?.length ?? 0} 个文件)`}
-                  </button>
+                    {batchEnqueuing ? '加入中...' : `确认导出 (${filePathList?.length ?? 0} 个文件)`}
+                  </Button>
                 </div>
               )}
             </div>

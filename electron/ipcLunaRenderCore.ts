@@ -15,7 +15,6 @@ import {
   renderFrame as lrcRenderFrame,
   renderPreview as lrcRenderPreview,
   planPreview as lrcPlanPreview,
-  renderLayersToFile as lrcRenderLayersToFile,
   resolveRenderSource as lrcResolveRenderSource,
   exportImageFromSourcesAsync as lrcExportImageFromSourcesAsync,
   exportFileAsync as lrcExportFileAsync,
@@ -211,23 +210,6 @@ export function register(_ctx: RegisterContext): void {
       const ffprobePath = getFfprobePath()
       rcLog(`lrc:resolveRenderSource path=${originalPath}`)
       return lrcResolveRenderSource(ffmpegPath, ffprobePath, originalPath, cacheDir)
-    },
-  ))
-
-  ipcMain.handle('lrc:renderLayersToFile', safe('renderLayersToFile',
-    async (
-      _event: IpcMainInvokeEvent,
-      outputPath: string,
-      width: number,
-      height: number,
-      layers: RenderLayerArg[],
-      format: string,
-      quality: number,
-    ) => {
-      const ffmpegPath = getFfmpegPath()
-      rcLog(`lrc:renderLayersToFile out=${outputPath} ${width}x${height} layers=${layers.length} fmt=${format}`)
-      lrcRenderLayersToFile(ffmpegPath, outputPath, width, height, layers, format, quality)
-      rcLog('lrc:renderLayersToFile done')
     },
   ))
 
