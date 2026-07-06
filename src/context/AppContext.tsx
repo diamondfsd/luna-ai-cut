@@ -33,19 +33,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hiddenDevMode, setHiddenDevMode] = useState(false)
 
   const applyExportProgress = useCallback((progress: ExportProgress): void => {
-    if (progress.status === 'exporting' || progress.status === 'done' || progress.status === 'failed') {
-      console.debug('[export-progress-ui]', {
-        exportId: progress.exportId,
-        taskId: progress.taskId,
-        fileName: progress.fileName,
-        percent: progress.percent,
+    if (progress.taskId && progress.exportId) {
+      void window.luna.exportTask.updateItem(progress.taskId, progress.exportId, {
         status: progress.status,
+        progress: progress.percent ?? undefined,
+        destinationPath: progress.destinationPath,
         error: progress.error,
-      })
+      }).catch(() => {})
     }
     setExportProgress((current) => {
       const key = progress.exportId ?? progress.fileName
-      const nextProgress = { ...current.get(key), ...progress }
+      const previous = current.get(key)
+      const nextProgress = { ...previous, ...progress }
       const next = new Map(current).set(key, nextProgress)
       setExporting([...next.values()].some((item) => item.status === 'queued' || item.status === 'exporting'))
       return next

@@ -377,9 +377,7 @@ pub fn export_file(
 ) -> Result<(), String> {
     // 注册任务
     let task = task_id.and_then(|id| {
-        let s = register_task(id);
-        s.total_frames.store(1, Ordering::SeqCst); // 占位，视频导出时会覆盖
-        Some(s)
+        Some(register_task(id))
     });
     let preset = quality_preset.unwrap_or(QualityPreset::High);
 
@@ -478,6 +476,9 @@ fn export_video(
     } else {
         info.duration_secs
     };
+    if let Some(t) = task {
+        t.total_frames.store(total, Ordering::SeqCst);
+    }
 
     crate::log!(
         "  src={}x{} {}fps {}kbps audio={} {} → {}x{} frames={}",
