@@ -7,7 +7,7 @@ import type { WorkspaceMediaAsset, WorkspaceProject } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import { getLocalResourcesDir, getSettings } from './fileService'
 import { safeName } from './filePathUtils'
-import { getFfmpegPath, getFfprobePath, probeMedia } from './ffmpeg/pipeline'
+import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import { bakeColorLutData } from './ffmpeg/lutGenerator'
 import type { IpcContext } from './ipcContext'
 import { logMainInfo } from './loggerService'
@@ -26,6 +26,70 @@ import { loadWorkspacePreview } from './workspacePreviewService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 
+function normalizeRotation(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  if (!Number.isFinite(numeric)) return null
+  const rotation = ((Math.round(numeric) % 360) + 360) % 360
+  return rotation === 90 || rotation === 270 ? rotation : null
+}
+
+function rotationFromSideData(value: any): number | null {
+  const sideData = Array.isArray(value?.side_data_list) ? value.side_data_list : []
+  for (const item of sideData) {
+    const rotation = normalizeRotation(item?.rotation)
+    if (rotation) return rotation
+  }
+  return null
+}
+
+function rotationFromTags(value: any): number | null {
+  const orientation = String(value?.tags?.Orientation ?? value?.tags?.orientation ?? '').trim()
+  if (orientation === '6') return 90
+  if (orientation === '8') return 270
+  return normalizeRotation(value?.tags?.rotate ?? value?.tags?.Rotate)
+}
+
+function displayRotation(frame: any, stream: any): number {
+  return rotationFromSideData(frame)
+    ?? rotationFromSideData(stream)
+    ?? rotationFromTags(frame)
+    ?? rotationFromTags(stream)
+    ?? 0
+}
+
+async function probeDisplayResolution(filePath: string): Promise<{ width: number; height: number; rotation: number; encodedWidth: number; encodedHeight: number }> {
+  const ffprobeBin = getFfprobePath()
+  const { execFile } = await import('node:child_process')
+  const { promisify } = await import('node:util')
+  const execFileAsync = promisify(execFile)
+  const { stdout } = await execFileAsync(ffprobeBin, [
+    '-v', 'quiet',
+    '-print_format', 'json',
+    '-show_streams',
+    '-show_frames',
+    '-read_intervals', '%+#1',
+    filePath,
+  ])
+  const parsed = JSON.parse(stdout)
+  const frame = parsed.frames?.find((f: any) => f.media_type === 'video')
+  const stream = parsed.streams?.find((s: any) => s.codec_type === 'video')
+  const encodedWidth = Number(frame?.width ?? stream?.width ?? 0)
+  const encodedHeight = Number(frame?.height ?? stream?.height ?? 0)
+  if (!Number.isFinite(encodedWidth) || !Number.isFinite(encodedHeight) || encodedWidth <= 0 || encodedHeight <= 0) {
+    throw new Error(`无法获取文件分辨率: ${filePath}`)
+  }
+
+  const rotation = displayRotation(frame, stream)
+  const shouldSwap = rotation === 90 || rotation === 270
+  return {
+    width: shouldSwap ? encodedHeight : encodedWidth,
+    height: shouldSwap ? encodedWidth : encodedHeight,
+    rotation,
+    encodedWidth,
+    encodedHeight,
+  }
+}
+
 export function register(_ctx: IpcContext): void {
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
     return loadWorkspacePreview(filePath)
@@ -33,52 +97,18 @@ export function register(_ctx: IpcContext): void {
 
   ipcMain.handle('workspace:getMediaResolution', async (_event, filePath: string) => {
     logMainInfo(`[workspace:getMediaResolution] REQUEST filePath=${filePath}`)
-    // 统一使用 ffprobe（非阻塞，只读文件头），
-    // 避免 nativeImage.createFromPath() 同步解码大图阻塞主进程
+    // 统一使用 ffprobe（非阻塞，只读文件头），避免同步解码大图阻塞主进程。
+    // 同时读取 stream 与首帧，按 Rust 渲染层同样的规则处理视频 display matrix 和图片 Orientation。
     try {
-      const probe = await probeMedia(filePath)
-      if (probe.videoWidth > 0 && probe.videoHeight > 0) {
-        let w = probe.videoWidth
-        let h = probe.videoHeight
-        // ── 检测 EXIF 旋转，若旋转则交换宽高 ──
-        try {
-          const ffprobeBin = getFfprobePath()
-          logMainInfo(`[workspace:getMediaResolution] exif ffprobe=${ffprobeBin}`)
-          const { execFile } = await import('node:child_process')
-          const { promisify } = await import('node:util')
-          const execFileAsync = promisify(execFile)
-          const { stdout } = await execFileAsync(ffprobeBin, [
-            '-v', 'quiet', '-print_format', 'json',
-            '-show_frames', '-read_intervals', '%+#1', filePath,
-          ])
-          logMainInfo(`[workspace:getMediaResolution] exif stdout=${stdout.length > 500 ? stdout.substring(0,500)+'...' : stdout}`)
-          const parsed = JSON.parse(stdout)
-          const frame = parsed.frames?.find((f: any) => f.media_type === 'video')
-          logMainInfo(`[workspace:getMediaResolution] exif frame=${JSON.stringify(frame?.tags)} sd=${JSON.stringify(frame?.side_data_list)}`)
-          if (frame) {
-            // 检查 side_data_list.displaymatrix.rotation
-            const dmRotate = frame.side_data_list
-              ?.map((sd: any) => sd.rotation)
-              .find((r: number) => r === 90 || r === 270)
-            // 检查 EXIF tags.Orientation
-            const exifOrientation = String(frame.tags?.Orientation ?? '').trim()
-            const exifRotate = exifOrientation === '6' ? 90 : exifOrientation === '8' ? 270 : 0
-            const rotate = dmRotate ?? exifRotate ?? 0
-            logMainInfo(`[workspace:getMediaResolution] exif dm=${dmRotate} ori='${exifOrientation}' er=${exifRotate} rot=${rotate}`)
-            if (rotate === 90 || rotate === 270) {
-              ;[w, h] = [h, w]
-              logMainInfo(`[workspace:getMediaResolution] exif SWAP -> ${w}x${h}`)
-            }
-          }
-        } catch (e: any) {
-          logMainInfo(`[workspace:getMediaResolution] exif FAILED: ${e.message}`)
-        }
-        logMainInfo(`[workspace:getMediaResolution] ${filePath} -> ${w}x${h}`)
-        return { width: w, height: h }
-      }
-    } catch { /* fallback below */ }
-
-    throw new Error(`无法获取文件分辨率: ${filePath}`)
+      const resolution = await probeDisplayResolution(filePath)
+      logMainInfo(
+        `[workspace:getMediaResolution] encoded=${resolution.encodedWidth}x${resolution.encodedHeight} rotation=${resolution.rotation} display=${resolution.width}x${resolution.height} filePath=${filePath}`,
+      )
+      return { width: resolution.width, height: resolution.height }
+    } catch (error) {
+      logMainInfo(`[workspace:getMediaResolution] FAILED filePath=${filePath} error=${error instanceof Error ? error.message : String(error)}`)
+      throw error instanceof Error ? error : new Error(`无法获取文件分辨率: ${filePath}`)
+    }
   })
 
   ipcMain.handle('workspace:isLivePhoto', async (_event, filePath: string) => {

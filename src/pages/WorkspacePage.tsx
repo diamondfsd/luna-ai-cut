@@ -89,8 +89,15 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     if (!wm?.enabled || !wm?.imagePath || !wm.wmAspect) return []
     if (!watermarkMediaSize) return []
     const layer = buildResolvedWatermarkStaticLayer(wm, watermarkMediaSize.w, watermarkMediaSize.h)
+    console.log('[WorkspacePage] watermark preview layer', {
+      filePath: media.activeMedia?.path,
+      mediaSize: `${watermarkMediaSize.w}x${watermarkMediaSize.h}`,
+      style: wm.style,
+      position: wm.position,
+      layer,
+    })
     return layer ? [layer] : []
-  }, [edit.pipeline.watermark, watermarkMediaSize])
+  }, [edit.pipeline.watermark, media.activeMedia?.path, watermarkMediaSize])
 
   // ── PreviewStage ref ──
   const previewRef = useRef<PreviewStageHandle>(null)
@@ -116,7 +123,14 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     let cancelled = false
     window.luna.workspace.getMediaResolution(filePath)
       .then((resolution) => {
-        if (!cancelled) setWatermarkMediaSize({ w: resolution.width, h: resolution.height })
+        if (!cancelled) {
+          console.log('[WorkspacePage] watermark media resolution', {
+            filePath,
+            width: resolution.width,
+            height: resolution.height,
+          })
+          setWatermarkMediaSize({ w: resolution.width, h: resolution.height })
+        }
       })
       .catch(() => {
         if (!cancelled) setWatermarkMediaSize(null)
