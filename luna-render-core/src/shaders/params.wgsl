@@ -54,6 +54,8 @@ struct LayerParams {
     flip_h: f32,
     flip_v: f32,
     scale: f32,
+    translate_x: f32,
+    translate_y: f32,
     curve_data: array<vec4<f32>, 30>,
     hsl_data: array<vec4<f32>, 8>,
 }

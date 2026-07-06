@@ -1,23 +1,50 @@
-import { Download, Film, Image as ImageIcon, LayoutTemplate } from 'lucide-react'
+import { Download, LayoutTemplate, Pause, Play, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import type { WorkspaceMediaAsset } from '../../../shared/types'
-import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
-import { Button, SegmentedControl, Select, Switch, toast } from '../../../ui'
+import { CompositionPreviewCanvas } from '../../../components/CompositionPreviewCanvas'
+import type { CompositionInput, WorkspaceMediaAsset } from '../../../shared/types'
+import { Button, IconButton, Select, toast } from '../../../ui'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
-import {
-  loadCreativeImageSource,
-  loadCreativePreviewImageSource,
-  loadCreativeVideoSource,
-  normalizeCreativePipeline,
-  type CreativeSlotTransform,
-  type CreativeSlotSource,
-} from '../shared/creativeMedia'
-import { TripleStitchGLSlot } from './TripleStitchGLSlot'
-import { TripleStitchSlotTools } from './TripleStitchSlotTools'
-import { TripleStitchTransformPanel } from './TripleStitchTransformPanel'
-import { createDefaultPipeline } from '../../shared/editPipeline'
+import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/creativeMedia'
+import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
+import { ParamSlider } from '../../components/ParamSlider'
 import './triple-stitch.css'
+
+const CANVAS_WIDTH = 2160
+const CANVAS_HEIGHT = 3840
+const FPS = 30
+const EXPORT_DURATION = 3
+
+type VideoQuality = 'high' | 'medium' | 'low'
+
+const VIDEO_QUALITY_OPTIONS: Array<{ value: VideoQuality; label: string }> = [
+  { value: 'high', label: '高' },
+  { value: 'medium', label: '中' },
+  { value: 'low', label: '低' },
+]
+
+interface SlotEdit {
+  scale: number
+  translateX: number
+  translateY: number
+  startTime: number
+}
+
+const DEFAULT_SLOT_EDIT: SlotEdit = { scale: 1, translateX: 0, translateY: 0, startTime: 0 }
+
+interface LunaCompositionExportApi {
+  exportCompositionVideo(
+    outputPath: string,
+    composition: CompositionInput,
+    fps: number | null,
+    duration: number | null,
+    hardware: boolean,
+    taskId?: string,
+    qualityPreset?: string,
+    exportTaskId?: string,
+    exportItemId?: string,
+  ): Promise<void>
+}
 
 function useTripleStitchSources(media: WorkspaceMediaAsset[], selectedIds: string[]): CreativeSlotSource[] {
   return useMemo(() => selectedIds
@@ -29,52 +56,78 @@ function useTripleStitchSources(media: WorkspaceMediaAsset[], selectedIds: strin
     })), [media, selectedIds])
 }
 
-const DEFAULT_TRANSFORM: CreativeSlotTransform = { scale: 1, offsetX: 0, offsetY: 0 }
-type VideoDuration = '3' | '5' | '10' | '15'
-type VideoQuality = 'high' | 'medium' | 'low'
-type WatermarkStyle = 'luna_ultra' | 'luna_ultra_cn'
+function outputPath(exportDir: string, fileName: string): string {
+  return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
+}
 
-const VIDEO_QUALITY_OPTIONS: Array<{ value: VideoQuality; label: string }> = [
-  { value: 'high', label: '高 (4K 50M)' },
-  { value: 'medium', label: '中 (2K 30M)' },
-  { value: 'low', label: '低 (1080P 20M)' },
-]
+function clampPan(value: number, scale: number): number {
+  const limit = Math.max(0, (scale - 1) / (scale * 2))
+  return Math.min(limit, Math.max(-limit, value))
+}
+
+function buildTripleStitchComposition(slots: CreativeSlotSource[], edits: SlotEdit[]): CompositionInput | null {
+  if (slots.length !== 3) return null
+  return {
+    version: 1,
+    canvas: {
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+      fps: FPS,
+      duration: EXPORT_DURATION,
+    },
+    layers: slots.map(({ asset, pipeline }, index) => ({
+      id: `slot-${index + 1}`,
+      source: {
+        path: asset.path,
+        sourceType: 'auto',
+        time: {
+          start: edits[index]?.startTime ?? 0,
+          offset: 0,
+          duration: EXPORT_DURATION,
+          loopEnabled: true,
+        },
+      },
+      rect: { x: 0, y: index / 3, w: 1, h: 1 / 3 },
+      fit: 'cover',
+      opacity: 1,
+      zIndex: index,
+      color: pipelineColorToRenderColor(pipeline.color),
+      transform: {
+        ...pipelineTransformToRenderTransform(pipeline.transform),
+        scale: (pipeline.transform.scale || 1) * (edits[index]?.scale ?? 1),
+        translateX: edits[index]?.translateX ?? 0,
+        translateY: edits[index]?.translateY ?? 0,
+      },
+    })),
+  }
+}
+
+function compositionApi(): LunaCompositionExportApi {
+  const api = (window as unknown as { lunaRenderCore?: LunaCompositionExportApi }).lunaRenderCore
+  if (!api) throw new Error('渲染引擎未初始化')
+  return api
+}
 
 export function TripleStitchCreative() {
   const media = useWorkspaceMedia()
-  const watermarkRef = useRef<HTMLImageElement | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>(() => media.media.slice(0, 3).map((asset) => asset.id))
   const [activeSlot, setActiveSlot] = useState(0)
-  const [watermarkEnabled, setWatermarkEnabled] = useState(true)
-  const [watermarkStyle, setWatermarkStyle] = useState<WatermarkStyle>('luna_ultra_cn')
-  const [exportLiveImage, setExportLiveImage] = useState(true)
-  const [exportVideo, setExportVideo] = useState(false)
-  const [exportAppleLive, setExportAppleLive] = useState(false)
-  const [videoDuration, setVideoDuration] = useState<VideoDuration>('5')
+  const [slotEdits, setSlotEdits] = useState<SlotEdit[]>([
+    { ...DEFAULT_SLOT_EDIT },
+    { ...DEFAULT_SLOT_EDIT },
+    { ...DEFAULT_SLOT_EDIT },
+  ])
+  const [previewPlaying, setPreviewPlaying] = useState(true)
   const [videoQuality, setVideoQuality] = useState<VideoQuality>('high')
   const [busy, setBusy] = useState(false)
-  const [previewSources, setPreviewSources] = useState<Array<HTMLImageElement | HTMLVideoElement>>([])
-  const [slotDurations, setSlotDurations] = useState([0, 0, 0])
-  const [slotTransforms, setSlotTransforms] = useState<CreativeSlotTransform[]>([
-    { ...DEFAULT_TRANSFORM },
-    { ...DEFAULT_TRANSFORM },
-    { ...DEFAULT_TRANSFORM },
-  ])
-  const [liveStarts, setLiveStarts] = useState([0, 0, 0])
-  const dragRef = useRef<{ slot: number; x: number; y: number; startX: number; startY: number; ratio: number } | null>(null)
+  const dragRef = useRef<{ slot: number; x: number; y: number; startX: number; startY: number; width: number; height: number } | null>(null)
   const slotSources = useTripleStitchSources(media.media, selectedIds)
-  const watermarkOptions = useMemo(() => watermarkStyleOptionsForDevice('luna-ultra').map(({ value, label }) => ({ value, label })), [])
-  const isMac = /Mac/i.test(navigator.platform)
-  const canExport = slotSources.length === 3 && (exportLiveImage || exportVideo || exportAppleLive)
-  const activeTransform = slotTransforms[activeSlot] ?? DEFAULT_TRANSFORM
-
-  useEffect(() => {
-    const src = WM_SRC[watermarkStyle]?.image
-    if (!src) return
-    const img = new Image()
-    img.onload = () => { watermarkRef.current = img }
-    img.src = src
-  }, [watermarkStyle])
+  const composition = useMemo(() => buildTripleStitchComposition(slotSources, slotEdits), [slotEdits, slotSources])
+  const canExport = Boolean(composition) && !busy
+  const activeEdit = slotEdits[activeSlot] ?? DEFAULT_SLOT_EDIT
+  const activeAsset = slotSources[activeSlot]?.asset
+  const activeDuration = (activeAsset as { duration?: number } | undefined)?.duration
+  const startMax = Math.max(0, (typeof activeDuration === 'number' ? activeDuration : 33) - EXPORT_DURATION)
 
   useEffect(() => {
     setSelectedIds((current) => {
@@ -95,68 +148,30 @@ export function TripleStitchCreative() {
         next[activeSlot] = asset.id
         return next.slice(0, 3)
       })
+      updateSlotEdit(activeSlot, DEFAULT_SLOT_EDIT)
     }
 
     window.addEventListener('workspace-media-strip-click', handleStripClick)
     return () => window.removeEventListener('workspace-media-strip-click', handleStripClick)
   }, [activeSlot, media.media])
 
-  function updateSlotTransform(slot: number, patch: Partial<CreativeSlotTransform>): void {
-    setSlotTransforms((current) => current.map((item, index) => (
-      index === slot ? { ...item, ...patch } : item
-    )))
+  function updateSlotEdit(slot: number, patch: Partial<SlotEdit>): void {
+    setSlotEdits((current) => current.map((item, index) => {
+      if (index !== slot) return item
+      const nextScale = Math.min(3, Math.max(1, patch.scale ?? item.scale))
+      return {
+        ...item,
+        ...patch,
+        scale: nextScale,
+        translateX: clampPan(patch.translateX ?? item.translateX, nextScale),
+        translateY: clampPan(patch.translateY ?? item.translateY, nextScale),
+        startTime: Math.max(0, patch.startTime ?? item.startTime),
+      }
+    }))
   }
 
-  function swapSlots(from: number, to: number): void {
-    if (to < 0 || to > 2) return
-    setSelectedIds((current) => {
-      const next = [...current]
-      ;[next[from], next[to]] = [next[to], next[from]]
-      return next
-    })
-    setSlotTransforms((current) => {
-      const next = current.map((item) => ({ ...item }))
-      ;[next[from], next[to]] = [next[to], next[from]]
-      return next
-    })
-    setLiveStarts((current) => {
-      const next = [...current]
-      ;[next[from], next[to]] = [next[to], next[from]]
-      return next
-    })
-    setSlotDurations((current) => {
-      const next = [...current]
-      ;[next[from], next[to]] = [next[to], next[from]]
-      return next
-    })
-    setActiveSlot(to)
-  }
-
-  function resetActiveTransform(): void {
-    updateSlotTransform(activeSlot, DEFAULT_TRANSFORM)
-  }
-
-  function resetSlot(slot: number): void {
-    updateSlotTransform(slot, DEFAULT_TRANSFORM)
-    updateLiveStart(slot, 0)
-    setActiveSlot(slot)
-  }
-
-  function zoomSlot(slot: number): void {
-    const current = slotTransforms[slot] ?? DEFAULT_TRANSFORM
-    updateSlotTransform(slot, { scale: Math.min(3, Number((current.scale + 0.1).toFixed(2))) })
-    setActiveSlot(slot)
-  }
-
-  function updateLiveStart(slot: number, value: number): void {
-    const maxStart = Math.max(0, (slotDurations[slot] || 33) - 3)
-    const nextValue = Math.min(maxStart, Math.max(0, value))
-    setLiveStarts((current) => current.map((item, index) => (index === slot ? nextValue : item)))
-    const source = previewSources[slot]
-    if (source instanceof HTMLVideoElement) {
-      source.currentTime = nextValue
-      void source.play().catch(() => undefined)
-    }
+  function resetActiveSlot(): void {
+    updateSlotEdit(activeSlot, DEFAULT_SLOT_EDIT)
   }
 
   function slotFromPointer(event: React.PointerEvent<HTMLDivElement>): number {
@@ -167,17 +182,18 @@ export function TripleStitchCreative() {
 
   function handleBoardPointerDown(event: React.PointerEvent<HTMLDivElement>): void {
     if (event.button !== 0) return
-    if ((event.target as HTMLElement).closest('.triple-stitch-slot-tool')) return
     const slot = slotFromPointer(event)
-    const current = slotTransforms[slot] ?? DEFAULT_TRANSFORM
+    const rect = event.currentTarget.getBoundingClientRect()
+    const current = slotEdits[slot] ?? DEFAULT_SLOT_EDIT
     setActiveSlot(slot)
     dragRef.current = {
       slot,
       x: event.clientX,
       y: event.clientY,
-      startX: current.offsetX,
-      startY: current.offsetY,
-      ratio: Math.min(window.devicePixelRatio || 1, 2),
+      startX: current.translateX,
+      startY: current.translateY,
+      width: rect.width,
+      height: rect.height / 3,
     }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -185,9 +201,11 @@ export function TripleStitchCreative() {
   function handleBoardPointerMove(event: React.PointerEvent<HTMLDivElement>): void {
     const drag = dragRef.current
     if (!drag) return
-    updateSlotTransform(drag.slot, {
-      offsetX: drag.startX + (event.clientX - drag.x) * drag.ratio,
-      offsetY: drag.startY + (event.clientY - drag.y) * drag.ratio,
+    const edit = slotEdits[drag.slot] ?? DEFAULT_SLOT_EDIT
+    updateSlotEdit(drag.slot, {
+      translateX: drag.startX + (event.clientX - drag.x) / drag.width,
+      translateY: drag.startY + (event.clientY - drag.y) / drag.height,
+      scale: edit.scale,
     })
   }
 
@@ -197,74 +215,30 @@ export function TripleStitchCreative() {
     event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
-  // Watermark is no longer rendered on the preview canvas — it's applied during export
-
-  useEffect(() => {
-    let canceled = false
-    Promise.all(slotSources.map(async ({ asset, pipeline }) => {
-      const source = await (asset.kind === 'video' || asset.isLivePhoto
-        ? loadCreativeVideoSource(asset)
-        : loadCreativeImageSource(asset, pipeline)
-      ).catch(() => loadCreativePreviewImageSource(asset))
-      return source
-    }))
-      .then((sources) => {
-        if (canceled) return
-        setPreviewSources(sources)
-        setSlotDurations(sources.map((source) => (
-          source instanceof HTMLVideoElement && Number.isFinite(source.duration) ? source.duration : 0
-        )))
-        for (const source of sources) {
-          if (source instanceof HTMLVideoElement) void source.play().catch(() => undefined)
-        }
-      })
-      .catch(() => {
-        if (!canceled) setPreviewSources([])
-      })
-    return () => { canceled = true }
-  }, [slotSources])
-
-  useEffect(() => {
-    const source = previewSources[activeSlot]
-    if (!(source instanceof HTMLVideoElement)) return
-    const start = liveStarts[activeSlot] ?? 0
-    const end = start + 3
-    source.currentTime = start
-    void source.play().catch(() => undefined)
-    let raf = 0
-    const tick = () => {
-      if (source.currentTime >= end || source.currentTime < start) source.currentTime = start
-      raf = window.requestAnimationFrame(tick)
-    }
-    tick()
-    return () => window.cancelAnimationFrame(raf)
-  }, [activeSlot, liveStarts, previewSources])
-
   async function handleExport(): Promise<void> {
-    if (!canExport || busy) return
+    if (!composition || busy) return
     setBusy(true)
     try {
-      await window.luna.workspace.exportTripleStitch({
-        name: `triple-stitch-${Date.now()}`,
-        slots: slotSources.map(({ asset, pipeline }, index) => ({
-          name: asset.name,
-          path: asset.path,
-          kind: asset.kind,
-          isLivePhoto: asset.isLivePhoto,
-          transform: slotTransforms[index] ?? DEFAULT_TRANSFORM,
-          liveStart: liveStarts[index] ?? 0,
-          pipeline: pipeline as unknown as Record<string, unknown>,
-        })),
-        watermarkEnabled,
-        watermarkStyle,
-        outputs: {
-          liveImage: exportLiveImage,
-          video: exportVideo,
-          appleLivePhoto: exportAppleLive,
-        },
-        videoDuration: Number(videoDuration),
+      const settings = await window.luna.getSettings()
+      if (!settings.exportDir) throw new Error('导出目录未配置')
+      const stamp = Date.now()
+      const fileName = `triple-stitch-${stamp}.mp4`
+      const destinationPath = outputPath(settings.exportDir, fileName)
+      const itemId = `triple_stitch_${stamp}`
+      const task = await window.luna.exportTask.create('三拼视频导出', [
+        { id: itemId, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: destinationPath },
+      ])
+      await compositionApi().exportCompositionVideo(
+        destinationPath,
+        composition,
+        FPS,
+        EXPORT_DURATION,
+        true,
+        itemId,
         videoQuality,
-      })
+        task.id,
+        itemId,
+      )
       toast.success('已加入导出任务')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error))
@@ -277,123 +251,129 @@ export function TripleStitchCreative() {
     <section className="triple-stitch-page">
       <div className="triple-stitch-preview">
         <div className="triple-stitch-board">
+          <CompositionPreviewCanvas
+            className="triple-stitch-canvas"
+            composition={composition}
+            playing={previewPlaying}
+            onError={(message) => toast.error(message)}
+          />
           <div
-            className="triple-stitch-slot-buttons"
+            className="triple-stitch-slot-overlay"
             onPointerDown={handleBoardPointerDown}
             onPointerMove={handleBoardPointerMove}
             onPointerUp={handleBoardPointerUp}
             onPointerCancel={handleBoardPointerUp}
           >
             {[0, 1, 2].map((index) => (
-              <div
+              <button
                 key={index}
-                className={`triple-stitch-slot-button${activeSlot === index ? ' active' : ''}`}
+                type="button"
+                className={`triple-stitch-slot${activeSlot === index ? ' active' : ''}`}
                 onClick={() => setActiveSlot(index)}
               >
-                <TripleStitchGLSlot
-                  source={previewSources[index] ?? null}
-                  pipeline={slotSources[index]?.pipeline ?? createDefaultPipeline()}
-                  transform={slotTransforms[index]}
-                />
-                <TripleStitchSlotTools
-                  slot={index}
-                  onMove={swapSlots}
-                  onZoom={zoomSlot}
-                  onReset={resetSlot}
-                />
-              </div>
+                <span>{slotSources[index]?.asset.name ?? `第 ${index + 1} 段`}</span>
+              </button>
             ))}
           </div>
         </div>
       </div>
 
-      <TripleStitchTransformPanel
-        activeSlot={activeSlot}
-        transform={activeTransform}
-        onChange={updateSlotTransform}
-        onReset={resetActiveTransform}
-        dynamic={slotSources[activeSlot]?.asset.kind === 'video' || Boolean(slotSources[activeSlot]?.asset.isLivePhoto)}
-        duration={slotDurations[activeSlot] ?? 0}
-        liveStart={liveStarts[activeSlot] ?? 0}
-        onLiveChange={(value) => updateLiveStart(activeSlot, value)}
-      />
       <aside className="triple-stitch-panel">
         <div className="triple-stitch-panel-head">
           <LayoutTemplate size={18} />
           <div>
-            <strong>Live 三拼</strong>
-            <span>选择画布分段后，点击底部素材替换</span>
+            <strong>三拼视频</strong>
+            <span>点击底部素材替换当前段落</span>
           </div>
         </div>
 
-        <label className="triple-stitch-switch-row">
-          <span>设备水印</span>
-          <Switch checked={watermarkEnabled} onCheckedChange={setWatermarkEnabled} ariaLabel="设备水印" />
-        </label>
-        {watermarkEnabled && (
-          <div className="triple-stitch-select-row">
-            <span>水印样式</span>
-            <Select
-              variant="compact"
-              options={watermarkOptions}
-              value={watermarkStyle}
-              onValueChange={(value) => setWatermarkStyle(value as WatermarkStyle)}
+        <div className="triple-stitch-section">
+          <div className="triple-stitch-section-title">当前段落</div>
+          {[0, 1, 2].map((index) => (
+            <button
+              key={index}
+              type="button"
+              className={`triple-stitch-source-row${activeSlot === index ? ' active' : ''}`}
+              onClick={() => setActiveSlot(index)}
+            >
+              <span>第 {index + 1} 段</span>
+              <strong>{slotSources[index]?.asset.name ?? '未选择'}</strong>
+            </button>
+          ))}
+        </div>
+
+        <div className="triple-stitch-section">
+          <div className="triple-stitch-section-head">
+            <div className="triple-stitch-section-title">画面调整</div>
+            <IconButton
+              variant="ghost"
+              size="mini"
+              icon={<RotateCcw size={13} />}
+              onClick={resetActiveSlot}
+              title="重置"
             />
           </div>
-        )}
+          <ParamSlider
+            label="缩放"
+            value={activeEdit.scale}
+            min={1}
+            max={3}
+            step={0.01}
+            onChange={(scale) => updateSlotEdit(activeSlot, { scale })}
+            formatValue={(value) => `${value.toFixed(2)}x`}
+          />
+          <ParamSlider
+            label="水平"
+            value={activeEdit.translateX}
+            min={-0.5}
+            max={0.5}
+            step={0.001}
+            onChange={(translateX) => updateSlotEdit(activeSlot, { translateX })}
+            formatValue={(value) => value.toFixed(3)}
+          />
+          <ParamSlider
+            label="垂直"
+            value={activeEdit.translateY}
+            min={-0.5}
+            max={0.5}
+            step={0.001}
+            onChange={(translateY) => updateSlotEdit(activeSlot, { translateY })}
+            formatValue={(value) => value.toFixed(3)}
+          />
+          <ParamSlider
+            label="起始"
+            value={activeEdit.startTime}
+            min={0}
+            max={startMax}
+            step={0.1}
+            onChange={(startTime) => updateSlotEdit(activeSlot, { startTime })}
+            formatValue={(value) => `${value.toFixed(1)}s`}
+          />
+        </div>
 
-        <div className="triple-stitch-export-panel">
-          <div className="triple-stitch-section-title">导出项</div>
-          <label className="triple-stitch-switch-row">
-            <span><ImageIcon size={15} /> Live 图片</span>
-            <Switch checked={exportLiveImage} onCheckedChange={setExportLiveImage} ariaLabel="Live 图片" />
-          </label>
-          <label className="triple-stitch-switch-row">
-            <span><Film size={15} /> 视频</span>
-            <Switch checked={exportVideo} onCheckedChange={setExportVideo} ariaLabel="视频" />
-          </label>
-          {exportVideo && (
-            <>
-              <SegmentedControl<VideoDuration>
-                value={videoDuration}
-                onChange={setVideoDuration}
-                options={[
-                  { value: '3', label: '3 秒' },
-                  { value: '5', label: '5 秒' },
-                  { value: '10', label: '10 秒' },
-                  { value: '15', label: '15 秒' },
-                ]}
-              />
-              <div className="triple-stitch-select-row">
-                <span>视频质量</span>
-                <Select
-                  variant="compact"
-                  options={VIDEO_QUALITY_OPTIONS}
-                  value={videoQuality}
-                  onValueChange={(value) => setVideoQuality(value as VideoQuality)}
-                />
-              </div>
-            </>
-          )}
-          <label className="triple-stitch-switch-row">
-            <span><ImageIcon size={15} /> Apple Live 图</span>
-            <Switch
-              checked={exportAppleLive}
-              onCheckedChange={(checked) => {
-                if (checked && !isMac) {
-                  toast.error('Apple Live 图仅支持在 Mac 上导出')
-                  return
-                }
-                setExportAppleLive(checked)
-              }}
-              ariaLabel="Apple Live 图"
+        <div className="triple-stitch-section">
+          <div className="triple-stitch-section-title">视频设置</div>
+          <div className="triple-stitch-select-row">
+            <span>质量</span>
+            <Select
+              variant="compact"
+              options={VIDEO_QUALITY_OPTIONS}
+              value={videoQuality}
+              onValueChange={(value) => setVideoQuality(value as VideoQuality)}
             />
-          </label>
+          </div>
         </div>
 
         <div className="triple-stitch-actions">
-          <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!canExport || busy} onClick={() => void handleExport()}>
-            {busy ? '导出中' : '导出'}
+          <IconButton
+            variant="outline"
+            size="compact"
+            icon={previewPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+            onClick={() => setPreviewPlaying((current) => !current)}
+            title={previewPlaying ? '暂停预览' : '播放预览'}
+          />
+          <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!canExport} onClick={() => void handleExport()}>
+            {busy ? '导出中' : '导出视频'}
           </Button>
         </div>
       </aside>
