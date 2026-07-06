@@ -245,38 +245,97 @@ fn plan_layer_rect(
     (layer.dst_x, layer.dst_y, layer.dst_w, layer.dst_h)
 }
 
+fn layer_crop_rect(layer: &PreviewLayerInput) -> (f64, f64, f64, f64) {
+    let Some(crop) = layer.transform.crop.as_ref() else {
+        return (0.0, 0.0, 1.0, 1.0);
+    };
+    let w = crop.w.clamp(0.001, 1.0);
+    let h = crop.h.clamp(0.001, 1.0);
+    let x = crop.x.clamp(0.0, 1.0 - w);
+    let y = crop.y.clamp(0.0, 1.0 - h);
+    (x, y, w, h)
+}
+
+fn should_swap_orientation(orientation: f64) -> bool {
+    let normalized = ((orientation % 180.0) + 180.0) % 180.0;
+    (45.0..=135.0).contains(&normalized)
+}
+
+fn frame_aspect(texture: &PreviewTextureInfo, orientation: f64) -> f64 {
+    let source_aspect = texture.width as f64 / texture.height.max(1) as f64;
+    if should_swap_orientation(orientation) {
+        1.0 / source_aspect.max(0.001)
+    } else {
+        source_aspect.max(0.001)
+    }
+}
+
+fn layer_visible_aspect(layer: &PreviewLayerInput, texture: &PreviewTextureInfo) -> f64 {
+    let (_, _, crop_w, crop_h) = layer_crop_rect(layer);
+    frame_aspect(texture, layer.transform.orientation) * crop_w / crop_h.max(0.001)
+}
+
 fn plan_layer_source_rect(
+    layer: &PreviewLayerInput,
+    _texture: &PreviewTextureInfo,
+    _output_width: u32,
+    _output_height: u32,
+) -> (f64, f64, f64, f64) {
+    (layer.src_x, layer.src_y, layer.src_w, layer.src_h)
+}
+
+fn plan_layer_transform(
     layer: &PreviewLayerInput,
     texture: &PreviewTextureInfo,
     output_width: u32,
     output_height: u32,
-) -> (f64, f64, f64, f64) {
+) -> crate::RenderLayerTransform {
+    let mut transform = layer.transform.clone();
     if layer.fit != "cover" {
-        return (layer.src_x, layer.src_y, layer.src_w, layer.src_h);
+        return transform;
     }
-
-    let texture_aspect = texture.width as f64 / texture.height.max(1) as f64;
+    let visible_aspect = layer_visible_aspect(layer, texture);
     let layer_pixel_w = (layer.dst_w * output_width as f64).abs().max(1.0);
     let layer_pixel_h = (layer.dst_h * output_height as f64).abs().max(1.0);
     let target_aspect = layer_pixel_w / layer_pixel_h;
+    let (crop_x, crop_y, crop_w, crop_h) = layer_crop_rect(layer);
 
-    if texture_aspect > target_aspect {
-        let src_w = (target_aspect / texture_aspect).clamp(0.001, 1.0);
-        (
-            layer.src_x + (layer.src_w - layer.src_w * src_w) / 2.0,
-            layer.src_y,
-            layer.src_w * src_w,
-            layer.src_h,
-        )
+    if visible_aspect > target_aspect {
+        let next_w = (crop_w * target_aspect / visible_aspect).clamp(0.001, crop_w);
+        transform.crop = Some(crate::RenderCropRect {
+            x: crop_x + (crop_w - next_w) / 2.0,
+            y: crop_y,
+            w: next_w,
+            h: crop_h,
+        });
     } else {
-        let src_h = (texture_aspect / target_aspect).clamp(0.001, 1.0);
-        (
-            layer.src_x,
-            layer.src_y + (layer.src_h - layer.src_h * src_h) / 2.0,
-            layer.src_w,
-            layer.src_h * src_h,
-        )
+        let next_h = (crop_h * visible_aspect / target_aspect).clamp(0.001, crop_h);
+        transform.crop = Some(crate::RenderCropRect {
+            x: crop_x,
+            y: crop_y + (crop_h - next_h) / 2.0,
+            w: crop_w,
+            h: next_h,
+        });
     }
+    transform
+}
+
+fn layer_visible_pixel_size(
+    texture: &PreviewTextureInfo,
+    transform: &crate::RenderLayerTransform,
+) -> (u32, u32) {
+    let (frame_w, frame_h) = if should_swap_orientation(transform.orientation) {
+        (texture.height as f64, texture.width as f64)
+    } else {
+        (texture.width as f64, texture.height as f64)
+    };
+    let crop = transform.crop.as_ref();
+    let crop_w = crop.map(|c| c.w).unwrap_or(1.0).clamp(0.001, 1.0);
+    let crop_h = crop.map(|c| c.h).unwrap_or(1.0).clamp(0.001, 1.0);
+    (
+        (frame_w * crop_w).round().max(1.0) as u32,
+        (frame_h * crop_h).round().max(1.0) as u32,
+    )
 }
 
 /// 根据相对定位重算 dst，保持纹理比例不变形
@@ -1648,9 +1707,8 @@ impl Compositor {
 
         // 有 transform.crop 时，按裁剪框像素尺寸作为基础输出尺寸
         let (base_w, base_h) = match &first_layer.transform.crop {
-            Some(crop) => {
-                let cw = (first_texture.width as f64 * crop.w).round().max(1.0) as u32;
-                let ch = (first_texture.height as f64 * crop.h).round().max(1.0) as u32;
+            Some(_) => {
+                let (cw, ch) = layer_visible_pixel_size(first_texture, &first_layer.transform);
                 log!(
                     "plan_preview: crop adjusted {}x{} -> {}x{}",
                     first_texture.width,
@@ -1661,12 +1719,13 @@ impl Compositor {
                 (cw, ch)
             }
             None => {
+                let (frame_w, frame_h) = layer_visible_pixel_size(first_texture, &first_layer.transform);
                 log!(
-                    "plan_preview: no crop, using tex size {}x{}",
-                    first_texture.width,
-                    first_texture.height
+                    "plan_preview: no crop, using frame size {}x{}",
+                    frame_w,
+                    frame_h
                 );
-                (first_texture.width, first_texture.height)
+                (frame_w, frame_h)
             }
         };
 
@@ -1682,6 +1741,8 @@ impl Compositor {
                     plan_layer_rect(layer, texture, output_width, output_height);
                 let (src_x, src_y, src_w, src_h) =
                     plan_layer_source_rect(layer, texture, output_width, output_height);
+                let transform =
+                    plan_layer_transform(layer, texture, output_width, output_height);
                 crate::RenderLayer {
                     texture_id: texture.texture_id,
                     dst_x,
@@ -1695,7 +1756,7 @@ impl Compositor {
                     opacity: layer.opacity,
                     z_index: layer.z_index,
                     color: Some(layer.color.clone()),
-                    transform: Some(layer.transform.clone()),
+                    transform: Some(transform),
                     positioning: layer.positioning.clone(),
                 }
             })
