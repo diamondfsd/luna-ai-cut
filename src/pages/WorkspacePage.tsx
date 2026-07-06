@@ -1,5 +1,5 @@
 import { ArrowLeft, ClipboardCopy, ClipboardPaste, Eye, EyeOff, FileDown, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
@@ -68,6 +68,14 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [watermarkMediaSize, setWatermarkMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [exportEnqueuing, setExportEnqueuing] = useState(false)
+
+  // 稳定回调，避免内联箭头函数导致 PreviewStage useEffect 循环
+  const handleMediaSize = useCallback((w: number, h: number) => {
+    setMediaSize((prev) => {
+      if (prev?.w === w && prev?.h === h) return prev
+      return { w, h }
+    })
+  }, [])
 
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
   const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
@@ -411,9 +419,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
             pipeline={stagePipeline}
             extraLayers={watermarkLayer}
             cropActive={edit.cropActive}
-            scaleMode="contain"
             onMetricsChange={canvas.setPreviewMetrics}
-            onMediaSize={(w, h) => setMediaSize({ w, h })}
+            onMediaSize={handleMediaSize}
             renderOverlay={() => (edit.cropActive ? <CropOverlay /> : null)}
           />
 

@@ -10,12 +10,9 @@ import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import './PreviewStage.css'
 
-export type ScaleMode = 'fill' | 'contain'
-
 interface PreviewStageProps {
   url: string | null
   pending?: boolean
-  scaleMode?: ScaleMode
   extraLayers?: PreviewLayer[]
   exportOptions?: ExportOptions
   pipeline?: EditPipeline
@@ -45,10 +42,6 @@ interface StageSize {
   height: number
 }
 
-interface RenderState {
-  layers: PreviewLayer[]
-}
-
 function isValidSize(size: MediaResolution | StageSize | null): size is MediaResolution | StageSize {
   return !!size && Number.isFinite(size.width) && Number.isFinite(size.height) && size.width > 0 && size.height > 0
 }
@@ -68,11 +61,10 @@ function containFrame(media: MediaResolution, stage: StageSize): Pick<PreviewLay
 
 export function buildLayers(
   url: string,
-  scaleMode: ScaleMode = 'contain',
   resolution: MediaResolution | null = null,
   stageSize: StageSize | null = null,
 ): PreviewLayer[] {
-  const hasMeasuredFrame = scaleMode === 'contain' && isValidSize(resolution) && isValidSize(stageSize)
+  const hasMeasuredFrame = isValidSize(resolution) && isValidSize(stageSize)
   const frame = hasMeasuredFrame
     ? containFrame(resolution, stageSize)
     : { dstX: 0, dstY: 0, dstW: 1, dstH: 1 }
@@ -103,7 +95,7 @@ function projectCanvasFor(resolution: MediaResolution | null): StageSize | null 
 }
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
-  { url, pending = false, scaleMode = 'contain', extraLayers, exportOptions, pipeline, cropActive, onMetricsChange, onMediaSize, renderOverlay },
+  { url, pending = false, extraLayers, exportOptions, pipeline, cropActive, onMetricsChange, onMediaSize, renderOverlay },
   ref,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -124,7 +116,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
-  const [renderState, setRenderState] = useState<RenderState | null>(null)
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
@@ -246,18 +237,24 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     return calcAspectRatio(resolution.width, resolution.height)
   }, [resolution])
 
-  const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution, forceBaseFit?: ScaleMode): PreviewLayer[] => {
+  const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution): PreviewLayer[] => {
     // 基于 Project Canvas 计算布局，Stage 不参与
     const canvas = projectCanvasFor(layerResolution) ?? { width: 1440, height: 1440 }
-    const main = sourceUrl ? buildLayers(sourceUrl, scaleMode, layerResolution, canvas) : []
-    if (forceBaseFit && main[0] && sourceUrl && layerResolution) {
-      main[0] = buildLayers(sourceUrl, forceBaseFit, layerResolution, canvas)[0] ?? main[0]
-    }
+    const main = sourceUrl ? buildLayers(sourceUrl, layerResolution, canvas) : []
     if (main[0] && pipeline) {
+      const renderTransform = pipelineTransformToRenderTransform(pipeline.transform)
+      console.log('[PreviewStage] apply pipeline transform to layer', {
+        filePath: main[0].filePath,
+        pipelineCrop: pipeline.transform.crop,
+        renderTransform,
+        cropAspectRatio: pipeline.transform.crop
+          ? Math.round((pipeline.transform.crop.w / pipeline.transform.crop.h) * 100) / 100
+          : null,
+      })
       main[0] = {
         ...main[0],
         color: pipelineColorToRenderColor(pipeline.color),
-        transform: pipelineTransformToRenderTransform(pipeline.transform),
+        transform: renderTransform,
       }
     }
     const m = main[0]
@@ -290,11 +287,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       finalLayers,
     })
     return finalLayers
-  }, [scaleMode, resolution, extraLayers, pipeline])
+  }, [resolution, extraLayers, pipeline])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []
-    const nextLayers = buildAdjustedLayers(displayUrl, resolution, livePlaying ? 'fill' : undefined)
+    const nextLayers = buildAdjustedLayers(displayUrl, resolution)
     console.log('[PreviewStage] render layers', {
       displayUrl,
       layoutUrl,
@@ -332,17 +329,9 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   }, [resolution, onMediaSize])
 
   useEffect(() => {
-    if (layers.length === 0) {
-      setRenderState(null)
-      return
-    }
-    setRenderState({ layers })
-  }, [layers])
-
-  useEffect(() => {
     const stage = stageRef.current
     const wrapper = wrapperRef.current
-    const mainLayer = renderState?.layers[0]
+    const mainLayer = layers[0]
     if (!stage || !wrapper || !resolution || !mainLayer) return
 
     const stageRect = stage.getBoundingClientRect()
@@ -373,7 +362,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
         },
       })
     }
-  }, [onMetricsChange, renderState, resolution])
+  }, [onMetricsChange, layers, resolution])
 
   // 暴露导出方法
   useImperativeHandle(ref, () => ({
@@ -419,7 +408,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
           width: liveResolution.width,
           height: liveResolution.height,
           imageLayers: buildAdjustedLayers(url, liveResolution),
-          videoLayers: buildAdjustedLayers(exportLiveVideoUrl, liveResolution, 'fill'),
+          videoLayers: buildAdjustedLayers(exportLiveVideoUrl, liveResolution),
           appleLivePhoto: Boolean(settings.exportAppleLivePhoto),
         })
       }
@@ -439,7 +428,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     },
   }), [exportOptions, displayUrl, isLivePhoto, url, liveVideoUrl, buildAdjustedLayers])
 
-  if (!displayUrl && !renderState) return null
+  if (!displayUrl && layers.length === 0) return null
 
   return (
     <div
@@ -448,9 +437,9 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       data-crop-active={cropActive ? '' : undefined}
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
-      {renderState && (
+      {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          <LrcRender layers={renderState.layers} onRender={handleRender} onVideoElement={handleVideoElement} />
+          <LrcRender layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
         </div>
       )}
       {renderOverlay?.()}
