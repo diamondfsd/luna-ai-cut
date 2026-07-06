@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
-import { exportPreviewImage, exportPreviewLivePhoto, exportPreviewVideo } from './previewStageExport'
+import { emitLocalExportProgress, exportPreviewImage, exportPreviewLivePhoto, exportPreviewVideo } from './previewStageExport'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge } from '../ui'
@@ -394,12 +394,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       const filename = `${baseName}_${Date.now()}.${ext}`
       const outputPath = exportDir.endsWith('/') ? `${exportDir}${filename}` : `${exportDir}/${filename}`
       const exportLayers = buildAdjustedLayers(displayUrl, res)
-
-      // 创建导出任务记录
       const itemId = `preview_${baseName}_${Date.now()}`
       const task = await window.luna.exportTask.create('单帧导出', [
         { id: itemId, sourcePath: displayUrl, outputPath },
       ])
+      emitLocalExportProgress({
+        exportId: itemId, taskId: task.id, taskName: task.name, fileName: filename,
+        index: 0, totalFiles: 1, percent: 0, status: 'queued', destinationPath: outputPath,
+      })
 
       if (isLivePhoto && url) {
         let exportLiveVideoUrl = liveVideoUrl
@@ -426,7 +428,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
         return exportPreviewVideo({
           exportDir, fileName: filename, width: res.width, height: res.height,
           layers: exportLayers, qualityPreset: 'high',
-          exportTaskId: task.id, exportItemId: itemId,
+          exportTaskId: task.id, exportItemId: itemId, taskName: task.name, index: 0, totalFiles: 1,
         })
       }
       return exportPreviewImage({
