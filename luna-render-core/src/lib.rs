@@ -1,5 +1,5 @@
-mod compositor;
 mod composition;
+mod compositor;
 mod export;
 mod media;
 
@@ -318,7 +318,10 @@ pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
 }
 
 pub(crate) fn create_export_compositor() -> napi::Result<Compositor> {
-    let log_path = COMPOSITOR_LOG_PATH.lock().ok().and_then(|guard| guard.clone());
+    let log_path = COMPOSITOR_LOG_PATH
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
     Compositor::new(log_path.as_deref()).map_err(napi::Error::from_reason)
 }
 
@@ -382,6 +385,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             file_path: l.file_path.clone(),
             is_video: l.is_video,
             video_time: l.video_time,
+            fit: "stretch".to_string(),
             dst_x: l.dst_x,
             dst_y: l.dst_y,
             dst_w: l.dst_w,
@@ -418,7 +422,10 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
 /// 前端可以缓存 texture/video frame，但 contain/fill 等布局由 Rust 统一规划。
 #[napi]
 pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> {
-    let layers: Vec<(compositor::PreviewLayerInput, compositor::PreviewTextureInfo)> = input
+    let layers: Vec<(
+        compositor::PreviewLayerInput,
+        compositor::PreviewTextureInfo,
+    )> = input
         .layers
         .iter()
         .map(|item| {
@@ -427,6 +434,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     file_path: item.layer.file_path.clone(),
                     is_video: item.layer.is_video,
                     video_time: item.layer.video_time,
+                    fit: "stretch".to_string(),
                     dst_x: item.layer.dst_x,
                     dst_y: item.layer.dst_y,
                     dst_w: item.layer.dst_w,
