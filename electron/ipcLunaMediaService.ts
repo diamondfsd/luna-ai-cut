@@ -66,13 +66,16 @@ function localFileForPath(filePath: string): LunaFile {
 }
 
 export function register(ctx: IpcContext): void {
-  ipcMain.handle('luna:cacheFile', async (_event, file: LunaFile) => {
-    const key = file.id || file.name
+  ipcMain.handle('luna:cacheFile', async (_event, sourceUrl: string) => {
+    const key = sourceUrl
     const existingTask = ctx.previewCacheTasks.get(key)
     if (existingTask) {
-      logMainDebug(`[缓存] 缓存任务已存在，复用`, { key, fileName: file.name })
+      logMainDebug(`[缓存] 缓存任务已存在，复用`, { key })
       return existingTask
     }
+
+    const file = localFileForPath(sourceUrl)
+
     logMainInfo(`[缓存] 开始缓存文件`, { key, fileName: file.name, kind: file.kind })
 
     const task = ctx.enqueuePreviewTask(async () => {

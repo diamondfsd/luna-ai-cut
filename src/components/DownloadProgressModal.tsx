@@ -92,7 +92,7 @@ export function DownloadProgressModal({
     for (const file of downloadQueue) {
       if (file.thumbnailUrl || requestedThumbnailIdsRef.current.has(file.id)) continue
       requestedThumbnailIdsRef.current.add(file.id)
-      window.luna.cacheFile(file).catch(() => {
+      window.luna.cacheFile(file.sourceUrl).catch(() => {
         requestedThumbnailIdsRef.current.delete(file.id)
       })
     }
