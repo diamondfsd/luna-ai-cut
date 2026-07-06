@@ -208,28 +208,6 @@ pub struct RenderLayer {
     pub transform: Option<RenderLayerTransform>,
 }
 
-/// 静态叠加层 — 导出用，传文件绝对路径，Rust 内部加载+渲染
-#[napi(object)]
-#[derive(Clone)]
-pub struct StaticLayer {
-    /// 图片文件绝对路径（水印、贴纸等）
-    pub image_path: String,
-    /// 目标区域（归一化 0-1）
-    pub dst_x: f64,
-    pub dst_y: f64,
-    pub dst_w: f64,
-    pub dst_h: f64,
-    /// 源裁剪区域（归一化 0-1）
-    pub src_x: f64,
-    pub src_y: f64,
-    pub src_w: f64,
-    pub src_h: f64,
-    pub opacity: f64,
-    pub z_index: i32,
-    pub color: Option<RenderColorAdjustments>,
-    pub transform: Option<RenderLayerTransform>,
-}
-
 /// 预览层 — render_preview 的统一层描述
 #[napi(object)]
 #[derive(Clone)]
@@ -377,32 +355,6 @@ pub fn render_frame(
     Ok(result.into())
 }
 
-/// 预览一帧 — 和 export_file 同样的参数，但返回 RGBA Buffer 而非编码输出
-///
-/// JS 只传 JSON：文件路径 + 层参数。Rust 解码 → renderFrame → 返回 RGBA。
-#[napi]
-pub fn preview_file(
-    ffmpeg_path: String,
-    ffprobe_path: String,
-    input: String,
-    width: u32,
-    height: u32,
-    static_layers: Vec<StaticLayer>,
-) -> napi::Result<Buffer> {
-    lock(|c| {
-        let result = export::preview_file(
-            &ffmpeg_path,
-            &ffprobe_path,
-            &input,
-            width,
-            height,
-            &static_layers,
-            c,
-        )?;
-        Ok(result.into())
-    })
-}
-
 /// 统一预览入口：传路径列表，Rust 内部解码 + 缓存 + 合成，返回 RGBA Buffer 和实际输出尺寸。
 #[napi]
 pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOutput> {
@@ -497,8 +449,7 @@ pub struct ExportFileTask {
     height: u32,
     fps: Option<f64>,
     hardware: bool,
-    video_layer: RenderLayer,
-    static_layers: Vec<StaticLayer>,
+    layers: Vec<PreviewLayer>,
     task_id: Option<String>,
     quality_preset: Option<String>,
 }
@@ -509,12 +460,12 @@ impl Task for ExportFileTask {
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
         crate::log!(
-            "export async: in={} out={} {}x{} static={} task={:?} preset={:?}",
+            "export async: in={} out={} {}x{} layers={} task={:?} preset={:?}",
             self.input,
             self.output,
             self.width,
             self.height,
-            self.static_layers.len(),
+            self.layers.len(),
             self.task_id,
             self.quality_preset
         );
@@ -529,8 +480,7 @@ impl Task for ExportFileTask {
             self.height,
             self.fps,
             self.hardware,
-            &self.video_layer,
-            &self.static_layers,
+            &self.layers,
             self.task_id.as_deref(),
             preset,
             &mut compositor,
@@ -554,8 +504,7 @@ pub fn export_file_async(
     height: u32,
     fps: Option<f64>,
     hardware: bool,
-    video_layer: RenderLayer,
-    static_layers: Vec<StaticLayer>,
+    layers: Vec<PreviewLayer>,
     task_id: Option<String>,
     quality_preset: Option<String>,
 ) -> AsyncTask<ExportFileTask> {
@@ -568,8 +517,7 @@ pub fn export_file_async(
         height,
         fps,
         hardware,
-        video_layer,
-        static_layers,
+        layers,
         task_id,
         quality_preset,
     })

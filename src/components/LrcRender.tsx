@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
-import type { PreviewLayer, RenderLayer, StaticLayer } from '../shared/types'
+import type { PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 
 const PREVIEW_TEXTURE_MAX_SIDE = 1920
@@ -46,8 +46,7 @@ interface LunaRenderCore {
     canvasHeight: number,
     fps: number | null,
     hardware: boolean,
-    videoLayer: RenderLayer,
-    overlayLayers: StaticLayer[],
+    layers: PreviewLayer[],
     taskId?: string,
     qualityPreset?: string,
   ) => Promise<void>
@@ -75,44 +74,6 @@ function summarizeLayer(layer: PreviewLayer) {
 
 function sortedLayers(layers: PreviewLayer[]): PreviewLayer[] {
   return [...layers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-}
-
-function staticLayers(layers: PreviewLayer[]): StaticLayer[] {
-  return sortedLayers(layers)
-    .filter((layer) => !layer.isVideo)
-    .map((layer) => ({
-      imagePath: layer.filePath,
-      dstX: layer.dstX,
-      dstY: layer.dstY,
-      dstW: layer.dstW,
-      dstH: layer.dstH,
-      srcX: layer.srcX ?? 0,
-      srcY: layer.srcY ?? 0,
-      srcW: layer.srcW ?? 1,
-      srcH: layer.srcH ?? 1,
-      opacity: layer.opacity ?? 1,
-      zIndex: layer.zIndex ?? 0,
-      color: layer.color,
-      transform: layer.transform,
-    }))
-}
-
-function videoRenderLayer(layer: PreviewLayer): RenderLayer {
-  return {
-    textureId: 0,
-    dstX: layer.dstX,
-    dstY: layer.dstY,
-    dstW: layer.dstW,
-    dstH: layer.dstH,
-    srcX: layer.srcX ?? 0,
-    srcY: layer.srcY ?? 0,
-    srcW: layer.srcW ?? 1,
-    srcH: layer.srcH ?? 1,
-    opacity: layer.opacity ?? 1,
-    zIndex: layer.zIndex ?? 0,
-    color: layer.color,
-    transform: layer.transform,
-  }
 }
 
 function bytesFromRenderData(data: RenderPreviewOutput['data']): Uint8ClampedArray {
@@ -332,8 +293,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
         height,
         options?.fps ?? null,
         options?.hardware ?? true,
-        videoRenderLayer(videoLayer),
-        staticLayers(currentLayers),
+        currentLayers,
         options?.taskId,
         options?.qualityPreset,
       )

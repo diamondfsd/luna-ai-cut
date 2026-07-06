@@ -1,5 +1,5 @@
 import { buildLayers } from '../../components/PreviewStage'
-import { buildResolvedWatermarkStaticLayer } from '../../components/WatermarkSettings'
+import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer } from '../../shared/types'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
@@ -25,21 +25,6 @@ export function buildWorkspaceExportLayers(
     }
   }
 
-  const wm = pipeline.watermark
-  if (!wm?.enabled || !wm?.imagePath || !wm.wmAspect) return main
-
-  const watermarkLayer = buildResolvedWatermarkStaticLayer(wm, resolution.width, resolution.height)
-  const baseLayer = main[0]
-  if (!watermarkLayer || !baseLayer) return main
-
-  return [
-    ...main,
-    {
-      ...watermarkLayer,
-      dstX: baseLayer.dstX + watermarkLayer.dstX * baseLayer.dstW,
-      dstY: baseLayer.dstY + watermarkLayer.dstY * baseLayer.dstH,
-      dstW: watermarkLayer.dstW * baseLayer.dstW,
-      dstH: watermarkLayer.dstH * baseLayer.dstH,
-    },
-  ]
+  const layers = buildExportLayers(sourcePath, resolution, pipeline.watermark)
+  return main[0] ? [{ ...layers[0], ...main[0] }, ...layers.slice(1)] : layers
 }
