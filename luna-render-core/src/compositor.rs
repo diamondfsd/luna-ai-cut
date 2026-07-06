@@ -206,6 +206,7 @@ pub struct PreviewLayerInput {
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
+    pub fit: String,
     pub dst_x: f64,
     pub dst_y: f64,
     pub dst_w: f64,
@@ -244,12 +245,51 @@ fn plan_layer_rect(
     (layer.dst_x, layer.dst_y, layer.dst_w, layer.dst_h)
 }
 
+fn plan_layer_source_rect(
+    layer: &PreviewLayerInput,
+    texture: &PreviewTextureInfo,
+    output_width: u32,
+    output_height: u32,
+) -> (f64, f64, f64, f64) {
+    if layer.fit != "cover" {
+        return (layer.src_x, layer.src_y, layer.src_w, layer.src_h);
+    }
+
+    let texture_aspect = texture.width as f64 / texture.height.max(1) as f64;
+    let layer_pixel_w = (layer.dst_w * output_width as f64).abs().max(1.0);
+    let layer_pixel_h = (layer.dst_h * output_height as f64).abs().max(1.0);
+    let target_aspect = layer_pixel_w / layer_pixel_h;
+
+    if texture_aspect > target_aspect {
+        let src_w = (target_aspect / texture_aspect).clamp(0.001, 1.0);
+        (
+            layer.src_x + (layer.src_w - layer.src_w * src_w) / 2.0,
+            layer.src_y,
+            layer.src_w * src_w,
+            layer.src_h,
+        )
+    } else {
+        let src_h = (texture_aspect / target_aspect).clamp(0.001, 1.0);
+        (
+            layer.src_x,
+            layer.src_y + (layer.src_h - layer.src_h * src_h) / 2.0,
+            layer.src_w,
+            layer.src_h * src_h,
+        )
+    }
+}
+
 /// 根据相对定位重算 dst，保持纹理比例不变形
 fn resolve_positioning(
     positioning: &Option<crate::LayerPositioning>,
-    default_x: f64, default_y: f64, default_w: f64, default_h: f64,
-    canvas_w: f64, canvas_h: f64,
-    tex_w: f64, tex_h: f64,
+    default_x: f64,
+    default_y: f64,
+    default_w: f64,
+    default_h: f64,
+    canvas_w: f64,
+    canvas_h: f64,
+    tex_w: f64,
+    tex_h: f64,
 ) -> (f64, f64, f64, f64) {
     let pos = match positioning {
         Some(p) => p,
@@ -266,23 +306,34 @@ fn resolve_positioning(
     let margin_y = pos.margin_y;
 
     let (dst_x, dst_y) = match pos.anchor.as_str() {
-        "top-left"      => (margin_x, margin_y),
-        "top-center"    => ((1.0 - dst_w) / 2.0, margin_y),
-        "top-right"     => (1.0 - dst_w - margin_x, margin_y),
-        "bottom-left"   => (margin_x, 1.0 - dst_h - margin_y),
+        "top-left" => (margin_x, margin_y),
+        "top-center" => ((1.0 - dst_w) / 2.0, margin_y),
+        "top-right" => (1.0 - dst_w - margin_x, margin_y),
+        "bottom-left" => (margin_x, 1.0 - dst_h - margin_y),
         "bottom-center" => ((1.0 - dst_w) / 2.0, 1.0 - dst_h - margin_y),
-        "bottom-right"  => (1.0 - dst_w - margin_x, 1.0 - dst_h - margin_y),
-        "center"        => ((1.0 - dst_w) / 2.0, (1.0 - dst_h) / 2.0),
-        _               => (default_x, default_y),
+        "bottom-right" => (1.0 - dst_w - margin_x, 1.0 - dst_h - margin_y),
+        "center" => ((1.0 - dst_w) / 2.0, (1.0 - dst_h) / 2.0),
+        _ => (default_x, default_y),
     };
 
     log!(
         "resolve_positioning anchor={} target_width={:.3} margin=({:.3},{:.3}) \
          canvas={:.0}x{:.0}(aspect={:.3}) tex={:.0}x{:.0}(aspect={:.3}) \
          -> dst=({:.3},{:.3}) {:.3}x{:.3}",
-        pos.anchor, pos.target_width, margin_x, margin_y,
-        canvas_w, canvas_h, canvas_aspect, tex_w, tex_h, tex_aspect,
-        dst_x, dst_y, dst_w, dst_h,
+        pos.anchor,
+        pos.target_width,
+        margin_x,
+        margin_y,
+        canvas_w,
+        canvas_h,
+        canvas_aspect,
+        tex_w,
+        tex_h,
+        tex_aspect,
+        dst_x,
+        dst_y,
+        dst_w,
+        dst_h,
     );
 
     (dst_x, dst_y, dst_w, dst_h)
@@ -1053,9 +1104,14 @@ impl Compositor {
                 // ── 相对定位覆盖 dst ──
                 let (pos_dst_x, pos_dst_y, pos_dst_w, pos_dst_h) = resolve_positioning(
                     &layer.positioning,
-                    layer.dst_x, layer.dst_y, layer.dst_w, layer.dst_h,
-                    canvas_width as f64, canvas_height as f64,
-                    tex_entry.width as f64, tex_entry.height as f64,
+                    layer.dst_x,
+                    layer.dst_y,
+                    layer.dst_w,
+                    layer.dst_h,
+                    canvas_width as f64,
+                    canvas_height as f64,
+                    tex_entry.width as f64,
+                    tex_entry.height as f64,
                 );
 
                 log!(
@@ -1349,7 +1405,8 @@ impl Compositor {
     ) -> Result<(Vec<u8>, u32, u32), String> {
         // 已有 decoder 且文件路径匹配 → 从 pipe 顺序读下一帧
         if let Some(dec) = self.video_decoders.get_mut(file_path) {
-            if video_time + 0.05 < dec.current_time || (video_time - dec.current_time).abs() > 0.75 {
+            if video_time + 0.05 < dec.current_time || (video_time - dec.current_time).abs() > 0.75
+            {
                 log!(
                     "read_video_frame [{}] seek jump {:.3} -> {:.3}, restarting",
                     file_path,
@@ -1575,12 +1632,16 @@ impl Compositor {
             .ok_or_else(|| "no valid layers for preview plan".to_string())?;
 
         // ── 日志：plan_preview 入口 ──
-        let crop_debug = first_layer.transform.crop.as_ref().map(|c| {
-            format!("crop=({:.3},{:.3} {:.3}x{:.3})", c.x, c.y, c.w, c.h)
-        }).unwrap_or_else(|| "crop=None".to_string());
+        let crop_debug = first_layer
+            .transform
+            .crop
+            .as_ref()
+            .map(|c| format!("crop=({:.3},{:.3} {:.3}x{:.3})", c.x, c.y, c.w, c.h))
+            .unwrap_or_else(|| "crop=None".to_string());
         log!(
             "plan_preview: layer#0 tex={}x{} has_transform={} {}",
-            first_texture.width, first_texture.height,
+            first_texture.width,
+            first_texture.height,
             first_layer.transform.crop.is_some(),
             crop_debug,
         );
@@ -1590,11 +1651,21 @@ impl Compositor {
             Some(crop) => {
                 let cw = (first_texture.width as f64 * crop.w).round().max(1.0) as u32;
                 let ch = (first_texture.height as f64 * crop.h).round().max(1.0) as u32;
-                log!("plan_preview: crop adjusted {}x{} -> {}x{}", first_texture.width, first_texture.height, cw, ch);
+                log!(
+                    "plan_preview: crop adjusted {}x{} -> {}x{}",
+                    first_texture.width,
+                    first_texture.height,
+                    cw,
+                    ch
+                );
                 (cw, ch)
             }
             None => {
-                log!("plan_preview: no crop, using tex size {}x{}", first_texture.width, first_texture.height);
+                log!(
+                    "plan_preview: no crop, using tex size {}x{}",
+                    first_texture.width,
+                    first_texture.height
+                );
                 (first_texture.width, first_texture.height)
             }
         };
@@ -1609,16 +1680,18 @@ impl Compositor {
             .map(|(layer, texture)| {
                 let (dst_x, dst_y, dst_w, dst_h) =
                     plan_layer_rect(layer, texture, output_width, output_height);
+                let (src_x, src_y, src_w, src_h) =
+                    plan_layer_source_rect(layer, texture, output_width, output_height);
                 crate::RenderLayer {
                     texture_id: texture.texture_id,
                     dst_x,
                     dst_y,
                     dst_w,
                     dst_h,
-                    src_x: layer.src_x,
-                    src_y: layer.src_y,
-                    src_w: layer.src_w,
-                    src_h: layer.src_h,
+                    src_x,
+                    src_y,
+                    src_w,
+                    src_h,
                     opacity: layer.opacity,
                     z_index: layer.z_index,
                     color: Some(layer.color.clone()),

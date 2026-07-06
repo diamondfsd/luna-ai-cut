@@ -99,9 +99,11 @@ fn is_video_source(source: &CompositionSource) -> bool {
         "image" => false,
         _ => {
             let lower = source.path.to_lowercase();
-            [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".insv", ".lrv"]
-                .iter()
-                .any(|ext| lower.ends_with(ext))
+            [
+                ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".insv", ".lrv",
+            ]
+            .iter()
+            .any(|ext| lower.ends_with(ext))
         }
     }
 }
@@ -112,7 +114,11 @@ fn layer_time(source: &CompositionSource, composition_time: f64) -> f64 {
     let start = source_time.and_then(|time| time.start).unwrap_or(0.0);
     let mut t = start + composition_time - offset;
     if let Some(duration) = source_time.and_then(|time| time.duration) {
-        if source_time.and_then(|time| time.loop_enabled).unwrap_or(false) && duration > 0.0 {
+        if source_time
+            .and_then(|time| time.loop_enabled)
+            .unwrap_or(false)
+            && duration > 0.0
+        {
             t = start + (t - start).rem_euclid(duration);
         }
     }
@@ -127,6 +133,7 @@ fn composition_layers(input: &CompositionInput, time: f64) -> Vec<PreviewLayerIn
             file_path: layer.source.path.clone(),
             is_video: is_video_source(&layer.source),
             video_time: layer_time(&layer.source, time),
+            fit: layer.fit.clone().unwrap_or_else(|| "cover".to_string()),
             dst_x: layer.rect.x,
             dst_y: layer.rect.y,
             dst_w: layer.rect.w,
@@ -165,7 +172,9 @@ fn render_composition_frame_with(
 }
 
 #[napi]
-pub fn render_composition_frame(input: RenderCompositionFrameInput) -> napi::Result<RenderPreviewOutput> {
+pub fn render_composition_frame(
+    input: RenderCompositionFrameInput,
+) -> napi::Result<RenderPreviewOutput> {
     lock(|c| {
         let (data, width, height) = render_composition_frame_with(
             c,
@@ -194,12 +203,24 @@ impl Task for ExportCompositionVideoTask {
     fn compute(&mut self) -> napi::Result<Self::Output> {
         let mut compositor = create_export_compositor()?;
         compositor.clear_video_decoders();
-        let fps = self.input.fps.or(self.input.composition.canvas.fps).unwrap_or(30.0).max(1.0);
-        let duration = self.input.duration.or(self.input.composition.canvas.duration).unwrap_or(5.0).max(0.1);
+        let fps = self
+            .input
+            .fps
+            .or(self.input.composition.canvas.fps)
+            .unwrap_or(30.0)
+            .max(1.0);
+        let duration = self
+            .input
+            .duration
+            .or(self.input.composition.canvas.duration)
+            .unwrap_or(5.0)
+            .max(0.1);
         let total_frames = (duration * fps).round().max(1.0) as u64;
         let task = self.input.task_id.as_deref().map(register_task);
         if let Some(ref state) = task {
-            state.total_frames.store(total_frames, std::sync::atomic::Ordering::SeqCst);
+            state
+                .total_frames
+                .store(total_frames, std::sync::atomic::Ordering::SeqCst);
         }
 
         let encoder = if cfg!(target_os = "macos") && self.input.hardware.unwrap_or(true) {
@@ -230,7 +251,10 @@ impl Task for ExportCompositionVideoTask {
             "-pix_fmt".to_string(),
             "rgba".to_string(),
             "-s".to_string(),
-            format!("{}x{}", self.input.composition.canvas.width, self.input.composition.canvas.height),
+            format!(
+                "{}x{}",
+                self.input.composition.canvas.width, self.input.composition.canvas.height
+            ),
             "-r".to_string(),
             fps.to_string(),
             "-i".to_string(),
@@ -257,7 +281,10 @@ impl Task for ExportCompositionVideoTask {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| napi::Error::from_reason(format!("encode spawn: {}", e)))?;
-        let mut stdin = child.stdin.take().ok_or_else(|| napi::Error::from_reason("encode stdin unavailable"))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| napi::Error::from_reason("encode stdin unavailable"))?;
 
         for frame in 0..total_frames {
             if task.as_ref().map_or(false, |state| state.is_cancelled()) {
@@ -277,11 +304,15 @@ impl Task for ExportCompositionVideoTask {
                 .write_all(&rgba)
                 .map_err(|e| napi::Error::from_reason(format!("encode write: {}", e)))?;
             if let Some(ref state) = task {
-                state.current_frame.store(frame + 1, std::sync::atomic::Ordering::SeqCst);
+                state
+                    .current_frame
+                    .store(frame + 1, std::sync::atomic::Ordering::SeqCst);
             }
         }
         drop(stdin);
-        let output = child.wait_with_output().map_err(|e| napi::Error::from_reason(format!("encode wait: {}", e)))?;
+        let output = child
+            .wait_with_output()
+            .map_err(|e| napi::Error::from_reason(format!("encode wait: {}", e)))?;
         if !output.status.success() {
             return Err(napi::Error::from_reason(
                 String::from_utf8_lossy(&output.stderr).to_string(),
@@ -299,6 +330,8 @@ impl Task for ExportCompositionVideoTask {
 }
 
 #[napi]
-pub fn export_composition_video_async(input: ExportCompositionVideoInput) -> AsyncTask<ExportCompositionVideoTask> {
+pub fn export_composition_video_async(
+    input: ExportCompositionVideoInput,
+) -> AsyncTask<ExportCompositionVideoTask> {
     AsyncTask::new(ExportCompositionVideoTask { input })
 }

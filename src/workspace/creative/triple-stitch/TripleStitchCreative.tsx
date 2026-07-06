@@ -1,5 +1,6 @@
-import { Download, LayoutTemplate, Pause, Play, RotateCcw } from 'lucide-react'
+import { ArrowDown, ArrowUp, Download, Minus, Move, Pause, Play, Plus, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent, PointerEvent } from 'react'
 
 import { CompositionPreviewCanvas } from '../../../components/CompositionPreviewCanvas'
 import type { CompositionInput, WorkspaceMediaAsset } from '../../../shared/types'
@@ -174,13 +175,37 @@ export function TripleStitchCreative() {
     updateSlotEdit(activeSlot, DEFAULT_SLOT_EDIT)
   }
 
-  function slotFromPointer(event: React.PointerEvent<HTMLDivElement>): number {
+  function nudgeActiveScale(delta: number): void {
+    updateSlotEdit(activeSlot, { scale: activeEdit.scale + delta })
+  }
+
+  function moveActiveSlot(delta: -1 | 1): void {
+    const target = activeSlot + delta
+    if (target < 0 || target > 2) return
+    setSelectedIds((current) => {
+      const next = [...current]
+      ;[next[activeSlot], next[target]] = [next[target], next[activeSlot]]
+      return next
+    })
+    setSlotEdits((current) => {
+      const next = [...current]
+      ;[next[activeSlot], next[target]] = [next[target], next[activeSlot]]
+      return next
+    })
+    setActiveSlot(target)
+  }
+
+  function stopToolEvent(event: PointerEvent | MouseEvent): void {
+    event.stopPropagation()
+  }
+
+  function slotFromPointer(event: PointerEvent<HTMLDivElement>): number {
     const rect = event.currentTarget.getBoundingClientRect()
     const y = Math.min(rect.height - 1, Math.max(0, event.clientY - rect.top))
     return Math.floor(y / (rect.height / 3))
   }
 
-  function handleBoardPointerDown(event: React.PointerEvent<HTMLDivElement>): void {
+  function handleBoardPointerDown(event: PointerEvent<HTMLDivElement>): void {
     if (event.button !== 0) return
     const slot = slotFromPointer(event)
     const rect = event.currentTarget.getBoundingClientRect()
@@ -198,7 +223,7 @@ export function TripleStitchCreative() {
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
-  function handleBoardPointerMove(event: React.PointerEvent<HTMLDivElement>): void {
+  function handleBoardPointerMove(event: PointerEvent<HTMLDivElement>): void {
     const drag = dragRef.current
     if (!drag) return
     const edit = slotEdits[drag.slot] ?? DEFAULT_SLOT_EDIT
@@ -209,7 +234,7 @@ export function TripleStitchCreative() {
     })
   }
 
-  function handleBoardPointerUp(event: React.PointerEvent<HTMLDivElement>): void {
+  function handleBoardPointerUp(event: PointerEvent<HTMLDivElement>): void {
     if (!dragRef.current) return
     dragRef.current = null
     event.currentTarget.releasePointerCapture(event.pointerId)
@@ -257,6 +282,15 @@ export function TripleStitchCreative() {
             playing={previewPlaying}
             onError={(message) => toast.error(message)}
           />
+          <div className="triple-stitch-preview-actions">
+            <IconButton
+              variant="light"
+              size="compact"
+              icon={previewPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+              onClick={() => setPreviewPlaying((current) => !current)}
+              title={previewPlaying ? '暂停预览' : '播放预览'}
+            />
+          </div>
           <div
             className="triple-stitch-slot-overlay"
             onPointerDown={handleBoardPointerDown}
@@ -265,14 +299,86 @@ export function TripleStitchCreative() {
             onPointerCancel={handleBoardPointerUp}
           >
             {[0, 1, 2].map((index) => (
-              <button
+              <div
                 key={index}
-                type="button"
                 className={`triple-stitch-slot${activeSlot === index ? ' active' : ''}`}
-                onClick={() => setActiveSlot(index)}
               >
-                <span>{slotSources[index]?.asset.name ?? `第 ${index + 1} 段`}</span>
-              </button>
+                <button
+                  type="button"
+                  className="triple-stitch-slot-hit"
+                  onClick={() => setActiveSlot(index)}
+                >
+                  <span>{index + 1}</span>
+                </button>
+                {activeSlot === index && (
+                  <div className="triple-stitch-slot-tools">
+                    <IconButton
+                      className="triple-stitch-move-tool"
+                      variant="light"
+                      size="mini"
+                      icon={<Move size={13} />}
+                      title="拖动画面"
+                    />
+                    <IconButton
+                      variant="light"
+                      size="mini"
+                      icon={<Plus size={13} />}
+                      onPointerDown={stopToolEvent}
+                      onClick={(event) => {
+                        stopToolEvent(event)
+                        nudgeActiveScale(0.08)
+                      }}
+                      title="放大"
+                    />
+                    <IconButton
+                      variant="light"
+                      size="mini"
+                      icon={<Minus size={13} />}
+                      onPointerDown={stopToolEvent}
+                      onClick={(event) => {
+                        stopToolEvent(event)
+                        nudgeActiveScale(-0.08)
+                      }}
+                      title="缩小"
+                    />
+                    <IconButton
+                      variant="light"
+                      size="mini"
+                      icon={<RotateCcw size={13} />}
+                      onPointerDown={stopToolEvent}
+                      onClick={(event) => {
+                        stopToolEvent(event)
+                        resetActiveSlot()
+                      }}
+                      title="重置"
+                    />
+                    <IconButton
+                      variant="light"
+                      size="mini"
+                      icon={<ArrowUp size={13} />}
+                      disabled={index === 0}
+                      onPointerDown={stopToolEvent}
+                      onClick={(event) => {
+                        stopToolEvent(event)
+                        moveActiveSlot(-1)
+                      }}
+                      title="上移"
+                    />
+                    <IconButton
+                      variant="light"
+                      size="mini"
+                      icon={<ArrowDown size={13} />}
+                      disabled={index === 2}
+                      onPointerDown={stopToolEvent}
+                      onClick={(event) => {
+                        stopToolEvent(event)
+                        moveActiveSlot(1)
+                      }}
+                      title="下移"
+                    />
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -280,31 +386,15 @@ export function TripleStitchCreative() {
 
       <aside className="triple-stitch-panel">
         <div className="triple-stitch-panel-head">
-          <LayoutTemplate size={18} />
           <div>
-            <strong>三拼视频</strong>
-            <span>点击底部素材替换当前段落</span>
+            <strong>画面调整</strong>
+            <span>点击底部素材替换当前画面</span>
           </div>
         </div>
 
         <div className="triple-stitch-section">
-          <div className="triple-stitch-section-title">当前段落</div>
-          {[0, 1, 2].map((index) => (
-            <button
-              key={index}
-              type="button"
-              className={`triple-stitch-source-row${activeSlot === index ? ' active' : ''}`}
-              onClick={() => setActiveSlot(index)}
-            >
-              <span>第 {index + 1} 段</span>
-              <strong>{slotSources[index]?.asset.name ?? '未选择'}</strong>
-            </button>
-          ))}
-        </div>
-
-        <div className="triple-stitch-section">
           <div className="triple-stitch-section-head">
-            <div className="triple-stitch-section-title">画面调整</div>
+            <div className="triple-stitch-section-title">第 {activeSlot + 1} 画面</div>
             <IconButton
               variant="ghost"
               size="mini"
@@ -365,13 +455,6 @@ export function TripleStitchCreative() {
         </div>
 
         <div className="triple-stitch-actions">
-          <IconButton
-            variant="outline"
-            size="compact"
-            icon={previewPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
-            onClick={() => setPreviewPlaying((current) => !current)}
-            title={previewPlaying ? '暂停预览' : '播放预览'}
-          />
           <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!canExport} onClick={() => void handleExport()}>
             {busy ? '导出中' : '导出视频'}
           </Button>
