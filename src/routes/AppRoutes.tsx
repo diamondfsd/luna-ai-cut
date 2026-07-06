@@ -8,17 +8,18 @@ import { PreviewModalHost } from '../components/PreviewModalHost'
 import { AppRoute } from '../ui'
 import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
+import { CameraMediaPage } from '../pages/CameraMediaPage'
 import { DevPage } from '../pages/DevPage'
 import { DeviceDebugPage } from '../pages/DeviceDebugPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
-import { MediaLibraryPage } from '../pages/MediaLibraryPage'
+import { LocalMediaPage } from '../pages/LocalMediaPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
-import type { CacheStats, LunaFile, PreviewResult } from '../shared/types'
+import type { CacheStats } from '../shared/types'
 import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 
 export function AppRoutes() {
-  const { settings, setSettings, connection, downloadProgress, setDownloadProgress, hiddenDevMode } = useApp()
+  const { settings, setSettings, connection, setDownloadProgress, hiddenDevMode } = useApp()
   const {
     activeDevice,
     cameraLibraryMounted,
@@ -33,11 +34,6 @@ export function AppRoutes() {
   } = useDeviceConnection()
 
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
-  const [previewFile, setPreviewFile] = useState<LunaFile | null>(null)
-  const [preview, setPreview] = useState<PreviewResult | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [downloading, setDownloading] = useState(false)
-  const [localResourcesRefreshKey, setLocalResourcesRefreshKey] = useState(0)
   const [pagesKey, setPagesKey] = useState(0)
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('edit')
   const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
@@ -49,13 +45,7 @@ export function AppRoutes() {
   useEffect(() => {
     return window.luna.onDownloadProgress((progress) => {
       setDownloadProgress((current) => {
-        const previous = current.get(progress.fileName)
         const next = new Map(current).set(progress.fileName, progress)
-        const wasLocal = previous?.status === 'done' || previous?.status === 'exists'
-        const isLocal = progress.status === 'done' || progress.status === 'exists'
-        if (isLocal && !wasLocal) {
-          setLocalResourcesRefreshKey((key) => key + 1)
-        }
         return next
       })
     })
@@ -84,10 +74,6 @@ export function AppRoutes() {
 
   async function clearCache(): Promise<void> {
     setCacheStats(await window.luna.clearCache())
-    setPreviewFile(null)
-    setPreview(null)
-    setPreviewLoading(false)
-    setLocalResourcesRefreshKey((key) => key + 1)
     setPagesKey((key) => key + 1)
   }
 
@@ -152,44 +138,13 @@ export function AppRoutes() {
           )}
           {(cameraLibraryMounted || !showDeviceConnect) && (
             <div hidden={showDeviceConnect}>
-              <MediaLibraryPage
-                isDownloadsPage={false}
-                pageActive={isActive('/library')}
-                settings={settings}
-                downloadProgress={downloadProgress}
-                setDownloadProgress={setDownloadProgress}
-                downloading={downloading}
-                setDownloading={setDownloading}
-                previewFile={previewFile}
-                setPreviewFile={setPreviewFile}
-                preview={preview}
-                setPreview={setPreview}
-                previewLoading={previewLoading}
-                setPreviewLoading={setPreviewLoading}
-                activeDevice={activeDevice}
-                refreshKey={pagesKey}
-              />
+              <CameraMediaPage />
             </div>
           )}
         </AppRoute>
 
         <AppRoute path="/local-resources">
-          <MediaLibraryPage
-            isDownloadsPage={true}
-            pageActive={isActive('/local-resources')}
-            settings={settings}
-            downloadProgress={downloadProgress}
-            setDownloadProgress={setDownloadProgress}
-            downloading={downloading}
-            setDownloading={setDownloading}
-            previewFile={previewFile}
-            setPreviewFile={setPreviewFile}
-            preview={preview}
-            setPreview={setPreview}
-            previewLoading={previewLoading}
-            setPreviewLoading={setPreviewLoading}
-            refreshKey={localResourcesRefreshKey}
-          />
+          <LocalMediaPage />
         </AppRoute>
 
         <AppRoute path="/workspace">
