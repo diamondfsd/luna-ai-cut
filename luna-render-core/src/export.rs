@@ -465,6 +465,7 @@ fn render_layer_from_preview(texture_id: u32, layer: &PreviewLayer) -> RenderLay
         z_index: layer.z_index,
         color: layer.color.clone(),
         transform: layer.transform.clone(),
+        positioning: layer.positioning.clone(),
     }
 }
 
