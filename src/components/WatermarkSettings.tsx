@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
-import { luna_ultra_layout, closestAspectRatio, POSITION_TO_KEY, STYLE_TO_THEME } from '../shared/watermark/layoutConfig'
+import { luna_ultra_layout, closestAspectRatio, POSITION_TO_KEY, STYLE_TO_THEME, resolveWatermarkRatios } from '../shared/watermark/layoutConfig'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
@@ -32,6 +32,21 @@ export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, layou
     opacity: 1, zIndex: 1,
     fit: 'contain',
   }
+}
+
+export function buildResolvedWatermarkStaticLayer(
+  settings: WatermarkSettingsType,
+  mediaWidth: number,
+  mediaHeight: number,
+): PreviewLayer | null {
+  if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
+  const aspectKey = closestAspectRatio(mediaWidth, mediaHeight)
+  const positionKey = settings.position.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()
+  const ratios = resolveWatermarkRatios(null, settings.style, mediaWidth, mediaHeight, positionKey)
+  const enriched = ratios
+    ? { ...settings, widthRatio: ratios.widthRatio, xRatio: ratios.xRatio, yRatio: ratios.yRatio }
+    : settings
+  return buildWatermarkStaticLayer(enriched, aspectKey)
 }
 
 function positionKeyFor(position: string): string {

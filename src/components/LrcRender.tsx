@@ -343,6 +343,9 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   }
 
   useEffect(() => {
+    // 图层变化时重置媒体尺寸跟踪，确保 onMediaSize 回调总能触发
+    lastMediaSizeRef.current = [0, 0]
+
     if (!ready) return
     const lrc = getLRC()
     if (!lrc) return
