@@ -90,6 +90,21 @@ function fileNameFromPath(filePath: string): string {
   return filePath.split(/[\\/]/).pop() || 'export.mp4'
 }
 
+function sendExportProgress(
+  win: Electron.BrowserWindow | null,
+  progress: {
+    exportId: string
+    taskId?: string
+    fileName: string
+    percent: number
+    status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
+    destinationPath?: string
+    error?: string
+  },
+): void {
+  win?.webContents.send('export:progress', progress)
+}
+
 export function register(_ctx: RegisterContext): void {
   // 打开文件选择对话框，返回文件路径
   ipcMain.handle('lrc:pickVideo', async () => {
@@ -183,12 +198,23 @@ export function register(_ctx: RegisterContext): void {
       if (exportTaskId && exportItemId) {
         await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
       }
+      if (exportItemId) {
+        _event.sender?.send('export:progress', {
+          exportId: exportItemId,
+          taskId: exportTaskId,
+          fileName: outputPath.split(/[\\/]/).pop(),
+          percent: 0,
+          status: 'exporting',
+          destinationPath: outputPath,
+        })
+      }
 
       await lrcExportImageFromSourcesAsync(ffmpegPath, ffprobePath, outputPath, width, height, layers, format, quality)
 
       // 发送进度事件
       _event.sender?.send('export:progress', {
         exportId: exportItemId,
+        taskId: exportTaskId,
         fileName: outputPath.split(/[\\/]/).pop(),
         percent: 100,
         status: 'done',
@@ -241,22 +267,58 @@ export function register(_ctx: RegisterContext): void {
         exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
       }
 
-      _ctx.win?.webContents.send('export:progress', {
+      sendExportProgress(_ctx.win, {
         exportId,
+        taskId: exportTaskId,
         fileName,
         percent: 0,
         status: 'exporting',
         destinationPath: outputPath,
       })
+      let lastPercent = 0
+      let progressLogCount = 0
+      const progressTimer = setInterval(() => {
+        const progress = lrcGetExportTaskProgress(exportId)
+        if (!progress) {
+          if (progressLogCount < 6) {
+            progressLogCount += 1
+            rcLog(`[export-progress-debug] no rust progress exportId=${exportId} exportTaskId=${exportTaskId ?? ''} exportItemId=${exportItemId ?? ''}`)
+          }
+          return
+        }
+        const [currentFrame, totalFrames] = progress
+        if (progressLogCount < 12 || currentFrame === totalFrames || currentFrame % 30 === 0) {
+          progressLogCount += 1
+          rcLog(`[export-progress-debug] rust progress exportId=${exportId} frame=${currentFrame}/${totalFrames} exportTaskId=${exportTaskId ?? ''} exportItemId=${exportItemId ?? ''}`)
+        }
+        if (totalFrames <= 0) return
+        const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
+        if (percent <= lastPercent) return
+        lastPercent = percent
+        if (exportTaskId && exportItemId) {
+          exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting', progress: percent }).catch(() => {})
+        }
+        sendExportProgress(_ctx.win, {
+          exportId,
+          taskId: exportTaskId,
+          fileName,
+          percent,
+          status: 'exporting',
+          destinationPath: outputPath,
+        })
+        rcLog(`[export-progress-debug] sent ui progress exportId=${exportId} percent=${percent}`)
+      }, 500)
       lrcExportFileAsync(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, exportId, qualityPreset)
         .then(() => {
+          clearInterval(progressTimer)
           rcLog(`lrc:exportVideo done out=${outputPath}`)
           // 通知 exportTaskService（完成）
           if (exportTaskId && exportItemId) {
             exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
           }
-          _ctx.win?.webContents.send('export:progress', {
+          sendExportProgress(_ctx.win, {
             exportId,
+            taskId: exportTaskId,
             fileName,
             percent: 100,
             status: 'done',
@@ -264,14 +326,16 @@ export function register(_ctx: RegisterContext): void {
           })
         })
         .catch((err: unknown) => {
+          clearInterval(progressTimer)
           const error = err instanceof Error ? err.message : String(err)
           rcLog(`ERROR in exportVideo async: ${error} out=${outputPath}`)
           // 通知 exportTaskService（失败）
           if (exportTaskId && exportItemId) {
             exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'failed', error }).catch(() => {})
           }
-          _ctx.win?.webContents.send('export:progress', {
+          sendExportProgress(_ctx.win, {
             exportId,
+            taskId: exportTaskId,
             fileName,
             percent: 100,
             status: 'failed',
