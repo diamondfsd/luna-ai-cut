@@ -882,7 +882,7 @@ fn export_video(
         if idx % 30 == 0 {
             let elapsed = t0.elapsed().as_secs_f64().max(0.001);
             crate::log!(
-                "  {}/{} {:.1}fps {:.0}%",
+                "[export-progress-debug] rust frame {}/{} {:.1}fps {:.0}%",
                 idx,
                 total,
                 idx as f64 / elapsed,
