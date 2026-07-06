@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { AppSettings, DeviceDefinition, DownloadProgress, LunaFile, PreviewResult } from '../shared/types'
+import type { DownloadProgress, LunaFile, PreviewResult } from '../shared/types'
 import { useMediaLibraryTransferActions } from './useMediaLibraryTransferActions'
 import { useApp } from '../context/AppContext'
+import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { logger } from '../lib/rendererLogger'
 
 type MediaFilter = 'all' | 'image' | 'video'
@@ -10,28 +11,7 @@ type DownloadStatusFilter = 'all' | 'downloaded' | 'not-downloaded'
 export type CardSize = 'large' | 'medium' | 'small'
 export type SortOrder = 'desc' | 'asc'
 export type ViewMode = 'download' | 'export'
-type StorageFilter = string
-
-export interface MediaLibraryPageProps {
-  isDownloadsPage: boolean
-  /** 当前页面是否为激活状态（否则隐藏页面应阻止预览弹窗等 Portal 元素渲染） */
-  pageActive?: boolean
-  settings: AppSettings | null
-  downloadProgress: Map<string, DownloadProgress>
-  setDownloadProgress: React.Dispatch<React.SetStateAction<Map<string, DownloadProgress>>>
-  downloading: boolean
-  setDownloading: (d: boolean) => void
-  previewFile: LunaFile | null
-  setPreviewFile: React.Dispatch<React.SetStateAction<LunaFile | null>>
-  preview: PreviewResult | null
-  setPreview: (p: PreviewResult | null) => void
-  previewLoading: boolean
-  setPreviewLoading: (b: boolean) => void
-  activeDevice?: DeviceDefinition
-  refreshKey?: number
-  selectMode?: boolean
-  onSelect?: (files: LunaFile[]) => void
-}
+export type PageType = 'camera' | 'local'
 
 function groupFiles(files: LunaFile[]): Array<[string, LunaFile[]]> {
   const groups = new Map<string, LunaFile[]>()
@@ -41,92 +21,104 @@ function groupFiles(files: LunaFile[]): Array<[string, LunaFile[]]> {
   return [...groups.entries()]
 }
 
-export function useMediaLibraryController({
-  isDownloadsPage,
-  settings,
-  downloadProgress,
-  setDownloadProgress,
-  previewFile,
-  setPreviewFile,
-  setPreview,
-  setPreviewLoading,
-  activeDevice,
-  refreshKey,
-}: MediaLibraryPageProps) {
-  const { exportProgress } = useApp()
+/**
+ * 媒体库页面状态控制器。
+ *
+ * 根据 pageType 决定:
+ * - 'camera' — 从相机设备加载文件，支持下载、存储筛选
+ * - 'local'  — 加载本地下载/导出文件，支持删除、导出、发送到工作台
+ *
+ * 所有外部依赖（settings、downloadProgress、activeDevice）从 Context 获取，
+ * 不再需要父组件通过 props 传递。
+ */
+export function useMediaLibraryController(pageType: PageType) {
+  const { settings, downloadProgress, setDownloadProgress, exportProgress } = useApp()
+  const { activeDevice } = useDeviceConnection()
+  const isCamera = pageType === 'camera'
+  const isLocal = pageType === 'local'
+
+  // ── 文件数据层 ──
   const [files, setFiles] = useState<LunaFile[]>([])
   const [downloadedFiles, setDownloadedFiles] = useState<LunaFile[]>([])
-  const [previewFiles, setPreviewFiles] = useState<LunaFile[]>([])
+  const [exportedFiles, setExportedFiles] = useState<LunaFile[]>([])
+
+  // ── 选择状态 ──
   const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  // ── 筛选/排序 ──
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all')
   const [downloadStatusFilter, setDownloadStatusFilter] = useState<DownloadStatusFilter>('all')
   const [cardSize, setCardSize] = useState<CardSize>('large')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
-  const [query] = useState('')
+  const [storageFilter, setStorageFilter] = useState<string>('all')
+  const [viewMode, setViewMode] = useState<ViewMode>('download')
+
+  // ── 加载状态（含防重 ref） ──
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [loadingDownloads, setLoadingDownloads] = useState(false)
+  const loadingCameraRef = useRef(false)
+  const loadingDownloadsRef = useRef(false)
+
+  // ── 下载队列 ──
   const [downloadQueue, setDownloadQueue] = useState<LunaFile[]>([])
   const [activeDownloadFileNames, setActiveDownloadFileNames] = useState<Set<string>>(new Set())
   const [cacheFailedIds, setCacheFailedIds] = useState<Set<string>>(new Set())
-  const [activeGroup, setActiveGroup] = useState<string | null>(null)
-  const [autoPlayLiveFileId, setAutoPlayLiveFileId] = useState<string | null>(null)
-  const [storageFilter, setStorageFilter] = useState<StorageFilter>('all')
-  const [viewMode, setViewMode] = useState<ViewMode>('download')
-  const [exportedFiles, setExportedFiles] = useState<LunaFile[]>([])
+  const requestedThumbnailIdsRef = useRef(new Set<string>())
+  const requestedFrameRateIdsRef = useRef(new Set<string>())
+  const requestFrameRateRef = useRef<(file: LunaFile, localPath: string | null | undefined) => void>(() => {})
+
+  // ── 预览状态 ──
+  const [preview, setPreview] = useState<PreviewResult | null>(null)
+  const [previewFile, setPreviewFile] = useState<LunaFile | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewFiles, setPreviewFiles] = useState<LunaFile[]>([])
+  const previewRequestIdRef = useRef(0)
+
+  // ── 删除 ──
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deletingLocalFiles, setDeletingLocalFiles] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  const loadingCameraRef = useRef(false)
-  const loadingDownloadsRef = useRef(false)
-  const previewRequestIdRef = useRef(0)
-  const requestedThumbnailIdsRef = useRef(new Set<string>())
-  const requestedFrameRateIdsRef = useRef(new Set<string>())
-  const requestFrameRateRef = useRef<(file: LunaFile, localPath: string | null | undefined) => void>(() => {})
+  // ── 滚动分组 ──
+  const [activeGroup, setActiveGroup] = useState<string | null>(null)
+
+  // ═══════════════════════════════════════════
+  // 派生值
+  // ═══════════════════════════════════════════
+
   const activeDeviceId = activeDevice?.id ?? settings?.activeDeviceId ?? ''
-  const storageOptions = [
-    { value: 'all', label: '全部' },
-    ...(activeDevice?.storages.map((storage) => ({
-      value: storage.id,
-      label: storage.label,
-    })) ?? []),
-  ]
 
-  useEffect(() => {
-    setStorageFilter(settings?.deviceStorage?.[activeDeviceId] ?? 'all')
-  }, [activeDeviceId, settings?.deviceStorage])
-
-  // Auto-load files: 下载页加载本地，相机页自动从设备读取
-  useEffect(() => {
-    if (isDownloadsPage) {
-      void loadDownloadedLibrary()
-    } else if (settings) {
-      void loadCameraLibrary()
+  const storageOptions = useMemo(() => {
+    if (isCamera) {
+      return [
+        { value: 'all', label: '全部' },
+        ...(activeDevice?.storages?.map((s) => ({ value: s.id, label: s.label })) ?? []),
+      ]
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDevice?.id, isDownloadsPage, refreshKey, settings?.downloadDir, storageFilter])
+    return [{ value: 'all', label: '全部' }]
+  }, [activeDevice?.storages, isCamera])
 
-  const currentFiles = isDownloadsPage
-    ? (viewMode === 'export' ? exportedFiles : downloadedFiles)
-    : files
+  // 当前数据源：各 pageType 管理自己的文件列表，消除 isDownloadsPage 分支
+  const currentFiles = useMemo(
+    () => (isLocal ? (viewMode === 'export' ? exportedFiles : downloadedFiles) : files),
+    [isLocal, viewMode, files, downloadedFiles, exportedFiles],
+  )
+
   const filteredFiles = useMemo(() => {
-    const keyword = query.trim().toLowerCase()
     return currentFiles
       .filter((file) => {
         const matchesType = mediaFilter === 'all' || file.kind === mediaFilter
-        const matchesQuery = !keyword || file.name.toLowerCase().includes(keyword)
-        const matchesStorage = isDownloadsPage || storageFilter === 'all' || file.storageId === storageFilter
         const progress = downloadProgress.get(file.name)
         const isDownloaded = Boolean(
-          file.downloadFilePath
-          || file.localPath
-          || progress?.status === 'done'
-          || progress?.status === 'exists',
+          file.downloadFilePath || file.localPath || progress?.status === 'done' || progress?.status === 'exists',
         )
-        const matchesDownloadStatus = isDownloadsPage
-          || downloadStatusFilter === 'all'
-          || (downloadStatusFilter === 'downloaded' ? isDownloaded : !isDownloaded)
-        return matchesType && matchesQuery && matchesStorage && matchesDownloadStatus
+        if (isCamera) {
+          const matchesStorage = storageFilter === 'all' || file.storageId === storageFilter
+          const matchesDownloadStatus = downloadStatusFilter === 'all'
+            || (downloadStatusFilter === 'downloaded' ? isDownloaded : !isDownloaded)
+          return matchesType && matchesStorage && matchesDownloadStatus
+        }
+        return matchesType
       })
       .sort((a, b) => {
         const aTime = a.capturedAt ? Date.parse(a.capturedAt) : 0
@@ -134,13 +126,64 @@ export function useMediaLibraryController({
         const order = sortOrder === 'desc' ? bTime - aTime : aTime - bTime
         return order || a.name.localeCompare(b.name)
       })
-  }, [currentFiles, downloadProgress, downloadStatusFilter, isDownloadsPage, mediaFilter, query, sortOrder, storageFilter])
+  }, [currentFiles, mediaFilter, sortOrder, downloadProgress, downloadStatusFilter, storageFilter, isCamera])
+
   const selectedFiles = currentFiles.filter((file) => selected.has(file.id))
   const totalSelectedBytes = selectedFiles.reduce((sum, file) => sum + (file.bytes ?? 0), 0)
   const groups = groupFiles(filteredFiles)
   const firstGroup = groups[0]?.[0] ?? null
+  const isCurrentLoading = isLocal ? loadingDownloads : loadingFiles
+  const progressForPreview = previewFile ? downloadProgress.get(previewFile.name) : undefined
 
-  // Intersection observer for date groups
+  // downloading 从 downloadProgress 派生，不再需要父组件传入
+  const downloading = useMemo(
+    () => [...downloadProgress.values()].some((p) => p.status === 'queued' || p.status === 'downloading'),
+    [downloadProgress],
+  )
+
+  // ═══════════════════════════════════════════
+  // 副作用
+  // ═══════════════════════════════════════════
+
+  // 从设置中初始化存储筛选
+  useEffect(() => {
+    if (isCamera) {
+      setStorageFilter(settings?.deviceStorage?.[activeDeviceId] ?? 'all')
+    }
+  }, [activeDeviceId, settings?.deviceStorage, isCamera])
+
+  // 自动加载文件
+  useEffect(() => {
+    if (isLocal) {
+      void loadDownloadedLibrary()
+    } else if (settings) {
+      void loadCameraLibrary()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDevice?.id, pageType, settings?.downloadDir, storageFilter])
+
+  // 本地导出视图自动加载
+  useEffect(() => {
+    if (isLocal && viewMode === 'export') {
+      void loadExportLibrary()
+    }
+  }, [isLocal, viewMode, settings?.exportDir])
+
+  // 本地页：下载完成后自动刷新
+  const prevDoneCountRef = useRef(0)
+  useEffect(() => {
+    if (!isLocal) return
+    const doneCount = [...downloadProgress.values()].filter(
+      (p) => p.status === 'done' || p.status === 'exists',
+    ).length
+    if (prevDoneCountRef.current > 0 && doneCount > prevDoneCountRef.current) {
+      void loadDownloadedLibrary()
+    }
+    prevDoneCountRef.current = doneCount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [downloadProgress, isLocal])
+
+  // 滚动分组 IntersectionObserver
   useEffect(() => {
     setActiveGroup(firstGroup)
     if (!firstGroup) return
@@ -156,14 +199,16 @@ export function useMediaLibraryController({
       { rootMargin: '-112px 0px -72% 0px', threshold: [0, 0.01, 0.1] },
     )
 
-    document.querySelectorAll<HTMLElement>('.media-section[data-group]').forEach((section) => observer.observe(section))
+    document
+      .querySelectorAll<HTMLElement>('.media-section[data-group]')
+      .forEach((section) => observer.observe(section))
     return () => observer.disconnect()
-  }, [downloadStatusFilter, firstGroup, groups.length, sortOrder, mediaFilter, query])
+  }, [downloadStatusFilter, firstGroup, groups.length, sortOrder, mediaFilter])
 
-  // 监听缓存下载完成，更新卡片缩略图
+  // 监听缓存缩略图完成
   useEffect(() => {
     return window.luna.onThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
-      logger.info(`[缩略图] onThumbnailReady`, {
+      logger.info('[缩略图] onThumbnailReady', {
         fileId, fileName, downloadName,
         cacheFilePath: cacheFilePath?.slice(0, 200),
         thumbnailUrl: thumbnailUrl?.slice(0, 300),
@@ -182,13 +227,12 @@ export function useMediaLibraryController({
       setDownloadedFiles((current) =>
         current.map((f) => (matches(f) ? { ...f, cacheFilePath, thumbnailUrl } : f)),
       )
-      // 视频缓存完成后（cacheFilePath 可用），主动请求帧率和时长
-      // 即使 MediaCard 的 onLoad 重新触发也能覆盖，此处做双重保障
       const mockFile: Partial<LunaFile> = { id: fileId, cacheFilePath, kind: 'video' }
       requestFrameRateRef.current(mockFile as LunaFile, null)
     })
   }, [])
 
+  // 监听视频帧率就绪
   useEffect(() => {
     return window.luna.onVideoFrameRateReady(({ fileId, fileName, duration }) => {
       if (duration == null) return
@@ -201,26 +245,23 @@ export function useMediaLibraryController({
     })
   }, [])
 
+  // ═══════════════════════════════════════════
+  // 缩略图与帧率
+  // ═══════════════════════════════════════════
+
   function requestThumbnail(file: LunaFile): void {
-    if (file.thumbnailUrl) {
-      return
-    }
-    if (cacheFailedIds.has(file.id)) {
-      return
-    }
-    if (requestedThumbnailIdsRef.current.has(file.id)) {
-      return
-    }
+    if (file.thumbnailUrl || cacheFailedIds.has(file.id) || requestedThumbnailIdsRef.current.has(file.id)) return
     requestedThumbnailIdsRef.current.add(file.id)
-    void window.luna.cacheFile(file)
+    void window.luna
+      .cacheFile(file)
       .then((ok) => {
         if (!ok) {
-          logger.warn(`[缩略图] cacheFile 返回 false，标记 cacheFailed`, { fileId: file.id, fileName: file.name, kind: file.kind })
+          logger.warn('[缩略图] cacheFile 返回 false，标记 cacheFailed', { fileId: file.id, fileName: file.name, kind: file.kind })
           setCacheFailedIds((current) => new Set(current).add(file.id))
         }
       })
       .catch((err) => {
-        logger.error(`[缩略图] cacheFile IPC 异常`, {
+        logger.error('[缩略图] cacheFile IPC 异常', {
           fileId: file.id,
           fileName: file.name,
           kind: file.kind,
@@ -239,7 +280,6 @@ export function useMediaLibraryController({
     })
   }
 
-  // 保持 ref 与最新函数同步，供 onThumbnailReady 等闭包回调使用
   requestFrameRateRef.current = requestFrameRate
 
   function handleThumbnailImageLoad(file: LunaFile, localPath: string | null | undefined): void {
@@ -248,38 +288,29 @@ export function useMediaLibraryController({
   }
 
   function handleThumbnailImageError(file: LunaFile): void {
-    logger.warn(`[缩略图] 图片 onError`, {
+    logger.warn('[缩略图] 图片 onError', {
       fileId: file.id, fileName: file.name, kind: file.kind,
       thumbnailUrl: file.thumbnailUrl?.slice(0, 300),
       cacheFilePath: file.cacheFilePath,
       downloadFilePath: file.downloadFilePath,
       localPath: (file as any).localPath,
     })
-    // 缩略图加载失败（如文件损坏），清除请求记录允许重试
     requestedThumbnailIdsRef.current.delete(file.id)
-    // 清除 thumbnailUrl 让卡片显示占位图，然后重新触发缓存 + 缩略图生成
     setFiles((current) =>
       current.map((f) => (f.id === file.id ? { ...f, thumbnailUrl: null } : f)),
     )
     setDownloadedFiles((current) =>
       current.map((f) => (f.id === file.id ? { ...f, thumbnailUrl: null } : f)),
     )
-    // 短暂延迟后重试，避免在加载循环中打满 IPC
-    // 注意：要清除 file.thumbnailUrl 避免被 requestThumbnail 的短路检查跳过
     setTimeout(() => requestThumbnail({ ...file, thumbnailUrl: null }), 300)
   }
 
-  // --- File loading ---
+  // ═══════════════════════════════════════════
+  // 文件加载
+  // ═══════════════════════════════════════════
 
   async function loadCameraLibrary(): Promise<void> {
-    if (!settings) {
-      logger.warn('[媒体库] loadCameraLibrary: 设置为空，跳过')
-      return
-    }
-    if (loadingCameraRef.current) {
-      logger.debug('[媒体库] loadCameraLibrary: 正在加载中，跳过')
-      return
-    }
+    if (!settings || loadingCameraRef.current) return
     loadingCameraRef.current = true
     setLoadingFiles(true)
     const t0 = performance.now()
@@ -287,7 +318,6 @@ export function useMediaLibraryController({
       const host = settings.cameraHost
       logger.info('[媒体库] 开始从设备加载文件', { host, storageFilter })
       await window.luna.checkConnection(host)
-      // listFiles 只做轻量本地路径/已有缩略图标记，缓存由渲染层按需发起
       const lunaFiles = await window.luna.listFiles(host, storageFilter)
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
       logger.info('[媒体库] 设备文件加载完成', { host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })
@@ -304,21 +334,8 @@ export function useMediaLibraryController({
     }
   }
 
-  async function handleStorageFilterChange(value: StorageFilter): Promise<void> {
-    setStorageFilter(value)
-    setSelected(new Set())
-    setCacheFailedIds(new Set())
-    await window.luna.saveSettings({
-      deviceStorage: {
-        ...(settings?.deviceStorage ?? {}),
-        [activeDeviceId]: value,
-      },
-    })
-  }
-
   async function loadDownloadedLibrary(): Promise<void> {
-    if (!settings?.downloadDir) return
-    if (loadingDownloadsRef.current) return
+    if (!settings?.downloadDir || loadingDownloadsRef.current) return
     loadingDownloadsRef.current = true
     setLoadingDownloads(true)
     try {
@@ -346,11 +363,84 @@ export function useMediaLibraryController({
     }
   }
 
-  useEffect(() => {
-    if (isDownloadsPage && viewMode === 'export') {
-      void loadExportLibrary()
+  async function handleStorageFilterChange(value: string): Promise<void> {
+    setStorageFilter(value)
+    setSelected(new Set())
+    setCacheFailedIds(new Set())
+    await window.luna.saveSettings({
+      deviceStorage: {
+        ...(settings?.deviceStorage ?? {}),
+        [activeDeviceId]: value,
+      },
+    })
+  }
+
+  // ═══════════════════════════════════════════
+  // 选择逻辑
+  // ═══════════════════════════════════════════
+
+  function toggleFile(file: LunaFile): void {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (next.has(file.id)) next.delete(file.id)
+      else next.add(file.id)
+      return next
+    })
+  }
+
+  function toggleGroup(items: LunaFile[]): void {
+    setSelected((current) => {
+      const next = new Set(current)
+      const allSelected = items.every((file) => next.has(file.id))
+      for (const file of items) {
+        if (allSelected) next.delete(file.id)
+        else next.add(file.id)
+      }
+      return next
+    })
+  }
+
+  // ═══════════════════════════════════════════
+  // 预览
+  // ═══════════════════════════════════════════
+
+  async function openPreview(file: LunaFile, options?: { playLive?: boolean; keepPreviewFiles?: boolean; previewFiles?: LunaFile[] }): Promise<void> {
+    const requestId = previewRequestIdRef.current + 1
+    previewRequestIdRef.current = requestId
+    if (!options?.keepPreviewFiles) {
+      setPreviewFiles(options?.previewFiles ?? filteredFiles)
     }
-  }, [isDownloadsPage, viewMode, settings?.exportDir])
+    setPreviewFile(file)
+    setPreview(null)
+    if (!file.canPreview) return
+    setPreviewLoading(true)
+    try {
+      const nextPreview = await window.luna.previewFile(file, currentFiles)
+      if (previewRequestIdRef.current !== requestId) return
+      setPreview(nextPreview)
+    } catch (error) {
+      if (previewRequestIdRef.current !== requestId) return
+      setPreview({
+        fileName: file.name,
+        kind: file.kind,
+        source: null,
+        cachedPath: null,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      if (previewRequestIdRef.current === requestId) {
+        setPreviewLoading(false)
+      }
+    }
+  }
+
+  function handlePreviewClick(file: LunaFile): void {
+    void openPreview(file, { previewFiles: filteredFiles })
+  }
+
+  // ═══════════════════════════════════════════
+  // 传输操作（下载/删除/导出）
+  // ═══════════════════════════════════════════
 
   const {
     deleteSelectedLocalFiles,
@@ -379,63 +469,9 @@ export function useMediaLibraryController({
     loadExportLibrary,
   })
 
-  async function openPreview(file: LunaFile, options?: { playLive?: boolean; keepPreviewFiles?: boolean; previewFiles?: LunaFile[] }): Promise<void> {
-    const requestId = previewRequestIdRef.current + 1
-    previewRequestIdRef.current = requestId
-    if (!options?.keepPreviewFiles) {
-      setPreviewFiles(options?.previewFiles ?? filteredFiles)
-    }
-    setPreviewFile(file)
-    setPreview(null)
-    setAutoPlayLiveFileId(options?.playLive ? file.id : null)
-    if (!file.canPreview) return
-    setPreviewLoading(true)
-    try {
-      const nextPreview = await window.luna.previewFile(file, currentFiles)
-      if (previewRequestIdRef.current !== requestId) return
-      setPreview(nextPreview)
-    } catch (error) {
-      if (previewRequestIdRef.current !== requestId) return
-      setPreview({
-        fileName: file.name,
-        kind: file.kind,
-        source: null,
-        cachedPath: null,
-        message: error instanceof Error ? error.message : String(error),
-      })
-    } finally {
-      if (previewRequestIdRef.current === requestId) {
-        setPreviewLoading(false)
-      }
-    }
-  }
-
-  // --- Selection ---
-
-  function toggleFile(file: LunaFile): void {
-    setSelected((current) => {
-      const next = new Set(current)
-      if (next.has(file.id)) next.delete(file.id)
-      else next.add(file.id)
-      return next
-    })
-  }
-
-  function toggleGroup(items: LunaFile[]): void {
-    setSelected((current) => {
-      const next = new Set(current)
-      const allSelected = items.every((file) => next.has(file.id))
-      for (const file of items) {
-        if (allSelected) next.delete(file.id)
-        else next.add(file.id)
-      }
-      return next
-    })
-  }
-
-  function handlePreviewClick(file: LunaFile): void {
-    void openPreview(file, { previewFiles: filteredFiles })
-  }
+  // ═══════════════════════════════════════════
+  // 在文件管理器中显示
+  // ═══════════════════════════════════════════
 
   function revealDownloadedFile(progress: DownloadProgress | undefined): void {
     if (progress?.destinationPath) {
@@ -447,66 +483,99 @@ export function useMediaLibraryController({
     void window.luna.revealFile(path)
   }
 
-  // --- Preview navigation ---
-  // navigation now handled internally by PreviewModal via files + currentFileId
-
-  const progressForPreview = previewFile ? downloadProgress.get(previewFile.name) : undefined
-  const isCurrentLoading = isDownloadsPage ? loadingDownloads : loadingFiles
-
   return {
-    activeDownloadFileNames,
-    activeGroup,
-    autoPlayLiveFileId,
-    cacheFailedIds,
-    cardSize,
-    deleteError,
-    deletingLocalFiles,
-    downloadQueue,
-    downloadStatusFilter,
-    exportProgress,
-    exporting: false,  // 旧导出状态已废弃，始终 false
-    filteredFiles,
-    firstGroup,
-    groups,
-    isCurrentLoading,
-    mediaFilter,
-    previewFiles,
-    progressForPreview,
+    // 页面类型
+    pageType,
+    isDownloadsPage: isLocal,
+
+    // 选择
     selected,
     selectedFiles,
-    showDeleteDialog,
+    setSelected,
+    toggleFile,
+    toggleGroup,
+    totalSelectedBytes,
+
+    // 筛选/排序
+    mediaFilter,
+    setMediaFilter,
+    cardSize,
+    setCardSize,
     sortOrder,
+    setSortOrder,
+    filteredFiles,
+    groups,
+    firstGroup,
+    activeGroup,
+
+    // 相机页面专用
+    downloadStatusFilter,
+    setDownloadStatusFilter,
     storageFilter,
     storageOptions,
-    totalSelectedBytes,
-    viewMode,
-    deleteSelectedLocalFiles,
-    downloadOne,
-    handlePreviewClick,
     handleStorageFilterChange,
-    handleThumbnailImageLoad,
-    handleThumbnailImageError,
+    downloadQueue,
+    setDownloadQueue,
+    activeDownloadFileNames,
+    setActiveDownloadFileNames,
+    cacheFailedIds,
     loadCameraLibrary,
+
+    // 本地页面专用
+    viewMode,
+    setViewMode,
+    showDeleteDialog,
+    setShowDeleteDialog,
+    deleteError,
+    setDeleteError,
+    deletingLocalFiles,
+    deleteSelectedLocalFiles,
     loadDownloadedLibrary,
     loadExportLibrary,
-    markFileDownloaded,
+
+    // 预览
+    previewFile,
+    preview,
+    previewLoading,
+    previewFiles,
+    setPreviewFile,
+    setPreviewFiles,
+    handlePreviewClick,
     openPreview,
+    progressForPreview,
+
+    // 缩略图
+    handleThumbnailImageLoad,
+    handleThumbnailImageError,
+
+    // 下载/传输
+    downloading,
+    startDownload,
+    downloadOne,
+    markFileDownloaded,
     restoreDownloadedRecords,
     revealDownloadedFile,
     revealFileByPath,
-    setActiveDownloadFileNames,
-    setCardSize,
-    setDeleteError,
-    setDownloadQueue,
-    setDownloadStatusFilter,
-    setMediaFilter,
-    setPreviewFiles,
-    setSelected,
-    setShowDeleteDialog,
-    setSortOrder,
-    setViewMode,
-    startDownload,
-    toggleFile,
-    toggleGroup,
+
+    // 加载状态
+    isCurrentLoading,
+
+    // 应用级
+    exportProgress,
   }
 }
+
+// ── Media Library Context ──
+// 通过 Context 共享控制器状态，页面组件无需透传 props 给子组件
+
+export type MediaLibraryController = ReturnType<typeof useMediaLibraryController>
+
+const MediaLibraryCtx = createContext<MediaLibraryController | null>(null)
+
+export function useMediaLib(): MediaLibraryController {
+  const ctx = useContext(MediaLibraryCtx)
+  if (!ctx) throw new Error('useMediaLib must be used within MediaLibraryContext.Provider')
+  return ctx
+}
+
+export { MediaLibraryCtx }
