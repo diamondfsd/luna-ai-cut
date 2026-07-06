@@ -71,6 +71,9 @@ function summarizeLayer(layer: PreviewLayer) {
     opacity: layer.opacity,
     color: layer.color,
     transform: layer.transform,
+    cropAspectRatio: layer.transform?.crop
+      ? Math.round((layer.transform.crop.w / layer.transform.crop.h) * 100) / 100
+      : null,
   }
 }
 
