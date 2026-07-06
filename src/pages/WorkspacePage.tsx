@@ -383,6 +383,16 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
   // ── derive active media readiness for toolbar buttons ──
   const hasActiveMedia = Boolean(media.activeMedia)
+  const exportableSelectionIndices = media.selectedIndices.size > 0 ? [...media.selectedIndices] : [media.activeIndex]
+  const exportableSelectionCount = exportableSelectionIndices.filter((index) => {
+    const asset = media.media[index]
+    return Boolean(asset) && !media.brokenPaths.has(asset.path)
+  }).length
+  const exportButtonText = exportEnqueuing
+    ? '加入中'
+    : exportableSelectionCount > 1
+      ? `导出 ${exportableSelectionCount} 个`
+      : '导出'
 
   return (
     <div className="workspace-layout">
@@ -456,10 +466,10 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
                 variant="primary"
                 size="compact"
                 icon={<FileDown size={14} />}
-                disabled={!hasActiveMedia || exportEnqueuing}
+                disabled={!hasActiveMedia || exportEnqueuing || exportableSelectionCount === 0}
                 onClick={() => void handleWorkspaceExport()}
               >
-                {exportEnqueuing ? '加入中' : '导出'}
+                {exportButtonText}
               </Button>
             </div>
           </footer>
