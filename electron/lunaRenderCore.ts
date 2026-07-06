@@ -22,12 +22,14 @@ export interface PreviewLayerInputForExport {
   opacity?: number; zIndex?: number
   color?: Partial<RenderColorAdjustments>
   transform?: Partial<RenderLayerTransform>
+  positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
 }
 
 export interface RenderCoreLayerInput {
   textureId: number
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
+  positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
   opacity?: number; zIndex?: number
   color?: Partial<RenderColorAdjustments>
   transform?: Partial<RenderLayerTransform>
@@ -80,6 +82,14 @@ export interface PreviewPlanOutput {
   layers: RenderCoreLayerInput[]
 }
 
+/** 层相对定位（匹配 Rust LayerPositioning） */
+interface LayerPositioningData {
+  anchor: string
+  targetWidth: number
+  marginX: number
+  marginY: number
+}
+
 // ── Native 内部全字段类型 ──
 
 interface PreviewNativeLayer {
@@ -91,6 +101,7 @@ interface PreviewNativeLayer {
   opacity: number; zIndex: number
   color: RenderColorAdjustments
   transform: RenderLayerTransform
+  positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
 }
 
 interface NativeLayer {
@@ -100,6 +111,7 @@ interface NativeLayer {
   opacity: number; zIndex: number
   color: RenderColorAdjustments
   transform: RenderLayerTransform
+  positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
 }
 
 interface RenderColorAdjustments {
@@ -212,6 +224,7 @@ function normalizePreviewLayer(l: PreviewLayerInputForExport): PreviewNativeLaye
     zIndex: l.zIndex ?? 0,
     color: normalizeColor(l.color),
     transform: normalizeTransform(l.transform),
+    positioning: (l as unknown as Record<string, unknown>).positioning as NativeLayer['positioning'],
   }
 }
 
@@ -225,6 +238,7 @@ function normalizeLayer(l: RenderCoreLayerInput): NativeLayer {
     zIndex: l.zIndex ?? 0,
     color: normalizeColor(l.color),
     transform: normalizeTransform(l.transform),
+    positioning: (l as unknown as Record<string, unknown>).positioning as NativeLayer['positioning'],
   }
 }
 
