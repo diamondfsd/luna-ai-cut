@@ -5,7 +5,6 @@ import { MediaGallery } from '../components/MediaGallery'
 import { MediaLibraryToolbar } from '../components/MediaLibraryToolbar'
 import { PreviewModal } from '../components/PreviewModal'
 import { useMediaLibraryController, MediaLibraryCtx } from './useMediaLibraryController'
-import { Modal } from '../ui'
 import '../styles/library.css'
 
 /** 格式化日期，年月日和星期之间加空格 */
@@ -97,14 +96,10 @@ export function CameraMediaPage() {
 
       {pageActive && controller.previewFile && (
         <PreviewModal
-          filePath={
-            controller.previewFile.downloadFilePath
-            ?? controller.previewFile.localPath
-            ?? controller.previewFile.sourceUrl
-            ?? ''
-          }
+          previewOnly
+          filePath={controller.previewFile.cacheFilePath ?? ''}
           filePathList={controller.filteredFiles.map(
-            (f) => f.downloadFilePath ?? f.localPath ?? f.sourceUrl ?? f.id,
+            (f) => f.cacheFilePath ?? f.id,
           )}
           onClose={() => {
             controller.setPreviewFile(null)
@@ -112,22 +107,6 @@ export function CameraMediaPage() {
           }}
         />
       )}
-
-      <Modal
-        open={controller.showDeleteDialog}
-        onOpenChange={controller.setShowDeleteDialog}
-        title="删除本地文件"
-        description={`将删除已选的 ${controller.selectedFiles.length} 个本地文件。这个操作不会删除相机中的原始素材。`}
-        confirmText={controller.deletingLocalFiles ? '删除中...' : '确认删除'}
-        confirmVariant="danger"
-        confirmDisabled={controller.deletingLocalFiles}
-        confirmLoading={controller.deletingLocalFiles}
-        onConfirm={() => void controller.deleteSelectedLocalFiles()}
-      >
-        <p className="delete-dialog-copy">
-          删除后文件会从本地资源列表中移除，正在预览的已删除文件也会关闭。
-        </p>
-      </Modal>
     </MediaLibraryCtx.Provider>
   )
 }
