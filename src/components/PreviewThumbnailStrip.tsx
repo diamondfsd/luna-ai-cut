@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { FileQuestion, Film } from 'lucide-react'
 
 import { LivePhotoBadge, VideoPlayBadge } from '../ui'
-import { logger } from '../lib/rendererLogger'
+import { useFileCache } from '../hooks/useFileCache'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 import { fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
 
@@ -15,27 +15,23 @@ interface PreviewThumbnailStripProps {
   onChange?: (filePath: string) => void
 }
 
-function thumbnailSrcFor(filePath: string, resolvedMap: Record<string, string>): string | null {
-  return resolvedMap[filePath] ?? null
-}
-
-function ThumbnailItem({ filePath, isActive, isModified, resolvedMap, onFileChange, onThumbnailResolved, activeThumbRef }: {
+function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThumbRef }: {
   filePath: string
   isActive: boolean
   isModified: boolean
-  resolvedMap: Record<string, string>
   onFileChange: (filePath: string) => void
-  onThumbnailResolved: (filePath: string, url: string) => void
   activeThumbRef?: RefObject<HTMLButtonElement>
 }) {
   const btnRef = useRef<HTMLButtonElement>(null)
+  const [visible, setVisible] = useState(false)
   const requestedRef = useRef(false)
   const kind = mediaKindFromPath(filePath)
   const isLive = useLivePhotoWhenVisible(filePath, btnRef, '200px')
-  const thumbSrc = thumbnailSrcFor(filePath, resolvedMap)
+
+  // 进入视口时启用缓存
+  const { thumbnailUrl: thumbSrc } = useFileCache(filePath, visible)
   const showThumb = Boolean(thumbSrc)
 
-  // 进入视口时请求缩略图
   useEffect(() => {
     if (requestedRef.current) return
     const el = btnRef.current
@@ -46,19 +42,15 @@ function ThumbnailItem({ filePath, isActive, isModified, resolvedMap, onFileChan
       ([entry]) => {
         if (entry.isIntersecting) {
           requestedRef.current = true
+          setVisible(true)
           observer.disconnect()
-          window.luna.resolveThumbnail(filePath, kind).then((url) => {
-            if (url) onThumbnailResolved(filePath, url)
-          }).catch(() => {
-            logger.warn('[缩略图条] resolveThumbnail 失败', { filePath })
-          })
         }
       },
       { rootMargin: '100px' },
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [filePath, showThumb, kind])
+  }, [filePath, showThumb])
 
   return (
     <button
@@ -116,21 +108,6 @@ export function PreviewThumbnailStrip({
       setCurrentIndex(idx)
     }
   }, [initialFilePath, filePathList]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── 缩略图解析 ──
-  const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    return window.luna.onThumbnailReady(({ fileId, thumbnailUrl }) => {
-      if (thumbnailUrl) {
-        setThumbnails((prev) => ({ ...prev, [fileId]: thumbnailUrl }))
-      }
-    })
-  }, [])
-
-  function handleThumbnailResolved(filePath: string, url: string): void {
-    setThumbnails((prev) => ({ ...prev, [filePath]: url }))
-  }
 
   // ── 点击切换 ──
   function handleFileClick(filePath: string): void {
@@ -192,9 +169,7 @@ export function PreviewThumbnailStrip({
           filePath={filePath}
           isActive={filePath === currentFilePath}
           isModified={modifiedFileIds?.has(filePath) ?? false}
-          resolvedMap={thumbnails}
           onFileChange={handleFileClick}
-          onThumbnailResolved={handleThumbnailResolved}
           activeThumbRef={filePath === currentFilePath ? activeThumbRef : undefined}
         />
       ))}

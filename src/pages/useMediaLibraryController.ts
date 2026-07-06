@@ -253,7 +253,7 @@ export function useMediaLibraryController(pageType: PageType) {
     if (file.thumbnailUrl || cacheFailedIds.has(file.id) || requestedThumbnailIdsRef.current.has(file.id)) return
     requestedThumbnailIdsRef.current.add(file.id)
     void window.luna
-      .cacheFile(file)
+      .cacheFile(file.sourceUrl)
       .then((ok) => {
         if (!ok) {
           logger.warn('[缩略图] cacheFile 返回 false，标记 cacheFailed', { fileId: file.id, fileName: file.name, kind: file.kind })

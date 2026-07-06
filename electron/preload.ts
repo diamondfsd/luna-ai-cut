@@ -109,7 +109,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   scanWifi: () => ipcRenderer.invoke('wifiDebug:scan'),
   connectWifi: (options: WifiConnectOptions) => ipcRenderer.invoke('wifiDebug:connect', options),
   disconnectWifi: () => ipcRenderer.invoke('wifiDebug:disconnect'),
-  cacheFile: (file: LunaFile) => ipcRenderer.invoke('luna:cacheFile', file),
+  cacheFile: (sourceUrl: string) => ipcRenderer.invoke('luna:cacheFile', sourceUrl),
   workspace: {
     loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
     getMediaResolution: (filePath: string) => ipcRenderer.invoke('workspace:getMediaResolution', filePath),

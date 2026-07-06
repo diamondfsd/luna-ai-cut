@@ -98,7 +98,7 @@ export interface LunaApi {
   readExifModel(localPath: string): Promise<string | null>
   getWatermarkPath(style: string, kind: 'image' | 'video'): Promise<{ filePath: string; width: number; height: number }>
   disconnect(host?: string): Promise<void>
-  cacheFile(file: LunaFile): Promise<boolean>
+  cacheFile(sourceUrl: string): Promise<boolean>
   getWifiStatus: () => Promise<WifiDebugResult<WifiDebugStatus>>
   scanWifi: () => Promise<WifiDebugResult<WifiDebugNetwork[]>>
   connectWifi: (options: WifiConnectOptions) => Promise<WifiDebugResult<WifiDebugStatus>>

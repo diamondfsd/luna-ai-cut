@@ -5,6 +5,7 @@ import { PreviewModalHeader } from './PreviewModalHeader'
 import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
+import { useFileCache } from '../hooks/useFileCache'
 import { filePathToPreviewUrl, isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Button, Dialog, toast } from '../ui'
@@ -39,7 +40,12 @@ export function PreviewModal({
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [batchEnqueuing, setBatchEnqueuing] = useState(false)
 
-  const displaySource = filePathToPreviewUrl(currentFilePath) ?? currentFilePath
+  // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
+  const { cacheFilePath: resolvedPath, isLoading: pathLoading } = useFileCache(currentFilePath)
+
+  const displaySource = resolvedPath
+    ? (filePathToPreviewUrl(resolvedPath) ?? resolvedPath)
+    : (currentFilePath?.startsWith('http') ? null : filePathToPreviewUrl(currentFilePath) ?? currentFilePath)
   const isVideo = isVideoPath(currentFilePath)
   const isImage = isImagePath(currentFilePath)
 
@@ -92,7 +98,11 @@ export function PreviewModal({
           <div className="preview-stage-col">
             {previewOnly ? (
               <div className="preview-stage">
-                {isVideo && (
+                {pathLoading ? (
+                  <div className="preview-loading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>
+                    正在缓存文件...
+                  </div>
+                ) : isVideo && displaySource ? (
                   <video
                     key={currentFilePath}
                     src={displaySource}
@@ -100,14 +110,17 @@ export function PreviewModal({
                     autoPlay
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                   />
-                )}
-                {isImage && (
+                ) : isImage && displaySource ? (
                   <img
                     key={currentFilePath}
                     src={displaySource}
                     alt=""
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                   />
+                ) : (
+                  <div className="preview-loading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' }}>
+                    无法预览此文件
+                  </div>
                 )}
               </div>
             ) : (
