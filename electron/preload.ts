@@ -48,6 +48,7 @@ const lunaApi: LunaApi = {
   openDevTools: () => ipcRenderer.invoke('devtools:open'),
   scanBluetoothDevices: (timeoutMs?: number) => ipcRenderer.invoke('bluetooth:scanNative', timeoutMs),
   cancelBluetoothScan: () => ipcRenderer.invoke('bluetooth:cancelScan'),
+  scanUsbDevices: () => ipcRenderer.invoke('usb:scan'),
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),
   listFiles: (host?: string, storageId?: string) => ipcRenderer.invoke('luna:listFiles', host, storageId),

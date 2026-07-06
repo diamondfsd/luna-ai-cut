@@ -17,6 +17,7 @@ import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
 import { GoUltraClient } from './goUltraProtocol'
 import { LunaUltraProtocol, GoUltraProtocol } from './deviceProtocols'
 import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './deviceDefaults'
+import { listUsbStorageFiles, scanUsbStorageVolumes } from './usbStorageService'
 import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
@@ -51,8 +52,8 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 let win: BrowserWindow | null
 const clients = new Map<string, LunaClient>()
 const goUltraClients = new Map<string, GoUltraClient>()
-let activeDownloadControllers = new Set<AbortController>()
-let activeExportControllers = new Map<string, AbortController>()
+const activeDownloadControllers = new Set<AbortController>()
+const activeExportControllers = new Map<string, AbortController>()
 const activeExportEncoders = new Map<string, import('node:child_process').ChildProcessWithoutNullStreams>()
 const previewCacheTasks = new Map<string, Promise<boolean>>()
 const videoFrameRateTasks = new Map<string, Promise<number | null>>()
@@ -262,7 +263,7 @@ function registerIpc(): void {
   } as const
   const ipcModules = import.meta.glob('./ipc*.ts', { eager: true })
   for (const [, mod] of Object.entries(ipcModules)) {
-    const fn = (mod as any).register
+    const fn = (mod as { register?: (context: typeof ctx) => void }).register
     if (typeof fn === 'function') fn(ctx)
   }
 
@@ -281,8 +282,27 @@ function registerIpc(): void {
   ipcMain.handle('device:connect', async (_event, options?: DeviceConnectOptions) => {
     const settings = await getSettings()
     const deviceId = options?.deviceId ?? settings.activeDeviceId ?? DEFAULT_DEVICE.id
+    const mode = options?.mode ?? settings.connectionMode ?? 'wifi'
     const host = options?.host || settings.cameraHost || DEFAULT_HOST
-    logMainInfo(`[设备连接] 开始连接设备`, { deviceId, host, options })
+    logMainInfo(`[设备连接] 开始连接设备`, { deviceId, host, mode, options })
+
+    if (mode === 'usb') {
+      const volumes = await scanUsbStorageVolumes()
+      await saveSettings({ connectionMode: 'usb' })
+      const status = {
+        deviceId,
+        deviceName: deviceDefinitionFor(deviceId).name,
+        host: '本地 USB',
+        httpOk: false,
+        controlOk: false,
+        mode,
+        usbOk: volumes.length > 0,
+        usbStorageCount: volumes.length,
+        message: volumes.length > 0 ? `已检测到 ${volumes.length} 个数据线存储` : '暂未识别到数据线存储',
+      }
+      logMainInfo(`[设备连接] USB 检测结果`, { deviceId, usbStorageCount: volumes.length, usbOk: status.usbOk })
+      return status
+    }
 
     // 根据设备 ID 路由到对应协议
     let protocol: LunaUltraProtocol | GoUltraProtocol
@@ -298,8 +318,9 @@ function registerIpc(): void {
 
     try {
       const status = await protocol.connect({ ...options, deviceId })
+      await saveSettings({ connectionMode: 'wifi' })
       logMainInfo(`[设备连接] 连接结果`, { deviceId, host, httpOk: status.httpOk, controlOk: status.controlOk, message: status.message })
-      return status
+      return { ...status, mode: 'wifi' }
     } catch (error) {
       logMainError(`[设备连接] 连接异常`, { deviceId, host, error: error instanceof Error ? error.message : String(error) })
       throw error
@@ -334,27 +355,33 @@ function registerIpc(): void {
     const settings = await getSettings()
     const normalizedHost = host || settings.cameraHost
     const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
+    const mode = settings.connectionMode ?? 'wifi'
     const nextStorageId = storageId ?? settings.deviceStorage?.[deviceId] ?? 'all'
-    logMainInfo(`[HTTP读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId, deviceId })
+    logMainInfo(`[媒体读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId, deviceId, mode })
     const t0 = performance.now()
     try {
       let files: LunaFile[]
-      switch (deviceId) {
-        case 'go-ultra': {
-          const protocol = goUltraProtocol()
-          files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
-          break
-        }
-        default: {
-          const protocol = lunaProtocol()
-          files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+      if (mode === 'usb') {
+        files = await listUsbStorageFiles(nextStorageId)
+      } else {
+        switch (deviceId) {
+          case 'go-ultra': {
+            const protocol = goUltraProtocol()
+            files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+            break
+          }
+          default: {
+            const protocol = lunaProtocol()
+            files = await protocol.listFiles({ deviceId, host: normalizedHost, storageId: nextStorageId })
+          }
         }
       }
       files = attachSourceDevice(files, deviceId)
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-      logMainInfo(`[HTTP读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed })
+      logMainInfo(`[媒体读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed, mode })
       await saveSettings({
         cameraHost: normalizedHost,
+        connectionMode: mode,
         deviceStorage: {
           ...(settings.deviceStorage ?? {}),
           [deviceId]: nextStorageId,
@@ -367,7 +394,7 @@ function registerIpc(): void {
       }
       return files
     } catch (error) {
-      logMainError(`[HTTP读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, error: error instanceof Error ? error.message : String(error) })
+      logMainError(`[媒体读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, mode, error: error instanceof Error ? error.message : String(error) })
       throw error
     }
   })

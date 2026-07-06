@@ -33,10 +33,14 @@ export interface ConnectionStatus {
   host: string
   httpOk: boolean
   controlOk: boolean
+  mode?: ConnectionMode
+  usbOk?: boolean
+  usbStorageCount?: number
   message: string
 }
 
 export type DeviceConnectionPhase = 'idle' | 'checking' | 'connected' | 'error'
+export type ConnectionMode = 'wifi' | 'usb'
 
 export interface DeviceDefinition {
   id: string
@@ -68,6 +72,7 @@ export interface DeviceDefinition {
 export interface DeviceConnectOptions {
   deviceId?: string
   host?: string
+  mode?: ConnectionMode
   storageId?: string
 }
 
@@ -77,4 +82,22 @@ export interface BluetoothDeviceCandidate {
   rssi?: number
   serviceUuids?: string[]
   localName?: string
+}
+
+export interface UsbDeviceCandidate {
+  id: string
+  name: string
+  manufacturer?: string
+  serialNumber?: string
+  vendorId?: string
+  productId?: string
+  productVersion?: string
+  busName?: string
+  mountPath?: string
+  storageId?: string
+  freeBytes?: number | null
+  totalBytes?: number | null
+  transport: 'usb'
+  matched: boolean
+  source: 'system_profiler' | 'powershell'
 }

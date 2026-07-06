@@ -1,6 +1,8 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import type { LunaFile, WifiConnectOptions, WifiHttpRequestOptions, WifiPortCheckOptions } from '../src/shared/types'
 import { cancelBluetoothScan, scanBluetoothDevices } from './bluetoothDebugService'
+import { scanUsbDevices } from './usbDeviceService'
+import { scanUsbStorageDevices } from './usbStorageService'
 import {
   checkWifiPort,
   connectWifiNetwork,
@@ -11,10 +13,9 @@ import {
 } from './wifiDebugService'
 import { openWifiSettings } from './wifiService'
 import { getDownloadedRecords, getLocalResourcesDir, getSettings } from './fileService'
-import type { IpcContext } from './ipcContext'
 
-export function register(_ctx?: IpcContext): void {
-  ipcMain.handle('downloads:records', async (_event, files: LunaFile[], _downloadDir?: string) => {
+export function register(): void {
+  ipcMain.handle('downloads:records', async (_event, files: LunaFile[]) => {
     const settings = await getSettings()
     return getDownloadedRecords(files, getLocalResourcesDir(settings))
   })
@@ -36,6 +37,14 @@ export function register(_ctx?: IpcContext): void {
 
   ipcMain.handle('bluetooth:cancelScan', () => {
     cancelBluetoothScan()
+  })
+
+  ipcMain.handle('usb:scan', async () => {
+    const [devices, storageDevices] = await Promise.all([
+      scanUsbDevices().catch(() => []),
+      scanUsbStorageDevices().catch(() => []),
+    ])
+    return [...devices, ...storageDevices]
   })
 
   ipcMain.handle('devtools:open', () => {

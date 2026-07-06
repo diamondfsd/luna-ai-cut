@@ -254,7 +254,7 @@ export function useMediaLibraryController({
       thumbnailUrl: file.thumbnailUrl?.slice(0, 300),
       cacheFilePath: file.cacheFilePath,
       downloadFilePath: file.downloadFilePath,
-      localPath: (file as any).localPath,
+      localPath: file.localPath,
     })
     // 缩略图加载失败（如文件损坏），清除请求记录允许重试
     requestedThumbnailIdsRef.current.delete(file.id)
@@ -286,12 +286,15 @@ export function useMediaLibraryController({
     const t0 = performance.now()
     try {
       const host = settings.cameraHost
-      logger.info('[媒体库] 开始从设备加载文件', { host, storageFilter })
-      await window.luna.checkConnection(host)
+      const connectionMode = settings.connectionMode ?? 'wifi'
+      logger.info('[媒体库] 开始从设备加载文件', { host, storageFilter, connectionMode })
+      if (connectionMode !== 'usb') {
+        await window.luna.checkConnection(host)
+      }
       // listFiles 只做轻量本地路径/已有缩略图标记，缓存由渲染层按需发起
       const lunaFiles = await window.luna.listFiles(host, storageFilter)
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-      logger.info('[媒体库] 设备文件加载完成', { host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })
+      logger.info('[媒体库] 设备文件加载完成', { host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter, connectionMode })
       setFiles(lunaFiles)
       setSelected(new Set())
       setCacheFailedIds(new Set())
@@ -351,6 +354,7 @@ export function useMediaLibraryController({
     if (isDownloadsPage && viewMode === 'export') {
       void loadExportLibrary()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDownloadsPage, viewMode, settings?.exportDir])
 
   const {

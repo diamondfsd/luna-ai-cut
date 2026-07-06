@@ -1,5 +1,5 @@
 import type { AppSettings, CacheStats, AiConfig } from './settings'
-import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
+import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate, UsbDeviceCandidate } from './device'
 import type { LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
 import type { WatermarkSettings } from './watermark'
@@ -42,6 +42,7 @@ export interface LunaApi {
   openDevTools(): Promise<void>
   scanBluetoothDevices(timeoutMs?: number): Promise<BluetoothDeviceCandidate[]>
   cancelBluetoothScan(): Promise<void>
+  scanUsbDevices(): Promise<UsbDeviceCandidate[]>
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   checkConnection(host?: string): Promise<ConnectionStatus>
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>

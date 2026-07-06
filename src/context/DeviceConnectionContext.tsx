@@ -4,6 +4,7 @@ import { useApp } from './AppContext'
 import { logger } from '../lib/rendererLogger'
 import type {
   AppSettings,
+  ConnectionMode,
   ConnectionStatus,
   DeviceConnectionPhase,
   DeviceDefinition,
@@ -13,7 +14,7 @@ import type {
 interface DeviceConnectionContextValue {
   activeDevice: DeviceDefinition | undefined
   cameraLibraryMounted: boolean
-  connectDevice: () => Promise<void>
+  connectDevice: (mode?: ConnectionMode) => Promise<void>
   devices: DeviceDefinition[]
   devicePhase: DeviceConnectionPhase
   isConnected: boolean
@@ -35,9 +36,9 @@ function activeDeviceFor(settings: AppSettings | null, devices: DeviceDefinition
   return devices.find((device) => device.id === settings?.activeDeviceId) ?? firstDevice(devices)
 }
 
-function connectionTimeoutStatus(host: string): Promise<ConnectionStatus> {
+function connectionTimeoutStatus(host: string, mode: ConnectionMode): Promise<ConnectionStatus> {
   return new Promise((resolve) => {
-    setTimeout(() => resolve({ host, httpOk: false, controlOk: false, message: '连接超时' }), 4000)
+    setTimeout(() => resolve({ host, httpOk: false, controlOk: false, mode, message: '连接超时' }), 4000)
   })
 }
 
@@ -84,7 +85,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   const [cameraLibraryMounted, setCameraLibraryMounted] = useState(false)
 
   const activeDevice = useMemo(() => activeDeviceFor(settings, devices), [devices, settings])
-  const isConnected = devicePhase === 'connected' && Boolean(connection?.httpOk && connection.controlOk)
+  const isConnected = devicePhase === 'connected' && Boolean((connection?.httpOk && connection.controlOk) || connection?.usbOk)
   const showDeviceConnect = !isConnected
 
   useEffect(() => {
@@ -113,7 +114,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     return window.luna.onConnectionLost(() => {
       const host = settings?.cameraHost || activeDevice?.defaultHost || ''
       logger.warn('[设备连接] 连接丢失', { host })
-      setConnection({ host, httpOk: false, controlOk: false, message: '设备连接已断开' })
+      setConnection({ host, httpOk: false, controlOk: false, mode: settings?.connectionMode ?? 'wifi', message: '设备连接已断开' })
       setDevicePhase('error')
       void window.luna.disconnect()
     })
@@ -124,15 +125,23 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     if (!showDeviceConnect) setCameraLibraryMounted(true)
   }, [showDeviceConnect])
 
-  async function connectDevice(): Promise<void> {
+  async function connectDevice(modeOverride?: ConnectionMode): Promise<void> {
     try {
       const deviceId = settings?.activeDeviceId ?? activeDevice?.id
-      const host = settings?.cameraHost ?? activeDevice?.defaultHost
-      logger.info('[设备连接] 发起连接', { deviceId, host })
-      if (!deviceId || !host) {
-        const errMsg = '未配置设备连接地址'
+      const mode = modeOverride ?? settings?.connectionMode ?? 'wifi'
+      const host = settings?.cameraHost || activeDevice?.defaultHost || ''
+      logger.info('[设备连接] 发起连接', { deviceId, host, mode })
+      if (!deviceId) {
+        const errMsg = '未配置设备'
         logger.warn('[设备连接] 无法连接', { deviceId, host, error: errMsg })
-        setConnection({ host: host ?? '', httpOk: false, controlOk: false, message: errMsg })
+        setConnection({ host, httpOk: false, controlOk: false, mode, message: errMsg })
+        setDevicePhase('error')
+        return
+      }
+      if (mode === 'wifi' && !host) {
+        const errMsg = '未配置设备连接地址'
+        logger.warn('[设备连接] 无法连接', { deviceId, host, mode, error: errMsg })
+        setConnection({ host, httpOk: false, controlOk: false, mode, message: errMsg })
         setDevicePhase('error')
         return
       }
@@ -140,23 +149,26 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       setDevicePhase('checking')
       const t0 = performance.now()
       const status = await Promise.race([
-        window.luna.connectDevice({ deviceId, host }),
-        connectionTimeoutStatus(host),
+        window.luna.connectDevice({ deviceId, host, mode }),
+        connectionTimeoutStatus(mode === 'usb' ? '本地 USB' : host, mode),
       ])
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-      const enrichedStatus = status.httpOk && status.controlOk ? status : await enrichConnectionStatus(status)
+      const enrichedStatus = status.usbOk || (status.httpOk && status.controlOk) ? status : await enrichConnectionStatus(status)
       setConnection(enrichedStatus)
-      if (enrichedStatus.httpOk && enrichedStatus.controlOk) {
+      setSettings(await window.luna.getSettings())
+      if ((enrichedStatus.httpOk && enrichedStatus.controlOk) || enrichedStatus.usbOk) {
         setDevicePhase('connected')
         setCameraLibraryMounted(false)
-        logger.info('[设备连接] 连接成功', { deviceId, host, elapsedSec: elapsed })
+        logger.info('[设备连接] 连接成功', { deviceId, host, mode, elapsedSec: elapsed })
       } else {
         setDevicePhase('error')
         logger.warn('[设备连接] 连接失败', {
           deviceId,
           host,
+          mode,
           httpOk: enrichedStatus.httpOk,
           controlOk: enrichedStatus.controlOk,
+          usbOk: enrichedStatus.usbOk,
           message: enrichedStatus.message,
           elapsedSec: elapsed,
           diagnosticsRaw: enrichedStatus.diagnosticsRaw,
@@ -166,7 +178,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       const host = settings?.cameraHost || activeDevice?.defaultHost || ''
       const errMsg = error instanceof Error ? error.message : String(error)
       logger.error('[设备连接] 连接异常', { host, error: errMsg })
-      setConnection({ host, httpOk: false, controlOk: false, message: errMsg })
+      setConnection({ host, httpOk: false, controlOk: false, mode: settings?.connectionMode ?? 'wifi', message: errMsg })
       setDevicePhase('error')
     }
   }

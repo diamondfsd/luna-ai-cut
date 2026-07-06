@@ -1,17 +1,16 @@
 import { ipcMain } from 'electron'
 import type { AppSettings } from '../src/shared/types'
-import { deviceDefinitions } from './deviceDefaults'
+import { deviceDefinitionsWithUsbStorage } from './deviceDefaults'
 import {
   chooseDownloadDir, chooseLocalResourcesDir, chooseExportDir, chooseMockMediaDir,
   getSettings, saveSettings, getCacheStats, clearCache,
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
-import type { IpcContext } from './ipcContext'
 
-export function register(_ctx?: IpcContext): void {
+export function register(): void {
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:save', (_event, settings: Partial<AppSettings>) => saveSettings(settings))
-  ipcMain.handle('devices:list', () => deviceDefinitions())
+  ipcMain.handle('devices:list', () => deviceDefinitionsWithUsbStorage())
   ipcMain.handle('settings:chooseDownloadDir', () => chooseDownloadDir())
   ipcMain.handle('settings:chooseLocalResourcesDir', () => chooseLocalResourcesDir())
   ipcMain.handle('settings:chooseExportDir', () => chooseExportDir())

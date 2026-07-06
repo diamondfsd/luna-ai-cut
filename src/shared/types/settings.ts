@@ -12,6 +12,7 @@ export interface AppSettings {
   exportDir?: string
   cacheDir: string
   cameraHost: string
+  connectionMode?: 'wifi' | 'usb'
   activeDeviceId?: string
   deviceStorage?: Record<string, string>
   deviceWatermark?: Record<string, WatermarkSettings>
