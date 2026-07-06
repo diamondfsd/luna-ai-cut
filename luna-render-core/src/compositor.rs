@@ -257,8 +257,16 @@ fn resolve_positioning(
     let canvas_aspect = canvas_w / canvas_h.max(1.0);
     let tex_aspect = tex_w / tex_h.max(1.0);
 
-    // dstW = target_width（UV [0,1]），dstH = dstW × canvasAspect / texAspect
-    let dst_w = pos.target_width;
+    // target_width 是相对参考画布的比例，换算成当前输出画布的 UV
+    // ref_width/ref_height 为 0 时退回到直接使用 target_width 作为 UV
+    let dst_w = if pos.ref_width > 0.0 && pos.ref_height > 0.0 {
+        // 在参考画布上的像素宽度
+        let pixel_w = pos.target_width * pos.ref_width;
+        // 换算到当前输出画布的 UV
+        pixel_w / canvas_w
+    } else {
+        pos.target_width
+    };
     let dst_h = dst_w * canvas_aspect / tex_aspect;
     let margin_x = pos.margin_x;
     let margin_y = pos.margin_y;

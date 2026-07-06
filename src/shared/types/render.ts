@@ -7,12 +7,16 @@
 export interface WatermarkPositioning {
   /** 锚点位置 */
   anchor: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center'
-  /** 宽度占画布比例 0-1 */
+  /** targetWidth 相对哪个参考尺寸的比例（0-1），配合 refWidth/refHeight 使用 */
   targetWidth: number
   /** 水平边距 0-1 */
   marginX?: number
   /** 垂直边距 0-1 */
   marginY?: number
+  /** 参考画布宽（传原始分辨率），Rust 据此将 targetWidth 换算到实际输出画布的 UV */
+  refWidth: number
+  /** 参考画布高 */
+  refHeight: number
 }
 
 /** 统一层描述 — Rust 渲染层输入 */
