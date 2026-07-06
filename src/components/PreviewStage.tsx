@@ -396,16 +396,33 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     if (!stage || !wrapper || !resolution || !mainLayer) return
 
     const stageRect = stage.getBoundingClientRect()
-    const wrapperRect = wrapper.getBoundingClientRect()
-    onMetricsChange?.({
-      sourceAspect: resolution.width / resolution.height,
-      imageRect: {
-        x: wrapperRect.left - stageRect.left + mainLayer.dstX * wrapperRect.width,
-        y: wrapperRect.top - stageRect.top + mainLayer.dstY * wrapperRect.height,
-        width: mainLayer.dstW * wrapperRect.width,
-        height: mainLayer.dstH * wrapperRect.height,
-      },
-    })
+    // 使用 canvas 实际渲染位置，而非 project canvas 的 letterbox 计算。
+    // canvas 在 DOM 中会被 CSS max-width/max-height 居中/缩放，
+    // 与 project canvas 尺寸不一定一致，直接读 DOM 坐标更准确。
+    const canvas = wrapper.querySelector('canvas')
+    if (canvas) {
+      const canvasRect = canvas.getBoundingClientRect()
+      onMetricsChange?.({
+        sourceAspect: resolution.width / resolution.height,
+        imageRect: {
+          x: canvasRect.left - stageRect.left,
+          y: canvasRect.top - stageRect.top,
+          width: canvasRect.width,
+          height: canvasRect.height,
+        },
+      })
+    } else {
+      const wrapperRect = wrapper.getBoundingClientRect()
+      onMetricsChange?.({
+        sourceAspect: resolution.width / resolution.height,
+        imageRect: {
+          x: wrapperRect.left - stageRect.left + mainLayer.dstX * wrapperRect.width,
+          y: wrapperRect.top - stageRect.top + mainLayer.dstY * wrapperRect.height,
+          width: mainLayer.dstW * wrapperRect.width,
+          height: mainLayer.dstH * wrapperRect.height,
+        },
+      })
+    }
   }, [onMetricsChange, renderState, resolution])
 
   // 暴露导出方法

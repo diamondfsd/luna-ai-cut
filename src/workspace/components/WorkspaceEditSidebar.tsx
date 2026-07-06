@@ -9,7 +9,8 @@ import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ColorPanel } from '../color/ColorPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
-import type { PreviewLayer } from '../../shared/types'
+import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
+import type { EditPipeline } from '../shared/editPipeline'
 
 export type WorkspaceTool = 'color' | 'crop' | 'watermark'
 
@@ -56,10 +57,9 @@ function titleForTool(tool: WorkspaceTool): string {
 
 interface WorkspaceEditSidebarProps {
   mediaSize?: { w: number; h: number } | null
-  onWatermarkLayerChange?: (layer?: PreviewLayer) => void
 }
 
-export function WorkspaceEditSidebar({ mediaSize, onWatermarkLayerChange }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -67,6 +67,14 @@ export function WorkspaceEditSidebar({ mediaSize, onWatermarkLayerChange }: Work
   const refH = mediaSize?.h ?? 2160
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
   const cropHeight = edit.cropSize.height || refH
+
+  // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
+  const handleWatermarkChange = useMemo(
+    () => (watermarkSettings: WatermarkSettingsType, _layer?: PreviewLayer) => {
+      edit.commitPatch({ watermark: watermarkSettings as EditPipeline['watermark'] })
+    },
+    [edit.commitPatch],
+  )
 
   // Wrap crop preset/size handlers to inject sourceAspect from canvas context
   const onCropPresetChange = useMemo(
@@ -149,9 +157,8 @@ export function WorkspaceEditSidebar({ mediaSize, onWatermarkLayerChange }: Work
               defaultOpen
             >
               <WatermarkSettings
-                onChange={(_watermark, layer) => {
-                  onWatermarkLayerChange?.(layer)
-                }}
+                settings={edit.pipeline.watermark}
+                onChange={handleWatermarkChange}
                 filePath={mediaCtx.activeMedia?.path}
                 mediaWidth={mediaSize?.w}
                 mediaHeight={mediaSize?.h}
