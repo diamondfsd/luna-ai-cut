@@ -2,7 +2,7 @@ import { ArrowLeft, ClipboardCopy, ClipboardPaste, Eye, EyeOff, Redo2, RotateCcw
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import type { PreviewLayer, WorkspaceProject } from '../shared/types'
+import type { WorkspaceProject } from '../shared/types'
 import { Button, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
@@ -19,6 +19,8 @@ import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSideb
 import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
+import { buildWatermarkStaticLayer } from '../components/WatermarkSettings'
+import { closestAspectRatio } from '../shared/watermark/layoutConfig'
 import '../styles/workspace-loading.css'
 
 function normalizePipeline(value: unknown): EditPipeline {
@@ -62,7 +64,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
 
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
@@ -79,6 +80,15 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     })
   }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft])
 
+  // ── 从 pipeline 水印设置自动生成预览层 ──
+  const watermarkLayer = useMemo(() => {
+    const wm = edit.pipeline.watermark
+    if (!wm?.enabled || !wm?.imagePath || !wm.wmAspect) return []
+    const aspectKey = mediaSize ? closestAspectRatio(mediaSize.w, mediaSize.h) : '16:9'
+    const layer = buildWatermarkStaticLayer(wm, aspectKey)
+    return layer ? [layer] : []
+  }, [edit.pipeline.watermark, mediaSize])
+
   // ── PreviewStage ref ──
   const previewRef = useRef<PreviewStageHandle>(null)
 
@@ -93,7 +103,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
   useEffect(() => {
     setMediaSize(null)
-    setWatermarkLayers([])
   }, [media.activeMedia?.path])
 
   // ── Auto-save project when pipeline changes ──
@@ -315,7 +324,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
             url={media.activeMedia?.path ?? null}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
-            extraLayers={watermarkLayers}
+            extraLayers={watermarkLayer}
             cropActive={edit.cropActive}
             scaleMode="contain"
             onMetricsChange={canvas.setPreviewMetrics}
@@ -325,7 +334,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
-            onWatermarkLayerChange={(layer) => setWatermarkLayers(layer ? [layer] : [])}
           />
 
           {/* ── Toolbar ── */}
