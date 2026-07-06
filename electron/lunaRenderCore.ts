@@ -188,17 +188,7 @@ interface LunaRenderCoreNative {
     originalPath: string,
     cacheDir: string,
   ): { renderPath: string; normalized: boolean; width: number; height: number }
-  exportImageFromSources(
-    ffmpegPath: string,
-    ffprobePath: string,
-    outputPath: string,
-    width: number,
-    height: number,
-    layers: PreviewNativeLayer[],
-    format: string,
-    quality: number,
-  ): void
-  exportImageFromSourcesAsync?(
+  exportImageFromSourcesAsync(
     ffmpegPath: string,
     ffprobePath: string,
     outputPath: string,
@@ -208,24 +198,7 @@ interface LunaRenderCoreNative {
     format: string,
     quality: number,
   ): Promise<void>
-  renderLayersToFile(
-    ffmpegPath: string,
-    outputPath: string,
-    width: number,
-    height: number,
-    layers: NativeLayer[],
-    format: string,
-    quality: number,
-  ): void
-  exportFile(
-    ffmpegPath: string, ffprobePath: string,
-    inputPath: string, outputPath: string,
-    canvasWidth: number, canvasHeight: number,
-    fps: number | null, hardware: boolean,
-    videoLayer: NativeLayer, staticLayers: NativeStaticLayer[],
-    taskId: string | null, qualityPreset: string | null,
-  ): void
-  exportFileAsync?(
+  exportFileAsync(
     ffmpegPath: string, ffprobePath: string,
     inputPath: string, outputPath: string,
     canvasWidth: number, canvasHeight: number,
@@ -468,20 +441,6 @@ export function resolveRenderSource(
   return getNative().resolveRenderSource(ffmpegPath, ffprobePath, originalPath, cacheDir)
 }
 
-export function exportImageFromSources(
-  ffmpegPath: string,
-  ffprobePath: string,
-  outputPath: string,
-  width: number,
-  height: number,
-  layers: PreviewLayerInputForExport[],
-  format: string,
-  quality: number,
-): void {
-  ensureInit()
-  getNative().exportImageFromSources(ffmpegPath, ffprobePath, outputPath, width, height, layers.map(normalizePreviewLayer), format, quality)
-}
-
 export function exportImageFromSourcesAsync(
   ffmpegPath: string,
   ffprobePath: string,
@@ -493,25 +452,7 @@ export function exportImageFromSourcesAsync(
   quality: number,
 ): Promise<void> {
   ensureInit()
-  const native = getNative()
-  const run = native.exportImageFromSourcesAsync ?? ((...args: Parameters<LunaRenderCoreNative['exportImageFromSources']>) => {
-    native.exportImageFromSources(...args)
-    return Promise.resolve()
-  })
-  return run(ffmpegPath, ffprobePath, outputPath, width, height, layers.map(normalizePreviewLayer), format, quality)
-}
-
-export function renderLayersToFile(
-  ffmpegPath: string,
-  outputPath: string,
-  width: number,
-  height: number,
-  layers: RenderCoreLayerInput[],
-  format: string,
-  quality: number,
-): void {
-  ensureInit()
-  getNative().renderLayersToFile(ffmpegPath, outputPath, width, height, layers.map(normalizeLayer), format, quality)
+  return getNative().exportImageFromSourcesAsync(ffmpegPath, ffprobePath, outputPath, width, height, layers.map(normalizePreviewLayer), format, quality)
 }
 
 export function renderPreview(input: RenderPreviewInput): RenderPreviewOutput {
@@ -539,24 +480,6 @@ export function planPreview(input: PreviewPlanInput): PreviewPlanOutput {
   })
 }
 
-export function exportFile(
-  ffmpegPath: string,
-  ffprobePath: string,
-  inputPath: string,
-  outputPath: string,
-  canvasWidth: number,
-  canvasHeight: number,
-  fps: number | null,
-  hardware: boolean,
-  videoLayer: RenderCoreLayerInput,
-  staticLayers: StaticLayerInput[],
-  taskId?: string,
-  qualityPreset?: string,
-): void {
-  ensureInit()
-  getNative().exportFile(ffmpegPath, ffprobePath, inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, normalizeLayer(videoLayer), staticLayers.map(normalizeStaticLayer), taskId ?? null, qualityPreset ?? null)
-}
-
 export function exportFileAsync(
   ffmpegPath: string,
   ffprobePath: string,
@@ -572,12 +495,7 @@ export function exportFileAsync(
   qualityPreset?: string,
 ): Promise<void> {
   ensureInit()
-  const native = getNative()
-  const run = native.exportFileAsync ?? ((...args: Parameters<LunaRenderCoreNative['exportFile']>) => {
-    native.exportFile(...args)
-    return Promise.resolve()
-  })
-  return run(
+  return getNative().exportFileAsync(
     ffmpegPath,
     ffprobePath,
     inputPath,

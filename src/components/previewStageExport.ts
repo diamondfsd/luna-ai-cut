@@ -1,6 +1,10 @@
 import type { PreviewLayer, RenderLayer, StaticLayer } from '../shared/types'
 import { buildLayers } from './PreviewStage'
 
+const IMAGE_EXPORT_CONCURRENCY = 2
+const VIDEO_EXPORT_CONCURRENCY = 1
+const EXPORT_STATUS_POLL_MS = 1000
+
 interface LunaRenderCoreApi {
   exportImageFromSources(
     outputPath: string,
@@ -36,6 +40,33 @@ function lrc(): LunaRenderCoreApi {
 
 function outputPath(exportDir: string, fileName: string): string {
   return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
+}
+
+function fileNameFromPath(path: string): string {
+  return path.split(/[/\\]/).pop() || 'export'
+}
+
+function baseNameFromPath(path: string): string {
+  return fileNameFromPath(path).replace(/\.[^.]+$/, '')
+}
+
+function emitLocalExportProgress(progress: {
+  exportId: string
+  taskId: string
+  taskName: string
+  fileName: string
+  index: number
+  totalFiles: number
+  percent: number | null
+  status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
+  destinationPath?: string
+  error?: string
+}): void {
+  window.dispatchEvent(new CustomEvent('luna:export-progress-local', { detail: progress }))
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 function staticLayers(layers: PreviewLayer[]): StaticLayer[] {
@@ -118,7 +149,7 @@ export async function exportPreviewVideo(params: {
     true,
     videoLayer,
     staticLayers(params.layers),
-    undefined,
+    params.exportItemId,
     params.qualityPreset ?? 'high',
     params.exportTaskId,
     params.exportItemId,
@@ -155,84 +186,217 @@ export async function exportPreviewLivePhoto(params: {
 
 // ── 公共批量导出 ──
 
+export interface BatchExportSource {
+  sourcePath: string
+  layers?: PreviewLayer[]
+  outputBaseName?: string
+}
+
+interface BatchExportEntry {
+  id: string
+  sourcePath: string
+  outputPath: string
+  layers?: PreviewLayer[]
+  index: number
+  kind: 'image' | 'video'
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++
+      await worker(items[index])
+    }
+  })
+  await Promise.all(workers)
+}
+
+async function waitForExportItem(taskId: string, itemId: string): Promise<void> {
+  for (;;) {
+    const task = await window.luna.exportTask.get(taskId)
+    const item = task?.items.find((candidate) => candidate.id === itemId)
+    if (!item) return
+    if (item.status === 'done') return
+    if (item.status === 'failed') throw new Error(item.error || '导出失败')
+    if (item.status === 'canceled') throw new Error('导出已取消')
+    await wait(EXPORT_STATUS_POLL_MS)
+  }
+}
+
+async function runBatchExportQueue(
+  taskId: string,
+  taskName: string,
+  exportDir: string,
+  entries: BatchExportEntry[],
+): Promise<void> {
+  const exportOne = async (entry: BatchExportEntry): Promise<void> => {
+    const task = await window.luna.exportTask.get(taskId)
+    const itemStatus = task?.items.find((item) => item.id === entry.id)?.status
+    if (itemStatus === 'canceled') {
+      emitLocalExportProgress({
+        exportId: entry.id,
+        taskId,
+        taskName,
+        fileName: fileNameFromPath(entry.outputPath),
+        index: entry.index,
+        totalFiles: entries.length,
+        percent: 0,
+        status: 'canceled',
+        destinationPath: entry.outputPath,
+      })
+      return
+    }
+
+    emitLocalExportProgress({
+      exportId: entry.id,
+      taskId,
+      taskName,
+      fileName: fileNameFromPath(entry.outputPath),
+      index: entry.index,
+      totalFiles: entries.length,
+      percent: 0,
+      status: 'exporting',
+      destinationPath: entry.outputPath,
+    })
+
+    try {
+      await window.luna.exportTask.updateItem(taskId, entry.id, {
+        status: 'exporting',
+        progress: 0,
+      }).catch(() => {})
+      const res = await window.luna.workspace.getMediaResolution(entry.sourcePath)
+      const exportLayers = entry.layers ?? buildLayers(entry.sourcePath)
+      const fileName = fileNameFromPath(entry.outputPath)
+
+      if (entry.kind === 'video') {
+        await exportPreviewVideo({
+          exportDir,
+          fileName,
+          width: res.width,
+          height: res.height,
+          layers: exportLayers,
+          qualityPreset: 'high',
+          exportTaskId: taskId,
+          exportItemId: entry.id,
+        })
+        await waitForExportItem(taskId, entry.id)
+        return
+      }
+
+      await exportPreviewImage({
+        exportDir,
+        fileName,
+        width: res.width,
+        height: res.height,
+        layers: exportLayers,
+        format: 'jpeg',
+        quality: 100,
+        exportTaskId: taskId,
+        exportItemId: entry.id,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      await window.luna.exportTask.updateItem(taskId, entry.id, {
+        status: message === '导出已取消' ? 'canceled' : 'failed',
+        error: message,
+      }).catch(() => {})
+      emitLocalExportProgress({
+        exportId: entry.id,
+        taskId,
+        taskName,
+        fileName: fileNameFromPath(entry.outputPath),
+        index: entry.index,
+        totalFiles: entries.length,
+        percent: 100,
+        status: message === '导出已取消' ? 'canceled' : 'failed',
+        destinationPath: entry.outputPath,
+        error: message,
+      })
+    }
+  }
+
+  const imageEntries = entries.filter((entry) => entry.kind === 'image')
+  const videoEntries = entries.filter((entry) => entry.kind === 'video')
+  await Promise.all([
+    runWithConcurrency(imageEntries, IMAGE_EXPORT_CONCURRENCY, exportOne),
+    runWithConcurrency(videoEntries, VIDEO_EXPORT_CONCURRENCY, exportOne),
+  ])
+}
+
 /**
  * 批量导出多个文件
  *
  * 职责：
  * - 创建导出任务（exportTask）
- * - 为每个文件获取分辨率、构建渲染层
- * - 调用 lrc 逐文件导出（图片/视频自动分流）
+ * - 立即返回任务信息，让 UI 保持响应
+ * - 后台按图片/视频并发限制执行导出
  * - 返回 taskId 和 items 信息
  *
  * PreviewModal 等 UI 组件调用此方法，不直接处理 lrc 细节。
  */
 export async function exportBatchFiles(
-  sourcePaths: string[],
+  sources: Array<string | BatchExportSource>,
   exportDir: string,
-  overlayLayers: PreviewLayer[],
-): Promise<{ taskId: string; completed: number; failed: number; items: Array<{ id: string; outputPath: string }> }> {
+  overlayLayers: PreviewLayer[] = [],
+): Promise<{ taskId: string; items: Array<{ id: string; outputPath: string }> }> {
+  const sourceItems = sources.map((source) => (
+    typeof source === 'string' ? { sourcePath: source } : source
+  ))
+
   // 生成子任务列表
-  const items = sourcePaths.map((fp) => {
-    const baseName = fp.split(/[/\\]/).pop() || 'export'
+  const stamp = Date.now()
+  const entries: BatchExportEntry[] = sourceItems.map((source, index) => {
+    const fp = source.sourcePath
+    const baseName = source.outputBaseName || baseNameFromPath(fp)
     const isVid = isVideoPathCached(fp)
     const ext = isVid ? '.mp4' : '.jpg'
     return {
-      id: `batch_${baseName}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `batch_${baseName}_${stamp}_${Math.random().toString(36).slice(2, 6)}`,
       sourcePath: fp,
-      outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName.replace(/\.[^.]+$/, '')}_${Date.now()}${ext}`,
+      outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_${stamp}${ext}`,
+      layers: source.layers,
+      index,
+      kind: isVid ? 'video' : 'image',
     }
   })
 
   // 创建导出任务
+  const taskName = `批量导出 ${sourceItems.length} 个文件`
   const task = await window.luna.exportTask.create(
-    `批量导出 ${sourcePaths.length} 个文件`,
-    items.map((i) => ({ id: i.id, sourcePath: i.sourcePath, outputPath: i.outputPath })),
+    taskName,
+    entries.map((entry) => ({ id: entry.id, sourcePath: entry.sourcePath, outputPath: entry.outputPath })),
   )
 
-  let completed = 0
-  let failed = 0
+  entries.forEach((entry) => {
+    emitLocalExportProgress({
+      exportId: entry.id,
+      taskId: task.id,
+      taskName,
+      fileName: fileNameFromPath(entry.outputPath),
+      index: entry.index,
+      totalFiles: entries.length,
+      percent: 0,
+      status: 'queued',
+      destinationPath: entry.outputPath,
+    })
+  })
 
-  // 逐个导出，单个失败不影响后续
-  for (let i = 0; i < sourcePaths.length; i++) {
-    const fp = sourcePaths[i]
-    const item = items[i]
-    const isVid = isVideoPathCached(fp)
+  const queuedEntries = entries.map((entry) => ({
+    ...entry,
+    layers: entry.layers ?? (
+      overlayLayers.length > 0 ? [...buildLayers(entry.sourcePath), ...overlayLayers] : undefined
+    ),
+  }))
+  window.setTimeout(() => {
+    void runBatchExportQueue(task.id, taskName, exportDir, queuedEntries)
+  }, 0)
 
-    try {
-      const res = await window.luna.workspace.getMediaResolution(fp)
-      const mainLayers = buildLayers(fp)
-      const exportLayers = overlayLayers.length > 0 ? [...mainLayers, ...overlayLayers] : mainLayers
-
-      if (isVid) {
-        await exportPreviewVideo({
-          exportDir,
-          fileName: item.outputPath.split('/').pop() || 'export.mp4',
-          width: res.width, height: res.height,
-          layers: exportLayers, qualityPreset: 'high',
-          exportTaskId: task.id, exportItemId: item.id,
-        })
-      } else {
-        await exportPreviewImage({
-          exportDir,
-          fileName: item.outputPath.split('/').pop() || 'export.jpg',
-          width: res.width, height: res.height,
-          layers: exportLayers, format: 'jpeg', quality: 100,
-          exportTaskId: task.id, exportItemId: item.id,
-        })
-      }
-      completed++
-    } catch (err) {
-      failed++
-      const message = err instanceof Error ? err.message : String(err)
-      // 记录失败信息到通用导出任务
-      await window.luna.exportTask.updateItem(task.id, item.id, {
-        status: 'failed',
-        error: message,
-      }).catch(() => {})
-    }
-  }
-
-  return { taskId: task.id, completed, failed, items: items.map((i) => ({ id: i.id, outputPath: i.outputPath })) }
+  return { taskId: task.id, items: entries.map((entry) => ({ id: entry.id, outputPath: entry.outputPath })) }
 }
 
 /** 内部：根据扩展名判断是否视频 */
