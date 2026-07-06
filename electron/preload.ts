@@ -230,15 +230,6 @@ interface RenderLayer {
   transform?: unknown
 }
 
-interface StaticLayer {
-  imagePath: string
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-  color?: unknown
-  transform?: unknown
-}
-
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
   pickVideo: () => ipcRenderer.invoke('lrc:pickVideo'),
@@ -254,10 +245,10 @@ const lunaRenderCoreApi = {
     inputPath: string, outputPath: string,
     canvasWidth: number, canvasHeight: number,
     fps: number | null, hardware: boolean,
-    videoLayer: RenderLayer, overlayLayers: StaticLayer[],
+    layers: unknown[],
     taskId?: string, qualityPreset?: string,
     exportTaskId?: string, exportItemId?: string,
-  ) => ipcRenderer.invoke('lrc:exportVideo', inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, taskId, qualityPreset, exportTaskId, exportItemId),
+  ) => ipcRenderer.invoke('lrc:exportVideo', inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, layers, taskId, qualityPreset, exportTaskId, exportItemId),
   cancelExportTask: (taskId: string) => ipcRenderer.invoke('lrc:cancelExportTask', taskId),
   getExportTaskProgress: (taskId: string) => ipcRenderer.invoke('lrc:getExportTaskProgress', taskId),
   resolveRenderSource: (originalPath: string, cacheDir: string) => ipcRenderer.invoke('lrc:resolveRenderSource', originalPath, cacheDir),

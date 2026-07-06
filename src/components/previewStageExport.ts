@@ -1,5 +1,7 @@
-import type { PreviewLayer, RenderLayer, StaticLayer } from '../shared/types'
+import type { PreviewLayer } from '../shared/types'
+import type { WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { buildLayers } from './PreviewStage'
+import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -23,8 +25,7 @@ interface LunaRenderCoreApi {
     canvasHeight: number,
     fps: number | null,
     hardware: boolean,
-    videoLayer: RenderLayer,
-    overlayLayers: StaticLayer[],
+    layers: PreviewLayer[],
     taskId?: string,
     qualityPreset?: string,
     exportTaskId?: string,
@@ -50,6 +51,37 @@ function baseNameFromPath(path: string): string {
   return fileNameFromPath(path).replace(/\.[^.]+$/, '')
 }
 
+function exportCanvasFor(resolution: { width: number; height: number }): { width: number; height: number } {
+  const max = 1440
+  const aspect = resolution.width / resolution.height
+  if (aspect >= 1) return { width: max, height: Math.round(max / aspect) }
+  return { width: Math.round(max * aspect), height: max }
+}
+
+export function buildExportLayers(
+  sourcePath: string,
+  resolution: { width: number; height: number },
+  watermark?: WatermarkSettingsType | null,
+): PreviewLayer[] {
+  const main = buildLayers(sourcePath, 'contain', resolution, exportCanvasFor(resolution))
+  if (!watermark?.enabled || !watermark.imagePath || !watermark.wmAspect) return main
+
+  const watermarkLayer = buildResolvedWatermarkStaticLayer(watermark, resolution.width, resolution.height)
+  const baseLayer = main[0]
+  if (!watermarkLayer || !baseLayer) return main
+
+  return [
+    ...main,
+    {
+      ...watermarkLayer,
+      dstX: baseLayer.dstX + watermarkLayer.dstX * baseLayer.dstW,
+      dstY: baseLayer.dstY + watermarkLayer.dstY * baseLayer.dstH,
+      dstW: watermarkLayer.dstW * baseLayer.dstW,
+      dstH: watermarkLayer.dstH * baseLayer.dstH,
+    },
+  ]
+}
+
 function emitLocalExportProgress(progress: {
   exportId: string
   taskId: string
@@ -67,27 +99,6 @@ function emitLocalExportProgress(progress: {
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-function staticLayers(layers: PreviewLayer[]): StaticLayer[] {
-  return layers
-    .filter((layer) => !layer.isVideo)
-    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-    .map((layer) => ({
-      imagePath: layer.filePath,
-      dstX: layer.dstX,
-      dstY: layer.dstY,
-      dstW: layer.dstW,
-      dstH: layer.dstH,
-      srcX: layer.srcX ?? 0,
-      srcY: layer.srcY ?? 0,
-      srcW: layer.srcW ?? 1,
-      srcH: layer.srcH ?? 1,
-      opacity: layer.opacity ?? 1,
-      zIndex: layer.zIndex ?? 0,
-      color: layer.color,
-      transform: layer.transform,
-    }))
 }
 
 export async function exportPreviewImage(params: {
@@ -124,22 +135,6 @@ export async function exportPreviewVideo(params: {
   if (!videoSourceLayer) throw new Error('未找到视频图层')
 
   const path = outputPath(params.exportDir, params.fileName)
-  const videoLayer: RenderLayer = {
-    textureId: 0,
-    dstX: videoSourceLayer.dstX,
-    dstY: videoSourceLayer.dstY,
-    dstW: videoSourceLayer.dstW,
-    dstH: videoSourceLayer.dstH,
-    srcX: videoSourceLayer.srcX ?? 0,
-    srcY: videoSourceLayer.srcY ?? 0,
-    srcW: videoSourceLayer.srcW ?? 1,
-    srcH: videoSourceLayer.srcH ?? 1,
-    opacity: videoSourceLayer.opacity ?? 1,
-    zIndex: videoSourceLayer.zIndex ?? 0,
-    color: videoSourceLayer.color,
-    transform: videoSourceLayer.transform,
-  }
-
   await lrc().exportVideo(
     videoSourceLayer.filePath,
     path,
@@ -147,8 +142,7 @@ export async function exportPreviewVideo(params: {
     params.height,
     null,
     true,
-    videoLayer,
-    staticLayers(params.layers),
+    params.layers,
     params.exportItemId,
     params.qualityPreset ?? 'high',
     params.exportTaskId,
@@ -310,7 +304,7 @@ async function runBatchExportQueue(
         progress: 0,
       }).catch(() => {})
       const res = await window.luna.workspace.getMediaResolution(entry.sourcePath)
-      const exportLayers = entry.layers ?? buildLayers(entry.sourcePath)
+      const exportLayers = entry.layers ?? buildExportLayers(entry.sourcePath, res)
       const fileName = fileNameFromPath(entry.outputPath)
 
       if (entry.kind === 'video') {
@@ -382,7 +376,6 @@ async function runBatchExportQueue(
 export async function exportBatchFiles(
   sources: Array<string | BatchExportSource>,
   exportDir: string,
-  overlayLayers: PreviewLayer[] = [],
 ): Promise<{ taskId: string; items: Array<{ id: string; outputPath: string }> }> {
   const sourceItems = sources.map((source) => (
     typeof source === 'string' ? { sourcePath: source } : source
@@ -428,9 +421,7 @@ export async function exportBatchFiles(
 
   const queuedEntries = entries.map((entry) => ({
     ...entry,
-    layers: entry.layers ?? (
-      overlayLayers.length > 0 ? [...buildLayers(entry.sourcePath), ...overlayLayers] : undefined
-    ),
+    layers: entry.layers,
   }))
   window.setTimeout(() => {
     void runBatchExportQueue(task.id, taskName, exportDir, queuedEntries)

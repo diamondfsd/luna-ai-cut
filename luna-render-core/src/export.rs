@@ -6,9 +6,9 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 
-use crate::compositor::Compositor;
+use crate::compositor::{decode_static_image_scaled, Compositor};
 use crate::media::probe_video_info;
-use crate::{PreviewLayer, RenderLayer, StaticLayer};
+use crate::{PreviewLayer, RenderLayer};
 
 const IMAGE_EXPORT_MAX_EDGE: u32 = 8192;
 
@@ -228,106 +228,6 @@ fn choose_bitrate(
     }
 }
 
-/// 用 FFmpeg 解码图片到 RGBA
-fn decode_image(ffmpeg: &str, ffprobe: &str, path: &str) -> Result<(Vec<u8>, u32, u32), String> {
-    let output = Command::new(ffprobe)
-        .args([
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_streams",
-            path,
-        ])
-        .output()
-        .map_err(|e| format!("ffprobe: {}", e))?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value =
-        serde_json::from_str(&stdout).map_err(|e| format!("json: {}", e))?;
-    let streams = parsed["streams"].as_array().ok_or("no streams")?;
-    let vs = streams
-        .iter()
-        .find(|s| s["codec_type"].as_str() == Some("video"))
-        .ok_or("no video stream")?;
-    let w = vs["width"].as_u64().unwrap_or(1920) as u32;
-    let h = vs["height"].as_u64().unwrap_or(1080) as u32;
-
-    let mut proc = Command::new(ffmpeg)
-        .args([
-            "-i",
-            path,
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgba",
-            "-s",
-            &format!("{}x{}", w, h),
-            "-vframes",
-            "1",
-            "pipe:1",
-            "-loglevel",
-            "error",
-        ])
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("spawn decode: {}", e))?;
-    let mut buf = vec![];
-    proc.stdout
-        .take()
-        .unwrap()
-        .read_to_end(&mut buf)
-        .map_err(|e| format!("read: {}", e))?;
-    proc.wait().ok();
-    Ok((buf, w, h))
-}
-
-/// 用 FFmpeg 解码图片到 RGBA，限制最大边长（保持宽高比）
-fn decode_image_scaled(
-    ffmpeg: &str,
-    ffprobe: &str,
-    path: &str,
-    max_size: u32,
-) -> Result<(Vec<u8>, u32, u32), String> {
-    let (_, src_w, src_h) = decode_image(ffmpeg, ffprobe, path)?;
-    let max_edge = src_w.max(src_h);
-    let (dw, dh) = if max_edge > max_size {
-        let s = max_size as f64 / max_edge as f64;
-        (
-            (src_w as f64 * s).round().max(1.0) as u32,
-            (src_h as f64 * s).round().max(1.0) as u32,
-        )
-    } else {
-        (src_w, src_h)
-    };
-    let expected = (dw * dh * 4) as usize;
-    let mut proc = Command::new(ffmpeg)
-        .args([
-            "-i",
-            path,
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgba",
-            "-s",
-            &format!("{}x{}", dw, dh),
-            "-vframes",
-            "1",
-            "pipe:1",
-            "-loglevel",
-            "error",
-        ])
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("spawn: {}", e))?;
-    let mut buf = vec![0u8; expected];
-    proc.stdout
-        .take()
-        .unwrap()
-        .read_exact(&mut buf)
-        .map_err(|e| format!("read: {}", e))?;
-    proc.wait().ok();
-    Ok((buf, dw, dh))
-}
 
 fn capped_image_export_size(width: u32, height: u32, c: &Compositor) -> (u32, u32) {
     let max_edge = IMAGE_EXPORT_MAX_EDGE.min(c.max_texture_size()).max(1);
@@ -388,26 +288,12 @@ pub fn export_image_from_sources(
             continue;
         }
 
-        let (rgba, iw, ih) = decode_image_scaled(ffmpeg, ffprobe, &layer.file_path, target_max)
+        let (rgba, iw, ih) = decode_static_image_scaled(ffmpeg, ffprobe, &layer.file_path, target_max)
             .map_err(|e| format!("decode {}: {}", layer.file_path, e))?;
         let tex_id = c.load_texture(&rgba, iw, ih)?;
         temp_tex.push(tex_id);
 
-        render_layers.push(RenderLayer {
-            texture_id: tex_id,
-            dst_x: layer.dst_x,
-            dst_y: layer.dst_y,
-            dst_w: layer.dst_w,
-            dst_h: layer.dst_h,
-            src_x: layer.src_x,
-            src_y: layer.src_y,
-            src_w: layer.src_w,
-            src_h: layer.src_h,
-            opacity: layer.opacity,
-            z_index: layer.z_index,
-            color: layer.color.clone(),
-            transform: layer.transform.clone(),
-        });
+        render_layers.push(render_layer_from_preview(tex_id, layer));
     }
 
     if render_layers.is_empty() {
@@ -474,57 +360,6 @@ pub fn export_image_from_sources(
     Ok(())
 }
 
-/// 预览一帧 — 和 export_file 同样的加载+渲染，返回 RGBA Buffer
-pub fn preview_file(
-    ffmpeg: &str,
-    ffprobe: &str,
-    input: &str,
-    cw: u32,
-    ch: u32,
-    static_layers: &[StaticLayer],
-    c: &mut Compositor,
-) -> Result<Vec<u8>, String> {
-    crate::log!(
-        "preview: {} {}x{} static={}",
-        input,
-        cw,
-        ch,
-        static_layers.len()
-    );
-
-    let (rgba, iw, ih) = decode_image(ffmpeg, ffprobe, input)?;
-    let img_tex = c
-        .load_texture(&rgba, iw, ih)
-        .map_err(|e| format!("img: {}", e))?;
-
-    let mut layers = vec![RenderLayer {
-        texture_id: img_tex,
-        dst_x: 0.0,
-        dst_y: 0.0,
-        dst_w: 1.0,
-        dst_h: 1.0,
-        src_x: 0.0,
-        src_y: 0.0,
-        src_w: 1.0,
-        src_h: 1.0,
-        opacity: 1.0,
-        z_index: 0,
-        color: None,
-        transform: None,
-    }];
-    layers.extend(load_static_layers(ffmpeg, ffprobe, static_layers, c)?);
-
-    let result = c
-        .render(cw, ch, &layers)
-        .map_err(|e| format!("render: {}", e))?;
-
-    c.release_texture(img_tex).ok();
-    for l in &layers[1..] {
-        c.release_texture(l.texture_id).ok();
-    }
-    Ok(result)
-}
-
 /// 统一导出入口
 pub fn export_file(
     ffmpeg: &str,
@@ -535,8 +370,7 @@ pub fn export_file(
     canvas_h: u32,
     fps: Option<f64>,
     hardware: bool,
-    video_layer: &RenderLayer,
-    static_layers: &[StaticLayer],
+    layers: &[PreviewLayer],
     task_id: Option<&str>,
     quality_preset: Option<QualityPreset>,
     c: &mut Compositor,
@@ -555,15 +389,15 @@ pub fn export_file(
         || input.to_lowercase().ends_with(".webp")
     {
         crate::log!("export: image mode {} → {}", input, output);
-        export_image(
+        export_image_from_sources(
             ffmpeg,
             ffprobe,
-            input,
             output,
             canvas_w,
             canvas_h,
-            video_layer,
-            static_layers,
+            layers,
+            "jpeg",
+            100.0,
             c,
         )
     } else {
@@ -582,8 +416,7 @@ pub fn export_file(
             canvas_h,
             fps,
             hardware,
-            video_layer,
-            static_layers,
+            layers,
             c,
             preset,
             task.as_deref(),
@@ -597,89 +430,22 @@ pub fn export_file(
     result
 }
 
-/// 加载所有静态层（内部 FFmpeg decode + 上传 wgpu）
-fn load_static_layers(
-    ffmpeg: &str,
-    ffprobe: &str,
-    layers: &[StaticLayer],
-    c: &mut Compositor,
-) -> Result<Vec<RenderLayer>, String> {
-    let mut result = vec![];
-    for sl in layers {
-        crate::log!("  load static: {}", sl.image_path);
-        let (rgba, _w, _h) = decode_image(ffmpeg, ffprobe, &sl.image_path)?;
-        let tex = c
-            .load_texture(&rgba, _w, _h)
-            .map_err(|e| format!("load {}: {}", sl.image_path, e))?;
-        crate::log!("    tex={} {}x{}", tex, _w, _h);
-        result.push(RenderLayer {
-            texture_id: tex,
-            dst_x: sl.dst_x,
-            dst_y: sl.dst_y,
-            dst_w: sl.dst_w,
-            dst_h: sl.dst_h,
-            src_x: sl.src_x,
-            src_y: sl.src_y,
-            src_w: sl.src_w,
-            src_h: sl.src_h,
-            opacity: sl.opacity,
-            z_index: sl.z_index,
-            color: sl.color.clone(),
-            transform: sl.transform.clone(),
-        });
+fn render_layer_from_preview(texture_id: u32, layer: &PreviewLayer) -> RenderLayer {
+    RenderLayer {
+        texture_id,
+        dst_x: layer.dst_x,
+        dst_y: layer.dst_y,
+        dst_w: layer.dst_w,
+        dst_h: layer.dst_h,
+        src_x: layer.src_x,
+        src_y: layer.src_y,
+        src_w: layer.src_w,
+        src_h: layer.src_h,
+        opacity: layer.opacity,
+        z_index: layer.z_index,
+        color: layer.color.clone(),
+        transform: layer.transform.clone(),
     }
-    Ok(result)
-}
-
-/// 导出图片（单主图 + 静态叠加层）
-fn export_image(
-    ffmpeg: &str,
-    ffprobe: &str,
-    input: &str,
-    output: &str,
-    cw: u32,
-    ch: u32,
-    vl: &RenderLayer,
-    sl: &[StaticLayer],
-    c: &mut Compositor,
-) -> Result<(), String> {
-    let (render_width, render_height) = capped_image_export_size(cw, ch, c);
-    let target_max = render_width.max(render_height);
-    let (rgba, iw, ih) = decode_image_scaled(ffmpeg, ffprobe, input, target_max)?;
-    let img_tex = c
-        .load_texture(&rgba, iw, ih)
-        .map_err(|e| format!("img: {}", e))?;
-    crate::log!("  img tex={} {}x{}", img_tex, iw, ih);
-
-    let mut layers = vec![RenderLayer {
-        texture_id: img_tex,
-        dst_x: vl.dst_x,
-        dst_y: vl.dst_y,
-        dst_w: vl.dst_w,
-        dst_h: vl.dst_h,
-        src_x: vl.src_x,
-        src_y: vl.src_y,
-        src_w: vl.src_w,
-        src_h: vl.src_h,
-        opacity: vl.opacity,
-        z_index: vl.z_index,
-        color: vl.color.clone(),
-        transform: vl.transform.clone(),
-    }];
-    layers.extend(load_static_layers(ffmpeg, ffprobe, sl, c)?);
-
-    let result = c
-        .render(render_width, render_height, &layers)
-        .map_err(|e| format!("render: {}", e))?;
-    encode_to_file(ffmpeg, &result, render_width, render_height, output)?;
-
-    // 清理
-    c.release_texture(img_tex).ok();
-    for l in &layers[1..] {
-        c.release_texture(l.texture_id).ok();
-    }
-    crate::log!("  image done: {}", output);
-    Ok(())
 }
 
 fn export_video(
@@ -691,13 +457,16 @@ fn export_video(
     ch: u32,
     fps: Option<f64>,
     hardware: bool,
-    vl: &RenderLayer,
-    sl: &[StaticLayer],
+    preview_layers: &[PreviewLayer],
     c: &mut Compositor,
     preset: QualityPreset,
     task: Option<&TaskState>,
 ) -> Result<(), String> {
     let info = probe_video_info(ffprobe, input)?;
+    let _video_layer = preview_layers
+        .iter()
+        .find(|layer| layer.is_video)
+        .ok_or_else(|| "no video layer for export".to_string())?;
     let fps_val = fps.unwrap_or(info.fps);
     let frame_size = (info.width * info.height * 4) as usize;
     let out_size = (cw * ch * 4) as usize;
@@ -761,24 +530,22 @@ fn export_video(
     let video_tex = c
         .load_texture(&dummy, info.width, info.height)
         .map_err(|e| format!("video tex: {}", e))?;
-    let static_render = load_static_layers(ffmpeg, ffprobe, sl, c)?;
-
-    let mut layers = vec![RenderLayer {
-        texture_id: video_tex,
-        dst_x: vl.dst_x,
-        dst_y: vl.dst_y,
-        dst_w: vl.dst_w,
-        dst_h: vl.dst_h,
-        src_x: vl.src_x,
-        src_y: vl.src_y,
-        src_w: vl.src_w,
-        src_h: vl.src_h,
-        opacity: vl.opacity,
-        z_index: vl.z_index,
-        color: vl.color.clone(),
-        transform: vl.transform.clone(),
-    }];
-    layers.extend(static_render.clone());
+    let mut temp_static_tex = Vec::new();
+    let mut layers = Vec::with_capacity(preview_layers.len());
+    for layer in preview_layers {
+        if layer.is_video {
+            layers.push(render_layer_from_preview(video_tex, layer));
+            continue;
+        }
+        crate::log!("  load static preview layer: {}", layer.file_path);
+        let (rgba, w, h) = decode_static_image_scaled(ffmpeg, ffprobe, &layer.file_path, cw.max(ch))?;
+        let tex = c
+            .load_texture(&rgba, w, h)
+            .map_err(|e| format!("load {}: {}", layer.file_path, e))?;
+        crate::log!("    tex={} {}x{}", tex, w, h);
+        temp_static_tex.push(tex);
+        layers.push(render_layer_from_preview(tex, layer));
+    }
 
     // ── FFmpeg 编码命令 ──
     // 输入 0: Rust pipe 渲染后的视频帧 rawvideo
@@ -908,8 +675,8 @@ fn export_video(
     }
 
     c.release_texture(video_tex).ok();
-    for l in &static_render {
-        c.release_texture(l.texture_id).ok();
+    for tex in temp_static_tex {
+        c.release_texture(tex).ok();
     }
     crate::log!(
         "  video done: {} frames {:.1}s out={}",
@@ -917,35 +684,5 @@ fn export_video(
         t0.elapsed().as_secs_f64(),
         output
     );
-    Ok(())
-}
-
-fn encode_to_file(ffmpeg: &str, rgba: &[u8], w: u32, h: u32, output: &str) -> Result<(), String> {
-    let mut proc = Command::new(ffmpeg)
-        .args([
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgba",
-            "-s",
-            &format!("{}x{}", w, h),
-            "-i",
-            "pipe:0",
-            "-frames:v",
-            "1",
-            output,
-            "-y",
-            "-loglevel",
-            "error",
-        ])
-        .stdin(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("encode: {}", e))?;
-    proc.stdin
-        .take()
-        .unwrap()
-        .write_all(rgba)
-        .map_err(|e| format!("write: {}", e))?;
-    proc.wait().ok();
     Ok(())
 }
