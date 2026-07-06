@@ -69,7 +69,6 @@ function summarizeLayer(layer: PreviewLayer) {
     zIndex: layer.zIndex ?? 0,
     dst: [layer.dstX, layer.dstY, layer.dstW, layer.dstH],
     src: [layer.srcX, layer.srcY, layer.srcW, layer.srcH],
-    fit: layer.fit,
     opacity: layer.opacity,
   }
 }

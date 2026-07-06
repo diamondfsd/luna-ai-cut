@@ -80,8 +80,6 @@ export interface PreviewLayer {
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number
   zIndex: number
-  /** 前端适配方式，Rust 不感知 */
-  fit?: 'fill' | 'contain'
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
 }
