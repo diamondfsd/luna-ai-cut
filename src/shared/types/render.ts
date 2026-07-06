@@ -93,13 +93,3 @@ export interface RenderLayer {
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
 }
-
-/** 静态层（lrc 内部加载 imagePath 为纹理并渲染，兼容 PreviewLayer） */
-export interface StaticLayer {
-  imagePath: string
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-  color?: RenderColorAdjustments
-  transform?: RenderLayerTransform
-}

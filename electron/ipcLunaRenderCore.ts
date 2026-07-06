@@ -50,15 +50,6 @@ interface RenderLayerArg {
   transform?: any
 }
 
-interface StaticLayerArg {
-  imagePath: string
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-  color?: any
-  transform?: any
-}
-
 /** 写日志到文件（追加模式），APP_ROOT 在 appMain.ts 中设置 */
 function rcLog(msg: string): void {
   const appRoot = process.env.APP_ROOT || join(import.meta.dirname, '..')
@@ -248,8 +239,7 @@ export function register(_ctx: RegisterContext): void {
       canvasHeight: number,
       fps: number | null,
       hardware: boolean,
-      videoLayer: RenderLayerArg,
-      overlayLayers: StaticLayerArg[],
+      layers: PreviewLayerArg[],
       taskId?: string,
       qualityPreset?: string,
       exportTaskId?: string,
@@ -311,7 +301,7 @@ export function register(_ctx: RegisterContext): void {
         rcLog(`[export-progress-debug] sent ui progress exportId=${exportId} percent=${percent}`)
       }, 500)
       try {
-        await lrcExportFileAsync(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, videoLayer, overlayLayers, exportId, qualityPreset)
+        await lrcExportFileAsync(ffmpegPath, ffprobePath, sourcePath, outputPath, canvasWidth, canvasHeight, fps, hardware, layers, exportId, qualityPreset)
         rcLog(`lrc:exportVideo done out=${outputPath}`)
         if (exportTaskId && exportItemId) {
           await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})

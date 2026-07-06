@@ -102,15 +102,6 @@ interface NativeLayer {
   transform: RenderLayerTransform
 }
 
-interface NativeStaticLayer {
-  imagePath: string
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX: number; srcY: number; srcW: number; srcH: number
-  opacity: number; zIndex: number
-  color: RenderColorAdjustments
-  transform: RenderLayerTransform
-}
-
 interface RenderColorAdjustments {
   exposure: number
   black: number
@@ -200,7 +191,7 @@ interface LunaRenderCoreNative {
     inputPath: string, outputPath: string,
     canvasWidth: number, canvasHeight: number,
     fps: number | null, hardware: boolean,
-    videoLayer: NativeLayer, staticLayers: NativeStaticLayer[],
+    layers: PreviewNativeLayer[],
     taskId: string | null, qualityPreset: string | null,
   ): Promise<void>
   cancelExportTask(taskId: string): void
@@ -227,28 +218,6 @@ function normalizePreviewLayer(l: PreviewLayerInputForExport): PreviewNativeLaye
 function normalizeLayer(l: RenderCoreLayerInput): NativeLayer {
   return {
     textureId: l.textureId,
-    dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
-    srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
-    srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
-    opacity: l.opacity ?? 1,
-    zIndex: l.zIndex ?? 0,
-    color: normalizeColor(l.color),
-    transform: normalizeTransform(l.transform),
-  }
-}
-
-export interface StaticLayerInput {
-  imagePath: string
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-  color?: Partial<RenderColorAdjustments>
-  transform?: Partial<RenderLayerTransform>
-}
-
-function normalizeStaticLayer(l: StaticLayerInput): NativeStaticLayer {
-  return {
-    imagePath: l.imagePath,
     dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
     srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
     srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
@@ -485,8 +454,7 @@ export function exportFileAsync(
   canvasHeight: number,
   fps: number | null,
   hardware: boolean,
-  videoLayer: RenderCoreLayerInput,
-  staticLayers: StaticLayerInput[],
+  layers: PreviewLayerInputForExport[],
   taskId?: string,
   qualityPreset?: string,
 ): Promise<void> {
@@ -500,8 +468,7 @@ export function exportFileAsync(
     canvasHeight,
     fps,
     hardware,
-    normalizeLayer(videoLayer),
-    staticLayers.map(normalizeStaticLayer),
+    layers.map(normalizePreviewLayer),
     taskId ?? null,
     qualityPreset ?? null,
   )

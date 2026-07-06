@@ -1519,10 +1519,11 @@ impl Compositor {
 }
 
 /// 使用 ffmpeg 解码静态图片到 RGBA（按 PREVIEW_MAX_SIZE 等比缩小）
-fn decode_static_image(
+pub(crate) fn decode_static_image_scaled(
     ffmpeg: &str,
     ffprobe: &str,
     path: &str,
+    max_size: u32,
 ) -> Result<(Vec<u8>, u32, u32), String> {
     let output = Command::new(ffprobe)
         .args([
@@ -1579,8 +1580,8 @@ fn decode_static_image(
     };
 
     let max_edge = source_w.max(source_h);
-    let (dw, dh) = if max_edge > PREVIEW_MAX_SIZE {
-        let s = PREVIEW_MAX_SIZE as f64 / max_edge as f64;
+    let (dw, dh) = if max_edge > max_size {
+        let s = max_size as f64 / max_edge as f64;
         (
             (source_w as f64 * s).round().max(1.0) as u32,
             (source_h as f64 * s).round().max(1.0) as u32,
@@ -1631,6 +1632,14 @@ fn decode_static_image(
         rgba.len()
     );
     Ok((rgba, dw, dh))
+}
+
+fn decode_static_image(
+    ffmpeg: &str,
+    ffprobe: &str,
+    path: &str,
+) -> Result<(Vec<u8>, u32, u32), String> {
+    decode_static_image_scaled(ffmpeg, ffprobe, path, PREVIEW_MAX_SIZE)
 }
 
 fn image_rotation_degrees(

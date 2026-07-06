@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { exportBatchFiles } from './previewStageExport'
+import { buildExportLayers, exportBatchFiles, type BatchExportSource } from './previewStageExport'
 import { HtmlPreview } from './HtmlPreview'
 import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
@@ -52,6 +52,7 @@ export function PreviewModal({
   // ── 状态 ──
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
+  const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType | null>(null)
   const [batchEnqueuing, setBatchEnqueuing] = useState(false)
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
@@ -74,7 +75,8 @@ export function PreviewModal({
   }, [currentFilePath, displaySource, resolvedPath, stageSource])
 
   // WatermarkSettings onChange 回调
-  function handleWatermarkChange(_settings: WatermarkSettingsType, layer?: PreviewLayer) {
+  function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
+    setWatermarkSettings(settings)
     setWatermarkLayers(layer ? [layer] : [])
   }
 
@@ -87,14 +89,22 @@ export function PreviewModal({
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) { toast.error('导出目录未配置'); return }
 
-      await exportBatchFiles(filePathList, settings.exportDir, watermarkLayers)
+      const sources: BatchExportSource[] = await Promise.all(filePathList.map(async (sourcePath) => {
+        const resolution = await window.luna.workspace.getMediaResolution(sourcePath)
+        return {
+          sourcePath,
+          layers: buildExportLayers(sourcePath, resolution, watermarkSettings),
+        }
+      }))
+
+      await exportBatchFiles(sources, settings.exportDir)
       toast.success(`已加入导出队列: ${filePathList.length} 个文件`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '导出失败')
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, filePathList, watermarkLayers])
+  }, [batchEnqueuing, filePathList, watermarkSettings])
 
   // Escape 关闭
   useEffect(() => {
