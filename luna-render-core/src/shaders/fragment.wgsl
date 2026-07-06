@@ -22,7 +22,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         max(params.frame_w, 0.0001),
         max(params.frame_h, 0.0001),
     );
-    centered = centered / max(params.scale, 0.0001);
+    centered = centered / max(params.scale, 0.0001) - vec2<f32>(params.translate_x, params.translate_y);
     let radians_value = (params.orientation + params.rotate) * 0.017453292519943295;
     let s = sin(radians_value);
     let c = cos(radians_value);
@@ -50,4 +50,3 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     color.a = color.a * params.opacity;
     return color;
 }
-

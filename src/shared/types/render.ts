@@ -82,6 +82,8 @@ export interface RenderLayerTransform {
   flipH: boolean
   flipV: boolean
   scale: number
+  translateX?: number
+  translateY?: number
 }
 
 export interface PreviewLayer {
@@ -95,6 +97,38 @@ export interface PreviewLayer {
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
+  positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
+}
+
+export interface CompositionInput {
+  version?: number
+  canvas: {
+    width: number
+    height: number
+    fps?: number
+    duration?: number
+  }
+  layers: CompositionLayer[]
+}
+
+export interface CompositionLayer {
+  id?: string
+  source: {
+    path: string
+    sourceType?: 'auto' | 'image' | 'video' | string
+    time?: {
+      offset?: number
+      start?: number
+      duration?: number
+      loopEnabled?: boolean
+    }
+  }
+  rect: { x: number; y: number; w: number; h: number }
+  fit?: 'cover' | 'contain' | string
+  opacity?: number
+  zIndex?: number
+  color?: RenderColorAdjustments
+  transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
 }
 

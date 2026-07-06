@@ -1,4 +1,5 @@
 mod compositor;
+mod composition;
 mod export;
 mod media;
 
@@ -143,6 +144,8 @@ pub struct RenderLayerTransform {
     pub flip_h: bool,
     pub flip_v: bool,
     pub scale: f64,
+    pub translate_x: Option<f64>,
+    pub translate_y: Option<f64>,
 }
 
 /// 层相对定位：Rust 根据画布比例自动计算 dst，保证纹理比例不变形
@@ -164,6 +167,8 @@ impl Default for RenderLayerTransform {
             flip_h: false,
             flip_v: false,
             scale: 1.0,
+            translate_x: Some(0.0),
+            translate_y: Some(0.0),
         }
     }
 }
@@ -180,7 +185,7 @@ pub(crate) use log;
 static COMPOSITOR: LazyLock<Mutex<Option<Compositor>>> = LazyLock::new(|| Mutex::new(None));
 static COMPOSITOR_LOG_PATH: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
-fn lock<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> napi::Result<T> {
+pub(crate) fn lock<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> napi::Result<T> {
     let mut guard = COMPOSITOR.lock().map_err(|e| {
         let msg = format!("lock: {}", e);
         compositor::log_error(&msg);
@@ -312,7 +317,7 @@ pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
     Ok(())
 }
 
-fn create_export_compositor() -> napi::Result<Compositor> {
+pub(crate) fn create_export_compositor() -> napi::Result<Compositor> {
     let log_path = COMPOSITOR_LOG_PATH.lock().ok().and_then(|guard| guard.clone());
     Compositor::new(log_path.as_deref()).map_err(napi::Error::from_reason)
 }
