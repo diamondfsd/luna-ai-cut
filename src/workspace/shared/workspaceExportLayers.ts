@@ -16,7 +16,7 @@ export function buildWorkspaceExportLayers(
   resolution: { width: number; height: number },
   pipeline: EditPipeline,
 ): PreviewLayer[] {
-  const main = buildLayers(sourcePath, 'contain', resolution, exportCanvasFor(resolution))
+  const main = buildLayers(sourcePath, resolution, exportCanvasFor(resolution))
   if (main[0]) {
     main[0] = {
       ...main[0],
