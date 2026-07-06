@@ -508,29 +508,21 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
         </div>
       )}
       {isLivePhoto && (
-        <button
-          type="button"
-          disabled={liveVideoLoading || !liveVideoUrl}
+        <LivePhotoBadge
+          size={32}
           onClick={toggleLivePhoto}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLivePhoto() } }}
           aria-label={livePlaying ? '停止 Live 图播放' : '播放 Live 图'}
           style={{
             position: 'absolute',
             left: 18,
             bottom: 18,
-            display: 'grid',
-            width: 44,
-            height: 44,
-            placeItems: 'center',
-            border: 0,
-            borderRadius: '50%',
-            background: livePlaying ? 'rgba(0, 102, 204, 0.78)' : 'rgba(255, 255, 255, 0.16)',
-            color: '#fff',
             cursor: liveVideoLoading || !liveVideoUrl ? 'wait' : 'pointer',
             opacity: liveVideoLoading || !liveVideoUrl ? 0.72 : 1,
           }}
-        >
-          <LivePhotoBadge size={32} />
-        </button>
+        />
       )}
       {isDisplayVideo && !livePlaying && videoRef.current && (
         <div className="preview-video-controls">
