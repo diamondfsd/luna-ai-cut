@@ -1480,12 +1480,23 @@ impl Compositor {
         max_side: Option<u32>,
         layers: &[(PreviewLayerInput, PreviewTextureInfo)],
     ) -> Result<PlannedPreview, String> {
-        let (_, first_texture) = layers
+        let (first_layer, first_texture) = layers
             .first()
             .ok_or_else(|| "no valid layers for preview plan".to_string())?;
+
+        // 有 transform.crop 时，按裁剪框像素尺寸作为基础输出尺寸
+        let (base_w, base_h) = match &first_layer.transform.crop {
+            Some(crop) => {
+                let cw = (first_texture.width as f64 * crop.w).round().max(1.0) as u32;
+                let ch = (first_texture.height as f64 * crop.h).round().max(1.0) as u32;
+                (cw, ch)
+            }
+            None => (first_texture.width, first_texture.height),
+        };
+
         let (output_width, output_height) = fit_output_size(
-            width.unwrap_or(first_texture.width).max(1),
-            height.unwrap_or(first_texture.height).max(1),
+            width.unwrap_or(base_w).max(1),
+            height.unwrap_or(base_h).max(1),
             max_side.unwrap_or(PREVIEW_MAX_SIZE),
         );
         let result_layers = layers
