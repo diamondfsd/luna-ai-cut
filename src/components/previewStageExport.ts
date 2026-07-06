@@ -216,10 +216,50 @@ async function runWithConcurrency<T>(
   await Promise.all(workers)
 }
 
-async function waitForExportItem(taskId: string, itemId: string): Promise<void> {
+function renderCoreProgress(taskId: string): Promise<[number | bigint, number | bigint] | null> {
+  const api = (window as unknown as {
+    lunaRenderCore?: { getExportTaskProgress?: (taskId: string) => Promise<[number | bigint, number | bigint] | null> }
+  }).lunaRenderCore
+  return api?.getExportTaskProgress?.(taskId) ?? Promise.resolve(null)
+}
+
+async function waitForExportItem(
+  taskId: string,
+  taskName: string,
+  entry: BatchExportEntry,
+  totalFiles: number,
+): Promise<void> {
+  let lastPercent = 0
   for (;;) {
+    const progress = await renderCoreProgress(entry.id).catch(() => null)
+    if (progress) {
+      const currentFrame = Number(progress[0])
+      const totalFrames = Number(progress[1])
+      if (totalFrames > 0) {
+        const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
+        if (percent > lastPercent) {
+          lastPercent = percent
+          await window.luna.exportTask.updateItem(taskId, entry.id, {
+            status: 'exporting',
+            progress: percent,
+          }).catch(() => {})
+          emitLocalExportProgress({
+            exportId: entry.id,
+            taskId,
+            taskName,
+            fileName: fileNameFromPath(entry.outputPath),
+            index: entry.index,
+            totalFiles,
+            percent,
+            status: 'exporting',
+            destinationPath: entry.outputPath,
+          })
+        }
+      }
+    }
+
     const task = await window.luna.exportTask.get(taskId)
-    const item = task?.items.find((candidate) => candidate.id === itemId)
+    const item = task?.items.find((candidate) => candidate.id === entry.id)
     if (!item) return
     if (item.status === 'done') return
     if (item.status === 'failed') throw new Error(item.error || '导出失败')
@@ -284,7 +324,7 @@ async function runBatchExportQueue(
           exportTaskId: taskId,
           exportItemId: entry.id,
         })
-        await waitForExportItem(taskId, entry.id)
+        await waitForExportItem(taskId, taskName, entry, entries.length)
         return
       }
 

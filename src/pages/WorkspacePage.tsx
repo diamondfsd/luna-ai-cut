@@ -20,8 +20,7 @@ import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSideb
 import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
-import { buildWatermarkStaticLayer } from '../components/WatermarkSettings'
-import { closestAspectRatio } from '../shared/watermark/layoutConfig'
+import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import '../styles/workspace-loading.css'
 
@@ -54,7 +53,7 @@ function buildWorkspaceExportLayers(
   const wm = pipeline.watermark
   if (!wm?.enabled || !wm?.imagePath || !wm.wmAspect) return main
 
-  const watermarkLayer = buildWatermarkStaticLayer(wm, closestAspectRatio(resolution.width, resolution.height))
+  const watermarkLayer = buildResolvedWatermarkStaticLayer(wm, resolution.width, resolution.height)
   const baseLayer = main[0]
   if (!watermarkLayer || !baseLayer) return main
 
@@ -127,8 +126,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const watermarkLayer = useMemo(() => {
     const wm = edit.pipeline.watermark
     if (!wm?.enabled || !wm?.imagePath || !wm.wmAspect) return []
-    const aspectKey = mediaSize ? closestAspectRatio(mediaSize.w, mediaSize.h) : '16:9'
-    const layer = buildWatermarkStaticLayer(wm, aspectKey)
+    if (!mediaSize) return []
+    const layer = buildResolvedWatermarkStaticLayer(wm, mediaSize.w, mediaSize.h)
     return layer ? [layer] : []
   }, [edit.pipeline.watermark, mediaSize])
 
