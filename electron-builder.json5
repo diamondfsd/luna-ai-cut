@@ -29,6 +29,10 @@
       "filter": ["**/*"]
     },
     {
+      "from": "luna-render-core/luna-render-core.node",
+      "to": "luna-render-core/luna-render-core.node"
+    },
+    {
       "from": "src/assets/watermark",
       "to": "watermark",
       "filter": ["**/*.png"]
