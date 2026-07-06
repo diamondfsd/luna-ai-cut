@@ -1,16 +1,17 @@
-import { ArrowLeft, ClipboardCopy, ClipboardPaste, Eye, EyeOff, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardCopy, ClipboardPaste, Eye, EyeOff, FileDown, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import type { WorkspaceProject } from '../shared/types'
+import type { PreviewLayer, WorkspaceProject } from '../shared/types'
 import { Button, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
+import { exportBatchFiles, type BatchExportSource } from '../components/previewStageExport'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
 import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
 import { createDefaultPipeline, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
-import { PreviewStage } from '../components/PreviewStage'
+import { buildLayers, PreviewStage } from '../components/PreviewStage'
 import type { PreviewStageHandle } from '../components/PreviewStage'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
@@ -21,11 +22,52 @@ import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativ
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { buildWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { closestAspectRatio } from '../shared/watermark/layoutConfig'
+import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import '../styles/workspace-loading.css'
 
 function normalizePipeline(value: unknown): EditPipeline {
   if (!value || typeof value !== 'object') return createDefaultPipeline()
   return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
+}
+
+function exportCanvasFor(resolution: { width: number; height: number }): { width: number; height: number } {
+  const max = 1440
+  const aspect = resolution.width / resolution.height
+  if (aspect >= 1) return { width: max, height: Math.round(max / aspect) }
+  return { width: Math.round(max * aspect), height: max }
+}
+
+function buildWorkspaceExportLayers(
+  sourcePath: string,
+  resolution: { width: number; height: number },
+  pipeline: EditPipeline,
+): PreviewLayer[] {
+  const main = buildLayers(sourcePath, 'contain', resolution, exportCanvasFor(resolution))
+  if (main[0]) {
+    main[0] = {
+      ...main[0],
+      color: pipelineColorToRenderColor(pipeline.color),
+      transform: pipelineTransformToRenderTransform(pipeline.transform),
+    }
+  }
+
+  const wm = pipeline.watermark
+  if (!wm?.enabled || !wm?.imagePath || !wm.wmAspect) return main
+
+  const watermarkLayer = buildWatermarkStaticLayer(wm, closestAspectRatio(resolution.width, resolution.height))
+  const baseLayer = main[0]
+  if (!watermarkLayer || !baseLayer) return main
+
+  return [
+    ...main,
+    {
+      ...watermarkLayer,
+      dstX: baseLayer.dstX + watermarkLayer.dstX * baseLayer.dstW,
+      dstY: baseLayer.dstY + watermarkLayer.dstY * baseLayer.dstH,
+      dstW: watermarkLayer.dstW * baseLayer.dstW,
+      dstH: watermarkLayer.dstH * baseLayer.dstH,
+    },
+  ]
 }
 
 interface WorkspacePageProps {
@@ -65,6 +107,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const canvas = useWorkspaceCanvas()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
+  const [exportEnqueuing, setExportEnqueuing] = useState(false)
 
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
   const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
@@ -212,6 +255,48 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       }
     }
     edit.copyPipeline()
+  }
+
+  async function handleWorkspaceExport(): Promise<void> {
+    if (!media.activeMedia || exportEnqueuing) return
+    setExportEnqueuing(true)
+    try {
+      const settings = await window.luna.getSettings()
+      if (!settings.exportDir) {
+        toast.error('导出目录未配置')
+        return
+      }
+
+      const selectedIndices = media.selectedIndices.size > 0 ? [...media.selectedIndices] : [media.activeIndex]
+      const exportIndices = selectedIndices.filter((index) => Boolean(media.media[index]) && !media.brokenPaths.has(media.media[index].path))
+      if (exportIndices.length === 0) {
+        toast.error('没有可导出的素材')
+        return
+      }
+
+      const activePipeline = edit.transformDraft
+        ? mergePipeline(edit.pipeline, { transform: edit.transformDraft })
+        : edit.pipeline
+      const sources: BatchExportSource[] = await Promise.all(exportIndices.map(async (index) => {
+        const asset = media.media[index]
+        const pipeline = index === media.activeIndex
+          ? activePipeline
+          : normalizePipeline((asset as { pipeline?: unknown }).pipeline)
+        const resolution = await window.luna.workspace.getMediaResolution(asset.path)
+        return {
+          sourcePath: asset.path,
+          outputBaseName: asset.name.replace(/\.[^.]+$/, '') || 'export',
+          layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline),
+        }
+      }))
+
+      await exportBatchFiles(sources, settings.exportDir)
+      toast.success(`已加入导出队列: ${sources.length} 个素材`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '导出失败')
+    } finally {
+      setExportEnqueuing(false)
+    }
   }
 
   // ── onEditingChange ──
@@ -376,6 +461,15 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
                 onMouseLeave={() => edit.setCompareOriginal(false)}
               >
                 对比
+              </Button>
+              <Button
+                variant="primary"
+                size="compact"
+                icon={<FileDown size={14} />}
+                disabled={!hasActiveMedia || exportEnqueuing}
+                onClick={() => void handleWorkspaceExport()}
+              >
+                {exportEnqueuing ? '加入中' : '导出'}
               </Button>
             </div>
           </footer>

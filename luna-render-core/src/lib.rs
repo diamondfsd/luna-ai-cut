@@ -168,6 +168,7 @@ pub(crate) use log;
 
 /// 全局单例 compositor
 static COMPOSITOR: LazyLock<Mutex<Option<Compositor>>> = LazyLock::new(|| Mutex::new(None));
+static COMPOSITOR_LOG_PATH: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 fn lock<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> napi::Result<T> {
     let mut guard = COMPOSITOR.lock().map_err(|e| {
@@ -308,6 +309,9 @@ pub struct PreviewPlanOutput {
 /// - `log_path`: 日志文件路径（可选，默认 luna-rc.log）
 #[napi]
 pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
+    if let Ok(mut guard) = COMPOSITOR_LOG_PATH.lock() {
+        *guard = log_path.clone();
+    }
     let mut guard = COMPOSITOR
         .lock()
         .map_err(|e| napi::Error::from_reason(format!("lock: {}", e)))?;
@@ -317,6 +321,11 @@ pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
     let c = Compositor::new(log_path.as_deref()).map_err(|e| napi::Error::from_reason(e))?;
     *guard = Some(c);
     Ok(())
+}
+
+fn create_export_compositor() -> napi::Result<Compositor> {
+    let log_path = COMPOSITOR_LOG_PATH.lock().ok().and_then(|guard| guard.clone());
+    Compositor::new(log_path.as_deref()).map_err(napi::Error::from_reason)
 }
 
 /// 加载一张纹理到 GPU，返回 texture_id
@@ -367,35 +376,6 @@ pub fn render_frame(
 ) -> napi::Result<Buffer> {
     let result = lock(|c| c.render(canvas_width, canvas_height, &layers))?;
     Ok(result.into())
-}
-
-/// 渲染已有纹理并直接编码保存到文件（不返回像素数据）
-///
-/// 和 render_frame 使用相同的渲染算法，区别在于：
-/// - 渲染后直接通过 ffmpeg 编码为 JPEG/PNG/WebP 写入磁盘
-/// - 不返回像素数据到 JS，避免大块内存传输
-#[napi]
-pub fn render_layers_to_file(
-    ffmpeg_path: String,
-    output: String,
-    width: u32,
-    height: u32,
-    layers: Vec<RenderLayer>,
-    format: String,
-    quality: f64,
-) -> napi::Result<()> {
-    lock(|c| {
-        export::render_layers_to_file(
-            &ffmpeg_path,
-            &output,
-            width,
-            height,
-            &layers,
-            &format,
-            quality,
-            c,
-        )
-    })
 }
 
 /// 预览一帧 — 和 export_file 同样的参数，但返回 RGBA Buffer 而非编码输出
@@ -511,52 +491,6 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
     })
 }
 
-/// 导出视频/图片（统一入口）
-#[napi]
-pub fn export_file(
-    ffmpeg_path: String,
-    ffprobe_path: String,
-    input: String,
-    output: String,
-    width: u32,
-    height: u32,
-    fps: Option<f64>,
-    hardware: bool,
-    video_layer: RenderLayer,
-    static_layers: Vec<StaticLayer>,
-    task_id: Option<String>,
-    quality_preset: Option<String>,
-) -> napi::Result<()> {
-    lock(|c| {
-        crate::log!(
-            "export: in={} out={} {}x{} static={} task={:?} preset={:?}",
-            input,
-            output,
-            width,
-            height,
-            static_layers.len(),
-            task_id,
-            quality_preset
-        );
-        let preset = quality_preset.as_deref().map(QualityPreset::from_str);
-        export::export_file(
-            &ffmpeg_path,
-            &ffprobe_path,
-            &input,
-            &output,
-            width,
-            height,
-            fps,
-            hardware,
-            &video_layer,
-            &static_layers,
-            task_id.as_deref(),
-            preset,
-            c,
-        )
-    })
-}
-
 pub struct ExportFileTask {
     ffmpeg_path: String,
     ffprobe_path: String,
@@ -577,34 +511,34 @@ impl Task for ExportFileTask {
     type JsValue = ();
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        lock(|c| {
-            crate::log!(
-                "export async: in={} out={} {}x{} static={} task={:?} preset={:?}",
-                self.input,
-                self.output,
-                self.width,
-                self.height,
-                self.static_layers.len(),
-                self.task_id,
-                self.quality_preset
-            );
-            let preset = self.quality_preset.as_deref().map(QualityPreset::from_str);
-            export::export_file(
-                &self.ffmpeg_path,
-                &self.ffprobe_path,
-                &self.input,
-                &self.output,
-                self.width,
-                self.height,
-                self.fps,
-                self.hardware,
-                &self.video_layer,
-                &self.static_layers,
-                self.task_id.as_deref(),
-                preset,
-                c,
-            )
-        })
+        crate::log!(
+            "export async: in={} out={} {}x{} static={} task={:?} preset={:?}",
+            self.input,
+            self.output,
+            self.width,
+            self.height,
+            self.static_layers.len(),
+            self.task_id,
+            self.quality_preset
+        );
+        let mut compositor = create_export_compositor()?;
+        let preset = self.quality_preset.as_deref().map(QualityPreset::from_str);
+        export::export_file(
+            &self.ffmpeg_path,
+            &self.ffprobe_path,
+            &self.input,
+            &self.output,
+            self.width,
+            self.height,
+            self.fps,
+            self.hardware,
+            &self.video_layer,
+            &self.static_layers,
+            self.task_id.as_deref(),
+            preset,
+            &mut compositor,
+        )
+        .map_err(napi::Error::from_reason)
     }
 
     fn resolve(&mut self, _env: Env, _output: Self::Output) -> napi::Result<Self::JsValue> {
@@ -644,33 +578,6 @@ pub fn export_file_async(
     })
 }
 
-/// 从素材源文件直接导出图片（独立加载纹理，不依赖预览纹理缓存）
-#[napi]
-pub fn export_image_from_sources(
-    ffmpeg_path: String,
-    ffprobe_path: String,
-    output: String,
-    width: u32,
-    height: u32,
-    layers: Vec<PreviewLayer>,
-    format: String,
-    quality: f64,
-) -> napi::Result<()> {
-    lock(|c| {
-        export::export_image_from_sources(
-            &ffmpeg_path,
-            &ffprobe_path,
-            &output,
-            width,
-            height,
-            &layers,
-            &format,
-            quality,
-            c,
-        )
-    })
-}
-
 pub struct ExportImageFromSourcesTask {
     ffmpeg_path: String,
     ffprobe_path: String,
@@ -687,28 +594,28 @@ impl Task for ExportImageFromSourcesTask {
     type JsValue = ();
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        lock(|c| {
-            crate::log!(
-                "export_image_from_sources async: out={} {}x{} layers={} fmt={} q={}",
-                self.output,
-                self.width,
-                self.height,
-                self.layers.len(),
-                self.format,
-                self.quality
-            );
-            export::export_image_from_sources(
-                &self.ffmpeg_path,
-                &self.ffprobe_path,
-                &self.output,
-                self.width,
-                self.height,
-                &self.layers,
-                &self.format,
-                self.quality,
-                c,
-            )
-        })
+        crate::log!(
+            "export_image_from_sources async: out={} {}x{} layers={} fmt={} q={}",
+            self.output,
+            self.width,
+            self.height,
+            self.layers.len(),
+            self.format,
+            self.quality
+        );
+        let mut compositor = create_export_compositor()?;
+        export::export_image_from_sources(
+            &self.ffmpeg_path,
+            &self.ffprobe_path,
+            &self.output,
+            self.width,
+            self.height,
+            &self.layers,
+            &self.format,
+            self.quality,
+            &mut compositor,
+        )
+        .map_err(napi::Error::from_reason)
     }
 
     fn resolve(&mut self, _env: Env, _output: Self::Output) -> napi::Result<Self::JsValue> {
@@ -792,7 +699,7 @@ pub struct ResolvedRenderSource {
 
 /// 检测素材颜色信息
 fn probe_color_info(ffprobe: &str, path: &str) -> Result<ColorInfo, String> {
-    use std::process::{Command, Stdio};
+    use std::process::Command;
 
     let output = Command::new(ffprobe)
         .args([
@@ -912,7 +819,6 @@ pub fn resolve_render_source(
     original_path: String,
     cache_dir: String,
 ) -> napi::Result<ResolvedRenderSource> {
-    use std::io::Write;
     use std::path::Path;
     use std::process::{Command, Stdio};
 
