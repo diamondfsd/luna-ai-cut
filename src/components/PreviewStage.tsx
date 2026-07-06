@@ -76,8 +76,7 @@ export function buildLayers(
   const frame = hasMeasuredFrame
     ? containFrame(resolution, stageSize)
     : { dstX: 0, dstY: 0, dstW: 1, dstH: 1 }
-  const fit: ScaleMode = scaleMode
-  const baseLayer = { ...frame, fit, srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 1, zIndex: 0 }
+  const baseLayer = { ...frame, srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 1, zIndex: 0 }
 
   if (isImagePath(url)) {
     return [{ ...baseLayer, filePath: url }]
@@ -251,7 +250,9 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     // 基于 Project Canvas 计算布局，Stage 不参与
     const canvas = projectCanvasFor(layerResolution) ?? { width: 1440, height: 1440 }
     const main = sourceUrl ? buildLayers(sourceUrl, scaleMode, layerResolution, canvas) : []
-    if (forceBaseFit && main[0]) main[0] = { ...main[0], fit: forceBaseFit }
+    if (forceBaseFit && main[0] && sourceUrl && layerResolution) {
+      main[0] = buildLayers(sourceUrl, forceBaseFit, layerResolution, canvas)[0] ?? main[0]
+    }
     if (main[0] && pipeline) {
       main[0] = {
         ...main[0],

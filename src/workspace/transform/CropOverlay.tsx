@@ -79,7 +79,7 @@ export function CropOverlay() {
       if (!sameCrop(fitted, activeCropRef.current)) onCropChange(fitted)
       return
     }
-    // Frame characteristics changed during active crop — fit existing crop to new frame
+    // Frame characteristics changed during active crop; remap existing crop to new frame
     const preferred = preferredCropRef.current ?? activeCropRef.current
 
     // If orientation changed, rotate the crop around image center to follow the content

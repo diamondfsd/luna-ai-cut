@@ -30,7 +30,6 @@ export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, layou
     dstH,
     srcX: 0, srcY: 0, srcW: 1, srcH: 1,
     opacity: 1, zIndex: 1,
-    fit: 'contain',
   }
 }
 

@@ -17,7 +17,6 @@ export interface PreviewLayerInputForExport {
   filePath: string
   isVideo?: boolean
   videoTime?: number
-  fit?: 'fill' | 'contain'
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
@@ -39,7 +38,6 @@ export interface PreviewLayerInput {
   filePath: string
   isVideo: boolean
   videoTime: number
-  fit?: string
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number; zIndex: number
@@ -88,7 +86,6 @@ interface PreviewNativeLayer {
   filePath: string
   isVideo: boolean
   videoTime: number
-  fit?: string
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number; zIndex: number
@@ -217,7 +214,6 @@ function normalizePreviewLayer(l: PreviewLayerInputForExport): PreviewNativeLaye
     filePath: l.filePath,
     isVideo: l.isVideo ?? false,
     videoTime: l.videoTime ?? 0,
-    fit: l.fit,
     dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
     srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
     srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,

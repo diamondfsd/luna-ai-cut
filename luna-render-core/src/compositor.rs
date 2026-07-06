@@ -204,7 +204,6 @@ pub struct PreviewLayerInput {
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
-    pub fit: Option<String>,
     pub dst_x: f64,
     pub dst_y: f64,
     pub dst_w: f64,
@@ -235,30 +234,11 @@ pub struct PlannedPreview {
 
 fn plan_layer_rect(
     layer: &PreviewLayerInput,
-    texture: &PreviewTextureInfo,
-    output_width: u32,
-    output_height: u32,
+    _texture: &PreviewTextureInfo,
+    _output_width: u32,
+    _output_height: u32,
 ) -> (f64, f64, f64, f64) {
-    let mut dst_x = layer.dst_x;
-    let mut dst_y = layer.dst_y;
-    let mut dst_w = layer.dst_w;
-    let mut dst_h = layer.dst_h;
-    if layer.fit.as_deref() == Some("contain") {
-        let media_aspect = texture.width as f64 / texture.height.max(1) as f64;
-        let frame_pixel_w = dst_w * output_width as f64;
-        let frame_pixel_h = dst_h * output_height as f64;
-        let frame_aspect = frame_pixel_w / frame_pixel_h.max(1.0);
-        let (fitted_w, fitted_h) = if frame_aspect > media_aspect {
-            ((frame_pixel_h * media_aspect) / output_width as f64, dst_h)
-        } else {
-            (dst_w, (frame_pixel_w / media_aspect) / output_height as f64)
-        };
-        dst_x += (dst_w - fitted_w) / 2.0;
-        dst_y += (dst_h - fitted_h) / 2.0;
-        dst_w = fitted_w;
-        dst_h = fitted_h;
-    }
-    (dst_x, dst_y, dst_w, dst_h)
+    (layer.dst_x, layer.dst_y, layer.dst_w, layer.dst_h)
 }
 
 // ── Compositor ──
