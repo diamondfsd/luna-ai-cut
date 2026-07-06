@@ -38,7 +38,6 @@ export function PreviewModal({
   // ── 状态 ──
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
-  const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [batchEnqueuing, setBatchEnqueuing] = useState(false)
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
@@ -47,6 +46,10 @@ export function PreviewModal({
   const displaySource = resolvedPath
     ? (filePathToPreviewUrl(resolvedPath) ?? resolvedPath)
     : (currentFilePath?.startsWith('http') ? null : filePathToPreviewUrl(currentFilePath) ?? currentFilePath)
+
+  useEffect(() => {
+    setWatermarkLayers([])
+  }, [currentFilePath])
 
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(_settings: WatermarkSettingsType, layer?: PreviewLayer) {
@@ -104,7 +107,6 @@ export function PreviewModal({
                 url={displaySource}
                 extraLayers={watermarkLayers}
                 exportOptions={{ enable: true }}
-                onMediaSize={(w, h) => setMediaSize({ w, h })}
               />
             )}
 
@@ -124,8 +126,6 @@ export function PreviewModal({
                   <WatermarkSettings
                     onChange={handleWatermarkChange}
                     filePath={currentFilePath}
-                    mediaWidth={mediaSize?.w}
-                    mediaHeight={mediaSize?.h}
                   />
                 ) : undefined}
               />

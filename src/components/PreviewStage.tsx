@@ -94,10 +94,6 @@ export function buildLayers(
     ? containFrame(resolution, stageSize)
     : { dstX: 0, dstY: 0, dstW: 1, dstH: 1 }
   const fit: ScaleMode = scaleMode
-  if (hasMeasuredFrame) {
-    console.log(`[PreviewStage] buildLayers resolution=${resolution!.width}x${resolution!.height} stage=${stageSize!.width}x${stageSize!.height} frame=${JSON.stringify(frame)} fit=${fit}`)
-  }
-
   const baseLayer = { ...frame, fit, srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 1, zIndex: 0 }
 
   if (isImagePath(url)) {
@@ -133,8 +129,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
-  const lastStageDebugRef = useRef('')
-  const [stageSize, setStageSize] = useState<StageSize | null>(null)
   // ── 媒体分辨率 ──
   const [resolution, setResolution] = useState<MediaResolution | null>(null)
 
@@ -273,47 +267,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     return calcAspectRatio(resolution.width, resolution.height)
   }, [resolution])
 
-  // ── Project Canvas：统一布局画布，预览和导出共用同一比例 ──
-  // 预览时渲染到 projectCanvas 尺寸，CSS 等比例显示在 Stage 容器内
-  // 导出时渲染到原始分辨率（比例一致，结果相同）
-  const projectCanvas = useMemo(() => {
-    return projectCanvasFor(resolution)
-  }, [resolution])
-
-  // 监听舞台尺寸，按当前视口比例构建 layer，避免资源被拉伸。
-  useEffect(() => {
-    const element = stageRef.current
-    if (!element) {
-      setStageSize(null)
-      return
-    }
-
-    const updateStageSize = () => {
-      const { clientWidth, clientHeight } = element
-      if (clientWidth <= 0 || clientHeight <= 0) return
-      const debugKey = `${clientWidth}x${clientHeight}|display=${displayUrl}|layout=${layoutUrl}`
-      if (debugKey !== lastStageDebugRef.current) {
-        lastStageDebugRef.current = debugKey
-        console.log('[PreviewStage:stageSize]', {
-          stage: `${clientWidth}x${clientHeight}`,
-          displayUrl,
-          layoutUrl,
-          livePlaying,
-        })
-      }
-      setStageSize((current) => (
-        current?.width === clientWidth && current?.height === clientHeight
-          ? current
-          : { width: clientWidth, height: clientHeight }
-      ))
-    }
-
-    updateStageSize()
-    const resizeObserver = new ResizeObserver(updateStageSize)
-    resizeObserver.observe(element)
-    return () => resizeObserver.disconnect()
-  }, [displayUrl, layoutUrl, livePlaying])
-
   const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution, forceBaseFit?: ScaleMode): PreviewLayer[] => {
     // 基于 Project Canvas 计算布局，Stage 不参与
     const canvas = projectCanvasFor(layerResolution) ?? { width: 1440, height: 1440 }
@@ -359,7 +312,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     window.luna.workspace.getMediaResolution(layoutUrl)
       .then((res) => {
         if (canceled) return
-        console.log(`[PreviewStage] getMediaResolution: ${layoutUrl} -> ${res.width}x${res.height}`)
         setResolution(res)
       })
       .catch(() => {
@@ -371,23 +323,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   }, [layoutUrl])
 
   useEffect(() => {
+    if (!resolution) return
+    onMediaSize?.(resolution.width, resolution.height)
+  }, [resolution, onMediaSize])
+
+  useEffect(() => {
     if (layers.length === 0) return
     setRenderState({ layers })
   }, [layers])
-
-  useEffect(() => {
-    const wrapper = wrapperRef.current
-    if (!wrapper || !projectCanvas || !stageSize) return
-    const rect = wrapper.getBoundingClientRect()
-    console.log('[PreviewStage:wrapper]', {
-      stage: `${stageSize.width}x${stageSize.height}`,
-      projectCanvas: `${projectCanvas.width}x${projectCanvas.height}`,
-      wrapperRect: `${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`,
-      displayUrl,
-      layoutUrl,
-      livePlaying,
-    })
-  }, [projectCanvas, stageSize, displayUrl, layoutUrl, livePlaying])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -498,7 +441,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     >
       {renderState && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          <LrcRender layers={renderState.layers} onRender={handleRender} onVideoElement={handleVideoElement} onMediaSize={onMediaSize} />
+          <LrcRender layers={renderState.layers} onRender={handleRender} onVideoElement={handleVideoElement} />
         </div>
       )}
       {renderOverlay?.()}
