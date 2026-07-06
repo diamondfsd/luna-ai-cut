@@ -2,34 +2,52 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
-import { luna_ultra_layout, closestAspectRatio, POSITION_TO_KEY, STYLE_TO_THEME, resolveWatermarkRatios } from '../shared/watermark/layoutConfig'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
-import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { PreviewLayer, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
 
+/** position 名 → positioning anchor */
+function posToAnchor(pos: string): WatermarkPositioning['anchor'] {
+  switch (pos) {
+    case 'TopLeft': return 'top-left'
+    case 'TopRight': return 'top-right'
+    case 'BottomLeft': return 'bottom-left'
+    case 'BottomRight': return 'bottom-right'
+    case 'BottomCenter': return 'bottom-center'
+    default: return 'bottom-right'
+  }
+}
+
+/** 根据方向返回合适的定位参数 */
+function positioningForOrient(isLandscape: boolean, anchor: WatermarkPositioning['anchor']): WatermarkPositioning {
+  return {
+    anchor,
+    targetWidth: isLandscape ? 0.15 : 0.2,
+    marginX: 0.02,
+    marginY: 0.02,
+  }
+}
+
 /**
- * 根据 WatermarkSettings 构建 PreviewLayer
- * 需要 settings 中已填充 imagePath、wmAspect、widthRatio、xRatio、yRatio
- * @param settings 水印设置
- * @param layoutAspect 布局参考宽高比，如 "16:9"，与 luna_ultra_layout key 中的 aspect 一致
+ * 构建水印 PreviewLayer，使用 positioning 让 Rust 自动定位
  */
-export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, layoutAspect?: string): PreviewLayer | null {
+export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, isLandscape: boolean): PreviewLayer | null {
   if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
-  const { imagePath: filePath, wmAspect, widthRatio = 0, xRatio = 0, yRatio = 0 } = settings
-  const vPos = positionKeyFor(settings.position).startsWith('Bottom') ? 'bottom' : 'top'
-  const dstW = widthRatio
-  // 从 layout key 中获取参考宽高比，与查表一致
-  const parts = (layoutAspect ?? '16:9').split(':').map(Number)
-  const refAspect = parts[0] && parts[1] ? parts[0] / parts[1] : 16 / 9
-  const dstH = dstW * refAspect / wmAspect
+  const { imagePath: filePath } = settings
+  const positioning = positioningForOrient(isLandscape, posToAnchor(settings.position))
+  console.log('[WatermarkStaticLayer] build', {
+    filePath,
+    wmAspect: settings.wmAspect,
+    isLandscape,
+    position: settings.position,
+    positioning,
+  })
   return {
     filePath,
-    dstX: xRatio,
-    dstY: vPos === 'bottom' ? 1 - dstH - yRatio : 1 - yRatio,
-    dstW,
-    dstH,
+    dstX: 0, dstY: 0, dstW: 1, dstH: 1,
     srcX: 0, srcY: 0, srcW: 1, srcH: 1,
     opacity: 1, zIndex: 1,
+    positioning,
   }
 }
 
@@ -39,17 +57,7 @@ export function buildResolvedWatermarkStaticLayer(
   height: number,
 ): PreviewLayer | null {
   if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
-  const aspectKey = closestAspectRatio(width, height)
-  const positionKey = settings.position.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()
-  const ratios = resolveWatermarkRatios(null, settings.style, width, height, positionKey)
-  const enriched = ratios
-    ? { ...settings, widthRatio: ratios.widthRatio, xRatio: ratios.xRatio, yRatio: ratios.yRatio }
-    : settings
-  return buildWatermarkStaticLayer(enriched, aspectKey)
-}
-
-function positionKeyFor(position: string): string {
-  return POSITION_TO_KEY[position] ?? position
+  return buildWatermarkStaticLayer(settings, width >= height)
 }
 
 const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }> = [
@@ -93,7 +101,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
       <div className="wm-position-grid">
         <div className="wm-position-row">
           <button key={POSITIONS[0].value}
-              className={`wm-pos-cell ${positionKeyFor(settings.position) === POSITIONS[0].value ? 'active' : ''}`}
+              className={`wm-pos-cell ${settings.position === POSITIONS[0].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[0].value)} title={POSITIONS[0].label}>
             <svg viewBox="0 0 160 90" className="wm-pos-frame">
               <rect x={POSITIONS[0].cx - 10} y={POSITIONS[0].cy - 7} width={20} height={14} rx={3} />
@@ -101,7 +109,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
           </button>
           <div className="wm-pos-cell wm-pos-placeholder" />
           <button key={POSITIONS[1].value}
-              className={`wm-pos-cell ${positionKeyFor(settings.position) === POSITIONS[1].value ? 'active' : ''}`}
+              className={`wm-pos-cell ${settings.position === POSITIONS[1].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[1].value)} title={POSITIONS[1].label}>
             <svg viewBox="0 0 160 90" className="wm-pos-frame">
               <rect x={POSITIONS[1].cx - 10} y={POSITIONS[1].cy - 7} width={20} height={14} rx={3} />
@@ -111,7 +119,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
         <div className="wm-position-row">
           {POSITIONS.slice(2).map(pos => (
             <button key={pos.value}
-              className={`wm-pos-cell ${positionKeyFor(settings.position) === pos.value ? 'active' : ''}`}
+              className={`wm-pos-cell ${settings.position === pos.value ? 'active' : ''}`}
               onClick={() => onPositionChange(pos.value)} title={pos.label}>
               <svg viewBox="0 0 160 90" className="wm-pos-frame">
                 <rect x={pos.cx - 10} y={pos.cy - 7} width={20} height={14} rx={3} />
@@ -212,41 +220,25 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       }
       return
     }
-    const [info, theme] = await Promise.all([
-      window.luna.getWatermarkPath(next.style, 'image').catch(() => null),
-      Promise.resolve(STYLE_TO_THEME[next.style]),
-    ])
+    const info = await window.luna.getWatermarkPath(next.style, 'image').catch(() => null)
     if (seq !== enrichSeqRef.current) return
-    // 根据实际媒体宽高比查找布局；优先使用文件路径解析出的旋转后尺寸。
-    const aspectKey = (effectiveMediaWidth && effectiveMediaHeight) ? closestAspectRatio(effectiveMediaWidth, effectiveMediaHeight) : '16:9'
-    const layoutKey = theme ? `${theme}|${aspectKey}|${positionKeyFor(next.position)}` : null
-    const raw = layoutKey ? luna_ultra_layout[layoutKey] : null
+    const isLandscape = (effectiveMediaWidth ?? 16) >= (effectiveMediaHeight ?? 9)
     const enriched: WatermarkSettingsType = {
       ...next,
       imagePath: info?.filePath,
       wmAspect: info ? info.width / info.height : undefined,
-      widthRatio: raw?.[0],
-      xRatio: raw?.[1],
-      yRatio: raw?.[2],
     }
     const layer = enriched.imagePath && enriched.wmAspect
-      ? buildWatermarkStaticLayer(enriched, aspectKey)
+      ? buildWatermarkStaticLayer(enriched, isLandscape)
       : undefined
     console.log('[WatermarkSettings] computed layer', {
       filePath,
       mediaSize: effectiveMediaWidth && effectiveMediaHeight ? `${effectiveMediaWidth}x${effectiveMediaHeight}` : null,
-      aspectKey,
-      layoutKey,
-      raw,
       style: next.style,
       position: next.position,
+      isLandscape,
       watermarkSize: info ? `${info.width}x${info.height}` : null,
       wmAspect: enriched.wmAspect,
-      ratios: {
-        widthRatio: enriched.widthRatio,
-        xRatio: enriched.xRatio,
-        yRatio: enriched.yRatio,
-      },
       layer,
     })
     setInternalSettings(enriched)

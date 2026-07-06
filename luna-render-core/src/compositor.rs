@@ -216,6 +216,7 @@ pub struct PreviewLayerInput {
     pub z_index: i32,
     pub color: crate::RenderColorAdjustments,
     pub transform: crate::RenderLayerTransform,
+    pub positioning: Option<crate::LayerPositioning>,
 }
 
 #[derive(Clone, Debug)]
@@ -239,6 +240,50 @@ fn plan_layer_rect(
     _output_height: u32,
 ) -> (f64, f64, f64, f64) {
     (layer.dst_x, layer.dst_y, layer.dst_w, layer.dst_h)
+}
+
+/// 根据相对定位重算 dst，保持纹理比例不变形
+fn resolve_positioning(
+    positioning: &Option<crate::LayerPositioning>,
+    default_x: f64, default_y: f64, default_w: f64, default_h: f64,
+    canvas_w: f64, canvas_h: f64,
+    tex_w: f64, tex_h: f64,
+) -> (f64, f64, f64, f64) {
+    let pos = match positioning {
+        Some(p) => p,
+        None => return (default_x, default_y, default_w, default_h),
+    };
+
+    let canvas_aspect = canvas_w / canvas_h.max(1.0);
+    let tex_aspect = tex_w / tex_h.max(1.0);
+
+    // dstW = target_width（UV [0,1]），dstH = dstW × canvasAspect / texAspect
+    let dst_w = pos.target_width;
+    let dst_h = dst_w * canvas_aspect / tex_aspect;
+    let margin_x = pos.margin_x;
+    let margin_y = pos.margin_y;
+
+    let (dst_x, dst_y) = match pos.anchor.as_str() {
+        "top-left"      => (margin_x, margin_y),
+        "top-center"    => ((1.0 - dst_w) / 2.0, margin_y),
+        "top-right"     => (1.0 - dst_w - margin_x, margin_y),
+        "bottom-left"   => (margin_x, 1.0 - dst_h - margin_y),
+        "bottom-center" => ((1.0 - dst_w) / 2.0, 1.0 - dst_h - margin_y),
+        "bottom-right"  => (1.0 - dst_w - margin_x, 1.0 - dst_h - margin_y),
+        "center"        => ((1.0 - dst_w) / 2.0, (1.0 - dst_h) / 2.0),
+        _               => (default_x, default_y),
+    };
+
+    log!(
+        "resolve_positioning anchor={} target_width={:.3} margin=({:.3},{:.3}) \
+         canvas={:.0}x{:.0}(aspect={:.3}) tex={:.0}x{:.0}(aspect={:.3}) \
+         -> dst=({:.3},{:.3}) {:.3}x{:.3}",
+        pos.anchor, pos.target_width, margin_x, margin_y,
+        canvas_w, canvas_h, canvas_aspect, tex_w, tex_h, tex_aspect,
+        dst_x, dst_y, dst_w, dst_h,
+    );
+
+    (dst_x, dst_y, dst_w, dst_h)
 }
 
 // ── Compositor ──
@@ -1003,12 +1048,28 @@ impl Compositor {
                 let curve_blue_count = pack_curve_points(&mut curve_data, 24, &color.curve.blue);
                 let hsl_data = pack_hsl_channels(&color.hsl_channels);
 
+                // ── 相对定位覆盖 dst ──
+                let (pos_dst_x, pos_dst_y, pos_dst_w, pos_dst_h) = resolve_positioning(
+                    &layer.positioning,
+                    layer.dst_x, layer.dst_y, layer.dst_w, layer.dst_h,
+                    canvas_width as f64, canvas_height as f64,
+                    tex_entry.width as f64, tex_entry.height as f64,
+                );
+
+                log!(
+                    "render layer tid={} dst=({:.3},{:.3} {:.3}x{:.3}) tex={}x{} has_positioning={}",
+                    layer.texture_id,
+                    layer.dst_x, layer.dst_y, layer.dst_w, layer.dst_h,
+                    tex_entry.width, tex_entry.height,
+                    layer.positioning.is_some(),
+                );
+
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
-                    dst_x: (layer.dst_x * canvas_width as f64) as f32,
-                    dst_y: (layer.dst_y * canvas_height as f64) as f32,
-                    dst_w: (layer.dst_w * canvas_width as f64) as f32,
-                    dst_h: (layer.dst_h * canvas_height as f64) as f32,
+                    dst_x: (pos_dst_x * canvas_width as f64) as f32,
+                    dst_y: (pos_dst_y * canvas_height as f64) as f32,
+                    dst_w: (pos_dst_w * canvas_width as f64) as f32,
+                    dst_h: (pos_dst_h * canvas_height as f64) as f32,
                     // src_* 保持归一化 0-1（WGSL textureSample 需要归一化坐标）
                     src_x: layer.src_x as f32,
                     src_y: layer.src_y as f32,
@@ -1484,14 +1545,29 @@ impl Compositor {
             .first()
             .ok_or_else(|| "no valid layers for preview plan".to_string())?;
 
+        // ── 日志：plan_preview 入口 ──
+        let crop_debug = first_layer.transform.crop.as_ref().map(|c| {
+            format!("crop=({:.3},{:.3} {:.3}x{:.3})", c.x, c.y, c.w, c.h)
+        }).unwrap_or_else(|| "crop=None".to_string());
+        log!(
+            "plan_preview: layer#0 tex={}x{} has_transform={} {}",
+            first_texture.width, first_texture.height,
+            first_layer.transform.crop.is_some(),
+            crop_debug,
+        );
+
         // 有 transform.crop 时，按裁剪框像素尺寸作为基础输出尺寸
         let (base_w, base_h) = match &first_layer.transform.crop {
             Some(crop) => {
                 let cw = (first_texture.width as f64 * crop.w).round().max(1.0) as u32;
                 let ch = (first_texture.height as f64 * crop.h).round().max(1.0) as u32;
+                log!("plan_preview: crop adjusted {}x{} -> {}x{}", first_texture.width, first_texture.height, cw, ch);
                 (cw, ch)
             }
-            None => (first_texture.width, first_texture.height),
+            None => {
+                log!("plan_preview: no crop, using tex size {}x{}", first_texture.width, first_texture.height);
+                (first_texture.width, first_texture.height)
+            }
         };
 
         let (output_width, output_height) = fit_output_size(
@@ -1518,6 +1594,7 @@ impl Compositor {
                     z_index: layer.z_index,
                     color: Some(layer.color.clone()),
                     transform: Some(layer.transform.clone()),
+                    positioning: layer.positioning.clone(),
                 }
             })
             .collect();
