@@ -115,7 +115,15 @@ function fitTextureSize(width: number, height: number): { width: number; height:
 }
 
 function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): { data: Uint8Array; width: number; height: number } | null {
-  if (video.videoWidth <= 0 || video.videoHeight <= 0) return null
+  if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+    console.debug('[lrc-video-first-frame]', {
+      event: 'no-video-size',
+      readyState: video.readyState,
+      currentTime: video.currentTime,
+      src: video.currentSrc || video.src,
+    })
+    return null
+  }
   const { width, height } = fitTextureSize(video.videoWidth, video.videoHeight)
   canvas.width = width
   canvas.height = height
@@ -124,6 +132,42 @@ function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): { d
   context.drawImage(video, 0, 0, width, height)
   const imageData = context.getImageData(0, 0, width, height)
   return { data: new Uint8Array(imageData.data.buffer), width, height }
+}
+
+type VideoFrameCallbackVideo = HTMLVideoElement & {
+  requestVideoFrameCallback?: (callback: () => void) => number
+  cancelVideoFrameCallback?: (handle: number) => void
+}
+
+function requestDecodedVideoFrame(video: HTMLVideoElement, callback: () => void): () => void {
+  const frameVideo = video as VideoFrameCallbackVideo
+  let canceled = false
+  let frameHandle: number | null = null
+  const timeoutHandle = window.setTimeout(() => {
+    if (!canceled) {
+      console.debug('[lrc-video-first-frame]', { event: 'fallback-timeout', src: video.currentSrc || video.src, readyState: video.readyState })
+      callback()
+    }
+  }, 80)
+
+  if (typeof frameVideo.requestVideoFrameCallback === 'function') {
+    frameHandle = frameVideo.requestVideoFrameCallback(() => {
+      if (!canceled) {
+        console.debug('[lrc-video-first-frame]', { event: 'video-frame-callback', src: video.currentSrc || video.src, readyState: video.readyState })
+        callback()
+      }
+    })
+  } else {
+    console.debug('[lrc-video-first-frame]', { event: 'no-video-frame-callback', src: video.currentSrc || video.src })
+  }
+
+  return () => {
+    canceled = true
+    window.clearTimeout(timeoutHandle)
+    if (frameHandle != null && typeof frameVideo.cancelVideoFrameCallback === 'function') {
+      frameVideo.cancelVideoFrameCallback(frameHandle)
+    }
+  }
 }
 
 function staticLayers(layers: PreviewLayer[]): StaticLayer[] {
@@ -180,6 +224,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   const lastVideoFrameAtRef = useRef(0)
   const lastDebugAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
+  const cancelInitialFrameRef = useRef<(() => void) | null>(null)
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
   const [renderKey, setRenderKey] = useState(0)
@@ -216,6 +261,8 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
         if (texture.textureId != null) currentLrc?.releaseTexture(texture.textureId).catch(() => {})
       }
       for (const [, video] of videosRef.current) video.video.pause()
+      cancelInitialFrameRef.current?.()
+      cancelInitialFrameRef.current = null
       texturesRef.current.clear()
       videosRef.current.clear()
       onVideoElement?.(null)
@@ -346,25 +393,62 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       video.src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
       const offscreen = document.createElement('canvas')
       videosRef.current.set(key, { video, offscreen })
-      // 先绑定事件监听，再 load()，确保不错过 loadedmetadata 等事件
-      const onLoadedMetadata = () => {
-        if (canceled || destroyRef.current) return
-        video.currentTime = 0.001
-      }
-      const onSeeked = () => {
+      const renderVideoFrame = () => {
         const info = videosRef.current.get(key)
-        if (!info || canceled || destroyRef.current) return
+        if (!info || destroyRef.current) return
         void upsertVideoTexture(layer, info, true).then((updated) => {
+          console.debug('[lrc-video-first-frame]', {
+            event: 'upsert-video-texture',
+            updated,
+            readyState: video.readyState,
+            currentTime: video.currentTime,
+            paused: video.paused,
+            size: `${video.videoWidth}x${video.videoHeight}`,
+            key,
+          })
           if (updated) void compositeRender()
         })
       }
-      const onLoadedData = onSeeked
+      const scheduleVideoFrame = () => {
+        cancelInitialFrameRef.current?.()
+        cancelInitialFrameRef.current = requestDecodedVideoFrame(video, renderVideoFrame)
+      }
+      const onLoadedMetadata = () => {
+        if (destroyRef.current) return
+        console.debug('[lrc-video-first-frame]', {
+          event: 'loadedmetadata',
+          readyState: video.readyState,
+          duration: video.duration,
+          size: `${video.videoWidth}x${video.videoHeight}`,
+          key,
+        })
+        try {
+          const firstFrameTime = Number.isFinite(video.duration) && video.duration > 0.05 ? 0.001 : 0
+          video.currentTime = firstFrameTime
+        } catch {
+          scheduleVideoFrame()
+        }
+        scheduleVideoFrame()
+      }
+      const onSeeked = scheduleVideoFrame
+      const onLoadedData = scheduleVideoFrame
+      const onCanPlay = scheduleVideoFrame
+      video.addEventListener('error', () => {
+        console.debug('[lrc-video-first-frame]', {
+          event: 'video-error',
+          error: video.error?.message,
+          code: video.error?.code,
+          src: video.currentSrc || video.src,
+          key,
+        })
+      })
       video.addEventListener('loadedmetadata', onLoadedMetadata)
       video.addEventListener('seeked', onSeeked)
       video.addEventListener('loadeddata', onLoadedData)
-      // 先 load() 启动加载，再通知父组件
-      // 防止父组件的 play() 被后续的 load() 取消（load() 会中止当前加载重新开始）
+      video.addEventListener('canplay', onCanPlay)
+      video.addEventListener('playing', onCanPlay)
       video.load()
+      scheduleVideoFrame()
       if (onVideoElement && !videoElementCalledRef.current) {
         videoElementCalledRef.current = true
         onVideoElement(video)
@@ -374,7 +458,10 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     const staticReady = layers
       .filter((item) => !item.isVideo)
       .every((layer) => texturesRef.current.get(layerKey(layer))?.textureId != null)
-    if (staticReady) void compositeRender()
+    const videoReady = layers
+      .filter((item) => item.isVideo)
+      .every((layer) => texturesRef.current.get(layerKey(layer))?.textureId != null)
+    if (staticReady && videoReady) void compositeRender()
 
     return () => {
       canceled = true

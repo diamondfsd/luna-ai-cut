@@ -33,6 +33,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hiddenDevMode, setHiddenDevMode] = useState(false)
 
   const applyExportProgress = useCallback((progress: ExportProgress): void => {
+    if (progress.status === 'exporting' || progress.status === 'done' || progress.status === 'failed') {
+      console.debug('[export-progress-ui]', {
+        exportId: progress.exportId,
+        taskId: progress.taskId,
+        fileName: progress.fileName,
+        percent: progress.percent,
+        status: progress.status,
+        error: progress.error,
+      })
+    }
     setExportProgress((current) => {
       const key = progress.exportId ?? progress.fileName
       const nextProgress = { ...current.get(key), ...progress }
