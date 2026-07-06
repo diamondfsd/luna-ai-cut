@@ -124,14 +124,11 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
                   isDownloadsPage={isLocal}
                   selected={isSelected}
                   progress={progress}
-                  cacheFailed={ctrl.cacheFailedIds.has(file.id)}
                   selectVisible={!progress || !['queued', 'downloading', 'failed'].includes(progress.status) || Boolean(localPath && isSelected)}
                   onToggle={ctrl.toggleFile}
                   onPreview={ctrl.handlePreviewClick}
                   onRevealPath={ctrl.revealFileByPath}
                   onRevealProgress={ctrl.revealDownloadedFile}
-                  onThumbnailLoad={ctrl.handleThumbnailImageLoad}
-                  onThumbnailError={ctrl.handleThumbnailImageError}
                 />
               )
             })}
