@@ -256,6 +256,24 @@ fn capped_image_export_size(width: u32, height: u32, c: &Compositor) -> (u32, u3
 /// - 不接受 textureId，只接受 filePath
 /// - Rust 内部按目标分辨率加载纹理
 /// - 导出结束自动释放纹理，不影响预览缓存
+/// 从 layers 提取第一个有效 transform.crop，无 crop 时返回原始宽高
+fn crop_render_size(width: u32, height: u32, layers: &[PreviewLayer]) -> (u32, u32) {
+    for layer in layers {
+        if let Some(ref t) = layer.transform {
+            if let Some(ref crop) = t.crop {
+                let cw = (width as f64 * crop.w).round().max(1.0) as u32;
+                let ch = (height as f64 * crop.h).round().max(1.0) as u32;
+                crate::log!(
+                    "  crop_render_size: {}x{} -> {}x{} (crop={:.3}x{:.3})",
+                    width, height, cw, ch, crop.w, crop.h
+                );
+                return (cw, ch);
+            }
+        }
+    }
+    (width, height)
+}
+
 pub fn export_image_from_sources(
     ffmpeg: &str,
     ffprobe: &str,
@@ -277,8 +295,12 @@ pub fn export_image_from_sources(
         quality
     );
 
-    let (render_width, render_height) = capped_image_export_size(width, height, c);
-    let target_max = render_width.max(render_height);
+    // target_max 基于原始宽高（保证解码质量不降低）
+    let (capped_w, capped_h) = capped_image_export_size(width, height, c);
+    let target_max = capped_w.max(capped_h);
+    // 实际输出尺寸按 crop 调整
+    let (crop_w, crop_h) = crop_render_size(width, height, layers);
+    let (render_width, render_height) = capped_image_export_size(crop_w, crop_h, c);
     let mut temp_tex = Vec::new();
     let mut render_layers = Vec::new();
 
