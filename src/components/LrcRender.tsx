@@ -69,6 +69,8 @@ function summarizeLayer(layer: PreviewLayer) {
     dst: [layer.dstX, layer.dstY, layer.dstW, layer.dstH],
     src: [layer.srcX, layer.srcY, layer.srcW, layer.srcH],
     opacity: layer.opacity,
+    color: layer.color,
+    transform: layer.transform,
   }
 }
 
@@ -97,7 +99,6 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   const renderingRef = useRef(false)
   const renderQueuedRef = useRef(false)
   const lastVideoFrameAtRef = useRef(0)
-  const lastDebugAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
@@ -176,17 +177,15 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       if (!context) throw new Error('画布不可用')
       context.putImageData(new ImageData(bytesFromRenderData(result.data), result.width, result.height), 0, 0)
 
-      const now = performance.now()
-      if (now - lastDebugAtRef.current > 1000) {
-        lastDebugAtRef.current = now
-        console.log('[LrcRender:renderPreview]', {
-          maxSide: effectiveMaxSide,
-          output: `${result.width}x${result.height}`,
-          layers: renderLayers.length,
-          canvasCss: `${canvas.clientWidth}x${canvas.clientHeight}`,
-          parent: canvas.parentElement ? `${canvas.parentElement.clientWidth}x${canvas.parentElement.clientHeight}` : null,
-        })
-      }
+      console.log('[LrcRender] renderPreview result', {
+        maxSide: effectiveMaxSide,
+        output: `${result.width}x${result.height}`,
+        outputSize: { width: result.width, height: result.height },
+        outputAspectRatio: Math.round((result.width / result.height) * 100) / 100,
+        layers: renderLayers.length,
+        canvasCss: `${canvas.clientWidth}x${canvas.clientHeight}`,
+        parent: canvas.parentElement ? `${canvas.parentElement.clientWidth}x${canvas.parentElement.clientHeight}` : null,
+      })
       onRender?.()
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
