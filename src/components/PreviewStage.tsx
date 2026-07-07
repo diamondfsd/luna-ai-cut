@@ -236,6 +236,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     if (!resolution) return null
     return calcAspectRatio(resolution.width, resolution.height)
   }, [resolution])
+  const previewCanvas = useMemo(() => projectCanvasFor(resolution), [resolution])
 
   const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution): PreviewLayer[] => {
     // 基于 Project Canvas 计算布局，Stage 不参与
@@ -439,7 +440,13 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     >
       {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          <LrcRender layers={layers} onRender={handleRender} onVideoElement={handleVideoElement} />
+          <LrcRender
+            layers={layers}
+            canvasWidth={previewCanvas?.width}
+            canvasHeight={previewCanvas?.height}
+            onRender={handleRender}
+            onVideoElement={handleVideoElement}
+          />
         </div>
       )}
       {renderOverlay?.()}

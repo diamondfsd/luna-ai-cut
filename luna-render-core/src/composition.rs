@@ -7,6 +7,7 @@ use napi_derive::napi;
 
 use crate::compositor::{Compositor, PreviewLayerInput};
 use crate::export::{cleanup_task, register_task, QualityPreset};
+use crate::media::probe_video_info;
 use crate::{
     create_export_compositor, lock, LayerPositioning, RenderColorAdjustments, RenderLayerTransform,
     RenderPreviewOutput,
@@ -125,6 +126,25 @@ fn layer_time(source: &CompositionSource, composition_time: f64) -> f64 {
     t.max(0.0)
 }
 
+fn infer_composition_duration(ffprobe_path: &str, input: &CompositionInput) -> Option<f64> {
+    input.layers.iter().find_map(|layer| {
+        if !is_video_source(&layer.source) {
+            return None;
+        }
+        let source_time = layer.source.time.as_ref();
+        if let Some(duration) = source_time.and_then(|time| time.duration) {
+            return (duration > 0.0).then_some(duration);
+        }
+        let start = source_time.and_then(|time| time.start).unwrap_or(0.0);
+        probe_video_info(ffprobe_path, &layer.source.path)
+            .ok()
+            .and_then(|info| {
+                let remaining = info.duration_secs - start.max(0.0);
+                (remaining > 0.0).then_some(remaining)
+            })
+    })
+}
+
 fn composition_layers(input: &CompositionInput, time: f64) -> Vec<PreviewLayerInput> {
     input
         .layers
@@ -213,6 +233,7 @@ impl Task for ExportCompositionVideoTask {
             .input
             .duration
             .or(self.input.composition.canvas.duration)
+            .or_else(|| infer_composition_duration(&self.input.ffprobe_path, &self.input.composition))
             .unwrap_or(5.0)
             .max(0.1);
         let total_frames = (duration * fps).round().max(1.0) as u64;
