@@ -132,7 +132,7 @@ export interface CompositionLayer {
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
 }
 
-/** 纹理层（需先通过 lrc.loadTexture 加载） */
+/** 纹理层 */
 export interface RenderLayer {
   textureId: number
   dstX: number; dstY: number; dstW: number; dstH: number

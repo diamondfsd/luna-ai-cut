@@ -204,21 +204,8 @@ export function useMediaLibraryTransferActions({
     if (filesToExport.length === 0) return
     if (!settings?.exportDir) { logger.error('导出失败：未设置导出目录'); return }
 
-    const lunaExport = (window as any).lunaExport
-    if (!lunaExport) { logger.error('导出服务未就绪'); return }
-
-    for (const file of filesToExport) {
-      const dlPath = file.downloadFilePath || file.localPath
-      if (!dlPath) continue
-      const exportId = `${file.name}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-      const ext = file.name.includes('.') ? '.' + file.name.split('.').pop() : '.jpg'
-      lunaExport.start({
-        id: exportId, kind: file.kind, localPath: dlPath,
-        watermark: watermarkSettings.enabled ? watermarkSettings : null,
-        outputDir: settings.exportDir,
-        outputName: (file.downloadName || file.name).replace(/\.[^.]+$/, '_wm' + ext),
-      })
-    }
+    // 导出通过 window.luna.exportFiles 走，旧版 lunaExport 桥接已移除
+    logger.info('export skipped — 请使用主流程导出功能')
 
   }
 
