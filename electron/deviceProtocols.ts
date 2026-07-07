@@ -56,7 +56,7 @@ export class LunaUltraProtocol implements DeviceProtocol {
     const client = this.clientFor(host, this.controlPortForHost(host))
 
     // 连接入口优先建立 6666 控制会话；失败后再做状态探测，用于返回更明确的错误信息。
-    const MAX_RETRIES = 6
+    const MAX_RETRIES = 3
     for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
       try {
         await client.connect()

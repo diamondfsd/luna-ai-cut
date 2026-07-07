@@ -43,19 +43,31 @@ function connectionTimeoutStatus(host: string): Promise<ConnectionStatus> {
 
 async function enrichConnectionStatus(status: ConnectionStatus): Promise<ConnectionStatus> {
   try {
-    const wifiStatus = await window.luna.getWifiStatus()
+    const diagnostics = await window.luna.collectNetworkDiagnostics()
     return {
       ...status,
-      diagnosticsRaw: JSON.stringify({ connection: status, wifiStatus }, null, 2),
+      diagnosticsRaw: JSON.stringify(diagnostics, null, 2),
     }
-  } catch (error) {
-    logger.warn('[设备连接] 获取网络状态失败', { error: error instanceof Error ? error.message : String(error) })
-    return {
-      ...status,
-      diagnosticsRaw: JSON.stringify({
-        connection: status,
-        wifiStatusError: error instanceof Error ? error.message : String(error),
-      }, null, 2),
+  } catch (primaryError) {
+    logger.warn('[设备连接] 网络诊断收集失败，回退到基础状态', {
+      error: primaryError instanceof Error ? primaryError.message : String(primaryError),
+    })
+    try {
+      const wifiStatus = await window.luna.getWifiStatus()
+      return {
+        ...status,
+        diagnosticsRaw: JSON.stringify({ connection: status, wifiStatus, networkDiagnosticsError: primaryError instanceof Error ? primaryError.message : String(primaryError) }, null, 2),
+      }
+    } catch (fallbackError) {
+      logger.warn('[设备连接] 获取网络状态失败', { error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError) })
+      return {
+        ...status,
+        diagnosticsRaw: JSON.stringify({
+          connection: status,
+          wifiStatusError: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+          networkDiagnosticsError: primaryError instanceof Error ? primaryError.message : String(primaryError),
+        }, null, 2),
+      }
     }
   }
 }
