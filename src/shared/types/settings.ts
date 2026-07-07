@@ -23,6 +23,8 @@ export interface AppSettings {
   mockRateMbps?: number
   exportAppleLivePhoto?: boolean
   aiConfig?: AiConfig
+  /** 扩展 LUT 滤镜目录路径（.cube 文件目录树，按文件夹分组） */
+  lutDir?: string
 }
 
 export interface CacheStats {

@@ -235,7 +235,10 @@ export function PreviewStage(
       return
     }
     let cancelled = false
-    lutManager.ensureLoaded(activeId).then((id) => {
+    // 先确保 LUT 缓存已填充，再按 ID 加载
+    lutManager.discoverLuts().then(() =>
+      lutManager.ensureLoadedById(activeId),
+    ).then((id) => {
       if (!cancelled) setGpuLutId(id)
     })
     return () => { cancelled = true }
@@ -260,6 +263,7 @@ export function PreviewStage(
         color: pipelineColorToRenderColor(pipeline.color),
         transform: renderTransform,
         lutId: gpuLutId,
+        lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
       }
     }
     const m = main[0]
