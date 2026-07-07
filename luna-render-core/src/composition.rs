@@ -356,3 +356,117 @@ pub fn export_composition_video_async(
 ) -> AsyncTask<ExportCompositionVideoTask> {
     AsyncTask::new(ExportCompositionVideoTask { input })
 }
+
+// ── exportCompositionImage ──
+
+#[napi(object)]
+#[derive(Clone)]
+pub struct ExportCompositionImageInput {
+    pub ffmpeg_path: String,
+    pub ffprobe_path: String,
+    pub output_path: String,
+    pub composition: CompositionInput,
+    pub format: String,
+    pub quality: f64,
+}
+
+pub struct ExportCompositionImageTask {
+    input: ExportCompositionImageInput,
+}
+
+impl Task for ExportCompositionImageTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        let mut compositor = create_export_compositor()?;
+        let (rgba, width, height) = render_composition_frame_with(
+            &mut compositor,
+            &self.input.ffmpeg_path,
+            &self.input.ffprobe_path,
+            &self.input.composition,
+            0.0,
+            None,
+        )
+        .map_err(napi::Error::from_reason)?;
+
+        let format = self.input.format.to_lowercase();
+        let quality = self.input.quality.clamp(1.0, 100.0);
+        let q_str = format!("{:.0}", quality);
+        let mut args: Vec<String> = vec![
+            "-y".to_string(),
+            "-hide_banner".to_string(),
+            "-loglevel".to_string(),
+            "error".to_string(),
+            "-f".to_string(),
+            "rawvideo".to_string(),
+            "-pix_fmt".to_string(),
+            "rgba".to_string(),
+            "-s".to_string(),
+            format!("{}x{}", width, height),
+            "-i".to_string(),
+            "pipe:0".to_string(),
+            "-frames:v".to_string(),
+            "1".to_string(),
+        ];
+        match format.as_str() {
+            "jpeg" | "jpg" => {
+                let ffmpeg_q = ((100.0 - quality) * 24.0 / 99.0 + 1.0) as u32;
+                args.extend_from_slice(&[
+                    "-c:v".to_string(),
+                    "mjpeg".to_string(),
+                    "-q:v".to_string(),
+                    ffmpeg_q.to_string(),
+                ]);
+            }
+            "png" => {
+                args.extend_from_slice(&["-c:v".to_string(), "png".to_string()]);
+            }
+            "webp" => {
+                args.extend_from_slice(&[
+                    "-c:v".to_string(),
+                    "libwebp".to_string(),
+                    "-quality".to_string(),
+                    q_str,
+                ]);
+            }
+            _ => {
+                return Err(napi::Error::from_reason(format!(
+                    "unsupported image format: {}",
+                    format
+                )))
+            }
+        }
+        args.push(self.input.output_path.clone());
+
+        let mut proc =
+            Command::new(&self.input.ffmpeg_path)
+                .args(&args)
+                .stdin(Stdio::piped())
+                .spawn()
+                .map_err(|e| napi::Error::from_reason(format!("encode spawn: {}", e)))?;
+        proc.stdin
+            .take()
+            .unwrap()
+            .write_all(&rgba)
+            .map_err(|e| napi::Error::from_reason(format!("encode write: {}", e)))?;
+        let status = proc
+            .wait()
+            .map_err(|e| napi::Error::from_reason(format!("encode wait: {}", e)))?;
+        if !status.success() {
+            return Err(napi::Error::from_reason("ffmpeg encode image failed"));
+        }
+        Ok(())
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(())
+    }
+}
+
+#[napi]
+pub fn export_composition_image_async(
+    input: ExportCompositionImageInput,
+) -> AsyncTask<ExportCompositionImageTask> {
+    AsyncTask::new(ExportCompositionImageTask { input })
+}

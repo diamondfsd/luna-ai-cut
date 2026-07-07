@@ -41,7 +41,6 @@ interface LunaRenderCore {
   init: () => Promise<void>
   renderPreview: (input: { maxSide?: number; width?: number; height?: number; layers: PreviewLayer[] }) => Promise<RenderPreviewOutput>
   renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) => Promise<RenderPreviewOutput>
-  exportImageFromSources: (outputPath: string, width: number, height: number, layers: PreviewLayer[], format: string, quality: number) => Promise<void>
   exportCompositionVideo: (
     outputPath: string,
     composition: CompositionInput,
@@ -50,6 +49,12 @@ interface LunaRenderCore {
     hardware: boolean,
     taskId?: string,
     qualityPreset?: string,
+  ) => Promise<void>
+  exportCompositionImage: (
+    outputPath: string,
+    composition: CompositionInput,
+    format: string,
+    quality: number,
   ) => Promise<void>
 }
 
@@ -243,7 +248,8 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     async exportImage(outputPath: string, width: number, height: number, format: string, quality: number) {
       const lrc = getLRC()
       if (!lrc) throw new Error('渲染引擎未初始化')
-      await lrc.exportImageFromSources(outputPath, width, height, sortedLayers(layersRef.current), format, quality)
+      const composition = buildCompositionFromPreviewLayers(layersRef.current, width, height)
+      await lrc.exportCompositionImage(outputPath, composition, format, quality)
     },
     async exportVideo(
       outputPath: string,

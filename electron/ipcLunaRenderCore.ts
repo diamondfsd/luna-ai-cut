@@ -9,8 +9,8 @@ import {
   ensureInit,
   renderCompositionFrame as lrcRenderCompositionFrame,
   resolveRenderSource as lrcResolveRenderSource,
-  exportImageFromSourcesAsync as lrcExportImageFromSourcesAsync,
   exportCompositionVideoAsync as lrcExportCompositionVideoAsync,
+  exportCompositionImageAsync as lrcExportCompositionImageAsync,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
 } from './lunaRenderCore'
@@ -19,17 +19,6 @@ import * as exportTaskService from './exportTaskService'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
-}
-
-interface PreviewLayerArg {
-  filePath: string
-  isVideo?: boolean
-  videoTime?: number
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-  color?: any
-  transform?: any
 }
 
 /** 写日志到文件（追加模式），APP_ROOT 在 appMain.ts 中设置 */
@@ -69,13 +58,11 @@ export function register(_ctx: RegisterContext): void {
     },
   ))
 
-  ipcMain.handle('lrc:exportImageFromSources', safe('exportImageFromSources',
+  ipcMain.handle('lrc:exportCompositionImage', safe('exportCompositionImage',
     async (
       _event: IpcMainInvokeEvent,
       outputPath: string,
-      width: number,
-      height: number,
-      layers: PreviewLayerArg[],
+      composition: any,
       format: string,
       quality: number,
       exportTaskId?: string,
@@ -83,26 +70,22 @@ export function register(_ctx: RegisterContext): void {
     ) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
-      rcLog(`lrc:exportImageFromSources out=${outputPath} ${width}x${height} layers=${layers.length} fmt=${format}`)
+      rcLog(`lrc:exportCompositionImage out=${outputPath} fmt=${format} q=${quality}`)
 
-      // 通知 exportTaskService（开始导出）
       if (exportTaskId && exportItemId) {
         await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
       }
-      if (exportItemId) {
-        _event.sender?.send('export:progress', {
-          exportId: exportItemId,
-          taskId: exportTaskId,
-          fileName: outputPath.split(/[\\/]/).pop(),
-          percent: 0,
-          status: 'exporting',
-          destinationPath: outputPath,
-        })
-      }
+      _event.sender?.send('export:progress', {
+        exportId: exportItemId,
+        taskId: exportTaskId,
+        fileName: outputPath.split(/[\\/]/).pop(),
+        percent: 0,
+        status: 'exporting',
+        destinationPath: outputPath,
+      })
 
-      await lrcExportImageFromSourcesAsync(ffmpegPath, ffprobePath, outputPath, width, height, layers, format, quality)
+      await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition, format, quality })
 
-      // 发送进度事件
       _event.sender?.send('export:progress', {
         exportId: exportItemId,
         taskId: exportTaskId,
@@ -112,12 +95,10 @@ export function register(_ctx: RegisterContext): void {
         destinationPath: outputPath,
       })
 
-      // 通知 exportTaskService（完成）
       if (exportTaskId && exportItemId) {
         await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
       }
-
-      rcLog('lrc:exportImageFromSources done')
+      rcLog('lrc:exportCompositionImage done')
     },
   ))
 
