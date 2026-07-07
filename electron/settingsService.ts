@@ -142,6 +142,18 @@ export async function chooseExportDir(): Promise<string | null> {
   return result.filePaths[0]
 }
 
+export async function chooseLutDir(): Promise<string | null> {
+  const settings = await getSettings()
+  const result = await dialog.showOpenDialog({
+    defaultPath: settings.lutDir,
+    properties: ['openDirectory', 'createDirectory'],
+    title: '选择 LUT 滤镜目录（.cube 文件目录树）',
+  })
+
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+}
+
 export async function chooseMockMediaDir(): Promise<string | null> {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory'],

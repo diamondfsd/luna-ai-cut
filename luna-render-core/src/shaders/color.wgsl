@@ -93,5 +93,7 @@ fn apply_lut(color: vec3<f32>) -> vec3<f32> {
     let scale = (lut_size - 1.0) / lut_size;
     let offset = 0.5 / lut_size;
     let uvw = sat3(color) * scale + offset;
-    return textureSampleLevel(lut_texture, lut_sampler, uvw, 0.0).rgb;
+    let lut_color = textureSampleLevel(lut_texture, lut_sampler, uvw, 0.0).rgb;
+    let intensity = sat1(params.lut_intensity / 100.0);
+    return mix(color, lut_color, intensity);
 }

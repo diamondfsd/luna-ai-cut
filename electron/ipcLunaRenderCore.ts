@@ -4,7 +4,8 @@
 import { ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFile, readdir, stat } from 'node:fs/promises'
+import { join, extname } from 'node:path'
 import {
   ensureInit,
   renderCompositionFrame as lrcRenderCompositionFrame,
@@ -228,6 +229,41 @@ export function register(_ctx: RegisterContext): void {
   ipcMain.handle('lrc:releaseLut', safe('releaseLut',
     async (_event: IpcMainInvokeEvent, lutId: number) => {
       lrcReleaseLut(lutId)
+    },
+  ))
+
+  /** 递归扫描目录返回 .cube 文件树（按文件夹分组） */
+  ipcMain.handle('lrc:listCubeFiles', safe('listCubeFiles',
+    async (_event: IpcMainInvokeEvent, dirPath: string) => {
+      const results: Array<{ path: string; name: string; relDir: string }> = []
+      async function scan(dir: string, baseDir: string): Promise<void> {
+        let entries: string[]
+        try { entries = await readdir(dir) } catch { return }
+        for (const entry of entries.sort()) {
+          const fullPath = join(dir, entry)
+          try {
+            const info = await stat(fullPath)
+            if (info.isDirectory()) {
+              await scan(fullPath, baseDir)
+            } else if (info.isFile() && extname(entry).toLowerCase() === '.cube') {
+              results.push({
+                path: fullPath,
+                name: entry.replace(/\.cube$/i, ''),
+                relDir: dir === baseDir ? '' : dir.slice(baseDir.length + 1),
+              })
+            }
+          } catch { /* 跳过无权限文件 */ }
+        }
+      }
+      await scan(dirPath, dirPath)
+      return results
+    },
+  ))
+
+  /** 读取 .cube 文件内容 */
+  ipcMain.handle('lrc:readLutFile', safe('readLutFile',
+    async (_event: IpcMainInvokeEvent, filePath: string) => {
+      return await readFile(filePath)
     },
   ))
 }

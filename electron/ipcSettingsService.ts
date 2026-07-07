@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import type { AppSettings } from '../src/shared/types'
 import { deviceDefinitions } from './deviceDefaults'
 import {
-  chooseDownloadDir, chooseLocalResourcesDir, chooseExportDir, chooseMockMediaDir,
+  chooseDownloadDir, chooseLocalResourcesDir, chooseExportDir, chooseLutDir, chooseMockMediaDir,
   getSettings, saveSettings, getCacheStats, clearCache,
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
@@ -15,6 +15,7 @@ export function register(_ctx?: IpcContext): void {
   ipcMain.handle('settings:chooseDownloadDir', () => chooseDownloadDir())
   ipcMain.handle('settings:chooseLocalResourcesDir', () => chooseLocalResourcesDir())
   ipcMain.handle('settings:chooseExportDir', () => chooseExportDir())
+  ipcMain.handle('settings:chooseLutDir', () => chooseLutDir())
   ipcMain.handle('settings:chooseMockMediaDir', () => chooseMockMediaDir())
   ipcMain.handle('mock:start', (_event, s?: Partial<AppSettings>) => startMockServer(s))
   ipcMain.handle('mock:stop', () => stopMockServer())

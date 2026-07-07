@@ -22,6 +22,7 @@ export {
   chooseExportDir,
   chooseLocalResourcesDir,
   getLocalResourcesDir,
+  chooseLutDir,
   chooseMockMediaDir,
   getSettings,
   previewCacheDir,
