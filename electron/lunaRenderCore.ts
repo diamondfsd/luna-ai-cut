@@ -7,7 +7,6 @@
  */
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import {
   normalizeColor,
   normalizeTransform,
@@ -40,34 +39,6 @@ export interface RenderCoreLayerInput {
   opacity?: number; zIndex?: number
   color?: Partial<RenderColorAdjustments>
   transform?: Partial<RenderLayerTransform>
-}
-
-/** render_preview 的单个层 */
-export interface PreviewLayerInput {
-  filePath: string
-  isVideo: boolean
-  videoTime: number
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX: number; srcY: number; srcW: number; srcH: number
-  opacity: number; zIndex: number
-  color: RenderColorAdjustments
-  transform: RenderLayerTransform
-}
-
-/** render_preview 输入 */
-export interface RenderPreviewInput {
-  ffmpegPath: string
-  ffprobePath: string
-  width?: number
-  height?: number
-  maxSide?: number
-  layers: PreviewLayerInputForExport[]
-}
-
-export interface RenderPreviewOutput {
-  width: number
-  height: number
-  data: Buffer
 }
 
 export interface CompositionInput {
@@ -111,23 +82,17 @@ function cleanNativeInput<T>(value: T): T {
   return output as T
 }
 
-export interface PreviewTextureInput {
-  textureId: number
+export interface ResolvedRenderSource {
+  renderPath: string
+  normalized: boolean
   width: number
   height: number
 }
 
-export interface PreviewPlanInput {
-  width?: number
-  height?: number
-  maxSide?: number
-  layers: Array<{ layer: PreviewLayerInputForExport; texture: PreviewTextureInput }>
-}
-
-export interface PreviewPlanOutput {
+export interface RenderPreviewOutput {
   width: number
   height: number
-  layers: RenderCoreLayerInput[]
+  data: Buffer
 }
 
 // ── Native 内部全字段类型 ──
@@ -144,27 +109,10 @@ interface PreviewNativeLayer {
   positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
 }
 
-interface NativeLayer {
-  textureId: number
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX: number; srcY: number; srcW: number; srcH: number
-  opacity: number; zIndex: number
-  color: RenderColorAdjustments
-  transform: RenderLayerTransform
-  positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
-}
-
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
-  loadTexture(data: Buffer, width: number, height: number): number
-  loadTextureFromPath(ffmpegPath: string, ffprobePath: string, path: string, maxSize: number): { textureId?: number; texture_id?: number; width: number; height: number }
-  updateTexture(textureId: number, data: Buffer): void
-  releaseTexture(textureId: number): void
-  renderFrame(canvasWidth: number, canvasHeight: number, layers: NativeLayer[]): Buffer
-  renderPreview(input: any): RenderPreviewOutput
   renderCompositionFrame(input: any): RenderPreviewOutput
   exportCompositionVideoAsync(input: any): Promise<void>
-  planPreview(input: any): { width: number; height: number; layers: NativeLayer[] }
   resolveRenderSource(
     ffmpegPath: string,
     ffprobePath: string,
@@ -181,17 +129,8 @@ interface LunaRenderCoreNative {
     format: string,
     quality: number,
   ): Promise<void>
-  exportFileAsync(
-    ffmpegPath: string, ffprobePath: string,
-    inputPath: string, outputPath: string,
-    canvasWidth: number, canvasHeight: number,
-    fps: number | null, hardware: boolean,
-    layers: PreviewNativeLayer[],
-    taskId: string | null, qualityPreset: string | null,
-  ): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
-  destroyCompositor(): void
 }
 
 /** 补全可选字段的默认值 */
@@ -207,21 +146,7 @@ function normalizePreviewLayer(l: PreviewLayerInputForExport): PreviewNativeLaye
     zIndex: l.zIndex ?? 0,
     color: normalizeColor(l.color),
     transform: normalizeTransform(l.transform),
-    positioning: (l as unknown as Record<string, unknown>).positioning as NativeLayer['positioning'],
-  }
-}
-
-function normalizeLayer(l: RenderCoreLayerInput): NativeLayer {
-  return {
-    textureId: l.textureId,
-    dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
-    srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
-    srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
-    opacity: l.opacity ?? 1,
-    zIndex: l.zIndex ?? 0,
-    color: normalizeColor(l.color),
-    transform: normalizeTransform(l.transform),
-    positioning: (l as unknown as Record<string, unknown>).positioning as NativeLayer['positioning'],
+    positioning: (l as unknown as Record<string, unknown>).positioning as PreviewNativeLayer['positioning'],
   }
 }
 
@@ -249,48 +174,6 @@ export function ensureInit(logPath?: string): void {
   }
 }
 
-export function loadTexture(data: Buffer, width: number, height: number): number {
-  ensureInit()
-  return getNative().loadTexture(data, width, height)
-}
-
-export function loadTextureFromPath(
-  ffmpegPath: string,
-  ffprobePath: string,
-  path: string,
-  maxSize: number,
-): { textureId: number; width: number; height: number } {
-  ensureInit()
-  const filePath = path.startsWith('file://') ? fileURLToPath(path) : path
-  const result = getNative().loadTextureFromPath(ffmpegPath, ffprobePath, filePath, maxSize)
-  const textureId = result.textureId ?? result.texture_id
-  if (textureId == null) throw new Error('Native render core did not return a texture id')
-  return { textureId, width: result.width, height: result.height }
-}
-
-export function updateTexture(textureId: number, data: Buffer): void {
-  getNative().updateTexture(textureId, data)
-}
-
-export function releaseTexture(textureId: number): void {
-  getNative().releaseTexture(textureId)
-}
-
-export function renderFrame(
-  canvasWidth: number,
-  canvasHeight: number,
-  layers: RenderCoreLayerInput[],
-): Buffer {
-  return getNative().renderFrame(canvasWidth, canvasHeight, layers.map(normalizeLayer))
-}
-
-export interface ResolvedRenderSource {
-  renderPath: string
-  normalized: boolean
-  width: number
-  height: number
-}
-
 export function resolveRenderSource(
   ffmpegPath: string,
   ffprobePath: string,
@@ -315,14 +198,6 @@ export function exportImageFromSourcesAsync(
   return getNative().exportImageFromSourcesAsync(ffmpegPath, ffprobePath, outputPath, width, height, layers.map(normalizePreviewLayer), format, quality)
 }
 
-export function renderPreview(input: RenderPreviewInput): RenderPreviewOutput {
-  ensureInit()
-  return getNative().renderPreview({
-    ...input,
-    layers: input.layers.map(normalizePreviewLayer),
-  })
-}
-
 export function renderCompositionFrame(
   ffmpegPath: string,
   ffprobePath: string,
@@ -332,52 +207,6 @@ export function renderCompositionFrame(
 ): RenderPreviewOutput {
   ensureInit()
   return getNative().renderCompositionFrame(cleanNativeInput({ ffmpegPath, ffprobePath, composition, time, maxSide }))
-}
-
-export function planPreview(input: PreviewPlanInput): PreviewPlanOutput {
-  ensureInit()
-  return getNative().planPreview({
-    width: input.width,
-    height: input.height,
-    maxSide: input.maxSide,
-    layers: input.layers.map((item) => ({
-      layer: normalizePreviewLayer(item.layer),
-      texture: {
-        textureId: item.texture.textureId,
-        width: item.texture.width,
-        height: item.texture.height,
-      },
-    })),
-  })
-}
-
-export function exportFileAsync(
-  ffmpegPath: string,
-  ffprobePath: string,
-  inputPath: string,
-  outputPath: string,
-  canvasWidth: number,
-  canvasHeight: number,
-  fps: number | null,
-  hardware: boolean,
-  layers: PreviewLayerInputForExport[],
-  taskId?: string,
-  qualityPreset?: string,
-): Promise<void> {
-  ensureInit()
-  return getNative().exportFileAsync(
-    ffmpegPath,
-    ffprobePath,
-    inputPath,
-    outputPath,
-    canvasWidth,
-    canvasHeight,
-    fps,
-    hardware,
-    layers.map(normalizePreviewLayer),
-    taskId ?? null,
-    qualityPreset ?? null,
-  )
 }
 
 export function exportCompositionVideoAsync(input: {
@@ -413,11 +242,4 @@ export function getExportTaskProgress(taskId: string): [number, number] | null {
   const result = getNative().getExportTaskProgress(taskId)
   if (!result) return null
   return [result[0], result[1]]
-}
-
-export function destroy(): void {
-  if (initialized) {
-    getNative().destroyCompositor()
-    initialized = false
-  }
 }
