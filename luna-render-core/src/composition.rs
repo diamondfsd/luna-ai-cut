@@ -9,7 +9,7 @@ use crate::compositor::{Compositor, PreviewLayerInput};
 use crate::export::{cleanup_task, register_task, QualityPreset};
 use crate::media::probe_video_info;
 use crate::{
-    create_export_compositor, lock, LayerPositioning, RenderColorAdjustments, RenderLayerTransform,
+    LayerPositioning, RenderColorAdjustments, RenderLayerTransform,
     RenderPreviewOutput,
 };
 
@@ -197,7 +197,7 @@ fn render_composition_frame_with(
 pub fn render_composition_frame(
     input: RenderCompositionFrameInput,
 ) -> napi::Result<RenderPreviewOutput> {
-    lock(|c| {
+    crate::lock(|c| {
         let (data, width, height) = render_composition_frame_with(
             c,
             &input.ffmpeg_path,
@@ -223,8 +223,6 @@ impl Task for ExportCompositionVideoTask {
     type JsValue = ();
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        let mut compositor = create_export_compositor()?;
-        compositor.clear_video_decoders();
         let fps = self
             .input
             .fps
@@ -309,20 +307,23 @@ impl Task for ExportCompositionVideoTask {
             .take()
             .ok_or_else(|| napi::Error::from_reason("encode stdin unavailable"))?;
 
+        // 使用全局 compositor（含有已加载的 LUT）
+        crate::lock(|c| { c.clear_video_decoders(); Ok(()) })?;
         for frame in 0..total_frames {
             if task.as_ref().map_or(false, |state| state.is_cancelled()) {
                 return Err(napi::Error::from_reason("导出已取消"));
             }
             let time = frame as f64 / fps;
-            let (rgba, _, _) = render_composition_frame_with(
-                &mut compositor,
-                &self.input.ffmpeg_path,
-                &self.input.ffprobe_path,
-                &self.input.composition,
-                time,
-                None,
-            )
-            .map_err(napi::Error::from_reason)?;
+            let (rgba, _, _) = crate::lock(|c| {
+                render_composition_frame_with(
+                    c,
+                    &self.input.ffmpeg_path,
+                    &self.input.ffprobe_path,
+                    &self.input.composition,
+                    time,
+                    None,
+                )
+            })?;
             stdin
                 .write_all(&rgba)
                 .map_err(|e| napi::Error::from_reason(format!("encode write: {}", e)))?;
@@ -381,16 +382,18 @@ impl Task for ExportCompositionImageTask {
     type JsValue = ();
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        let mut compositor = create_export_compositor()?;
-        let (rgba, width, height) = render_composition_frame_with(
-            &mut compositor,
-            &self.input.ffmpeg_path,
-            &self.input.ffprobe_path,
-            &self.input.composition,
-            0.0,
-            None,
-        )
-        .map_err(napi::Error::from_reason)?;
+        // 使用全局 compositor（含有已加载的 LUT，不用 .map_err 因为 lock 已返回 napi::Result）
+        let (rgba, width, height) = crate::lock(|c| {
+            c.clear_video_decoders();
+            render_composition_frame_with(
+                c,
+                &self.input.ffmpeg_path,
+                &self.input.ffprobe_path,
+                &self.input.composition,
+                0.0,
+                None,
+            )
+        })?;
 
         let format = self.input.format.to_lowercase();
         let quality = self.input.quality.clamp(1.0, 100.0);
