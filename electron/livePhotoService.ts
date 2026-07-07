@@ -20,7 +20,7 @@ const execFileAsync = promisify(execFile)
 
 const XMP_NS = 'http://ns.adobe.com/xap/1.0/'
 
-function buildGoogleXmpXml(primaryLength: number, videoLength: number): string {
+function buildGoogleXmpXml(videoLength: number): string {
   return [
     '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>',
     '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Luna AI Cut">',
@@ -35,7 +35,7 @@ function buildGoogleXmpXml(primaryLength: number, videoLength: number): string {
     '      <Container:Directory>',
     '        <rdf:Seq>',
     '          <rdf:li rdf:parseType="Resource">',
-    `            <Container:Item Item:Mime="image/jpeg" Item:Semantic="Primary" Item:Length="${primaryLength}" Item:Padding="0"/>`,
+    '            <Container:Item Item:Mime="image/jpeg" Item:Semantic="Primary" Item:Length="0" Item:Padding="0"/>',
     '          </rdf:li>',
     '          <rdf:li rdf:parseType="Resource">',
     `            <Container:Item Item:Mime="video/mp4" Item:Semantic="MotionPhoto" Item:Length="${videoLength}"/>`,
@@ -64,19 +64,28 @@ function buildXmpApp1Segment(xml: string): Buffer {
   return seg
 }
 
-/** 找到 XMP APP1 在 JPEG 头部中的插入位置（SOI 之后、SOS 之前） */
+/** 标准 JFIF APP0 标记（16 字节，1:1 像素比，版本 1.1） */
+const JFIF_APP0 = Buffer.from([
+  0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+])
+
+/** 找到 XMP APP1 在 JPEG 头部中的插入位置（SOI 之后、DQT/SOS 之前） */
 function findXmpInsertPos(data: Buffer): number {
   let pos = 2
   while (pos < data.length - 1) {
     if (data[pos] !== 0xFF) break
     const marker = data[pos + 1]
+    // RST 标记
     if (marker >= 0xD0 && marker <= 0xD7) { pos += 2; continue }
+    // 字节填充或 SOI/EOI
     if (marker === 0x00 || marker === 0xD8 || marker === 0xD9) { pos++; continue }
+    // TEM 标记
     if (marker === 0x01) { pos += 2; continue }
     if (pos + 4 > data.length) break
     const sLen = data.readUInt16BE(pos + 2)
     if (sLen < 2) break
-    if (marker >= 0xE0 && marker <= 0xEF) {
+    // APP 标记 (0xE0-0xEF) 或 COM 注释 (0xFE, ffmpeg 写 Lavc 版本)
+    if (marker >= 0xE0 && marker <= 0xEF || marker === 0xFE) {
       pos += 2 + sLen
       continue
     }
@@ -86,29 +95,26 @@ function findXmpInsertPos(data: Buffer): number {
 }
 
 /**
- * 向 JPEG 文件注入 Google Motion Photo XMP APP1 段。
- * 两遍构建法：先用假值算出最终 JPEG 大小，再用真实长度重建。
+ * 向 JPEG 文件注入 JFIF APP0（如缺失）、Google Motion Photo XMP APP1。
+ * Primary 的 Item:Length="0" 遵循 Google 規範（表示延伸到下一個 Item）。
  */
 function injectGoogleXmpIntoJpeg(jpegPath: string, videoPath: string): void {
-  const data = readFileSync(jpegPath)
+  let data = readFileSync(jpegPath)
   const videoStat = statSync(videoPath)
   const videoLength = videoStat.size
 
-  const probeXml = buildGoogleXmpXml(0, 0)
-  const probeSeg = buildXmpApp1Segment(probeXml)
-  const insertAt = findXmpInsertPos(data)
-  const withXmp = Buffer.concat([
-    data.subarray(0, insertAt),
-    probeSeg,
-    data.subarray(insertAt),
-  ])
-  const finalJpegSize = withXmp.length
+  // Step 1: 确保 JFIF APP0 存在（macOS Preview 需要）
+  if (data[2] !== 0xFF || data[3] !== 0xE0 || !data.subarray(4, 10).equals(Buffer.from('JFIF\0'))) {
+    data = Buffer.concat([data.subarray(0, 2), JFIF_APP0, data.subarray(2)])
+  }
 
-  const finalXml = buildGoogleXmpXml(finalJpegSize, videoLength)
-  const finalSeg = buildXmpApp1Segment(finalXml)
+  // Step 2: 找出插入位置并注入 XMP APP1（跳过 JFIF/COM，放在 DQT/DHT 之前）
+  const xml = buildGoogleXmpXml(videoLength)
+  const app1Seg = buildXmpApp1Segment(xml)
+  const insertAt = findXmpInsertPos(data)
   const result = Buffer.concat([
     data.subarray(0, insertAt),
-    finalSeg,
+    app1Seg,
     data.subarray(insertAt),
   ])
   writeFileSync(jpegPath, result)
@@ -260,6 +266,24 @@ export async function combineLivePhoto(
     await exportAppleLivePhotoPair(processedImage, processedVideo, appleExportFolder, baseName, onProgress)
   }
   onProgress?.(50)
+
+  // 修正 JPEG 色度子采样（ffmpeg mjpeg RGBA 输入可能输出非标准采样，macOS 无法识别）
+  const ffmpegPath = getFfmpegPath()
+  const fixedImage = processedImage + '.fixed.jpg'
+  try {
+    await execFileAsync(ffmpegPath, [
+      '-y', '-i', processedImage,
+      '-c:v', 'mjpeg',
+      '-pix_fmt', 'yuvj420p',
+      '-q:v', '2',
+      fixedImage,
+    ], { timeout: 30000 })
+    // 替换原文件
+    await fs.rename(fixedImage, processedImage)
+  } catch (err) {
+    logMainError('[LIVE] JPEG re-encode failed (non-fatal)', { error: err })
+    await fs.unlink(fixedImage).catch(() => {})
+  }
 
   try {
     injectGoogleXmpIntoJpeg(processedImage, processedVideo)

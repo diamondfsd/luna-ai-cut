@@ -415,6 +415,8 @@ impl Task for ExportCompositionImageTask {
                 args.extend_from_slice(&[
                     "-c:v".to_string(),
                     "mjpeg".to_string(),
+                    "-pix_fmt".to_string(),
+                    "yuvj420p".to_string(),
                     "-q:v".to_string(),
                     ffmpeg_q.to_string(),
                 ]);
