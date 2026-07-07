@@ -33,11 +33,13 @@ fn hex_val(b: u8) -> Option<u8> {
     }
 }
 
+#[allow(dead_code)]
 pub struct AudioInfo {
     pub has_audio: bool,
     pub codec: String,
 }
 
+#[allow(dead_code)]
 pub struct VideoInfo {
     pub width: u32,
     pub height: u32,

@@ -656,10 +656,6 @@ impl Compositor {
 
     // ── 纹理管理 ──
 
-    pub fn max_texture_size(&self) -> u32 {
-        self.max_texture_size
-    }
-
     pub fn load_texture(&mut self, data: &[u8], width: u32, height: u32) -> Result<u32, String> {
         if width == 0 || height == 0 {
             return Err("texture size must be greater than 0".to_string());

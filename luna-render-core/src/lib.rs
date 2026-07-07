@@ -7,7 +7,6 @@ use std::sync::{LazyLock, Mutex};
 
 use compositor::Compositor;
 use napi::bindgen_prelude::Buffer;
-use napi::{Env, Task};
 use napi_derive::napi;
 
 #[napi(object)]
