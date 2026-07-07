@@ -80,16 +80,17 @@ export function PreviewModal({
     setWatermarkLayers(layer ? [layer] : [])
   }
 
-  // ── 批量导出（委托给公共方法） ──
-  const handleBatchExport = useCallback(async () => {
-    if (batchEnqueuing || !filePathList?.length) return
+  // ── 导出（批量/单帧统一走 exportBatchFiles） ──
+  const handleExport = useCallback(async () => {
+    if (batchEnqueuing) return
     setBatchEnqueuing(true)
 
     try {
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) { toast.error('导出目录未配置'); return }
 
-      const sources: BatchExportSource[] = await Promise.all(filePathList.map(async (sourcePath) => {
+      const exportList = batchExportMode ? (filePathList ?? []) : [currentFilePath]
+      const sources: BatchExportSource[] = await Promise.all(exportList.map(async (sourcePath) => {
         const resolution = await window.luna.workspace.getMediaResolution(sourcePath)
         return {
           sourcePath,
@@ -98,13 +99,13 @@ export function PreviewModal({
       }))
 
       await exportBatchFiles(sources, settings.exportDir)
-      toast.success(`已加入导出队列: ${filePathList.length} 个文件`)
+      toast.success(`已加入导出队列 (${sources.length} 个文件)`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '导出失败')
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, filePathList, watermarkSettings])
+  }, [batchEnqueuing, filePathList, currentFilePath, watermarkSettings])
 
   // Escape 关闭
   useEffect(() => {
@@ -123,6 +124,7 @@ export function PreviewModal({
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
           onClose={onClose}
+          onExport={handleExport}
           previewOnly={previewOnly}
           batchExportMode={batchExportMode}
           exportFilesCount={filePathList?.length}
@@ -161,16 +163,16 @@ export function PreviewModal({
                   />
                 ) : undefined}
               />
-              {batchExportMode && (
+              {!previewOnly && (
                 <div className="batch-export-actions">
                   <Button
                     variant="primary"
                     disabled={batchEnqueuing}
-                    onClick={handleBatchExport}
+                    onClick={handleExport}
                     type="button"
                     style={{ width: '100%' }}
                   >
-                    {batchEnqueuing ? '加入中...' : `确认导出 (${filePathList?.length ?? 0} 个文件)`}
+                    {batchEnqueuing ? '任务创建中...' : batchExportMode ? `确认导出 (${filePathList?.length ?? 0} 个文件)` : '导出'}
                   </Button>
                 </div>
               )}
