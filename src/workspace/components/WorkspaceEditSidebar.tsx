@@ -116,6 +116,7 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
             <FilterPanel
               activeLutId={edit.pipeline.lutFilter.activeId}
               onChange={(lutId) => edit.updateWorkspacePanel({ lutFilter: { activeId: lutId } })}
+              mediaPath={mediaCtx.activeMedia?.path}
             />
           ) : edit.activeTool === 'color' ? (
             <ColorPanel
