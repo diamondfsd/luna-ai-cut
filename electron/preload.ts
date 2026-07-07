@@ -258,16 +258,14 @@ const lunaRenderCoreApi = {
   cancelExportTask: (taskId: string) => ipcRenderer.invoke('lrc:cancelExportTask', taskId),
   getExportTaskProgress: (taskId: string) => ipcRenderer.invoke('lrc:getExportTaskProgress', taskId),
   resolveRenderSource: (originalPath: string, cacheDir: string) => ipcRenderer.invoke('lrc:resolveRenderSource', originalPath, cacheDir),
-  exportImageFromSources: (
+  exportCompositionImage: (
     outputPath: string,
-    width: number,
-    height: number,
-    layers: unknown[],
+    composition: CompositionInput,
     format: string,
     quality: number,
     exportTaskId?: string,
     exportItemId?: string,
-  ) => ipcRenderer.invoke('lrc:exportImageFromSources', outputPath, width, height, layers, format, quality, exportTaskId, exportItemId),
+  ) => ipcRenderer.invoke('lrc:exportCompositionImage', outputPath, composition, format, quality, exportTaskId, exportItemId),
 }
 
 contextBridge.exposeInMainWorld('luna', lunaApi)

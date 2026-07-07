@@ -9,16 +9,6 @@ const VIDEO_EXPORT_CONCURRENCY = 1
 const EXPORT_STATUS_POLL_MS = 1000
 
 interface LunaRenderCoreApi {
-  exportImageFromSources(
-    outputPath: string,
-    width: number,
-    height: number,
-    layers: PreviewLayer[],
-    format: string,
-    quality: number,
-    exportTaskId?: string,
-    exportItemId?: string,
-  ): Promise<void>
   exportCompositionVideo(
     outputPath: string,
     composition: CompositionInput,
@@ -27,6 +17,14 @@ interface LunaRenderCoreApi {
     hardware: boolean,
     taskId?: string,
     qualityPreset?: string,
+    exportTaskId?: string,
+    exportItemId?: string,
+  ): Promise<void>
+  exportCompositionImage(
+    outputPath: string,
+    composition: CompositionInput,
+    format: string,
+    quality: number,
     exportTaskId?: string,
     exportItemId?: string,
   ): Promise<void>
@@ -114,7 +112,8 @@ export async function exportPreviewImage(params: {
   exportItemId?: string
 }): Promise<{ path: string; name: string }> {
   const path = outputPath(params.exportDir, params.fileName)
-  await lrc().exportImageFromSources(path, params.width, params.height, params.layers, params.format, params.quality, params.exportTaskId, params.exportItemId)
+  const composition = buildCompositionFromPreviewLayers(params.layers, params.width, params.height)
+  await lrc().exportCompositionImage(path, composition, params.format, params.quality, params.exportTaskId, params.exportItemId)
   return { path, name: params.fileName }
 }
 
@@ -201,7 +200,8 @@ export async function exportPreviewLivePhoto(params: {
   const imagePath = `${outputDir}/${params.name}_live_image_${stamp}.jpg`
   const videoPath = `${outputDir}/${params.name}_live_video_${stamp}.mp4`
 
-  await lrc().exportImageFromSources(imagePath, params.width, params.height, params.imageLayers, 'jpeg', 100)
+  const imageComposition = buildCompositionFromPreviewLayers(params.imageLayers, params.width, params.height)
+  await lrc().exportCompositionImage(imagePath, imageComposition, 'jpeg', 100)
   await exportPreviewVideo({
     exportDir: outputDir,
     fileName: `${params.name}_live_video_${stamp}.mp4`,

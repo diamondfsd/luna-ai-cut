@@ -8,8 +8,6 @@
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import {
-  normalizeColor,
-  normalizeTransform,
   type LayerPositioningData,
   type RenderColorAdjustments,
   type RenderLayerTransform,
@@ -18,28 +16,6 @@ import {
 const require = createRequire(import.meta.url)
 
 // ── 对外暴露的接口（可选字段由本层补默认值） ──
-
-export interface PreviewLayerInputForExport {
-  filePath: string
-  isVideo?: boolean
-  videoTime?: number
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-  color?: Partial<RenderColorAdjustments>
-  transform?: Partial<RenderLayerTransform>
-  positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
-}
-
-export interface RenderCoreLayerInput {
-  textureId: number
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
-  opacity?: number; zIndex?: number
-  color?: Partial<RenderColorAdjustments>
-  transform?: Partial<RenderLayerTransform>
-}
 
 export interface CompositionInput {
   version?: number
@@ -95,20 +71,6 @@ export interface RenderPreviewOutput {
   data: Buffer
 }
 
-// ── Native 内部全字段类型 ──
-
-interface PreviewNativeLayer {
-  filePath: string
-  isVideo: boolean
-  videoTime: number
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX: number; srcY: number; srcW: number; srcH: number
-  opacity: number; zIndex: number
-  color: RenderColorAdjustments
-  transform: RenderLayerTransform
-  positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
-}
-
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
   renderCompositionFrame(input: any): RenderPreviewOutput
@@ -119,35 +81,9 @@ interface LunaRenderCoreNative {
     originalPath: string,
     cacheDir: string,
   ): { renderPath: string; normalized: boolean; width: number; height: number }
-  exportImageFromSourcesAsync(
-    ffmpegPath: string,
-    ffprobePath: string,
-    outputPath: string,
-    width: number,
-    height: number,
-    layers: PreviewNativeLayer[],
-    format: string,
-    quality: number,
-  ): Promise<void>
+  exportCompositionImageAsync(input: any): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
-}
-
-/** 补全可选字段的默认值 */
-function normalizePreviewLayer(l: PreviewLayerInputForExport): PreviewNativeLayer {
-  return {
-    filePath: l.filePath,
-    isVideo: l.isVideo ?? false,
-    videoTime: l.videoTime ?? 0,
-    dstX: l.dstX, dstY: l.dstY, dstW: l.dstW, dstH: l.dstH,
-    srcX: l.srcX ?? 0, srcY: l.srcY ?? 0,
-    srcW: l.srcW ?? 1, srcH: l.srcH ?? 1,
-    opacity: l.opacity ?? 1,
-    zIndex: l.zIndex ?? 0,
-    color: normalizeColor(l.color),
-    transform: normalizeTransform(l.transform),
-    positioning: (l as unknown as Record<string, unknown>).positioning as PreviewNativeLayer['positioning'],
-  }
 }
 
 let native: LunaRenderCoreNative | null = null
@@ -182,20 +118,6 @@ export function resolveRenderSource(
 ): ResolvedRenderSource {
   ensureInit()
   return getNative().resolveRenderSource(ffmpegPath, ffprobePath, originalPath, cacheDir)
-}
-
-export function exportImageFromSourcesAsync(
-  ffmpegPath: string,
-  ffprobePath: string,
-  outputPath: string,
-  width: number,
-  height: number,
-  layers: PreviewLayerInputForExport[],
-  format: string,
-  quality: number,
-): Promise<void> {
-  ensureInit()
-  return getNative().exportImageFromSourcesAsync(ffmpegPath, ffprobePath, outputPath, width, height, layers.map(normalizePreviewLayer), format, quality)
 }
 
 export function renderCompositionFrame(
@@ -236,6 +158,25 @@ export function exportCompositionVideoAsync(input: {
 
 export function cancelExportTask(taskId: string): void {
   getNative().cancelExportTask(taskId)
+}
+
+export function exportCompositionImageAsync(input: {
+  ffmpegPath: string
+  ffprobePath: string
+  outputPath: string
+  composition: CompositionInput
+  format: string
+  quality: number
+}): Promise<void> {
+  ensureInit()
+  return getNative().exportCompositionImageAsync(cleanNativeInput({
+    ffmpegPath: input.ffmpegPath,
+    ffprobePath: input.ffprobePath,
+    outputPath: input.outputPath,
+    composition: input.composition,
+    format: input.format,
+    quality: input.quality,
+  }))
 }
 
 export function getExportTaskProgress(taskId: string): [number, number] | null {
