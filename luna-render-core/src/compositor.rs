@@ -439,6 +439,7 @@ pub struct Compositor {
 /// 否则 process.wait() 因 pipe 未关闭而阻塞。
 struct VideoDecoder {
     stdout: std::process::ChildStdout,
+    #[allow(dead_code)]
     process: std::process::Child,
     scaled_w: u32,
     scaled_h: u32,
@@ -1054,26 +1055,6 @@ impl Compositor {
         }
         log!("release_texture id={}", texture_id);
         Ok(())
-    }
-
-    /// 确保纹理存在：不存在则创建，存在则更新
-    pub fn ensure_texture(
-        &mut self,
-        texture_id: u32,
-        data: &[u8],
-        width: u32,
-        height: u32,
-    ) -> Result<(), String> {
-        if self.textures.contains_key(&texture_id) {
-            self.update_texture(texture_id, data)
-        } else {
-            // 临时设置 next_texture_id 以确保使用指定 ID
-            let old_next = self.next_texture_id;
-            self.next_texture_id = texture_id;
-            let result = self.load_texture(data, width, height);
-            self.next_texture_id = old_next.max(texture_id + 1);
-            result.map(|_| ())
-        }
     }
 
     // ── 渲染 ──

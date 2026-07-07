@@ -99,13 +99,8 @@ export interface LunaApi {
     saveProject(project: WorkspaceProject): Promise<WorkspaceProject>
     deleteProject(projectId: string): Promise<void>
     renameProject(projectId: string, newName: string): Promise<WorkspaceProject>
-    exportImage(name: string, dataUrl: string): Promise<{ path: string; name: string }>
-    exportCreativeDataUrl(name: string, dataUrl: string, kind: 'image' | 'video'): Promise<{ path: string; name: string }>
-    exportCreativeLivePhoto(name: string, imageDataUrl: string, videoDataUrl: string, appleLivePhoto: boolean): Promise<{ path: string; name: string }>
     exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean): Promise<{ path: string; name: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
-    /** 烘焙 LUT 并返回 float 数据给 WebGL 预览 */
-    bakeAndGetLut(colorParams: Record<string, unknown>): Promise<{ lutBuffer: ArrayBuffer; lutSize: number }>
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void

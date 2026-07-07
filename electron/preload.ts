@@ -220,15 +220,6 @@ const deviceDebugApi: DeviceDebugApi = {
   },
 }
 
-interface RenderLayer {
-  textureId: number
-  dstX: number; dstY: number; dstW: number; dstH: number
-  srcX?: number; srcY?: number; srcW?: number; srcH?: number
-  opacity?: number; zIndex?: number
-  color?: unknown
-  transform?: unknown
-}
-
 interface CompositionInput {
   version?: number
   canvas: { width: number; height: number; fps?: number; duration?: number }
@@ -251,25 +242,8 @@ interface CompositionInput {
 
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
-  pickVideo: () => ipcRenderer.invoke('lrc:pickVideo'),
-  loadTexture: (data: Buffer, width: number, height: number) => ipcRenderer.invoke('lrc:loadTexture', data, width, height),
-  loadTextureFromPath: (path: string, maxSize: number) => ipcRenderer.invoke('lrc:loadTextureFromPath', path, maxSize),
-  updateTexture: (textureId: number, data: Buffer) => ipcRenderer.invoke('lrc:updateTexture', textureId, data),
-  releaseTexture: (textureId: number) => ipcRenderer.invoke('lrc:releaseTexture', textureId),
-  renderFrame: (canvasWidth: number, canvasHeight: number, layers: RenderLayer[]) =>
-    ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
-  renderPreview: (input: any) => ipcRenderer.invoke('lrc:renderPreview', input),
   renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) =>
     ipcRenderer.invoke('lrc:renderCompositionFrame', composition, time, maxSide),
-  planPreview: (input: any) => ipcRenderer.invoke('lrc:planPreview', input),
-  exportVideo: (
-    inputPath: string, outputPath: string,
-    canvasWidth: number, canvasHeight: number,
-    fps: number | null, hardware: boolean,
-    layers: unknown[],
-    taskId?: string, qualityPreset?: string,
-    exportTaskId?: string, exportItemId?: string,
-  ) => ipcRenderer.invoke('lrc:exportVideo', inputPath, outputPath, canvasWidth, canvasHeight, fps, hardware, layers, taskId, qualityPreset, exportTaskId, exportItemId),
   exportCompositionVideo: (
     outputPath: string,
     composition: CompositionInput,
@@ -294,22 +268,10 @@ const lunaRenderCoreApi = {
     exportTaskId?: string,
     exportItemId?: string,
   ) => ipcRenderer.invoke('lrc:exportImageFromSources', outputPath, width, height, layers, format, quality, exportTaskId, exportItemId),
-  destroy: () => ipcRenderer.invoke('lrc:destroy'),
-}
-
-const lunaExportApi = {
-  start: (input: any) => { ipcRenderer.send('luna-export:start', input) },
-  cancel: (exportId: string) => { ipcRenderer.send('luna-export:cancel', exportId) },
-  onProgress: (callback: (state: any) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, state: any) => callback(state)
-    ipcRenderer.on('luna-export:progress', listener)
-    return () => ipcRenderer.off('luna-export:progress', listener)
-  },
 }
 
 contextBridge.exposeInMainWorld('luna', lunaApi)
 contextBridge.exposeInMainWorld('lunaRenderCore', lunaRenderCoreApi)
-contextBridge.exposeInMainWorld('lunaExport', lunaExportApi)
 contextBridge.exposeInMainWorld('deviceDebug', deviceDebugApi)
 if (import.meta.env.DEV || process.env.VITE_DEV_SERVER_URL) {
   contextBridge.exposeInMainWorld('wifiDebug', wifiDebugApi)
