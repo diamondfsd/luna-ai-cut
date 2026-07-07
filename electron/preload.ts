@@ -62,6 +62,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   chooseDownloadDir: () => ipcRenderer.invoke('settings:chooseDownloadDir'),
   chooseLocalResourcesDir: () => ipcRenderer.invoke('settings:chooseLocalResourcesDir'),
   chooseExportDir: () => ipcRenderer.invoke('settings:chooseExportDir'),
+  chooseLutDir: () => ipcRenderer.invoke('settings:chooseLutDir'),
   chooseMockMediaDir: () => ipcRenderer.invoke('settings:chooseMockMediaDir'),
   startMockServer: (settings?: Partial<AppSettings>) => ipcRenderer.invoke('mock:start', settings),
   stopMockServer: () => ipcRenderer.invoke('mock:stop'),
@@ -264,6 +265,8 @@ const lunaRenderCoreApi = {
   ) => ipcRenderer.invoke('lrc:exportCompositionImage', outputPath, composition, format, quality, exportTaskId, exportItemId),
   loadLut: (cubeData: Uint8Array) => ipcRenderer.invoke('lrc:loadLut', cubeData),
   releaseLut: (lutId: number) => ipcRenderer.invoke('lrc:releaseLut', lutId),
+  listCubeFiles: (dirPath: string) => ipcRenderer.invoke('lrc:listCubeFiles', dirPath),
+  readLutFile: (filePath: string) => ipcRenderer.invoke('lrc:readLutFile', filePath),
 }
 
 contextBridge.exposeInMainWorld('luna', lunaApi)
