@@ -32,6 +32,7 @@ export interface LunaApi {
   chooseDownloadDir(): Promise<string | null>
   chooseLocalResourcesDir(): Promise<string | null>
   chooseExportDir(): Promise<string | null>
+  chooseLutDir(): Promise<string | null>
   chooseMockMediaDir(): Promise<string | null>
   startMockServer(settings?: Partial<AppSettings>): Promise<MockServerStatus>
   stopMockServer(): Promise<MockServerStatus>

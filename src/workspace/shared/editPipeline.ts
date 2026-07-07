@@ -92,6 +92,8 @@ export interface EditPipeline {
   }
   lutFilter: {
     activeId: string | null
+    /** 滤镜强度 1-100，默认 100 */
+    intensity: number
   }
   watermark: WatermarkSettings
 }
@@ -181,6 +183,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
   },
   lutFilter: {
     activeId: null,
+    intensity: 100,
   },
   watermark: {
     enabled: false,

@@ -13,6 +13,7 @@ const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
 export interface WorkspacePipelineClipboardData {
   color: EditPipeline['color']
   effects: EditPipeline['effects']
+  lutFilter: EditPipeline['lutFilter']
   watermark: EditPipeline['watermark']
 }
 
@@ -129,6 +130,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     pipelineClipboardRef.current = {
       color: structuredClone(pipeline.color),
       effects: structuredClone(pipeline.effects),
+      lutFilter: structuredClone(pipeline.lutFilter),
       watermark: structuredClone(pipeline.watermark),
     }
     writeWorkspacePipelineClipboard(pipelineClipboardRef.current)
@@ -142,8 +144,8 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       return stored
     })()
     if (!data) return
-    commitPatch({ color: data.color, effects: data.effects, lutFilter: { activeId: null }, watermark: data.watermark })
-    toast.success('已粘贴调色和水印设置')
+    commitPatch({ color: data.color, effects: data.effects, lutFilter: data.lutFilter, watermark: data.watermark })
+    toast.success('已粘贴调色、滤镜和水印设置')
   }, [commitPatch])
 
   // Crop-aware pipeline update: draft in crop mode, commit otherwise

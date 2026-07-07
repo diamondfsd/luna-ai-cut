@@ -19,16 +19,17 @@ export async function buildWorkspaceExportLayersAsync(
 ): Promise<PreviewLayer[]> {
   const main = buildLayers(sourcePath, resolution, exportCanvasFor(resolution))
   if (main[0]) {
-    // 确保 LUT 已加载
     let lutId: number | undefined
     if (pipeline.lutFilter.activeId) {
-      lutId = await lutManager.ensureLoaded(pipeline.lutFilter.activeId)
+      await lutManager.discoverLuts()
+      lutId = await lutManager.ensureLoadedById(pipeline.lutFilter.activeId)
     }
     main[0] = {
       ...main[0],
       color: pipelineColorToRenderColor(pipeline.color),
       transform: pipelineTransformToRenderTransform(pipeline.transform),
       lutId,
+      lutIntensity: pipeline.lutFilter.intensity,
     }
   }
 

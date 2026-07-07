@@ -1,106 +1,62 @@
-import { ImagePlus, Loader2, Upload, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Upload } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { filePathToPreviewUrl } from '../../lib/fileUtils'
 import { toast } from '../../ui'
-import { BUILTIN_LUTS, applyTransformToImageData } from './builtinLuts'
+import { type LutFileInfo } from './builtinLuts'
+import { FilterItem } from './FilterItem'
 import { lutManager } from './LutManager'
 import './FilterPanel.css'
 
 interface FilterPanelProps {
   activeLutId: string | null
   onChange: (lutId: string | null) => void
-  /** 当前素材路径（用于生成缩略图预览） */
+  intensity?: number
+  onIntensityChange?: (intensity: number) => void
+  /** 当前素材路径（传给 FilterItem 自己加载缩略图） */
   mediaPath?: string | null
 }
 
-const THUMB_SIZE = 64
-
-/** 生成所有内置滤镜的缩略图 data URL */
-function generateThumbnails(
-  source: ImageData,
-): Record<string, string> {
-  const map: Record<string, string> = {}
-  for (const lut of BUILTIN_LUTS) {
-    map[lut.id] = applyTransformToImageData(source, lut.transformFn)
-  }
-  return map
-}
-
-export function FilterPanel({ activeLutId, onChange, mediaPath }: FilterPanelProps) {
+export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensityChange, mediaPath }: FilterPanelProps) {
   const [loadingLuts, setLoadingLuts] = useState<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [customLuts, setCustomLuts] = useState<Array<{ id: string; name: string }>>([])
+  const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
+  const [categories, setCategories] = useState<string[]>([])
+  const [activeTab, setActiveTab] = useState<string>('全部')
 
-  // ── 缩略图状态 ──
-  const [sourceLoading, setSourceLoading] = useState(false)
-  const [thumbnails, setThumbnails] = useState<Record<string, string> | null>(null)
-  const [originalThumb, setOriginalThumb] = useState<string | null>(null)
+  // 当前激活的滤镜信息
+  const activeLutInfo = useMemo(
+    () => allLuts.find((l) => l.filePath === activeLutId || l.id === activeLutId) ?? null,
+    [allLuts, activeLutId],
+  )
 
-  // 加载素材 → 生成缩略图
+  // 发现 LUT
   useEffect(() => {
-    setSourceLoading(true)
-    setThumbnails(null)
-    setOriginalThumb(null)
-
-    if (!mediaPath) {
-      setSourceLoading(false)
-      return
-    }
-
-    const imgUrl = filePathToPreviewUrl(mediaPath)
-    if (!imgUrl) {
-      setSourceLoading(false)
-      return
-    }
-
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
     let cancelled = false
+    ;(async () => {
+      let lutDir: string | undefined
+      try { const s = await (window as any).luna?.getSettings?.(); lutDir = s?.lutDir } catch { /* ignore */ }
 
-    img.onload = () => {
+      const luts = await lutManager.discoverLuts(lutDir)
       if (cancelled) return
-
-      // 绘制到缩略图 canvas（居中裁剪保持宽高比）
-      const srcRatio = img.width / img.height
-      const srcW = srcRatio >= 1 ? img.height : img.width
-      const srcH = srcRatio >= 1 ? img.height : img.width
-      const sx = (img.width - srcW) / 2
-      const sy = (img.height - srcH) / 2
-
-      const canvas = document.createElement('canvas')
-      canvas.width = THUMB_SIZE
-      canvas.height = THUMB_SIZE
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { setSourceLoading(false); return }
-
-      ctx.drawImage(img, sx, sy, srcW, srcH, 0, 0, THUMB_SIZE, THUMB_SIZE)
-      const sourceData = ctx.getImageData(0, 0, THUMB_SIZE, THUMB_SIZE)
-
-      // 保存原图缩略图
-      setOriginalThumb(canvas.toDataURL('image/jpeg', 0.85))
-
-      // 生成各滤镜缩略图
-      const thumbs = generateThumbnails(sourceData)
-      if (!cancelled) {
-        setThumbnails(thumbs)
-        setSourceLoading(false)
+      setAllLuts(luts)
+      const cats: string[] = ['全部']
+      const seen = new Set<string>()
+      for (const lut of luts) {
+        if (!seen.has(lut.category)) {
+          seen.add(lut.category)
+          cats.push(lut.category)
+        }
       }
-    }
-
-    img.onerror = () => {
-      if (!cancelled) setSourceLoading(false)
-    }
-
-    img.src = imgUrl
+      setCategories(cats)
+    })()
     return () => { cancelled = true }
-  }, [mediaPath])
+  }, [])
 
-  // 获取自定义 LUT
-  useEffect(() => {
-    const available = lutManager.getAvailableLuts()
-    setCustomLuts(available.filter((l) => l.source === 'custom'))
-  }, [activeLutId])
+  // 按 tab 过滤
+  const filteredLuts = useMemo(() => {
+    if (activeTab === '全部') return allLuts
+    return allLuts.filter((l) => l.category === activeTab)
+  }, [allLuts, activeTab])
 
   const handleSelect = useCallback(async (id: string | null) => {
     if (id === activeLutId) {
@@ -112,7 +68,9 @@ export function FilterPanel({ activeLutId, onChange, mediaPath }: FilterPanelPro
 
     setLoadingLuts((prev) => new Set(prev).add(id))
     try {
-      await lutManager.ensureLoaded(id)
+      const info = allLuts.find((l) => l.filePath === id || l.id === id)
+      if (info) await lutManager.ensureLoaded(info)
+      else await lutManager.ensureLoadedById(id)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '滤镜加载失败')
     } finally {
@@ -122,7 +80,7 @@ export function FilterPanel({ activeLutId, onChange, mediaPath }: FilterPanelPro
         return next
       })
     }
-  }, [activeLutId, onChange])
+  }, [activeLutId, onChange, allLuts])
 
   const handleImport = useCallback(async () => {
     fileInputRef.current?.click()
@@ -141,7 +99,9 @@ export function FilterPanel({ activeLutId, onChange, mediaPath }: FilterPanelPro
       const name = file.name.replace(/\.cube$/i, '')
       const id = await lutManager.importCustomLut(name, cubeData)
       onChange(id)
-      setCustomLuts((prev) => [...prev, { id, name }])
+      let lutDir: string | undefined
+      try { const s = await (window as any).luna?.getSettings?.(); lutDir = s?.lutDir } catch { /* ignore */ }
+      setAllLuts(await lutManager.discoverLuts(lutDir))
       toast.success(`已导入滤镜: ${name}`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导入失败')
@@ -149,16 +109,104 @@ export function FilterPanel({ activeLutId, onChange, mediaPath }: FilterPanelPro
     if (fileInputRef.current) fileInputRef.current.value = ''
   }, [onChange])
 
-  // ── 缩略图渲染 ──
-
-  const renderThumb = useCallback((content: React.ReactNode, isLoader?: boolean) => (
-    isLoader
-      ? <div className="filter-item-thumb filter-item-thumb--loading"><Loader2 size={18} className="spin" /></div>
-      : <div className="filter-item-thumb">{content}</div>
-  ), [])
-
   return (
-    <div className="filter-panel">
+    <aside className="filter-sidebar">
+      <div className="sidebar-inner">
+        {/* 头部 */}
+        <header className="filter-header">
+          <div className="filter-title">滤镜</div>
+          <label className="filter-search">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6Z" stroke="currentColor" stroke-width="2"/>
+              <path d="m16.2 16.2 4.3 4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <input placeholder="搜索滤镜" readOnly />
+          </label>
+        </header>
+
+        {/* 当前滤镜卡片 */}
+        <section className="filter-current-card">
+          <div className="current-thumb">
+            {activeLutInfo ? (
+              <div className="current-thumb-label">{activeLutInfo.name.slice(0, 2)}</div>
+            ) : (
+              <div className="current-thumb-label">--</div>
+            )}
+          </div>
+          <div className="current-info">
+            <div className="current-top">
+              <div>
+                <div className="eyebrow">当前滤镜</div>
+                <div className="current-name">{activeLutInfo?.name ?? '无'}</div>
+              </div>
+              {activeLutId && (
+                <button className="filter-reset" onClick={() => { onChange(null); onIntensityChange?.(100) }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M4.8 8.6A8 8 0 1 1 4.1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M4 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  重置
+                </button>
+              )}
+            </div>
+
+            {/* 强度滑块 */}
+            {activeLutId && (
+              <div className="slider-row">
+                <div className="slider-head">
+                  <span>强度</span>
+                  <span className="slider-value">{intensity}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={intensity}
+                  onChange={(e) => onIntensityChange?.(Number(e.target.value))}
+                  style={{
+                    background: `linear-gradient(90deg, #3478ff 0%, #3478ff ${intensity}%, rgba(255,255,255,0.12) ${intensity}%, rgba(255,255,255,0.12) 100%)`,
+                  }}
+                />
+                <div className="slider-labels"><span>0</span><span>100</span></div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* 分类标签 */}
+        <nav className="filter-tabs" aria-label="滤镜分类">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              className={`filter-tab ${activeTab === cat ? 'active' : ''}`}
+              onClick={() => setActiveTab(cat)}
+            >
+              {cat}
+            </button>
+          ))}
+          <button className="filter-tab filter-tab-icon" onClick={handleImport} title="导入 .cube">
+            <Upload size={15} />
+          </button>
+        </nav>
+
+        {/* 滤镜网格 */}
+        <main className="filter-grid-wrap">
+          <div className="filter-grid">
+            {filteredLuts.map((lut: LutFileInfo) => (
+              <FilterItem
+                key={lut.filePath}
+                filePath={lut.filePath}
+                name={lut.name}
+                active={activeLutId === lut.filePath}
+                loading={loadingLuts.has(lut.filePath)}
+                onClick={() => handleSelect(lut.filePath)}
+                mediaPath={mediaPath ?? null}
+              />
+            ))}
+          </div>
+        </main>
+      </div>
+
       <input
         ref={fileInputRef}
         type="file"
@@ -166,59 +214,6 @@ export function FilterPanel({ activeLutId, onChange, mediaPath }: FilterPanelPro
         style={{ display: 'none' }}
         onChange={handleFileChange}
       />
-
-      {/* 无滤镜 */}
-      <button
-        className={`filter-item ${activeLutId === null ? 'filter-item--active' : ''}`}
-        onClick={() => handleSelect(null)}
-      >
-        {sourceLoading
-          ? renderThumb(<Loader2 size={18} className="spin" />, true)
-          : renderThumb(originalThumb
-            ? <img src={originalThumb} alt="" className="filter-item-thumb-img" />
-            : <X size={20} />
-          )
-        }
-        <span className="filter-item-name">原图</span>
-      </button>
-
-      {/* 内置滤镜 */}
-      {BUILTIN_LUTS.map((lut) => (
-        <button
-          key={lut.id}
-          className={`filter-item ${activeLutId === lut.id ? 'filter-item--active' : ''} ${loadingLuts.has(lut.id) ? 'filter-item--loading' : ''}`}
-          onClick={() => handleSelect(lut.id)}
-        >
-          {renderThumb(
-            thumbnails?.[lut.id]
-              ? <img src={thumbnails[lut.id]} alt="" className="filter-item-thumb-img" />
-              : <span className="filter-item-thumb-label">{lut.name.slice(0, 1)}</span>,
-          )}
-          <span className="filter-item-name">{lut.name}</span>
-        </button>
-      ))}
-
-      {/* 自定义 LUT */}
-      {customLuts.map((lut) => (
-        <button
-          key={lut.id}
-          className={`filter-item ${activeLutId === lut.id ? 'filter-item--active' : ''}`}
-          onClick={() => handleSelect(lut.id)}
-        >
-          <div className="filter-item-thumb filter-item-thumb--custom">
-            <ImagePlus size={16} />
-          </div>
-          <span className="filter-item-name">{lut.name}</span>
-        </button>
-      ))}
-
-      {/* 导入按钮 */}
-      <button className="filter-item filter-item--import" onClick={handleImport}>
-        <div className="filter-item-thumb filter-item-thumb--import">
-          <Upload size={18} />
-        </div>
-        <span className="filter-item-name">导入.cube</span>
-      </button>
-    </div>
+    </aside>
   )
 }

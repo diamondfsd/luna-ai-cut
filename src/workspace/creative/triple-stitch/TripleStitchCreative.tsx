@@ -105,15 +105,18 @@ function buildTripleStitchComposition(
         translateY: edits[index]?.translateY ?? 0,
       },
       lutId: lutIds[index],
+      lutIntensity: pipeline.lutFilter.intensity,
     })),
   }
 }
 
 /** 异步加载各 slot 的 LUT，返回 <slotIndex → GPU_LUT_ID> 映射 */
 async function loadSlotLutIds(slots: CreativeSlotSource[]): Promise<(number | undefined)[]> {
+  // 确保 LUT 缓存可用
+  await lutManager.discoverLuts()
   return Promise.all(slots.map(async ({ pipeline }) => {
     if (!pipeline.lutFilter.activeId) return undefined
-    return await lutManager.ensureLoaded(pipeline.lutFilter.activeId)
+    return await lutManager.ensureLoadedById(pipeline.lutFilter.activeId)
   }))
 }
 
