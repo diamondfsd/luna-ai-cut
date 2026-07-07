@@ -1,7 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 
-import { logger } from '../lib/rendererLogger'
-import type { AppSettings, DownloadProgress, LunaFile, VideoExportSettings, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { AppSettings, DownloadProgress, LunaFile } from '../shared/types'
 import type { ViewMode } from './useMediaLibraryController'
 
 interface TransferActionProps {
@@ -200,15 +199,6 @@ export function useMediaLibraryTransferActions({
     setDownloadQueue((current) => (current.some((item) => item.name === file.name) ? current : [...current, file]))
   }
 
-  async function exportLocalFiles(filesToExport: LunaFile[], watermarkSettings: WatermarkSettingsType, _videoExportSettings?: VideoExportSettings): Promise<void> {
-    if (filesToExport.length === 0) return
-    if (!settings?.exportDir) { logger.error('导出失败：未设置导出目录'); return }
-
-    // 导出通过 window.luna.exportFiles 走，旧版 lunaExport 桥接已移除
-    logger.info('export skipped — 请使用主流程导出功能')
-
-  }
-
   async function deleteSelectedLocalFiles(): Promise<void> {
     const filesToDelete = selectedFiles
     if (filesToDelete.length === 0) return
@@ -251,7 +241,6 @@ export function useMediaLibraryTransferActions({
   return {
     deleteSelectedLocalFiles,
     downloadOne,
-    exportLocalFiles,
     markFileDownloaded,
     restoreDownloadedRecords,
     startDownload,
