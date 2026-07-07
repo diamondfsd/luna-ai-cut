@@ -1,5 +1,38 @@
 use std::process::Command;
 
+/// 简易 URL 百分比解码（仅处理 `%XX`，ffprobe/ffmpeg 不支持 URL 编码的路径）
+fn normalize_path(path: &str) -> String {
+    let raw = if let Some(rest) = path.strip_prefix("file://") {
+        rest
+    } else {
+        return path.to_string();
+    };
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.bytes();
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let hi = chars.next().and_then(|c| hex_val(c));
+            let lo = chars.next().and_then(|c| hex_val(c));
+            match (hi, lo) {
+                (Some(h), Some(l)) => out.push((h << 4 | l) as char),
+                _ => out.push('%'),
+            }
+        } else {
+            out.push(b as char);
+        }
+    }
+    out
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
 pub struct AudioInfo {
     pub has_audio: bool,
     pub codec: String,
@@ -16,15 +49,9 @@ pub struct VideoInfo {
 }
 
 pub fn probe_video_dimensions(ffprobe: &str, input: &str) -> Result<(u32, u32), String> {
+    let local = normalize_path(input);
     let output = Command::new(ffprobe)
-        .args([
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_streams",
-            input,
-        ])
+        .args(["-v", "quiet", "-print_format", "json", "-show_streams", &local])
         .output()
         .map_err(|e| format!("ffprobe {}: {}", input, e))?;
     if !output.status.success() {
@@ -44,16 +71,9 @@ pub fn probe_video_dimensions(ffprobe: &str, input: &str) -> Result<(u32, u32), 
 }
 
 pub fn probe_video_info(ffprobe: &str, input: &str) -> Result<VideoInfo, String> {
+    let local = normalize_path(input);
     let output = Command::new(ffprobe)
-        .args([
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_format",
-            "-show_streams",
-            input,
-        ])
+        .args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", &local])
         .output()
         .map_err(|e| format!("ffprobe: {}", e))?;
     if !output.status.success() {

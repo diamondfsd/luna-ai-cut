@@ -1493,7 +1493,7 @@ impl Compositor {
                 "-ss",
                 &format!("{:.3}", video_time),
                 "-i",
-                file_path,
+                &normalize_local_path(file_path),
                 "-vf",
                 &format!("scale={}:{}:flags=lanczos", dw, dh),
                 "-pix_fmt",
@@ -1976,10 +1976,11 @@ pub(crate) fn decode_static_image_scaled(
         (source_w, source_h)
     };
 
+    let local_path = normalize_local_path(path);
     let mut proc = Command::new(ffmpeg)
         .args([
             "-i",
-            path,
+            &local_path,
             "-vf",
             &format!("scale={}:{}:flags=lanczos", dw, dh),
             "-pix_fmt",
@@ -2026,6 +2027,34 @@ fn decode_static_image(
     path: &str,
 ) -> Result<(Vec<u8>, u32, u32), String> {
     decode_static_image_scaled(ffmpeg, ffprobe, path, PREVIEW_MAX_SIZE)
+}
+
+/// 将 file:///path 转回本地路径，ffmpeg/ffprobe 不支持 URL 编码
+fn normalize_local_path(path: &str) -> String {
+    let raw = match path.strip_prefix("file://") {
+        Some(rest) => rest,
+        None => return path.to_string(),
+    };
+    let mut out = String::with_capacity(raw.len());
+    let mut bytes = raw.bytes();
+    while let Some(b) = bytes.next() {
+        if b == b'%' {
+            match (bytes.next(), bytes.next()) {
+                (Some(h), Some(l)) => {
+                    let hi = (h as char).to_digit(16);
+                    let lo = (l as char).to_digit(16);
+                    match (hi, lo) {
+                        (Some(h), Some(l)) => out.push((h as u8 * 16 + l as u8) as char),
+                        _ => out.push('%'),
+                    }
+                }
+                _ => out.push('%'),
+            }
+        } else {
+            out.push(b as char);
+        }
+    }
+    out
 }
 
 fn image_rotation_degrees(

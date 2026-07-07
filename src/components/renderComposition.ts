@@ -11,6 +11,12 @@ function layerSourceType(layer: PreviewLayer): 'video' | 'image' {
   return layer.isVideo ? 'video' : 'image'
 }
 
+/** 将 file:// URL 转回本地文件系统路径，ffprobe/ffmpeg 不支持 URL 编码 */
+function toLocalPath(path: string): string {
+  if (!path.startsWith('file://')) return path
+  return decodeURI(path.slice(7))
+}
+
 export function buildCompositionFromPreviewLayers(
   layers: PreviewLayer[],
   width?: number,
@@ -32,7 +38,7 @@ export function buildCompositionFromPreviewLayers(
     layers: sortedLayers(layers).map((layer, index) => ({
       id: `layer-${index}`,
       source: {
-        path: layer.filePath,
+        path: toLocalPath(layer.filePath),
         sourceType: layerSourceType(layer),
         time: layer.isVideo
           ? {
