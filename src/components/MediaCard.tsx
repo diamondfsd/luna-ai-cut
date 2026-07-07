@@ -67,6 +67,24 @@ export function MediaCard({
   // 根据 sourceUrl 获取缓存文件和缩略图
   const { thumbnailUrl, cacheFilePath, hasError } = useFileCache(file.sourceUrl, cacheEnabled)
 
+  // 视频时长：优先用 file.duration，没有则异步探测
+  const [videoDuration, setVideoDuration] = useState<number | null>(null)
+  useEffect(() => {
+    if (!cacheEnabled || file.kind !== 'video' || file.duration != null) return
+    const filePath = file.downloadFilePath ?? file.localPath ?? cacheFilePath ?? file.sourceUrl
+    if (!filePath) return
+
+    window.luna.requestVideoFrameRate(file, filePath).catch(() => {})
+    const unsub = window.luna.onVideoFrameRateReady((data) => {
+      if (data.fileId === file.id && data.duration != null) {
+        setVideoDuration(data.duration)
+      }
+    })
+    return () => { unsub() }
+  }, [cacheEnabled, file.id, file.kind, file.duration, file.downloadFilePath, file.localPath, cacheFilePath, file.sourceUrl])
+
+  const effectiveDuration = file.duration ?? videoDuration
+
   const progressValue = progress?.status === 'done' || progress?.status === 'exists' ? 100 : progress?.percent ?? 0
   const progressStyle = { '--progress': `${progressValue * 3.6}deg` } as CSSProperties
   const localPath = file.downloadFilePath ?? file.localPath
@@ -128,8 +146,8 @@ export function MediaCard({
           />
         )}
         {hasError && <FileQuestion size={34} />}
-        {file.kind === 'video' && file.duration != null ? (
-          <span className="duration-badge">{formatDuration(file.duration)}</span>
+        {file.kind === 'video' && effectiveDuration != null ? (
+          <span className="duration-badge">{formatDuration(effectiveDuration)}</span>
         ) : isLive ? (
           <LivePhotoBadge size={28} className="card-live-chip" />
         ) : null}
