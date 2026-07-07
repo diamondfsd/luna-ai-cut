@@ -140,7 +140,6 @@ export function PreviewModal({
               <PreviewStage
                 url={stageSource}
                 extraLayers={watermarkLayers}
-                exportOptions={{ enable: true }}
               />
             )}
 
