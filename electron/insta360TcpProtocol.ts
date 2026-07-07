@@ -81,6 +81,7 @@ function resolveLocalAddress(targetHost: string): string | null {
 export function connectSocket(host: string, port: number, timeoutMs: number, localAddress?: string): Promise<net.Socket> {
   return new Promise((resolve, reject) => {
     const addr = localAddress ?? resolveLocalAddress(host)
+    logMainDebug('[Insta360TCP] resolveLocalAddress', { host, port, localAddress, resolvedAddr: addr })
     const socket = net.createConnection(addr ? { host, port, localAddress: addr } : { host, port })
     let settled = false
 
