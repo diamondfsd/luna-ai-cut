@@ -6,16 +6,10 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 // ── 多任务导出状态 ──
 
-struct TaskProcs {
-    decode: Option<std::process::Child>,
-    encode: Option<std::process::Child>,
-}
-
 pub struct TaskState {
     cancel: AtomicBool,
     pub current_frame: AtomicU64,
     pub total_frames: AtomicU64,
-    procs: Mutex<TaskProcs>,
 }
 
 impl TaskState {
@@ -24,30 +18,11 @@ impl TaskState {
             cancel: AtomicBool::new(false),
             current_frame: AtomicU64::new(0),
             total_frames: AtomicU64::new(0),
-            procs: Mutex::new(TaskProcs {
-                decode: None,
-                encode: None,
-            }),
         }
     }
 
     pub fn is_cancelled(&self) -> bool {
         self.cancel.load(Ordering::Relaxed)
-    }
-
-    pub fn store_procs(&self, decode: std::process::Child, encode: std::process::Child) {
-        if let Ok(mut procs) = self.procs.lock() {
-            procs.decode = Some(decode);
-            procs.encode = Some(encode);
-        }
-    }
-
-    pub fn take_procs(&self) -> (Option<std::process::Child>, Option<std::process::Child>) {
-        if let Ok(mut procs) = self.procs.lock() {
-            (procs.decode.take(), procs.encode.take())
-        } else {
-            (None, None)
-        }
     }
 }
 
@@ -68,14 +43,6 @@ pub fn cancel_task(task_id: &str) {
     if let Ok(map) = EXPORT_TASKS.lock() {
         if let Some(state) = map.get(task_id) {
             state.cancel.store(true, Ordering::SeqCst);
-            if let Ok(mut procs) = state.procs.lock() {
-                if let Some(ref mut p) = procs.decode {
-                    let _ = p.kill();
-                }
-                if let Some(ref mut p) = procs.encode {
-                    let _ = p.kill();
-                }
-            }
         }
     }
 }
