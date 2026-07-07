@@ -90,6 +90,9 @@ export interface EditPipeline {
     sharpen: number
     denoise: number
   }
+  lutFilter: {
+    activeId: string | null
+  }
   watermark: WatermarkSettings
 }
 
@@ -97,6 +100,7 @@ export type PipelinePatch = {
   transform?: Partial<EditPipeline['transform']>
   color?: Partial<EditPipeline['color']>
   effects?: Partial<EditPipeline['effects']>
+  lutFilter?: Partial<EditPipeline['lutFilter']>
   watermark?: Partial<EditPipeline['watermark']>
 }
 
@@ -174,6 +178,9 @@ export const DEFAULT_PIPELINE: EditPipeline = {
   effects: {
     sharpen: 0,
     denoise: 0,
+  },
+  lutFilter: {
+    activeId: null,
   },
   watermark: {
     enabled: false,
@@ -342,6 +349,7 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
       curve: mergeCurve(pipeline.color.curve, patch.color?.curve),
     },
     effects: { ...pipeline.effects, ...patch.effects },
+    lutFilter: { ...pipeline.lutFilter, ...patch.lutFilter },
     watermark: { ...pipeline.watermark, ...patch.watermark },
   })
 }

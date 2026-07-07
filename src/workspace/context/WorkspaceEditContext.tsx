@@ -117,6 +117,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     () => mergePipeline(previewPipeline, {
       color: DEFAULT_PIPELINE.color,
       effects: DEFAULT_PIPELINE.effects,
+      lutFilter: DEFAULT_PIPELINE.lutFilter,
     }),
     [previewPipeline],
   )
@@ -131,7 +132,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       watermark: structuredClone(pipeline.watermark),
     }
     writeWorkspacePipelineClipboard(pipelineClipboardRef.current)
-    toast.success('已复制调色和水印设置')
+    toast.success('已复制调色、滤镜和水印设置')
   }, [pipeline])
 
   const pasteToCurrent = useCallback(() => {
@@ -141,7 +142,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       return stored
     })()
     if (!data) return
-    commitPatch({ color: data.color, effects: data.effects, watermark: data.watermark })
+    commitPatch({ color: data.color, effects: data.effects, lutFilter: { activeId: null }, watermark: data.watermark })
     toast.success('已粘贴调色和水印设置')
   }, [commitPatch])
 

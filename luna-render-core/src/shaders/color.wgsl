@@ -81,5 +81,17 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>) -> vec3<f32> {
     c = hsl_to_rgb(hsl);
 
     c = c + detail * params.sharpen / 100.0 * 1.5;
+    c = apply_lut(c);
     return sat3(c);
+}
+
+fn apply_lut(color: vec3<f32>) -> vec3<f32> {
+    if (params.lut_size <= 0.0) {
+        return color;
+    }
+    let lut_size = params.lut_size;
+    let scale = (lut_size - 1.0) / lut_size;
+    let offset = 0.5 / lut_size;
+    let uvw = sat3(color) * scale + offset;
+    return textureSampleLevel(lut_texture, lut_sampler, uvw, 0.0).rgb;
 }
