@@ -45,29 +45,43 @@
 }
 
 .filter-item-thumb {
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
+  overflow: hidden;
+  background: var(--bg-muted, #f3f4f6);
+  color: var(--text-muted, #6b7280);
   font-size: 14px;
+}
+
+.filter-item-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.filter-item-thumb--custom {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: #fff;
+}
+
+.filter-item-thumb--import {
+  background: var(--bg-muted, #f3f4f6);
+  color: var(--text-muted, #6b7280);
+}
+
+.filter-item-thumb--loading {
+  background: var(--bg-muted, #f3f4f6);
 }
 
 .filter-item-thumb-label {
   font-size: 16px;
   font-weight: 600;
   letter-spacing: 1px;
-}
-
-.filter-item-thumb--custom {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-}
-
-.filter-item-thumb--import {
-  background: var(--bg-muted, #f3f4f6);
   color: var(--text-muted, #6b7280);
 }
 
@@ -77,4 +91,13 @@
   text-align: center;
   line-height: 1.2;
   word-break: break-all;
+}
+
+/* spin animation for loading */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 1s linear infinite;
 }
