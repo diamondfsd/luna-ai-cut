@@ -143,7 +143,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                       <Trash2 size={14} />
                       删除 ({ctrl.selectedFiles.length})
                     </Button>
-                    <Button variant="primary" size="compact" disabled={ctrl.exportProgress.size > 0} onClick={() => {
+                    <Button variant="primary" size="compact" onClick={() => {
                       const paths = ctrl.selectedFiles
                         .map((f) => f.downloadFilePath ?? f.localPath ?? '')
                         .filter(Boolean)
