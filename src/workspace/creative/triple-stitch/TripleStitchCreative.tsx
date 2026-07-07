@@ -8,6 +8,7 @@ import { Button, IconButton, Select, toast } from '../../../ui'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/creativeMedia'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
+import { lutManager } from '../../lut/LutManager'
 import { ParamSlider } from '../../components/ParamSlider'
 import './triple-stitch.css'
 
@@ -66,7 +67,11 @@ function clampPan(value: number, scale: number): number {
   return Math.min(limit, Math.max(-limit, value))
 }
 
-function buildTripleStitchComposition(slots: CreativeSlotSource[], edits: SlotEdit[]): CompositionInput | null {
+function buildTripleStitchComposition(
+  slots: CreativeSlotSource[],
+  edits: SlotEdit[],
+  lutIds: (number | undefined)[],
+): CompositionInput | null {
   if (slots.length !== 3) return null
   return {
     version: 1,
@@ -99,8 +104,26 @@ function buildTripleStitchComposition(slots: CreativeSlotSource[], edits: SlotEd
         translateX: edits[index]?.translateX ?? 0,
         translateY: edits[index]?.translateY ?? 0,
       },
+      lutId: lutIds[index],
     })),
   }
+}
+
+/** 异步加载各 slot 的 LUT，返回 <slotIndex → GPU_LUT_ID> 映射 */
+async function loadSlotLutIds(slots: CreativeSlotSource[]): Promise<(number | undefined)[]> {
+  return Promise.all(slots.map(async ({ pipeline }) => {
+    if (!pipeline.lutFilter.activeId) return undefined
+    return await lutManager.ensureLoaded(pipeline.lutFilter.activeId)
+  }))
+}
+
+/** 构建三拼 composition + 异步加载 LUT */
+async function buildTripleStitchCompositionAsync(
+  slots: CreativeSlotSource[],
+  edits: SlotEdit[],
+): Promise<CompositionInput | null> {
+  const lutIds = await loadSlotLutIds(slots)
+  return buildTripleStitchComposition(slots, edits, lutIds)
 }
 
 function compositionApi(): LunaCompositionExportApi {
@@ -123,7 +146,21 @@ export function TripleStitchCreative() {
   const [busy, setBusy] = useState(false)
   const dragRef = useRef<{ slot: number; x: number; y: number; startX: number; startY: number; width: number; height: number } | null>(null)
   const slotSources = useTripleStitchSources(media.media, selectedIds)
-  const composition = useMemo(() => buildTripleStitchComposition(slotSources, slotEdits), [slotEdits, slotSources])
+  const [composition, setComposition] = useState<CompositionInput | null>(null)
+  const compositionVersionRef = useRef(0)
+
+  // 异步构建 composition + 加载 LUT
+  useEffect(() => {
+    const version = ++compositionVersionRef.current
+    let cancelled = false
+    ;(async () => {
+      const result = await buildTripleStitchCompositionAsync(slotSources, slotEdits)
+      if (!cancelled && version === compositionVersionRef.current) {
+        setComposition(result)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [slotSources, slotEdits])
   const canExport = Boolean(composition) && !busy
   const activeEdit = slotEdits[activeSlot] ?? DEFAULT_SLOT_EDIT
   const activeAsset = slotSources[activeSlot]?.asset
