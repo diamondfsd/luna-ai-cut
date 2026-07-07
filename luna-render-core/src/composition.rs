@@ -60,6 +60,7 @@ pub struct CompositionLayer {
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
+    pub lut_id: Option<u32>,
 }
 
 #[napi(object)]
@@ -167,6 +168,7 @@ fn composition_layers(input: &CompositionInput, time: f64) -> Vec<PreviewLayerIn
             color: layer.color.clone().unwrap_or_default(),
             transform: layer.transform.clone().unwrap_or_default(),
             positioning: layer.positioning.clone(),
+            lut_id: layer.lut_id,
         })
         .collect()
 }

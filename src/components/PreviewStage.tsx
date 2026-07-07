@@ -7,6 +7,7 @@ import { LivePhotoBadge } from '../ui'
 import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { lutManager } from '../workspace/lut/LutManager'
 import './PreviewStage.css'
 
 interface PreviewStageProps {
@@ -225,6 +226,21 @@ export function PreviewStage(
   }, [resolution])
   const previewCanvas = useMemo(() => projectCanvasFor(resolution), [resolution])
 
+  // ── LUT 滤镜 ──
+  const [gpuLutId, setGpuLutId] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    const activeId = pipeline?.lutFilter?.activeId
+    if (!activeId) {
+      setGpuLutId(undefined)
+      return
+    }
+    let cancelled = false
+    lutManager.ensureLoaded(activeId).then((id) => {
+      if (!cancelled) setGpuLutId(id)
+    })
+    return () => { cancelled = true }
+  }, [pipeline?.lutFilter?.activeId])
+
   const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution): PreviewLayer[] => {
     // 基于 Project Canvas 计算布局，Stage 不参与
     const canvas = projectCanvasFor(layerResolution) ?? { width: 1440, height: 1440 }
@@ -243,6 +259,7 @@ export function PreviewStage(
         ...main[0],
         color: pipelineColorToRenderColor(pipeline.color),
         transform: renderTransform,
+        lutId: gpuLutId,
       }
     }
     const m = main[0]
@@ -275,7 +292,7 @@ export function PreviewStage(
       finalLayers,
     })
     return finalLayers
-  }, [resolution, extraLayers, pipeline])
+  }, [resolution, extraLayers, pipeline, gpuLutId])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []

@@ -20,7 +20,7 @@ import type { CreativeModeId, WorkspaceMode } from '../workspace/components/Work
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
-import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
+import { buildWorkspaceExportLayersAsync } from '../workspace/shared/workspaceExportLayers'
 import '../styles/workspace-loading.css'
 
 function normalizePipeline(value: unknown): EditPipeline {
@@ -281,7 +281,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         return {
           sourcePath: asset.path,
           outputBaseName: asset.name.replace(/\.[^.]+$/, '') || 'export',
-          layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline),
+          layers: await buildWorkspaceExportLayersAsync(asset.path, resolution, pipeline),
         }
       }))
 

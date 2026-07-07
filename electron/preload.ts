@@ -262,6 +262,8 @@ const lunaRenderCoreApi = {
     exportTaskId?: string,
     exportItemId?: string,
   ) => ipcRenderer.invoke('lrc:exportCompositionImage', outputPath, composition, format, quality, exportTaskId, exportItemId),
+  loadLut: (cubeData: Uint8Array) => ipcRenderer.invoke('lrc:loadLut', cubeData),
+  releaseLut: (lutId: number) => ipcRenderer.invoke('lrc:releaseLut', lutId),
 }
 
 contextBridge.exposeInMainWorld('luna', lunaApi)

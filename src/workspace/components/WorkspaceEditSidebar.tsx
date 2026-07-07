@@ -1,4 +1,4 @@
-import { Check, Crop, ImagePlus, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
+import { Check, Crop, ImagePlus, Paintbrush, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
@@ -7,12 +7,13 @@ import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ColorPanel } from '../color/ColorPanel'
+import { FilterPanel } from '../lut/FilterPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
 import type { EditPipeline } from '../shared/editPipeline'
 
-export type WorkspaceTool = 'color' | 'crop' | 'watermark'
+export type WorkspaceTool = 'color' | 'crop' | 'watermark' | 'filter'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -44,6 +45,7 @@ function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
 }
 
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
+  { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
   { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
@@ -52,6 +54,7 @@ const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element
 function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'crop') return '裁剪工具'
   if (tool === 'watermark') return '水印'
+  if (tool === 'filter') return '滤镜'
   return '色彩调节'
 }
 
@@ -109,7 +112,12 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
           )}
         </header>
         <div className="workspace-tool-panel-body">
-          {edit.activeTool === 'color' ? (
+          {edit.activeTool === 'filter' ? (
+            <FilterPanel
+              activeLutId={edit.pipeline.lutFilter.activeId}
+              onChange={(lutId) => edit.updateWorkspacePanel({ lutFilter: { activeId: lutId } })}
+            />
+          ) : edit.activeTool === 'color' ? (
             <ColorPanel
               value={edit.pipeline.color}
               onChange={(color) => edit.updateWorkspacePanel({ color })}

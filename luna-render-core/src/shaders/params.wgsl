@@ -56,6 +56,7 @@ struct LayerParams {
     scale: f32,
     translate_x: f32,
     translate_y: f32,
+    lut_size: f32,
     curve_data: array<vec4<f32>, 30>,
     hsl_data: array<vec4<f32>, 8>,
 }
@@ -63,3 +64,5 @@ struct LayerParams {
 @group(0) @binding(0) var src_texture: texture_2d<f32>;
 @group(0) @binding(1) var src_sampler: sampler;
 @group(0) @binding(2) var<uniform> params: LayerParams;
+@group(0) @binding(3) var lut_texture: texture_3d<f32>;
+@group(0) @binding(4) var lut_sampler: sampler;

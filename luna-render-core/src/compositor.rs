@@ -145,9 +145,15 @@ struct GpuLayerParams {
     scale: f32,
     translate_x: f32,
     translate_y: f32,
-    _pad: [f32; 3],
+    lut_size: f32,
+    _pad: [f32; 2],
     curve_data: [[f32; 4]; 30],
     hsl_data: [[f32; 4]; 8],
+}
+
+struct LutEntry {
+    texture: wgpu::Texture,
+    size: u32,
 }
 
 struct TextureEntry {
@@ -220,6 +226,7 @@ pub struct PreviewLayerInput {
     pub color: crate::RenderColorAdjustments,
     pub transform: crate::RenderLayerTransform,
     pub positioning: Option<crate::LayerPositioning>,
+    pub lut_id: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -415,6 +422,13 @@ pub struct Compositor {
 
     /// 缓存 staging buffer，避免每帧创建/销毁 33MB
     staging_buffer: Option<(wgpu::Buffer, u64)>,
+
+    // ── LUT 3D LUT ──
+    /// identity LUT（未启用 LUT 时的默认 3D texture 绑定）
+    identity_lut: wgpu::Texture,
+    /// 用户加载的 LUT <id → LutEntry>
+    luts: HashMap<u32, LutEntry>,
+    next_lut_id: u32,
 }
 
 /// 持久 ffmpeg pipe 视频解码器，保持进程存活按序读帧
@@ -432,7 +446,7 @@ struct VideoDecoder {
     texture_id: Option<u32>,
 }
 
-/// 创建 bind group layout（每个 layer 一个）
+/// 创建 bind group layout（每个 layer 一个，含 LUT 3D texture 可选绑定）
 fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("layer bgl"),
@@ -448,7 +462,7 @@ fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                 },
                 count: None,
             },
-            // binding 1: sampler
+            // binding 1: source sampler
             wgpu::BindGroupLayoutEntry {
                 binding: 1,
                 visibility: wgpu::ShaderStages::FRAGMENT,
@@ -467,6 +481,24 @@ fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                             .unwrap(),
                     ),
                 },
+                count: None,
+            },
+            // binding 3: LUT 3D texture (optional, identity fallback when no LUT)
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D3,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            // binding 4: LUT sampler (reuses the same sampler)
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             },
         ],
@@ -531,6 +563,181 @@ fn upload_rgba_ex(
 /// 上传 RGBA 数据到纹理 mip 0
 fn upload_rgba(queue: &wgpu::Queue, texture: &wgpu::Texture, data: &[u8], width: u32, height: u32) {
     upload_rgba_ex(queue, texture, data, width, height, 0);
+}
+
+/// 创建 2×2×2 identity LUT（未启用 LUT 时的默认绑定，采样原值）
+fn create_identity_lut(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::Texture {
+    let size = 2u32;
+    let mut data = vec![0u8; (size * size * size * 4) as usize];
+    for z in 0..size {
+        for y in 0..size {
+            for x in 0..size {
+                let offset = (z * size * size + y * size + x) as usize * 4;
+                data[offset] = (x * 255) as u8;
+                data[offset + 1] = (y * 255) as u8;
+                data[offset + 2] = (z * 255) as u8;
+                data[offset + 3] = 255;
+            }
+        }
+    }
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("identity_lut"),
+        size: wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: size,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D3,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &data,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(size * 4),
+            rows_per_image: Some(size),
+        },
+        wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: size,
+        },
+    );
+    texture
+}
+
+/// 从 .cube 文件内容创建 3D LUT 纹理
+fn create_lut_3d_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    size: u32,
+    cube_values: &[f32],
+) -> wgpu::Texture {
+    let n = size as usize;
+    let mut rgba = vec![0u8; n * n * n * 4];
+
+    // .cube 格式：data[r][g][b] = R_out, G_out, B_out → R_index slowest, B_index fastest
+    // wgpu 3D texture 布局：x=R fast, y=G mid, z=B slow → offset = (b*n*n + g*n + r) * 4
+    for r in 0..n {
+        for g in 0..n {
+            for b in 0..n {
+                let cube_idx = (r * n * n + g * n + b) * 3;
+                let wgpu_offset = (b * n * n + g * n + r) * 4;
+                rgba[wgpu_offset] =
+                    (cube_values[cube_idx].clamp(0.0, 1.0) * 255.0).round() as u8;
+                rgba[wgpu_offset + 1] =
+                    (cube_values[cube_idx + 1].clamp(0.0, 1.0) * 255.0).round() as u8;
+                rgba[wgpu_offset + 2] =
+                    (cube_values[cube_idx + 2].clamp(0.0, 1.0) * 255.0).round() as u8;
+                rgba[wgpu_offset + 3] = 255;
+            }
+        }
+    }
+
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("lut_3d"),
+        size: wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: size,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D3,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &rgba,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(size * 4),
+            rows_per_image: Some(size),
+        },
+        wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: size,
+        },
+    );
+
+    texture
+}
+
+/// 解析 .cube 格式 LUT 文件内容
+fn parse_cube_lut(data: &[u8]) -> Result<(u32, Vec<f32>), String> {
+    let text = std::str::from_utf8(data).map_err(|e| format!("not valid utf-8: {}", e))?;
+    let mut size: u32 = 0;
+    let mut values = Vec::new();
+
+    for line_raw in text.lines() {
+        let line = line_raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("LUT_3D_SIZE") {
+            size = rest
+                .trim()
+                .parse::<u32>()
+                .map_err(|e| format!("invalid LUT_3D_SIZE: {}", e))?;
+            continue;
+        }
+        if line.starts_with("TITLE")
+            || line.starts_with("DOMAIN_MIN")
+            || line.starts_with("DOMAIN_MAX")
+            || line.starts_with("LUT_1D_SIZE")
+        {
+            continue;
+        }
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 3 {
+            let r: f32 = parts[0]
+                .parse()
+                .map_err(|e| format!("parse float '{}': {}", parts[0], e))?;
+            let g: f32 = parts[1]
+                .parse()
+                .map_err(|e| format!("parse float '{}': {}", parts[1], e))?;
+            let b: f32 = parts[2]
+                .parse()
+                .map_err(|e| format!("parse float '{}': {}", parts[2], e))?;
+            values.push(r);
+            values.push(g);
+            values.push(b);
+        }
+    }
+
+    if size == 0 {
+        return Err("no LUT_3D_SIZE found in .cube data".to_string());
+    }
+    let expected = (size as usize).pow(3) * 3;
+    if values.len() != expected {
+        return Err(format!(
+            "expected {} RGB values for LUT_3D_SIZE {}, got {}",
+            expected,
+            size,
+            values.len()
+        ));
+    }
+
+    Ok((size, values))
 }
 
 /// 对齐
@@ -631,6 +838,12 @@ impl Compositor {
             cache: None,
         });
 
+        // ── identity LUT（2×2×2，采样输出 = 输入） ──
+        let identity_lut = create_identity_lut(&device, &queue);
+        log!(
+            "identity_lut created size=2x2x2 format=Rgba8Unorm"
+        );
+
         Ok(Self {
             device,
             queue,
@@ -651,6 +864,9 @@ impl Compositor {
             frame_decoder_max_sides: HashMap::new(),
             last_preview_log: None,
             staging_buffer: None,
+            identity_lut,
+            luts: HashMap::new(),
+            next_lut_id: 1,
         })
     }
 
@@ -1038,6 +1254,35 @@ impl Compositor {
         Ok(())
     }
 
+    // ── LUT 管理 ──
+
+    /// 加载 .cube LUT 数据并创建 3D 纹理，返回 LUT ID
+    pub fn load_lut(&mut self, cube_data: &[u8]) -> Result<u32, String> {
+        let (size, values) = parse_cube_lut(cube_data)?;
+        if size < 2 || size > self.device.limits().max_texture_dimension_3d {
+            return Err(format!(
+                "LUT size {} out of range [2, {}]",
+                size,
+                self.device.limits().max_texture_dimension_3d
+            ));
+        }
+        let texture = create_lut_3d_texture(&self.device, &self.queue, size, &values);
+        let id = self.next_lut_id;
+        self.next_lut_id += 1;
+        log!("load_lut id={} size={}x{}x{}", id, size, size, size);
+        self.luts.insert(id, LutEntry { texture, size });
+        Ok(id)
+    }
+
+    /// 释放 LUT 纹理
+    pub fn release_lut(&mut self, lut_id: u32) -> Result<(), String> {
+        self.luts
+            .remove(&lut_id)
+            .ok_or_else(|| format!("LUT {} not found", lut_id))?;
+        log!("release_lut id={}", lut_id);
+        Ok(())
+    }
+
     // ── 渲染 ──
 
     pub fn render(
@@ -1147,6 +1392,19 @@ impl Compositor {
                     tex_entry.height as f64,
                 );
 
+                // ── 确定当前层的 LUT ──
+                let lut_texture = if let Some(lut_id) = layer.lut_id {
+                    self.luts.get(&lut_id).map(|e| &e.texture)
+                } else {
+                    None
+                }
+                .unwrap_or(&self.identity_lut);
+                let lut_size = layer
+                    .lut_id
+                    .and_then(|id| self.luts.get(&id))
+                    .map(|e| e.size as f32)
+                    .unwrap_or(0.0);
+
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
                     dst_x: (pos_dst_x * canvas_width as f64) as f32,
@@ -1251,7 +1509,8 @@ impl Compositor {
                         .as_ref()
                         .and_then(|t| t.translate_y)
                         .unwrap_or(0.0) as f32,
-                    _pad: [0.0; 3],
+                    lut_size,
+                    _pad: [0.0; 2],
                     curve_data,
                     hsl_data,
                 };
@@ -1269,6 +1528,8 @@ impl Compositor {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
+                let lut_view = lut_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
                 let bg_entries = [
                     wgpu::BindGroupEntry {
                         binding: 0,
@@ -1281,6 +1542,14 @@ impl Compositor {
                     wgpu::BindGroupEntry {
                         binding: 2,
                         resource: params_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(&lut_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
                     },
                 ];
 
@@ -1889,6 +2158,7 @@ impl Compositor {
                     color: Some(layer.color.clone()),
                     transform: Some(transform),
                     positioning: layer.positioning.clone(),
+                    lut_id: layer.lut_id,
                 }
             })
             .collect();
