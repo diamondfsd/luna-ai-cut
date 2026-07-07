@@ -60,6 +60,7 @@ export function buildCompositionFromPreviewLayers(
       color: layer.color,
       transform: layer.transform,
       positioning: layer.positioning,
+      lutId: layer.lutId,
     })),
   }
 }

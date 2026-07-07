@@ -98,6 +98,8 @@ export interface PreviewLayer {
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
+  /** GPU 3D LUT ID（由 LutManager 管理） */
+  lutId?: number
 }
 
 export interface CompositionInput {
@@ -130,6 +132,8 @@ export interface CompositionLayer {
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
+  /** GPU 3D LUT ID */
+  lutId?: number
 }
 
 /** 纹理层 */
@@ -141,4 +145,5 @@ export interface RenderLayer {
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
+  lutId?: number
 }

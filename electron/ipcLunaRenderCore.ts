@@ -13,6 +13,8 @@ import {
   exportCompositionImageAsync as lrcExportCompositionImageAsync,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
+  loadLut as lrcLoadLut,
+  releaseLut as lrcReleaseLut,
 } from './lunaRenderCore'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import * as exportTaskService from './exportTaskService'
@@ -214,6 +216,18 @@ export function register(_ctx: RegisterContext): void {
   ipcMain.handle('lrc:getExportTaskProgress', safe('getExportTaskProgress',
     async (_event: IpcMainInvokeEvent, taskId: string) => {
       return lrcGetExportTaskProgress(taskId)
+    },
+  ))
+
+  ipcMain.handle('lrc:loadLut', safe('loadLut',
+    async (_event: IpcMainInvokeEvent, cubeData: Buffer) => {
+      return lrcLoadLut(cubeData)
+    },
+  ))
+
+  ipcMain.handle('lrc:releaseLut', safe('releaseLut',
+    async (_event: IpcMainInvokeEvent, lutId: number) => {
+      lrcReleaseLut(lutId)
     },
   ))
 }
