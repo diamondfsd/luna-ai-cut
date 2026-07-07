@@ -3,6 +3,7 @@ import type { WatermarkSettings as WatermarkSettingsType } from '../shared/types
 import { buildLayers } from './PreviewStage'
 import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
+import { getIsLivePhoto } from '../shared/livePhoto'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -194,24 +195,78 @@ export async function exportPreviewLivePhoto(params: {
   imageLayers: PreviewLayer[]
   videoLayers: PreviewLayer[]
   appleLivePhoto: boolean
+  /** 导出任务 ID（写入任务记录） */
+  exportTaskId?: string
+  /** 子任务 ID */
+  exportItemId?: string
+  taskName?: string
+  index?: number
+  totalFiles?: number
 }): Promise<{ path: string; name: string }> {
   const stamp = Date.now()
   const outputDir = params.exportDir.replace(/[\\/]$/, '')
-  const imagePath = `${outputDir}/${params.name}_live_image_${stamp}.jpg`
-  const videoPath = `${outputDir}/${params.name}_live_video_${stamp}.mp4`
+  const tempImagePath = `${outputDir}/${params.name}_live_image_${stamp}.jpg`
+  const tempVideoPath = `${outputDir}/${params.name}_live_video_${stamp}.mp4`
+  const tempImageName = `${params.name}_live_image_${stamp}.jpg`
+  const tempVideoName = `${params.name}_live_video_${stamp}.mp4`
+  const fileName = `${params.name}_${stamp}.jpg`
+  const taskId = params.exportTaskId
+  const itemId = params.exportItemId
+  const _taskName = params.taskName ?? 'Live 图导出'
+  const _index = params.index ?? 0
+  const _totalFiles = params.totalFiles ?? 1
 
-  const imageComposition = buildCompositionFromPreviewLayers(params.imageLayers, params.width, params.height)
-  await lrc().exportCompositionImage(imagePath, imageComposition, 'jpeg', 100)
-  await exportPreviewVideo({
-    exportDir: outputDir,
-    fileName: `${params.name}_live_video_${stamp}.mp4`,
-    width: params.width,
-    height: params.height,
-    layers: params.videoLayers,
-    qualityPreset: 'high',
-  })
+  const emitProgress = (percent: number, status: 'exporting' | 'done' | 'failed', destinationPath?: string, error?: string) => {
+    if (!taskId || !itemId) return
+    emitLocalExportProgress({
+      exportId: itemId, taskId, taskName: _taskName, fileName,
+      index: _index, totalFiles: _totalFiles, percent, status,
+      destinationPath: destinationPath ?? tempImagePath, error,
+    })
+  }
 
-  return window.luna.workspace.exportRenderedLivePhoto(params.name, imagePath, videoPath, params.appleLivePhoto)
+  try {
+    // Step 1: 调用导出图片方法
+    emitProgress(5, 'exporting')
+    await exportPreviewImage({
+      exportDir: outputDir,
+      fileName: tempImageName,
+      width: params.width,
+      height: params.height,
+      layers: params.imageLayers,
+      format: 'jpeg',
+      quality: 100,
+    })
+    emitProgress(35, 'exporting')
+
+    // Step 2: 调用导出视频方法
+    await exportPreviewVideo({
+      exportDir: outputDir,
+      fileName: tempVideoName,
+      width: params.width,
+      height: params.height,
+      layers: params.videoLayers,
+      qualityPreset: 'high',
+    })
+    emitProgress(65, 'exporting')
+
+    // Step 3: 合并为 Google Motion Photo（后端自动清理临时文件）
+    const result = await window.luna.workspace.exportRenderedLivePhoto(
+      params.name, tempImagePath, tempVideoPath, params.appleLivePhoto,
+    )
+
+    if (taskId && itemId) {
+      await window.luna.exportTask.updateItem(taskId, itemId, {
+        status: 'done', progress: 100, destinationPath: result.path,
+      }).catch(() => {})
+    }
+    emitProgress(100, 'done', result.path)
+    return result
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    emitProgress(100, 'failed', undefined, message)
+    throw error
+  }
 }
 
 // ── 公共批量导出 ──
@@ -229,6 +284,7 @@ interface BatchExportEntry {
   layers?: PreviewLayer[]
   index: number
   kind: 'image' | 'video'
+  isLivePhoto?: boolean
 }
 
 async function runWithConcurrency<T>(
@@ -342,6 +398,41 @@ async function runBatchExportQueue(
       const res = await window.luna.workspace.getMediaResolution(entry.sourcePath)
       const exportLayers = entry.layers ?? buildExportLayers(entry.sourcePath, res)
       const fileName = fileNameFromPath(entry.outputPath)
+
+      // ── 检测是否为 Live Photo ──
+      if (entry.kind === 'image') {
+        const isLive = entry.isLivePhoto ?? (await getIsLivePhoto(entry.sourcePath))
+        if (isLive) {
+          try {
+            const videoResult = await window.luna.previewLivePhoto(entry.sourcePath)
+            const videoUrl = videoResult.source
+            if (videoUrl) {
+              const videoRes = await window.luna.workspace.getMediaResolution(videoUrl).catch(() => res)
+              // 克隆图片图层并将基础图层替换为视频 URL
+              const videoLayers: PreviewLayer[] = exportLayers.map((layer, i) =>
+                i === 0 ? { ...layer, filePath: videoUrl, isVideo: true } : layer,
+              )
+              await exportPreviewLivePhoto({
+                name: baseNameFromPath(entry.sourcePath),
+                exportDir,
+                width: videoRes.width,
+                height: videoRes.height,
+                imageLayers: exportLayers,
+                videoLayers,
+                appleLivePhoto: false,
+                exportTaskId: taskId,
+                exportItemId: entry.id,
+                taskName,
+                index: entry.index,
+                totalFiles: entries.length,
+              })
+              return
+            }
+          } catch {
+            // Live Photo 视频提取失败时降级为图片导出
+          }
+        }
+      }
 
       if (entry.kind === 'video') {
         await exportPreviewVideo({
