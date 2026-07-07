@@ -221,6 +221,7 @@ pub struct RenderLayer {
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<u32>,
+    pub lut_intensity: Option<f64>,
 }
 
 /// 预览层 — render_preview 的统一层描述
@@ -244,6 +245,7 @@ pub struct PreviewLayer {
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<u32>,
+    pub lut_intensity: Option<f64>,
 }
 
 /// render_preview 的输入
@@ -315,14 +317,6 @@ pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
     let c = Compositor::new(log_path.as_deref()).map_err(|e| napi::Error::from_reason(e))?;
     *guard = Some(c);
     Ok(())
-}
-
-pub(crate) fn create_export_compositor() -> napi::Result<Compositor> {
-    let log_path = COMPOSITOR_LOG_PATH
-        .lock()
-        .ok()
-        .and_then(|guard| guard.clone());
-    Compositor::new(log_path.as_deref()).map_err(napi::Error::from_reason)
 }
 
 /// 加载一张纹理到 GPU，返回 texture_id
@@ -416,6 +410,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             transform: l.transform.clone().unwrap_or_default(),
             positioning: l.positioning.clone(),
             lut_id: l.lut_id,
+            lut_intensity: l.lut_intensity,
         })
         .collect();
     lock(|c| {
@@ -466,6 +461,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     transform: item.layer.transform.clone().unwrap_or_default(),
                     positioning: item.layer.positioning.clone(),
                     lut_id: item.layer.lut_id,
+                    lut_intensity: item.layer.lut_intensity,
                 },
                 compositor::PreviewTextureInfo {
                     texture_id: item.texture.texture_id,

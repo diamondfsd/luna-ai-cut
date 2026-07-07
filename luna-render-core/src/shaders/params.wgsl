@@ -57,6 +57,7 @@ struct LayerParams {
     translate_x: f32,
     translate_y: f32,
     lut_size: f32,
+    lut_intensity: f32,
     curve_data: array<vec4<f32>, 30>,
     hsl_data: array<vec4<f32>, 8>,
 }

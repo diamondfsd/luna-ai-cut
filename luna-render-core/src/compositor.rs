@@ -146,7 +146,8 @@ struct GpuLayerParams {
     translate_x: f32,
     translate_y: f32,
     lut_size: f32,
-    _pad: [f32; 2],
+    lut_intensity: f32,
+    _pad: [f32; 1],
     curve_data: [[f32; 4]; 30],
     hsl_data: [[f32; 4]; 8],
 }
@@ -227,6 +228,7 @@ pub struct PreviewLayerInput {
     pub transform: crate::RenderLayerTransform,
     pub positioning: Option<crate::LayerPositioning>,
     pub lut_id: Option<u32>,
+    pub lut_intensity: Option<f64>,
 }
 
 #[derive(Clone, Debug)]
@@ -626,19 +628,20 @@ fn create_lut_3d_texture(
     let n = size as usize;
     let mut rgba = vec![0u8; n * n * n * 4];
 
-    // .cube 格式：data[r][g][b] = R_out, G_out, B_out → R_index slowest, B_index fastest
+    // .cube 文件实际格式：col1=B_out, col2=G_out, col3=R_out（多数 LUT 生成器用 BGR 顺序）
     // wgpu 3D texture 布局：x=R fast, y=G mid, z=B slow → offset = (b*n*n + g*n + r) * 4
+    // 重排：.cube col3(R_out) → R, col2(G_out) → G, col1(B_out) → B
     for r in 0..n {
         for g in 0..n {
             for b in 0..n {
                 let cube_idx = (r * n * n + g * n + b) * 3;
                 let wgpu_offset = (b * n * n + g * n + r) * 4;
                 rgba[wgpu_offset] =
-                    (cube_values[cube_idx].clamp(0.0, 1.0) * 255.0).round() as u8;
+                    (cube_values[cube_idx + 2].clamp(0.0, 1.0) * 255.0).round() as u8;
                 rgba[wgpu_offset + 1] =
                     (cube_values[cube_idx + 1].clamp(0.0, 1.0) * 255.0).round() as u8;
                 rgba[wgpu_offset + 2] =
-                    (cube_values[cube_idx + 2].clamp(0.0, 1.0) * 255.0).round() as u8;
+                    (cube_values[cube_idx].clamp(0.0, 1.0) * 255.0).round() as u8;
                 rgba[wgpu_offset + 3] = 255;
             }
         }
@@ -1510,7 +1513,8 @@ impl Compositor {
                         .and_then(|t| t.translate_y)
                         .unwrap_or(0.0) as f32,
                     lut_size,
-                    _pad: [0.0; 2],
+                    lut_intensity: layer.lut_intensity.unwrap_or(100.0) as f32,
+                    _pad: [0.0; 1],
                     curve_data,
                     hsl_data,
                 };
@@ -2159,6 +2163,7 @@ impl Compositor {
                     transform: Some(transform),
                     positioning: layer.positioning.clone(),
                     lut_id: layer.lut_id,
+                    lut_intensity: layer.lut_intensity,
                 }
             })
             .collect();
