@@ -291,7 +291,7 @@ fn plan_layer_transform(
     output_height: u32,
 ) -> crate::RenderLayerTransform {
     let mut transform = layer.transform.clone();
-    if layer.fit != "cover" {
+    if layer.fit != "cover" || layer.positioning.is_some() {
         return transform;
     }
     let visible_aspect = layer_visible_aspect(layer, texture);
@@ -375,25 +375,6 @@ fn resolve_positioning(
         _ => (default_x, default_y),
     };
 
-    log!(
-        "resolve_positioning anchor={} target_width={:.3} margin=({:.3},{:.3}) \
-         canvas={:.0}x{:.0}(aspect={:.3}) tex={:.0}x{:.0}(aspect={:.3}) \
-         -> dst=({:.3},{:.3}) {:.3}x{:.3}",
-        pos.anchor,
-        pos.target_width,
-        margin_x,
-        margin_y,
-        canvas_w,
-        canvas_h,
-        canvas_aspect,
-        tex_w,
-        tex_h,
-        tex_aspect,
-        dst_x,
-        dst_y,
-        dst_w,
-        dst_h,
-    );
 
     (dst_x, dst_y, dst_w, dst_h)
 }
