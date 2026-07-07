@@ -121,12 +121,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     saveProject: (project: WorkspaceProject) => ipcRenderer.invoke('workspace:saveProject', project),
     deleteProject: (projectId: string) => ipcRenderer.invoke('workspace:deleteProject', projectId),
     renameProject: (projectId: string, newName: string) => ipcRenderer.invoke('workspace:renameProject', projectId, newName),
-  exportImage: (name: string, dataUrl: string) => ipcRenderer.invoke('workspace:exportImage', name, dataUrl),
-    exportCreativeDataUrl: (name: string, dataUrl: string, kind: 'image' | 'video') => ipcRenderer.invoke('workspace:exportCreativeDataUrl', name, dataUrl, kind),
-    exportCreativeLivePhoto: (name: string, imageDataUrl: string, videoDataUrl: string, appleLivePhoto: boolean) => ipcRenderer.invoke('workspace:exportCreativeLivePhoto', name, imageDataUrl, videoDataUrl, appleLivePhoto),
     exportRenderedLivePhoto: (name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean) => ipcRenderer.invoke('workspace:exportRenderedLivePhoto', name, imagePath, videoPath, appleLivePhoto),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
-    bakeAndGetLut: (colorParams: Record<string, unknown>) => ipcRenderer.invoke('workspace:bakeAndGetLut', colorParams),
   },
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: DownloadProgress): void => callback(progress)
