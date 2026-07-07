@@ -419,7 +419,7 @@ async function runBatchExportQueue(
                 height: videoRes.height,
                 imageLayers: exportLayers,
                 videoLayers,
-                appleLivePhoto: false,
+                appleLivePhoto: (await window.luna.getSettings().catch(() => ({ exportAppleLivePhoto: false }))).exportAppleLivePhoto ?? false,
                 exportTaskId: taskId,
                 exportItemId: entry.id,
                 taskName,
