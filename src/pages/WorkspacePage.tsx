@@ -207,6 +207,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     const patch: PipelinePatch = {
       color: data.color,
       effects: data.effects,
+      lutFilter: data.lutFilter,
       watermark: data.watermark,
     }
 
@@ -243,9 +244,10 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         writeWorkspacePipelineClipboard({
           color: structuredClone(pipe.color),
           effects: structuredClone(pipe.effects),
+          lutFilter: structuredClone(pipe.lutFilter),
           watermark: structuredClone(pipe.watermark),
         })
-        toast.success('已复制调色和水印设置')
+        toast.success('已复制调色、滤镜和水印设置')
         return
       }
     }

@@ -100,6 +100,8 @@ export interface PreviewLayer {
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   /** GPU 3D LUT ID（由 LutManager 管理） */
   lutId?: number
+  /** LUT 强度 0-100 */
+  lutIntensity?: number
 }
 
 export interface CompositionInput {
@@ -134,6 +136,8 @@ export interface CompositionLayer {
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   /** GPU 3D LUT ID */
   lutId?: number
+  /** LUT 强度 0-100 */
+  lutIntensity?: number
 }
 
 /** 纹理层 */
@@ -146,4 +150,5 @@ export interface RenderLayer {
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   lutId?: number
+  lutIntensity?: number
 }

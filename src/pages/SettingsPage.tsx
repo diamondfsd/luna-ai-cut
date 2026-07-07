@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FolderOpen, Image, Trash2 } from 'lucide-react'
+import { FolderOpen, Image, Palette, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
@@ -184,6 +184,52 @@ export function SettingsPage({
             <Button variant="secondary" size="compact" onClick={handleClearCache} icon={<Trash2 size={15} />}>
               清理缓存
             </Button>
+          </div>
+        </article>
+
+        {/* ===== 滤镜 LUT ===== */}
+        <h3 className="settings-group-title"><Palette size={14} /> 滤镜</h3>
+
+        <article className="settings-row">
+          <div className="settings-row-copy">
+            <span>扩展 LUT 目录</span>
+            <strong>{settings?.lutDir || '未配置'}</strong>
+            <em>导入 .cube 滤镜文件目录树，子文件夹自动成为滤镜分组名</em>
+          </div>
+          <div className="settings-row-actions">
+            {settings?.lutDir && (
+              <Button variant="secondary" size="compact" onClick={() => openDirectory(settings.lutDir)} icon={<FolderOpen size={15} />}>
+                打开
+              </Button>
+            )}
+            <Button variant="primary" size="compact"
+              icon={<FolderOpen size={15} />}
+              onClick={async () => {
+                try {
+                  const result = await window.luna.chooseLutDir()
+                  if (result) {
+                    const next = { ...settings, lutDir: result } as AppSettings
+                    setSettings(next)
+                    await window.luna.saveSettings({ lutDir: result }).then(setSettings)
+                    toast.success('LUT 目录已更新')
+                  }
+                } catch { /* 用户取消 */ }
+              }}
+            >
+              {settings?.lutDir ? '更换目录' : '添加目录'}
+            </Button>
+            {settings?.lutDir && (
+              <Button variant="danger" size="compact"
+                onClick={async () => {
+                  const next = { ...settings, lutDir: undefined } as AppSettings
+                  setSettings(next)
+                  await window.luna.saveSettings({ lutDir: undefined })
+                  toast.success('LUT 目录已移除')
+                }}
+              >
+                移除
+              </Button>
+            )}
           </div>
         </article>
 
