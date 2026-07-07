@@ -1,9 +1,9 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
-import type { PreviewLayer } from '../shared/types'
+import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
+import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
 
 const PREVIEW_TEXTURE_MAX_SIDE = 1920
-const VIDEO_RENDER_FPS = 30
 
 export interface LrcRenderHandle {
   exportImage(outputPath: string, width: number, height: number, format: string, quality: number): Promise<void>
@@ -26,6 +26,8 @@ interface LrcRenderProps {
   onRender?: () => void
   onMediaSize?: (width: number, height: number) => void
   maxSide?: number
+  canvasWidth?: number
+  canvasHeight?: number
   onVideoElement?: (el: HTMLVideoElement | null) => void
 }
 
@@ -38,15 +40,14 @@ interface RenderPreviewOutput {
 interface LunaRenderCore {
   init: () => Promise<void>
   renderPreview: (input: { maxSide?: number; width?: number; height?: number; layers: PreviewLayer[] }) => Promise<RenderPreviewOutput>
+  renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) => Promise<RenderPreviewOutput>
   exportImageFromSources: (outputPath: string, width: number, height: number, layers: PreviewLayer[], format: string, quality: number) => Promise<void>
-  exportVideo: (
-    inputPath: string,
+  exportCompositionVideo: (
     outputPath: string,
-    canvasWidth: number,
-    canvasHeight: number,
+    composition: CompositionInput,
     fps: number | null,
+    duration: number | null,
     hardware: boolean,
-    layers: PreviewLayer[],
     taskId?: string,
     qualityPreset?: string,
   ) => Promise<void>
@@ -58,23 +59,6 @@ function getLRC(): LunaRenderCore | undefined {
 
 function layerKey(layer: PreviewLayer): string {
   return `${layer.isVideo ? 'v' : 's'}:${layer.filePath}`
-}
-
-function summarizeLayer(layer: PreviewLayer) {
-  return {
-    filePath: layer.filePath,
-    isVideo: Boolean(layer.isVideo),
-    videoTime: layer.videoTime ?? 0,
-    zIndex: layer.zIndex ?? 0,
-    dst: [layer.dstX, layer.dstY, layer.dstW, layer.dstH],
-    src: [layer.srcX, layer.srcY, layer.srcW, layer.srcH],
-    opacity: layer.opacity,
-    color: layer.color,
-    transform: layer.transform,
-    cropAspectRatio: layer.transform?.crop
-      ? Math.round((layer.transform.crop.w / layer.transform.crop.h) * 100) / 100
-      : null,
-  }
 }
 
 function sortedLayers(layers: PreviewLayer[]): PreviewLayer[] {
@@ -89,7 +73,7 @@ function bytesFromRenderData(data: RenderPreviewOutput['data']): Uint8ClampedArr
 }
 
 export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
-  { layers, canvasRef: extRef, className, onError, onReady, onRender, onMediaSize, maxSide, onVideoElement },
+  { layers, canvasRef: extRef, className, onError, onReady, onRender, onMediaSize, maxSide, canvasWidth, canvasHeight, onVideoElement },
   ref,
 ) {
   const internalRef = useRef<HTMLCanvasElement>(null)
@@ -162,11 +146,8 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     renderQueuedRef.current = false
     try {
       const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
-      console.log('[LrcRender] renderPreview -> rust', {
-        maxSide: effectiveMaxSide,
-        layers: renderLayers.map(summarizeLayer),
-      })
-      const result = await lrc.renderPreview({ maxSide: effectiveMaxSide, layers: renderLayers })
+      const composition = buildCompositionFromPreviewLayers(renderLayers, canvasWidth, canvasHeight)
+      const result = await lrc.renderCompositionFrame(composition, 0, effectiveMaxSide)
       if (destroyRef.current) return
 
       if (result.width !== lastMediaSizeRef.current[0] || result.height !== lastMediaSizeRef.current[1]) {
@@ -179,16 +160,6 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       const context = canvas.getContext('2d')
       if (!context) throw new Error('画布不可用')
       context.putImageData(new ImageData(bytesFromRenderData(result.data), result.width, result.height), 0, 0)
-
-      console.log('[LrcRender] renderPreview result', {
-        maxSide: effectiveMaxSide,
-        output: `${result.width}x${result.height}`,
-        outputSize: { width: result.width, height: result.height },
-        outputAspectRatio: Math.round((result.width / result.height) * 100) / 100,
-        layers: renderLayers.length,
-        canvasCss: `${canvas.clientWidth}x${canvas.clientHeight}`,
-        parent: canvas.parentElement ? `${canvas.parentElement.clientWidth}x${canvas.parentElement.clientHeight}` : null,
-      })
       onRender?.()
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
@@ -204,14 +175,12 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
 
   useEffect(() => {
     lastMediaSizeRef.current = [0, 0]
-    console.log('[LrcRender] received layers', layers.map(summarizeLayer))
 
     if (!ready) return
     const currentKeys = new Set(layers.filter((layer) => layer.isVideo).map(layerKey))
 
     for (const [key, video] of videosRef.current) {
       if (!currentKeys.has(key)) {
-        console.log('[LrcRender] release video clock', { key })
         video.pause()
         videosRef.current.delete(key)
       }
@@ -225,7 +194,6 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     for (const layer of layers.filter((item) => item.isVideo)) {
       const key = layerKey(layer)
       if (videosRef.current.has(key)) continue
-      console.log('[LrcRender] create video clock', { key, layer: summarizeLayer(layer) })
       const video = document.createElement('video')
       video.muted = false
       video.loop = false
@@ -259,7 +227,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       const hasPlayingVideo = [...videosRef.current.values()].some((video) => !video.paused && !video.ended)
       if (hasPlayingVideo) {
         const now = performance.now()
-        if (now - lastVideoFrameAtRef.current >= 1000 / VIDEO_RENDER_FPS) {
+        if (now - lastVideoFrameAtRef.current >= 1000 / COMPOSITION_RENDER_FPS) {
           lastVideoFrameAtRef.current = now
           void renderPreviewFrame()
         }
@@ -286,16 +254,14 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       const lrc = getLRC()
       if (!lrc) throw new Error('渲染引擎未初始化')
       const currentLayers = sortedLayers(layersRef.current)
-      const videoLayer = currentLayers.find((layer) => layer.isVideo)
-      if (!videoLayer) throw new Error('未找到视频图层')
-      await lrc.exportVideo(
-        videoLayer.filePath,
+      if (!currentLayers.some((layer) => layer.isVideo)) throw new Error('未找到视频图层')
+      const composition = buildCompositionFromPreviewLayers(currentLayers, width, height, { fps: options?.fps ?? COMPOSITION_RENDER_FPS })
+      await lrc.exportCompositionVideo(
         outputPath,
-        width,
-        height,
+        composition,
         options?.fps ?? null,
+        null,
         options?.hardware ?? true,
-        currentLayers,
         options?.taskId,
         options?.qualityPreset,
       )

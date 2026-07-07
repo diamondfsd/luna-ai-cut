@@ -1,6 +1,7 @@
-import type { PreviewLayer } from '../shared/types'
+import type { CompositionInput, PreviewLayer } from '../shared/types'
 import type { WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { buildLayers } from './PreviewStage'
+import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
@@ -18,14 +19,12 @@ interface LunaRenderCoreApi {
     exportTaskId?: string,
     exportItemId?: string,
   ): Promise<void>
-  exportVideo(
-    inputPath: string,
+  exportCompositionVideo(
     outputPath: string,
-    canvasWidth: number,
-    canvasHeight: number,
+    composition: CompositionInput,
     fps: number | null,
+    duration: number | null,
     hardware: boolean,
-    layers: PreviewLayer[],
     taskId?: string,
     qualityPreset?: string,
     exportTaskId?: string,
@@ -134,8 +133,7 @@ export async function exportPreviewVideo(params: {
   index?: number
   totalFiles?: number
 }): Promise<{ path: string; name: string }> {
-  const videoSourceLayer = params.layers.find((layer) => layer.isVideo)
-  if (!videoSourceLayer) throw new Error('未找到视频图层')
+  if (!params.layers.some((layer) => layer.isVideo)) throw new Error('未找到视频图层')
 
   const path = outputPath(params.exportDir, params.fileName)
   const taskId = params.exportTaskId
@@ -169,7 +167,8 @@ export async function exportPreviewVideo(params: {
   })() : null
 
   try {
-    await lrc().exportVideo(videoSourceLayer.filePath, path, params.width, params.height, null, true, params.layers, itemId, params.qualityPreset ?? 'high', taskId, itemId)
+    const composition = buildCompositionFromPreviewLayers(params.layers, params.width, params.height)
+    await lrc().exportCompositionVideo(path, composition, null, null, true, itemId, params.qualityPreset ?? 'high', taskId, itemId)
     if (taskId && itemId) {
       await window.luna.exportTask.updateItem(taskId, itemId, { status: 'done', progress: 100, destinationPath: path }).catch(() => {})
       emitVideoProgress(100, 'done')
