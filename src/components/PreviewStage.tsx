@@ -1,11 +1,10 @@
-import { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
 import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
-import { emitLocalExportProgress, exportPreviewImage, exportPreviewLivePhoto, exportPreviewVideo } from './previewStageExport'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge } from '../ui'
-import { baseNameFromPath, isImagePath, isVideoPath } from '../lib/fileUtils'
+import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import './PreviewStage.css'
@@ -14,7 +13,6 @@ interface PreviewStageProps {
   url: string | null
   pending?: boolean
   extraLayers?: PreviewLayer[]
-  exportOptions?: ExportOptions
   pipeline?: EditPipeline
   cropActive?: boolean
   onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void
@@ -25,16 +23,6 @@ interface PreviewStageProps {
 export interface MediaResolution {
   width: number
   height: number
-}
-
-export interface ExportOptions {
-  enable: boolean
-  format?: 'jpeg' | 'png' | 'webp'
-  quality?: number
-}
-
-export interface PreviewStageHandle {
-  export(): Promise<{ path: string; name: string }>
 }
 
 interface StageSize {
@@ -94,9 +82,8 @@ function projectCanvasFor(resolution: MediaResolution | null): StageSize | null 
   return { width: Math.round(MAX * aspect), height: MAX }
 }
 
-export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
-  { url, pending = false, extraLayers, exportOptions, pipeline, cropActive, onMetricsChange, onMediaSize, renderOverlay },
-  ref,
+export function PreviewStage(
+  { url, pending = false, extraLayers, pipeline, cropActive, onMetricsChange, onMediaSize, renderOverlay }: PreviewStageProps,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
@@ -365,70 +352,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     }
   }, [onMetricsChange, layers, resolution])
 
-  // 暴露导出方法
-  useImperativeHandle(ref, () => ({
-    async export() {
-      if (!exportOptions?.enable) throw new Error('导出未启用')
-      if (!displayUrl) throw new Error('预览内容未就绪')
-
-      // 从设置中获取导出目录
-      const settings = await window.luna.getSettings()
-      const exportDir = settings.exportDir
-      if (!exportDir) throw new Error('导出目录未配置')
-
-      const res = await window.luna.workspace.getMediaResolution(displayUrl)
-      const baseName = baseNameFromPath(displayUrl)
-      const exportingVideo = isVideoPath(displayUrl)
-      const format = exportOptions.format || 'jpeg'
-      const ext = exportingVideo ? 'mp4' : format === 'jpeg' ? 'jpg' : format
-      const filename = `${baseName}_${Date.now()}.${ext}`
-      const outputPath = exportDir.endsWith('/') ? `${exportDir}${filename}` : `${exportDir}/${filename}`
-      const exportLayers = buildAdjustedLayers(displayUrl, res)
-      const itemId = `preview_${baseName}_${Date.now()}`
-      const task = await window.luna.exportTask.create('单帧导出', [
-        { id: itemId, sourcePath: displayUrl, outputPath },
-      ])
-      emitLocalExportProgress({
-        exportId: itemId, taskId: task.id, taskName: task.name, fileName: filename,
-        index: 0, totalFiles: 1, percent: 0, status: 'queued', destinationPath: outputPath,
-      })
-
-      if (isLivePhoto && url) {
-        let exportLiveVideoUrl = liveVideoUrl
-        if (!exportLiveVideoUrl) {
-          const result = await window.luna.previewLivePhoto(url)
-          exportLiveVideoUrl = result.source ?? null
-          setLiveVideoUrl(exportLiveVideoUrl)
-        }
-        if (!exportLiveVideoUrl) throw new Error('Live 图视频还未准备好')
-
-        const liveResolution = await window.luna.workspace.getMediaResolution(url)
-        return exportPreviewLivePhoto({
-          name: baseName,
-          exportDir,
-          width: liveResolution.width,
-          height: liveResolution.height,
-          imageLayers: buildAdjustedLayers(url, liveResolution),
-          videoLayers: buildAdjustedLayers(exportLiveVideoUrl, liveResolution),
-          appleLivePhoto: Boolean(settings.exportAppleLivePhoto),
-        })
-      }
-
-      if (exportingVideo) {
-        return exportPreviewVideo({
-          exportDir, fileName: filename, width: res.width, height: res.height,
-          layers: exportLayers, qualityPreset: 'high',
-          exportTaskId: task.id, exportItemId: itemId, taskName: task.name, index: 0, totalFiles: 1,
-        })
-      }
-      return exportPreviewImage({
-        exportDir, fileName: filename, width: res.width, height: res.height,
-        layers: exportLayers, format, quality: 100,
-        exportTaskId: task.id, exportItemId: itemId,
-      })
-    },
-  }), [exportOptions, displayUrl, isLivePhoto, url, liveVideoUrl, buildAdjustedLayers])
-
   if (!displayUrl && layers.length === 0) return null
 
   return (
@@ -492,4 +415,4 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       )}
     </div>
   )
-})
+}

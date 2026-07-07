@@ -12,7 +12,6 @@ import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/contex
 import { createDefaultPipeline, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
 import { PreviewStage } from '../components/PreviewStage'
-import type { PreviewStageHandle } from '../components/PreviewStage'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
 import { WorkspaceRemoveDialog } from '../workspace/components/WorkspaceRemoveDialog'
@@ -107,8 +106,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     return layer ? [layer] : []
   }, [edit.pipeline.watermark, media.activeMedia?.path, watermarkMediaSize])
 
-  // ── PreviewStage ref ──
-  const previewRef = useRef<PreviewStageHandle>(null)
 
   // ── Initialize pipeline / reset crop when active asset changes ──
   useLayoutEffect(() => {
@@ -413,7 +410,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         <>
           {/* ── Rust/wgpu 预览组件 ── */}
           <PreviewStage
-            ref={previewRef}
             url={media.activeMedia?.path ?? null}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
