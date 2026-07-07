@@ -412,6 +412,9 @@ pub struct Compositor {
     /// 库级解码器当前缩放上限 <path → max_side>
     frame_decoder_max_sides: HashMap<String, u32>,
     last_preview_log: Option<(u32, u32, u32, u32, std::time::Instant)>,
+
+    /// 缓存 staging buffer，避免每帧创建/销毁 33MB
+    staging_buffer: Option<(wgpu::Buffer, u64)>,
 }
 
 /// 持久 ffmpeg pipe 视频解码器，保持进程存活按序读帧
@@ -647,6 +650,7 @@ impl Compositor {
             frame_decoder_texture_times: HashMap::new(),
             frame_decoder_max_sides: HashMap::new(),
             last_preview_log: None,
+            staging_buffer: None,
         })
     }
 
@@ -1300,12 +1304,17 @@ impl Compositor {
         let row_padded = align_to(row_bytes, 256);
         let buf_size = (row_padded * canvas_height) as u64;
 
-        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("staging"),
-            size: buf_size,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        // 复用 staging buffer，避免每帧创建/销毁 33MB GPU 内存
+        let reuse_staging = self.staging_buffer.as_ref().map(|(_, s)| *s) == Some(buf_size);
+        if !reuse_staging {
+            let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("staging"),
+                size: buf_size,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            self.staging_buffer = Some((buf, buf_size));
+        }
 
         encoder.copy_texture_to_buffer(
             TexelCopyTextureInfo {
@@ -1315,7 +1324,7 @@ impl Compositor {
                 aspect: wgpu::TextureAspect::All,
             },
             TexelCopyBufferInfo {
-                buffer: &staging,
+                buffer: &self.staging_buffer.as_ref().unwrap().0,
                 layout: TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(row_padded),
@@ -1332,7 +1341,8 @@ impl Compositor {
         self.queue.submit(Some(encoder.finish()));
 
         // read back
-        let slice = staging.slice(..);
+        let staging_buf = &self.staging_buffer.as_ref().unwrap().0;
+        let slice = staging_buf.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
@@ -1362,7 +1372,7 @@ impl Compositor {
             }
         }
         drop(mapped);
-        staging.unmap();
+        staging_buf.unmap();
 
         Ok(result)
     }
@@ -1495,18 +1505,37 @@ impl Compositor {
                 "pipe:1",
             ])
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("ffmpeg spawn {}: {}", file_path, e))?;
 
         let stdout = proc.stdout.take().ok_or_else(|| "no stdout".to_string())?;
+        let stderr_buf = proc.stderr.take();
 
         // 读第1帧
         let mut rgba = vec![0u8; frame_bytes];
         let mut child_stdout = stdout;
-        child_stdout
-            .read_exact(&mut rgba)
-            .map_err(|e| format!("read first frame {}: {}", file_path, e))?;
+        if let Err(e) = child_stdout.read_exact(&mut rgba) {
+            let stderr_msg = stderr_buf
+                .and_then(|mut s| {
+                    let mut buf = String::new();
+                    s.read_to_string(&mut buf).ok().map(|_| buf)
+                })
+                .unwrap_or_default();
+            log!(
+                "read_first_frame FAIL [{}] time={:.3} expected={}x{} frame_bytes={} stderr=[{}]",
+                file_path,
+                video_time,
+                dw,
+                dh,
+                frame_bytes,
+                stderr_msg
+            );
+            return Err(format!(
+                "read first frame {}: {}  stderr={}",
+                file_path, e, stderr_msg
+            ));
+        }
 
         self.video_decoders.insert(
             file_path.to_string(),
@@ -1538,17 +1567,7 @@ impl Compositor {
         layer: &PreviewLayerInput,
         decode_max_side: u32,
     ) -> Result<u32, String> {
-        match self.frame_decoder_texture_for_layer(ffprobe, layer, decode_max_side) {
-            Ok(texture_id) => return Ok(texture_id),
-            Err(error) => {
-                log!(
-                    "video_frame_decoder [{}] fallback to pipe: {}",
-                    layer.file_path,
-                    error
-                );
-            }
-        }
-
+        // ── 有 pipe 解码器：直接读下一帧（顺序读取最可靠） ──
         if let Some((texture_id, current_time)) = self
             .video_decoders
             .get(&layer.file_path)
@@ -1567,27 +1586,78 @@ impl Compositor {
                 );
                 return Ok(texture_id);
             }
+            let (rgba, _dw, _dh) =
+                self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time)?;
+            self.update_texture(texture_id, &rgba)?;
+            return Ok(texture_id);
         }
 
-        let (rgba, dw, dh) =
-            self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time)?;
-        let existing_texture = self
-            .video_decoders
-            .get(&layer.file_path)
-            .and_then(|decoder| decoder.texture_id);
-        match existing_texture {
-            Some(texture_id) => {
-                self.update_texture(texture_id, &rgba)?;
-                Ok(texture_id)
-            }
-            None => {
+        // ── 无 pipe 解码器：优先创建 pipe + 读第1帧 ──
+        // pipe 解码器会 spawn ffmpeg 进程、seek 到指定时间、读第1帧
+        match self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time) {
+            Ok((rgba, dw, dh)) => {
                 let texture_id = self.load_texture(&rgba, dw, dh)?;
                 if let Some(decoder) = self.video_decoders.get_mut(&layer.file_path) {
                     decoder.texture_id = Some(texture_id);
                 }
-                Ok(texture_id)
+                log!(
+                    "read_video_frame [{}] pipe started at {:.3}s tex={} {}x{}",
+                    layer.file_path,
+                    layer.video_time,
+                    texture_id,
+                    dw,
+                    dh,
+                );
+                return Ok(texture_id);
+            }
+            Err(pipe_err) => {
+                log!(
+                    "read_video_frame [{}] pipe failed at {:.3}s: {}",
+                    layer.file_path,
+                    layer.video_time,
+                    pipe_err,
+                );
             }
         }
+
+        // ── pipe 失败 → 异步解码器兜底（可能返回空白，优于崩溃） ──
+        match self.frame_decoder_texture_for_layer(ffprobe, layer, decode_max_side) {
+            Ok(texture_id) => {
+                let texture_time = self
+                    .frame_decoder_texture_times
+                    .get(&layer.file_path)
+                    .copied()
+                    .unwrap_or(-1.0);
+                if (texture_time - layer.video_time).abs() < 0.5 {
+                    log!(
+                        "video_frame_decoder [{}] async success at {:.3}s tex={}",
+                        layer.file_path,
+                        layer.video_time,
+                        texture_id,
+                    );
+                    return Ok(texture_id);
+                }
+                log!(
+                    "video_frame_decoder [{}] stale tex_time={:.3} != requested={:.3}",
+                    layer.file_path,
+                    texture_time,
+                    layer.video_time,
+                );
+            }
+            Err(async_err) => {
+                log!(
+                    "video_frame_decoder [{}] async failed: {}",
+                    layer.file_path,
+                    async_err,
+                );
+            }
+        }
+
+        Err(format!(
+            "video_texture_for_layer [{}] pipe and async both failed at {:.3}s",
+            layer.file_path,
+            layer.video_time,
+        ))
     }
 
     fn frame_decoder_texture_for_layer(
