@@ -4,7 +4,7 @@
 import { ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFileSync } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import { join, extname } from 'node:path'
 import {
   ensureInit,
@@ -234,9 +234,17 @@ export function register(_ctx: RegisterContext): void {
             if (info.isDirectory()) {
               await scanDir(fullPath, baseDir)
             } else if (info.isFile() && extname(entry).toLowerCase() === '.cube') {
-              const name = entry.replace(/\.cube$/i, '')
+              const fileBaseName = entry.replace(/\.cube$/i, '')
+              // 尝试读取同名的 .meta.json，用其中的 name 字段作为显示名
+              let name = fileBaseName
+              try {
+                const metaPath = join(dir, `${fileBaseName}.cube.meta.json`)
+                const metaRaw = await readFile(metaPath, 'utf8')
+                const meta = JSON.parse(metaRaw)
+                if (meta.name) name = meta.name
+              } catch { /* 没有 meta 文件就用文件名 */ }
               const relDir = dir === baseDir ? '' : dir.slice(baseDir.length + 1)
-              const key = `${name}:${relDir}`
+              const key = `${fileBaseName}:${relDir}`
               if (seen.has(key)) continue
               seen.add(key)
               results.push({ path: fullPath, name, relDir })
