@@ -12,6 +12,8 @@ interface FilterItemProps {
   mediaPath: string | null
   /** 隐藏底部的名称文本 */
   hideName?: boolean
+  /** LUT 强度 0-100，默认 100 */
+  intensity?: number
 }
 
 const THUMB_CACHE = new Map<string, string>()
@@ -24,8 +26,9 @@ function getLrc(): any {
 async function renderFilterThumb(
   sourcePath: string,
   lutPath: string,
+  intensity: number,
 ): Promise<string> {
-  const cacheKey = `${lutPath}::${sourcePath}`
+  const cacheKey = `${lutPath}::${sourcePath}::${intensity}`
   const cached = THUMB_CACHE.get(cacheKey)
   if (cached) return cached
 
@@ -42,7 +45,7 @@ async function renderFilterThumb(
       opacity: 1,
       zIndex: 0,
       lutId: lutPath,
-      lutIntensity: 100,
+      lutIntensity: intensity,
     }],
   }
 
@@ -62,7 +65,7 @@ async function renderFilterThumb(
   return url
 }
 
-export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hideName }: FilterItemProps) {
+export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hideName, intensity = 100 }: FilterItemProps) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const mountedRef = useRef(true)
@@ -108,7 +111,7 @@ export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hi
     let cancelled = false
     setLoading(true)
 
-    renderFilterThumb(sourcePath, filePath).then((url) => {
+    renderFilterThumb(sourcePath, filePath, intensity).then((url) => {
       if (!cancelled && mountedRef.current) {
         setThumbUrl(url)
         setLoading(false)
@@ -118,7 +121,7 @@ export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hi
     })
 
     return () => { cancelled = true }
-  }, [cacheFilePath, filePath])
+  }, [cacheFilePath, filePath, intensity])
 
   return (
     <article

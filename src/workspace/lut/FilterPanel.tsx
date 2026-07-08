@@ -114,6 +114,7 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
               filePath={activeLutInfo.filePath}
               name={activeLutInfo.name}
               mediaPath={mediaPath ?? null}
+              intensity={intensity}
             />
           ) : (
             <div className="filter-current-placeholder">
@@ -184,6 +185,7 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
                 active={activeLutId === lut.filePath}
                 onClick={() => handleSelect(lut.filePath)}
                 mediaPath={mediaPath ?? null}
+                intensity={intensity}
               />
             ))}
           </div>
