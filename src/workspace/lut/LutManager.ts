@@ -1,10 +1,10 @@
 /**
  * LutManager — LUT 发现/扫描
  *
- * 只负责发现和列出可用 LUT（内置 + 外部目录），
- * 不再管理 GPU 加载，由 Rust 直接读取文件路径。
+ * 通过 IPC 扫描目录获取 .cube 文件（内置 + 外部），
+ * 所有路径均为绝对路径，直接传给 Rust。
  */
-import { getBuiltinLuts, type LutFileInfo } from './builtinLuts'
+import type { LutFileInfo } from './builtinLuts'
 
 class LutManagerClass {
   private allLutsCache: LutFileInfo[] | null = null
@@ -14,30 +14,29 @@ class LutManagerClass {
     if (this.allLutsCache && externalDir === undefined) {
       return this.allLutsCache
     }
-    const builtins = await getBuiltinLuts()
-    const externals: LutFileInfo[] = []
+    const results: LutFileInfo[] = []
 
-    if (externalDir) {
-      try {
-        const lrc = getLrc()
-        if (lrc) {
-          const entries = await lrc.listCubeFiles(externalDir)
-          for (const entry of entries) {
-            const cat = entry.relDir ? entry.relDir.replace(/\\/g, '/') : '未分类'
-            externals.push({
-              id: `external:${cat}/${entry.name}`,
-              name: entry.name,
-              category: cat,
-              filePath: entry.path,
-            })
-          }
+    try {
+      const lrc = getLrc()
+      if (lrc) {
+        // listCubeFiles 内部会扫描内置 + 外部目录，外部目录为空则只返回内置
+        const entries = await lrc.listCubeFiles(externalDir || '')
+        console.log('[LutManager] listCubeFiles 扫描结果:', JSON.stringify(entries, null, 2))
+        for (const entry of entries) {
+          const cat = entry.relDir ? entry.relDir.replace(/\\/g, '/') : '未分类'
+          results.push({
+            id: `${cat}/${entry.name}`,
+            name: entry.name,
+            category: cat,
+            filePath: entry.path,
+          })
         }
-      } catch (error) {
-        console.warn('[LutManager] 扫描 LUT 目录失败:', error)
       }
+    } catch (error) {
+      console.warn('[LutManager] 扫描 LUT 目录失败:', error)
     }
 
-    this.allLutsCache = [...builtins, ...externals]
+    this.allLutsCache = results
     return this.allLutsCache
   }
 
