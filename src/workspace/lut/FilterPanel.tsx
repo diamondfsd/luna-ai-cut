@@ -105,6 +105,23 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
     onChange(lutPath)
   }, [refreshLuts, onChange])
 
+  // 删除 LUT（仅用户导入的 LUT 可删除）
+  const handleDeleteLut = useCallback(async (lut: LutFileInfo) => {
+    const lrc = (window as unknown as { lunaRenderCore?: any }).lunaRenderCore
+    if (!lrc?.deleteCubeFile || lut.isBuiltin) return
+    try {
+      await lrc.deleteCubeFile(lut.filePath, lut.isBuiltin)
+      lutManager.clearCache()
+      await refreshLuts()
+      // 如果删除的是当前激活的 LUT，取消选中
+      if (activeLutId === lut.filePath || activeLutId === lut.id) {
+        onChange(null)
+      }
+    } catch (err) {
+      console.error('[FilterPanel] 删除 LUT 失败:', err)
+    }
+  }, [refreshLuts, activeLutId, onChange])
+
   return (
     <aside className="filter-sidebar">
       <div className="sidebar-inner">
@@ -159,6 +176,17 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
                           <span className="lut-info-label">路径</span>
                           <span className="lut-info-value lut-info-path">{activeLutInfo.filePath}</span>
                         </div>
+                        {!activeLutInfo.isBuiltin && (
+                          <>
+                            <div className="lut-info-divider" />
+                            <button
+                              className="lut-info-delete-btn"
+                              onClick={() => handleDeleteLut(activeLutInfo)}
+                            >
+                              删除此 LUT
+                            </button>
+                          </>
+                        )}
                       </div>
                     </PopoverContent>
                   </Popover>

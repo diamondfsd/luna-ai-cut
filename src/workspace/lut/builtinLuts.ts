@@ -13,4 +13,6 @@ export interface LutFileInfo {
   filePath: string
   /** 可选描述（从 .cube.meta.json 加载） */
   description?: string
+  /** 是否为内置 LUT（不可删除） */
+  isBuiltin?: boolean
 }
