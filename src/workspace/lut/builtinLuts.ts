@@ -11,4 +11,6 @@ export interface LutFileInfo {
   category: string
   /** 文件系统绝对路径 */
   filePath: string
+  /** 可选描述（从 .cube.meta.json 加载） */
+  description?: string
 }
