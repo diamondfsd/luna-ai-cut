@@ -193,7 +193,7 @@ export function SettingsPage({
         <article className="settings-row">
           <div className="settings-row-copy">
             <span>扩展 LUT 目录</span>
-            <strong>{settings?.lutDir || '未配置'}</strong>
+            <strong>{settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : '未配置')}</strong>
             <em>导入 .cube 滤镜文件目录树，子文件夹自动成为滤镜分组名</em>
           </div>
           <div className="settings-row-actions">
@@ -216,7 +216,7 @@ export function SettingsPage({
                 } catch { /* 用户取消 */ }
               }}
             >
-              {settings?.lutDir ? '更换目录' : '添加目录'}
+              {settings?.lutDir ? '切换目录' : '打开目录'}
             </Button>
             {settings?.lutDir && (
               <Button variant="danger" size="compact"
