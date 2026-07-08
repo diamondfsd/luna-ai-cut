@@ -7,7 +7,6 @@ import { LivePhotoBadge } from '../ui'
 import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
-import { lutManager } from '../workspace/lut/LutManager'
 import './PreviewStage.css'
 
 interface PreviewStageProps {
@@ -226,23 +225,8 @@ export function PreviewStage(
   }, [resolution])
   const previewCanvas = useMemo(() => projectCanvasFor(resolution), [resolution])
 
-  // ── LUT 滤镜 ──
-  const [gpuLutId, setGpuLutId] = useState<number | undefined>(undefined)
-  useEffect(() => {
-    const activeId = pipeline?.lutFilter?.activeId
-    if (!activeId) {
-      setGpuLutId(undefined)
-      return
-    }
-    let cancelled = false
-    // 先确保 LUT 缓存已填充，再按 ID 加载
-    lutManager.discoverLuts().then(() =>
-      lutManager.ensureLoadedById(activeId),
-    ).then((id) => {
-      if (!cancelled) setGpuLutId(id)
-    })
-    return () => { cancelled = true }
-  }, [pipeline?.lutFilter?.activeId])
+  // ── LUT 滤镜：直接传文件路径给 Rust ──
+  const lutFilePath = pipeline?.lutFilter?.activeId ?? undefined
 
   const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution): PreviewLayer[] => {
     // 基于 Project Canvas 计算布局，Stage 不参与
@@ -262,7 +246,7 @@ export function PreviewStage(
         ...main[0],
         color: pipelineColorToRenderColor(pipeline.color),
         transform: renderTransform,
-        lutId: gpuLutId,
+        lutId: lutFilePath,
         lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
       }
     }
@@ -296,7 +280,7 @@ export function PreviewStage(
       finalLayers,
     })
     return finalLayers
-  }, [resolution, extraLayers, pipeline, gpuLutId])
+  }, [resolution, extraLayers, pipeline, lutFilePath])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []

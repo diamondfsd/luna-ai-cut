@@ -63,22 +63,13 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
     return result
   }, [allLuts, activeTab, searchKey])
 
-  const handleSelect = useCallback(async (id: string | null) => {
+  const handleSelect = useCallback((id: string | null) => {
     if (id === activeLutId) {
       onChange(null)
       return
     }
     onChange(id)
-    if (id === null) return
-
-    try {
-      const info = allLuts.find((l) => l.filePath === id || l.id === id)
-      if (info) await lutManager.ensureLoaded(info)
-      else await lutManager.ensureLoadedById(id)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '滤镜加载失败')
-    }
-  }, [activeLutId, onChange, allLuts])
+  }, [activeLutId, onChange])
 
   const handleImport = useCallback(async () => {
     fileInputRef.current?.click()
@@ -92,14 +83,20 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
       return
     }
     try {
-      const buffer = await file.arrayBuffer()
-      const cubeData = new Uint8Array(buffer)
       const name = file.name.replace(/\.cube$/i, '')
-      const id = await lutManager.importCustomLut(name, cubeData)
-      onChange(id)
+      // 将文件复制到 LUT 目录
+      const filePath = (file as any).path
+      if (filePath) {
+        const luna = (window as any).luna
+        if (luna?.copyFile) await luna.copyFile(filePath)
+      }
       let lutDir: string | undefined
       try { const s = await (window as any).luna?.getSettings?.(); lutDir = s?.lutDir } catch { /* ignore */ }
-      setAllLuts(await lutManager.discoverLuts(lutDir))
+      const luts = await lutManager.discoverLuts(lutDir)
+      setAllLuts(luts)
+      // 找到刚导入的 LUT 并激活
+      const imported = luts.find((l) => l.name === name)
+      if (imported) onChange(imported.filePath)
       toast.success(`已导入滤镜: ${name}`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导入失败')
