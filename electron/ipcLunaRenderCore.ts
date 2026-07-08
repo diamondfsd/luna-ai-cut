@@ -218,11 +218,13 @@ export function register(_ctx: RegisterContext): void {
     },
   ))
 
-  /** 递归扫描目录返回 .cube 文件树（按文件夹分组） */
+  /** 递归扫描 .cube 文件（内置 + 外部目录），按目录名作为分类 */
   ipcMain.handle('lrc:listCubeFiles', safe('listCubeFiles',
     async (_event: IpcMainInvokeEvent, dirPath: string) => {
       const results: Array<{ path: string; name: string; relDir: string }> = []
-      async function scan(dir: string, baseDir: string): Promise<void> {
+      const seen = new Set<string>()
+
+      async function scanDir(dir: string, baseDir: string): Promise<void> {
         let entries: string[]
         try { entries = await readdir(dir) } catch { return }
         for (const entry of entries.sort()) {
@@ -230,18 +232,31 @@ export function register(_ctx: RegisterContext): void {
           try {
             const info = await stat(fullPath)
             if (info.isDirectory()) {
-              await scan(fullPath, baseDir)
+              await scanDir(fullPath, baseDir)
             } else if (info.isFile() && extname(entry).toLowerCase() === '.cube') {
-              results.push({
-                path: fullPath,
-                name: entry.replace(/\.cube$/i, ''),
-                relDir: dir === baseDir ? '' : dir.slice(baseDir.length + 1),
-              })
+              const name = entry.replace(/\.cube$/i, '')
+              const relDir = dir === baseDir ? '' : dir.slice(baseDir.length + 1)
+              const key = `${name}:${relDir}`
+              if (seen.has(key)) continue
+              seen.add(key)
+              results.push({ path: fullPath, name, relDir })
             }
           } catch { /* 跳过无权限文件 */ }
         }
       }
-      await scan(dirPath, dirPath)
+
+      await scanDir(dirPath, dirPath)
+
+      // 始终扫描内置 LUT 目录
+      const builtinDir = join(
+        process.env.VITE_PUBLIC || join(process.env.APP_ROOT!, 'public'),
+        'luts',
+      )
+      try {
+        await stat(builtinDir)
+        await scanDir(builtinDir, builtinDir)
+      } catch { /* 内置 LUT 目录不存在则跳过 */ }
+
       return results
     },
   ))
