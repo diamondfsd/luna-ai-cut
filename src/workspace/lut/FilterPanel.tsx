@@ -108,18 +108,27 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
     <aside className="filter-sidebar">
       <div className="sidebar-inner">
         {/* 当前滤镜卡片 */}
-        {activeLutId && (
-          <section className="filter-current-card">
-            {activeLutInfo && (
-              <FilterItem
-                filePath={activeLutInfo.filePath}
-                name={activeLutInfo.name}
-                mediaPath={mediaPath ?? null}
-              />
-            )}
-            <div className="current-info">
-              <div className="current-top">
-                <div className="eyebrow">当前滤镜</div>
+        <section className="filter-current-card">
+          {activeLutInfo ? (
+            <FilterItem
+              filePath={activeLutInfo.filePath}
+              name={activeLutInfo.name}
+              mediaPath={mediaPath ?? null}
+            />
+          ) : (
+            <div className="filter-current-placeholder">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="m21 15-5-5L5 21" />
+              </svg>
+              <span>选择一个滤镜</span>
+            </div>
+          )}
+          <div className="current-info">
+            <div className="current-top">
+              <div className="eyebrow">当前滤镜</div>
+              {activeLutId && (
                 <button className="filter-reset" onClick={() => { onChange(null); onIntensityChange?.(100) }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                     <path d="M4.8 8.6A8 8 0 1 1 4.1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -127,9 +136,11 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
                   </svg>
                   重置
                 </button>
-              </div>
+              )}
+            </div>
 
-              {/* 强度滑块 */}
+            {/* 强度滑块 */}
+            {activeLutId && (
               <div className="slider-row">
                 <div className="slider-head">
                   <span>强度</span>
@@ -147,9 +158,9 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
                 />
                 <div className="slider-labels"><span>0</span><span>100</span></div>
               </div>
-            </div>
-          </section>
-        )}
+            )}
+          </div>
+        </section>
 
         {/* 分类标签 */}
         <div className="filter-tabs-row">
