@@ -12,6 +12,7 @@ import {
 import { openWifiSettings } from './wifiService'
 import { getDownloadedRecords, getLocalResourcesDir, getSettings } from './fileService'
 import type { IpcContext } from './ipcContext'
+import { collectLunaNetworkDiagnostics } from './networkDiagnostics'
 
 export function register(_ctx?: IpcContext): void {
   ipcMain.handle('downloads:records', async (_event, files: LunaFile[], _downloadDir?: string) => {
@@ -20,9 +21,9 @@ export function register(_ctx?: IpcContext): void {
   })
 
   ipcMain.handle('wifi:openSettings', () => openWifiSettings())
+  ipcMain.handle('wifiDebug:getStatus', () => getWifiDebugStatus())
 
   if (process.platform === 'win32') {
-    ipcMain.handle('wifiDebug:getStatus', () => getWifiDebugStatus())
     ipcMain.handle('wifiDebug:scan', () => scanWifiNetworks())
     ipcMain.handle('wifiDebug:connect', (_event, options: WifiConnectOptions) => connectWifiNetwork(options))
     ipcMain.handle('wifiDebug:disconnect', () => disconnectWifiNetwork())
@@ -37,6 +38,8 @@ export function register(_ctx?: IpcContext): void {
   ipcMain.handle('bluetooth:cancelScan', () => {
     cancelBluetoothScan()
   })
+
+  ipcMain.handle('luna:collectNetworkDiagnostics', () => collectLunaNetworkDiagnostics())
 
   ipcMain.handle('devtools:open', () => {
     BrowserWindow.getFocusedWindow()?.webContents.openDevTools({ mode: 'detach' })

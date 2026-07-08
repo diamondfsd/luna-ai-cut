@@ -6,6 +6,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 
 import type {
+  WifiDebugAddress,
   WifiConnectOptions,
   WifiDebugNetwork,
   WifiDebugResult,
@@ -47,26 +48,6 @@ function unsupported<T>(): WifiDebugResult<T> {
   return fail(`当前平台暂不支持 Wi-Fi 调试：${process.platform}`, 'UNSUPPORTED_PLATFORM')
 }
 
-function parseWindowsStatus(raw: string, ipAddress: string | null): WifiDebugStatus {
-  const field = (name: string): string | null => {
-    const match = raw.match(new RegExp(`^\\s*${name}\\s*:\\s*(.+)$`, 'mi'))
-    return match?.[1]?.trim() || null
-  }
-  const state = field('State')
-  const ssid = field('SSID')
-  return {
-    platform: process.platform,
-    interfaceName: field('Name'),
-    connected: Boolean(state?.toLowerCase().includes('connected') && ssid),
-    ssid,
-    bssid: field('BSSID'),
-    signal: field('Signal'),
-    security: field('Authentication'),
-    ipAddress,
-    raw,
-  }
-}
-
 function firstWirelessIpv4(): string | null {
   const interfaces = os.networkInterfaces()
   const preferredNames = [/wi-?fi/i, /wlan/i, /airport/i, /en0/i]
@@ -82,6 +63,40 @@ function firstWirelessIpv4(): string | null {
     if (match) return match.address
   }
   return null
+}
+
+function systemNetworkSnapshot(): Pick<WifiDebugStatus, 'interfaceName' | 'connected' | 'ipAddress' | 'ipAddresses' | 'interfaces' | 'raw'> {
+  const rawInterfaces = os.networkInterfaces()
+  const interfaces: Record<string, WifiDebugAddress[]> = {}
+  const ipAddresses: WifiDebugAddress[] = []
+
+  for (const [interfaceName, addresses] of Object.entries(rawInterfaces)) {
+    const normalized = (addresses ?? []).map((address): WifiDebugAddress => ({
+      interfaceName,
+      address: address.address,
+      family: address.family,
+      netmask: address.netmask,
+      mac: address.mac,
+      cidr: address.cidr ?? null,
+      internal: address.internal,
+    }))
+    if (normalized.length > 0) interfaces[interfaceName] = normalized
+    ipAddresses.push(...normalized.filter((address) => !address.internal))
+  }
+
+  const primary =
+    ipAddresses.find((address) => address.family === 'IPv4') ??
+    ipAddresses[0] ??
+    null
+
+  return {
+    interfaceName: primary?.interfaceName ?? null,
+    connected: Boolean(primary),
+    ipAddress: primary?.address ?? null,
+    ipAddresses,
+    interfaces,
+    raw: JSON.stringify({ interfaces }, null, 2),
+  }
 }
 
 function parseWindowsScan(raw: string): WifiDebugNetwork[] {
@@ -172,19 +187,15 @@ async function runCoreWlan<T>(args: string[], timeoutMs = DEFAULT_WIFI_TIMEOUT_M
 
 export async function getWifiDebugStatus(): Promise<WifiDebugResult<WifiDebugStatus>> {
   try {
-    if (process.platform === 'darwin') {
-      const result = await runCoreWlan<any>(['status'], 12000)
-      if (!result.success) return result as WifiDebugResult<WifiDebugStatus>
-      const status = normalizeWifiStatus(result.data, result.raw)
-      return ok(result.message, { ...status, ipAddress: status.ipAddress ?? firstWirelessIpv4() }, result.raw)
-    }
-
-    if (process.platform === 'win32') {
-      const raw = await runCommand('netsh', ['wlan', 'show', 'interfaces'], 8000)
-      return ok('Wi-Fi 状态已刷新', parseWindowsStatus(raw, firstWirelessIpv4()), raw)
-    }
-
-    return unsupported()
+    const snapshot = systemNetworkSnapshot()
+    return ok('系统网卡信息已刷新', {
+      platform: process.platform,
+      ssid: null,
+      bssid: null,
+      signal: null,
+      security: null,
+      ...snapshot,
+    }, snapshot.raw)
   } catch (error) {
     return errorResult(error)
   }
