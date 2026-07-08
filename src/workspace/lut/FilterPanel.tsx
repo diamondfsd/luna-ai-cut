@@ -1,7 +1,7 @@
 import { Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { toast } from '../../ui'
+import { ButtonGroup, toast } from '../../ui'
 import { type LutFileInfo } from './builtinLuts'
 import { FilterItem } from './FilterItem'
 import { lutManager } from './LutManager'
@@ -168,20 +168,19 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
         </section>
 
         {/* 分类标签 */}
-        <nav className="filter-tabs" aria-label="滤镜分类">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              className={`filter-tab ${activeTab === cat ? 'active' : ''}`}
-              onClick={() => setActiveTab(cat)}
-            >
-              {cat}
-            </button>
-          ))}
-          <button className="filter-tab filter-tab-icon" onClick={handleImport} title="导入 .cube">
+        <div className="filter-tabs-row">
+          <div className="filter-tabs-scroll">
+            <ButtonGroup
+              options={categories.map((cat) => ({ value: cat, label: cat }))}
+              value={activeTab}
+              onChange={(value) => setActiveTab(value)}
+              className="filter-category-group"
+            />
+          </div>
+          <button className="filter-import-btn" onClick={handleImport} title="导入 .cube">
             <Upload size={15} />
           </button>
-        </nav>
+        </div>
 
         {/* 滤镜网格 */}
         <main className="filter-grid-wrap">
