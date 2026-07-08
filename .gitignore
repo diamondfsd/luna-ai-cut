@@ -46,4 +46,3 @@ release*/
 .worktrees/
 luna-render-core/target/
 *.node
-public/luts/
