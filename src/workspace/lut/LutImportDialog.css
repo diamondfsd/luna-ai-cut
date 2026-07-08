@@ -1,0 +1,542 @@
+/* ═══════════════════════════════════════════════
+   LutImportDialog – 批量导入 LUT 弹窗
+   上下 flex 布局：选择区 → 文件夹名称 → 文件表格
+   ═══════════════════════════════════════════════ */
+
+/* ── Dialog 容器 ── */
+
+.lut-import-dialog-content.ui-dialog-content {
+  width: min(800px, calc(100vw - 48px));
+  max-height: min(860px, calc(100vh - 56px));
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.13);
+  box-shadow: 0 32px 120px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.08);
+  background: linear-gradient(180deg, rgba(34,37,45,0.98), rgba(20,23,29,0.98));
+  color: #f5f7fb;
+}
+
+/* ── Header ── */
+
+.lut-import-dialog-content .ui-dialog-header {
+  padding: 24px 80px 12px 28px;
+  border-bottom: none;
+}
+
+.lut-import-dialog-content .ui-dialog-header [data-radix-dialog-title] {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.96);
+  padding-right: 0;
+}
+
+.lut-import-dialog-content .ui-dialog-header [data-radix-dialog-description] {
+  margin: 4px 0 0;
+  color: rgba(255,255,255,0.45);
+  font-size: 14px;
+}
+
+/* ── Close button ── */
+
+.lut-import-dialog-content .ui-dialog-close {
+  top: 22px;
+  right: 22px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.6);
+  transition: background 0.12s, color 0.12s;
+}
+
+.lut-import-dialog-content .ui-dialog-close:hover {
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.9);
+}
+
+/* ═══ Body — flex 上下结构 ═══ */
+
+.lut-import-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 28px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* ── 选择区域 ── */
+
+.lut-import-drop-zone {
+  height: 170px;
+  border-radius: 14px;
+  border: 1.5px dashed rgba(255,255,255,0.22);
+  background: radial-gradient(circle at 50% 0%, rgba(255,255,255,0.06), transparent 58%), rgba(255,255,255,0.02);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.16s ease, background 0.16s ease;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.lut-import-drop-zone:hover {
+  border-color: rgba(70, 116, 255, 0.8);
+  background: rgba(70, 116, 255, 0.06);
+}
+
+.lut-import-drop-zone.drag-over {
+  border-color: rgba(70, 116, 255, 1);
+  background: rgba(70, 116, 255, 0.1);
+}
+
+.lut-import-folder-icon {
+  width: 60px;
+  height: 52px;
+  margin-bottom: 10px;
+  border-radius: 11px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.32), rgba(255,255,255,0.14));
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: rgba(255,255,255,0.8);
+  box-shadow: inset 0 1px rgba(255,255,255,0.2), 0 6px 20px rgba(0,0,0,0.2);
+}
+
+.lut-import-folder-icon::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: -6px;
+  width: 24px;
+  height: 13px;
+  border-radius: 7px 7px 3px 3px;
+  background: rgba(255,255,255,0.18);
+}
+
+.lut-import-folder-icon svg {
+  width: 26px;
+  height: 26px;
+  position: relative;
+  z-index: 1;
+}
+
+.lut-import-drop-title {
+  font-size: 20px;
+  font-weight: 650;
+  color: rgba(255,255,255,0.85);
+}
+
+.lut-import-link-btn {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #4e7cff;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.lut-import-link-btn:hover {
+  color: #6e9cff;
+}
+
+.lut-import-drop-help {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.38);
+}
+
+/* ── 中间区域 ── 文件夹名称 ── */
+
+.lut-import-folder-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 0 14px;
+  flex-shrink: 0;
+}
+
+.lut-import-folder-label {
+  font-size: 14px;
+  color: rgba(255,255,255,0.7);
+  font-weight: 600;
+  white-space: nowrap;
+  padding-top: 9px;
+  min-width: 80px;
+}
+
+.lut-import-folder-input-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lut-import-folder-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.11);
+  background: rgba(8, 10, 15, 0.35);
+  color: rgba(255,255,255,0.9);
+  font-size: 15px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.12s;
+  max-width: 400px;
+}
+
+.lut-import-folder-input::placeholder {
+  color: rgba(255,255,255,0.3);
+}
+
+.lut-import-folder-input:focus {
+  border-color: rgba(70, 116, 255, 0.6);
+}
+
+.lut-import-folder-note {
+  font-size: 12px;
+  color: rgba(255,255,255,0.32);
+}
+
+/* ── 展示区域 ── 文件表格 ── */
+
+.lut-import-table-wrap {
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.09);
+  background: rgba(8, 10, 15, 0.18);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.lut-import-table-header {
+  display: grid;
+  grid-template-columns: 1fr 160px 100px 40px;
+  align-items: center;
+  height: 38px;
+  padding: 0 16px;
+  color: rgba(255,255,255,0.42);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.lut-import-table-body {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.lut-import-table-row {
+  display: grid;
+  grid-template-columns: 1fr 160px 100px 40px;
+  align-items: center;
+  min-height: 46px;
+  padding: 6px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  transition: background 0.1s;
+}
+
+.lut-import-table-row:last-child {
+  border-bottom: 0;
+}
+
+.lut-import-table-row:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+/* ── 可编辑名称 ── */
+
+.lut-import-name-cell {
+  min-width: 0;
+  padding-right: 10px;
+}
+
+.lut-import-name-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255,255,255,0.88);
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.lut-import-name-input:hover {
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+}
+
+.lut-import-name-input:focus {
+  border-color: rgba(70, 116, 255, 0.5);
+  background: rgba(8, 10, 15, 0.3);
+}
+
+.lut-import-name-input:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ── 原始文件名 ── */
+
+.lut-import-origin-cell {
+  min-width: 0;
+}
+
+.lut-import-origin-name {
+  font-size: 13px;
+  color: rgba(255,255,255,0.45);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+/* ── 状态 ── */
+
+.lut-import-status-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lut-import-status-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.lut-import-status-icon.success {
+  color: #84d46f;
+  background: rgba(132, 212, 111, 0.18);
+}
+
+.lut-import-status-icon.duplicate {
+  color: #f5c84c;
+  background: rgba(245, 200, 76, 0.13);
+}
+
+.lut-import-status-icon.danger {
+  color: #ff6868;
+  background: rgba(255, 104, 104, 0.15);
+}
+
+.lut-import-status-icon.importing {
+  color: #6ea8ff;
+  background: rgba(110, 168, 255, 0.15);
+  animation: lut-spin 1s linear infinite;
+}
+
+@keyframes lut-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.status-text {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status-text.success { color: #84d46f; }
+.status-text.duplicate { color: #f0a43c; }
+.status-text.danger { color: #ff6868; }
+
+/* ── 操作 ── */
+
+.lut-import-action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lut-import-remove-btn {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.3);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.lut-import-remove-btn:hover {
+  background: rgba(255, 104, 104, 0.15);
+  color: #ff6868;
+}
+
+.lut-import-check-mark {
+  color: #84d46f;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* ── Footer ── */
+
+.lut-import-dialog-content .ui-dialog-footer {
+  padding: 0;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.02);
+}
+
+.lut-import-dialog-content .ui-dialog-footer .lut-import-footer {
+  height: 68px;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lut-import-summary {
+  font-size: 14px;
+  color: rgba(255,255,255,0.6);
+}
+
+.lut-import-summary .highlight {
+  font-weight: 700;
+  color: rgba(255,255,255,0.88);
+}
+
+.lut-import-summary .success {
+  font-weight: 700;
+  color: #84d46f;
+}
+
+.lut-import-summary .danger {
+  font-weight: 700;
+  color: #ff6868;
+}
+
+.lut-import-summary .muted {
+  color: rgba(255,255,255,0.4);
+}
+
+.lut-import-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lut-import-secondary-btn,
+.lut-import-primary-btn {
+  height: 38px;
+  min-width: 100px;
+  border-radius: 10px;
+  border: 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.12s, background 0.12s;
+  font-family: inherit;
+}
+
+.lut-import-secondary-btn {
+  color: rgba(255,255,255,0.78);
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.lut-import-secondary-btn:hover {
+  background: rgba(255,255,255,0.11);
+}
+
+.lut-import-primary-btn {
+  color: #fff;
+  background: linear-gradient(180deg, #527dff, #315eea);
+  box-shadow: 0 8px 20px rgba(55, 94, 255, 0.3), inset 0 1px 0 rgba(255,255,255,0.14);
+}
+
+.lut-import-primary-btn:hover {
+  filter: brightness(1.06);
+}
+
+.lut-import-primary-btn:disabled,
+.lut-import-secondary-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 700px) {
+  .lut-import-dialog-content.ui-dialog-content {
+    width: calc(100vw - 24px);
+  }
+
+  .lut-import-dialog-content .ui-dialog-header {
+    padding: 18px 56px 10px 18px;
+  }
+
+  .lut-import-dialog-content .ui-dialog-header [data-radix-dialog-title] {
+    font-size: 20px;
+  }
+
+  .lut-import-body {
+    padding: 0 18px 16px;
+  }
+
+  .lut-import-drop-zone {
+    height: 140px;
+  }
+
+  .lut-import-folder-row {
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 0;
+  }
+
+  .lut-import-folder-label {
+    padding-top: 0;
+  }
+
+  .lut-import-folder-input {
+    max-width: none;
+  }
+
+  .lut-import-table-header,
+  .lut-import-table-row {
+    grid-template-columns: 1fr 100px 70px 36px;
+  }
+
+  .lut-import-origin-cell {
+    display: none;
+  }
+
+  .lut-import-table-header > div:nth-child(2),
+  .lut-import-table-row > div:nth-child(2) {
+    display: none;
+  }
+
+  .lut-import-dialog-content .ui-dialog-footer .lut-import-footer {
+    height: auto;
+    padding: 14px 18px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .lut-import-footer-actions {
+    justify-content: flex-end;
+  }
+}
