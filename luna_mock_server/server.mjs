@@ -4,29 +4,23 @@ import { readdir, stat } from 'node:fs/promises'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createTcpServer } from 'node:net'
 import path from 'node:path'
-
+import { createHttpAuthGate } from './httpAuthGate.mjs'
 const DEVICE_CONFIG = JSON.parse(readFileSync(new URL('../electron/deviceConfigs/luna-ultra.json', import.meta.url), 'utf-8'))
 const STORAGE_PATHS = DEVICE_CONFIG.storages.map((s) => s.path)
 const CAMERA_PATH = STORAGE_PATHS.find((p) => DEVICE_CONFIG.storages[STORAGE_PATHS.indexOf(p)].default) || STORAGE_PATHS[0] || '/'
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'dng', 'insp', 'webp'])
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'lrv'])
 const AUTH_PAYLOADS = [
-  Buffer.from([
-    0x55, 0x43, 0x44, 0x32, 0x01, 0x0c, 0x05, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x37, 0x05, 0x47, 0x7c,
-  ]),
-  Buffer.from([
-    0x55, 0x43, 0x44, 0x32, 0x01, 0x0c, 0x04, 0x10, 0x0f, 0x00, 0x00, 0x00, 0x08, 0x00, 0x02, 0x01,
-    0x00, 0x00, 0x80, 0x00, 0x00, 0x08, 0x30, 0x08, 0x0f, 0x08, 0x0b, 0x7c, 0x00, 0x8e, 0x7c,
-  ]),
+  Buffer.from('55434432010c050f000000003705477c', 'hex'),
+  Buffer.from('55434432010c04100f0000000800020100008000000830080f080b7c008e7c', 'hex'),
 ]
-
 const EXPECTED_AUTH = Buffer.concat(AUTH_PAYLOADS)
-const AUTH_TTL_MS = 15_000
 const DEFAULT_MOCK = DEVICE_CONFIG.mock
 const CAMERA_DIR_NAMES = ['Camera01', 'Camera02', 'Camera03']
 const UCD2_MAGIC = Buffer.from('UCD2')
 const UCD2_FILE = 0x04
 const UCD2_STREAM = 0x05
+const authGate = createHttpAuthGate(3000)
 
 function argValue(name) {
   const prefix = `${name}=`
@@ -48,14 +42,8 @@ const httpPort = Number(argValue('--http-port') || process.env.LUNA_MOCK_HTTP_PO
 const tcpPort = Number(argValue('--tcp-port') || process.env.LUNA_MOCK_TCP_PORT || DEFAULT_MOCK.tcpPort)
 const rateBps = Number(argValue('--rate-mbps') || process.env.LUNA_MOCK_RATE_MBPS || DEFAULT_MOCK.rateMbps) * 1024 * 1024
 
-let authorizedUntil = 0
-
-function isAuthorized() {
-  return Date.now() <= authorizedUntil
-}
-
-function authorize() {
-  authorizedUntil = Date.now() + AUTH_TTL_MS
+function isStreamHandshake(frame) {
+  return frame[6] === UCD2_STREAM && frame.length >= 16
 }
 
 function buildUcd2(type, seq, payload) {
@@ -406,7 +394,7 @@ const httpServer = createHttpServer(async (request, response) => {
       return
     }
 
-    if (!isAuthorized()) {
+    if (!authGate.isAuthorized()) {
       response.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
       response.end('Luna mock requires a fresh TCP auth session before HTTP access.\n')
       return
@@ -447,7 +435,7 @@ const tcpServer = createTcpServer((socket) => {
 
     if (received.length <= EXPECTED_AUTH.length && received.equals(EXPECTED_AUTH.subarray(0, received.length))) {
       if (received.length < EXPECTED_AUTH.length) return
-      authorize()
+      authGate.authorize(socket)
       socket.write(Buffer.from([0x55, 0x43, 0x44, 0x32, 0x00]))
       received = Buffer.alloc(0)
       return
@@ -457,13 +445,15 @@ const tcpServer = createTcpServer((socket) => {
     received = parsed.rest
     if (parsed.frames.length === 0) return
 
-    authorize()
     for (const frame of parsed.frames) {
+      if (isStreamHandshake(frame)) authGate.authorize(socket)
       const response = responseForUcd2Frame(frame)
       if (response) socket.write(response)
     }
   })
   socket.on('timeout', () => socket.destroy())
+  socket.on('close', () => authGate.revoke(socket))
+  socket.on('error', () => authGate.revoke(socket))
 })
 
 async function main() {

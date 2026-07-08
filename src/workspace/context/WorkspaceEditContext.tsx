@@ -101,7 +101,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     initializePipeline,
   } = useEditPipeline()
 
-  const [activeTool, setActiveTool] = useState<WorkspaceTool>('color')
+  const [activeTool, setActiveTool] = useState<WorkspaceTool>('filter')
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [pipetteActive, setPipetteActive] = useState(false)
 

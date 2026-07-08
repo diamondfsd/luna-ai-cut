@@ -55,25 +55,39 @@ export class LunaUltraProtocol implements DeviceProtocol {
     await this.wakeDevice()
     const client = this.clientFor(host, this.controlPortForHost(host))
 
-    // 重试检测端口，最多 6 次共约 15 秒，给相机 WiFi 路由建立留足时间
-    let status: ConnectionStatus | null = null
-    const MAX_RETRIES = 6
+    // 连接入口优先建立 6666 控制会话；失败后再做状态探测，用于返回更明确的错误信息。
+    const MAX_RETRIES = 3
     for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
-      status = await client.checkStatus()
-      if (status.controlOk) break
-      if (attempt < MAX_RETRIES - 1) {
-        logMainWarn(`[设备协议] 端口检测第 ${attempt + 1}/${MAX_RETRIES} 次未通过，${attempt === 0 ? '800ms' : '3s'} 后重试`, { host })
+      try {
+        await client.connect()
+        break
+      } catch (error) {
+        if (attempt >= MAX_RETRIES - 1) {
+          const status = await client.checkStatus()
+          logMainWarn(`[设备协议] 控制会话连接失败`, {
+            host,
+            attempts: MAX_RETRIES,
+            httpOk: status.httpOk,
+            controlOk: status.controlOk,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          return withDeviceInfo(
+            {
+              ...status,
+              message: status.message || `连接失败：${error instanceof Error ? error.message : String(error)}`,
+            },
+            this.definition,
+          )
+        }
+
+        logMainWarn(`[设备协议] 控制会话第 ${attempt + 1}/${MAX_RETRIES} 次连接失败，${attempt === 0 ? '800ms' : '3s'} 后重试`, {
+          host,
+          error: error instanceof Error ? error.message : String(error),
+        })
         await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 800 : 3000))
       }
     }
 
-    logMainInfo(`[设备协议] 端口检测结果`, { host, httpOk: status?.httpOk, controlOk: status?.controlOk })
-    if (!status?.controlOk) {
-      logMainWarn(`[设备协议] 控制端口检测未通过，放弃连接`, { host, controlOk: status?.controlOk })
-      return withDeviceInfo(status ?? { host, httpOk: false, controlOk: false, message: '控制端口不可用' }, this.definition)
-    }
-
-    await client.connect()
     const connectedStatus = await client.checkStatus()
     client.onKeepAliveFailed = this.onConnectionLost ?? null
     client.startKeepAlive()

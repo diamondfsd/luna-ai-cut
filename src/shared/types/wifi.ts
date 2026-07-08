@@ -1,5 +1,15 @@
 export type WifiDebugPlatform = 'darwin' | 'win32' | 'linux' | string
 
+export interface WifiDebugAddress {
+  interfaceName: string
+  address: string
+  family: string
+  netmask: string
+  mac: string
+  cidr: string | null
+  internal: boolean
+}
+
 export interface WifiDebugStatus {
   platform: WifiDebugPlatform
   interfaceName: string | null
@@ -9,6 +19,8 @@ export interface WifiDebugStatus {
   signal: string | null
   security: string | null
   ipAddress: string | null
+  ipAddresses?: WifiDebugAddress[]
+  interfaces?: Record<string, WifiDebugAddress[]>
   raw?: string
 }
 

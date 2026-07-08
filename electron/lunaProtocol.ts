@@ -200,11 +200,6 @@ export class LunaClient {
   }
 
   private async keepAliveTick(): Promise<void> {
-    // 1. HTTP 服务探测
-    const endpoint = httpEndpoint(this.host)
-    const socket = await connectSocket(endpoint.host, endpoint.port, 1500)
-    socket.destroy()
-
     await this.runAuthExclusive(async () => {
       if (!this.controlSession?.isOpen) {
         this.resetControlSession()
@@ -322,7 +317,8 @@ export class LunaClient {
       try {
         if (attempt > 0) {
           logMainWarn(`[HTTP读取] 第 ${attempt + 1}/4 次重试`, { url })
-          await new Promise((resolve) => setTimeout(resolve, 300 + attempt * 250))
+          const retryDelay = lastStatus === 401 || lastStatus === 403 ? 1200 : 300 + attempt * 250
+          await new Promise((resolve) => setTimeout(resolve, retryDelay))
         }
 
         const response = await fetch(url, {
@@ -387,7 +383,6 @@ export class LunaClient {
         } catch { /* 忽略读取错误体异常 */ }
         logMainWarn(`[HTTP读取] HTTP ${response.status}, 尝试 ${attempt + 1}/4`, { url, path: cameraPath, responsePreview: errorBody })
         if (response.status !== 401 && response.status !== 403) break
-        this.resetControlSession()
       } catch (error) {
         lastError = error
         this.resetControlSession()
