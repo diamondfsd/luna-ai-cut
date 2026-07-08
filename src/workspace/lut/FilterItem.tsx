@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { useFileCache } from '../../hooks/useFileCache'
-import { LUT_BASE } from './builtinLuts'
-import { getLutCubeData, applyLutToImageData } from './LutCubeParser'
+import type { CompositionInput } from '../../shared/types'
 
 interface FilterItemProps {
   filePath: string
@@ -15,41 +14,52 @@ interface FilterItemProps {
   hideName?: boolean
 }
 
-/** 缩略图缓存 <cacheKey → dataURL> */
-const thumbCache = new Map<string, string>()
+const THUMB_CACHE = new Map<string, string>()
 
-/** 将 sourceUrl 渲染到 canvas 并应用 LUT，返回 data URL */
+function getLrc(): any {
+  return (window as unknown as { lunaRenderCore?: any }).lunaRenderCore ?? null
+}
+
+/** 调用 Rust 渲染一帧带 LUT 的缩略图，返回 data URL */
 async function renderFilterThumb(
-  sourceUrl: string,
-  filePath: string,
+  sourcePath: string,
+  lutPath: string,
 ): Promise<string> {
-  const cacheKey = `${filePath}::${sourceUrl}`
-  const cached = thumbCache.get(cacheKey)
+  const cacheKey = `${lutPath}::${sourcePath}`
+  const cached = THUMB_CACHE.get(cacheKey)
   if (cached) return cached
 
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve()
-    img.onerror = () => reject(new Error('加载缩略图失败'))
-    img.src = sourceUrl
-  })
+  const lrc = getLrc()
+  if (!lrc) throw new Error('渲染引擎未初始化')
 
+  const composition: CompositionInput = {
+    version: 1,
+    canvas: { width: 220, height: 138 },
+    layers: [{
+      source: { path: sourcePath },
+      rect: { x: 0, y: 0, w: 1, h: 1 },
+      fit: 'cover',
+      opacity: 1,
+      zIndex: 0,
+      lutId: lutPath,
+      lutIntensity: 100,
+    }],
+  }
+
+  const result = await lrc.renderCompositionFrame(composition, 0, 220)
+
+  // 将 Rust 返回的 RGBA buffer 转为 data URL
   const canvas = document.createElement('canvas')
-  canvas.width = 220
-  canvas.height = 138
+  canvas.width = result.width
+  canvas.height = result.height
   const ctx = canvas.getContext('2d')!
-  const scale = Math.max(canvas.width / img.width, canvas.height / img.height)
-  const sw = img.width * scale
-  const sh = img.height * scale
-  ctx.drawImage(img, (canvas.width - sw) / 2, (canvas.height - sh) / 2, sw, sh)
-
-  const sourceData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const cubeUrl = `${LUT_BASE}/${filePath}`
-  const lut = await getLutCubeData(cubeUrl)
-  const resultUrl = applyLutToImageData(sourceData, lut)
-  thumbCache.set(cacheKey, resultUrl)
-  return resultUrl
+  const imageData = ctx.createImageData(result.width, result.height)
+  const data = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data)
+  imageData.data.set(data)
+  ctx.putImageData(imageData, 0, 0)
+  const url = canvas.toDataURL('image/jpeg', 0.85)
+  THUMB_CACHE.set(cacheKey, url)
+  return url
 }
 
 export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hideName }: FilterItemProps) {
@@ -58,9 +68,10 @@ export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hi
   const mountedRef = useRef(true)
   const [visible, setVisible] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
+  const thumbnailRef = useRef<string | null>(null)
 
-  // 用现有 useFileCache 统一处理图片/视频缩略图
-  const { thumbnailUrl } = useFileCache(mediaPath, visible)
+  // 用 useFileCache 统一处理图片/视频缩略图
+  const { cacheFilePath } = useFileCache(mediaPath, visible)
 
   useEffect(() => {
     mountedRef.current = true
@@ -86,24 +97,18 @@ export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hi
     return () => observer.disconnect()
   }, [visible])
 
-  // 缩略图就绪 → 渲染滤镜效果
+  // 源缩略图就绪 → 调用 Rust 渲染带 LUT 的缩略图
   useEffect(() => {
-    if (!thumbnailUrl || !filePath) {
+    const sourcePath = cacheFilePath || thumbnailRef.current
+    if (!sourcePath || !filePath) {
       setThumbUrl(null)
       return
     }
 
     let cancelled = false
-    const cacheKey = `${filePath}::${thumbnailUrl}`
-    const cached = thumbCache.get(cacheKey)
-
-    if (cached) {
-      setThumbUrl(cached)
-      return
-    }
-
     setLoading(true)
-    renderFilterThumb(thumbnailUrl, filePath).then((url) => {
+
+    renderFilterThumb(sourcePath, filePath).then((url) => {
       if (!cancelled && mountedRef.current) {
         setThumbUrl(url)
         setLoading(false)
@@ -113,7 +118,7 @@ export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hi
     })
 
     return () => { cancelled = true }
-  }, [thumbnailUrl, filePath])
+  }, [cacheFilePath, filePath])
 
   return (
     <article
