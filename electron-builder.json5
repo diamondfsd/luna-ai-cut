@@ -33,6 +33,11 @@
       "to": "luna-render-core/luna-render-core.node"
     },
     {
+      "from": "public/luts",
+      "to": "luts",
+      "filter": ["**/*"]
+    },
+    {
       "from": "src/assets/watermark",
       "to": "watermark",
       "filter": ["**/*.png"]
