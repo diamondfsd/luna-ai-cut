@@ -266,8 +266,8 @@ const lunaRenderCoreApi = {
     exportItemId?: string,
   ) => ipcRenderer.invoke('lrc:exportCompositionImage', outputPath, composition, format, quality, exportTaskId, exportItemId),
   listCubeFiles: (dirPath: string) => ipcRenderer.invoke('lrc:listCubeFiles', dirPath),
-  importCubeFile: (sourcePath: string, categoryName: string, lutDir: string) =>
-    ipcRenderer.invoke('lrc:importCubeFile', sourcePath, categoryName, lutDir),
+  importCubeFile: (sourcePath: string, categoryName: string, lutDir: string, targetName?: string, meta?: { name?: string; description?: string }) =>
+    ipcRenderer.invoke('lrc:importCubeFile', sourcePath, categoryName, lutDir, targetName, meta),
 }
 
 contextBridge.exposeInMainWorld('luna', lunaApi)
