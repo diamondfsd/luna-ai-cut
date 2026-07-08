@@ -33,6 +33,33 @@
   letter-spacing: 0;
 }
 
+/* 滤镜搜索头（替换 h2 显示在 sidebar header 中） */
+.filter-search-header {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.035);
+  border-radius: 14px;
+  padding: 0 14px;
+  color: #8e98a8;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.filter-search-header input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.filter-search-header input::placeholder { color: #6e7785; }
+
 .workspace-tool-panel-actions {
   margin-left: auto;
   display: flex;

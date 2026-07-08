@@ -1,5 +1,5 @@
 import { Check, Crop, ImagePlus, Paintbrush, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
 import { createDefaultPipeline, DEFAULT_PIPELINE } from '../shared/editPipeline'
@@ -71,6 +71,9 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
   const cropHeight = edit.cropSize.height || refH
 
+  // 滤镜搜索关键字
+  const [filterSearchKey, setFilterSearchKey] = useState('')
+
   // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
   const handleWatermarkChange = useMemo(
     () => (watermarkSettings: WatermarkSettingsType, _layer?: PreviewLayer) => {
@@ -95,7 +98,21 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
     <aside className="workspace-edit-sidebar">
       <section className="workspace-tool-panel">
         <header className="workspace-tool-panel-header">
-          <h2>{titleForTool(edit.activeTool)}</h2>
+          {edit.activeTool === 'filter' ? (
+            <label className="filter-search-header">
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6Z" stroke="currentColor" stroke-width="2"/>
+                <path d="m16.2 16.2 4.3 4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <input
+                placeholder="搜索滤镜"
+                value={filterSearchKey}
+                onChange={(e) => setFilterSearchKey(e.target.value)}
+              />
+            </label>
+          ) : (
+            <h2>{titleForTool(edit.activeTool)}</h2>
+          )}
           {edit.activeTool === 'color' && (
             <span className="workspace-tool-panel-actions">
               {isColorModified(edit.pipeline.color) && <span className="ui-accordion-modified-dot" />}
@@ -119,6 +136,7 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
               intensity={edit.pipeline.lutFilter.intensity}
               onIntensityChange={(intensity) => edit.updateWorkspacePanel({ lutFilter: { intensity } })}
               mediaPath={mediaCtx.activeMedia?.path}
+              searchKey={filterSearchKey}
             />
           ) : edit.activeTool === 'color' ? (
             <ColorPanel

@@ -14,9 +14,11 @@ interface FilterPanelProps {
   onIntensityChange?: (intensity: number) => void
   /** 当前素材路径（传给 FilterItem 自己加载缩略图） */
   mediaPath?: string | null
+  /** 搜索关键字，按 LUT 名称过滤 */
+  searchKey?: string
 }
 
-export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensityChange, mediaPath }: FilterPanelProps) {
+export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
   const [loadingLuts, setLoadingLuts] = useState<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
@@ -52,11 +54,15 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
     return () => { cancelled = true }
   }, [])
 
-  // 按 tab 过滤
+  // 按 tab + searchKey 过滤
   const filteredLuts = useMemo(() => {
-    if (activeTab === '全部') return allLuts
-    return allLuts.filter((l) => l.category === activeTab)
-  }, [allLuts, activeTab])
+    let result = activeTab === '全部' ? allLuts : allLuts.filter((l) => l.category === activeTab)
+    if (searchKey) {
+      const kw = searchKey.toLowerCase()
+      result = result.filter((l) => l.name.toLowerCase().includes(kw))
+    }
+    return result
+  }, [allLuts, activeTab, searchKey])
 
   const handleSelect = useCallback(async (id: string | null) => {
     if (id === activeLutId) {
@@ -112,18 +118,6 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
   return (
     <aside className="filter-sidebar">
       <div className="sidebar-inner">
-        {/* 头部 */}
-        <header className="filter-header">
-          <div className="filter-title">滤镜</div>
-          <label className="filter-search">
-            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6Z" stroke="currentColor" stroke-width="2"/>
-              <path d="m16.2 16.2 4.3 4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            <input placeholder="搜索滤镜" readOnly />
-          </label>
-        </header>
-
         {/* 当前滤镜卡片 */}
         <section className="filter-current-card">
           <div className="current-thumb">
