@@ -22,7 +22,7 @@ import {
 } from './fileService'
 import type { IpcContext } from './ipcContext'
 import { listSampleFiles } from './localMedia'
-import { logMainError, logMainInfo, logMainWarn } from './loggerService'
+import { logMainDebug, logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 
 function mediaKindForPath(filePath: string): LunaFile['kind'] {
