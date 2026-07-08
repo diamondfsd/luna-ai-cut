@@ -5,6 +5,7 @@ import { ButtonGroup, toast } from '../../ui'
 import { type LutFileInfo } from './builtinLuts'
 import { FilterItem } from './FilterItem'
 import { lutManager } from './LutManager'
+import { ParamSlider } from '../components/ParamSlider'
 import './FilterPanel.css'
 
 interface FilterPanelProps {
@@ -115,6 +116,7 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
               name={activeLutInfo.name}
               mediaPath={mediaPath ?? null}
               intensity={intensity}
+              hideName
             />
           ) : (
             <div className="filter-current-placeholder">
@@ -126,37 +128,27 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
               <span>选择一个滤镜</span>
             </div>
           )}
-          <div className="current-info">
-            <div className="current-top">
-              <div className="eyebrow">当前滤镜</div>
-              {activeLutId && (
+          {activeLutInfo ? (
+            <div className="current-info">
+              <div className="current-top">
+                <span className="current-name">{activeLutInfo.name}</span>
                 <button className="filter-reset" onClick={() => { onChange(null); onIntensityChange?.(100) }} title="重置滤镜">
                   <RotateCcw size={11} />
                 </button>
-              )}
-            </div>
-
-            {/* 强度滑块 */}
-            {activeLutId && (
-              <div className="slider-row">
-                <div className="slider-head">
-                  <span>强度</span>
-                  <span className="slider-value">{intensity}</span>
-                </div>
-                <input
-                  type="range"
+              </div>
+              {onIntensityChange && (
+                <ParamSlider
+                  label="强度"
+                  value={intensity}
                   min={0}
                   max={100}
-                  value={intensity}
-                  onChange={(e) => onIntensityChange?.(Number(e.target.value))}
-                  style={{
-                    background: `linear-gradient(90deg, #3478ff 0%, #3478ff ${intensity}%, rgba(255,255,255,0.12) ${intensity}%, rgba(255,255,255,0.12) 100%)`,
-                  }}
+                  step={1}
+                  onChange={onIntensityChange}
+                  formatValue={(v) => String(v)}
                 />
-                <div className="slider-labels"><span>0</span><span>100</span></div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          ) : null}
         </section>
 
         {/* 分类标签 */}
