@@ -1813,7 +1813,7 @@ impl Compositor {
         ffmpeg: &str,
         ffprobe: &str,
         layer: &PreviewLayerInput,
-        decode_max_side: u32,
+        _decode_max_side: u32,
     ) -> Result<u32, String> {
         // ── 有 pipe 解码器：直接读下一帧（顺序读取最可靠） ──
         if let Some((texture_id, current_time)) = self
