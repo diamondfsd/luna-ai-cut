@@ -44,6 +44,25 @@ function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
   )
 }
 
+function isFilterModified(lutFilter: typeof DEFAULT_PIPELINE.lutFilter): boolean {
+  return lutFilter.activeId !== null
+}
+
+function isCropModified(transform: typeof DEFAULT_PIPELINE.transform): boolean {
+  return (
+    transform.crop !== null ||
+    transform.rotate !== 0 ||
+    transform.orientation !== 0 ||
+    transform.flipH ||
+    transform.flipV ||
+    transform.scale !== 1
+  )
+}
+
+function isWatermarkModified(watermark: typeof DEFAULT_PIPELINE.watermark): boolean {
+  return watermark.enabled === true
+}
+
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
   { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
@@ -73,6 +92,14 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
 
   // 滤镜搜索关键字
   const [filterSearchKey, setFilterSearchKey] = useState('')
+
+  // 各面板是否有未保存的修改
+  const toolModified = useMemo(() => ({
+    filter: isFilterModified(edit.pipeline.lutFilter),
+    color: isColorModified(edit.pipeline.color),
+    crop: isCropModified(edit.pipeline.transform),
+    watermark: isWatermarkModified(edit.pipeline.watermark),
+  }), [edit.pipeline])
 
   // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
   const handleWatermarkChange = useMemo(
@@ -197,15 +224,18 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
       <nav className="workspace-tool-rail" aria-label="工作台工具">
         <div className="workspace-tool-rail-main">
           {TOOL_ITEMS.map((item) => (
-            <Tooltip key={item.value} content={item.label}>
-              <IconButton
-                variant={edit.activeTool === item.value ? 'outline' : 'ghost'}
-                size="compact"
-                icon={item.icon}
-                aria-label={item.label}
-                onClick={() => edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)}
-              />
-            </Tooltip>
+            <div key={item.value} className="workspace-tool-rail-item">
+              <Tooltip content={item.label}>
+                <IconButton
+                  variant={edit.activeTool === item.value ? 'outline' : 'ghost'}
+                  size="compact"
+                  icon={item.icon}
+                  aria-label={item.label}
+                  onClick={() => edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)}
+                />
+              </Tooltip>
+              {toolModified[item.value] && <span className="workspace-tool-rail-dot" />}
+            </div>
           ))}
         </div>
       </nav>
