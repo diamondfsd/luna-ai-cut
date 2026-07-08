@@ -6,12 +6,13 @@ import { getLutCubeData, applyLutToImageData } from './LutCubeParser'
 
 interface FilterItemProps {
   filePath: string
-  name: string
-  active: boolean
-  loading?: boolean
-  onClick: () => void
+  name?: string
+  active?: boolean
+  onClick?: () => void
   /** 父组件传来的源文件路径（子组件自行通过 useFileCache 加载缩略图） */
   mediaPath: string | null
+  /** 隐藏底部的名称文本 */
+  hideName?: boolean
 }
 
 /** 缩略图缓存 <cacheKey → dataURL> */
@@ -51,8 +52,9 @@ async function renderFilterThumb(
   return resultUrl
 }
 
-export function FilterItem({ filePath, name, active, loading, onClick, mediaPath }: FilterItemProps) {
+export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hideName }: FilterItemProps) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
   const mountedRef = useRef(true)
   const [visible, setVisible] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -100,10 +102,14 @@ export function FilterItem({ filePath, name, active, loading, onClick, mediaPath
       return
     }
 
+    setLoading(true)
     renderFilterThumb(thumbnailUrl, filePath).then((url) => {
-      if (!cancelled && mountedRef.current) setThumbUrl(url)
+      if (!cancelled && mountedRef.current) {
+        setThumbUrl(url)
+        setLoading(false)
+      }
     }).catch(() => {
-      // 缩略图生成失败，保持空白
+      if (!cancelled && mountedRef.current) setLoading(false)
     })
 
     return () => { cancelled = true }
@@ -120,10 +126,12 @@ export function FilterItem({ filePath, name, active, loading, onClick, mediaPath
           <img src={thumbUrl} alt={name} className="thumb-img" />
         ) : loading ? (
           <div className="thumb-loading" />
-        ) : null}
+        ) : (
+          <div className="thumb-placeholder" />
+        )}
       </div>
-      {active && <div className="check">✓</div>}
-      <div className="name">{name}</div>
+      {active && !hideName && <div className="check">✓</div>}
+      {!hideName && <div className="name">{name}</div>}
     </article>
   )
 }

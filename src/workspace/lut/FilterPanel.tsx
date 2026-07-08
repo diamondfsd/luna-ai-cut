@@ -19,7 +19,6 @@ interface FilterPanelProps {
 }
 
 export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
-  const [loadingLuts, setLoadingLuts] = useState<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
   const [categories, setCategories] = useState<string[]>([])
@@ -72,19 +71,12 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
     onChange(id)
     if (id === null) return
 
-    setLoadingLuts((prev) => new Set(prev).add(id))
     try {
       const info = allLuts.find((l) => l.filePath === id || l.id === id)
       if (info) await lutManager.ensureLoaded(info)
       else await lutManager.ensureLoadedById(id)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '滤镜加载失败')
-    } finally {
-      setLoadingLuts((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
     }
   }, [activeLutId, onChange, allLuts])
 
@@ -119,21 +111,18 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
     <aside className="filter-sidebar">
       <div className="sidebar-inner">
         {/* 当前滤镜卡片 */}
-        <section className="filter-current-card">
-          <div className="current-thumb">
-            {activeLutInfo ? (
-              <div className="current-thumb-label">{activeLutInfo.name.slice(0, 2)}</div>
-            ) : (
-              <div className="current-thumb-label">--</div>
+        {activeLutId && (
+          <section className="filter-current-card">
+            {activeLutInfo && (
+              <FilterItem
+                filePath={activeLutInfo.filePath}
+                name={activeLutInfo.name}
+                mediaPath={mediaPath ?? null}
+              />
             )}
-          </div>
-          <div className="current-info">
-            <div className="current-top">
-              <div>
+            <div className="current-info">
+              <div className="current-top">
                 <div className="eyebrow">当前滤镜</div>
-                <div className="current-name">{activeLutInfo?.name ?? '无'}</div>
-              </div>
-              {activeLutId && (
                 <button className="filter-reset" onClick={() => { onChange(null); onIntensityChange?.(100) }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                     <path d="M4.8 8.6A8 8 0 1 1 4.1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -141,11 +130,9 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
                   </svg>
                   重置
                 </button>
-              )}
-            </div>
+              </div>
 
-            {/* 强度滑块 */}
-            {activeLutId && (
+              {/* 强度滑块 */}
               <div className="slider-row">
                 <div className="slider-head">
                   <span>强度</span>
@@ -163,9 +150,9 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
                 />
                 <div className="slider-labels"><span>0</span><span>100</span></div>
               </div>
-            )}
-          </div>
-        </section>
+            </div>
+          </section>
+        )}
 
         {/* 分类标签 */}
         <div className="filter-tabs-row">
@@ -191,7 +178,6 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
                 filePath={lut.filePath}
                 name={lut.name}
                 active={activeLutId === lut.filePath}
-                loading={loadingLuts.has(lut.filePath)}
                 onClick={() => handleSelect(lut.filePath)}
                 mediaPath={mediaPath ?? null}
               />
