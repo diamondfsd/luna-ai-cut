@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { FileQuestion, Film } from 'lucide-react'
 
 import { LivePhotoBadge, VideoPlayBadge } from '../ui'
-import { useFileCache } from '../hooks/useFileCache'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 import { fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
+import { ThumbImage } from './ThumbImage'
 
 interface PreviewThumbnailStripProps {
   filePathList: string[]
@@ -23,35 +22,8 @@ function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThu
   activeThumbRef?: RefObject<HTMLButtonElement>
 }) {
   const btnRef = useRef<HTMLButtonElement>(null)
-  const [visible, setVisible] = useState(false)
-  const requestedRef = useRef(false)
   const kind = mediaKindFromPath(filePath)
-
-  // 进入视口时启用缓存（HTTP URL → 本地文件）
-  const { thumbnailUrl: thumbSrc, cacheFilePath: cachedPath } = useFileCache(filePath, visible)
-  const detectPath = cachedPath || filePath
-  const isLive = useLivePhotoWhenVisible(detectPath, btnRef, '200px')
-  const showThumb = Boolean(thumbSrc)
-
-  useEffect(() => {
-    if (requestedRef.current) return
-    const el = btnRef.current
-    if (!el) return
-
-    if (showThumb) { requestedRef.current = true; return }
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          requestedRef.current = true
-          setVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: '100px' },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [filePath, showThumb])
+  const isLive = useLivePhotoWhenVisible(filePath, btnRef, '200px')
 
   return (
     <button
@@ -66,13 +38,7 @@ function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThu
       title={fileNameFromPath(filePath)}
     >
       {isModified && <span className="preview-thumb-modified-dot" />}
-      {showThumb ? (
-        <img src={thumbSrc ?? undefined} alt={fileNameFromPath(filePath)} loading="lazy" />
-      ) : (
-        <span className="preview-thumb-placeholder">
-          {kind === 'video' ? <Film size={14} /> : <FileQuestion size={14} />}
-        </span>
-      )}
+      <ThumbImage src={filePath} alt={fileNameFromPath(filePath)} loading="lazy" />
       {kind === 'video' && <VideoPlayBadge size={16} />}
       {isLive && <LivePhotoBadge size={18} className="preview-thumb-live" />}
     </button>
