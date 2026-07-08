@@ -113,6 +113,82 @@
   background: var(--parchment, #f0f0f0);
 }
 
+.current-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.filter-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted, #888);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+
+.filter-info-btn:hover {
+  color: #5c96ff;
+  background: rgba(92, 150, 255, 0.12);
+}
+
+.ui-popover-content.lut-info-popover {
+  width: 320px;
+  max-height: none;
+  display: block;
+  overflow: visible;
+  background: #1a1f28;
+  color: #e0e4ec;
+  border-color: rgba(255,255,255,0.12);
+}
+
+.ui-popover-content.lut-info-popover .ui-popover-arrow {
+  fill: #1a1f28;
+  stroke: rgba(255,255,255,0.12);
+}
+
+.lut-info-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lut-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lut-info-label {
+  font-size: 11px;
+  color: #7e8795;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lut-info-value {
+  font-size: 13px;
+  color: #e0e4ec;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.lut-info-value.lut-info-path {
+  font-size: 11px;
+  color: #8e97a5;
+  font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', ui-monospace, monospace;
+  word-break: break-all;
+}
+
 /* ═══ 分类标签 ═══ */
 
 .filter-tabs-row {

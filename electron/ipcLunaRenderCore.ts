@@ -221,7 +221,7 @@ export function register(_ctx: RegisterContext): void {
   /** 递归扫描 .cube 文件（内置 + 外部目录），按目录名作为分类 */
   ipcMain.handle('lrc:listCubeFiles', safe('listCubeFiles',
     async (_event: IpcMainInvokeEvent, dirPath: string) => {
-      const results: Array<{ path: string; name: string; relDir: string }> = []
+      const results: Array<{ path: string; name: string; relDir: string; description?: string }> = []
       const seen = new Set<string>()
 
       async function scanDir(dir: string, baseDir: string): Promise<void> {
@@ -237,17 +237,19 @@ export function register(_ctx: RegisterContext): void {
               const fileBaseName = entry.replace(/\.cube$/i, '')
               // 尝试读取同名的 .meta.json，用其中的 name 字段作为显示名
               let name = fileBaseName
+              let description: string | undefined
               try {
                 const metaPath = join(dir, `${fileBaseName}.cube.meta.json`)
                 const metaRaw = await readFile(metaPath, 'utf8')
                 const meta = JSON.parse(metaRaw)
                 if (meta.name) name = meta.name
+                if (meta.description) description = meta.description
               } catch { /* 没有 meta 文件就用文件名 */ }
               const relDir = dir === baseDir ? '' : dir.slice(baseDir.length + 1)
               const key = `${fileBaseName}:${relDir}`
               if (seen.has(key)) continue
               seen.add(key)
-              results.push({ path: fullPath, name, relDir })
+              results.push({ path: fullPath, name, relDir, description })
             }
           } catch { /* 跳过无权限文件 */ }
         }

@@ -1,9 +1,10 @@
-import { RotateCcw, Upload } from 'lucide-react'
+import { CircleAlert, RotateCcw, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { ButtonGroup } from '../../ui'
 import { type LutFileInfo } from './builtinLuts'
 import { FilterItem } from './FilterItem'
+import { Popover, PopoverContent, PopoverTrigger } from '../../ui'
 import { LutImportDialog } from './LutImportDialog'
 import { lutManager } from './LutManager'
 import { ParamSlider } from '../components/ParamSlider'
@@ -131,9 +132,40 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
             <div className="current-info">
               <div className="current-top">
                 <span className="current-name">{activeLutInfo.name}</span>
-                <button className="filter-reset" onClick={() => { onChange(null); }} title="重置滤镜">
-                  <RotateCcw size={11} />
-                </button>
+                <div className="current-actions">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="filter-info-btn" title="LUT 详情">
+                        <CircleAlert size={13} />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="lut-info-popover" align="end">
+                      <div className="lut-info-body">
+                        <div className="lut-info-row">
+                          <span className="lut-info-label">名称</span>
+                          <span className="lut-info-value">{activeLutInfo.name}</span>
+                        </div>
+                        <div className="lut-info-row">
+                          <span className="lut-info-label">分类</span>
+                          <span className="lut-info-value">{activeLutInfo.category}</span>
+                        </div>
+                        {activeLutInfo.description && (
+                          <div className="lut-info-row">
+                            <span className="lut-info-label">描述</span>
+                            <span className="lut-info-value">{activeLutInfo.description}</span>
+                          </div>
+                        )}
+                        <div className="lut-info-row">
+                          <span className="lut-info-label">路径</span>
+                          <span className="lut-info-value lut-info-path">{activeLutInfo.filePath}</span>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <button className="filter-reset" onClick={() => { onChange(null); }} title="重置滤镜">
+                    <RotateCcw size={11} />
+                  </button>
+                </div>
               </div>
               {onIntensityChange && (
                 <ParamSlider

@@ -2,6 +2,7 @@
  * LutManager — LUT 发现/扫描
  *
  * 通过 IPC 扫描目录获取 .cube 文件（内置 + 外部），
+ * IPC 端已自动加载同目录下的 .cube.meta.json 获取名称/描述。
  * 所有路径均为绝对路径，直接传给 Rust。
  */
 import type { LutFileInfo } from './builtinLuts'
@@ -29,6 +30,7 @@ class LutManagerClass {
             name: entry.name,
             category: cat,
             filePath: entry.path,
+            description: entry.description,
           })
         }
       }
@@ -47,7 +49,7 @@ class LutManagerClass {
 }
 
 type LunaRenderCore = {
-  listCubeFiles: (dir: string) => Promise<Array<{ path: string; name: string; relDir: string }>>
+  listCubeFiles: (dir: string) => Promise<Array<{ path: string; name: string; relDir: string; description?: string }>>
 }
 
 function getLrc(): LunaRenderCore | null {
