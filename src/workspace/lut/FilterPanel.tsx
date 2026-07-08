@@ -131,7 +131,7 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
             <div className="current-info">
               <div className="current-top">
                 <span className="current-name">{activeLutInfo.name}</span>
-                <button className="filter-reset" onClick={() => { onChange(null); onIntensityChange?.(100) }} title="重置滤镜">
+                <button className="filter-reset" onClick={() => { onChange(null); }} title="重置滤镜">
                   <RotateCcw size={11} />
                 </button>
               </div>
