@@ -33,19 +33,30 @@
   letter-spacing: 0;
 }
 
-/* 滤镜搜索头（替换 h2 显示在 sidebar header 中） */
+/* 滤镜面板标题 */
+.filter-panel-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* 滤镜搜索头 */
 .filter-search-header {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
+  gap: 6px;
+  height: 32px;
   border: 1px solid rgba(255,255,255,0.16);
   background: rgba(255,255,255,0.035);
-  border-radius: 14px;
-  padding: 0 14px;
+  border-radius: 999px;
+  padding: 0 12px;
   color: #8e98a8;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  margin-left: 10px;
 }
 
 .filter-search-header input {
@@ -59,6 +70,25 @@
 }
 
 .filter-search-header input::placeholder { color: #6e7785; }
+
+/* 搜索输入框的清除按钮（WebKit） */
+.filter-search-header input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--muted, #888);
+  cursor: pointer;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E") center/contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask-size: 10px;
+  -webkit-mask-size: 10px;
+  background-color: #6e7785;
+}
+
+.filter-search-header input[type="search"]::-webkit-search-cancel-button:hover {
+  background-color: #c7cdd7;
+}
 
 .workspace-tool-panel-actions {
   margin-left: auto;

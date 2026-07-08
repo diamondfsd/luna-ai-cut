@@ -126,17 +126,21 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
       <section className="workspace-tool-panel">
         <header className="workspace-tool-panel-header">
           {edit.activeTool === 'filter' ? (
-            <label className="filter-search-header">
-              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6Z" stroke="currentColor" stroke-width="2"/>
-                <path d="m16.2 16.2 4.3 4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              </svg>
-              <input
-                placeholder="搜索滤镜"
-                value={filterSearchKey}
-                onChange={(e) => setFilterSearchKey(e.target.value)}
-              />
-            </label>
+            <>
+              <h2 className="filter-panel-title">滤镜</h2>
+              <label className="filter-search-header">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6Z" stroke="currentColor" stroke-width="2"/>
+                  <path d="m16.2 16.2 4.3 4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <input
+                  type="search"
+                  placeholder="搜索滤镜"
+                  value={filterSearchKey}
+                  onChange={(e) => setFilterSearchKey(e.target.value)}
+                />
+              </label>
+            </>
           ) : (
             <h2>{titleForTool(edit.activeTool)}</h2>
           )}

@@ -4,8 +4,8 @@
 import { ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFileSync } from 'node:fs'
-import { readFile, readdir, stat } from 'node:fs/promises'
-import { join, extname } from 'node:path'
+import { cp, mkdir, readFile, readdir, stat } from 'node:fs/promises'
+import { join, extname, basename } from 'node:path'
 import {
   ensureInit,
   renderCompositionFrame as lrcRenderCompositionFrame,
@@ -266,6 +266,23 @@ export function register(_ctx: RegisterContext): void {
       } catch { /* 内置 LUT 目录不存在则跳过 */ }
 
       return results
+    },
+  ))
+
+  /** 导入 .cube 文件到 LUT 目录的指定分组 */
+  ipcMain.handle('lrc:importCubeFile', safe('importCubeFile',
+    async (_event: IpcMainInvokeEvent, sourcePath: string, categoryName: string, lutDir: string) => {
+      const name = basename(sourcePath)
+      if (!name.toLowerCase().endsWith('.cube')) {
+        throw new Error('只支持 .cube 格式的 LUT 文件')
+      }
+      const destDir = join(lutDir, categoryName)
+      await mkdir(destDir, { recursive: true })
+      const destPath = join(destDir, name)
+      await cp(sourcePath, destPath, { force: true })
+      const fileBaseName = name.replace(/\.cube$/i, '')
+      rcLog(`lrc:importCubeFile ${destPath}`)
+      return { path: destPath, name: fileBaseName, relDir: categoryName }
     },
   ))
 
