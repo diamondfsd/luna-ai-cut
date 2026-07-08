@@ -91,7 +91,10 @@ let native: LunaRenderCoreNative | null = null
 function getNative(): LunaRenderCoreNative {
   if (native) return native
 
-  const appRoot = process.env.APP_ROOT || join(import.meta.dirname, '..')
+  // 在打包环境下 process.resourcesPath 指向 resources/ 目录
+  // extraResources 中的 luna-render-core 会复制到 resources/luna-render-core/
+  // 开发环境下回退到项目根目录
+  const appRoot = process.resourcesPath || process.env.APP_ROOT || join(import.meta.dirname, '..')
   const nodePath = join(appRoot, 'luna-render-core', 'luna-render-core.node')
   try {
     native = require(nodePath) as LunaRenderCoreNative

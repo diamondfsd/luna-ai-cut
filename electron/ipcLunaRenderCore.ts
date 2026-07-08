@@ -24,7 +24,8 @@ interface RegisterContext {
 
 /** 写日志到文件（追加模式），APP_ROOT 在 appMain.ts 中设置 */
 function rcLog(msg: string): void {
-  const appRoot = process.env.APP_ROOT || join(import.meta.dirname, '..')
+  // 打包后 extraResources 在 resources/ 中，与 app.asar 同级
+  const appRoot = process.resourcesPath || process.env.APP_ROOT || join(import.meta.dirname, '..')
   const logPath = join(appRoot, 'luna-render-core', 'luna-rc.log')
   try {
     const ts = new Date().toISOString().slice(11, 23)
