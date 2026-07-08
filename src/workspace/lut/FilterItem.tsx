@@ -65,7 +65,7 @@ async function renderFilterThumb(
   return url
 }
 
-export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hideName, intensity = 100 }: FilterItemProps) {
+export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hideName, intensity = 30 }: FilterItemProps) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const mountedRef = useRef(true)

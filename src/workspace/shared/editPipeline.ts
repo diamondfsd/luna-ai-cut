@@ -183,7 +183,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
   },
   lutFilter: {
     activeId: null,
-    intensity: 100,
+    intensity: 30,
   },
   watermark: {
     enabled: false,

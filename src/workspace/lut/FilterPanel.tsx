@@ -18,7 +18,7 @@ interface FilterPanelProps {
   searchKey?: string
 }
 
-export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
+export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
   const [categories, setCategories] = useState<string[]>([])
