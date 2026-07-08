@@ -24,6 +24,20 @@
 
 /* ═══ 当前滤镜卡片 ═══ */
 
+.filter-current-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  aspect-ratio: 4 / 3;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #1a1f26, #222830);
+  color: #7e8795;
+  font-size: 13px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
 .filter-current-card {
   display: grid;
   grid-template-columns: 130px 1fr;
