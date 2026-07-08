@@ -2,7 +2,13 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useApp } from './AppContext'
 import { logger } from '../lib/rendererLogger'
-import type { AppSettings, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition, MockServerStatus } from '../shared/types'
+import type {
+  AppSettings,
+  ConnectionStatus,
+  DeviceConnectionPhase,
+  DeviceDefinition,
+  MockServerStatus,
+} from '../shared/types'
 
 interface DeviceConnectionContextValue {
   activeDevice: DeviceDefinition | undefined
@@ -33,6 +39,37 @@ function connectionTimeoutStatus(host: string): Promise<ConnectionStatus> {
   return new Promise((resolve) => {
     setTimeout(() => resolve({ host, httpOk: false, controlOk: false, message: '连接超时' }), 4000)
   })
+}
+
+async function enrichConnectionStatus(status: ConnectionStatus): Promise<ConnectionStatus> {
+  try {
+    const diagnostics = await window.luna.collectNetworkDiagnostics()
+    return {
+      ...status,
+      diagnosticsRaw: JSON.stringify(diagnostics, null, 2),
+    }
+  } catch (primaryError) {
+    logger.warn('[设备连接] 网络诊断收集失败，回退到基础状态', {
+      error: primaryError instanceof Error ? primaryError.message : String(primaryError),
+    })
+    try {
+      const wifiStatus = await window.luna.getWifiStatus()
+      return {
+        ...status,
+        diagnosticsRaw: JSON.stringify({ connection: status, wifiStatus, networkDiagnosticsError: primaryError instanceof Error ? primaryError.message : String(primaryError) }, null, 2),
+      }
+    } catch (fallbackError) {
+      logger.warn('[设备连接] 获取网络状态失败', { error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError) })
+      return {
+        ...status,
+        diagnosticsRaw: JSON.stringify({
+          connection: status,
+          wifiStatusError: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+          networkDiagnosticsError: primaryError instanceof Error ? primaryError.message : String(primaryError),
+        }, null, 2),
+      }
+    }
+  }
 }
 
 function failedMockStatus(settings: AppSettings, activeDevice: DeviceDefinition | undefined, message: string): MockServerStatus {
@@ -119,15 +156,23 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         connectionTimeoutStatus(host),
       ])
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-      logger.info('[设备连接] 连接结果', { deviceId, host, httpOk: status.httpOk, controlOk: status.controlOk, message: status.message, elapsedSec: elapsed })
-      setConnection(status)
-      if (status.httpOk && status.controlOk) {
+      const enrichedStatus = status.httpOk && status.controlOk ? status : await enrichConnectionStatus(status)
+      setConnection(enrichedStatus)
+      if (enrichedStatus.httpOk && enrichedStatus.controlOk) {
         setDevicePhase('connected')
         setCameraLibraryMounted(false)
-        logger.info('[设备连接] 连接成功', { deviceId, host })
+        logger.info('[设备连接] 连接成功', { deviceId, host, elapsedSec: elapsed })
       } else {
         setDevicePhase('error')
-        logger.warn('[设备连接] 连接失败', { deviceId, host, message: status.message })
+        logger.warn('[设备连接] 连接失败', {
+          deviceId,
+          host,
+          httpOk: enrichedStatus.httpOk,
+          controlOk: enrichedStatus.controlOk,
+          message: enrichedStatus.message,
+          elapsedSec: elapsed,
+          diagnosticsRaw: enrichedStatus.diagnosticsRaw,
+        })
       }
     } catch (error) {
       const host = settings?.cameraHost || activeDevice?.defaultHost || ''
@@ -162,8 +207,6 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
     const status = await window.luna.stopMockServer()
     setMockServerStatus(status)
     setSettings(await window.luna.saveSettings({ developerMode: false }))
-    setConnection(null)
-    setDevicePhase('idle')
   }
 
   return (
