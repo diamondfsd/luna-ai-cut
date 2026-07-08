@@ -4,7 +4,7 @@
 import { ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFileSync } from 'node:fs'
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { join, extname } from 'node:path'
 import {
   ensureInit,
@@ -14,8 +14,6 @@ import {
   exportCompositionImageAsync as lrcExportCompositionImageAsync,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
-  loadLut as lrcLoadLut,
-  releaseLut as lrcReleaseLut,
 } from './lunaRenderCore'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import * as exportTaskService from './exportTaskService'
@@ -220,18 +218,6 @@ export function register(_ctx: RegisterContext): void {
     },
   ))
 
-  ipcMain.handle('lrc:loadLut', safe('loadLut',
-    async (_event: IpcMainInvokeEvent, cubeData: Buffer) => {
-      return lrcLoadLut(cubeData)
-    },
-  ))
-
-  ipcMain.handle('lrc:releaseLut', safe('releaseLut',
-    async (_event: IpcMainInvokeEvent, lutId: number) => {
-      lrcReleaseLut(lutId)
-    },
-  ))
-
   /** 递归扫描目录返回 .cube 文件树（按文件夹分组） */
   ipcMain.handle('lrc:listCubeFiles', safe('listCubeFiles',
     async (_event: IpcMainInvokeEvent, dirPath: string) => {
@@ -260,12 +246,6 @@ export function register(_ctx: RegisterContext): void {
     },
   ))
 
-  /** 读取 .cube 文件内容 */
-  ipcMain.handle('lrc:readLutFile', safe('readLutFile',
-    async (_event: IpcMainInvokeEvent, filePath: string) => {
-      return await readFile(filePath)
-    },
-  ))
 }
 
 function fileNameFromPath(filePath: string): string {

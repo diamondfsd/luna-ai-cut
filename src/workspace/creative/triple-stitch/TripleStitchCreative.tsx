@@ -8,7 +8,6 @@ import { Button, IconButton, Select, toast } from '../../../ui'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/creativeMedia'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
-import { lutManager } from '../../lut/LutManager'
 import { ParamSlider } from '../../components/ParamSlider'
 import './triple-stitch.css'
 
@@ -70,7 +69,7 @@ function clampPan(value: number, scale: number): number {
 function buildTripleStitchComposition(
   slots: CreativeSlotSource[],
   edits: SlotEdit[],
-  lutIds: (number | undefined)[],
+  lutPaths: (string | undefined)[],
 ): CompositionInput | null {
   if (slots.length !== 3) return null
   return {
@@ -104,30 +103,12 @@ function buildTripleStitchComposition(
         translateX: edits[index]?.translateX ?? 0,
         translateY: edits[index]?.translateY ?? 0,
       },
-      lutId: lutIds[index],
+      lutId: lutPaths[index],
       lutIntensity: pipeline.lutFilter.intensity,
     })),
   }
 }
 
-/** 异步加载各 slot 的 LUT，返回 <slotIndex → GPU_LUT_ID> 映射 */
-async function loadSlotLutIds(slots: CreativeSlotSource[]): Promise<(number | undefined)[]> {
-  // 确保 LUT 缓存可用
-  await lutManager.discoverLuts()
-  return Promise.all(slots.map(async ({ pipeline }) => {
-    if (!pipeline.lutFilter.activeId) return undefined
-    return await lutManager.ensureLoadedById(pipeline.lutFilter.activeId)
-  }))
-}
-
-/** 构建三拼 composition + 异步加载 LUT */
-async function buildTripleStitchCompositionAsync(
-  slots: CreativeSlotSource[],
-  edits: SlotEdit[],
-): Promise<CompositionInput | null> {
-  const lutIds = await loadSlotLutIds(slots)
-  return buildTripleStitchComposition(slots, edits, lutIds)
-}
 
 function compositionApi(): LunaCompositionExportApi {
   const api = (window as unknown as { lunaRenderCore?: LunaCompositionExportApi }).lunaRenderCore
@@ -157,7 +138,8 @@ export function TripleStitchCreative() {
     const version = ++compositionVersionRef.current
     let cancelled = false
     ;(async () => {
-      const result = await buildTripleStitchCompositionAsync(slotSources, slotEdits)
+      const lutPaths = slotSources.map((s) => s.pipeline.lutFilter.activeId ?? undefined)
+      const result = buildTripleStitchComposition(slotSources, slotEdits, lutPaths)
       if (!cancelled && version === compositionVersionRef.current) {
         setComposition(result)
       }

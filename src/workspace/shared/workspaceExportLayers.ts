@@ -3,7 +3,6 @@ import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer } from '../../shared/types'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
-import { lutManager } from '../lut/LutManager'
 
 function exportCanvasFor(resolution: { width: number; height: number }): { width: number; height: number } {
   const max = 1440
@@ -12,23 +11,18 @@ function exportCanvasFor(resolution: { width: number; height: number }): { width
   return { width: Math.round(max * aspect), height: max }
 }
 
-export async function buildWorkspaceExportLayersAsync(
+export function buildWorkspaceExportLayers(
   sourcePath: string,
   resolution: { width: number; height: number },
   pipeline: EditPipeline,
-): Promise<PreviewLayer[]> {
+): PreviewLayer[] {
   const main = buildLayers(sourcePath, resolution, exportCanvasFor(resolution))
   if (main[0]) {
-    let lutId: number | undefined
-    if (pipeline.lutFilter.activeId) {
-      await lutManager.discoverLuts()
-      lutId = await lutManager.ensureLoadedById(pipeline.lutFilter.activeId)
-    }
     main[0] = {
       ...main[0],
       color: pipelineColorToRenderColor(pipeline.color),
       transform: pipelineTransformToRenderTransform(pipeline.transform),
-      lutId,
+      lutId: pipeline.lutFilter.activeId ?? undefined,
       lutIntensity: pipeline.lutFilter.intensity,
     }
   }

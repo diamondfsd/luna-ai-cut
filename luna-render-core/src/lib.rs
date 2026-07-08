@@ -220,7 +220,7 @@ pub struct RenderLayer {
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
-    pub lut_id: Option<u32>,
+    pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
 }
 
@@ -244,7 +244,7 @@ pub struct PreviewLayer {
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
-    pub lut_id: Option<u32>,
+    pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
 }
 
@@ -345,22 +345,6 @@ pub fn load_texture_from_path(
     })
 }
 
-/// 加载 .cube 格式的 3D LUT（Look-Up Table）数据到 GPU
-///
-/// `cube_data` — .cube 文件的二进制内容（UTF-8 文本）
-/// 返回 LUT ID，可用于 `RenderLayer.lut_id`
-#[napi]
-pub fn load_lut(cube_data: Buffer) -> napi::Result<u32> {
-    let bytes: Vec<u8> = cube_data.into();
-    lock(|c| c.load_lut(&bytes))
-}
-
-/// 释放 LUT
-#[napi]
-pub fn release_lut(lut_id: u32) -> napi::Result<()> {
-    lock(|c| c.release_lut(lut_id))
-}
-
 /// 更新已有纹理的内容（用于视频逐帧更新）
 #[napi]
 pub fn update_texture(texture_id: u32, data: Buffer) -> napi::Result<()> {
@@ -409,7 +393,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             color: l.color.clone().unwrap_or_default(),
             transform: l.transform.clone().unwrap_or_default(),
             positioning: l.positioning.clone(),
-            lut_id: l.lut_id,
+            lut_id: l.lut_id.clone(),
             lut_intensity: l.lut_intensity,
         })
         .collect();
@@ -460,7 +444,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     color: item.layer.color.clone().unwrap_or_default(),
                     transform: item.layer.transform.clone().unwrap_or_default(),
                     positioning: item.layer.positioning.clone(),
-                    lut_id: item.layer.lut_id,
+                    lut_id: item.layer.lut_id.clone(),
                     lut_intensity: item.layer.lut_intensity,
                 },
                 compositor::PreviewTextureInfo {
