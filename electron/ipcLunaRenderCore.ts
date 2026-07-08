@@ -4,7 +4,7 @@
 import { ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFileSync } from 'node:fs'
-import { cp, mkdir, readFile, readdir, stat } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { join, extname, basename } from 'node:path'
 import {
   ensureInit,
@@ -273,16 +273,35 @@ export function register(_ctx: RegisterContext): void {
 
   /** 导入 .cube 文件到 LUT 目录的指定分组 */
   ipcMain.handle('lrc:importCubeFile', safe('importCubeFile',
-    async (_event: IpcMainInvokeEvent, sourcePath: string, categoryName: string, lutDir: string) => {
-      const name = basename(sourcePath)
-      if (!name.toLowerCase().endsWith('.cube')) {
+    async (
+      _event: IpcMainInvokeEvent,
+      sourcePath: string,
+      categoryName: string,
+      lutDir: string,
+      targetName?: string,
+      meta?: { name?: string; description?: string },
+    ) => {
+      if (!sourcePath.toLowerCase().endsWith('.cube')) {
         throw new Error('只支持 .cube 格式的 LUT 文件')
       }
+      const fileName = targetName ? `${targetName}.cube` : basename(sourcePath)
       const destDir = join(lutDir, categoryName)
       await mkdir(destDir, { recursive: true })
-      const destPath = join(destDir, name)
+      const destPath = join(destDir, fileName)
       await cp(sourcePath, destPath, { force: true })
-      const fileBaseName = name.replace(/\.cube$/i, '')
+      const fileBaseName = fileName.replace(/\.cube$/i, '')
+
+      // 写入同名 .meta.json（与内置 LUT 格式一致）
+      const metaObj: Record<string, unknown> = {}
+      if (meta?.name) {
+        metaObj.name = meta.name
+      } else {
+        metaObj.name = fileBaseName
+      }
+      if (meta?.description) metaObj.description = meta.description
+      const metaPath = destPath + '.meta.json'
+      await writeFile(metaPath, JSON.stringify(metaObj), 'utf-8')
+
       rcLog(`lrc:importCubeFile ${destPath}`)
       return { path: destPath, name: fileBaseName, relDir: categoryName }
     },
