@@ -63,6 +63,7 @@
   flex-direction: column;
   justify-content: space-between;
   min-height: 0;
+  min-width: 0;
   padding: 2px 6px 2px 0;
 }
 
@@ -80,6 +81,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .current-name {
