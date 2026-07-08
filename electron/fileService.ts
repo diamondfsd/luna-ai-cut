@@ -304,13 +304,21 @@ export async function cacheFile(file: LunaFile): Promise<string | null> {
     const cacheDir = await previewCacheDir()
     await fs.mkdir(cacheDir, { recursive: true })
 
-    const existingLocalPath = localPathForPreview(file)
-    if (existingLocalPath && await fileExists(existingLocalPath)) {
-      return existingLocalPath
+    // 将 file:// 协议路径转为本地文件系统路径，否则 fs.access 无法识别
+    const toRealPath = (p: string | null | undefined): string | null => {
+      if (!p) return null
+      return p.startsWith('file://') ? fileURLToPath(p) : p
     }
 
-    if (file.cacheFilePath && await fileExists(file.cacheFilePath)) {
-      return file.cacheFilePath
+    const existingLocalPath = localPathForPreview(file)
+    const realLocalPath = toRealPath(existingLocalPath)
+    if (realLocalPath && await fileExists(realLocalPath)) {
+      return realLocalPath
+    }
+
+    const realCachePath = toRealPath(file.cacheFilePath)
+    if (realCachePath && await fileExists(realCachePath)) {
+      return realCachePath
     }
 
     const sourceUrl = sourceUrlFor(file)
