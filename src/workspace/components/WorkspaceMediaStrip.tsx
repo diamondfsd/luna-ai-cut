@@ -1,12 +1,12 @@
 import { ImageOff } from 'lucide-react'
-import { type MouseEvent, useCallback, useRef, useState } from 'react'
+import { type MouseEvent, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset } from '../../shared/types'
 import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../shared/editPipeline'
 import type { PipelinePatch } from '../shared/editPipeline'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { LivePhotoBadge, VideoPlayBadge } from '../../ui'
-import { logger } from '../../lib/rendererLogger'
+import { ThumbImage } from '../../components/ThumbImage'
 
 /** 检查素材的 pipeline 是否有非默认的修改 */
 function isAssetModified(item: WorkspaceMediaAsset): boolean {
@@ -17,31 +17,11 @@ function isAssetModified(item: WorkspaceMediaAsset): boolean {
 }
 
 export function WorkspaceMediaStrip() {
-  const { media: mediaList, setCurrentProject, setTransientMedia, brokenPaths, selectedIndices, setSelectedIndices, activeIndex, setActiveIndex, handleSelectionChange } = useWorkspaceMedia()
+  const { media: mediaList, brokenPaths, selectedIndices, setSelectedIndices, activeIndex, setActiveIndex, handleSelectionChange } = useWorkspaceMedia()
   const containerRef = useRef<HTMLDivElement>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [dragHighlighted, setDragHighlighted] = useState<Set<number>>(new Set())
-  const failedThumbPathsRef = useRef(new Set<string>())
-
-  // 缩略图加载失败时清除无效 URL，避免持续显示 broken image
-  const handleThumbError = useCallback((path: string) => {
-    if (failedThumbPathsRef.current.has(path)) return
-    failedThumbPathsRef.current.add(path)
-    logger.warn(`[WorkspaceMediaStrip] 缩略图加载失败，清除 URL`, { path })
-    setTransientMedia?.((prev) =>
-      prev.map((item) => (item.path === path ? { ...item, thumbnailUrl: null } : item)),
-    )
-    setCurrentProject?.((prev) => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        assets: prev.assets.map((item) =>
-          item.path === path ? { ...item, thumbnailUrl: null } : item,
-        ),
-      }
-    })
-  }, [setCurrentProject, setTransientMedia])
 
   function handleClick(index: number, event: MouseEvent): void {
     containerRef.current?.focus({ preventScroll: true })
@@ -143,7 +123,7 @@ export function WorkspaceMediaStrip() {
             onClick={(e) => handleClick(index, e)}
           >
             {isModified && <span className="workspace-thumb-modified-dot" />}
-            {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" draggable={false} onError={() => handleThumbError(item.path)} /> : <span className="workspace-thumb-label">{item.kind === 'video' ? '视频' : '图片'}</span>}
+            {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : <ThumbImage src={item.path} alt="" draggable={false} />}
             {item.kind === 'video' && <VideoPlayBadge size={20} />}
             {item.isLivePhoto && <LivePhotoBadge size={22} className="workspace-thumb-live-chip" />}
           </button>

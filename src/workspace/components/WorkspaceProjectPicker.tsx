@@ -1,14 +1,13 @@
-import { useRef, useState } from 'react'
-import { Folder, ImageIcon, Pencil, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Folder, Pencil, Trash2 } from 'lucide-react'
 
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
-import { logger } from '../../lib/rendererLogger'
 import type { WorkspaceProject } from '../../shared/types'
 import { Button, Dialog, Input } from '../../ui'
+import { ThumbImage } from '../../components/ThumbImage'
 
 export function WorkspaceProjectPicker() {
   const { projects, projectLoading, openProject, deleteProject, renameProject } = useWorkspaceMedia()
-  const failedThumbUrlsRef = useRef(new Set<string>())
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; project: WorkspaceProject } | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameProjectId, setRenameProjectId] = useState('')
@@ -16,12 +15,6 @@ export function WorkspaceProjectPicker() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteProjectId, setDeleteProjectId] = useState('')
   const [deleteProjectName, setDeleteProjectName] = useState('')
-
-  function handleThumbError(url: string | undefined, projectName: string): void {
-    if (!url || failedThumbUrlsRef.current.has(url)) return
-    failedThumbUrlsRef.current.add(url)
-    logger.warn(`[WorkspaceProjectPicker] 项目缩略图加载失败`, { url: url.slice(0, 200), projectName })
-  }
 
   function handleContextMenu(e: React.MouseEvent, project: WorkspaceProject): void {
     e.preventDefault()
@@ -78,7 +71,7 @@ export function WorkspaceProjectPicker() {
               <Folder size={112} strokeWidth={1.2} />
               <span className="workspace-project-previews">
                 {project.assets.slice(0, 4).map((asset: any) => (
-                  asset.thumbnailUrl ? <img key={asset.id} src={asset.thumbnailUrl} alt="" onError={() => handleThumbError(asset.thumbnailUrl, project.name)} /> : <span key={asset.id}><ImageIcon size={16} /></span>
+                  <ThumbImage key={asset.id} src={asset.path} alt="" />
                 ))}
               </span>
             </span>
