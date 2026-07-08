@@ -3,7 +3,7 @@
  */
 import { ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, statSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join, extname, basename } from 'node:path'
 import {
@@ -225,10 +225,13 @@ export function register(_ctx: RegisterContext): void {
       const results: Array<{ path: string; name: string; relDir: string; description?: string; isBuiltin: boolean }> = []
       const seen = new Set<string>()
 
-      // 内置 LUT 目录：打包后在 resources/luts/（extraResources），开发时在 dist/luts/
-      const builtinDir = process.resourcesPath
-        ? join(process.resourcesPath, 'luts')
-        : join(process.env.VITE_PUBLIC || join(process.env.APP_ROOT!, 'public'), 'luts')
+      // 内置 LUT 目录：遍历候选路径，取第一个存在的
+      //   打包后：process.resourcesPath/luts（extraResources 复制到 resources/luts/）
+      //   开发时：VITE_PUBLIC/luts 或 APP_ROOT/public/luts
+      const builtinDir = [
+        join(process.resourcesPath || '', 'luts'),
+        join(process.env.VITE_PUBLIC || join(process.env.APP_ROOT || join(import.meta.dirname, '..'), 'public'), 'luts'),
+      ].find((p) => { try { return statSync(p).isDirectory() } catch { return false } }) || ''
 
       async function scanDir(dir: string, baseDir: string): Promise<void> {
         let entries: string[]
