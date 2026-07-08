@@ -1,9 +1,10 @@
 import { RotateCcw, Upload } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { Button, ButtonGroup, Dialog, Input, toast } from '../../ui'
+import { ButtonGroup } from '../../ui'
 import { type LutFileInfo } from './builtinLuts'
 import { FilterItem } from './FilterItem'
+import { LutImportDialog } from './LutImportDialog'
 import { lutManager } from './LutManager'
 import { ParamSlider } from '../components/ParamSlider'
 import './FilterPanel.css'
@@ -20,38 +21,48 @@ interface FilterPanelProps {
 }
 
 export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<string>('全部')
-
-  // 导入弹窗
   const [importDialogOpen, setImportDialogOpen] = useState(false)
-  const [importCategory, setImportCategory] = useState('')
+
   // 当前激活的滤镜信息
   const activeLutInfo = useMemo(
     () => allLuts.find((l) => l.filePath === activeLutId || l.id === activeLutId) ?? null,
     [allLuts, activeLutId],
   )
 
-  // 解析 lutDir，未配置时使用本地资源目录下的 luts
+  // 解析 lutDir
   async function resolveLutDir(): Promise<string> {
     try {
       const s = await (window as any).luna?.getSettings?.()
       if (s?.lutDir) return s.lutDir
-      // 没有配置 lutDir 时，使用本地资源目录 + /luts
-      const resourcesDir = s?.localResourcesDir || s?.downloadDir || ''
-      if (resourcesDir) return `${resourcesDir}/luts`
+      if (s?.downloadDir) return `${s.downloadDir}/luts`
     } catch { /* ignore */ }
     return ''
   }
+
+  // 刷新 LUT 列表
+  const refreshLuts = useCallback(async (lutDir?: string) => {
+    const dir = lutDir ?? await resolveLutDir()
+    const luts = await lutManager.discoverLuts(dir)
+    setAllLuts(luts)
+    const cats: string[] = ['全部']
+    const seen = new Set<string>()
+    for (const lut of luts) {
+      if (!seen.has(lut.category)) {
+        seen.add(lut.category)
+        cats.push(lut.category)
+      }
+    }
+    setCategories(cats)
+  }, [])
 
   // 发现 LUT
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       const lutDir = await resolveLutDir()
-
       const luts = await lutManager.discoverLuts(lutDir)
       if (cancelled) return
       setAllLuts(luts)
@@ -86,68 +97,12 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
     onChange(id)
   }, [activeLutId, onChange])
 
-  // 点击导入 → 打开弹窗输入分组名
-  const handleImport = useCallback(() => {
-    setImportCategory('')
-    setImportDialogOpen(true)
-  }, [])
-
-  // 弹窗确认 → 打开文件选择器
-  const handleImportDialogConfirm = useCallback(() => {
-    const cat = importCategory.trim()
-    if (!cat) {
-      toast.error('请输入分组名称')
-      return
-    }
-    setImportDialogOpen(false)
-    fileInputRef.current?.click()
-  }, [importCategory])
-
-  // 选中文件后导入
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.name.endsWith('.cube')) {
-      toast.error('请选择 .cube 格式的 LUT 文件')
-      return
-    }
-    try {
-      const filePath = (file as any).path
-      if (!filePath) throw new Error('无法获取文件路径')
-      const cat = importCategory.trim()
-      if (!cat) throw new Error('缺少分组名称')
-      const lutDir = await resolveLutDir()
-      if (!lutDir) throw new Error('未配置 LUT 目录，请先在设置中添加')
-
-      // 通过 Rust 引擎导入到 LUT 目录
-      const lrc = (window as unknown as { lunaRenderCore?: any }).lunaRenderCore
-      await lrc.importCubeFile(filePath, cat, lutDir)
-
-      // 重新扫描 LUT 列表
-      const luts = await lutManager.discoverLuts(lutDir)
-      setAllLuts(luts)
-      // 更新分类列表，包含新导入的分组
-      const allCats: string[] = ['全部']
-      const seenCat = new Set<string>()
-      for (const lut of luts) {
-        if (!seenCat.has(lut.category)) {
-          seenCat.add(lut.category)
-          allCats.push(lut.category)
-        }
-      }
-      setCategories(allCats)
-      // 切换到新导入的分组
-      if (allCats.includes(cat)) setActiveTab(cat)
-      // 找到刚导入的 LUT 并激活
-      const name = file.name.replace(/\.cube$/i, '')
-      const imported = luts.find((l) => l.name === name && l.category === cat)
-      if (imported) onChange(imported.filePath)
-      toast.success(`已导入滤镜: ${name}`)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '导入失败')
-    }
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }, [importCategory, onChange])
+  // 导入成功回调
+  const handleImportSuccess = useCallback(async (lutPath: string) => {
+    await refreshLuts()
+    // 激活新导入的 LUT
+    onChange(lutPath)
+  }, [refreshLuts, onChange])
 
   return (
     <aside className="filter-sidebar">
@@ -205,7 +160,7 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
               className="filter-category-group"
             />
           </div>
-          <button className="filter-import-btn" onClick={handleImport} title="导入 .cube">
+          <button className="filter-import-btn" onClick={() => setImportDialogOpen(true)} title="导入 .cube">
             <Upload size={15} />
           </button>
         </div>
@@ -228,37 +183,11 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
         </main>
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".cube"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
-
-      {/* 导入弹窗：输入分组名称 */}
-      <Dialog
+      <LutImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
-        title="导入滤镜"
-        description="请输入分组名称，滤镜将导入到该分组下。"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setImportDialogOpen(false)}>取消</Button>
-            <Button variant="primary" onClick={() => void handleImportDialogConfirm()}>选择文件</Button>
-          </>
-        }
-      >
-        <Input
-          variant="pill"
-          placeholder="例如：我的滤镜"
-          value={importCategory}
-          onChange={(e) => setImportCategory(e.target.value)}
-          autoFocus
-          fullWidth
-          onKeyDown={(e) => { if (e.key === 'Enter') handleImportDialogConfirm() }}
-        />
-      </Dialog>
+        onSuccess={handleImportSuccess}
+      />
     </aside>
   )
 }

@@ -358,7 +358,7 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
           </button>
         )}
       </div>
-      {header && <div className="media-inspector-header">{header}</div>}
+      {header}
       {/* ── 文件信息（通用） ── */}
       <section>
         <dl>

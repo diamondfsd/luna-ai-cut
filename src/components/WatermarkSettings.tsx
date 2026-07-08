@@ -80,7 +80,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   onPositionChange: (v: string) => void
 }) {
   return (
-    <div style={{ display: 'grid', gap: 10 }}>
+    <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
       {stylePills.length > 0 && (
         <SegmentedControl
           ariaLabel="水印样式"
@@ -289,17 +289,16 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   }
 
   return (
-    <section>
+    <div>
       {showToggle && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <ImagePlus size={14} />
             水印设置
           </span>
           <Switch checked={currentSettings.enabled} onCheckedChange={handleToggle} ariaLabel="启用水印" />
         </div>
       )}
       {(!showToggle || currentSettings.enabled) && content}
-    </section>
+    </div>
   )
 }

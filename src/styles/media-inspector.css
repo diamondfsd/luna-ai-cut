@@ -2,7 +2,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 22px;
+  gap: 16px;
   overflow: auto;
   border-left: 1px solid rgba(255, 255, 255, 0.12);
   background: #1f1f21;
