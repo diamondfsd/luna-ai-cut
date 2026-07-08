@@ -225,11 +225,10 @@ export function register(_ctx: RegisterContext): void {
       const results: Array<{ path: string; name: string; relDir: string; description?: string; isBuiltin: boolean }> = []
       const seen = new Set<string>()
 
-      // 内置 LUT 目录
-      const builtinDir = join(
-        process.env.VITE_PUBLIC || join(process.env.APP_ROOT!, 'public'),
-        'luts',
-      )
+      // 内置 LUT 目录：打包后在 resources/luts/（extraResources），开发时在 dist/luts/
+      const builtinDir = process.resourcesPath
+        ? join(process.resourcesPath, 'luts')
+        : join(process.env.VITE_PUBLIC || join(process.env.APP_ROOT!, 'public'), 'luts')
 
       async function scanDir(dir: string, baseDir: string): Promise<void> {
         let entries: string[]
