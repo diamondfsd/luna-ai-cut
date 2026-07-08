@@ -1,4 +1,4 @@
-import { Upload } from 'lucide-react'
+import { RotateCcw, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ButtonGroup, toast } from '../../ui'
@@ -129,12 +129,8 @@ export function FilterPanel({ activeLutId, onChange, intensity = 100, onIntensit
             <div className="current-top">
               <div className="eyebrow">当前滤镜</div>
               {activeLutId && (
-                <button className="filter-reset" onClick={() => { onChange(null); onIntensityChange?.(100) }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path d="M4.8 8.6A8 8 0 1 1 4.1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M4 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                  重置
+                <button className="filter-reset" onClick={() => { onChange(null); onIntensityChange?.(100) }} title="重置滤镜">
+                  <RotateCcw size={11} />
                 </button>
               )}
             </div>
