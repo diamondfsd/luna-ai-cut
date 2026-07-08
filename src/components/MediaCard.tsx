@@ -1,12 +1,9 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
-import { Check, FileQuestion, FolderOpen, X } from 'lucide-react'
+import { Check, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
 import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
-import { useFileCache } from '../hooks/useFileCache'
-
-const THUMBNAIL_PLACEHOLDER =
-  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Crect width="400" height="300" fill="%23f4f2ee"/%3E%3Cpath d="M168 116h64a16 16 0 0 1 16 16v36a16 16 0 0 1-16 16h-64a16 16 0 0 1-16-16v-36a16 16 0 0 1 16-16Z" fill="none" stroke="%23948f87" stroke-width="10"/%3E%3Ccircle cx="180" cy="142" r="10" fill="%23948f87"/%3E%3Cpath d="m164 174 34-32 20 19 16-14 18 27" fill="none" stroke="%23948f87" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/%3E%3C/svg%3E'
+import { ThumbImage } from './ThumbImage'
 
 interface MediaCardProps {
   file: LunaFile
@@ -18,10 +15,6 @@ interface MediaCardProps {
   onPreview: (file: LunaFile) => void
   onRevealPath: (path: string) => void
   onRevealProgress: (progress: DownloadProgress | undefined) => void
-}
-
-function thumbnailPlaceholderFor(file: LunaFile): string {
-  return `${THUMBNAIL_PLACEHOLDER}#${encodeURIComponent(file.downloadName || file.name || file.id)}`
 }
 
 function formatDuration(seconds: number): string {
@@ -64,14 +57,11 @@ export function MediaCard({
     return () => observer.disconnect()
   }, [file.id])
 
-  // 根据 sourceUrl 获取缓存文件和缩略图
-  const { thumbnailUrl, cacheFilePath, hasError } = useFileCache(file.sourceUrl, cacheEnabled)
-
   // 视频时长：优先用 file.duration，没有则异步探测
   const [videoDuration, setVideoDuration] = useState<number | null>(null)
   useEffect(() => {
     if (!cacheEnabled || file.kind !== 'video' || file.duration != null) return
-    const filePath = file.downloadFilePath ?? file.localPath ?? cacheFilePath ?? file.sourceUrl
+    const filePath = file.downloadFilePath ?? file.localPath ?? file.sourceUrl
     if (!filePath) return
 
     window.luna.requestVideoFrameRate(file, filePath).catch(() => {})
@@ -81,7 +71,7 @@ export function MediaCard({
       }
     })
     return () => { unsub() }
-  }, [cacheEnabled, file.id, file.kind, file.duration, file.downloadFilePath, file.localPath, cacheFilePath, file.sourceUrl])
+  }, [cacheEnabled, file.id, file.kind, file.duration, file.downloadFilePath, file.localPath, file.sourceUrl])
 
   const effectiveDuration = file.duration ?? videoDuration
 
@@ -89,8 +79,7 @@ export function MediaCard({
   const progressStyle = { '--progress': `${progressValue * 3.6}deg` } as CSSProperties
   const localPath = file.downloadFilePath ?? file.localPath
   const downloadedPath = !selected ? localPath : undefined
-  const thumbnailSource = thumbnailUrl ?? file.thumbnailUrl ?? thumbnailPlaceholderFor(file)
-  const liveDetectSource = file.downloadFilePath ?? file.localPath ?? cacheFilePath ?? file.sourceUrl ?? file.url ?? file.href
+  const liveDetectSource = file.downloadFilePath ?? file.localPath ?? file.sourceUrl ?? file.url ?? file.href
   const showProgress = Boolean(
     progress && ['queued', 'downloading', 'failed'].includes(progress.status) && !downloadedPath,
   )
@@ -138,14 +127,7 @@ export function MediaCard({
         tabIndex={0}
         title="预览"
       >
-        {!hasError && (
-          <img
-            src={thumbnailSource}
-            alt={file.name}
-            loading="lazy"
-          />
-        )}
-        {hasError && <FileQuestion size={34} />}
+        <ThumbImage src={file.sourceUrl} alt={file.name} loading="lazy" />
         {file.kind === 'video' && effectiveDuration != null ? (
           <span className="duration-badge">{formatDuration(effectiveDuration)}</span>
         ) : isLive ? (
