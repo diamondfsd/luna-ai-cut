@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ImgHTMLAttributes } from 'react'
+import { useEffect, useRef, useState, type ImgHTMLAttributes } from 'react'
 
 import { useFileCache } from '../hooks/useFileCache'
-import { filePathToPreviewUrl } from '../lib/fileUtils'
 
 /** 缩略图加载前的占位 SVG（图片图标） */
 const PLACEHOLDER_DATA_URL =
@@ -27,8 +26,7 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
 export function ThumbImage({ src, ...imgProps }: ThumbImageProps) {
   const [visible, setVisible] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
-  const sourceUrl = useMemo(() => filePathToPreviewUrl(src) ?? src, [src])
-  const { thumbnailUrl } = useFileCache(sourceUrl, visible)
+  const { thumbnailUrl } = useFileCache(src, visible)
 
   // IntersectionObserver 懒加载：进入视口才触发 useFileCache
   useEffect(() => {
