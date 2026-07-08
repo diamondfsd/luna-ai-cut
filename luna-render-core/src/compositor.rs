@@ -227,7 +227,7 @@ pub struct PreviewLayerInput {
     pub color: crate::RenderColorAdjustments,
     pub transform: crate::RenderLayerTransform,
     pub positioning: Option<crate::LayerPositioning>,
-    pub lut_id: Option<u32>,
+    pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
 }
 
@@ -428,9 +428,8 @@ pub struct Compositor {
     // ── LUT 3D LUT ──
     /// identity LUT（未启用 LUT 时的默认 3D texture 绑定）
     identity_lut: wgpu::Texture,
-    /// 用户加载的 LUT <id → LutEntry>
-    luts: HashMap<u32, LutEntry>,
-    next_lut_id: u32,
+    /// 用户加载的 LUT <file_path → LutEntry>
+    luts: HashMap<String, LutEntry>,
 }
 
 /// 持久 ffmpeg pipe 视频解码器，保持进程存活按序读帧
@@ -869,7 +868,6 @@ impl Compositor {
             staging_buffer: None,
             identity_lut,
             luts: HashMap::new(),
-            next_lut_id: 1,
         })
     }
 
@@ -1259,31 +1257,30 @@ impl Compositor {
 
     // ── LUT 管理 ──
 
-    /// 加载 .cube LUT 数据并创建 3D 纹理，返回 LUT ID
-    pub fn load_lut(&mut self, cube_data: &[u8]) -> Result<u32, String> {
-        let (size, values) = parse_cube_lut(cube_data)?;
-        if size < 2 || size > self.device.limits().max_texture_dimension_3d {
-            return Err(format!(
-                "LUT size {} out of range [2, {}]",
-                size,
-                self.device.limits().max_texture_dimension_3d
-            ));
+    /// 从文件路径加载 .cube LUT，缓存并返回 LutEntry
+    fn ensure_lut_loaded(&mut self, path: &str) -> Result<&LutEntry, String> {
+        use std::collections::hash_map::Entry;
+        match self.luts.entry(path.to_string()) {
+            Entry::Occupied(entry) => Ok(entry.into_mut()),
+            Entry::Vacant(entry) => {
+                let mut file = std::fs::File::open(path)
+                    .map_err(|e| format!("打开 LUT 文件失败 {}: {}", path, e))?;
+                let mut data = Vec::new();
+                file.read_to_end(&mut data)
+                    .map_err(|e| format!("读取 LUT 文件失败 {}: {}", path, e))?;
+                let (size, values) = parse_cube_lut(&data)?;
+                if size < 2 || size > self.device.limits().max_texture_dimension_3d {
+                    return Err(format!(
+                        "LUT size {} out of range [2, {}]",
+                        size,
+                        self.device.limits().max_texture_dimension_3d
+                    ));
+                }
+                let texture = create_lut_3d_texture(&self.device, &self.queue, size, &values);
+                log!("load_lut_file path={} size={}x{}x{}", path, size, size, size);
+                Ok(entry.insert(LutEntry { texture, size }))
+            }
         }
-        let texture = create_lut_3d_texture(&self.device, &self.queue, size, &values);
-        let id = self.next_lut_id;
-        self.next_lut_id += 1;
-        log!("load_lut id={} size={}x{}x{}", id, size, size, size);
-        self.luts.insert(id, LutEntry { texture, size });
-        Ok(id)
-    }
-
-    /// 释放 LUT 纹理
-    pub fn release_lut(&mut self, lut_id: u32) -> Result<(), String> {
-        self.luts
-            .remove(&lut_id)
-            .ok_or_else(|| format!("LUT {} not found", lut_id))?;
-        log!("release_lut id={}", lut_id);
-        Ok(())
     }
 
     // ── 渲染 ──
@@ -1298,6 +1295,19 @@ impl Compositor {
 
         if layers.is_empty() {
             return Ok(vec![0u8; pixel_count]);
+        }
+
+        // sort by z_index
+        let mut sorted: Vec<&RenderLayer> = layers.iter().collect();
+        sorted.sort_by_key(|l| l.z_index);
+
+        // 预加载所有层需要的 LUT（在借用 self.output_texture 之前）
+        for layer in &sorted {
+            if let Some(path) = &layer.lut_id {
+                if let Err(e) = self.ensure_lut_loaded(path) {
+                    log!("LUT 加载失败 {}: {}", path, e);
+                }
+            }
         }
 
         // ensure output texture
@@ -1321,10 +1331,6 @@ impl Compositor {
         }
         let (output_tex, _, _) = self.output_texture.as_ref().unwrap();
         let output_view = output_tex.create_view(&wgpu::TextureViewDescriptor::default());
-
-        // sort by z_index
-        let mut sorted: Vec<&RenderLayer> = layers.iter().collect();
-        sorted.sort_by_key(|l| l.z_index);
 
         let mut encoder = self
             .device
@@ -1395,18 +1401,14 @@ impl Compositor {
                     tex_entry.height as f64,
                 );
 
-                // ── 确定当前层的 LUT ──
-                let lut_texture = if let Some(lut_id) = layer.lut_id {
-                    self.luts.get(&lut_id).map(|e| &e.texture)
-                } else {
-                    None
-                }
-                .unwrap_or(&self.identity_lut);
-                let lut_size = layer
-                    .lut_id
-                    .and_then(|id| self.luts.get(&id))
-                    .map(|e| e.size as f32)
-                    .unwrap_or(0.0);
+                // ── 确定当前层的 LUT（已在 render loop 前预加载） ──
+                let (lut_texture, lut_size) = match &layer.lut_id {
+                    Some(path) => self.luts.get(path.as_str()).map_or_else(
+                        || (&self.identity_lut, 0.0),
+                        |entry| (&entry.texture, entry.size as f32),
+                    ),
+                    None => (&self.identity_lut, 0.0),
+                };
 
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
@@ -2162,7 +2164,7 @@ impl Compositor {
                     color: Some(layer.color.clone()),
                     transform: Some(transform),
                     positioning: layer.positioning.clone(),
-                    lut_id: layer.lut_id,
+                    lut_id: layer.lut_id.clone(),
                     lut_intensity: layer.lut_intensity,
                 }
             })

@@ -84,8 +84,6 @@ interface LunaRenderCoreNative {
   exportCompositionImageAsync(input: any): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
-  loadLut(cubeData: Buffer): number
-  releaseLut(lutId: number): void
 }
 
 let native: LunaRenderCoreNative | null = null
@@ -187,13 +185,3 @@ export function getExportTaskProgress(taskId: string): [number, number] | null {
   return [result[0], result[1]]
 }
 
-export function loadLut(cubeData: Buffer): number {
-  ensureInit()
-  return getNative().loadLut(cubeData)
-}
-
-export function releaseLut(lutId: number): void {
-  try {
-    getNative().releaseLut(lutId)
-  } catch { /* ignore if compositor already gone */ }
-}
