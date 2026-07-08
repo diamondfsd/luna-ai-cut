@@ -31,6 +31,7 @@ class LutManagerClass {
             category: cat,
             filePath: entry.path,
             description: entry.description,
+            isBuiltin: entry.isBuiltin,
           })
         }
       }
@@ -49,7 +50,7 @@ class LutManagerClass {
 }
 
 type LunaRenderCore = {
-  listCubeFiles: (dir: string) => Promise<Array<{ path: string; name: string; relDir: string; description?: string }>>
+  listCubeFiles: (dir: string) => Promise<Array<{ path: string; name: string; relDir: string; description?: string; isBuiltin: boolean }>>
 }
 
 function getLrc(): LunaRenderCore | null {

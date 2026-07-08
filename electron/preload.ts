@@ -268,6 +268,8 @@ const lunaRenderCoreApi = {
   listCubeFiles: (dirPath: string) => ipcRenderer.invoke('lrc:listCubeFiles', dirPath),
   importCubeFile: (sourcePath: string, categoryName: string, lutDir: string, targetName?: string, meta?: { name?: string; description?: string }) =>
     ipcRenderer.invoke('lrc:importCubeFile', sourcePath, categoryName, lutDir, targetName, meta),
+  deleteCubeFile: (cubePath: string, isBuiltin?: boolean) =>
+    ipcRenderer.invoke('lrc:deleteCubeFile', cubePath, isBuiltin),
 }
 
 contextBridge.exposeInMainWorld('luna', lunaApi)

@@ -4,7 +4,7 @@
 import { ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFileSync } from 'node:fs'
-import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join, extname, basename } from 'node:path'
 import {
   ensureInit,
@@ -221,8 +221,14 @@ export function register(_ctx: RegisterContext): void {
   /** 递归扫描 .cube 文件（内置 + 外部目录），按目录名作为分类 */
   ipcMain.handle('lrc:listCubeFiles', safe('listCubeFiles',
     async (_event: IpcMainInvokeEvent, dirPath: string) => {
-      const results: Array<{ path: string; name: string; relDir: string; description?: string }> = []
+      const results: Array<{ path: string; name: string; relDir: string; description?: string; isBuiltin: boolean }> = []
       const seen = new Set<string>()
+
+      // 内置 LUT 目录
+      const builtinDir = join(
+        process.env.VITE_PUBLIC || join(process.env.APP_ROOT!, 'public'),
+        'luts',
+      )
 
       async function scanDir(dir: string, baseDir: string): Promise<void> {
         let entries: string[]
@@ -249,7 +255,7 @@ export function register(_ctx: RegisterContext): void {
               const key = `${fileBaseName}:${relDir}`
               if (seen.has(key)) continue
               seen.add(key)
-              results.push({ path: fullPath, name, relDir, description })
+              results.push({ path: fullPath, name, relDir, description, isBuiltin: dir.startsWith(builtinDir) })
             }
           } catch { /* 跳过无权限文件 */ }
         }
@@ -258,10 +264,6 @@ export function register(_ctx: RegisterContext): void {
       await scanDir(dirPath, dirPath)
 
       // 始终扫描内置 LUT 目录
-      const builtinDir = join(
-        process.env.VITE_PUBLIC || join(process.env.APP_ROOT!, 'public'),
-        'luts',
-      )
       try {
         await stat(builtinDir)
         await scanDir(builtinDir, builtinDir)
@@ -304,6 +306,21 @@ export function register(_ctx: RegisterContext): void {
 
       rcLog(`lrc:importCubeFile ${destPath}`)
       return { path: destPath, name: fileBaseName, relDir: categoryName }
+    },
+  ))
+
+  /** 删除 .cube 文件及其同名 .meta.json（内置 LUT 不可删除） */
+  ipcMain.handle('lrc:deleteCubeFile', safe('deleteCubeFile',
+    async (_event: IpcMainInvokeEvent, cubePath: string, isBuiltin?: boolean) => {
+      if (isBuiltin) {
+        throw new Error('内置 LUT 不可删除')
+      }
+      const rmOpts = { force: true } as const
+      await rm(cubePath, rmOpts)
+      // 同时删除同名的 meta 文件（如果存在）
+      const metaPath = cubePath + '.meta.json'
+      await rm(metaPath, rmOpts)
+      rcLog(`lrc:deleteCubeFile ${cubePath}`)
     },
   ))
 
