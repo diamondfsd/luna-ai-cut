@@ -91,17 +91,25 @@ let native: LunaRenderCoreNative | null = null
 function getNative(): LunaRenderCoreNative {
   if (native) return native
 
-  // 在打包环境下 process.resourcesPath 指向 resources/ 目录
-  // extraResources 中的 luna-render-core 会复制到 resources/luna-render-core/
-  // 开发环境下回退到项目根目录
-  const appRoot = process.resourcesPath || process.env.APP_ROOT || join(import.meta.dirname, '..')
-  const nodePath = join(appRoot, 'luna-render-core', 'luna-render-core.node')
-  try {
-    native = require(nodePath) as LunaRenderCoreNative
-    return native!
-  } catch (err) {
-    throw new Error(`Failed to load native render core from ${nodePath}: ${err}`)
+  // 遍历多个候选路径加载 .node addon：
+  //   1. 打包后：process.resourcesPath/luna-render-core/luna-render-core.node
+  //      （extraResources 将 luna-render-core 复制到 resources/）
+  //   2. 开发时：APP_ROOT/luna-render-core/luna-render-core.node
+  //      （build-native.mjs 复制到项目根目录 luna-render-core/）
+  const candidates = [
+    join(process.resourcesPath || '', 'luna-render-core', 'luna-render-core.node'),
+    join(process.env.APP_ROOT || join(import.meta.dirname, '..'), 'luna-render-core', 'luna-render-core.node'),
+  ]
+  for (const nodePath of candidates) {
+    try {
+      native = require(nodePath) as LunaRenderCoreNative
+      return native!
+    } catch { /* try next candidate */ }
   }
+  throw new Error(
+    `Failed to load native render core. Tried:\n` +
+      candidates.map((p) => `  - ${p}`).join('\n'),
+  )
 }
 
 let initialized = false

@@ -1,4 +1,4 @@
-use crate::media::{fit_output_size, probe_video_dimensions, AsyncVideoFrameDecoder};
+use crate::media::{fit_output_size, probe_video_dimensions};
 use crate::RenderLayer;
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
@@ -412,14 +412,6 @@ pub struct Compositor {
     video_probed: HashMap<String, (u32, u32)>,
     /// 持久 ffmpeg pipe 解码器 <path → VideoDecoder>
     video_decoders: HashMap<String, VideoDecoder>,
-    /// 后台 FFmpeg 库级视频解码器 <path → decoder worker>
-    frame_decoders: HashMap<String, AsyncVideoFrameDecoder>,
-    /// 库级解码器对应的视频纹理 <path → texture_id>
-    frame_decoder_textures: HashMap<String, u32>,
-    /// 库级解码器当前纹理对应的帧时间 <path → seconds>
-    frame_decoder_texture_times: HashMap<String, f64>,
-    /// 库级解码器当前缩放上限 <path → max_side>
-    frame_decoder_max_sides: HashMap<String, u32>,
     last_preview_log: Option<(u32, u32, u32, u32, std::time::Instant)>,
 
     /// 缓存 staging buffer，避免每帧创建/销毁 33MB
@@ -860,10 +852,6 @@ impl Compositor {
             cache_order: VecDeque::new(),
             video_probed: HashMap::new(),
             video_decoders: HashMap::new(),
-            frame_decoders: HashMap::new(),
-            frame_decoder_textures: HashMap::new(),
-            frame_decoder_texture_times: HashMap::new(),
-            frame_decoder_max_sides: HashMap::new(),
             last_preview_log: None,
             staging_buffer: None,
             identity_lut,
@@ -1690,21 +1678,10 @@ impl Compositor {
                 let _ = self.release_texture(texture_id);
             }
         }
-        self.frame_decoders.remove(path);
-        self.frame_decoder_max_sides.remove(path);
-        self.frame_decoder_texture_times.remove(path);
-        if let Some(texture_id) = self.frame_decoder_textures.remove(path) {
-            let _ = self.release_texture(texture_id);
-        }
     }
 
     pub fn clear_video_decoders(&mut self) {
-        let mut paths: Vec<String> = self.video_decoders.keys().cloned().collect();
-        for path in self.frame_decoders.keys() {
-            if !paths.contains(path) {
-                paths.push(path.clone());
-            }
-        }
+        let paths: Vec<String> = self.video_decoders.keys().cloned().collect();
         for path in paths {
             self.remove_video_decoder(&path);
         }
@@ -1891,119 +1868,13 @@ impl Compositor {
             }
         }
 
-        // ── pipe 失败 → 异步解码器兜底（可能返回空白，优于崩溃） ──
-        match self.frame_decoder_texture_for_layer(ffprobe, layer, decode_max_side) {
-            Ok(texture_id) => {
-                let texture_time = self
-                    .frame_decoder_texture_times
-                    .get(&layer.file_path)
-                    .copied()
-                    .unwrap_or(-1.0);
-                if (texture_time - layer.video_time).abs() < 0.5 {
-                    log!(
-                        "video_frame_decoder [{}] async success at {:.3}s tex={}",
-                        layer.file_path,
-                        layer.video_time,
-                        texture_id,
-                    );
-                    return Ok(texture_id);
-                }
-                log!(
-                    "video_frame_decoder [{}] stale tex_time={:.3} != requested={:.3}",
-                    layer.file_path,
-                    texture_time,
-                    layer.video_time,
-                );
-            }
-            Err(async_err) => {
-                log!(
-                    "video_frame_decoder [{}] async failed: {}",
-                    layer.file_path,
-                    async_err,
-                );
-            }
-        }
-
         Err(format!(
-            "video_texture_for_layer [{}] pipe and async both failed at {:.3}s",
+            "video_texture_for_layer [{}] decode failed at {:.3}s",
             layer.file_path,
             layer.video_time,
         ))
     }
 
-    fn frame_decoder_texture_for_layer(
-        &mut self,
-        ffprobe: &str,
-        layer: &PreviewLayerInput,
-        decode_max_side: u32,
-    ) -> Result<u32, String> {
-        let current_max_side = self.frame_decoder_max_sides.get(&layer.file_path).copied();
-        if current_max_side != Some(decode_max_side) {
-            self.frame_decoders.remove(&layer.file_path);
-            self.frame_decoder_max_sides.remove(&layer.file_path);
-            self.frame_decoder_texture_times.remove(&layer.file_path);
-            if let Some(texture_id) = self.frame_decoder_textures.remove(&layer.file_path) {
-                let _ = self.release_texture(texture_id);
-            }
-        }
-
-        if !self.frame_decoders.contains_key(&layer.file_path) {
-            let decoder = AsyncVideoFrameDecoder::start(layer.file_path.clone(), decode_max_side);
-            self.frame_decoders.insert(layer.file_path.clone(), decoder);
-            self.frame_decoder_max_sides
-                .insert(layer.file_path.clone(), decode_max_side);
-        }
-
-        let decoder = self
-            .frame_decoders
-            .get(&layer.file_path)
-            .ok_or_else(|| format!("video decoder missing: {}", layer.file_path))?;
-        decoder.request(layer.video_time);
-
-        let Some(frame) = decoder.latest() else {
-            if let Some(texture_id) = self.frame_decoder_textures.get(&layer.file_path).copied() {
-                return Ok(texture_id);
-            }
-            let (source_w, source_h) = self.probe_video(ffprobe, &layer.file_path)?;
-            let max_edge = source_w.max(source_h);
-            let (width, height) = if max_edge > decode_max_side {
-                let scale = decode_max_side as f64 / max_edge as f64;
-                (
-                    (source_w as f64 * scale).round().max(1.0) as u32,
-                    (source_h as f64 * scale).round().max(1.0) as u32,
-                )
-            } else {
-                (source_w, source_h)
-            };
-            let blank = vec![0u8; (width * height * 4) as usize];
-            let texture_id = self.load_texture(&blank, width, height)?;
-            self.frame_decoder_textures
-                .insert(layer.file_path.clone(), texture_id);
-            self.frame_decoder_texture_times
-                .insert(layer.file_path.clone(), -1.0);
-            return Ok(texture_id);
-        };
-
-        if let Some(texture_id) = self.frame_decoder_textures.get(&layer.file_path).copied() {
-            let texture_time = self
-                .frame_decoder_texture_times
-                .get(&layer.file_path)
-                .copied();
-            if texture_time.map_or(true, |time| (time - frame.time).abs() >= 0.001) {
-                self.update_texture(texture_id, &frame.rgba)?;
-                self.frame_decoder_texture_times
-                    .insert(layer.file_path.clone(), frame.time);
-            }
-            Ok(texture_id)
-        } else {
-            let texture_id = self.load_texture(&frame.rgba, frame.width, frame.height)?;
-            self.frame_decoder_textures
-                .insert(layer.file_path.clone(), texture_id);
-            self.frame_decoder_texture_times
-                .insert(layer.file_path.clone(), frame.time);
-            Ok(texture_id)
-        }
-    }
 
     /// 统一渲染预览帧：静态图走 LRU 缓存，视频帧保持 ffmpeg pipe 持续读
     pub fn render_preview(
