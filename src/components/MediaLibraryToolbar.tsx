@@ -51,7 +51,6 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
         name: file.name,
         path,
         kind: file.kind as 'image' | 'video',
-        thumbnailUrl: file.thumbnailUrl,
         isLivePhoto: file.isLivePhoto ?? false,
       }
     })
