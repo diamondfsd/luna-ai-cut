@@ -84,16 +84,23 @@
 }
 
 .filter-reset {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border: 0;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  border: none;
   background: transparent;
-  color: #5d95ff;
-  font-size: 14px;
+  color: var(--muted, #888);
   cursor: pointer;
-  padding: 2px 0;
-  white-space: nowrap;
+  transition: color 0.12s, background 0.12s;
+}
+
+.filter-reset:hover {
+  color: var(--ink, #333);
+  background: var(--parchment, #f0f0f0);
 }
 
 /* ═══ 强度滑块 ═══ */
