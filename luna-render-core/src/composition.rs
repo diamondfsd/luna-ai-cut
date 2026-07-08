@@ -199,7 +199,7 @@ fn render_composition_frame_with(
 pub fn render_composition_frame(
     input: RenderCompositionFrameInput,
 ) -> napi::Result<RenderPreviewOutput> {
-    crate::lock(|c| {
+    crate::lock_preview(|c| {
         let (data, width, height) = render_composition_frame_with(
             c,
             &input.ffmpeg_path,
@@ -310,13 +310,13 @@ impl Task for ExportCompositionVideoTask {
             .ok_or_else(|| napi::Error::from_reason("encode stdin unavailable"))?;
 
         // 使用全局 compositor（含有已加载的 LUT）
-        crate::lock(|c| { c.clear_video_decoders(); Ok(()) })?;
+        crate::lock_export(|c| { c.clear_video_decoders(); Ok(()) })?;
         for frame in 0..total_frames {
             if task.as_ref().map_or(false, |state| state.is_cancelled()) {
                 return Err(napi::Error::from_reason("导出已取消"));
             }
             let time = frame as f64 / fps;
-            let (rgba, _, _) = crate::lock(|c| {
+            let (rgba, _, _) = crate::lock_export(|c| {
                 render_composition_frame_with(
                     c,
                     &self.input.ffmpeg_path,
@@ -385,7 +385,7 @@ impl Task for ExportCompositionImageTask {
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
         // 使用全局 compositor（含有已加载的 LUT，不用 .map_err 因为 lock 已返回 napi::Result）
-        let (rgba, width, height) = crate::lock(|c| {
+        let (rgba, width, height) = crate::lock_export(|c| {
             c.clear_video_decoders();
             render_composition_frame_with(
                 c,

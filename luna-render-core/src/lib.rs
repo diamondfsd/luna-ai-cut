@@ -179,18 +179,23 @@ macro_rules! log {
 }
 pub(crate) use log;
 
-/// 全局单例 compositor
-static COMPOSITOR: LazyLock<Mutex<Option<Compositor>>> = LazyLock::new(|| Mutex::new(None));
+/// 两套独立 compositor：预览和导出互不争锁
+static COMPOSITOR_PREVIEW: LazyLock<Mutex<Option<Compositor>>> = LazyLock::new(|| Mutex::new(None));
+static COMPOSITOR_EXPORT: LazyLock<Mutex<Option<Compositor>>> = LazyLock::new(|| Mutex::new(None));
 static COMPOSITOR_LOG_PATH: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
-pub(crate) fn lock<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> napi::Result<T> {
-    let mut guard = COMPOSITOR.lock().map_err(|e| {
-        let msg = format!("lock: {}", e);
+fn lock_compositor<T>(
+    compositor: &LazyLock<Mutex<Option<Compositor>>>,
+    label: &str,
+    f: impl FnOnce(&mut Compositor) -> Result<T, String>,
+) -> napi::Result<T> {
+    let mut guard = compositor.lock().map_err(|e| {
+        let msg = format!("lock {}: {}", label, e);
         compositor::log_error(&msg);
         napi::Error::from_reason(msg)
     })?;
     let c = guard.as_mut().ok_or_else(|| {
-        let msg = "compositor not initialized, call initCompositor() first".to_string();
+        let msg = format!("compositor [{}] not initialized, call initCompositor() first", label);
         compositor::log_error(&msg);
         napi::Error::from_reason(msg)
     })?;
@@ -198,6 +203,14 @@ pub(crate) fn lock<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> n
         compositor::log_error(&e);
         napi::Error::from_reason(e.to_string())
     })
+}
+
+pub(crate) fn lock_preview<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> napi::Result<T> {
+    lock_compositor(&COMPOSITOR_PREVIEW, "preview", f)
+}
+
+pub(crate) fn lock_export<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String>) -> napi::Result<T> {
+    lock_compositor(&COMPOSITOR_EXPORT, "export", f)
 }
 
 // ─────────────── napi 结构体 ───────────────
@@ -300,7 +313,7 @@ pub struct PreviewPlanOutput {
 
 // ─────────────── napi exports ───────────────
 
-/// 初始化 GPU compositor
+/// 初始化两套 GPU compositor（预览 + 导出），共用日志路径
 ///
 /// - `log_path`: 日志文件路径（可选，默认 luna-rc.log）
 #[napi]
@@ -308,13 +321,25 @@ pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
     if let Ok(mut guard) = COMPOSITOR_LOG_PATH.lock() {
         *guard = log_path.clone();
     }
-    let mut guard = COMPOSITOR
+    let path = log_path.as_deref();
+    init_one_compositor(&COMPOSITOR_PREVIEW, path, "preview")?;
+    init_one_compositor(&COMPOSITOR_EXPORT, path, "export")?;
+    Ok(())
+}
+
+fn init_one_compositor(
+    compositor: &LazyLock<Mutex<Option<Compositor>>>,
+    log_path: Option<&str>,
+    label: &str,
+) -> napi::Result<()> {
+    let mut guard = compositor
         .lock()
-        .map_err(|e| napi::Error::from_reason(format!("lock: {}", e)))?;
+        .map_err(|e| napi::Error::from_reason(format!("lock {}: {}", label, e)))?;
     if guard.is_some() {
         return Ok(());
     }
-    let c = Compositor::new(log_path.as_deref()).map_err(|e| napi::Error::from_reason(e))?;
+    let c = Compositor::new(log_path).map_err(|e| napi::Error::from_reason(e))?;
+    log!("init_{}_compositor OK", label);
     *guard = Some(c);
     Ok(())
 }
@@ -323,7 +348,7 @@ pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
 #[napi]
 pub fn load_texture(data: Buffer, width: u32, height: u32) -> napi::Result<u32> {
     let bytes: Vec<u8> = data.into();
-    lock(|c| c.load_texture(&bytes, width, height))
+    lock_preview(|c| c.load_texture(&bytes, width, height))
 }
 
 /// 从本地图片路径加载预览纹理，native 内部通过 ffmpeg 解码并等比缩小后上传 GPU。
@@ -334,7 +359,7 @@ pub fn load_texture_from_path(
     path: String,
     max_size: u32,
 ) -> napi::Result<TextureLoadResult> {
-    lock(|c| {
+    lock_preview(|c| {
         let (texture_id, width, height) =
             c.load_texture_from_path(&ffmpeg_path, &ffprobe_path, &path, max_size)?;
         Ok(TextureLoadResult {
@@ -344,18 +369,17 @@ pub fn load_texture_from_path(
         })
     })
 }
-
 /// 更新已有纹理的内容（用于视频逐帧更新）
 #[napi]
 pub fn update_texture(texture_id: u32, data: Buffer) -> napi::Result<()> {
     let bytes: Vec<u8> = data.into();
-    lock(|c| c.update_texture(texture_id, &bytes))
+    lock_preview(|c| c.update_texture(texture_id, &bytes))
 }
 
 /// 释放纹理
 #[napi]
 pub fn release_texture(texture_id: u32) -> napi::Result<()> {
-    lock(|c| c.release_texture(texture_id))
+    lock_preview(|c| c.release_texture(texture_id))
 }
 
 /// 渲染一帧
@@ -365,7 +389,7 @@ pub fn render_frame(
     canvas_height: u32,
     layers: Vec<RenderLayer>,
 ) -> napi::Result<Buffer> {
-    let result = lock(|c| c.render(canvas_width, canvas_height, &layers))?;
+    let result = lock_preview(|c| c.render(canvas_width, canvas_height, &layers))?;
     Ok(result.into())
 }
 
@@ -397,7 +421,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             lut_intensity: l.lut_intensity,
         })
         .collect();
-    lock(|c| {
+    lock_preview(|c| {
         let (data, width, height) = c.render_preview(
             &input.ffmpeg_path,
             &input.ffprobe_path,
@@ -455,7 +479,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
             )
         })
         .collect();
-    lock(|c| {
+    lock_preview(|c| {
         let planned = c.plan_preview(input.width, input.height, input.max_side, &layers)?;
         Ok(PreviewPlanOutput {
             width: planned.width,
@@ -466,10 +490,12 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
 }
 
 pub fn destroy_compositor() -> napi::Result<()> {
-    let mut guard = COMPOSITOR
-        .lock()
-        .map_err(|e| napi::Error::from_reason(format!("lock: {}", e)))?;
-    *guard = None;
+    if let Ok(mut guard) = COMPOSITOR_PREVIEW.lock() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = COMPOSITOR_EXPORT.lock() {
+        *guard = None;
+    }
     Ok(())
 }
 /// 取消指定导出任务
