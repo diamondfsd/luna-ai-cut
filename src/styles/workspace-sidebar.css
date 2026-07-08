@@ -146,6 +146,22 @@
   transform: translateY(-50%);
 }
 
+.workspace-tool-rail-item {
+  position: relative;
+}
+
+.workspace-tool-rail-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue, #0066cc);
+  border: 2px solid #1e1e1e;
+  pointer-events: none;
+}
+
 @media (max-width: 980px) {
   .workspace-edit-sidebar {
     grid-column: 1;
