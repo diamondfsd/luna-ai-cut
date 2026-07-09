@@ -1834,10 +1834,19 @@ impl Compositor {
                 );
                 return Ok(texture_id);
             }
-            let (rgba, _dw, _dh) =
+            let (rgba, dw, dh) =
                 self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time)?;
-            self.update_texture(texture_id, &rgba)?;
-            return Ok(texture_id);
+            // seek 跳转时 read_video_frame 内部可能已释放旧纹理（remove_video_decoder → release_texture）
+            if self.textures.contains_key(&texture_id) {
+                self.update_texture(texture_id, &rgba)?;
+                return Ok(texture_id);
+            } else {
+                let new_texture_id = self.load_texture(&rgba, dw, dh)?;
+                if let Some(decoder) = self.video_decoders.get_mut(&layer.file_path) {
+                    decoder.texture_id = Some(new_texture_id);
+                }
+                return Ok(new_texture_id);
+            }
         }
 
         // ── 无 pipe 解码器：优先创建 pipe + 读第1帧 ──
