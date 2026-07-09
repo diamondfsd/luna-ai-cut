@@ -18,7 +18,7 @@ import {
 } from './lunaRenderCore'
 
 // 导入纹理管理方法
-import { getNative } from './lunaRenderCore'
+import { getNative, cleanNativeInput } from './lunaRenderCore'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import * as exportTaskService from './exportTaskService'
 
@@ -71,7 +71,7 @@ export function register(_ctx: RegisterContext): void {
 
   ipcMain.handle('lrc:renderFrame', safe('renderFrame',
     async (_event: IpcMainInvokeEvent, canvasWidth: number, canvasHeight: number, layers: any[]) => {
-      return getNative().renderFrame(canvasWidth, canvasHeight, layers)
+      return getNative().renderFrame(canvasWidth, canvasHeight, cleanNativeInput(layers))
     },
   ))
 
