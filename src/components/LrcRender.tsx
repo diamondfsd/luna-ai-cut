@@ -41,6 +41,7 @@ interface LunaRenderCore {
   init: () => Promise<void>
   renderPreview: (input: { maxSide?: number; width?: number; height?: number; layers: PreviewLayer[] }) => Promise<RenderPreviewOutput>
   renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) => Promise<RenderPreviewOutput>
+  renderCompositionFrameAsync: (composition: CompositionInput, time: number, maxSide?: number) => Promise<RenderPreviewOutput>
   exportCompositionVideo: (
     outputPath: string,
     composition: CompositionInput,
@@ -71,7 +72,12 @@ function sortedLayers(layers: PreviewLayer[]): PreviewLayer[] {
 }
 
 function bytesFromRenderData(data: RenderPreviewOutput['data']): Uint8ClampedArray {
-  if (data instanceof Uint8Array) return new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength)
+  if (data instanceof Uint8Array) {
+    // 直接创建新的 Uint8ClampedArray，避免 SharedArrayBuffer 问题
+    const copy = new Uint8ClampedArray(data.byteLength)
+    copy.set(data)
+    return copy
+  }
   if (data instanceof ArrayBuffer) return new Uint8ClampedArray(data)
   if (Array.isArray(data.data)) return new Uint8ClampedArray(data.data)
   return new Uint8ClampedArray(data as ArrayBuffer)
@@ -125,6 +131,8 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const renderQueuedRef = useRef(false)
   const lastVideoFrameAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
+  const isSeekingRef = useRef(false) // 标记是否正在 seek
+  const seekStartTimeRef = useRef<number | null>(null) // 记录 seek 开始时间
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
   layersRef.current = layers
@@ -185,7 +193,8 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     try {
       const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
       const composition = buildCompositionFromPreviewLayers(renderLayers, canvasWidth, canvasHeight)
-      const result = await lrc.renderCompositionFrame(composition, 0, effectiveMaxSide)
+      // 使用异步方法，避免阻塞主线程
+      const result = await (lrc.renderCompositionFrameAsync ?? lrc.renderCompositionFrame)(composition, 0, effectiveMaxSide)
       if (destroyRef.current) return
 
       if (result.width !== lastMediaSizeRef.current[0] || result.height !== lastMediaSizeRef.current[1]) {
@@ -197,7 +206,16 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       canvas.height = result.height
       const context = canvas.getContext('2d')
       if (!context) throw new Error('画布不可用')
-      context.putImageData(new ImageData(bytesFromRenderData(result.data), result.width, result.height), 0, 0)
+      const pixelData = bytesFromRenderData(result.data)
+      context.putImageData(new ImageData(pixelData as unknown as Uint8ClampedArray<ArrayBuffer>, result.width, result.height), 0, 0)
+
+      // 计算 seek 到渲染完成的耗时
+      if (seekStartTimeRef.current !== null) {
+        const elapsed = performance.now() - seekStartTimeRef.current
+        console.log(`[LrcRender] seek to render completed in ${elapsed.toFixed(0)}ms`)
+        seekStartTimeRef.current = null
+      }
+
       onRender?.()
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
@@ -243,8 +261,17 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
         if (destroyRef.current) return
         void renderPreviewFrame()
       })
+      video.addEventListener('seeking', () => {
+        // seek 开始时设置标志，暂停播放循环的渲染
+        isSeekingRef.current = true
+        seekStartTimeRef.current = performance.now()
+        console.log('[LrcRender] seek started')
+      })
       video.addEventListener('seeked', () => {
         if (destroyRef.current) return
+        // seek 完成后，清除标志并立即触发渲染
+        isSeekingRef.current = false
+        // 由于拖动时视频已暂停，不需要节流，直接渲染
         void renderPreviewFrame()
       })
       video.addEventListener('play', () => void renderPreviewFrame())
@@ -263,7 +290,8 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
     function loop() {
       const hasPlayingVideo = [...videosRef.current.values()].some((video) => !video.paused && !video.ended)
-      if (hasPlayingVideo) {
+      // seek 时暂停播放循环的渲染，优先处理 seek 操作
+      if (hasPlayingVideo && !isSeekingRef.current) {
         const now = performance.now()
         if (now - lastVideoFrameAtRef.current >= 1000 / COMPOSITION_RENDER_FPS) {
           lastVideoFrameAtRef.current = now
