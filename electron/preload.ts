@@ -241,6 +241,14 @@ interface CompositionInput {
 
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
+  loadTexture: (data: Buffer, width: number, height: number) =>
+    ipcRenderer.invoke('lrc:loadTexture', data, width, height),
+  updateTexture: (textureId: number, data: Buffer) =>
+    ipcRenderer.invoke('lrc:updateTexture', textureId, data),
+  renderFrame: (canvasWidth: number, canvasHeight: number, layers: any[]) =>
+    ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
+  releaseTexture: (textureId: number) =>
+    ipcRenderer.invoke('lrc:releaseTexture', textureId),
   renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) =>
     ipcRenderer.invoke('lrc:renderCompositionFrame', composition, time, maxSide),
   renderCompositionFrameAsync: (composition: CompositionInput, time: number, maxSide?: number) =>

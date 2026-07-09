@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
 import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
+import { VideoDomPreviewLrcRender } from './VideoDomPreviewLrcRender'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge } from '../ui'
@@ -373,13 +374,23 @@ export function PreviewStage(
     >
       {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          <LrcRender
-            layers={layers}
-            canvasWidth={previewCanvas?.width}
-            canvasHeight={previewCanvas?.height}
-            onRender={handleRender}
-            onVideoElement={handleVideoElement}
-          />
+          {isDisplayVideo ? (
+            <VideoDomPreviewLrcRender
+              layers={layers}
+              canvasWidth={previewCanvas?.width}
+              canvasHeight={previewCanvas?.height}
+              onRender={handleRender}
+              onVideoElement={handleVideoElement}
+            />
+          ) : (
+            <LrcRender
+              layers={layers}
+              canvasWidth={previewCanvas?.width}
+              canvasHeight={previewCanvas?.height}
+              onRender={handleRender}
+              onVideoElement={handleVideoElement}
+            />
+          )}
         </div>
       )}
       {renderOverlay?.()}
