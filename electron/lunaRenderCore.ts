@@ -89,7 +89,7 @@ interface LunaRenderCoreNative {
 
 let native: LunaRenderCoreNative | null = null
 
-function getNative(): LunaRenderCoreNative {
+export function getNative(): LunaRenderCoreNative {
   if (native) return native
 
   // 遍历多个候选路径加载 .node addon：
