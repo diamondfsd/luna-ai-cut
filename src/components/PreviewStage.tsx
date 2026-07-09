@@ -104,6 +104,7 @@ export function PreviewStage(
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
   const wasPlayingBeforeSeekRef = useRef(false) // 记录 seek 前是否在播放
+  const shouldResumePlaybackRef = useRef(false) // 记录是否需要在渲染完成后恢复播放
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
@@ -193,15 +194,16 @@ export function PreviewStage(
     } else {
       wasPlayingBeforeSeekRef.current = false
     }
+    // 重置恢复播放标志
+    shouldResumePlaybackRef.current = false
     // 显示 loading 状态
     setLoading(true)
   }
 
   function handleSeekEnd() {
-    // 拖动结束时，如果之前在播放，恢复播放
-    if (wasPlayingBeforeSeekRef.current && videoRef.current) {
-      videoRef.current.play().catch(() => {})
-      wasPlayingBeforeSeekRef.current = false
+    // 拖动结束时，不立即恢复播放，等待渲染完成
+    if (wasPlayingBeforeSeekRef.current) {
+      shouldResumePlaybackRef.current = true
     }
     // loading 会在渲染完成后通过 onRender 回调自动取消
   }
@@ -239,6 +241,11 @@ export function PreviewStage(
 
   function handleRender() {
     setLoading(false)
+    // 渲染完成后，检查是否需要恢复播放
+    if (shouldResumePlaybackRef.current && videoRef.current) {
+      shouldResumePlaybackRef.current = false
+      videoRef.current.play().catch(() => {})
+    }
   }
 
   // 宽高比（由 resolution 派生）
