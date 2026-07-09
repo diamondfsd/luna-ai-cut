@@ -103,6 +103,7 @@ export function PreviewStage(
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
+  const seekThrottleRef = useRef<number | null>(null)
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
@@ -180,7 +181,13 @@ export function PreviewStage(
     if (videoRef.current) {
       videoRef.current.currentTime = time
     }
-    setCurrentTime(time)
+    // 节流：减少拖动时的状态更新频率，避免频繁触发渲染
+    if (seekThrottleRef.current === null) {
+      setCurrentTime(time)
+      seekThrottleRef.current = window.setTimeout(() => {
+        seekThrottleRef.current = null
+      }, 100) // 100ms 节流间隔
+    }
   }
 
   function toggleLivePhoto() {
@@ -234,14 +241,6 @@ export function PreviewStage(
     const main = sourceUrl ? buildLayers(sourceUrl, layerResolution, canvas) : []
     if (main[0] && pipeline) {
       const renderTransform = pipelineTransformToRenderTransform(pipeline.transform)
-      console.log('[PreviewStage] apply pipeline transform to layer', {
-        filePath: main[0].filePath,
-        pipelineCrop: pipeline.transform.crop,
-        renderTransform,
-        cropAspectRatio: pipeline.transform.crop
-          ? Math.round((pipeline.transform.crop.w / pipeline.transform.crop.h) * 100) / 100
-          : null,
-      })
       main[0] = {
         ...main[0],
         color: pipelineColorToRenderColor(pipeline.color),
@@ -270,29 +269,12 @@ export function PreviewStage(
       dstW: l.dstW * cW,
       dstH: l.dstH * cH,
     }))
-    const finalLayers = [...main, ...adjusted]
-    console.log('[PreviewStage] build adjusted layers', {
-      sourceUrl,
-      resolution: layerResolution ? `${layerResolution.width}x${layerResolution.height}` : null,
-      canvas,
-      main,
-      extraLayers,
-      finalLayers,
-    })
-    return finalLayers
+    return [...main, ...adjusted]
   }, [resolution, extraLayers, pipeline, lutFilePath])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []
-    const nextLayers = buildAdjustedLayers(displayUrl, resolution)
-    console.log('[PreviewStage] render layers', {
-      displayUrl,
-      layoutUrl,
-      pending,
-      resolution: `${resolution.width}x${resolution.height}`,
-      layers: nextLayers,
-    })
-    return nextLayers
+    return buildAdjustedLayers(displayUrl, resolution)
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
 
   // 通过 IPC 获取媒体文件实际分辨率
