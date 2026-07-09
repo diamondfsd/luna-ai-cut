@@ -74,29 +74,10 @@ function bytesFromRenderData(data: RenderPreviewOutput['data']): Uint8ClampedArr
   return new Uint8ClampedArray(data as ArrayBuffer)
 }
 
-// 自定义比较函数
+// 自定义比较函数：全量 JSON 对比，避免漏字段
 const layersEqual = (prevLayers: PreviewLayer[], nextLayers: PreviewLayer[]): boolean => {
   if (prevLayers.length !== nextLayers.length) return false
-  for (let i = 0; i < prevLayers.length; i++) {
-    const prev = prevLayers[i]
-    const next = nextLayers[i]
-    if (
-      prev.filePath !== next.filePath ||
-      prev.isVideo !== next.isVideo ||
-      prev.opacity !== next.opacity ||
-      prev.zIndex !== next.zIndex ||
-      prev.dstX !== next.dstX ||
-      prev.dstY !== next.dstY ||
-      prev.dstW !== next.dstW ||
-      prev.dstH !== next.dstH ||
-      prev.videoTime !== next.videoTime
-    ) {
-      return false
-    }
-    if (JSON.stringify(prev.color) !== JSON.stringify(next.color)) return false
-    if (JSON.stringify(prev.transform) !== JSON.stringify(next.transform)) return false
-  }
-  return true
+  return JSON.stringify(prevLayers) === JSON.stringify(nextLayers)
 }
 
 export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRenderHandle, VideoDomPreviewLrcRenderProps>(
@@ -373,21 +354,7 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
             }
           }
 
-        // ── color 校验：curve.rgb/hslChannels 必须有值，缺则跳过 ──
-          const validColor = layer.color && typeof layer.color === "object"
-            && "curve" in layer.color && layer.color.curve != null
-            && Array.isArray(layer.color.curve.rgb) && layer.color.curve.rgb.length > 0
-            && "hslChannels" in layer.color && Array.isArray(layer.color.hslChannels) && layer.color.hslChannels.length > 0
-            ? layer.color
-            : undefined
-
-          // ── transform 校验 ──
-          const validTransform = layer.transform && typeof layer.transform === "object"
-            && "orientation" in layer.transform
-            ? layer.transform
-            : undefined
-
-          // ── positioning 校验：必须是平面对象（含 anchor 字段）──
+        // ── positioning 校验：平面对象（含 anchor 字段）→ 转 Rust LayerPositioning ──
           let positioning: any = undefined
           if (layer.positioning && typeof layer.positioning === "object" && "anchor" in layer.positioning) {
             const p = layer.positioning as any
@@ -411,8 +378,10 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
             srcH: layer.srcH ?? 1,
             opacity: layer.opacity ?? 1,
             zIndex: layer.zIndex ?? 0,
-            color: validColor,
-            transform: validTransform,
+            // color/transform/positioning/lutId/lutIntensity 原样传入，
+            // Rust NAPI Option<T> + IPC cleanNativeInput 自动处理 undefined → None
+            color: layer.color,
+            transform: layer.transform,
             positioning,
             lutId: layer.lutId,
             lutIntensity: layer.lutIntensity,
@@ -481,6 +450,13 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
 
       rafRef.current = requestAnimationFrame(loop)
       return () => cancelAnimationFrame(rafRef.current)
+    }, [ready, layers])
+
+    // 参数变化（调色/LUT/位置等）时主动刷新渲染，不等待 video loadeddata
+    useEffect(() => {
+      if (!ready) return
+      const timer = setTimeout(() => void renderFrame(), 16) // ~1 帧延迟，合并连续变化
+      return () => clearTimeout(timer)
     }, [ready, layers])
 
     useImperativeHandle(ref, () => ({
