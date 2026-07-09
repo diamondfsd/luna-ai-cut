@@ -147,7 +147,7 @@ fn infer_composition_duration(ffprobe_path: &str, input: &CompositionInput) -> O
     })
 }
 
-fn composition_layers(input: &CompositionInput, time: f64) -> Vec<PreviewLayerInput> {
+pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<PreviewLayerInput> {
     input
         .layers
         .iter()
@@ -192,6 +192,7 @@ fn render_composition_frame_with(
         Some(input.canvas.height),
         effective_max_side,
         &layers,
+        None,
     )
 }
 

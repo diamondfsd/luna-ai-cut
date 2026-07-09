@@ -270,6 +270,15 @@ const lunaRenderCoreApi = {
     ipcRenderer.invoke('lrc:importCubeFile', sourcePath, categoryName, lutDir, targetName, meta),
   deleteCubeFile: (cubePath: string, isBuiltin?: boolean) =>
     ipcRenderer.invoke('lrc:deleteCubeFile', cubePath, isBuiltin),
+  // ── PreviewEngine ──
+  createPreviewEngine: (engineId: string, config: any) =>
+    ipcRenderer.invoke('lrc:createPreviewEngine', engineId, config),
+  updatePreviewState: (engineId: string, input: any) =>
+    ipcRenderer.invoke('lrc:updatePreviewState', engineId, input),
+  getLatestPreviewFrame: (engineId: string) =>
+    ipcRenderer.invoke('lrc:getLatestPreviewFrame', engineId),
+  destroyPreviewEngine: (engineId: string) =>
+    ipcRenderer.invoke('lrc:destroyPreviewEngine', engineId),
 }
 
 contextBridge.exposeInMainWorld('luna', lunaApi)

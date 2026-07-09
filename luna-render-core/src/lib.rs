@@ -2,6 +2,7 @@ mod composition;
 mod compositor;
 mod export;
 mod media;
+mod preview_engine;
 
 use std::sync::{LazyLock, Mutex};
 
@@ -429,6 +430,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             input.height,
             input.max_side,
             &layers,
+            None,
         )?;
         Ok(RenderPreviewOutput {
             width,

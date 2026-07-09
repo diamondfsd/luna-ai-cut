@@ -84,6 +84,11 @@ interface LunaRenderCoreNative {
   exportCompositionImageAsync(input: any): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
+  // ── PreviewEngine ──
+  createPreviewEngine(engineId: string, config: PreviewEngineConfig): void
+  updatePreviewState(engineId: string, input: PreviewUpdateInput): void
+  getLatestPreviewFrame(engineId: string): PreviewFrameOutput | null
+  destroyPreviewEngine(engineId: string): void
 }
 
 let native: LunaRenderCoreNative | null = null
@@ -119,6 +124,64 @@ export function ensureInit(logPath?: string): void {
     getNative().initCompositor(logPath ?? undefined)
     initialized = true
   }
+}
+
+// ── PreviewEngine 类型 ──
+
+export interface PreviewEngineConfig {
+  ffmpegPath: string
+  ffprobePath: string
+  dragMaxSide?: number
+  playMaxSide?: number
+  finalMaxSide?: number
+}
+
+export interface PreviewUpdateInput {
+  requestId: number
+  mode: 'idle' | 'playing' | 'dragging' | 'final-seek'
+  time: number
+  composition: CompositionInput
+}
+
+export interface PreviewFrameOutput {
+  frameId: number
+  requestId: number
+  data: Buffer
+  width: number
+  height: number
+}
+
+// ── PreviewEngine 包装函数 ──
+
+export function createPreviewEngine(engineId: string, config: PreviewEngineConfig): void {
+  ensureInit()
+  getNative().createPreviewEngine(engineId, {
+    ffmpegPath: config.ffmpegPath,
+    ffprobePath: config.ffprobePath,
+    dragMaxSide: config.dragMaxSide,
+    playMaxSide: config.playMaxSide,
+    finalMaxSide: config.finalMaxSide,
+  })
+}
+
+export function updatePreviewState(engineId: string, input: PreviewUpdateInput): void {
+  ensureInit()
+  getNative().updatePreviewState(engineId, {
+    requestId: input.requestId,
+    mode: input.mode,
+    time: input.time,
+    composition: input.composition,
+  })
+}
+
+export function getLatestPreviewFrame(engineId: string): PreviewFrameOutput | null {
+  ensureInit()
+  return getNative().getLatestPreviewFrame(engineId) ?? null
+}
+
+export function destroyPreviewEngine(engineId: string): void {
+  ensureInit()
+  getNative().destroyPreviewEngine(engineId)
 }
 
 export function resolveRenderSource(
