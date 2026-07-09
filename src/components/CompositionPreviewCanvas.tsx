@@ -33,37 +33,36 @@ export function CompositionPreviewCanvas({
 }: CompositionPreviewCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const compositionRef = useRef<CompositionInput | null>(composition)
-  const readyRef = useRef(false)
   const timeRef = useRef(0)
   const startTimeRef = useRef(startTime)
   const rafRef = useRef(0)
   const lastFrameAtRef = useRef(0)
   const endedRef = useRef(false)
   const wasPlayingRef = useRef(playing)
+  const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
   compositionRef.current = composition
 
   useEffect(() => {
     initPreviewEngine()
-      .then(() => {
-        readyRef.current = true
-      })
+      .then(() => setReady(true))
       .catch((error: Error) => {
         const msg = `渲染引擎初始化失败: ${error.message}`
         setFatalError(msg)
         onError?.(msg)
       })
     return () => {
+      setReady(false)
       void destroyPreviewEngine()
     }
   }, [])
 
-  // 当 composition 变化时更新引擎状态
+  // 每当 state 或 composition 变化 → 推给引擎
   useEffect(() => {
-    if (!readyRef.current || !composition) return
+    if (!ready || !composition) return
     const mode = dragging ? 'dragging' : playing ? 'playing' : 'final-seek'
     updatePreviewState(mode, timeRef.current, composition)
-  }, [composition, playing, dragging])
+  }, [composition, playing, dragging, ready])
 
   // 当 startTime 变化时 seek
   useEffect(() => {
@@ -72,9 +71,9 @@ export function CompositionPreviewCanvas({
     timeRef.current = startTime
     endedRef.current = false
     onTimeChange?.(startTime)
-    if (!readyRef.current || !compositionRef.current) return
+    if (!ready || !compositionRef.current) return
     updatePreviewState('final-seek', startTime, compositionRef.current)
-  }, [startTime, onTimeChange])
+  }, [startTime, onTimeChange, ready])
 
   // 播放状态切换
   useEffect(() => {
@@ -97,13 +96,12 @@ export function CompositionPreviewCanvas({
     wasPlayingRef.current = playing
   }, [playing, onTimeChange])
 
-  // 主循环：推进时间 + 拉最新帧 + 渲染画布
+  // 主循环：拉最新帧 + 推进时间
   useEffect(() => {
     function tick(now: number) {
       const current = compositionRef.current
-      const ready = readyRef.current
 
-      // 推进时间（仅在 playing 状态）
+      // 推进时间
       if (playing && current && ready) {
         if (now - lastFrameAtRef.current >= 1000 / PREVIEW_FPS) {
           lastFrameAtRef.current = now
@@ -124,7 +122,7 @@ export function CompositionPreviewCanvas({
         }
       }
 
-      // 拉取最新帧并渲染
+      // 拉帧
       if (ready) {
         getLatestPreviewFrame()
           .then((frame: PreviewFrameData | null) => {
@@ -136,6 +134,7 @@ export function CompositionPreviewCanvas({
             const context = canvas.getContext('2d')
             if (!context) return
             context.putImageData(new ImageData(frame.data, frame.width, frame.height), 0, 0)
+            return null
           })
           .catch(() => {})
       }
@@ -145,7 +144,7 @@ export function CompositionPreviewCanvas({
 
     rafRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [playing])
+  }, [playing, ready])
 
   if (fatalError) return <div className={className}>{fatalError}</div>
   return <canvas ref={canvasRef} className={className} />

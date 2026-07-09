@@ -298,6 +298,7 @@ impl PreviewEngine {
         let worker_state = Arc::clone(&state);
         let worker_frame = Arc::clone(&latest_frame);
         let worker_wake = wake_rx;
+        let worker_wake_tx = wake_tx.clone();
         let worker_shutdown = shutdown_rx;
         let worker_frame_id = Arc::clone(&next_frame_id);
         let worker_cfg = EngineConfig {
@@ -313,6 +314,7 @@ impl PreviewEngine {
                     worker_state,
                     worker_frame,
                     worker_wake,
+                    worker_wake_tx,
                     worker_shutdown,
                     worker_frame_id,
                     worker_cfg,
@@ -372,6 +374,7 @@ impl PreviewEngine {
         state: Arc<RwLock<Option<PreviewSnapshot>>>,
         latest_frame: Arc<RwLock<Option<InternalPreviewFrame>>>,
         wake_rx: mpsc::Receiver<()>,
+        _wake_tx: mpsc::Sender<()>,
         shutdown_rx: mpsc::Receiver<()>,
         next_frame_id: Arc<AtomicU64>,
         config: EngineConfig,
@@ -422,10 +425,12 @@ impl PreviewEngine {
                 PreviewMode::FinalSeek | PreviewMode::Idle => config.final_max_side,
             };
 
+            let current_time = snapshot.time;
+
             // ── 构建当前帧的 PreviewLayerInput ──
             let layers = crate::composition::composition_layers(
                 &snapshot.composition,
-                snapshot.time,
+                current_time,
             );
 
             // ── 解码所有视频层（🔑 关键：在 compositor 锁外） ──
@@ -456,7 +461,7 @@ impl PreviewEngine {
                                     Ok(new_dec) => {
                                         decoders.insert(path.clone(), new_dec);
                                         let dec = decoders.get_mut(path).unwrap();
-                                        match dec.seek_and_decode(snapshot.time) {
+                                        match dec.seek_and_decode(current_time) {
                                             Ok(f) => f,
                                             Err(e) => {
                                                 crate::compositor::log_write(&format!(
@@ -479,12 +484,12 @@ impl PreviewEngine {
                         }
                     } else {
                         // 拖动/跳转模式：seek
-                        match dec.seek_and_decode(snapshot.time) {
+                        match dec.seek_and_decode(current_time) {
                             Ok(f) => f,
                             Err(e) => {
                                 crate::compositor::log_write(&format!(
                                     "[PreviewEngine] {} seek failed @{:.3}: {}",
-                                    path, snapshot.time, e
+                                    path, current_time, e
                                 ));
                                 continue;
                             }
@@ -495,9 +500,9 @@ impl PreviewEngine {
                     match VideoDecoder::open(path, max_side) {
                         Ok(mut dec) => {
                             let result = if snapshot.mode == PreviewMode::Playing {
-                                dec.seek_and_decode(snapshot.time)
+                                dec.seek_and_decode(current_time)
                             } else {
-                                dec.seek_and_decode(snapshot.time)
+                                dec.seek_and_decode(current_time)
                             };
                             match result {
                                 Ok(f) => {
@@ -507,7 +512,7 @@ impl PreviewEngine {
                                 Err(e) => {
                                     crate::compositor::log_write(&format!(
                                         "[PreviewEngine] {} first decode failed @{:.3}: {}",
-                                        path, snapshot.time, e
+                                        path, current_time, e
                                     ));
                                     continue;
                                 }
@@ -576,6 +581,7 @@ impl PreviewEngine {
             if let Ok(mut guard) = latest_frame.write() {
                 *guard = Some(output);
             }
+
         }
 
         crate::compositor::log_write("[PreviewEngine] worker exited");

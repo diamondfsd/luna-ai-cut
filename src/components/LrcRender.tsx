@@ -78,6 +78,7 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   const layersRef = useRef<PreviewLayer[]>(layers)
   const videosRef = useRef<Map<string, HTMLVideoElement>>(new Map())
   const videoElementCalledRef = useRef(false)
+  const lastVideoKeyRef = useRef<string | null>(null)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
   const engineReadyRef = useRef(false)
   const lastFrameIdRef = useRef(-1)
@@ -126,13 +127,18 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   // ── 画布渲染循环：持续拉取引擎的最新帧 ──
   useEffect(() => {
     if (!ready) return
+    console.log('[LrcRender] pull loop started, engineReadyRef.current=', engineReadyRef.current)
 
     function loop() {
       if (!destroyRef.current) {
         getLatestPreviewFrame().then((frame) => {
-          if (!frame || destroyRef.current) return
+          if (!frame || destroyRef.current) {
+            if (!frame) console.log('[LrcRender] pull: no frame yet')
+            return
+          }
           if (frame.frameId === lastFrameIdRef.current) return
           lastFrameIdRef.current = frame.frameId
+          console.log('[LrcRender] pull: got frame', frame.frameId, frame.width, frame.height, frame.data.length)
 
           const canvas = canvasRef.current
           if (!canvas) return
@@ -149,7 +155,9 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
             context.putImageData(new ImageData(frame.data, frame.width, frame.height), 0, 0)
             onRender?.()
           }
-        }).catch(() => {})
+        }).catch((err) => {
+          console.error('[LrcRender] pull error:', err)
+        })
       }
       rafRef.current = requestAnimationFrame(loop)
     }
@@ -194,12 +202,16 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
         if (destroyRef.current) return
         pushToEngine(video.currentTime, 'final-seek')
       })
+      video.addEventListener('pause', () => {
+        if (destroyRef.current) return
+        pushToEngine(video.currentTime, 'idle')
+      })
       video.addEventListener('play', () => {
         if (destroyRef.current) return
         pushToEngine(video.currentTime, 'playing')
       })
       video.load()
-      if (onVideoElement && !videoElementCalledRef.current) {
+      if (onVideoElement && key !== lastVideoKeyRef.current) {
         videoElementCalledRef.current = true
         onVideoElement(video)
       }
@@ -209,18 +221,22 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     pushToEngine(0, 'final-seek')
   }, [layers, ready])
 
-  // ── 视频播放循环：推进时间 + 更新引擎状态 ──
+  // ── 播放循环（节流到 ~10fps，不淹了引擎） ──
   useEffect(() => {
     if (!ready || !layers.some((layer) => layer.isVideo)) return
+    const lastPushRef = { current: 0 }
 
     function loop() {
       if (!destroyRef.current) {
-        const hasPlayingVideo = [...videosRef.current.values()].some((video) => !video.paused && !video.ended)
+        const hasPlayingVideo = [...videosRef.current.values()].some((v) => !v.paused && !v.ended)
         if (hasPlayingVideo && engineReadyRef.current) {
-          // 用第一个视频的 currentTime 作为主时钟
           const firstVideo = [...videosRef.current.values()].find((v) => !v.paused)
           if (firstVideo) {
-            pushToEngine(firstVideo.currentTime, 'playing')
+            const now = performance.now()
+            if (now - lastPushRef.current >= 100) { // max 10fps
+              lastPushRef.current = now
+              pushToEngine(firstVideo.currentTime, 'playing')
+            }
           }
         }
       }

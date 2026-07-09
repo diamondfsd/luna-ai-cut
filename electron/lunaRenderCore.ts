@@ -5,6 +5,7 @@
  * 为 IPC 层提供类型安全的调用接口。
  * 可选字段在此层填充默认值后传入 Rust。
  */
+import { appendFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import {
@@ -166,12 +167,26 @@ export function createPreviewEngine(engineId: string, config: PreviewEngineConfi
 
 export function updatePreviewState(engineId: string, input: PreviewUpdateInput): void {
   ensureInit()
-  getNative().updatePreviewState(engineId, {
-    requestId: input.requestId,
-    mode: input.mode,
-    time: input.time,
-    composition: input.composition,
-  })
+  if (!input) return
+  const c = input.composition
+  if (!c) return
+  // cleanNativeInput 会递归移除所有 null/undefined 字段，
+  // 避免 napi-rs 转换嵌套对象时报 "Cannot convert undefined or null to object"
+  getNative().updatePreviewState(engineId, cleanNativeInput({
+    requestId: input.requestId ?? 0,
+    mode: input.mode ?? 'idle',
+    time: input.time ?? 0,
+    composition: c,
+  }))
+}
+
+function rcLog(msg: string): void {
+  var appRoot = process.resourcesPath || process.env.APP_ROOT || join(import.meta.dirname, "..")
+  var logPath = join(appRoot, "luna-render-core", "luna-rc.log")
+  try {
+    var ts = new Date().toISOString().slice(11, 23)
+    appendFileSync(logPath, "[" + ts + "] [lrc-bridge] " + msg + "\n")
+  } catch { /* ignore */ }
 }
 
 export function getLatestPreviewFrame(engineId: string): PreviewFrameOutput | null {

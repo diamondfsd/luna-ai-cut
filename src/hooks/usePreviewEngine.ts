@@ -137,11 +137,14 @@ export function updatePreviewState(
 ): void {
   const lrc = getLRC()
   if (!lrc || !engineInitialized || engineDestroyed) return
+  if (!composition || !composition.canvas || !composition.layers) return
   lrc.updatePreviewState(ENGINE_ID, {
     requestId: Date.now(),
     mode,
     time,
     composition,
+  } as any).catch((err: unknown) => {
+    console.error('[PreviewEngine] updatePreviewState error:', err)
   })
 }
 
