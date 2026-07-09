@@ -216,6 +216,45 @@ pub fn render_composition_frame(
     })
 }
 
+/// 异步版本的 render_composition_frame，在后台线程池执行，不阻塞主线程
+pub struct RenderCompositionFrameTask {
+    input: RenderCompositionFrameInput,
+}
+
+impl Task for RenderCompositionFrameTask {
+    type Output = RenderPreviewOutput;
+    type JsValue = RenderPreviewOutput;
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        crate::lock_preview(|c| {
+            let (data, width, height) = render_composition_frame_with(
+                c,
+                &self.input.ffmpeg_path,
+                &self.input.ffprobe_path,
+                &self.input.composition,
+                self.input.time,
+                self.input.max_side,
+            )?;
+            Ok(RenderPreviewOutput {
+                width,
+                height,
+                data: data.into(),
+            })
+        })
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+#[napi]
+pub fn render_composition_frame_async(
+    input: RenderCompositionFrameInput,
+) -> napi::Result<AsyncTask<RenderCompositionFrameTask>> {
+    Ok(AsyncTask::new(RenderCompositionFrameTask { input }))
+}
+
 pub struct ExportCompositionVideoTask {
     input: ExportCompositionVideoInput,
 }

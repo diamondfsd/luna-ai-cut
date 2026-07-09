@@ -9,6 +9,7 @@ import { join, extname, basename } from 'node:path'
 import {
   ensureInit,
   renderCompositionFrame as lrcRenderCompositionFrame,
+  renderCompositionFrameAsync as lrcRenderCompositionFrameAsync,
   resolveRenderSource as lrcResolveRenderSource,
   exportCompositionVideoAsync as lrcExportCompositionVideoAsync,
   exportCompositionImageAsync as lrcExportCompositionImageAsync,
@@ -57,6 +58,14 @@ export function register(_ctx: RegisterContext): void {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
       return lrcRenderCompositionFrame(ffmpegPath, ffprobePath, composition, time, maxSide)
+    },
+  ))
+
+  ipcMain.handle('lrc:renderCompositionFrameAsync', safe('renderCompositionFrameAsync',
+    async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
+      const ffmpegPath = getFfmpegPath()
+      const ffprobePath = getFfprobePath()
+      return lrcRenderCompositionFrameAsync(ffmpegPath, ffprobePath, composition, time, maxSide)
     },
   ))
 

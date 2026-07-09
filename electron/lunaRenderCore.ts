@@ -74,6 +74,7 @@ export interface RenderPreviewOutput {
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
   renderCompositionFrame(input: any): RenderPreviewOutput
+  renderCompositionFrameAsync(input: any): Promise<RenderPreviewOutput>
   exportCompositionVideoAsync(input: any): Promise<void>
   resolveRenderSource(
     ffmpegPath: string,
@@ -140,6 +141,17 @@ export function renderCompositionFrame(
 ): RenderPreviewOutput {
   ensureInit()
   return getNative().renderCompositionFrame(cleanNativeInput({ ffmpegPath, ffprobePath, composition, time, maxSide }))
+}
+
+export function renderCompositionFrameAsync(
+  ffmpegPath: string,
+  ffprobePath: string,
+  composition: CompositionInput,
+  time: number,
+  maxSide?: number,
+): Promise<RenderPreviewOutput> {
+  ensureInit()
+  return getNative().renderCompositionFrameAsync(cleanNativeInput({ ffmpegPath, ffprobePath, composition, time, maxSide }))
 }
 
 export function exportCompositionVideoAsync(input: {

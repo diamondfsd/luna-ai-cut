@@ -1699,7 +1699,9 @@ impl Compositor {
     ) -> Result<(Vec<u8>, u32, u32), String> {
         // 已有 decoder 且文件路径匹配 → 从 pipe 顺序读下一帧
         if let Some(dec) = self.video_decoders.get_mut(file_path) {
-            if video_time + 0.05 < dec.current_time || (video_time - dec.current_time).abs() > 0.75
+            // 增大 seek 阈值到 2 秒，减少 ffmpeg 重启次数
+            // 只在回退超过 0.1 秒或前进/回退超过 2 秒时才重启
+            if video_time + 0.1 < dec.current_time || (video_time - dec.current_time).abs() > 2.0
             {
                 log!(
                     "read_video_frame [{}] seek jump {:.3} -> {:.3}, restarting",

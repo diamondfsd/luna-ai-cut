@@ -243,6 +243,8 @@ const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
   renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) =>
     ipcRenderer.invoke('lrc:renderCompositionFrame', composition, time, maxSide),
+  renderCompositionFrameAsync: (composition: CompositionInput, time: number, maxSide?: number) =>
+    ipcRenderer.invoke('lrc:renderCompositionFrameAsync', composition, time, maxSide),
   exportCompositionVideo: (
     outputPath: string,
     composition: CompositionInput,

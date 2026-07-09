@@ -103,7 +103,7 @@ export function PreviewStage(
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
-  const seekThrottleRef = useRef<number | null>(null)
+  const wasPlayingBeforeSeekRef = useRef(false) // 记录 seek 前是否在播放
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
@@ -181,13 +181,29 @@ export function PreviewStage(
     if (videoRef.current) {
       videoRef.current.currentTime = time
     }
-    // 节流：减少拖动时的状态更新频率，避免频繁触发渲染
-    if (seekThrottleRef.current === null) {
-      setCurrentTime(time)
-      seekThrottleRef.current = window.setTimeout(() => {
-        seekThrottleRef.current = null
-      }, 100) // 100ms 节流间隔
+    // 每次都更新 currentTime，确保进度条和时间显示同步
+    setCurrentTime(time)
+  }
+
+  function handleSeekStart() {
+    // 拖动开始时，如果正在播放，暂停视频
+    if (videoRef.current && !videoRef.current.paused) {
+      wasPlayingBeforeSeekRef.current = true
+      videoRef.current.pause()
+    } else {
+      wasPlayingBeforeSeekRef.current = false
     }
+    // 显示 loading 状态
+    setLoading(true)
+  }
+
+  function handleSeekEnd() {
+    // 拖动结束时，如果之前在播放，恢复播放
+    if (wasPlayingBeforeSeekRef.current && videoRef.current) {
+      videoRef.current.play().catch(() => {})
+      wasPlayingBeforeSeekRef.current = false
+    }
+    // loading 会在渲染完成后通过 onRender 回调自动取消
   }
 
   function toggleLivePhoto() {
@@ -395,6 +411,10 @@ export function PreviewStage(
             step={0.1}
             value={currentTime}
             onChange={handleSeek}
+            onMouseDown={handleSeekStart}
+            onMouseUp={handleSeekEnd}
+            onTouchStart={handleSeekStart}
+            onTouchEnd={handleSeekEnd}
             aria-label="进度"
           />
           <span className="preview-video-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
