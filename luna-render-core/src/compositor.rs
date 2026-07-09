@@ -13,7 +13,7 @@ use wgpu::TexelCopyTextureInfo;
 /// 静态图纹理 LRU 缓存上限
 const MAX_TEXTURE_CACHE: usize = 10;
 /// 预览纹理最大边长
-const PREVIEW_MAX_SIZE: u32 = 1920;
+const PREVIEW_MAX_SIZE: u32 = 1280; // 从 1920 降低到 1280，减少 56% 数据量
 
 // ── 文件日志 ──
 static LOG_FILE: Mutex<Option<std::fs::File>> = Mutex::new(None);
