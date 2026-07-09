@@ -16,6 +16,9 @@ import {
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
 } from './lunaRenderCore'
+
+// 导入纹理管理方法
+import { getNative } from './lunaRenderCore'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import * as exportTaskService from './exportTaskService'
 
@@ -52,6 +55,31 @@ export function register(_ctx: RegisterContext): void {
     ensureInit(logPath)
     rcLog('lrc:init OK')
   }))
+
+  // 纹理管理方法
+  ipcMain.handle('lrc:loadTexture', safe('loadTexture',
+    async (_event: IpcMainInvokeEvent, data: Buffer, width: number, height: number) => {
+      return getNative().loadTexture(data, width, height)
+    },
+  ))
+
+  ipcMain.handle('lrc:updateTexture', safe('updateTexture',
+    async (_event: IpcMainInvokeEvent, textureId: number, data: Buffer) => {
+      return getNative().updateTexture(textureId, data)
+    },
+  ))
+
+  ipcMain.handle('lrc:renderFrame', safe('renderFrame',
+    async (_event: IpcMainInvokeEvent, canvasWidth: number, canvasHeight: number, layers: any[]) => {
+      return getNative().renderFrame(canvasWidth, canvasHeight, layers)
+    },
+  ))
+
+  ipcMain.handle('lrc:releaseTexture', safe('releaseTexture',
+    async (_event: IpcMainInvokeEvent, textureId: number) => {
+      return getNative().releaseTexture(textureId)
+    },
+  ))
 
   ipcMain.handle('lrc:renderCompositionFrame', safe('renderCompositionFrame',
     async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
