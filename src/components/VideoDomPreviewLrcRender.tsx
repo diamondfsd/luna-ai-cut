@@ -258,6 +258,13 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
         video.src = ''
         videoRef.current = null
         onVideoElement?.(null)
+        // 释放旧视频纹理
+        const lrcCleanup = getLRC()
+        if (textureIdRef.current > 0 && lrcCleanup) {
+          lrcCleanup.releaseTexture(textureIdRef.current).catch(() => {})
+          textureIdRef.current = 0
+        }
+        offscreenCanvasRef.current = null
       }
     }, [ready, layers])
 
@@ -366,9 +373,11 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
             }
           }
 
-        // ── color 校验：Rust RenderColorAdjustments 要求 curve + hslChannels 必填，缺则跳过 ──
+        // ── color 校验：curve.rgb/hslChannels 必须有值，缺则跳过 ──
           const validColor = layer.color && typeof layer.color === "object"
-            && "curve" in layer.color && "hslChannels" in layer.color
+            && "curve" in layer.color && layer.color.curve != null
+            && Array.isArray(layer.color.curve.rgb) && layer.color.curve.rgb.length > 0
+            && "hslChannels" in layer.color && Array.isArray(layer.color.hslChannels) && layer.color.hslChannels.length > 0
             ? layer.color
             : undefined
 
@@ -438,6 +447,12 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
         console.error('[VideoDomPreviewLrcRender] render error:', error)
+        // 释放刚创建的纹理防止泄漏
+        const lrcCleanup = getLRC()
+        if (textureIdRef.current > 0 && lrcCleanup) {
+          lrcCleanup.releaseTexture(textureIdRef.current).catch(() => {})
+          textureIdRef.current = 0
+        }
         onError?.(msg)
       } finally {
         renderingRef.current = false

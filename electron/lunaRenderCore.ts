@@ -47,7 +47,7 @@ export interface CompositionInput {
   }>
 }
 
-function cleanNativeInput<T>(value: T): T {
+export function cleanNativeInput<T>(value: T): T {
   if (Array.isArray(value)) return value.map((item) => cleanNativeInput(item)) as T
   if (!value || typeof value !== 'object') return value
   const output: Record<string, unknown> = {}
