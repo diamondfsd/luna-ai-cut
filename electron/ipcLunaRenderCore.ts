@@ -14,6 +14,10 @@ import {
   exportCompositionImageAsync as lrcExportCompositionImageAsync,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
+  createPreviewEngine as lrcCreatePreviewEngine,
+  updatePreviewState as lrcUpdatePreviewState,
+  getLatestPreviewFrame as lrcGetLatestPreviewFrame,
+  destroyPreviewEngine as lrcDestroyPreviewEngine,
 } from './lunaRenderCore'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import * as exportTaskService from './exportTaskService'
@@ -328,6 +332,42 @@ export function register(_ctx: RegisterContext): void {
   ))
 
 }
+
+  // ── PreviewEngine IPC ──
+
+  ipcMain.handle('lrc:createPreviewEngine', safe('createPreviewEngine',
+    async (_event: IpcMainInvokeEvent, engineId: string, config: any) => {
+      const ffmpegPath = getFfmpegPath()
+      const ffprobePath = getFfprobePath()
+      lrcCreatePreviewEngine(engineId, {
+        ffmpegPath: config.ffmpegPath || ffmpegPath,
+        ffprobePath: config.ffprobePath || ffprobePath,
+        dragMaxSide: config.dragMaxSide,
+        playMaxSide: config.playMaxSide,
+        finalMaxSide: config.finalMaxSide,
+      })
+      rcLog(`lrc:createPreviewEngine id=${engineId}`)
+    },
+  ))
+
+  ipcMain.handle('lrc:updatePreviewState', safe('updatePreviewState',
+    async (_event: IpcMainInvokeEvent, engineId: string, input: any) => {
+      lrcUpdatePreviewState(engineId, input)
+    },
+  ))
+
+  ipcMain.handle('lrc:getLatestPreviewFrame', safe('getLatestPreviewFrame',
+    async (_event: IpcMainInvokeEvent, engineId: string) => {
+      return lrcGetLatestPreviewFrame(engineId)
+    },
+  ))
+
+  ipcMain.handle('lrc:destroyPreviewEngine', safe('destroyPreviewEngine',
+    async (_event: IpcMainInvokeEvent, engineId: string) => {
+      lrcDestroyPreviewEngine(engineId)
+      rcLog(`lrc:destroyPreviewEngine id=${engineId}`)
+    },
+  ))
 
 function fileNameFromPath(filePath: string): string {
   return filePath.split(/[\\/]/).pop() || 'export.mp4'

@@ -163,6 +163,13 @@ struct TextureEntry {
     height: u32,
 }
 
+/// PreviewEngine 预解码的视频帧数据
+pub struct DecodedVideoFrameData {
+    pub data: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
 fn pack_curve_points(
     curve_data: &mut [[f32; 4]; 30],
     base: usize,
@@ -422,6 +429,10 @@ pub struct Compositor {
     identity_lut: wgpu::Texture,
     /// 用户加载的 LUT <file_path → LutEntry>
     luts: HashMap<String, LutEntry>,
+
+    // ── PreviewEngine 预解码纹理 ──
+    /// PreviewEngine 管理的视频帧纹理 <file_path → texture_id>
+    preview_textures: HashMap<String, u32>,
 }
 
 /// 持久 ffmpeg pipe 视频解码器，保持进程存活按序读帧
@@ -856,6 +867,7 @@ impl Compositor {
             staging_buffer: None,
             identity_lut,
             luts: HashMap::new(),
+            preview_textures: HashMap::new(),
         })
     }
 
@@ -1243,6 +1255,38 @@ impl Compositor {
         Ok(())
     }
 
+
+    /// 添加或更新 PreviewEngine 提供的视频帧纹理。
+    /// 相同 path 且尺寸不变时复用纹理（update），否则重新加载。
+    pub fn upsert_preview_texture(
+        &mut self,
+        path: &str,
+        data: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<u32, String> {
+        // 先复制出可能的旧 tid，避免 borrow checker 冲突
+        let old_tid = self.preview_textures.get(path).copied();
+        if let Some(tid) = old_tid {
+            let reuse = self.textures.get(&tid).map_or(false, |e| e.width == width && e.height == height);
+            if reuse {
+                self.update_texture(tid, data)?;
+                return Ok(tid);
+            }
+            // 尺寸变化或纹理已消失，释放旧的
+            let _ = self.release_texture(tid);
+        }
+        let tid = self.load_texture(data, width, height)?;
+        self.preview_textures.insert(path.to_string(), tid);
+        Ok(tid)
+    }
+
+    /// 清理所有预览纹理（切换 composition 或暂停时调用）
+    pub fn clear_preview_textures(&mut self) {
+        for (_, tid) in std::mem::take(&mut self.preview_textures) {
+            let _ = self.release_texture(tid);
+        }
+    }
     // ── LUT 管理 ──
 
     /// 从文件路径加载 .cube LUT，缓存并返回 LutEntry
@@ -1885,21 +1929,24 @@ impl Compositor {
         height: Option<u32>,
         max_side: Option<u32>,
         layers: &[PreviewLayerInput],
+        predecoded_frames: Option<&HashMap<String, DecodedVideoFrameData>>,
     ) -> Result<(Vec<u8>, u32, u32), String> {
-        // ── 清理已不再使用的视频 decoder ──
-        let active_video_paths: std::collections::HashSet<&str> = layers
-            .iter()
-            .filter(|l| l.is_video)
-            .map(|l| l.file_path.as_str())
-            .collect();
-        let inactive_video_paths: Vec<String> = self
-            .video_decoders
-            .keys()
-            .filter(|path| !active_video_paths.contains(path.as_str()))
-            .cloned()
-            .collect();
-        for path in inactive_video_paths {
-            self.remove_video_decoder(&path);
+        // ── 清理已不再使用的视频 decoder（仅非预解码路径） ──
+        if predecoded_frames.is_none() {
+            let active_video_paths: std::collections::HashSet<&str> = layers
+                .iter()
+                .filter(|l| l.is_video)
+                .map(|l| l.file_path.as_str())
+                .collect();
+            let inactive_video_paths: Vec<String> = self
+                .video_decoders
+                .keys()
+                .filter(|path| !active_video_paths.contains(path.as_str()))
+                .cloned()
+                .collect();
+            for path in inactive_video_paths {
+                self.remove_video_decoder(&path);
+            }
         }
 
         let mut source_layers = Vec::with_capacity(layers.len());
@@ -1908,7 +1955,19 @@ impl Compositor {
 
         for layer in layers {
             let tex_id = if layer.is_video {
-                self.video_texture_for_layer(ffmpeg, ffprobe, layer, decode_max_side)?
+                match predecoded_frames {
+                    Some(frames) => {
+                        match frames.get(&layer.file_path) {
+                            Some(frame) => self.upsert_preview_texture(
+                                &layer.file_path, &frame.data, frame.width, frame.height
+                            )?,
+                            None => return Err(format!("no pre-decoded frame for {}", layer.file_path)),
+                        }
+                    }
+                    None => {
+                        self.video_texture_for_layer(ffmpeg, ffprobe, layer, decode_max_side)?
+                    }
+                }
             } else {
                 // ── 静态图：LRU 缓存 ──
                 let cached = self.get_cached_texture(&layer.file_path);

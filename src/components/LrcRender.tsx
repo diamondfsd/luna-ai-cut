@@ -1,9 +1,13 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
-import type { CompositionInput, PreviewLayer } from '../shared/types'
+import type { CompositionInput, PreviewLayer } from '../shared/types/render'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
-
-const PREVIEW_TEXTURE_MAX_SIDE = 1920
+import {
+  initPreviewEngine,
+  updatePreviewState,
+  getLatestPreviewFrame,
+  destroyPreviewEngine,
+} from '../hooks/usePreviewEngine'
 
 export interface LrcRenderHandle {
   exportImage(outputPath: string, width: number, height: number, format: string, quality: number): Promise<void>
@@ -31,17 +35,9 @@ interface LrcRenderProps {
   onVideoElement?: (el: HTMLVideoElement | null) => void
 }
 
-interface RenderPreviewOutput {
-  width: number
-  height: number
-  data: Uint8Array | ArrayBuffer | { data?: number[] }
-}
-
-interface LunaRenderCore {
-  init: () => Promise<void>
-  renderPreview: (input: { maxSide?: number; width?: number; height?: number; layers: PreviewLayer[] }) => Promise<RenderPreviewOutput>
-  renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) => Promise<RenderPreviewOutput>
-  exportCompositionVideo: (
+// ── 用于导出功能的旧 API ──
+interface LunaRenderExportApi {
+  exportCompositionVideo(
     outputPath: string,
     composition: CompositionInput,
     fps: number | null,
@@ -49,17 +45,17 @@ interface LunaRenderCore {
     hardware: boolean,
     taskId?: string,
     qualityPreset?: string,
-  ) => Promise<void>
-  exportCompositionImage: (
+  ): Promise<void>
+  exportCompositionImage(
     outputPath: string,
     composition: CompositionInput,
     format: string,
     quality: number,
-  ) => Promise<void>
+  ): Promise<void>
 }
 
-function getLRC(): LunaRenderCore | undefined {
-  return (window as unknown as { lunaRenderCore?: LunaRenderCore }).lunaRenderCore
+function getLRC(): LunaRenderExportApi | undefined {
+  return (window as unknown as { lunaRenderCore?: LunaRenderExportApi }).lunaRenderCore
 }
 
 function layerKey(layer: PreviewLayer): string {
@@ -70,17 +66,11 @@ function sortedLayers(layers: PreviewLayer[]): PreviewLayer[] {
   return [...layers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
 }
 
-function bytesFromRenderData(data: RenderPreviewOutput['data']): Uint8ClampedArray {
-  if (data instanceof Uint8Array) return new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength)
-  if (data instanceof ArrayBuffer) return new Uint8ClampedArray(data)
-  if (Array.isArray(data.data)) return new Uint8ClampedArray(data.data)
-  return new Uint8ClampedArray(data as ArrayBuffer)
-}
-
 export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
-  { layers, canvasRef: extRef, className, onError, onReady, onRender, onMediaSize, maxSide, canvasWidth, canvasHeight, onVideoElement },
+  { layers, canvasRef: extRef, className, onError, onReady, onRender, onMediaSize, maxSide, canvasWidth, canvasHeight, onVideoElement }: LrcRenderProps,
   ref,
 ) {
+  void maxSide // 保留 API 兼容，新引擎内部处理分辨率
   const internalRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
@@ -88,26 +78,21 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
   const layersRef = useRef<PreviewLayer[]>(layers)
   const videosRef = useRef<Map<string, HTMLVideoElement>>(new Map())
   const videoElementCalledRef = useRef(false)
-  const renderingRef = useRef(false)
-  const renderQueuedRef = useRef(false)
-  const lastVideoFrameAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
+  const engineReadyRef = useRef(false)
+  const lastFrameIdRef = useRef(-1)
+  const compositionRef = useRef<CompositionInput | null>(null)
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
   layersRef.current = layers
 
+  // ── 初始化 ──
   useEffect(() => {
-    const lrc = getLRC()
-    if (!lrc) {
-      const msg = '渲染引擎未加载'
-      setFatalError(msg)
-      onError?.(msg)
-      return
-    }
     destroyRef.current = false
-    lrc.init()
+    initPreviewEngine()
       .then(() => {
         if (!destroyRef.current) {
+          engineReadyRef.current = true
           setReady(true)
           onReady?.()
         }
@@ -124,64 +109,59 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       for (const [, video] of videosRef.current) video.pause()
       videosRef.current.clear()
       onVideoElement?.(null)
+      void destroyPreviewEngine()
     }
   }, [])
 
-  function layersWithVideoTime(): PreviewLayer[] {
-    return sortedLayers(layersRef.current).map((layer) => {
-      if (!layer.isVideo) return layer
-      const video = videosRef.current.get(layerKey(layer))
-      return { ...layer, videoTime: video?.currentTime ?? layer.videoTime ?? 0 }
-    })
+  // ── 构建 composition 并发送到引擎 ──
+  function pushToEngine(time: number, mode: 'idle' | 'playing' | 'dragging' | 'final-seek') {
+    if (!engineReadyRef.current || destroyRef.current) return
+    const layers = sortedLayers(layersRef.current)
+    if (layers.length === 0) return
+    const composition = buildCompositionFromPreviewLayers(layers, canvasWidth, canvasHeight)
+    compositionRef.current = composition
+    updatePreviewState(mode, time, composition)
   }
 
-  async function renderPreviewFrame() {
-    const lrc = getLRC()
-    const canvas = canvasRef.current
-    if (!lrc || !canvas || destroyRef.current) return
-    if (renderingRef.current) {
-      renderQueuedRef.current = true
-      return
-    }
-
-    const renderLayers = layersWithVideoTime()
-    if (renderLayers.length === 0) return
-
-    renderingRef.current = true
-    renderQueuedRef.current = false
-    try {
-      const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
-      const composition = buildCompositionFromPreviewLayers(renderLayers, canvasWidth, canvasHeight)
-      const result = await lrc.renderCompositionFrame(composition, 0, effectiveMaxSide)
-      if (destroyRef.current) return
-
-      if (result.width !== lastMediaSizeRef.current[0] || result.height !== lastMediaSizeRef.current[1]) {
-        lastMediaSizeRef.current = [result.width, result.height]
-        onMediaSize?.(result.width, result.height)
-      }
-
-      canvas.width = result.width
-      canvas.height = result.height
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('画布不可用')
-      context.putImageData(new ImageData(bytesFromRenderData(result.data), result.width, result.height), 0, 0)
-      onRender?.()
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      onError?.(msg)
-    } finally {
-      renderingRef.current = false
-      if (renderQueuedRef.current && !destroyRef.current) {
-        renderQueuedRef.current = false
-        void renderPreviewFrame()
-      }
-    }
-  }
-
+  // ── 画布渲染循环：持续拉取引擎的最新帧 ──
   useEffect(() => {
-    lastMediaSizeRef.current = [0, 0]
-
     if (!ready) return
+
+    function loop() {
+      if (!destroyRef.current) {
+        getLatestPreviewFrame().then((frame) => {
+          if (!frame || destroyRef.current) return
+          if (frame.frameId === lastFrameIdRef.current) return
+          lastFrameIdRef.current = frame.frameId
+
+          const canvas = canvasRef.current
+          if (!canvas) return
+
+          if (frame.width !== lastMediaSizeRef.current[0] || frame.height !== lastMediaSizeRef.current[1]) {
+            lastMediaSizeRef.current = [frame.width, frame.height]
+            onMediaSize?.(frame.width, frame.height)
+          }
+
+          canvas.width = frame.width
+          canvas.height = frame.height
+          const context = canvas.getContext('2d')
+          if (context) {
+            context.putImageData(new ImageData(frame.data, frame.width, frame.height), 0, 0)
+            onRender?.()
+          }
+        }).catch(() => {})
+      }
+      rafRef.current = requestAnimationFrame(loop)
+    }
+
+    rafRef.current = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [ready])
+
+  // ── 视频层管理（隐藏 video 用于音频同步） ──
+  useEffect(() => {
+    if (!ready) return
+
     const currentKeys = new Set(layers.filter((layer) => layer.isVideo).map(layerKey))
 
     for (const [key, video] of videosRef.current) {
@@ -208,13 +188,16 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       videosRef.current.set(key, video)
       video.addEventListener('loadedmetadata', () => {
         if (destroyRef.current) return
-        void renderPreviewFrame()
+        pushToEngine(0, 'final-seek')
       })
       video.addEventListener('seeked', () => {
         if (destroyRef.current) return
-        void renderPreviewFrame()
+        pushToEngine(video.currentTime, 'final-seek')
       })
-      video.addEventListener('play', () => void renderPreviewFrame())
+      video.addEventListener('play', () => {
+        if (destroyRef.current) return
+        pushToEngine(video.currentTime, 'playing')
+      })
       video.load()
       if (onVideoElement && !videoElementCalledRef.current) {
         videoElementCalledRef.current = true
@@ -222,19 +205,23 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
       }
     }
 
-    void renderPreviewFrame()
+    // 初始渲染
+    pushToEngine(0, 'final-seek')
   }, [layers, ready])
 
+  // ── 视频播放循环：推进时间 + 更新引擎状态 ──
   useEffect(() => {
     if (!ready || !layers.some((layer) => layer.isVideo)) return
 
     function loop() {
-      const hasPlayingVideo = [...videosRef.current.values()].some((video) => !video.paused && !video.ended)
-      if (hasPlayingVideo) {
-        const now = performance.now()
-        if (now - lastVideoFrameAtRef.current >= 1000 / COMPOSITION_RENDER_FPS) {
-          lastVideoFrameAtRef.current = now
-          void renderPreviewFrame()
+      if (!destroyRef.current) {
+        const hasPlayingVideo = [...videosRef.current.values()].some((video) => !video.paused && !video.ended)
+        if (hasPlayingVideo && engineReadyRef.current) {
+          // 用第一个视频的 currentTime 作为主时钟
+          const firstVideo = [...videosRef.current.values()].find((v) => !v.paused)
+          if (firstVideo) {
+            pushToEngine(firstVideo.currentTime, 'playing')
+          }
         }
       }
       rafRef.current = requestAnimationFrame(loop)
@@ -244,11 +231,12 @@ export const LrcRender = forwardRef<LrcRenderHandle, LrcRenderProps>(function Lr
     return () => cancelAnimationFrame(rafRef.current)
   }, [ready, layers])
 
+  // ── 暴露 handle ──
   useImperativeHandle(ref, () => ({
     async exportImage(outputPath: string, width: number, height: number, format: string, quality: number) {
       const lrc = getLRC()
       if (!lrc) throw new Error('渲染引擎未初始化')
-      const composition = buildCompositionFromPreviewLayers(layersRef.current, width, height)
+      const composition = compositionRef.current ?? buildCompositionFromPreviewLayers(layersRef.current, width, height)
       await lrc.exportCompositionImage(outputPath, composition, format, quality)
     },
     async exportVideo(
