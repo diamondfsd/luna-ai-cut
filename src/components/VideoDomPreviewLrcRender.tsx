@@ -3,8 +3,14 @@ import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 
-const PREVIEW_WIDTH = 1280
-const PREVIEW_HEIGHT = 720
+const PREVIEW_MAX_SIDE = 1280
+
+function calcRenderSize(vw: number, vh: number): [number, number] {
+  const maxEdge = Math.max(vw, vh)
+  if (maxEdge <= PREVIEW_MAX_SIDE) return [vw, vh]
+  const scale = PREVIEW_MAX_SIDE / maxEdge
+  return [Math.round(vw * scale), Math.round(vh * scale)]
+}
 
 export interface VideoDomPreviewLrcRenderHandle {
   exportImage(outputPath: string, width: number, height: number, format: string, quality: number): Promise<void>
@@ -199,7 +205,10 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
           readyState: video.readyState,
         })
         // 创建 OffscreenCanvas（首帧已可用，drawImage 能获取有效帧）
-        offscreenCanvasRef.current = new OffscreenCanvas(PREVIEW_WIDTH, PREVIEW_HEIGHT)
+        // 尺寸按视频实际比例计算，保证水印 positioning 与导出一致
+        const [renderW, renderH] = calcRenderSize(video.videoWidth || 1280, video.videoHeight || 720)
+        console.log('[VideoDomPreviewLrcRender] render size', { renderW, renderH, vw: video.videoWidth, vh: video.videoHeight })
+        offscreenCanvasRef.current = new OffscreenCanvas(renderW, renderH)
         void renderFrame()
       })
 
@@ -295,38 +304,24 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
       renderQueuedRef.current = false
 
       try {
-        // 从视频取帧并缩放
+        // OffscreenCanvas 尺寸已按视频比例计算，视频可铺满
+        const rw = offscreenCanvas.width
+        const rh = offscreenCanvas.height
+        if (rw === 0 || rh === 0) throw new Error('无效渲染尺寸')
+
         const ctx = offscreenCanvas.getContext('2d')
         if (!ctx) throw new Error('OffscreenCanvas 不可用')
 
-        // 清空 canvas（避免残留数据）
-        ctx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
+        // 清空并绘制视频帧（铺满，无 letterbox）
+        ctx.clearRect(0, 0, rw, rh)
+        ctx.drawImage(video, 0, 0, rw, rh)
 
-        // 绘制视频（保持宽高比）
-        const videoAspect = video.videoWidth / video.videoHeight
-        const canvasAspect = PREVIEW_WIDTH / PREVIEW_HEIGHT
-
-        let drawWidth = PREVIEW_WIDTH
-        let drawHeight = PREVIEW_HEIGHT
-        let drawX = 0
-        let drawY = 0
-
-        if (videoAspect > canvasAspect) {
-          drawHeight = PREVIEW_WIDTH / videoAspect
-          drawY = (PREVIEW_HEIGHT - drawHeight) / 2
-        } else {
-          drawWidth = PREVIEW_HEIGHT * videoAspect
-          drawX = (PREVIEW_WIDTH - drawWidth) / 2
-        }
-
-        ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight)
-
-        const imageData = ctx.getImageData(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT)
+        const imageData = ctx.getImageData(0, 0, rw, rh)
         const rgbaData = new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength)
 
         // 首次加载视频纹理，后续更新
         if (textureIdRef.current === 0) {
-          textureIdRef.current = await lrc.loadTexture(rgbaData as any, PREVIEW_WIDTH, PREVIEW_HEIGHT)
+          textureIdRef.current = await lrc.loadTexture(rgbaData as any, rw, rh)
         } else {
           await lrc.updateTexture(textureIdRef.current, rgbaData as any)
         }
@@ -399,18 +394,18 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
         // 按 zIndex 排序后调用 Rust 渲染
         renderLayers.sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
 
-        const result = await lrc.renderFrame(PREVIEW_WIDTH, PREVIEW_HEIGHT, renderLayers)
+        const result = await lrc.renderFrame(rw, rh, renderLayers)
 
         if (destroyRef.current) return
 
-        // 更新 canvas
-        canvas.width = PREVIEW_WIDTH
-        canvas.height = PREVIEW_HEIGHT
+        // 更新 canvas（使用实际渲染尺寸）
+        canvas.width = rw
+        canvas.height = rh
         const displayCtx = canvas.getContext('2d')
         if (!displayCtx) throw new Error('Canvas 不可用')
 
         const pixelData = new Uint8ClampedArray(result)
-        displayCtx.putImageData(new ImageData(pixelData, PREVIEW_WIDTH, PREVIEW_HEIGHT), 0, 0)
+        displayCtx.putImageData(new ImageData(pixelData, rw, rh), 0, 0)
 
         onRender?.()
       } catch (error) {
@@ -455,6 +450,14 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
     // 参数变化（调色/LUT/位置等）时主动刷新渲染，不等待 video loadeddata
     useEffect(() => {
       if (!ready) return
+      console.log('[VideoDomPreviewLrcRender] layers changed, triggering render', {
+        layers: layersRef.current.map(l => ({
+          filePath: l.filePath,
+          lutId: l.lutId,
+          positioning: l.positioning,
+          colorKeys: l.color ? Object.keys(l.color) : undefined,
+        }))
+      })
       const timer = setTimeout(() => void renderFrame(), 16) // ~1 帧延迟，合并连续变化
       return () => clearTimeout(timer)
     }, [ready, layers])
@@ -503,10 +506,18 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
     return <canvas ref={canvasRef} className={className} />
   }
 ), (prevProps: VideoDomPreviewLrcRenderProps, nextProps: VideoDomPreviewLrcRenderProps) => {
-  return (
+  const equal = (
     prevProps.canvasWidth === nextProps.canvasWidth &&
     prevProps.canvasHeight === nextProps.canvasHeight &&
     prevProps.className === nextProps.className &&
     layersEqual(prevProps.layers, nextProps.layers)
   )
+  if (!equal) {
+    console.log('[VideoDomPreviewLrcRender] memo detected change, re-rendering', {
+      prevLayers: prevProps.layers.map(l => ({ fp: l.filePath?.slice(-30), pos: l.positioning })),
+      nextLayers: nextProps.layers.map(l => ({ fp: l.filePath?.slice(-30), pos: l.positioning })),
+      canvasSize: `${prevProps.canvasWidth}x${prevProps.canvasHeight} → ${nextProps.canvasWidth}x${nextProps.canvasHeight}`,
+    })
+  }
+  return equal
 })
