@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle, memo } from 'react'
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle, memo, useMemo } from 'react'
 import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
@@ -107,6 +107,12 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
     const [fatalError, setFatalError] = useState<string | null>(null)
     layersRef.current = layers
 
+    // 提取视频文件路径，仅用于 video 元素重建判断（和 pipeline/调色/水印变化无关）
+    const videoFilePath = useMemo(() => {
+      const videoLayer = layers.find((layer) => layer.isVideo)
+      return videoLayer ? (filePathToPreviewUrl(videoLayer.filePath) ?? videoLayer.filePath) : null
+    }, [layers])
+
     // 初始化
     useEffect(() => {
       const lrc = getLRC()
@@ -172,9 +178,17 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
         return
       }
 
-      console.log('[VideoDomPreviewLrcRender] video layer found', {
+      const newSrc = filePathToPreviewUrl(videoLayer.filePath) ?? videoLayer.filePath
+
+      // 视频源没变（只是调色/对比/水印/LUT 等参数变了），不重建 video，继续播放
+      if (videoRef.current && (videoRef.current.src === newSrc || videoRef.current.src.endsWith(videoLayer.filePath))) {
+        void renderFrame()
+        return
+      }
+
+      console.log('[VideoDomPreviewLrcRender] video source changed, creating new video element', {
         filePath: videoLayer.filePath,
-        previewUrl: filePathToPreviewUrl(videoLayer.filePath)
+        previewUrl: newSrc
       })
 
       // 创建视频元素
@@ -256,7 +270,7 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
         }
         offscreenCanvasRef.current = null
       }
-    }, [ready, layers])
+    }, [ready, videoFilePath])
 
     // 加载图片纹理（水印/覆盖层）
     async function loadImageTexture(filePath: string): Promise<number> {
