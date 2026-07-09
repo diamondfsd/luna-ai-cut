@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { CompositionInput } from '../shared/types'
 
 const PREVIEW_FPS = 30
-const PREVIEW_MAX_SIDE = 1600
+const PREVIEW_MAX_SIDE = 1280 // 从 1600 降低到 1280
 
 interface RenderFrameOutput {
   width: number
