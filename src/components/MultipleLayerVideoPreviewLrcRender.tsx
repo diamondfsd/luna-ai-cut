@@ -636,34 +636,13 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
     prevProps: MultipleLayerVideoPreviewLrcRenderProps,
     nextProps: MultipleLayerVideoPreviewLrcRenderProps,
   ) => {
-    const layersEqual =
-      prevProps.layers.length === nextProps.layers.length &&
-      prevProps.layers.every(
-        (l, i) =>
-          l.filePath === nextProps.layers[i].filePath &&
-          l.isVideo === nextProps.layers[i].isVideo &&
-          l.videoTime === nextProps.layers[i].videoTime &&
-          l.dstX === nextProps.layers[i].dstX &&
-          l.dstY === nextProps.layers[i].dstY &&
-          l.dstW === nextProps.layers[i].dstW &&
-          l.dstH === nextProps.layers[i].dstH &&
-          l.fit === nextProps.layers[i].fit &&
-          l.zIndex === nextProps.layers[i].zIndex &&
-          l.opacity === nextProps.layers[i].opacity &&
-          JSON.stringify(l.color) === JSON.stringify(nextProps.layers[i].color) &&
-          JSON.stringify(l.transform) === JSON.stringify(nextProps.layers[i].transform) &&
-          JSON.stringify(l.positioning) === JSON.stringify(nextProps.layers[i].positioning) &&
-          l.lutId === nextProps.layers[i].lutId &&
-          l.lutIntensity === nextProps.layers[i].lutIntensity
-      )
-
     return (
       prevProps.playing === nextProps.playing &&
       prevProps.decodeQuality === nextProps.decodeQuality &&
       prevProps.canvasWidth === nextProps.canvasWidth &&
       prevProps.canvasHeight === nextProps.canvasHeight &&
       prevProps.className === nextProps.className &&
-      layersEqual
+      JSON.stringify(prevProps.layers) === JSON.stringify(nextProps.layers)
     )
   },
 )
