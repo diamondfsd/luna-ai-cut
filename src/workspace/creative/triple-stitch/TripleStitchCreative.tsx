@@ -6,7 +6,7 @@ import { MultipleLayerVideoPreviewLrcRender } from '../../../components/Multiple
 import type { CompositionInput, PreviewLayer, VideoExportSettings, WorkspaceMediaAsset } from '../../../shared/types'
 import { Button, IconButton, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
-import { resolveExportFps, resolveExportQualityPreset } from '../../../components/previewStageExport'
+import { resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/creativeMedia'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
@@ -62,7 +62,7 @@ function outputPath(exportDir: string, fileName: string): string {
 }
 
 /** 每格视频底部 Logo 宽度（占画布宽比例） */
-const SLOT_LOGO_TARGET_WIDTH = 0.22
+const SLOT_LOGO_TARGET_WIDTH = 0.33
 
 /** 构建单个 slot 底部居中 Logo 图层 */
 function buildSlotLogoLayer(slotIndex: number, imagePath: string, _wmAspect: number): PreviewLayer {
@@ -400,16 +400,27 @@ export function TripleStitchCreative() {
       const task = await window.luna.exportTask.create('三拼视频导出', [
         { id: itemId, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: destinationPath },
       ])
-      const exportFps = resolveExportFps(config.frameRate) ?? FPS
-      const qualityPreset = resolveExportQualityPreset(config.quality, config.customBitrate)
+
+      // 根据导出配置重新计算画布尺寸，layers 使用归一化坐标无需调整
+      const resolved = resolveExportConfig(config, CANVAS_WIDTH, CANVAS_HEIGHT)
+      const scaledComposition: CompositionInput = {
+        ...composition,
+        canvas: {
+          ...composition.canvas,
+          width: resolved.width,
+          height: resolved.height,
+          fps: resolved.fps ?? composition.canvas.fps,
+        },
+      }
+
       await compositionApi().exportCompositionVideo(
         destinationPath,
-        composition,
-        exportFps,
+        scaledComposition,
+        resolved.fps,
         EXPORT_DURATION,
         true,
         itemId,
-        qualityPreset,
+        resolved.qualityPreset,
         task.id,
         itemId,
       )
