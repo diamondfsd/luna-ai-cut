@@ -21,4 +21,16 @@ fn main() {
         }
         println!("cargo:rerun-if-changed=src/macos/av_bridge.m");
     }
+
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        cc::Build::new()
+            .file("src/windows/av_bridge.cpp")
+            .cpp(true)
+            .compile("luna_av_bridge");
+
+        for lib in ["mfplat", "mfreadwrite", "mfuuid", "d3d11", "dxgi", "ole32"] {
+            println!("cargo:rustc-link-lib={lib}");
+        }
+        println!("cargo:rerun-if-changed=src/windows/av_bridge.cpp");
+    }
 }
