@@ -8,6 +8,7 @@ import { Button, IconButton, VideoControls, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
+import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
@@ -46,7 +47,19 @@ interface LunaCompositionExportApi {
     exportTaskId?: string,
     exportItemId?: string,
   ): Promise<void>
+  exportCompositionImage(
+    outputPath: string,
+    composition: CompositionInput,
+    format: string,
+    quality: number,
+    exportTaskId?: string,
+    exportItemId?: string,
+  ): Promise<void>
 }
+
+type ExportFormat = 'video' | 'live' | 'appleLive'
+
+const isMac = window.navigator.platform.includes('Mac')
 
 function outputPath(exportDir: string, fileName: string): string {
   return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
@@ -172,6 +185,16 @@ export function TripleStitchCreative() {
   const previewPlayback = useTripleStitchPlayback(EXPORT_DURATION)
   const [busy, setBusy] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  // 导出格式多选
+  const [exportFormats, setExportFormats] = useState<Set<ExportFormat>>(new Set(['video']))
+  const toggleExportFormat = (fmt: ExportFormat) => {
+    setExportFormats((prev) => {
+      const next = new Set(prev)
+      if (next.has(fmt)) next.delete(fmt)
+      else next.add(fmt)
+      return next
+    })
+  }
   const dragRef = useRef<{ slot: number; x: number; y: number; startX: number; startY: number; width: number; height: number } | null>(null)
   const slotSources = useTripleStitchSources(media.media, selectedIds)
 
@@ -684,6 +707,10 @@ export function TripleStitchCreative() {
           </Button>
         </div>
       </aside>
+
+      <div className="triple-stitch-media-strip">
+        <WorkspaceMediaStrip />
+      </div>
 
       <ExportSettingsDialog
         open={exportDialogOpen}
