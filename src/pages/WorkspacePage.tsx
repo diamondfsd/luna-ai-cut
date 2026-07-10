@@ -36,14 +36,14 @@ interface WorkspacePageProps {
 }
 
 export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
-  console.log(`[Perf] WorkspacePage render mode=${workspaceMode} creative=${creativeModeId}`)
+  console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspacePage render mode=${workspaceMode} creative=${creativeModeId}`)
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
 
   return (
     <WorkspaceEditProvider>
       <WorkspaceMediaProvider routeState={routeState} locationKey={location.key}>
-        <WorkspaceCanvasProvider key={workspaceMode}>
+        <WorkspaceCanvasProvider>
           <ErrorBoundary>
             <WorkspacePageInner
               workspaceMode={workspaceMode}
@@ -61,7 +61,7 @@ export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEdi
 // ── inner page that consumes all three contexts ──
 
 function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
-  console.log(`[Perf] WorkspacePageInner render mode=${workspaceMode} creative=${creativeModeId}`)
+  console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspacePageInner render mode=${workspaceMode} creative=${creativeModeId}`)
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
@@ -387,7 +387,11 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
   // ── Empty state ──
   if (!media.currentProject && media.media.length === 0) {
-    return <WorkspaceProjectPicker />
+    return (
+      <div className="workspace-layout">
+        <WorkspaceProjectPicker />
+      </div>
+    )
   }
 
   // ── derive active media readiness for toolbar buttons ──
