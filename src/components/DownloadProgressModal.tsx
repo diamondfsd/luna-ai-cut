@@ -134,7 +134,7 @@ export function DownloadProgressModal({
     onQueueShiftRef.current = onQueueShift
   }, [onQueueShift])
 
-  const MAX_CONCURRENT = 5
+  const MAX_CONCURRENT = 2
 
   async function downloadFile(file: LunaFile, downloadDir: string): Promise<void> {
     setDownloadProgress((current) => {
