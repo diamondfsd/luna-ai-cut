@@ -282,28 +282,48 @@ async function downloadWithLog(file: LunaFile, url: string, destPath: string): P
   )
 }
 
+export async function resolveExistingCache(file: LunaFile): Promise<string | null> {
+  const cacheDir = await previewCacheDir()
+  await fs.mkdir(cacheDir, { recursive: true })
+
+  const toRealPath = (p: string | null | undefined): string | null => {
+    if (!p) return null
+    return p.startsWith('file://') ? fileURLToPath(p) : p
+  }
+
+  const existingLocalPath = localPathForPreview(file)
+  const realLocalPath = toRealPath(existingLocalPath)
+  if (realLocalPath && await fileExists(realLocalPath)) {
+    return realLocalPath
+  }
+
+  const realCachePath = toRealPath(file.cacheFilePath)
+  if (realCachePath && await fileExists(realCachePath)) {
+    return realCachePath
+  }
+
+  // 检查 cache 目录：HTTP 下载后的文件存在这里
+  if (file.previewName) {
+    const lrvCachedPath = path.join(cacheDir, safeName(file.previewName))
+    if (await fileExists(lrvCachedPath)) {
+      return lrvCachedPath
+    }
+  }
+  const cachedPath = path.join(cacheDir, safeName(file.name))
+  if (await fileExists(cachedPath)) {
+    return cachedPath
+  }
+
+  return null
+}
+
 export async function cacheFile(file: LunaFile): Promise<string | null> {
   try {
+    // 先检查已有缓存
+    const existing = await resolveExistingCache(file)
+    if (existing) return existing
+
     const cacheDir = await previewCacheDir()
-    await fs.mkdir(cacheDir, { recursive: true })
-
-    // 将 file:// 协议路径转为本地文件系统路径，否则 fs.access 无法识别
-    const toRealPath = (p: string | null | undefined): string | null => {
-      if (!p) return null
-      return p.startsWith('file://') ? fileURLToPath(p) : p
-    }
-
-    const existingLocalPath = localPathForPreview(file)
-    const realLocalPath = toRealPath(existingLocalPath)
-    if (realLocalPath && await fileExists(realLocalPath)) {
-      return realLocalPath
-    }
-
-    const realCachePath = toRealPath(file.cacheFilePath)
-    if (realCachePath && await fileExists(realCachePath)) {
-      return realCachePath
-    }
-
     const sourceUrl = sourceUrlFor(file)
 
     if (file.kind === 'video' && file.previewName && file.previewUrl) {
