@@ -1,5 +1,6 @@
 import type { CompositionInput, PreviewLayer } from '../shared/types'
 import type { WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { VideoExportSettings, VideoResolution, VideoFrameRate, VideoQuality } from '../shared/types'
 import { buildLayers } from './PreviewStage'
 import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
@@ -54,6 +55,91 @@ function exportCanvasFor(resolution: { width: number; height: number }): { width
   const aspect = resolution.width / resolution.height
   if (aspect >= 1) return { width: max, height: Math.round(max / aspect) }
   return { width: Math.round(max * aspect), height: max }
+}
+
+/**
+ * 根据导出分辨率预设计算目标尺寸
+ * - 'original': 保持源文件原始尺寸
+ * - '1080p': 高度 1080，宽度按比例缩放
+ * - '2k': 宽度 2560，高度按比例缩放
+ * - '4k': 宽度 3840，高度按比例缩放
+ */
+export function resolveExportResolution(
+  originalWidth: number,
+  originalHeight: number,
+  resolution: VideoResolution,
+): { width: number; height: number } {
+  if (resolution === 'original' || resolution === undefined) {
+    return { width: originalWidth, height: originalHeight }
+  }
+
+  const aspect = originalWidth / originalHeight
+
+  switch (resolution) {
+    case '1080p':
+      return { width: Math.round(1080 * aspect), height: 1080 }
+    case '2k':
+      return { width: 2560, height: Math.round(2560 / aspect) }
+    case '4k':
+      return { width: 3840, height: Math.round(3840 / aspect) }
+    default:
+      return { width: originalWidth, height: originalHeight }
+  }
+}
+
+/** 根据帧率预设解析数值，'original' 返回 null（由 Rust 决定） */
+export function resolveExportFps(frameRate: VideoFrameRate): number | null {
+  if (frameRate === 'original' || frameRate === undefined) return null
+  const num = parseFloat(frameRate as string)
+  return isNaN(num) ? null : num
+}
+
+/**
+ * 根据质量预设映射到 Rust QualityPreset 字符串
+ *
+ * Rust 侧定义:
+ * - 'small'       → ~12 Mbps
+ * - 'standard'    → ~24 Mbps
+ * - 'high'        → ~50 Mbps
+ * - 'original-like' → ~80 Mbps
+ */
+export function resolveExportQualityPreset(
+  quality: VideoQuality,
+  _customBitrate?: number,
+): string | undefined {
+  switch (quality) {
+    case 'original': return undefined
+    case 'low': return 'small'
+    case 'medium': return 'standard'
+    case 'high': return 'high'
+    case 'custom': return 'original-like'
+    default: return undefined
+  }
+}
+
+/**
+ * 将 UI 导出配置统一解析为 Rust 导出参数
+ */
+export function resolveExportConfig(
+  config: VideoExportSettings | undefined | null,
+  originalWidth: number,
+  originalHeight: number,
+): {
+  width: number
+  height: number
+  fps: number | null
+  qualityPreset: string | undefined
+} {
+  const res = config?.resolution
+    ? resolveExportResolution(originalWidth, originalHeight, config.resolution)
+    : { width: originalWidth, height: originalHeight }
+
+  return {
+    width: res.width,
+    height: res.height,
+    fps: config ? resolveExportFps(config.frameRate) : null,
+    qualityPreset: config ? resolveExportQualityPreset(config.quality, config.customBitrate) : undefined,
+  }
 }
 
 export function buildExportLayers(
@@ -125,6 +211,8 @@ export async function exportPreviewVideo(params: {
   height: number
   layers: PreviewLayer[]
   qualityPreset?: string
+  /** 帧率覆盖（null / undefined 表示使用源文件帧率） */
+  fps?: number | null
   /** 导出任务 ID（写入任务记录） */
   exportTaskId?: string
   /** 子任务 ID */
@@ -167,8 +255,14 @@ export async function exportPreviewVideo(params: {
   })() : null
 
   try {
-    const composition = buildCompositionFromPreviewLayers(params.layers, params.width, params.height)
-    await lrc().exportCompositionVideo(path, composition, null, null, true, itemId, params.qualityPreset ?? 'high', taskId, itemId)
+    const exportFps = params.fps ?? null
+    const composition = buildCompositionFromPreviewLayers(
+      params.layers,
+      params.width,
+      params.height,
+      { fps: exportFps ?? undefined },
+    )
+    await lrc().exportCompositionVideo(path, composition, exportFps, null, true, itemId, params.qualityPreset ?? 'high', taskId, itemId)
     if (taskId && itemId) {
       await window.luna.exportTask.updateItem(taskId, itemId, { status: 'done', progress: 100, destinationPath: path }).catch(() => {})
       emitVideoProgress(100, 'done')
@@ -359,6 +453,7 @@ async function runBatchExportQueue(
   taskName: string,
   exportDir: string,
   entries: BatchExportEntry[],
+  exportConfig?: VideoExportSettings | null,
 ): Promise<void> {
   const exportOne = async (entry: BatchExportEntry): Promise<void> => {
     const task = await window.luna.exportTask.get(taskId)
@@ -435,13 +530,15 @@ async function runBatchExportQueue(
       }
 
       if (entry.kind === 'video') {
+        const resolved = resolveExportConfig(exportConfig, res.width, res.height)
         await exportPreviewVideo({
           exportDir,
           fileName,
-          width: res.width,
-          height: res.height,
+          width: resolved.width,
+          height: resolved.height,
           layers: exportLayers,
-          qualityPreset: 'high',
+          qualityPreset: resolved.qualityPreset ?? 'high',
+          fps: resolved.fps,
           exportTaskId: taskId,
           exportItemId: entry.id,
           taskName,
@@ -506,6 +603,7 @@ async function runBatchExportQueue(
 export async function exportBatchFiles(
   sources: Array<string | BatchExportSource>,
   exportDir: string,
+  exportConfig?: VideoExportSettings | null,
 ): Promise<{ taskId: string; items: Array<{ id: string; outputPath: string }> }> {
   const sourceItems = sources.map((source) => (
     typeof source === 'string' ? { sourcePath: source } : source
@@ -554,7 +652,7 @@ export async function exportBatchFiles(
     layers: entry.layers,
   }))
   window.setTimeout(() => {
-    void runBatchExportQueue(task.id, taskName, exportDir, queuedEntries)
+    void runBatchExportQueue(task.id, taskName, exportDir, queuedEntries, exportConfig)
   }, 0)
 
   return { taskId: task.id, items: entries.map((entry) => ({ id: entry.id, outputPath: entry.outputPath })) }

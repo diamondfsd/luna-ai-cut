@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { buildExportLayers, exportBatchFiles, type BatchExportSource } from './previewStageExport'
+import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsPanel'
 import { HtmlPreview } from './HtmlPreview'
 import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader } from './PreviewModalHeader'
@@ -8,6 +9,7 @@ import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { useFileCache } from '../hooks/useFileCache'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
+import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Button, Dialog, toast } from '../ui'
 import '../styles/modal.css'
@@ -54,6 +56,7 @@ export function PreviewModal({
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType | null>(null)
   const [batchEnqueuing, setBatchEnqueuing] = useState(false)
+  const [exportConfig, setExportConfig] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
   const { cacheFilePath: resolvedPath } = useFileCache(currentFilePath)
@@ -98,14 +101,14 @@ export function PreviewModal({
         }
       }))
 
-      await exportBatchFiles(sources, settings.exportDir)
+      await exportBatchFiles(sources, settings.exportDir, exportConfig)
       toast.success(`已加入导出队列 (${sources.length} 个文件)`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '导出失败')
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, filePathList, currentFilePath, watermarkSettings])
+  }, [batchEnqueuing, filePathList, currentFilePath, watermarkSettings, exportConfig])
 
   // Escape 关闭
   useEffect(() => {
@@ -117,7 +120,7 @@ export function PreviewModal({
   }, [onClose])
 
   return (
-    <Dialog open variant="fullscreen" onOpenChange={(o) => !o && onClose()}>
+    <Dialog open variant="fullscreen" closeOnMaskClick={false} onOpenChange={(o) => !o && onClose()}>
       <section className="preview-modal">
         <PreviewModalHeader
           filePath={currentFilePath}
@@ -163,17 +166,20 @@ export function PreviewModal({
                 ) : undefined}
               />
               {!previewOnly && (
-                <div className="batch-export-actions">
-                  <Button
-                    variant="primary"
-                    disabled={batchEnqueuing}
-                    onClick={handleExport}
-                    type="button"
-                    style={{ width: '100%' }}
-                  >
-                    {batchEnqueuing ? '任务创建中...' : batchExportMode ? `确认导出 (${filePathList?.length ?? 0} 个文件)` : '导出'}
-                  </Button>
-                </div>
+                <>
+                  <ExportSettingsPanel value={exportConfig} onChange={setExportConfig} />
+                  <div className="batch-export-actions">
+                    <Button
+                      variant="primary"
+                      disabled={batchEnqueuing}
+                      onClick={handleExport}
+                      type="button"
+                      style={{ width: '100%' }}
+                    >
+                      {batchEnqueuing ? '任务创建中...' : batchExportMode ? `确认导出 (${filePathList?.length ?? 0} 个文件)` : '导出'}
+                    </Button>
+                  </div>
+                </>
               )}
             </div>
           )}
