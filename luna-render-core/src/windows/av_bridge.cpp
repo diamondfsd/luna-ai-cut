@@ -28,6 +28,7 @@
 #include <dxgi1_2.h>
 #include <dxgi1_4.h>
 #include <codecapi.h>
+#include <propvarutil.h>
 #include <vector>
 #include <string>
 #include <cstdio>
@@ -252,7 +253,7 @@ static bool decoder_seek_to(LunaVideoDecoder *dec, double seconds,
     dec->eof = false;
 
     PROPVARIANT pos;
-    InitPropVariantFromInt64((LONGLONG)(seconds * 10000000.0));
+    InitPropVariantFromInt64((LONGLONG)(seconds * 10000000.0), &pos);
     HRESULT hr = dec->reader->SetCurrentPosition(GUID_NULL, pos);
     PropVariantClear(&pos);
     if (FAILED(hr)) {
@@ -644,27 +645,26 @@ static IMFSinkWriter *create_sink_writer(
         return nullptr;
     }
 
-    // Create input media type (BGRA)
-    IMFMediaType *input_type = nullptr;
-    hr = MFCreateMediaType(&input_type);
+    // Create output media type (H.264 encoding target)
+    IMFMediaType *output_type = nullptr;
+    hr = MFCreateMediaType(&output_type);
     if (FAILED(hr)) {
         writer->Release();
-        luna_write_error(error_buffer, error_length, "MFCreateMediaType failed");
+        luna_write_error(error_buffer, error_length, "MFCreateMediaType for output failed");
         return nullptr;
     }
 
-    input_type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-    input_type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_ARGB32);
-    MFSetAttributeSize(input_type, MF_MT_FRAME_SIZE, width, height);
-    MFSetAttributeRatio(input_type, MF_MT_FRAME_RATE, (UINT32)fps, 1);
-    MFSetAttributeRatio(input_type, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-    input_type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-    input_type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-    input_type->SetUINT32(MF_MT_AVG_BITRATE, (UINT32)bitrate);
+    output_type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    output_type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+    MFSetAttributeSize(output_type, MF_MT_FRAME_SIZE, width, height);
+    MFSetAttributeRatio(output_type, MF_MT_FRAME_RATE, (UINT32)fps, 1);
+    MFSetAttributeRatio(output_type, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    output_type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    output_type->SetUINT32(MF_MT_AVG_BITRATE, (UINT32)bitrate);
 
     DWORD stream_index = 0;
-    hr = writer->AddStream(input_type, &stream_index);
-    input_type->Release();
+    hr = writer->AddStream(output_type, &stream_index);
+    output_type->Release();
 
     if (FAILED(hr)) {
         writer->Release();
@@ -675,18 +675,21 @@ static IMFSinkWriter *create_sink_writer(
     }
     *out_stream_index = stream_index;
 
-    // Try H.264 output configuration
-    IMFMediaType *output_type = nullptr;
-    if (SUCCEEDED(MFCreateMediaType(&output_type))) {
-        output_type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        output_type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-        MFSetAttributeSize(output_type, MF_MT_FRAME_SIZE, width, height);
-        MFSetAttributeRatio(output_type, MF_MT_FRAME_RATE, (UINT32)fps, 1);
-        MFSetAttributeRatio(output_type, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-        output_type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-        output_type->SetUINT32(MF_MT_AVG_BITRATE, (UINT32)bitrate);
-        writer->SetOutputType(stream_index, output_type, 0);
-        output_type->Release();
+    // Set input media type (ARGB32 from compositor)
+    IMFMediaType *input_type = nullptr;
+    if (SUCCEEDED(MFCreateMediaType(&input_type))) {
+        input_type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        input_type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_ARGB32);
+        MFSetAttributeSize(input_type, MF_MT_FRAME_SIZE, width, height);
+        MFSetAttributeRatio(input_type, MF_MT_FRAME_RATE, (UINT32)fps, 1);
+        MFSetAttributeRatio(input_type, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+        input_type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+        input_type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+        hr = writer->SetInputMediaType(stream_index, input_type, nullptr);
+        input_type->Release();
+        if (FAILED(hr)) {
+            // Non-fatal: encoder will negotiate input format automatically
+        }
     }
 
     return writer;
