@@ -455,7 +455,7 @@ pub struct Compositor {
 
     textures: HashMap<u32, TextureEntry>,
     next_texture_id: u32,
-    max_texture_size: u32,
+    pub max_texture_size: u32,
 
     output_texture: Option<(wgpu::Texture, u32, u32)>,
 
@@ -1339,10 +1339,21 @@ impl Compositor {
 
     pub fn render(
         &mut self,
-        canvas_width: u32,
-        canvas_height: u32,
+        mut canvas_width: u32,
+        mut canvas_height: u32,
         layers: &[RenderLayer],
     ) -> Result<Vec<u8>, String> {
+        // 限制画布尺寸不超过 GPU 上限，保持宽高比
+        let max_dim = canvas_width.max(canvas_height);
+        if max_dim > self.max_texture_size {
+            log!(
+                "render: canvas {}x{} exceeds GPU limit {}, clamping",
+                canvas_width, canvas_height, self.max_texture_size
+            );
+            let scale = self.max_texture_size as f64 / max_dim as f64;
+            canvas_width = (canvas_width as f64 * scale).round() as u32;
+            canvas_height = (canvas_height as f64 * scale).round() as u32;
+        }
         let pixel_count = (canvas_width * canvas_height * 4) as usize;
 
         if layers.is_empty() {
@@ -2050,7 +2061,9 @@ impl Compositor {
         }
 
         let mut source_layers = Vec::with_capacity(layers.len());
-        let decode_max_side = max_side.unwrap_or(PREVIEW_MAX_SIZE).min(PREVIEW_MAX_SIZE).max(1);
+        // 解码最大边长：export 时传入了有效 max_side（如 8192），
+        // preview 时 max_side 为 None 或较小的值（如 2560），fallback 到 PREVIEW_MAX_SIZE
+        let decode_max_side = max_side.unwrap_or(PREVIEW_MAX_SIZE).max(1);
 
         for layer in layers {
             let tex_id = if layer.is_video {

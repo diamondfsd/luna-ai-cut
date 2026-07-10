@@ -577,6 +577,7 @@ dependencies = [
  "napi-build",
  "napi-derive",
  "pollster",
+ "serde",
  "serde_json",
  "wgpu",
 ]
