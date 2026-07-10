@@ -105,14 +105,19 @@ export function resolveExportFps(frameRate: VideoFrameRate): number | null {
  */
 export function resolveExportQualityPreset(
   quality: VideoQuality,
-  _customBitrate?: number,
+  customBitrate?: number,
 ): string | undefined {
   switch (quality) {
     case 'original': return undefined
     case 'low': return 'small'
     case 'medium': return 'standard'
     case 'high': return 'high'
-    case 'custom': return 'original-like'
+    case 'custom':
+      if (customBitrate && customBitrate > 0) {
+        // mbps → kbps，发给 Rust 的 "custom:50000k" 格式
+        return `custom:${customBitrate * 1000}k`
+      }
+      return 'original-like'
     default: return undefined
   }
 }

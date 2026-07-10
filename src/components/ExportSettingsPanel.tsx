@@ -118,7 +118,7 @@ export function ExportSettingsPanel({ value, onChange }: ExportSettingsPanelProp
             <Input
               variant="compact"
               type="number"
-              placeholder="kbps，例如 50000"
+              placeholder="mbps，例如 50"
               value={value.customBitrate ?? ''}
               onChange={handleBitrateChange}
               min={0}
