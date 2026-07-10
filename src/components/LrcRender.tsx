@@ -3,7 +3,7 @@ import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
 
-const PREVIEW_TEXTURE_MAX_SIDE = 1280 // 从 1920 降低到 1280，减少 56% 数据量
+const PREVIEW_TEXTURE_MAX_SIDE = 2560 // 从 1920 降低到 1280，减少 56% 数据量
 
 export interface LrcRenderHandle {
   exportImage(outputPath: string, width: number, height: number, format: string, quality: number): Promise<void>
