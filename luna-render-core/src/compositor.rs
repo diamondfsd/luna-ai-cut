@@ -1998,6 +1998,7 @@ impl Compositor {
 
     /// 等待 GPU 完成所有已提交的工作（用于跨 API 同步，如 D3D12→D3D11 共享纹理）。
     #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[allow(dead_code)]
     pub(crate) fn wait_for_gpu(&self) -> Result<(), String> {
         self.device
             .poll(wgpu::PollType::Wait {
