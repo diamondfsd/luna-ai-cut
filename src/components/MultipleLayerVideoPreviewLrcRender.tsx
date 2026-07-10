@@ -232,8 +232,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           const existing = videoStatesRef.current.get(key)
           const src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
 
-          if (existing && existing.video.src.endsWith(layer.filePath)) {
-            // 同一视频源，仅在时间轴位置变化时同步跳转
+          if (existing && existing.video.src === src) {
+            // 同一视频源（用完整 src 比较，避免 URL 编码导致 endsWith 误判）
             const vt = layer.videoTime ?? 0
             if (Math.abs(existing.prevVideoTime - vt) > 0.01) {
               existing.video.currentTime = vt
@@ -312,6 +312,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           })
 
           video.addEventListener('error', () => {
+            // 清理时设置 src='' 会触发 MEDIA_ELEMENT_ERROR(4)，属预期行为，静默忽略
+            if (video.error?.code === 4) return
             console.error('[MultipleLayerVideoPreviewLrcRender] video error', {
               file: layer.filePath,
               code: video.error?.code,
