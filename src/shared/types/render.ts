@@ -90,6 +90,8 @@ export interface PreviewLayer {
   filePath: string
   isVideo?: boolean
   videoTime?: number
+  /** 纹理在目标区域内的适配方式；cover-scale 保留完整纹理并用基础缩放填满区域 */
+  fit?: 'cover' | 'cover-scale'
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number

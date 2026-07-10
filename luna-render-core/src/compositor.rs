@@ -254,17 +254,6 @@ fn plan_layer_rect(
     (layer.dst_x, layer.dst_y, layer.dst_w, layer.dst_h)
 }
 
-fn layer_crop_rect(layer: &PreviewLayerInput) -> (f64, f64, f64, f64) {
-    let Some(crop) = layer.transform.crop.as_ref() else {
-        return (0.0, 0.0, 1.0, 1.0);
-    };
-    let w = crop.w.clamp(0.001, 1.0);
-    let h = crop.h.clamp(0.001, 1.0);
-    let x = crop.x.clamp(0.0, 1.0 - w);
-    let y = crop.y.clamp(0.0, 1.0 - h);
-    (x, y, w, h)
-}
-
 fn should_swap_orientation(orientation: f64) -> bool {
     let normalized = ((orientation % 180.0) + 180.0) % 180.0;
     (45.0..=135.0).contains(&normalized)
@@ -279,9 +268,12 @@ fn frame_aspect(texture: &PreviewTextureInfo, orientation: f64) -> f64 {
     }
 }
 
-fn layer_visible_aspect(layer: &PreviewLayerInput, texture: &PreviewTextureInfo) -> f64 {
-    let (_, _, crop_w, crop_h) = layer_crop_rect(layer);
-    frame_aspect(texture, layer.transform.orientation) * crop_w / crop_h.max(0.001)
+fn cover_scale_factor(source_aspect: f64, target_aspect: f64, orientation: f64) -> f64 {
+    if should_swap_orientation(orientation) {
+        target_aspect.max(1.0 / source_aspect.max(0.001))
+    } else {
+        1.0_f64.max(target_aspect / source_aspect.max(0.001))
+    }
 }
 
 fn plan_layer_source_rect(
@@ -299,15 +291,44 @@ fn plan_layer_transform(
     output_width: u32,
     output_height: u32,
 ) -> crate::RenderLayerTransform {
-    let mut transform = layer.transform.clone();
-    if layer.fit != "cover" || layer.positioning.is_some() {
+    plan_cover_transform(
+        &layer.fit,
+        layer.positioning.is_some(),
+        layer.dst_w,
+        layer.dst_h,
+        &layer.transform,
+        texture,
+        output_width,
+        output_height,
+    )
+}
+
+fn plan_cover_transform(
+    fit: &str,
+    has_positioning: bool,
+    dst_w: f64,
+    dst_h: f64,
+    source_transform: &crate::RenderLayerTransform,
+    texture: &PreviewTextureInfo,
+    output_width: u32,
+    output_height: u32,
+) -> crate::RenderLayerTransform {
+    let mut transform = source_transform.clone();
+    if fit != "cover" || has_positioning {
         return transform;
     }
-    let visible_aspect = layer_visible_aspect(layer, texture);
-    let layer_pixel_w = (layer.dst_w * output_width as f64).abs().max(1.0);
-    let layer_pixel_h = (layer.dst_h * output_height as f64).abs().max(1.0);
+    let (crop_x, crop_y, crop_w, crop_h) = match transform.crop.as_ref() {
+        Some(crop) => {
+            let w = crop.w.clamp(0.001, 1.0);
+            let h = crop.h.clamp(0.001, 1.0);
+            (crop.x.clamp(0.0, 1.0 - w), crop.y.clamp(0.0, 1.0 - h), w, h)
+        }
+        None => (0.0, 0.0, 1.0, 1.0),
+    };
+    let visible_aspect = frame_aspect(texture, transform.orientation) * crop_w / crop_h.max(0.001);
+    let layer_pixel_w = (dst_w * output_width as f64).abs().max(1.0);
+    let layer_pixel_h = (dst_h * output_height as f64).abs().max(1.0);
     let target_aspect = layer_pixel_w / layer_pixel_h;
-    let (crop_x, crop_y, crop_w, crop_h) = layer_crop_rect(layer);
 
     if visible_aspect > target_aspect {
         let next_w = (crop_w * target_aspect / visible_aspect).clamp(0.001, crop_w);
@@ -1359,6 +1380,38 @@ impl Compositor {
                     log_error!("render: texture {} not found", layer.texture_id);
                     format!("texture {} not found", layer.texture_id)
                 })?;
+                let texture_info = PreviewTextureInfo {
+                    texture_id: layer.texture_id,
+                    width: tex_entry.width,
+                    height: tex_entry.height,
+                };
+                let planned_transform = plan_cover_transform(
+                    layer.fit.as_deref().unwrap_or("stretch"),
+                    layer.positioning.is_some(),
+                    layer.dst_w,
+                    layer.dst_h,
+                    &layer.transform.clone().unwrap_or_default(),
+                    &texture_info,
+                    canvas_width,
+                    canvas_height,
+                );
+                let fit_mode = layer.fit.as_deref().unwrap_or("stretch");
+                let target_aspect = ((layer.dst_w * canvas_width as f64).abs().max(1.0)
+                    / (layer.dst_h * canvas_height as f64).abs().max(1.0))
+                    .max(0.001);
+                let mut planned_transform = planned_transform;
+                if fit_mode == "cover-scale" {
+                    let source_aspect =
+                        tex_entry.width as f64 / tex_entry.height.max(1) as f64;
+                    planned_transform.scale *= cover_scale_factor(
+                        source_aspect,
+                        target_aspect,
+                        planned_transform.orientation,
+                    );
+                }
+                let mut effective_layer = (**layer).clone();
+                effective_layer.transform = Some(planned_transform);
+                let layer = &effective_layer;
                 let source_aspect =
                     (tex_entry.width as f32 / tex_entry.height.max(1) as f32).max(0.0001);
                 let orientation = layer
@@ -1369,7 +1422,9 @@ impl Compositor {
                 let normalized_orientation = ((orientation % 180.0) + 180.0) % 180.0;
                 let swap_orientation =
                     normalized_orientation >= 45.0 && normalized_orientation <= 135.0;
-                let (frame_w, frame_h) = if swap_orientation {
+                let (frame_w, frame_h) = if fit_mode == "cover-scale" {
+                    (target_aspect as f32, 1.0)
+                } else if swap_orientation {
                     (1.0, source_aspect)
                 } else {
                     (source_aspect, 1.0)
@@ -2082,6 +2137,7 @@ impl Compositor {
                     plan_layer_transform(layer, texture, output_width, output_height);
                 crate::RenderLayer {
                     texture_id: texture.texture_id,
+                    fit: Some(layer.fit.clone()),
                     dst_x,
                     dst_y,
                     dst_w,
