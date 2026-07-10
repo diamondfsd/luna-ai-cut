@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset } from '../../../shared/types'
 import { toast } from '../../../ui'
@@ -79,10 +79,13 @@ export function useTripleStitchSources(
     return () => { cancelled = true }
   }, [baseSources, detectedLivePhotos, failedLivePhotos, liveVideoPaths])
 
-  const resolvedSources = useMemo(() => baseSources.map(({ asset, pipeline }) => {
-    const liveStatus = asset.kind === 'video'
-      ? false
-      : asset.isLivePhoto ?? detectedLivePhotos[asset.id]
+  const prevResolvedRef = useRef<TripleStitchSource[] | null>(null)
+
+  const resolvedSources = useMemo(() => {
+    const result = baseSources.map(({ asset, pipeline }) => {
+      const liveStatus = asset.kind === 'video'
+        ? false
+        : asset.isLivePhoto ?? detectedLivePhotos[asset.id]
     const liveVideoPath = liveStatus ? liveVideoPaths[asset.id] : undefined
     const filePath = liveVideoPath ?? asset.path
     return {
@@ -92,7 +95,31 @@ export function useTripleStitchSources(
       isVideo: asset.kind === 'video' || Boolean(liveVideoPath),
       sourceReady: asset.kind === 'video' || liveStatus === false || Boolean(liveVideoPath),
     }
-  }), [baseSources, detectedLivePhotos, liveVideoPaths])
+    })
+
+    // 诊断日志：追踪 isVideo / filePath 变化
+    if (prevResolvedRef.current) {
+      const prev = prevResolvedRef.current
+      for (let i = 0; i < Math.max(prev.length, result.length); i++) {
+        const prevItem = prev[i]
+        const curItem = result[i]
+        if (!prevItem || !curItem) continue
+        if (prevItem.isVideo !== curItem.isVideo || prevItem.filePath !== curItem.filePath) {
+          console.warn(
+            `[LivePhoto-Diag] slot[${i}] 变化:`,
+            `isVideo: ${prevItem.isVideo} → ${curItem.isVideo}`,
+            `filePath: ${prevItem.filePath?.slice(-40)} → ${curItem.filePath?.slice(-40)}`,
+            `asset.isLivePhoto: ${curItem.asset.isLivePhoto}`,
+            `detected: ${detectedLivePhotos[curItem.asset.id]}`,
+            `liveVideoPath: ${liveVideoPaths[curItem.asset.id]}`,
+          )
+        }
+      }
+    }
+    prevResolvedRef.current = result
+
+    return result
+  }, [baseSources, detectedLivePhotos, liveVideoPaths])
 
   return resolvedSources
 }
