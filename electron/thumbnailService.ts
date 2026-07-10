@@ -41,7 +41,6 @@ function getFfmpegPath(): string {
       ffmpegPath = 'ffmpeg'
     }
   }
-  logMainDebug(`[缩略图] ffmpeg 路径`, { ffmpegPath, isPackaged: app.isPackaged, platform: process.platform })
   return ffmpegPath
 }
 
@@ -168,7 +167,6 @@ export function enqueueThumbnailGeneration(
         return destPath
       }
       // 文件太小，视为损坏，删除后重新生成
-      logMainWarn(`[缩略图] 已存在的文件过小 (${stats.size}B)，视为损坏，重新生成`, { fileId, fileName, destPath })
       return fs.rm(destPath, { force: true, maxRetries: 3 }).then(() => {
         return new Promise<string | null>((resolve) => {
           taskQueue.push({ sourcePath, thumbDir, fileId, kind, fileName, resolve })

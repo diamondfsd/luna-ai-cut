@@ -208,11 +208,6 @@ export function useMediaLibraryController(pageType: PageType) {
   // 监听缓存缩略图完成
   useEffect(() => {
     return window.luna.onThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
-      logger.info('[缩略图] onThumbnailReady', {
-        fileId, fileName, downloadName,
-        cacheFilePath: cacheFilePath?.slice(0, 200),
-        thumbnailUrl: thumbnailUrl?.slice(0, 300),
-      })
       const matches = (file: LunaFile): boolean =>
         file.id === fileId || file.name === fileName || file.downloadName === downloadName
       setCacheFailedIds((current) => {
@@ -288,13 +283,6 @@ export function useMediaLibraryController(pageType: PageType) {
   }
 
   function handleThumbnailImageError(file: LunaFile): void {
-    logger.warn('[缩略图] 图片 onError', {
-      fileId: file.id, fileName: file.name, kind: file.kind,
-      thumbnailUrl: file.thumbnailUrl?.slice(0, 300),
-      cacheFilePath: file.cacheFilePath,
-      downloadFilePath: file.downloadFilePath,
-      localPath: (file as any).localPath,
-    })
     requestedThumbnailIdsRef.current.delete(file.id)
     setFiles((current) =>
       current.map((f) => (f.id === file.id ? { ...f, thumbnailUrl: null } : f)),

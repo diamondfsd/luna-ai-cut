@@ -36,6 +36,7 @@ interface WorkspacePageProps {
 }
 
 export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
+  console.log(`[Perf] WorkspacePage render mode=${workspaceMode} creative=${creativeModeId}`)
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
 
@@ -60,6 +61,7 @@ export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEdi
 // ── inner page that consumes all three contexts ──
 
 function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
+  console.log(`[Perf] WorkspacePageInner render mode=${workspaceMode} creative=${creativeModeId}`)
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
