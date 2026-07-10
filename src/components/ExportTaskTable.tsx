@@ -3,7 +3,7 @@ import { AlertCircle, Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy,
 
 import type { ExportTaskItemRecord, ExportTaskRecord } from '../shared/types'
 import { showPreviewModal } from './previewModalService'
-import { useApp } from '../context/AppContext'
+import { useExportProgress } from '../context/ExportProgressContext'
 import { Dialog, IconButton, toast } from '../ui'
 import { Table, type Column } from '../ui/Table'
 import '../styles/export-tasks.css'
@@ -122,7 +122,7 @@ interface ExportTaskTableProps {
 }
 
 export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
-  const { exportProgress, exporting } = useApp()
+  const { exportProgress, exporting } = useExportProgress()
   const [tasks, setTasks] = useState<ExportTaskRecord[]>([])
   const PAGE_SIZE = 10
   const [loading, setLoading] = useState(false)
