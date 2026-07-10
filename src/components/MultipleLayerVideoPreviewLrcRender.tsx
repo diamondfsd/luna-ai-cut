@@ -230,6 +230,9 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             videoLayerInfos.push({ layer, index: i, key })
           }
         }
+        // 单视频层预览保留原声；两个及以上视频层没有明确的混音规则，全部静音。
+        // 图片、水印等非视频层不影响音频判断。
+        const previewAudioEnabled = videoLayerInfos.length === 1
 
         // 移除不再需要的视频状态
         for (const [existingKey, entry] of videoStatesRef.current) {
@@ -253,6 +256,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           const src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
 
           if (existing && existing.video.src === src) {
+            existing.video.muted = !previewAudioEnabled
             // 同一视频源（用完整 src 比较，避免 URL 编码导致 endsWith 误判）
             const vt = layer.videoTime ?? 0
             if (Math.abs(existing.prevVideoTime - vt) > 0.01) {
@@ -276,7 +280,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
           // 创建新 video 元素
           const video = document.createElement('video')
-          video.muted = true
+          video.muted = !previewAudioEnabled
           video.loop = false
           video.playsInline = true
           video.preload = 'auto'
