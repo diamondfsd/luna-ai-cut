@@ -2077,7 +2077,7 @@ impl Compositor {
                 if let Some(tid) = cached {
                     tid
                 } else {
-                    let (rgba, w, h) = decode_static_image(ffmpeg, ffprobe, &layer.file_path)?;
+                    let (rgba, w, h) = decode_static_image_scaled(ffmpeg, ffprobe, &layer.file_path, decode_max_side)?;
                     let tid = self.load_texture(&rgba, w, h)?;
                     self.cache_static_texture(layer.file_path.clone(), tid)?;
                     tid
@@ -2321,14 +2321,6 @@ pub(crate) fn decode_static_image_scaled(
         rgba.len()
     );
     Ok((rgba, dw, dh))
-}
-
-fn decode_static_image(
-    ffmpeg: &str,
-    ffprobe: &str,
-    path: &str,
-) -> Result<(Vec<u8>, u32, u32), String> {
-    decode_static_image_scaled(ffmpeg, ffprobe, path, PREVIEW_MAX_SIZE)
 }
 
 /// 将 file:///path 转回本地路径，ffmpeg/ffprobe 不支持 URL 编码
