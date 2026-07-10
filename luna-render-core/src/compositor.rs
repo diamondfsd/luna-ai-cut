@@ -268,12 +268,47 @@ fn frame_aspect(texture: &PreviewTextureInfo, orientation: f64) -> f64 {
     }
 }
 
-fn cover_scale_factor(source_aspect: f64, target_aspect: f64, orientation: f64) -> f64 {
-    if should_swap_orientation(orientation) {
-        target_aspect.max(1.0 / source_aspect.max(0.001))
+fn plan_cover_scale(
+    texture: &PreviewTextureInfo,
+    target_aspect: f64,
+    transform: &mut crate::RenderLayerTransform,
+) -> (f64, f64) {
+    let source_aspect = texture.width as f64 / texture.height.max(1) as f64;
+    let (crop_x, crop_y, crop_w, crop_h) = match transform.crop.as_ref() {
+        Some(crop) => {
+            let w = crop.w.clamp(0.001, 1.0);
+            let h = crop.h.clamp(0.001, 1.0);
+            (crop.x.clamp(0.0, 1.0 - w), crop.y.clamp(0.0, 1.0 - h), w, h)
+        }
+        None => (0.0, 0.0, 1.0, 1.0),
+    };
+    let frame_w = target_aspect * crop_h / crop_w;
+    let frame_h = 1.0;
+    let swaps_axes = should_swap_orientation(transform.orientation);
+    let (original_frame_w, original_frame_h) = if swaps_axes {
+        (1.0, source_aspect)
     } else {
-        1.0_f64.max(target_aspect / source_aspect.max(0.001))
-    }
+        (source_aspect, 1.0)
+    };
+    let base_scale = if swaps_axes {
+        frame_w.max(frame_h / source_aspect.max(0.001))
+    } else {
+        (frame_w / source_aspect.max(0.001)).max(frame_h)
+    };
+
+    let crop_center_x = crop_x + crop_w / 2.0;
+    let crop_center_y = crop_y + crop_h / 2.0;
+    let base_translate_x =
+        (crop_center_x - 0.5) * frame_w / base_scale
+            - (crop_center_x - 0.5) * original_frame_w;
+    let base_translate_y =
+        (crop_center_y - 0.5) * frame_h / base_scale
+            - (crop_center_y - 0.5) * original_frame_h;
+
+    transform.scale *= base_scale;
+    transform.translate_x = Some(transform.translate_x.unwrap_or(0.0) + base_translate_x);
+    transform.translate_y = Some(transform.translate_y.unwrap_or(0.0) + base_translate_y);
+    (frame_w, frame_h)
 }
 
 fn plan_layer_source_rect(
@@ -1400,15 +1435,9 @@ impl Compositor {
                     / (layer.dst_h * canvas_height as f64).abs().max(1.0))
                     .max(0.001);
                 let mut planned_transform = planned_transform;
-                if fit_mode == "cover-scale" {
-                    let source_aspect =
-                        tex_entry.width as f64 / tex_entry.height.max(1) as f64;
-                    planned_transform.scale *= cover_scale_factor(
-                        source_aspect,
-                        target_aspect,
-                        planned_transform.orientation,
-                    );
-                }
+                let cover_scale_frame = (fit_mode == "cover-scale").then(|| {
+                    plan_cover_scale(&texture_info, target_aspect, &mut planned_transform)
+                });
                 let mut effective_layer = (**layer).clone();
                 effective_layer.transform = Some(planned_transform);
                 let layer = &effective_layer;
@@ -1422,8 +1451,8 @@ impl Compositor {
                 let normalized_orientation = ((orientation % 180.0) + 180.0) % 180.0;
                 let swap_orientation =
                     normalized_orientation >= 45.0 && normalized_orientation <= 135.0;
-                let (frame_w, frame_h) = if fit_mode == "cover-scale" {
-                    (target_aspect as f32, 1.0)
+                let (frame_w, frame_h) = if let Some((frame_w, frame_h)) = cover_scale_frame {
+                    (frame_w as f32, frame_h as f32)
                 } else if swap_orientation {
                     (1.0, source_aspect)
                 } else {

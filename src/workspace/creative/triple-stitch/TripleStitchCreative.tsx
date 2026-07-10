@@ -609,21 +609,21 @@ export function TripleStitchCreative() {
             />
             <ParamSlider
               label="水平"
-              value={activeEdit.translateX}
-              min={-10}
-              max={10}
-              step={0.001}
-              onChange={(translateX) => updateSlotEdit(activeSlot, { translateX })}
-              formatValue={(value) => value.toFixed(3)}
+              value={activeEdit.translateX * 100}
+              min={-100}
+              max={100}
+              step={0.1}
+              onChange={(translateX) => updateSlotEdit(activeSlot, { translateX: translateX / 100 })}
+              formatValue={(value) => value.toFixed(1)}
             />
             <ParamSlider
               label="垂直"
-              value={activeEdit.translateY}
-              min={-10}
-              max={10}
-              step={0.001}
-              onChange={(translateY) => updateSlotEdit(activeSlot, { translateY })}
-              formatValue={(value) => value.toFixed(3)}
+              value={activeEdit.translateY * 100}
+              min={-100}
+              max={100}
+              step={0.1}
+              onChange={(translateY) => updateSlotEdit(activeSlot, { translateY: translateY / 100 })}
+              formatValue={(value) => value.toFixed(1)}
             />
             {activeSource?.isVideo && (
               <ParamSlider
