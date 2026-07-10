@@ -60,6 +60,11 @@ export interface DialogProps {
    * - `'fullscreen'`：全屏弹窗，由内容自行管理布局（用于 PreviewModal）
    */
   variant?: 'dialog' | 'fullscreen'
+  /**
+   * 点击遮罩层（蒙层）是否关闭弹窗
+   * @default true
+   */
+  closeOnMaskClick?: boolean
 }
 
 export function Dialog({
@@ -73,6 +78,7 @@ export function Dialog({
   footer,
   className,
   variant = 'dialog',
+  closeOnMaskClick = true,
 }: DialogProps) {
   const zRef = useRef<{ id: string; zIndex: number } | null>(null)
 
@@ -118,6 +124,7 @@ export function Dialog({
         <RadixDialog.Content
           className={`ui-dialog-content ${isFullscreen ? 'ui-dialog-fullscreen' : ''} ${className ?? ''}`}
           style={{ zIndex: cZ }}
+          onInteractOutside={closeOnMaskClick ? undefined : (e) => e.preventDefault()}
         >
           {!isFullscreen && title && (
             <DialogHeader>
