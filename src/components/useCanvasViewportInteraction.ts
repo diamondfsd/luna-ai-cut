@@ -36,6 +36,8 @@ const INITIAL_VIEWPORT: ViewportTransform = {
   translateY: 0,
 }
 
+const WHEEL_ZOOM_SENSITIVITY = 0.01
+
 interface CanvasMetrics {
   baseWidth: number
   baseHeight: number
@@ -172,7 +174,7 @@ export function useCanvasViewportInteraction({
       const upperBound = Math.max(1, maxImageScale / metrics.fitPixelRatio)
       const nextScale = Math.min(
         upperBound,
-        Math.max(1, current.scale * Math.exp(-event.deltaY * 0.0015)),
+        Math.max(1, current.scale * Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY)),
       )
       const scaleRatio = nextScale / current.scale
       const translation = clampTranslation(
