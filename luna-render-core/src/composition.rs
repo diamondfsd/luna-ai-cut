@@ -98,7 +98,7 @@ pub struct ExportCompositionVideoInput {
     pub quality_preset: Option<String>,
 }
 
-fn is_video_source(source: &CompositionSource) -> bool {
+pub(crate) fn is_video_source(source: &CompositionSource) -> bool {
     match source.source_type.as_deref().unwrap_or("auto") {
         "video" => true,
         "image" => false,
