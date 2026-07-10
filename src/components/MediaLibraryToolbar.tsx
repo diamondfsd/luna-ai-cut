@@ -157,7 +157,6 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                   <Button
                     variant="primary" size="compact"
                     onClick={() => void ctrl.startDownload()}
-                    disabled={ctrl.downloading}
                     title={`下载已选素材，合计 ${formatBytes(ctrl.totalSelectedBytes)}`}
                     icon={ctrl.downloading ? <Loader2 className="spin" size={15} /> : <Download size={15} />}
                   >
@@ -238,19 +237,6 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                             onChange={(v) => ctrl.setCardSize(v as 'large' | 'medium' | 'small')}
                           />
                         </div>
-                        {isLocal && (
-                          <div className="filter-popover-row">
-                            <span className="filter-popover-label">类型</span>
-                            <SegmentedControl
-                              options={[
-                                { value: 'download', label: '已下载' },
-                                { value: 'export', label: '已导出' },
-                              ]}
-                              value={ctrl.viewMode}
-                              onChange={(v) => ctrl.setViewMode(v as ViewMode)}
-                            />
-                          </div>
-                        )}
                       </div>
                     </div>
                   </PopoverContent>
