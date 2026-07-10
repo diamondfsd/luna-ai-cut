@@ -426,10 +426,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   return (
     <div className="workspace-layout">
       {workspaceMode === 'creative' ? (
-        <>
-          <WorkspaceCreativeFactory creativeModeId={creativeModeId ?? 'triple-stitch'} />
-          <WorkspaceMediaStrip />
-        </>
+        <WorkspaceCreativeFactory creativeModeId={creativeModeId ?? 'triple-stitch'} />
       ) : (
         <>
           {/* ── Rust/wgpu 预览组件 ── */}

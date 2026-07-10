@@ -1,14 +1,17 @@
 .triple-stitch-page {
   grid-column: 1 / -1;
-  grid-row: 1 / 3;
+  grid-row: 1 / -1;
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(520px, 1fr) 292px;
+  grid-template-rows: minmax(0, 1fr) 118px;
   background: #1a1a1a;
 }
 
 .triple-stitch-preview {
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -17,6 +20,22 @@
   padding: 18px;
   background: #1f1f1f;
   overflow: hidden;
+}
+
+.triple-stitch-media-strip {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 覆盖 workspace.css 中 .workspace-media-strip 的 grid 定位，
+   使其在 .triple-stitch-page 内部不再参与父级网格布局 */
+.triple-stitch-media-strip > .workspace-media-strip {
+  grid-column: unset;
+  grid-row: unset;
+  border-top: none;
+  height: 100%;
 }
 
 .triple-stitch-board {
@@ -109,15 +128,17 @@
 }
 
 .triple-stitch-panel {
+  grid-column: 2;
+  grid-row: 1 / -1;
   min-width: 0;
   min-height: 0;
-  overflow-y: auto;
   display: grid;
   align-content: start;
   gap: 16px;
   padding: 14px;
   background: #252525;
   border-left: 1px solid #333;
+  overflow-y: auto;
 }
 
 .triple-stitch-panel-head {
