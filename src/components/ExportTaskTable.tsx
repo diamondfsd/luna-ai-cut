@@ -182,7 +182,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
     const task = tasks.find((t) => t.items.some((i) => i.id === item.id))
     if (!task) return
     const filePaths = task.items
-      .filter((i) => i.destinationPath && i.status === 'done')
+      .filter((i) => i.destinationPath && i.status === 'done' && !i.id.includes('appleLive') && !(i.destinationPath ?? '').includes('_appleLive'))
       .map((i) => i.destinationPath!)
     if (filePaths.length === 0) return
     showPreviewModal(item.destinationPath, filePaths, true)
@@ -324,9 +324,12 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         rowClassName={rowClassName}
         expandContent={(task) => (
           <div className="et-task-items" style={{ borderTop: 'none', marginTop: 0, paddingTop: 0 }}>
-            {task.items.map((item) => (
-              <TaskItemRow key={item.id} item={item} onPreview={handlePreviewItem} onRevealFile={onRevealFile} isAppleLive={task.name.includes('Apple Live')} />
-            ))}
+            {task.items.map((item) => {
+              const isAppleLive = item.id.includes('appleLive') || (item.destinationPath ?? item.fileName).includes('_appleLive')
+              return (
+                <TaskItemRow key={item.id} item={item} onPreview={handlePreviewItem} onRevealFile={onRevealFile} isAppleLive={isAppleLive} />
+              )
+            })}
           </div>
         )}
         expandedKeys={expandedTasks}

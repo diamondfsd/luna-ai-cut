@@ -14,6 +14,7 @@ import {
   listDownloadedFiles,
   listExportFiles,
   openPath,
+  openPhotosApp,
   previewCacheDir,
   previewFile,
   previewLivePhoto,
@@ -226,6 +227,7 @@ export function register(ctx: IpcContext): void {
 
   ipcMain.handle('files:reveal', (_event, filePath: string) => revealFile(filePath))
   ipcMain.handle('files:openPath', (_event, targetPath: string) => openPath(targetPath))
+  ipcMain.handle('files:openPhotosApp', async () => openPhotosApp())
   ipcMain.handle('files:deleteLocal', (_event, filePaths: string[]) => deleteLocalFiles(filePaths))
 
   ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[], _downloadDir?: string) => {
