@@ -83,38 +83,9 @@ function bytesFromRenderData(data: RenderPreviewOutput['data']): Uint8ClampedArr
   return new Uint8ClampedArray(data as ArrayBuffer)
 }
 
-// 自定义比较函数：只在 layers 内容真正变化时才重新渲染
-const layersEqual = (prevLayers: PreviewLayer[], nextLayers: PreviewLayer[]): boolean => {
-  if (prevLayers.length !== nextLayers.length) return false
-  for (let i = 0; i < prevLayers.length; i++) {
-    const prev = prevLayers[i]
-    const next = nextLayers[i]
-    if (
-      prev.filePath !== next.filePath ||
-      prev.isVideo !== next.isVideo ||
-      prev.opacity !== next.opacity ||
-      prev.zIndex !== next.zIndex ||
-      prev.dstX !== next.dstX ||
-      prev.dstY !== next.dstY ||
-      prev.dstW !== next.dstW ||
-      prev.dstH !== next.dstH ||
-      prev.srcX !== next.srcX ||
-      prev.srcY !== next.srcY ||
-      prev.srcW !== next.srcW ||
-      prev.srcH !== next.srcH ||
-      prev.videoTime !== next.videoTime ||
-      prev.lutId !== next.lutId ||
-      prev.lutIntensity !== next.lutIntensity
-    ) {
-      return false
-    }
-    // 比较 color 对象
-    if (JSON.stringify(prev.color) !== JSON.stringify(next.color)) return false
-    // 比较 transform 对象
-    if (JSON.stringify(prev.transform) !== JSON.stringify(next.transform)) return false
-  }
-  return true
-}
+// 自定义比较函数：JSON 序列化对比，避免手动维护字段列表
+const layersEqual = (prevLayers: PreviewLayer[], nextLayers: PreviewLayer[]): boolean =>
+  JSON.stringify(prevLayers) === JSON.stringify(nextLayers)
 
 export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
   { layers, canvasRef: extRef, className, onError, onReady, onRender, onMediaSize, maxSide, canvasWidth, canvasHeight, onVideoElement },
