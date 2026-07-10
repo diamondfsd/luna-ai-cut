@@ -137,6 +137,9 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
       // ── 初始化 LRC ──
       useEffect(() => {
+        (window as any).__perfStart = (window as any).__perfStart || performance.now()
+        const t0 = performance.now()
+        console.log('[Perf] MultipleLayerVideoPreviewLrcRender mount', { layers: layers.length })
         const lrc = getLRC()
         if (!lrc) {
           const msg = '渲染引擎未加载'
@@ -148,6 +151,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         lrcRef.current = lrc
         lrc.init()
           .then(() => {
+            const t1 = performance.now()
+            console.log(`[Perf] LRC init done in ${(t1 - t0).toFixed(0)}ms`)
             if (!destroyRef.current) {
               setReady(true)
               readyRef.current = true
@@ -181,6 +186,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       // ── 管理视频元素 ──
       useEffect(() => {
         if (!readyRef.current) return
+        const t0 = performance.now()
+        console.log(`[Perf] video management effect start, ${layers.filter(l => l.isVideo).length} video layers`)
         const lrc = lrcRef.current
         if (!lrc) return
 
@@ -257,6 +264,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
           video.addEventListener('loadeddata', () => {
             if (destroyRef.current) return
+            const tLoaded = performance.now()
+            console.log(`[Perf] video loadeddata [${layer.filePath.slice(-30)}] in ${(tLoaded - t0).toFixed(0)}ms offset`)
             // 根据该层的显示尺寸 + 质量系数计算解码上限
             const layerMaxSide = computeLayerDecodeMaxSide(
               layer,
@@ -300,11 +309,16 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           video.load()
           videoStatesRef.current.set(key, entry)
         }
+        const tEnd = performance.now()
+        console.log(`[Perf] video management effect done in ${(tEnd - t0).toFixed(0)}ms, ${videoStatesRef.current.size} videos managed`)
       }, [layers])
 
       // ── 播放/暂停控制 ──
       useEffect(() => {
         if (!readyRef.current) return
+        if (playing) {
+          console.log(`[Perf] play start — seeking videos to startTime at ${(performance.now() - (window as any).__perfStart).toFixed(0)}ms`)
+        }
         for (const [, entry] of videoStatesRef.current) {
           if (!entry.ready) continue
           if (playing) {
@@ -504,6 +518,11 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             displayCtx.putImageData(new ImageData(pixelData, outW, outH), 0, 0)
           }
 
+          const firstRender = (window as any).__firstRenderDone === undefined
+          if (firstRender) {
+            (window as any).__firstRenderDone = true
+            console.log(`[Perf] FIRST RENDER at ${(performance.now() - (window as any).__perfStart || performance.now()).toFixed(0)}ms`)
+          }
           onRender?.()
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error)
@@ -535,6 +554,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       // ── 渲染循环（覆盖 renderFrame） ──
       useEffect(() => {
         if (!ready) return
+        console.log(`[Perf] render loop started at ${(performance.now() - (window as any).__perfStart).toFixed(0)}ms`)
 
         function loop() {
           const now = performance.now()
@@ -552,6 +572,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       // ── layers 变化时立即触发一次渲染 ──
       useEffect(() => {
         if (!ready) return
+        const t0 = performance.now()
+        console.log(`[Perf] layers change trigger at ${(t0 - (window as any).__perfStart).toFixed(0)}ms`)
         const timer = setTimeout(() => void renderFrame(), 16)
         return () => clearTimeout(timer)
       }, [ready, layers])
