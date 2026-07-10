@@ -127,7 +127,7 @@ export function MediaCard({
         tabIndex={0}
         title="预览"
       >
-        <ThumbImage src={file.sourceUrl} alt={file.name} loading="lazy" />
+        <ThumbImage src={file.previewUrl || file.sourceUrl} alt={file.name} loading="lazy" />
         {file.kind === 'video' && effectiveDuration != null ? (
           <span className="duration-badge">{formatDuration(effectiveDuration)}</span>
         ) : isLive ? (
