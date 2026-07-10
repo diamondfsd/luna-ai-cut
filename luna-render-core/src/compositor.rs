@@ -447,9 +447,12 @@ pub struct Compositor {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
-    /// BGRA 格式渲染管线（macOS Metal External / Windows D3D12 Shared）
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    /// BGRA sRGB 格式渲染管线（macOS Metal External）
+    #[cfg(target_os = "macos")]
     pipeline_bgra: wgpu::RenderPipeline,
+    /// BGRA linear 格式渲染管线（Windows D3D12 Shared — MF 编码器需要 linear UNORM）
+    #[cfg(target_os = "windows")]
+    pipeline_bgra_linear: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
 
@@ -942,11 +945,13 @@ impl Compositor {
         use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
         use windows::core::Interface;
 
+        // MF 编码器需要 linear UNORM（非 sRGB），与 av_bridge.cpp 中
+        // DXGI_FORMAT_B8G8R8A8_UNORM 纹理格式保持一致
         let resource = unsafe { ID3D12Resource::from_raw(d3d12_resource) };
         let hal_texture = unsafe {
             wgpu::hal::dx12::Device::texture_from_raw(
                 resource,
-                wgpu::TextureFormat::Bgra8UnormSrgb,
+                wgpu::TextureFormat::Bgra8Unorm,
                 wgpu::TextureDimension::D2,
                 wgpu::Extent3d {
                     width,
@@ -967,7 +972,7 @@ impl Compositor {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: wgpu::TextureFormat::Bgra8Unorm,
             usage,
             view_formats: &[],
         };
@@ -1060,13 +1065,21 @@ impl Compositor {
             wgpu::TextureFormat::Rgba8UnormSrgb,
             "compositor pipeline",
         );
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         let pipeline_bgra = create_compositor_pipeline(
             &device,
             &pipeline_layout,
             &shader,
             wgpu::TextureFormat::Bgra8UnormSrgb,
-            "compositor pipeline BGRA",
+            "compositor pipeline BGRA sRGB",
+        );
+        #[cfg(target_os = "windows")]
+        let pipeline_bgra_linear = create_compositor_pipeline(
+            &device,
+            &pipeline_layout,
+            &shader,
+            wgpu::TextureFormat::Bgra8Unorm,
+            "compositor pipeline BGRA linear",
         );
 
         // ── identity LUT（2×2×2，采样输出 = 输入） ──
@@ -1077,8 +1090,10 @@ impl Compositor {
             device,
             queue,
             pipeline,
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            #[cfg(target_os = "macos")]
             pipeline_bgra,
+            #[cfg(target_os = "windows")]
+            pipeline_bgra_linear,
             sampler,
             bind_group_layout: bgl,
             textures: HashMap::new(),
@@ -1603,9 +1618,15 @@ impl Compositor {
                 multiview_mask: None,
             });
 
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            #[cfg(target_os = "macos")]
             let render_pipeline = if output_tex.format() == wgpu::TextureFormat::Bgra8UnormSrgb {
                 &self.pipeline_bgra
+            } else {
+                &self.pipeline
+            };
+            #[cfg(target_os = "windows")]
+            let render_pipeline = if output_tex.format() == wgpu::TextureFormat::Bgra8Unorm {
+                &self.pipeline_bgra_linear
             } else {
                 &self.pipeline
             };

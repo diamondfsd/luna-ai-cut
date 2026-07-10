@@ -418,9 +418,78 @@ static std::vector<uint8_t> read_frame_rgba(
             DWORD max_len = 0, cur_len = 0;
             hr = buffer->Lock(&data, &max_len, &cur_len);
             if (FAILED(hr) || !data) {
+                // Lock failed — buffer may be a DXGI surface from HW decode.
+                // Fall back to D3D11 staging texture readback.
+                buffer->Unlock();
+
+                IMFDXGIBuffer *dxgi_buf = nullptr;
+                hr = buffer->QueryInterface(IID_PPV_ARGS(&dxgi_buf));
+                if (FAILED(hr) || !dxgi_buf) {
+                    buffer->Release();
+                    luna_write_error(error_buffer, error_length,
+                        "Cannot lock frame buffer (no DXGI fallback)");
+                    return {};
+                }
+
+                ID3D11Texture2D *gpu_tex = nullptr;
+                UINT sub = 0;
+                hr = dxgi_buf->GetResource(IID_PPV_ARGS(&gpu_tex), &sub);
+                dxgi_buf->Release();
+                if (FAILED(hr) || !gpu_tex) {
+                    buffer->Release();
+                    luna_write_error(error_buffer, error_length,
+                        "DXGI buffer: GetResource failed");
+                    return {};
+                }
+
+                D3D11_TEXTURE2D_DESC tex_desc = {};
+                gpu_tex->GetDesc(&tex_desc);
+                tex_desc.Usage = D3D11_USAGE_STAGING;
+                tex_desc.BindFlags = 0;
+                tex_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+                tex_desc.MiscFlags = 0;
+
+                ID3D11Texture2D *staging = nullptr;
+                hr = dec->d3d11_device->CreateTexture2D(&tex_desc, nullptr, &staging);
+                if (FAILED(hr) || !staging) {
+                    gpu_tex->Release();
+                    buffer->Release();
+                    luna_write_error(error_buffer, error_length,
+                        "DXGI fallback: CreateTexture2D staging failed");
+                    return {};
+                }
+
+                ID3D11DeviceContext *ctx = nullptr;
+                dec->d3d11_device->GetImmediateContext(&ctx);
+                ctx->CopyResource(staging, gpu_tex);
+
+                D3D11_MAPPED_SUBRESOURCE mapped = {};
+                hr = ctx->Map(staging, 0, D3D11_MAP_READ, 0, &mapped);
+                if (FAILED(hr)) {
+                    ctx->Release();
+                    staging->Release();
+                    gpu_tex->Release();
+                    buffer->Release();
+                    luna_write_error(error_buffer, error_length,
+                        "DXGI fallback: Map staging failed");
+                    return {};
+                }
+
+                std::vector<uint8_t> result(dec->frame_bytes);
+                UINT src_pitch = mapped.RowPitch;
+                UINT dst_pitch = dec->output_width * 4;
+                for (UINT row = 0; row < dec->output_height; row++) {
+                    memcpy(result.data() + row * dst_pitch,
+                           (BYTE *)mapped.pData + row * src_pitch,
+                           dst_pitch);
+                }
+
+                ctx->Unmap(staging, 0);
+                ctx->Release();
+                staging->Release();
+                gpu_tex->Release();
                 buffer->Release();
-                luna_write_error(error_buffer, error_length, "Cannot lock frame buffer");
-                return {};
+                return result;
             }
 
             std::vector<uint8_t> result(dec->frame_bytes);
@@ -499,9 +568,11 @@ struct LunaVideoWriter {
         desc.Height = height;
         desc.DepthOrArraySize = 1;
         desc.MipLevels = 1;
-        // B8G8R8A8_UNORM_SRGB matches wgpu::TextureFormat::Bgra8UnormSrgb
-        // which is the format our compositor pipeline_bgra renders into.
-        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        // B8G8R8A8_UNORM (linear) — matches wgpu Bgra8Unorm and
+        // MFVideoFormat_ARGB32 expected by the hardware encoder MFT.
+        // Using UNORM (not SRGB) avoids MF_E_TRANSFORM_STREAM_CHANGE
+        // on Intel iGPU and other encoders that reject sRGB DXGI surfaces.
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
         desc.SampleDesc.Count = 1;
         desc.SampleDesc.Quality = 0;
         desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -509,7 +580,7 @@ struct LunaVideoWriter {
                    | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
 
         D3D12_CLEAR_VALUE clear_value = {};
-        clear_value.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        clear_value.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
 
         ID3D12Resource *resource = nullptr;
         HRESULT hr = d3d12_device->CreateCommittedResource(
@@ -916,6 +987,13 @@ bool luna_av_writer_append_frame(
 
     HRESULT hr = writer->writer->WriteSample(
         writer->stream_index, frame->sample);
+
+    // MF_E_TRANSFORM_STREAM_CHANGE: encoder renegotiated output format.
+    // SinkWriter handles this internally — just retry WriteSample.
+    if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
+        hr = writer->writer->WriteSample(
+            writer->stream_index, frame->sample);
+    }
 
     if (FAILED(hr)) {
         char msg[256];
