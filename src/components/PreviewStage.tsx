@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
-import { Play, Pause } from 'lucide-react'
 import { LrcRender } from './LrcRender'
 import { VideoDomPreviewLrcRender } from './VideoDomPreviewLrcRender'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
-import { LivePhotoBadge } from '../ui'
+import { LivePhotoBadge, VideoControls } from '../ui'
 import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
@@ -178,8 +177,7 @@ export function PreviewStage(
     }
   }
 
-  function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
-    const time = Number(e.target.value)
+  function handleSeek(time: number) {
     if (videoRef.current) {
       videoRef.current.currentTime = time
     }
@@ -212,13 +210,6 @@ export function PreviewStage(
   function toggleLivePhoto() {
     if (!liveVideoUrl) return
     setLivePlaying((current) => !current)
-  }
-
-  function formatTime(t: number): string {
-    if (!Number.isFinite(t) || t < 0) return '0:00'
-    const m = Math.floor(t / 60)
-    const s = Math.floor(t % 60)
-    return `${m}:${String(s).padStart(2, '0')}`
   }
 
   useEffect(() => {
@@ -368,7 +359,7 @@ export function PreviewStage(
   return (
     <div
       ref={stageRef}
-      className="preview-stage"
+      className="preview-stage ui-video-controls-host"
       data-crop-active={cropActive ? '' : undefined}
       data-media-aspect-ratio={aspectRatio ?? undefined}
     >
@@ -417,26 +408,15 @@ export function PreviewStage(
         />
       )}
       {isDisplayVideo && !livePlaying && videoRef.current && (
-        <div className="preview-video-controls">
-          <button className="preview-video-btn" onClick={togglePlay} title={playing ? '暂停' : '播放'}>
-            {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
-          </button>
-          <input
-            className="preview-video-progress"
-            type="range"
-            min={0}
-            max={duration || 0}
-            step={0.1}
-            value={currentTime}
-            onChange={handleSeek}
-            onMouseDown={handleSeekStart}
-            onMouseUp={handleSeekEnd}
-            onTouchStart={handleSeekStart}
-            onTouchEnd={handleSeekEnd}
-            aria-label="进度"
-          />
-          <span className="preview-video-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
-        </div>
+        <VideoControls
+          playing={playing}
+          currentTime={currentTime}
+          duration={duration}
+          onToggle={togglePlay}
+          onSeek={handleSeek}
+          onSeekStart={handleSeekStart}
+          onSeekEnd={handleSeekEnd}
+        />
       )}
     </div>
   )

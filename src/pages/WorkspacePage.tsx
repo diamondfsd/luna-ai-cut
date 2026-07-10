@@ -367,7 +367,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
       if ((event.ctrlKey || event.metaKey) && event.code === 'KeyC' && !cropActiveRef.current) {
         if (hasTextSelection || !workspaceStripActive) return
-        if (event.target instanceof HTMLElement && event.target.closest('.workspace-video-progress')) return
+        if (event.target instanceof HTMLElement && event.target.closest('.ui-video-controls-progress')) return
         event.preventDefault()
         copyPipelineRef.current()
         return
@@ -375,7 +375,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
       if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV' && !cropActiveRef.current) {
         if (hasTextSelection || !workspaceStripActive) return
-        if (event.target instanceof HTMLElement && event.target.closest('.workspace-video-progress')) return
+        if (event.target instanceof HTMLElement && event.target.closest('.ui-video-controls-progress')) return
         event.preventDefault()
         pastePipelineRef.current()
         return

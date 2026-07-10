@@ -1,0 +1,79 @@
+.ui-video-controls {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.ui-video-controls-host:hover .ui-video-controls,
+.ui-video-controls:focus-within {
+  opacity: 1;
+}
+
+.ui-video-controls .ui-video-controls-button {
+  flex-shrink: 0;
+  border: 0;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.ui-video-controls .ui-video-controls-button:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.ui-video-controls-progress {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 12px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.ui-video-controls-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.ui-video-controls-range {
+  position: absolute;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.ui-video-controls-thumb {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+}
+
+.ui-video-controls-thumb:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.ui-video-controls-time {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

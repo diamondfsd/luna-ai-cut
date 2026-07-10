@@ -229,12 +229,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           const src = filePathToPreviewUrl(layer.filePath) ?? layer.filePath
 
           if (existing && existing.video.src.endsWith(layer.filePath)) {
-            // 同一视频源，仅更新时间（播放中不 seek）
+            // 同一视频源，仅在时间轴位置变化时同步跳转
             const vt = layer.videoTime ?? 0
             if (Math.abs(existing.prevVideoTime - vt) > 0.01) {
-              if (!playingRef.current) {
-                existing.video.currentTime = vt
-              }
+              existing.video.currentTime = vt
               existing.prevVideoTime = vt
             }
             continue
@@ -294,6 +292,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             entry.renderH = rh
             entry.ready = true
             entry.video.currentTime = layer.videoTime ?? 0
+            if (playingRef.current) entry.video.play().catch(() => {})
             void renderFrame()
           })
 
@@ -325,24 +324,9 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       // ── 播放/暂停控制 ──
       useEffect(() => {
         if (!readyRef.current) return
-        if (playing) {
-          perfLog(`play start — seeking videos to startTime at ${(performance.now() - (window as any).__perfStart).toFixed(0)}ms`)
-        }
         for (const [, entry] of videoStatesRef.current) {
           if (!entry.ready) continue
           if (playing) {
-            // seek 到各视频层的起始时间
-            const currentLayers = layersRef.current
-            for (let i = 0; i < currentLayers.length; i++) {
-              if (currentLayers[i].isVideo) {
-                const k = videoLayerKey(currentLayers[i], i)
-                const ve = videoStatesRef.current.get(k)
-                if (ve && ve.ready) {
-                  ve.video.currentTime = currentLayers[i].videoTime ?? 0
-                  ve.prevVideoTime = currentLayers[i].videoTime ?? 0
-                }
-              }
-            }
             entry.video.play().catch(() => {})
           } else {
             entry.video.pause()
@@ -411,12 +395,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
               if (!entry || !entry.ready) continue // 视频未就绪，跳过
 
-              // 需要 seek 到新的时间点（播放中不主动 seek）
+              // 时间轴位置变化时同步跳转；普通播放不会改变 layer.videoTime
               const vt = layer.videoTime ?? 0
               if (Math.abs(entry.prevVideoTime - vt) > 0.01) {
-                if (!playingRef.current) {
-                  entry.video.currentTime = vt
-                }
+                entry.video.currentTime = vt
                 entry.prevVideoTime = vt
               }
 
