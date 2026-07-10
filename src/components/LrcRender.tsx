@@ -9,7 +9,7 @@ import {
 import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
-import { useImageLayerInteraction } from './useImageLayerInteraction'
+import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import './LrcRender.css'
 
 const PREVIEW_TEXTURE_MAX_SIDE = 2560 // 从 1920 降低到 1280，减少 56% 数据量
@@ -38,11 +38,9 @@ export interface LrcRenderProps {
   canvasWidth?: number
   canvasHeight?: number
   onVideoElement?: (el: HTMLVideoElement | null) => void
-  /** 允许交互的图片图层下标；默认启用所有普通图片，传空数组可关闭。 */
+  /** 允许画布查看交互的图片图层下标；默认包含所有普通图片，传空数组可关闭。 */
   interactiveImageLayerIndexes?: readonly number[]
-  /** 图层交互后的完整图层列表。组件会立即预览变更，调用方可用此回调持久化结果。 */
-  onLayersChange?: (layers: PreviewLayer[]) => void
-  /** 相对于图层初始尺寸的最小/最大缩放倍数。 */
+  /** 相对于画布适配尺寸的最小/最大查看倍数。 */
   minImageScale?: number
   maxImageScale?: number
 }
@@ -117,7 +115,6 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     canvasHeight,
     onVideoElement,
     interactiveImageLayerIndexes,
-    onLayersChange,
     minImageScale = 0.25,
     maxImageScale = 8,
   },
@@ -127,16 +124,13 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
   const rafRef = useRef(0)
-  const imageInteraction = useImageLayerInteraction({
+  const imageInteraction = useCanvasViewportInteraction({
     layers,
-    canvasRef,
     interactiveImageLayerIndexes,
-    onLayersChange,
     minImageScale,
     maxImageScale,
   })
-  const { effectiveLayers } = imageInteraction
-  const layersRef = useRef<PreviewLayer[]>(effectiveLayers)
+  const layersRef = useRef<PreviewLayer[]>(layers)
   const videosRef = useRef<Map<string, HTMLVideoElement>>(new Map())
   const videoElementCalledRef = useRef(false)
   const renderingRef = useRef(false)
@@ -147,7 +141,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const seekStartTimeRef = useRef<number | null>(null) // 记录 seek 开始时间
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
-  layersRef.current = effectiveLayers
+  layersRef.current = layers
 
   useEffect(() => {
     const lrc = getLRC()
@@ -245,7 +239,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     lastMediaSizeRef.current = [0, 0]
 
     if (!ready) return
-    const currentKeys = new Set(effectiveLayers.filter((layer) => layer.isVideo).map(layerKey))
+    const currentKeys = new Set(layers.filter((layer) => layer.isVideo).map(layerKey))
 
     for (const [key, video] of videosRef.current) {
       if (!currentKeys.has(key)) {
@@ -259,7 +253,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       onVideoElement?.(null)
     }
 
-    for (const layer of effectiveLayers.filter((item) => item.isVideo)) {
+    for (const layer of layers.filter((item) => item.isVideo)) {
       const key = layerKey(layer)
       if (videosRef.current.has(key)) continue
       const video = document.createElement('video')
@@ -295,10 +289,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     }
 
     void renderPreviewFrame()
-  }, [effectiveLayers, ready])
+  }, [layers, ready])
 
   useEffect(() => {
-    if (!ready || !effectiveLayers.some((layer) => layer.isVideo)) return
+    if (!ready || !layers.some((layer) => layer.isVideo)) return
 
     function loop() {
       const hasPlayingVideo = [...videosRef.current.values()].some((video) => !video.paused && !video.ended)
@@ -315,7 +309,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
     rafRef.current = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [ready, effectiveLayers])
+  }, [ready, layers])
 
   useImperativeHandle(ref, () => ({
     async exportImage(outputPath: string, width: number, height: number, format: string, quality: number) {
@@ -372,6 +366,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     <canvas
       ref={canvasRef as React.Ref<HTMLCanvasElement>}
       className={canvasClassName}
+      style={imageInteraction.style}
       onPointerDown={imageInteraction.onPointerDown}
       onPointerMove={imageInteraction.onPointerMove}
       onPointerUp={imageInteraction.onPointerEnd}
@@ -389,7 +384,6 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     prevProps.className === nextProps.className &&
     prevProps.minImageScale === nextProps.minImageScale &&
     prevProps.maxImageScale === nextProps.maxImageScale &&
-    prevProps.onLayersChange === nextProps.onLayersChange &&
     JSON.stringify(prevProps.interactiveImageLayerIndexes) === JSON.stringify(nextProps.interactiveImageLayerIndexes) &&
     layersEqual(prevProps.layers, nextProps.layers)
   )

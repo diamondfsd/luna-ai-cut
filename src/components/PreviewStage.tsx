@@ -379,6 +379,7 @@ export function PreviewStage(
               layers={layers}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
+              interactiveImageLayerIndexes={cropActive ? [] : undefined}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
             />
