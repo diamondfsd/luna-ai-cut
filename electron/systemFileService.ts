@@ -14,6 +14,11 @@ export async function revealFile(filePath: string): Promise<void> {
   }
 }
 
+export async function openPhotosApp(): Promise<void> {
+  if (process.platform !== 'darwin') return
+  await shell.openPath('/System/Applications/Photos.app')
+}
+
 export async function openPath(targetPath: string): Promise<void> {
   // 如果是 HTTP/HTTPS URL，用默认浏览器打开
   if (/^https?:\/\//i.test(targetPath)) {

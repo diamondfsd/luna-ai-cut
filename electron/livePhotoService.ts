@@ -264,6 +264,9 @@ export async function combineLivePhoto(
   if (appleExportFolder) {
     const baseName = path.basename(appleExportFolder)
     await exportAppleLivePhotoPair(processedImage, processedVideo, appleExportFolder, baseName, onProgress)
+    // Apple Live Photo 不需要合成 Google Motion Photo 格式的 .jpg
+    onProgress?.(100)
+    return
   }
   onProgress?.(50)
 
