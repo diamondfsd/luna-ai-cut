@@ -560,7 +560,9 @@ fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     })
 }
 
-/// 创建 RGBA8 纹理（输入/输出通用）
+/// 创建 RGBA8 纹理
+/// - `srgb=true`：用于源图纹理和输出帧缓冲（sRGB 编码），GPU 自动做 sRGB↔linear 转换
+/// - `srgb=false`：用于 LUT 等数据纹理（线性空间数据）
 fn create_rgba_texture(
     device: &wgpu::Device,
     label: &str,
@@ -568,7 +570,13 @@ fn create_rgba_texture(
     height: u32,
     usage: wgpu::TextureUsages,
     mip_level_count: u32,
+    srgb: bool,
 ) -> wgpu::Texture {
+    let format = if srgb {
+        wgpu::TextureFormat::Rgba8UnormSrgb
+    } else {
+        wgpu::TextureFormat::Rgba8Unorm
+    };
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
         size: wgpu::Extent3d {
@@ -579,7 +587,7 @@ fn create_rgba_texture(
         mip_level_count,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8Unorm,
+        format,
         usage,
         view_formats: &[],
     })
@@ -879,7 +887,7 @@ impl Compositor {
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
                     blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -958,6 +966,7 @@ impl Compositor {
         );
 
         // 单 level + bilinear，Lanczos 预缩到接近渲染尺寸
+        // sRGB 格式：GPU 自动做 sRGB→linear 转换，使双线性插值和色彩混合在正确的色彩空间进行
         let texture = create_rgba_texture(
             &self.device,
             "layer",
@@ -965,6 +974,7 @@ impl Compositor {
             height,
             wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             1,
+            true,
         );
         upload_rgba(&self.queue, &texture, &data[..expected], width, height);
 
@@ -1387,6 +1397,7 @@ impl Compositor {
                     canvas_height,
                     wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
                     1,
+                    true,
                 ),
                 canvas_width,
                 canvas_height,
@@ -2077,7 +2088,17 @@ impl Compositor {
                 if let Some(tid) = cached {
                     tid
                 } else {
-                    let (rgba, w, h) = decode_static_image_scaled(ffmpeg, ffprobe, &layer.file_path, decode_max_side)?;
+                    // 对带 positioning 的层，先探测源图尺寸，计算最优解码尺寸
+                    // 用 ffmpeg Lanczos 预降采样到接近显示尺寸，减少 GPU 双线性降采样导致的锯齿
+                    let layer_decode_max = probe_static_image_dimensions(ffprobe, &layer.file_path)
+                        .map(|(sw, sh)| calc_optimal_decode_max_edge(
+                            &layer.positioning,
+                            width, height,
+                            sw, sh,
+                            decode_max_side,
+                        ))
+                        .unwrap_or(decode_max_side);
+                    let (rgba, w, h) = decode_static_image_scaled(ffmpeg, ffprobe, &layer.file_path, layer_decode_max)?;
                     let tid = self.load_texture(&rgba, w, h)?;
                     self.cache_static_texture(layer.file_path.clone(), tid)?;
                     tid
@@ -2383,4 +2404,78 @@ fn rotation_from_orientation_tag(value: &serde_json::Value) -> Option<i32> {
         "8" => Some(270),
         _ => None,
     }
+}
+
+/// 探测静态图片的像素尺寸（已考虑 EXIF 旋转），返回 (width, height)
+fn probe_static_image_dimensions(ffprobe: &str, path: &str) -> Result<(u32, u32), String> {
+    let output = Command::new(ffprobe)
+        .args([
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_streams",
+            "-show_frames",
+            "-read_intervals", "%+#1",
+            path,
+        ])
+        .output()
+        .map_err(|e| format!("ffprobe {}: {}", path, e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).map_err(|e| format!("ffprobe json: {}", e))?;
+    let frame = parsed["frames"].as_array().and_then(|frames| {
+        frames.iter().find(|f| f["media_type"].as_str() == Some("video"))
+    });
+    let stream = parsed["streams"].as_array().and_then(|streams| {
+        streams.iter().find(|s| s["codec_type"].as_str() == Some("video"))
+    });
+    let encoded_w = frame.and_then(|f| f["width"].as_u64())
+        .or_else(|| stream.and_then(|s| s["width"].as_u64()))
+        .unwrap_or(0) as u32;
+    let encoded_h = frame.and_then(|f| f["height"].as_u64())
+        .or_else(|| stream.and_then(|s| s["height"].as_u64()))
+        .unwrap_or(0) as u32;
+    if encoded_w == 0 || encoded_h == 0 {
+        return Err(format!("invalid image size in {}", path));
+    }
+    let rotation = image_rotation_degrees(frame, stream);
+    let (source_w, source_h) = if rotation == 90 || rotation == 270 {
+        (encoded_h, encoded_w)
+    } else {
+        (encoded_w, encoded_h)
+    };
+    Ok((source_w, source_h))
+}
+
+/// 根据层的 positioning、画布尺寸和源图尺寸，计算层在画布上的显示像素尺寸，
+/// 返回最优解码最大边长（1.5x 过采样，不超出 fallback_max_edge）。
+/// 无 positioning 时返回 fallback_max_edge（保持原行为）。
+fn calc_optimal_decode_max_edge(
+    positioning: &Option<crate::LayerPositioning>,
+    canvas_width: Option<u32>,
+    canvas_height: Option<u32>,
+    source_width: u32,
+    source_height: u32,
+    fallback_max_edge: u32,
+) -> u32 {
+    let (cw, ch) = match (canvas_width, canvas_height) {
+        (Some(cw), Some(ch)) => (cw as f64, ch as f64),
+        _ => return fallback_max_edge,
+    };
+    let pos = match positioning {
+        Some(p) => p,
+        None => return fallback_max_edge,
+    };
+    let canvas_aspect = cw / ch.max(1.0);
+    let tex_aspect = source_width as f64 / source_height.max(1) as f64;
+
+    // 与 resolve_positioning 一致的计算
+    let dst_w_uv = pos.target_width;
+    let dst_h_uv = dst_w_uv * canvas_aspect / tex_aspect;
+
+    let dst_w_px = (dst_w_uv * cw).ceil().max(1.0);
+    let dst_h_px = (dst_h_uv * ch).ceil().max(1.0);
+
+    // 1.5x 过采样：保留一些多余细节让 GPU 双线性做最后的微量缩放
+    let optimal = (dst_w_px.max(dst_h_px) * 1.5).ceil() as u32;
+    optimal.min(fallback_max_edge).max(1)
 }
