@@ -56,7 +56,7 @@ let activeExportControllers = new Map<string, AbortController>()
 const activeExportEncoders = new Map<string, import('node:child_process').ChildProcessWithoutNullStreams>()
 const previewCacheTasks = new Map<string, Promise<boolean>>()
 const videoFrameRateTasks = new Map<string, Promise<number | null>>()
-const enqueuePreviewTask = createPreviewTaskQueue(10)
+const enqueuePreviewTask = createPreviewTaskQueue(2)
 
 /** 停止所有客户端的保活并清理 */
 function stopAllKeepAlive(): void {
