@@ -268,3 +268,39 @@
 .triple-stitch-wm-btn.active span {
   color: var(--blue, #06c);
 }
+
+/* ── 导出格式多选 ── */
+.triple-stitch-export-formats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.triple-stitch-export-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #1f1f1f;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.triple-stitch-export-check:hover {
+  background: #2a2a2a;
+}
+
+.triple-stitch-export-check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue, #06c);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.triple-stitch-export-check span {
+  font-size: 13px;
+  color: #d0d0d0;
+  user-select: none;
+}
