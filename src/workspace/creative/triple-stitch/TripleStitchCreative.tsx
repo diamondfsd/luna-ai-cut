@@ -117,6 +117,7 @@ function compositionApi(): LunaCompositionExportApi {
 }
 
 export function TripleStitchCreative() {
+  console.log(`[Perf] TripleStitchCreative mount at ${performance.now().toFixed(0)}ms`)
   const media = useWorkspaceMedia()
   const [selectedIds, setSelectedIds] = useState<string[]>(() => media.media.slice(0, 3).map((asset) => asset.id))
   const [activeSlot, setActiveSlot] = useState(0)
