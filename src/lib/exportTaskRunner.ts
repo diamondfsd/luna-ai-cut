@@ -6,7 +6,7 @@
  */
 import { useCallback } from 'react'
 
-import { useApp } from '../context/AppContext'
+import { useExportProgress } from '../context/ExportProgressContext'
 import type { ExportProgress } from '../shared/types'
 
 /** 单个导出项定义 */
@@ -58,7 +58,7 @@ async function runWithConcurrency<T>(
  * ```
  */
 export function useExportTaskRunner() {
-  const { setExportProgress, setExporting } = useApp()
+  const { setExportProgress, setExporting } = useExportProgress()
 
   const runExportTask = useCallback(async (options: {
     taskName: string

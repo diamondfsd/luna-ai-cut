@@ -38,7 +38,8 @@ interface WorkspacePageProps {
 }
 
 export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
-  console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspacePage render mode=${workspaceMode} creative=${creativeModeId}`)
+  // 非活跃时不渲染：AppRoute 的 preserve 只隐藏不卸载，不跳过会导致 context 消费者持续响应全局 state 变化
+  if (!pageActive) return null
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
 

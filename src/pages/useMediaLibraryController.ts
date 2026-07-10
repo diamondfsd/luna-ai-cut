@@ -3,6 +3,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import type { DownloadProgress, LunaFile, PreviewResult } from '../shared/types'
 import { useMediaLibraryTransferActions } from './useMediaLibraryTransferActions'
 import { useApp } from '../context/AppContext'
+import { useDownloadProgress } from '../context/DownloadProgressContext'
+import { useExportProgress } from '../context/ExportProgressContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { logger } from '../lib/rendererLogger'
 
@@ -32,7 +34,9 @@ function groupFiles(files: LunaFile[]): Array<[string, LunaFile[]]> {
  * 不再需要父组件通过 props 传递。
  */
 export function useMediaLibraryController(pageType: PageType) {
-  const { settings, downloadProgress, setDownloadProgress, exportProgress } = useApp()
+  const { settings } = useApp()
+  const { exportProgress } = useExportProgress()
+  const { downloadProgress, setDownloadProgress } = useDownloadProgress()
   const { activeDevice } = useDeviceConnection()
   const isCamera = pageType === 'camera'
   const isLocal = pageType === 'local'

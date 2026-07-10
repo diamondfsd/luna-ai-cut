@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 
 import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { useApp } from '../context/AppContext'
+import { useExportProgress } from '../context/ExportProgressContext'
 import { ExportProgressModal } from './ExportProgressModal'
 import { HelpDialog } from './HelpDialog'
 import { WorkspaceModeHeader, type CreativeModeId, type WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
@@ -20,7 +21,8 @@ interface AppNavProps {
 }
 
 export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode, workspaceMode, creativeModeId, onModeChange, onCreativeModeChange }: AppNavProps) {
-  const { exportProgress, hiddenDevMode } = useApp()
+  const { hiddenDevMode } = useApp()
+  const { exportProgress } = useExportProgress()
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
