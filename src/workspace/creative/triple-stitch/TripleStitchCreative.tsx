@@ -288,9 +288,8 @@ export function TripleStitchCreative() {
   }, [slotSources, slotEdits, watermarkInfo, previewPlayback.seekTime])
   const activeEdit = slotEdits[activeSlot] ?? DEFAULT_SLOT_EDIT
   const activeSource = slotSources[activeSlot]
-  const activeAsset = slotSources[activeSlot]?.asset
-  const activeDuration = (activeAsset as { duration?: number } | undefined)?.duration
-  const startMax = Math.max(0, (typeof activeDuration === 'number' ? activeDuration : 33) - EXPORT_DURATION)
+  const activeDuration = activeSource?.duration
+  const startMax = Math.max(0, (typeof activeDuration === 'number' && activeDuration > 0 ? activeDuration : 33) - EXPORT_DURATION)
 
   function pausePreviewForEdit(): void {
     previewPlayback.pause()
