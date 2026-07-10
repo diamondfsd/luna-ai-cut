@@ -5,6 +5,8 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - test
 
 permissions:
   contents: write
@@ -29,6 +31,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust toolchain
+        run: pnpm run init:rust
 
       - name: Build macOS DMG
         env:
@@ -69,6 +74,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Setup Rust toolchain (with x64 cross-compile target)
+        env:
+          CROSS_TARGET: x86_64-apple-darwin
+        run: pnpm run init:rust
+
       - name: Build macOS x64 DMG
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -107,6 +117,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust toolchain
+        run: pnpm run init:rust
 
       - name: Build Windows NSIS
         env:
