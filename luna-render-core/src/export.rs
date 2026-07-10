@@ -68,12 +68,13 @@ pub fn cleanup_task(task_id: &str) {
 
 // ── 质量预设 ──
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum QualityPreset {
     Small,
     Standard,
     High,
     OriginalLike,
+    Custom(String),
 }
 
 impl QualityPreset {
@@ -82,7 +83,13 @@ impl QualityPreset {
             "small" => QualityPreset::Small,
             "high" => QualityPreset::High,
             "original-like" | "originallike" => QualityPreset::OriginalLike,
-            _ => QualityPreset::Standard,
+            _ => {
+                // "custom:{bitrate}" 格式 → 自定义码率（如 "custom:50000k"）
+                if let Some(bitrate_str) = s.strip_prefix("custom:") {
+                    return QualityPreset::Custom(bitrate_str.to_string());
+                }
+                QualityPreset::Standard
+            }
         }
     }
 }
