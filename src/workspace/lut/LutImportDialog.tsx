@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Dialog, toast } from '../../ui'
+import { Button, Dialog, toast } from '../../ui'
 import { lutManager } from './LutManager'
 import './LutImportDialog.css'
 
@@ -339,13 +339,13 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
             )}
           </div>
           <div className="lut-import-footer-actions">
-            <button className="lut-import-secondary-btn" onClick={() => onOpenChange(false)} disabled={importing}>
+            <Button variant="secondary" size="compact" onClick={() => onOpenChange(false)} disabled={importing}>
               {importResult ? '关闭' : '取消'}
-            </button>
+            </Button>
             {hasImportable && !importResult && (
-              <button className="lut-import-primary-btn" onClick={handleImport} disabled={importing}>
+              <Button variant="primary" size="compact" onClick={handleImport} disabled={importing}>
                 {importing ? '导入中...' : `导入 ${importableCount} 个`}
-              </button>
+              </Button>
             )}
           </div>
         </div>

@@ -169,46 +169,6 @@
   gap: 10px;
 }
 
-.workspace-export-secondary-btn,
-.workspace-export-primary-btn {
-  height: 38px;
-  min-width: 100px;
-  border-radius: 10px;
-  border: 0;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: filter 0.12s, background 0.12s;
-  font-family: inherit;
-}
-
-.workspace-export-secondary-btn {
-  color: rgba(255, 255, 255, 0.78);
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.workspace-export-secondary-btn:hover {
-  background: rgba(255, 255, 255, 0.11);
-}
-
-.workspace-export-primary-btn {
-  color: #fff;
-  background: linear-gradient(180deg, #527dff, #315eea);
-  box-shadow: 0 8px 20px rgba(55, 94, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.14);
-}
-
-.workspace-export-primary-btn:hover {
-  filter: brightness(1.06);
-}
-
-.workspace-export-primary-btn:disabled,
-.workspace-export-secondary-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  filter: none;
-}
-
 /* ── Responsive ── */
 
 @media (max-width: 600px) {
