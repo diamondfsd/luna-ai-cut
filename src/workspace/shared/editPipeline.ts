@@ -186,7 +186,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     intensity: 30,
   },
   watermark: {
-    enabled: false,
+    enabled: true,
     style: 'luna_ultra_cn',
     position: 'bottom-center',
   },
