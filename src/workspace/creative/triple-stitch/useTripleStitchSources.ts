@@ -3,11 +3,34 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { WorkspaceMediaAsset } from '../../../shared/types'
 import { toast } from '../../../ui'
 import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/creativeMedia'
+import { filePathToPreviewUrl } from '../../../lib/fileUtils'
 
 export interface TripleStitchSource extends CreativeSlotSource {
   filePath: string
   isVideo: boolean
   sourceReady: boolean
+  /** 素材真实时长（秒），用于起始时间滑块的 max 计算 */
+  duration?: number
+}
+
+/** 通过临时 video 元素获取视频文件时长 */
+function fetchVideoDuration(filePath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.muted = true
+    video.playsInline = true
+    const src = filePathToPreviewUrl(filePath) ?? filePath
+    const cleanup = () => { video.src = ''; video.load() }
+    video.onloadedmetadata = () => {
+      const d = video.duration
+      cleanup()
+      if (Number.isFinite(d) && d > 0) resolve(d)
+      else reject(new Error(`Invalid duration: ${d}`))
+    }
+    video.onerror = () => { cleanup(); reject(new Error('Failed to load video metadata')) }
+    video.src = src
+  })
 }
 
 export function useTripleStitchSources(
@@ -22,9 +45,11 @@ export function useTripleStitchSources(
       pipeline: normalizeCreativePipeline((asset as { pipeline?: unknown }).pipeline),
     })), [media, selectedIds])
   const [liveVideoPaths, setLiveVideoPaths] = useState<Record<string, string>>({})
+  const [videoDurations, setVideoDurations] = useState<Record<string, number>>({})
   const [detectedLivePhotos, setDetectedLivePhotos] = useState<Record<string, boolean>>({})
   const [failedLivePhotos, setFailedLivePhotos] = useState<Record<string, boolean>>({})
 
+  // Step 1: 检测 Live Photo
   useEffect(() => {
     let cancelled = false
     const unchecked = baseSources.filter(({ asset }) => (
@@ -43,6 +68,7 @@ export function useTripleStitchSources(
     return () => { cancelled = true }
   }, [baseSources, detectedLivePhotos])
 
+  // Step 2: 解析 Live Photo 视频路径
   useEffect(() => {
     let cancelled = false
     const unresolved = baseSources.filter(({ asset }) => {
@@ -66,7 +92,7 @@ export function useTripleStitchSources(
       const available = entries.filter((entry): entry is readonly [string, string] => Array.isArray(entry))
       const failed = entries.filter((entry): entry is string => typeof entry === 'string')
       if (available.length > 0) {
-        setLiveVideoPaths((current) => ({ ...current, ...Object.fromEntries(available) }))
+        setLiveVideoPaths((current) => ({ ...current, ...Object.fromEntries(available.map(([id, path]) => [id, path])) }))
       }
       if (failed.length > 0) {
         setFailedLivePhotos((current) => ({
@@ -79,6 +105,43 @@ export function useTripleStitchSources(
     return () => { cancelled = true }
   }, [baseSources, detectedLivePhotos, failedLivePhotos, liveVideoPaths])
 
+  // Step 3: 获取所有视频文件的时长（普通视频 + live photo 视频）
+  useEffect(() => {
+    let cancelled = false
+    const pending = baseSources
+      .map(({ asset }) => {
+        const liveStatus = asset.kind === 'video'
+          ? false
+          : asset.isLivePhoto ?? detectedLivePhotos[asset.id]
+        const liveVideoPath = liveStatus ? liveVideoPaths[asset.id] : undefined
+        const filePath = liveVideoPath ?? asset.path
+        const isVideo = asset.kind === 'video' || Boolean(liveVideoPath)
+        return { filePath, isVideo }
+      })
+      .filter(({ filePath, isVideo }) =>
+        isVideo && filePath && !videoDurations[filePath],
+      )
+
+    if (pending.length === 0) return
+
+    void Promise.all(pending.map(async ({ filePath }) => {
+      try {
+        const duration = await fetchVideoDuration(filePath)
+        return [filePath, duration] as const
+      } catch {
+        return null
+      }
+    })).then((results) => {
+      if (cancelled) return
+      const valid = results.filter((r): r is readonly [string, number] => r !== null)
+      if (valid.length > 0) {
+        setVideoDurations((current) => ({ ...current, ...Object.fromEntries(valid) }))
+      }
+    })
+
+    return () => { cancelled = true }
+  }, [baseSources, detectedLivePhotos, liveVideoPaths, videoDurations])
+
   const prevResolvedRef = useRef<TripleStitchSource[] | null>(null)
 
   const resolvedSources = useMemo(() => {
@@ -86,15 +149,17 @@ export function useTripleStitchSources(
       const liveStatus = asset.kind === 'video'
         ? false
         : asset.isLivePhoto ?? detectedLivePhotos[asset.id]
-    const liveVideoPath = liveStatus ? liveVideoPaths[asset.id] : undefined
-    const filePath = liveVideoPath ?? asset.path
-    return {
-      asset,
-      pipeline,
-      filePath,
-      isVideo: asset.kind === 'video' || Boolean(liveVideoPath),
-      sourceReady: asset.kind === 'video' || liveStatus === false || Boolean(liveVideoPath),
-    }
+      const liveVideoPath = liveStatus ? liveVideoPaths[asset.id] : undefined
+      const filePath = liveVideoPath ?? asset.path
+      const isVideo = asset.kind === 'video' || Boolean(liveVideoPath)
+      return {
+        asset,
+        pipeline,
+        filePath,
+        isVideo,
+        sourceReady: asset.kind === 'video' || liveStatus === false || Boolean(liveVideoPath),
+        duration: isVideo ? videoDurations[filePath] : undefined,
+      }
     })
 
     // 诊断日志：追踪 isVideo / filePath 变化
@@ -119,7 +184,7 @@ export function useTripleStitchSources(
     prevResolvedRef.current = result
 
     return result
-  }, [baseSources, detectedLivePhotos, liveVideoPaths])
+  }, [baseSources, detectedLivePhotos, liveVideoPaths, videoDurations])
 
   return resolvedSources
 }
