@@ -305,8 +305,12 @@ export function useMediaLibraryController(pageType: PageType) {
     try {
       const host = settings.cameraHost
       logger.info('[媒体库] 开始从设备加载文件', { host, storageFilter })
+      const tCheck = performance.now()
       await window.luna.checkConnection(host)
+      logger.info('[媒体库] checkConnection 完成', { host, elapsedMs: Math.round(performance.now() - tCheck) })
+      const tList = performance.now()
       const lunaFiles = await window.luna.listFiles(host, storageFilter)
+      logger.info('[媒体库] listFiles 完成', { host, fileCount: lunaFiles.length, elapsedMs: Math.round(performance.now() - tList) })
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
       logger.info('[媒体库] 设备文件加载完成', { host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })
       setFiles(lunaFiles)

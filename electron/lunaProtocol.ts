@@ -238,32 +238,41 @@ export class LunaClient {
   }
 
   async checkStatus(): Promise<ConnectionStatus> {
+    const t0 = performance.now()
     let httpOk = false
     let controlOk = false
     let message = '未检测到 Luna 相机'
     let httpError: string | null = null
     let controlError: string | null = null
 
+    logMainInfo(`[状态检测] 开始端口探测`, { host: this.host })
+    const t1 = performance.now()
     try {
       const endpoint = httpEndpoint(this.host)
       const socket = await connectSocket(endpoint.host, endpoint.port, 1500)
       socket.destroy()
       httpOk = true
+      logMainInfo(`[状态检测] HTTP 端口探测成功`, { host: this.host, hostPort: `${endpoint.host}:${endpoint.port}`, elapsedMs: Math.round(performance.now() - t1) })
     } catch (error) {
       httpError = error instanceof Error ? error.message : String(error)
       message = `服务不可用：${httpError}`
+      logMainWarn(`[状态检测] HTTP 端口探测失败`, { host: this.host, elapsedMs: Math.round(performance.now() - t1), error: httpError })
     }
 
+    const t2 = performance.now()
     if (this.controlSession?.isOpen) {
       controlOk = true
+      logMainInfo(`[状态检测] 控制端口已存活（跳过探测）`, { host: this.host })
     } else {
       try {
         const socket = await connectSocket(tcpHost(this.host), this.controlPort, 1500)
         socket.destroy()
         controlOk = true
+        logMainInfo(`[状态检测] 控制端口探测成功`, { host: this.host, port: this.controlPort, elapsedMs: Math.round(performance.now() - t2) })
       } catch (error) {
         controlError = error instanceof Error ? error.message : String(error)
         message = `控制端口不可用：${controlError}`
+        logMainWarn(`[状态检测] 控制端口探测失败`, { host: this.host, elapsedMs: Math.round(performance.now() - t2), error: controlError })
       }
     }
 
@@ -271,7 +280,7 @@ export class LunaClient {
       message = '已检测到 Luna 相机'
     }
 
-    logMainInfo(`[状态检测] 端口检测结果`, { host: this.host, httpOk, controlOk, httpError, controlError, message })
+    logMainInfo(`[状态检测] 端口检测完成`, { host: this.host, httpOk, controlOk, totalElapsedMs: Math.round(performance.now() - t0), httpError, controlError, message })
     return { host: this.host, httpOk, controlOk, message, deviceInfo: this.deviceInfo }
   }
 
@@ -303,8 +312,10 @@ export class LunaClient {
     logMainInfo(`[文件读取] 发起文件列表请求`, { url, host: this.host, cameraPath })
     const t0 = performance.now()
 
+    const tBeforeConnect = performance.now()
     try {
       await this.connectUnlocked()
+      logMainInfo(`[文件读取] 控制会话建立完成`, { host: this.host, elapsedMs: Math.round(performance.now() - tBeforeConnect) })
     } catch (error) {
       logMainWarn(`[文件读取] 控制会话不可用，继续使用 HTTP 目录列表`, {
         host: this.host,
@@ -321,6 +332,8 @@ export class LunaClient {
           await new Promise((resolve) => setTimeout(resolve, retryDelay))
         }
 
+        const tFetch = performance.now()
+        logMainInfo(`[HTTP读取] 发起 HTTP GET`, { url, attempt: attempt + 1, sinceStartMs: Math.round(tFetch - t0) })
         const response = await fetch(url, {
           headers: {
             'User-Agent': 'LunaAI-Cut/0.1',
@@ -328,6 +341,8 @@ export class LunaClient {
             'Cache-Control': 'no-cache',
           },
         })
+
+        logMainInfo(`[HTTP读取] HTTP 响应收到`, { url, status: response.status, attempt: attempt + 1, fetchElapsedMs: Math.round(performance.now() - tFetch) })
 
         lastStatus = response.status
         logMainDebug(`[HTTP读取] 响应状态`, { url, status: response.status, attempt: attempt + 1 })

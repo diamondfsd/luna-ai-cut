@@ -18,6 +18,7 @@ import {
   previewCacheDir,
   previewFile,
   previewLivePhoto,
+  resolveExistingCache,
   resolveLocalThumbnails,
   revealFile,
 } from './fileService'
@@ -91,55 +92,85 @@ export function register(ctx: IpcContext): void {
 
     logMainInfo(`[缓存] 开始缓存文件`, { key, fileName: file.name, kind: file.kind })
 
-    const task = ctx.enqueuePreviewTask(async () => {
-      let cacheFilePath: string | null = null
-      try {
-        cacheFilePath = await cacheFile(file)
-        if (cacheFilePath) {
-          const cacheDir = await previewCacheDir()
-          const thumbDir = thumbnailDir(cacheDir)
-          const thumbnailKey = file.downloadName || file.name
-          const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
-          if (thumbPath) {
-            const thumbnailUrl = pathToFileURL(thumbPath).toString()
-            ctx.win?.webContents.send('luna:thumbnail-ready', {
-              fileId: file.id,
-              fileName: file.name,
-              downloadName: file.downloadName,
-              cacheFilePath,
-              thumbnailUrl,
-            })
-          } else {
-            logMainWarn(`[缓存] 缩略图生成失败，清理损坏的缓存文件`, { key, fileName: file.name, cacheFilePath })
-            await rm(cacheFilePath, { force: true, maxRetries: 3 }).catch(() => {})
-            ctx.win?.webContents.send('luna:thumbnail-ready', {
-              fileId: file.id,
-              fileName: file.name,
-              downloadName: file.downloadName,
-              cacheFilePath: null,
-              thumbnailUrl: null,
-            })
-          }
-        }
-        if (!cacheFilePath) {
-          logMainWarn(`[缓存] 缓存文件失败`, { key, fileName: file.name })
-        }
-        return cacheFilePath !== null
-      } catch (err) {
-        logMainError(`[缓存] 缓存任务异常`, {
-          key,
+    // 先用标记占位，防止并发调用重复检查
+    const marker = Promise.resolve(true)
+    ctx.previewCacheTasks.set(key, marker)
+
+    try {
+      // 快速检查：已有缓存则直接返回，不进入下载队列
+      const existingPath = await resolveExistingCache(file)
+      if (existingPath) {
+        logMainInfo(`[缓存] 缓存已存在，跳过下载`, { key, existingPath })
+        const cacheDir = await previewCacheDir()
+        const thumbDir = thumbnailDir(cacheDir)
+        const thumbnailKey = file.downloadName || file.name
+        const thumbPath = await enqueueThumbnailGeneration(existingPath, thumbDir, thumbnailKey, file.kind, file.name)
+        ctx.win?.webContents.send('luna:thumbnail-ready', {
+          fileId: file.id,
           fileName: file.name,
-          kind: file.kind,
-          error: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack : undefined,
+          downloadName: file.downloadName,
+          cacheFilePath: existingPath,
+          thumbnailUrl: thumbPath ? pathToFileURL(thumbPath).toString() : null,
         })
-        return false
+        ctx.previewCacheTasks.delete(key)
+        return true
       }
-    }, 0).finally(() => {
+
+      // 无缓存，入队下载（受并发限制）
+      logMainInfo(`[缓存] 缓存不存在，入队下载`, { key })
+      const task = ctx.enqueuePreviewTask(async () => {
+        let cacheFilePath: string | null = null
+        try {
+          cacheFilePath = await cacheFile(file)
+          if (cacheFilePath) {
+            const cacheDir = await previewCacheDir()
+            const thumbDir = thumbnailDir(cacheDir)
+            const thumbnailKey = file.downloadName || file.name
+            const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
+            if (thumbPath) {
+              const thumbnailUrl = pathToFileURL(thumbPath).toString()
+              ctx.win?.webContents.send('luna:thumbnail-ready', {
+                fileId: file.id,
+                fileName: file.name,
+                downloadName: file.downloadName,
+                cacheFilePath,
+                thumbnailUrl,
+              })
+            } else {
+              logMainWarn(`[缓存] 缩略图生成失败，清理损坏的缓存文件`, { key, fileName: file.name, cacheFilePath })
+              await rm(cacheFilePath, { force: true, maxRetries: 3 }).catch(() => {})
+              ctx.win?.webContents.send('luna:thumbnail-ready', {
+                fileId: file.id,
+                fileName: file.name,
+                downloadName: file.downloadName,
+                cacheFilePath: null,
+                thumbnailUrl: null,
+              })
+            }
+          }
+          if (!cacheFilePath) {
+            logMainWarn(`[缓存] 缓存文件失败`, { key, fileName: file.name })
+          }
+          return cacheFilePath !== null
+        } catch (err) {
+          logMainError(`[缓存] 缓存任务异常`, {
+            key,
+            fileName: file.name,
+            kind: file.kind,
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          })
+          return false
+        }
+      }, 0).finally(() => {
+        ctx.previewCacheTasks.delete(key)
+      })
+      ctx.previewCacheTasks.set(key, task)
+      return task
+    } catch (err) {
       ctx.previewCacheTasks.delete(key)
-    })
-    ctx.previewCacheTasks.set(key, task)
-    return task
+      throw err
+    }
   })
 
   ipcMain.handle('luna:requestVideoFrameRate', async (_event, file: LunaFile, cachedPath?: string | null) => {
