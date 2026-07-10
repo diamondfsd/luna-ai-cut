@@ -452,20 +452,22 @@ export function TripleStitchCreative() {
 
   async function handleExportConfirm(config: VideoExportSettings): Promise<void> {
     if (!composition || busy) return
+    if (exportFormats.size === 0) {
+      toast.error('请至少选择一种导出格式')
+      return
+    }
     setBusy(true)
     setExportDialogOpen(false)
     try {
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) throw new Error('导出目录未配置')
       const stamp = Date.now()
-      const fileName = `triple-stitch-${stamp}.mp4`
-      const destinationPath = outputPath(settings.exportDir, fileName)
-      const itemId = `triple_stitch_${stamp}`
-      const task = await window.luna.exportTask.create('三拼视频导出', [
-        { id: itemId, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: destinationPath },
-      ])
+      const baseName = `triple-stitch-${stamp}`
+      const videoFileName = `${baseName}.mp4`
+      const videoPath = outputPath(settings.exportDir, videoFileName)
+      const imageFileName = `${baseName}_frame.jpg`
+      const imagePath = outputPath(settings.exportDir, imageFileName)
 
-      // 根据导出配置重新计算画布尺寸，layers 使用归一化坐标无需调整
       const resolved = resolveExportConfig(config, CANVAS_WIDTH, CANVAS_HEIGHT)
       const scaledComposition: CompositionInput = {
         ...composition,
@@ -477,17 +479,78 @@ export function TripleStitchCreative() {
         },
       }
 
-      await compositionApi().exportCompositionVideo(
-        destinationPath,
-        scaledComposition,
-        resolved.fps,
-        EXPORT_DURATION,
-        true,
-        itemId,
-        resolved.qualityPreset,
-        task.id,
-        itemId,
-      )
+      const api = compositionApi()
+
+      // 构建子任务列表（视频优先，然后是 live / appleLive）
+      const items: Array<{ id: string; sourcePath: string; outputPath: string }> = []
+      if (exportFormats.has('video')) {
+        items.push({ id: `triple_stitch_video_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: videoPath })
+      }
+      if (exportFormats.has('live')) {
+        items.push({ id: `triple_stitch_live_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_live.jpg`) })
+      }
+      if (exportFormats.has('appleLive')) {
+        items.push({ id: `triple_stitch_appleLive_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_applevideo.jpg`) })
+      }
+
+      const task = await window.luna.exportTask.create('三拼视频导出', items)
+
+      // Step 1: 导出视频（所有格式都需要）
+      if (exportFormats.has('video')) {
+        await api.exportCompositionVideo(
+          videoPath, scaledComposition, resolved.fps, EXPORT_DURATION,
+          true, `triple_stitch_video_${stamp}`, resolved.qualityPreset,
+          task.id, `triple_stitch_video_${stamp}`,
+        )
+      } else {
+        // 只导出 live/appleLive 时，仍需要视频文件但不作为独立导出项
+        await api.exportCompositionVideo(
+          videoPath, scaledComposition, resolved.fps, EXPORT_DURATION,
+          true, undefined, resolved.qualityPreset,
+        )
+      }
+
+      // Step 2: 导出 Live 图 / Apple Live 图
+      if (exportFormats.has('live') || exportFormats.has('appleLive')) {
+        // 导出静态帧作为 cover image
+        await api.exportCompositionImage(
+          imagePath, scaledComposition, 'jpeg', 100,
+          task.id, exportFormats.has('live') ? `triple_stitch_live_${stamp}` : `triple_stitch_appleLive_${stamp}`,
+        )
+
+        if (exportFormats.has('live')) {
+          try {
+            const result = await window.luna.workspace.exportRenderedLivePhoto(
+              `${baseName}_live`, imagePath, videoPath, false,
+            )
+            await window.luna.exportTask.updateItem(task.id, `triple_stitch_live_${stamp}`, {
+              status: 'done', progress: 100, destinationPath: result.path,
+            }).catch(() => {})
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error)
+            await window.luna.exportTask.updateItem(task.id, `triple_stitch_live_${stamp}`, {
+              status: 'failed', error: msg,
+            }).catch(() => {})
+          }
+        }
+
+        if (exportFormats.has('appleLive')) {
+          try {
+            const result = await window.luna.workspace.exportRenderedLivePhoto(
+              `${baseName}_appleLive`, imagePath, videoPath, true,
+            )
+            await window.luna.exportTask.updateItem(task.id, `triple_stitch_appleLive_${stamp}`, {
+              status: 'done', progress: 100, destinationPath: result.path,
+            }).catch(() => {})
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error)
+            await window.luna.exportTask.updateItem(task.id, `triple_stitch_appleLive_${stamp}`, {
+              status: 'failed', error: msg,
+            }).catch(() => {})
+          }
+        }
+      }
+
       toast.success('已加入导出任务')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error))
@@ -697,6 +760,22 @@ export function TripleStitchCreative() {
             </div>
           </div>
         )}
+
+        <div className="triple-stitch-section">
+          <div className="triple-stitch-section-title">导出格式</div>
+          <div className="triple-stitch-export-formats">
+            {(['video', 'live', ...(isMac ? ['appleLive' as ExportFormat] : [])] as ExportFormat[]).map((fmt) => (
+              <label key={fmt} className="triple-stitch-export-check">
+                <input
+                  type="checkbox"
+                  checked={exportFormats.has(fmt)}
+                  onChange={() => toggleExportFormat(fmt)}
+                />
+                <span>{fmt === 'video' ? '视频导出' : fmt === 'live' ? 'Live 图导出' : 'Apple Live 图导出'}</span>
+              </label>
+            ))}
+          </div>
+        </div>
 
         <div className="triple-stitch-actions">
           <Button variant="secondary" size="compact" icon={<RotateCcw size={14} />} onClick={resetAllParameters}>
