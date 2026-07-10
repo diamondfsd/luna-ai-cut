@@ -66,7 +66,7 @@ function outputPath(exportDir: string, fileName: string): string {
 const SLOT_LOGO_TARGET_WIDTH = 0.33
 
 /** 构建单个 slot 底部居中 Logo 图层 */
-function buildSlotLogoLayer(slotIndex: number, imagePath: string, _wmAspect: number): PreviewLayer {
+function buildSlotLogoLayer(slotIndex: number, imagePath: string): PreviewLayer {
   // 用 WatermarkSettings 的 positioning 系统：
   // 以 canvas 底部为锚点，marginY 将 logo 推到各自 slot 的底部
   const marginY = (2 - slotIndex) / 3 + 0.008
@@ -96,7 +96,7 @@ function buildTripleStitchComposition(
   slots: CreativeSlotSource[],
   edits: SlotEdit[],
   lutPaths: (string | undefined)[],
-  watermarkInfo: { imagePath: string; wmAspect: number } | null,
+  watermarkInfo: { imagePath: string } | null,
 ): CompositionInput | null {
   if (slots.length !== 3) return null
 
@@ -130,7 +130,7 @@ function buildTripleStitchComposition(
   // 每个 slot 底部固定 Logo（通过 positioning 保持宽高比 + 自动定位到各 slot 底部）
   const logoLayers: CompositionInput['layers'] = watermarkInfo
     ? Array.from({ length: slots.length }, (_, i) => {
-        const logo = buildSlotLogoLayer(i, watermarkInfo.imagePath, watermarkInfo.wmAspect)
+        const logo = buildSlotLogoLayer(i, watermarkInfo.imagePath)
         return {
           id: `slot-${i + 1}-logo`,
           source: { path: logo.filePath, sourceType: 'image' as const },
@@ -182,7 +182,7 @@ export function TripleStitchCreative() {
   // ── 水印：从 Luna 设备配置读取，无开关 ──
   const defaultWmStyle = LUNA_WATERMARK_OPTIONS[0]?.value ?? 'luna_ultra_cn'
   const [watermarkStyle, setWatermarkStyle] = useState<string>(defaultWmStyle)
-  const [watermarkInfo, setWatermarkInfo] = useState<{ imagePath: string; wmAspect: number } | null>(null)
+  const [watermarkInfo, setWatermarkInfo] = useState<{ imagePath: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -191,7 +191,6 @@ export function TripleStitchCreative() {
         if (!cancelled) {
           setWatermarkInfo({
             imagePath: info.filePath,
-            wmAspect: info.width / info.height,
           })
         }
       })
@@ -238,7 +237,7 @@ export function TripleStitchCreative() {
     // 每个 slot 底部固定 Logo
     const logoLayers: PreviewLayer[] = watermarkInfo
       ? Array.from({ length: slotSources.length }, (_, i) =>
-          buildSlotLogoLayer(i, watermarkInfo.imagePath, watermarkInfo.wmAspect)
+          buildSlotLogoLayer(i, watermarkInfo.imagePath)
         )
       : []
 
@@ -298,6 +297,13 @@ export function TripleStitchCreative() {
 
   function resetActiveSlot(): void {
     updateSlotEdit(activeSlot, DEFAULT_SLOT_EDIT)
+  }
+
+  function resetAllParameters(): void {
+    setSlotEdits(Array.from({ length: 3 }, () => ({ ...DEFAULT_SLOT_EDIT })))
+    setActiveSlot(0)
+    setWatermarkStyle(defaultWmStyle)
+    previewPlayback.reset()
   }
 
   function nudgeActiveScale(delta: number): void {
@@ -625,6 +631,9 @@ export function TripleStitchCreative() {
         )}
 
         <div className="triple-stitch-actions">
+          <Button variant="secondary" size="compact" icon={<RotateCcw size={14} />} onClick={resetAllParameters}>
+            重置全部
+          </Button>
           <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!canExport} onClick={() => void handleExport()}>
             {busy ? '导出中' : '导出视频'}
           </Button>
