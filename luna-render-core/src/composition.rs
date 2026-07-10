@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{LazyLock, Mutex};
 
@@ -149,6 +149,133 @@ fn infer_composition_duration(ffprobe_path: &str, input: &CompositionInput) -> O
     })
 }
 
+/// FFmpeg fallback 临时文件路径
+fn ffmpeg_fallback_temp_path(output: &str) -> PathBuf {
+    let path = Path::new(output);
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("export.mp4");
+    path.with_file_name(format!(".{file_name}.ffmpeg-fallback-partial.mp4"))
+}
+
+/// 公共的音频合并函数 — 将第一条视频层的音频合入无声视频。
+/// 如果源无音频或合并失败，返回原始无声视频路径。
+pub(crate) fn mux_primary_audio(
+    ffmpeg_path: &str,
+    ffprobe_path: &str,
+    silent_video: &Path,
+    output_path: &str,
+    composition: &CompositionInput,
+    duration: f64,
+) -> Result<PathBuf, String> {
+    let Some(layer) = composition
+        .layers
+        .iter()
+        .find(|layer| is_video_source(&layer.source))
+    else {
+        log_write(&format!(
+            "[Export:Audio] 无视频层，跳过音频合并 output={}",
+            output_path
+        ));
+        return Ok(silent_video.to_path_buf());
+    };
+    let info = match probe_video_info(ffprobe_path, &layer.source.path) {
+        Ok(info) => info,
+        Err(error) => {
+            log_write(&format!(
+                "[Export:Audio] probe 失败，跳过音频合并: {}",
+                error
+            ));
+            return Ok(silent_video.to_path_buf());
+        }
+    };
+    if !info.audio.has_audio {
+        log_write(&format!(
+            "[Export:Audio] 源无音频轨，跳过 source={}",
+            layer.source.path
+        ));
+        return Ok(silent_video.to_path_buf());
+    }
+
+    let timing = layer.source.time.as_ref();
+    let offset = timing.and_then(|time| time.offset).unwrap_or(0.0).max(0.0);
+    if offset >= duration {
+        log_write(&format!(
+            "[Export:Audio] offset({:.2}) >= duration({:.2})，跳过",
+            offset, duration
+        ));
+        return Ok(silent_video.to_path_buf());
+    }
+    let start = timing.and_then(|time| time.start).unwrap_or(0.0).max(0.0);
+    let active_duration = timing
+        .and_then(|time| time.duration)
+        .unwrap_or(duration - offset)
+        .min(duration - offset)
+        .max(0.001);
+    let mux_output = Path::new(output_path).with_file_name(format!(
+        ".{}.audio-mux-partial.mp4",
+        Path::new(output_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("export.mp4")
+    ));
+    let _ = std::fs::remove_file(&mux_output);
+    let filter = format!("[1:a:0]asetpts=PTS-STARTPTS+{:.6}/TB[aout]", offset);
+    let mut args = vec![
+        "-y".to_string(),
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(),
+        "error".to_string(),
+        "-i".to_string(),
+        silent_video.to_string_lossy().into_owned(),
+    ];
+    if timing.and_then(|time| time.loop_enabled).unwrap_or(false) {
+        args.extend(["-stream_loop".to_string(), "-1".to_string()]);
+    }
+    args.extend([
+        "-ss".to_string(),
+        format!("{start:.6}"),
+        "-t".to_string(),
+        format!("{active_duration:.6}"),
+        "-i".to_string(),
+        layer.source.path.clone(),
+        "-filter_complex".to_string(),
+        filter,
+        "-map".to_string(),
+        "0:v:0".to_string(),
+        "-map".to_string(),
+        "[aout]".to_string(),
+        "-c:v".to_string(),
+        "copy".to_string(),
+        "-c:a".to_string(),
+        "aac".to_string(),
+        "-b:a".to_string(),
+        "192k".to_string(),
+        "-t".to_string(),
+        format!("{duration:.6}"),
+        "-movflags".to_string(),
+        "+faststart".to_string(),
+        mux_output.to_string_lossy().into_owned(),
+    ]);
+    log_write(&format!(
+        "[Export:Audio] 开始音频合并 source={} offset={:.3} start={:.3} duration={:.3}",
+        layer.source.path, offset, start, active_duration
+    ));
+    let result = Command::new(ffmpeg_path)
+        .args(&args)
+        .output()
+        .map_err(|error| format!("启动音频合成失败: {error}"))?;
+    if !result.status.success() {
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        log_write(&format!("[Export:Audio] 音频合并失败: {}", stderr.trim()));
+        return Err(format!("音频合成失败: {}", stderr.trim()));
+    }
+    log_write(&format!("[Export:Audio] 音频合并成功 output={}", mux_output.display()));
+    std::fs::remove_file(silent_video).map_err(|error| format!("清理临时视频失败: {error}"))?;
+    Ok(mux_output)
+}
+
 pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<PreviewLayerInput> {
     input
         .layers
@@ -263,10 +390,79 @@ pub fn render_composition_frame_async(
 }
 
 /// ffmpeg 路径 → 最佳可用硬件 H.264 编码器缓存
+/// None 表示已检测过，无可用硬件编码器（使用 libx264）
 static HW_ENCODER_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// 检测当前 ffmpeg 可用的最佳硬件 H.264 编码器（自动缓存，只实际运行一次）
+/// 用一个 1x1 纯色帧实际测试编码器是否能正常初始化并输出
+/// 这能捕获编译支持但运行时不可用的情况（如 nvcuda.dll 缺失）
+fn test_encoder_works(ffmpeg_path: &str, encoder: &str) -> bool {
+    let mut args = vec![
+        "-y".to_string(),
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(),
+        "error".to_string(),
+        "-f".to_string(),
+        "rawvideo".to_string(),
+        "-pix_fmt".to_string(),
+        "rgba".to_string(),
+        "-s".to_string(),
+        "1x1".to_string(),
+        "-r".to_string(),
+        "1".to_string(),
+        "-i".to_string(),
+        "pipe:0".to_string(),
+        "-c:v".to_string(),
+        encoder.to_string(),
+        "-frames:v".to_string(),
+        "1".to_string(),
+        "-f".to_string(),
+        "null".to_string(),
+    ];
+    if encoder == "libx264" {
+        args.push("-preset".to_string());
+        args.push("ultrafast".to_string());
+    }
+    args.push("-".to_string()); // 输出到 stdout（null mux 会丢弃）
+
+    let result = Command::new(ffmpeg_path)
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            // 写入 4 字节 RGBA（1x1 像素）
+            if let Some(ref mut stdin) = child.stdin {
+                use std::io::Write;
+                let _ = stdin.write_all(&[0u8; 4]);
+            }
+            child.wait_with_output()
+        });
+
+    match result {
+        Ok(output) => {
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                log_write(&format!(
+                    "[Export] 编码器 {} 测试失败: {}",
+                    encoder,
+                    stderr.trim()
+                ));
+            }
+            output.status.success()
+        }
+        Err(e) => {
+            log_write(&format!("[Export] 编码器 {} 无法启动: {}", encoder, e));
+            false
+        }
+    }
+}
+
+/// 检测当前 ffmpeg 实际可用的最佳 H.264 编码器（自动缓存，只实际运行一次）
+///
+/// 与仅检查 `-encoders` 列表不同，本函数通过实际编码 1 帧来验证编码器是否能
+/// 正常初始化，从而避免编译支持但运行时驱动缺失（如 nvcuda.dll）导致的失败。
 ///
 /// 优先级: videotoolbox > nvenc > qsv > amf → fallback libx264
 fn best_hardware_encoder(ffmpeg_path: &str) -> Option<String> {
@@ -275,21 +471,32 @@ fn best_hardware_encoder(ffmpeg_path: &str) -> Option<String> {
         return result.clone();
     }
 
-    // 运行 ffmpeg -encoders 仅一次，缓存结果
-    let output = Command::new(ffmpeg_path)
+    // 先用 -encoders 列表快速过滤出"编译支持"的编码器
+    let list_output = Command::new(ffmpeg_path)
         .args(["-hide_banner", "-encoders"])
         .output()
-        .ok()
-        .and_then(|o| o.status.success().then_some(o));
-    let stdout = output
+        .ok();
+    let stdout = list_output
         .as_ref()
         .map(|o| String::from_utf8_lossy(&o.stdout))
         .unwrap_or_default();
 
-    let found = ["h264_videotoolbox", "h264_nvenc", "h264_qsv", "h264_amf"]
+    let compiled_in: Vec<&str> = ["h264_videotoolbox", "h264_nvenc", "h264_qsv", "h264_amf"]
         .iter()
-        .find(|name| stdout.contains(**name))
+        .filter(|name| stdout.contains(**name))
+        .copied()
+        .collect();
+
+    // 逐个实际测试，找到第一个能正常工作的
+    let found = compiled_in
+        .iter()
+        .find(|name| test_encoder_works(ffmpeg_path, name))
         .map(|name| name.to_string());
+
+    log_write(&format!(
+        "[Export] 编码器检测完成 (ffmpeg={}): compiled={:?}, working={:?}",
+        ffmpeg_path, compiled_in, found
+    ));
 
     cache.insert(ffmpeg_path.to_string(), found.clone());
     found
@@ -484,16 +691,25 @@ impl Task for ExportCompositionVideoTask {
         if encoder == "libx264" {
             args.extend(["-preset".to_string(), "veryfast".to_string()]);
         }
+        // 输出到临时文件，后续再合并音频
+        let fallback_temp = ffmpeg_fallback_temp_path(&self.input.output_path);
         args.extend([
             "-pix_fmt".to_string(),
             "yuv420p".to_string(),
             "-movflags".to_string(),
             "faststart".to_string(),
-            self.input.output_path.clone(),
+            fallback_temp.to_string_lossy().into_owned(),
         ]);
 
+        log_write(&format!(
+            "[Export:FFmpeg] fallback 编码开始 output={} encoder={} temp={}",
+            self.input.output_path,
+            encoder,
+            fallback_temp.display()
+        ));
+
         // 确保输出目录存在
-        if let Some(parent) = Path::new(&self.input.output_path).parent() {
+        if let Some(parent) = fallback_temp.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| napi::Error::from_reason(format!("create output dir: {}", e)))?;
         }
@@ -567,6 +783,31 @@ impl Task for ExportCompositionVideoTask {
                 stderr.trim()
             )));
         }
+        log_write(&format!(
+            "[Export:FFmpeg] fallback 编码完成，开始音频合并 temp={}",
+            fallback_temp.display()
+        ));
+        // 合并音频
+        let duration = total_frames as f64 / fps;
+        let completed_output = mux_primary_audio(
+            &self.input.ffmpeg_path,
+            &self.input.ffprobe_path,
+            &fallback_temp,
+            &self.input.output_path,
+            &self.input.composition,
+            duration,
+        )
+        .map_err(|e| napi::Error::from_reason(format!("音频合并失败: {}", e)))?;
+
+        // 重命名为最终文件
+        if Path::new(&self.input.output_path).exists() {
+            std::fs::remove_file(&self.input.output_path)
+                .map_err(|e| napi::Error::from_reason(format!("替换旧导出文件失败: {}", e)))?;
+        }
+        std::fs::rename(&completed_output, &self.input.output_path).map_err(|e| {
+            napi::Error::from_reason(format!("保存导出文件失败: {}", e))
+        })?;
+
         if let Some(ref id) = self.input.task_id {
             cleanup_task(id);
         }
