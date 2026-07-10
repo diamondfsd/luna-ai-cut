@@ -61,6 +61,13 @@ type ExportFormat = 'video' | 'live' | 'appleLive'
 
 const isMac = window.navigator.platform.includes('Mac')
 
+/** 导出格式配置（不含动态 id） */
+const EXPORT_FORMATS: Array<{ key: ExportFormat; label: string }> = [
+  { key: 'video', label: '视频' },
+  { key: 'live', label: 'Live' },
+  { key: 'appleLive', label: 'Apple Live' },
+]
+
 function outputPath(exportDir: string, fileName: string): string {
   return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
 }
@@ -72,7 +79,7 @@ const SLOT_LOGO_TARGET_WIDTH = 0.33
 function buildSlotLogoLayer(slotIndex: number, imagePath: string): PreviewLayer {
   // 用 WatermarkSettings 的 positioning 系统：
   // 以 canvas 底部为锚点，marginY 将 logo 推到各自 slot 的底部
-  const marginY = (2 - slotIndex) / 3 + 0.008
+  const marginY = (2 - slotIndex) / 3 + 0.022
 
   return {
     filePath: imagePath,
@@ -366,6 +373,7 @@ export function TripleStitchCreative() {
   }
 
   function resetAllParameters(): void {
+    setSelectedIds([])
     setSlotEdits(createDefaultSlotEdits())
     setActiveSlot(0)
     setWatermarkStyle(DEFAULT_WATERMARK_STYLE)
@@ -479,17 +487,17 @@ export function TripleStitchCreative() {
 
       const api = compositionApi()
 
-      // 构建子任务列表（视频优先，然后是 live / appleLive）
-      const items: Array<{ id: string; sourcePath: string; outputPath: string; label?: string }> = []
-      if (exportFormats.has('video')) {
-        items.push({ id: `triple_stitch_video_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: videoPath, label: '视频导出' })
-      }
-      if (exportFormats.has('live')) {
-        items.push({ id: `triple_stitch_live_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_live.jpg`), label: 'Live 图导出' })
-      }
-      if (exportFormats.has('appleLive')) {
-        items.push({ id: `triple_stitch_appleLive_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_appleLive.jpg`), label: 'Apple Live 图导出' })
-      }
+      // 导出格式定义
+      const FORMAT_DEFS = [
+        { key: 'video' as ExportFormat, id: `triple_stitch_video_${stamp}`, outputPath: videoPath, label: '视频' },
+        { key: 'live' as ExportFormat, id: `triple_stitch_live_${stamp}`, outputPath: outputPath(settings.exportDir, `${baseName}_live.jpg`), label: 'Live' },
+        { key: 'appleLive' as ExportFormat, id: `triple_stitch_appleLive_${stamp}`, outputPath: outputPath(settings.exportDir, `${baseName}_appleLive.jpg`), label: 'Apple Live' },
+      ]
+
+      // 构建子任务列表
+      const items = FORMAT_DEFS
+        .filter((f) => exportFormats.has(f.key))
+        .map((f) => ({ id: f.id, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: f.outputPath, label: f.label }))
 
       const task = await window.luna.exportTask.create('三拼创意导出', items)
 
@@ -763,14 +771,14 @@ export function TripleStitchCreative() {
         <div className="triple-stitch-section">
           <div className="triple-stitch-section-title">导出格式</div>
           <div className="triple-stitch-export-formats">
-            {(['video', 'live', ...(isMac ? ['appleLive' as ExportFormat] : [])] as ExportFormat[]).map((fmt) => (
-              <label key={fmt} className="triple-stitch-export-check">
+            {EXPORT_FORMATS.filter((f) => isMac || f.key !== 'appleLive').map((f) => (
+              <label key={f.key} className={`triple-stitch-export-chip${exportFormats.has(f.key) ? ' active' : ''}`}>
                 <input
                   type="checkbox"
-                  checked={exportFormats.has(fmt)}
-                  onChange={() => toggleExportFormat(fmt)}
+                  checked={exportFormats.has(f.key)}
+                  onChange={() => toggleExportFormat(f.key)}
                 />
-                <span>{fmt === 'video' ? '视频导出' : fmt === 'live' ? 'Live 图导出' : 'Apple Live 图导出'}</span>
+                <span>{f.label}</span>
               </label>
             ))}
           </div>

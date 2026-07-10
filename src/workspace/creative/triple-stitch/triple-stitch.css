@@ -272,35 +272,43 @@
 /* ── 导出格式多选 ── */
 .triple-stitch-export-formats {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-.triple-stitch-export-check {
+.triple-stitch-export-chip {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 6px;
+  border: 1px solid #333;
+  border-radius: 8px;
   background: #1f1f1f;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
 }
 
-.triple-stitch-export-check:hover {
-  background: #2a2a2a;
+.triple-stitch-export-chip:hover {
+  border-color: #555;
 }
 
-.triple-stitch-export-check input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--blue, #06c);
-  cursor: pointer;
-  flex-shrink: 0;
+.triple-stitch-export-chip.active {
+  border-color: var(--blue, #06c);
+  background: rgba(0, 102, 204, 0.08);
 }
 
-.triple-stitch-export-check span {
+.triple-stitch-export-chip input[type='checkbox'] {
+  display: none;
+}
+
+.triple-stitch-export-chip span {
   font-size: 13px;
   color: #d0d0d0;
-  user-select: none;
+  line-height: 1;
+}
+
+.triple-stitch-export-chip.active span {
+  color: var(--blue, #06c);
 }
