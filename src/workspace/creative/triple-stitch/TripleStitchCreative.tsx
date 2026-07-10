@@ -148,6 +148,9 @@ function compositionApi(): LunaCompositionExportApi {
 export function TripleStitchCreative() {
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] TripleStitchCreative mount at ${performance.now().toFixed(0)}ms`)
   const media = useWorkspaceMedia()
+  const renderCountRef = useRef(0)
+  renderCountRef.current++
+  // 诊断：每次渲染记录 slotSources 关键字段
   const workspaceStateKey = media.currentProject?.id
     ?? `temporary:${media.media.map((asset) => asset.id).join('|')}`
   const currentProjectRef = useRef(media.currentProject)
@@ -171,6 +174,16 @@ export function TripleStitchCreative() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const dragRef = useRef<{ slot: number; x: number; y: number; startX: number; startY: number; width: number; height: number } | null>(null)
   const slotSources = useTripleStitchSources(media.media, selectedIds)
+
+  // 诊断日志：监控 slotSources 变化（引用变化意味着重新计算了）
+  useEffect(() => {
+    console.log(
+      `[Diag] render#${renderCountRef.current} slotSources 更新，slots:`,
+      slotSources.map((s, i) => `[${i}] isVideo=${s.isVideo} isReady=${s.sourceReady} path=${s.filePath?.slice(-20)}`),
+      `media.length=${media.media.length}`,
+    )
+  }, [slotSources])
+
   const [composition, setComposition] = useState<CompositionInput | null>(null)
   const compositionVersionRef = useRef(0)
 
@@ -211,6 +224,7 @@ export function TripleStitchCreative() {
       },
     }
     currentProjectRef.current = nextProject
+    console.log(`[Diag] save effect: setCurrentProject trigger, render#${renderCountRef.current}`)
     media.setCurrentProject(nextProject)
     if (projectSaveTimerRef.current !== null) window.clearTimeout(projectSaveTimerRef.current)
     projectSaveTimerRef.current = window.setTimeout(() => {
