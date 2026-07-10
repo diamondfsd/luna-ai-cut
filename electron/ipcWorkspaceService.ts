@@ -185,10 +185,12 @@ export function register(_ctx: IpcContext): void {
     }
 
     const baseName = safeName(path.basename(name, path.extname(name)) || 'preview-live')
-    const destinationPath = path.join(settings.exportDir, `${baseName}_${Date.now()}.jpg`)
+    const destinationPath = appleLivePhoto
+      ? undefined  // Apple Live 不产出合成 .jpg，JPG+MOV 对在 appleFolder
+      : path.join(settings.exportDir, `${baseName}_${Date.now()}.jpg`)
     const appleFolder = appleLivePhoto ? path.join(settings.exportDir, `${baseName}_apple_${Date.now()}`) : undefined
     try {
-      await combineLivePhoto(imagePath, videoPath, destinationPath, appleFolder)
+      await combineLivePhoto(imagePath, videoPath, destinationPath ?? '', appleFolder)
     } finally {
       await rm(imagePath, { force: true }).catch(() => undefined)
       await rm(videoPath, { force: true }).catch(() => undefined)
@@ -196,15 +198,19 @@ export function register(_ctx: IpcContext): void {
 
     const exportId = `preview_live_${baseName}_${Date.now()}`
     const taskName = appleLivePhoto ? 'Apple Live 图导出' : 'Live 图片导出'
-    const task = await createExportTask(taskName, [{ exportId, fileName: path.basename(destinationPath), kind: 'image' }])
+    // Apple Live: 返回 appleFolder 中的 JPG 路径
+    const resultPath = appleLivePhoto && appleFolder
+      ? path.join(appleFolder, `${baseName}.jpg`)
+      : destinationPath!
+    const task = await createExportTask(taskName, [{ exportId, fileName: path.basename(resultPath), kind: 'image' }])
     const taskStart = Date.now()
     await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
       endTime: Date.now(),
       duration: Date.now() - taskStart,
-      destinationPath,
+      destinationPath: resultPath,
     })
 
-    return { path: destinationPath, name: path.basename(destinationPath) }
+    return { path: resultPath, name: path.basename(resultPath) }
   })
 
 }

@@ -38,10 +38,11 @@ function formatETA(item: ExportTaskItemRecord): string | null {
 
 /* ==================== 内联项目条 ==================== */
 
-function TaskItemRow({ item, onPreview, onRevealFile }: {
+function TaskItemRow({ item, onPreview, onRevealFile, isAppleLive }: {
   item: ExportTaskItemRecord
   onPreview: (item: ExportTaskItemRecord) => void
   onRevealFile?: (path: string) => void
+  isAppleLive?: boolean
 }) {
   const isVideo = item.kind === 'video' || item.kind === 'lrv'
   const [errorDialogOpen, setErrorDialogOpen] = useState(false)
@@ -76,7 +77,12 @@ function TaskItemRow({ item, onPreview, onRevealFile }: {
         )}
         {item.status === 'done' && item.destinationPath && (
           <>
-            <IconButton variant="ghost" onClick={() => onPreview(item)} title="预览" icon={<Eye size={13} />} />
+            <IconButton
+              variant="ghost"
+              onClick={() => isAppleLive ? window.luna.openPhotosApp() : onPreview(item)}
+              title={isAppleLive ? '打开相册查看' : '预览'}
+              icon={<Eye size={13} />}
+            />
             <IconButton variant="ghost" onClick={() => onRevealFile?.(item.destinationPath!)} title="在文件夹中显示" icon={<FileDown size={13} />} />
           </>
         )}
@@ -319,7 +325,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         expandContent={(task) => (
           <div className="et-task-items" style={{ borderTop: 'none', marginTop: 0, paddingTop: 0 }}>
             {task.items.map((item) => (
-              <TaskItemRow key={item.id} item={item} onPreview={handlePreviewItem} onRevealFile={onRevealFile} />
+              <TaskItemRow key={item.id} item={item} onPreview={handlePreviewItem} onRevealFile={onRevealFile} isAppleLive={task.name.includes('Apple Live')} />
             ))}
           </div>
         )}

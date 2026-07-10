@@ -101,6 +101,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   getDownloadedRecords: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('downloads:records', files, downloadDir),
   revealFile: (filePath: string) => ipcRenderer.invoke('files:reveal', filePath),
   openPath: (targetPath: string) => ipcRenderer.invoke('files:openPath', targetPath),
+  openPhotosApp: () => ipcRenderer.invoke('files:openPhotosApp'),
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
   aiChat: (config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) =>
     ipcRenderer.invoke('ai:chat', config, systemPrompt, messages),
