@@ -9,14 +9,11 @@ use napi::{Env, Task};
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 
-use crate::compositor::{Compositor, PreviewLayerInput};
 use crate::compositor::log_write;
+use crate::compositor::{Compositor, PreviewLayerInput};
 use crate::export::{cleanup_task, register_task, QualityPreset};
 use crate::media::probe_video_info;
-use crate::{
-    LayerPositioning, RenderColorAdjustments, RenderLayerTransform,
-    RenderPreviewOutput,
-};
+use crate::{LayerPositioning, RenderColorAdjustments, RenderLayerTransform, RenderPreviewOutput};
 
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
@@ -152,7 +149,7 @@ fn infer_composition_duration(ffprobe_path: &str, input: &CompositionInput) -> O
     })
 }
 
-fn composition_layers(input: &CompositionInput, time: f64) -> Vec<PreviewLayerInput> {
+pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<PreviewLayerInput> {
     input
         .layers
         .iter()
@@ -289,15 +286,10 @@ fn best_hardware_encoder(ffmpeg_path: &str) -> Option<String> {
         .map(|o| String::from_utf8_lossy(&o.stdout))
         .unwrap_or_default();
 
-    let found = [
-        "h264_videotoolbox",
-        "h264_nvenc",
-        "h264_qsv",
-        "h264_amf",
-    ]
-    .iter()
-    .find(|name| stdout.contains(**name))
-    .map(|name| name.to_string());
+    let found = ["h264_videotoolbox", "h264_nvenc", "h264_qsv", "h264_amf"]
+        .iter()
+        .find(|name| stdout.contains(**name))
+        .map(|name| name.to_string());
 
     cache.insert(ffmpeg_path.to_string(), found.clone());
     found
@@ -325,7 +317,9 @@ impl Task for ExportCompositionVideoTask {
             .input
             .duration
             .or(self.input.composition.canvas.duration)
-            .or_else(|| infer_composition_duration(&self.input.ffprobe_path, &self.input.composition))
+            .or_else(|| {
+                infer_composition_duration(&self.input.ffprobe_path, &self.input.composition)
+            })
             .unwrap_or(5.0)
             .max(0.1);
         let total_frames = (duration * fps).round().max(1.0) as u64;
@@ -337,8 +331,7 @@ impl Task for ExportCompositionVideoTask {
         }
 
         let encoder = if self.input.hardware.unwrap_or(true) {
-            best_hardware_encoder(&self.input.ffmpeg_path)
-                .unwrap_or_else(|| "libx264".to_string())
+            best_hardware_encoder(&self.input.ffmpeg_path).unwrap_or_else(|| "libx264".to_string())
         } else {
             "libx264".to_string()
         };
@@ -355,6 +348,59 @@ impl Task for ExportCompositionVideoTask {
             QualityPreset::OriginalLike => "80000k".to_string(),
             QualityPreset::Custom(val) => val,
         };
+
+        // macOS 优先走 CoreVideo + Metal + AVFoundation：VideoToolbox 解码得到的
+        // CVPixelBuffer 直接包装成 wgpu Texture，现有 WGSL 合成后再直接提交给
+        // VideoToolbox 编码。任何能力或素材兼容问题都会回退到原 FFmpeg 管线。
+        #[cfg(target_os = "macos")]
+        if self.input.hardware.unwrap_or(true) {
+            let bitrate_bps = bitrate
+                .trim_end_matches(['k', 'K'])
+                .parse::<u64>()
+                .unwrap_or(50_000)
+                .saturating_mul(1_000);
+            log_write(&format!(
+                "[Export:MacGPU] start output={} frames={} fps={} bitrate={}",
+                self.input.output_path, total_frames, fps, bitrate_bps,
+            ));
+            let mac_result = crate::lock_export(|compositor| {
+                compositor.clear_video_decoders();
+                crate::macos::export_video(
+                    compositor,
+                    &self.input.ffmpeg_path,
+                    &self.input.ffprobe_path,
+                    &self.input.output_path,
+                    &self.input.composition,
+                    fps,
+                    total_frames,
+                    bitrate_bps,
+                    task.as_ref(),
+                )
+            });
+            match mac_result {
+                Ok(()) => {
+                    log_write("[Export:MacGPU] completed");
+                    if let Some(ref id) = self.input.task_id {
+                        cleanup_task(id);
+                    }
+                    return Ok(());
+                }
+                Err(error) if task.as_ref().is_some_and(|state| state.is_cancelled()) => {
+                    return Err(error);
+                }
+                Err(error) => {
+                    log_write(&format!(
+                        "[Export:MacGPU] unavailable, falling back to FFmpeg: {}",
+                        error
+                    ));
+                    if let Some(ref state) = task {
+                        state
+                            .current_frame
+                            .store(0, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
+            }
+        }
 
         let mut args = vec![
             "-y".to_string(),
@@ -579,13 +625,12 @@ impl Task for ExportCompositionImageTask {
                 .map_err(|e| napi::Error::from_reason(format!("create output dir: {}", e)))?;
         }
 
-        let mut proc =
-            Command::new(&self.input.ffmpeg_path)
-                .args(&args)
-                .stdin(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|e| napi::Error::from_reason(format!("encode spawn: {}", e)))?;
+        let mut proc = Command::new(&self.input.ffmpeg_path)
+            .args(&args)
+            .stdin(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| napi::Error::from_reason(format!("encode spawn: {}", e)))?;
         if let Err(e) = proc.stdin.take().unwrap().write_all(&rgba) {
             let _ = proc.stdin.as_mut().map(|s| s.flush());
             drop(proc.stdin.take());

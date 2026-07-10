@@ -19,8 +19,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ffmpeg-next = "=8.1.0"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-metal = "0.3.2"
+
 [build-dependencies]
 napi-build = "2"
+cc = "1"
 
 [profile.release]
 lto = true

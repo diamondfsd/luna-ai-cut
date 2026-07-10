@@ -1,6 +1,8 @@
 mod composition;
 mod compositor;
 mod export;
+#[cfg(target_os = "macos")]
+mod macos;
 mod media;
 
 use std::sync::{LazyLock, Mutex};

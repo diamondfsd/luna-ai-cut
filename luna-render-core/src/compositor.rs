@@ -299,11 +299,9 @@ fn plan_cover_scale(
     let crop_center_x = crop_x + crop_w / 2.0;
     let crop_center_y = crop_y + crop_h / 2.0;
     let base_translate_x =
-        (crop_center_x - 0.5) * frame_w / base_scale
-            - (crop_center_x - 0.5) * original_frame_w;
+        (crop_center_x - 0.5) * frame_w / base_scale - (crop_center_x - 0.5) * original_frame_w;
     let base_translate_y =
-        (crop_center_y - 0.5) * frame_h / base_scale
-            - (crop_center_y - 0.5) * original_frame_h;
+        (crop_center_y - 0.5) * frame_h / base_scale - (crop_center_y - 0.5) * original_frame_h;
 
     transform.scale *= base_scale;
     transform.translate_x = Some(transform.translate_x.unwrap_or(0.0) + base_translate_x);
@@ -440,7 +438,6 @@ fn resolve_positioning(
         _ => (default_x, default_y),
     };
 
-
     (dst_x, dst_y, dst_w, dst_h)
 }
 
@@ -450,6 +447,8 @@ pub struct Compositor {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
+    #[cfg(target_os = "macos")]
+    pipeline_bgra: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
 
@@ -559,6 +558,43 @@ fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                 count: None,
             },
         ],
+    })
+}
+
+fn create_compositor_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    format: wgpu::TextureFormat,
+    label: &str,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(label),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            ..Default::default()
+        },
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        depth_stencil: None,
+        cache: None,
     })
 }
 
@@ -812,6 +848,75 @@ fn align_to(v: u32, align: u32) -> u32 {
 }
 
 impl Compositor {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn metal_device_ptr(&self) -> Result<*mut std::ffi::c_void, String> {
+        use objc2::rc::Retained;
+
+        let hal_device = unsafe { self.device.as_hal::<wgpu::hal::api::Metal>() }
+            .ok_or_else(|| "wgpu 当前没有使用 Metal 后端".to_string())?;
+        Ok(Retained::as_ptr(hal_device.raw_device()) as *mut std::ffi::c_void)
+    }
+
+    /// 将 CoreVideo 创建的 MTLTexture 包装成同一 Device 下的 wgpu Texture。
+    /// 调用方必须确保关联的 CVPixelBuffer 在返回纹理使用结束前保持存活。
+    #[cfg(target_os = "macos")]
+    pub(crate) unsafe fn wrap_external_metal_texture(
+        &self,
+        metal_texture: *mut std::ffi::c_void,
+        width: u32,
+        height: u32,
+        usage: wgpu::TextureUsages,
+        initialized: bool,
+    ) -> Result<wgpu::Texture, String> {
+        use objc2::rc::Retained;
+        use objc2::runtime::ProtocolObject;
+        use objc2_metal::{MTLTexture, MTLTextureType};
+
+        let raw = Retained::<ProtocolObject<dyn MTLTexture>>::retain(metal_texture.cast())
+            .ok_or_else(|| "Metal 视频纹理为空".to_string())?;
+        let hal_texture = unsafe {
+            wgpu::hal::metal::Device::texture_from_raw(
+                raw,
+                wgpu::TextureFormat::Bgra8UnormSrgb,
+                MTLTextureType::Type2D,
+                1,
+                1,
+                wgpu::hal::CopyExtent {
+                    width,
+                    height,
+                    depth: 1,
+                },
+                None,
+            )
+        };
+        let descriptor = wgpu::TextureDescriptor {
+            label: Some("CoreVideo Metal texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            usage,
+            view_formats: &[],
+        };
+        Ok(unsafe {
+            self.device
+                .create_texture_from_hal::<wgpu::hal::api::Metal>(
+                    hal_texture,
+                    &descriptor,
+                    if initialized {
+                        wgpu::wgt::TextureUses::RESOURCE
+                    } else {
+                        wgpu::wgt::TextureUses::UNINITIALIZED
+                    },
+                )
+        })
+    }
+
     pub fn new(log_path: Option<&str>) -> Result<Self, String> {
         // 初始化文件日志
         let path = log_path.unwrap_or("luna-rc.log");
@@ -875,45 +980,32 @@ impl Compositor {
             immediate_size: 0,
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("compositor pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..Default::default()
-            },
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            depth_stencil: None,
-            cache: None,
-        });
+        let pipeline = create_compositor_pipeline(
+            &device,
+            &pipeline_layout,
+            &shader,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            "compositor pipeline",
+        );
+        #[cfg(target_os = "macos")]
+        let pipeline_bgra = create_compositor_pipeline(
+            &device,
+            &pipeline_layout,
+            &shader,
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+            "compositor pipeline BGRA",
+        );
 
         // ── identity LUT（2×2×2，采样输出 = 输入） ──
         let identity_lut = create_identity_lut(&device, &queue);
-        log!(
-            "identity_lut created size=2x2x2 format=Rgba8Unorm"
-        );
+        log!("identity_lut created size=2x2x2 format=Rgba8Unorm");
 
         Ok(Self {
             device,
             queue,
             pipeline,
+            #[cfg(target_os = "macos")]
+            pipeline_bgra,
             sampler,
             bind_group_layout: bgl,
             textures: HashMap::new(),
@@ -1342,7 +1434,13 @@ impl Compositor {
                     ));
                 }
                 let texture = create_lut_3d_texture(&self.device, &self.queue, size, &values);
-                log!("load_lut_file path={} size={}x{}x{}", path, size, size, size);
+                log!(
+                    "load_lut_file path={} size={}x{}x{}",
+                    path,
+                    size,
+                    size,
+                    size
+                );
                 Ok(entry.insert(LutEntry { texture, size }))
             }
         }
@@ -1350,28 +1448,27 @@ impl Compositor {
 
     // ── 渲染 ──
 
-    pub fn render(
+    fn render_impl(
         &mut self,
         mut canvas_width: u32,
         mut canvas_height: u32,
         layers: &[RenderLayer],
+        readback: bool,
     ) -> Result<Vec<u8>, String> {
         // 限制画布尺寸不超过 GPU 上限，保持宽高比
         let max_dim = canvas_width.max(canvas_height);
         if max_dim > self.max_texture_size {
             log!(
                 "render: canvas {}x{} exceeds GPU limit {}, clamping",
-                canvas_width, canvas_height, self.max_texture_size
+                canvas_width,
+                canvas_height,
+                self.max_texture_size
             );
             let scale = self.max_texture_size as f64 / max_dim as f64;
             canvas_width = (canvas_width as f64 * scale).round() as u32;
             canvas_height = (canvas_height as f64 * scale).round() as u32;
         }
         let pixel_count = (canvas_width * canvas_height * 4) as usize;
-
-        if layers.is_empty() {
-            return Ok(vec![0u8; pixel_count]);
-        }
 
         // sort by z_index
         let mut sorted: Vec<&RenderLayer> = layers.iter().collect();
@@ -1433,7 +1530,15 @@ impl Compositor {
                 multiview_mask: None,
             });
 
-            rpass.set_pipeline(&self.pipeline);
+            #[cfg(target_os = "macos")]
+            let render_pipeline = if output_tex.format() == wgpu::TextureFormat::Bgra8UnormSrgb {
+                &self.pipeline_bgra
+            } else {
+                &self.pipeline
+            };
+            #[cfg(not(target_os = "macos"))]
+            let render_pipeline = &self.pipeline;
+            rpass.set_pipeline(render_pipeline);
 
             for layer in &sorted {
                 let tex_entry = self.textures.get(&layer.texture_id).ok_or_else(|| {
@@ -1458,7 +1563,7 @@ impl Compositor {
                 let fit_mode = layer.fit.as_deref().unwrap_or("stretch");
                 let target_aspect = ((layer.dst_w * canvas_width as f64).abs().max(1.0)
                     / (layer.dst_h * canvas_height as f64).abs().max(1.0))
-                    .max(0.001);
+                .max(0.001);
                 let mut planned_transform = planned_transform;
                 let cover_scale_frame = (fit_mode == "cover-scale").then(|| {
                     plan_cover_scale(&texture_info, target_aspect, &mut planned_transform)
@@ -1675,6 +1780,17 @@ impl Compositor {
             }
         }
 
+        if !readback {
+            self.queue.submit(Some(encoder.finish()));
+            self.device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: None,
+                    timeout: None,
+                })
+                .map_err(|e| format!("GPU render wait: {}", e))?;
+            return Ok(Vec::new());
+        }
+
         // copy output → staging buffer
         let row_bytes = canvas_width * 4;
         let row_padded = align_to(row_bytes, 256);
@@ -1751,6 +1867,67 @@ impl Compositor {
         staging_buf.unmap();
 
         Ok(result)
+    }
+
+    /// 渲染并回读 RGBA。预览和跨平台 FFmpeg 回退路径继续使用此入口。
+    pub fn render(
+        &mut self,
+        canvas_width: u32,
+        canvas_height: u32,
+        layers: &[RenderLayer],
+    ) -> Result<Vec<u8>, String> {
+        self.render_impl(canvas_width, canvas_height, layers, true)
+    }
+
+    /// 直接渲染到外部 wgpu 纹理，不经过 staging buffer，也不回读 CPU。
+    ///
+    /// macOS 导出会把 CoreVideo PixelBuffer 对应的 Metal Texture 包装为
+    /// wgpu::Texture 后传入这里。GPU 完成后，调用方可把原 PixelBuffer
+    /// 直接提交给 VideoToolbox 编码。
+    #[cfg(target_os = "macos")]
+    pub(crate) fn render_into_external_texture(
+        &mut self,
+        target: wgpu::Texture,
+        canvas_width: u32,
+        canvas_height: u32,
+        layers: &[RenderLayer],
+    ) -> Result<(), String> {
+        let previous = self
+            .output_texture
+            .replace((target, canvas_width, canvas_height));
+        let result = self
+            .render_impl(canvas_width, canvas_height, layers, false)
+            .map(|_| ());
+        self.output_texture.take();
+        self.output_texture = previous;
+        result
+    }
+
+    /// 注册一个由 CoreVideo/Metal 提供的外部输入纹理。
+    #[cfg(target_os = "macos")]
+    pub(crate) fn register_external_texture(
+        &mut self,
+        texture: wgpu::Texture,
+        width: u32,
+        height: u32,
+    ) -> u32 {
+        let texture_id = self.next_texture_id;
+        self.next_texture_id += 1;
+        self.textures.insert(
+            texture_id,
+            TextureEntry {
+                texture,
+                width,
+                height,
+            },
+        );
+        texture_id
+    }
+
+    /// 移除逐帧外部纹理。它们不进入静态缓存，因此不写逐帧日志。
+    #[cfg(target_os = "macos")]
+    pub(crate) fn unregister_external_texture(&mut self, texture_id: u32) {
+        self.textures.remove(&texture_id);
     }
 
     // ───────────── render_preview 统一入口 ─────────────
@@ -1884,7 +2061,9 @@ impl Compositor {
                 if self.no_video_decoder_restart {
                     log!(
                         "read_video_frame [{}] seek jump {:.3} -> {:.3}, finishing decoder",
-                        file_path, dec.current_time, video_time,
+                        file_path,
+                        dec.current_time,
+                        video_time,
                     );
                     dec.decoding_finished = true;
                     self.video_decoding_ended.insert(file_path.to_string());
@@ -1892,7 +2071,9 @@ impl Compositor {
                 } else {
                     log!(
                         "read_video_frame [{}] seek jump {:.3} -> {:.3}, restarting",
-                        file_path, dec.current_time, video_time,
+                        file_path,
+                        dec.current_time,
+                        video_time,
                     );
                     self.remove_video_decoder(file_path);
                     return self.read_video_frame(ffmpeg, ffprobe, file_path, video_time, fps);
@@ -1903,7 +2084,10 @@ impl Compositor {
             let mut rgba = vec![0u8; dec.frame_bytes];
             if dec.stdout.read_exact(&mut rgba).is_err() {
                 if self.no_video_decoder_restart {
-                    log!("read_video_frame [{}] pipe EOF, finishing decoder", file_path);
+                    log!(
+                        "read_video_frame [{}] pipe EOF, finishing decoder",
+                        file_path
+                    );
                     dec.decoding_finished = true;
                     self.video_decoding_ended.insert(file_path.to_string());
                     return Ok(None);
@@ -1976,7 +2160,12 @@ impl Compositor {
                 .unwrap_or_default();
             log!(
                 "read_first_frame FAIL [{}] time={:.3} expected={}x{} frame_bytes={} stderr=[{}]",
-                file_path, video_time, dw, dh, frame_bytes, stderr_msg
+                file_path,
+                video_time,
+                dw,
+                dh,
+                frame_bytes,
+                stderr_msg
             );
             if self.no_video_decoder_restart {
                 // 导出模式：首次解码失败 → 标记结束，不中断导出
@@ -2006,7 +2195,10 @@ impl Compositor {
 
         log!(
             "read_video_frame [{}] started at {:.3}s {}x{}",
-            file_path, video_time, dw, dh,
+            file_path,
+            video_time,
+            dw,
+            dh,
         );
         Ok(Some((rgba, dw, dh)))
     }
@@ -2042,8 +2234,7 @@ impl Compositor {
                 );
                 return Ok(Some(texture_id));
             }
-            match self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time, fps)?
-            {
+            match self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time, fps)? {
                 Some((rgba, dw, dh)) => {
                     // seek 跳转时 read_video_frame 内部可能已释放旧纹理（remove_video_decoder → release_texture）
                     if self.textures.contains_key(&texture_id) {
@@ -2088,7 +2279,6 @@ impl Compositor {
             }
         }
     }
-
 
     /// 统一渲染预览帧：静态图走 LRU 缓存，视频帧保持 ffmpeg pipe 持续读
     ///
@@ -2187,7 +2377,8 @@ impl Compositor {
             let (ow, oh) = fit_output_size(cw, ch, max_side.unwrap_or(PREVIEW_MAX_SIZE));
             log!(
                 "render_preview all layers ended, output blank {}x{}",
-                ow, oh,
+                ow,
+                oh,
             );
             return Ok((vec![0u8; (ow * oh * 4) as usize], ow, oh));
         }
@@ -2238,7 +2429,8 @@ impl Compositor {
                 (cw, ch)
             }
             None => {
-                let (frame_w, frame_h) = layer_visible_pixel_size(first_texture, &first_layer.transform);
+                let (frame_w, frame_h) =
+                    layer_visible_pixel_size(first_texture, &first_layer.transform);
                 (frame_w, frame_h)
             }
         };
@@ -2255,8 +2447,7 @@ impl Compositor {
                     plan_layer_rect(layer, texture, output_width, output_height);
                 let (src_x, src_y, src_w, src_h) =
                     plan_layer_source_rect(layer, texture, output_width, output_height);
-                let transform =
-                    plan_layer_transform(layer, texture, output_width, output_height);
+                let transform = plan_layer_transform(layer, texture, output_width, output_height);
                 crate::RenderLayer {
                     texture_id: texture.texture_id,
                     fit: Some(layer.fit.clone()),
@@ -2469,11 +2660,14 @@ fn rotation_from_orientation_tag(value: &serde_json::Value) -> Option<i32> {
 fn probe_static_image_dimensions(ffprobe: &str, path: &str) -> Result<(u32, u32), String> {
     let output = Command::new(ffprobe)
         .args([
-            "-v", "quiet",
-            "-print_format", "json",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
             "-show_streams",
             "-show_frames",
-            "-read_intervals", "%+#1",
+            "-read_intervals",
+            "%+#1",
             path,
         ])
         .output()
@@ -2482,15 +2676,21 @@ fn probe_static_image_dimensions(ffprobe: &str, path: &str) -> Result<(u32, u32)
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).map_err(|e| format!("ffprobe json: {}", e))?;
     let frame = parsed["frames"].as_array().and_then(|frames| {
-        frames.iter().find(|f| f["media_type"].as_str() == Some("video"))
+        frames
+            .iter()
+            .find(|f| f["media_type"].as_str() == Some("video"))
     });
     let stream = parsed["streams"].as_array().and_then(|streams| {
-        streams.iter().find(|s| s["codec_type"].as_str() == Some("video"))
+        streams
+            .iter()
+            .find(|s| s["codec_type"].as_str() == Some("video"))
     });
-    let encoded_w = frame.and_then(|f| f["width"].as_u64())
+    let encoded_w = frame
+        .and_then(|f| f["width"].as_u64())
         .or_else(|| stream.and_then(|s| s["width"].as_u64()))
         .unwrap_or(0) as u32;
-    let encoded_h = frame.and_then(|f| f["height"].as_u64())
+    let encoded_h = frame
+        .and_then(|f| f["height"].as_u64())
         .or_else(|| stream.and_then(|s| s["height"].as_u64()))
         .unwrap_or(0) as u32;
     if encoded_w == 0 || encoded_h == 0 {
