@@ -12,7 +12,7 @@ import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './ren
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import './LrcRender.css'
 
-const PREVIEW_TEXTURE_MAX_SIDE = 3840 // 从 1920 降低到 1280，减少 56% 数据量
+const PREVIEW_TEXTURE_MAX_SIDE = 3840
 
 export interface LrcRenderHandle {
   exportImage(outputPath: string, width: number, height: number, format: string, quality: number): Promise<void>
