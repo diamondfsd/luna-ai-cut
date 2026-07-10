@@ -91,7 +91,7 @@ function inputToItem(input: ExportItemInput, ts: number): ExportTaskItem {
     destinationPath: input.outputPath,
     status: 'queued' as const,
     progress: 0,
-    startTime: ts,
+    startTime: 0, // 由 updateItem 在首次 exporting 时设置为真实开始时间
     endTime: null,
     duration: null,
   }
@@ -264,9 +264,16 @@ function recalcTask(task: ExportTaskRecord): void {
   const averageProgress = items.reduce((sum, i) => sum + i.progress, 0) / items.length
   task.progress = allDone ? 100 : Math.floor(averageProgress)
 
+  // 用子项真实开始时间（排除未开始的 queued 项）
+  const startTimes = items
+    .filter((i) => i.startTime > 0)
+    .map((i) => i.startTime)
   const endTimes = items
     .filter((i) => i.endTime != null)
     .map((i) => i.endTime!)
+  if (startTimes.length > 0) {
+    task.startTime = Math.min(...startTimes)
+  }
   if (endTimes.length > 0) {
     task.endTime = Math.max(...endTimes)
     task.duration = task.endTime - task.startTime
