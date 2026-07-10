@@ -127,10 +127,6 @@ export function PreviewModal({
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
           onClose={onClose}
-          onExport={handleExport}
-          previewOnly={previewOnly}
-          batchExportMode={batchExportMode}
-          exportFilesCount={filePathList?.length}
         />
 
         <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
