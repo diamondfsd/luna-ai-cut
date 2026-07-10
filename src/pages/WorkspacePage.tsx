@@ -5,7 +5,7 @@ import { useLocation } from 'react-router-dom'
 import type { WorkspaceProject } from '../shared/types'
 import { Button, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
 import { exportBatchFiles, type BatchExportSource } from '../components/previewStageExport'
-import { WorkspaceExportDialog } from '../components/WorkspaceExportDialog'
+import { ExportSettingsDialog } from '../components/ExportSettingsDialog'
 import { isVideoPath } from '../lib/fileUtils'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
@@ -517,11 +517,14 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         }}
       />
 
-      <WorkspaceExportDialog
+      <ExportSettingsDialog
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
-        sources={exportDialogSources}
-        exportDir={exportDialogDir}
+        description={`将导出 ${exportDialogSources.length} 个文件`}
+        onConfirm={async (config) => {
+          await exportBatchFiles(exportDialogSources, exportDialogDir, config)
+          toast.success(`已加入导出队列: ${exportDialogSources.length} 个素材`)
+        }}
       />
     </div>
   )

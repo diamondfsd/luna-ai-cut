@@ -3,8 +3,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
 
 import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
-import type { CompositionInput, PreviewLayer, WorkspaceMediaAsset } from '../../../shared/types'
-import { Button, IconButton, Select, toast } from '../../../ui'
+import type { CompositionInput, PreviewLayer, VideoExportSettings, WorkspaceMediaAsset } from '../../../shared/types'
+import { Button, IconButton, toast } from '../../../ui'
+import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
+import { resolveExportFps, resolveExportQualityPreset } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/creativeMedia'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
@@ -20,13 +22,7 @@ const CANVAS_HEIGHT = 3840
 const FPS = 30
 const EXPORT_DURATION = 3
 
-type VideoQuality = 'high' | 'medium' | 'low'
-
-const VIDEO_QUALITY_OPTIONS: Array<{ value: VideoQuality; label: string }> = [
-  { value: 'high', label: '高' },
-  { value: 'medium', label: '中' },
-  { value: 'low', label: '低' },
-]
+// 导出设置已迁移至 ExportSettingsPanel + 弹窗
 
 interface SlotEdit {
   scale: number
@@ -175,8 +171,8 @@ export function TripleStitchCreative() {
     { ...DEFAULT_SLOT_EDIT },
   ])
   const [previewPlaying, setPreviewPlaying] = useState(true)
-  const [videoQuality, setVideoQuality] = useState<VideoQuality>('high')
   const [busy, setBusy] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const dragRef = useRef<{ slot: number; x: number; y: number; startX: number; startY: number; width: number; height: number } | null>(null)
   const slotSources = useTripleStitchSources(media.media, selectedIds)
   const [composition, setComposition] = useState<CompositionInput | null>(null)
@@ -381,7 +377,19 @@ export function TripleStitchCreative() {
 
   async function handleExport(): Promise<void> {
     if (!composition || busy) return
+    await window.luna.getSettings().then((s) => {
+      if (!s.exportDir) throw new Error('导出目录未配置')
+    }).catch((e) => {
+      toast.error(e instanceof Error ? e.message : '导出目录未配置')
+      return
+    })
+    setExportDialogOpen(true)
+  }
+
+  async function handleExportConfirm(config: VideoExportSettings): Promise<void> {
+    if (!composition || busy) return
     setBusy(true)
+    setExportDialogOpen(false)
     try {
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) throw new Error('导出目录未配置')
@@ -392,14 +400,16 @@ export function TripleStitchCreative() {
       const task = await window.luna.exportTask.create('三拼视频导出', [
         { id: itemId, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: destinationPath },
       ])
+      const exportFps = resolveExportFps(config.frameRate) ?? FPS
+      const qualityPreset = resolveExportQualityPreset(config.quality, config.customBitrate)
       await compositionApi().exportCompositionVideo(
         destinationPath,
         composition,
-        FPS,
+        exportFps,
         EXPORT_DURATION,
         true,
         itemId,
-        videoQuality,
+        qualityPreset,
         task.id,
         itemId,
       )
@@ -589,18 +599,7 @@ export function TripleStitchCreative() {
           </div>
         </div>
 
-        <div className="triple-stitch-section">
-          <div className="triple-stitch-section-title">视频设置</div>
-          <div className="triple-stitch-select-row">
-            <span>质量</span>
-            <Select
-              variant="compact"
-              options={VIDEO_QUALITY_OPTIONS}
-              value={videoQuality}
-              onValueChange={(value) => setVideoQuality(value as VideoQuality)}
-            />
-          </div>
-        </div>
+        {/* 导出设置已迁移至弹窗，在点击导出按钮时触发 */}
 
         {LUNA_WATERMARK_OPTIONS.length > 0 && (
           <div className="triple-stitch-section">
@@ -629,6 +628,18 @@ export function TripleStitchCreative() {
           </Button>
         </div>
       </aside>
+
+      <ExportSettingsDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        description="设置导出视频的分辨率、码率和帧率"
+        loading={busy}
+        confirmLabel="确认导出"
+        confirmLoadingLabel="导出中..."
+        onConfirm={async (config) => {
+          await handleExportConfirm(config)
+        }}
+      />
     </section>
   )
 }
