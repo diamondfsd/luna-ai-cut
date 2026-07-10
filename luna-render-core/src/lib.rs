@@ -429,6 +429,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             input.height,
             input.max_side,
             &layers,
+            None,
         )?;
         Ok(RenderPreviewOutput {
             width,
