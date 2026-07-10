@@ -6,7 +6,7 @@ import { checkForHotUpdates, getCurrentHotVersion } from './hotUpdater'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
-import { initLogger, logMainDebug, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
+import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
 
 import {
   getSettings,
@@ -179,18 +179,6 @@ async function ensureCameraSessionForFile(file: LunaFile, url = file.sourceUrl |
   await ensureCameraSessionForUrl(url)
 }
 
-async function prepareDownloadSession(files: LunaFile[], settings: AppSettings): Promise<void> {
-  const needsCameraSession = files.some((file) => !(file.sourceUrl || file.url).startsWith('file:'))
-  const client = needsCameraSession ? clientFor(settings.cameraHost, controlPortFor(settings, settings.cameraHost)) : null
-  if (client) {
-    logMainDebug(`[下载] 需要设备会话，建立连接`, { host: settings.cameraHost })
-    await client.connect()
-    client.startKeepAlive()
-  } else {
-    logMainDebug(`[下载] 无需设备会话（本地文件）`)
-  }
-}
-
 function createWindow(): void {
   win = createMainWindow({
     devServerUrl: VITE_DEV_SERVER_URL,
@@ -256,7 +244,6 @@ function registerIpc(): void {
     videoFrameRateTasks,
     enqueuePreviewTask,
     ensureCameraSessionForFile,
-    prepareDownloadSession,
     lunaProtocol,
     goUltraProtocol,
   } as const

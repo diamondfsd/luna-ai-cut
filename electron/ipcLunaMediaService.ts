@@ -286,7 +286,6 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[], _downloadDir?: string) => {
     const settings = await getSettings()
     logMainInfo(`[下载] 开始下载文件`, { fileCount: files.length, fileNames: files.map((file) => file.name).slice(0, 5).join(', ') + (files.length > 5 ? `...(+${files.length - 5})` : '') })
-    await ctx.prepareDownloadSession(files, settings)
 
     const controller = new AbortController()
     ctx.activeDownloadControllers.add(controller)
