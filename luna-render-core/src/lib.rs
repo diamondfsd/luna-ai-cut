@@ -220,6 +220,7 @@ pub(crate) fn lock_export<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String
 #[derive(Clone)]
 pub struct RenderLayer {
     pub texture_id: u32,
+    pub fit: Option<String>,
     pub dst_x: f64,
     pub dst_y: f64,
     pub dst_w: f64,

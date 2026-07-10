@@ -469,6 +469,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
             renderLayers.push({
               textureId,
+              fit: layer.fit,
               dstX: layer.dstX ?? 0,
               dstY: layer.dstY ?? 0,
               dstW: layer.dstW ?? 1,
@@ -630,6 +631,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           l.dstY === nextProps.layers[i].dstY &&
           l.dstW === nextProps.layers[i].dstW &&
           l.dstH === nextProps.layers[i].dstH &&
+          l.fit === nextProps.layers[i].fit &&
           l.zIndex === nextProps.layers[i].zIndex &&
           l.opacity === nextProps.layers[i].opacity &&
           JSON.stringify(l.color) === JSON.stringify(nextProps.layers[i].color) &&
