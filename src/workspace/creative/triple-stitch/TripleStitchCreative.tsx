@@ -1,10 +1,10 @@
-import { ArrowDown, ArrowUp, Download, Minus, Move, Pause, Play, Plus, RotateCcw } from 'lucide-react'
+import { ArrowDown, ArrowUp, Download, Minus, Move, Plus, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
 
 import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
 import type { CompositionInput, PreviewLayer, VideoExportSettings, WorkspaceMediaAsset } from '../../../shared/types'
-import { Button, IconButton, toast } from '../../../ui'
+import { Button, IconButton, VideoControls, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
@@ -12,6 +12,7 @@ import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/cr
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
+import { useTripleStitchPlayback } from './useTripleStitchPlayback'
 import './triple-stitch.css'
 
 // 从 Luna 设备配置读取水印选项（中文 / 标准英文）
@@ -170,7 +171,7 @@ export function TripleStitchCreative() {
     { ...DEFAULT_SLOT_EDIT },
     { ...DEFAULT_SLOT_EDIT },
   ])
-  const [previewPlaying, setPreviewPlaying] = useState(true)
+  const previewPlayback = useTripleStitchPlayback(EXPORT_DURATION)
   const [busy, setBusy] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const dragRef = useRef<{ slot: number; x: number; y: number; startX: number; startY: number; width: number; height: number } | null>(null)
@@ -218,7 +219,7 @@ export function TripleStitchCreative() {
     const videoLayers = slotSources.map(({ asset, pipeline }, index) => ({
       filePath: asset.path,
       isVideo: true,
-      videoTime: slotEdits[index]?.startTime ?? 0,
+      videoTime: (slotEdits[index]?.startTime ?? 0) + previewPlayback.seekTime,
       dstX: 0, dstY: index / 3, dstW: 1, dstH: 1 / 3,
       srcX: 0, srcY: 0, srcW: 1, srcH: 1,
       opacity: 1,
@@ -242,23 +243,14 @@ export function TripleStitchCreative() {
       : []
 
     return [...videoLayers, ...logoLayers]
-  }, [slotSources, slotEdits, watermarkInfo])
-
-  // 播放时长控制：3 秒后自动停止
-  useEffect(() => {
-    if (!previewPlaying) return
-    const timer = window.setTimeout(() => {
-      setPreviewPlaying(false)
-    }, EXPORT_DURATION * 1000)
-    return () => window.clearTimeout(timer)
-  }, [previewPlaying])
+  }, [slotSources, slotEdits, watermarkInfo, previewPlayback.seekTime])
   const activeEdit = slotEdits[activeSlot] ?? DEFAULT_SLOT_EDIT
   const activeAsset = slotSources[activeSlot]?.asset
   const activeDuration = (activeAsset as { duration?: number } | undefined)?.duration
   const startMax = Math.max(0, (typeof activeDuration === 'number' ? activeDuration : 33) - EXPORT_DURATION)
 
   function pausePreviewForEdit(): void {
-    setPreviewPlaying(false)
+    previewPlayback.pause()
   }
 
   useEffect(() => {
@@ -435,25 +427,16 @@ export function TripleStitchCreative() {
   return (
     <section className="triple-stitch-page">
       <div className="triple-stitch-preview">
-        <div className="triple-stitch-board">
+        <div className="triple-stitch-board ui-video-controls-host">
           <MultipleLayerVideoPreviewLrcRender
             className="triple-stitch-canvas"
             layers={previewLayers}
             canvasWidth={CANVAS_WIDTH}
             canvasHeight={CANVAS_HEIGHT}
-            playing={previewPlaying}
+            playing={previewPlayback.playing}
             decodeQuality={1.0}
             onError={(message) => toast.error(message)}
           />
-          <div className="triple-stitch-preview-actions">
-            <IconButton
-              variant="light"
-              size="compact"
-              icon={previewPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
-              onClick={() => setPreviewPlaying((current) => !current)}
-              title={previewPlaying ? '暂停预览' : '播放预览'}
-            />
-          </div>
           <div
             className="triple-stitch-slot-overlay"
             onPointerDown={handleBoardPointerDown}
@@ -544,6 +527,14 @@ export function TripleStitchCreative() {
               </div>
             ))}
           </div>
+          <VideoControls
+            currentTime={previewPlayback.currentTime}
+            duration={EXPORT_DURATION}
+            playing={previewPlayback.playing}
+            onSeek={previewPlayback.seek}
+            onToggle={previewPlayback.toggle}
+            step={0.01}
+          />
         </div>
       </div>
 
