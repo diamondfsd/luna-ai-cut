@@ -503,18 +503,59 @@ async function runBatchExportQueue(
             const videoUrl = videoResult.source
             if (videoUrl) {
               const videoRes = await window.luna.workspace.getMediaResolution(videoUrl).catch(() => res)
-              // 克隆图片图层并将基础图层替换为视频 URL
               const videoLayers: PreviewLayer[] = exportLayers.map((layer, i) =>
                 i === 0 ? { ...layer, filePath: videoUrl, isVideo: true } : layer,
               )
+              const baseName = baseNameFromPath(entry.sourcePath)
+              const appleLiveEnabled = (await window.luna.getSettings().catch(() => ({ exportAppleLivePhoto: false }))).exportAppleLivePhoto ?? false
+
+              if (appleLiveEnabled) {
+                // Apple Live 开启：创建 2 个独立子任务（Live + Apple Live）
+                const liveStamp = Date.now()
+
+                // 先更新原 entry 为 Live 图导出
+                await window.luna.exportTask.updateItem(taskId, entry.id, {
+                  label: 'Live 图导出',
+                }).catch(() => {})
+
+                // Step 1: Live 图导出（复用当前 entry）
+                await exportPreviewLivePhoto({
+                  name: baseName, exportDir, width: videoRes.width, height: videoRes.height,
+                  imageLayers: exportLayers, videoLayers,
+                  appleLivePhoto: false,
+                  exportTaskId: taskId, exportItemId: entry.id,
+                  taskName, index: entry.index, totalFiles: entries.length,
+                })
+
+                // Step 2: 添加 Apple Live 子任务
+                const appleItemId = `${entry.id}_appleLive`
+                await window.luna.exportTask.addItems(taskId, [
+                  { id: appleItemId, sourcePath: entry.sourcePath, outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive_${liveStamp}.jpg`, label: 'Apple Live 图导出' },
+                ])
+                emitLocalExportProgress({ exportId: appleItemId, taskId, taskName, fileName: `${baseName}_appleLive_${liveStamp}.jpg`, index: entry.index, totalFiles: entries.length, percent: 0, status: 'exporting', destinationPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive_${liveStamp}.jpg` })
+                try {
+                  await exportPreviewLivePhoto({
+                    name: baseName, exportDir, width: videoRes.width, height: videoRes.height,
+                    imageLayers: exportLayers, videoLayers,
+                    appleLivePhoto: true,
+                    exportTaskId: taskId, exportItemId: appleItemId,
+                    taskName, index: entry.index, totalFiles: entries.length,
+                  })
+                } catch (err) {
+                  await window.luna.exportTask.updateItem(taskId, appleItemId, { status: 'failed', error: err instanceof Error ? err.message : String(err) }).catch(() => {})
+                }
+                return
+              }
+
+              // Apple Live 未开启：单一 Live 图导出
               await exportPreviewLivePhoto({
-                name: baseNameFromPath(entry.sourcePath),
+                name: baseName,
                 exportDir,
                 width: videoRes.width,
                 height: videoRes.height,
                 imageLayers: exportLayers,
                 videoLayers,
-                appleLivePhoto: (await window.luna.getSettings().catch(() => ({ exportAppleLivePhoto: false }))).exportAppleLivePhoto ?? false,
+                appleLivePhoto: false,
                 exportTaskId: taskId,
                 exportItemId: entry.id,
                 taskName,
