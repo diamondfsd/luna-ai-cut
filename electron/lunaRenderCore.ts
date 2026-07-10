@@ -73,6 +73,10 @@ export interface RenderPreviewOutput {
 
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
+  loadTexture(data: Buffer, width: number, height: number): number
+  updateTexture(textureId: number, data: Buffer): void
+  renderFrame(canvasWidth: number, canvasHeight: number, layers: unknown[]): Buffer
+  releaseTexture(textureId: number): void
   renderCompositionFrame(input: any): RenderPreviewOutput
   renderCompositionFrameAsync(input: any): Promise<RenderPreviewOutput>
   exportCompositionVideoAsync(input: any): Promise<void>

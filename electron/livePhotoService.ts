@@ -120,30 +120,6 @@ function injectGoogleXmpIntoJpeg(jpegPath: string, videoPath: string): void {
   writeFileSync(jpegPath, result)
 }
 
-// ═══════════════════════════════════════════════
-//  Apple Live Photo 配对导出
-// ═══════════════════════════════════════════════
-
-/**
- * 通过 osascript 将 JPG+MOV 配对导入 macOS「照片」应用。
- */
-async function importToPhotosApp(imagePath: string, videoPath: string): Promise<void> {
-  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-  const script = [
-    'tell application "Photos"',
-    '  activate',
-    `  import POSIX file "${esc(imagePath)}"`,
-    `  import POSIX file "${esc(videoPath)}"`,
-    'end tell',
-  ].join('\n')
-  try {
-    await execFileAsync('osascript', ['-e', script], { timeout: 120000 })
-    logMainInfo('[LIVE Apple] 导入照片应用成功', { imagePath, videoPath })
-  } catch (err) {
-    logMainError('[LIVE Apple] 导入照片应用失败（非致命）', { error: err })
-  }
-}
-
 /**
  * 创建 Apple 格式的 Live Photo 配对文件并导入到系统相册。
  */

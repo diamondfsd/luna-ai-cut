@@ -36,12 +36,6 @@ interface VideoDomPreviewLrcRenderProps {
   onVideoElement?: (el: HTMLVideoElement | null) => void
 }
 
-interface RenderPreviewOutput {
-  width: number
-  height: number
-  data: Uint8Array | ArrayBuffer | { data?: number[] }
-}
-
 interface LunaRenderCore {
   init: () => Promise<void>
   loadTexture: (data: Buffer, width: number, height: number) => Promise<number>
@@ -69,17 +63,6 @@ function getLRC(): LunaRenderCore | undefined {
   return (window as unknown as { lunaRenderCore?: LunaRenderCore }).lunaRenderCore
 }
 
-function bytesFromRenderData(data: RenderPreviewOutput['data']): Uint8ClampedArray {
-  if (data instanceof Uint8Array) {
-    const copy = new Uint8ClampedArray(data.byteLength)
-    copy.set(data)
-    return copy
-  }
-  if (data instanceof ArrayBuffer) return new Uint8ClampedArray(data)
-  if (Array.isArray(data.data)) return new Uint8ClampedArray(data.data)
-  return new Uint8ClampedArray(data as ArrayBuffer)
-}
-
 // 自定义比较函数：全量 JSON 对比，避免漏字段
 const layersEqual = (prevLayers: PreviewLayer[], nextLayers: PreviewLayer[]): boolean => {
   if (prevLayers.length !== nextLayers.length) return false
@@ -88,7 +71,7 @@ const layersEqual = (prevLayers: PreviewLayer[], nextLayers: PreviewLayer[]): bo
 
 export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRenderHandle, VideoDomPreviewLrcRenderProps>(
   function VideoDomPreviewLrcRender(
-    { layers, className, onError, onReady, onRender, onMediaSize, canvasWidth, canvasHeight, onVideoElement },
+    { layers, className, onError, onReady, onRender, onMediaSize: _onMediaSize, canvasWidth: _canvasWidth, canvasHeight: _canvasHeight, onVideoElement },
     ref,
   ) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -100,7 +83,6 @@ export const VideoDomPreviewLrcRender = memo(forwardRef<VideoDomPreviewLrcRender
     const renderingRef = useRef(false)
     const renderQueuedRef = useRef(false)
     const lastFrameAtRef = useRef(0)
-    const lastMediaSizeRef = useRef<[number, number]>([0, 0])
     const textureIdRef = useRef<number>(0) // 视频帧 texture ID，0 表示未创建
     const imageTextureCacheRef = useRef<Map<string, number>>(new Map()) // 图片纹理缓存
     const [ready, setReady] = useState(false)

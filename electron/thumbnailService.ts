@@ -5,7 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { createRequire } from 'node:module'
 import { promisify } from 'node:util'
-import { logMainDebug, logMainWarn, logMainError } from './loggerService'
+import { logMainWarn, logMainError } from './loggerService'
 
 const execFileAsync = promisify(execFile)
 const _require = createRequire(import.meta.url)
