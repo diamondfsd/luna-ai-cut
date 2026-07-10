@@ -92,6 +92,8 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
   onError?: (error: string) => void
   onReady?: () => void
   onRender?: () => void
+  /** 主视频元素回调（取第一个视频层），PreviewStage 用它绑定播放控制 */
+  onVideoElement?: (el: HTMLVideoElement | null) => void
 }
 
 /**
@@ -100,13 +102,13 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
  * 支持任意数量视频层的前端 `<video>` 解码预览组件。
  * - 每个视频层对应一个独立的 `<video>` 元素
  * - 每帧从所有 `<video>` 捕获当前画面 → 上传 GPU 纹理 → 调用 `renderFrame` 合成
- * - 图片层走纹理缓存（同 VideoDomPreviewLrcRender）
+ * - 图片层走纹理缓存
  * - 适合多视频层合成场景（如创意工厂三拼/多拼预览）
  */
 export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
-      { layers, className, canvasWidth, canvasHeight, playing = false, decodeQuality = 1.5, onError, onReady, onRender },
+      { layers, className, canvasWidth, canvasHeight, playing = false, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement },
       _ref,
     ) {
       const outputCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -131,6 +133,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       canvasHeightRef.current = canvasHeight
       const decodeQualityRef = useRef(decodeQuality)
       decodeQualityRef.current = decodeQuality
+      const onVideoElementRef = useRef(onVideoElement)
+      onVideoElementRef.current = onVideoElement
+      // 跟踪已通知给父组件的视频元素，避免重复回调
+      const notifiedVideoRef = useRef<HTMLVideoElement | null>(null)
 
       // 视频层状态：key → VideoStateEntry
       const videoStatesRef = useRef<Map<string, VideoStateEntry>>(new Map())
@@ -138,6 +144,16 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       const imageTextureCacheRef = useRef<Map<string, number>>(new Map())
       // 纹理版本计数器：每次释放纹理时递增，用于检测 renderFrame 中的竞态
       const textureVersionRef = useRef(0)
+
+      // 同步主视频元素（取第一个视频层）到父组件
+      function syncPrimaryVideo(): void {
+        const firstEntry = videoStatesRef.current.values().next().value as VideoStateEntry | undefined
+        const primaryVideo = firstEntry?.video ?? null
+        if (notifiedVideoRef.current !== primaryVideo) {
+          notifiedVideoRef.current = primaryVideo
+          onVideoElementRef.current?.(primaryVideo)
+        }
+      }
 
       // ── 初始化 LRC ──
       useEffect(() => {
@@ -172,6 +188,9 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         return () => {
           destroyRef.current = true
           cancelAnimationFrame(rafRef.current)
+          // 通知父组件视频元素已释放
+          notifiedVideoRef.current = null
+          onVideoElementRef.current?.(null)
           // 释放所有视频纹理
           for (const [, entry] of videoStatesRef.current) {
             if (entry.textureId > 0) {
@@ -226,6 +245,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             videoStatesRef.current.delete(existingKey)
           }
         }
+        syncPrimaryVideo()
 
         // 创建 / 复用视频元素
         for (const { layer, key } of videoLayerInfos) {
@@ -324,6 +344,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           video.load()
           videoStatesRef.current.set(key, entry)
         }
+        syncPrimaryVideo()
         const tEnd = performance.now()
         perfLog(`video management effect done in ${(tEnd - t0).toFixed(0)}ms, ${videoStatesRef.current.size} videos managed`)
       }, [layers, ready])
