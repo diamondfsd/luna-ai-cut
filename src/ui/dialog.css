@@ -141,12 +141,7 @@
 }
 
 .ui-dialog-footer .ui-btn {
-  width: 100%;
-  min-height: 34px;
-  border-radius: 9px;
-  padding: 7px 12px;
-  font-size: 13px;
-  font-weight: 500;
+  /* 继承 Button 组件自身样式，不覆盖 border-radius / min-height / padding */
 }
 
 .ui-dialog-footer .ui-btn-secondary {
