@@ -526,7 +526,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               ? calcOutputSize(canvasWidth, canvasHeight)
               : [PREVIEW_MAX_SIDE, Math.round(PREVIEW_MAX_SIDE * 0.75)]
 
+          // 发送最终 renderFrame IPC 前检查组件是否尚未销毁
+          if (destroyRef.current) return
           const result = await lrc.renderFrame(outW, outH, renderLayers)
+          // render 过程中组件可能已被卸载（tab 切换），此时 textures 可能已被清理
           if (destroyRef.current) return
 
           canvas.width = outW
@@ -544,6 +547,9 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           }
           onRender?.()
         } catch (error) {
+          // 组件已卸载（如 tab 切换）时纹理被清理导致 renderFrame IPC 报错属正常，静默忽略
+          if (destroyRef.current) return
+
           const msg = error instanceof Error ? error.message : String(error)
           console.error('[MultipleLayerVideoPreviewLrcRender] render error:', error)
           // 出错时释放所有纹理，避免泄漏
