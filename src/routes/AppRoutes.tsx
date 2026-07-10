@@ -37,6 +37,7 @@ export function AppRoutes() {
   const [pagesKey, setPagesKey] = useState(0)
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('edit')
   const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
+  const [workspaceEditing, setWorkspaceEditing] = useState(false)
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -115,7 +116,7 @@ export function AppRoutes() {
         connection={connection}
         sourceMode={sourceMode}
         activeDevice={activeDevice}
-        showWorkspaceMode={isActive('/workspace')}
+        showWorkspaceMode={isActive('/workspace') && workspaceEditing}
         workspaceMode={workspaceMode}
         creativeModeId={creativeModeId}
         onModeChange={setWorkspaceMode}
@@ -148,7 +149,12 @@ export function AppRoutes() {
         </AppRoute>
 
         <AppRoute path="/workspace">
-          <WorkspacePage workspaceMode={workspaceMode} creativeModeId={creativeModeId} pageActive={isActive('/workspace')} />
+          <WorkspacePage
+            workspaceMode={workspaceMode}
+            creativeModeId={creativeModeId}
+            pageActive={isActive('/workspace')}
+            onEditingChange={setWorkspaceEditing}
+          />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>

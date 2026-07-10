@@ -54,5 +54,12 @@ export function useTripleStitchPlayback(duration: number) {
     setPlaying(true)
   }
 
-  return { currentTime, pause, playing, seek, seekTime, toggle }
+  function reset(): void {
+    currentTimeRef.current = 0
+    setCurrentTime(0)
+    setSeekTime(0)
+    setPlaying(false)
+  }
+
+  return { currentTime, pause, playing, reset, seek, seekTime, toggle }
 }
