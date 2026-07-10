@@ -53,7 +53,7 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
     // 触发缓存（HTTP 下载 + 缩略图生成，或 file:// 缩略图生成）
     setIsLoading(isHttp)
     window.luna
-      .cacheFile(sourceUrl)
+      .cacheFile({ sourceUrl })
       .catch(() => {
         setHasError(true)
         setIsLoading(false)
