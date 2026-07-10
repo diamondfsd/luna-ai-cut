@@ -123,6 +123,24 @@ function injectGoogleXmpIntoJpeg(jpegPath: string, videoPath: string): void {
 /**
  * 创建 Apple 格式的 Live Photo 配对文件并导入到系统相册。
  */
+async function importToPhotosApp(imagePath: string, videoPath: string): Promise<void> {
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  const script = [
+    'tell application "Photos"',
+    `  import POSIX file "${esc(imagePath)}"`,
+    `  import POSIX file "${esc(videoPath)}"`,
+    'end tell',
+  ].join('\n')
+  logMainInfo('[LIVE Apple] importToPhotosApp start', { imagePath, videoPath, scriptPreview: script.slice(0, 200) })
+  try {
+    const { stdout, stderr } = await execFileAsync('osascript', ['-e', script], { timeout: 120000 })
+    logMainInfo('[LIVE Apple] importToPhotosApp success', { stdout, stderr })
+  } catch (err) {
+    // 非致命：用户可能拒绝了自动化权限，不影响主文件导出
+    logMainError('[LIVE Apple] importToPhotosApp failed（非致命）', { error: err instanceof Error ? { message: err.message, stack: err.stack?.slice(0, 500) } : String(err) })
+  }
+}
+
 async function exportAppleLivePhotoPair(
   imagePath: string,
   videoPath: string,
@@ -160,7 +178,11 @@ async function exportAppleLivePhotoPair(
     logMainError('[LIVE Apple] livetool metadata injection failed (non-fatal)', { error: err })
   }
 
+  // 导入到系统相册
+  await importToPhotosApp(imgDest, vidDest)
+
   onProgress?.(96)
+  logMainInfo('[LIVE Apple] pair complete, imported to Photos', { imgDest, vidDest })
 }
 
 // ═══════════════════════════════════════════════
