@@ -5,6 +5,8 @@ import { useLocation } from 'react-router-dom'
 import type { WorkspaceProject } from '../shared/types'
 import { Button, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
 import { exportBatchFiles, type BatchExportSource } from '../components/previewStageExport'
+import { WorkspaceExportDialog } from '../components/WorkspaceExportDialog'
+import { isVideoPath } from '../lib/fileUtils'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
@@ -69,6 +71,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [watermarkMediaSize, setWatermarkMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [exportEnqueuing, setExportEnqueuing] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportDialogSources, setExportDialogSources] = useState<BatchExportSource[]>([])
+  const [exportDialogDir, setExportDialogDir] = useState('')
 
   // 稳定回调，避免内联箭头函数导致 PreviewStage useEffect 循环
   const handleMediaSize = useCallback((w: number, h: number) => {
@@ -289,8 +294,16 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         }
       }))
 
-      await exportBatchFiles(sources, settings.exportDir)
-      toast.success(`已加入导出队列: ${sources.length} 个素材`)
+      // 检查是否有视频素材 → 有则弹窗让用户选择导出参数，否则直接导出
+      const hasVideo = sources.some((s) => isVideoPath(s.sourcePath))
+      if (hasVideo) {
+        setExportDialogSources(sources)
+        setExportDialogDir(settings.exportDir)
+        setExportDialogOpen(true)
+      } else {
+        await exportBatchFiles(sources, settings.exportDir)
+        toast.success(`已加入导出队列: ${sources.length} 个素材`)
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导出失败')
     } finally {
@@ -502,6 +515,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
           }
           setDeleteConfirmOpen(false)
         }}
+      />
+
+      <WorkspaceExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        sources={exportDialogSources}
+        exportDir={exportDialogDir}
       />
     </div>
   )
