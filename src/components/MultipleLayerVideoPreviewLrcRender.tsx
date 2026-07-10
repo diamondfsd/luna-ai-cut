@@ -191,8 +191,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           // 通知父组件视频元素已释放
           notifiedVideoRef.current = null
           onVideoElementRef.current?.(null)
-          // 释放所有视频纹理
+          // 暂停所有视频并清空 src，避免关闭后仍播放声音
           for (const [, entry] of videoStatesRef.current) {
+            entry.video.pause()
+            entry.video.src = ''
             if (entry.textureId > 0) {
               lrc.releaseTexture(entry.textureId).catch(() => {})
             }
