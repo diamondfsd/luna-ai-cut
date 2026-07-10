@@ -350,6 +350,10 @@ export async function exportPreviewLivePhoto(params: {
     emitProgress(65, 'exporting')
 
     // Step 3: 合并为 Google Motion Photo（后端自动清理临时文件）
+    console.log('[LiveExport] Step3: calling exportRenderedLivePhoto', {
+      name: params.name, appleLivePhoto: params.appleLivePhoto,
+      imagePath: tempImagePath, videoPath: tempVideoPath,
+    })
     const result = await window.luna.workspace.exportRenderedLivePhoto(
       params.name, tempImagePath, tempVideoPath, params.appleLivePhoto,
     )
@@ -534,6 +538,8 @@ async function runBatchExportQueue(
 
                 // Step 2: 添加 Apple Live 子任务
                 const appleItemId = `${entry.id}_appleLive`
+                console.log('[LiveExport] Step2: starting Apple Live export', { baseName, exportDir, width: videoRes.width, height: videoRes.height, appleItemId })
+                console.log('[LiveExport] exportRenderedLivePhoto available:', typeof (window.luna.workspace as any).exportRenderedLivePhoto)
                 await window.luna.exportTask.addItems(taskId, [
                   { id: appleItemId, sourcePath: entry.sourcePath, outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive_${liveStamp}.jpg`, label: 'Apple Live 图导出' },
                 ])
@@ -547,6 +553,7 @@ async function runBatchExportQueue(
                     taskName, index: entry.index, totalFiles: entries.length,
                   })
                 } catch (err) {
+                  console.error('[LiveExport] Apple Live export failed:', err)
                   await window.luna.exportTask.updateItem(taskId, appleItemId, { status: 'failed', error: err instanceof Error ? err.message : String(err) }).catch(() => {})
                 }
                 return
