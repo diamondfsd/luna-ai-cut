@@ -9,7 +9,6 @@ import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import { useDownloadProgress } from '../context/DownloadProgressContext'
 import { useMediaLib } from '../pages/useMediaLibraryController'
-import type { ViewMode } from '../pages/useMediaLibraryController'
 import {
   Button,
   ButtonGroup,
