@@ -136,6 +136,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       const videoStatesRef = useRef<Map<string, VideoStateEntry>>(new Map())
       // 图片纹理缓存：filePath → textureId
       const imageTextureCacheRef = useRef<Map<string, number>>(new Map())
+      // 纹理版本计数器：每次释放纹理时递增，用于检测 renderFrame 中的竞态
+      const textureVersionRef = useRef(0)
 
       // ── 初始化 LRC ──
       useEffect(() => {
@@ -182,6 +184,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             lrc.releaseTexture(texId).catch(() => {})
           }
           imageTextureCacheRef.current.clear()
+          textureVersionRef.current++
         }
       }, [])
 
@@ -216,6 +219,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               const tid = entry.textureId
               entry.textureId = 0 // 先清除，避免并发 renderFrame 读取到已释放的 ID
               lrc.releaseTexture(tid).catch(() => {})
+              textureVersionRef.current++
             }
             entry.video.pause()
             entry.video.src = ''
@@ -244,6 +248,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               const tid = existing.textureId
               existing.textureId = 0
               lrc.releaseTexture(tid).catch(() => {})
+              textureVersionRef.current++
             }
             existing.video.pause()
             existing.video.src = ''
@@ -380,6 +385,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
         renderingRef.current = true
         renderQueuedRef.current = false
+        // 快照当前纹理版本，渲染完成后检查是否有纹理在此期间被释放
+        const versionAtStart = textureVersionRef.current
 
         try {
           const renderLayers: unknown[] = []
@@ -511,6 +518,12 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
           // 发送最终 renderFrame IPC 前检查组件是否尚未销毁
           if (destroyRef.current) return
+          // 检查纹理版本：若在构建 renderLayers 期间有纹理被释放（如视频管理 effect），
+          // 则 renderLayers 中的纹理 ID 可能已失效，放弃本次渲染，等待下次 renderFrame 重试
+          if (textureVersionRef.current !== versionAtStart) {
+            renderQueuedRef.current = true
+            return
+          }
           const result = await lrc.renderFrame(outW, outH, renderLayers)
           // render 过程中组件可能已被卸载（tab 切换），此时 textures 可能已被清理
           if (destroyRef.current) return
@@ -549,6 +562,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               imageTextureCacheRef.current.delete(fp)
             }
           }
+          textureVersionRef.current++
           onError?.(msg)
         } finally {
           renderingRef.current = false
