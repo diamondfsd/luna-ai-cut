@@ -347,11 +347,12 @@ impl Task for ExportCompositionVideoTask {
             .as_deref()
             .map(QualityPreset::from_str)
             .unwrap_or(QualityPreset::High);
-        let bitrate = match preset {
-            QualityPreset::Small => "12000k",
-            QualityPreset::Standard => "24000k",
-            QualityPreset::High => "50000k",
-            QualityPreset::OriginalLike => "80000k",
+        let bitrate: String = match preset {
+            QualityPreset::Small => "12000k".to_string(),
+            QualityPreset::Standard => "24000k".to_string(),
+            QualityPreset::High => "50000k".to_string(),
+            QualityPreset::OriginalLike => "80000k".to_string(),
+            QualityPreset::Custom(val) => val,
         };
 
         let mut args = vec![
