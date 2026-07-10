@@ -66,26 +66,27 @@ function outputPath(exportDir: string, fileName: string): string {
 }
 
 /** 每格视频底部 Logo 宽度（占画布宽比例） */
-const SLOT_LOGO_WIDTH = 0.22
+const SLOT_LOGO_TARGET_WIDTH = 0.22
 
 /** 构建单个 slot 底部居中 Logo 图层 */
-function buildSlotLogoLayer(slotIndex: number, imagePath: string, wmAspect: number): PreviewLayer {
-  const slotHeight = 1 / 3
-  const slotBottom = (slotIndex + 1) * slotHeight
-  const logoWidth = SLOT_LOGO_WIDTH
-  const logoHeight = logoWidth / wmAspect
-  const marginY = 0.008
+function buildSlotLogoLayer(slotIndex: number, imagePath: string, _wmAspect: number): PreviewLayer {
+  // 用 WatermarkSettings 的 positioning 系统：
+  // 以 canvas 底部为锚点，marginY 将 logo 推到各自 slot 的底部
+  const marginY = (2 - slotIndex) / 3 + 0.008
 
   return {
     filePath: imagePath,
     isVideo: false,
-    dstX: (1 - logoWidth) / 2,
-    dstY: slotBottom - logoHeight - marginY,
-    dstW: logoWidth,
-    dstH: logoHeight,
+    dstX: 0, dstY: 0, dstW: 1, dstH: 1,
     srcX: 0, srcY: 0, srcW: 1, srcH: 1,
     opacity: 1,
     zIndex: 100 + slotIndex,
+    positioning: {
+      anchor: 'bottom-center',
+      targetWidth: SLOT_LOGO_TARGET_WIDTH,
+      marginX: 0.033,
+      marginY,
+    },
   }
 }
 
@@ -129,16 +130,17 @@ function buildTripleStitchComposition(
     lutIntensity: pipeline.lutFilter.intensity,
   }))
 
-  // 每个 slot 底部固定 Logo
+  // 每个 slot 底部固定 Logo（通过 positioning 保持宽高比 + 自动定位到各 slot 底部）
   const logoLayers: CompositionInput['layers'] = watermarkInfo
     ? Array.from({ length: slots.length }, (_, i) => {
         const logo = buildSlotLogoLayer(i, watermarkInfo.imagePath, watermarkInfo.wmAspect)
         return {
           id: `slot-${i + 1}-logo`,
           source: { path: logo.filePath, sourceType: 'image' as const },
-          rect: { x: logo.dstX, y: logo.dstY, w: logo.dstW, h: logo.dstH },
+          rect: { x: 0, y: 0, w: 1, h: 1 },
           opacity: 1,
           zIndex: logo.zIndex,
+          positioning: logo.positioning as CompositionInput['layers'][number]['positioning'],
         }
       })
     : []
