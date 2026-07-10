@@ -464,6 +464,8 @@ pub struct Compositor {
     texture_cache: HashMap<String, u32>,
     /// LRU 顺序（前=最旧，后=最新）
     cache_order: VecDeque<String>,
+    /// 已探测过的静态图片显示尺寸（已应用 EXIF 旋转）
+    static_image_probed: HashMap<String, (u32, u32)>,
     /// 已探测过的视频文件信息 <path → (width, height)>
     video_probed: HashMap<String, (u32, u32)>,
     /// 持久 ffmpeg pipe 解码器 <path → VideoDecoder>
@@ -920,6 +922,7 @@ impl Compositor {
             output_texture: None,
             texture_cache: HashMap::new(),
             cache_order: VecDeque::new(),
+            static_image_probed: HashMap::new(),
             video_probed: HashMap::new(),
             video_decoders: HashMap::new(),
             video_decoding_ended: std::collections::HashSet::new(),
@@ -1763,17 +1766,63 @@ impl Compositor {
         Some(tex_id)
     }
 
+    /// 仅复用分辨率足够的静态纹理；缩略图缓存不能用于更大的工作台预览。
+    fn get_cached_texture_at_least(&mut self, path: &str, required_max_edge: u32) -> Option<u32> {
+        let tex_id = self.get_cached_texture(path)?;
+        let cached_size = self
+            .textures
+            .get(&tex_id)
+            .map(|entry| (entry.width, entry.height));
+        if cached_size
+            .map(|(width, height)| cached_texture_is_sufficient(width, height, required_max_edge))
+            .unwrap_or(false)
+        {
+            return Some(tex_id);
+        }
+
+        if let Some((width, height)) = cached_size {
+            log!(
+                "static texture cache upgrade path={} cached={}x{} required_max_edge={}",
+                path,
+                width,
+                height,
+                required_max_edge,
+            );
+        } else {
+            log!("static texture cache stale path={} tex_id={}", path, tex_id,);
+        }
+
+        // release_texture 会同步清理 texture_cache 和 cache_order。
+        if self.textures.contains_key(&tex_id) {
+            let _ = self.release_texture(tex_id);
+        } else {
+            self.texture_cache.remove(path);
+            self.cache_order.retain(|key| key != path);
+        }
+        None
+    }
+
     /// 将静态纹理加入 LRU 缓存，超出上限时淘汰最旧的
     fn cache_static_texture(&mut self, path: String, tex_id: u32) -> Result<(), String> {
         self.texture_cache.insert(path.clone(), tex_id);
         self.cache_order.push_back(path);
         while self.cache_order.len() > MAX_TEXTURE_CACHE {
             let oldest = self.cache_order.pop_front().unwrap();
+            self.static_image_probed.remove(&oldest);
             if let Some(tid) = self.texture_cache.remove(&oldest) {
                 self.release_texture(tid)?;
             }
         }
         Ok(())
+    }
+
+    fn probe_static_image(&mut self, ffprobe: &str, path: &str) -> Result<(u32, u32), String> {
+        if let Some(&dims) = self.static_image_probed.get(path) {
+            return Ok(dims);
+        }
+        let dims = probe_static_image_dimensions(ffprobe, path)?;
+        self.static_image_probed.insert(path.to_string(), dims);
+        Ok(dims)
     }
 
     /// 探测视频文件尺寸（结果缓存，避免重复 ffprobe）
@@ -2084,21 +2133,31 @@ impl Compositor {
                 }
             } else {
                 // ── 静态图：LRU 缓存 ──
-                let cached = self.get_cached_texture(&layer.file_path);
+                // 缓存以路径为单位保留当前最高分辨率版本。缩略图、工作台和导出
+                // 共用 Compositor，因此命中时必须校验纹理尺寸，避免放大低清纹理。
+                let (source_width, source_height) =
+                    self.probe_static_image(ffprobe, &layer.file_path)?;
+                let layer_decode_max = calc_optimal_decode_max_edge(
+                    &layer.positioning,
+                    width,
+                    height,
+                    source_width,
+                    source_height,
+                    decode_max_side,
+                );
+                let required_max_edge = source_width.max(source_height).min(layer_decode_max);
+                let cached = self.get_cached_texture_at_least(&layer.file_path, required_max_edge);
                 if let Some(tid) = cached {
                     tid
                 } else {
                     // 对带 positioning 的层，先探测源图尺寸，计算最优解码尺寸
                     // 用 ffmpeg Lanczos 预降采样到接近显示尺寸，减少 GPU 双线性降采样导致的锯齿
-                    let layer_decode_max = probe_static_image_dimensions(ffprobe, &layer.file_path)
-                        .map(|(sw, sh)| calc_optimal_decode_max_edge(
-                            &layer.positioning,
-                            width, height,
-                            sw, sh,
-                            decode_max_side,
-                        ))
-                        .unwrap_or(decode_max_side);
-                    let (rgba, w, h) = decode_static_image_scaled(ffmpeg, ffprobe, &layer.file_path, layer_decode_max)?;
+                    let (rgba, w, h) = decode_static_image_scaled(
+                        ffmpeg,
+                        ffprobe,
+                        &layer.file_path,
+                        layer_decode_max,
+                    )?;
                     let tid = self.load_texture(&rgba, w, h)?;
                     self.cache_static_texture(layer.file_path.clone(), tid)?;
                     tid
@@ -2478,4 +2537,23 @@ fn calc_optimal_decode_max_edge(
     // 1.5x 过采样：保留一些多余细节让 GPU 双线性做最后的微量缩放
     let optimal = (dst_w_px.max(dst_h_px) * 1.5).ceil() as u32;
     optimal.min(fallback_max_edge).max(1)
+}
+
+fn cached_texture_is_sufficient(width: u32, height: u32, required_max_edge: u32) -> bool {
+    width.max(height) >= required_max_edge
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cached_texture_is_sufficient;
+
+    #[test]
+    fn rejects_thumbnail_texture_for_workspace_preview() {
+        assert!(!cached_texture_is_sufficient(124, 220, 2560));
+    }
+
+    #[test]
+    fn reuses_larger_texture_for_smaller_preview() {
+        assert!(cached_texture_is_sufficient(1440, 2560, 220));
+    }
 }

@@ -1,7 +1,16 @@
-import { useEffect, useImperativeHandle, useRef, useState, forwardRef, memo } from 'react'
+import {
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  forwardRef,
+  memo,
+} from 'react'
 import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
+import { useImageLayerInteraction } from './useImageLayerInteraction'
+import './LrcRender.css'
 
 const PREVIEW_TEXTURE_MAX_SIDE = 2560 // 从 1920 降低到 1280，减少 56% 数据量
 
@@ -17,7 +26,7 @@ export interface LrcRenderHandle {
 
 export type { PreviewLayer }
 
-interface LrcRenderProps {
+export interface LrcRenderProps {
   layers: PreviewLayer[]
   canvasRef?: React.RefObject<HTMLCanvasElement | null>
   className?: string
@@ -29,6 +38,13 @@ interface LrcRenderProps {
   canvasWidth?: number
   canvasHeight?: number
   onVideoElement?: (el: HTMLVideoElement | null) => void
+  /** 允许交互的图片图层下标；默认启用所有普通图片，传空数组可关闭。 */
+  interactiveImageLayerIndexes?: readonly number[]
+  /** 图层交互后的完整图层列表。组件会立即预览变更，调用方可用此回调持久化结果。 */
+  onLayersChange?: (layers: PreviewLayer[]) => void
+  /** 相对于图层初始尺寸的最小/最大缩放倍数。 */
+  minImageScale?: number
+  maxImageScale?: number
 }
 
 interface RenderPreviewOutput {
@@ -88,14 +104,39 @@ const layersEqual = (prevLayers: PreviewLayer[], nextLayers: PreviewLayer[]): bo
   JSON.stringify(prevLayers) === JSON.stringify(nextLayers)
 
 export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(function LrcRender(
-  { layers, canvasRef: extRef, className, onError, onReady, onRender, onMediaSize, maxSide, canvasWidth, canvasHeight, onVideoElement },
+  {
+    layers,
+    canvasRef: extRef,
+    className,
+    onError,
+    onReady,
+    onRender,
+    onMediaSize,
+    maxSide,
+    canvasWidth,
+    canvasHeight,
+    onVideoElement,
+    interactiveImageLayerIndexes,
+    onLayersChange,
+    minImageScale = 0.25,
+    maxImageScale = 8,
+  },
   ref,
 ) {
   const internalRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
   const rafRef = useRef(0)
-  const layersRef = useRef<PreviewLayer[]>(layers)
+  const imageInteraction = useImageLayerInteraction({
+    layers,
+    canvasRef,
+    interactiveImageLayerIndexes,
+    onLayersChange,
+    minImageScale,
+    maxImageScale,
+  })
+  const { effectiveLayers } = imageInteraction
+  const layersRef = useRef<PreviewLayer[]>(effectiveLayers)
   const videosRef = useRef<Map<string, HTMLVideoElement>>(new Map())
   const videoElementCalledRef = useRef(false)
   const renderingRef = useRef(false)
@@ -106,7 +147,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const seekStartTimeRef = useRef<number | null>(null) // 记录 seek 开始时间
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
-  layersRef.current = layers
+  layersRef.current = effectiveLayers
 
   useEffect(() => {
     const lrc = getLRC()
@@ -204,7 +245,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     lastMediaSizeRef.current = [0, 0]
 
     if (!ready) return
-    const currentKeys = new Set(layers.filter((layer) => layer.isVideo).map(layerKey))
+    const currentKeys = new Set(effectiveLayers.filter((layer) => layer.isVideo).map(layerKey))
 
     for (const [key, video] of videosRef.current) {
       if (!currentKeys.has(key)) {
@@ -218,7 +259,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       onVideoElement?.(null)
     }
 
-    for (const layer of layers.filter((item) => item.isVideo)) {
+    for (const layer of effectiveLayers.filter((item) => item.isVideo)) {
       const key = layerKey(layer)
       if (videosRef.current.has(key)) continue
       const video = document.createElement('video')
@@ -254,10 +295,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     }
 
     void renderPreviewFrame()
-  }, [layers, ready])
+  }, [effectiveLayers, ready])
 
   useEffect(() => {
-    if (!ready || !layers.some((layer) => layer.isVideo)) return
+    if (!ready || !effectiveLayers.some((layer) => layer.isVideo)) return
 
     function loop() {
       const hasPlayingVideo = [...videosRef.current.values()].some((video) => !video.paused && !video.ended)
@@ -274,7 +315,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
     rafRef.current = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [ready, layers])
+  }, [ready, effectiveLayers])
 
   useImperativeHandle(ref, () => ({
     async exportImage(outputPath: string, width: number, height: number, format: string, quality: number) {
@@ -319,7 +360,26 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     )
   }
 
-  return <canvas ref={canvasRef as React.Ref<HTMLCanvasElement>} className={className} />
+  const canvasClassName = [
+    className,
+    imageInteraction.interactive && 'lrc-render-interactive',
+    imageInteraction.dragging && 'is-dragging',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <canvas
+      ref={canvasRef as React.Ref<HTMLCanvasElement>}
+      className={canvasClassName}
+      onPointerDown={imageInteraction.onPointerDown}
+      onPointerMove={imageInteraction.onPointerMove}
+      onPointerUp={imageInteraction.onPointerEnd}
+      onPointerCancel={imageInteraction.onPointerEnd}
+      onWheel={imageInteraction.onWheel}
+      onDoubleClick={imageInteraction.onDoubleClick}
+    />
+  )
 }), (prevProps, nextProps) => {
   // 使用自定义比较函数，只在 layers 内容真正变化时才重新渲染
   return (
@@ -327,6 +387,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     prevProps.canvasHeight === nextProps.canvasHeight &&
     prevProps.maxSide === nextProps.maxSide &&
     prevProps.className === nextProps.className &&
+    prevProps.minImageScale === nextProps.minImageScale &&
+    prevProps.maxImageScale === nextProps.maxImageScale &&
+    prevProps.onLayersChange === nextProps.onLayersChange &&
+    JSON.stringify(prevProps.interactiveImageLayerIndexes) === JSON.stringify(nextProps.interactiveImageLayerIndexes) &&
     layersEqual(prevProps.layers, nextProps.layers)
   )
 })
