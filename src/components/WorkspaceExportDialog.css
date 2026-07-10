@@ -1,0 +1,246 @@
+/* ═══════════════════════════════════════════════
+   WorkspaceExportDialog – 导出设置弹窗
+   ═══════════════════════════════════════════════ */
+
+/* ── Dialog 容器（覆盖 ui-dialog-content 默认样式） ── */
+
+.workspace-export-dialog-content.ui-dialog-content {
+  width: min(520px, calc(100vw - 48px));
+  max-height: min(500px, calc(100vh - 56px));
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow: 0 32px 120px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(34, 37, 45, 0.98), rgba(20, 23, 29, 0.98));
+  color: #f5f7fb;
+}
+
+/* ── Header ── */
+
+.workspace-export-dialog-content .ui-dialog-header {
+  padding: 24px 80px 12px 28px;
+  border-bottom: none;
+}
+
+.workspace-export-dialog-content .ui-dialog-header [data-radix-dialog-title] {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.96);
+  padding-right: 0;
+}
+
+.workspace-export-dialog-content .ui-dialog-header [data-radix-dialog-description] {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 14px;
+}
+
+/* ── Close button ── */
+
+.workspace-export-dialog-content .ui-dialog-close {
+  top: 22px;
+  right: 22px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+  transition: background 0.12s, color 0.12s;
+}
+
+.workspace-export-dialog-content .ui-dialog-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* ── Body ── */
+
+.workspace-export-body {
+  padding: 0 28px 20px;
+  overflow-y: auto;
+}
+
+/* ── ExportSettingsPanel 内嵌样式覆盖 ── */
+
+.workspace-export-body .export-settings-panel {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(8, 10, 15, 0.18);
+  padding: 16px 18px;
+}
+
+.workspace-export-body .export-settings-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.42);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 14px;
+}
+
+.workspace-export-body .export-settings-grid {
+  gap: 10px;
+}
+
+.workspace-export-body .export-settings-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  min-width: 52px;
+}
+
+.workspace-export-body .export-settings-row .ui-select-trigger.ui-select-compact {
+  height: 36px;
+  font-size: 13px;
+  padding: 0 10px;
+  background: rgba(8, 10, 15, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  color: rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+}
+
+.workspace-export-body .export-settings-row .ui-select-trigger.ui-select-compact:focus-visible {
+  border-color: rgba(70, 116, 255, 0.6);
+}
+
+.workspace-export-body .export-settings-row .ui-select-content {
+  background: #2a2d36;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+}
+
+.workspace-export-body .export-settings-row .ui-select-item {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  padding: 7px 10px;
+}
+
+.workspace-export-body .export-settings-row .ui-select-item[data-highlighted] {
+  background: rgba(70, 116, 255, 0.15);
+  color: #fff;
+}
+
+.workspace-export-body .export-settings-row .ui-select-item-indicator {
+  color: #527dff;
+}
+
+.workspace-export-body .export-settings-bitrate-input {
+  height: 36px !important;
+  font-size: 13px !important;
+  padding: 0 10px !important;
+  border-radius: 10px !important;
+  background: rgba(8, 10, 15, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.11) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.workspace-export-body .export-settings-bitrate-input:focus {
+  border-color: rgba(70, 116, 255, 0.6) !important;
+}
+
+.workspace-export-body .export-settings-bitrate-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* ── Footer ── */
+
+.workspace-export-dialog-content .ui-dialog-footer {
+  padding: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.workspace-export-dialog-content .ui-dialog-footer .workspace-export-footer {
+  height: 68px;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workspace-export-footer-spacer {
+  flex: 1;
+}
+
+.workspace-export-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workspace-export-secondary-btn,
+.workspace-export-primary-btn {
+  height: 38px;
+  min-width: 100px;
+  border-radius: 10px;
+  border: 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.12s, background 0.12s;
+  font-family: inherit;
+}
+
+.workspace-export-secondary-btn {
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.workspace-export-secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.workspace-export-primary-btn {
+  color: #fff;
+  background: linear-gradient(180deg, #527dff, #315eea);
+  box-shadow: 0 8px 20px rgba(55, 94, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.workspace-export-primary-btn:hover {
+  filter: brightness(1.06);
+}
+
+.workspace-export-primary-btn:disabled,
+.workspace-export-secondary-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 600px) {
+  .workspace-export-dialog-content.ui-dialog-content {
+    width: calc(100vw - 24px);
+  }
+
+  .workspace-export-dialog-content .ui-dialog-header {
+    padding: 18px 56px 10px 18px;
+  }
+
+  .workspace-export-dialog-content .ui-dialog-header [data-radix-dialog-title] {
+    font-size: 20px;
+  }
+
+  .workspace-export-body {
+    padding: 0 18px 16px;
+  }
+
+  .workspace-export-body .export-settings-panel {
+    padding: 14px 14px;
+  }
+
+  .workspace-export-dialog-content .ui-dialog-footer .workspace-export-footer {
+    height: auto;
+    padding: 14px 18px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .workspace-export-footer-actions {
+    justify-content: flex-end;
+  }
+}
