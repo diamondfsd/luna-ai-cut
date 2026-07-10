@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { exportBatchFiles, type BatchExportSource } from './previewStageExport'
 import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsPanel'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
-import { Dialog, toast } from '../ui'
+import { Button, Dialog, toast } from '../ui'
 import './WorkspaceExportDialog.css'
 
 interface WorkspaceExportDialogProps {
@@ -72,20 +72,12 @@ export function WorkspaceExportDialog({
         <div className="workspace-export-footer">
           <div className="workspace-export-footer-spacer" />
           <div className="workspace-export-footer-actions">
-            <button
-              className="workspace-export-secondary-btn"
-              onClick={() => onOpenChange(false)}
-              disabled={exporting}
-            >
+            <Button variant="secondary" size="compact" onClick={() => onOpenChange(false)} disabled={exporting}>
               取消
-            </button>
-            <button
-              className="workspace-export-primary-btn"
-              onClick={handleConfirm}
-              disabled={exporting}
-            >
+            </Button>
+            <Button variant="primary" size="compact" onClick={handleConfirm} disabled={exporting}>
               {exporting ? '加入中...' : '确认导出'}
-            </button>
+            </Button>
           </div>
         </div>
       }
