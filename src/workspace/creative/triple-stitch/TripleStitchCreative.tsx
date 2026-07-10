@@ -3,16 +3,24 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
 
 import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
-import type { CompositionInput, PreviewLayer, VideoExportSettings, WorkspaceMediaAsset } from '../../../shared/types'
+import type { CompositionInput, PreviewLayer, VideoExportSettings } from '../../../shared/types'
 import { Button, IconButton, VideoControls, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
-import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/creativeMedia'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
 import { useTripleStitchPlayback } from './useTripleStitchPlayback'
+import { useTripleStitchSources, type TripleStitchSource } from './useTripleStitchSources'
+import {
+  createDefaultSlotEdits,
+  DEFAULT_SLOT_EDIT,
+  loadTripleStitchState,
+  saveTripleStitchState,
+  type SlotEdit,
+  type TripleStitchSavedState,
+} from './tripleStitchState'
 import './triple-stitch.css'
 
 // 从 Luna 设备配置读取水印选项（中文 / 标准英文）
@@ -22,17 +30,9 @@ const CANVAS_WIDTH = 2160
 const CANVAS_HEIGHT = 3840
 const FPS = 30
 const EXPORT_DURATION = 3
+const DEFAULT_WATERMARK_STYLE = LUNA_WATERMARK_OPTIONS[0]?.value ?? 'luna_ultra_cn'
 
 // 导出设置已迁移至 ExportSettingsPanel + 弹窗
-
-interface SlotEdit {
-  scale: number
-  translateX: number
-  translateY: number
-  startTime: number
-}
-
-const DEFAULT_SLOT_EDIT: SlotEdit = { scale: 1, translateX: 0, translateY: 0, startTime: 0 }
 
 interface LunaCompositionExportApi {
   exportCompositionVideo(
@@ -46,16 +46,6 @@ interface LunaCompositionExportApi {
     exportTaskId?: string,
     exportItemId?: string,
   ): Promise<void>
-}
-
-function useTripleStitchSources(media: WorkspaceMediaAsset[], selectedIds: string[]): CreativeSlotSource[] {
-  return useMemo(() => selectedIds
-    .map((id) => media.find((asset) => asset.id === id))
-    .filter((asset): asset is WorkspaceMediaAsset => Boolean(asset))
-    .map((asset) => ({
-      asset,
-      pipeline: normalizeCreativePipeline((asset as { pipeline?: unknown }).pipeline),
-    })), [media, selectedIds])
 }
 
 function outputPath(exportDir: string, fileName: string): string {
@@ -87,33 +77,28 @@ function buildSlotLogoLayer(slotIndex: number, imagePath: string): PreviewLayer 
   }
 }
 
-function clampPan(value: number, scale: number): number {
-  const limit = Math.max(0, (scale - 1) / (scale * 2))
-  return Math.min(limit, Math.max(-limit, value))
-}
-
 function buildTripleStitchComposition(
-  slots: CreativeSlotSource[],
+  slots: TripleStitchSource[],
   edits: SlotEdit[],
   lutPaths: (string | undefined)[],
   watermarkInfo: { imagePath: string } | null,
 ): CompositionInput | null {
-  if (slots.length !== 3) return null
+  if (slots.length !== 3 || slots.some(({ sourceReady }) => !sourceReady)) return null
 
-  const videoLayers = slots.map(({ asset, pipeline }, index) => ({
+  const mediaLayers = slots.map(({ filePath, isVideo, pipeline }, index) => ({
     id: `slot-${index + 1}`,
     source: {
-      path: asset.path,
-      sourceType: 'auto' as const,
-      time: {
+      path: filePath,
+      sourceType: isVideo ? 'video' as const : 'image' as const,
+      time: isVideo ? {
         start: edits[index]?.startTime ?? 0,
         offset: 0,
         duration: EXPORT_DURATION,
         loopEnabled: true,
-      },
+      } : undefined,
     },
     rect: { x: 0, y: index / 3, w: 1, h: 1 / 3 },
-    fit: 'cover' as const,
+    fit: 'cover-scale',
     opacity: 1,
     zIndex: index,
     color: pipelineColorToRenderColor(pipeline.color),
@@ -150,10 +135,9 @@ function buildTripleStitchComposition(
       fps: FPS,
       duration: EXPORT_DURATION,
     },
-    layers: [...videoLayers, ...logoLayers],
+    layers: [...mediaLayers, ...logoLayers],
   }
 }
-
 
 function compositionApi(): LunaCompositionExportApi {
   const api = (window as unknown as { lunaRenderCore?: LunaCompositionExportApi }).lunaRenderCore
@@ -164,13 +148,24 @@ function compositionApi(): LunaCompositionExportApi {
 export function TripleStitchCreative() {
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] TripleStitchCreative mount at ${performance.now().toFixed(0)}ms`)
   const media = useWorkspaceMedia()
-  const [selectedIds, setSelectedIds] = useState<string[]>(() => media.media.slice(0, 3).map((asset) => asset.id))
-  const [activeSlot, setActiveSlot] = useState(0)
-  const [slotEdits, setSlotEdits] = useState<SlotEdit[]>([
-    { ...DEFAULT_SLOT_EDIT },
-    { ...DEFAULT_SLOT_EDIT },
-    { ...DEFAULT_SLOT_EDIT },
-  ])
+  const workspaceStateKey = media.currentProject?.id
+    ?? `temporary:${media.media.map((asset) => asset.id).join('|')}`
+  const currentProjectRef = useRef(media.currentProject)
+  currentProjectRef.current = media.currentProject
+  const projectSaveTimerRef = useRef<number | null>(null)
+  const initialStateRef = useRef<TripleStitchSavedState | null>(null)
+  if (!initialStateRef.current) {
+    initialStateRef.current = loadTripleStitchState(
+      workspaceStateKey,
+      media.media.slice(0, 3).map((asset) => asset.id),
+      DEFAULT_WATERMARK_STYLE,
+      media.currentProject?.creative?.tripleStitch,
+    )
+  }
+  const initialState = initialStateRef.current
+  const [selectedIds, setSelectedIds] = useState<string[]>(initialState.selectedIds)
+  const [activeSlot, setActiveSlot] = useState(initialState.activeSlot)
+  const [slotEdits, setSlotEdits] = useState<SlotEdit[]>(initialState.slotEdits)
   const previewPlayback = useTripleStitchPlayback(EXPORT_DURATION)
   const [busy, setBusy] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
@@ -180,8 +175,7 @@ export function TripleStitchCreative() {
   const compositionVersionRef = useRef(0)
 
   // ── 水印：从 Luna 设备配置读取，无开关 ──
-  const defaultWmStyle = LUNA_WATERMARK_OPTIONS[0]?.value ?? 'luna_ultra_cn'
-  const [watermarkStyle, setWatermarkStyle] = useState<string>(defaultWmStyle)
+  const [watermarkStyle, setWatermarkStyle] = useState<string>(initialState.watermarkStyle)
   const [watermarkInfo, setWatermarkInfo] = useState<{ imagePath: string } | null>(null)
 
   useEffect(() => {
@@ -197,6 +191,40 @@ export function TripleStitchCreative() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [watermarkStyle])
+
+  useEffect(() => {
+    const state = {
+      selectedIds,
+      activeSlot,
+      slotEdits,
+      watermarkStyle,
+    }
+    saveTripleStitchState(workspaceStateKey, state)
+
+    const currentProject = currentProjectRef.current
+    if (!currentProject) return
+    const nextProject = {
+      ...currentProject,
+      creative: {
+        ...currentProject.creative,
+        tripleStitch: state,
+      },
+    }
+    currentProjectRef.current = nextProject
+    media.setCurrentProject(nextProject)
+    if (projectSaveTimerRef.current !== null) window.clearTimeout(projectSaveTimerRef.current)
+    projectSaveTimerRef.current = window.setTimeout(() => {
+      projectSaveTimerRef.current = null
+      window.luna.workspace.saveProject(nextProject).catch(() => {})
+    }, 300)
+  }, [activeSlot, selectedIds, slotEdits, watermarkStyle, workspaceStateKey])
+
+  useEffect(() => () => {
+    if (projectSaveTimerRef.current === null) return
+    window.clearTimeout(projectSaveTimerRef.current)
+    const currentProject = currentProjectRef.current
+    if (currentProject) void window.luna.workspace.saveProject(currentProject).catch(() => {})
+  }, [])
 
   // 异步构建 composition + 加载 LUT（仅用于导出）
   useEffect(() => {
@@ -215,9 +243,10 @@ export function TripleStitchCreative() {
 
   // 预览层（直接使用前端 <video> 解码，不依赖 composition 构建）
   const previewLayers: PreviewLayer[] = useMemo(() => {
-    const videoLayers = slotSources.map(({ asset, pipeline }, index) => ({
-      filePath: asset.path,
-      isVideo: true,
+    const mediaLayers = slotSources.map(({ filePath, isVideo, pipeline }, index) => ({
+      filePath,
+      isVideo,
+      fit: 'cover-scale' as const,
       videoTime: (slotEdits[index]?.startTime ?? 0) + previewPlayback.seekTime,
       dstX: 0, dstY: index / 3, dstW: 1, dstH: 1 / 3,
       srcX: 0, srcY: 0, srcW: 1, srcH: 1,
@@ -241,9 +270,10 @@ export function TripleStitchCreative() {
         )
       : []
 
-    return [...videoLayers, ...logoLayers]
+    return [...mediaLayers, ...logoLayers]
   }, [slotSources, slotEdits, watermarkInfo, previewPlayback.seekTime])
   const activeEdit = slotEdits[activeSlot] ?? DEFAULT_SLOT_EDIT
+  const activeSource = slotSources[activeSlot]
   const activeAsset = slotSources[activeSlot]?.asset
   const activeDuration = (activeAsset as { duration?: number } | undefined)?.duration
   const startMax = Math.max(0, (typeof activeDuration === 'number' ? activeDuration : 33) - EXPORT_DURATION)
@@ -288,8 +318,8 @@ export function TripleStitchCreative() {
         ...item,
         ...patch,
         scale: nextScale,
-        translateX: clampPan(patch.translateX ?? item.translateX, nextScale),
-        translateY: clampPan(patch.translateY ?? item.translateY, nextScale),
+        translateX: patch.translateX ?? item.translateX,
+        translateY: patch.translateY ?? item.translateY,
         startTime: Math.max(0, patch.startTime ?? item.startTime),
       }
     }))
@@ -300,9 +330,9 @@ export function TripleStitchCreative() {
   }
 
   function resetAllParameters(): void {
-    setSlotEdits(Array.from({ length: 3 }, () => ({ ...DEFAULT_SLOT_EDIT })))
+    setSlotEdits(createDefaultSlotEdits())
     setActiveSlot(0)
-    setWatermarkStyle(defaultWmStyle)
+    setWatermarkStyle(DEFAULT_WATERMARK_STYLE)
     previewPlayback.reset()
   }
 
@@ -580,8 +610,8 @@ export function TripleStitchCreative() {
             <ParamSlider
               label="水平"
               value={activeEdit.translateX}
-              min={-0.5}
-              max={0.5}
+              min={-10}
+              max={10}
               step={0.001}
               onChange={(translateX) => updateSlotEdit(activeSlot, { translateX })}
               formatValue={(value) => value.toFixed(3)}
@@ -589,21 +619,23 @@ export function TripleStitchCreative() {
             <ParamSlider
               label="垂直"
               value={activeEdit.translateY}
-              min={-0.5}
-              max={0.5}
+              min={-10}
+              max={10}
               step={0.001}
               onChange={(translateY) => updateSlotEdit(activeSlot, { translateY })}
               formatValue={(value) => value.toFixed(3)}
             />
-            <ParamSlider
-              label="起始"
-              value={activeEdit.startTime}
-              min={0}
-              max={startMax}
-              step={0.1}
-              onChange={(startTime) => updateSlotEdit(activeSlot, { startTime })}
-              formatValue={(value) => `${value.toFixed(1)}s`}
-            />
+            {activeSource?.isVideo && (
+              <ParamSlider
+                label="起始"
+                value={activeEdit.startTime}
+                min={0}
+                max={startMax}
+                step={0.1}
+                onChange={(startTime) => updateSlotEdit(activeSlot, { startTime })}
+                formatValue={(value) => `${value.toFixed(1)}s`}
+              />
+            )}
           </div>
         </div>
 

@@ -153,6 +153,11 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   // ── Auto-save project when pipeline changes ──
   const saveTimerRef = useRef<number | null>(null)
   useEffect(() => {
+    if (workspaceMode !== 'edit') {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+      return
+    }
     if (!media.currentProject || !media.activeMedia) return
     const nextProject: WorkspaceProject = {
       ...media.currentProject,
@@ -168,7 +173,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       // 更新内存状态：切回图片时能保留修改后的参数
       media.setCurrentProject(nextProject)
     }, 500)
-  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, edit.pipeline])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, edit.pipeline, workspaceMode])
 
   // ── 批量重置 ──
   function handleBatchReset(): void {
