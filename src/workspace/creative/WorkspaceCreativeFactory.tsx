@@ -9,6 +9,7 @@ interface WorkspaceCreativeFactoryProps {
 }
 
 export function WorkspaceCreativeFactory({ creativeModeId }: WorkspaceCreativeFactoryProps) {
+  console.log(`[Perf] WorkspaceCreativeFactory render creativeModeId=${creativeModeId}`)
   if (creativeModeId === 'triple-stitch') {
     return <TripleStitchCreative />
   }
