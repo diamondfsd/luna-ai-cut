@@ -12,7 +12,7 @@ import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './ren
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import './LrcRender.css'
 
-const PREVIEW_TEXTURE_MAX_SIDE = 2560 // 从 1920 降低到 1280，减少 56% 数据量
+const PREVIEW_TEXTURE_MAX_SIDE = 3840 // 从 1920 降低到 1280，减少 56% 数据量
 
 export interface LrcRenderHandle {
   exportImage(outputPath: string, width: number, height: number, format: string, quality: number): Promise<void>
@@ -40,8 +40,7 @@ export interface LrcRenderProps {
   onVideoElement?: (el: HTMLVideoElement | null) => void
   /** 允许画布查看交互的图片图层下标；默认包含所有普通图片，传空数组可关闭。 */
   interactiveImageLayerIndexes?: readonly number[]
-  /** 相对于画布适配尺寸的最小/最大查看倍数。 */
-  minImageScale?: number
+  /** 最大查看比例，1 表示画布像素与屏幕 CSS 像素 1:1；默认最大 200%。 */
   maxImageScale?: number
 }
 
@@ -115,8 +114,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     canvasHeight,
     onVideoElement,
     interactiveImageLayerIndexes,
-    minImageScale = 0.25,
-    maxImageScale = 8,
+    maxImageScale = 2,
   },
   ref,
 ) {
@@ -126,8 +124,8 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const rafRef = useRef(0)
   const imageInteraction = useCanvasViewportInteraction({
     layers,
+    canvasRef,
     interactiveImageLayerIndexes,
-    minImageScale,
     maxImageScale,
   })
   const layersRef = useRef<PreviewLayer[]>(layers)
@@ -382,7 +380,6 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     prevProps.canvasHeight === nextProps.canvasHeight &&
     prevProps.maxSide === nextProps.maxSide &&
     prevProps.className === nextProps.className &&
-    prevProps.minImageScale === nextProps.minImageScale &&
     prevProps.maxImageScale === nextProps.maxImageScale &&
     JSON.stringify(prevProps.interactiveImageLayerIndexes) === JSON.stringify(nextProps.interactiveImageLayerIndexes) &&
     layersEqual(prevProps.layers, nextProps.layers)

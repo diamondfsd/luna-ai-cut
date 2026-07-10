@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from 'react'
 import type { PreviewLayer } from '../shared/types'
 
 interface ViewportTransform {
@@ -17,8 +25,8 @@ interface DragState {
 
 interface UseCanvasViewportInteractionOptions {
   layers: PreviewLayer[]
+  canvasRef: RefObject<HTMLCanvasElement | null>
   interactiveImageLayerIndexes?: readonly number[]
-  minImageScale: number
   maxImageScale: number
 }
 
@@ -28,10 +36,49 @@ const INITIAL_VIEWPORT: ViewportTransform = {
   translateY: 0,
 }
 
+interface CanvasMetrics {
+  baseWidth: number
+  baseHeight: number
+  containerWidth: number
+  containerHeight: number
+  fitPixelRatio: number
+}
+
+function canvasMetrics(canvas: HTMLCanvasElement, currentScale: number): CanvasMetrics | null {
+  const container = canvas.parentElement
+  if (!container || canvas.width <= 0 || canvas.height <= 0 || currentScale <= 0) return null
+  const rect = canvas.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  const baseWidth = rect.width / currentScale
+  const baseHeight = rect.height / currentScale
+  if (baseWidth <= 0 || baseHeight <= 0) return null
+  return {
+    baseWidth,
+    baseHeight,
+    containerWidth: containerRect.width,
+    containerHeight: containerRect.height,
+    fitPixelRatio: Math.min(baseWidth / canvas.width, baseHeight / canvas.height),
+  }
+}
+
+function clampTranslation(
+  metrics: CanvasMetrics,
+  scale: number,
+  translateX: number,
+  translateY: number,
+): Pick<ViewportTransform, 'translateX' | 'translateY'> {
+  const limitX = Math.max(0, (metrics.baseWidth * scale - metrics.containerWidth) / 2)
+  const limitY = Math.max(0, (metrics.baseHeight * scale - metrics.containerHeight) / 2)
+  return {
+    translateX: Math.min(limitX, Math.max(-limitX, translateX)),
+    translateY: Math.min(limitY, Math.max(-limitY, translateY)),
+  }
+}
+
 export function useCanvasViewportInteraction({
   layers,
+  canvasRef,
   interactiveImageLayerIndexes,
-  minImageScale,
   maxImageScale,
 }: UseCanvasViewportInteractionOptions) {
   const [viewport, setViewport] = useState(INITIAL_VIEWPORT)
@@ -56,6 +103,21 @@ export function useCanvasViewportInteraction({
     setDragging(false)
   }, [interactive, sourceKey])
 
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const container = canvas?.parentElement
+    if (!interactive || !canvas || !container) return
+    const observer = new ResizeObserver(() => {
+      setViewport((current) => {
+        const metrics = canvasMetrics(canvas, current.scale)
+        if (!metrics) return current
+        return { ...current, ...clampTranslation(metrics, current.scale, current.translateX, current.translateY) }
+      })
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [canvasRef, interactive])
+
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -74,11 +136,20 @@ export function useCanvasViewportInteraction({
     const drag = dragRef.current
     if (!drag || drag.pointerId !== event.pointerId) return
     event.preventDefault()
-    setViewport((current) => ({
-      ...current,
-      translateX: drag.translateX + event.clientX - drag.clientX,
-      translateY: drag.translateY + event.clientY - drag.clientY,
-    }))
+    const canvas = event.currentTarget
+    const clientX = event.clientX
+    const clientY = event.clientY
+    setViewport((current) => {
+      const metrics = canvasMetrics(canvas, current.scale)
+      if (!metrics) return current
+      const translation = clampTranslation(
+        metrics,
+        current.scale,
+        drag.translateX + clientX - drag.clientX,
+        drag.translateY + clientY - drag.clientY,
+      )
+      return { ...current, ...translation }
+    })
   }, [])
 
   const onPointerEnd = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -92,28 +163,53 @@ export function useCanvasViewportInteraction({
 
   const onWheel = useCallback((event: React.WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault()
-    const rect = event.currentTarget.getBoundingClientRect()
-    const lowerBound = Math.max(0.01, Math.min(minImageScale, maxImageScale))
-    const upperBound = Math.max(lowerBound, maxImageScale)
+    const canvas = event.currentTarget
+    const rect = canvas.getBoundingClientRect()
 
     setViewport((current) => {
+      const metrics = canvasMetrics(canvas, current.scale)
+      if (!metrics) return current
+      const upperBound = Math.max(1, maxImageScale / metrics.fitPixelRatio)
       const nextScale = Math.min(
         upperBound,
-        Math.max(lowerBound, current.scale * Math.exp(-event.deltaY * 0.0015)),
+        Math.max(1, current.scale * Math.exp(-event.deltaY * 0.0015)),
       )
       const scaleRatio = nextScale / current.scale
+      const translation = clampTranslation(
+        metrics,
+        nextScale,
+        current.translateX + (event.clientX - (rect.left + rect.width / 2)) * (1 - scaleRatio),
+        current.translateY + (event.clientY - (rect.top + rect.height / 2)) * (1 - scaleRatio),
+      )
       return {
         scale: nextScale,
-        translateX: current.translateX + (event.clientX - (rect.left + rect.width / 2)) * (1 - scaleRatio),
-        translateY: current.translateY + (event.clientY - (rect.top + rect.height / 2)) * (1 - scaleRatio),
+        ...translation,
       }
     })
-  }, [maxImageScale, minImageScale])
+  }, [maxImageScale])
 
   const onDoubleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     event.preventDefault()
-    setViewport(INITIAL_VIEWPORT)
-  }, [])
+    const canvas = event.currentTarget
+    const rect = canvas.getBoundingClientRect()
+    const clientX = event.clientX
+    const clientY = event.clientY
+    setViewport((current) => {
+      const metrics = canvasMetrics(canvas, current.scale)
+      if (!metrics || current.scale > 1.001) return INITIAL_VIEWPORT
+      const actualSizeScale = Math.min(
+        Math.max(1, 1 / metrics.fitPixelRatio),
+        Math.max(1, maxImageScale / metrics.fitPixelRatio),
+      )
+      const translation = clampTranslation(
+        metrics,
+        actualSizeScale,
+        (clientX - (rect.left + rect.width / 2)) * (1 - actualSizeScale),
+        (clientY - (rect.top + rect.height / 2)) * (1 - actualSizeScale),
+      )
+      return { scale: actualSizeScale, ...translation }
+    })
+  }, [maxImageScale])
 
   const style = useMemo<CSSProperties>(() => ({
     transform: `translate3d(${viewport.translateX}px, ${viewport.translateY}px, 0) scale(${viewport.scale})`,
