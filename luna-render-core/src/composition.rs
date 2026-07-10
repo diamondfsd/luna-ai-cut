@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{LazyLock, Mutex};
 
@@ -389,6 +390,12 @@ impl Task for ExportCompositionVideoTask {
             self.input.output_path.clone(),
         ]);
 
+        // 确保输出目录存在
+        if let Some(parent) = Path::new(&self.input.output_path).parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| napi::Error::from_reason(format!("create output dir: {}", e)))?;
+        }
+
         let mut child = Command::new(&self.input.ffmpeg_path)
             .args(args)
             .stdin(Stdio::piped())
@@ -423,9 +430,23 @@ impl Task for ExportCompositionVideoTask {
                     Some(fps),
                 )
             })?;
-            stdin
-                .write_all(&rgba)
-                .map_err(|e| napi::Error::from_reason(format!("encode write: {}", e)))?;
+            if let Err(e) = stdin.write_all(&rgba) {
+                // 写入 pipe 失败（通常是 Broken pipe），说明 ffmpeg 编码器已提前退出。
+                // 关闭 stdin 并等待子进程获取 stderr 中的真实错误原因。
+                let _ = stdin.flush();
+                drop(stdin);
+                let stderr = child
+                    .wait_with_output()
+                    .ok()
+                    .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
+                    .unwrap_or_default();
+                let detail = if stderr.is_empty() {
+                    format!("encode write: {}", e)
+                } else {
+                    format!("encode write: {} — ffmpeg stderr: {}", e, stderr.trim())
+                };
+                return Err(napi::Error::from_reason(detail));
+            }
             if let Some(ref state) = task {
                 state
                     .current_frame
@@ -437,9 +458,12 @@ impl Task for ExportCompositionVideoTask {
             .wait_with_output()
             .map_err(|e| napi::Error::from_reason(format!("encode wait: {}", e)))?;
         if !output.status.success() {
-            return Err(napi::Error::from_reason(
-                String::from_utf8_lossy(&output.stderr).to_string(),
-            ));
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(napi::Error::from_reason(format!(
+                "ffmpeg exited with {} — stderr: {}",
+                output.status,
+                stderr.trim()
+            )));
         }
         if let Some(ref id) = self.input.task_id {
             cleanup_task(id);
@@ -549,22 +573,44 @@ impl Task for ExportCompositionImageTask {
         }
         args.push(self.input.output_path.clone());
 
+        // 确保输出目录存在
+        if let Some(parent) = Path::new(&self.input.output_path).parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| napi::Error::from_reason(format!("create output dir: {}", e)))?;
+        }
+
         let mut proc =
             Command::new(&self.input.ffmpeg_path)
                 .args(&args)
                 .stdin(Stdio::piped())
+                .stderr(Stdio::piped())
                 .spawn()
                 .map_err(|e| napi::Error::from_reason(format!("encode spawn: {}", e)))?;
-        proc.stdin
-            .take()
-            .unwrap()
-            .write_all(&rgba)
-            .map_err(|e| napi::Error::from_reason(format!("encode write: {}", e)))?;
-        let status = proc
-            .wait()
+        if let Err(e) = proc.stdin.take().unwrap().write_all(&rgba) {
+            let _ = proc.stdin.as_mut().map(|s| s.flush());
+            drop(proc.stdin.take());
+            let stderr = proc
+                .wait_with_output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
+                .unwrap_or_default();
+            let detail = if stderr.is_empty() {
+                format!("encode write: {}", e)
+            } else {
+                format!("encode write: {} — ffmpeg stderr: {}", e, stderr.trim())
+            };
+            return Err(napi::Error::from_reason(detail));
+        }
+        drop(proc.stdin.take());
+        let output = proc
+            .wait_with_output()
             .map_err(|e| napi::Error::from_reason(format!("encode wait: {}", e)))?;
-        if !status.success() {
-            return Err(napi::Error::from_reason("ffmpeg encode image failed"));
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(napi::Error::from_reason(format!(
+                "ffmpeg encode image failed — stderr: {}",
+                stderr.trim()
+            )));
         }
         Ok(())
     }
