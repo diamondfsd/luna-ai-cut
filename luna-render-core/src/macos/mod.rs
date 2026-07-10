@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 
-use crate::composition::{composition_layers, CompositionInput};
+use crate::composition::{composition_layers, is_video_source, CompositionInput};
 use crate::compositor::{decode_static_image_scaled, Compositor, PreviewTextureInfo};
 use crate::export::TaskState;
+use crate::media::probe_video_info;
 
 const ERROR_CAPACITY: usize = 1024;
 
@@ -235,6 +237,101 @@ fn temporary_output_path(output: &str) -> PathBuf {
     path.with_file_name(format!(".{file_name}.mac-gpu-partial.mp4"))
 }
 
+fn audio_output_path(output: &str) -> PathBuf {
+    let path = Path::new(output);
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("export.mp4");
+    path.with_file_name(format!(".{file_name}.mac-gpu-audio-partial.mp4"))
+}
+
+/// 把第一条视频层的音频合入 GPU 导出结果。这里只做音频处理和封装，
+/// 视频轨始终 stream copy，不会再次解码或编码 wgpu 的输出。
+fn mux_primary_audio(
+    ffmpeg_path: &str,
+    ffprobe_path: &str,
+    silent_video: &Path,
+    output_path: &str,
+    composition: &CompositionInput,
+    duration: f64,
+) -> Result<PathBuf, String> {
+    let Some(layer) = composition
+        .layers
+        .iter()
+        .find(|layer| is_video_source(&layer.source))
+    else {
+        return Ok(silent_video.to_path_buf());
+    };
+    let info = probe_video_info(ffprobe_path, &layer.source.path)?;
+    if !info.audio.has_audio {
+        return Ok(silent_video.to_path_buf());
+    }
+
+    let timing = layer.source.time.as_ref();
+    let offset = timing.and_then(|time| time.offset).unwrap_or(0.0).max(0.0);
+    if offset >= duration {
+        return Ok(silent_video.to_path_buf());
+    }
+    let start = timing.and_then(|time| time.start).unwrap_or(0.0).max(0.0);
+    let active_duration = timing
+        .and_then(|time| time.duration)
+        .unwrap_or(duration - offset)
+        .min(duration - offset)
+        .max(0.001);
+    let mux_output = audio_output_path(output_path);
+    let _ = std::fs::remove_file(&mux_output);
+    let filter = format!("[1:a:0]asetpts=PTS-STARTPTS+{:.6}/TB[aout]", offset);
+    let mut args = vec![
+        "-y".to_string(),
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(),
+        "error".to_string(),
+        "-i".to_string(),
+        silent_video.to_string_lossy().into_owned(),
+    ];
+    if timing.and_then(|time| time.loop_enabled).unwrap_or(false) {
+        args.extend(["-stream_loop".to_string(), "-1".to_string()]);
+    }
+    args.extend([
+        "-ss".to_string(),
+        format!("{start:.6}"),
+        "-t".to_string(),
+        format!("{active_duration:.6}"),
+        "-i".to_string(),
+        layer.source.path.clone(),
+        "-filter_complex".to_string(),
+        filter,
+        "-map".to_string(),
+        "0:v:0".to_string(),
+        "-map".to_string(),
+        "[aout]".to_string(),
+        "-c:v".to_string(),
+        "copy".to_string(),
+        "-c:a".to_string(),
+        "aac".to_string(),
+        "-b:a".to_string(),
+        "192k".to_string(),
+        "-t".to_string(),
+        format!("{duration:.6}"),
+        "-movflags".to_string(),
+        "+faststart".to_string(),
+        mux_output.to_string_lossy().into_owned(),
+    ]);
+    let result = Command::new(ffmpeg_path)
+        .args(&args)
+        .output()
+        .map_err(|error| format!("启动音频合成失败: {error}"))?;
+    if !result.status.success() {
+        return Err(format!(
+            "音频合成失败: {}",
+            String::from_utf8_lossy(&result.stderr).trim()
+        ));
+    }
+    std::fs::remove_file(silent_video).map_err(|error| format!("清理临时视频失败: {error}"))?;
+    Ok(mux_output)
+}
+
 pub(crate) fn export_video(
     compositor: &mut Compositor,
     ffmpeg_path: &str,
@@ -372,9 +469,19 @@ pub(crate) fn export_video(
     for (texture_id, _, _) in static_textures.into_values() {
         let _ = compositor.release_texture(texture_id);
     }
+    let duration = total_frames as f64 / fps;
+    let completed_output = mux_primary_audio(
+        ffmpeg_path,
+        ffprobe_path,
+        &temp_output,
+        output_path,
+        composition,
+        duration,
+    )?;
     if Path::new(output_path).exists() {
         std::fs::remove_file(output_path).map_err(|e| format!("替换旧导出文件失败: {e}"))?;
     }
-    std::fs::rename(&temp_output, output_path).map_err(|e| format!("保存导出文件失败: {e}"))?;
+    std::fs::rename(&completed_output, output_path)
+        .map_err(|e| format!("保存导出文件失败: {e}"))?;
     Ok(())
 }
