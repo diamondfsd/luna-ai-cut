@@ -184,7 +184,6 @@ async function exportAppleLivePhotoPair(
     logMainError('[LIVE Apple] livetool metadata injection failed (non-fatal)', { error: err })
   }
 
-  await importToPhotosApp(imgDest, vidDest)
   onProgress?.(96)
 }
 
