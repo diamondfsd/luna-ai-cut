@@ -187,7 +187,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
       // ── 管理视频元素 ──
       useEffect(() => {
-        if (!readyRef.current) return
+        if (!readyRef.current) {
+          // LRC 尚未就绪，跳过视频创建；依赖有 ready，等 ready 变为 true 后自动重跑
+          return
+        }
         const t0 = performance.now()
         perfLog(`video management effect start, ${layers.filter(l => l.isVideo).length} video layers`)
         const lrc = lrcRef.current
@@ -313,7 +316,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         }
         const tEnd = performance.now()
         perfLog(`video management effect done in ${(tEnd - t0).toFixed(0)}ms, ${videoStatesRef.current.size} videos managed`)
-      }, [layers])
+      }, [layers, ready])
 
       // ── 播放/暂停控制 ──
       useEffect(() => {
