@@ -60,6 +60,7 @@ function TaskItemRow({ item, onPreview, onRevealFile, isAppleLive }: {
         {item.status === 'canceled' && <Ban size={12} style={{ color: 'var(--muted)' }} />}
       </span>
       <span className="et-ti-kind">{isVideo ? <Film size={12} /> : <ImageIcon size={12} />}{isVideo ? ' 视频' : ' 图片'}</span>
+      {item.label && <span className="et-ti-label">{item.label}</span>}
       <span className="et-ti-name" title={item.destinationPath ?? item.fileName}>{displayName}</span>
       <span className="et-ti-dur">{formatDuration(item.duration)}</span>
       <span className="et-ti-progress">
