@@ -197,11 +197,14 @@ export function SettingsPage({
             <em>导入 .cube 滤镜文件目录树，子文件夹自动成为滤镜分组名</em>
           </div>
           <div className="settings-row-actions">
-            {settings?.lutDir && (
-              <Button variant="secondary" size="compact" onClick={() => openDirectory(settings.lutDir)} icon={<FolderOpen size={15} />}>
-                打开
-              </Button>
-            )}
+            {(() => {
+              const lutPath = settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : null)
+              return lutPath ? (
+                <Button variant="secondary" size="compact" onClick={() => openDirectory(lutPath)} icon={<FolderOpen size={15} />}>
+                  打开
+                </Button>
+              ) : null
+            })()}
             <Button variant="primary" size="compact"
               icon={<FolderOpen size={15} />}
               onClick={async () => {
@@ -216,7 +219,7 @@ export function SettingsPage({
                 } catch { /* 用户取消 */ }
               }}
             >
-              {settings?.lutDir ? '切换目录' : '打开目录'}
+              切换目录
             </Button>
             {settings?.lutDir && (
               <Button variant="danger" size="compact"
