@@ -8,7 +8,7 @@ import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { useFileCache } from '../hooks/useFileCache'
-import { filePathToPreviewUrl } from '../lib/fileUtils'
+import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Button, Dialog, toast } from '../ui'
@@ -66,6 +66,11 @@ export function PreviewModal({
   const displaySource = activeSourcePath ? (filePathToPreviewUrl(activeSourcePath) ?? activeSourcePath) : null
   const stageSource = toLocalPath(activeSourcePath)
 
+  // 批量导出时，检查整个列表是否包含视频；非批量时仅检查当前文件
+  const hasVideoInBatch = batchExportMode
+    ? (filePathList ?? []).some((fp) => isVideoPath(fp))
+    : isVideoPath(currentFilePath)
+
   useEffect(() => {
     console.log('[PreviewModal] source changed', {
       currentFilePath,
@@ -101,7 +106,7 @@ export function PreviewModal({
         }
       }))
 
-      await exportBatchFiles(sources, settings.exportDir, exportConfig)
+      await exportBatchFiles(sources, settings.exportDir, hasVideoInBatch ? exportConfig : null)
       toast.success(`已加入导出队列 (${sources.length} 个文件)`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '导出失败')
@@ -163,7 +168,9 @@ export function PreviewModal({
               />
               {!previewOnly && (
                 <>
-                  <ExportSettingsPanel value={exportConfig} onChange={setExportConfig} />
+                  {hasVideoInBatch && (
+                    <ExportSettingsPanel value={exportConfig} onChange={setExportConfig} />
+                  )}
                   <div className="batch-export-actions">
                     <Button
                       variant="primary"
