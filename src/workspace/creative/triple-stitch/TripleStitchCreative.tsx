@@ -745,8 +745,6 @@ export function TripleStitchCreative() {
           </div>
         </div>
 
-        {/* 导出设置已迁移至弹窗，在点击导出按钮时触发 */}
-
         {LUNA_WATERMARK_OPTIONS.length > 0 && (
           <div className="triple-stitch-section">
             <div className="triple-stitch-section-title">水印</div>

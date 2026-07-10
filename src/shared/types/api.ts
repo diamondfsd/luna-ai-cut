@@ -84,8 +84,8 @@ export interface LunaApi {
   /** 导出任务记录服务 */
   exportTask: {
     create(name: string, items?: Array<{ id: string; sourcePath: string; outputPath: string }>, taskId?: string): Promise<ExportTaskRecord>
-    addItems(taskId: string, items: Array<{ id: string; sourcePath: string; outputPath: string }>): Promise<void>
-    updateItem(taskId: string, itemId: string, data: { progress?: number; status?: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'; error?: string; destinationPath?: string }): Promise<void>
+    addItems(taskId: string, items: Array<{ id: string; sourcePath: string; outputPath: string; label?: string }>): Promise<void>
+    updateItem(taskId: string, itemId: string, data: { progress?: number; status?: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'; error?: string; destinationPath?: string; label?: string }): Promise<void>
     cancel(taskId: string): Promise<void>
     get(taskId: string): Promise<ExportTaskRecord | undefined>
     list(): Promise<ExportTaskRecord[]>
