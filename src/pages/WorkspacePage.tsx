@@ -403,12 +403,10 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     }
   }, [pageActive, workspaceMode])
 
-  // ── Empty state ──
+  // ── Empty state — 列表页独立布局，不使用详情页的 workspace-layout 网格 ──
   if (!media.currentProject && media.media.length === 0) {
     return (
-      <div className="workspace-layout">
-        <WorkspaceProjectPicker />
-      </div>
+      <WorkspaceProjectPicker />
     )
   }
 
