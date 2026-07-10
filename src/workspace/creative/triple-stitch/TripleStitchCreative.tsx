@@ -480,15 +480,15 @@ export function TripleStitchCreative() {
       const api = compositionApi()
 
       // 构建子任务列表（视频优先，然后是 live / appleLive）
-      const items: Array<{ id: string; sourcePath: string; outputPath: string }> = []
+      const items: Array<{ id: string; sourcePath: string; outputPath: string; label?: string }> = []
       if (exportFormats.has('video')) {
-        items.push({ id: `triple_stitch_video_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: videoPath })
+        items.push({ id: `triple_stitch_video_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: videoPath, label: '视频导出' })
       }
       if (exportFormats.has('live')) {
-        items.push({ id: `triple_stitch_live_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_live.jpg`) })
+        items.push({ id: `triple_stitch_live_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_live.jpg`), label: 'Live 图导出' })
       }
       if (exportFormats.has('appleLive')) {
-        items.push({ id: `triple_stitch_appleLive_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_appleLive.jpg`) })
+        items.push({ id: `triple_stitch_appleLive_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_appleLive.jpg`), label: 'Apple Live 图导出' })
       }
 
       const task = await window.luna.exportTask.create('三拼创意导出', items)

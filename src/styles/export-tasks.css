@@ -255,6 +255,19 @@
   color: var(--muted);
 }
 
+.et-ti-label {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0, 102, 204, 0.12);
+  color: var(--blue, #06c);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
 .et-ti-name {
   flex: 1;
   min-width: 0;

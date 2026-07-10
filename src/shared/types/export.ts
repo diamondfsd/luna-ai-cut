@@ -3,12 +3,16 @@ export interface ExportItemInput {
   id: string
   sourcePath: string
   outputPath: string
+  /** 用户可见的描述，如"视频导出"、"Live 图导出" */
+  label?: string
 }
 
 /** 子任务记录 */
 export interface ExportTaskItem {
   id: string
   fileName: string
+  /** 用户可见的描述，如"视频导出"、"Live 图导出" */
+  label?: string
   kind: 'image' | 'video' | 'lrv'
   status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
   progress: number
