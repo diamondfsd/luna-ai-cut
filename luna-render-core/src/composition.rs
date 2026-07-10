@@ -6,8 +6,10 @@ use std::sync::{LazyLock, Mutex};
 use napi::bindgen_prelude::AsyncTask;
 use napi::{Env, Task};
 use napi_derive::napi;
+use serde::{Deserialize, Serialize};
 
 use crate::compositor::{Compositor, PreviewLayerInput};
+use crate::compositor::log_write;
 use crate::export::{cleanup_task, register_task, QualityPreset};
 use crate::media::probe_video_info;
 use crate::{
@@ -16,7 +18,7 @@ use crate::{
 };
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionCanvas {
     pub width: u32,
     pub height: u32,
@@ -25,7 +27,7 @@ pub struct CompositionCanvas {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionSourceTime {
     pub offset: Option<f64>,
     pub start: Option<f64>,
@@ -34,7 +36,7 @@ pub struct CompositionSourceTime {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionSource {
     pub path: String,
     pub source_type: Option<String>,
@@ -42,7 +44,7 @@ pub struct CompositionSource {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionRect {
     pub x: f64,
     pub y: f64,
@@ -51,7 +53,7 @@ pub struct CompositionRect {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionLayer {
     pub id: Option<String>,
     pub source: CompositionSource,
@@ -67,7 +69,7 @@ pub struct CompositionLayer {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionInput {
     pub version: Option<u32>,
     pub canvas: CompositionCanvas,
@@ -75,7 +77,7 @@ pub struct CompositionInput {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RenderCompositionFrameInput {
     pub ffmpeg_path: String,
     pub ffprobe_path: String,
@@ -85,7 +87,7 @@ pub struct RenderCompositionFrameInput {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ExportCompositionVideoInput {
     pub ffmpeg_path: String,
     pub ffprobe_path: String,
@@ -187,7 +189,8 @@ fn render_composition_frame_with(
     fps: Option<f64>,
 ) -> Result<(Vec<u8>, u32, u32), String> {
     let layers = composition_layers(input, time);
-    let effective_max_side = max_side.or_else(|| Some(input.canvas.width.max(input.canvas.height)));
+    let raw_max_side = max_side.unwrap_or_else(|| input.canvas.width.max(input.canvas.height));
+    let effective_max_side = Some(raw_max_side.min(compositor.max_texture_size));
     compositor.render_preview(
         ffmpeg_path,
         ffprobe_path,
@@ -308,6 +311,9 @@ impl Task for ExportCompositionVideoTask {
     type JsValue = ();
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
+        if let Ok(json) = serde_json::to_string_pretty(&self.input.composition) {
+            log_write(&format!("[Export:Rust:Video] composition=\n{}", json));
+        }
         let fps = self
             .input
             .fps
@@ -455,7 +461,7 @@ pub fn export_composition_video_async(
 // ── exportCompositionImage ──
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ExportCompositionImageInput {
     pub ffmpeg_path: String,
     pub ffprobe_path: String,
@@ -474,6 +480,9 @@ impl Task for ExportCompositionImageTask {
     type JsValue = ();
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
+        if let Ok(json) = serde_json::to_string_pretty(&self.input.composition) {
+            log_write(&format!("[Export:Rust:Image] composition=\n{}", json));
+        }
         // 使用全局 compositor（含有已加载的 LUT，不用 .map_err 因为 lock 已返回 napi::Result）
         let (rgba, width, height) = crate::lock_export(|c| {
             c.clear_video_decoders();

@@ -27,7 +27,7 @@ export function buildCompositionFromPreviewLayers(
   const canvasHeight = Math.max(1, Math.round(height ?? DEFAULT_COMPOSITION_SIZE))
   const duration = options?.duration
 
-  return {
+  const composition: CompositionInput = {
     version: 1,
     canvas: {
       width: canvasWidth,
@@ -64,4 +64,7 @@ export function buildCompositionFromPreviewLayers(
       lutIntensity: layer.lutIntensity,
     })),
   }
+
+  console.log('[Export → Rust]', JSON.stringify(composition, null, 2))
+  return composition
 }
