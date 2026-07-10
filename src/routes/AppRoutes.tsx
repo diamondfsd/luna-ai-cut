@@ -7,6 +7,8 @@ import { UpdateBanner } from '../components/UpdateBanner'
 import { PreviewModalHost } from '../components/PreviewModalHost'
 import { AppRoute } from '../ui'
 import { useApp } from '../context/AppContext'
+import { DownloadProgressProvider } from '../context/DownloadProgressContext'
+import { ExportProgressProvider } from '../context/ExportProgressContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { CameraMediaPage } from '../pages/CameraMediaPage'
 import { DevPage } from '../pages/DevPage'
@@ -19,7 +21,7 @@ import type { CacheStats } from '../shared/types'
 import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 
 export function AppRoutes() {
-  const { settings, setSettings, connection, setDownloadProgress, hiddenDevMode } = useApp()
+  const { settings, setSettings, connection, hiddenDevMode } = useApp()
   const {
     activeDevice,
     cameraLibraryMounted,
@@ -41,16 +43,6 @@ export function AppRoutes() {
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
-  }, [])
-
-  useEffect(() => {
-    return window.luna.onDownloadProgress((progress) => {
-      setDownloadProgress((current) => {
-        const next = new Map(current).set(progress.fileName, progress)
-        return next
-      })
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function chooseBaseDir(): Promise<void> {
@@ -111,8 +103,9 @@ export function AppRoutes() {
   }
 
   return (
-    <main className="app">
-      <AppNav
+    <ExportProgressProvider>
+      <main className="app">
+        <AppNav
         connection={connection}
         sourceMode={sourceMode}
         activeDevice={activeDevice}
@@ -139,13 +132,17 @@ export function AppRoutes() {
           )}
           {(cameraLibraryMounted || !showDeviceConnect) && (
             <div hidden={showDeviceConnect}>
-              <CameraMediaPage />
+              <DownloadProgressProvider>
+                <CameraMediaPage />
+              </DownloadProgressProvider>
             </div>
           )}
         </AppRoute>
 
         <AppRoute path="/local-resources">
-          <LocalMediaPage />
+          <DownloadProgressProvider>
+            <LocalMediaPage />
+          </DownloadProgressProvider>
         </AppRoute>
 
         <AppRoute path="/workspace">
@@ -193,5 +190,6 @@ export function AppRoutes() {
         <PreviewModalHost />
       </div>
     </main>
+    </ExportProgressProvider>
   )
 }

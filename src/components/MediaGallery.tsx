@@ -2,7 +2,7 @@ import { FileQuestion } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { MediaCard } from './MediaCard'
-import { useApp } from '../context/AppContext'
+import { useDownloadProgress } from '../context/DownloadProgressContext'
 import { useMediaLib } from '../pages/useMediaLibraryController'
 import { Button, LoadingIndicator } from '../ui'
 
@@ -13,7 +13,7 @@ interface MediaGalleryProps {
 
 export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
   const ctrl = useMediaLib()
-  const { downloadProgress } = useApp()
+  const { downloadProgress } = useDownloadProgress()
   const isLocal = mode === 'local'
   const galleryRef = useRef<HTMLDivElement>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)

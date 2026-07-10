@@ -7,6 +7,7 @@ import { DownloadProgressModal } from './DownloadProgressModal'
 import { AddToWorkspaceProjectDialog, CreateWorkspaceProjectDialog } from './WorkspaceProjectDialogs'
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
+import { useDownloadProgress } from '../context/DownloadProgressContext'
 import { useMediaLib } from '../pages/useMediaLibraryController'
 import type { ViewMode } from '../pages/useMediaLibraryController'
 import {
@@ -29,7 +30,8 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
   const isCamera = mode === 'camera'
   const isLocal = mode === 'local'
   const ctrl = useMediaLib()
-  const { settings, downloadProgress, setDownloadProgress } = useApp()
+  const { settings } = useApp()
+  const { downloadProgress, setDownloadProgress } = useDownloadProgress()
 
   const haveSelection = ctrl.selectedFiles.length > 0
   const [filterOpen, setFilterOpen] = useState(false)
