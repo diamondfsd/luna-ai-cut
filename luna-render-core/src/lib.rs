@@ -8,6 +8,7 @@ use std::sync::{LazyLock, Mutex};
 use compositor::Compositor;
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
+use serde::{Deserialize, Serialize};
 
 #[napi(object)]
 pub struct TextureLoadResult {
@@ -17,14 +18,14 @@ pub struct TextureLoadResult {
 }
 
 #[napi(object)]
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct RenderCurvePoint {
     pub x: f64,
     pub y: f64,
 }
 
 #[napi(object)]
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct RenderToneCurveAdjust {
     pub rgb: Vec<RenderCurvePoint>,
     pub luminance: Vec<RenderCurvePoint>,
@@ -34,7 +35,7 @@ pub struct RenderToneCurveAdjust {
 }
 
 #[napi(object)]
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct RenderHslChannelAdjust {
     pub hue: f64,
     pub hue_shift: f64,
@@ -43,7 +44,7 @@ pub struct RenderHslChannelAdjust {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RenderColorAdjustments {
     pub exposure: f64,
     pub black: f64,
@@ -125,7 +126,7 @@ fn default_hsl_channels() -> Vec<RenderHslChannelAdjust> {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RenderCropRect {
     pub x: f64,
     pub y: f64,
@@ -134,7 +135,7 @@ pub struct RenderCropRect {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RenderLayerTransform {
     pub crop: Option<RenderCropRect>,
     pub orientation: f64,
@@ -148,7 +149,7 @@ pub struct RenderLayerTransform {
 
 /// 层相对定位：Rust 根据画布比例自动计算 dst，保证纹理比例不变形
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct LayerPositioning {
     pub anchor: String,
     pub target_width: f64,
@@ -217,7 +218,7 @@ pub(crate) fn lock_export<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String
 
 /// 画布上的一个渲染层（预览用，纹理已由 JS 预加载）
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RenderLayer {
     pub texture_id: u32,
     pub fit: Option<String>,
@@ -240,7 +241,7 @@ pub struct RenderLayer {
 
 /// 预览层 — render_preview 的统一层描述
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PreviewLayer {
     pub file_path: String,
     pub is_video: bool,
@@ -264,7 +265,7 @@ pub struct PreviewLayer {
 
 /// render_preview 的输入
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RenderPreviewInput {
     pub ffmpeg_path: String,
     pub ffprobe_path: String,
@@ -282,7 +283,7 @@ pub struct RenderPreviewOutput {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PreviewTexture {
     pub texture_id: u32,
     pub width: u32,
@@ -290,14 +291,14 @@ pub struct PreviewTexture {
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PreviewPlanLayer {
     pub layer: PreviewLayer,
     pub texture: PreviewTexture,
 }
 
 #[napi(object)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PreviewPlanInput {
     pub width: Option<u32>,
     pub height: Option<u32>,
