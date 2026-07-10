@@ -34,6 +34,16 @@ function mediaKindForPath(filePath: string): LunaFile['kind'] {
   return 'unknown'
 }
 
+/** LRV 文件的缩略图 key 映射为对应的 MP4 文件名，避免不同格式重复生成缩略图 */
+function thumbnailKeyFor(file: LunaFile): string {
+  const base = file.downloadName || file.name
+  // LRV_xxx.lrv → VID_xxx.mp4（与下载时的 downloadName 一致）
+  if (/^LRV_(.+)\.lrv$/i.test(base)) {
+    return base.replace(/^LRV_/i, 'VID_').replace(/\.lrv$/i, '.mp4')
+  }
+  return base
+}
+
 function localFileForPath(filePath: string): LunaFile {
   const name = path.basename(filePath)
   return {
@@ -103,7 +113,7 @@ export function register(ctx: IpcContext): void {
         logMainInfo(`[缓存] 缓存已存在，跳过下载`, { key, existingPath })
         const cacheDir = await previewCacheDir()
         const thumbDir = thumbnailDir(cacheDir)
-        const thumbnailKey = file.downloadName || file.name
+        const thumbnailKey = thumbnailKeyFor(file)
         const thumbPath = await enqueueThumbnailGeneration(existingPath, thumbDir, thumbnailKey, file.kind, file.name)
         ctx.win?.webContents.send('luna:thumbnail-ready', {
           fileId: file.id,
@@ -125,7 +135,7 @@ export function register(ctx: IpcContext): void {
           if (cacheFilePath) {
             const cacheDir = await previewCacheDir()
             const thumbDir = thumbnailDir(cacheDir)
-            const thumbnailKey = file.downloadName || file.name
+            const thumbnailKey = thumbnailKeyFor(file)
             const thumbPath = await enqueueThumbnailGeneration(cacheFilePath, thumbDir, thumbnailKey, file.kind, file.name)
             if (thumbPath) {
               const thumbnailUrl = pathToFileURL(thumbPath).toString()
