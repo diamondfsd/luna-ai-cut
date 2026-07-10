@@ -213,7 +213,9 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         for (const [existingKey, entry] of videoStatesRef.current) {
           if (!requiredKeys.has(existingKey)) {
             if (entry.textureId > 0) {
-              lrc.releaseTexture(entry.textureId).catch(() => {})
+              const tid = entry.textureId
+              entry.textureId = 0 // 先清除，避免并发 renderFrame 读取到已释放的 ID
+              lrc.releaseTexture(tid).catch(() => {})
             }
             entry.video.pause()
             entry.video.src = ''
@@ -241,7 +243,9 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           // 存在旧视频但源变了 → 释放
           if (existing) {
             if (existing.textureId > 0) {
-              lrc.releaseTexture(existing.textureId).catch(() => {})
+              const tid = existing.textureId
+              existing.textureId = 0
+              lrc.releaseTexture(tid).catch(() => {})
             }
             existing.video.pause()
             existing.video.src = ''
@@ -436,8 +440,18 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
                   entry.renderW,
                   entry.renderH,
                 )
+                // 加载完后验证 entry 在 IPC 期间未被清理（切换素材时的竞态）
+                if (videoStatesRef.current.get(key) !== entry) {
+                  lrc.releaseTexture(entry.textureId).catch(() => {})
+                  entry.textureId = 0
+                  continue
+                }
               } else {
                 await lrc.updateTexture(entry.textureId, rgbaData as unknown as Buffer)
+                // 更新完后验证 entry 在 IPC 期间未被清理
+                if (videoStatesRef.current.get(key) !== entry) {
+                  continue
+                }
               }
 
               textureId = entry.textureId
