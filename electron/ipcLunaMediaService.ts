@@ -67,7 +67,10 @@ function localFileForPath(filePath: string): LunaFile {
 }
 
 export function register(ctx: IpcContext): void {
-  ipcMain.handle('luna:cacheFile', async (_event, sourceUrl: string) => {
+  ipcMain.handle('luna:cacheFile', async (_event, params: string | { sourceUrl: string; previewUrl?: string | null }) => {
+    // 兼容旧格式（直接传 sourceUrl 字符串）
+    const sourceUrl = typeof params === 'string' ? params : params.sourceUrl
+    const previewUrl = typeof params === 'string' ? undefined : params.previewUrl
     const key = sourceUrl
     const existingTask = ctx.previewCacheTasks.get(key)
     if (existingTask) {
@@ -76,6 +79,15 @@ export function register(ctx: IpcContext): void {
     }
 
     const file = localFileForPath(sourceUrl)
+    // 如果传入了 previewUrl，设置到 file 上以便 cacheFile 优先使用 LRV 下载
+    if (previewUrl) {
+      try {
+        file.previewName = new URL(previewUrl).pathname.split('/').pop() ?? previewUrl
+      } catch {
+        file.previewName = previewUrl.replace(/^.*[/\\]/, '')
+      }
+      file.previewUrl = previewUrl
+    }
 
     logMainInfo(`[缓存] 开始缓存文件`, { key, fileName: file.name, kind: file.kind })
 
