@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { X, CircleAlert, Download, FolderOpen } from 'lucide-react'
+import { X, CircleAlert, FolderOpen } from 'lucide-react'
 
 import { IconButton } from '../ui'
 import { extensionFromPath, fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
@@ -9,16 +9,6 @@ interface PreviewModalHeaderProps {
   inspectorOpen?: boolean
   onClose: () => void
   onSetInspectorOpen?: (open: boolean) => void
-  /** 导出按钮回调 */
-  onExport?: () => void
-  /** 导出是否正在进行中 */
-  exporting?: boolean
-  /** 仅查看模式（隐藏水印配置入口） */
-  previewOnly?: boolean
-  /** 批量导出模式 */
-  batchExportMode?: boolean
-  /** 批量导出文件数 */
-  exportFilesCount?: number
 }
 
 function mediaLabel(filePath: string): string {
@@ -33,11 +23,6 @@ export function PreviewModalHeader({
   inspectorOpen,
   onClose,
   onSetInspectorOpen,
-  onExport,
-  exporting,
-  previewOnly,
-  batchExportMode,
-  exportFilesCount,
 }: PreviewModalHeaderProps) {
   const revealPath = useMemo(
     () => filePath.startsWith('file://') ? decodeURIComponent(new URL(filePath).pathname) : filePath,
@@ -51,19 +36,10 @@ export function PreviewModalHeader({
   return (
     <header>
       <div>
-        <span className="eyebrow">{batchExportMode ? `批量导出 (${exportFilesCount ?? 0} 个文件)` : mediaLabel(filePath)}</span>
-        <h2>{batchExportMode ? '导出设置' : fileNameFromPath(filePath)}</h2>
+        <span className="eyebrow">{mediaLabel(filePath)}</span>
+        <h2>{fileNameFromPath(filePath)}</h2>
       </div>
       <div className="preview-actions">
-        {!previewOnly && onExport ? (
-          <IconButton
-            variant="light"
-            icon={<Download size={16} />}
-            onClick={onExport}
-            disabled={exporting}
-            title={exporting ? '导出中...' : '导出当前帧'}
-          />
-        ) : null}
         {!inspectorOpen && (
           <IconButton
             variant="light"
