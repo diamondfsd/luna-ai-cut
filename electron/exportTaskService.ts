@@ -82,7 +82,7 @@ function isTerminalStatus(status: ExportTaskItem['status']): boolean {
   return status === 'done' || status === 'failed' || status === 'canceled'
 }
 
-function inputToItem(input: ExportItemInput, ts: number): ExportTaskItem {
+function inputToItem(input: ExportItemInput, _ts: number): ExportTaskItem {
   return {
     id: input.id,
     fileName: basename(input.outputPath),

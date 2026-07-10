@@ -178,7 +178,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       const context = canvas.getContext('2d')
       if (!context) throw new Error('画布不可用')
       const pixelData = bytesFromRenderData(result.data)
-      context.putImageData(new ImageData(pixelData as unknown as Uint8ClampedArray<ArrayBuffer>, result.width, result.height), 0, 0)
+      context.putImageData(new ImageData(pixelData as unknown as Uint8ClampedArray, result.width, result.height), 0, 0)
 
       // 计算 seek 到渲染完成的耗时
       if (seekStartTimeRef.current !== null) {
