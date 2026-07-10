@@ -465,8 +465,6 @@ export function TripleStitchCreative() {
       const baseName = `triple-stitch-${stamp}`
       const videoFileName = `${baseName}.mp4`
       const videoPath = outputPath(settings.exportDir, videoFileName)
-      const imageFileName = `${baseName}_frame.jpg`
-      const imagePath = outputPath(settings.exportDir, imageFileName)
 
       const resolved = resolveExportConfig(config, CANVAS_WIDTH, CANVAS_HEIGHT)
       const scaledComposition: CompositionInput = {
@@ -490,64 +488,65 @@ export function TripleStitchCreative() {
         items.push({ id: `triple_stitch_live_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_live.jpg`) })
       }
       if (exportFormats.has('appleLive')) {
-        items.push({ id: `triple_stitch_appleLive_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_applevideo.jpg`) })
+        items.push({ id: `triple_stitch_appleLive_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(settings.exportDir, `${baseName}_appleLive.jpg`) })
       }
 
-      const task = await window.luna.exportTask.create('三拼视频导出', items)
+      const task = await window.luna.exportTask.create('三拼创意导出', items)
 
-      // Step 1: 导出视频（所有格式都需要）
-      if (exportFormats.has('video')) {
-        await api.exportCompositionVideo(
-          videoPath, scaledComposition, resolved.fps, EXPORT_DURATION,
-          true, `triple_stitch_video_${stamp}`, resolved.qualityPreset,
-          task.id, `triple_stitch_video_${stamp}`,
-        )
-      } else {
-        // 只导出 live/appleLive 时，仍需要视频文件但不作为独立导出项
-        await api.exportCompositionVideo(
-          videoPath, scaledComposition, resolved.fps, EXPORT_DURATION,
-          true, undefined, resolved.qualityPreset,
-        )
-      }
+      // Step 1: 导出视频
+      await api.exportCompositionVideo(
+        videoPath, scaledComposition, resolved.fps, EXPORT_DURATION,
+        true,
+        exportFormats.has('video') ? `triple_stitch_video_${stamp}` : undefined,
+        resolved.qualityPreset,
+        task.id,
+        exportFormats.has('video') ? `triple_stitch_video_${stamp}` : undefined,
+      )
 
       // Step 2: 导出 Live 图 / Apple Live 图
-      if (exportFormats.has('live') || exportFormats.has('appleLive')) {
-        // 导出静态帧作为 cover image
+      // 注意：exportRenderedLivePhoto 会删除输入的 image/video 文件，
+      // 所以每个变体需要自己的临时文件，用 copyFile 复制视频副本避免原视频被删
+      if (exportFormats.has('live')) {
+        const liveImagePath = outputPath(settings.exportDir, `${baseName}_frame_live.jpg`)
         await api.exportCompositionImage(
-          imagePath, scaledComposition, 'jpeg', 100,
-          task.id, exportFormats.has('live') ? `triple_stitch_live_${stamp}` : `triple_stitch_appleLive_${stamp}`,
+          liveImagePath, scaledComposition, 'jpeg', 100,
+          task.id, `triple_stitch_live_${stamp}`,
         )
-
-        if (exportFormats.has('live')) {
-          try {
-            const result = await window.luna.workspace.exportRenderedLivePhoto(
-              `${baseName}_live`, imagePath, videoPath, false,
-            )
-            await window.luna.exportTask.updateItem(task.id, `triple_stitch_live_${stamp}`, {
-              status: 'done', progress: 100, destinationPath: result.path,
-            }).catch(() => {})
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error)
-            await window.luna.exportTask.updateItem(task.id, `triple_stitch_live_${stamp}`, {
-              status: 'failed', error: msg,
-            }).catch(() => {})
-          }
+        const { path: liveVideoPath } = await window.luna.workspace.copyFile(videoPath)
+        try {
+          const result = await window.luna.workspace.exportRenderedLivePhoto(
+            `${baseName}_live`, liveImagePath, liveVideoPath, false,
+          )
+          await window.luna.exportTask.updateItem(task.id, `triple_stitch_live_${stamp}`, {
+            status: 'done', progress: 100, destinationPath: result.path,
+          }).catch(() => {})
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          await window.luna.exportTask.updateItem(task.id, `triple_stitch_live_${stamp}`, {
+            status: 'failed', error: msg,
+          }).catch(() => {})
         }
+      }
 
-        if (exportFormats.has('appleLive')) {
-          try {
-            const result = await window.luna.workspace.exportRenderedLivePhoto(
-              `${baseName}_appleLive`, imagePath, videoPath, true,
-            )
-            await window.luna.exportTask.updateItem(task.id, `triple_stitch_appleLive_${stamp}`, {
-              status: 'done', progress: 100, destinationPath: result.path,
-            }).catch(() => {})
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error)
-            await window.luna.exportTask.updateItem(task.id, `triple_stitch_appleLive_${stamp}`, {
-              status: 'failed', error: msg,
-            }).catch(() => {})
-          }
+      if (exportFormats.has('appleLive')) {
+        const appleImagePath = outputPath(settings.exportDir, `${baseName}_frame_apple.jpg`)
+        await api.exportCompositionImage(
+          appleImagePath, scaledComposition, 'jpeg', 100,
+          task.id, `triple_stitch_appleLive_${stamp}`,
+        )
+        const { path: appleVideoPath } = await window.luna.workspace.copyFile(videoPath)
+        try {
+          const result = await window.luna.workspace.exportRenderedLivePhoto(
+            `${baseName}_appleLive`, appleImagePath, appleVideoPath, true,
+          )
+          await window.luna.exportTask.updateItem(task.id, `triple_stitch_appleLive_${stamp}`, {
+            status: 'done', progress: 100, destinationPath: result.path,
+          }).catch(() => {})
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          await window.luna.exportTask.updateItem(task.id, `triple_stitch_appleLive_${stamp}`, {
+            status: 'failed', error: msg,
+          }).catch(() => {})
         }
       }
 
@@ -782,7 +781,7 @@ export function TripleStitchCreative() {
             重置全部
           </Button>
           <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!canExport} onClick={() => void handleExport()}>
-            {busy ? '导出中' : '导出视频'}
+            {busy ? '导出中' : '导出'}
           </Button>
         </div>
       </aside>
