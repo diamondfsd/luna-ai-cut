@@ -72,14 +72,19 @@ export function calcAspectRatio(width: number, height: number): number {
   return Math.round((width / height) * 100) / 100
 }
 
-function projectCanvasFor(resolution: MediaResolution | null): StageSize | null {
+const VIDEO_PREVIEW_MAX_SIDE = 1440
+const GPU_CANVAS_MAX_SIDE = 8192
+
+function projectCanvasFor(resolution: MediaResolution | null, fullResolution = false): StageSize | null {
   if (!resolution) return null
-  const MAX = 1440
-  const aspect = resolution.width / resolution.height
-  if (aspect >= 1) {
-    return { width: MAX, height: Math.round(MAX / aspect) }
+  const sourceMaxSide = Math.max(resolution.width, resolution.height)
+  const maxSide = fullResolution ? GPU_CANVAS_MAX_SIDE : VIDEO_PREVIEW_MAX_SIDE
+  if (sourceMaxSide <= maxSide) return { width: resolution.width, height: resolution.height }
+  const scale = maxSide / sourceMaxSide
+  return {
+    width: Math.max(1, Math.round(resolution.width * scale)),
+    height: Math.max(1, Math.round(resolution.height * scale)),
   }
-  return { width: Math.round(MAX * aspect), height: MAX }
 }
 
 export function PreviewStage(
@@ -245,14 +250,18 @@ export function PreviewStage(
     if (!resolution) return null
     return calcAspectRatio(resolution.width, resolution.height)
   }, [resolution])
-  const previewCanvas = useMemo(() => projectCanvasFor(resolution), [resolution])
+  const previewCanvas = useMemo(
+    () => projectCanvasFor(resolution, !isDisplayVideo),
+    [isDisplayVideo, resolution],
+  )
 
   // ── LUT 滤镜：直接传文件路径给 Rust ──
   const lutFilePath = pipeline?.lutFilter?.activeId ?? undefined
 
   const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution): PreviewLayer[] => {
     // 基于 Project Canvas 计算布局，Stage 不参与
-    const canvas = projectCanvasFor(layerResolution) ?? { width: 1440, height: 1440 }
+    const canvas = projectCanvasFor(layerResolution, !!sourceUrl && !isVideoPath(sourceUrl))
+      ?? { width: 1440, height: 1440 }
     const main = sourceUrl ? buildLayers(sourceUrl, layerResolution, canvas) : []
     if (main[0] && pipeline) {
       const renderTransform = pipelineTransformToRenderTransform(pipeline.transform)
@@ -379,6 +388,7 @@ export function PreviewStage(
               layers={layers}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
+              maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}
               interactiveImageLayerIndexes={cropActive ? [] : undefined}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
