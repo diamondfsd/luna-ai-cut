@@ -2,8 +2,8 @@ import { ArrowDown, ArrowUp, Download, Minus, Move, Pause, Play, Plus, RotateCcw
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
 
-import { CompositionPreviewCanvas } from '../../../components/CompositionPreviewCanvas'
-import type { CompositionInput, WorkspaceMediaAsset } from '../../../shared/types'
+import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
+import type { CompositionInput, PreviewLayer, WorkspaceMediaAsset } from '../../../shared/types'
 import { Button, IconButton, Select, toast } from '../../../ui'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/creativeMedia'
@@ -133,7 +133,7 @@ export function TripleStitchCreative() {
   const [composition, setComposition] = useState<CompositionInput | null>(null)
   const compositionVersionRef = useRef(0)
 
-  // 异步构建 composition + 加载 LUT
+  // 异步构建 composition + 加载 LUT（仅用于导出）
   useEffect(() => {
     const version = ++compositionVersionRef.current
     let cancelled = false
@@ -147,6 +147,37 @@ export function TripleStitchCreative() {
     return () => { cancelled = true }
   }, [slotSources, slotEdits])
   const canExport = Boolean(composition) && !busy
+
+  // 预览层（直接使用前端 <video> 解码，不依赖 composition 构建）
+  const previewLayers: PreviewLayer[] = useMemo(() => {
+    return slotSources.map(({ asset, pipeline }, index) => ({
+      filePath: asset.path,
+      isVideo: true,
+      videoTime: slotEdits[index]?.startTime ?? 0,
+      dstX: 0, dstY: index / 3, dstW: 1, dstH: 1 / 3,
+      srcX: 0, srcY: 0, srcW: 1, srcH: 1,
+      opacity: 1,
+      zIndex: index,
+      color: pipelineColorToRenderColor(pipeline.color),
+      transform: {
+        ...pipelineTransformToRenderTransform(pipeline.transform),
+        scale: (pipeline.transform.scale || 1) * (slotEdits[index]?.scale ?? 1),
+        translateX: slotEdits[index]?.translateX ?? 0,
+        translateY: slotEdits[index]?.translateY ?? 0,
+      },
+      lutId: pipeline.lutFilter.activeId ?? undefined,
+      lutIntensity: pipeline.lutFilter.intensity,
+    }))
+  }, [slotSources, slotEdits])
+
+  // 播放时长控制：3 秒后自动停止
+  useEffect(() => {
+    if (!previewPlaying) return
+    const timer = window.setTimeout(() => {
+      setPreviewPlaying(false)
+    }, EXPORT_DURATION * 1000)
+    return () => window.clearTimeout(timer)
+  }, [previewPlaying])
   const activeEdit = slotEdits[activeSlot] ?? DEFAULT_SLOT_EDIT
   const activeAsset = slotSources[activeSlot]?.asset
   const activeDuration = (activeAsset as { duration?: number } | undefined)?.duration
@@ -306,11 +337,13 @@ export function TripleStitchCreative() {
     <section className="triple-stitch-page">
       <div className="triple-stitch-preview">
         <div className="triple-stitch-board">
-          <CompositionPreviewCanvas
+          <MultipleLayerVideoPreviewLrcRender
             className="triple-stitch-canvas"
-            composition={composition}
+            layers={previewLayers}
+            canvasWidth={CANVAS_WIDTH}
+            canvasHeight={CANVAS_HEIGHT}
             playing={previewPlaying}
-            onPlaybackEnd={() => setPreviewPlaying(false)}
+            decodeQuality={1.0}
             onError={(message) => toast.error(message)}
           />
           <div className="triple-stitch-preview-actions">
