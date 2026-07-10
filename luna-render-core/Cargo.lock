@@ -583,6 +583,7 @@ dependencies = [
  "serde",
  "serde_json",
  "wgpu",
+ "windows",
 ]
 
 [[package]]
