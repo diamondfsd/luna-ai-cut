@@ -209,3 +209,50 @@
   background: #252525;
   color: var(--muted);
 }
+
+/* ── 水印切换 ── */
+.triple-stitch-watermark-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.triple-stitch-wm-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #1f1f1f;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.triple-stitch-wm-btn:hover {
+  border-color: #555;
+}
+
+.triple-stitch-wm-btn.active {
+  border-color: var(--blue, #06c);
+  background: rgba(0, 102, 204, 0.08);
+}
+
+.triple-stitch-wm-btn img {
+  width: 100%;
+  max-width: 100px;
+  height: 28px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.triple-stitch-wm-btn span {
+  font-size: 11px;
+  color: #b0b0b0;
+  line-height: 1;
+}
+
+.triple-stitch-wm-btn.active span {
+  color: var(--blue, #06c);
+}

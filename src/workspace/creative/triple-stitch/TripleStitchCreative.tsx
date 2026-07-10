@@ -9,7 +9,11 @@ import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { normalizeCreativePipeline, type CreativeSlotSource } from '../shared/creativeMedia'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
 import { ParamSlider } from '../../components/ParamSlider'
+import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
 import './triple-stitch.css'
+
+// 从 Luna 设备配置读取水印选项（中文 / 标准英文）
+const LUNA_WATERMARK_OPTIONS = watermarkStyleOptionsForDevice('luna-ultra')
 
 const CANVAS_WIDTH = 2160
 const CANVAS_HEIGHT = 3840
@@ -61,6 +65,30 @@ function outputPath(exportDir: string, fileName: string): string {
   return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
 }
 
+/** 每格视频底部 Logo 宽度（占画布宽比例） */
+const SLOT_LOGO_WIDTH = 0.22
+
+/** 构建单个 slot 底部居中 Logo 图层 */
+function buildSlotLogoLayer(slotIndex: number, imagePath: string, wmAspect: number): PreviewLayer {
+  const slotHeight = 1 / 3
+  const slotBottom = (slotIndex + 1) * slotHeight
+  const logoWidth = SLOT_LOGO_WIDTH
+  const logoHeight = logoWidth / wmAspect
+  const marginY = 0.008
+
+  return {
+    filePath: imagePath,
+    isVideo: false,
+    dstX: (1 - logoWidth) / 2,
+    dstY: slotBottom - logoHeight - marginY,
+    dstW: logoWidth,
+    dstH: logoHeight,
+    srcX: 0, srcY: 0, srcW: 1, srcH: 1,
+    opacity: 1,
+    zIndex: 100 + slotIndex,
+  }
+}
+
 function clampPan(value: number, scale: number): number {
   const limit = Math.max(0, (scale - 1) / (scale * 2))
   return Math.min(limit, Math.max(-limit, value))
@@ -70,8 +98,51 @@ function buildTripleStitchComposition(
   slots: CreativeSlotSource[],
   edits: SlotEdit[],
   lutPaths: (string | undefined)[],
+  watermarkInfo: { imagePath: string; wmAspect: number } | null,
 ): CompositionInput | null {
   if (slots.length !== 3) return null
+
+  const videoLayers = slots.map(({ asset, pipeline }, index) => ({
+    id: `slot-${index + 1}`,
+    source: {
+      path: asset.path,
+      sourceType: 'auto' as const,
+      time: {
+        start: edits[index]?.startTime ?? 0,
+        offset: 0,
+        duration: EXPORT_DURATION,
+        loopEnabled: true,
+      },
+    },
+    rect: { x: 0, y: index / 3, w: 1, h: 1 / 3 },
+    fit: 'cover' as const,
+    opacity: 1,
+    zIndex: index,
+    color: pipelineColorToRenderColor(pipeline.color),
+    transform: {
+      ...pipelineTransformToRenderTransform(pipeline.transform),
+      scale: (pipeline.transform.scale || 1) * (edits[index]?.scale ?? 1),
+      translateX: edits[index]?.translateX ?? 0,
+      translateY: edits[index]?.translateY ?? 0,
+    },
+    lutId: lutPaths[index],
+    lutIntensity: pipeline.lutFilter.intensity,
+  }))
+
+  // 每个 slot 底部固定 Logo
+  const logoLayers: CompositionInput['layers'] = watermarkInfo
+    ? Array.from({ length: slots.length }, (_, i) => {
+        const logo = buildSlotLogoLayer(i, watermarkInfo.imagePath, watermarkInfo.wmAspect)
+        return {
+          id: `slot-${i + 1}-logo`,
+          source: { path: logo.filePath, sourceType: 'image' as const },
+          rect: { x: logo.dstX, y: logo.dstY, w: logo.dstW, h: logo.dstH },
+          opacity: 1,
+          zIndex: logo.zIndex,
+        }
+      })
+    : []
+
   return {
     version: 1,
     canvas: {
@@ -80,32 +151,7 @@ function buildTripleStitchComposition(
       fps: FPS,
       duration: EXPORT_DURATION,
     },
-    layers: slots.map(({ asset, pipeline }, index) => ({
-      id: `slot-${index + 1}`,
-      source: {
-        path: asset.path,
-        sourceType: 'auto',
-        time: {
-          start: edits[index]?.startTime ?? 0,
-          offset: 0,
-          duration: EXPORT_DURATION,
-          loopEnabled: true,
-        },
-      },
-      rect: { x: 0, y: index / 3, w: 1, h: 1 / 3 },
-      fit: 'cover',
-      opacity: 1,
-      zIndex: index,
-      color: pipelineColorToRenderColor(pipeline.color),
-      transform: {
-        ...pipelineTransformToRenderTransform(pipeline.transform),
-        scale: (pipeline.transform.scale || 1) * (edits[index]?.scale ?? 1),
-        translateX: edits[index]?.translateX ?? 0,
-        translateY: edits[index]?.translateY ?? 0,
-      },
-      lutId: lutPaths[index],
-      lutIntensity: pipeline.lutFilter.intensity,
-    })),
+    layers: [...videoLayers, ...logoLayers],
   }
 }
 
@@ -134,24 +180,44 @@ export function TripleStitchCreative() {
   const [composition, setComposition] = useState<CompositionInput | null>(null)
   const compositionVersionRef = useRef(0)
 
+  // ── 水印：从 Luna 设备配置读取，无开关 ──
+  const defaultWmStyle = LUNA_WATERMARK_OPTIONS[0]?.value ?? 'luna_ultra_cn'
+  const [watermarkStyle, setWatermarkStyle] = useState<string>(defaultWmStyle)
+  const [watermarkInfo, setWatermarkInfo] = useState<{ imagePath: string; wmAspect: number } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    window.luna.getWatermarkPath(watermarkStyle, 'image')
+      .then((info) => {
+        if (!cancelled) {
+          setWatermarkInfo({
+            imagePath: info.filePath,
+            wmAspect: info.width / info.height,
+          })
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [watermarkStyle])
+
   // 异步构建 composition + 加载 LUT（仅用于导出）
   useEffect(() => {
     const version = ++compositionVersionRef.current
     let cancelled = false
     ;(async () => {
       const lutPaths = slotSources.map((s) => s.pipeline.lutFilter.activeId ?? undefined)
-      const result = buildTripleStitchComposition(slotSources, slotEdits, lutPaths)
+      const result = buildTripleStitchComposition(slotSources, slotEdits, lutPaths, watermarkInfo)
       if (!cancelled && version === compositionVersionRef.current) {
         setComposition(result)
       }
     })()
     return () => { cancelled = true }
-  }, [slotSources, slotEdits])
+  }, [slotSources, slotEdits, watermarkInfo])
   const canExport = Boolean(composition) && !busy
 
   // 预览层（直接使用前端 <video> 解码，不依赖 composition 构建）
   const previewLayers: PreviewLayer[] = useMemo(() => {
-    return slotSources.map(({ asset, pipeline }, index) => ({
+    const videoLayers = slotSources.map(({ asset, pipeline }, index) => ({
       filePath: asset.path,
       isVideo: true,
       videoTime: slotEdits[index]?.startTime ?? 0,
@@ -169,7 +235,16 @@ export function TripleStitchCreative() {
       lutId: pipeline.lutFilter.activeId ?? undefined,
       lutIntensity: pipeline.lutFilter.intensity,
     }))
-  }, [slotSources, slotEdits])
+
+    // 每个 slot 底部固定 Logo
+    const logoLayers: PreviewLayer[] = watermarkInfo
+      ? Array.from({ length: slotSources.length }, (_, i) =>
+          buildSlotLogoLayer(i, watermarkInfo.imagePath, watermarkInfo.wmAspect)
+        )
+      : []
+
+    return [...videoLayers, ...logoLayers]
+  }, [slotSources, slotEdits, watermarkInfo])
 
   // 播放时长控制：3 秒后自动停止
   useEffect(() => {
@@ -524,6 +599,27 @@ export function TripleStitchCreative() {
             />
           </div>
         </div>
+
+        {LUNA_WATERMARK_OPTIONS.length > 0 && (
+          <div className="triple-stitch-section">
+            <div className="triple-stitch-section-title">水印</div>
+            <div className="triple-stitch-watermark-toggle">
+              {LUNA_WATERMARK_OPTIONS.map((opt) => {
+                const thumbSrc = WM_SRC[opt.value]?.image
+                return (
+                  <button
+                    key={opt.value}
+                    className={`triple-stitch-wm-btn${watermarkStyle === opt.value ? ' active' : ''}`}
+                    onClick={() => setWatermarkStyle(opt.value)}
+                  >
+                    {thumbSrc && <img src={thumbSrc} alt={opt.label} />}
+                    <span>{opt.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="triple-stitch-actions">
           <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!canExport} onClick={() => void handleExport()}>
