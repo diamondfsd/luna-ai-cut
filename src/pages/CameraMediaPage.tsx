@@ -97,9 +97,9 @@ export function CameraMediaPage() {
       {pageActive && controller.previewFile && (
         <PreviewModal
           previewOnly
-          filePath={controller.previewFile.sourceUrl ?? ''}
+          filePath={controller.previewFile.previewUrl || controller.previewFile.sourceUrl || ''}
           filePathList={controller.filteredFiles.map(
-            (f) => f.sourceUrl ?? f.id,
+            (f) => f.previewUrl || f.sourceUrl || f.id,
           )}
           onClose={() => {
             controller.setPreviewFile(null)
