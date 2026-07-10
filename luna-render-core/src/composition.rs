@@ -182,6 +182,7 @@ fn render_composition_frame_with(
     input: &CompositionInput,
     time: f64,
     max_side: Option<u32>,
+    fps: Option<f64>,
 ) -> Result<(Vec<u8>, u32, u32), String> {
     let layers = composition_layers(input, time);
     let effective_max_side = max_side.or_else(|| Some(input.canvas.width.max(input.canvas.height)));
@@ -192,6 +193,7 @@ fn render_composition_frame_with(
         Some(input.canvas.height),
         effective_max_side,
         &layers,
+        fps,
     )
 }
 
@@ -207,6 +209,7 @@ pub fn render_composition_frame(
             &input.composition,
             input.time,
             input.max_side,
+            None, // preview: no fps override
         )?;
         Ok(RenderPreviewOutput {
             width,
@@ -234,6 +237,7 @@ impl Task for RenderCompositionFrameTask {
                 &self.input.composition,
                 self.input.time,
                 self.input.max_side,
+                None, // preview: no fps override
             )?;
             Ok(RenderPreviewOutput {
                 width,
@@ -349,7 +353,12 @@ impl Task for ExportCompositionVideoTask {
             .ok_or_else(|| napi::Error::from_reason("encode stdin unavailable"))?;
 
         // 使用全局 compositor（含有已加载的 LUT）
-        crate::lock_export(|c| { c.clear_video_decoders(); Ok(()) })?;
+        // 设置 export 模式：禁止重启 decoder，EOF 标记层结束，使用 -r {fps} 匹配解码帧率
+        crate::lock_export(|c| {
+            c.clear_video_decoders();
+            c.no_video_decoder_restart = true;
+            Ok(())
+        })?;
         for frame in 0..total_frames {
             if task.as_ref().map_or(false, |state| state.is_cancelled()) {
                 return Err(napi::Error::from_reason("导出已取消"));
@@ -363,6 +372,7 @@ impl Task for ExportCompositionVideoTask {
                     &self.input.composition,
                     time,
                     None,
+                    Some(fps),
                 )
             })?;
             stdin
@@ -433,6 +443,7 @@ impl Task for ExportCompositionImageTask {
                 &self.input.composition,
                 0.0,
                 None,
+                None, // image export: no fps override
             )
         })?;
 
