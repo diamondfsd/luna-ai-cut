@@ -27,7 +27,8 @@ const isWin = targetLower.includes('windows') || (!target && process.platform ==
 const isMac = targetLower.includes('apple-darwin') || (!target && process.platform === 'darwin')
 
 const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
-const libName = `libluna_render_core${ext}`
+const prefix = isWin ? '' : 'lib'
+const libName = `${prefix}luna_render_core${ext}`
 
 // ── 找到 Rust 工具链的 cargo ──
 // rustup 安装的目标需要 rustup 管理的 cargo 才能识别

@@ -986,7 +986,16 @@ impl Compositor {
         let path = log_path.unwrap_or("luna-rc.log");
         log_init(path);
         log!("Creating wgpu instance...");
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        // Windows 上强制使用 D3D12 后端，因为 GPU 导出路径（Media Foundation + D3D12 共享纹理）依赖它
+        #[cfg(target_os = "windows")]
+        let backends = wgpu::Backends::DX12;
+        #[cfg(not(target_os = "windows"))]
+        let backends = wgpu::Backends::all();
+        let instance_desc = wgpu::InstanceDescriptor {
+            backends,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        };
+        let instance = wgpu::Instance::new(instance_desc);
 
         log!("Requesting GPU adapter (LowPower, no surface)...");
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
