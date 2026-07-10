@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
 import { LrcRender } from './LrcRender'
-import { VideoDomPreviewLrcRender } from './VideoDomPreviewLrcRender'
+import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls } from '../ui'
@@ -366,10 +366,11 @@ export function PreviewStage(
       {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
           {isDisplayVideo ? (
-            <VideoDomPreviewLrcRender
+            <MultipleLayerVideoPreviewLrcRender
               layers={layers}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
+              playing={playing}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
             />
