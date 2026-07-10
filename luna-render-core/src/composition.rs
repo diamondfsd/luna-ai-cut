@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::sync::{LazyLock, Mutex};
 
 use napi::bindgen_prelude::AsyncTask;
 use napi::{Env, Task};
@@ -259,6 +261,44 @@ pub fn render_composition_frame_async(
     Ok(AsyncTask::new(RenderCompositionFrameTask { input }))
 }
 
+/// ffmpeg 路径 → 最佳可用硬件 H.264 编码器缓存
+static HW_ENCODER_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// 检测当前 ffmpeg 可用的最佳硬件 H.264 编码器（自动缓存，只实际运行一次）
+///
+/// 优先级: videotoolbox > nvenc > qsv > amf → fallback libx264
+fn best_hardware_encoder(ffmpeg_path: &str) -> Option<String> {
+    let mut cache = HW_ENCODER_CACHE.lock().unwrap();
+    if let Some(result) = cache.get(ffmpeg_path) {
+        return result.clone();
+    }
+
+    // 运行 ffmpeg -encoders 仅一次，缓存结果
+    let output = Command::new(ffmpeg_path)
+        .args(["-hide_banner", "-encoders"])
+        .output()
+        .ok()
+        .and_then(|o| o.status.success().then_some(o));
+    let stdout = output
+        .as_ref()
+        .map(|o| String::from_utf8_lossy(&o.stdout))
+        .unwrap_or_default();
+
+    let found = [
+        "h264_videotoolbox",
+        "h264_nvenc",
+        "h264_qsv",
+        "h264_amf",
+    ]
+    .iter()
+    .find(|name| stdout.contains(**name))
+    .map(|name| name.to_string());
+
+    cache.insert(ffmpeg_path.to_string(), found.clone());
+    found
+}
+
 pub struct ExportCompositionVideoTask {
     input: ExportCompositionVideoInput,
 }
@@ -289,10 +329,11 @@ impl Task for ExportCompositionVideoTask {
                 .store(total_frames, std::sync::atomic::Ordering::SeqCst);
         }
 
-        let encoder = if cfg!(target_os = "macos") && self.input.hardware.unwrap_or(true) {
-            "h264_videotoolbox"
+        let encoder = if self.input.hardware.unwrap_or(true) {
+            best_hardware_encoder(&self.input.ffmpeg_path)
+                .unwrap_or_else(|| "libx264".to_string())
         } else {
-            "libx264"
+            "libx264".to_string()
         };
         let preset = self
             .input
