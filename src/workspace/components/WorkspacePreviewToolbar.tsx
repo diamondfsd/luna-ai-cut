@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardPaste, Copy, ChevronDown, Eye, EyeOff, FileDown, ImagePlus, Maximize2, Minus, Plus, Redo2, RotateCcw, Save, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, ImagePlus, Minimize2, Minus, Plus, Redo2, RotateCcw, Save, Trash2, Undo2 } from 'lucide-react'
 
 import { Button, IconButton, Tooltip, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
@@ -106,7 +106,7 @@ export function WorkspacePreviewToolbar({
         <IconButton variant="ghost" size="mini" icon={<Plus size={14} />} onClick={() => changeScale(10)} aria-label="放大预览" />
         <div className="workspace-toolbar-divider" />
         <Tooltip content="适应窗口">
-          <IconButton variant="ghost" size="mini" icon={<Maximize2 size={14} />} onClick={() => onViewScaleChange('fit')} />
+          <IconButton variant="ghost" size="mini" icon={<Minimize2 size={14} />} onClick={() => onViewScaleChange('fit')} />
         </Tooltip>
       </div>
       <div className="workspace-toolbar-group workspace-toolbar-actions">
