@@ -37,14 +37,14 @@ function metadataVariables(metadata: MediaMetadata | null, title: string): Recor
   const capturedAt = values.get('DateTimeOriginal') ?? values.get('ModifyDate')
   const date = capturedAt ? new Date(capturedAt) : null
   return {
-    camera: [values.get('Make'), values.get('Model')].filter(Boolean).join(' ') || 'LUNA ULTRA',
+    camera: [values.get('Model')].filter(Boolean).join(' ') || 'LUNA ULTRA',
     focalLength: values.get('FocalLengthIn35mmFormat') ? `${values.get('FocalLengthIn35mmFormat')}mm` : '—mm',
     aperture: values.get('FNumber') ? `f/${values.get('FNumber')}` : 'f/—',
     shutter,
     iso: values.get('ISO') ?? '—',
     date: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('zh-CN') : '',
     location: values.get('Location') ?? values.get('GPSPosition') ?? '',
-    title: title.trim() || 'Insta360',
+    title: title.trim(),
     sequence: '01',
   }
 }
