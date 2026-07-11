@@ -101,3 +101,42 @@
   padding: 2px 8px;
   font-size: 11px;
 }
+
+/* toolbar — 深色顶部工具栏，紧凑、低强调 */
+.ui-btn-toolbar,
+.ui-btn-toolbar-primary {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.84);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.ui-btn-toolbar:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.085);
+  color: #fff;
+}
+
+.ui-btn-toolbar-primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+  box-shadow: none;
+}
+
+.ui-btn-toolbar-primary:hover {
+  border-color: var(--blue-dark);
+  background: var(--blue-dark);
+}
+
+.ui-btn-toolbar.ui-btn-compact,
+.ui-btn-toolbar-primary.ui-btn-compact {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+}

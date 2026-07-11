@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cx } from './utils'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'utility' | 'ghost' | 'danger'
+export type ButtonVariant = 'primary' | 'secondary' | 'utility' | 'ghost' | 'danger' | 'toolbar' | 'toolbar-primary'
 export type ButtonSize = 'default' | 'compact' | 'mini'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -11,6 +11,8 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    *  - utility：深色矩形按钮，用于工具类操作
    *  - ghost：文字按钮，用于低强调操作
    *  - danger：红色提示按钮，用于删除等销毁操作
+   *  - toolbar：深色顶部工具栏按钮
+   *  - toolbar-primary：深色顶部工具栏中的主要操作
    */
   variant?: ButtonVariant
   /** 尺寸：
