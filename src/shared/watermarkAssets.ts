@@ -58,6 +58,32 @@ export function registeredWatermarkStyles(): string[] {
 
 const dimensionCache = new Map<string, { width: number; height: number }>()
 
+/** 全局水印路径缓存：style → 磁盘绝对路径（启动时预取填充） */
+const watermarkPathCache = new Map<string, string>()
+
+/**
+ * 预填充水印路径缓存（app 启动时调用一次）
+ * 遍历所有已知水印样式，通过 IPC 获取磁盘绝对路径
+ */
+export async function preloadWatermarkPaths(getPath: (style: string) => Promise<{ filePath: string }>): Promise<void> {
+  const styles = ALL_WATERMARK_STYLES.map(s => s.value)
+  const results = await Promise.allSettled(
+    styles.map(style =>
+      getPath(style).then(info => ({ style, path: info.filePath }))
+    )
+  )
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      watermarkPathCache.set(r.value.style, r.value.path)
+    }
+  }
+}
+
+/** 同步查询已缓存的水印绝对路径 */
+export function getCachedWatermarkPath(style: string): string | undefined {
+  return watermarkPathCache.get(style)
+}
+
 export interface WatermarkImageInfo {
   src: string
   width: number
