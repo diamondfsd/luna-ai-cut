@@ -14,7 +14,13 @@ const cache = new Map<string, boolean>()
 function normalizeLivePhotoPath(fileUrl: string): string {
   try {
     const parsed = new URL(fileUrl)
-    if (parsed.protocol === 'file:') return decodeURIComponent(parsed.pathname)
+    if (parsed.protocol === 'file:') {
+      const decoded = decodeURIComponent(parsed.pathname)
+      // Windows: file:///C:/Users/... → URL.pathname 返回 /C:/Users/...（多一个前置 /）
+      // 去掉这个前置 /，否则 fs.open 在主进程可能失败
+      if (/^\/[a-zA-Z]:[/\\]/.test(decoded)) return decoded.slice(1)
+      return decoded
+    }
   } catch {
     // 保持原始路径
   }
