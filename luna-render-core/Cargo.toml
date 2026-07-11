@@ -23,12 +23,6 @@ swash = "0.2"
 objc2 = "0.6.4"
 objc2-metal = "0.3.2"
 
-[target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.62", features = [
-    "Win32_Graphics_Direct3D12",
-    "Win32_Graphics_Dxgi",
-] }
-
 [build-dependencies]
 napi-build = "2"
 cc = "1"
