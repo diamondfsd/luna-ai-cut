@@ -23,9 +23,8 @@ export async function createExportTask(name: string, items: Array<{ exportId: st
 export async function getExportTaskById(taskId: string): Promise<ExportTaskRecord | undefined> { return tasks.get(taskId) }
 
 export async function updateTaskItemProgress(
-  taskId: string, exportId: string, _startTime: number,
+  taskId: string, exportId: string,
   progress: number, status: ExportTaskItemRecord['status'],
-  _extra?: Record<string, unknown>,
 ): Promise<void> {
   const t = tasks.get(taskId); if (!t) return
   const item = t.items.find((i) => i.id === exportId); if (!item) return
@@ -70,7 +69,7 @@ export async function runExportJob<T extends string>(
     sender.send('export:progress', payload)
   }
   const updateItem: ExportJobContext<T>['updateItem'] = async (item, progress, status, extra) => {
-    await updateTaskItemProgress(task.id, item.exportId, Date.now(), progress, status, extra)
+    await updateTaskItemProgress(task.id, item.exportId, progress, status)
     if (sender && !sender.isDestroyed()) {
       sender.send('export:progress', {
         exportId: item.exportId, fileName: item.fileName,

@@ -72,7 +72,7 @@ function registerIpc(): void {
   ipcMain.handle('settings:get', async () => {
     return await getSettings()
   })
-  ipcMain.handle('settings:save', async (_event, _settings: Record<string, unknown>) => {
+  ipcMain.handle('settings:save', async () => {
     return await getSettings()
   })
   // 设备列表

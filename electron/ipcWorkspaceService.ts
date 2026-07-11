@@ -10,7 +10,6 @@ import probe from 'probe-image-size'
 import { getSettings } from './fileService'
 import { safeName } from './filePathUtils'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
-import type { IpcContext } from './ipcContext'
 import { logMainInfo } from './loggerService'
 import { combineLivePhoto, isGoogleMotionPhoto } from './livePhotoService'
 import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
@@ -116,7 +115,7 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
   throw new Error(`无法获取文件分辨率: ${filePath}`)
 }
 
-export function register(_ctx: IpcContext): void {
+export function register(): void {
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
     return loadWorkspacePreview(filePath)
   })
@@ -190,12 +189,7 @@ export function register(_ctx: IpcContext): void {
     const taskName = `${nameBase}导出`
     const exportId = `workspace_${nameBase}_${Date.now()}`
     const task = await createExportTask(taskName, [{ exportId, fileName, kind }])
-    const taskStart = Date.now()
-    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
-      endTime: Date.now(),
-      duration: Date.now() - taskStart,
-      destinationPath,
-    })
+    await updateTaskItemProgress(task.id, exportId, 100, 'done')
 
     return { path: destinationPath, name: fileName }
   })
@@ -261,12 +255,7 @@ export function register(_ctx: IpcContext): void {
       ? path.join(appleFolder, `${baseName}.jpg`)
       : destinationPath!
     const task = await createExportTask(taskName, [{ exportId, fileName: path.basename(resultPath), kind: 'image' }])
-    const taskStart = Date.now()
-    await updateTaskItemProgress(task.id, exportId, taskStart, 100, 'done', {
-      endTime: Date.now(),
-      duration: Date.now() - taskStart,
-      destinationPath: resultPath,
-    })
+    await updateTaskItemProgress(task.id, exportId, 100, 'done')
 
     return { path: resultPath, name: path.basename(resultPath) }
   })

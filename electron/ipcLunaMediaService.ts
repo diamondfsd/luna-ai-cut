@@ -226,7 +226,7 @@ export function register(ctx: IpcContext): void {
     return listSampleFiles(settings.mockMediaDir)
   })
 
-  ipcMain.handle('downloads:listFiles', async (_event, _downloadDir?: string) => {
+  ipcMain.handle('downloads:listFiles', async () => {
     const settings = await getSettings()
     const resolvedDir = getLocalResourcesDir(settings)
     logMainInfo('[下载列表] 读取目录', { resolvedDir, localResourcesDir: settings.localResourcesDir, downloadDir: settings.downloadDir })
@@ -283,7 +283,7 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('files:openPhotosApp', async () => openPhotosApp())
   ipcMain.handle('files:deleteLocal', (_event, filePaths: string[]) => deleteLocalFiles(filePaths))
 
-  ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[], _downloadDir?: string) => {
+  ipcMain.handle('luna:downloadFiles', async (_event, files: LunaFile[]) => {
     const settings = await getSettings()
     logMainInfo(`[下载] 开始下载文件`, { fileCount: files.length, fileNames: files.map((file) => file.name).slice(0, 5).join(', ') + (files.length > 5 ? `...(+${files.length - 5})` : '') })
 

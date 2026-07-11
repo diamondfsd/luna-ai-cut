@@ -56,7 +56,7 @@ export function drawCoverImage(
   ctx.drawImage(source, 0, 0, w, h, area.x + (area.width - drawW) / 2 + ox, area.y + (area.height - drawH) / 2 + oy, drawW, drawH)
 }
 
-export async function loadCreativeImageSource(asset: WorkspaceMediaAsset, _pipeline: EditPipeline): Promise<HTMLImageElement> {
+export async function loadCreativeImageSource(asset: WorkspaceMediaAsset): Promise<HTMLImageElement> {
   return loadCreativePreviewImageSource(asset)
 }
 

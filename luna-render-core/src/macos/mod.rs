@@ -272,12 +272,10 @@ pub(crate) fn export_video(
 
     let export_start = std::time::Instant::now();
     let mut cum_decode_us = 0u64;
-    let mut cum_wrap_us = 0u64;
     let mut cum_plan_us = 0u64;
     let mut cum_acquire_us = 0u64;
     let mut cum_render_us = 0u64;
     let mut cum_append_us = 0u64;
-    let mut cum_cleanup_us = 0u64;
     let log_interval = (total_frames / 10).max(1);
 
     for frame_index in 0..total_frames {
@@ -412,12 +410,10 @@ pub(crate) fn export_video(
 
         let frame_us = frame_start.elapsed().as_micros() as u64;
         cum_decode_us += decode_us;
-        cum_wrap_us += 0; // wrap 已计入 decode 阶段
         cum_plan_us += plan_us;
         cum_acquire_us += acquire_us;
         cum_render_us += render_us;
         cum_append_us += append_us;
-        cum_cleanup_us += 0; // cleanup 已计入 append 阶段
 
         if frame_index % log_interval == 0 || frame_index == total_frames - 1 {
             crate::compositor::log_write(&format!(

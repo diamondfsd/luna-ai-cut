@@ -242,7 +242,7 @@ export async function resolveLocalThumbnails(files: LunaFile[], downloadDir: str
   const cacheDir = await previewCacheDir()
 
   // 一次性读取缩略图目录文件清单
-  let thumbFileSet = new Set<string>()
+  const thumbFileSet = new Set<string>()
   try {
     const thumbDirPath = thumbnailDir(cacheDir)
     const entries = await fs.readdir(thumbDirPath, { withFileTypes: true })

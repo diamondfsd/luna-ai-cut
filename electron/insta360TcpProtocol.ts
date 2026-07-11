@@ -251,6 +251,7 @@ export function parseDeviceInfo(responses: Insta360RawResponse[]): Insta360TcpDe
 function parsePathList(body: Buffer): string[] {
   const text = body.toString('utf8')
   const paths = new Set<string>()
+  // eslint-disable-next-line no-control-regex
   for (const match of text.matchAll(/\/(?:storage_internal|sdcard|DCIM)[^\x00\n\r]+?\.(?:mp4|mov|lrv|jpg|jpeg|dng|insp|png|webp)/gi)) {
     paths.add(match[0])
   }

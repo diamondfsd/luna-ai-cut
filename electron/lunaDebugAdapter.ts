@@ -116,7 +116,7 @@ export class LunaDebugAdapter implements IDeviceDebugProtocol {
 
       // 额外验证 HTTP 读取是否正常
       let httpOk = false
-      let controlOk = true
+      const controlOk = true
       try {
         const resp = await fetch(`http://${hostname}/DCIM/`, { signal: AbortSignal.timeout(5000) })
         httpOk = resp.ok
@@ -170,7 +170,7 @@ export class LunaDebugAdapter implements IDeviceDebugProtocol {
     }
   }
 
-  async waitForAuthConfirm(_timeoutMs?: number): Promise<boolean> {
+  async waitForAuthConfirm(): Promise<boolean> {
     // Luna Ultra 无需等待授权确认
     return true
   }
