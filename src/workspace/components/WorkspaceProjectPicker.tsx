@@ -101,7 +101,7 @@ export function WorkspaceProjectPicker() {
           </button>
         ))}
         {!projectLoading && projects.length === 0 && (
-          <div className="workspace-project-empty">在本地资源中多选图片后创建工作台项目。</div>
+          <div className="workspace-project-empty">当前还没有项目哦，点击右上角，新建项目，开始你的创作吧～</div>
         )}
       </div>
 
