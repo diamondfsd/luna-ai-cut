@@ -10,7 +10,7 @@ import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
 import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
-import { createDefaultPipeline, mergePipeline } from '../workspace/shared/editPipeline'
+import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
 import { PreviewStage } from '../components/PreviewStage'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
@@ -150,6 +150,11 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     })
   }, [edit.pipeline.border, watermarkMediaSize, borderMetadata])
 
+  // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
+  const combinedExtraLayers = useMemo(
+    () => [...watermarkLayer, ...borderLayer],
+    [watermarkLayer, borderLayer],
+  )
 
   // ── Initialize pipeline / reset crop when active asset changes ──
   useLayoutEffect(() => {
@@ -204,7 +209,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     const makeValue = extractExifValue(borderMetadata, 'Make')
     if (!makeValue) return
     const currentTitle = edit.pipeline.border.title
-    if (currentTitle === 'Insta360' || currentTitle === 'UNTITLED') {
+    if (currentTitle === DEFAULT_PIPELINE.border.title) {
       edit.commitPatch({ border: { title: makeValue } })
     }
   }, [borderMetadata])
@@ -496,7 +501,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
             url={media.activeMedia?.path ?? null}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
-            extraLayers={[...watermarkLayer, ...borderLayer]}
+            extraLayers={combinedExtraLayers}
             cropActive={edit.cropActive}
             onMetricsChange={canvas.setPreviewMetrics}
             onMediaSize={handleMediaSize}
