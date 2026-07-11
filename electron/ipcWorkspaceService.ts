@@ -1,13 +1,15 @@
 import { ipcMain } from 'electron'
+import { execFile } from 'node:child_process'
 import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
+import { promisify } from 'node:util'
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import probe from 'probe-image-size'
 import { getLocalResourcesDir, getSettings } from './fileService'
 import { safeName } from './filePathUtils'
-import { getFfprobePath } from './ffmpeg/pipeline'
+import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import type { IpcContext } from './ipcContext'
 import { logMainInfo } from './loggerService'
 import { combineLivePhoto, isGoogleMotionPhoto } from './livePhotoService'
@@ -23,6 +25,7 @@ import {
 import { loadWorkspacePreview } from './workspacePreviewService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
+const execFileAsync = promisify(execFile)
 
 function normalizeRotation(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
@@ -202,7 +205,22 @@ export function register(_ctx: IpcContext): void {
     return `data:image/jpeg;base64,${data.toString('base64')}`
   })
 
-  ipcMain.handle('workspace:exportRenderedLivePhoto', async (_event, name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean) => {
+  ipcMain.handle('workspace:extractVideoFrame', async (_event, videoPath: string, outputPath: string, frameTime: number) => {
+    await mkdir(path.dirname(outputPath), { recursive: true })
+    await execFileAsync(getFfmpegPath(), [
+      '-y',
+      '-ss', String(Math.max(0, frameTime)),
+      '-i', videoPath,
+      '-frames:v', '1',
+      '-c:v', 'mjpeg',
+      '-pix_fmt', 'yuvj420p',
+      '-q:v', '2',
+      outputPath,
+    ], { timeout: 30000 })
+    return { path: outputPath, name: path.basename(outputPath) }
+  })
+
+  ipcMain.handle('workspace:exportRenderedLivePhoto', async (_event, name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs = false) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
     await mkdir(settings.exportDir, { recursive: true })
@@ -216,11 +234,24 @@ export function register(_ctx: IpcContext): void {
       ? undefined  // Apple Live 不产出合成 .jpg，JPG+MOV 对在 appleFolder
       : path.join(settings.exportDir, `${baseName}_${Date.now()}.jpg`)
     const appleFolder = appleLivePhoto ? path.join(settings.exportDir, `${baseName}_apple_${Date.now()}`) : undefined
+    let workingImagePath = imagePath
+    let workingVideoPath = videoPath
+    if (preserveInputs) {
+      const workingStamp = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      workingImagePath = path.join(settings.exportDir, `.${baseName}_${workingStamp}.jpg`)
+      workingVideoPath = path.join(settings.exportDir, `.${baseName}_${workingStamp}${path.extname(videoPath) || '.mp4'}`)
+    }
     try {
-      await combineLivePhoto(imagePath, videoPath, destinationPath ?? '', appleFolder)
+      if (preserveInputs) {
+        await Promise.all([
+          cp(imagePath, workingImagePath, { force: true }),
+          cp(videoPath, workingVideoPath, { force: true }),
+        ])
+      }
+      await combineLivePhoto(workingImagePath, workingVideoPath, destinationPath ?? '', appleFolder)
     } finally {
-      await rm(imagePath, { force: true }).catch(() => undefined)
-      await rm(videoPath, { force: true }).catch(() => undefined)
+      await rm(workingImagePath, { force: true }).catch(() => undefined)
+      await rm(workingVideoPath, { force: true }).catch(() => undefined)
     }
 
     const exportId = `preview_live_${baseName}_${Date.now()}`
