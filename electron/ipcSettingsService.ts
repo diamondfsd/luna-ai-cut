@@ -6,9 +6,8 @@ import {
   getSettings, saveSettings, getCacheStats, clearCache,
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
-import type { IpcContext } from './ipcContext'
 
-export function register(_ctx?: IpcContext): void {
+export function register(): void {
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:save', (_event, settings: Partial<AppSettings>) => saveSettings(settings))
   ipcMain.handle('devices:list', () => deviceDefinitions())

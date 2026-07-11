@@ -114,7 +114,7 @@ let activeWorkers = 0
 
 async function runWorker(): Promise<void> {
   activeWorkers++
-  while (true) {
+  while (taskQueue.length) {
     const task = taskQueue.shift()
     if (!task) break
 

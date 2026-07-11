@@ -117,7 +117,6 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
       { layers, className, canvasWidth, canvasHeight, playing = false, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes },
-      _ref,
     ) {
       const outputCanvasRef = useRef<HTMLCanvasElement>(null)
       const lrcRef = useRef<LunaRenderCore | null>(null)

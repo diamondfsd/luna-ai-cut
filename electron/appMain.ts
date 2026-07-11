@@ -52,8 +52,8 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 let win: BrowserWindow | null
 const clients = new Map<string, LunaClient>()
 const goUltraClients = new Map<string, GoUltraClient>()
-let activeDownloadControllers = new Set<AbortController>()
-let activeExportControllers = new Map<string, AbortController>()
+const activeDownloadControllers = new Set<AbortController>()
+const activeExportControllers = new Map<string, AbortController>()
 const activeExportEncoders = new Map<string, import('node:child_process').ChildProcessWithoutNullStreams>()
 const activeNativeExportTasks = new Set<string>()
 const previewCacheTasks = new Map<string, Promise<boolean>>()

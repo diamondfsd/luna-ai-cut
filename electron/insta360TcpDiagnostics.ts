@@ -332,6 +332,7 @@ function commandResult(label: string, response: RawResponse): Insta360TcpCommand
 function parsePathList(body: Buffer): string[] {
   const text = body.toString('latin1')
   const paths = new Set<string>()
+  // eslint-disable-next-line no-control-regex
   for (const match of text.matchAll(/\/(?:storage_internal|sdcard|DCIM)[^\x00\n\r"'<>\s]+?\.(?:mp4|mov|lrv|jpg|jpeg|dng|insp|png|webp)/gi)) {
     paths.add(match[0])
   }

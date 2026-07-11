@@ -30,7 +30,7 @@ function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThu
       ref={(el) => {
         (btnRef as React.MutableRefObject<HTMLButtonElement | null>).current = el
         if (isActive && activeThumbRef) {
-          ;(activeThumbRef as React.MutableRefObject<HTMLButtonElement | null>).current = el
+          (activeThumbRef as React.MutableRefObject<HTMLButtonElement | null>).current = el
         }
       }}
       className={`preview-thumb-item${isActive ? ' active' : ''}${isModified ? ' modified' : ''}`}

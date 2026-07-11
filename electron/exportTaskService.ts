@@ -82,7 +82,7 @@ function isTerminalStatus(status: ExportTaskItem['status']): boolean {
   return status === 'done' || status === 'failed' || status === 'canceled'
 }
 
-function inputToItem(input: ExportItemInput, _ts: number): ExportTaskItem {
+function inputToItem(input: ExportItemInput): ExportTaskItem {
   return {
     id: input.id,
     fileName: basename(input.outputPath),
@@ -122,7 +122,7 @@ export async function createTask(
     startTime: ts,
     endTime: null,
     duration: null,
-    items: (items ?? []).map((item) => inputToItem(item, ts)),
+    items: (items ?? []).map((item) => inputToItem(item)),
   }
   tasks.unshift(task)
   saveTasks()
@@ -136,9 +136,8 @@ export async function addItems(taskId: string, items: ExportItemInput[]): Promis
   loadTasks()
   const task = tasks.find((t) => t.id === taskId)
   if (!task) throw new Error(`任务 ${taskId} 不存在`)
-  const ts = now()
   for (const item of items) {
-    task.items.push(inputToItem(item, ts))
+    task.items.push(inputToItem(item))
   }
   task.totalCount = task.items.length
   recalcTask(task)
