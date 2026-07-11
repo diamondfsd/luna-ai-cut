@@ -10,6 +10,7 @@ export interface TripleStitchSavedState {
   activeSlot: number
   slotEdits: SlotEdit[]
   watermarkStyle: string
+  exportFrameTime?: number
 }
 
 export const DEFAULT_SLOT_EDIT: SlotEdit = {
@@ -38,6 +39,7 @@ export function loadTripleStitchState(
     activeSlot: 0,
     slotEdits: createDefaultSlotEdits(),
     watermarkStyle: fallbackWatermarkStyle,
+    exportFrameTime: 0,
   }
 
   try {
@@ -63,6 +65,9 @@ export function loadTripleStitchState(
       watermarkStyle: typeof parsed.watermarkStyle === 'string'
         ? parsed.watermarkStyle
         : fallbackWatermarkStyle,
+      exportFrameTime: typeof parsed.exportFrameTime === 'number'
+        ? Math.max(0, Math.min(parsed.exportFrameTime, 3))
+        : 0,
     }
   } catch {
     return fallback

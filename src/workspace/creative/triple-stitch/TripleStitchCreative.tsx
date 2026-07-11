@@ -192,6 +192,8 @@ export function TripleStitchCreative() {
   const previewPlayback = useTripleStitchPlayback(EXPORT_DURATION)
   const [busy, setBusy] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  // 封面帧时间（用于 Live Photo 静帧导出，仅含视频素材时可调）
+  const [exportFrameTime, setExportFrameTime] = useState(initialState.exportFrameTime ?? 0)
   // 导出格式多选
   const [exportFormats, setExportFormats] = useState<Set<ExportFormat>>(new Set(['video']))
   const toggleExportFormat = (fmt: ExportFormat) => {
@@ -241,6 +243,7 @@ export function TripleStitchCreative() {
       activeSlot,
       slotEdits,
       watermarkStyle,
+      exportFrameTime,
     }
     saveTripleStitchState(workspaceStateKey, state)
 
@@ -261,7 +264,7 @@ export function TripleStitchCreative() {
       projectSaveTimerRef.current = null
       window.luna.workspace.saveProject(nextProject).catch(() => {})
     }, 300)
-  }, [activeSlot, selectedIds, slotEdits, watermarkStyle, workspaceStateKey])
+  }, [activeSlot, selectedIds, slotEdits, watermarkStyle, exportFrameTime, workspaceStateKey])
 
   useEffect(() => () => {
     if (projectSaveTimerRef.current === null) return
@@ -284,6 +287,31 @@ export function TripleStitchCreative() {
     return () => { cancelled = true }
   }, [slotSources, slotEdits, watermarkInfo])
   const canExport = Boolean(composition) && !busy
+
+  // 判断是否包含视频素材
+  const hasVideoSource = slotSources.some((s) => s.isVideo)
+
+  // 用于导出封面帧的静帧 composition：在原视频起始上叠加 exportFrameTime 偏移，时长设为 1 帧
+  const stillComposition = useMemo(() => {
+    if (!composition || !hasVideoSource) return composition
+    const fps = composition.canvas.fps ?? 30
+    const stillCanvas = { ...composition.canvas, duration: 1 / fps }
+    const stillLayers = composition.layers.map((layer) => {
+      if (layer.source.sourceType !== 'video' || !layer.source.time) return layer
+      return {
+        ...layer,
+        source: {
+          ...layer.source,
+          time: {
+            ...layer.source.time,
+            start: (layer.source.time.start ?? 0) + exportFrameTime,
+            duration: 1 / fps,
+          },
+        },
+      }
+    })
+    return { ...composition, canvas: stillCanvas, layers: stillLayers }
+  }, [composition, hasVideoSource, exportFrameTime])
 
   // 预览层（直接使用前端 <video> 解码，不依赖 composition 构建）
   const previewLayers: PreviewLayer[] = useMemo(() => {
@@ -485,6 +513,19 @@ export function TripleStitchCreative() {
         },
       }
 
+      // 用于 Live Photo 封面帧的静帧 composition
+      const stillScaledComposition: CompositionInput | null = stillComposition
+        ? {
+            ...stillComposition,
+            canvas: {
+              ...stillComposition.canvas,
+              width: resolved.width,
+              height: resolved.height,
+              fps: resolved.fps ?? stillComposition.canvas.fps,
+            },
+          }
+        : null
+
       const api = compositionApi()
 
       // 导出格式定义
@@ -517,7 +558,7 @@ export function TripleStitchCreative() {
       if (exportFormats.has('live')) {
         const liveImagePath = outputPath(settings.exportDir, `${baseName}_frame_live.jpg`)
         await api.exportCompositionImage(
-          liveImagePath, scaledComposition, 'jpeg', 100,
+          liveImagePath, stillScaledComposition ?? scaledComposition, 'jpeg', 100,
           task.id, `triple_stitch_live_${stamp}`,
         )
         const { path: liveVideoPath } = await window.luna.workspace.copyFile(videoPath)
@@ -539,7 +580,7 @@ export function TripleStitchCreative() {
       if (exportFormats.has('appleLive')) {
         const appleImagePath = outputPath(settings.exportDir, `${baseName}_frame_apple.jpg`)
         await api.exportCompositionImage(
-          appleImagePath, scaledComposition, 'jpeg', 100,
+          appleImagePath, stillScaledComposition ?? scaledComposition, 'jpeg', 100,
           task.id, `triple_stitch_appleLive_${stamp}`,
         )
         const { path: appleVideoPath } = await window.luna.workspace.copyFile(videoPath)
@@ -780,6 +821,22 @@ export function TripleStitchCreative() {
               </label>
             ))}
           </div>
+          {hasVideoSource && (exportFormats.has('live') || exportFormats.has('appleLive')) && (
+            <div className="triple-stitch-param-list" style={{ marginTop: 8 }}>
+              <ParamSlider
+                label="封面帧"
+                value={exportFrameTime}
+                min={0}
+                max={EXPORT_DURATION}
+                step={0.01}
+                onChange={(v) => {
+                  setExportFrameTime(v)
+                  previewPlayback.seek(v)
+                }}
+                formatValue={(value) => `${value.toFixed(2)}s`}
+              />
+            </div>
+          )}
         </div>
 
         <div className="triple-stitch-actions">
