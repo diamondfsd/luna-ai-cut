@@ -330,6 +330,19 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
 
   // 图片：使用 exifr 提取 EXIF 元数据
   if (!sourcePath) {
+    // 如果 sourceUrl 是本地路径，直接尝试读取
+    if (sourceUrl && !sourceUrl.startsWith('http://') && !sourceUrl.startsWith('https://')) {
+      try {
+        await fs.access(sourceUrl)
+        sourcePath = sourceUrl
+      } catch {
+        // 本地文件不存在（可能已被删除），返回空元数据
+        return cacheReturn(file, sourcePath, { groups: [] })
+      }
+    }
+  }
+
+  if (!sourcePath) {
     const previewDir = await previewCacheDir()
     sourcePath = path.join(previewDir, safeName(file.name))
     await downloadToFile({ ...file, sourceUrl }, sourcePath)

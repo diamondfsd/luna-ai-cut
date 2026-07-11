@@ -1,8 +1,10 @@
 import { ipcMain } from 'electron'
 import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
+import fs from 'node:fs'
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
+import probe from 'probe-image-size'
 import { getLocalResourcesDir, getSettings } from './fileService'
 import { safeName } from './filePathUtils'
 import { getFfprobePath } from './ffmpeg/pipeline'
@@ -58,32 +60,57 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
   const { execFile } = await import('node:child_process')
   const { promisify } = await import('node:util')
   const execFileAsync = promisify(execFile)
-  const { stdout } = await execFileAsync(ffprobeBin, [
-    '-v', 'quiet',
-    '-print_format', 'json',
-    '-show_streams',
-    '-show_frames',
-    '-read_intervals', '%+#1',
-    filePath,
-  ])
-  const parsed = JSON.parse(stdout)
-  const frame = parsed.frames?.find((f: any) => f.media_type === 'video')
-  const stream = parsed.streams?.find((s: any) => s.codec_type === 'video')
-  const encodedWidth = Number(frame?.width ?? stream?.width ?? 0)
-  const encodedHeight = Number(frame?.height ?? stream?.height ?? 0)
-  if (!Number.isFinite(encodedWidth) || !Number.isFinite(encodedHeight) || encodedWidth <= 0 || encodedHeight <= 0) {
-    throw new Error(`无法获取文件分辨率: ${filePath}`)
+
+  // 先用 ffprobe 探测（适用于视频 / Live Photo）
+  try {
+    const { stdout } = await execFileAsync(ffprobeBin, [
+      '-v', 'quiet',
+      '-print_format', 'json',
+      '-show_streams',
+      '-show_frames',
+      '-read_intervals', '%+#1',
+      filePath,
+    ])
+    const parsed = JSON.parse(stdout)
+    const frame = parsed.frames?.find((f: any) => f.media_type === 'video')
+    const stream = parsed.streams?.find((s: any) => s.codec_type === 'video')
+    const encodedWidth = Number(frame?.width ?? stream?.width ?? 0)
+    const encodedHeight = Number(frame?.height ?? stream?.height ?? 0)
+    if (Number.isFinite(encodedWidth) && Number.isFinite(encodedHeight) && encodedWidth > 0 && encodedHeight > 0) {
+      const rotation = displayRotation(frame, stream)
+      const shouldSwap = rotation === 90 || rotation === 270
+      return {
+        width: shouldSwap ? encodedHeight : encodedWidth,
+        height: shouldSwap ? encodedWidth : encodedHeight,
+        rotation,
+        encodedWidth,
+        encodedHeight,
+      }
+    }
+  } catch {
+    // ffprobe 失败，回退到图片探测
   }
 
-  const rotation = displayRotation(frame, stream)
-  const shouldSwap = rotation === 90 || rotation === 270
-  return {
-    width: shouldSwap ? encodedHeight : encodedWidth,
-    height: shouldSwap ? encodedWidth : encodedHeight,
-    rotation,
-    encodedWidth,
-    encodedHeight,
+  // ffprobe 无视频流 → 尝试用 probe-image-size 解析图片分辨率
+  const buf = await fs.promises.readFile(filePath, { flag: 'r' }).catch(() => null)
+  if (buf) {
+    try {
+      const result = probe.sync(buf)
+      if (result && result.width > 0 && result.height > 0) {
+        return {
+          width: result.width,
+          height: result.height,
+          rotation: 0,
+          encodedWidth: result.width,
+          encodedHeight: result.height,
+        }
+      }
+    } catch {
+      // probe 也失败
+    }
   }
+
+  throw new Error(`无法获取文件分辨率: ${filePath}`)
 }
 
 export function register(_ctx: IpcContext): void {
