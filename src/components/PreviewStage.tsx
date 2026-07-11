@@ -384,6 +384,9 @@ export function PreviewStage(
               playing={playing}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
+              imageScale={viewScale === 'fit' ? null : viewScale / 100}
+              onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
+              interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
             />
           ) : (
             <LrcRender
