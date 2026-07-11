@@ -19,15 +19,6 @@ export const STYLE_TO_THEME: Record<string, string> = {
   'go_ultra_cn': 'Normal-CN',
 }
 
-export const POSITION_TO_KEY: Record<string, string> = {
-  'bottom-center': 'BottomCenter',
-  'bottom-left': 'BottomLeft',
-  'bottom-right': 'BottomRight',
-  'top-left': 'TopLeft',
-  'top-right': 'TopRight',
-  'top-center': 'BottomCenter', // fallback: use center x, compute top y
-}
-
 /** 表中所有支持的宽高比（用于 fallback 查找） */
 const TABLE_ASPECT_RATIOS = [
   '1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16',
@@ -104,7 +95,7 @@ export function resolveWatermarkRatios(
   if (!tableName || !themeName) return null
 
   const aspect = closestAspectRatio(contentW, contentH)
-  const pos = POSITION_TO_KEY[positionKey]
+  const pos = positionKey
   if (!pos) return null
 
   const result = lookupFromData(tableName, themeName, aspect, pos)
