@@ -113,28 +113,27 @@ export function register(_ctx: RegisterContext): void {
 
       if (exportTaskId && exportItemId) {
         await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
+        _event.sender?.send('export:progress', {
+          exportId: exportItemId,
+          taskId: exportTaskId,
+          fileName: outputPath.split(/[\\/]/).pop(),
+          percent: 0,
+          status: 'exporting',
+          destinationPath: outputPath,
+        })
       }
-      _event.sender?.send('export:progress', {
-        exportId: exportItemId,
-        taskId: exportTaskId,
-        fileName: outputPath.split(/[\\/]/).pop(),
-        percent: 0,
-        status: 'exporting',
-        destinationPath: outputPath,
-      })
 
       await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition, format, quality })
 
-      _event.sender?.send('export:progress', {
-        exportId: exportItemId,
-        taskId: exportTaskId,
-        fileName: outputPath.split(/[\\/]/).pop(),
-        percent: 100,
-        status: 'done',
-        destinationPath: outputPath,
-      })
-
       if (exportTaskId && exportItemId) {
+        _event.sender?.send('export:progress', {
+          exportId: exportItemId,
+          taskId: exportTaskId,
+          fileName: outputPath.split(/[\\/]/).pop(),
+          percent: 100,
+          status: 'done',
+          destinationPath: outputPath,
+        })
         await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
       }
       rcLog('lrc:exportCompositionImage done')
@@ -171,15 +170,15 @@ export function register(_ctx: RegisterContext): void {
       rcLog(`lrc:exportCompositionVideo start out=${outputPath} task=${renderTaskId} layers=${composition?.layers?.length ?? 0}`)
       if (exportTaskId && exportItemId) {
         await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting' }).catch(() => {})
+        _event.sender?.send('export:progress', {
+          exportId: progressExportId,
+          taskId: exportTaskId,
+          fileName,
+          percent: 0,
+          status: 'exporting',
+          destinationPath: outputPath,
+        })
       }
-      _event.sender?.send('export:progress', {
-        exportId: progressExportId,
-        taskId: exportTaskId,
-        fileName,
-        percent: 0,
-        status: 'exporting',
-        destinationPath: outputPath,
-      })
       const progressTimer = setInterval(() => {
         const progress = lrcGetExportTaskProgress(renderTaskId)
         if (!progress) return
@@ -189,15 +188,15 @@ export function register(_ctx: RegisterContext): void {
         const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
         if (exportTaskId && exportItemId) {
           exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'exporting', progress: percent }).catch(() => {})
+          _event.sender?.send('export:progress', {
+            exportId: progressExportId,
+            taskId: exportTaskId,
+            fileName,
+            percent,
+            status: 'exporting',
+            destinationPath: outputPath,
+          })
         }
-        _event.sender?.send('export:progress', {
-          exportId: progressExportId,
-          taskId: exportTaskId,
-          fileName,
-          percent,
-          status: 'exporting',
-          destinationPath: outputPath,
-        })
       }, 500)
       try {
         await lrcExportCompositionVideoAsync({
@@ -213,29 +212,29 @@ export function register(_ctx: RegisterContext): void {
         })
         if (exportTaskId && exportItemId) {
           await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
+          _event.sender?.send('export:progress', {
+            exportId: progressExportId,
+            taskId: exportTaskId,
+            fileName,
+            percent: 100,
+            status: 'done',
+            destinationPath: outputPath,
+          })
         }
-        _event.sender?.send('export:progress', {
-          exportId: progressExportId,
-          taskId: exportTaskId,
-          fileName,
-          percent: 100,
-          status: 'done',
-          destinationPath: outputPath,
-        })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (exportTaskId && exportItemId) {
           await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'failed', error: message }).catch(() => {})
+          _event.sender?.send('export:progress', {
+            exportId: progressExportId,
+            taskId: exportTaskId,
+            fileName,
+            percent: 100,
+            status: 'failed',
+            destinationPath: outputPath,
+            error: message,
+          })
         }
-        _event.sender?.send('export:progress', {
-          exportId: progressExportId,
-          taskId: exportTaskId,
-          fileName,
-          percent: 100,
-          status: 'failed',
-          destinationPath: outputPath,
-          error: message,
-        })
         throw error
       } finally {
         clearInterval(progressTimer)
