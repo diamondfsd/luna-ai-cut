@@ -11,8 +11,8 @@ interface BorderPanelProps {
 
 function presetColors(presetId: string): { backgroundColor: string; textColor: string } {
   const preset = FRAME_PRESETS.find((item) => item.id === presetId)
-  const background = preset?.layers.find((layer) => layer.type === 'shape' && layer.id === 'background')
-  const text = preset?.layers.find((layer) => layer.type === 'text')
+  const background = preset?.layers?.find((layer) => layer.type === 'shape' && layer.id === 'background')
+  const text = preset?.layers?.find((layer) => layer.type === 'text')
   return {
     backgroundColor: background?.type === 'shape' ? background.fill?.color ?? preset?.swatch ?? '#ffffff' : preset?.swatch ?? '#ffffff',
     textColor: text?.type === 'text' ? text.style.color : '#222222',
