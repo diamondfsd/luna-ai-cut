@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
 
 import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
+import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../../../shared/types'
 import type { CompositionInput, PreviewLayer, VideoExportSettings } from '../../../shared/types'
 import { Button, IconButton, VideoControls, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
@@ -55,6 +56,7 @@ interface LunaCompositionExportApi {
     exportTaskId?: string,
     exportItemId?: string,
   ): Promise<void>
+  getExportTaskProgress?(taskId: string): Promise<[number | bigint, number | bigint] | null>
 }
 
 type ExportFormat = 'video' | 'live' | 'appleLive'
@@ -70,6 +72,10 @@ const EXPORT_FORMATS: Array<{ key: ExportFormat; label: string }> = [
 
 function outputPath(exportDir: string, fileName: string): string {
   return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 /** 每格视频底部 Logo 宽度（占画布宽比例） */
@@ -156,6 +162,46 @@ function buildTripleStitchComposition(
       duration: EXPORT_DURATION,
     },
     layers: [...mediaLayers, ...logoLayers],
+  }
+}
+
+/** 用已渲染的视频文件 + Logo 层构建静帧 composition，避免 3 路视频 seek */
+function buildTripleStitchStillComposition(
+  videoPath: string,
+  logoLayers: CompositionInput['layers'],
+  outputWidth: number,
+  outputHeight: number,
+  outputFps: number,
+  frameTime: number,
+): CompositionInput {
+  return {
+    version: 1,
+    canvas: {
+      width: outputWidth,
+      height: outputHeight,
+      fps: outputFps,
+      duration: 1 / outputFps,
+    },
+    layers: [
+      {
+        id: 'slot-all',
+        source: {
+          path: videoPath,
+          sourceType: 'video' as const,
+          time: {
+            start: frameTime,
+            offset: 0,
+            duration: 1 / outputFps,
+            loopEnabled: false,
+          },
+        },
+        rect: { x: 0, y: 0, w: 1, h: 1 },
+        fit: 'cover-scale',
+        opacity: 1,
+        zIndex: 0,
+      },
+      ...logoLayers,
+    ],
   }
 }
 
@@ -290,28 +336,6 @@ export function TripleStitchCreative() {
 
   // 判断是否包含视频素材
   const hasVideoSource = slotSources.some((s) => s.isVideo)
-
-  // 用于导出封面帧的静帧 composition：在原视频起始上叠加 exportFrameTime 偏移，时长设为 1 帧
-  const stillComposition = useMemo(() => {
-    if (!composition || !hasVideoSource) return composition
-    const fps = composition.canvas.fps ?? 30
-    const stillCanvas = { ...composition.canvas, duration: 1 / fps }
-    const stillLayers = composition.layers.map((layer) => {
-      if (layer.source.sourceType !== 'video' || !layer.source.time) return layer
-      return {
-        ...layer,
-        source: {
-          ...layer.source,
-          time: {
-            ...layer.source.time,
-            start: (layer.source.time.start ?? 0) + exportFrameTime,
-            duration: 1 / fps,
-          },
-        },
-      }
-    })
-    return { ...composition, canvas: stillCanvas, layers: stillLayers }
-  }, [composition, hasVideoSource, exportFrameTime])
 
   // 预览层（直接使用前端 <video> 解码，不依赖 composition 构建）
   const previewLayers: PreviewLayer[] = useMemo(() => {
@@ -477,13 +501,23 @@ export function TripleStitchCreative() {
 
   async function handleExport(): Promise<void> {
     if (!composition || busy) return
-    await window.luna.getSettings().then((s) => {
-      if (!s.exportDir) throw new Error('导出目录未配置')
-    }).catch((e) => {
-      toast.error(e instanceof Error ? e.message : '导出目录未配置')
+    if (exportFormats.size === 0) {
+      toast.error('请至少选择一种导出格式')
       return
-    })
-    setExportDialogOpen(true)
+    }
+    try {
+      const settings = await window.luna.getSettings()
+      if (!settings.exportDir) throw new Error('导出目录未配置')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '导出目录未配置')
+      return
+    }
+
+    if (exportFormats.has('video')) {
+      setExportDialogOpen(true)
+      return
+    }
+    await handleExportConfirm(DEFAULT_VIDEO_EXPORT_SETTINGS)
   }
 
   async function handleExportConfirm(config: VideoExportSettings): Promise<void> {
@@ -494,13 +528,31 @@ export function TripleStitchCreative() {
     }
     setBusy(true)
     setExportDialogOpen(false)
+    let activeTask: { id: string; itemIds: string[] } | null = null
+    const reportTaskFailure = async (error: unknown): Promise<void> => {
+      const message = error instanceof Error ? error.message : String(error)
+      const taskContext = activeTask
+      if (taskContext) {
+        const taskSnapshot = await window.luna.exportTask.get(taskContext.id).catch(() => undefined)
+        await Promise.all(taskContext.itemIds.map((itemId) => {
+          const status = taskSnapshot?.items.find((item) => item.id === itemId)?.status
+          if (status !== 'queued' && status !== 'exporting') return Promise.resolve()
+          return window.luna.exportTask.updateItem(taskContext.id, itemId, {
+            status: 'failed',
+            error: message,
+          }).catch(() => {})
+        }))
+      }
+      toast.error(message)
+    }
     try {
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) throw new Error('导出目录未配置')
+      const exportDir = settings.exportDir
       const stamp = Date.now()
       const baseName = `triple-stitch-${stamp}`
       const videoFileName = `${baseName}.mp4`
-      const videoPath = outputPath(settings.exportDir, videoFileName)
+      const videoPath = outputPath(exportDir, videoFileName)
 
       const resolved = resolveExportConfig(config, CANVAS_WIDTH, CANVAS_HEIGHT)
       const scaledComposition: CompositionInput = {
@@ -513,67 +565,106 @@ export function TripleStitchCreative() {
         },
       }
 
-      // 用于 Live Photo 封面帧的静帧 composition
-      const stillScaledComposition: CompositionInput | null = stillComposition
-        ? {
-            ...stillComposition,
-            canvas: {
-              ...stillComposition.canvas,
-              width: resolved.width,
-              height: resolved.height,
-              fps: resolved.fps ?? stillComposition.canvas.fps,
-            },
-          }
+      // 用于 Live Photo 封面帧的静帧 composition：
+      // 直接用已渲染好的视频（videoPath）作为单层源 + Logo 层，避免 3 个视频源分别 seek 导致耗时
+      const stillScaledComposition: CompositionInput | null = (hasVideoSource && composition)
+        ? buildTripleStitchStillComposition(
+            videoPath,
+            composition.layers.filter((l) => l.id?.endsWith('-logo')),
+            resolved.width,
+            resolved.height,
+            resolved.fps ?? composition.canvas.fps ?? 30,
+            exportFrameTime,
+          )
         : null
 
       const api = compositionApi()
 
-      // 是否需要中间视频（供 Live Photo 使用）
-      const needVideoForLive = (exportFormats.has('live') || exportFormats.has('appleLive')) && !exportFormats.has('video')
       const videoTaskId = `triple_stitch_video_${stamp}`
-      const videoExported = exportFormats.has('video') || needVideoForLive
 
-      // 导出格式定义
-      const FORMAT_DEFS: Array<{ key: ExportFormat; id: string; outputPath: string; label: string }> = [
-        { key: 'video', id: videoTaskId, outputPath: videoPath, label: '视频' },
-        { key: 'live' as ExportFormat, id: `triple_stitch_live_${stamp}`, outputPath: outputPath(settings.exportDir, `${baseName}_live.jpg`), label: 'Live' },
-        { key: 'appleLive' as ExportFormat, id: `triple_stitch_appleLive_${stamp}`, outputPath: outputPath(settings.exportDir, `${baseName}_appleLive.jpg`), label: 'Apple Live' },
+      // 子任务列表：只展示用户勾选的格式，中间视频不暴露
+      const items = [
+        ...(exportFormats.has('video') ? [{ id: videoTaskId, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: videoPath, label: '视频' }] : []),
+        ...(exportFormats.has('live') ? [{ id: `triple_stitch_live_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(exportDir, `${baseName}_live.jpg`), label: 'Live' }] : []),
+        ...(exportFormats.has('appleLive') ? [{ id: `triple_stitch_appleLive_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(exportDir, `${baseName}_appleLive.jpg`), label: 'Apple Live' }] : []),
       ]
 
-      // 构建子任务列表：Live Photo 需要中间视频，无论用户是否勾选"视频"
-      const items = FORMAT_DEFS
-        .filter((f) => f.key === 'video' ? videoExported : exportFormats.has(f.key))
-        .map((f) => ({ id: f.id, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: f.outputPath, label: f.label }))
-
       const task = await window.luna.exportTask.create('三拼创意导出', items)
+      activeTask = { id: task.id, itemIds: items.map((item) => item.id) }
 
-      // Step 1: 导出视频（Live Photo 需要中间视频作为素材）
-      if (videoExported) {
+      // 页面只负责把导出加入任务队列；实际导出状态由右上角全局任务入口展示。
+      setBusy(false)
+      toast.success('已加入导出任务')
+
+      void (async () => {
+      const liveItemIds = [
+        ...(exportFormats.has('live') ? [`triple_stitch_live_${stamp}`] : []),
+        ...(exportFormats.has('appleLive') ? [`triple_stitch_appleLive_${stamp}`] : []),
+      ]
+      const reportLiveProgress = async (progress: number): Promise<void> => {
+        await Promise.all(liveItemIds.map((itemId) => window.luna.exportTask.updateItem(task.id, itemId, {
+          status: 'exporting',
+          progress,
+        }).catch(() => {})))
+      }
+
+      // Step 1: 导出视频（用户选了视频 → 展示进度；仅作为 Live 中间素材 → 静默渲染）
+      const videoReportTaskId = exportFormats.has('video') ? task.id : undefined
+      const videoReportItemId = exportFormats.has('video') ? videoTaskId : undefined
+      let stopLiveProgress = false
+      const liveProgressWatcher = liveItemIds.length > 0 ? (async () => {
+        await reportLiveProgress(1)
+        let lastProgress = 1
+        while (!stopLiveProgress) {
+          const progress = await api.getExportTaskProgress?.(videoTaskId).catch(() => null)
+          if (progress) {
+            const currentFrame = Number(progress[0])
+            const totalFrames = Number(progress[1])
+            if (totalFrames > 0) {
+              const nextProgress = Math.max(1, Math.min(60, Math.floor((currentFrame / totalFrames) * 60)))
+              if (nextProgress > lastProgress) {
+                lastProgress = nextProgress
+                await reportLiveProgress(nextProgress)
+              }
+            }
+          }
+          await wait(300)
+        }
+      })() : null
+      try {
         await api.exportCompositionVideo(
           videoPath, scaledComposition, resolved.fps, EXPORT_DURATION,
           true,
           videoTaskId,
           resolved.qualityPreset,
-          task.id,
-          videoTaskId,
+          videoReportTaskId,
+          videoReportItemId,
         )
+      } finally {
+        stopLiveProgress = true
+        await liveProgressWatcher?.catch(() => {})
       }
+      if (liveItemIds.length > 0) await reportLiveProgress(60)
 
       // Step 2: 导出 Live 图 / Apple Live 图
       // 注意：exportRenderedLivePhoto 会删除输入的 image/video 文件，
       // 所以每个变体需要自己的临时文件，用 copyFile 复制视频副本避免原视频被删
       if (exportFormats.has('live')) {
-        const liveImagePath = outputPath(settings.exportDir, `${baseName}_frame_live.jpg`)
+        const liveItemId = `triple_stitch_live_${stamp}`
+        const liveImagePath = outputPath(exportDir, `${baseName}_frame_live.jpg`)
+        // 中间图片不传 taskId，防止覆盖任务的最终 destinationPath
         await api.exportCompositionImage(
           liveImagePath, stillScaledComposition ?? scaledComposition, 'jpeg', 100,
-          task.id, `triple_stitch_live_${stamp}`,
         )
+        await window.luna.exportTask.updateItem(task.id, liveItemId, { status: 'exporting', progress: 75 }).catch(() => {})
         const { path: liveVideoPath } = await window.luna.workspace.copyFile(videoPath)
+        await window.luna.exportTask.updateItem(task.id, liveItemId, { status: 'exporting', progress: 85 }).catch(() => {})
         try {
+          await window.luna.exportTask.updateItem(task.id, liveItemId, { status: 'exporting', progress: 90 }).catch(() => {})
           const result = await window.luna.workspace.exportRenderedLivePhoto(
             `${baseName}_live`, liveImagePath, liveVideoPath, false,
           )
-          await window.luna.exportTask.updateItem(task.id, `triple_stitch_live_${stamp}`, {
+          await window.luna.exportTask.updateItem(task.id, liveItemId, {
             status: 'done', progress: 100, destinationPath: result.path,
           }).catch(() => {})
         } catch (error) {
@@ -585,17 +676,21 @@ export function TripleStitchCreative() {
       }
 
       if (exportFormats.has('appleLive')) {
-        const appleImagePath = outputPath(settings.exportDir, `${baseName}_frame_apple.jpg`)
+        const appleItemId = `triple_stitch_appleLive_${stamp}`
+        const appleImagePath = outputPath(exportDir, `${baseName}_frame_apple.jpg`)
+        // 中间图片不传 taskId，防止覆盖任务的最终 destinationPath
         await api.exportCompositionImage(
           appleImagePath, stillScaledComposition ?? scaledComposition, 'jpeg', 100,
-          task.id, `triple_stitch_appleLive_${stamp}`,
         )
+        await window.luna.exportTask.updateItem(task.id, appleItemId, { status: 'exporting', progress: 75 }).catch(() => {})
         const { path: appleVideoPath } = await window.luna.workspace.copyFile(videoPath)
+        await window.luna.exportTask.updateItem(task.id, appleItemId, { status: 'exporting', progress: 85 }).catch(() => {})
         try {
+          await window.luna.exportTask.updateItem(task.id, appleItemId, { status: 'exporting', progress: 90 }).catch(() => {})
           const result = await window.luna.workspace.exportRenderedLivePhoto(
             `${baseName}_appleLive`, appleImagePath, appleVideoPath, true,
           )
-          await window.luna.exportTask.updateItem(task.id, `triple_stitch_appleLive_${stamp}`, {
+          await window.luna.exportTask.updateItem(task.id, appleItemId, {
             status: 'done', progress: 100, destinationPath: result.path,
           }).catch(() => {})
         } catch (error) {
@@ -605,10 +700,9 @@ export function TripleStitchCreative() {
           }).catch(() => {})
         }
       }
-
-      toast.success('已加入导出任务')
+      })().catch(reportTaskFailure)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error))
+      await reportTaskFailure(error)
     } finally {
       setBusy(false)
     }
@@ -851,7 +945,7 @@ export function TripleStitchCreative() {
             重置全部
           </Button>
           <Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!canExport} onClick={() => void handleExport()}>
-            {busy ? '导出中' : '导出'}
+            导出
           </Button>
         </div>
       </aside>
@@ -864,9 +958,9 @@ export function TripleStitchCreative() {
         open={exportDialogOpen}
         onOpenChange={setExportDialogOpen}
         description="设置导出视频的分辨率、码率和帧率"
-        loading={busy}
+        loading={false}
         confirmLabel="确认导出"
-        confirmLoadingLabel="导出中..."
+        confirmLoadingLabel="加入中..."
         onConfirm={async (config) => {
           await handleExportConfirm(config)
         }}
