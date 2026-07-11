@@ -165,46 +165,6 @@ function buildTripleStitchComposition(
   }
 }
 
-/** 用已渲染的视频文件 + Logo 层构建静帧 composition，避免 3 路视频 seek */
-function buildTripleStitchStillComposition(
-  videoPath: string,
-  logoLayers: CompositionInput['layers'],
-  outputWidth: number,
-  outputHeight: number,
-  outputFps: number,
-  frameTime: number,
-): CompositionInput {
-  return {
-    version: 1,
-    canvas: {
-      width: outputWidth,
-      height: outputHeight,
-      fps: outputFps,
-      duration: 1 / outputFps,
-    },
-    layers: [
-      {
-        id: 'slot-all',
-        source: {
-          path: videoPath,
-          sourceType: 'video' as const,
-          time: {
-            start: frameTime,
-            offset: 0,
-            duration: 1 / outputFps,
-            loopEnabled: false,
-          },
-        },
-        rect: { x: 0, y: 0, w: 1, h: 1 },
-        fit: 'cover-scale',
-        opacity: 1,
-        zIndex: 0,
-      },
-      ...logoLayers,
-    ],
-  }
-}
-
 function compositionApi(): LunaCompositionExportApi {
   const api = (window as unknown as { lunaRenderCore?: LunaCompositionExportApi }).lunaRenderCore
   if (!api) throw new Error('渲染引擎未初始化')
@@ -590,19 +550,6 @@ export function TripleStitchCreative() {
         },
       }
 
-      // 用于 Live Photo 封面帧的静帧 composition：
-      // 直接用已渲染好的视频（videoPath）作为单层源 + Logo 层，避免 3 个视频源分别 seek 导致耗时
-      const stillScaledComposition: CompositionInput | null = (hasVideoSource && composition)
-        ? buildTripleStitchStillComposition(
-            videoPath,
-            composition.layers.filter((l) => l.id?.endsWith('-logo')),
-            resolved.width,
-            resolved.height,
-            resolved.fps ?? composition.canvas.fps ?? 30,
-            exportFrameTime,
-          )
-        : null
-
       const api = compositionApi()
 
       const videoTaskId = `triple_stitch_video_${stamp}`
@@ -676,23 +623,22 @@ export function TripleStitchCreative() {
       }
       if (liveItemIds.length > 0) await reportLiveProgress(60)
 
+      // Live 与 Apple Live 共享同一个视频和同一张封面，缓存文件在封装后继续保留。
+      const sharedLiveImagePath = outputPath(exportDir, `${baseName}_live-frame.jpg`)
+      if (liveItemIds.length > 0) {
+        await window.luna.workspace.extractVideoFrame(videoPath, sharedLiveImagePath, exportFrameTime)
+        await reportLiveProgress(75)
+      }
+
       // Step 2: 导出 Live 图 / Apple Live 图
-      // 注意：exportRenderedLivePhoto 会删除输入的 image/video 文件，
-      // 所以每个变体需要自己的临时文件，用 copyFile 复制视频副本避免原视频被删
+      // 封装服务只清理内部工作副本，不删除上面的共享视频和封面。
       if (exportFormats.has('live')) {
         const liveItemId = `triple_stitch_live_${stamp}`
-        const liveImagePath = outputPath(exportDir, `${baseName}_frame_live.jpg`)
-        // 中间图片不传 taskId，防止覆盖任务的最终 destinationPath
-        await api.exportCompositionImage(
-          liveImagePath, stillScaledComposition ?? scaledComposition, 'jpeg', 100,
-        )
-        await window.luna.exportTask.updateItem(task.id, liveItemId, { status: 'exporting', progress: 75 }).catch(() => {})
-        const { path: liveVideoPath } = await window.luna.workspace.copyFile(videoPath)
         await window.luna.exportTask.updateItem(task.id, liveItemId, { status: 'exporting', progress: 85 }).catch(() => {})
         try {
           await window.luna.exportTask.updateItem(task.id, liveItemId, { status: 'exporting', progress: 90 }).catch(() => {})
           const result = await window.luna.workspace.exportRenderedLivePhoto(
-            `${baseName}_live`, liveImagePath, liveVideoPath, false,
+            `${baseName}_live`, sharedLiveImagePath, videoPath, false, true,
           )
           await window.luna.exportTask.updateItem(task.id, liveItemId, {
             status: 'done', progress: 100, destinationPath: result.path,
@@ -709,18 +655,11 @@ export function TripleStitchCreative() {
 
       if (exportFormats.has('appleLive')) {
         const appleItemId = `triple_stitch_appleLive_${stamp}`
-        const appleImagePath = outputPath(exportDir, `${baseName}_frame_apple.jpg`)
-        // 中间图片不传 taskId，防止覆盖任务的最终 destinationPath
-        await api.exportCompositionImage(
-          appleImagePath, stillScaledComposition ?? scaledComposition, 'jpeg', 100,
-        )
-        await window.luna.exportTask.updateItem(task.id, appleItemId, { status: 'exporting', progress: 75 }).catch(() => {})
-        const { path: appleVideoPath } = await window.luna.workspace.copyFile(videoPath)
         await window.luna.exportTask.updateItem(task.id, appleItemId, { status: 'exporting', progress: 85 }).catch(() => {})
         try {
           await window.luna.exportTask.updateItem(task.id, appleItemId, { status: 'exporting', progress: 90 }).catch(() => {})
           const result = await window.luna.workspace.exportRenderedLivePhoto(
-            `${baseName}_appleLive`, appleImagePath, appleVideoPath, true,
+            `${baseName}_appleLive`, sharedLiveImagePath, videoPath, true, true,
           )
           await window.luna.exportTask.updateItem(task.id, appleItemId, {
             status: 'done', progress: 100, destinationPath: result.path,

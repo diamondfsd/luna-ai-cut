@@ -103,7 +103,8 @@ export interface LunaApi {
     saveProject(project: WorkspaceProject): Promise<WorkspaceProject>
     deleteProject(projectId: string): Promise<void>
     renameProject(projectId: string, newName: string): Promise<WorkspaceProject>
-    exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean): Promise<{ path: string; name: string }>
+    extractVideoFrame(videoPath: string, outputPath: string, frameTime: number): Promise<{ path: string; name: string }>
+    exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean): Promise<{ path: string; name: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void

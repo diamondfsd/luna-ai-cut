@@ -125,7 +125,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     saveProject: (project: WorkspaceProject) => ipcRenderer.invoke('workspace:saveProject', project),
     deleteProject: (projectId: string) => ipcRenderer.invoke('workspace:deleteProject', projectId),
     renameProject: (projectId: string, newName: string) => ipcRenderer.invoke('workspace:renameProject', projectId, newName),
-    exportRenderedLivePhoto: (name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean) => ipcRenderer.invoke('workspace:exportRenderedLivePhoto', name, imagePath, videoPath, appleLivePhoto),
+    extractVideoFrame: (videoPath: string, outputPath: string, frameTime: number) => ipcRenderer.invoke('workspace:extractVideoFrame', videoPath, outputPath, frameTime),
+    exportRenderedLivePhoto: (name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean) => ipcRenderer.invoke('workspace:exportRenderedLivePhoto', name, imagePath, videoPath, appleLivePhoto, preserveInputs),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
   },
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
