@@ -23,6 +23,7 @@ unsafe extern "C" {
     fn luna_av_decoder_create(
         path: *const c_char,
         metal_device: *mut c_void,
+        max_decode_edge: u32,
         error_buffer: *mut c_char,
         error_length: usize,
     ) -> *mut c_void;
@@ -90,11 +91,11 @@ struct Decoder {
 }
 
 impl Decoder {
-    fn new(path: &str, metal_device: *mut c_void) -> Result<Self, String> {
+    fn new(path: &str, metal_device: *mut c_void, max_decode_edge: u32) -> Result<Self, String> {
         let path = c_path(path)?;
         let mut error = error_buffer();
         let raw = unsafe {
-            luna_av_decoder_create(path.as_ptr(), metal_device, error.as_mut_ptr(), error.len())
+            luna_av_decoder_create(path.as_ptr(), metal_device, max_decode_edge, error.as_mut_ptr(), error.len())
         };
         if raw.is_null() {
             Err(bridge_error(&error, "无法启动 macOS 视频解码"))
@@ -264,22 +265,42 @@ pub(crate) fn export_video(
     let mut decoders: HashMap<String, Decoder> = HashMap::new();
     let mut static_textures: HashMap<String, (u32, u32, u32)> = HashMap::new();
 
+    let export_start = std::time::Instant::now();
+    let mut cum_decode_us = 0u64;
+    let mut cum_wrap_us = 0u64;
+    let mut cum_plan_us = 0u64;
+    let mut cum_acquire_us = 0u64;
+    let mut cum_render_us = 0u64;
+    let mut cum_append_us = 0u64;
+    let mut cum_cleanup_us = 0u64;
+    let log_interval = (total_frames / 10).max(1);
+
     for frame_index in 0..total_frames {
         if task.is_some_and(|state| state.is_cancelled()) {
             return Err("导出已取消".to_string());
         }
+        let frame_start = std::time::Instant::now();
         let time = frame_index as f64 / fps;
         let layer_inputs = composition_layers(composition, time);
         let mut source_layers = Vec::with_capacity(layer_inputs.len());
         let mut transient_texture_ids = Vec::new();
         let mut decoded_frames = Vec::new();
 
-        for layer in layer_inputs {
+        // ── 解码 ──
+        let t0 = std::time::Instant::now();
+        for (layer_idx, layer) in layer_inputs.into_iter().enumerate() {
             let (texture_id, width, height) = if layer.is_video {
-                let decoder = match decoders.entry(layer.file_path.clone()) {
+                // 每个槽位独立 Reader：用 file_path + 槽位索引作为 key，
+                // 避免同一文件在不同槽位间共享 Reader 导致游标反复追帧/重启
+                let decoder_key = format!("{}@slot{}", layer.file_path, layer_idx);
+                let decoder = match decoders.entry(decoder_key) {
                     std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
                     std::collections::hash_map::Entry::Vacant(entry) => {
-                        entry.insert(Decoder::new(&layer.file_path, metal_device)?)
+                        // 计算此层在画布上的实际显示像素尺寸，作为解码上限
+                        let display_w = (layer.dst_w.abs() * composition.canvas.width as f64).ceil() as u32;
+                        let display_h = (layer.dst_h.abs() * composition.canvas.height as f64).ceil() as u32;
+                        let decode_max_side = display_w.max(display_h).max(360); // 不低于 360px
+                        entry.insert(Decoder::new(&layer.file_path, metal_device, decode_max_side)?)
                     }
                 };
                 let Some(decoded) = decoder.frame(layer.video_time)? else {
@@ -326,7 +347,10 @@ pub(crate) fn export_video(
                 },
             ));
         }
+        let decode_us = t0.elapsed().as_micros() as u64;
 
+        // ── 布局规划 ──
+        let t0 = std::time::Instant::now();
         let planned_layers = if source_layers.is_empty() {
             Vec::new()
         } else {
@@ -339,6 +363,10 @@ pub(crate) fn export_video(
                 )?
                 .layers
         };
+        let plan_us = t0.elapsed().as_micros() as u64;
+
+        // ── 获取编码器帧 + wrap ──
+        let t0 = std::time::Instant::now();
         let output_frame = writer.acquire_frame()?;
         let output_texture = unsafe {
             compositor.wrap_external_metal_texture(
@@ -349,24 +377,67 @@ pub(crate) fn export_video(
                 false,
             )?
         };
+        let acquire_us = t0.elapsed().as_micros() as u64;
+
+        // ── GPU 合成 ──
+        let t0 = std::time::Instant::now();
         compositor.render_into_external_texture(
             output_texture,
             composition.canvas.width,
             composition.canvas.height,
             &planned_layers,
         )?;
+        let render_us = t0.elapsed().as_micros() as u64;
 
+        // ── 清理 + append ──
+        let t0 = std::time::Instant::now();
         for texture_id in transient_texture_ids {
             compositor.unregister_external_texture(texture_id);
         }
         drop(decoded_frames);
         writer.append(&output_frame, frame_index)?;
+        let append_us = t0.elapsed().as_micros() as u64;
+
+        let frame_us = frame_start.elapsed().as_micros() as u64;
+        cum_decode_us += decode_us;
+        cum_wrap_us += 0; // wrap 已计入 decode 阶段
+        cum_plan_us += plan_us;
+        cum_acquire_us += acquire_us;
+        cum_render_us += render_us;
+        cum_append_us += append_us;
+        cum_cleanup_us += 0; // cleanup 已计入 append 阶段
+
+        if frame_index % log_interval == 0 || frame_index == total_frames - 1 {
+            crate::compositor::log_write(&format!(
+                "[Export:MacGPU:Timing] frame {}/{} | total={:.0}ms decode={:.0}ms plan={:.0}ms acquire={:.0}ms render={:.0}ms append={:.0}ms",
+                frame_index,
+                total_frames,
+                frame_us as f64 / 1000.0,
+                decode_us as f64 / 1000.0,
+                plan_us as f64 / 1000.0,
+                acquire_us as f64 / 1000.0,
+                render_us as f64 / 1000.0,
+                append_us as f64 / 1000.0,
+            ));
+        }
+
         if let Some(state) = task {
             state
                 .current_frame
                 .store(frame_index + 1, std::sync::atomic::Ordering::SeqCst);
         }
     }
+
+    let total_us = export_start.elapsed().as_micros() as u64;
+    crate::compositor::log_write(&format!(
+        "[Export:MacGPU:Timing] SUMMARY total={:.0}ms | cum_decode={:.0}ms cum_plan={:.0}ms cum_acquire={:.0}ms cum_render={:.0}ms cum_append={:.0}ms",
+        total_us as f64 / 1000.0,
+        cum_decode_us as f64 / 1000.0,
+        cum_plan_us as f64 / 1000.0,
+        cum_acquire_us as f64 / 1000.0,
+        cum_render_us as f64 / 1000.0,
+        cum_append_us as f64 / 1000.0,
+    ));
 
     writer.finish()?;
     for (texture_id, _, _) in static_textures.into_values() {
