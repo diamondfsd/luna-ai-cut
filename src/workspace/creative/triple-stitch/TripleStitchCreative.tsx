@@ -201,7 +201,7 @@ export function TripleStitchCreative() {
   // 封面帧时间（用于 Live Photo 静帧导出，仅含视频素材时可调）
   const [exportFrameTime, setExportFrameTime] = useState(initialState.exportFrameTime ?? 0)
   // 导出格式多选
-  const [exportFormats, setExportFormats] = useState<Set<ExportFormat>>(new Set(['video']))
+  const [exportFormats, setExportFormats] = useState<Set<ExportFormat>>(new Set(['live']))
   const toggleExportFormat = (fmt: ExportFormat) => {
     setExportFormats((prev) => {
       const next = new Set(prev)
