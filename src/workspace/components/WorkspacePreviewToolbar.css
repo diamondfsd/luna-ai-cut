@@ -30,6 +30,33 @@
   color: #ddd;
 }
 
+.workspace-toolbar > .workspace-toolbar-group > .ui-btn,
+.workspace-toolbar > .workspace-toolbar-group > [data-radix-collection-item] {
+  flex-shrink: 0;
+}
+
+.workspace-toolbar .ui-btn-compact {
+  height: 32px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.workspace-toolbar .ui-btn-primary {
+  border: 1px solid var(--blue);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.workspace-toolbar .ui-icon-btn-ghost {
+  color: #aaa;
+}
+
+.workspace-toolbar .ui-icon-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #eee;
+}
+
 .workspace-zoom-control {
   display: flex;
   align-items: center;
