@@ -32,3 +32,8 @@ export function useDownloadProgress(): DownloadProgressContextValue {
   if (!ctx) throw new Error('useDownloadProgress must be used inside DownloadProgressProvider')
   return ctx
 }
+
+/** 可选读取；不需要下载能力的复用场景允许没有 Provider。 */
+export function useOptionalDownloadProgress(): DownloadProgressContextValue | null {
+  return useContext(Ctx)
+}

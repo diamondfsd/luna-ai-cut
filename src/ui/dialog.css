@@ -58,6 +58,45 @@
   animation: ui-scale-in 200ms ease;
 }
 
+/* 工作台统一暗色主体 */
+.ui-dialog-content.ui-dialog-dark {
+  --ink: #f5f7fb;
+  --muted: rgba(255, 255, 255, 0.48);
+  --hairline: rgba(255, 255, 255, 0.1);
+  --parchment: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.13);
+  background: linear-gradient(180deg, rgba(30, 32, 38, 0.99), rgba(15, 17, 21, 0.99));
+  color: var(--ink);
+  box-shadow: 0 32px 120px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.ui-dialog-dark .ui-dialog-header,
+.ui-dialog-dark .ui-dialog-footer {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.ui-dialog-dark .ui-dialog-close {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.ui-dialog-dark .ui-dialog-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.ui-dialog-dark .ui-dialog-footer .ui-btn-secondary {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.ui-dialog-dark .ui-dialog-footer .ui-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
 /* 全屏模式 — 覆盖定位/圆角/宽高限制，由内容自行布局 */
 .ui-dialog-fullscreen {
   top: 0;

@@ -1,0 +1,41 @@
+.workspace-import-dialog.ui-dialog-content {
+  width: min(1180px, calc(100vw - 48px));
+  height: min(780px, calc(100vh - 56px));
+  max-height: none;
+}
+
+.workspace-import-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-import-body > .gallery {
+  height: 100%;
+  overflow: auto;
+  padding: 20px 24px 28px;
+  background: transparent;
+}
+
+.workspace-import-body .media-section {
+  scroll-margin-top: 16px;
+}
+
+.workspace-import-body .media-card {
+  background: var(--parchment);
+  border-color: var(--hairline);
+}
+
+.workspace-import-body .media-card:hover {
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.workspace-import-dialog .ui-dialog-footer {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 14px 26px 18px;
+}
+
+.workspace-import-count {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
