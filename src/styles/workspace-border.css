@@ -1,0 +1,16 @@
+.workspace-border-panel { padding: 12px 16px; display: flex; flex-direction: column; gap: 14px; }
+.workspace-border-header { display: flex; align-items: center; justify-content: space-between; }
+.workspace-border-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.workspace-border-preset { height: auto; border: 1px solid var(--hairline); border-radius: 10px; background: transparent; color: var(--ink); padding: 6px; display: flex; flex-direction: column; align-items: stretch; gap: 6px; font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.workspace-border-preset:hover { border-color: color-mix(in srgb, var(--blue) 55%, var(--hairline)); }
+.workspace-border-preset[data-active="true"] { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+.workspace-border-preset-preview { height: 54px; width: 100%; border-radius: 6px; display: flex; align-items: flex-end; padding: 7px; box-sizing: border-box; overflow: hidden; }
+.workspace-border-preset-preview span { font-size: 8px; font-weight: 700; letter-spacing: .12em; }
+.workspace-border-controls { display: flex; flex-direction: column; gap: 11px; padding-top: 2px; }
+.workspace-border-section-title { color: var(--muted); font-size: 12px; border-top: 1px solid var(--hairline); padding-top: 12px; }
+.workspace-border-color-row { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; }
+.workspace-border-color-picker { display: flex; align-items: center; gap: 7px; color: var(--ink); cursor: pointer; }
+.workspace-border-color-picker input[type="color"] { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.workspace-border-color-swatch { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--hairline); }
+.workspace-border-switches { display: flex; flex-direction: column; gap: 9px; border-top: 1px solid var(--hairline); padding-top: 11px; }
+.workspace-border-switches label { display: flex; align-items: center; justify-content: space-between; color: var(--ink); font-size: 13px; }

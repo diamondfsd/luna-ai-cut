@@ -37,6 +37,7 @@ export function buildCompositionFromPreviewLayers(
     },
     layers: sortedLayers(layers).map((layer, index) => ({
       id: `layer-${index}`,
+      layerType: layer.layerType ?? 'media',
       source: {
         path: toLocalPath(layer.filePath),
         sourceType: layerSourceType(layer),
@@ -62,6 +63,18 @@ export function buildCompositionFromPreviewLayers(
       positioning: layer.positioning,
       lutId: layer.lutId,
       lutIntensity: layer.lutIntensity,
+      shape: layer.shape,
+      fillColor: layer.fillColor,
+      cornerRadius: layer.cornerRadius,
+      strokeColor: layer.strokeColor,
+      strokeWidth: layer.strokeWidth,
+      content: layer.content,
+      fontSize: layer.fontSize,
+      fontFamily: layer.fontFamily,
+      fontFile: layer.fontFile,
+      fontWeight: layer.fontWeight,
+      textColor: layer.textColor,
+      textAlign: layer.textAlign,
     })),
   }
 

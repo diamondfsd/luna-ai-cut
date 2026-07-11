@@ -15,6 +15,11 @@
   ],
   "extraResources": [
     {
+      "from": "public/fonts",
+      "to": "fonts",
+      "filter": ["**/*.otf", "**/*.ttf"]
+    },
+    {
       "from": "luna-render-core/luna-render-core.node",
       "to": "luna-render-core/luna-render-core.node"
     }

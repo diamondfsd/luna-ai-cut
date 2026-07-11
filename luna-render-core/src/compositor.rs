@@ -148,8 +148,23 @@ struct GpuLayerParams {
     lut_size: f32,
     lut_intensity: f32,
     _pad: [f32; 1],
+    procedural: [f32; 4],
+    fill_rgba: [f32; 4],
+    stroke_rgba: [f32; 4],
+    text_meta: [f32; 4],
+    text_data: [[f32; 4]; 32],
     curve_data: [[f32; 4]; 30],
     hsl_data: [[f32; 4]; 8],
+}
+
+fn parse_hex_color(value: Option<&str>, fallback: [f32; 4]) -> [f32; 4] {
+    let Some(hex) = value.map(|s| s.trim_start_matches('#')) else { return fallback };
+    if hex.len() != 6 && hex.len() != 8 { return fallback; }
+    let byte = |start| u8::from_str_radix(&hex[start..start + 2], 16).ok().map(|v| v as f32 / 255.0);
+    match (byte(0), byte(2), byte(4)) {
+        (Some(r), Some(g), Some(b)) => [r, g, b, if hex.len() == 8 { byte(6).unwrap_or(1.0) } else { 1.0 }],
+        _ => fallback,
+    }
 }
 
 struct LutEntry {
@@ -210,6 +225,7 @@ fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 8
 /// 单个渲染层描述（静态图或视频帧）
 #[derive(Clone)]
 pub struct PreviewLayerInput {
+    pub layer_type: Option<String>,
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
@@ -229,6 +245,9 @@ pub struct PreviewLayerInput {
     pub positioning: Option<crate::LayerPositioning>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
+    pub shape: Option<String>, pub fill_color: Option<String>, pub corner_radius: Option<f64>,
+    pub stroke_color: Option<String>, pub stroke_width: Option<f64>, pub content: Option<String>,
+    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -487,6 +506,8 @@ pub struct Compositor {
     identity_lut: wgpu::Texture,
     /// 用户加载的 LUT <file_path → LutEntry>
     luts: HashMap<String, LutEntry>,
+    fonts: HashMap<String, Vec<u8>>,
+    text_texture_cache: HashMap<String, u32>,
 }
 
 /// 持久 ffmpeg pipe 视频解码器，保持进程存活按序读帧
@@ -1086,6 +1107,18 @@ impl Compositor {
         let identity_lut = create_identity_lut(&device, &queue);
         log!("identity_lut created size=2x2x2 format=Rgba8Unorm");
 
+        let procedural_texture = create_rgba_texture(
+            &device, "procedural-white", 1, 1,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST, 1, true,
+        );
+        queue.write_texture(
+            procedural_texture.as_image_copy(), &[255, 255, 255, 255],
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4), rows_per_image: Some(1) },
+            wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        );
+        let mut initial_textures = HashMap::new();
+        initial_textures.insert(0, TextureEntry { texture: procedural_texture, width: 1, height: 1 });
+
         Ok(Self {
             device,
             queue,
@@ -1096,7 +1129,7 @@ impl Compositor {
             pipeline_bgra_linear,
             sampler,
             bind_group_layout: bgl,
-            textures: HashMap::new(),
+            textures: initial_textures,
             next_texture_id: 1,
             max_texture_size,
             output_texture: None,
@@ -1111,7 +1144,66 @@ impl Compositor {
             staging_buffer: None,
             identity_lut,
             luts: HashMap::new(),
+            fonts: HashMap::new(),
+            text_texture_cache: HashMap::new(),
         })
+    }
+
+    fn text_texture(&mut self, layer: &RenderLayer, canvas_width: u32, canvas_height: u32) -> Result<u32, String> {
+        let font_path = layer.font_file.as_deref().ok_or_else(|| "text layer missing fontFile".to_string())?;
+        let width = ((layer.dst_w.abs() * canvas_width as f64).round() as u32).max(2);
+        let height = ((layer.dst_h.abs() * canvas_height as f64).round() as u32).max(2);
+        let font_px = (layer.font_size.unwrap_or(16.0) * canvas_height as f64 / 1080.0).max(5.0) as f32;
+        let content = layer.content.as_deref().unwrap_or("");
+        let color = parse_hex_color(layer.text_color.as_deref(), [1.0, 1.0, 1.0, 1.0]);
+        let key = format!("{}|{}|{}|{}|{:.2}|{:?}|{:?}", font_path, content, width, height, font_px, color, layer.text_align);
+        if let Some(id) = self.text_texture_cache.get(&key) { return Ok(*id); }
+        if !self.fonts.contains_key(font_path) {
+            let bytes = std::fs::read(font_path).map_err(|error| format!("读取字体失败 {}: {}", font_path, error))?;
+            self.fonts.insert(font_path.to_string(), bytes);
+        }
+        let font_data = self.fonts.get(font_path).ok_or_else(|| "字体未加载".to_string())?;
+        let font = swash::FontRef::from_index(font_data, 0).ok_or_else(|| format!("无法读取字体 {}", font_path))?;
+        let charmap = font.charmap();
+        let glyph_metrics = font.glyph_metrics(&[]).scale(font_px);
+        let glyph_ids: Vec<_> = content.chars().map(|character| charmap.map(character)).collect();
+        let text_width: f32 = glyph_ids.iter().map(|glyph_id| glyph_metrics.advance_width(*glyph_id)).sum();
+        let start_x = match layer.text_align.as_deref() {
+            Some("right") => width as f32 - text_width - 2.0,
+            Some("center") => (width as f32 - text_width) * 0.5,
+            _ => 2.0,
+        }.max(0.0);
+        let font_metrics = font.metrics(&[]).scale(font_px);
+        let baseline = (height as f32 - (font_metrics.ascent - font_metrics.descent)) * 0.5 + font_metrics.ascent;
+        let mut rgba = vec![0u8; (width * height * 4) as usize];
+        let mut pen_x = start_x;
+        let mut scale_context = swash::scale::ScaleContext::new();
+        for glyph_id in glyph_ids {
+            use swash::scale::{Render, Source};
+            use swash::zeno::Format;
+            let mut scaler = scale_context.builder(font).size(font_px).hint(true).build();
+            if let Some(image) = Render::new(&[Source::Outline]).format(Format::Alpha).render(&mut scaler, glyph_id) {
+                let origin_x = pen_x.round() as i32 + image.placement.left;
+                let origin_y = baseline.round() as i32 - image.placement.top;
+                for y in 0..image.placement.height as usize {
+                    for x in 0..image.placement.width as usize {
+                        let dx = origin_x + x as i32;
+                        let dy = origin_y + y as i32;
+                        if dx < 0 || dy < 0 || dx >= width as i32 || dy >= height as i32 { continue; }
+                        let alpha = image.data[y * image.placement.width as usize + x] as f32 / 255.0 * color[3];
+                        let offset = ((dy as u32 * width + dx as u32) * 4) as usize;
+                        rgba[offset] = (color[0] * alpha * 255.0).round() as u8;
+                        rgba[offset + 1] = (color[1] * alpha * 255.0).round() as u8;
+                        rgba[offset + 2] = (color[2] * alpha * 255.0).round() as u8;
+                        rgba[offset + 3] = (alpha * 255.0).round() as u8;
+                    }
+                }
+            }
+            pen_x += glyph_metrics.advance_width(glyph_id);
+        }
+        let id = self.load_texture(&rgba, width, height)?;
+        self.text_texture_cache.insert(key, id);
+        Ok(id)
     }
 
     // ── 纹理管理 ──
@@ -1558,8 +1650,16 @@ impl Compositor {
         }
         let pixel_count = (canvas_width * canvas_height * 4) as usize;
 
+        let mut prepared_layers = layers.to_vec();
+        for layer in &mut prepared_layers {
+            if matches!(layer.layer_type.as_deref(), Some("text") | Some("logo")) {
+                layer.texture_id = self.text_texture(layer, canvas_width, canvas_height)?;
+                layer.layer_type = Some("text-raster".to_string());
+                layer.fit = Some("stretch".to_string());
+            }
+        }
         // sort by z_index
-        let mut sorted: Vec<&RenderLayer> = layers.iter().collect();
+        let mut sorted: Vec<&RenderLayer> = prepared_layers.iter().collect();
         sorted.sort_by_key(|l| l.z_index);
 
         // 预加载所有层需要的 LUT（在借用 self.output_texture 之前）
@@ -1691,6 +1791,18 @@ impl Compositor {
                 let curve_green_count = pack_curve_points(&mut curve_data, 18, &color.curve.green);
                 let curve_blue_count = pack_curve_points(&mut curve_data, 24, &color.curve.blue);
                 let hsl_data = pack_hsl_channels(&color.hsl_channels);
+                let layer_type = layer.layer_type.as_deref().unwrap_or("media");
+                let procedural_kind = match layer_type { "shape" => 1.0, "text" | "logo" => 2.0, "text-raster" => 3.0, _ => 0.0 };
+                let shape_kind = match layer.shape.as_deref() { Some("rounded-rectangle") => 1.0, Some("line") => 2.0, Some("circle") => 3.0, _ => 0.0 };
+                let fill_rgba = if procedural_kind > 1.5 {
+                    parse_hex_color(layer.text_color.as_deref(), [1.0, 1.0, 1.0, 1.0])
+                } else { parse_hex_color(layer.fill_color.as_deref(), [1.0, 1.0, 1.0, 1.0]) };
+                let stroke_rgba = parse_hex_color(layer.stroke_color.as_deref(), [0.0, 0.0, 0.0, 0.0]);
+                let text = layer.content.as_deref().unwrap_or("");
+                let ascii: Vec<u8> = text.chars().take(128).map(|ch| if ch.is_ascii() { ch as u8 } else { b'?' }).collect();
+                let mut text_data = [[0.0f32; 4]; 32];
+                for (index, byte) in ascii.iter().enumerate() { text_data[index / 4][index % 4] = *byte as f32; }
+                let text_align = match layer.text_align.as_deref() { Some("center") => 1.0, Some("right") => 2.0, _ => 0.0 };
 
                 // ── 相对定位覆盖 dst ──
                 let (pos_dst_x, pos_dst_y, pos_dst_w, pos_dst_h) = resolve_positioning(
@@ -1821,6 +1933,11 @@ impl Compositor {
                     lut_size,
                     lut_intensity: layer.lut_intensity.unwrap_or(100.0) as f32,
                     _pad: [0.0; 1],
+                    procedural: [procedural_kind, shape_kind, layer.corner_radius.unwrap_or(0.0) as f32, layer.stroke_width.unwrap_or(0.0) as f32],
+                    fill_rgba,
+                    stroke_rgba,
+                    text_meta: [(layer.font_size.unwrap_or(16.0) * canvas_height as f64 / 1080.0) as f32, text_align, ascii.len() as f32, layer.font_weight.unwrap_or(400.0) as f32],
+                    text_data,
                     curve_data,
                     hsl_data,
                 };
@@ -2389,8 +2506,6 @@ impl Compositor {
         }
     }
 
-    /// 统一渲染预览帧：静态图走 LRU 缓存，视频帧保持 ffmpeg pipe 持续读
-    ///
     /// 导出模式下（fps=Some）：EOF/解码失败标记该层结束永不重启，`-r {fps}` 确保解码帧率匹配。
     /// 预览模式下（fps=None）：保持向后兼容，seek/EOF 时重启 pipe。
     pub fn render_preview(
@@ -2425,7 +2540,10 @@ impl Compositor {
         let decode_max_side = max_side.unwrap_or(PREVIEW_MAX_SIZE).max(1);
 
         for layer in layers {
-            let tex_id = if layer.is_video {
+            let procedural = layer.layer_type.as_deref().unwrap_or("media") != "media";
+            let tex_id = if procedural {
+                0
+            } else if layer.is_video {
                 match self.video_texture_for_layer(ffmpeg, ffprobe, layer, decode_max_side, fps)? {
                     Some(id) => id,
                     None => continue, // 视频层已结束，跳过该层
@@ -2559,6 +2677,10 @@ impl Compositor {
                 let transform = plan_layer_transform(layer, texture, output_width, output_height);
                 crate::RenderLayer {
                     texture_id: texture.texture_id,
+                    layer_type: layer.layer_type.clone(), shape: layer.shape.clone(), fill_color: layer.fill_color.clone(),
+                    corner_radius: layer.corner_radius, stroke_color: layer.stroke_color.clone(), stroke_width: layer.stroke_width,
+                    content: layer.content.clone(), font_size: layer.font_size, font_family: layer.font_family.clone(), font_file: layer.font_file.clone(), font_weight: layer.font_weight,
+                    text_color: layer.text_color.clone(), text_align: layer.text_align.clone(),
                     fit: Some(layer.fit.clone()),
                     dst_x,
                     dst_y,

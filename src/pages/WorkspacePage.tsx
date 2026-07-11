@@ -24,6 +24,8 @@ import type { CreativeModeId, WorkspaceMode } from '../workspace/components/Work
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
+import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
+import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import '../styles/workspace-loading.css'
 
@@ -72,6 +74,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [watermarkMediaSize, setWatermarkMediaSize] = useState<{ w: number; h: number } | null>(null)
+  const [borderMetadata, setBorderMetadata] = useState<MediaMetadata | null>(null)
   const [exportEnqueuing, setExportEnqueuing] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [exportDialogSources, setExportDialogSources] = useState<BatchExportSource[]>([])
@@ -126,6 +129,17 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     return layer ? [layer] : []
   }, [edit.pipeline.watermark, media.activeMedia?.path, watermarkMediaSize])
 
+  // ── 边框预览层（JSON 预设解析为多个独立合成层） ──
+  const borderLayer = useMemo(() => {
+    if (!watermarkMediaSize) return []
+    return buildBorderLayer({
+      canvasWidth: watermarkMediaSize.w,
+      canvasHeight: watermarkMediaSize.h,
+      border: edit.pipeline.border,
+      metadata: borderMetadata,
+    })
+  }, [edit.pipeline.border, watermarkMediaSize, borderMetadata])
+
 
   // ── Initialize pipeline / reset crop when active asset changes ──
   useLayoutEffect(() => {
@@ -143,6 +157,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   useEffect(() => {
     const filePath = media.activeMedia?.path
     setWatermarkMediaSize(null)
+    setBorderMetadata(null)
     if (!filePath) return
 
     let cancelled = false
@@ -160,6 +175,16 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       .catch(() => {
         if (!cancelled) setWatermarkMediaSize(null)
       })
+
+    // 加载 EXIF 元数据（边框需要）
+    window.luna.getMediaMetadataByPath(filePath)
+      .then((meta) => {
+        if (!cancelled) setBorderMetadata(meta)
+      })
+      .catch(() => {
+        if (!cancelled) setBorderMetadata({ groups: [] })
+      })
+
     return () => { cancelled = true }
   }, [media.activeMedia?.path])
 
@@ -205,6 +230,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       effects: data.effects,
       lutFilter: data.lutFilter,
       watermark: data.watermark,
+      border: data.border,
     }
 
     if (media.currentProject) {
@@ -242,6 +268,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
           effects: structuredClone(pipe.effects),
           lutFilter: structuredClone(pipe.lutFilter),
           watermark: structuredClone(pipe.watermark),
+          border: structuredClone(pipe.border),
         })
         toast.success('已复制调色、滤镜和水印设置')
         return
@@ -276,10 +303,14 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
           ? activePipeline
           : normalizePipeline((asset as { pipeline?: unknown }).pipeline)
         const resolution = await window.luna.workspace.getMediaResolution(asset.path)
+        // 加载 EXIF 元数据（边框需要）
+        const borderMeta = pipeline.border?.enabled
+          ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => null)
+          : null
         return {
           sourcePath: asset.path,
           outputBaseName: asset.name.replace(/\.[^.]+$/, '') || 'export',
-          layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline),
+          layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline, borderMeta),
         }
       }))
 
@@ -444,7 +475,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
             url={media.activeMedia?.path ?? null}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
-            extraLayers={watermarkLayer}
+            extraLayers={[...watermarkLayer, ...borderLayer]}
             cropActive={edit.cropActive}
             onMetricsChange={canvas.setPreviewMetrics}
             onMediaSize={handleMediaSize}

@@ -442,7 +442,11 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             const layer = currentLayers[i]
             let textureId: number
 
-            if (layer.isVideo) {
+            const procedural = layer.layerType && layer.layerType !== 'media'
+
+            if (procedural) {
+              textureId = 0
+            } else if (layer.isVideo) {
               const key = videoLayerKey(layer, i)
               const entry = videoStatesRef.current.get(key)
 
@@ -538,6 +542,19 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               positioning,
               lutId: layer.lutId,
               lutIntensity: layer.lutIntensity,
+              layerType: layer.layerType ?? 'media',
+              shape: layer.shape,
+              fillColor: layer.fillColor,
+              cornerRadius: layer.cornerRadius,
+              strokeColor: layer.strokeColor,
+              strokeWidth: layer.strokeWidth,
+              content: layer.content,
+              fontSize: layer.fontSize,
+              fontFamily: layer.fontFamily,
+              fontFile: layer.fontFile,
+              fontWeight: layer.fontWeight,
+              textColor: layer.textColor,
+              textAlign: layer.textAlign,
             })
           }
 

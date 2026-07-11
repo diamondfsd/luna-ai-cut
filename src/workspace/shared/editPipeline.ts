@@ -29,6 +29,21 @@ export interface HslChannelAdjust {
   luminance: number
 }
 
+export interface BorderSettings {
+  enabled: boolean
+  presetId: string
+  /** 预设中所有层的纵向尺寸，百分比 */
+  frameSize: number
+  backgroundColor: string
+  textColor: string
+  opacity: number
+  showLogo: boolean
+  showTitle: boolean
+  showCameraInfo: boolean
+  showDate: boolean
+  title: string
+}
+
 export interface EditPipeline {
   transform: {
     crop: CropRect | null
@@ -96,6 +111,7 @@ export interface EditPipeline {
     intensity: number
   }
   watermark: WatermarkSettings
+  border: BorderSettings
 }
 
 export type PipelinePatch = {
@@ -104,6 +120,7 @@ export type PipelinePatch = {
   effects?: Partial<EditPipeline['effects']>
   lutFilter?: Partial<EditPipeline['lutFilter']>
   watermark?: Partial<EditPipeline['watermark']>
+  border?: Partial<EditPipeline['border']>
 }
 
 export const TONE_CURVE_CHANNELS: ToneCurveChannel[] = ['rgb', 'luminance', 'red', 'green', 'blue']
@@ -189,6 +206,19 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     enabled: true,
     style: 'luna_ultra_cn',
     position: 'bottom-center',
+  },
+  border: {
+    enabled: false,
+    presetId: 'classic-white',
+    frameSize: 100,
+    backgroundColor: '#F7F6F2',
+    textColor: '#444444',
+    opacity: 100,
+    showLogo: true,
+    showTitle: true,
+    showCameraInfo: true,
+    showDate: false,
+    title: 'UNTITLED',
   },
 }
 
@@ -300,6 +330,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   return {
     ...pipeline,
     watermark: { ...DEFAULT_PIPELINE.watermark, ...(pipeline.watermark ?? {}) },
+    border: normalizeBorder(pipeline.border),
     color: {
       ...pipeline.color,
       whiteBalanceMode: ['custom', 'daylight', 'cloudy', 'indoor'].includes(pipeline.color.whiteBalanceMode) ? pipeline.color.whiteBalanceMode : 'custom',
@@ -344,6 +375,20 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   }
 }
 
+function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSettings {
+  const value = input as (Partial<BorderSettings> & { bottomColor?: unknown }) | undefined
+  const legacyColor = typeof value?.bottomColor === 'string' ? value.bottomColor : undefined
+  return {
+    ...DEFAULT_PIPELINE.border,
+    ...value,
+    presetId: typeof value?.presetId === 'string' ? value.presetId : DEFAULT_PIPELINE.border.presetId,
+    frameSize: clampNumber(Number(value?.frameSize ?? 100), { min: 70, max: 135 }),
+    backgroundColor: typeof value?.backgroundColor === 'string' ? value.backgroundColor : legacyColor ?? DEFAULT_PIPELINE.border.backgroundColor,
+    textColor: typeof value?.textColor === 'string' ? value.textColor : DEFAULT_PIPELINE.border.textColor,
+    opacity: clampNumber(Number(value?.opacity ?? 100), { min: 0, max: 100 }),
+  }
+}
+
 export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): EditPipeline {
   return normalizePipeline({
     transform: { ...pipeline.transform, ...patch.transform },
@@ -355,6 +400,7 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
     effects: { ...pipeline.effects, ...patch.effects },
     lutFilter: { ...pipeline.lutFilter, ...patch.lutFilter },
     watermark: { ...pipeline.watermark, ...patch.watermark },
+    border: { ...pipeline.border, ...patch.border },
   })
 }
 

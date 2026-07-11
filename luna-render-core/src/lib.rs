@@ -225,6 +225,10 @@ pub(crate) fn lock_export<T>(f: impl FnOnce(&mut Compositor) -> Result<T, String
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RenderLayer {
     pub texture_id: u32,
+    pub layer_type: Option<String>,
+    pub shape: Option<String>, pub fill_color: Option<String>, pub corner_radius: Option<f64>,
+    pub stroke_color: Option<String>, pub stroke_width: Option<f64>, pub content: Option<String>,
+    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>,
     pub fit: Option<String>,
     pub dst_x: f64,
     pub dst_y: f64,
@@ -247,6 +251,7 @@ pub struct RenderLayer {
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PreviewLayer {
+    pub layer_type: Option<String>,
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
@@ -265,6 +270,9 @@ pub struct PreviewLayer {
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
+    pub shape: Option<String>, pub fill_color: Option<String>, pub corner_radius: Option<f64>,
+    pub stroke_color: Option<String>, pub stroke_width: Option<f64>, pub content: Option<String>,
+    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>,
 }
 
 /// render_preview 的输入
@@ -406,6 +414,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
         .layers
         .iter()
         .map(|l| compositor::PreviewLayerInput {
+            layer_type: l.layer_type.clone(),
             file_path: l.file_path.clone(),
             is_video: l.is_video,
             video_time: l.video_time,
@@ -425,6 +434,9 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             positioning: l.positioning.clone(),
             lut_id: l.lut_id.clone(),
             lut_intensity: l.lut_intensity,
+            shape: l.shape.clone(), fill_color: l.fill_color.clone(), corner_radius: l.corner_radius,
+            stroke_color: l.stroke_color.clone(), stroke_width: l.stroke_width, content: l.content.clone(),
+            font_size: l.font_size, font_family: l.font_family.clone(), font_file: l.font_file.clone(), font_weight: l.font_weight, text_color: l.text_color.clone(), text_align: l.text_align.clone(),
         })
         .collect();
     lock_preview(|c| {
@@ -458,6 +470,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
         .map(|item| {
             (
                 compositor::PreviewLayerInput {
+                    layer_type: item.layer.layer_type.clone(),
                     file_path: item.layer.file_path.clone(),
                     is_video: item.layer.is_video,
                     video_time: item.layer.video_time,
@@ -477,6 +490,9 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     positioning: item.layer.positioning.clone(),
                     lut_id: item.layer.lut_id.clone(),
                     lut_intensity: item.layer.lut_intensity,
+                    shape: item.layer.shape.clone(), fill_color: item.layer.fill_color.clone(), corner_radius: item.layer.corner_radius,
+                    stroke_color: item.layer.stroke_color.clone(), stroke_width: item.layer.stroke_width, content: item.layer.content.clone(),
+                    font_size: item.layer.font_size, font_family: item.layer.font_family.clone(), font_file: item.layer.font_file.clone(), font_weight: item.layer.font_weight, text_color: item.layer.text_color.clone(), text_align: item.layer.text_align.clone(),
                 },
                 compositor::PreviewTextureInfo {
                     texture_id: item.texture.texture_id,

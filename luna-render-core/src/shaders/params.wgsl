@@ -58,6 +58,11 @@ struct LayerParams {
     translate_y: f32,
     lut_size: f32,
     lut_intensity: f32,
+    procedural: vec4<f32>,
+    fill_rgba: vec4<f32>,
+    stroke_rgba: vec4<f32>,
+    text_meta: vec4<f32>,
+    text_data: array<vec4<f32>, 32>,
     curve_data: array<vec4<f32>, 30>,
     hsl_data: array<vec4<f32>, 8>,
 }

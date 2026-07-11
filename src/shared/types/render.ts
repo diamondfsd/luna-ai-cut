@@ -87,6 +87,7 @@ export interface RenderLayerTransform {
 }
 
 export interface PreviewLayer {
+  layerType?: 'media' | 'shape' | 'text' | 'logo' | 'decoration'
   filePath: string
   isVideo?: boolean
   videoTime?: number
@@ -104,6 +105,18 @@ export interface PreviewLayer {
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
+  shape?: 'rectangle' | 'rounded-rectangle' | 'line' | 'circle'
+  fillColor?: string
+  cornerRadius?: number
+  strokeColor?: string
+  strokeWidth?: number
+  content?: string
+  fontSize?: number
+  fontFamily?: string
+  fontFile?: string
+  fontWeight?: number
+  textColor?: string
+  textAlign?: 'left' | 'center' | 'right'
 }
 
 export interface CompositionInput {
@@ -118,6 +131,7 @@ export interface CompositionInput {
 }
 
 export interface CompositionLayer {
+  layerType?: 'media' | 'shape' | 'text' | 'logo' | 'decoration'
   id?: string
   source: {
     path: string
@@ -140,6 +154,18 @@ export interface CompositionLayer {
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
+  shape?: 'rectangle' | 'rounded-rectangle' | 'line' | 'circle'
+  fillColor?: string
+  cornerRadius?: number
+  strokeColor?: string
+  strokeWidth?: number
+  content?: string
+  fontSize?: number
+  fontFamily?: string
+  fontFile?: string
+  fontWeight?: number
+  textColor?: string
+  textAlign?: 'left' | 'center' | 'right'
 }
 
 /** 纹理层 */

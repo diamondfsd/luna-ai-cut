@@ -54,6 +54,7 @@ pub struct CompositionRect {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionLayer {
     pub id: Option<String>,
+    pub layer_type: Option<String>,
     pub source: CompositionSource,
     pub rect: CompositionRect,
     pub fit: Option<String>,
@@ -64,6 +65,9 @@ pub struct CompositionLayer {
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
+    pub shape: Option<String>, pub fill_color: Option<String>, pub corner_radius: Option<f64>,
+    pub stroke_color: Option<String>, pub stroke_width: Option<f64>, pub content: Option<String>,
+    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>,
 }
 
 #[napi(object)]
@@ -281,6 +285,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
         .layers
         .iter()
         .map(|layer| PreviewLayerInput {
+            layer_type: layer.layer_type.clone(),
             file_path: layer.source.path.clone(),
             is_video: is_video_source(&layer.source),
             video_time: layer_time(&layer.source, time),
@@ -300,6 +305,9 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
             positioning: layer.positioning.clone(),
             lut_id: layer.lut_id.clone(),
             lut_intensity: layer.lut_intensity,
+            shape: layer.shape.clone(), fill_color: layer.fill_color.clone(), corner_radius: layer.corner_radius,
+            stroke_color: layer.stroke_color.clone(), stroke_width: layer.stroke_width, content: layer.content.clone(),
+            font_size: layer.font_size, font_family: layer.font_family.clone(), font_file: layer.font_file.clone(), font_weight: layer.font_weight, text_color: layer.text_color.clone(), text_align: layer.text_align.clone(),
         })
         .collect()
 }
