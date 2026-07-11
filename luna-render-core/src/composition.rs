@@ -618,61 +618,6 @@ impl Task for ExportCompositionVideoTask {
             }
         }
 
-        // ── Windows GPU Export ──
-        // Windows 优先走 Media Foundation + D3D11 硬件解码 + wgpu D3D12 合成
-        // + Media Foundation Sink Writer 硬件编码。v1 实现中解码和合成之间有 CPU
-        // 数据拷贝（D3D11→CPU→D3D12），后续 v2 将通过 D3D11On12 实现零拷贝。
-        // 任何能力或素材兼容问题都会回退到原 FFmpeg 管线。
-        #[cfg(target_os = "windows")]
-        if self.input.hardware.unwrap_or(true) {
-            let bitrate_bps = bitrate
-                .trim_end_matches(['k', 'K'])
-                .parse::<u64>()
-                .unwrap_or(50_000)
-                .saturating_mul(1_000);
-            log_write(&format!(
-                "[Export:WinGPU] start output={} frames={} fps={} bitrate={}",
-                self.input.output_path, total_frames, fps, bitrate_bps,
-            ));
-            let win_result = crate::lock_export(|compositor| {
-                compositor.clear_video_decoders();
-                crate::windows::export_video(
-                    compositor,
-                    &self.input.ffmpeg_path,
-                    &self.input.ffprobe_path,
-                    &self.input.output_path,
-                    &self.input.composition,
-                    fps,
-                    total_frames,
-                    bitrate_bps,
-                    task.as_ref(),
-                )
-            });
-            match win_result {
-                Ok(()) => {
-                    log_write("[Export:WinGPU] completed");
-                    if let Some(ref id) = self.input.task_id {
-                        cleanup_task(id);
-                    }
-                    return Ok(());
-                }
-                Err(error) if task.as_ref().is_some_and(|state| state.is_cancelled()) => {
-                    return Err(error);
-                }
-                Err(error) => {
-                    log_write(&format!(
-                        "[Export:WinGPU] unavailable, falling back to FFmpeg: {}",
-                        error
-                    ));
-                    if let Some(ref state) = task {
-                        state
-                            .current_frame
-                            .store(0, std::sync::atomic::Ordering::SeqCst);
-                    }
-                }
-            }
-        }
-
         let mut args = vec![
             "-y".to_string(),
             "-hide_banner".to_string(),

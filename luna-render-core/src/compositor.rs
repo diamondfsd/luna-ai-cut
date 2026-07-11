@@ -469,9 +469,6 @@ pub struct Compositor {
     /// BGRA sRGB 格式渲染管线（macOS Metal External）
     #[cfg(target_os = "macos")]
     pipeline_bgra: wgpu::RenderPipeline,
-    /// BGRA linear 格式渲染管线（Windows D3D12 Shared — MF 编码器需要 linear UNORM）
-    #[cfg(target_os = "windows")]
-    pipeline_bgra_linear: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
 
@@ -942,86 +939,14 @@ impl Compositor {
         })
     }
 
-    /// 获取当前 wgpu D3D12 后端的原始 ID3D12Device 指针，供 Media Foundation 桥接使用。
-    #[cfg(target_os = "windows")]
-    pub(crate) fn d3d12_device_ptr(&self) -> Result<*mut std::ffi::c_void, String> {
-        let hal_device = unsafe { self.device.as_hal::<wgpu::hal::api::Dx12>() }
-            .ok_or_else(|| "wgpu 当前没有使用 D3D12 后端".to_string())?;
-        use windows::core::Interface;
-        Ok(hal_device.raw_device().as_raw())
-    }
-
-    /// 将外部 D3D12 资源包装成同一 Device 下的 wgpu Texture。
-    /// 用于 D3D11On12 零拷贝管线（v2）。
-    #[cfg(target_os = "windows")]
-    #[allow(dead_code)]
-    pub(crate) unsafe fn wrap_external_d3d12_texture(
-        &self,
-        d3d12_resource: *mut std::ffi::c_void,
-        width: u32,
-        height: u32,
-        usage: wgpu::TextureUsages,
-        _initialized: bool,
-    ) -> Result<wgpu::Texture, String> {
-        use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
-        use windows::core::Interface;
-
-        // MF 编码器需要 linear UNORM（非 sRGB），与 av_bridge.cpp 中
-        // DXGI_FORMAT_B8G8R8A8_UNORM 纹理格式保持一致
-        let resource = unsafe { ID3D12Resource::from_raw(d3d12_resource) };
-        let hal_texture = unsafe {
-            wgpu::hal::dx12::Device::texture_from_raw(
-                resource,
-                wgpu::TextureFormat::Bgra8Unorm,
-                wgpu::TextureDimension::D2,
-                wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                1,
-                1,
-            )
-        };
-        let descriptor = wgpu::TextureDescriptor {
-            label: Some("D3D12 external texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8Unorm,
-            usage,
-            view_formats: &[],
-        };
-        Ok(unsafe {
-            self.device
-                .create_texture_from_hal::<wgpu::hal::api::Dx12>(
-                    hal_texture,
-                    &descriptor,
-                    wgpu::wgt::TextureUses::RESOURCE,
-                )
-        })
-    }
-
     pub fn new(log_path: Option<&str>) -> Result<Self, String> {
         // 初始化文件日志
         let path = log_path.unwrap_or("luna-rc.log");
         log_init(path);
         log!("Creating wgpu instance...");
-        // Windows 上强制使用 D3D12 后端，因为 GPU 导出路径（Media Foundation + D3D12 共享纹理）依赖它
-        #[cfg(target_os = "windows")]
-        let backends = wgpu::Backends::DX12;
-        #[cfg(not(target_os = "windows"))]
-        let backends = wgpu::Backends::all();
-        let instance_desc = wgpu::InstanceDescriptor {
-            backends,
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             ..wgpu::InstanceDescriptor::new_without_display_handle()
-        };
-        let instance = wgpu::Instance::new(instance_desc);
+        });
 
         log!("Requesting GPU adapter (LowPower, no surface)...");
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -1094,14 +1019,6 @@ impl Compositor {
             wgpu::TextureFormat::Bgra8UnormSrgb,
             "compositor pipeline BGRA sRGB",
         );
-        #[cfg(target_os = "windows")]
-        let pipeline_bgra_linear = create_compositor_pipeline(
-            &device,
-            &pipeline_layout,
-            &shader,
-            wgpu::TextureFormat::Bgra8Unorm,
-            "compositor pipeline BGRA linear",
-        );
 
         // ── identity LUT（2×2×2，采样输出 = 输入） ──
         let identity_lut = create_identity_lut(&device, &queue);
@@ -1125,8 +1042,6 @@ impl Compositor {
             pipeline,
             #[cfg(target_os = "macos")]
             pipeline_bgra,
-            #[cfg(target_os = "windows")]
-            pipeline_bgra_linear,
             sampler,
             bind_group_layout: bgl,
             textures: initial_textures,
@@ -1724,13 +1639,7 @@ impl Compositor {
             } else {
                 &self.pipeline
             };
-            #[cfg(target_os = "windows")]
-            let render_pipeline = if output_tex.format() == wgpu::TextureFormat::Bgra8Unorm {
-                &self.pipeline_bgra_linear
-            } else {
-                &self.pipeline
-            };
-            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            #[cfg(not(target_os = "macos"))]
             let render_pipeline = &self.pipeline;
             rpass.set_pipeline(render_pipeline);
 
@@ -2097,7 +2006,7 @@ impl Compositor {
     /// 直接提交给 VideoToolbox 编码。
     /// 渲染到外部 wgpu 纹理（macOS Metal / Windows D3D12 共享纹理），
     /// 不经过 staging buffer，也不回读 CPU。
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     pub(crate) fn render_into_external_texture(
         &mut self,
         target: wgpu::Texture,
@@ -2117,7 +2026,7 @@ impl Compositor {
     }
 
     /// 注册一个外部输入纹理（macOS Metal / Windows D3D12）。
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     pub(crate) fn register_external_texture(
         &mut self,
         texture: wgpu::Texture,
@@ -2138,13 +2047,13 @@ impl Compositor {
     }
 
     /// 移除逐帧外部纹理。
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     pub(crate) fn unregister_external_texture(&mut self, texture_id: u32) {
         self.textures.remove(&texture_id);
     }
 
-    /// 等待 GPU 完成所有已提交的工作（用于跨 API 同步，如 D3D12→D3D11 共享纹理）。
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    /// 等待 GPU 完成所有已提交的工作（用于跨 API 同步）。
+    #[cfg(target_os = "macos")]
     #[allow(dead_code)]
     pub(crate) fn wait_for_gpu(&self) -> Result<(), String> {
         self.device
