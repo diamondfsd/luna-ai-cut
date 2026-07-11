@@ -53,8 +53,10 @@ export function HtmlPreview({ url }: HtmlPreviewProps) {
         {livePlaying && liveVideoUrl ? (
           <video
             src={liveVideoUrl}
-            controls
             autoPlay
+            muted
+            playsInline
+            onEnded={() => setLivePlaying(false)}
             style={{ width: '100%', height: '100%', objectFit: 'contain' }}
           />
         ) : (
