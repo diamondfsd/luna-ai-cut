@@ -7,7 +7,7 @@ import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../../../shared/types'
 import type { CompositionInput, PreviewLayer, VideoExportSettings } from '../../../shared/types'
 import { Button, IconButton, VideoControls, toast } from '../../../ui'
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
-import { resolveExportConfig } from '../../../components/previewStageExport'
+import { emitLocalExportProgress, resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
@@ -528,15 +528,40 @@ export function TripleStitchCreative() {
     }
     setBusy(true)
     setExportDialogOpen(false)
-    let activeTask: { id: string; itemIds: string[] } | null = null
+    let activeTask: { id: string; items: Array<{ id: string; outputPath: string }> } | null = null
+    const emitTaskProgress = (
+      taskId: string,
+      items: Array<{ id: string; outputPath: string }>,
+      itemId: string,
+      progress: number,
+      status: 'queued' | 'exporting' | 'done' | 'failed',
+      error?: string,
+      destinationPath?: string,
+    ): void => {
+      const item = items.find((candidate) => candidate.id === itemId)
+      const path = destinationPath ?? item?.outputPath ?? ''
+      emitLocalExportProgress({
+        exportId: itemId,
+        taskId,
+        taskName: '三拼创意导出',
+        fileName: path.split(/[/\\]/).pop() || '三拼导出',
+        index: Math.max(0, items.findIndex((candidate) => candidate.id === itemId)),
+        totalFiles: items.length,
+        percent: progress,
+        status,
+        destinationPath: path,
+        error,
+      })
+    }
     const reportTaskFailure = async (error: unknown): Promise<void> => {
       const message = error instanceof Error ? error.message : String(error)
       const taskContext = activeTask
       if (taskContext) {
         const taskSnapshot = await window.luna.exportTask.get(taskContext.id).catch(() => undefined)
-        await Promise.all(taskContext.itemIds.map((itemId) => {
+        await Promise.all(taskContext.items.map(({ id: itemId }) => {
           const status = taskSnapshot?.items.find((item) => item.id === itemId)?.status
           if (status !== 'queued' && status !== 'exporting') return Promise.resolve()
+          emitTaskProgress(taskContext.id, taskContext.items, itemId, 100, 'failed', message)
           return window.luna.exportTask.updateItem(taskContext.id, itemId, {
             status: 'failed',
             error: message,
@@ -590,7 +615,9 @@ export function TripleStitchCreative() {
       ]
 
       const task = await window.luna.exportTask.create('三拼创意导出', items)
-      activeTask = { id: task.id, itemIds: items.map((item) => item.id) }
+      activeTask = { id: task.id, items }
+
+      items.forEach((item) => emitTaskProgress(task.id, items, item.id, 0, 'queued'))
 
       // 页面只负责把导出加入任务队列；实际导出状态由右上角全局任务入口展示。
       setBusy(false)
@@ -602,10 +629,13 @@ export function TripleStitchCreative() {
         ...(exportFormats.has('appleLive') ? [`triple_stitch_appleLive_${stamp}`] : []),
       ]
       const reportLiveProgress = async (progress: number): Promise<void> => {
-        await Promise.all(liveItemIds.map((itemId) => window.luna.exportTask.updateItem(task.id, itemId, {
-          status: 'exporting',
-          progress,
-        }).catch(() => {})))
+        await Promise.all(liveItemIds.map((itemId) => {
+          emitTaskProgress(task.id, items, itemId, progress, 'exporting')
+          return window.luna.exportTask.updateItem(task.id, itemId, {
+            status: 'exporting',
+            progress,
+          }).catch(() => {})
+        }))
       }
 
       // Step 1: 导出视频（用户选了视频 → 展示进度；仅作为 Live 中间素材 → 静默渲染）
@@ -667,11 +697,13 @@ export function TripleStitchCreative() {
           await window.luna.exportTask.updateItem(task.id, liveItemId, {
             status: 'done', progress: 100, destinationPath: result.path,
           }).catch(() => {})
+          emitTaskProgress(task.id, items, liveItemId, 100, 'done', undefined, result.path)
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error)
           await window.luna.exportTask.updateItem(task.id, `triple_stitch_live_${stamp}`, {
             status: 'failed', error: msg,
           }).catch(() => {})
+          emitTaskProgress(task.id, items, liveItemId, 100, 'failed', msg)
         }
       }
 
@@ -693,11 +725,13 @@ export function TripleStitchCreative() {
           await window.luna.exportTask.updateItem(task.id, appleItemId, {
             status: 'done', progress: 100, destinationPath: result.path,
           }).catch(() => {})
+          emitTaskProgress(task.id, items, appleItemId, 100, 'done', undefined, result.path)
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error)
           await window.luna.exportTask.updateItem(task.id, `triple_stitch_appleLive_${stamp}`, {
             status: 'failed', error: msg,
           }).catch(() => {})
+          emitTaskProgress(task.id, items, appleItemId, 100, 'failed', msg)
         }
       }
       })().catch(reportTaskFailure)
