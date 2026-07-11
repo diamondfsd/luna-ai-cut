@@ -73,16 +73,18 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
 @property(nonatomic, assign) CMSampleBufferRef nextSample;
 @property(nonatomic, assign) double currentPTS;
 @property(nonatomic, assign) CVMetalTextureCacheRef textureCache;
-- (instancetype)initWithPath:(NSString *)path device:(id<MTLDevice>)device error:(NSError **)error;
+@property(nonatomic, assign) uint32_t maxEdge;
+- (instancetype)initWithPath:(NSString *)path device:(id<MTLDevice>)device maxEdge:(uint32_t)maxEdge error:(NSError **)error;
 - (BOOL)restartAt:(double)seconds error:(NSError **)error;
 - (LunaMetalFrame *)frameAt:(double)seconds error:(NSError **)error;
 @end
 
 @implementation LunaVideoDecoder
-- (instancetype)initWithPath:(NSString *)path device:(id<MTLDevice>)device error:(NSError **)error {
+- (instancetype)initWithPath:(NSString *)path device:(id<MTLDevice>)device maxEdge:(uint32_t)maxEdge error:(NSError **)error {
     self = [super init];
     if (!self) return nil;
     _url = [NSURL fileURLWithPath:path];
+    _maxEdge = maxEdge;
     CVReturn result = CVMetalTextureCacheCreate(kCFAllocatorDefault, NULL, device, NULL, &_textureCache);
     if (result != kCVReturnSuccess) {
         if (error) *error = [NSError errorWithDomain:@"LunaAVBridge" code:result userInfo:@{NSLocalizedDescriptionKey: @"无法初始化 GPU 视频解码"}];
@@ -114,10 +116,36 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
     }
     _reader = [[AVAssetReader alloc] initWithAsset:asset error:error];
     if (!_reader) return NO;
+
+    // ── 根据 maxEdge 和原视频宽高比计算输出尺寸 ──
+    CGSize naturalSize = track.naturalSize;
+    // 考虑轨道变换矩阵（旋转/翻转），得到正确的显示尺寸
+    CGAffineTransform preferredTransform = track.preferredTransform;
+    CGSize displaySize = CGSizeApplyAffineTransform(naturalSize, preferredTransform);
+    CGFloat displayW = fabs(displaySize.width);
+    CGFloat displayH = fabs(displaySize.height);
+    if (displayW < 1.0) displayW = naturalSize.width;
+    if (displayH < 1.0) displayH = naturalSize.height;
+    CGFloat sourceAspect = displayW / displayH;
+
+    uint32_t outputW, outputH;
+    CGFloat maxEdgeSrc = MAX(displayW, displayH);
+    if (maxEdgeSrc <= _maxEdge) {
+        // 原视频小于限制，保持原始尺寸
+        outputW = (uint32_t)displayW;
+        outputH = (uint32_t)displayH;
+    } else {
+        CGFloat scale = (CGFloat)_maxEdge / maxEdgeSrc;
+        outputW = (uint32_t)(displayW * scale);
+        outputH = (uint32_t)(displayH * scale);
+    }
+
     NSDictionary *settings = @{
         (id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
         (id)kCVPixelBufferMetalCompatibilityKey: @YES,
         (id)kCVPixelBufferIOSurfacePropertiesKey: @{},
+        (id)kCVPixelBufferWidthKey: @(outputW),
+        (id)kCVPixelBufferHeightKey: @(outputH),
     };
     _output = [[AVAssetReaderTrackOutput alloc] initWithTrack:track outputSettings:settings];
     _output.alwaysCopiesSampleData = NO;
@@ -138,9 +166,16 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
 }
 
 - (LunaMetalFrame *)frameAt:(double)seconds error:(NSError **)error {
-    if (_currentSample && seconds + 0.05 < _currentPTS) {
+    CFAbsoluteTime t0 = CFAbsoluteTimeGetCurrent();
+    CFAbsoluteTime t_restart = 0, t_copy = 0, t_texture = 0;
+    BOOL didRestart = NO;
+
+    if (!_currentSample || seconds + 0.05 < _currentPTS) {
         if (![self restartAt:seconds error:error]) return nil;
+        didRestart = YES;
     }
+    t_restart = CFAbsoluteTimeGetCurrent();
+
     while (_nextSample) {
         double nextPTS = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(_nextSample));
         if (_currentSample && nextPTS > seconds + 0.0005) break;
@@ -149,13 +184,32 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
         _currentPTS = isfinite(nextPTS) ? nextPTS : seconds;
         _nextSample = [_output copyNextSampleBuffer];
     }
+    t_copy = CFAbsoluteTimeGetCurrent();
+
     if (!_currentSample) {
         if (_reader.status == AVAssetReaderStatusFailed && error) *error = _reader.error;
         return nil;
     }
     CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(_currentSample);
     if (!pixelBuffer) return nil;
-    return [[LunaMetalFrame alloc] initWithPixelBuffer:pixelBuffer textureCache:_textureCache pts:_currentPTS error:error];
+    LunaMetalFrame *frame = [[LunaMetalFrame alloc] initWithPixelBuffer:pixelBuffer textureCache:_textureCache pts:_currentPTS error:error];
+    t_texture = CFAbsoluteTimeGetCurrent();
+
+    // ── 每 10 帧打印一次耗时（每个 decoder 独立计数） ──
+    static int global_frame_count = 0;
+    int f = global_frame_count++;
+    if (f < 3 || f % 30 == 0) {
+        NSLog(@"[LunaAV:Timing] frame=%d path=%@ restart=%.1fms copy=%.1fms texture=%.1fms total=%.1fms didRestart=%d",
+              f,
+              _url.lastPathComponent,
+              (t_restart - t0) * 1000.0,
+              (t_copy - t_restart) * 1000.0,
+              (t_texture - t_copy) * 1000.0,
+              (t_texture - t0) * 1000.0,
+              didRestart);
+    }
+
+    return frame;
 }
 
 - (void)dealloc {
@@ -228,10 +282,10 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
 }
 @end
 
-void *luna_av_decoder_create(const char *path, void *metal_device, char *error_buffer, size_t error_length) {
+void *luna_av_decoder_create(const char *path, void *metal_device, uint32_t max_decode_edge, char *error_buffer, size_t error_length) {
     @autoreleasepool {
         NSError *error = nil;
-        LunaVideoDecoder *decoder = [[LunaVideoDecoder alloc] initWithPath:[NSString stringWithUTF8String:path] device:(__bridge id<MTLDevice>)metal_device error:&error];
+        LunaVideoDecoder *decoder = [[LunaVideoDecoder alloc] initWithPath:[NSString stringWithUTF8String:path] device:(__bridge id<MTLDevice>)metal_device maxEdge:max_decode_edge error:&error];
         if (!decoder) {
             luna_write_error(error_buffer, error_length, error, @"无法打开视频");
             return NULL;
