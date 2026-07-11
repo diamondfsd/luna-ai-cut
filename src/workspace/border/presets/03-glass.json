@@ -1,0 +1,6 @@
+{"id":"glass","name":"玻璃参数栏","category":"blur","description":"半透明深色信息面板","swatch":"#34383d","layers":[
+  {"id":"background","type":"shape","shape":"rounded-rectangle","rect":{"x":0.055,"y":0.84,"w":0.89,"h":0.12},"fill":{"type":"solid","color":"#101010"},"opacity":0.7,"cornerRadius":0.018,"stroke":{"width":1,"color":"#FFFFFF","opacity":0.3},"zIndex":20},
+  {"id":"brand","type":"logo","rect":{"x":0.085,"y":0.875,"w":0.17,"h":0.05},"source":{"path":"logo_cn_white","format":"png"},"fit":"contain","zIndex":21},
+  {"id":"divider","type":"shape","shape":"line","rect":{"x":0.275,"y":0.865,"w":0.001,"h":0.07},"fill":{"type":"solid","color":"#FFFFFF"},"opacity":0.35,"zIndex":21},
+  {"id":"meta","type":"text","rect":{"x":0.31,"y":0.865,"w":0.595,"h":0.07},"content":"{{camera}} · {{focalLength}} · {{shutter}} · ISO {{iso}}\n{{date}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Medium.otf","fontSize":18,"fontWeight":500,"color":"#FFFFFF","align":"left","verticalAlign":"middle"},"overflow":"shrink","zIndex":21}
+]}

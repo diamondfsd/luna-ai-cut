@@ -107,6 +107,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     ipcRenderer.invoke('ai:chat', config, systemPrompt, messages),
   readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),
   getWatermarkPath: (style: string, kind: 'image' | 'video') => ipcRenderer.invoke('luna:getWatermarkPath', style, kind) as Promise<{ filePath: string; width: number; height: number }>,
+  getBorderLogoPath: (logoId: string) => ipcRenderer.invoke('luna:getBorderLogoPath', logoId) as Promise<string>,
   disconnect: (host?: string) => ipcRenderer.invoke('luna:disconnect', host),
   getWifiStatus: () => ipcRenderer.invoke('wifiDebug:getStatus'),
   collectNetworkDiagnostics: () => ipcRenderer.invoke('luna:collectNetworkDiagnostics') as Promise<NetworkDiagnosticsResult>,

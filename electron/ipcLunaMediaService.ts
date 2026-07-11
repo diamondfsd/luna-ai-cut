@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -219,6 +219,20 @@ export function register(ctx: IpcContext): void {
     const img = nativeImage.createFromPath(filePath)
     const size = img.getSize()
     return { filePath, width: size.width, height: size.height }
+  })
+
+  ipcMain.handle('luna:getBorderLogoPath', async (_event, logoId: string) => {
+    const names: Record<string, string> = {
+      logo_standard_black: 'luna_ultra_logo_blank.png',
+      logo_standard_white: 'luna_ultra_logo_white.png',
+      logo_cn_black: 'luna_ultra_logo_cn_blank.png',
+      logo_cn_white: 'luna_ultra_logo_cn_white.png',
+    }
+    const fileName = names[logoId]
+    if (!fileName) throw new Error('未知边框标志')
+    return app.isPackaged
+      ? path.join(process.resourcesPath, 'logos', fileName)
+      : path.join(app.getAppPath(), 'src', 'assets', 'logos', fileName)
   })
 
   ipcMain.handle('luna:listSampleFiles', async () => {
