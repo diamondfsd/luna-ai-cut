@@ -1,4 +1,4 @@
-import { Check, Crop, ImagePlus, Paintbrush, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
+import { Check, Crop, Frame, ImagePlus, Paintbrush, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
@@ -12,8 +12,9 @@ import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
 import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
 import type { EditPipeline } from '../shared/editPipeline'
+import { BorderPanel } from '../border/BorderPanel'
 
-export type WorkspaceTool = 'color' | 'crop' | 'watermark' | 'filter'
+export type WorkspaceTool = 'border' | 'color' | 'crop' | 'watermark' | 'filter'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -63,16 +64,22 @@ function isWatermarkModified(watermark: typeof DEFAULT_PIPELINE.watermark): bool
   return watermark.enabled === true
 }
 
+function isBorderModified(border: typeof DEFAULT_PIPELINE.border): boolean {
+  return border.enabled === true
+}
+
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
   { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
+  { value: 'border', label: '边框', icon: <Frame size={22} /> },
 ]
 
 function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'crop') return '裁剪工具'
   if (tool === 'watermark') return '水印'
+  if (tool === 'border') return '边框'
   if (tool === 'filter') return '滤镜'
   return '色彩调节'
 }
@@ -99,6 +106,7 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
     color: isColorModified(edit.pipeline.color),
     crop: isCropModified(edit.pipeline.transform),
     watermark: isWatermarkModified(edit.pipeline.watermark),
+    border: isBorderModified(edit.pipeline.border),
   }), [edit.pipeline])
 
   // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
@@ -211,6 +219,11 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
                 </Button>
               </div>
             </>
+          ) : edit.activeTool === 'border' ? (
+            <BorderPanel
+              value={edit.pipeline.border}
+              onChange={(border) => edit.updateWorkspacePanel({ border })}
+            />
           ) : (
             <Accordion
               title="水印"

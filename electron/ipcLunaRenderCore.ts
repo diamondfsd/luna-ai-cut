@@ -1,11 +1,11 @@
 /**
  * IPC 处理器 — Luna Render Core
  */
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFileSync, statSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { join, extname, basename } from 'node:path'
+import { join, extname, basename, isAbsolute } from 'node:path'
 import {
   ensureInit,
   renderCompositionFrame as lrcRenderCompositionFrame,
@@ -25,6 +25,24 @@ import * as exportTaskService from './exportTaskService'
 interface RegisterContext {
   win: Electron.BrowserWindow | null
   activeNativeExportTasks: Set<string>
+}
+
+function resolveFontPaths<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(resolveFontPaths) as T
+  if (!value || typeof value !== 'object') return value
+  const record = value as Record<string, unknown>
+  const output: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(record)) {
+    if (key === 'fontFile' && typeof item === 'string' && !isAbsolute(item)) {
+      const relative = item.replace(/^fonts[\\/]/, '')
+      output[key] = app.isPackaged
+        ? join(process.resourcesPath, 'fonts', relative)
+        : join(process.env.APP_ROOT ?? join(import.meta.dirname, '..'), 'public', 'fonts', relative)
+    } else {
+      output[key] = resolveFontPaths(item)
+    }
+  }
+  return output as T
 }
 
 /** 写日志到文件（追加模式），APP_ROOT 在 appMain.ts 中设置 */
@@ -72,7 +90,7 @@ export function register(ctx: RegisterContext): void {
 
   ipcMain.handle('lrc:renderFrame', safe('renderFrame',
     async (_event: IpcMainInvokeEvent, canvasWidth: number, canvasHeight: number, layers: any[]) => {
-      return getNative().renderFrame(canvasWidth, canvasHeight, cleanNativeInput(layers))
+      return getNative().renderFrame(canvasWidth, canvasHeight, cleanNativeInput(resolveFontPaths(layers)))
     },
   ))
 
@@ -86,7 +104,7 @@ export function register(ctx: RegisterContext): void {
     async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
-      return lrcRenderCompositionFrame(ffmpegPath, ffprobePath, composition, time, maxSide)
+      return lrcRenderCompositionFrame(ffmpegPath, ffprobePath, resolveFontPaths(composition), time, maxSide)
     },
   ))
 
@@ -94,7 +112,7 @@ export function register(ctx: RegisterContext): void {
     async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
-      return lrcRenderCompositionFrameAsync(ffmpegPath, ffprobePath, composition, time, maxSide)
+      return lrcRenderCompositionFrameAsync(ffmpegPath, ffprobePath, resolveFontPaths(composition), time, maxSide)
     },
   ))
 
@@ -124,7 +142,7 @@ export function register(ctx: RegisterContext): void {
         })
       }
 
-      await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition, format, quality })
+      await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition: resolveFontPaths(composition), format, quality })
 
       if (exportTaskId && exportItemId) {
         _event.sender?.send('export:progress', {
@@ -205,7 +223,7 @@ export function register(ctx: RegisterContext): void {
           ffmpegPath,
           ffprobePath,
           outputPath,
-          composition,
+          composition: resolveFontPaths(composition),
           fps,
           duration,
           hardware,
