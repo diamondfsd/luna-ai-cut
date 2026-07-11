@@ -72,7 +72,7 @@ export function WorkspacePreviewToolbar({
       <div className="workspace-toolbar-group workspace-toolbar-left">
         <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={media.backToProjects}>返回工作台</Button>
         <Button variant="toolbar" size="compact" icon={<ImagePlus size={14} />} onClick={onImport}>
-          添加素材 <ChevronDown size={12} />
+          添加素材
         </Button>
         <Button variant="toolbar" size="compact" icon={<RotateCcw size={14} />} onClick={resetAdjustments}>重置</Button>
         <div className="workspace-toolbar-divider" />

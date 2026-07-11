@@ -38,7 +38,7 @@ const INITIAL_VIEWPORT: ViewportTransform = {
   translateY: 0,
 }
 
-const WHEEL_ZOOM_SENSITIVITY = 0.01
+const WHEEL_ZOOM_SENSITIVITY = 0.005
 
 interface CanvasMetrics {
   baseWidth: number
@@ -97,7 +97,7 @@ export function useCanvasViewportInteraction({
   ), [interactiveImageLayerIndexes, layers])
   const interactive = interactiveIndexes.some((index) => {
     const layer = layers[index]
-    return !!layer && !layer.isVideo && !layer.positioning
+    return !!layer && !layer.positioning
   })
   const sourceKey = interactiveIndexes
     .map((index) => layers[index]?.filePath ?? '')
