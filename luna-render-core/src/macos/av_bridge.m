@@ -74,6 +74,7 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
 @property(nonatomic, assign) double currentPTS;
 @property(nonatomic, assign) CVMetalTextureCacheRef textureCache;
 @property(nonatomic, assign) uint32_t maxEdge;
+@property(nonatomic, assign) int rotationDegrees;
 - (instancetype)initWithPath:(NSString *)path device:(id<MTLDevice>)device maxEdge:(uint32_t)maxEdge error:(NSError **)error;
 - (BOOL)restartAt:(double)seconds error:(NSError **)error;
 - (LunaMetalFrame *)frameAt:(double)seconds error:(NSError **)error;
@@ -108,6 +109,7 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:_url options:@{AVURLAssetPreferPreciseDurationAndTimingKey: @YES}];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic ignored "-Wunused-variable"
     AVAssetTrack *track = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
 #pragma clang diagnostic pop
     if (!track) {
@@ -118,26 +120,30 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
     if (!_reader) return NO;
 
     // ── 根据 maxEdge 和原视频宽高比计算输出尺寸 ──
+    // 注意：输出尺寸使用 naturalSize（编码方向），不应用 preferredTransform 的旋转。
+    // AVAssetReader 不会旋转像素内容，旋转完全由 GPU shader 通过 orientation 参数处理。
+    // 如果用 displaySize（旋转后尺寸），编码为横屏的视频会被拉伸到竖屏缓冲区，导致画面变形。
     CGSize naturalSize = track.naturalSize;
-    // 考虑轨道变换矩阵（旋转/翻转），得到正确的显示尺寸
+    CGFloat natW = naturalSize.width;
+    CGFloat natH = naturalSize.height;
+
+    // ── 从变换矩阵中提取旋转角度（度数），供 GPU shader 使用 ──
     CGAffineTransform preferredTransform = track.preferredTransform;
-    CGSize displaySize = CGSizeApplyAffineTransform(naturalSize, preferredTransform);
-    CGFloat displayW = fabs(displaySize.width);
-    CGFloat displayH = fabs(displaySize.height);
-    if (displayW < 1.0) displayW = naturalSize.width;
-    if (displayH < 1.0) displayH = naturalSize.height;
-    CGFloat sourceAspect = displayW / displayH;
+    CGFloat radians = atan2(preferredTransform.b, preferredTransform.a);
+    int degrees = (int)round(radians * 180.0 / M_PI);
+    while (degrees < 0) degrees += 360;
+    degrees = degrees % 360;
+    self.rotationDegrees = (degrees % 90 == 0) ? degrees : 0;
 
     uint32_t outputW, outputH;
-    CGFloat maxEdgeSrc = MAX(displayW, displayH);
+    CGFloat maxEdgeSrc = (CGFloat)MAX(natW, natH);
     if (maxEdgeSrc <= _maxEdge) {
-        // 原视频小于限制，保持原始尺寸
-        outputW = (uint32_t)displayW;
-        outputH = (uint32_t)displayH;
+        outputW = (uint32_t)natW;
+        outputH = (uint32_t)natH;
     } else {
         CGFloat scale = (CGFloat)_maxEdge / maxEdgeSrc;
-        outputW = (uint32_t)(displayW * scale);
-        outputH = (uint32_t)(displayH * scale);
+        outputW = (uint32_t)(natW * scale);
+        outputH = (uint32_t)(natH * scale);
     }
 
     NSDictionary *settings = @{
@@ -296,6 +302,10 @@ void *luna_av_decoder_create(const char *path, void *metal_device, uint32_t max_
 
 void luna_av_decoder_destroy(void *decoder) {
     if (decoder) CFBridgingRelease(decoder);
+}
+
+int luna_av_decoder_get_rotation(void *decoder) {
+    return [(__bridge LunaVideoDecoder *)decoder rotationDegrees];
 }
 
 bool luna_av_decoder_frame(void *decoder_ptr, double seconds, LunaAVFrame *out_frame, char *error_buffer, size_t error_length) {
