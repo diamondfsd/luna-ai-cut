@@ -75,6 +75,7 @@ export function buildCompositionFromPreviewLayers(
       fontWeight: layer.fontWeight,
       textColor: layer.textColor,
       textAlign: layer.textAlign,
+      verticalAlign: layer.verticalAlign,
     })),
   }
 

@@ -75,7 +75,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         var origin_x = params.dst_x + 2.0;
         if (params.text_meta.y > 1.5) { origin_x = params.dst_x + params.dst_w - total_w - 2.0; }
         else if (params.text_meta.y > 0.5) { origin_x = params.dst_x + (params.dst_w - total_w) * 0.5; }
-        let origin_y = params.dst_y + (params.dst_h - glyph_h) * 0.5;
+        var origin_y = params.dst_y + (params.dst_h - glyph_h) * 0.5;
+        if (params.procedural.y < 0.5) { origin_y = params.dst_y + 2.0; }
+        else if (params.procedural.y > 1.5) { origin_y = params.dst_y + params.dst_h - glyph_h - 2.0; }
         let tx = pixel_x - origin_x;
         let ty = pixel_y - origin_y;
         if (tx < 0.0 || ty < 0.0 || ty >= glyph_h) { discard; }

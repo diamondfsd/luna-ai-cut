@@ -1,0 +1,901 @@
+[
+  {
+    "id": "gallery",
+    "name": "摄影展览",
+    "category": "gallery",
+    "description": "纸张色调与展览式标题",
+    "swatch": "#f1ede4",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.82, "w": 1, "h": 0.18 },
+        "fill": { "type": "solid", "color": "#F1EDE4" },
+        "zIndex": 20
+      },
+      {
+        "id": "brand",
+        "type": "logo",
+        "rect": { "x": 0.04, "y": 0.855, "w": 0.18, "h": 0.06 },
+        "source": { "path": "logo_cn_black", "format": "png" },
+        "fit": "contain",
+        "zIndex": 21
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.25, "y": 0.84, "w": 0.5, "h": 0.07 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 30,
+          "fontWeight": 600,
+          "color": "#23211D",
+          "align": "center",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.22, "y": 0.91, "w": 0.56, "h": 0.04 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}} · {{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 14,
+          "fontWeight": 400,
+          "color": "#39362F",
+          "align": "center",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      }
+    ]
+  },
+  {
+    "id": "classic-white",
+    "name": "经典白边",
+    "category": "minimal",
+    "description": "干净明亮的底部相机信息条",
+    "swatch": "#f7f6f2",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.88, "w": 1, "h": 0.12 },
+        "fill": { "type": "solid", "color": "#F7F6F2" },
+        "zIndex": 20
+      },
+      {
+        "id": "brand",
+        "type": "logo",
+        "rect": { "x": 0.035, "y": 0.91, "w": 0.18, "h": 0.05 },
+        "source": { "path": "logo_cn_black", "format": "png" },
+        "fit": "contain",
+        "zIndex": 21
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.31, "y": 0.91, "w": 0.655, "h": 0.05 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}} · {{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 15,
+          "fontWeight": 400,
+          "color": "#444444",
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      }
+    ]
+  },
+  {
+    "id": "minimal-title",
+    "name": "极简标题",
+    "category": "minimal",
+    "description": "突出作品标题的极简白色底栏",
+    "swatch": "#ffffff",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.84, "w": 1, "h": 0.16 },
+        "fill": { "type": "solid", "color": "#FFFFFF" },
+        "zIndex": 20
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.045, "y": 0.86, "w": 0.48, "h": 0.055 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 26,
+          "fontWeight": 600,
+          "color": "#202020",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.045, "y": 0.925, "w": 0.66, "h": 0.035 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 13,
+          "fontWeight": 400,
+          "color": "#777777",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      },
+      {
+        "id": "date",
+        "type": "text",
+        "rect": { "x": 0.75, "y": 0.87, "w": 0.205, "h": 0.07 },
+        "content": "{{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 17,
+          "fontWeight": 600,
+          "color": "#2A2A2A",
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      }
+    ]
+  },
+  {
+    "id": "cinema-black",
+    "name": "黑色电影",
+    "category": "cinematic",
+    "description": "深色电影感底栏与居中作品标题",
+    "swatch": "#151515",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.84, "w": 1, "h": 0.16 },
+        "fill": { "type": "solid", "color": "#151515" },
+        "zIndex": 20
+      },
+      {
+        "id": "brand",
+        "type": "logo",
+        "rect": { "x": 0.04, "y": 0.875, "w": 0.16, "h": 0.055 },
+        "source": { "path": "logo_cn_white", "format": "png" },
+        "fit": "contain",
+        "zIndex": 21
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.25, "y": 0.855, "w": 0.5, "h": 0.055 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 27,
+          "fontWeight": 600,
+          "color": "#F2F0EB",
+          "align": "center",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.22, "y": 0.92, "w": 0.56, "h": 0.032 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}} · {{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 13,
+          "fontWeight": 400,
+          "color": "#AAA8A3",
+          "align": "center",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      }
+    ]
+  },
+  {
+    "id": "black-gold",
+    "name": "黑金画廊",
+    "category": "gallery",
+    "description": "黑色底栏与暖金色标题",
+    "swatch": "#1d1b18",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.85, "w": 1, "h": 0.15 },
+        "fill": { "type": "solid", "color": "#1D1B18" },
+        "zIndex": 20
+      },
+      {
+        "id": "accent",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0.04, "y": 0.88, "w": 0.004, "h": 0.07 },
+        "fill": { "type": "solid", "color": "#C5A56A" },
+        "zIndex": 21
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.065, "y": 0.865, "w": 0.4, "h": 0.055 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 25,
+          "fontWeight": 600,
+          "color": "#D8BE8D",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.065, "y": 0.925, "w": 0.63, "h": 0.03 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 13,
+          "fontWeight": 400,
+          "color": "#A49D91",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      },
+      {
+        "id": "date",
+        "type": "text",
+        "rect": { "x": 0.76, "y": 0.88, "w": 0.2, "h": 0.06 },
+        "content": "{{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 16,
+          "fontWeight": 600,
+          "color": "#D8BE8D",
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      }
+    ]
+  },
+  {
+    "id": "magazine-red",
+    "name": "红色杂志",
+    "category": "editorial",
+    "description": "红色视觉标记与杂志式左右布局",
+    "swatch": "#d93b32",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.86, "w": 1, "h": 0.14 },
+        "fill": { "type": "solid", "color": "#F3F0E9" },
+        "zIndex": 20
+      },
+      {
+        "id": "accent",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.86, "w": 0.13, "h": 0.14 },
+        "fill": { "type": "solid", "color": "#D93B32" },
+        "zIndex": 21
+      },
+      {
+        "id": "brand",
+        "type": "logo",
+        "rect": { "x": 0.02, "y": 0.9, "w": 0.09, "h": 0.055 },
+        "source": { "path": "logo_cn_white", "format": "png" },
+        "fit": "contain",
+        "zIndex": 22
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.165, "y": 0.875, "w": 0.4, "h": 0.05 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 24,
+          "fontWeight": 600,
+          "color": "#24221F",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.165, "y": 0.93, "w": 0.57, "h": 0.03 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 12,
+          "fontWeight": 400,
+          "color": "#68645D",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      },
+      {
+        "id": "date",
+        "type": "text",
+        "rect": { "x": 0.79, "y": 0.895, "w": 0.17, "h": 0.045 },
+        "content": "{{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 15,
+          "fontWeight": 600,
+          "color": "#393631",
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      }
+    ]
+  },
+  {
+    "id": "warm-paper",
+    "name": "暖纸日记",
+    "category": "lifestyle",
+    "description": "温暖纸张色调与生活记录排版",
+    "swatch": "#eee4d2",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.83, "w": 1, "h": 0.17 },
+        "fill": { "type": "solid", "color": "#EEE4D2" },
+        "zIndex": 20
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.055, "y": 0.855, "w": 0.5, "h": 0.055 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 25,
+          "fontWeight": 600,
+          "color": "#3E352B",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.055, "y": 0.925, "w": 0.67, "h": 0.03 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 12,
+          "fontWeight": 400,
+          "color": "#766A5C",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      },
+      {
+        "id": "brand",
+        "type": "logo",
+        "rect": { "x": 0.79, "y": 0.85, "w": 0.16, "h": 0.055 },
+        "source": { "path": "logo_cn_black", "format": "png" },
+        "fit": "contain",
+        "zIndex": 21
+      },
+      {
+        "id": "date",
+        "type": "text",
+        "rect": { "x": 0.76, "y": 0.92, "w": 0.19, "h": 0.032 },
+        "content": "{{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 13,
+          "fontWeight": 400,
+          "color": "#62574C",
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      }
+    ]
+  },
+  {
+    "id": "split-black-white",
+    "name": "黑白分栏",
+    "category": "modern",
+    "description": "左右黑白分区的信息栏设计",
+    "swatch": "#232323",
+    "layers": [
+      {
+        "id": "left-background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.87, "w": 0.34, "h": 0.13 },
+        "fill": { "type": "solid", "color": "#F3F1EC" },
+        "zIndex": 20
+      },
+      {
+        "id": "right-background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0.34, "y": 0.87, "w": 0.66, "h": 0.13 },
+        "fill": { "type": "solid", "color": "#232323" },
+        "zIndex": 20
+      },
+      {
+        "id": "brand",
+        "type": "logo",
+        "rect": { "x": 0.04, "y": 0.905, "w": 0.15, "h": 0.05 },
+        "source": { "path": "logo_cn_black", "format": "png" },
+        "fit": "contain",
+        "zIndex": 21
+      },
+      {
+        "id": "date",
+        "type": "text",
+        "rect": { "x": 0.2, "y": 0.91, "w": 0.1, "h": 0.04 },
+        "content": "{{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 12,
+          "fontWeight": 400,
+          "color": "#625F58",
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.39, "y": 0.885, "w": 0.3, "h": 0.04 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 20,
+          "fontWeight": 600,
+          "color": "#F3F1EC",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.39, "y": 0.93, "w": 0.565, "h": 0.03 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 12,
+          "fontWeight": 400,
+          "color": "#AAA9A5",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      }
+    ]
+  },
+  {
+    "id": "centered-brand",
+    "name": "品牌居中",
+    "category": "branding",
+    "description": "品牌标志、标题和参数对称居中",
+    "swatch": "#eceae5",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.8, "w": 1, "h": 0.2 },
+        "fill": { "type": "solid", "color": "#ECEAE5" },
+        "zIndex": 20
+      },
+      {
+        "id": "brand",
+        "type": "logo",
+        "rect": { "x": 0.4, "y": 0.825, "w": 0.2, "h": 0.045 },
+        "source": { "path": "logo_cn_black", "format": "png" },
+        "fit": "contain",
+        "zIndex": 21
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.2, "y": 0.875, "w": 0.6, "h": 0.055 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 27,
+          "fontWeight": 600,
+          "color": "#282725",
+          "align": "center",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.17, "y": 0.945, "w": 0.66, "h": 0.03 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}} · {{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 12,
+          "fontWeight": 400,
+          "color": "#66635E",
+          "align": "center",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      }
+    ]
+  },
+  {
+    "id": "date-focus",
+    "name": "日期纪实",
+    "category": "documentary",
+    "description": "强调拍摄日期的纪实风格",
+    "swatch": "#e8e5dc",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.85, "w": 1, "h": 0.15 },
+        "fill": { "type": "solid", "color": "#E8E5DC" },
+        "zIndex": 20
+      },
+      {
+        "id": "date-background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0.04, "y": 0.875, "w": 0.22, "h": 0.075 },
+        "fill": { "type": "solid", "color": "#282725" },
+        "zIndex": 21
+      },
+      {
+        "id": "date",
+        "type": "text",
+        "rect": { "x": 0.055, "y": 0.887, "w": 0.19, "h": 0.05 },
+        "content": "{{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 18,
+          "fontWeight": 600,
+          "color": "#FFFFFF",
+          "align": "center",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.31, "y": 0.87, "w": 0.38, "h": 0.05 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 22,
+          "fontWeight": 600,
+          "color": "#2A2926",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.31, "y": 0.925, "w": 0.645, "h": 0.03 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 12,
+          "fontWeight": 400,
+          "color": "#68655F",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      }
+    ]
+  },
+  {
+    "id": "blue-modern",
+    "name": "现代蓝调",
+    "category": "modern",
+    "description": "深蓝品牌区与现代摄影信息栏",
+    "swatch": "#243249",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.87, "w": 1, "h": 0.13 },
+        "fill": { "type": "solid", "color": "#F1F2F3" },
+        "zIndex": 20
+      },
+      {
+        "id": "brand-background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.87, "w": 0.23, "h": 0.13 },
+        "fill": { "type": "solid", "color": "#243249" },
+        "zIndex": 21
+      },
+      {
+        "id": "brand",
+        "type": "logo",
+        "rect": { "x": 0.045, "y": 0.905, "w": 0.14, "h": 0.05 },
+        "source": { "path": "logo_cn_white", "format": "png" },
+        "fit": "contain",
+        "zIndex": 22
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.275, "y": 0.885, "w": 0.35, "h": 0.04 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 20,
+          "fontWeight": 600,
+          "color": "#252B34",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.275, "y": 0.93, "w": 0.68, "h": 0.03 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}} · {{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 12,
+          "fontWeight": 400,
+          "color": "#68707B",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      }
+    ]
+  },
+  {
+    "id": "fine-line",
+    "name": "细线画册",
+    "category": "gallery",
+    "description": "细线分隔与画册式留白排版",
+    "swatch": "#f6f4ef",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.84, "w": 1, "h": 0.16 },
+        "fill": { "type": "solid", "color": "#F6F4EF" },
+        "zIndex": 20
+      },
+      {
+        "id": "line",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0.04, "y": 0.875, "w": 0.92, "h": 0.0015 },
+        "fill": { "type": "solid", "color": "#BBB6AC" },
+        "zIndex": 21
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "rect": { "x": 0.04, "y": 0.89, "w": 0.4, "h": 0.05 },
+        "content": "{{title}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Bold.otf",
+          "fontSize": 22,
+          "fontWeight": 600,
+          "color": "#292825",
+          "align": "left",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.48, "y": 0.895, "w": 0.48, "h": 0.04 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 12,
+          "fontWeight": 400,
+          "color": "#66635D",
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      },
+      {
+        "id": "date",
+        "type": "text",
+        "rect": { "x": 0.78, "y": 0.945, "w": 0.18, "h": 0.025 },
+        "content": "{{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 11,
+          "fontWeight": 400,
+          "color": "#8A867E",
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 22
+      }
+    ]
+  },
+  {
+    "id": "compact-dark",
+    "name": "紧凑暗栏",
+    "category": "minimal",
+    "description": "占用空间较小的深色参数栏",
+    "swatch": "#202020",
+    "layers": [
+      {
+        "id": "background",
+        "type": "shape",
+        "shape": "rectangle",
+        "rect": { "x": 0, "y": 0.91, "w": 1, "h": 0.09 },
+        "fill": { "type": "solid", "color": "#202020" },
+        "zIndex": 20
+      },
+      {
+        "id": "brand",
+        "type": "logo",
+        "rect": { "x": 0.035, "y": 0.932, "w": 0.14, "h": 0.04 },
+        "source": { "path": "logo_cn_white", "format": "png" },
+        "fit": "contain",
+        "zIndex": 21
+      },
+      {
+        "id": "meta",
+        "type": "text",
+        "rect": { "x": 0.25, "y": 0.93, "w": 0.715, "h": 0.042 },
+        "content": "{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}} · {{date}}",
+        "template": true,
+        "style": {
+          "fontFamily": "Source Han Sans SC",
+          "fontFile": "fonts/SourceHanSansSC-Medium.otf",
+          "fontSize": 13,
+          "fontWeight": 400,
+          "color": "#D7D7D5",
+          "align": "right",
+          "verticalAlign": "middle"
+        },
+        "overflow": "shrink",
+        "zIndex": 21
+      }
+    ]
+  }
+]
