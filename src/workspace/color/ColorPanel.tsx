@@ -5,6 +5,7 @@ import { GradingPanel } from './GradingPanel'
 import { HslPanel } from './HslPanel'
 import { TonePanel } from './TonePanel'
 import { WhiteBalancePanel } from './WhiteBalancePanel'
+import { ColorPresetPanel } from './ColorPresetPanel'
 
 interface ColorPanelProps {
   value: EditPipeline['color']
@@ -28,8 +29,13 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
     detail: value.sharpen !== 0 || value.denoise !== 0,
   }
 
+  const handlePresetApply = (color: EditPipeline['color']) => {
+    onChange(color)
+  }
+
   return (
     <div className="workspace-color-modules">
+      <ColorPresetPanel value={value} onApply={handlePresetApply} />
       <WhiteBalancePanel value={value} modified={modified.whiteBalance} onChange={onChange} onActivatePipette={onActivatePipette} />
       <TonePanel value={value} modified={modified.tone} onChange={onChange} />
       <CurvePanel value={value} modified={modified.curve} onChange={onChange} />
