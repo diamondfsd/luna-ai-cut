@@ -24,6 +24,7 @@ import * as exportTaskService from './exportTaskService'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
+  activeNativeExportTasks: Set<string>
 }
 
 /** 写日志到文件（追加模式），APP_ROOT 在 appMain.ts 中设置 */
@@ -50,7 +51,7 @@ function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
   }) as unknown as T
 }
 
-export function register(_ctx: RegisterContext): void {
+export function register(ctx: RegisterContext): void {
   ipcMain.handle('lrc:init', safe('init', async (_event: IpcMainInvokeEvent, logPath?: string) => {
     ensureInit(logPath)
     rcLog('lrc:init OK')
@@ -198,6 +199,7 @@ export function register(_ctx: RegisterContext): void {
           })
         }
       }, 500)
+      ctx.activeNativeExportTasks.add(renderTaskId)
       try {
         await lrcExportCompositionVideoAsync({
           ffmpegPath,
@@ -238,6 +240,7 @@ export function register(_ctx: RegisterContext): void {
         throw error
       } finally {
         clearInterval(progressTimer)
+        ctx.activeNativeExportTasks.delete(renderTaskId)
       }
     },
   ))

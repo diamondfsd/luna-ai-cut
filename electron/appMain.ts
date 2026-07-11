@@ -22,6 +22,7 @@ import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
+import { cancelExportTask } from './lunaRenderCore'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -54,6 +55,7 @@ const goUltraClients = new Map<string, GoUltraClient>()
 let activeDownloadControllers = new Set<AbortController>()
 let activeExportControllers = new Map<string, AbortController>()
 const activeExportEncoders = new Map<string, import('node:child_process').ChildProcessWithoutNullStreams>()
+const activeNativeExportTasks = new Set<string>()
 const previewCacheTasks = new Map<string, Promise<boolean>>()
 const videoFrameRateTasks = new Map<string, Promise<number | null>>()
 const enqueuePreviewTask = createPreviewTaskQueue(2)
@@ -201,22 +203,33 @@ function createWindow(): void {
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
+function abortAllExports() {
+  // 取消原生 Rust 导出任务（macOS/Windows GPU 路径 + FFmpeg fallback）
+  for (const taskId of activeNativeExportTasks) {
+    try { cancelExportTask(taskId) } catch { /* ignore */ }
+  }
+  activeNativeExportTasks.clear()
+  // 杀掉 FFmpeg 子进程（旧导出路径）
+  for (const encoder of activeExportEncoders.values()) encoder.kill()
+  activeExportEncoders.clear()
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    abortAllExports()
     stopAllKeepAlive()
     cleanupDeviceDebug()
     void stopMockServer()
-    for (const encoder of activeExportEncoders.values()) encoder.kill()
     app.quit()
     win = null
   }
 })
 
 app.on('before-quit', () => {
+  abortAllExports()
   stopAllKeepAlive()
   cleanupDeviceDebug()
   void stopMockServer()
-  for (const encoder of activeExportEncoders.values()) encoder.kill()
 })
 
 app.on('activate', () => {
@@ -240,6 +253,7 @@ function registerIpc(): void {
     activeDownloadControllers,
     activeExportControllers,
     activeExportEncoders,
+    activeNativeExportTasks,
     previewCacheTasks,
     videoFrameRateTasks,
     enqueuePreviewTask,
