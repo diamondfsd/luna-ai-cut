@@ -101,6 +101,7 @@ export function WorkspaceProjectPicker() {
 
       {/* 重命名弹窗 */}
       <Dialog
+        tone="dark"
         open={renameOpen}
         onOpenChange={setRenameOpen}
         title="重命名项目"
@@ -115,6 +116,7 @@ export function WorkspaceProjectPicker() {
 
       {/* 删除确认弹窗 */}
       <Dialog
+        tone="dark"
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
         title={`删除「${deleteProjectName}」`}
