@@ -223,6 +223,7 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
             <BorderPanel
               value={edit.pipeline.border}
               onChange={(border) => edit.updateWorkspacePanel({ border })}
+              mediaPath={mediaCtx.activeMedia?.path}
             />
           ) : (
             <Accordion
