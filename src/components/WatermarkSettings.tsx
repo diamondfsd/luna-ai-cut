@@ -6,18 +6,6 @@ import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
 import type { PreviewLayer, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
 
-/** position 名 → positioning anchor */
-function posToAnchor(pos: string): WatermarkPositioning['anchor'] {
-  switch (pos) {
-    case 'TopLeft': return 'top-left'
-    case 'TopRight': return 'top-right'
-    case 'BottomLeft': return 'bottom-left'
-    case 'BottomRight': return 'bottom-right'
-    case 'BottomCenter': return 'bottom-center'
-    default: return 'bottom-right'
-  }
-}
-
 /** 根据方向返回合适的定位参数（横屏 22%、竖屏 39%，参考旧 layout config） */
 function positioningForOrient(isLandscape: boolean, anchor: WatermarkPositioning['anchor']): WatermarkPositioning {
   return {
@@ -34,7 +22,7 @@ function positioningForOrient(isLandscape: boolean, anchor: WatermarkPositioning
 export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, isLandscape: boolean): PreviewLayer | null {
   if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
   const { imagePath: filePath } = settings
-  const positioning = positioningForOrient(isLandscape, posToAnchor(settings.position))
+  const positioning = positioningForOrient(isLandscape, settings.position)
   console.log('[WatermarkStaticLayer] build', { filePath, wmAspect: settings.wmAspect, isLandscape, positioning })
   return {
     filePath,
@@ -55,11 +43,11 @@ export function buildResolvedWatermarkStaticLayer(
 }
 
 const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }> = [
-  { value: 'TopLeft', label: '左上', cx: 27, cy: 22.5 },
-  { value: 'TopRight', label: '右上', cx: 133, cy: 22.5 },
-  { value: 'BottomLeft', label: '左下', cx: 27, cy: 67.5 },
-  { value: 'BottomCenter', label: '底中', cx: 80, cy: 67.5 },
-  { value: 'BottomRight', label: '右下', cx: 133, cy: 67.5 },
+  { value: 'top-left', label: '左上', cx: 27, cy: 22.5 },
+  { value: 'top-right', label: '右上', cx: 133, cy: 22.5 },
+  { value: 'bottom-left', label: '左下', cx: 27, cy: 67.5 },
+  { value: 'bottom-center', label: '底中', cx: 80, cy: 67.5 },
+  { value: 'bottom-right', label: '右下', cx: 133, cy: 67.5 },
 ]
 
 export type WatermarkChangeHandler = (settings: WatermarkSettingsType, layer?: PreviewLayer) => void
