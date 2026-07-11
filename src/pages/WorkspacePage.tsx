@@ -34,6 +34,16 @@ function normalizePipeline(value: unknown): EditPipeline {
   return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
 }
 
+/** 从 MediaMetadata 中按 key 提取第一个匹配的 EXIF 值 */
+function extractExifValue(metadata: MediaMetadata, key: string): string | null {
+  for (const group of metadata.groups) {
+    for (const entry of group.entries) {
+      if (entry.key === key) return entry.value
+    }
+  }
+  return null
+}
+
 interface WorkspacePageProps {
   workspaceMode: WorkspaceMode
   creativeModeId: CreativeModeId | null
@@ -187,6 +197,17 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
     return () => { cancelled = true }
   }, [media.activeMedia?.path])
+
+  // ── EXIF Make 自动填充边框标题 ──
+  useEffect(() => {
+    if (!borderMetadata) return
+    const makeValue = extractExifValue(borderMetadata, 'Make')
+    if (!makeValue) return
+    const currentTitle = edit.pipeline.border.title
+    if (currentTitle === 'Insta360' || currentTitle === 'UNTITLED') {
+      edit.commitPatch({ border: { title: makeValue } })
+    }
+  }, [borderMetadata])
 
   // ── Auto-save project when pipeline changes ──
   const saveTimerRef = useRef<number | null>(null)
