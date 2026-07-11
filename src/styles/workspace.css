@@ -39,6 +39,12 @@
   font-size: 12px;
 }
 
+.workspace-project-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
 .workspace-project-grid {
   padding: 22px;
   display: grid;

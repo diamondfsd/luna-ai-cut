@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import { Folder, Pencil, Trash2 } from 'lucide-react'
+import { Folder, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import type { WorkspaceProject } from '../../shared/types'
-import { Button, Dialog, Input } from '../../ui'
+import { Button, Dialog, Input, toast } from '../../ui'
 import { ThumbImage } from '../../components/ThumbImage'
 
 export function WorkspaceProjectPicker() {
-  const { projects, projectLoading, openProject, deleteProject, renameProject } = useWorkspaceMedia()
+  const { projects, projectLoading, openProject, deleteProject, renameProject, createProject } = useWorkspaceMedia()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; project: WorkspaceProject } | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameProjectId, setRenameProjectId] = useState('')
@@ -15,6 +15,9 @@ export function WorkspaceProjectPicker() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteProjectId, setDeleteProjectId] = useState('')
   const [deleteProjectName, setDeleteProjectName] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createName, setCreateName] = useState('')
+  const [creating, setCreating] = useState(false)
 
   function handleContextMenu(e: React.MouseEvent, project: WorkspaceProject): void {
     e.preventDefault()
@@ -52,11 +55,30 @@ export function WorkspaceProjectPicker() {
     setDeleteConfirmOpen(false)
   }
 
+  async function handleCreateConfirm(): Promise<void> {
+    if (creating || !createName.trim()) return
+    setCreating(true)
+    try {
+      await createProject(createName.trim())
+      setCreateOpen(false)
+      setCreateName('')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="workspace-project-page" onClick={closeContextMenu}>
       <header className="workspace-project-header">
         <h2>工作台项目</h2>
         <span>{projectLoading ? '加载中...' : `${projects.length} 个项目`}</span>
+        <div className="workspace-project-header-actions">
+          <Button variant="primary" size="compact" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>
+            新建项目
+          </Button>
+        </div>
       </header>
       <div className="workspace-project-grid">
         {projects.map((project) => (
@@ -106,12 +128,37 @@ export function WorkspaceProjectPicker() {
         onOpenChange={setRenameOpen}
         title="重命名项目"
         footer={
-          <button type="button" className="ui-button ui-button--primary" onClick={() => void handleRenameConfirm()} disabled={!renameValue.trim()}>
-            确认
-          </button>
+          <>
+            <Button variant="secondary" onClick={() => setRenameOpen(false)}>取消</Button>
+            <Button variant="primary" onClick={() => void handleRenameConfirm()} disabled={!renameValue.trim()}>
+              确认
+            </Button>
+          </>
         }
       >
-        <Input variant="pill" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="项目名称" autoFocus />
+        <div className="workspace-dialog-body">
+          <Input fullWidth value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="项目名称" autoFocus />
+        </div>
+      </Dialog>
+
+      {/* 创建项目弹窗 */}
+      <Dialog
+        tone="dark"
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title="新建项目"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button variant="primary" onClick={() => void handleCreateConfirm()} disabled={!createName.trim() || creating}>
+              {creating ? '创建中...' : '创建'}
+            </Button>
+          </>
+        }
+      >
+        <div className="workspace-dialog-body">
+          <Input fullWidth value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="项目名称" autoFocus />
+        </div>
       </Dialog>
 
       {/* 删除确认弹窗 */}
