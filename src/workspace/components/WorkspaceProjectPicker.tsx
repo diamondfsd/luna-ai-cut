@@ -75,7 +75,7 @@ export function WorkspaceProjectPicker() {
         <h2>工作台项目</h2>
         <span>{projectLoading ? '加载中...' : `${projects.length} 个项目`}</span>
         <div className="workspace-project-header-actions">
-          <Button variant="primary" size="compact" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>
+          <Button variant="primary" size="compact" icon={<Plus color='white' size={14} />} onClick={() => setCreateOpen(true)}>
             新建项目
           </Button>
         </div>
