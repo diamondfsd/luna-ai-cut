@@ -8,6 +8,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { fileURLToPath } from 'node:url'
 import { logMainInfo, logMainError } from './loggerService'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { getSwiftScriptPath } from './swiftUtils'
@@ -191,18 +192,66 @@ async function exportAppleLivePhotoPair(
 
 /**
  * 检测文件是否为 Google Motion Photo（内嵌视频的 JPEG）。
- * 通过扫描文件头的 XMP APP1 段查找 GCamera 命名空间。
+ *
+ * 检测策略（两阶段）：
+ * 1. 快速路径：扫描文件头 64KB 中的 XMP APP1 段查找 GCamera 命名空间
+ * 2. 回退路径：逐块扫描文件查找 MP4 ftyp 盒子（兼容 XMP 注入失败的情况）
+ *
+ * 回退路径最多扫描前 5MB，超过即放弃（避免大文件性能问题）。
  */
 export async function isGoogleMotionPhoto(filePath: string): Promise<boolean> {
+  let fd: fs.FileHandle | null = null
   try {
-    const fd = await fs.open(filePath, 'r')
-    const buf = Buffer.alloc(32768)
-    const { bytesRead } = await fd.read(buf, 0, 32768, 0)
-    await fd.close()
-    const head = buf.subarray(0, bytesRead)
-    return head.includes('http://ns.google.com/photos/1.0/camera/')
+    // 兼容 file:// URL 路径（渲染进程可能直接传未归一化的路径）
+    let resolvedPath = filePath
+    if (filePath.startsWith('file://')) {
+      resolvedPath = fileURLToPath(filePath)
+    }
+    // Windows: 兼容 /C:/Users/... 格式（new URL().pathname 会多一个前导 /）
+    if (/^\/[a-zA-Z]:[/\\]/.test(resolvedPath)) {
+      resolvedPath = resolvedPath.slice(1)
+    }
+
+    fd = await fs.open(resolvedPath, 'r')
+
+    // ── Phase 1: XMP 快速扫描 ──
+    const headBuf = Buffer.alloc(65536) // 64KB
+    const { bytesRead: headBytes } = await fd.read(headBuf, 0, 65536, 0)
+    const head = headBuf.subarray(0, headBytes)
+    if (head.includes('http://ns.google.com/photos/1.0/camera/')) return true
+
+    // ── Phase 2: 逐块扫描 ftyp MP4 盒子 ──
+    // Google Motion Photo 在 JPEG EOI 后追加 MP4 数据，
+    // 以 ftyp 盒子起始。即使 XMP 注入失败，MP4 数据仍在。
+    const stat = await fd.stat()
+    const CHUNK_SIZE = 262144       // 256KB/块
+    const MAX_SCAN = 5 * 1024 * 1024 // 最大扫描 5MB
+
+    for (let offset = 0; offset < Math.min(stat.size, MAX_SCAN); offset += CHUNK_SIZE) {
+      const chunk = Buffer.alloc(CHUNK_SIZE)
+      const { bytesRead: got } = await fd.read(chunk, 0, CHUNK_SIZE, offset)
+      if (got < 8) break
+
+      // 在块中查找有效 ftyp 盒子（4字节大小 + "ftyp"）
+      for (let i = 0; i <= got - 8; i++) {
+        if (
+          chunk[i + 4] === 0x66 && // f
+          chunk[i + 5] === 0x74 && // t
+          chunk[i + 6] === 0x79 && // y
+          chunk[i + 7] === 0x70    // p
+        ) {
+          const boxSize = chunk.readUInt32BE(i)
+          if (boxSize >= 8) return true
+        }
+      }
+      if (got < CHUNK_SIZE) break
+    }
+
+    return false
   } catch {
     return false
+  } finally {
+    await fd?.close().catch(() => {})
   }
 }
 
@@ -288,7 +337,7 @@ export async function combineLivePhoto(
   try {
     injectGoogleXmpIntoJpeg(processedImage, processedVideo)
   } catch (err) {
-    logMainError('[LIVE] Google XMP injection failed (non-fatal)', { error: err })
+    logMainError('[LIVE] Google XMP injection failed（非致命：输出文件仍为 JPEG+MP4 拼接，但缺少 XMP 元数据，部分 Live 检测可能失效）', { error: err })
   }
   onProgress?.(60)
 
