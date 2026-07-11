@@ -12,6 +12,7 @@ interface ExportSettingsDialogProps {
   confirmLabel?: string
   confirmLoadingLabel?: string
   loading?: boolean
+  tone?: 'default' | 'dark'
   onConfirm: (config: VideoExportSettings) => void | Promise<void>
 }
 
@@ -38,6 +39,7 @@ export function ExportSettingsDialog({
   confirmLabel = '确认导出',
   confirmLoadingLabel = '加入中...',
   loading = false,
+  tone = 'default',
   onConfirm,
 }: ExportSettingsDialogProps) {
   const [exportConfig, setExportConfig] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
@@ -68,6 +70,7 @@ export function ExportSettingsDialog({
   return (
     <Dialog
       open={open}
+      tone={tone}
       onOpenChange={handleOpenChange}
       title={title}
       description={description}

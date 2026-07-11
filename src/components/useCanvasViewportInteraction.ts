@@ -28,6 +28,8 @@ interface UseCanvasViewportInteractionOptions {
   canvasRef: RefObject<HTMLCanvasElement | null>
   interactiveImageLayerIndexes?: readonly number[]
   maxImageScale: number
+  imageScale?: number | null
+  onImageScaleChange?: (scale: number | null) => void
 }
 
 const INITIAL_VIEWPORT: ViewportTransform = {
@@ -82,6 +84,8 @@ export function useCanvasViewportInteraction({
   canvasRef,
   interactiveImageLayerIndexes,
   maxImageScale,
+  imageScale,
+  onImageScaleChange,
 }: UseCanvasViewportInteractionOptions) {
   const [viewport, setViewport] = useState(INITIAL_VIEWPORT)
   const [dragging, setDragging] = useState(false)
@@ -119,6 +123,22 @@ export function useCanvasViewportInteraction({
     observer.observe(container)
     return () => observer.disconnect()
   }, [canvasRef, interactive])
+
+  const syncControlledScale = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!interactive || !canvas) return
+    setViewport((current) => {
+      if (imageScale == null) return INITIAL_VIEWPORT
+      const metrics = canvasMetrics(canvas, current.scale)
+      if (!metrics) return current
+      const nextScale = Math.max(1, Math.min(maxImageScale / metrics.fitPixelRatio, imageScale / metrics.fitPixelRatio))
+      return { scale: nextScale, ...clampTranslation(metrics, nextScale, current.translateX, current.translateY) }
+    })
+  }, [canvasRef, imageScale, interactive, maxImageScale])
+
+  useEffect(() => {
+    syncControlledScale()
+  }, [sourceKey, syncControlledScale])
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0) return
@@ -176,6 +196,7 @@ export function useCanvasViewportInteraction({
         upperBound,
         Math.max(1, current.scale * Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY)),
       )
+      onImageScaleChange?.(nextScale <= 1.001 ? null : nextScale * metrics.fitPixelRatio)
       const scaleRatio = nextScale / current.scale
       const translation = clampTranslation(
         metrics,
@@ -188,7 +209,7 @@ export function useCanvasViewportInteraction({
         ...translation,
       }
     })
-  }, [maxImageScale])
+  }, [maxImageScale, onImageScaleChange])
 
   const onDoubleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     event.preventDefault()
@@ -198,7 +219,10 @@ export function useCanvasViewportInteraction({
     const clientY = event.clientY
     setViewport((current) => {
       const metrics = canvasMetrics(canvas, current.scale)
-      if (!metrics || current.scale > 1.001) return INITIAL_VIEWPORT
+      if (!metrics || current.scale > 1.001) {
+        onImageScaleChange?.(null)
+        return INITIAL_VIEWPORT
+      }
       const actualSizeScale = Math.min(
         Math.max(1, 1 / metrics.fitPixelRatio),
         Math.max(1, maxImageScale / metrics.fitPixelRatio),
@@ -209,9 +233,10 @@ export function useCanvasViewportInteraction({
         (clientX - (rect.left + rect.width / 2)) * (1 - actualSizeScale),
         (clientY - (rect.top + rect.height / 2)) * (1 - actualSizeScale),
       )
+      onImageScaleChange?.(actualSizeScale * metrics.fitPixelRatio)
       return { scale: actualSizeScale, ...translation }
     })
-  }, [maxImageScale])
+  }, [maxImageScale, onImageScaleChange])
 
   const style = useMemo<CSSProperties>(() => ({
     transform: `translate3d(${viewport.translateX}px, ${viewport.translateY}px, 0) scale(${viewport.scale})`,
@@ -221,6 +246,7 @@ export function useCanvasViewportInteraction({
     interactive,
     dragging,
     style,
+    syncControlledScale,
     onPointerDown: interactive ? onPointerDown : undefined,
     onPointerMove: interactive ? onPointerMove : undefined,
     onPointerEnd: interactive ? onPointerEnd : undefined,

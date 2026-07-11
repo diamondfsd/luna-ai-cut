@@ -929,6 +929,7 @@ export function TripleStitchCreative() {
 
       <ExportSettingsDialog
         open={exportDialogOpen}
+        tone="dark"
         onOpenChange={setExportDialogOpen}
         description="设置导出视频的分辨率、码率和帧率"
         loading={false}

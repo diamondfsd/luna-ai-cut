@@ -1,9 +1,8 @@
-import { ArrowLeft, ClipboardCopy, ClipboardPaste, Eye, EyeOff, FileDown, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
-import { Button, ErrorBoundary, IconButton, Tooltip, toast } from '../ui'
+import { ErrorBoundary, toast } from '../ui'
 import { exportBatchFiles, type BatchExportSource } from '../components/previewStageExport'
 import { ExportSettingsDialog } from '../components/ExportSettingsDialog'
 import { isVideoPath } from '../lib/fileUtils'
@@ -15,6 +14,9 @@ import { createDefaultPipeline, mergePipeline } from '../workspace/shared/editPi
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
 import { PreviewStage } from '../components/PreviewStage'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
+import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
+import { WorkspacePreviewToolbar } from '../workspace/components/WorkspacePreviewToolbar'
+import type { WorkspaceViewScale } from '../workspace/components/WorkspacePreviewToolbar'
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
 import { WorkspaceRemoveDialog } from '../workspace/components/WorkspaceRemoveDialog'
 import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSidebar'
@@ -75,6 +77,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [exportDialogSources, setExportDialogSources] = useState<BatchExportSource[]>([])
   const [exportDialogDir, setExportDialogDir] = useState('')
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
 
   // 稳定回调，避免内联箭头函数导致 PreviewStage useEffect 循环
   const handleMediaSize = useCallback((w: number, h: number) => {
@@ -175,35 +179,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       media.setCurrentProject(nextProject)
     }, 500)
   }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, edit.pipeline, workspaceMode])
-
-  // ── 批量重置 ──
-  function handleBatchReset(): void {
-    const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
-    if (indices.size === 1) {
-      // 单个直接 reset
-      edit.resetPipeline()
-      toast.success('已重置到默认参数')
-      return
-    }
-    // 批量重置：更新项目资源
-    toast.success(`已重置 ${indices.size} 个素材到默认参数`)
-    const defaultPipe = createDefaultPipeline()
-    if (media.currentProject) {
-      const nextAssets = media.currentProject.assets.map((asset, i) =>
-        indices.has(i) ? { ...asset, pipeline: defaultPipe } : asset,
-      )
-      const nextProject = { ...media.currentProject, assets: nextAssets }
-      media.setCurrentProject(nextProject)
-      window.luna.workspace.saveProject(nextProject).catch(() => {})
-      // 如果当前素材也在重置范围内，更新编辑历史
-      if (indices.has(media.activeIndex)) {
-        edit.resetPipeline()
-      }
-    } else {
-      // transient media — 只重置当前
-      edit.resetPipeline()
-    }
-  }
 
   function handlePastePipeline(): void {
     const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
@@ -315,6 +290,21 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     } finally {
       setExportEnqueuing(false)
     }
+  }
+
+  async function handleImportAssets(assets: Parameters<typeof window.luna.workspace.addAssetsToProject>[1]): Promise<void> {
+    const existingPaths = new Set(media.media.map((asset) => asset.path))
+    const additions = assets.filter((asset) => !existingPaths.has(asset.path))
+    if (additions.length === 0) return
+    const firstNewIndex = media.media.length
+    if (media.currentProject) {
+      const project = await window.luna.workspace.addAssetsToProject(media.currentProject.id, additions)
+      media.setCurrentProject(project)
+    } else {
+      media.setTransientMedia((current) => [...current, ...additions])
+    }
+    media.setSelectedIndices(new Set([firstNewIndex]))
+    media.setActiveIndex(firstNewIndex)
   }
 
   // ── onEditingChange ──
@@ -430,6 +420,17 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         <WorkspaceCreativeFactory creativeModeId={creativeModeId ?? 'triple-stitch'} />
       ) : (
         <>
+          <WorkspacePreviewToolbar
+            hasActiveMedia={hasActiveMedia}
+            exportEnqueuing={exportEnqueuing}
+            exportableSelectionCount={exportableSelectionCount}
+            exportButtonText={exportButtonText}
+            onImport={() => setImportDialogOpen(true)}
+            onExport={() => void handleWorkspaceExport()}
+            viewScale={viewScale}
+            onViewScaleChange={setViewScale}
+          />
+
           {/* ── Rust/wgpu 预览组件 ── */}
           <PreviewStage
             url={media.activeMedia?.path ?? null}
@@ -440,64 +441,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
             onMetricsChange={canvas.setPreviewMetrics}
             onMediaSize={handleMediaSize}
             renderOverlay={() => (edit.cropActive ? <CropOverlay /> : null)}
+            viewScale={viewScale}
+            onViewScaleChange={setViewScale}
           />
 
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
           />
-
-          {/* ── Toolbar ── */}
-          <footer className="workspace-toolbar">
-            <div className="workspace-toolbar-group">
-              <Tooltip content="返回项目列表">
-                <IconButton variant="ghost" size="compact" icon={<ArrowLeft size={16} />} onClick={media.backToProjects} />
-              </Tooltip>
-              <Tooltip content="撤销">
-                <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={!edit.canUndo} onClick={edit.undo} />
-              </Tooltip>
-              <Tooltip content="重做">
-                <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={!edit.canRedo} onClick={edit.redo} />
-              </Tooltip>
-              <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={handleBatchReset}>重置</Button>
-              <div className="workspace-toolbar-divider" />
-              <Tooltip content="复制调色和水印">
-                <IconButton variant="ghost" size="compact" icon={<ClipboardCopy size={15} />} disabled={!hasActiveMedia} onClick={handleCopyPipeline} />
-              </Tooltip>
-              <Tooltip content="粘贴调色和水印到所选素材">
-                <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={15} />} disabled={!hasActiveMedia} onClick={handlePastePipeline} />
-              </Tooltip>
-              {media.brokenPaths.size > 0 && (
-                <>
-                  <div className="workspace-toolbar-divider" />
-                  <Button variant="danger" size="compact" icon={<Trash2 size={13} />} onClick={media.removeBrokenAssets}>
-                    移除 {media.brokenPaths.size} 个失效素材
-                  </Button>
-                </>
-              )}
-            </div>
-            <div className="workspace-toolbar-title">{media.currentProject?.name ?? '临时工作台'} · {media.activeIndex + 1}/{media.media.length}</div>
-            <div className="workspace-toolbar-group">
-              <Button
-                variant={edit.compareOriginal ? 'primary' : 'secondary'}
-                size="compact"
-                icon={edit.compareOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
-                onMouseDown={() => edit.setCompareOriginal(true)}
-                onMouseUp={() => edit.setCompareOriginal(false)}
-                onMouseLeave={() => edit.setCompareOriginal(false)}
-              >
-                对比
-              </Button>
-              <Button
-                variant="primary"
-                size="compact"
-                icon={<FileDown size={14} />}
-                disabled={!hasActiveMedia || exportEnqueuing || exportableSelectionCount === 0}
-                onClick={() => void handleWorkspaceExport()}
-              >
-                {exportButtonText}
-              </Button>
-            </div>
-          </footer>
 
           <WorkspaceMediaStrip />
         </>
@@ -518,8 +468,16 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         }}
       />
 
+      <WorkspaceImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        existingPaths={new Set(media.media.map((asset) => asset.path))}
+        onImport={handleImportAssets}
+      />
+
       <ExportSettingsDialog
         open={exportDialogOpen}
+        tone="dark"
         onOpenChange={setExportDialogOpen}
         description={`将导出 ${exportDialogSources.length} 个文件`}
         onConfirm={async (config) => {

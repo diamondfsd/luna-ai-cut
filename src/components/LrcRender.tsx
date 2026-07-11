@@ -42,6 +42,9 @@ export interface LrcRenderProps {
   interactiveImageLayerIndexes?: readonly number[]
   /** 最大查看比例，1 表示画布像素与屏幕 CSS 像素 1:1；默认最大 200%。 */
   maxImageScale?: number
+  /** 受控查看比例：null 表示适应窗口，1 表示画布像素与屏幕像素 1:1。 */
+  imageScale?: number | null
+  onImageScaleChange?: (scale: number | null) => void
 }
 
 interface RenderPreviewOutput {
@@ -115,6 +118,8 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     onVideoElement,
     interactiveImageLayerIndexes,
     maxImageScale = 2,
+    imageScale,
+    onImageScaleChange,
   },
   ref,
 ) {
@@ -127,6 +132,8 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     canvasRef,
     interactiveImageLayerIndexes,
     maxImageScale,
+    imageScale,
+    onImageScaleChange,
   })
   const layersRef = useRef<PreviewLayer[]>(layers)
   const videosRef = useRef<Map<string, HTMLVideoElement>>(new Map())
@@ -212,6 +219,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       if (!context) throw new Error('画布不可用')
       const pixelData = bytesFromRenderData(result.data)
       context.putImageData(new ImageData(pixelData as unknown as Uint8ClampedArray, result.width, result.height), 0, 0)
+      imageInteraction.syncControlledScale()
 
       // 计算 seek 到渲染完成的耗时
       if (seekStartTimeRef.current !== null) {
@@ -381,6 +389,8 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     prevProps.maxSide === nextProps.maxSide &&
     prevProps.className === nextProps.className &&
     prevProps.maxImageScale === nextProps.maxImageScale &&
+    prevProps.imageScale === nextProps.imageScale &&
+    prevProps.onImageScaleChange === nextProps.onImageScaleChange &&
     JSON.stringify(prevProps.interactiveImageLayerIndexes) === JSON.stringify(nextProps.interactiveImageLayerIndexes) &&
     layersEqual(prevProps.layers, nextProps.layers)
   )

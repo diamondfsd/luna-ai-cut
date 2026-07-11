@@ -20,6 +20,7 @@ export function WorkspaceRemoveDialog({
   return (
     <Dialog
       open={open}
+      tone="dark"
       onOpenChange={onOpenChange}
       title={multiple ? `移除 ${selectedCount} 个素材` : '移除此素材'}
       description={

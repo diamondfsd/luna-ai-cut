@@ -1,0 +1,51 @@
+.workspace-layout.workspace-layout {
+  grid-template-rows: 48px minmax(0, 1fr) 118px;
+}
+
+.workspace-layout > .workspace-toolbar {
+  grid-column: 1;
+  grid-row: 1;
+  border-top: 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.workspace-layout > .preview-stage {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.workspace-toolbar-actions {
+  justify-content: flex-end;
+}
+
+.workspace-toolbar-left,
+.workspace-toolbar-actions {
+  min-width: 0;
+}
+
+.workspace-toolbar .ui-btn-utility {
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  background: #292929;
+  color: #ddd;
+}
+
+.workspace-zoom-control {
+  display: flex;
+  align-items: center;
+  justify-self: center;
+  height: 34px;
+  padding: 0 5px;
+  border: 1px solid #383838;
+  border-radius: 8px;
+  background: #242424;
+  color: #ddd;
+}
+
+.workspace-zoom-control > span {
+  min-width: 48px;
+  color: #ddd;
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

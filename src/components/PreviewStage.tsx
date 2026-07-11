@@ -18,6 +18,8 @@ interface PreviewStageProps {
   onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void
   onMediaSize?: (width: number, height: number) => void
   renderOverlay?: () => ReactNode
+  viewScale?: 'fit' | number
+  onViewScaleChange?: (scale: 'fit' | number) => void
 }
 
 export interface MediaResolution {
@@ -88,7 +90,7 @@ function projectCanvasFor(resolution: MediaResolution | null, fullResolution = f
 }
 
 export function PreviewStage(
-  { url, pending = false, extraLayers, pipeline, cropActive, onMetricsChange, onMediaSize, renderOverlay }: PreviewStageProps,
+  { url, pending = false, extraLayers, pipeline, cropActive, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange }: PreviewStageProps,
 ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
@@ -361,7 +363,7 @@ export function PreviewStage(
         },
       })
     }
-  }, [onMetricsChange, layers, resolution])
+  }, [onMetricsChange, layers, resolution, viewScale])
 
   if (!displayUrl && layers.length === 0) return null
 
@@ -390,6 +392,8 @@ export function PreviewStage(
               canvasHeight={previewCanvas?.height}
               maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}
               interactiveImageLayerIndexes={cropActive ? [] : undefined}
+              imageScale={viewScale === 'fit' ? null : viewScale / 100}
+              onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
             />

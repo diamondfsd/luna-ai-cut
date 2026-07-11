@@ -60,6 +60,8 @@ export interface DialogProps {
    * - `'fullscreen'`：全屏弹窗，由内容自行管理布局（用于 PreviewModal）
    */
   variant?: 'dialog' | 'fullscreen'
+  /** 主体色调；工作台弹窗统一使用 dark。 */
+  tone?: 'default' | 'dark'
   /**
    * 点击遮罩层（蒙层）是否关闭弹窗
    * @default true
@@ -78,6 +80,7 @@ export function Dialog({
   footer,
   className,
   variant = 'dialog',
+  tone = 'default',
   closeOnMaskClick = true,
 }: DialogProps) {
   const zRef = useRef<{ id: string; zIndex: number } | null>(null)
@@ -122,7 +125,7 @@ export function Dialog({
       <RadixDialog.Portal>
         <DialogOverlay style={{ zIndex: oZ }} />
         <RadixDialog.Content
-          className={`ui-dialog-content ${isFullscreen ? 'ui-dialog-fullscreen' : ''} ${className ?? ''}`}
+          className={`ui-dialog-content ${isFullscreen ? 'ui-dialog-fullscreen' : ''} ${tone === 'dark' ? 'ui-dialog-dark' : ''} ${className ?? ''}`}
           style={{ zIndex: cZ }}
           onInteractOutside={closeOnMaskClick ? undefined : (e) => e.preventDefault()}
         >
