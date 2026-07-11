@@ -27,11 +27,13 @@ unsafe extern "C" {
     fn luna_av_decoder_create(
         path: *const c_char,
         d3d12_device: *mut c_void,
+        max_decode_edge: u32,
         error_buffer: *mut c_char,
         error_length: usize,
     ) -> *mut c_void;
 
     fn luna_av_decoder_destroy(decoder: *mut c_void);
+    fn luna_av_decoder_get_rotation(decoder: *mut c_void) -> i32;
 
     fn luna_av_decoder_frame(
         decoder: *mut c_void,
@@ -106,20 +108,28 @@ struct Decoder {
 }
 
 struct DecodedFrame {
-    _holder: *mut c_void, // FrameHolder* — freed on drop via luna_av_frame_destroy
-    rgba: Vec<u8>,
+    _holder: *mut c_void,     // FrameBase* — freed on drop via luna_av_frame_destroy
+    d3d_texture: *mut c_void, // ID3D12Resource* (v3 GPU zero-copy) or null
+    rgba: Vec<u8>,            // CPU data (empty when GPU path used)
     width: u32,
     height: u32,
 }
 
+impl DecodedFrame {
+    fn is_gpu_texture(&self) -> bool {
+        !self.d3d_texture.is_null()
+    }
+}
+
 impl Decoder {
-    fn new(path: &str, d3d12_device: *mut c_void) -> Result<Self, String> {
+    fn new(path: &str, d3d12_device: *mut c_void, max_decode_edge: u32) -> Result<Self, String> {
         let path_c = c_path(path)?;
         let mut error = error_buffer();
         let raw = unsafe {
             luna_av_decoder_create(
                 path_c.as_ptr(),
                 d3d12_device,
+                max_decode_edge,
                 error.as_mut_ptr(),
                 error.len(),
             )
@@ -131,6 +141,10 @@ impl Decoder {
         }
     }
 
+    fn rotation_degrees(&self) -> i32 {
+        unsafe { luna_av_decoder_get_rotation(self.raw) }
+    }
+
     fn frame(&mut self, time: f64) -> Result<Option<DecodedFrame>, String> {
         let mut raw = LunaAvFrameRaw::default();
         let mut error = error_buffer();
@@ -138,25 +152,44 @@ impl Decoder {
             luna_av_decoder_frame(self.raw, time, &mut raw, error.as_mut_ptr(), error.len())
         };
         if success {
-            if raw.rgba_data.is_null() || raw.width == 0 || raw.height == 0 {
+            if raw.width == 0 || raw.height == 0 {
                 if !raw.handle.is_null() {
                     unsafe { luna_av_frame_destroy(raw.handle) };
                 }
                 return Ok(None);
             }
-            let len = (raw.width as usize)
-                .checked_mul(raw.height as usize)
-                .and_then(|p| p.checked_mul(4))
-                .unwrap_or(0);
-            let rgba = unsafe {
-                std::slice::from_raw_parts(raw.rgba_data as *const u8, len).to_vec()
-            };
-            Ok(Some(DecodedFrame {
-                _holder: raw.handle,
-                rgba,
-                width: raw.width,
-                height: raw.height,
-            }))
+            // GPU zero-copy path (v3): D3D12 texture from D3D11On12
+            if !raw.d3d_texture.is_null() {
+                return Ok(Some(DecodedFrame {
+                    _holder: raw.handle,
+                    d3d_texture: raw.d3d_texture,
+                    rgba: Vec::new(),
+                    width: raw.width,
+                    height: raw.height,
+                }));
+            }
+            // CPU fallback path (v2): RGBA data pointer
+            if !raw.rgba_data.is_null() {
+                let len = (raw.width as usize)
+                    .checked_mul(raw.height as usize)
+                    .and_then(|p| p.checked_mul(4))
+                    .unwrap_or(0);
+                let rgba = unsafe {
+                    std::slice::from_raw_parts(raw.rgba_data as *const u8, len).to_vec()
+                };
+                return Ok(Some(DecodedFrame {
+                    _holder: raw.handle,
+                    d3d_texture: std::ptr::null_mut(),
+                    rgba,
+                    width: raw.width,
+                    height: raw.height,
+                }));
+            }
+            // Neither GPU nor CPU data — empty frame
+            if !raw.handle.is_null() {
+                unsafe { luna_av_frame_destroy(raw.handle) };
+            }
+            Ok(None)
         } else if error.first().copied().unwrap_or_default() == 0 {
             Ok(None)
         } else {
@@ -365,23 +398,52 @@ pub(crate) fn export_video(
         let mut decoded_frames: Vec<DecodedFrame> = Vec::new();
 
         // ── Decode & upload source layers ──
-        for layer in layer_inputs {
+        for (layer_idx, mut layer) in layer_inputs.into_iter().enumerate() {
             let (texture_id, width, height) = if layer.is_video {
-                let decoder = match decoders.entry(layer.file_path.clone()) {
+                // 每个槽位独立 Decoder：用 file_path + 槽位索引作为 key
+                let decoder_key = format!("{}@slot{}", layer.file_path, layer_idx);
+                let decoder = match decoders.entry(decoder_key) {
                     std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
                     std::collections::hash_map::Entry::Vacant(entry) => {
-                        entry.insert(Decoder::new(&layer.file_path, d3d12_device)?)
+                        let display_w = (layer.dst_w.abs() * composition.canvas.width as f64).ceil() as u32;
+                        let display_h = (layer.dst_h.abs() * composition.canvas.height as f64).ceil() as u32;
+                        let decode_max_side = display_w.max(display_h).max(360);
+                        entry.insert(Decoder::new(&layer.file_path, d3d12_device, decode_max_side)?)
                     }
                 };
+
+                // 同步视频旋转信息到 layer transform
+                let rotation = decoder.rotation_degrees();
+                if rotation != 0 && layer.transform.orientation == 0.0 {
+                    layer.transform.orientation = rotation as f64;
+                }
                 let Some(decoded) = decoder.frame(layer.video_time)? else {
                     continue;
                 };
-                let texture_id =
-                    compositor.load_texture(&decoded.rgba, decoded.width, decoded.height)?;
-                transient_texture_ids.push(texture_id);
-                let result = (texture_id, decoded.width, decoded.height);
+                let (texture_id, tex_w, tex_h) = if decoded.is_gpu_texture() {
+                    // v3 GPU zero-copy: wrap D3D12 texture directly as wgpu texture
+                    let texture = unsafe {
+                        compositor.wrap_external_d3d12_texture(
+                            decoded.d3d_texture,
+                            decoded.width,
+                            decoded.height,
+                            wgpu::TextureUsages::TEXTURE_BINDING,
+                            true,
+                        )?
+                    };
+                    let tid = compositor.register_external_texture(
+                        texture, decoded.width, decoded.height);
+                    transient_texture_ids.push(tid);
+                    (tid, decoded.width, decoded.height)
+                } else {
+                    // CPU fallback: upload RGBA bytes
+                    let tid = compositor.load_texture(
+                        &decoded.rgba, decoded.width, decoded.height)?;
+                    transient_texture_ids.push(tid);
+                    (tid, decoded.width, decoded.height)
+                };
                 decoded_frames.push(decoded);
-                result
+                (texture_id, tex_w, tex_h)
             } else if let Some(cached) = static_textures.get(&layer.file_path).copied() {
                 cached
             } else {
