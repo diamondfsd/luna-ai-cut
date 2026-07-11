@@ -79,6 +79,15 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
 
+  // 进入项目后如果没有任何素材，自动打开导入弹窗
+  const autoImportTriggeredRef = useRef(false)
+  useEffect(() => {
+    if (media.currentProject && media.media.length === 0 && !autoImportTriggeredRef.current) {
+      autoImportTriggeredRef.current = true
+      setImportDialogOpen(true)
+    }
+  }, [media.currentProject, media.media.length])
+
   // 稳定回调，避免内联箭头函数导致 PreviewStage useEffect 循环
   const handleMediaSize = useCallback((w: number, h: number) => {
     setMediaSize((prev) => {
