@@ -118,7 +118,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   const [internalSettings, setInternalSettings] = useState<WatermarkSettingsType>({
     enabled: true,
     style: 'luna_ultra_cn',
-    position: 'BottomCenter' as WatermarkSettingsType['position'],
+    position: 'bottom-center',
   })
   const currentSettings = settings ?? internalSettings
   const [resolvedMediaSize, setResolvedMediaSize] = useState<{ w: number; h: number } | null>(null)
