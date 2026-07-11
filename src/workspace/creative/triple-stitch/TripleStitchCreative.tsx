@@ -528,29 +528,36 @@ export function TripleStitchCreative() {
 
       const api = compositionApi()
 
+      // 是否需要中间视频（供 Live Photo 使用）
+      const needVideoForLive = (exportFormats.has('live') || exportFormats.has('appleLive')) && !exportFormats.has('video')
+      const videoTaskId = `triple_stitch_video_${stamp}`
+      const videoExported = exportFormats.has('video') || needVideoForLive
+
       // 导出格式定义
-      const FORMAT_DEFS = [
-        { key: 'video' as ExportFormat, id: `triple_stitch_video_${stamp}`, outputPath: videoPath, label: '视频' },
+      const FORMAT_DEFS: Array<{ key: ExportFormat; id: string; outputPath: string; label: string }> = [
+        { key: 'video', id: videoTaskId, outputPath: videoPath, label: '视频' },
         { key: 'live' as ExportFormat, id: `triple_stitch_live_${stamp}`, outputPath: outputPath(settings.exportDir, `${baseName}_live.jpg`), label: 'Live' },
         { key: 'appleLive' as ExportFormat, id: `triple_stitch_appleLive_${stamp}`, outputPath: outputPath(settings.exportDir, `${baseName}_appleLive.jpg`), label: 'Apple Live' },
       ]
 
-      // 构建子任务列表
+      // 构建子任务列表：Live Photo 需要中间视频，无论用户是否勾选"视频"
       const items = FORMAT_DEFS
-        .filter((f) => exportFormats.has(f.key))
+        .filter((f) => f.key === 'video' ? videoExported : exportFormats.has(f.key))
         .map((f) => ({ id: f.id, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: f.outputPath, label: f.label }))
 
       const task = await window.luna.exportTask.create('三拼创意导出', items)
 
-      // Step 1: 导出视频
-      await api.exportCompositionVideo(
-        videoPath, scaledComposition, resolved.fps, EXPORT_DURATION,
-        true,
-        exportFormats.has('video') ? `triple_stitch_video_${stamp}` : undefined,
-        resolved.qualityPreset,
-        task.id,
-        exportFormats.has('video') ? `triple_stitch_video_${stamp}` : undefined,
-      )
+      // Step 1: 导出视频（Live Photo 需要中间视频作为素材）
+      if (videoExported) {
+        await api.exportCompositionVideo(
+          videoPath, scaledComposition, resolved.fps, EXPORT_DURATION,
+          true,
+          videoTaskId,
+          resolved.qualityPreset,
+          task.id,
+          videoTaskId,
+        )
+      }
 
       // Step 2: 导出 Live 图 / Apple Live 图
       // 注意：exportRenderedLivePhoto 会删除输入的 image/video 文件，
