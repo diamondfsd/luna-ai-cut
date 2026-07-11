@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
-import { WM_SRC, watermarkStyleOptionsForDevice } from '../shared/watermarkAssets'
+import { WM_SRC, watermarkStyleOptionsForDevice, getCachedWatermarkPath } from '../shared/watermarkAssets'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
 import type { PreviewLayer, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
@@ -21,7 +21,7 @@ function positioningForOrient(isLandscape: boolean, anchor: WatermarkPositioning
  */
 export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, isLandscape: boolean): PreviewLayer | null {
   if (!settings.enabled) return null
-  const filePath = settings.imagePath || WM_SRC[settings.style]?.image
+  const filePath = settings.imagePath || getCachedWatermarkPath(settings.style)
   if (!filePath) return null
   const positioning = positioningForOrient(isLandscape, settings.position)
   console.log('[WatermarkStaticLayer] build', { filePath, style: settings.style, isLandscape, positioning })
