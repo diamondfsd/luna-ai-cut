@@ -195,6 +195,12 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
     if (activeIndex >= nextAssets.length) setActiveIndex(Math.max(0, nextAssets.length - 1))
   }, [activeIndex, brokenPaths, currentProject])
 
+  const createProject = useCallback(async (name: string) => {
+    const project = await window.luna.workspace.createProject(name, [])
+    setProjects((prev) => [...prev, project])
+    openProject(project)
+  }, [openProject])
+
   const deleteProject = useCallback(async (projectId: string) => {
     await window.luna.workspace.deleteProject(projectId)
     setProjects((prev) => prev.filter((p) => p.id !== projectId))
@@ -229,6 +235,7 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
     removeMedia,
     removeSelected,
     removeBrokenAssets,
+    createProject,
     deleteProject,
     renameProject,
   }
