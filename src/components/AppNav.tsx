@@ -2,7 +2,6 @@ import { MonitorCog } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
-import { useApp } from '../context/AppContext'
 import { useExportProgress } from '../context/ExportProgressContext'
 import { ExportProgressModal } from './ExportProgressModal'
 import { HelpDialog } from './HelpDialog'
@@ -21,7 +20,6 @@ interface AppNavProps {
 }
 
 export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode, workspaceMode, creativeModeId, onModeChange, onCreativeModeChange }: AppNavProps) {
-  const { hiddenDevMode } = useApp()
   const { exportProgress } = useExportProgress()
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'

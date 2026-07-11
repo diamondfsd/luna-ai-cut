@@ -59,7 +59,7 @@ export function defaultWatermarkStyleForDevice(params: Parameters<typeof inferDe
   return inferDeviceProfile(params)?.defaultWatermarkStyle ?? 'luna_ultra_cn'
 }
 
-export function concreteWatermarkStyle(style: string, _params: Parameters<typeof inferDeviceProfile>[0]): string {
+export function concreteWatermarkStyle(style: string): string {
   return style
 }
 

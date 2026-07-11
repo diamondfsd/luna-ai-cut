@@ -74,7 +74,7 @@ export function WorkspaceMediaStrip() {
     setDragHighlighted(highlighted)
   }
 
-  function handlePointerUp(_e: React.PointerEvent): void {
+  function handlePointerUp(): void {
     if (!dragStartRef.current) return
     dragStartRef.current = null
     setDragRect(null)

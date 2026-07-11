@@ -10,7 +10,7 @@ import { ColorPanel } from '../color/ColorPanel'
 import { FilterPanel } from '../lut/FilterPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
-import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
+import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
 import type { EditPipeline } from '../shared/editPipeline'
 
 export type WorkspaceTool = 'color' | 'crop' | 'watermark' | 'filter'
@@ -103,7 +103,7 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
 
   // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
   const handleWatermarkChange = useMemo(
-    () => (watermarkSettings: WatermarkSettingsType, _layer?: PreviewLayer) => {
+    () => (watermarkSettings: WatermarkSettingsType) => {
       edit.commitPatch({ watermark: watermarkSettings as EditPipeline['watermark'] })
     },
     [edit.commitPatch],

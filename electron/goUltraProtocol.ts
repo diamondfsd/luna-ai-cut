@@ -37,6 +37,7 @@ function bufToB64(buf: Buffer): string {
 /** 格式化数据日志：非二进制数据直接显示，二进制转 base64 + 长度 */
 function fmtData(label: string, buf: Buffer): Record<string, unknown> {
   // 尝试检测是否可读文本
+  // eslint-disable-next-line no-control-regex
   const preview = buf.subarray(0, 64).toString('utf8').replace(/[\x00-\x1f]/g, '.')
   const isText = buf.length > 0 && buf.length <= 256 && /^[\x20-\x7e\n\r\t.]+$/.test(preview)
   if (isText && buf.length <= 256) {
