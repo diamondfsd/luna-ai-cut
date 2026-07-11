@@ -20,10 +20,11 @@ function positioningForOrient(isLandscape: boolean, anchor: WatermarkPositioning
  * 构建水印 PreviewLayer
  */
 export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, isLandscape: boolean): PreviewLayer | null {
-  if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
-  const { imagePath: filePath } = settings
+  if (!settings.enabled) return null
+  const filePath = settings.imagePath || WM_SRC[settings.style]?.image
+  if (!filePath) return null
   const positioning = positioningForOrient(isLandscape, settings.position)
-  console.log('[WatermarkStaticLayer] build', { filePath, wmAspect: settings.wmAspect, isLandscape, positioning })
+  console.log('[WatermarkStaticLayer] build', { filePath, style: settings.style, isLandscape, positioning })
   return {
     filePath,
     dstX: 0, dstY: 0, dstW: 1, dstH: 1,
@@ -38,7 +39,7 @@ export function buildResolvedWatermarkStaticLayer(
   width: number,
   height: number,
 ): PreviewLayer | null {
-  if (!settings.enabled || !settings.imagePath || !settings.wmAspect) return null
+  if (!settings.enabled) return null
   return buildWatermarkStaticLayer(settings, width >= height)
 }
 
@@ -208,9 +209,8 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     const enriched: WatermarkSettingsType = {
       ...next,
       imagePath: info?.filePath,
-      wmAspect: info ? info.width / info.height : undefined,
     }
-    const layer = enriched.imagePath && enriched.wmAspect
+    const layer = enriched.imagePath
       ? buildWatermarkStaticLayer(enriched, isLandscape)
       : undefined
     console.log('[WatermarkSettings] computed layer', {
@@ -220,7 +220,6 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       position: next.position,
       isLandscape,
       watermarkSize: info ? `${info.width}x${info.height}` : null,
-      wmAspect: enriched.wmAspect,
       layer,
     })
     setInternalSettings(enriched)

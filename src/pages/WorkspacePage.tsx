@@ -104,7 +104,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   // ── 从 pipeline 水印设置自动生成预览层 ──
   const watermarkLayer = useMemo(() => {
     const wm = edit.pipeline.watermark
-    if (!wm?.enabled || !wm?.imagePath || !wm.wmAspect) return []
+    if (!wm?.enabled) return []
     if (!watermarkMediaSize) return []
     const layer = buildResolvedWatermarkStaticLayer(wm, watermarkMediaSize.w, watermarkMediaSize.h)
     console.log('[WorkspacePage] watermark preview layer', {
