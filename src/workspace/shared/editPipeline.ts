@@ -299,6 +299,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
 
   return {
     ...pipeline,
+    watermark: { ...DEFAULT_PIPELINE.watermark, ...(pipeline.watermark ?? {}) },
     color: {
       ...pipeline.color,
       whiteBalanceMode: ['custom', 'daylight', 'cloudy', 'indoor'].includes(pipeline.color.whiteBalanceMode) ? pipeline.color.whiteBalanceMode : 'custom',

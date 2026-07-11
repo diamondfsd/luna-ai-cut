@@ -6,20 +6,20 @@ import type { WorkspaceMediaAsset, WorkspaceProject } from '../src/shared/types'
 const PROJECTS_DIR = 'workspace-projects'
 const PROJECT_FILE = 'project.json'
 
-function projectRoot(localResourcesDir: string): string {
-  return path.join(localResourcesDir, PROJECTS_DIR)
+function projectRoot(downloadDir: string): string {
+  return path.join(downloadDir, PROJECTS_DIR)
 }
 
 function safeDirName(value: string): string {
   return value.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'project'
 }
 
-function projectDir(localResourcesDir: string, id: string): string {
-  return path.join(projectRoot(localResourcesDir), id)
+function projectDir(downloadDir: string, id: string): string {
+  return path.join(projectRoot(downloadDir), id)
 }
 
-function projectJsonPath(localResourcesDir: string, id: string): string {
-  return path.join(projectDir(localResourcesDir, id), PROJECT_FILE)
+function projectJsonPath(downloadDir: string, id: string): string {
+  return path.join(projectDir(downloadDir, id), PROJECT_FILE)
 }
 
 function createId(name: string): string {
@@ -44,19 +44,19 @@ async function readProject(filePath: string): Promise<WorkspaceProject | null> {
   }
 }
 
-async function writeProject(localResourcesDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
-  await fs.mkdir(projectDir(localResourcesDir, project.id), { recursive: true })
-  await fs.writeFile(projectJsonPath(localResourcesDir, project.id), JSON.stringify(project, null, 2), 'utf8')
+async function writeProject(downloadDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
+  await fs.mkdir(projectDir(downloadDir, project.id), { recursive: true })
+  await fs.writeFile(projectJsonPath(downloadDir, project.id), JSON.stringify(project, null, 2), 'utf8')
   return project
 }
 
-export async function listWorkspaceProjects(localResourcesDir: string): Promise<WorkspaceProject[]> {
+export async function listWorkspaceProjects(downloadDir: string): Promise<WorkspaceProject[]> {
   try {
-    const entries = await fs.readdir(projectRoot(localResourcesDir), { withFileTypes: true })
+    const entries = await fs.readdir(projectRoot(downloadDir), { withFileTypes: true })
     const projects = await Promise.all(
       entries
         .filter((entry) => entry.isDirectory())
-        .map((entry) => readProject(projectJsonPath(localResourcesDir, entry.name))),
+        .map((entry) => readProject(projectJsonPath(downloadDir, entry.name))),
     )
     return projects
       .filter((project): project is WorkspaceProject => Boolean(project))
@@ -67,7 +67,7 @@ export async function listWorkspaceProjects(localResourcesDir: string): Promise<
 }
 
 export async function createWorkspaceProject(
-  localResourcesDir: string,
+  downloadDir: string,
   name: string,
   assets: WorkspaceMediaAsset[],
 ): Promise<WorkspaceProject> {
@@ -76,54 +76,54 @@ export async function createWorkspaceProject(
   const project: WorkspaceProject = {
     id,
     name: name.trim() || '未命名项目',
-    dir: projectDir(localResourcesDir, id),
+    dir: projectDir(downloadDir, id),
     createdAt: now,
     updatedAt: now,
     assets: dedupeAssets([], assets),
   }
-  return writeProject(localResourcesDir, project)
+  return writeProject(downloadDir, project)
 }
 
 export async function addAssetsToWorkspaceProject(
-  localResourcesDir: string,
+  downloadDir: string,
   projectId: string,
   assets: WorkspaceMediaAsset[],
 ): Promise<WorkspaceProject> {
-  const project = await readProject(projectJsonPath(localResourcesDir, projectId))
+  const project = await readProject(projectJsonPath(downloadDir, projectId))
   if (!project) throw new Error('项目不存在')
   const next: WorkspaceProject = {
     ...project,
     updatedAt: new Date().toISOString(),
     assets: dedupeAssets(project.assets, assets),
   }
-  return writeProject(localResourcesDir, next)
+  return writeProject(downloadDir, next)
 }
 
-export async function saveWorkspaceProject(localResourcesDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
+export async function saveWorkspaceProject(downloadDir: string, project: WorkspaceProject): Promise<WorkspaceProject> {
   const next = {
     ...project,
-    dir: projectDir(localResourcesDir, project.id),
+    dir: projectDir(downloadDir, project.id),
     updatedAt: new Date().toISOString(),
   }
-  return writeProject(localResourcesDir, next)
+  return writeProject(downloadDir, next)
 }
 
-export async function deleteWorkspaceProject(localResourcesDir: string, projectId: string): Promise<void> {
-  const dir = projectDir(localResourcesDir, projectId)
+export async function deleteWorkspaceProject(downloadDir: string, projectId: string): Promise<void> {
+  const dir = projectDir(downloadDir, projectId)
   await fs.rm(dir, { recursive: true, force: true })
 }
 
 export async function renameWorkspaceProject(
-  localResourcesDir: string,
+  downloadDir: string,
   projectId: string,
   newName: string,
 ): Promise<WorkspaceProject> {
-  const project = await readProject(projectJsonPath(localResourcesDir, projectId))
+  const project = await readProject(projectJsonPath(downloadDir, projectId))
   if (!project) throw new Error('项目不存在')
   const next: WorkspaceProject = {
     ...project,
     name: newName.trim() || project.name,
     updatedAt: new Date().toISOString(),
   }
-  return writeProject(localResourcesDir, next)
+  return writeProject(downloadDir, next)
 }

@@ -7,7 +7,7 @@ import { promisify } from 'node:util'
 import type { WorkspaceMediaAsset, WorkspaceProject } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import probe from 'probe-image-size'
-import { getLocalResourcesDir, getSettings } from './fileService'
+import { getSettings } from './fileService'
 import { safeName } from './filePathUtils'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import type { IpcContext } from './ipcContext'
@@ -147,32 +147,32 @@ export function register(_ctx: IpcContext): void {
 
   ipcMain.handle('workspace:listProjects', async () => {
     const settings = await getSettings()
-    return listWorkspaceProjects(getLocalResourcesDir(settings))
+    return listWorkspaceProjects(settings.downloadDir)
   })
 
   ipcMain.handle('workspace:createProject', async (_event, name: string, assets: WorkspaceMediaAsset[]) => {
     const settings = await getSettings()
-    return createWorkspaceProject(getLocalResourcesDir(settings), name, assets)
+    return createWorkspaceProject(settings.downloadDir, name, assets)
   })
 
   ipcMain.handle('workspace:addAssetsToProject', async (_event, projectId: string, assets: WorkspaceMediaAsset[]) => {
     const settings = await getSettings()
-    return addAssetsToWorkspaceProject(getLocalResourcesDir(settings), projectId, assets)
+    return addAssetsToWorkspaceProject(settings.downloadDir, projectId, assets)
   })
 
   ipcMain.handle('workspace:saveProject', async (_event, project: WorkspaceProject) => {
     const settings = await getSettings()
-    return saveWorkspaceProject(getLocalResourcesDir(settings), project)
+    return saveWorkspaceProject(settings.downloadDir, project)
   })
 
   ipcMain.handle('workspace:deleteProject', async (_event, projectId: string) => {
     const settings = await getSettings()
-    return deleteWorkspaceProject(getLocalResourcesDir(settings), projectId)
+    return deleteWorkspaceProject(settings.downloadDir, projectId)
   })
 
   ipcMain.handle('workspace:renameProject', async (_event, projectId: string, newName: string) => {
     const settings = await getSettings()
-    return renameWorkspaceProject(getLocalResourcesDir(settings), projectId, newName)
+    return renameWorkspaceProject(settings.downloadDir, projectId, newName)
   })
 
   ipcMain.handle('workspace:copyFile', async (_event, sourcePath: string) => {
