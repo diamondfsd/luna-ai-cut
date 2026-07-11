@@ -44,7 +44,7 @@ function metadataVariables(metadata: MediaMetadata | null, title: string): Recor
     iso: values.get('ISO') ?? '—',
     date: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('zh-CN') : '',
     location: values.get('Location') ?? values.get('GPSPosition') ?? '',
-    title: title.trim() || 'UNTITLED',
+    title: title.trim() || 'Insta360',
     sequence: '01',
   }
 }
