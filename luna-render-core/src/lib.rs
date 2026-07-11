@@ -226,7 +226,7 @@ pub struct RenderLayer {
     pub layer_type: Option<String>,
     pub shape: Option<String>, pub fill_color: Option<String>, pub corner_radius: Option<f64>,
     pub stroke_color: Option<String>, pub stroke_width: Option<f64>, pub content: Option<String>,
-    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>,
+    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>, pub vertical_align: Option<String>,
     pub fit: Option<String>,
     pub dst_x: f64,
     pub dst_y: f64,
@@ -270,7 +270,7 @@ pub struct PreviewLayer {
     pub lut_intensity: Option<f64>,
     pub shape: Option<String>, pub fill_color: Option<String>, pub corner_radius: Option<f64>,
     pub stroke_color: Option<String>, pub stroke_width: Option<f64>, pub content: Option<String>,
-    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>,
+    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>, pub vertical_align: Option<String>,
 }
 
 /// render_preview 的输入
@@ -434,7 +434,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             lut_intensity: l.lut_intensity,
             shape: l.shape.clone(), fill_color: l.fill_color.clone(), corner_radius: l.corner_radius,
             stroke_color: l.stroke_color.clone(), stroke_width: l.stroke_width, content: l.content.clone(),
-            font_size: l.font_size, font_family: l.font_family.clone(), font_file: l.font_file.clone(), font_weight: l.font_weight, text_color: l.text_color.clone(), text_align: l.text_align.clone(),
+            font_size: l.font_size, font_family: l.font_family.clone(), font_file: l.font_file.clone(), font_weight: l.font_weight, text_color: l.text_color.clone(), text_align: l.text_align.clone(), vertical_align: l.vertical_align.clone(),
         })
         .collect();
     lock_preview(|c| {
@@ -490,7 +490,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     lut_intensity: item.layer.lut_intensity,
                     shape: item.layer.shape.clone(), fill_color: item.layer.fill_color.clone(), corner_radius: item.layer.corner_radius,
                     stroke_color: item.layer.stroke_color.clone(), stroke_width: item.layer.stroke_width, content: item.layer.content.clone(),
-                    font_size: item.layer.font_size, font_family: item.layer.font_family.clone(), font_file: item.layer.font_file.clone(), font_weight: item.layer.font_weight, text_color: item.layer.text_color.clone(), text_align: item.layer.text_align.clone(),
+                    font_size: item.layer.font_size, font_family: item.layer.font_family.clone(), font_file: item.layer.font_file.clone(), font_weight: item.layer.font_weight, text_color: item.layer.text_color.clone(), text_align: item.layer.text_align.clone(), vertical_align: item.layer.vertical_align.clone(),
                 },
                 compositor::PreviewTextureInfo {
                     texture_id: item.texture.texture_id,

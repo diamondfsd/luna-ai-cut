@@ -117,6 +117,7 @@ export interface PreviewLayer {
   fontWeight?: number
   textColor?: string
   textAlign?: 'left' | 'center' | 'right'
+  verticalAlign?: 'top' | 'middle' | 'bottom'
 }
 
 export interface CompositionInput {
@@ -166,6 +167,7 @@ export interface CompositionLayer {
   fontWeight?: number
   textColor?: string
   textAlign?: 'left' | 'center' | 'right'
+  verticalAlign?: 'top' | 'middle' | 'bottom'
 }
 
 /** 纹理层 */
