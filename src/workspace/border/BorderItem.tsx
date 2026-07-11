@@ -38,7 +38,7 @@ async function renderBorderThumb(
       showTitle: true,
       showCameraInfo: true,
       showDate: false,
-      title: 'Insta360',
+      title: '',
     },
     metadata: null,
   })

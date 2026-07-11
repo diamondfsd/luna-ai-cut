@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, forwardRef, memo } from 'react'
+import { useEffect, useRef, useState, forwardRef, memo, useImperativeHandle } from 'react'
 import type { PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { COMPOSITION_RENDER_FPS } from './renderComposition'
@@ -117,6 +117,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
       { layers, className, canvasWidth, canvasHeight, playing = false, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes },
+      ref,
     ) {
       const outputCanvasRef = useRef<HTMLCanvasElement>(null)
       const lrcRef = useRef<LunaRenderCore | null>(null)
@@ -225,6 +226,12 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           textureVersionRef.current++
         }
       }, [])
+
+      // ── 暴露 ref 方法给父组件 ──
+      useImperativeHandle(ref, () => ({
+        scheduleRender: () => { if (readyRef.current) void renderFrame() },
+        setLayers: (newLayers: PreviewLayer[]) => { layersRef.current = newLayers },
+      }), [])
 
       // ── 管理视频元素 ──
       useEffect(() => {
@@ -655,14 +662,14 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         return () => cancelAnimationFrame(rafRef.current)
       }, [ready])
 
-      // ── layers 变化时立即触发一次渲染 ──
+      // ── layers 变化时触发一次渲染（仅依赖 ready，避免父组件渲染连锁） ──
+      // renderFrame 内部通过 layersRef.current 读取最新 layers，不受闭包影响。
+      // 30fps 渲染循环已覆盖持续更新场景，这里仅处理首次就绪后的渲染。
       useEffect(() => {
         if (!ready) return
-        const t0 = performance.now()
-        perfLog(`layers change trigger at ${(t0 - (window as any).__perfStart).toFixed(0)}ms`)
-        const timer = setTimeout(() => void renderFrame(), 16)
-        return () => clearTimeout(timer)
-      }, [ready, layers])
+        void renderFrame()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [ready])
 
       // ── 错误状态 UI ──
       if (fatalError) {
