@@ -22,6 +22,11 @@
     {
       "from": "luna-render-core/luna-render-core.node",
       "to": "luna-render-core/luna-render-core.node"
+    },
+    {
+      "from": "src/assets/logos",
+      "to": "logos",
+      "filter": ["**/*.png"]
     }
   ],
   "mac": {

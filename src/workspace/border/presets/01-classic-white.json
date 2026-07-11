@@ -1,0 +1,5 @@
+{"id":"classic-white","name":"经典白边","category":"minimal","description":"干净明亮的相机信息条","swatch":"#f7f6f2","layers":[
+  {"id":"background","type":"shape","shape":"rectangle","rect":{"x":0,"y":0.88,"w":1,"h":0.12},"fill":{"type":"solid","color":"#F7F6F2"},"zIndex":20},
+  {"id":"brand","type":"logo","rect":{"x":0.035,"y":0.91,"w":0.2,"h":0.05},"source":{"path":"logo_standard_black","format":"png"},"fit":"contain","zIndex":21},
+  {"id":"meta","type":"text","rect":{"x":0.43,"y":0.91,"w":0.535,"h":0.05},"content":"{{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}} · {{date}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Medium.otf","fontSize":16,"fontWeight":500,"color":"#444444","align":"right","verticalAlign":"middle"},"overflow":"shrink","zIndex":21}
+]}

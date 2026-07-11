@@ -48,6 +48,11 @@
       "filter": ["**/*.png"]
     },
     {
+      "from": "src/assets/logos",
+      "to": "logos",
+      "filter": ["**/*.png"]
+    },
+    {
       "from": ".",
       "to": ".",
       "filter": ["RELEASE_NOTES_*.md"]

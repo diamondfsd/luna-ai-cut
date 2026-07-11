@@ -74,6 +74,7 @@ export interface LunaApi {
   aiChat(config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>): Promise<string>
   readExifModel(localPath: string): Promise<string | null>
   getWatermarkPath(style: string, kind: 'image' | 'video'): Promise<{ filePath: string; width: number; height: number }>
+  getBorderLogoPath(logoId: string): Promise<string>
   disconnect(host?: string): Promise<void>
   cacheFile(params: { sourceUrl: string; previewUrl?: string | null }): Promise<boolean>
   getWifiStatus: () => Promise<WifiDebugResult<WifiDebugStatus>>

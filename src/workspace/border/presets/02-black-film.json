@@ -1,0 +1,5 @@
+{"id":"black-film","name":"黑金胶片","category":"film","description":"黑色底板与金色胶片文字","swatch":"#15130f","layers":[
+  {"id":"background","type":"shape","shape":"rectangle","rect":{"x":0,"y":0.86,"w":1,"h":0.14},"fill":{"type":"solid","color":"#111111"},"zIndex":20},
+  {"id":"brand","type":"logo","rect":{"x":0.035,"y":0.895,"w":0.2,"h":0.055},"source":{"path":"logo_standard_white","format":"png"},"fit":"contain","zIndex":21},
+  {"id":"meta","type":"text","rect":{"x":0.4,"y":0.895,"w":0.565,"h":0.055},"content":"{{camera}} | {{focalLength}} | {{aperture}} | {{shutter}} | ISO {{iso}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Bold.otf","fontSize":17,"fontWeight":500,"color":"#C7AA77","align":"right","verticalAlign":"middle"},"overflow":"shrink","zIndex":21}
+]}
