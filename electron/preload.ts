@@ -128,6 +128,10 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     extractVideoFrame: (videoPath: string, outputPath: string, frameTime: number) => ipcRenderer.invoke('workspace:extractVideoFrame', videoPath, outputPath, frameTime),
     exportRenderedLivePhoto: (name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean) => ipcRenderer.invoke('workspace:exportRenderedLivePhoto', name, imagePath, videoPath, appleLivePhoto, preserveInputs),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
+    listColorPresets: () => ipcRenderer.invoke('workspace:listColorPresets'),
+    saveColorPreset: (name: string, colorJson: string) => ipcRenderer.invoke('workspace:saveColorPreset', name, colorJson),
+    deleteColorPreset: (id: string) => ipcRenderer.invoke('workspace:deleteColorPreset', id),
+    renameColorPreset: (id: string, newName: string) => ipcRenderer.invoke('workspace:renameColorPreset', id, newName),
   },
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: DownloadProgress): void => callback(progress)
