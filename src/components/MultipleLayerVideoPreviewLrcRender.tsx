@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, forwardRef, memo } from 'react'
 import type { PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { COMPOSITION_RENDER_FPS } from './renderComposition'
+import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 
 const PREVIEW_MAX_SIDE = 1280
 
@@ -94,6 +95,13 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
   onRender?: () => void
   /** 主视频元素回调（取第一个视频层），PreviewStage 用它绑定播放控制 */
   onVideoElement?: (el: HTMLVideoElement | null) => void
+  /** 受控查看比例：null 表示适应窗口，1 表示画布像素与屏幕像素 1:1 */
+  imageScale?: number | null
+  onImageScaleChange?: (scale: number | null) => void
+  /** 最大查看比例，默认 200% */
+  maxImageScale?: number
+  /** 允许画布查看交互的图层下标；传空数组可关闭交互。默认只包含首个非定位图层。 */
+  interactiveImageLayerIndexes?: readonly number[]
 }
 
 /**
@@ -108,7 +116,7 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
 export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
-      { layers, className, canvasWidth, canvasHeight, playing = false, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement },
+      { layers, className, canvasWidth, canvasHeight, playing = false, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes },
       _ref,
     ) {
       const outputCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -121,6 +129,16 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       const lastFrameAtRef = useRef(0)
       const [ready, setReady] = useState(false)
       const [fatalError, setFatalError] = useState<string | null>(null)
+
+      // ── 画布查看交互（缩放/拖动/双击还原） ──
+      const imageInteraction = useCanvasViewportInteraction({
+        layers,
+        canvasRef: outputCanvasRef,
+        interactiveImageLayerIndexes,
+        maxImageScale,
+        imageScale,
+        onImageScaleChange,
+      })
 
       // 用 ref 持 latest props，避免闭包过期
       const layersRef = useRef(layers)
@@ -656,7 +674,27 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         )
       }
 
-      return <canvas ref={outputCanvasRef} className={className} />
+      const canvasClassName = [
+        className,
+        imageInteraction.interactive && 'lrc-render-interactive',
+        imageInteraction.dragging && 'is-dragging',
+      ]
+        .filter(Boolean)
+        .join(' ')
+
+      return (
+        <canvas
+          ref={outputCanvasRef}
+          className={canvasClassName}
+          style={imageInteraction.style}
+          onPointerDown={imageInteraction.onPointerDown}
+          onPointerMove={imageInteraction.onPointerMove}
+          onPointerUp={imageInteraction.onPointerEnd}
+          onPointerCancel={imageInteraction.onPointerEnd}
+          onWheel={imageInteraction.onWheel}
+          onDoubleClick={imageInteraction.onDoubleClick}
+        />
+      )
     },
   ),
   (
@@ -669,6 +707,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       prevProps.canvasWidth === nextProps.canvasWidth &&
       prevProps.canvasHeight === nextProps.canvasHeight &&
       prevProps.className === nextProps.className &&
+      prevProps.imageScale === nextProps.imageScale &&
+      prevProps.maxImageScale === nextProps.maxImageScale &&
+      prevProps.onImageScaleChange === nextProps.onImageScaleChange &&
+      JSON.stringify(prevProps.interactiveImageLayerIndexes) === JSON.stringify(nextProps.interactiveImageLayerIndexes) &&
       JSON.stringify(prevProps.layers) === JSON.stringify(nextProps.layers)
     )
   },
