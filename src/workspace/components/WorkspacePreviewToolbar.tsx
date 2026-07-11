@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, Eye, EyeOff, FileDown, ImagePlus, Maximize2, Minus, Plus, Redo2, RotateCcw, Save, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, Copy, ChevronDown, Eye, EyeOff, FileDown, ImagePlus, Maximize2, Minus, Plus, Redo2, RotateCcw, Save, Trash2, Undo2 } from 'lucide-react'
 
 import { Button, IconButton, Tooltip, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
@@ -74,13 +74,22 @@ export function WorkspacePreviewToolbar({
         <Button variant="toolbar" size="compact" icon={<ImagePlus size={14} />} onClick={onImport}>
           添加素材
         </Button>
-        <Button variant="toolbar" size="compact" icon={<RotateCcw size={14} />} onClick={resetAdjustments}>重置</Button>
+        <Tooltip content="重置">
+          <IconButton variant="ghost" size="compact" icon={<RotateCcw size={16} />} disabled={!hasActiveMedia} onClick={resetAdjustments} />
+        </Tooltip>
         <div className="workspace-toolbar-divider" />
         <Tooltip content="撤销">
           <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={!edit.canUndo} onClick={edit.undo} />
         </Tooltip>
         <Tooltip content="重做">
           <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={!edit.canRedo} onClick={edit.redo} />
+        </Tooltip>
+        <div className="workspace-toolbar-divider" />
+        <Tooltip content="复制调色参数">
+          <IconButton variant="ghost" size="compact" icon={<Copy size={16} />} disabled={!hasActiveMedia} onClick={edit.copyPipeline} />
+        </Tooltip>
+        <Tooltip content="粘贴调色参数">
+          <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={16} />} onClick={() => { edit.pasteToCurrent() }} />
         </Tooltip>
         {media.brokenPaths.size > 0 && (
           <>
