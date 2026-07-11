@@ -106,6 +106,10 @@ export interface LunaApi {
     extractVideoFrame(videoPath: string, outputPath: string, frameTime: number): Promise<{ path: string; name: string }>
     exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean): Promise<{ path: string; name: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
+    listColorPresets(): Promise<Array<{ id: string; name: string; createdAt: string; updatedAt: string; colorJson: string }>>
+    saveColorPreset(name: string, colorJson: string): Promise<{ id: string; name: string; createdAt: string; updatedAt: string; colorJson: string }>
+    deleteColorPreset(id: string): Promise<void>
+    renameColorPreset(id: string, newName: string): Promise<void>
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void

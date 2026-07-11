@@ -21,6 +21,12 @@ import {
   renameWorkspaceProject,
   saveWorkspaceProject,
 } from './workspaceProjectService'
+import {
+  listColorPresets,
+  saveColorPreset,
+  deleteColorPreset,
+  renameColorPreset,
+} from './colorPresetsService'
 import { loadWorkspacePreview } from './workspacePreviewService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
@@ -258,6 +264,27 @@ export function register(): void {
     await updateTaskItemProgress(task.id, exportId, 100, 'done')
 
     return { path: resultPath, name: path.basename(resultPath) }
+  })
+
+  // ── 调色预设 ──
+  ipcMain.handle('workspace:listColorPresets', async () => {
+    const settings = await getSettings()
+    return listColorPresets(settings.downloadDir)
+  })
+
+  ipcMain.handle('workspace:saveColorPreset', async (_event, name: string, colorJson: string) => {
+    const settings = await getSettings()
+    return saveColorPreset(settings.downloadDir, name, colorJson)
+  })
+
+  ipcMain.handle('workspace:deleteColorPreset', async (_event, id: string) => {
+    const settings = await getSettings()
+    return deleteColorPreset(settings.downloadDir, id)
+  })
+
+  ipcMain.handle('workspace:renameColorPreset', async (_event, id: string, newName: string) => {
+    const settings = await getSettings()
+    return renameColorPreset(settings.downloadDir, id, newName)
   })
 
 }
