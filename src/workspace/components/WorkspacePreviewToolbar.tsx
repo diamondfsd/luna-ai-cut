@@ -38,23 +38,6 @@ export function WorkspacePreviewToolbar({
     onViewScaleChange(Math.max(25, Math.min(200, current + delta)))
   }
 
-  async function saveProject(): Promise<void> {
-    if (!media.currentProject) {
-      toast.error('请先创建工作台项目')
-      return
-    }
-    const project = {
-      ...media.currentProject,
-      assets: media.currentProject.assets.map((asset, index) => (
-        index === media.activeIndex ? { ...asset, pipeline: edit.pipeline } : asset
-      )),
-      updatedAt: new Date().toISOString(),
-    }
-    await window.luna.workspace.saveProject(project)
-    media.setCurrentProject(project)
-    toast.success('项目已保存')
-  }
-
   function resetAdjustments(): void {
     const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
     if (indices.size === 1 && indices.has(media.activeIndex)) {
@@ -87,11 +70,11 @@ export function WorkspacePreviewToolbar({
   return (
     <header className="workspace-toolbar">
       <div className="workspace-toolbar-group workspace-toolbar-left">
-        <Button variant="utility" size="compact" icon={<ArrowLeft size={15} />} onClick={media.backToProjects}>返回工作台</Button>
-        <Button variant="utility" size="compact" icon={<ImagePlus size={14} />} onClick={onImport}>
+        <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={media.backToProjects}>返回工作台</Button>
+        <Button variant="toolbar" size="compact" icon={<ImagePlus size={14} />} onClick={onImport}>
           添加素材 <ChevronDown size={12} />
         </Button>
-        <Button variant="utility" size="compact" icon={<RotateCcw size={14} />} onClick={resetAdjustments}>重置</Button>
+        <Button variant="toolbar" size="compact" icon={<RotateCcw size={14} />} onClick={resetAdjustments}>重置</Button>
         <div className="workspace-toolbar-divider" />
         <Tooltip content="撤销">
           <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={!edit.canUndo} onClick={edit.undo} />
@@ -119,7 +102,7 @@ export function WorkspacePreviewToolbar({
       </div>
       <div className="workspace-toolbar-group workspace-toolbar-actions">
         <Button
-          variant={edit.compareOriginal ? 'primary' : 'utility'}
+          variant={edit.compareOriginal ? 'toolbar-primary' : 'toolbar'}
           size="compact"
           icon={edit.compareOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
           onMouseDown={() => edit.setCompareOriginal(true)}
@@ -128,11 +111,8 @@ export function WorkspacePreviewToolbar({
         >
           对比
         </Button>
-        <Button variant="utility" size="compact" icon={<Save size={14} />} disabled={!media.currentProject} onClick={() => void saveProject()}>
-          保存项目
-        </Button>
         <Button
-          variant="primary"
+          variant="toolbar-primary"
           size="compact"
           icon={<FileDown size={14} />}
           disabled={!hasActiveMedia || exportEnqueuing || exportableSelectionCount === 0}
