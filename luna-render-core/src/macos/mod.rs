@@ -28,6 +28,7 @@ unsafe extern "C" {
         error_length: usize,
     ) -> *mut c_void;
     fn luna_av_decoder_destroy(decoder: *mut c_void);
+    fn luna_av_decoder_get_rotation(decoder: *mut c_void) -> i32;
     fn luna_av_decoder_frame(
         decoder: *mut c_void,
         seconds: f64,
@@ -102,6 +103,10 @@ impl Decoder {
         } else {
             Ok(Self { raw })
         }
+    }
+
+    fn rotation_degrees(&self) -> i32 {
+        unsafe { luna_av_decoder_get_rotation(self.raw) }
     }
 
     fn frame(&mut self, time: f64) -> Result<Option<Frame>, String> {
@@ -288,7 +293,7 @@ pub(crate) fn export_video(
 
         // ── 解码 ──
         let t0 = std::time::Instant::now();
-        for (layer_idx, layer) in layer_inputs.into_iter().enumerate() {
+        for (layer_idx, mut layer) in layer_inputs.into_iter().enumerate() {
             let (texture_id, width, height) = if layer.is_video {
                 // 每个槽位独立 Reader：用 file_path + 槽位索引作为 key，
                 // 避免同一文件在不同槽位间共享 Reader 导致游标反复追帧/重启
@@ -303,6 +308,13 @@ pub(crate) fn export_video(
                         entry.insert(Decoder::new(&layer.file_path, metal_device, decode_max_side)?)
                     }
                 };
+
+                // 将视频文件的旋转矩阵同步到 layer transform，GPU shader 据此旋转画面
+                // AVAssetReader 不会像 ffmpeg 那样自动应用旋转，需由 shader 完成
+                let rotation = decoder.rotation_degrees();
+                if rotation != 0 && layer.transform.orientation == 0.0 {
+                    layer.transform.orientation = rotation as f64;
+                }
                 let Some(decoded) = decoder.frame(layer.video_time)? else {
                     continue;
                 };
