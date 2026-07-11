@@ -71,7 +71,6 @@ export function WorkspaceImportDialog({ open, onOpenChange, existingPaths, onImp
         open={open}
         onOpenChange={onOpenChange}
         title="导入本地素材"
-        description="选择已下载素材加入当前工作台"
         tone="dark"
         className="workspace-import-dialog"
         footer={(

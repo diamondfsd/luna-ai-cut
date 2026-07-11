@@ -20,6 +20,12 @@
   scroll-margin-top: 16px;
 }
 
+.workspace-import-body .section-heading {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .workspace-import-body .media-card {
   background: var(--parchment);
   border-color: var(--hairline);
