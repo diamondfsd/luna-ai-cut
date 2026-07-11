@@ -153,7 +153,7 @@ export function buildExportLayers(
   watermark?: WatermarkSettingsType | null,
 ): PreviewLayer[] {
   const main = buildLayers(sourcePath, resolution, exportCanvasFor(resolution))
-  if (!watermark?.enabled || !watermark.imagePath || !watermark.wmAspect) return main
+  if (!watermark?.enabled || !watermark.imagePath) return main
 
   const watermarkLayer = buildResolvedWatermarkStaticLayer(watermark, resolution.width, resolution.height)
   const baseLayer = main[0]

@@ -9,7 +9,6 @@ export interface WatermarkSettings {
   position: WatermarkPosition
   /** 以下字段由 onChange 时自动填充 */
   imagePath?: string
-  wmAspect?: number     // watermark width / height
   widthRatio?: number
   xRatio?: number
   yRatio?: number
