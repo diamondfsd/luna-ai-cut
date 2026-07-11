@@ -1,3 +1,25 @@
+fn glyph_bits(input_code: u32) -> u32 {
+    var code = input_code;
+    if (code >= 97u && code <= 122u) { code = code - 32u; }
+    switch code {
+        case 48u: { return 31599u; } case 49u: { return 29850u; } case 50u: { return 29667u; }
+        case 51u: { return 14563u; } case 52u: { return 18925u; } case 53u: { return 14543u; }
+        case 54u: { return 31694u; } case 55u: { return 9383u; } case 56u: { return 31727u; }
+        case 57u: { return 14831u; } case 65u: { return 23530u; } case 66u: { return 15083u; }
+        case 67u: { return 25166u; } case 68u: { return 15211u; } case 69u: { return 29391u; }
+        case 70u: { return 4815u; } case 71u: { return 27470u; } case 72u: { return 23533u; }
+        case 73u: { return 29847u; } case 74u: { return 11044u; } case 75u: { return 23277u; }
+        case 76u: { return 29257u; } case 77u: { return 23549u; } case 78u: { return 24573u; }
+        case 79u: { return 11114u; } case 80u: { return 4843u; } case 81u: { return 28522u; }
+        case 82u: { return 23275u; } case 83u: { return 14478u; } case 84u: { return 9367u; }
+        case 85u: { return 31597u; } case 86u: { return 11117u; } case 87u: { return 24557u; }
+        case 88u: { return 23213u; } case 89u: { return 9389u; } case 90u: { return 29351u; }
+        case 45u: { return 448u; } case 46u: { return 8192u; } case 47u: { return 4772u; }
+        case 58u: { return 1040u; } case 63u: { return 8355u; }
+        default: { return 8355u; }
+    }
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pixel_x = in.position.x;
@@ -14,6 +36,66 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let local_x = (pixel_x - params.dst_x) / params.dst_w;
     let local_y = (pixel_y - params.dst_y) / params.dst_h;
+
+    if (params.procedural.x > 0.5 && params.procedural.x < 1.5) {
+        let p = vec2<f32>(local_x, local_y);
+        let shape_kind = params.procedural.y;
+        let radius = max(params.procedural.z, 0.0);
+        var inside = true;
+        if (shape_kind > 2.5) {
+            let d = (p - vec2<f32>(0.5)) / vec2<f32>(0.5);
+            inside = dot(d, d) <= 1.0;
+        } else if (shape_kind > 0.5 && radius > 0.0) {
+            let q = abs(p - vec2<f32>(0.5)) - (vec2<f32>(0.5) - vec2<f32>(radius));
+            inside = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) <= radius;
+        }
+        if (!inside) { discard; }
+        let stroke_px = params.procedural.w;
+        if (stroke_px > 0.0 && params.stroke_rgba.a > 0.0) {
+            let edge_px = min(min(local_x * params.dst_w, (1.0 - local_x) * params.dst_w), min(local_y * params.dst_h, (1.0 - local_y) * params.dst_h));
+            if (edge_px <= stroke_px) {
+                return vec4<f32>(params.stroke_rgba.rgb, params.stroke_rgba.a * params.opacity);
+            }
+        }
+        return vec4<f32>(params.fill_rgba.rgb, params.fill_rgba.a * params.opacity);
+    }
+
+    if (params.procedural.x > 2.5) {
+        let glyph_color = textureSample(src_texture, src_sampler, vec2<f32>(local_x, local_y));
+        return vec4<f32>(glyph_color.rgb, glyph_color.a * params.opacity);
+    }
+
+    if (params.procedural.x > 1.5) {
+        let char_count = u32(params.text_meta.z);
+        if (char_count == 0u) { discard; }
+        let glyph_h = max(params.text_meta.x, 5.0);
+        let glyph_w = glyph_h * 0.72;
+        let spacing = glyph_w * 0.18;
+        let total_w = f32(char_count) * (glyph_w + spacing) - spacing;
+        var origin_x = params.dst_x + 2.0;
+        if (params.text_meta.y > 1.5) { origin_x = params.dst_x + params.dst_w - total_w - 2.0; }
+        else if (params.text_meta.y > 0.5) { origin_x = params.dst_x + (params.dst_w - total_w) * 0.5; }
+        let origin_y = params.dst_y + (params.dst_h - glyph_h) * 0.5;
+        let tx = pixel_x - origin_x;
+        let ty = pixel_y - origin_y;
+        if (tx < 0.0 || ty < 0.0 || ty >= glyph_h) { discard; }
+        let char_index = u32(floor(tx / (glyph_w + spacing)));
+        if (char_index >= char_count) { discard; }
+        let within_x = tx - f32(char_index) * (glyph_w + spacing);
+        if (within_x >= glyph_w) { discard; }
+        let packed_index = char_index / 4u;
+        let component = char_index % 4u;
+        let packed = params.text_data[packed_index];
+        var code = packed.x;
+        if (component == 1u) { code = packed.y; } else if (component == 2u) { code = packed.z; } else if (component == 3u) { code = packed.w; }
+        // GPU 原生点阵字形：稳定覆盖 ASCII，非 ASCII 使用可见占位符。
+        let col = u32(clamp(floor(within_x / glyph_w * 3.0), 0.0, 2.0));
+        let row = u32(clamp(floor(ty / glyph_h * 5.0), 0.0, 4.0));
+        let bits = glyph_bits(u32(code));
+        let ink = ((bits >> (row * 3u + col)) & 1u) == 1u;
+        if (!ink || u32(code) == 32u) { discard; }
+        return vec4<f32>(params.fill_rgba.rgb, params.fill_rgba.a * params.opacity);
+    }
     let frame_uv = vec2<f32>(
         params.crop_x + local_x * params.crop_w,
         params.crop_y + local_y * params.crop_h,
