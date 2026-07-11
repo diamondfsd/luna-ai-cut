@@ -555,6 +555,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               fontWeight: layer.fontWeight,
               textColor: layer.textColor,
               textAlign: layer.textAlign,
+              verticalAlign: layer.verticalAlign,
             })
           }
 

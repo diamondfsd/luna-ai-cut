@@ -247,7 +247,7 @@ pub struct PreviewLayerInput {
     pub lut_intensity: Option<f64>,
     pub shape: Option<String>, pub fill_color: Option<String>, pub corner_radius: Option<f64>,
     pub stroke_color: Option<String>, pub stroke_width: Option<f64>, pub content: Option<String>,
-    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>,
+    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>, pub vertical_align: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1071,7 +1071,7 @@ impl Compositor {
         let font_px = (layer.font_size.unwrap_or(16.0) * canvas_height as f64 / 1080.0).max(5.0) as f32;
         let content = layer.content.as_deref().unwrap_or("");
         let color = parse_hex_color(layer.text_color.as_deref(), [1.0, 1.0, 1.0, 1.0]);
-        let key = format!("{}|{}|{}|{}|{:.2}|{:?}|{:?}", font_path, content, width, height, font_px, color, layer.text_align);
+        let key = format!("{}|{}|{}|{}|{:.2}|{:?}|{:?}|{:?}", font_path, content, width, height, font_px, color, layer.text_align, layer.vertical_align);
         if let Some(id) = self.text_texture_cache.get(&key) { return Ok(*id); }
         if !self.fonts.contains_key(font_path) {
             let bytes = std::fs::read(font_path).map_err(|error| format!("读取字体失败 {}: {}", font_path, error))?;
@@ -1089,7 +1089,12 @@ impl Compositor {
             _ => 2.0,
         }.max(0.0);
         let font_metrics = font.metrics(&[]).scale(font_px);
-        let baseline = (height as f32 - (font_metrics.ascent - font_metrics.descent)) * 0.5 + font_metrics.ascent;
+        // 垂直对齐：top → 顶部留 2px 内边距；middle → 居中（默认）；bottom → 底部留 2px 内边距
+        let baseline = match layer.vertical_align.as_deref() {
+            Some("top") => 2.0 + font_metrics.ascent,
+            Some("bottom") => height as f32 - 2.0 - font_metrics.descent.abs(),
+            _ => (height as f32 - (font_metrics.ascent - font_metrics.descent)) * 0.5 + font_metrics.ascent,
+        };
         let mut rgba = vec![0u8; (width * height * 4) as usize];
         let mut pen_x = start_x;
         let mut scale_context = swash::scale::ScaleContext::new();
@@ -1712,6 +1717,7 @@ impl Compositor {
                 let mut text_data = [[0.0f32; 4]; 32];
                 for (index, byte) in ascii.iter().enumerate() { text_data[index / 4][index % 4] = *byte as f32; }
                 let text_align = match layer.text_align.as_deref() { Some("center") => 1.0, Some("right") => 2.0, _ => 0.0 };
+                let vertical_align_val = match layer.vertical_align.as_deref() { Some("top") => 0.0, Some("bottom") => 2.0, _ => 1.0 };
 
                 // ── 相对定位覆盖 dst ──
                 let (pos_dst_x, pos_dst_y, pos_dst_w, pos_dst_h) = resolve_positioning(
@@ -1842,7 +1848,7 @@ impl Compositor {
                     lut_size,
                     lut_intensity: layer.lut_intensity.unwrap_or(100.0) as f32,
                     _pad: [0.0; 1],
-                    procedural: [procedural_kind, shape_kind, layer.corner_radius.unwrap_or(0.0) as f32, layer.stroke_width.unwrap_or(0.0) as f32],
+                    procedural: [procedural_kind, if procedural_kind > 1.5 { vertical_align_val } else { shape_kind }, layer.corner_radius.unwrap_or(0.0) as f32, layer.stroke_width.unwrap_or(0.0) as f32],
                     fill_rgba,
                     stroke_rgba,
                     text_meta: [(layer.font_size.unwrap_or(16.0) * canvas_height as f64 / 1080.0) as f32, text_align, ascii.len() as f32, layer.font_weight.unwrap_or(400.0) as f32],
@@ -2589,7 +2595,7 @@ impl Compositor {
                     layer_type: layer.layer_type.clone(), shape: layer.shape.clone(), fill_color: layer.fill_color.clone(),
                     corner_radius: layer.corner_radius, stroke_color: layer.stroke_color.clone(), stroke_width: layer.stroke_width,
                     content: layer.content.clone(), font_size: layer.font_size, font_family: layer.font_family.clone(), font_file: layer.font_file.clone(), font_weight: layer.font_weight,
-                    text_color: layer.text_color.clone(), text_align: layer.text_align.clone(),
+                    text_color: layer.text_color.clone(), text_align: layer.text_align.clone(), vertical_align: layer.vertical_align.clone(),
                     fit: Some(layer.fit.clone()),
                     dst_x,
                     dst_y,

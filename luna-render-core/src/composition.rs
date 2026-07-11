@@ -67,7 +67,7 @@ pub struct CompositionLayer {
     pub lut_intensity: Option<f64>,
     pub shape: Option<String>, pub fill_color: Option<String>, pub corner_radius: Option<f64>,
     pub stroke_color: Option<String>, pub stroke_width: Option<f64>, pub content: Option<String>,
-    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>,
+    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>, pub vertical_align: Option<String>,
 }
 
 #[napi(object)]
@@ -307,7 +307,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
             lut_intensity: layer.lut_intensity,
             shape: layer.shape.clone(), fill_color: layer.fill_color.clone(), corner_radius: layer.corner_radius,
             stroke_color: layer.stroke_color.clone(), stroke_width: layer.stroke_width, content: layer.content.clone(),
-            font_size: layer.font_size, font_family: layer.font_family.clone(), font_file: layer.font_file.clone(), font_weight: layer.font_weight, text_color: layer.text_color.clone(), text_align: layer.text_align.clone(),
+            font_size: layer.font_size, font_family: layer.font_family.clone(), font_file: layer.font_file.clone(), font_weight: layer.font_weight, text_color: layer.text_color.clone(), text_align: layer.text_align.clone(), vertical_align: layer.vertical_align.clone(),
         })
         .collect()
 }
