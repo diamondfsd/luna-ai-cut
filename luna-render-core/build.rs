@@ -22,15 +22,5 @@ fn main() {
         println!("cargo:rerun-if-changed=src/macos/av_bridge.m");
     }
 
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
-        cc::Build::new()
-            .file("src/windows/av_bridge.cpp")
-            .cpp(true)
-            .compile("luna_av_bridge");
-
-        for lib in ["mfplat", "mfreadwrite", "mfuuid", "d3d11", "dxgi", "ole32"] {
-            println!("cargo:rustc-link-lib={lib}");
-        }
-        println!("cargo:rerun-if-changed=src/windows/av_bridge.cpp");
-    }
+    // Windows: 使用 FFmpeg 进行解码和编码（支持 GPU 编码器如 nvenc/qsv/amf）
 }
