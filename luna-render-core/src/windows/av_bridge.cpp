@@ -5,9 +5,10 @@
  * and encoding (via IMFSinkWriter + hardware encoder + D3D12 zero-copy)
  * for the luna-render-core wgpu compositor.
  *
- * Architecture v2:
- *   Decode:  IMFSourceReader (D3D11VA HW decode) → CPU readback → RGBA bytes
- *            (decode runs on GPU; readback is cheap single-copy)
+ * Architecture v3:
+ *   Decode:  IMFSourceReader (D3D11VA HW decode via D3D11On12)
+ *            → ID3D11Texture2D (D3D12-backed) → UnwrapUnderlyingResource
+ *            → ID3D12Resource → wgpu external texture. ZERO-COPY.
  *   Encode:  wgpu D3D12 render → D3D12↔D3D11 shared texture → IMFDXGIBuffer
  *            → IMFSinkWriter (HW encoder). ZERO-COPY from compositor to encoder.
  *
@@ -24,11 +25,13 @@
 #include <mferror.h>
 #include <d3d11.h>
 #include <d3d11_1.h>
+#include <d3d11on12.h>
 #include <d3d12.h>
 #include <dxgi1_2.h>
 #include <dxgi1_4.h>
 #include <codecapi.h>
 #include <propvarutil.h>
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <cstdio>
@@ -180,9 +183,17 @@ struct FrameBase {
     virtual ~FrameBase() = default;
 };
 
-// Decoder frame
+// Decoder frame (v2 CPU path — kept for fallback)
 struct FrameHolder : FrameBase {
     std::vector<uint8_t> data;
+};
+
+// Decoder frame (v3 GPU zero-copy via D3D11On12)
+// Does NOT own the D3D12 resource — ownership is transferred to Rust/wgpu
+// via LunaAVFrame.d3d_texture. wgpu's wrap_external_d3d12_texture takes ownership.
+struct DecodedTextureFrame : FrameBase {
+    UINT32 width  = 0;
+    UINT32 height = 0;
 };
 
 // Writer frame (v2 zero-copy)
@@ -207,23 +218,30 @@ struct OutputFrame : FrameBase {
 // ═══════════════════════════════════════════════════════
 
 struct LunaVideoDecoder {
-    std::wstring         file_path;
-    ID3D11Device        *d3d11_device;
+    std::wstring          file_path;
+    ID3D12Device         *d3d12_device;         // borrowed from wgpu
+    ID3D11Device         *d3d11_device;         // D3D11On12 wrapping device
+    ID3D11DeviceContext  *d3d11_context;
+    ID3D11On12Device     *d3d11on12;
     IMFDXGIDeviceManager *mf_device_manager;
     IMFSourceReader      *reader;
     UINT32                output_width;
     UINT32                output_height;
     UINT32                frame_bytes;
     double                fps;
+    int                   rotation_degrees;
     IMFSample            *current_sample;
     double                current_sample_pts;
     bool                  eof;
     bool                  owns_d3d11_device;
 
     LunaVideoDecoder()
-        : d3d11_device(nullptr), mf_device_manager(nullptr), reader(nullptr)
+        : d3d12_device(nullptr), d3d11_device(nullptr)
+        , d3d11_context(nullptr), d3d11on12(nullptr)
+        , mf_device_manager(nullptr), reader(nullptr)
         , output_width(0), output_height(0), frame_bytes(0)
-        , fps(30.0), current_sample(nullptr), current_sample_pts(-1.0)
+        , fps(30.0), rotation_degrees(0)
+        , current_sample(nullptr), current_sample_pts(-1.0)
         , eof(false), owns_d3d11_device(false) {}
 
     ~LunaVideoDecoder() { close(); }
@@ -232,11 +250,15 @@ struct LunaVideoDecoder {
         if (current_sample) { current_sample->Release(); current_sample = nullptr; }
         if (reader) { reader->Release(); reader = nullptr; }
         if (mf_device_manager) { mf_device_manager->Release(); mf_device_manager = nullptr; }
+        if (d3d11on12) { d3d11on12->Release(); d3d11on12 = nullptr; }
+        if (d3d11_context) { d3d11_context->Release(); d3d11_context = nullptr; }
         if (d3d11_device && owns_d3d11_device) {
             d3d11_device->Release();
             d3d11_device = nullptr;
             owns_d3d11_device = false;
         }
+        // d3d12_device is borrowed from wgpu — don't release
+        d3d12_device = nullptr;
     }
 };
 
@@ -299,6 +321,8 @@ static IMFSourceReader *create_source_reader(
 
 static bool configure_decoder_output(
     IMFSourceReader *reader,
+    LunaVideoDecoder *dec,
+    UINT32 max_decode_edge,
     UINT32 *out_width, UINT32 *out_height, UINT32 *out_frame_bytes,
     double *out_fps,
     char *error_buffer, size_t error_length)
@@ -314,9 +338,27 @@ static bool configure_decoder_output(
     UINT32 orig_w = 0, orig_h = 0;
     MFGetAttributeSize(native_type, MF_MT_FRAME_SIZE, &orig_w, &orig_h);
 
+    // ── 读取视频旋转角度 ──
+    UINT32 rotation = 0;
+    if (SUCCEEDED(native_type->GetUINT32(MF_MT_VIDEO_ROTATION, &rotation))) {
+        dec->rotation_degrees = (int)rotation;
+    } else {
+        dec->rotation_degrees = 0;
+    }
+
     UINT32 num = 0, den = 0;
     MFGetAttributeRatio(native_type, MF_MT_FRAME_RATE, &num, &den);
     native_type->Release();
+
+    // ── 根据 max_decode_edge 缩放输出尺寸 ──
+    UINT32 output_w = orig_w;
+    UINT32 output_h = orig_h;
+    UINT32 max_edge_src = (std::max)(orig_w, orig_h);
+    if (max_decode_edge > 0 && max_edge_src > max_decode_edge) {
+        double scale = (double)max_decode_edge / (double)max_edge_src;
+        output_w = (UINT32)(orig_w * scale);
+        output_h = (UINT32)(orig_h * scale);
+    }
 
     IMFMediaType *output_type = nullptr;
     hr = MFCreateMediaType(&output_type);
@@ -329,7 +371,7 @@ static bool configure_decoder_output(
     output_type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_ARGB32);
     output_type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
     output_type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-    MFSetAttributeSize(output_type, MF_MT_FRAME_SIZE, orig_w, orig_h);
+    MFSetAttributeSize(output_type, MF_MT_FRAME_SIZE, output_w, output_h);
     MFSetAttributeRatio(output_type, MF_MT_FRAME_RATE, num, den);
     MFSetAttributeRatio(output_type, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
 
@@ -349,18 +391,34 @@ static bool configure_decoder_output(
         return false;
     }
 
-    *out_width  = orig_w;
-    *out_height = orig_h;
-    *out_frame_bytes = orig_w * orig_h * 4;
+    *out_width  = output_w;
+    *out_height = output_h;
+    *out_frame_bytes = output_w * output_h * 4;
     *out_fps = (den > 0) ? (double)num / (double)den : 30.0;
     return true;
 }
 
-static std::vector<uint8_t> read_frame_rgba(
+// ═══════════════════════════════════════════════════════
+//  Frame reader — D3D11On12 zero-copy GPU texture path
+// ═══════════════════════════════════════════════════════
+//
+//  MF Source Reader (D3D11VA HW decode via D3D11On12 device)
+//  → ID3D11Texture2D (D3D12-backed)
+//  → ReleaseWrappedResources + Flush
+//  → UnwrapUnderlyingResource → ID3D12Resource
+//  → DecodedTextureFrame (returned to Rust for wgpu wrapping)
+//
+//  Returns nullptr on error or EOF.
+
+// Returns the D3D12 resource (ownership transferred to caller), or nullptr.
+// On success, *out_frame is set to a new DecodedTextureFrame (owns nothing,
+// just a marker for luna_av_frame_destroy).
+static ID3D12Resource *read_frame_d3d12_texture(
     LunaVideoDecoder *dec, double target_time,
+    DecodedTextureFrame **out_frame,
     char *error_buffer, size_t error_length)
 {
-    if (!dec->reader || dec->eof) return {};
+    if (!dec->reader || dec->eof) return nullptr;
 
     DWORD stream_index = 0, flags = 0;
     LONGLONG timestamp = 0;
@@ -368,15 +426,20 @@ static std::vector<uint8_t> read_frame_rgba(
     const double epsilon = 0.001;
     const int max_attempts = 300;
 
-    if (dec->current_sample_pts < 0.0 ||
-        target_time + 0.05 < dec->current_sample_pts) {
+    // ── Seek handling ──
+    if (dec->current_sample_pts < 0.0) {
+        if (!decoder_seek_to(dec, target_time, error_buffer, error_length)) {
+            return nullptr;
+        }
+    } else if (target_time + 0.05 < dec->current_sample_pts) {
         if (target_time < dec->current_sample_pts - 0.5) {
             if (!decoder_seek_to(dec, target_time, error_buffer, error_length)) {
-                return {};
+                return nullptr;
             }
         }
     }
 
+    // ── Read samples until we reach target time ──
     for (int attempt = 0; attempt < max_attempts; attempt++) {
         HRESULT hr = dec->reader->ReadSample(
             (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
@@ -386,23 +449,25 @@ static std::vector<uint8_t> read_frame_rgba(
             char msg[256];
             snprintf(msg, sizeof(msg), "ReadSample failed: 0x%08X", (unsigned)hr);
             luna_write_error(error_buffer, error_length, msg);
-            return {};
+            return nullptr;
         }
 
         if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
             dec->eof = true;
             if (sample) { sample->Release(); sample = nullptr; }
-            return {};
+            return nullptr;
         }
 
         if (!sample) continue;
 
         double pts = (double)timestamp / 10000000.0;
         if (pts >= target_time - epsilon) {
+            // Found the target frame
             if (dec->current_sample) dec->current_sample->Release();
             dec->current_sample = sample;
             dec->current_sample_pts = pts;
 
+            // ── Extract D3D11 texture from MF sample ──
             IMFMediaBuffer *buffer = nullptr;
             hr = sample->ConvertToContiguousBuffer(&buffer);
             if (FAILED(hr)) {
@@ -410,106 +475,75 @@ static std::vector<uint8_t> read_frame_rgba(
             }
             if (FAILED(hr) || !buffer) {
                 if (buffer) buffer->Release();
-                luna_write_error(error_buffer, error_length, "Cannot get frame buffer");
-                return {};
+                luna_write_error(error_buffer, error_length,
+                    "Cannot get frame buffer from sample");
+                return nullptr;
             }
 
-            BYTE *data = nullptr;
-            DWORD max_len = 0, cur_len = 0;
-            hr = buffer->Lock(&data, &max_len, &cur_len);
-            if (FAILED(hr) || !data) {
-                // Lock failed — buffer may be a DXGI surface from HW decode.
-                // Fall back to D3D11 staging texture readback.
-                buffer->Unlock();
-
-                IMFDXGIBuffer *dxgi_buf = nullptr;
-                hr = buffer->QueryInterface(IID_PPV_ARGS(&dxgi_buf));
-                if (FAILED(hr) || !dxgi_buf) {
-                    buffer->Release();
-                    luna_write_error(error_buffer, error_length,
-                        "Cannot lock frame buffer (no DXGI fallback)");
-                    return {};
-                }
-
-                ID3D11Texture2D *gpu_tex = nullptr;
-                UINT sub = 0;
-                hr = dxgi_buf->GetResource(IID_PPV_ARGS(&gpu_tex), &sub);
-                dxgi_buf->Release();
-                if (FAILED(hr) || !gpu_tex) {
-                    buffer->Release();
-                    luna_write_error(error_buffer, error_length,
-                        "DXGI buffer: GetResource failed");
-                    return {};
-                }
-
-                D3D11_TEXTURE2D_DESC tex_desc = {};
-                gpu_tex->GetDesc(&tex_desc);
-                tex_desc.Usage = D3D11_USAGE_STAGING;
-                tex_desc.BindFlags = 0;
-                tex_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-                tex_desc.MiscFlags = 0;
-
-                ID3D11Texture2D *staging = nullptr;
-                hr = dec->d3d11_device->CreateTexture2D(&tex_desc, nullptr, &staging);
-                if (FAILED(hr) || !staging) {
-                    gpu_tex->Release();
-                    buffer->Release();
-                    luna_write_error(error_buffer, error_length,
-                        "DXGI fallback: CreateTexture2D staging failed");
-                    return {};
-                }
-
-                ID3D11DeviceContext *ctx = nullptr;
-                dec->d3d11_device->GetImmediateContext(&ctx);
-                ctx->CopyResource(staging, gpu_tex);
-
-                D3D11_MAPPED_SUBRESOURCE mapped = {};
-                hr = ctx->Map(staging, 0, D3D11_MAP_READ, 0, &mapped);
-                if (FAILED(hr)) {
-                    ctx->Release();
-                    staging->Release();
-                    gpu_tex->Release();
-                    buffer->Release();
-                    luna_write_error(error_buffer, error_length,
-                        "DXGI fallback: Map staging failed");
-                    return {};
-                }
-
-                std::vector<uint8_t> result(dec->frame_bytes);
-                UINT src_pitch = mapped.RowPitch;
-                UINT dst_pitch = dec->output_width * 4;
-                for (UINT row = 0; row < dec->output_height; row++) {
-                    memcpy(result.data() + row * dst_pitch,
-                           (BYTE *)mapped.pData + row * src_pitch,
-                           dst_pitch);
-                }
-
-                ctx->Unmap(staging, 0);
-                ctx->Release();
-                staging->Release();
-                gpu_tex->Release();
+            // Query DXGI buffer interface (available when MF uses GPU textures)
+            IMFDXGIBuffer *dxgi_buf = nullptr;
+            hr = buffer->QueryInterface(IID_PPV_ARGS(&dxgi_buf));
+            if (FAILED(hr) || !dxgi_buf) {
                 buffer->Release();
-                return result;
+                luna_write_error(error_buffer, error_length,
+                    "Frame buffer is not GPU-backed (no IMFDXGIBuffer)");
+                return nullptr;
             }
 
-            std::vector<uint8_t> result(dec->frame_bytes);
-            size_t copy_len = cur_len < dec->frame_bytes ? cur_len : dec->frame_bytes;
-            memcpy(result.data(), data, copy_len);
-            if (cur_len < dec->frame_bytes) {
-                memset(result.data() + cur_len, 0, dec->frame_bytes - cur_len);
-            }
-
-            buffer->Unlock();
+            ID3D11Texture2D *d3d11_tex = nullptr;
+            UINT sub = 0;
+            hr = dxgi_buf->GetResource(IID_PPV_ARGS(&d3d11_tex), &sub);
+            dxgi_buf->Release();
             buffer->Release();
-            return result;
+
+            if (FAILED(hr) || !d3d11_tex) {
+                luna_write_error(error_buffer, error_length,
+                    "DXGI buffer: GetResource failed");
+                return nullptr;
+            }
+
+            // ── Sync: release D3D11On12 wrapped resources, flush D3D11 work ──
+            ID3D11Resource *wrapped = nullptr;
+            d3d11_tex->QueryInterface(IID_PPV_ARGS(&wrapped));
+            if (wrapped && dec->d3d11on12) {
+                dec->d3d11on12->ReleaseWrappedResources(&wrapped, 1);
+                wrapped->Release();
+                dec->d3d11_context->Flush();
+            } else if (wrapped) {
+                wrapped->Release();
+            }
+
+            // ── Unwrap to get the underlying D3D12 resource (zero-copy!) ──
+            ID3D12Resource *d3d12_res = nullptr;
+            if (dec->d3d11on12) {
+                hr = dec->d3d11on12->UnwrapUnderlyingResource(
+                    d3d11_tex, IID_PPV_ARGS(&d3d12_res));
+            }
+            d3d11_tex->Release();
+
+            if (FAILED(hr) || !d3d12_res) {
+                char msg[256];
+                snprintf(msg, sizeof(msg),
+                    "UnwrapUnderlyingResource failed: 0x%08X", (unsigned)hr);
+                luna_write_error(error_buffer, error_length, msg);
+                return nullptr;
+            }
+
+            // ── Return D3D12 resource (ownership → Rust/wgpu) + marker frame ──
+            auto *frame = new DecodedTextureFrame();
+            frame->width  = dec->output_width;
+            frame->height = dec->output_height;
+            *out_frame = frame;
+            return d3d12_res;
         } else {
+            // Not target frame yet — discard and continue
             if (sample) sample->Release();
             sample = nullptr;
         }
     }
 
     dec->eof = true;
-    return {};
+    return nullptr;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -776,22 +810,82 @@ extern "C" {
 
 void *luna_av_decoder_create(
     const char *path,
-    void * /*d3d12_device — unused for decoder*/,
+    void *d3d12_device_ptr,
+    uint32_t max_decode_edge,
     char *error_buffer, size_t error_length)
 {
     if (!ensure_mf_startup(error_buffer, error_length)) return nullptr;
 
+    ID3D12Device *d3d12_dev = static_cast<ID3D12Device *>(d3d12_device_ptr);
+    if (!d3d12_dev) {
+        luna_write_error(error_buffer, error_length, "No D3D12 device from wgpu");
+        return nullptr;
+    }
+
     std::wstring wpath = utf8_to_wide(path);
     LunaVideoDecoder *dec = new LunaVideoDecoder();
     dec->file_path = wpath;
+    dec->d3d12_device = d3d12_dev; // borrowed
 
-    // Create D3D11 device for MF hardware decode
-    dec->d3d11_device = create_d3d11_device_for_mf(error_buffer, error_length);
-    dec->owns_d3d11_device = (dec->d3d11_device != nullptr);
+    // ── Create D3D11On12 device wrapping the wgpu D3D12 device ──
+    // MF decoder will allocate D3D12-backed textures via this D3D11On12 device,
+    // enabling zero-copy unwrap → wgpu external texture.
+    D3D_FEATURE_LEVEL feature_levels[] = {
+        D3D_FEATURE_LEVEL_11_1,
+        D3D_FEATURE_LEVEL_11_0,
+    };
+    ID3D11Device *d3d11_dev = nullptr;
+    ID3D11DeviceContext *d3d11_ctx = nullptr;
+    HRESULT hr = D3D11On12CreateDevice(
+        d3d12_dev,
+        D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
+        feature_levels,
+        ARRAYSIZE(feature_levels),
+        nullptr, 0,
+        0,
+        &d3d11_dev,
+        &d3d11_ctx,
+        nullptr);
 
-    if (dec->d3d11_device) {
-        dec->mf_device_manager = create_mf_device_manager(
-            dec->d3d11_device, error_buffer, error_length);
+    if (FAILED(hr) || !d3d11_dev) {
+        // Fallback: try without VIDEO_SUPPORT
+        hr = D3D11On12CreateDevice(
+            d3d12_dev,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            feature_levels,
+            ARRAYSIZE(feature_levels),
+            nullptr, 0, 0,
+            &d3d11_dev, &d3d11_ctx, nullptr);
+    }
+
+    if (FAILED(hr) || !d3d11_dev) {
+        delete dec;
+        char msg[256];
+        snprintf(msg, sizeof(msg),
+            "D3D11On12CreateDevice failed: 0x%08X", (unsigned)hr);
+        luna_write_error(error_buffer, error_length, msg);
+        return nullptr;
+    }
+
+    dec->d3d11_device = d3d11_dev;
+    dec->d3d11_context = d3d11_ctx;
+    dec->owns_d3d11_device = true;
+
+    // QI for ID3D11On12Device (needed for UnwrapUnderlyingResource)
+    hr = d3d11_dev->QueryInterface(IID_PPV_ARGS(&dec->d3d11on12));
+    if (FAILED(hr) || !dec->d3d11on12) {
+        delete dec;
+        luna_write_error(error_buffer, error_length,
+            "Cannot get ID3D11On12Device interface");
+        return nullptr;
+    }
+
+    // Create MF device manager with the D3D11On12 device
+    dec->mf_device_manager = create_mf_device_manager(
+        d3d11_dev, error_buffer, error_length);
+    if (!dec->mf_device_manager) {
+        delete dec;
+        return nullptr;
     }
 
     dec->reader = create_source_reader(wpath.c_str(),
@@ -801,15 +895,13 @@ void *luna_av_decoder_create(
         return nullptr;
     }
 
-    if (!configure_decoder_output(dec->reader,
+    if (!configure_decoder_output(dec->reader, dec, max_decode_edge,
             &dec->output_width, &dec->output_height, &dec->frame_bytes,
             &dec->fps, error_buffer, error_length)) {
         delete dec;
         return nullptr;
     }
 
-    // Prime the decoder with first frame
-    read_frame_rgba(dec, 0.0, error_buffer, error_length);
     return dec;
 }
 
@@ -817,6 +909,11 @@ void luna_av_decoder_destroy(void *decoder_ptr) {
     if (!decoder_ptr) return;
     delete static_cast<LunaVideoDecoder *>(decoder_ptr);
     mf_shutdown();
+}
+
+int luna_av_decoder_get_rotation(void *decoder_ptr) {
+    if (!decoder_ptr) return 0;
+    return static_cast<LunaVideoDecoder *>(decoder_ptr)->rotation_degrees;
 }
 
 bool luna_av_decoder_frame(
@@ -827,20 +924,19 @@ bool luna_av_decoder_frame(
     if (!decoder_ptr || !out_frame) return false;
     LunaVideoDecoder *dec = static_cast<LunaVideoDecoder *>(decoder_ptr);
 
-    auto rgba = read_frame_rgba(dec, seconds, error_buffer, error_length);
-    if (rgba.empty()) {
+    DecodedTextureFrame *marker = nullptr;
+    ID3D12Resource *d3d12_res = read_frame_d3d12_texture(
+        dec, seconds, &marker, error_buffer, error_length);
+    if (!d3d12_res) {
         if (dec->eof && error_buffer) error_buffer[0] = '\0';
         return false;
     }
 
-    FrameHolder *holder = new FrameHolder();
-    holder->data = std::move(rgba);
-
-    out_frame->handle      = holder;
-    out_frame->d3d_texture = nullptr;   // decoder path: no GPU texture
-    out_frame->rgba_data   = holder->data.data();
-    out_frame->width       = dec->output_width;
-    out_frame->height      = dec->output_height;
+    out_frame->handle      = marker;
+    out_frame->d3d_texture = d3d12_res;    // ← ownership transferred to Rust/wgpu
+    out_frame->rgba_data   = nullptr;      // no CPU data
+    out_frame->width       = marker->width;
+    out_frame->height      = marker->height;
     out_frame->pts_seconds = seconds;
     return true;
 }
