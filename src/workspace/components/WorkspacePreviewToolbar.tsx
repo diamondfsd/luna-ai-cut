@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, ImagePlus, Minimize2, Minus, Plus, Redo2, RotateCcw, Save, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, ImagePlus, Minimize2, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 
 import { Button, IconButton, Tooltip, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
