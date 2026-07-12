@@ -1,6 +1,7 @@
 import { ArrowLeft, RotateCcw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { isVideoPath } from '../../lib/fileUtils'
 import { IconButton, Input, SearchField, Switch } from '../../ui'
 import { ParamSlider } from '../components/ParamSlider'
 import { DEFAULT_PIPELINE, type EditPipeline } from '../shared/editPipeline'
@@ -25,7 +26,7 @@ export function presetColors(presetId: string): { backgroundColor: string; textC
 }
 
 export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
-  const [view, setView] = useState<'list' | 'edit'>('list')
+  const [view, setView] = useState<'list' | 'edit'>(() => value.enabled ? 'edit' : 'list')
   const [query, setQuery] = useState('')
   const activePreset = useMemo(
     () => FRAME_PRESETS.find((preset) => preset.id === value.presetId) ?? null,
@@ -40,6 +41,9 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
   }, [query])
   const hasTitle = activePreset?.layers.some((layer) => layer.type === 'text' && layer.content.includes('{{title}}')) ?? false
   const hasMediaLayout = activePreset?.layers.some((layer) => layer.type === 'media') ?? false
+  const hasLogo = activePreset?.layers.some((layer) => layer.type === 'logo') ?? false
+  const hasDate = activePreset?.layers.some((layer) => layer.type === 'text' && layer.content.includes('{{date}}')) ?? false
+  const isVideoMedia = mediaPath ? isVideoPath(mediaPath) : false
 
   const selectPreset = (presetId: string) => {
     onChange({
@@ -49,6 +53,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
       mediaScale: 100,
       mediaOffsetX: 0,
       mediaOffsetY: 0,
+      showDate: true,
     })
     setView('edit')
   }
@@ -108,9 +113,10 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
             )}
 
             <div className="border-switches">
-              <label><span>显示标志</span><Switch checked={value.showLogo} onCheckedChange={(showLogo) => onChange({ showLogo })} ariaLabel="显示标志" /></label>
+              {hasLogo && <label><span>显示标志</span><Switch checked={value.showLogo} onCheckedChange={(showLogo) => onChange({ showLogo })} ariaLabel="显示标志" /></label>}
               <label><span>显示标题</span><Switch checked={value.showTitle} onCheckedChange={(showTitle) => onChange({ showTitle })} ariaLabel="显示标题" /></label>
-              <label><span>显示拍摄信息</span><Switch checked={value.showCameraInfo} onCheckedChange={(showCameraInfo) => onChange({ showCameraInfo })} ariaLabel="显示拍摄信息" /></label>
+              {!isVideoMedia && <label><span>显示拍摄信息</span><Switch checked={value.showCameraInfo} onCheckedChange={(showCameraInfo) => onChange({ showCameraInfo })} ariaLabel="显示拍摄信息" /></label>}
+              {!isVideoMedia && hasDate && <label><span>显示拍摄日期</span><Switch checked={value.showDate} onCheckedChange={(showDate) => onChange({ showDate })} ariaLabel="显示拍摄日期" /></label>}
             </div>
           </section>
         </div>

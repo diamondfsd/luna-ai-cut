@@ -37,7 +37,7 @@ async function renderBorderThumb(
       showLogo: true,
       showTitle: true,
       showCameraInfo: true,
-      showDate: false,
+      showDate: true,
       title: '',
       mediaScale: 100,
       mediaOffsetX: 0,
