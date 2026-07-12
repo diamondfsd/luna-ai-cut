@@ -1,5 +1,6 @@
 import type { RenderColorAdjustments, RenderLayerTransform } from '../../shared/types'
 import { HSL_CHANNELS, type EditPipeline } from './editPipeline'
+import { shouldSwapOrientation } from '../transform/cropGeometry'
 
 export function pipelineColorToRenderColor(color: EditPipeline['color']): RenderColorAdjustments {
   return {
@@ -49,5 +50,20 @@ export function pipelineTransformToRenderTransform(transform: EditPipeline['tran
     flipH: transform.flipH,
     flipV: transform.flipV,
     scale: transform.scale,
+  }
+}
+
+/** 裁剪/直角旋转后的实际画布尺寸，避免把新比例重新塞回原始画布。 */
+export function outputSizeForTransform(
+  source: { width: number; height: number },
+  transform: EditPipeline['transform'],
+): { width: number; height: number } {
+  const swapped = shouldSwapOrientation(transform.orientation)
+  const frameWidth = swapped ? source.height : source.width
+  const frameHeight = swapped ? source.width : source.height
+  const crop = transform.crop ?? { x: 0, y: 0, w: 1, h: 1 }
+  return {
+    width: Math.max(1, Math.round(frameWidth * crop.w)),
+    height: Math.max(1, Math.round(frameHeight * crop.h)),
   }
 }
