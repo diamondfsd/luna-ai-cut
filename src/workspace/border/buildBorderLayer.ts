@@ -58,10 +58,13 @@ export interface BuildBorderLayerOptions {
   canvasHeight: number
   border: BorderSettings
   metadata: MediaMetadata | null
+  /** 当前素材。带 media 层的预设可借此重新安排照片在画布中的位置。 */
+  mediaPath?: string | null
+  mediaLayerStyle?: Pick<PreviewLayer, 'color' | 'transform' | 'lutId' | 'lutIntensity' | 'isVideo'>
 }
 
 /** JSON 预设直接转换为 wgpu 原生层，不在浏览器中进行任何栅格化。 */
-export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata }: BuildBorderLayerOptions): PreviewLayer[] {
+export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, mediaPath, mediaLayerStyle }: BuildBorderLayerOptions): PreviewLayer[] {
   if (!border.enabled) return []
   const preset = FRAME_PRESETS.find((item) => item.id === border.presetId) ?? FRAME_PRESETS[0]
   if (!preset) return []
@@ -70,7 +73,7 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata }
   const scale = border.frameSize / 100
 
   return preset.layers.flatMap((layer: DeclarativeCompositionLayer): PreviewLayer[] => {
-    if (layer.visible === false || layer.type === 'group' || layer.type === 'media' || layer.type === 'decoration') return []
+    if (layer.visible === false || layer.type === 'group' || layer.type === 'decoration') return []
     if (layer.type === 'logo' && !border.showLogo) return []
     if (layer.id === 'title' && !border.showTitle) return []
     if ((layer.id === 'meta' || layer.id.includes('camera')) && !border.showCameraInfo) return []
@@ -78,6 +81,31 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata }
     const common = {
       filePath: '', dstX: layer.rect.x, dstY: Math.max(0, 1 - (1 - layer.rect.y) * scale), dstW: layer.rect.w, dstH: h,
       srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: (layer.opacity ?? 1) * border.opacity / 100, zIndex: layer.zIndex,
+    }
+    if (layer.type === 'media') {
+      if (!mediaPath) return []
+      const baseTransform = mediaLayerStyle?.transform
+      return [{
+        ...common,
+        ...mediaLayerStyle,
+        layerType: 'media',
+        filePath: mediaPath,
+        fit: layer.fit === 'cover-scale' ? 'cover-scale' : 'cover',
+        srcX: layer.crop?.x ?? 0,
+        srcY: layer.crop?.y ?? 0,
+        srcW: layer.crop?.w ?? 1,
+        srcH: layer.crop?.h ?? 1,
+        transform: {
+          crop: baseTransform?.crop ?? null,
+          orientation: baseTransform?.orientation ?? 0,
+          rotate: baseTransform?.rotate ?? 0,
+          flipH: baseTransform?.flipH ?? false,
+          flipV: baseTransform?.flipV ?? false,
+          scale: (baseTransform?.scale ?? 1) * border.mediaScale / 100,
+          translateX: border.mediaOffsetX / 100,
+          translateY: border.mediaOffsetY / 100,
+        },
+      }]
     }
     if (layer.type === 'shape') return [{ ...common, layerType: 'shape', shape: layer.shape, fillColor: layer.id === 'background' ? border.backgroundColor : layer.fill?.color, cornerRadius: layer.cornerRadius, strokeColor: layer.stroke?.color, strokeWidth: layer.stroke?.width }]
     if (layer.type === 'logo' && layer.source?.path) {

@@ -1,9 +1,9 @@
-import { RotateCcw } from 'lucide-react'
-import { useMemo } from 'react'
+import { ArrowLeft, RotateCcw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
-import { Input, Switch } from '../../ui'
+import { IconButton, Input, SearchField, Switch } from '../../ui'
 import { ParamSlider } from '../components/ParamSlider'
-import type { EditPipeline } from '../shared/editPipeline'
+import { DEFAULT_PIPELINE, type EditPipeline } from '../shared/editPipeline'
 import { BorderItem } from './BorderItem'
 import { FRAME_PRESETS } from './buildBorderLayer'
 import '../../styles/workspace-border.css'
@@ -11,7 +11,6 @@ import '../../styles/workspace-border.css'
 interface BorderPanelProps {
   value: EditPipeline['border']
   onChange: (patch: Partial<EditPipeline['border']>) => void
-  /** 当前素材路径（传给 BorderItem 渲染边框缩略图） */
   mediaPath?: string | null
 }
 
@@ -26,159 +25,110 @@ export function presetColors(presetId: string): { backgroundColor: string; textC
 }
 
 export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
-  const activePresetInfo = useMemo(
-    () => FRAME_PRESETS.find((p) => p.id === value.presetId) ?? null,
+  const [view, setView] = useState<'list' | 'edit'>('list')
+  const [query, setQuery] = useState('')
+  const activePreset = useMemo(
+    () => FRAME_PRESETS.find((preset) => preset.id === value.presetId) ?? null,
     [value.presetId],
   )
+  const filteredPresets = useMemo(() => {
+    const keyword = query.trim().toLocaleLowerCase()
+    if (!keyword) return FRAME_PRESETS
+    return FRAME_PRESETS.filter((preset) =>
+      [preset.name, preset.description, preset.category].some((field) => field?.toLocaleLowerCase().includes(keyword)),
+    )
+  }, [query])
+  const hasTitle = activePreset?.layers.some((layer) => layer.type === 'text' && layer.content.includes('{{title}}')) ?? false
+  const hasMediaLayout = activePreset?.layers.some((layer) => layer.type === 'media') ?? false
 
-  // 检测当前预设是否有层使用了 {{title}} 占位符
-  const hasTitlePlaceholder = activePresetInfo?.layers?.some(
-    (l) => l.type === 'text' && l.content?.includes('{{title}}'),
-  ) ?? false
-
-  const handleSelect = (presetId: string) => {
-    if (presetId === value.presetId && value.enabled) {
-      // 再次点击已选的预设 → 取消选中
-      onChange({ enabled: false })
-      return
-    }
-    onChange({ enabled: true, presetId, ...presetColors(presetId) })
+  const selectPreset = (presetId: string) => {
+    onChange({
+      enabled: true,
+      presetId,
+      ...presetColors(presetId),
+      mediaScale: 100,
+      mediaOffsetX: 0,
+      mediaOffsetY: 0,
+    })
+    setView('edit')
   }
 
-  return (
-    <div className="workspace-border-panel">
-      {/* ── 当前边框卡片（有选中预设时显示） ── */}
-      {value.enabled && activePresetInfo && (
-        <section className="border-current-card">
-          <div className="border-current-preview">
-            <BorderItem
-              presetId={value.presetId}
-              name={activePresetInfo.name}
-              mediaPath={mediaPath ?? null}
-              hideName
-            />
-          </div>
-          <div className="border-current-info">
-            <div className="border-current-top">
-              <span className="border-current-name">{activePresetInfo.name}</span>
-              <button
-                className="border-reset"
-                onClick={() => onChange({ enabled: false })}
-                title="取消边框"
-              >
-                <RotateCcw size={11} />
-              </button>
-            </div>
-          </div>
+  const resetPreset = () => onChange({
+    ...DEFAULT_PIPELINE.border,
+    enabled: true,
+    presetId: value.presetId,
+    ...presetColors(value.presetId),
+  })
 
-          {/* ── 编辑控件 ── */}
-          <div className="border-edit-controls">
-            <span className="border-edit-section-title">微调</span>
+  if (view === 'edit' && activePreset) {
+    return (
+      <div className="workspace-border-panel border-editor-view">
+        <header className="border-panel-header">
+          <IconButton variant="ghost" size="mini" icon={<ArrowLeft size={17} />} onClick={() => setView('list')} aria-label="返回边框列表" />
+          <div><strong>{activePreset.name}</strong><span>{activePreset.description}</span></div>
+          <IconButton variant="ghost" size="mini" icon={<RotateCcw size={15} />} onClick={resetPreset} aria-label="还原边框设置" title="还原边框设置" />
+        </header>
 
+        <div className="border-editor-scroll">
+          <section className="border-edit-controls">
+            <div className="border-edit-section-title">外观</div>
             <div className="border-color-row">
-              <span>背景颜色</span>
+              <span>边框颜色</span>
               <label className="border-color-picker">
-                <input
-                  type="color"
-                  value={value.backgroundColor}
-                  onChange={(e) => onChange({ backgroundColor: e.currentTarget.value })}
-                />
+                <input type="color" value={value.backgroundColor} onChange={(event) => onChange({ backgroundColor: event.currentTarget.value })} />
                 <span className="border-color-swatch" style={{ background: value.backgroundColor }} />
-                <span>{value.backgroundColor}</span>
+                <span>{value.backgroundColor.toUpperCase()}</span>
               </label>
             </div>
-
             <div className="border-color-row">
               <span>文字颜色</span>
               <label className="border-color-picker">
-                <input
-                  type="color"
-                  value={value.textColor}
-                  onChange={(e) => onChange({ textColor: e.currentTarget.value })}
-                />
+                <input type="color" value={value.textColor} onChange={(event) => onChange({ textColor: event.currentTarget.value })} />
                 <span className="border-color-swatch" style={{ background: value.textColor }} />
-                <span>{value.textColor}</span>
+                <span>{value.textColor.toUpperCase()}</span>
               </label>
             </div>
+            <ParamSlider label="边框尺寸" value={value.frameSize} min={70} max={135} step={1} onChange={(frameSize) => onChange({ frameSize })} formatValue={(number) => `${number}%`} />
+            <ParamSlider label="不透明度" value={value.opacity} min={20} max={100} step={1} onChange={(opacity) => onChange({ opacity })} formatValue={(number) => `${number}%`} />
 
-            <ParamSlider
-              label="边框尺寸"
-              value={value.frameSize}
-              min={70}
-              max={135}
-              step={1}
-              onChange={(frameSize) => onChange({ frameSize })}
-              formatValue={(v) => `${v}%`}
-            />
+            {hasMediaLayout && (
+              <div className="border-media-controls">
+                <div className="border-edit-section-title">照片布局</div>
+                <ParamSlider label="照片尺寸" value={value.mediaScale} min={70} max={160} step={1} onChange={(mediaScale) => onChange({ mediaScale })} formatValue={(number) => `${number}%`} />
+                <ParamSlider label="水平位置" value={value.mediaOffsetX} min={-50} max={50} step={1} onChange={(mediaOffsetX) => onChange({ mediaOffsetX })} formatValue={(number) => `${number}`} />
+                <ParamSlider label="垂直位置" value={value.mediaOffsetY} min={-50} max={50} step={1} onChange={(mediaOffsetY) => onChange({ mediaOffsetY })} formatValue={(number) => `${number}`} />
+              </div>
+            )}
 
-            <ParamSlider
-              label="不透明度"
-              value={value.opacity}
-              min={20}
-              max={100}
-              step={1}
-              onChange={(opacity) => onChange({ opacity })}
-              formatValue={(v) => `${v}%`}
-            />
-
-            {hasTitlePlaceholder && (
+            {hasTitle && (
               <div className="border-title-row">
                 <span className="border-title-label">标题</span>
-                <Input
-                  variant="pill"
-                  fullWidth
-                  value={value.title}
-                  onChange={(e) => onChange({ title: e.currentTarget.value })}
-                  placeholder="输入作品标题"
-                  aria-label="作品标题"
-                />
+                <Input variant="compact" fullWidth value={value.title} onChange={(event) => onChange({ title: event.currentTarget.value })} placeholder="输入作品标题" aria-label="作品标题" />
               </div>
             )}
 
             <div className="border-switches">
-              <label>
-                <span>显示标志</span>
-                <Switch
-                  checked={value.showLogo}
-                  onCheckedChange={(showLogo) => onChange({ showLogo })}
-                  ariaLabel="显示标志"
-                />
-              </label>
-              <label>
-                <span>显示标题</span>
-                <Switch
-                  checked={value.showTitle}
-                  onCheckedChange={(showTitle) => onChange({ showTitle })}
-                  ariaLabel="显示标题"
-                />
-              </label>
-              <label>
-                <span>显示拍摄信息</span>
-                <Switch
-                  checked={value.showCameraInfo}
-                  onCheckedChange={(showCameraInfo) => onChange({ showCameraInfo })}
-                  ariaLabel="显示拍摄信息"
-                />
-              </label>
+              <label><span>显示标志</span><Switch checked={value.showLogo} onCheckedChange={(showLogo) => onChange({ showLogo })} ariaLabel="显示标志" /></label>
+              <label><span>显示标题</span><Switch checked={value.showTitle} onCheckedChange={(showTitle) => onChange({ showTitle })} ariaLabel="显示标题" /></label>
+              <label><span>显示拍摄信息</span><Switch checked={value.showCameraInfo} onCheckedChange={(showCameraInfo) => onChange({ showCameraInfo })} ariaLabel="显示拍摄信息" /></label>
             </div>
-          </div>
-        </section>
-      )}
-
-      {/* ── 预设网格 ── */}
-      <div className="border-grid-wrap">
-        <div className="border-grid">
-          {FRAME_PRESETS.map((preset) => (
-            <BorderItem
-              key={preset.id}
-              presetId={preset.id}
-              name={preset.name}
-              active={value.enabled && value.presetId === preset.id}
-              onClick={() => handleSelect(preset.id)}
-              mediaPath={mediaPath ?? null}
-            />
-          ))}
+          </section>
         </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="workspace-border-panel border-list-view">
+      <SearchField fullWidth value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="搜索边框" aria-label="搜索边框" />
+      <div className="border-grid-wrap">
+        {filteredPresets.length ? (
+          <div className="border-grid">
+            {filteredPresets.map((preset) => (
+              <BorderItem key={preset.id} presetId={preset.id} name={preset.name} active={value.enabled && value.presetId === preset.id} onClick={() => selectPreset(preset.id)} mediaPath={mediaPath ?? null} />
+            ))}
+          </div>
+        ) : <div className="border-empty">没有找到相关边框</div>}
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-import { Check, Crop, Frame, ImagePlus, Paintbrush, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
+import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
@@ -73,7 +73,7 @@ const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element
   { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
-  { value: 'border', label: '边框', icon: <Frame size={22} /> },
+  { value: 'border', label: '边框', icon: <Image size={22} strokeWidth={1.8} /> },
 ]
 
 function titleForTool(tool: WorkspaceTool): string {
