@@ -240,6 +240,9 @@ export function PreviewStage(
 
   function handleRender() {
     setLoading(false)
+    // 裁剪模式会在“最终裁剪画布”和“原始工作画布”之间切换。
+    // 渲染完成后再读取 canvas 的真实 DOM 尺寸，避免遮罩沿用切换前的比例。
+    window.requestAnimationFrame(syncCanvasMetrics)
     // 渲染完成后，检查是否需要恢复播放
     if (shouldResumePlaybackRef.current && videoRef.current) {
       shouldResumePlaybackRef.current = false
@@ -304,6 +307,24 @@ export function PreviewStage(
     return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
 
+  const syncCanvasMetrics = useCallback(() => {
+    const stage = stageRef.current
+    const wrapper = wrapperRef.current
+    const canvas = wrapper?.querySelector('canvas')
+    if (!stage || !canvas || !resolution) return
+    const stageRect = stage.getBoundingClientRect()
+    const canvasRect = canvas.getBoundingClientRect()
+    onMetricsChange?.({
+      sourceAspect: resolution.width / resolution.height,
+      imageRect: {
+        x: canvasRect.left - stageRect.left,
+        y: canvasRect.top - stageRect.top,
+        width: canvasRect.width,
+        height: canvasRect.height,
+      },
+    })
+  }, [onMetricsChange, resolution])
+
   // 通过 IPC 获取媒体文件实际分辨率
   useEffect(() => {
     if (!layoutUrl) {
@@ -342,16 +363,7 @@ export function PreviewStage(
     // 与 project canvas 尺寸不一定一致，直接读 DOM 坐标更准确。
     const canvas = wrapper.querySelector('canvas')
     if (canvas) {
-      const canvasRect = canvas.getBoundingClientRect()
-      onMetricsChange?.({
-        sourceAspect: resolution.width / resolution.height,
-        imageRect: {
-          x: canvasRect.left - stageRect.left,
-          y: canvasRect.top - stageRect.top,
-          width: canvasRect.width,
-          height: canvasRect.height,
-        },
-      })
+      syncCanvasMetrics()
     } else {
       const wrapperRect = wrapper.getBoundingClientRect()
       onMetricsChange?.({
@@ -364,7 +376,7 @@ export function PreviewStage(
         },
       })
     }
-  }, [onMetricsChange, layers, resolution, viewScale])
+  }, [onMetricsChange, layers, resolution, syncCanvasMetrics, viewScale])
 
   if (!displayUrl && layers.length === 0) return null
 
