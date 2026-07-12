@@ -89,7 +89,10 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
   if (!preset) return []
   const variables = metadataVariables(metadata, border.title)
   if (!border.showDate) variables.date = ''
-  const scale = border.frameSize / 100
+  // 含媒体层的预设是固定的全画布版式（如拍立得、卡纸）。通用 frameSize
+  // 会连同纸张背景一起缩小并露出底层原图，因此只对底栏/浮层类预设生效。
+  const hasMediaLayout = preset.layers.some((layer) => layer.type === 'media')
+  const scale = hasMediaLayout ? 1 : border.frameSize / 100
   const isVideoMedia = mediaPath ? isVideoPath(mediaPath) : false
 
   return preset.layers.flatMap((layer: DeclarativeCompositionLayer): PreviewLayer[] => {
