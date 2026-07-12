@@ -79,8 +79,9 @@ export function CropOverlay() {
       if (!sameCrop(fitted, activeCropRef.current)) onCropChange(fitted)
       return
     }
-    // Frame characteristics changed during active crop; remap existing crop to new frame
-    const preferred = preferredCropRef.current ?? activeCropRef.current
+    // 比例预设会先把新裁剪框写入草稿。这里必须以最新草稿为准，
+    // 否则旧的 preferredCrop 会立刻覆盖刚选择的比例。
+    const preferred = activeCropRef.current
 
     // If orientation changed, rotate the crop around image center to follow the content
     const oldOrientation = prevOrientationRef.current ?? orientation
@@ -100,8 +101,9 @@ export function CropOverlay() {
     const rotateKey = `${canvas.sourceAspect}:${orientation}:${rotate}:${aspectRatio ?? 'free'}`
     if (rotateKeyRef.current === rotateKey) return
     rotateKeyRef.current = rotateKey
-    const preferred = preferredCropRef.current ?? activeCropRef.current
+    const preferred = activeCropRef.current
     const fitted = fitCropInsideImage(preferred, canvas.sourceAspect, orientation, rotate)
+    preferredCropRef.current = fitted
     if (!sameCrop(fitted, activeCropRef.current)) onCropChange(fitted)
   }, [aspectRatio, canvas.sourceAspect, orientation, rotate, onCropChange])
 

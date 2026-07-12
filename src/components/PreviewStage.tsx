@@ -6,7 +6,7 @@ import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls } from '../ui'
 import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
-import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import './PreviewStage.css'
 
 interface PreviewStageProps {
@@ -253,18 +253,19 @@ export function PreviewStage(
     return calcAspectRatio(resolution.width, resolution.height)
   }, [resolution])
   const previewCanvas = useMemo(
-    () => projectCanvasFor(resolution, !isDisplayVideo),
-    [isDisplayVideo, resolution],
+    () => projectCanvasFor(
+      resolution && pipeline ? outputSizeForTransform(resolution, pipeline.transform) : resolution,
+      !isDisplayVideo,
+    ),
+    [isDisplayVideo, pipeline, resolution],
   )
 
   // ── LUT 滤镜：直接传文件路径给 Rust ──
   const lutFilePath = pipeline?.lutFilter?.activeId ?? undefined
 
-  const buildAdjustedLayers = useCallback((sourceUrl: string | null, layerResolution = resolution): PreviewLayer[] => {
-    // 基于 Project Canvas 计算布局，Stage 不参与
-    const canvas = projectCanvasFor(layerResolution, !!sourceUrl && !isVideoPath(sourceUrl))
-      ?? { width: 1440, height: 1440 }
-    const main = sourceUrl ? buildLayers(sourceUrl, layerResolution, canvas) : []
+  const buildAdjustedLayers = useCallback((sourceUrl: string | null): PreviewLayer[] => {
+    // 输出画布已经采用裁剪后的比例，媒体层应填满画布，再由渲染变换取出裁剪区域。
+    const main = sourceUrl ? buildLayers(sourceUrl) : []
     if (main[0] && pipeline) {
       const renderTransform = pipelineTransformToRenderTransform(pipeline.transform)
       main[0] = {
@@ -296,11 +297,11 @@ export function PreviewStage(
       dstH: l.dstH * cH,
     }))
     return [...main, ...adjusted]
-  }, [resolution, extraLayers, pipeline, lutFilePath])
+  }, [extraLayers, pipeline, lutFilePath])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []
-    return buildAdjustedLayers(displayUrl, resolution)
+    return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
 
   // 通过 IPC 获取媒体文件实际分辨率

@@ -25,7 +25,7 @@ import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativ
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
-import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import '../styles/workspace-loading.css'
@@ -150,14 +150,14 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       metadata: borderMetadata,
       mediaPath: media.activeMedia?.path,
       mediaLayerStyle: {
-        color: pipelineColorToRenderColor(edit.pipeline.color),
-        transform: pipelineTransformToRenderTransform(edit.pipeline.transform),
-        lutId: edit.pipeline.lutFilter.activeId ?? undefined,
-        lutIntensity: edit.pipeline.lutFilter.intensity,
+        color: pipelineColorToRenderColor(stagePipeline.color),
+        transform: pipelineTransformToRenderTransform(stagePipeline.transform),
+        lutId: stagePipeline.lutFilter.activeId ?? undefined,
+        lutIntensity: stagePipeline.lutFilter.intensity,
         isVideo: media.activeMedia?.path ? isVideoPath(media.activeMedia.path) : false,
       },
     })
-  }, [edit.pipeline, watermarkMediaSize, borderMetadata, media.activeMedia?.path])
+  }, [edit.pipeline.border, stagePipeline, watermarkMediaSize, borderMetadata, media.activeMedia?.path])
 
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
@@ -346,6 +346,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
           sourcePath: asset.path,
           outputBaseName: asset.name.replace(/\.[^.]+$/, '') || 'export',
           layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline, borderMeta),
+          outputSize: outputSizeForTransform(resolution, pipeline.transform),
         }
       }))
 
