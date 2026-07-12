@@ -124,28 +124,36 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     })
   }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft])
 
+  const finalCanvasSize = useMemo(() => {
+    if (!watermarkMediaSize) return null
+    return outputSizeForTransform(
+      { width: watermarkMediaSize.w, height: watermarkMediaSize.h },
+      edit.previewPipeline.transform,
+    )
+  }, [edit.previewPipeline.transform, watermarkMediaSize])
+
   // ── 从 pipeline 水印设置自动生成预览层 ──
   const watermarkLayer = useMemo(() => {
     const wm = edit.pipeline.watermark
     if (!wm?.enabled) return []
-    if (!watermarkMediaSize) return []
-    const layer = buildResolvedWatermarkStaticLayer(wm, watermarkMediaSize.w, watermarkMediaSize.h)
+    if (!finalCanvasSize) return []
+    const layer = buildResolvedWatermarkStaticLayer(wm, finalCanvasSize.width, finalCanvasSize.height)
     console.log('[WorkspacePage] watermark preview layer', {
       filePath: media.activeMedia?.path,
-      mediaSize: `${watermarkMediaSize.w}x${watermarkMediaSize.h}`,
+      mediaSize: `${finalCanvasSize.width}x${finalCanvasSize.height}`,
       style: wm.style,
       position: wm.position,
       layer,
     })
     return layer ? [layer] : []
-  }, [edit.pipeline.watermark, media.activeMedia?.path, watermarkMediaSize])
+  }, [edit.pipeline.watermark, media.activeMedia?.path, finalCanvasSize])
 
   // ── 边框预览层（JSON 预设解析为多个独立合成层） ──
   const borderLayer = useMemo(() => {
-    if (!watermarkMediaSize) return []
+    if (!finalCanvasSize) return []
     return buildBorderLayer({
-      canvasWidth: watermarkMediaSize.w,
-      canvasHeight: watermarkMediaSize.h,
+      canvasWidth: finalCanvasSize.width,
+      canvasHeight: finalCanvasSize.height,
       border: edit.pipeline.border,
       metadata: borderMetadata,
       mediaPath: media.activeMedia?.path,
@@ -157,12 +165,12 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         isVideo: media.activeMedia?.path ? isVideoPath(media.activeMedia.path) : false,
       },
     })
-  }, [edit.pipeline.border, stagePipeline, watermarkMediaSize, borderMetadata, media.activeMedia?.path])
+  }, [edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
 
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
-    () => [...watermarkLayer, ...borderLayer],
-    [watermarkLayer, borderLayer],
+    () => edit.cropActive ? [] : [...watermarkLayer, ...borderLayer],
+    [edit.cropActive, watermarkLayer, borderLayer],
   )
 
   // ── Initialize pipeline / reset crop when active asset changes ──
