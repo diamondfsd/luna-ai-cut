@@ -1,5 +1,5 @@
-import { ArrowLeft, RotateCcw } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { ArrowLeft, RotateCcw, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { isVideoPath } from '../../lib/fileUtils'
 import { IconButton, Input, SearchField, Switch } from '../../ui'
@@ -45,6 +45,11 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
   const hasDate = activePreset?.layers.some((layer) => layer.type === 'text' && layer.content.includes('{{date}}')) ?? false
   const isVideoMedia = mediaPath ? isVideoPath(mediaPath) : false
 
+  // 素材切换及其 pipeline 初始化完成后，按该素材是否已有边框决定入口。
+  useEffect(() => {
+    setView(value.enabled ? 'edit' : 'list')
+  }, [mediaPath, value.enabled, value.presetId])
+
   const selectPreset = (presetId: string) => {
     onChange({
       enabled: true,
@@ -71,7 +76,20 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
         <header className="border-panel-header">
           <IconButton variant="ghost" size="mini" icon={<ArrowLeft size={17} />} onClick={() => setView('list')} aria-label="返回边框列表" />
           <div><strong>{activePreset.name}</strong><span>{activePreset.description}</span></div>
-          <IconButton variant="ghost" size="mini" icon={<RotateCcw size={15} />} onClick={resetPreset} aria-label="还原边框设置" title="还原边框设置" />
+          <div className="border-panel-actions">
+            <IconButton
+              variant="ghost"
+              size="mini"
+              icon={<X size={16} />}
+              onClick={() => {
+                onChange({ enabled: false })
+                setView('list')
+              }}
+              aria-label="移除当前边框"
+              title="移除当前边框"
+            />
+            <IconButton variant="ghost" size="mini" icon={<RotateCcw size={15} />} onClick={resetPreset} aria-label="还原边框设置" title="还原边框设置" />
+          </div>
         </header>
 
         <div className="border-editor-scroll">
@@ -114,7 +132,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
 
             <div className="border-switches">
               {hasLogo && <label><span>显示标志</span><Switch checked={value.showLogo} onCheckedChange={(showLogo) => onChange({ showLogo })} ariaLabel="显示标志" /></label>}
-              <label><span>显示标题</span><Switch checked={value.showTitle} onCheckedChange={(showTitle) => onChange({ showTitle })} ariaLabel="显示标题" /></label>
+              {hasTitle && <label><span>显示标题</span><Switch checked={value.showTitle} onCheckedChange={(showTitle) => onChange({ showTitle })} ariaLabel="显示标题" /></label>}
               {!isVideoMedia && <label><span>显示拍摄信息</span><Switch checked={value.showCameraInfo} onCheckedChange={(showCameraInfo) => onChange({ showCameraInfo })} ariaLabel="显示拍摄信息" /></label>}
               {!isVideoMedia && hasDate && <label><span>显示拍摄日期</span><Switch checked={value.showDate} onCheckedChange={(showDate) => onChange({ showDate })} ariaLabel="显示拍摄日期" /></label>}
             </div>

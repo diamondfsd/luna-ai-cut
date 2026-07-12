@@ -4,6 +4,7 @@
 .border-list-heading strong, .border-panel-header strong { font-size: 14px; font-weight: 600; }
 .border-list-heading span, .border-panel-header span { color: #7e8795; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .border-panel-header > div { flex: 1; }
+.border-panel-header > .border-panel-actions { flex: 0 0 auto; flex-direction: row; align-items: center; gap: 2px; }
 .border-list-view > .ui-input-wrap { flex: 0 0 auto; }
 .border-editor-scroll, .border-grid-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 1px 4px 20px 0; scrollbar-color: rgba(255,255,255,.18) transparent; }
 .border-editor-scroll { display: flex; flex-direction: column; gap: 18px; }
