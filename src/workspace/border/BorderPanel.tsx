@@ -111,7 +111,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
                 <span>{value.textColor.toUpperCase()}</span>
               </label>
             </div>
-            <ParamSlider label="边框尺寸" value={value.frameSize} min={70} max={135} step={1} onChange={(frameSize) => onChange({ frameSize })} formatValue={(number) => `${number}%`} />
+            {!hasMediaLayout && <ParamSlider label="边框尺寸" value={value.frameSize} min={70} max={135} step={1} onChange={(frameSize) => onChange({ frameSize })} formatValue={(number) => `${number}%`} />}
             <ParamSlider label="不透明度" value={value.opacity} min={20} max={100} step={1} onChange={(opacity) => onChange({ opacity })} formatValue={(number) => `${number}%`} />
 
             {hasMediaLayout && (
