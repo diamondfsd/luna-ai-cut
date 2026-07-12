@@ -582,9 +582,13 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           )
 
           // 计算输出尺寸（等比缩放到 PREVIEW_MAX_SIDE）
+          // 渲染循环在组件初始化时创建，必须从 ref 读取最新画布尺寸。
+          // 直接读取闭包里的 props 会让视频在裁剪后继续沿用旧比例。
+          const latestCanvasWidth = canvasWidthRef.current
+          const latestCanvasHeight = canvasHeightRef.current
           const [outW, outH] =
-            canvasWidth && canvasHeight
-              ? calcOutputSize(canvasWidth, canvasHeight)
+            latestCanvasWidth && latestCanvasHeight
+              ? calcOutputSize(latestCanvasWidth, latestCanvasHeight)
               : [PREVIEW_MAX_SIDE, Math.round(PREVIEW_MAX_SIDE * 0.75)]
 
           // 发送最终 renderFrame IPC 前检查组件是否尚未销毁
