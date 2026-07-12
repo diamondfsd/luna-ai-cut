@@ -39,8 +39,12 @@ async function renderBorderThumb(
       showCameraInfo: true,
       showDate: false,
       title: '',
+      mediaScale: 100,
+      mediaOffsetX: 0,
+      mediaOffsetY: 0,
     },
     metadata: null,
+    mediaPath: sourcePath,
   })
 
   const composition: CompositionInput = {
@@ -57,7 +61,7 @@ async function renderBorderThumb(
         layerType: l.layerType,
         source: { path: l.filePath },
         rect: { x: l.dstX, y: l.dstY, w: l.dstW, h: l.dstH },
-        fit: 'cover',
+        fit: l.fit ?? 'cover',
         opacity: l.opacity,
         zIndex: l.zIndex,
         shape: l.shape,
