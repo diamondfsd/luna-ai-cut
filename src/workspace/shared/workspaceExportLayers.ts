@@ -1,7 +1,7 @@
 import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer, MediaMetadata } from '../../shared/types'
-import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
+import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
 
@@ -11,6 +11,7 @@ export function buildWorkspaceExportLayers(
   pipeline: EditPipeline,
   borderMetadata?: MediaMetadata | null,
 ): PreviewLayer[] {
+  const finalCanvasSize = outputSizeForTransform(resolution, pipeline.transform)
   const main = buildLayers(sourcePath)
   if (main[0]) {
     main[0] = {
@@ -22,14 +23,14 @@ export function buildWorkspaceExportLayers(
     }
   }
 
-  const layers = buildExportLayers(sourcePath, resolution, pipeline.watermark)
+  const layers = buildExportLayers(sourcePath, finalCanvasSize, pipeline.watermark)
   const result = main[0] ? [{ ...layers[0], ...main[0] }, ...layers.slice(1)] : layers
 
   // 边框层（如果有元数据）
   if (pipeline.border.enabled && borderMetadata !== undefined) {
     const borderLayers = buildBorderLayer({
-      canvasWidth: resolution.width,
-      canvasHeight: resolution.height,
+      canvasWidth: finalCanvasSize.width,
+      canvasHeight: finalCanvasSize.height,
       border: pipeline.border,
       metadata: borderMetadata,
       mediaPath: sourcePath,
