@@ -42,6 +42,10 @@ export interface BorderSettings {
   showCameraInfo: boolean
   showDate: boolean
   title: string
+  /** 带照片区域的边框中，照片自身的缩放和位置。 */
+  mediaScale: number
+  mediaOffsetX: number
+  mediaOffsetY: number
 }
 
 export interface EditPipeline {
@@ -219,6 +223,9 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     showCameraInfo: true,
     showDate: false,
     title: 'Insta360',
+    mediaScale: 100,
+    mediaOffsetX: 0,
+    mediaOffsetY: 0,
   },
 }
 
@@ -386,6 +393,9 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
     backgroundColor: typeof value?.backgroundColor === 'string' ? value.backgroundColor : legacyColor ?? DEFAULT_PIPELINE.border.backgroundColor,
     textColor: typeof value?.textColor === 'string' ? value.textColor : DEFAULT_PIPELINE.border.textColor,
     opacity: clampNumber(Number(value?.opacity ?? 100), { min: 0, max: 100 }),
+    mediaScale: clampNumber(Number(value?.mediaScale ?? 100), { min: 70, max: 160 }),
+    mediaOffsetX: clampNumber(Number(value?.mediaOffsetX ?? 0), { min: -50, max: 50 }),
+    mediaOffsetY: clampNumber(Number(value?.mediaOffsetY ?? 0), { min: -50, max: 50 }),
   }
 }
 

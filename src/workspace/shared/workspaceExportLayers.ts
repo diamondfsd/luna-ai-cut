@@ -39,6 +39,13 @@ export function buildWorkspaceExportLayers(
       canvasHeight: resolution.height,
       border: pipeline.border,
       metadata: borderMetadata,
+      mediaPath: sourcePath,
+      mediaLayerStyle: {
+        color: pipelineColorToRenderColor(pipeline.color),
+        transform: pipelineTransformToRenderTransform(pipeline.transform),
+        lutId: pipeline.lutFilter.activeId ?? undefined,
+        lutIntensity: pipeline.lutFilter.intensity,
+      },
     })
     result.push(...borderLayers)
   }
