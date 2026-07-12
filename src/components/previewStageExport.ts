@@ -378,6 +378,7 @@ export interface BatchExportSource {
   sourcePath: string
   layers?: PreviewLayer[]
   outputBaseName?: string
+  outputSize?: { width: number; height: number }
 }
 
 interface BatchExportEntry {
@@ -385,6 +386,7 @@ interface BatchExportEntry {
   sourcePath: string
   outputPath: string
   layers?: PreviewLayer[]
+  outputSize?: { width: number; height: number }
   index: number
   kind: 'image' | 'video'
   isLivePhoto?: boolean
@@ -500,6 +502,7 @@ async function runBatchExportQueue(
         progress: 0,
       }).catch(() => {})
       const res = await window.luna.workspace.getMediaResolution(entry.sourcePath)
+      const outputSize = entry.outputSize ?? res
       const exportLayers = entry.layers ?? buildExportLayers(entry.sourcePath, res)
       const fileName = fileNameFromPath(entry.outputPath)
 
@@ -583,7 +586,7 @@ async function runBatchExportQueue(
       }
 
       if (entry.kind === 'video') {
-        const resolved = resolveExportConfig(exportConfig, res.width, res.height)
+        const resolved = resolveExportConfig(exportConfig, outputSize.width, outputSize.height)
         await exportPreviewVideo({
           exportDir,
           fileName,
@@ -605,8 +608,8 @@ async function runBatchExportQueue(
       await exportPreviewImage({
         exportDir,
         fileName,
-        width: res.width,
-        height: res.height,
+        width: outputSize.width,
+        height: outputSize.height,
         layers: exportLayers,
         format: 'jpeg',
         quality: 100,
@@ -674,6 +677,7 @@ export async function exportBatchFiles(
       sourcePath: fp,
       outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_${stamp}${ext}`,
       layers: source.layers,
+      outputSize: source.outputSize,
       index,
       kind: isVid ? 'video' : 'image',
     }

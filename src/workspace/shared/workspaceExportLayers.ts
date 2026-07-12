@@ -5,20 +5,13 @@ import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
 
-function exportCanvasFor(resolution: { width: number; height: number }): { width: number; height: number } {
-  const max = 1440
-  const aspect = resolution.width / resolution.height
-  if (aspect >= 1) return { width: max, height: Math.round(max / aspect) }
-  return { width: Math.round(max * aspect), height: max }
-}
-
 export function buildWorkspaceExportLayers(
   sourcePath: string,
   resolution: { width: number; height: number },
   pipeline: EditPipeline,
   borderMetadata?: MediaMetadata | null,
 ): PreviewLayer[] {
-  const main = buildLayers(sourcePath, resolution, exportCanvasFor(resolution))
+  const main = buildLayers(sourcePath)
   if (main[0]) {
     main[0] = {
       ...main[0],
