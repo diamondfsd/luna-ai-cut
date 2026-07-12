@@ -1,7 +1,6 @@
 {"id":"museum-mat","name":"美术馆卡纸","category":"gallery","description":"克制的暖白留边与展签排版","swatch":"#ebe7de","layers":[
   {"id":"background","type":"shape","shape":"rectangle","rect":{"x":0,"y":0,"w":1,"h":1},"fill":{"type":"solid","color":"#EBE7DE"},"zIndex":20},
   {"id":"photo","type":"media","rect":{"x":0.065,"y":0.07,"w":0.87,"h":0.73},"source":{"path":"{{media}}","sourceType":"auto"},"fit":"cover","zIndex":21},
-  {"id":"title","type":"text","rect":{"x":0.25,"y":0.84,"w":0.365,"h":0.045},"content":"{{title}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Bold.otf","fontSize":19,"fontWeight":600,"color":"#252421","align":"left","verticalAlign":"middle"},"overflow":"shrink","zIndex":22},
-  {"id":"brand","type":"logo","rect":{"x":0.065,"y":0.848,"w":0.135,"h":0.026},"source":{"path":"logo_cn_black","format":"png"},"fit":"contain","opacity":0.62,"zIndex":22},
+  {"id":"brand","type":"logo","rect":{"x":0.065,"y":0.842,"w":0.24,"h":0.04},"source":{"path":"logo_cn_black","format":"png"},"fit":"contain","zIndex":22},
   {"id":"meta","type":"text","rect":{"x":0.55,"y":0.84,"w":0.385,"h":0.045},"content":"{{focalLength}}  {{aperture}}  ISO {{iso}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Regular.otf","fontSize":12,"fontWeight":400,"color":"#59564F","align":"right","verticalAlign":"middle"},"overflow":"shrink","zIndex":22}
 ]}
