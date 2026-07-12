@@ -1,6 +1,11 @@
 {"id":"glass","name":"玻璃参数栏","category":"blur","description":"半透明深色信息面板","swatch":"#34383d","layers":[
-  {"id":"background","type":"shape","shape":"rounded-rectangle","rect":{"x":0.055,"y":0.84,"w":0.89,"h":0.12},"fill":{"type":"solid","color":"#101010"},"opacity":0.7,"cornerRadius":0.018,"stroke":{"width":1,"color":"#FFFFFF","opacity":0.3},"zIndex":20},
+  {"id":"background","type":"shape","shape":"rounded-rectangle","rect":{"x":0.055,"y":0.84,"w":0.89,"h":0.12},"fill":{"type":"solid","color":"#101010"},"opacity":0.7,"cornerRadius":0.018,"zIndex":20},
+  {"id":"frame-top","type":"shape","shape":"rectangle","rect":{"x":0.055,"y":0.84,"w":0.89,"h":0.0015},"fill":{"type":"solid","color":"#FFFFFF"},"opacity":0.3,"zIndex":21},
+  {"id":"frame-bottom","type":"shape","shape":"rectangle","rect":{"x":0.055,"y":0.9585,"w":0.89,"h":0.0015},"fill":{"type":"solid","color":"#FFFFFF"},"opacity":0.3,"zIndex":21},
+  {"id":"frame-left","type":"shape","shape":"rectangle","rect":{"x":0.055,"y":0.84,"w":0.0015,"h":0.12},"fill":{"type":"solid","color":"#FFFFFF"},"opacity":0.3,"zIndex":21},
+  {"id":"frame-right","type":"shape","shape":"rectangle","rect":{"x":0.9435,"y":0.84,"w":0.0015,"h":0.12},"fill":{"type":"solid","color":"#FFFFFF"},"opacity":0.3,"zIndex":21},
   {"id":"brand","type":"logo","rect":{"x":0.085,"y":0.875,"w":0.17,"h":0.05},"source":{"path":"logo_cn_white","format":"png"},"fit":"contain","zIndex":21},
-  {"id":"divider","type":"shape","shape":"line","rect":{"x":0.275,"y":0.865,"w":0.001,"h":0.07},"fill":{"type":"solid","color":"#FFFFFF"},"opacity":0.35,"zIndex":21},
-  {"id":"meta","type":"text","rect":{"x":0.31,"y":0.865,"w":0.595,"h":0.07},"content":"{{camera}} · {{focalLength}} · {{shutter}} · ISO {{iso}}\n{{date}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Medium.otf","fontSize":18,"fontWeight":500,"color":"#FFFFFF","align":"left","verticalAlign":"middle"},"overflow":"shrink","zIndex":21}
+  {"id":"divider","type":"shape","shape":"rectangle","rect":{"x":0.275,"y":0.865,"w":0.001,"h":0.07},"fill":{"type":"solid","color":"#FFFFFF"},"opacity":0.35,"zIndex":21},
+  {"id":"meta","type":"text","rect":{"x":0.31,"y":0.864,"w":0.595,"h":0.038},"content":"{{camera}} · {{focalLength}} · {{shutter}} · ISO {{iso}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Medium.otf","fontSize":17,"fontWeight":500,"color":"#FFFFFF","align":"left","verticalAlign":"middle"},"overflow":"shrink","zIndex":21},
+  {"id":"date","type":"text","rect":{"x":0.31,"y":0.904,"w":0.595,"h":0.025},"content":"{{date}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Regular.otf","fontSize":13,"fontWeight":400,"color":"#FFFFFF","align":"left","verticalAlign":"middle"},"overflow":"shrink","opacity":0.72,"zIndex":21}
 ]}
