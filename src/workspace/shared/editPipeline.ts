@@ -221,7 +221,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     showLogo: true,
     showTitle: true,
     showCameraInfo: true,
-    showDate: false,
+    showDate: true,
     title: 'Insta360',
     mediaScale: 100,
     mediaOffsetX: 0,
