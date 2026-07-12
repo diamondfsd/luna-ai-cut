@@ -1,6 +1,7 @@
 {"id":"polaroid","name":"拍立得留白","category":"polaroid","description":"经典即时成像相纸与宽下边距","swatch":"#f6f1e7","layers":[
   {"id":"background","type":"shape","shape":"rectangle","rect":{"x":0,"y":0,"w":1,"h":1},"fill":{"type":"solid","color":"#F6F1E7"},"zIndex":20},
   {"id":"photo","type":"media","rect":{"x":0.055,"y":0.055,"w":0.89,"h":0.72},"source":{"path":"{{media}}","sourceType":"auto"},"fit":"cover","zIndex":21},
-  {"id":"title","type":"text","rect":{"x":0.1,"y":0.81,"w":0.8,"h":0.075},"content":"{{title}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Medium.otf","fontSize":27,"fontWeight":500,"color":"#25221E","align":"center","verticalAlign":"middle"},"overflow":"shrink","zIndex":22},
+  {"id":"title","type":"text","rect":{"x":0.25,"y":0.81,"w":0.65,"h":0.075},"content":"{{title}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Medium.otf","fontSize":27,"fontWeight":500,"color":"#25221E","align":"center","verticalAlign":"middle"},"overflow":"shrink","zIndex":22},
+  {"id":"brand","type":"logo","rect":{"x":0.08,"y":0.827,"w":0.13,"h":0.035},"source":{"path":"logo_standard_black","format":"png"},"fit":"contain","opacity":0.62,"zIndex":22},
   {"id":"meta","type":"text","rect":{"x":0.15,"y":0.9,"w":0.7,"h":0.035},"content":"{{date}}  ·  {{camera}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Regular.otf","fontSize":13,"fontWeight":400,"color":"#777066","align":"center","verticalAlign":"middle"},"overflow":"shrink","zIndex":22}
 ]}

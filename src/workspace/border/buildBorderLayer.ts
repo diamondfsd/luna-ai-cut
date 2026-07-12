@@ -1,4 +1,5 @@
 import type { DeclarativeCompositionLayer, FramePreset, MediaMetadata, PreviewLayer } from '../../shared/types'
+import { isVideoPath } from '../../lib/fileUtils'
 import type { BorderSettings } from '../shared/editPipeline'
 import { getBorderLogo } from './logoAssets'
 
@@ -35,14 +36,21 @@ function metadataVariables(metadata: MediaMetadata | null, title: string): Recor
     ? `1/${Math.round(1 / exposureNumber)}s`
     : exposureValue ?? '—'
   const capturedAt = values.get('DateTimeOriginal') ?? values.get('ModifyDate')
-  const date = capturedAt ? new Date(capturedAt) : null
+  const dateParts = capturedAt?.match(/^(\d{4})[:-](\d{2})[:-](\d{2})/)
+  const formattedDate = dateParts
+    ? `${dateParts[1]}.${dateParts[2]}.${dateParts[3]}`
+    : (() => {
+        if (!capturedAt) return ''
+        const date = new Date(capturedAt)
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('zh-CN')
+      })()
   return {
     camera: [values.get('Model')].filter(Boolean).join(' ') || 'LUNA ULTRA',
     focalLength: values.get('FocalLengthIn35mmFormat') ? `${values.get('FocalLengthIn35mmFormat')}mm` : '—mm',
     aperture: values.get('FNumber') ? `f/${values.get('FNumber')}` : 'f/—',
     shutter,
     iso: values.get('ISO') ?? '—',
-    date: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('zh-CN') : '',
+    date: formattedDate,
     location: values.get('Location') ?? values.get('GPSPosition') ?? '',
     title: title.trim(),
     sequence: '01',
@@ -50,7 +58,18 @@ function metadataVariables(metadata: MediaMetadata | null, title: string): Recor
 }
 
 function template(content: string, variables: Record<string, string>): string {
-  return content.replace(/{{\s*([\w]+)\s*}}/g, (_, key: string) => variables[key] ?? '').trim()
+  return content
+    .replace(/{{\s*([\w]+)\s*}}/g, (_, key: string) => variables[key] ?? '')
+    .replace(/\s*([·|/])(?:\s*\1)+\s*/g, ' $1 ')
+    .replace(/^\s*[·|/]\s*|\s*[·|/]\s*$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+function videoTemplate(content: string): string {
+  return content
+    .replace(/ISO\s*{{\s*iso\s*}}/gi, '')
+    .replace(/{{\s*(focalLength|aperture|shutter|iso)\s*}}/g, '')
 }
 
 export interface BuildBorderLayerOptions {
@@ -71,6 +90,7 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
   const variables = metadataVariables(metadata, border.title)
   if (!border.showDate) variables.date = ''
   const scale = border.frameSize / 100
+  const isVideoMedia = mediaPath ? isVideoPath(mediaPath) : false
 
   return preset.layers.flatMap((layer: DeclarativeCompositionLayer): PreviewLayer[] => {
     if (layer.visible === false || layer.type === 'group' || layer.type === 'decoration') return []
@@ -127,7 +147,8 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
       }
       return [{ ...common, layerType: 'media', filePath: logo.filePath, dstX, dstY, dstW, dstH }]
     }
-    const content = template(layer.type === 'logo' ? layer.fallbackText ?? '' : layer.content, variables)
+    const rawContent = layer.type === 'logo' ? layer.fallbackText ?? '' : layer.content
+    const content = template(isVideoMedia && layer.type === 'text' ? videoTemplate(rawContent) : rawContent, variables)
     const style = layer.type === 'text' ? layer.style : { fontFamily: 'Source Han Sans SC', fontFile: 'fonts/SourceHanSansSC-Bold.otf', fontSize: 18, fontWeight: 700, color: layer.tint?.color ?? border.textColor, align: 'left' as const }
     return [{ ...common, layerType: layer.type, content, fontSize: style.fontSize, fontFamily: style.fontFamily, fontFile: style.fontFile ?? 'fonts/SourceHanSansSC-Regular.otf', fontWeight: style.fontWeight, textColor: layer.type === 'logo' ? style.color : border.textColor, textAlign: style.align, verticalAlign: ('verticalAlign' in style ? style.verticalAlign : undefined) }]
   })
