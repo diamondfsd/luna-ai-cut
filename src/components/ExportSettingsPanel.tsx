@@ -1,7 +1,6 @@
 import { useCallback } from 'react'
 import { Select, Input } from '../ui'
-import type { VideoResolution, VideoFrameRate, VideoQuality, VideoExportSettings } from '../shared/types'
-import type { PreviewLayer } from '../shared/types'
+import type { PreviewLayer, VideoResolution, VideoFrameRate, VideoQuality, VideoExportSettings } from '../shared/types'
 import { LivePhotoExportControls } from './LivePhotoExportControls'
 import './ExportSettingsPanel.css'
 
@@ -97,11 +96,7 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource }: Export
         {livePhotoSource ? (
           <LivePhotoExportControls
             value={value}
-            sourcePath={livePhotoSource.path}
-            sourceStartTime={livePhotoSource.startTime}
             duration={livePhotoSource.duration}
-            layers={livePhotoSource.layers}
-            outputSize={livePhotoSource.outputSize}
             onChange={onChange}
           />
         ) : null}
