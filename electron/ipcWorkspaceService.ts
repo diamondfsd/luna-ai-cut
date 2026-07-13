@@ -151,6 +151,18 @@ export function register(): void {
     }
   })
 
+  ipcMain.handle('workspace:getVideoDuration', async (_event, filePath: string) => {
+    const { stdout } = await execFileAsync(getFfprobePath(), [
+      '-v', 'quiet',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filePath,
+    ], { encoding: 'utf-8' })
+    const duration = Number(stdout.trim())
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长')
+    return duration
+  })
+
   ipcMain.handle('workspace:isLivePhoto', async (_event, filePath: string) => {
     return isGoogleMotionPhoto(filePath)
   })
@@ -229,7 +241,7 @@ export function register(): void {
     return { path: outputPath, name: path.basename(outputPath) }
   })
 
-  ipcMain.handle('workspace:exportRenderedLivePhoto', async (_event, name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs = false) => {
+  ipcMain.handle('workspace:exportRenderedLivePhoto', async (_event, name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs = false, recordTask = true, coverTimeSeconds?: number) => {
     const settings = await getSettings()
     if (!settings.exportDir) throw new Error('未设置导出目录')
     await mkdir(settings.exportDir, { recursive: true })
@@ -257,20 +269,22 @@ export function register(): void {
           cp(videoPath, workingVideoPath, { force: true }),
         ])
       }
-      await combineLivePhoto(workingImagePath, workingVideoPath, destinationPath ?? '', appleFolder)
+      await combineLivePhoto(workingImagePath, workingVideoPath, destinationPath ?? '', appleFolder, coverTimeSeconds)
     } finally {
       await rm(workingImagePath, { force: true }).catch(() => undefined)
       await rm(workingVideoPath, { force: true }).catch(() => undefined)
     }
 
-    const exportId = `preview_live_${baseName}_${Date.now()}`
-    const taskName = appleLivePhoto ? 'Apple Live 图导出' : 'Live 图片导出'
     // Apple Live: 返回 appleFolder 中的 JPG 路径
     const resultPath = appleLivePhoto && appleFolder
       ? path.join(appleFolder, `${baseName}.jpg`)
       : destinationPath!
-    const task = await createExportTask(taskName, [{ exportId, fileName: path.basename(resultPath), kind: 'image' }])
-    await updateTaskItemProgress(task.id, exportId, 100, 'done')
+    if (recordTask) {
+      const exportId = `preview_live_${baseName}_${Date.now()}`
+      const taskName = appleLivePhoto ? 'Apple Live 图导出' : 'Live 图片导出'
+      const task = await createExportTask(taskName, [{ exportId, fileName: path.basename(resultPath), kind: 'image' }])
+      await updateTaskItemProgress(task.id, exportId, 100, 'done')
+    }
 
     return { path: resultPath, name: path.basename(resultPath) }
   })

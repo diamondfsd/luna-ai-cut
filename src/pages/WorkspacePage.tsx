@@ -30,6 +30,7 @@ import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
 import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
+import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -432,6 +433,11 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
           ? activePipeline
           : normalizePipeline((asset as { pipeline?: unknown }).pipeline)
         const resolution = await window.luna.workspace.getMediaResolution(asset.path)
+        const sourceDuration = isVideoPath(asset.path)
+          ? await window.luna.workspace.getVideoDuration(asset.path).catch(() => 0)
+          : 0
+        const trimStart = pipeline.trim?.startTime ?? 0
+        const trimEnd = pipeline.trim?.endTime ?? sourceDuration
         // 加载 EXIF 元数据（边框需要）
         const borderMeta = pipeline.border?.enabled
           ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => null)
@@ -441,6 +447,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
           outputBaseName: asset.name.replace(/\.[^.]+$/, '') || 'export',
           layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline, borderMeta),
           outputSize: outputSizeForTransform(resolution, pipeline.transform),
+          mediaDuration: isVideoPath(asset.path)
+            ? Math.max(0, Math.min(sourceDuration, trimEnd) - trimStart)
+            : undefined,
         }
       }))
 
@@ -676,8 +685,25 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         open={exportDialogOpen}
         tone="dark"
         onOpenChange={setExportDialogOpen}
-        description={`将导出 ${exportDialogSources.length} 个文件`}
+        description={exportDialogSources.length === 1 ? '选择导出内容和画面设置' : `将导出 ${exportDialogSources.length} 个文件`}
+        livePhotoSource={exportDialogSources.length === 1
+          && isVideoPath(exportDialogSources[0]?.sourcePath ?? '')
+          && exportDialogSources[0]?.mediaDuration !== undefined
+          ? {
+              path: exportDialogSources[0].sourcePath,
+              startTime: exportDialogSources[0].layers?.find((layer) => layer.isVideo)?.videoTime ?? 0,
+              duration: exportDialogSources[0].mediaDuration!,
+              layers: exportDialogSources[0].layers ?? [],
+              outputSize: exportDialogSources[0].outputSize ?? { width: 1920, height: 1080 },
+            }
+          : undefined}
         onConfirm={async (config) => {
+          if (exportDialogSources.length === 1 && isVideoPath(exportDialogSources[0]?.sourcePath ?? '')) {
+            const source = exportDialogSources[0]
+            await queueWorkspaceFormatsExport(source, exportDialogDir, config)
+            toast.success('已加入导出任务')
+            return
+          }
           await exportBatchFiles(exportDialogSources, exportDialogDir, config)
           toast.success(`已加入导出队列: ${exportDialogSources.length} 个素材`)
         }}
