@@ -29,6 +29,13 @@ export interface HslChannelAdjust {
   luminance: number
 }
 
+export interface VideoTrimState {
+  /** Trim start time in seconds */
+  startTime: number
+  /** Trim end time in seconds */
+  endTime: number
+}
+
 export interface BorderSettings {
   enabled: boolean
   presetId: string
@@ -49,6 +56,8 @@ export interface BorderSettings {
 }
 
 export interface EditPipeline {
+  /** 视频截取：非破坏性时间范围裁剪。图片素材忽略此字段。 */
+  trim: VideoTrimState | null
   transform: {
     crop: CropRect | null
     orientation: number
@@ -119,6 +128,7 @@ export interface EditPipeline {
 }
 
 export type PipelinePatch = {
+  trim?: VideoTrimState | null
   transform?: Partial<EditPipeline['transform']>
   color?: Partial<EditPipeline['color']>
   effects?: Partial<EditPipeline['effects']>
@@ -154,6 +164,7 @@ export function createDefaultHslChannels(): Record<HslChannelKey, HslChannelAdju
 }
 
 export const DEFAULT_PIPELINE: EditPipeline = {
+  trim: null,
   transform: {
     crop: null,
     orientation: 0,
@@ -334,8 +345,17 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   const levels = EDIT_PARAMETER_RANGES.levels
   const effects = EDIT_PARAMETER_RANGES.effects
 
+  // Normalize trim: ensure valid range, or null
+  let trim: VideoTrimState | null = null
+  if (pipeline.trim && Number.isFinite(pipeline.trim.startTime) && Number.isFinite(pipeline.trim.endTime)) {
+    const start = Math.max(0, pipeline.trim.startTime)
+    const end = Math.max(start + 0.1, pipeline.trim.endTime)
+    trim = { startTime: start, endTime: end }
+  }
+
   return {
     ...pipeline,
+    trim,
     watermark: { ...DEFAULT_PIPELINE.watermark, ...(pipeline.watermark ?? {}) },
     border: normalizeBorder(pipeline.border),
     color: {
@@ -401,6 +421,7 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
 
 export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): EditPipeline {
   return normalizePipeline({
+    trim: patch.trim !== undefined ? patch.trim : pipeline.trim,
     transform: { ...pipeline.transform, ...patch.transform },
     color: {
       ...pipeline.color,

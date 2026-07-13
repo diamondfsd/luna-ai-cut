@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
+import { forwardRef, useImperativeHandle, useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
 import { LrcRender } from './LrcRender'
 import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
 import type { PreviewLayer } from '../shared/types'
@@ -9,17 +9,28 @@ import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import './PreviewStage.css'
 
+export interface PreviewStageHandle {
+  seek: (time: number) => void
+  togglePlay: () => void
+  getCurrentTime: () => number
+  getDuration: () => number
+  isPlaying: () => boolean
+}
+
 interface PreviewStageProps {
   url: string | null
   pending?: boolean
   extraLayers?: PreviewLayer[]
   pipeline?: EditPipeline
   cropActive?: boolean
+  hideControls?: boolean
   onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void
   onMediaSize?: (width: number, height: number) => void
   renderOverlay?: () => ReactNode
   viewScale?: 'fit' | number
   onViewScaleChange?: (scale: 'fit' | number) => void
+  /** 播放/暂停/当前时间变更回调 */
+  onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
 }
 
 export interface MediaResolution {
@@ -89,9 +100,11 @@ function projectCanvasFor(resolution: MediaResolution | null, fullResolution = f
   }
 }
 
-export function PreviewStage(
-  { url, pending = false, extraLayers, pipeline, cropActive, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange }: PreviewStageProps,
-) {
+export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
+  function PreviewStage(
+    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onPlayStateChange }: PreviewStageProps,
+    ref,
+  ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   // ── 媒体分辨率 ──
@@ -116,6 +129,22 @@ export function PreviewStage(
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
 
+  // 暴露给父组件的视频控制 API
+  useImperativeHandle(ref, () => ({
+    seek: (time: number) => {
+      if (videoRef.current) videoRef.current.currentTime = time
+      setCurrentTime(time)
+    },
+    togglePlay: () => {
+      if (!videoRef.current) return
+      if (videoRef.current.paused) videoRef.current.play().catch(() => {})
+      else videoRef.current.pause()
+    },
+    getCurrentTime: () => videoRef.current?.currentTime ?? currentTime,
+    getDuration: () => videoRef.current?.duration ?? duration,
+    isPlaying: () => videoRef.current ? !videoRef.current.paused : playing,
+  }), [currentTime, duration, playing])
+
   // 暴露 video 元素并绑定事件
   const handleVideoElement = useCallback((el: HTMLVideoElement | null) => {
     if (videoRef.current === el) return
@@ -132,14 +161,24 @@ export function PreviewStage(
       setPlaying(!el.paused)
       setCurrentTime(el.currentTime)
       setDuration(el.duration || 0)
-      el.onplay = () => setPlaying(true)
-      el.onpause = () => setPlaying(false)
-      el.ontimeupdate = () => setCurrentTime(el.currentTime)
+      el.onplay = () => {
+        setPlaying(true)
+        onPlayStateChange?.({ playing: true, currentTime: el.currentTime, duration: el.duration || 0 })
+      }
+      el.onpause = () => {
+        setPlaying(false)
+        onPlayStateChange?.({ playing: false, currentTime: el.currentTime, duration: el.duration || 0 })
+      }
+      el.ontimeupdate = () => {
+        setCurrentTime(el.currentTime)
+        onPlayStateChange?.({ playing: !el.paused, currentTime: el.currentTime, duration: el.duration || 0 })
+      }
       el.onloadedmetadata = () => setDuration(el.duration || 0)
       el.onended = () => {
         setPlaying(false)
         setCurrentTime(el.duration || el.currentTime)
         if (livePlaying) setLivePlaying(false)
+        onPlayStateChange?.({ playing: false, currentTime: el.duration || el.currentTime, duration: el.duration || 0 })
       }
       if (livePlaying && isDisplayVideo) {
         el.currentTime = 0
@@ -439,7 +478,7 @@ export function PreviewStage(
           }}
         />
       )}
-      {isDisplayVideo && !livePlaying && videoRef.current && (
+      {isDisplayVideo && !livePlaying && videoRef.current && !hideControls && (
         <VideoControls
           playing={playing}
           currentTime={currentTime}
@@ -452,4 +491,4 @@ export function PreviewStage(
       )}
     </div>
   )
-}
+})

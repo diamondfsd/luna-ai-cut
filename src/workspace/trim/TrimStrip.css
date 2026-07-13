@@ -1,0 +1,275 @@
+/* ===== 截取条 ===== */
+
+.workspace-trim-strip {
+  position: relative;
+  grid-column: 1;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 18px 24px 42px 8px;
+  background: #202020;
+  border-top: 1px solid #2d2d2d;
+  min-height: 134px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 播放按钮 */
+.workspace-trim-play-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: #373737;
+  color: #f5f5f5;
+  cursor: pointer;
+  outline: none;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.workspace-trim-play-btn:hover {
+  background: #454545;
+  transform: scale(1.04);
+}
+.workspace-trim-play-btn:active {
+  background: #505050;
+  transform: scale(0.96);
+}
+.workspace-trim-play-btn svg {
+  margin-left: 1px;
+}
+
+/* 轨道容器 */
+.workspace-trim-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 72px;
+  border-radius: 8px;
+  overflow: visible;
+  background: #2d2622;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  touch-action: none;
+}
+
+.workspace-trim-track.is-dragging,
+.workspace-trim-track.is-dragging * {
+  cursor: ew-resize;
+}
+
+/* Canvas 胶片 */
+.workspace-trim-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  image-rendering: auto;
+}
+
+/* 暗色遮罩 */
+.workspace-trim-mask {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 截取范围高亮背景 */
+.workspace-trim-range-bg {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(0, 102, 204, 0.08);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 截取范围边框 */
+.workspace-trim-range-border {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border: 1px solid #0077ed;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 102, 204, 0.2), inset 0 1px rgba(153, 207, 255, 0.55);
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── 截取把手 ── */
+.workspace-trim-handle {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 14px;
+  transform: translateX(-50%);
+  cursor: ew-resize;
+  z-index: 7;
+  align-items: center;
+  border-radius: 4px;
+  background: #0077ed;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+  transition: width 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.workspace-trim-handle::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 2px;
+  background: #d9efff;
+}
+
+.workspace-trim-handle-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.workspace-trim-handle-time {
+  position: absolute;
+  top: -27px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 7px;
+  border: 1px solid #0077ed;
+  border-radius: 6px;
+  background: #10253a;
+  color: #8dcbff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  white-space: nowrap;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+.workspace-trim-handle-grip span {
+  display: block;
+  width: 1px;
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(0, 83, 166, 0.7);
+}
+.workspace-trim-handle:hover,
+.workspace-trim-track.is-dragging .workspace-trim-handle {
+  width: 18px;
+  background: #0085ff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(0, 119, 237, 0.35);
+}
+
+/* 右侧把手 */
+
+/* ── 播放头 ── */
+.workspace-trim-playhead {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 12px;
+  transform: translateX(-50%);
+  cursor: grab;
+  z-index: 6;
+  pointer-events: auto;
+}
+
+.workspace-trim-playhead:active {
+  cursor: grabbing;
+}
+
+.workspace-trim-playhead-diamond {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid #f4f8ff;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.65));
+}
+
+.workspace-trim-playhead-line {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: calc(100% - 2px);
+  background: #f4f8ff;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+}
+
+.workspace-trim-playhead-time {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 1px 5px;
+  border-radius: 3px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.workspace-trim-playhead:hover .workspace-trim-playhead-time {
+  opacity: 1;
+}
+
+/* ── 时间标尺 ── */
+.workspace-trim-ruler {
+  position: absolute;
+  left: 72px;
+  right: 24px;
+  bottom: 14px;
+  height: 16px;
+  pointer-events: none;
+}
+.workspace-trim-ruler span {
+  position: absolute;
+  transform: translateX(-50%);
+  color: #969696;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+}
+.workspace-trim-ruler span::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 1px;
+  height: 4px;
+  background: #727272;
+}
+.workspace-trim-ruler span:first-child {
+  transform: none;
+}
+.workspace-trim-ruler span:first-child::before {
+  left: 0;
+}
+.workspace-trim-ruler span:last-child {
+  transform: translateX(-100%);
+}
+.workspace-trim-ruler span:last-child::before {
+  left: 100%;
+}

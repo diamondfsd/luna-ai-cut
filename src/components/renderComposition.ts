@@ -25,7 +25,10 @@ export function buildCompositionFromPreviewLayers(
 ): CompositionInput {
   const canvasWidth = Math.max(1, Math.round(width ?? DEFAULT_COMPOSITION_SIZE))
   const canvasHeight = Math.max(1, Math.round(height ?? DEFAULT_COMPOSITION_SIZE))
-  const duration = options?.duration
+
+  // 从视频层的 videoDuration 推导画布时长（截取模式），否则用 options.duration
+  const videoLayerDuration = layers.find((l) => l.isVideo && l.videoDuration != null)?.videoDuration
+  const duration = videoLayerDuration ?? options?.duration
 
   const composition: CompositionInput = {
     version: 1,
@@ -45,6 +48,7 @@ export function buildCompositionFromPreviewLayers(
           ? {
               start: layer.videoTime ?? 0,
               offset: 0,
+              duration: layer.videoDuration,
               loopEnabled: false,
             }
           : undefined,
