@@ -90,7 +90,7 @@ export function TrimStrip({
     // 用 CSS 尺寸的 2x 分辨率渲染，提高清晰度
     const dpr = 2
     const displayW = trackWidth
-    const displayH = 72
+    const displayH = compact ? 52 : 72
     canvas.width = displayW * dpr
     canvas.height = displayH * dpr
     canvas.style.width = `${displayW}px`
@@ -124,7 +124,7 @@ export function TrimStrip({
       }
       ctx.drawImage(tc, sx, sy, sw, sh, i * thumbW, 0, thumbW, displayH)
     }
-  }, [thumbnails, trackWidth])
+  }, [compact, thumbnails, trackWidth])
 
   // ── 平滑播放头 ──
   const [animatedTime, setAnimatedTime] = useState(currentTime)

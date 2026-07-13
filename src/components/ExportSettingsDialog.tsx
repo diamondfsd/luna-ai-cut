@@ -3,6 +3,7 @@ import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsP
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
 import type { PreviewLayer } from '../shared/types'
 import { Button, Dialog } from '../ui'
+import { ExportPreviewPane, type ExportPreviewSource } from './ExportPreviewPane'
 import './ExportSettingsDialog.css'
 
 interface ExportSettingsDialogProps {
@@ -14,6 +15,7 @@ interface ExportSettingsDialogProps {
   confirmLoadingLabel?: string
   loading?: boolean
   tone?: 'default' | 'dark'
+  previewSource?: ExportPreviewSource
   livePhotoSource?: {
     path: string
     startTime: number
@@ -48,6 +50,7 @@ export function ExportSettingsDialog({
   confirmLoadingLabel = '加入中...',
   loading = false,
   tone = 'default',
+  previewSource,
   livePhotoSource,
   onConfirm,
 }: ExportSettingsDialogProps) {
@@ -91,7 +94,7 @@ export function ExportSettingsDialog({
       onOpenChange={handleOpenChange}
       title={title}
       description={description}
-      className={`workspace-export-dialog-content${livePhotoSource ? ' live-photo-mode' : ''}`}
+      className={`workspace-export-dialog-content${previewSource ? ' preview-mode' : ''}`}
       closeOnMaskClick={false}
       footer={
         <div className="workspace-export-footer">
@@ -107,8 +110,18 @@ export function ExportSettingsDialog({
         </div>
       }
     >
-      <div className="workspace-export-body">
-        <ExportSettingsPanel value={exportConfig} onChange={handleConfigChange} livePhotoSource={livePhotoSource} />
+      <div className={`workspace-export-body${previewSource ? ' has-preview' : ''}`}>
+        {previewSource ? (
+          <ExportPreviewPane
+            source={previewSource}
+            livePhotoSource={livePhotoSource}
+            value={exportConfig}
+            onChange={handleConfigChange}
+          />
+        ) : null}
+        <div className="workspace-export-settings-column">
+          <ExportSettingsPanel value={exportConfig} onChange={handleConfigChange} livePhotoSource={livePhotoSource} />
+        </div>
       </div>
     </Dialog>
   )

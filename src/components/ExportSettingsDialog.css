@@ -14,8 +14,8 @@
   color: #f5f7fb;
 }
 
-.workspace-export-dialog-content.live-photo-mode.ui-dialog-content {
-  width: min(720px, calc(100vw - 48px));
+.workspace-export-dialog-content.preview-mode.ui-dialog-content {
+  width: min(1040px, calc(100vw - 48px));
   max-height: min(780px, calc(100vh - 40px));
 }
 
@@ -66,6 +66,17 @@
   overflow-y: auto;
 }
 
+.workspace-export-body.has-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  align-items: start;
+  gap: 16px;
+}
+
+.workspace-export-settings-column {
+  min-width: 0;
+}
+
 /* ── ExportSettingsPanel 内嵌样式覆盖 ── */
 
 .workspace-export-body .export-settings-panel {
@@ -73,6 +84,10 @@
   border-radius: 12px;
   background: rgba(8, 10, 15, 0.18);
   padding: 16px 18px;
+}
+
+.workspace-export-body.has-preview .export-settings-panel {
+  padding: 16px;
 }
 
 .workspace-export-body .export-settings-title {
@@ -207,5 +222,11 @@
 
   .workspace-export-footer-actions {
     justify-content: flex-end;
+  }
+}
+
+@media (max-width: 820px) {
+  .workspace-export-body.has-preview {
+    grid-template-columns: 1fr;
   }
 }
