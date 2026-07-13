@@ -129,10 +129,11 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
   }, [playbackEnd, playbackStart, playing, sourceStartTime, videoElement])
 
   useEffect(() => {
-    if (!videoElement) return
+    if (!videoElement || !playing) return
+    let animationFrame = 0
     const updateTime = () => {
       const relativeTime = videoElement.currentTime - sourceStartTime
-      if (playing && relativeTime >= playbackEnd - 0.01) {
+      if (relativeTime >= playbackEnd - 0.01) {
         videoElement.pause()
         videoElement.currentTime = sourceStartTime + playbackEnd
         setCurrentTime(playbackEnd)
@@ -140,9 +141,10 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
         return
       }
       setCurrentTime(clamp(relativeTime, playbackStart, playbackEnd))
+      animationFrame = requestAnimationFrame(updateTime)
     }
-    videoElement.addEventListener('timeupdate', updateTime)
-    return () => videoElement.removeEventListener('timeupdate', updateTime)
+    animationFrame = requestAnimationFrame(updateTime)
+    return () => cancelAnimationFrame(animationFrame)
   }, [playbackEnd, playbackStart, playing, sourceStartTime, videoElement])
 
   useEffect(() => {
@@ -197,6 +199,7 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
                 onStartChange: moveLiveRange,
               } : undefined}
               playheadRange={liveSelected ? { startTime: liveStart, endTime: liveStart + LIVE_DURATION } : undefined}
+              animatePlayhead={false}
               thumbnails={timelineThumbnails}
             />
           </div>

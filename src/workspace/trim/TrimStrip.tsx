@@ -26,6 +26,8 @@ interface TrimStripProps {
     onStartChange: (time: number) => void
   }
   playheadRange?: { startTime: number; endTime: number }
+  /** 是否使用内部动画平滑播放头；关闭时严格使用外部视频时间。 */
+  animatePlayhead?: boolean
   compact?: boolean
   thumbnails: ImageData[]
 }
@@ -72,6 +74,7 @@ export function TrimStrip({
   onFixedStartChange,
   secondaryFixedRange,
   playheadRange,
+  animatePlayhead = true,
   compact = false,
   thumbnails,
 }: TrimStripProps) {
@@ -152,7 +155,7 @@ export function TrimStrip({
   }, [playing, currentTime])
 
   useEffect(() => {
-    if (!playing) return
+    if (!playing || !animatePlayhead) return
     let lastUpdate = performance.now()
     function tick() {
       const now = performance.now()
@@ -166,7 +169,7 @@ export function TrimStrip({
     return () => {
       if (rafAnimRef.current != null) { cancelAnimationFrame(rafAnimRef.current); rafAnimRef.current = null }
     }
-  }, [playing, endTime])
+  }, [animatePlayhead, playing, endTime])
 
   // ── 坐标转换 ──
   const pxPerSec = duration > 0 && trackWidth > 0 ? trackWidth / duration : 0
@@ -311,13 +314,13 @@ export function TrimStrip({
   }, [onSeek])
 
   // ── 位置 ──
-  const displayTime = playing ? animatedTime : currentTime
+  const displayTime = playing && animatePlayhead ? animatedTime : currentTime
   const leftHandleX = timeToX(startTime)
   const rightHandleX = timeToX(endTime)
-  // 播放头保持在选区且不压住两端把手，左把手可始终直接拖动。
+  // 把手层级高于播放头，因此播放头可以准确到达范围端点而不影响拖动。
   const playheadLeftX = timeToX(playheadRange?.startTime ?? startTime)
   const playheadRightX = timeToX(playheadRange?.endTime ?? endTime)
-  const playheadX = Math.max(playheadLeftX + 11, Math.min(timeToX(displayTime), playheadRightX - 11))
+  const playheadX = Math.max(playheadLeftX, Math.min(timeToX(displayTime), playheadRightX))
   const secondaryLeftX = secondaryFixedRange ? timeToX(secondaryFixedRange.startTime) : 0
   const secondaryRightX = secondaryFixedRange
     ? timeToX(secondaryFixedRange.startTime + secondaryFixedRange.duration)
