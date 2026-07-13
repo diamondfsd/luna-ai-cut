@@ -93,6 +93,8 @@ export interface LunaApi {
     clear(): Promise<void>
   }
   workspace: {
+    loadTrimThumbnailCache(videoPath: string, duration: number): Promise<ArrayBuffer | null>
+    saveTrimThumbnailCache(videoPath: string, duration: number, bytes: ArrayBuffer): Promise<void>
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>
