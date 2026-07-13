@@ -131,20 +131,23 @@
   justify-content: center;
   min-width: 24px;
   overflow: hidden;
-  border: 1px solid #ff9f0a;
+  border: 2px solid #ffb340;
   border-radius: 6px;
-  background: rgba(255, 159, 10, 0.22);
-  box-shadow: inset 0 0 0 1px rgba(255, 207, 128, 0.18);
-  color: #ffd08a;
+  background: rgba(32, 18, 3, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(255, 207, 128, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.35);
+  color: #fff7e8;
   cursor: grab;
 }
 
 .workspace-trim-secondary-range span {
   overflow: hidden;
-  padding: 0 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
   font-size: 10px;
   font-weight: 650;
   line-height: 18px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;

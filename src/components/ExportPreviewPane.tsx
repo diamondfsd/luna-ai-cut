@@ -133,8 +133,10 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
     const updateTime = () => {
       const relativeTime = videoElement.currentTime - sourceStartTime
       if (playing && relativeTime >= playbackEnd - 0.01) {
-        videoElement.currentTime = sourceStartTime + playbackStart
-        setCurrentTime(playbackStart)
+        videoElement.pause()
+        videoElement.currentTime = sourceStartTime + playbackEnd
+        setCurrentTime(playbackEnd)
+        setPlaying(false)
         return
       }
       setCurrentTime(clamp(relativeTime, playbackStart, playbackEnd))
