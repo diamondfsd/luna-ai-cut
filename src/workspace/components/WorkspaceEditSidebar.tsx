@@ -1,4 +1,4 @@
-import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, SlidersHorizontal, X } from 'lucide-react'
+import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
@@ -13,8 +13,9 @@ import { WatermarkSettings } from '../../components/WatermarkSettings'
 import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
 import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
+import { TrimPanel } from '../trim/TrimPanel'
 
-export type WorkspaceTool = 'border' | 'color' | 'crop' | 'watermark' | 'filter'
+export type WorkspaceTool = 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -68,16 +69,22 @@ function isBorderModified(border: typeof DEFAULT_PIPELINE.border): boolean {
   return border.enabled === true
 }
 
+function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
+  return trim !== null
+}
+
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
   { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
+  { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
   { value: 'border', label: '边框', icon: <Image size={22} strokeWidth={1.8} /> },
 ]
 
 function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'crop') return '裁剪工具'
+  if (tool === 'trim') return '截取'
   if (tool === 'watermark') return '水印'
   if (tool === 'border') return '边框'
   if (tool === 'filter') return '滤镜'
@@ -86,9 +93,10 @@ function titleForTool(tool: WorkspaceTool): string {
 
 interface WorkspaceEditSidebarProps {
   mediaSize?: { w: number; h: number } | null
+  duration: number
 }
 
-export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -105,6 +113,7 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
     filter: isFilterModified(edit.pipeline.lutFilter),
     color: isColorModified(edit.pipeline.color),
     crop: isCropModified(edit.pipeline.transform),
+    trim: isTrimModified(edit.pipeline.trim),
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
   }), [edit.pipeline])
@@ -166,6 +175,20 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
               </Tooltip>
             </span>
           )}
+          {edit.activeTool === 'trim' && (
+            <span className="workspace-tool-panel-actions">
+              {isTrimModified(edit.pipeline.trim) && <span className="ui-accordion-modified-dot" />}
+              <Tooltip content="重置截取">
+                <IconButton
+                  variant="ghost"
+                  size="compact"
+                  icon={<RotateCcw size={14} />}
+                  onClick={() => edit.commitPatch({ trim: null })}
+                  aria-label="重置截取"
+                />
+              </Tooltip>
+            </span>
+          )}
         </header>
         <div className="workspace-tool-panel-body">
           {edit.activeTool === 'filter' ? (
@@ -219,6 +242,20 @@ export function WorkspaceEditSidebar({ mediaSize }: WorkspaceEditSidebarProps) {
                 </Button>
               </div>
             </>
+          ) : edit.activeTool === 'trim' ? (
+            <TrimPanel
+              startTime={edit.pipeline.trim?.startTime ?? 0}
+              endTime={edit.pipeline.trim?.endTime ?? 0}
+              duration={duration}
+              onStartTimeChange={(time) => {
+                const end = edit.pipeline.trim?.endTime ?? duration
+                edit.commitPatch({ trim: { startTime: time, endTime: Math.max(time + 0.1, end) } })
+              }}
+              onEndTimeChange={(time) => {
+                const curStart = edit.pipeline.trim?.startTime ?? 0
+                edit.commitPatch({ trim: { startTime: curStart, endTime: time } })
+              }}
+            />
           ) : edit.activeTool === 'border' ? (
             <BorderPanel
               value={edit.pipeline.border}

@@ -7,6 +7,7 @@ import { type CropPreset } from '../transform/TransformPanel'
 import { useEditPipeline } from '../hooks/useEditPipeline'
 import { useCropMachine } from '../hooks/useCropMachine'
 import type { WorkspaceTool } from '../components/WorkspaceEditSidebar'
+import { useTrimMachine } from '../trim/useTrimMachine'
 
 const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
 
@@ -80,6 +81,12 @@ interface WorkspaceEditValue {
   // Clipboard
   copyPipeline: () => void
   pasteToCurrent: () => void
+
+  // Trim
+  trimActive: boolean
+  setTrimActive: (v: boolean) => void
+  activateTrim: () => void
+  deactivateTrim: () => void
 }
 
 const WorkspaceEditContext = createContext<WorkspaceEditValue | null>(null)
@@ -107,6 +114,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   const [pipetteActive, setPipetteActive] = useState(false)
 
   const cropMachine = useCropMachine(pipeline, commitPatch, setActiveTool)
+  const trimMachine = useTrimMachine()
 
   // Derived pipelines
   const previewPipeline = useMemo(
@@ -162,20 +170,43 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     commitPatch(patch)
   }, [cropMachine.cropActive, cropMachine.setTransformDraft, pipeline.transform, commitPatch])
 
-  // Tool switching with optional crop start (needs sourceAspect from Canvas context)
+  // Tool switching with optional crop/trim start (needs sourceAspect from Canvas context)
   const selectTool = useCallback((tool: WorkspaceTool, sourceAspect: number = 1, mediaSize?: { w: number; h: number }) => {
     if (tool === 'crop') {
-      if (activeTool !== 'crop') cropMachine.setPreviousTool(activeTool)
-      setActiveTool('crop')
-      if (cropMachine.cropActive) return
-      cropMachine.startCrop(sourceAspect, mediaSize)
+      if (!trimMachine.trimActive) {
+        if (activeTool !== 'crop') cropMachine.setPreviousTool(activeTool)
+        setActiveTool('crop')
+        if (cropMachine.cropActive) return
+        cropMachine.startCrop(sourceAspect, mediaSize)
+      } else {
+        setActiveTool('crop')
+      }
+      return
+    }
+    if (tool === 'trim') {
+      if (trimMachine.trimActive && activeTool === 'trim') {
+        // 再次点击退出截取模式
+        trimMachine.deactivateTrim()
+        setActiveTool('filter')
+        return
+      }
+      // 首次进入截取模式时，如果 pipeline.trim 为 null 则初始化为完整范围
+      if (!cropMachine.cropActive) {
+        setActiveTool('trim')
+        trimMachine.activateTrim()
+      } else {
+        setActiveTool('trim')
+      }
       return
     }
     if (cropMachine.cropActive) {
       cropMachine.exitCropMode()
     }
+    if (trimMachine.trimActive) {
+      trimMachine.deactivateTrim()
+    }
     setActiveTool(tool)
-  }, [activeTool, cropMachine.setPreviousTool, cropMachine.cropActive, cropMachine.startCrop, cropMachine.exitCropMode])
+  }, [activeTool, cropMachine, trimMachine])
 
   // Pipette effect (eye dropper)
   useEffect(() => {
@@ -223,6 +254,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     pipetteActive,
     setPipetteActive,
     ...cropMachine,
+    ...trimMachine,
     selectTool,
     updateWorkspacePanel,
     copyPipeline,
@@ -245,6 +277,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     pipetteActive,
     setPipetteActive,
     cropMachine,
+    trimMachine,
     selectTool,
     updateWorkspacePanel,
     copyPipeline,

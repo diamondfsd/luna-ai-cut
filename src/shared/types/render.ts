@@ -91,6 +91,8 @@ export interface PreviewLayer {
   filePath: string
   isVideo?: boolean
   videoTime?: number
+  /** 截取后的有效时长（秒）。不设则用源视频完整时长。 */
+  videoDuration?: number
   /** 纹理在目标区域内的适配方式；cover-scale 保留完整纹理并用基础缩放填满区域 */
   fit?: 'cover' | 'cover-scale'
   dstX: number; dstY: number; dstW: number; dstH: number

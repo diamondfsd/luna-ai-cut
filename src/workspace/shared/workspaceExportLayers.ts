@@ -14,12 +14,17 @@ export function buildWorkspaceExportLayers(
   const finalCanvasSize = outputSizeForTransform(resolution, pipeline.transform)
   const main = buildLayers(sourcePath)
   if (main[0]) {
+    const trimStart = pipeline.trim?.startTime
+    const trimEnd = pipeline.trim?.endTime
     main[0] = {
       ...main[0],
       color: pipelineColorToRenderColor(pipeline.color),
       transform: pipelineTransformToRenderTransform(pipeline.transform),
       lutId: pipeline.lutFilter.activeId ?? undefined,
       lutIntensity: pipeline.lutFilter.intensity,
+      // 截取：设置视频起始时间和有效时长
+      ...(trimStart != null ? { videoTime: trimStart } : {}),
+      ...(trimStart != null && trimEnd != null ? { videoDuration: trimEnd - trimStart } : {}),
     }
   }
 
