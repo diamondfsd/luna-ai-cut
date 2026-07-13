@@ -14,6 +14,11 @@
   color: #f5f7fb;
 }
 
+.workspace-export-dialog-content.live-photo-mode.ui-dialog-content {
+  width: min(720px, calc(100vw - 48px));
+  max-height: min(780px, calc(100vh - 40px));
+}
+
 /* ── Header ── */
 
 .workspace-export-dialog-content .ui-dialog-header {

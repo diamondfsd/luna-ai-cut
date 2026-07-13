@@ -379,6 +379,8 @@ export interface BatchExportSource {
   layers?: PreviewLayer[]
   outputBaseName?: string
   outputSize?: { width: number; height: number }
+  /** 裁剪后的可用视频时长，Live 图固定从中选择 3 秒。 */
+  mediaDuration?: number
 }
 
 interface BatchExportEntry {
@@ -544,7 +546,14 @@ async function runBatchExportQueue(
                 console.log('[LiveExport] Step2: starting Apple Live export', { baseName, exportDir, width: videoRes.width, height: videoRes.height, appleItemId })
                 console.log('[LiveExport] exportRenderedLivePhoto available:', typeof (window.luna.workspace as any).exportRenderedLivePhoto)
                 await window.luna.exportTask.addItems(taskId, [
-                  { id: appleItemId, sourcePath: entry.sourcePath, outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive_${liveStamp}.jpg`, label: 'Apple Live 图导出' },
+                  {
+                    id: appleItemId,
+                    sourcePath: entry.sourcePath,
+                    outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive_${liveStamp}.jpg`,
+                    label: 'Apple Live 图导出',
+                    openTarget: 'photos',
+                    previewable: false,
+                  },
                 ])
                 emitLocalExportProgress({ exportId: appleItemId, taskId, taskName, fileName: `${baseName}_appleLive_${liveStamp}.jpg`, index: entry.index, totalFiles: entries.length, percent: 0, status: 'exporting', destinationPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_appleLive_${liveStamp}.jpg` })
                 try {

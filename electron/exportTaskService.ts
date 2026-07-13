@@ -87,6 +87,8 @@ function inputToItem(input: ExportItemInput): ExportTaskItem {
     id: input.id,
     fileName: basename(input.outputPath),
     label: input.label,
+    openTarget: input.openTarget,
+    previewable: input.previewable,
     kind: inferKind(input.outputPath),
     destinationPath: input.outputPath,
     status: 'queued' as const,

@@ -1,6 +1,8 @@
 import { useCallback } from 'react'
 import { Select, Input } from '../ui'
 import type { VideoResolution, VideoFrameRate, VideoQuality, VideoExportSettings } from '../shared/types'
+import type { PreviewLayer } from '../shared/types'
+import { LivePhotoExportControls } from './LivePhotoExportControls'
 import './ExportSettingsPanel.css'
 
 export type { VideoExportSettings, VideoResolution, VideoFrameRate, VideoQuality }
@@ -10,6 +12,13 @@ export { DEFAULT_VIDEO_EXPORT_SETTINGS as DEFAULT_EXPORT_CONFIG } from '../share
 interface ExportSettingsPanelProps {
   value: VideoExportSettings
   onChange: (settings: VideoExportSettings) => void
+  livePhotoSource?: {
+    path: string
+    startTime: number
+    duration: number
+    layers: PreviewLayer[]
+    outputSize: { width: number; height: number }
+  }
 }
 
 const RESOLUTION_OPTIONS = [
@@ -50,7 +59,7 @@ const QUALITY_OPTIONS = [
  * <ExportSettingsPanel value={config} onChange={setConfig} />
  * ```
  */
-export function ExportSettingsPanel({ value, onChange }: ExportSettingsPanelProps) {
+export function ExportSettingsPanel({ value, onChange, livePhotoSource }: ExportSettingsPanelProps) {
   const handleResolutionChange = useCallback(
     (v: string) => onChange({ ...value, resolution: v as VideoResolution }),
     [value, onChange],
@@ -85,6 +94,17 @@ export function ExportSettingsPanel({ value, onChange }: ExportSettingsPanelProp
     <div className="export-settings-panel">
       <div className="export-settings-title">导出设置</div>
       <div className="export-settings-grid">
+        {livePhotoSource ? (
+          <LivePhotoExportControls
+            value={value}
+            sourcePath={livePhotoSource.path}
+            sourceStartTime={livePhotoSource.startTime}
+            duration={livePhotoSource.duration}
+            layers={livePhotoSource.layers}
+            outputSize={livePhotoSource.outputSize}
+            onChange={onChange}
+          />
+        ) : null}
         <div className="export-settings-row">
           <label className="export-settings-label">分辨率</label>
           <Select

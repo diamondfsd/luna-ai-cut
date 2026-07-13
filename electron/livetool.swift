@@ -32,6 +32,7 @@ guard CommandLine.arguments.count >= 3 else {
 
 let inputJPG = URL(fileURLWithPath: CommandLine.arguments[1])
 let inputMOV = URL(fileURLWithPath: CommandLine.arguments[2])
+let requestedStillTime = CommandLine.arguments.count >= 5 ? Double(CommandLine.arguments[4]) : nil
 
 let filePrefix: String
 if CommandLine.arguments.count >= 4 {
@@ -259,12 +260,12 @@ func processMOV(input: URL, output: URL, identifier: String) async throws {
     // Add still image time metadata (matching LivePhoto.swift)
     let assetDuration = try await videoTrack.load(.timeRange).duration
     let nominalRate = try await videoTrack.load(.nominalFrameRate)
-    let stillImagePercent: Float = 0.5
     let frameCount = Int(CMTimeGetSeconds(assetDuration) * Float64(nominalRate))
     let frameDuration = CMTimeMake(value: Int64(Float(assetDuration.value) / Float(frameCount)),
                                    timescale: assetDuration.timescale)
-    let stillTime = CMTimeMake(value: Int64(Float(assetDuration.value) * stillImagePercent),
-                               timescale: assetDuration.timescale)
+    let durationSeconds = CMTimeGetSeconds(assetDuration)
+    let stillSeconds = min(max(requestedStillTime ?? durationSeconds * 0.5, 0), durationSeconds)
+    let stillTime = CMTime(seconds: stillSeconds, preferredTimescale: assetDuration.timescale)
     let stillRange = CMTimeRangeMake(start: stillTime, duration: frameDuration)
 
     let stillItem = AVMutableMetadataItem()

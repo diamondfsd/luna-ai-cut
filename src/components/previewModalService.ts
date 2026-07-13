@@ -21,7 +21,13 @@ export function showPreviewModal(
   fileList?: string[],
   previewOnly?: boolean,
 ): void {
-  setPreviewState?.({ filePath, fileList: fileList ?? [filePath], previewOnly })
+  const candidates = fileList ?? [filePath]
+  const visibleFiles = previewOnly
+    ? candidates.filter((path) => !/apple[-_]?live/i.test(path))
+    : candidates
+  if (visibleFiles.length === 0) return
+  const visibleFilePath = visibleFiles.includes(filePath) ? filePath : visibleFiles[0]
+  setPreviewState?.({ filePath: visibleFilePath, fileList: visibleFiles, previewOnly })
 }
 
 /** 打开批量导出弹窗 */
