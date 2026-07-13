@@ -153,8 +153,9 @@ export function buildExportLayers(
   watermark?: WatermarkSettingsType | null,
 ): PreviewLayer[] {
   const main = buildLayers(sourcePath, resolution, exportCanvasFor(resolution))
-  if (!watermark?.enabled || !watermark.imagePath) return main
+  if (!watermark?.enabled) return main
 
+  // 与工作台预览保持一致：imagePath 未写入项目时，由水印构建器按 style 使用预加载资源兜底。
   const watermarkLayer = buildResolvedWatermarkStaticLayer(watermark, resolution.width, resolution.height)
   const baseLayer = main[0]
   if (!watermarkLayer || !baseLayer) return main
