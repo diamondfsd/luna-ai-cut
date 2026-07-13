@@ -16,6 +16,10 @@ export interface VideoExportSettings {
   liveStartTime: number
   /** Live 图封面相对于 3 秒片段起点的时间。 */
   liveCoverTime: number
+  /** 导出弹窗中二次截取的起点，相对于工作台裁剪后的素材。 */
+  trimStartTime: number
+  /** 导出弹窗中二次截取的终点；未设置时使用完整时长。 */
+  trimEndTime?: number
   /** 自定义码率（kbps），仅 quality 为 'custom' 时生效 */
   customBitrate?: number
 }
@@ -27,4 +31,5 @@ export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
   exportFormats: ['video'],
   liveStartTime: 0,
   liveCoverTime: 1.5,
+  trimStartTime: 0,
 }
