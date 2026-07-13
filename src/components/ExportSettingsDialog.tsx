@@ -20,6 +20,7 @@ interface ExportSettingsDialogProps {
     path: string
     startTime: number
     duration: number
+    thumbnailDuration: number
     layers: PreviewLayer[]
     outputSize: { width: number; height: number }
   }
@@ -58,8 +59,11 @@ export function ExportSettingsDialog({
   const [internalLoading, setInternalLoading] = useState(false)
 
   const liveSelected = exportConfig.exportFormats.some((format) => format !== 'video')
+  const selectedDuration = livePhotoSource
+    ? (exportConfig.trimEndTime ?? livePhotoSource.duration) - exportConfig.trimStartTime
+    : 0
   const livePhotoInvalid = exportConfig.exportFormats.length === 0
-    || (liveSelected && (!livePhotoSource || livePhotoSource.duration < 3))
+    || (liveSelected && (!livePhotoSource || selectedDuration < 3))
   const isBusy = loading || internalLoading
 
   const handleConfirm = useCallback(async () => {

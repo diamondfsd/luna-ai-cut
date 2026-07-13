@@ -18,8 +18,19 @@ export function LivePhotoExportControls({ value, duration, onChange }: LivePhoto
     const formats = checked
       ? [...new Set([...value.exportFormats, format])]
       : value.exportFormats.filter((candidate) => candidate !== format)
+    if (checked && format !== 'video') {
+      let trimStartTime = Math.max(0, value.trimStartTime)
+      let trimEndTime = Math.min(duration, value.trimEndTime ?? duration)
+      if (trimEndTime - trimStartTime < 3) {
+        trimEndTime = Math.min(duration, trimStartTime + 3)
+        trimStartTime = Math.max(0, trimEndTime - 3)
+      }
+      const liveStartTime = Math.min(Math.max(value.liveStartTime, trimStartTime), trimEndTime - 3)
+      onChange({ ...value, exportFormats: formats, trimStartTime, trimEndTime, liveStartTime })
+      return
+    }
     onChange({ ...value, exportFormats: formats })
-  }, [onChange, value])
+  }, [duration, onChange, value])
 
   const formats: Array<{ value: VideoExportFormat; label: string; description: string }> = [
     { value: 'video', label: '普通视频', description: '导出完整编辑后视频' },

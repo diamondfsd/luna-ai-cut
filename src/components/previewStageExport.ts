@@ -388,6 +388,8 @@ export interface BatchExportSource {
   outputSize?: { width: number; height: number }
   /** 裁剪后的可用视频时长，Live 图固定从中选择 3 秒。 */
   mediaDuration?: number
+  /** 原始视频时长，用于复用统一的胶片缩略图缓存。 */
+  sourceDuration?: number
 }
 
 interface BatchExportEntry {

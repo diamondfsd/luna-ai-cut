@@ -11,16 +11,26 @@ interface TrimStripProps {
   playing: boolean
   onTogglePlay: () => void
   onSeek: (time: number) => void
+  /** 仅在用户拖动播放头或点击轨道定位时触发。 */
+  onPlayheadChange?: (time: number) => void
   onStartTimeChange?: (time: number) => void
   onEndTimeChange?: (time: number) => void
   /** 固定时长模式：选区不可缩放，只能整体拖动。 */
   fixedDuration?: number
   onFixedStartChange?: (time: number) => void
+  /** 叠加在主截取范围内的固定时长选区（例如 Live 图 3 秒范围）。 */
+  secondaryFixedRange?: {
+    startTime: number
+    duration: number
+    label?: string
+    onStartChange: (time: number) => void
+  }
+  playheadRange?: { startTime: number; endTime: number }
   compact?: boolean
   thumbnails: ImageData[]
 }
 
-type TrimDragType = 'left-handle' | 'right-handle' | 'playhead' | 'fixed-range'
+type TrimDragType = 'left-handle' | 'right-handle' | 'playhead' | 'fixed-range' | 'secondary-fixed-range'
 
 function formatShortTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -55,10 +65,13 @@ export function TrimStrip({
   playing,
   onTogglePlay,
   onSeek,
+  onPlayheadChange,
   onStartTimeChange,
   onEndTimeChange,
   fixedDuration,
   onFixedStartChange,
+  secondaryFixedRange,
+  playheadRange,
   compact = false,
   thumbnails,
 }: TrimStripProps) {
@@ -219,7 +232,26 @@ export function TrimStrip({
     lastSeekRef.current = targetTime
     setDragging('playhead')
     onSeek(targetTime)
-  }, [startTime, endTime, fixedDuration, duration, timeToX, xToTime, onSeek, onFixedStartChange])
+    onPlayheadChange?.(targetTime)
+  }, [startTime, endTime, fixedDuration, duration, timeToX, xToTime, onSeek, onPlayheadChange, onFixedStartChange])
+
+  const handleSecondaryPointerDown = useCallback((e: React.PointerEvent) => {
+    if (!secondaryFixedRange) return
+    e.preventDefault()
+    e.stopPropagation()
+    const target = trackRef.current
+    if (!target) return
+    target.setPointerCapture(e.pointerId)
+    lastSeekRef.current = -1
+    dragRef.current = {
+      type: 'secondary-fixed-range',
+      startX: e.clientX,
+      startTime: secondaryFixedRange.startTime,
+      startStartTime: secondaryFixedRange.startTime,
+      startEndTime: secondaryFixedRange.startTime + secondaryFixedRange.duration,
+    }
+    setDragging('secondary-fixed-range')
+  }, [secondaryFixedRange])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current
@@ -229,7 +261,14 @@ export function TrimStrip({
     let target: number
     let doStart = false, doEnd = false
 
-    if (drag.type === 'fixed-range' && fixedDuration) {
+    if (drag.type === 'secondary-fixed-range' && secondaryFixedRange) {
+      const maxStart = Math.max(startTime, endTime - secondaryFixedRange.duration)
+      target = Math.max(startTime, Math.min(drag.startStartTime + dt, maxStart))
+      if (Math.abs(target - lastSeekRef.current) < 0.01) return
+      lastSeekRef.current = target
+      secondaryFixedRange.onStartChange(target)
+      return
+    } else if (drag.type === 'fixed-range' && fixedDuration) {
       target = Math.max(0, Math.min(drag.startStartTime + dt, duration - fixedDuration))
       if (Math.abs(target - lastSeekRef.current) < 0.01) return
       lastSeekRef.current = target
@@ -258,8 +297,9 @@ export function TrimStrip({
       onSeek(target)
     } else {
       onSeek(target)
+      onPlayheadChange?.(target)
     }
-  }, [pxPerSec, startTime, endTime, duration, fixedDuration, onStartTimeChange, onEndTimeChange, onFixedStartChange, onSeek])
+  }, [pxPerSec, startTime, endTime, duration, fixedDuration, secondaryFixedRange, onStartTimeChange, onEndTimeChange, onFixedStartChange, onSeek, onPlayheadChange])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current
@@ -275,7 +315,13 @@ export function TrimStrip({
   const leftHandleX = timeToX(startTime)
   const rightHandleX = timeToX(endTime)
   // 播放头保持在选区且不压住两端把手，左把手可始终直接拖动。
-  const playheadX = Math.max(leftHandleX + 11, Math.min(timeToX(displayTime), rightHandleX - 11))
+  const playheadLeftX = timeToX(playheadRange?.startTime ?? startTime)
+  const playheadRightX = timeToX(playheadRange?.endTime ?? endTime)
+  const playheadX = Math.max(playheadLeftX + 11, Math.min(timeToX(displayTime), playheadRightX - 11))
+  const secondaryLeftX = secondaryFixedRange ? timeToX(secondaryFixedRange.startTime) : 0
+  const secondaryRightX = secondaryFixedRange
+    ? timeToX(secondaryFixedRange.startTime + secondaryFixedRange.duration)
+    : 0
   const rulerTicks = useMemo(() => {
     if (duration <= 0) return []
     const count = 5
@@ -308,6 +354,16 @@ export function TrimStrip({
 
         {/* 完整蓝色边框 */}
         <div className="workspace-trim-range-border" style={{ left: leftHandleX, width: Math.max(0, rightHandleX - leftHandleX) }} />
+
+        {secondaryFixedRange ? (
+          <div
+            className="workspace-trim-secondary-range"
+            style={{ left: secondaryLeftX, width: Math.max(0, secondaryRightX - secondaryLeftX) }}
+            onPointerDown={handleSecondaryPointerDown}
+          >
+            <span>{secondaryFixedRange.label ?? 'Live 3 秒'}</span>
+          </div>
+        ) : null}
 
         {/* ── 左侧把手 ── */}
         <div className="workspace-trim-handle" onPointerDown={(e) => handlePointerDown('left-handle', e)} style={{ left: leftHandleX }}>

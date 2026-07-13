@@ -67,6 +67,11 @@
   cursor: grabbing;
 }
 
+.workspace-trim-track.is-dragging-secondary-fixed-range,
+.workspace-trim-track.is-dragging-secondary-fixed-range * {
+  cursor: grabbing;
+}
+
 .workspace-trim-track.is-dragging-left-handle,
 .workspace-trim-track.is-dragging-left-handle *,
 .workspace-trim-track.is-dragging-right-handle,
@@ -114,6 +119,35 @@
   box-sizing: border-box;
   pointer-events: none;
   z-index: 2;
+}
+
+.workspace-trim-secondary-range {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  overflow: hidden;
+  border: 1px solid #ff9f0a;
+  border-radius: 6px;
+  background: rgba(255, 159, 10, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(255, 207, 128, 0.18);
+  color: #ffd08a;
+  cursor: grab;
+}
+
+.workspace-trim-secondary-range span {
+  overflow: hidden;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 /* ── 截取把手 ── */

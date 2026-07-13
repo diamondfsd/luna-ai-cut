@@ -15,6 +15,7 @@ interface ExportSettingsPanelProps {
     path: string
     startTime: number
     duration: number
+    thumbnailDuration: number
     layers: PreviewLayer[]
     outputSize: { width: number; height: number }
   }
