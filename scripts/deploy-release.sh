@@ -2,23 +2,22 @@
 set -euo pipefail
 
 # ============================================================
-# deploy-release.sh — 本地打包并上传到 GitCode Release
+# deploy-release.sh — 从 GitHub Release 下载产物并上传到 GitCode
 #
 # 用法:
-#   ./scripts/deploy-release.sh                 # 自动取 package.json 版本，构建 + 上传
-#   ./scripts/deploy-release.sh v1.3.0          # 手动指定版本，构建 + 上传
-#   ./scripts/deploy-release.sh --upload-only           # 跳过构建，直接上传（自动版本）
-#   ./scripts/deploy-release.sh --upload-only v1.3.0    # 跳过构建，直接上传（指定版本）
+#   ./scripts/deploy-release.sh                 # 自动取 package.json 版本，下载 + 上传
+#   ./scripts/deploy-release.sh v1.3.0          # 手动指定版本，下载 + 上传
 #
-# 配置（二选一）:
-#   1. 复制 deploy-release.conf.example → deploy-release.conf，填入 token
-#   2. 设置环境变量: export GITCODE_TOKEN=xxx
+# 前置条件:
+#   - gh CLI 已安装并登录
+#   - GITCODE_TOKEN 环境变量已设置，或 deploy-release.conf 已配置
 #
 # 流程:
-#   1. [可选] 检测当前平台并构建（macOS → DMG, Windows → EXE）
+#   1. 从 GitHub Release 下载构建产物（macOS DMG + Windows EXE）
 #   2. 在 GitCode 创建 Release
-#   3. 上传构建产物到 GitCode Release
+#   3. 上传产物到 GitCode Release
 #   4. 更新 mirror 仓库 README
+#   5. 更新 Landing 页面下载地址
 # ============================================================
 
 # ── 加载本地配置（如有） ──
@@ -29,13 +28,6 @@ if [ -f "$CONF_FILE" ]; then
 fi
 
 # ── 参数解析 ──
-SKIP_BUILD=false
-if [ "${1:-}" = "--upload-only" ]; then
-  SKIP_BUILD=true
-  shift
-fi
-
-# ── 自动获取最新版本号 ──
 PKG_VER="$(node -p "require('./package.json').version")"
 DEFAULT_TAG="v${PKG_VER}"
 TAG="${1:-$DEFAULT_TAG}"
@@ -46,7 +38,7 @@ GITCODE_OWNER="${GITCODE_OWNER:-diamondfsd}"
 GITCODE_REPO="${GITCODE_REPO:-luna-ai-cut-package-release}"
 GITCODE_DL="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/download"
 GITHUB_REPO="${GITHUB_REPO:-diamondfsd/luna-ai-cut}"
-RELEASE_DIR="release"
+DOWNLOAD_DIR="release"
 
 # ── 颜色 ──
 RED='\033[0;31m'
@@ -60,93 +52,55 @@ ok()    { echo -e "${GREEN}  ✓${NC} $*"; }
 warn()  { echo -e "${YELLOW}  ⚠${NC} $*"; }
 err()   { echo -e "${RED}  ✗${NC} $*"; }
 
-# ── 检测平台 ──
-OS="$(uname -s)"
-case "$OS" in
-  Darwin)
-    FILE_PATTERN="-name '*.dmg' -o -name '*Setup*.exe'"
-    PLATFORM="macOS + Windows"
-    ;;
-  Windows_NT|MINGW*|MSYS*)
-    FILE_PATTERN="*Setup*.exe"
-    PLATFORM="Windows"
-    ;;
-  *)
-    err "不支持的操作系统: $OS"
-    exit 1
-    ;;
-esac
-
 # ============================================================
-# 第一步：构建（--upload-only 跳过）
+# 第一步：从 GitHub Release 下载构建产物
 # ============================================================
-if [ "$SKIP_BUILD" = false ]; then
-  echo ""
-  info "═══════════════════════════════════════════════════════════"
-  info "  Luna AI Cut ${TAG} — ${PLATFORM} 构建"
-  info "═══════════════════════════════════════════════════════════"
-  echo ""
+echo ""
+info "═══════════════════════════════════════════════════════════"
+info "  Luna AI Cut ${TAG} — 从 GitHub 下载构建产物"
+info "═══════════════════════════════════════════════════════════"
+echo ""
 
-  # 清理之前的构建产物，避免旧文件混入新 Release
-  info "清理旧构建产物..."
-  rm -rf "${RELEASE_DIR:?}"/*
-  ok "旧构建产物已清理"
+info "清理旧下载目录..."
+rm -rf "${DOWNLOAD_DIR:?}"/*
+mkdir -p "$DOWNLOAD_DIR"
+ok "目录已清理"
 
-  # 检查 node_modules
-  if [ ! -d "node_modules" ]; then
-    info "安装依赖..."
-    pnpm install --frozen-lockfile
-    ok "依赖安装完成"
-  fi
-
-  if [ "$OS" = "Darwin" ]; then
-    # ── macOS 上交叉打包：先 Win 后 Mac ──
-    # 每次构建前清理 ffmpeg 二进制，避免累积多平台文件导致包体积膨胀
-    info "构建 Windows x64..."
-    rm -rf resources/ffmpeg/* 2>/dev/null || true
-    pnpm run pack:win:x64
-    ok "Windows 构建完成"
-
-    info "构建 macOS ARM64..."
-    rm -rf resources/ffmpeg/* 2>/dev/null || true
-    pnpm run pack:mac:arm64
-    ok "macOS ARM64 构建完成"
-
-    info "构建 macOS x64 (Intel)..."
-    rm -rf resources/ffmpeg/* 2>/dev/null || true
-    pnpm run pack:mac:x64
-    ok "macOS x64 构建完成"
-  else
-    info "开始构建 ${PLATFORM}..."
-    pnpm run pack:win:x64
-    ok "构建完成"
-  fi
-else
-  echo ""
-  info "═══════════════════════════════════════════════════════════"
-  info "  Luna AI Cut ${TAG} — 跳过构建，直接上传"
-  info "═══════════════════════════════════════════════════════════"
-  echo ""
-fi
-
-# 查找构建产物
-FILES=()
-if [ "$OS" = "Darwin" ]; then
-  # macOS 交叉编译，可能产生 .dmg 和 .exe 两种文件
-  while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" \( -name "*.dmg" -o -name "*Setup*.exe" \) -type f 2>/dev/null || true)
-else
-  while IFS= read -r f; do FILES+=("$f"); done < <(find "$RELEASE_DIR" -name "$FILE_PATTERN" -type f 2>/dev/null || true)
-fi
-if [ ${#FILES[@]} -eq 0 ]; then
-  err "未找到构建产物 ($RELEASE_DIR/$FILE_PATTERN)"
+info "检查 gh CLI..."
+if ! command -v gh &>/dev/null; then
+  err "请先安装 gh CLI 并登录 (brew install gh && gh auth login)"
   exit 1
 fi
 
-echo ""
+info "检查 GitHub Release ${TAG}..."
+if ! gh release view "$TAG" --repo "$GITHUB_REPO" &>/dev/null; then
+  err "GitHub Release ${TAG} 不存在，请先创建 Release"
+  info "运行: gh release create ${TAG} --title \"${TAG}\" --notes \"...\""
+  exit 1
+fi
+ok "Release 存在"
+
+info "下载构建产物到 ${DOWNLOAD_DIR}/..."
+gh release download "$TAG" \
+  --repo "$GITHUB_REPO" \
+  --dir "$DOWNLOAD_DIR" \
+  --pattern "*.dmg" \
+  --pattern "*.exe"
+ok "下载完成"
+
+# 列出下载的产物
+FILES=()
+while IFS= read -r f; do FILES+=("$f"); done < <(find "$DOWNLOAD_DIR" \( -name "*.dmg" -o -name "*.exe" \) -type f 2>/dev/null || true)
+
+if [ ${#FILES[@]} -eq 0 ]; then
+  err "未找到下载的构建产物（.dmg / .exe）"
+  exit 1
+fi
+
 for f in "${FILES[@]}"; do
   size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null)
   size_hr=$(numfmt --to=iec "$size" 2>/dev/null || echo "${size}B")
-  ok "产物: $f (${size_hr})"
+  ok "已下载: $f (${size_hr})"
 done
 
 # ============================================================
@@ -183,7 +137,7 @@ esac
 # ============================================================
 echo ""
 info "═══════════════════════════════════════════════════════════"
-info "  上传附件"
+info "  上传附件到 GitCode"
 info "═══════════════════════════════════════════════════════════"
 echo ""
 
@@ -196,8 +150,6 @@ for filepath in "${FILES[@]}"; do
 
   # URL 编码
   encoded_name=$(printf '%s' "$filename" | python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip()))")
-  # 备选：jq -sRr @uri（如果可用）
-  # encoded_name=$(printf '%s' "$filename" | jq -sRr @uri)
 
   # 获取 OBS 上传地址
   upload_json=$(curl -sS \
@@ -222,7 +174,7 @@ for filepath in "${FILES[@]}"; do
   [ -n "$acl" ] && header_args+=(-H "x-obs-acl: ${acl}")
   [ -n "$cb" ]  && header_args+=(-H "x-obs-callback: ${cb}")
 
-  # 上传文件（curl --progress-bar 显示实际网络传输进度）
+  # 上传文件
   curl --progress-bar -X PUT "${header_args[@]}" --data-binary "@${filepath}" \
     "${upload_url}" -o /dev/null -w "\n→ HTTP %{http_code}\n" && \
     ok "${filename} 上传完成" || err "${filename} 上传失败"
@@ -243,7 +195,7 @@ release_json=$(curl -sS \
   "${API_BASE}/releases/tags/${TAG}" \
   -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
-# 提取附件 URL（用 python3 解析 JSON）
+# 提取附件 URL
 extract_asset() {
   local pattern="$1"
   echo "$release_json" | python3 -c "
@@ -352,7 +304,7 @@ echo ""
 SCRIPT_JS="${SCRIPT_DIR}/../landing/script.js"
 GITCODE_BASE="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/download"
 
-# 从 upload 步骤收集到的 FILES 构建下载 URL
+# 从下载到的文件构建下载 URL
 mac_arm_file=""
 mac_x64_file=""
 win_file=""
@@ -376,7 +328,7 @@ info "Windows 下载地址:     ${win_dl}"
 
 # 更新 script.js 中的 LATEST_RELEASE 常量
 if [ -f "$SCRIPT_JS" ]; then
-  # macOS: sed -i '' 需要空字符串参数
+  OS="$(uname -s)"
   if [ "$OS" = "Darwin" ]; then
     sed -i '' "s|tag: '.*'|tag: '${TAG}'|" "$SCRIPT_JS"
     sed -i '' "s|gitcode_mac_arm: '.*'|gitcode_mac_arm: '${mac_arm_dl}'|" "$SCRIPT_JS"

@@ -88,17 +88,16 @@ gh release create v<新版本号> \
 
 ### 6b. 发布到国内资源（GitCode）
 
-GitHub Release 创建完成后，需要再执行本地部署脚本，将构建产物上传到 GitCode 国内镜像仓库，方便国内用户高速下载：
+GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Release 下载构建产物并上传到 GitCode 国内镜像仓库，方便国内用户高速下载：
 
 ```bash
-# 确保本地已拉取最新的 tag（包含 CI 构建产物信息）
-git pull origin v<版本号>
-
-# 运行部署脚本（会自动构建并上传）
+# 运行部署脚本（从 GitHub 下载产物 → 上传到 GitCode）
 ./scripts/deploy-release.sh v<版本号>
 ```
 
-> 前置条件：`GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件。
+> 前置条件：
+> - `gh` CLI 已安装并登录 (`gh auth status`)
+> - `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件
 
 ## gh release 常用参数
 
