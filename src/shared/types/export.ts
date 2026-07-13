@@ -5,6 +5,10 @@ export interface ExportItemInput {
   outputPath: string
   /** 用户可见的描述，如"视频导出"、"Live 图导出" */
   label?: string
+  /** 完成后的打开方式；Apple Live 图从系统照片打开。 */
+  openTarget?: 'file' | 'photos'
+  /** 是否允许加入应用内预览列表。 */
+  previewable?: boolean
 }
 
 /** 子任务记录 */
@@ -13,6 +17,8 @@ export interface ExportTaskItem {
   fileName: string
   /** 用户可见的描述，如"视频导出"、"Live 图导出" */
   label?: string
+  openTarget?: 'file' | 'photos'
+  previewable?: boolean
   kind: 'image' | 'video' | 'lrv'
   status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
   progress: number

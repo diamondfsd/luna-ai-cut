@@ -15,6 +15,7 @@ const EMPTY_THUMBNAIL = new ImageData(1, 1)
 interface UseTrimThumbnailsOptions {
   videoPath: string | null
   duration: number
+  startTime?: number
   signal?: unknown
 }
 
@@ -84,6 +85,7 @@ async function saveCachedFrames(videoPath: string, duration: number, frames: Ima
 export function useTrimThumbnails({
   videoPath,
   duration,
+  startTime = 0,
   signal,
 }: UseTrimThumbnailsOptions): UseTrimThumbnailsResult {
   const [thumbnails, setThumbnails] = useState<ImageData[]>([])
@@ -112,7 +114,7 @@ export function useTrimThumbnails({
     // 计算采样时间点（均匀分布，从 0.05s 开始避免黑帧）
     const times = Array.from({ length: THUMB_COUNT }, (_, i) => {
       const pct = THUMB_COUNT > 1 ? i / (THUMB_COUNT - 1) : 0
-      return pct * (duration - 0.1) + 0.05
+      return startTime + pct * (duration - 0.1) + 0.05
     })
 
     function drawFrame(): void {
@@ -227,7 +229,8 @@ export function useTrimThumbnails({
       nextVideo.load()
     }
 
-    void loadCachedFrames(sourcePath, duration)
+    const cachedFrames = startTime === 0 ? loadCachedFrames(sourcePath, duration) : Promise.resolve(null)
+    void cachedFrames
       .then((cachedFrames) => {
         if (aborted || genRef.current !== genId) return
         if (!cachedFrames) {
@@ -251,7 +254,7 @@ export function useTrimThumbnails({
         setThumbnails(results.filter(Boolean))
         setLoading(false)
         if (processedCount >= THUMB_COUNT) {
-          void saveCachedFrames(sourcePath, duration, results).catch(() => undefined)
+          if (startTime === 0) void saveCachedFrames(sourcePath, duration, results).catch(() => undefined)
         }
       }
       cleanup()
@@ -272,7 +275,7 @@ export function useTrimThumbnails({
     }
 
     return cleanup
-  }, [videoPath, duration, refreshKey, signal])
+  }, [videoPath, duration, startTime, refreshKey, signal])
 
   return { thumbnails, loading, refresh }
 }

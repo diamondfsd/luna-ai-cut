@@ -558,7 +558,14 @@ export function TripleStitchCreative() {
       const items = [
         ...(exportFormats.has('video') ? [{ id: videoTaskId, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: videoPath, label: '视频' }] : []),
         ...(exportFormats.has('live') ? [{ id: `triple_stitch_live_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(exportDir, `${baseName}_live.jpg`), label: 'Live' }] : []),
-        ...(exportFormats.has('appleLive') ? [{ id: `triple_stitch_appleLive_${stamp}`, sourcePath: slotSources[0]?.asset.path ?? '', outputPath: outputPath(exportDir, `${baseName}_appleLive.jpg`), label: 'Apple Live' }] : []),
+        ...(exportFormats.has('appleLive') ? [{
+          id: `triple_stitch_appleLive_${stamp}`,
+          sourcePath: slotSources[0]?.asset.path ?? '',
+          outputPath: outputPath(exportDir, `${baseName}_appleLive.jpg`),
+          label: 'Apple Live',
+          openTarget: 'photos' as const,
+          previewable: false,
+        }] : []),
       ]
 
       const task = await window.luna.exportTask.create('三拼创意导出', items)

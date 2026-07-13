@@ -36,6 +36,11 @@ function formatETA(item: ExportTaskItemRecord): string | null {
   return formatDuration(Math.round(remaining))
 }
 
+function isAppleLiveItem(item: ExportTaskItemRecord): boolean {
+  if (item.openTarget === 'photos') return true
+  return /apple[-_]?live/i.test(`${item.id} ${item.destinationPath ?? ''} ${item.fileName}`)
+}
+
 /* ==================== 内联项目条 ==================== */
 
 function TaskItemRow({ item, onPreview, onRevealFile, isAppleLive }: {
@@ -59,7 +64,7 @@ function TaskItemRow({ item, onPreview, onRevealFile, isAppleLive }: {
         {item.status === 'queued' && <Clock size={12} style={{ color: 'var(--muted)' }} />}
         {item.status === 'canceled' && <Ban size={12} style={{ color: 'var(--muted)' }} />}
       </span>
-      <span className="et-ti-kind">{isVideo ? <Film size={12} /> : <ImageIcon size={12} />}{isVideo ? ' 视频' : ' 图片'}</span>
+      <span className="et-ti-kind">{isVideo ? <Film size={12} /> : <ImageIcon size={12} />}{isAppleLive ? ' Live 图' : isVideo ? ' 视频' : ' 图片'}</span>
       {item.label && <span className="et-ti-label">{item.label}</span>}
       <span className="et-ti-name" title={item.destinationPath ?? item.fileName}>{displayName}</span>
       <span className="et-ti-dur">{formatDuration(item.duration)}</span>
@@ -84,7 +89,9 @@ function TaskItemRow({ item, onPreview, onRevealFile, isAppleLive }: {
               title={isAppleLive ? '打开相册查看' : '预览'}
               icon={<Eye size={13} />}
             />
-            <IconButton variant="ghost" onClick={() => onRevealFile?.(item.destinationPath!)} title="在文件夹中显示" icon={<FileDown size={13} />} />
+            {!isAppleLive ? (
+              <IconButton variant="ghost" onClick={() => onRevealFile?.(item.destinationPath!)} title="在文件夹中显示" icon={<FileDown size={13} />} />
+            ) : null}
           </>
         )}
       </span>
@@ -183,7 +190,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
     const task = tasks.find((t) => t.items.some((i) => i.id === item.id))
     if (!task) return
     const filePaths = task.items
-      .filter((i) => i.destinationPath && i.status === 'done' && !i.id.includes('appleLive') && !(i.destinationPath ?? '').includes('_appleLive'))
+      .filter((i) => i.destinationPath && i.status === 'done' && i.previewable !== false && !isAppleLiveItem(i))
       .map((i) => i.destinationPath!)
     if (filePaths.length === 0) return
     showPreviewModal(item.destinationPath, filePaths, true)
@@ -326,7 +333,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
         expandContent={(task) => (
           <div className="et-task-items" style={{ borderTop: 'none', marginTop: 0, paddingTop: 0 }}>
             {task.items.map((item) => {
-              const isAppleLive = item.id.includes('appleLive') || (item.destinationPath ?? item.fileName).includes('_appleLive')
+              const isAppleLive = isAppleLiveItem(item)
               return (
                 <TaskItemRow key={item.id} item={item} onPreview={handlePreviewItem} onRevealFile={onRevealFile} isAppleLive={isAppleLive} />
               )

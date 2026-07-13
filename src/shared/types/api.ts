@@ -5,7 +5,7 @@ import type { PreviewResult, MediaMetadata } from './preview'
 import type { WatermarkSettings } from './watermark'
 import type { VideoExportSettings } from './video'
 import type { DownloadProgress, DownloadRecord, DownloadSummary } from './download'
-import type { ExportFileInput, ExportProgress, ExportSummary, ExportTaskRecord } from './export'
+import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord } from './export'
 import type { MockServerStatus } from './mock'
 import type {
   DeviceDebugTestResult,
@@ -84,8 +84,8 @@ export interface LunaApi {
   disconnectWifi: () => Promise<WifiDebugResult<WifiDebugStatus>>
   /** 导出任务记录服务 */
   exportTask: {
-    create(name: string, items?: Array<{ id: string; sourcePath: string; outputPath: string }>, taskId?: string): Promise<ExportTaskRecord>
-    addItems(taskId: string, items: Array<{ id: string; sourcePath: string; outputPath: string; label?: string }>): Promise<void>
+    create(name: string, items?: ExportItemInput[], taskId?: string): Promise<ExportTaskRecord>
+    addItems(taskId: string, items: ExportItemInput[]): Promise<void>
     updateItem(taskId: string, itemId: string, data: { progress?: number; status?: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'; error?: string; destinationPath?: string; label?: string }): Promise<void>
     cancel(taskId: string): Promise<void>
     get(taskId: string): Promise<ExportTaskRecord | undefined>
@@ -98,6 +98,7 @@ export interface LunaApi {
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>
+    getVideoDuration(filePath: string): Promise<number>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     listProjects(): Promise<WorkspaceProject[]>
@@ -107,7 +108,7 @@ export interface LunaApi {
     deleteProject(projectId: string): Promise<void>
     renameProject(projectId: string, newName: string): Promise<WorkspaceProject>
     extractVideoFrame(videoPath: string, outputPath: string, frameTime: number): Promise<{ path: string; name: string }>
-    exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean): Promise<{ path: string; name: string }>
+    exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean, recordTask?: boolean, coverTimeSeconds?: number): Promise<{ path: string; name: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     listColorPresets(): Promise<Array<{ id: string; name: string; createdAt: string; updatedAt: string; colorJson: string }>>
     saveColorPreset(name: string, colorJson: string): Promise<{ id: string; name: string; createdAt: string; updatedAt: string; colorJson: string }>

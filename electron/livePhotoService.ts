@@ -21,7 +21,7 @@ const execFileAsync = promisify(execFile)
 
 const XMP_NS = 'http://ns.adobe.com/xap/1.0/'
 
-function buildGoogleXmpXml(videoLength: number): string {
+function buildGoogleXmpXml(videoLength: number, presentationTimestampUs: number): string {
   return [
     '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>',
     '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Luna AI Cut">',
@@ -32,7 +32,7 @@ function buildGoogleXmpXml(videoLength: number): string {
     '        xmlns:Item="http://ns.google.com/photos/1.0/container/item/">',
     '      <GCamera:MotionPhoto>1</GCamera:MotionPhoto>',
     '      <GCamera:MotionPhotoVersion>1</GCamera:MotionPhotoVersion>',
-    '      <GCamera:MotionPhotoPresentationTimestampUs>0</GCamera:MotionPhotoPresentationTimestampUs>',
+    `      <GCamera:MotionPhotoPresentationTimestampUs>${Math.max(0, Math.round(presentationTimestampUs))}</GCamera:MotionPhotoPresentationTimestampUs>`,
     '      <Container:Directory>',
     '        <rdf:Seq>',
     '          <rdf:li rdf:parseType="Resource">',
@@ -99,7 +99,7 @@ function findXmpInsertPos(data: Buffer): number {
  * 向 JPEG 文件注入 JFIF APP0（如缺失）、Google Motion Photo XMP APP1。
  * Primary 的 Item:Length="0" 遵循 Google 規範（表示延伸到下一個 Item）。
  */
-function injectGoogleXmpIntoJpeg(jpegPath: string, videoPath: string): void {
+function injectGoogleXmpIntoJpeg(jpegPath: string, videoPath: string, coverTimeSeconds = 0): void {
   let data = readFileSync(jpegPath)
   const videoStat = statSync(videoPath)
   const videoLength = videoStat.size
@@ -110,7 +110,7 @@ function injectGoogleXmpIntoJpeg(jpegPath: string, videoPath: string): void {
   }
 
   // Step 2: 找出插入位置并注入 XMP APP1（跳过 JFIF/COM，放在 DQT/DHT 之前）
-  const xml = buildGoogleXmpXml(videoLength)
+  const xml = buildGoogleXmpXml(videoLength, coverTimeSeconds * 1_000_000)
   const app1Seg = buildXmpApp1Segment(xml)
   const insertAt = findXmpInsertPos(data)
   const result = Buffer.concat([
@@ -147,6 +147,7 @@ async function exportAppleLivePhotoPair(
   videoPath: string,
   folderPath: string,
   baseName: string,
+  coverTimeSeconds?: number,
   onProgress?: (percent: number) => void,
 ): Promise<void> {
   await fs.mkdir(folderPath, { recursive: true })
@@ -172,7 +173,9 @@ async function exportAppleLivePhotoPair(
   try {
     const livetoolPath = getSwiftScriptPath('livetool.swift')
     const tempPrefix = path.join(folderPath, `_${baseName}_live`)
-    await execFileAsync('swift', [livetoolPath, imgDest, vidDest, tempPrefix], { timeout: 30000 })
+    const args = [livetoolPath, imgDest, vidDest, tempPrefix]
+    if (coverTimeSeconds !== undefined) args.push(String(coverTimeSeconds))
+    await execFileAsync('swift', args, { timeout: 30000 })
     await fs.rename(`${tempPrefix}.jpg`, imgDest)
     await fs.rename(`${tempPrefix}.mov`, vidDest)
   } catch (err) {
@@ -308,11 +311,12 @@ export async function combineLivePhoto(
   processedVideo: string,
   outputPath: string,
   appleExportFolder?: string,
+  coverTimeSeconds?: number,
   onProgress?: (percent: number) => void,
 ): Promise<void> {
   if (appleExportFolder) {
     const baseName = path.basename(appleExportFolder)
-    await exportAppleLivePhotoPair(processedImage, processedVideo, appleExportFolder, baseName, onProgress)
+    await exportAppleLivePhotoPair(processedImage, processedVideo, appleExportFolder, baseName, coverTimeSeconds, onProgress)
     // Apple Live Photo 不需要合成 Google Motion Photo 格式的 .jpg
     onProgress?.(100)
     return
@@ -338,7 +342,7 @@ export async function combineLivePhoto(
   }
 
   try {
-    injectGoogleXmpIntoJpeg(processedImage, processedVideo)
+    injectGoogleXmpIntoJpeg(processedImage, processedVideo, coverTimeSeconds ?? 0)
   } catch (err) {
     logMainError('[LIVE] Google XMP injection failed（非致命：输出文件仍为 JPEG+MP4 拼接，但缺少 XMP 元数据，部分 Live 检测可能失效）', { error: err })
   }
