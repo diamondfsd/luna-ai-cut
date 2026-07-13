@@ -47,6 +47,13 @@ export function CameraMediaPage() {
       : '',
   )
 
+  // 页面会被保留并隐藏；重新进入时同步磁盘状态，清除已在本地资源中删除的下载标记。
+  useEffect(() => {
+    if (pageActive) void controller.restoreDownloadedRecords()
+    // 只在路由重新激活时同步，文件列表首次加载时已由主进程检查本地文件。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageActive])
+
   // 滚动时自动切换当前可见分组的日期
   useEffect(() => {
     const els = document.querySelectorAll<HTMLElement>('.media-section[data-group]')

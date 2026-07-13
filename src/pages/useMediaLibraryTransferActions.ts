@@ -28,6 +28,10 @@ function markDownloaded(file: LunaFile, path: string): LunaFile {
   return { ...file, localPath: path, downloadFilePath: path }
 }
 
+function markNotDownloaded(file: LunaFile): LunaFile {
+  return { ...file, localPath: undefined, downloadFilePath: null }
+}
+
 export function useMediaLibraryTransferActions({
   files,
   selectedFiles,
@@ -60,16 +64,40 @@ export function useMediaLibraryTransferActions({
     ))
   }
 
+  function markFileNotDownloaded(fileName: string): void {
+    setFiles((current) => current.map((file) => (
+      file.name === fileName ? markNotDownloaded(file) : file
+    )))
+    setPreviewFiles((current) => current.map((file) => (
+      file.name === fileName ? markNotDownloaded(file) : file
+    )))
+    setPreviewFile((current) => (
+      current?.name === fileName ? markNotDownloaded(current) : current
+    ))
+  }
+
   async function restoreDownloadedRecords(nextFiles = files, downloadDir = settings?.downloadDir): Promise<void> {
     if (!downloadDir || nextFiles.length === 0) return
     try {
       const records = await window.luna.getDownloadedRecords(nextFiles, downloadDir)
-      if (records.length === 0) return
-      for (const record of records) {
-        markFileDownloaded(record.fileName, record.path)
+      const recordByName = new Map(records.map((record) => [record.fileName, record]))
+      const fileNames = new Set(nextFiles.map((file) => file.name))
+      const syncFile = (file: LunaFile): LunaFile => {
+        if (!fileNames.has(file.name)) return file
+        const record = recordByName.get(file.name)
+        return record ? markDownloaded(file, record.path) : markNotDownloaded(file)
       }
+      setFiles((current) => current.map(syncFile))
+      setPreviewFiles((current) => current.map(syncFile))
+      setPreviewFile((current) => (current ? syncFile(current) : current))
       setDownloadProgress((current) => {
         const next = new Map(current)
+        for (const file of nextFiles) {
+          const progress = next.get(file.name)
+          if (!recordByName.has(file.name) && (progress?.status === 'done' || progress?.status === 'exists')) {
+            next.delete(file.name)
+          }
+        }
         for (const record of records) {
           const file = nextFiles.find((item) => item.name === record.fileName)
           next.set(record.fileName, {
@@ -122,6 +150,7 @@ export function useMediaLibraryTransferActions({
         })
       }
       toDownload = selectedFiles.filter((file) => !recordByName.has(file.name))
+      for (const file of toDownload) markFileNotDownloaded(file.name)
     }
 
     setSelected(new Set())
@@ -132,7 +161,7 @@ export function useMediaLibraryTransferActions({
       const next = new Map(current)
       for (const [index, file] of toDownload.entries()) {
         const existing = next.get(file.name)
-        if (existing?.status === 'done' || existing?.status === 'exists') continue
+        if (existing?.status === 'queued' || existing?.status === 'downloading') continue
         next.set(file.name, {
           fileName: file.name,
           index,
@@ -177,12 +206,13 @@ export function useMediaLibraryTransferActions({
         })
         return
       }
+      markFileNotDownloaded(file.name)
     }
     setActiveDownloadFileNames(new Set([file.name]))
     setDownloadProgress((current) => {
       const next = new Map(current)
       const existing = next.get(file.name)
-      if (existing?.status !== 'done' && existing?.status !== 'exists') {
+      if (existing?.status !== 'queued' && existing?.status !== 'downloading') {
         next.set(file.name, {
           fileName: file.name,
           index: 0,

@@ -9,6 +9,7 @@ import path from 'node:path'
 import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
 
 import {
+  getLocalResourcesDir,
   getSettings,
   resolveLocalThumbnails,
   saveSettings,
@@ -363,9 +364,7 @@ function registerIpc(): void {
       })
       // 将已存在于下载目录或缓存的本地路径写回文件对象
       const nextSettings = await getSettings()
-      if (nextSettings.downloadDir) {
-        await resolveLocalThumbnails(files, nextSettings.downloadDir)
-      }
+      await resolveLocalThumbnails(files, getLocalResourcesDir(nextSettings))
       return files
     } catch (error) {
       logMainError(`[HTTP读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, error: error instanceof Error ? error.message : String(error) })
