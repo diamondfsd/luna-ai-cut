@@ -230,7 +230,23 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
         dstW = targetPixelHeight * logo.aspectRatio / canvasWidth
         dstX += (layer.rect.w - dstW) / 2
       }
-      return [{ ...common, layerType: 'media', filePath: logo.filePath, dstX, dstY, dstW, dstH }]
+      return [{
+        ...common,
+        layerType: 'media',
+        filePath: logo.filePath,
+        dstX,
+        dstY,
+        dstW,
+        dstH,
+        // 标明实际显示尺寸，让渲染器先用 Lanczos 预缩放 Logo，
+        // 避免超大原图直接经 GPU 大比例缩小产生锯齿。
+        positioning: {
+          anchor: 'top-left',
+          targetWidth: dstW,
+          marginX: dstX,
+          marginY: dstY,
+        },
+      }]
     }
     const rawContent = layer.type === 'logo' ? layer.fallbackText ?? '' : layer.content
     const content = template(isVideoMedia && layer.type === 'text' ? videoTemplate(rawContent) : rawContent, variables)

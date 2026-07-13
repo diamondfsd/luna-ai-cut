@@ -153,6 +153,18 @@ fn infer_composition_duration(ffprobe_path: &str, input: &CompositionInput) -> O
     })
 }
 
+fn infer_composition_fps(ffprobe_path: &str, input: &CompositionInput) -> Option<f64> {
+    input.layers.iter().find_map(|layer| {
+        if !is_video_source(&layer.source) {
+            return None;
+        }
+        probe_video_info(ffprobe_path, &layer.source.path)
+            .ok()
+            .map(|info| info.fps)
+            .filter(|fps| fps.is_finite() && *fps > 0.0)
+    })
+}
+
 /// FFmpeg fallback 临时文件路径
 fn ffmpeg_fallback_temp_path(output: &str) -> PathBuf {
     let path = Path::new(output);
@@ -526,6 +538,9 @@ impl Task for ExportCompositionVideoTask {
             .input
             .fps
             .or(self.input.composition.canvas.fps)
+            .or_else(|| {
+                infer_composition_fps(&self.input.ffprobe_path, &self.input.composition)
+            })
             .unwrap_or(30.0)
             .max(1.0);
         let duration = self
