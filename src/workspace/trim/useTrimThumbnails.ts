@@ -30,6 +30,16 @@ function fileUrl(path: string | null): string {
   return `file://${path.startsWith('/') ? '' : '/'}${path}`
 }
 
+function seekThumbnailFrame(video: HTMLVideoElement, time: number): void {
+  // 胶片预览不要求逐帧精确，优先跳到邻近关键帧可以显著减少长 GOP 视频的解码等待。
+  const fastSeek = (video as HTMLVideoElement & { fastSeek?: (target: number) => void }).fastSeek
+  if (typeof fastSeek === 'function') {
+    fastSeek.call(video, time)
+  } else {
+    video.currentTime = time
+  }
+}
+
 async function loadCachedFrames(videoPath: string, duration: number): Promise<ImageData[] | null> {
   const bytes = await window.luna.workspace.loadTrimThumbnailCache(videoPath, duration)
   if (!bytes) return null
@@ -153,13 +163,13 @@ export function useTrimThumbnails({
         finish()
         return
       }
-      if (video) video.currentTime = times[processedCount]
+      if (video) seekThumbnailFrame(video, times[processedCount])
     }
 
     function onSeeked(): void {
       if (aborted) return
-      // 留一帧给浏览器提交解码结果；连续 seek 时不额外等待一帧。
-      requestAnimationFrame(drawFrame)
+      // seeked 已表示目标帧可用，立即绘制，避免每张额外等待一个动画帧。
+      drawFrame()
     }
 
     function onError(): void {
@@ -178,7 +188,7 @@ export function useTrimThumbnails({
         if (Math.abs(activeVideo.currentTime - target) < 0.01) {
           drawFrame()
         } else {
-          activeVideo.currentTime = target
+          seekThumbnailFrame(activeVideo, target)
         }
       } else {
         finish()
@@ -194,7 +204,7 @@ export function useTrimThumbnails({
       const nextVideo = document.createElement('video')
       video = nextVideo
       nextVideo.muted = true
-      nextVideo.preload = 'metadata'
+      nextVideo.preload = 'auto'
       nextVideo.playsInline = true
       Object.assign(nextVideo.style, {
         position: 'fixed',
