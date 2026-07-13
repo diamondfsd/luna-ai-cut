@@ -64,6 +64,7 @@ async function renderBorderThumb(
         fit: l.fit ?? 'cover',
         opacity: l.opacity,
         zIndex: l.zIndex,
+        positioning: l.positioning,
         shape: l.shape,
         fillColor: l.fillColor,
         cornerRadius: l.cornerRadius,
