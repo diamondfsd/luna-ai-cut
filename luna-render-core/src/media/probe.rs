@@ -175,3 +175,14 @@ fn parse_fps(value: &str) -> f64 {
         value.parse().unwrap_or(30.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_fps;
+
+    #[test]
+    fn preserves_ntsc_fractional_frame_rate() {
+        let fps = parse_fps("60000/1001");
+        assert!((fps - 59.940_059_940_059_94).abs() < 1e-9);
+    }
+}

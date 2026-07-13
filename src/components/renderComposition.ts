@@ -35,7 +35,9 @@ export function buildCompositionFromPreviewLayers(
     canvas: {
       width: canvasWidth,
       height: canvasHeight,
-      fps: options?.fps ?? COMPOSITION_RENDER_FPS,
+      // 导出传入 options 但不指定 fps 时表示“跟随源视频”，不能回填 30。
+      // 普通预览没有 options，仍使用稳定的 30 fps 合成时基。
+      fps: options === undefined ? COMPOSITION_RENDER_FPS : options.fps,
       duration: typeof duration === 'number' && Number.isFinite(duration) && duration > 0 ? duration : undefined,
     },
     layers: sortedLayers(layers).map((layer, index) => ({
