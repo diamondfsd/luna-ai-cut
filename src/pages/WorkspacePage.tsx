@@ -101,7 +101,15 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   // ── 截取（Trim）状态 ──
   const [trimCurrentTime, setTrimCurrentTime] = useState(0)
   const [trimDuration, setTrimDuration] = useState(0)
+  const [trimDurationSourcePath, setTrimDurationSourcePath] = useState<string | null>(null)
   const [trimPlaying, setTrimPlaying] = useState(false)
+  const activeVideoPath = media.activeMedia?.path && isVideoPath(media.activeMedia.path)
+    ? media.activeMedia.path
+    : null
+  const activeTrimVideoPath = edit.trimActive ? activeVideoPath : null
+  const activeVideoPathRef = useRef<string | null>(activeVideoPath)
+  activeVideoPathRef.current = activeVideoPath
+  const activeTrimDuration = trimDurationSourcePath === activeVideoPath ? trimDuration : 0
 
   // 同步截取状态到 ref（避免闭包过期）
   useEffect(() => {
@@ -110,8 +118,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
 
   const { thumbnails } = useTrimThumbnails({
-    videoPath: edit.trimActive && media.activeMedia?.path && isVideoPath(media.activeMedia.path) ? media.activeMedia.path : null,
-    duration: trimDuration,
+    videoPath: activeTrimVideoPath,
+    duration: activeTrimDuration,
   })
 
   // 进入项目后如果没有任何素材，自动打开导入弹窗
@@ -133,7 +141,10 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
   const handlePlayStateChange = useCallback((state: { playing: boolean; currentTime: number; duration: number }) => {
     setTrimPlaying(state.playing)
-    if (state.duration > 0) setTrimDuration(state.duration)
+    if (state.duration > 0) {
+      setTrimDuration(state.duration)
+      setTrimDurationSourcePath(activeVideoPathRef.current)
+    }
 
     // 截取模式下限制当前时间不超过 endTime
     const trimEnd = trimStateRef.current.trimEnd
@@ -169,8 +180,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   }, [edit.pipeline.trim?.endTime, edit.pipeline.trim?.startTime, trimCurrentTime])
 
   const handleStartTimeChange = useCallback((time: number) => {
-    edit.commitPatch({ trim: { startTime: time, endTime: edit.pipeline.trim?.endTime ?? trimDuration } })
-  }, [edit, trimDuration])
+    edit.commitPatch({ trim: { startTime: time, endTime: edit.pipeline.trim?.endTime ?? activeTrimDuration } })
+  }, [edit, activeTrimDuration])
 
   const handleEndTimeChange = useCallback((time: number) => {
     edit.commitPatch({ trim: { startTime: edit.pipeline.trim?.startTime ?? 0, endTime: time } })
@@ -616,14 +627,14 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
-            duration={trimDuration}
+            duration={activeTrimDuration}
           />
 
           {edit.trimActive ? (
             <TrimStrip
-              duration={trimDuration}
+              duration={activeTrimDuration}
               startTime={edit.pipeline.trim?.startTime ?? 0}
-              endTime={edit.pipeline.trim?.endTime ?? trimDuration}
+              endTime={edit.pipeline.trim?.endTime ?? activeTrimDuration}
               currentTime={trimCurrentTime}
               playing={trimPlaying}
               onTogglePlay={handleTrimTogglePlay}

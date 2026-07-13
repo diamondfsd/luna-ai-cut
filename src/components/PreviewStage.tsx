@@ -173,7 +173,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         setCurrentTime(el.currentTime)
         onPlayStateChange?.({ playing: !el.paused, currentTime: el.currentTime, duration: el.duration || 0 })
       }
-      el.onloadedmetadata = () => setDuration(el.duration || 0)
+      el.onloadedmetadata = () => {
+        setDuration(el.duration || 0)
+        onPlayStateChange?.({ playing: !el.paused, currentTime: el.currentTime, duration: el.duration || 0 })
+      }
       el.onended = () => {
         setPlaying(false)
         setCurrentTime(el.duration || el.currentTime)
