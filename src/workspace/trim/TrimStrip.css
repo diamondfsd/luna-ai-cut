@@ -195,16 +195,20 @@
 
 .workspace-trim-strip-compact {
   display: flex;
-  min-height: 106px;
-  padding: 25px 2px 9px;
+  min-height: 84px;
+  padding: 25px 2px 6px;
   border: 0;
   background: transparent;
   gap: 12px;
 }
 
 .workspace-trim-strip-compact .workspace-trim-play-btn {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
+}
+
+.workspace-trim-strip-compact .workspace-trim-track {
+  height: 52px;
 }
 
 /* 右侧把手 */

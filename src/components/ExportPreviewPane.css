@@ -1,0 +1,83 @@
+.export-preview-pane {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(8, 10, 15, 0.25);
+}
+
+.export-preview-heading,
+.export-preview-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.export-preview-heading {
+  margin-bottom: 10px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.export-preview-heading span:last-child,
+.export-preview-cover-time,
+.export-preview-help {
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.export-preview-frame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: #090a0d;
+}
+
+.export-preview-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.export-preview-trim {
+  margin-top: 10px;
+}
+
+.export-preview-cover-time {
+  text-align: right;
+}
+
+.export-preview-strip {
+  position: relative;
+}
+
+.export-preview-loading {
+  position: absolute;
+  inset: 25px 2px 6px 46px;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(18, 20, 26, 0.72);
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.export-preview-help {
+  line-height: 1.4;
+}
+
+.export-preview-message {
+  padding: 18px 0 4px;
+  color: #ffb35c;
+  font-size: 12px;
+  text-align: center;
+}

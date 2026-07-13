@@ -686,6 +686,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         tone="dark"
         onOpenChange={setExportDialogOpen}
         description={exportDialogSources.length === 1 ? '选择导出内容和画面设置' : `将导出 ${exportDialogSources.length} 个文件`}
+        previewSource={exportDialogSources.length === 1
+          ? {
+              path: exportDialogSources[0].sourcePath,
+              layers: exportDialogSources[0].layers ?? [],
+              outputSize: exportDialogSources[0].outputSize ?? { width: 1920, height: 1080 },
+            }
+          : undefined}
         livePhotoSource={exportDialogSources.length === 1
           && isVideoPath(exportDialogSources[0]?.sourcePath ?? '')
           && exportDialogSources[0]?.mediaDuration !== undefined
