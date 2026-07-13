@@ -143,7 +143,7 @@ export async function queueWorkspaceFormatsExport(
       const tempImagePath = filePath(exportDir, tempImageName)
 
       try {
-        await Promise.all(liveFormats.map((format) => report(format, 1, 'exporting')))
+        await Promise.all(liveFormats.map((format) => report(format, 0, 'exporting')))
         await exportPreviewVideo({
           exportDir,
           fileName: tempVideoName,
@@ -152,8 +152,13 @@ export async function queueWorkspaceFormatsExport(
           layers: offsetVideoLayers(source.layers!, start, LIVE_DURATION),
           fps: resolved.fps,
           qualityPreset: resolved.qualityPreset ?? 'high',
+          renderTaskId: `workspace_live_render_${stamp}`,
+          onProgress: async (videoPercent) => {
+            const totalPercent = Math.min(89, Math.max(1, Math.round(videoPercent * 0.9)))
+            await Promise.all(liveFormats.map((format) => report(format, totalPercent, 'exporting')))
+          },
         })
-        await Promise.all(liveFormats.map((format) => report(format, 65, 'exporting')))
+        await Promise.all(liveFormats.map((format) => report(format, 90, 'exporting')))
         await exportPreviewImage({
           exportDir,
           fileName: tempImageName,
@@ -163,10 +168,11 @@ export async function queueWorkspaceFormatsExport(
           format: 'jpeg',
           quality: 100,
         })
-        await Promise.all(liveFormats.map((format) => report(format, 80, 'exporting')))
+        await Promise.all(liveFormats.map((format) => report(format, 95, 'exporting')))
 
         for (const format of liveFormats) {
           try {
+            await report(format, 96, 'exporting')
             const result = await window.luna.workspace.exportRenderedLivePhoto(
               `${name}_${format === 'apple-live' ? 'apple_live' : 'google_live'}`,
               tempImagePath,
