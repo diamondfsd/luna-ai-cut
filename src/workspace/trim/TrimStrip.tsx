@@ -1,0 +1,275 @@
+import { Pause, Play } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import './TrimStrip.css'
+
+interface TrimStripProps {
+  duration: number
+  startTime: number
+  endTime: number
+  currentTime: number
+  playing: boolean
+  onTogglePlay: () => void
+  onSeek: (time: number) => void
+  onStartTimeChange: (time: number) => void
+  onEndTimeChange: (time: number) => void
+  thumbnails: ImageData[]
+}
+
+function formatShortTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
+  const totalSecs = Math.floor(seconds)
+  const mins = Math.floor(totalSecs / 60)
+  const secs = totalSecs % 60
+  return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+function formatPreciseTime(seconds: number): string {
+  const centiseconds = Math.max(0, Math.round((Number.isFinite(seconds) ? seconds : 0) * 100))
+  const hours = Math.floor(centiseconds / 360000)
+  const minutes = Math.floor((centiseconds % 360000) / 6000)
+  const secs = Math.floor((centiseconds % 6000) / 100)
+  const fraction = centiseconds % 100
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(fraction).padStart(2, '0')}`
+}
+
+function formatRulerTime(seconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const secs = totalSeconds % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
+
+export function TrimStrip({
+  duration,
+  startTime,
+  endTime,
+  currentTime,
+  playing,
+  onTogglePlay,
+  onSeek,
+  onStartTimeChange,
+  onEndTimeChange,
+  thumbnails,
+}: TrimStripProps) {
+  const stripRef = useRef<HTMLDivElement>(null)
+  const trackRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [trackWidth, setTrackWidth] = useState(0)
+  const [dragging, setDragging] = useState(false)
+
+  // ── ResizeObserver ──
+  useEffect(() => {
+    const el = trackRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) setTrackWidth(entry.contentRect.width)
+    })
+    ro.observe(el)
+    setTrackWidth(el.getBoundingClientRect().width)
+    return () => ro.disconnect()
+  }, [])
+
+  // ── 渲染胶片缩略图（更高分辨率渲染） ──
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || thumbnails.length === 0 || !trackWidth) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // 用 CSS 尺寸的 2x 分辨率渲染，提高清晰度
+    const dpr = 2
+    const displayW = trackWidth
+    const displayH = 72
+    canvas.width = displayW * dpr
+    canvas.height = displayH * dpr
+    canvas.style.width = `${displayW}px`
+    canvas.style.height = `${displayH}px`
+
+    ctx.scale(dpr, dpr)
+    ctx.fillStyle = '#2a2a2a'
+    ctx.fillRect(0, 0, displayW, displayH)
+
+    const count = thumbnails.length
+    const thumbW = displayW / count
+
+    for (let i = 0; i < count; i++) {
+      const img = thumbnails[i]
+      if (!img || img.width <= 1 || img.height <= 1) continue
+
+      const tc = document.createElement('canvas')
+      tc.width = img.width
+      tc.height = img.height
+      const tctx = tc.getContext('2d')
+      if (!tctx) continue
+      tctx.putImageData(img, 0, 0)
+
+      const srcAspect = img.width / img.height
+      const dstAspect = thumbW / displayH
+      let sx = 0, sy = 0, sw = img.width, sh = img.height
+      if (srcAspect > dstAspect) {
+        sw = img.height * dstAspect; sx = (img.width - sw) / 2
+      } else {
+        sh = img.width / dstAspect; sy = (img.height - sh) / 2
+      }
+      ctx.drawImage(tc, sx, sy, sw, sh, i * thumbW, 0, thumbW, displayH)
+    }
+  }, [thumbnails, trackWidth])
+
+  // ── 平滑播放头 ──
+  const smoothTimeRef = useRef(currentTime)
+  const lastUpdateRef = useRef(performance.now())
+  const rafAnimRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!playing) { smoothTimeRef.current = currentTime; return }
+    smoothTimeRef.current = currentTime
+    lastUpdateRef.current = performance.now()
+    function tick() {
+      const now = performance.now()
+      const dt = (now - lastUpdateRef.current) / 1000
+      lastUpdateRef.current = now
+      smoothTimeRef.current = Math.min(smoothTimeRef.current + dt, endTime)
+      rafAnimRef.current = requestAnimationFrame(tick)
+    }
+    rafAnimRef.current = requestAnimationFrame(tick)
+    return () => {
+      if (rafAnimRef.current != null) { cancelAnimationFrame(rafAnimRef.current); rafAnimRef.current = null }
+    }
+  }, [playing, currentTime, endTime])
+
+  // ── 坐标转换 ──
+  const pxPerSec = duration > 0 && trackWidth > 0 ? trackWidth / duration : 0
+  const timeToX = useCallback((t: number) => Math.max(0, Math.min(t * pxPerSec, trackWidth)), [pxPerSec, trackWidth])
+  const xToTime = useCallback((x: number) => pxPerSec > 0 ? Math.max(0, Math.min(x / pxPerSec, duration)) : 0, [pxPerSec, duration])
+
+  // ── Drag（无 rAF 节流，直接指针响应） ──
+  const dragRef = useRef<{
+    type: 'left-handle' | 'right-handle' | 'playhead' | null
+    startX: number
+    startTime: number
+    startStartTime: number
+    startEndTime: number
+  }>({ type: null, startX: 0, startTime: 0, startStartTime: 0, startEndTime: 0 })
+  const lastSeekRef = useRef(-1)
+
+  const handlePointerDown = useCallback((type: 'left-handle' | 'right-handle' | 'playhead', e: React.PointerEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const target = trackRef.current
+    if (!target) return
+    target.setPointerCapture(e.pointerId)
+    dragRef.current = { type, startX: e.clientX, startTime: currentTime, startStartTime: startTime, startEndTime: endTime }
+    lastSeekRef.current = -1
+    setDragging(true)
+  }, [currentTime, startTime, endTime])
+
+  const handleTrackPointerDown = useCallback((e: React.PointerEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const lx = timeToX(startTime)
+    const rx = timeToX(endTime)
+    if (Math.abs(x - lx) < 20 || Math.abs(x - rx) < 20) return
+    onSeek(xToTime(x))
+  }, [startTime, endTime, timeToX, xToTime, onSeek])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    const drag = dragRef.current
+    if (!drag.type) return
+    const dx = e.clientX - drag.startX
+    const dt = dx / pxPerSec
+    let target: number
+    let doStart = false, doEnd = false
+
+    if (drag.type === 'left-handle') {
+      target = Math.max(0, Math.min(drag.startStartTime + dt, endTime - 0.1))
+      doStart = true
+    } else if (drag.type === 'right-handle') {
+      target = Math.max(startTime + 0.1, Math.min(drag.startEndTime + dt, duration))
+      doEnd = true
+    } else {
+      target = Math.max(0, Math.min(drag.startTime + dt, duration))
+    }
+
+    // 最小跳变阈值避免冗余 seek
+    if (Math.abs(target - lastSeekRef.current) < 0.033) return
+    lastSeekRef.current = target
+
+    if (doStart) onStartTimeChange(target)
+    if (doEnd) onEndTimeChange(target)
+    onSeek(target) // 左右手柄都跳到当前拖拽位置
+  }, [pxPerSec, startTime, endTime, duration, onStartTimeChange, onEndTimeChange, onSeek])
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    const target = trackRef.current
+    if (target) target.releasePointerCapture(e.pointerId)
+    dragRef.current.type = null
+    setDragging(false)
+  }, [])
+
+  // ── 位置 ──
+  const displayTime = playing ? smoothTimeRef.current : currentTime
+  const leftHandleX = timeToX(startTime)
+  const rightHandleX = timeToX(endTime)
+  // 播放头保持在选区且不压住两端把手，左把手可始终直接拖动。
+  const playheadX = Math.max(leftHandleX + 11, Math.min(timeToX(displayTime), rightHandleX - 11))
+  const rulerTicks = useMemo(() => {
+    if (duration <= 0) return []
+    const count = 5
+    return Array.from({ length: count }, (_, index) => ({
+      time: (duration * index) / (count - 1),
+      left: `${(index / (count - 1)) * 100}%`,
+    }))
+  }, [duration])
+
+  return (
+    <div className="workspace-trim-strip" ref={stripRef}>
+      <button className="workspace-trim-play-btn" type="button" onClick={onTogglePlay} aria-label={playing ? '暂停' : '播放'}>
+        {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+      </button>
+
+      <div className={`workspace-trim-track${dragging ? ' is-dragging' : ''}`} ref={trackRef}
+        onPointerDown={handleTrackPointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        <canvas ref={canvasRef} className="workspace-trim-canvas" />
+
+        {/* 遮罩 */}
+        {leftHandleX > 0 && <div className="workspace-trim-mask" style={{ left: 0, width: leftHandleX }} />}
+        {rightHandleX < trackWidth && <div className="workspace-trim-mask" style={{ left: rightHandleX, right: 0 }} />}
+
+        {/* 截取范围高亮背景 */}
+        <div className="workspace-trim-range-bg" style={{ left: leftHandleX, width: Math.max(0, rightHandleX - leftHandleX) }} />
+
+        {/* 完整蓝色边框 */}
+        <div className="workspace-trim-range-border" style={{ left: leftHandleX, width: Math.max(0, rightHandleX - leftHandleX) }} />
+
+        {/* ── 左侧把手 ── */}
+        <div className="workspace-trim-handle" onPointerDown={(e) => handlePointerDown('left-handle', e)} style={{ left: leftHandleX }}>
+          <span className="workspace-trim-handle-time">{formatPreciseTime(startTime)}</span>
+          <div className="workspace-trim-handle-grip" aria-hidden="true"><span /><span /><span /></div>
+        </div>
+
+        {/* ── 右侧把手 ── */}
+        <div className="workspace-trim-handle workspace-trim-handle-right" onPointerDown={(e) => handlePointerDown('right-handle', e)} style={{ left: rightHandleX }}>
+          <span className="workspace-trim-handle-time">{formatPreciseTime(endTime)}</span>
+          <div className="workspace-trim-handle-grip" aria-hidden="true"><span /><span /><span /></div>
+        </div>
+
+        {/* ── 播放头 ── */}
+        <div className="workspace-trim-playhead" onPointerDown={(e) => handlePointerDown('playhead', e)} style={{ left: playheadX }}>
+          <div className="workspace-trim-playhead-diamond" />
+          <div className="workspace-trim-playhead-line" />
+          <div className="workspace-trim-playhead-time">{formatShortTime(displayTime)}</div>
+        </div>
+      </div>
+
+      <div className="workspace-trim-ruler" aria-hidden="true">
+        {rulerTicks.map((tick) => <span key={tick.left} style={{ left: tick.left }}>{formatRulerTime(tick.time)}</span>)}
+      </div>
+    </div>
+  )
+}

@@ -12,7 +12,7 @@ import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
 import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
 import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
-import { PreviewStage } from '../components/PreviewStage'
+import { PreviewStage, type PreviewStageHandle } from '../components/PreviewStage'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
 import { WorkspacePreviewToolbar } from '../workspace/components/WorkspacePreviewToolbar'
@@ -23,12 +23,15 @@ import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSideb
 import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
+import { TrimStrip } from '../workspace/trim/TrimStrip'
+import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
 import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import '../styles/workspace-loading.css'
+import '../styles/workspace-trim.css'
 
 function normalizePipeline(value: unknown): EditPipeline {
   if (!value || typeof value !== 'object') return createDefaultPipeline()
@@ -82,6 +85,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
+  const previewRef = useRef<PreviewStageHandle>(null)
+  const trimStateRef = useRef({ trimActive: false, trimEnd: 0 })
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [watermarkMediaSize, setWatermarkMediaSize] = useState<{ w: number; h: number } | null>(null)
@@ -92,6 +97,22 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const [exportDialogDir, setExportDialogDir] = useState('')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
+
+  // ── 截取（Trim）状态 ──
+  const [trimCurrentTime, setTrimCurrentTime] = useState(0)
+  const [trimDuration, setTrimDuration] = useState(0)
+  const [trimPlaying, setTrimPlaying] = useState(false)
+
+  // 同步截取状态到 ref（避免闭包过期）
+  useEffect(() => {
+    trimStateRef.current = { trimActive: edit.trimActive, trimEnd: edit.pipeline.trim?.endTime ?? 0 }
+  }, [edit.trimActive, edit.pipeline.trim?.endTime])
+
+
+  const { thumbnails } = useTrimThumbnails({
+    videoPath: edit.trimActive && media.activeMedia?.path && isVideoPath(media.activeMedia.path) ? media.activeMedia.path : null,
+    duration: trimDuration,
+  })
 
   // 进入项目后如果没有任何素材，自动打开导入弹窗
   const autoImportTriggeredRef = useRef(false)
@@ -109,6 +130,51 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       return { w, h }
     })
   }, [])
+
+  const handlePlayStateChange = useCallback((state: { playing: boolean; currentTime: number; duration: number }) => {
+    setTrimPlaying(state.playing)
+    if (state.duration > 0) setTrimDuration(state.duration)
+
+    // 截取模式下限制当前时间不超过 endTime
+    const trimEnd = trimStateRef.current.trimEnd
+    const displayTime = trimEnd != null ? Math.min(state.currentTime, trimEnd) : state.currentTime
+    setTrimCurrentTime(displayTime)
+
+    // 播放到截取结束时间时自动暂停
+    if (trimStateRef.current.trimActive && state.playing && trimEnd > 0 && state.currentTime >= trimEnd) {
+      previewRef.current?.seek(trimEnd)
+      if (!previewRef.current?.isPlaying()) return
+      previewRef.current?.togglePlay()
+    }
+  }, [])
+
+
+  // ── 截取控制 ──
+  const handleTrimSeek = useCallback((time: number) => {
+    if (previewRef.current) {
+      previewRef.current.seek(time)
+    }
+    setTrimCurrentTime(time)
+  }, [])
+
+  const handleTrimTogglePlay = useCallback(() => {
+    if (!previewRef.current) return
+    // 如果当前时间在截取范围外（结束位置），回到开始时间再播放
+    const trimEnd = trimStateRef.current.trimEnd
+    const trimStart = edit.pipeline.trim?.startTime
+    if (!previewRef.current.isPlaying() && trimEnd && trimCurrentTime >= trimEnd) {
+      previewRef.current.seek(trimStart ?? 0)
+    }
+    previewRef.current.togglePlay()
+  }, [edit.pipeline.trim?.endTime, edit.pipeline.trim?.startTime, trimCurrentTime])
+
+  const handleStartTimeChange = useCallback((time: number) => {
+    edit.commitPatch({ trim: { startTime: time, endTime: edit.pipeline.trim?.endTime ?? trimDuration } })
+  }, [edit, trimDuration])
+
+  const handleEndTimeChange = useCallback((time: number) => {
+    edit.commitPatch({ trim: { startTime: edit.pipeline.trim?.startTime ?? 0, endTime: time } })
+  }, [edit])
 
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
   const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
@@ -173,13 +239,20 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     [edit.cropActive, watermarkLayer, borderLayer],
   )
 
-  // ── Initialize pipeline / reset crop when active asset changes ──
+  // ── Initialize pipeline / reset crop/trim when active asset changes ──
   useLayoutEffect(() => {
     const asset = media.currentProject?.assets[media.activeIndex]
     edit.setCropActive(false)
     edit.setTransformDraft(null)
     edit.setCropPreset('original')
     edit.initializePipeline(normalizePipeline(asset?.pipeline))
+    if (media.activeMedia && !isVideoPath(media.activeMedia.path)) {
+      // 图片不显示截取，退出截取模式
+      if (edit.trimActive) {
+        edit.deactivateTrim()
+        if (edit.activeTool === 'trim') edit.setActiveTool('filter')
+      }
+    }
   }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id])
 
   useEffect(() => {
@@ -405,15 +478,18 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const copyPipelineRef = useRef(handleCopyPipeline)
   const pastePipelineRef = useRef(handlePastePipeline)
   const setCompareOriginalRef = useRef(edit.setCompareOriginal)
+  const togglePlayRef = useRef(handleTrimTogglePlay)
 
   // Sync refs with latest values
   useEffect(() => { cropActiveRef.current = edit.cropActive }, [edit.cropActive])
+  useEffect(() => { trimStateRef.current.trimActive = edit.trimActive }, [edit.trimActive])
   useEffect(() => { activeMediaRef.current = media.activeMedia }, [media.activeMedia])
   useEffect(() => { mediaLengthRef.current = media.media.length }, [media.media.length])
   useEffect(() => { selectedIndicesRef.current = media.selectedIndices }, [media.selectedIndices])
   copyPipelineRef.current = handleCopyPipeline
   pastePipelineRef.current = handlePastePipeline
   setCompareOriginalRef.current = edit.setCompareOriginal
+  togglePlayRef.current = handleTrimTogglePlay
 
   // Stable keyboard handler (registered once, refs keep latest values)
   useEffect(() => {
@@ -425,8 +501,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         event.preventDefault()
         event.stopPropagation()
         const inInput = event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable]')
-        if (!inInput && !cropActiveRef.current && activeMediaRef.current) {
-          setCompareOriginalRef.current(true)
+        if (!inInput && activeMediaRef.current) {
+          if (trimStateRef.current.trimActive) {
+            // 截取模式下空格切换播放/暂停
+            togglePlayRef.current()
+          } else if (!cropActiveRef.current) {
+            setCompareOriginalRef.current(true)
+          }
         }
         return
       }
@@ -465,7 +546,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       if (event.code === 'Space') {
         event.preventDefault()
         event.stopPropagation()
-        setCompareOriginalRef.current(false)
+        if (!trimStateRef.current.trimActive) {
+          setCompareOriginalRef.current(false)
+        }
       }
     }
 
@@ -498,7 +581,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       : '导出'
 
   return (
-    <div className="workspace-layout">
+    <div className={`workspace-layout${edit.trimActive ? ' trim-active' : ''}`}>
       {workspaceMode === 'creative' ? (
         <WorkspaceCreativeFactory creativeModeId={creativeModeId ?? 'triple-stitch'} />
       ) : (
@@ -516,22 +599,40 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
           {/* ── Rust/wgpu 预览组件 ── */}
           <PreviewStage
+            ref={previewRef}
             url={media.activeMedia?.path ?? null}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
             extraLayers={combinedExtraLayers}
             cropActive={edit.cropActive}
+            hideControls={edit.trimActive}
             onMetricsChange={canvas.setPreviewMetrics}
             onMediaSize={handleMediaSize}
             renderOverlay={() => (edit.cropActive ? <CropOverlay /> : null)}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
+            onPlayStateChange={handlePlayStateChange}
           />
 
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
+            duration={trimDuration}
           />
 
+          {edit.trimActive ? (
+            <TrimStrip
+              duration={trimDuration}
+              startTime={edit.pipeline.trim?.startTime ?? 0}
+              endTime={edit.pipeline.trim?.endTime ?? trimDuration}
+              currentTime={trimCurrentTime}
+              playing={trimPlaying}
+              onTogglePlay={handleTrimTogglePlay}
+              onSeek={handleTrimSeek}
+              onStartTimeChange={handleStartTimeChange}
+              onEndTimeChange={handleEndTimeChange}
+              thumbnails={thumbnails}
+            />
+          ) : null}
           <WorkspaceMediaStrip />
         </>
       )}

@@ -1,0 +1,22 @@
+/* ===== 截取模式布局变更 ===== */
+
+/* 截取模式下，布局增加一行给截取条 */
+.workspace-layout.trim-active {
+  grid-template-rows: 48px minmax(0, 1fr) auto 118px;
+}
+
+/* 截取条放到第 3 行 */
+.workspace-layout.trim-active > .workspace-trim-strip {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+/* 截取模式下，素材缩略图栏移到第 4 行 */
+.workspace-layout.trim-active > .workspace-media-strip {
+  grid-row: 4;
+}
+
+/* 截取模式下，右侧面板延伸到第 4 行 */
+.workspace-layout.trim-active > .workspace-edit-sidebar {
+  grid-row: 1 / 5;
+}
