@@ -49,7 +49,7 @@ export interface BorderSettings {
   showCameraInfo: boolean
   showDate: boolean
   title: string
-  /** 带照片区域的边框中，照片自身的缩放和位置。 */
+  /** 在裁剪结果之上应用的主素材缩放和位置，所有边框预设共用。 */
   mediaScale: number
   mediaOffsetX: number
   mediaOffsetY: number

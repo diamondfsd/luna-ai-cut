@@ -1,4 +1,5 @@
-import type { RenderColorAdjustments, RenderLayerTransform } from '../../shared/types'
+import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform } from '../../shared/types'
+import type { BorderSettings } from './editPipeline'
 import { HSL_CHANNELS, type EditPipeline } from './editPipeline'
 import { shouldSwapOrientation } from '../transform/cropGeometry'
 
@@ -50,6 +51,24 @@ export function pipelineTransformToRenderTransform(transform: EditPipeline['tran
     flipH: transform.flipH,
     flipV: transform.flipV,
     scale: transform.scale,
+  }
+}
+
+/** 调整裁剪结果所在的画布矩形，因此不会改写或重新解释已有裁剪区域。 */
+export function applyBorderMediaLayout(
+  layer: PreviewLayer,
+  border: BorderSettings,
+): PreviewLayer {
+  if (!border.enabled) return layer
+  const scale = border.mediaScale / 100
+  const width = layer.dstW * scale
+  const height = layer.dstH * scale
+  return {
+    ...layer,
+    dstX: layer.dstX + (layer.dstW - width) / 2 + layer.dstW * border.mediaOffsetX / 100,
+    dstY: layer.dstY + (layer.dstH - height) / 2 + layer.dstH * border.mediaOffsetY / 100,
+    dstW: width,
+    dstH: height,
   }
 }
 
