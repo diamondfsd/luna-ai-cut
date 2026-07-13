@@ -200,6 +200,9 @@ async function exportAppleLivePhotoPair(
  * 回退路径最多扫描前 5MB，超过即放弃（避免大文件性能问题）。
  */
 export async function isGoogleMotionPhoto(filePath: string): Promise<boolean> {
+  // ── 后缀名检查：只有 .jpg/.jpeg 才可能是 Google Motion Photo ──
+  const ext = path.extname(filePath).toLowerCase()
+  if (ext !== '.jpg' && ext !== '.jpeg') return false
   let fd: fs.FileHandle | null = null
   try {
     // 兼容 file:// URL 路径（渲染进程可能直接传未归一化的路径）
