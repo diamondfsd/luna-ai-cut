@@ -34,7 +34,7 @@ async function loadCachedFrames(videoPath: string, duration: number): Promise<Im
   const bytes = await window.luna.workspace.loadTrimThumbnailCache(videoPath, duration)
   if (!bytes) return null
 
-  const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+  const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/jpeg' }))
   try {
     if (bitmap.width % THUMB_COUNT !== 0 || bitmap.height !== THUMB_HEIGHT) return null
     const frameWidth = bitmap.width / THUMB_COUNT
@@ -66,7 +66,7 @@ async function saveCachedFrames(videoPath: string, duration: number, frames: Ima
   frames.forEach((frame, index) => {
     if (frame.width > 1 && frame.height > 1) ctx.putImageData(frame, index * firstFrame.width, 0)
   })
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82))
   if (!blob) return
   await window.luna.workspace.saveTrimThumbnailCache(videoPath, duration, await blob.arrayBuffer())
 }
@@ -96,25 +96,8 @@ export function useTrimThumbnails({
     let processedCount = 0
 
     setLoading(true)
-    // 固定所有胶片格的位置，后续只替换对应格子，避免每张出现时整条胶片重新缩放。
-    setThumbnails(Array.from({ length: THUMB_COUNT }, () => EMPTY_THUMBNAIL))
-
-    const video = document.createElement('video')
-    video.muted = true
-    video.preload = 'metadata'
-    video.playsInline = true
-
-    // 隐藏（不使用 display:none，保持可渲染）
-    Object.assign(video.style, {
-      position: 'fixed',
-      width: '1px',
-      height: '1px',
-      opacity: '0',
-      pointerEvents: 'none',
-      left: '-10px',
-      top: '-10px',
-    })
-    document.body.appendChild(video)
+    setThumbnails([])
+    let video: HTMLVideoElement | null = null
 
     // 计算采样时间点（均匀分布，从 0.05s 开始避免黑帧）
     const times = Array.from({ length: THUMB_COUNT }, (_, i) => {
@@ -124,6 +107,8 @@ export function useTrimThumbnails({
 
     function drawFrame(): void {
       if (aborted || genRef.current !== genId) return cleanup()
+      const activeVideo = video
+      if (!activeVideo) return
 
       const idx = processedCount
       const thumbW = Math.round(THUMB_HEIGHT * (16 / 9))
@@ -134,18 +119,18 @@ export function useTrimThumbnails({
       if (!ctx) { advance(); return }
 
       try {
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-          const srcAspect = video.videoWidth / video.videoHeight
+        if (activeVideo.videoWidth > 0 && activeVideo.videoHeight > 0) {
+          const srcAspect = activeVideo.videoWidth / activeVideo.videoHeight
           const dstAspect = thumbW / THUMB_HEIGHT
-          let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight
+          let sx = 0, sy = 0, sw = activeVideo.videoWidth, sh = activeVideo.videoHeight
           if (srcAspect > dstAspect) {
-            sw = video.videoHeight * dstAspect
-            sx = (video.videoWidth - sw) / 2
+            sw = activeVideo.videoHeight * dstAspect
+            sx = (activeVideo.videoWidth - sw) / 2
           } else {
-            sh = video.videoWidth / dstAspect
-            sy = (video.videoHeight - sh) / 2
+            sh = activeVideo.videoWidth / dstAspect
+            sy = (activeVideo.videoHeight - sh) / 2
           }
-          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, thumbW, THUMB_HEIGHT)
+          ctx.drawImage(activeVideo, sx, sy, sw, sh, 0, 0, thumbW, THUMB_HEIGHT)
           results[idx] = ctx.getImageData(0, 0, thumbW, THUMB_HEIGHT)
         } else {
           results[idx] = new ImageData(1, 1)
@@ -168,7 +153,7 @@ export function useTrimThumbnails({
         finish()
         return
       }
-      video.currentTime = times[processedCount]
+      if (video) video.currentTime = times[processedCount]
     }
 
     function onSeeked(): void {
@@ -182,19 +167,18 @@ export function useTrimThumbnails({
       advance()
     }
 
-    video.addEventListener('seeked', onSeeked)
-    video.addEventListener('error', onError)
-
     // 视频源加载完成后，开始采样
     function onLoaded(): void {
       if (aborted) return
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
+      const activeVideo = video
+      if (!activeVideo) return
+      if (activeVideo.videoWidth > 0 && activeVideo.videoHeight > 0) {
         const target = times[0]
         // 如果已经定位到目标位置，直接绘制
-        if (Math.abs(video.currentTime - target) < 0.01) {
+        if (Math.abs(activeVideo.currentTime - target) < 0.01) {
           drawFrame()
         } else {
-          video.currentTime = target
+          activeVideo.currentTime = target
         }
       } else {
         finish()
@@ -204,13 +188,33 @@ export function useTrimThumbnails({
     let loadedCleanup: (() => void) | null = null
 
     function startLoading(): void {
-      video.addEventListener('loadedmetadata', onLoaded, { once: true })
+      if (aborted || video) return
+      // 只有缓存未命中时才创建空胶片格和隐藏视频，严格避免与缓存读取并行。
+      setThumbnails(Array.from({ length: THUMB_COUNT }, () => EMPTY_THUMBNAIL))
+      const nextVideo = document.createElement('video')
+      video = nextVideo
+      nextVideo.muted = true
+      nextVideo.preload = 'metadata'
+      nextVideo.playsInline = true
+      Object.assign(nextVideo.style, {
+        position: 'fixed',
+        width: '1px',
+        height: '1px',
+        opacity: '0',
+        pointerEvents: 'none',
+        left: '-10px',
+        top: '-10px',
+      })
+      document.body.appendChild(nextVideo)
+      nextVideo.addEventListener('seeked', onSeeked)
+      nextVideo.addEventListener('error', onError)
+      nextVideo.addEventListener('loadedmetadata', onLoaded, { once: true })
       const timeout = window.setTimeout(() => {
         if (processedCount === 0 && !aborted) finish()
       }, 5000)
       loadedCleanup = () => { window.clearTimeout(timeout) }
-      video.src = fileUrl(sourcePath)
-      video.load()
+      nextVideo.src = fileUrl(sourcePath)
+      nextVideo.load()
     }
 
     void loadCachedFrames(sourcePath, duration)
@@ -245,13 +249,15 @@ export function useTrimThumbnails({
 
     function cleanup(): void {
       aborted = true
-      video.removeEventListener('seeked', onSeeked)
-      video.removeEventListener('error', onError)
-      video.removeEventListener('loadedmetadata', onLoaded)
-      video.pause()
-      video.removeAttribute('src')
-      video.load()
-      if (video.parentNode) video.parentNode.removeChild(video)
+      const activeVideo = video
+      video = null
+      activeVideo?.removeEventListener('seeked', onSeeked)
+      activeVideo?.removeEventListener('error', onError)
+      activeVideo?.removeEventListener('loadedmetadata', onLoaded)
+      activeVideo?.pause()
+      activeVideo?.removeAttribute('src')
+      activeVideo?.load()
+      if (activeVideo?.parentNode) activeVideo.parentNode.removeChild(activeVideo)
       loadedCleanup?.()
     }
 
