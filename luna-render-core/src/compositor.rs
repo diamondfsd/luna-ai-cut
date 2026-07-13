@@ -147,7 +147,7 @@ struct GpuLayerParams {
     translate_y: f32,
     lut_size: f32,
     lut_intensity: f32,
-    _pad: [f32; 1],
+    sampling_quality: f32,
     procedural: [f32; 4],
     fill_rgba: [f32; 4],
     stroke_rgba: [f32; 4],
@@ -1847,7 +1847,11 @@ impl Compositor {
                         .unwrap_or(0.0) as f32,
                     lut_size,
                     lut_intensity: layer.lut_intensity.unwrap_or(100.0) as f32,
-                    _pad: [0.0; 1],
+                    sampling_quality: if layer.positioning.is_some() {
+                        1.0
+                    } else {
+                        0.0
+                    },
                     procedural: [procedural_kind, if procedural_kind > 1.5 { vertical_align_val } else { shape_kind }, layer.corner_radius.unwrap_or(0.0) as f32, layer.stroke_width.unwrap_or(0.0) as f32],
                     fill_rgba,
                     stroke_rgba,

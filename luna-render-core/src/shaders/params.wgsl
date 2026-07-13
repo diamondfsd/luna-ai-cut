@@ -58,6 +58,7 @@ struct LayerParams {
     translate_y: f32,
     lut_size: f32,
     lut_intensity: f32,
+    sampling_quality: f32,
     procedural: vec4<f32>,
     fill_rgba: vec4<f32>,
     stroke_rgba: vec4<f32>,
