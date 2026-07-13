@@ -225,6 +225,9 @@ export async function exportPreviewVideo(params: {
   taskName?: string
   index?: number
   totalFiles?: number
+  /** 仅用于读取原生逐帧进度，不会额外创建导出记录。 */
+  renderTaskId?: string
+  onProgress?: (percent: number) => void | Promise<void>
 }): Promise<{ path: string; name: string }> {
   if (!params.layers.some((layer) => layer.isVideo)) throw new Error('未找到视频图层')
 
@@ -234,15 +237,16 @@ export async function exportPreviewVideo(params: {
   const taskName = params.taskName ?? '导出任务'
   const index = params.index ?? 0
   const totalFiles = params.totalFiles ?? 1
+  const renderTaskId = params.renderTaskId ?? itemId
   const emitVideoProgress = (percent: number, status: 'exporting' | 'done' | 'failed', error?: string) => {
     if (!taskId || !itemId) return
     emitLocalExportProgress({ exportId: itemId, taskId, taskName, fileName: params.fileName, index, totalFiles, percent, status, destinationPath: path, error })
   }
   let stopProgressWatcher = false
   let lastPercent = 0
-  const progressWatcher = taskId && itemId ? (async () => {
+  const progressWatcher = renderTaskId && (params.onProgress || (taskId && itemId)) ? (async () => {
     while (!stopProgressWatcher) {
-      const progress = await renderCoreProgress(itemId).catch(() => null)
+      const progress = await renderCoreProgress(renderTaskId).catch(() => null)
       if (progress) {
         const currentFrame = Number(progress[0])
         const totalFrames = Number(progress[1])
@@ -250,8 +254,11 @@ export async function exportPreviewVideo(params: {
           const percent = Math.max(0, Math.min(99, Math.floor((currentFrame / totalFrames) * 100)))
           if (percent > lastPercent) {
             lastPercent = percent
-            await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: percent }).catch(() => {})
-            emitVideoProgress(percent, 'exporting')
+            await params.onProgress?.(percent)
+            if (taskId && itemId) {
+              await window.luna.exportTask.updateItem(taskId, itemId, { status: 'exporting', progress: percent }).catch(() => {})
+              emitVideoProgress(percent, 'exporting')
+            }
           }
         }
       }
@@ -267,7 +274,7 @@ export async function exportPreviewVideo(params: {
       params.height,
       { fps: exportFps ?? undefined },
     )
-    await lrc().exportCompositionVideo(path, composition, exportFps, null, true, itemId, params.qualityPreset ?? 'high', taskId, itemId)
+    await lrc().exportCompositionVideo(path, composition, exportFps, null, true, renderTaskId, params.qualityPreset ?? 'high', taskId, itemId)
     if (taskId && itemId) {
       await window.luna.exportTask.updateItem(taskId, itemId, { status: 'done', progress: 100, destinationPath: path }).catch(() => {})
       emitVideoProgress(100, 'done')
@@ -544,7 +551,7 @@ async function runBatchExportQueue(
                 // Step 2: 添加 Apple Live 子任务
                 const appleItemId = `${entry.id}_appleLive`
                 console.log('[LiveExport] Step2: starting Apple Live export', { baseName, exportDir, width: videoRes.width, height: videoRes.height, appleItemId })
-                console.log('[LiveExport] exportRenderedLivePhoto available:', typeof (window.luna.workspace as any).exportRenderedLivePhoto)
+                console.log('[LiveExport] exportRenderedLivePhoto available:', typeof window.luna.workspace.exportRenderedLivePhoto)
                 await window.luna.exportTask.addItems(taskId, [
                   {
                     id: appleItemId,
