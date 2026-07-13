@@ -9,6 +9,10 @@ use crate::export::TaskState;
 
 const ERROR_CAPACITY: usize = 1024;
 
+fn is_procedural_layer(layer_type: Option<&str>) -> bool {
+    layer_type.unwrap_or("media") != "media"
+}
+
 #[repr(C)]
 #[derive(Default)]
 struct LunaAvFrameRaw {
@@ -292,7 +296,11 @@ pub(crate) fn export_video(
         // ── 解码 ──
         let t0 = std::time::Instant::now();
         for (layer_idx, mut layer) in layer_inputs.into_iter().enumerate() {
-            let (texture_id, width, height) = if layer.is_video {
+            // shape / text / logo 不对应媒体文件：保留图层进入 WGPU 合成，
+            // 但跳过文件解码，使用 Compositor 内置的 1×1 程序纹理（texture 0）。
+            let (texture_id, width, height) = if is_procedural_layer(layer.layer_type.as_deref()) {
+                (0, 1, 1)
+            } else if layer.is_video {
                 // 每个槽位独立 Reader：用 file_path + 槽位索引作为 key，
                 // 避免同一文件在不同槽位间共享 Reader 导致游标反复追帧/重启
                 let decoder_key = format!("{}@slot{}", layer.file_path, layer_idx);
@@ -466,4 +474,18 @@ pub(crate) fn export_video(
     std::fs::rename(&completed_output, output_path)
         .map_err(|e| format!("保存导出文件失败: {e}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_procedural_layer;
+
+    #[test]
+    fn only_media_layers_require_file_decoding() {
+        assert!(!is_procedural_layer(None));
+        assert!(!is_procedural_layer(Some("media")));
+        assert!(is_procedural_layer(Some("shape")));
+        assert!(is_procedural_layer(Some("text")));
+        assert!(is_procedural_layer(Some("logo")));
+    }
 }
