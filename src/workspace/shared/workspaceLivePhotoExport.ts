@@ -33,7 +33,7 @@ function offsetVideoLayers(layers: PreviewLayer[], offset: number, duration: num
 }
 
 function formatLabel(format: VideoExportFormat): string {
-  if (format === 'google-live') return 'Google Live 图'
+  if (format === 'google-live') return 'Android Live 图'
   if (format === 'apple-live') return 'Apple Live 图'
   return '普通视频'
 }

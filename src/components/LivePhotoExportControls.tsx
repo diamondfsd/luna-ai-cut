@@ -34,7 +34,7 @@ export function LivePhotoExportControls({ value, duration, onChange }: LivePhoto
 
   const formats: Array<{ value: VideoExportFormat; label: string; description: string }> = [
     { value: 'video', label: '普通视频', description: '导出完整编辑后视频' },
-    { value: 'google-live', label: 'Google Live 图', description: '生成可分享的动态照片' },
+    { value: 'google-live', label: 'Android Live 图', description: '生成可分享的动态照片' },
     ...(isMac ? [{ value: 'apple-live' as const, label: 'Apple Live 图', description: '保存到系统照片中' }] : []),
   ]
 
