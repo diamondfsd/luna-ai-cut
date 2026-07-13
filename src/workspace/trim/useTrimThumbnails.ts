@@ -30,6 +30,47 @@ function fileUrl(path: string | null): string {
   return `file://${path.startsWith('/') ? '' : '/'}${path}`
 }
 
+async function loadCachedFrames(videoPath: string, duration: number): Promise<ImageData[] | null> {
+  const bytes = await window.luna.workspace.loadTrimThumbnailCache(videoPath, duration)
+  if (!bytes) return null
+
+  const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+  try {
+    if (bitmap.width % THUMB_COUNT !== 0 || bitmap.height !== THUMB_HEIGHT) return null
+    const frameWidth = bitmap.width / THUMB_COUNT
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(bitmap, 0, 0)
+    return Array.from({ length: THUMB_COUNT }, (_, index) => (
+      ctx.getImageData(index * frameWidth, 0, frameWidth, THUMB_HEIGHT)
+    ))
+  } finally {
+    bitmap.close()
+  }
+}
+
+async function saveCachedFrames(videoPath: string, duration: number, frames: ImageData[]): Promise<void> {
+  const firstFrame = frames.find((frame) => frame.width > 1 && frame.height > 1)
+  if (!firstFrame || frames.length !== THUMB_COUNT) return
+
+  const canvas = document.createElement('canvas')
+  canvas.width = firstFrame.width * THUMB_COUNT
+  canvas.height = THUMB_HEIGHT
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.fillStyle = '#2a2a2a'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  frames.forEach((frame, index) => {
+    if (frame.width > 1 && frame.height > 1) ctx.putImageData(frame, index * firstFrame.width, 0)
+  })
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  if (!blob) return
+  await window.luna.workspace.saveTrimThumbnailCache(videoPath, duration, await blob.arrayBuffer())
+}
+
 export function useTrimThumbnails({
   videoPath,
   duration,
@@ -47,6 +88,7 @@ export function useTrimThumbnails({
       setThumbnails([])
       return
     }
+    const sourcePath = videoPath
 
     const genId = ++genRef.current
     let aborted = false
@@ -167,11 +209,24 @@ export function useTrimThumbnails({
         if (processedCount === 0 && !aborted) finish()
       }, 5000)
       loadedCleanup = () => { window.clearTimeout(timeout) }
-      video.src = fileUrl(videoPath)
+      video.src = fileUrl(sourcePath)
       video.load()
     }
 
-    startLoading()
+    void loadCachedFrames(sourcePath, duration)
+      .then((cachedFrames) => {
+        if (aborted || genRef.current !== genId) return
+        if (!cachedFrames) {
+          startLoading()
+          return
+        }
+        setThumbnails(cachedFrames)
+        setLoading(false)
+        cleanup()
+      })
+      .catch(() => {
+        if (!aborted && genRef.current === genId) startLoading()
+      })
 
     function finish(): void {
       if (aborted) return
@@ -181,6 +236,9 @@ export function useTrimThumbnails({
       if (genRef.current === genId) {
         setThumbnails(results.filter(Boolean))
         setLoading(false)
+        if (processedCount >= THUMB_COUNT) {
+          void saveCachedFrames(sourcePath, duration, results).catch(() => undefined)
+        }
       }
       cleanup()
     }
