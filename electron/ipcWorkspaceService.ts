@@ -28,6 +28,7 @@ import {
   renameColorPreset,
 } from './colorPresetsService'
 import { loadWorkspacePreview } from './workspacePreviewService'
+import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
@@ -122,6 +123,14 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
 }
 
 export function register(): void {
+  ipcMain.handle('workspace:loadTrimThumbnailCache', async (_event, videoPath: string, duration: number) => {
+    return loadTrimThumbnailCache(videoPath, duration)
+  })
+
+  ipcMain.handle('workspace:saveTrimThumbnailCache', async (_event, videoPath: string, duration: number, bytes: ArrayBuffer) => {
+    await saveTrimThumbnailCache(videoPath, duration, bytes)
+  })
+
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
     return loadWorkspacePreview(filePath)
   })
