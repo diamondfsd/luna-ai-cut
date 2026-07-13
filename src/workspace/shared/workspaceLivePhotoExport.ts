@@ -54,6 +54,10 @@ export async function queueWorkspaceFormatsExport(
   if (formats.length === 0) throw new Error('请至少选择一种导出格式')
   const hasLive = formats.some((format) => format !== 'video')
   if (hasLive && (!source.mediaDuration || source.mediaDuration < LIVE_DURATION)) throw new Error('视频不足 3 秒')
+  const mediaDuration = source.mediaDuration ?? source.layers.find((layer) => layer.isVideo)?.videoDuration ?? 0
+  const trimStart = clamp(config.trimStartTime ?? 0, 0, Math.max(0, mediaDuration - 0.1))
+  const trimEnd = clamp(config.trimEndTime ?? mediaDuration, trimStart + 0.1, mediaDuration)
+  if (hasLive && trimEnd - trimStart < LIVE_DURATION) throw new Error('Live 图需要至少保留 3 秒视频')
   if (formats.includes('apple-live') && !window.navigator.platform.includes('Mac')) {
     throw new Error('Apple Live 图仅支持在 Mac 上导出')
   }
@@ -108,7 +112,6 @@ export async function queueWorkspaceFormatsExport(
     void (async () => {
       const outputSize = source.outputSize ?? await window.luna.workspace.getMediaResolution(source.sourcePath)
       const resolved = resolveExportConfig(config, outputSize.width, outputSize.height)
-
       if (formats.includes('video')) {
         const item = items.find((candidate) => candidate.format === 'video')!
         try {
@@ -117,7 +120,7 @@ export async function queueWorkspaceFormatsExport(
             fileName: item.outputPath.split(/[/\\]/).pop()!,
             width: resolved.width,
             height: resolved.height,
-            layers: source.layers!,
+            layers: offsetVideoLayers(source.layers!, trimStart, trimEnd - trimStart),
             fps: resolved.fps,
             qualityPreset: resolved.qualityPreset,
             exportTaskId: task.id,
@@ -134,7 +137,7 @@ export async function queueWorkspaceFormatsExport(
 
       const liveFormats = formats.filter((format) => format !== 'video')
       if (liveFormats.length === 0) return
-      const start = clamp(config.liveStartTime, 0, source.mediaDuration! - LIVE_DURATION)
+      const start = clamp(config.liveStartTime, trimStart, Math.max(trimStart, trimEnd - LIVE_DURATION))
       const cover = clamp(config.liveCoverTime, 0, MAX_COVER_TIME)
       const tempPrefix = `.${name}_live_${stamp}`
       const tempVideoName = `${tempPrefix}.mp4`

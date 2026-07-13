@@ -450,6 +450,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
           mediaDuration: isVideoPath(asset.path)
             ? Math.max(0, Math.min(sourceDuration, trimEnd) - trimStart)
             : undefined,
+          sourceDuration: isVideoPath(asset.path) ? sourceDuration : undefined,
         }
       }))
 
@@ -700,6 +701,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
               path: exportDialogSources[0].sourcePath,
               startTime: exportDialogSources[0].layers?.find((layer) => layer.isVideo)?.videoTime ?? 0,
               duration: exportDialogSources[0].mediaDuration!,
+              thumbnailDuration: exportDialogSources[0].sourceDuration ?? exportDialogSources[0].mediaDuration!,
               layers: exportDialogSources[0].layers ?? [],
               outputSize: exportDialogSources[0].outputSize ?? { width: 1920, height: 1080 },
             }
