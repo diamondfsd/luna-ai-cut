@@ -16,6 +16,8 @@ interface TrimStripProps {
   thumbnails: ImageData[]
 }
 
+type TrimDragType = 'left-handle' | 'right-handle' | 'playhead'
+
 function formatShortTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
   const totalSecs = Math.floor(seconds)
@@ -57,7 +59,7 @@ export function TrimStrip({
   const trackRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [trackWidth, setTrackWidth] = useState(0)
-  const [dragging, setDragging] = useState(false)
+  const [dragging, setDragging] = useState<TrimDragType | null>(null)
 
   // ── ResizeObserver ──
   useEffect(() => {
@@ -118,26 +120,33 @@ export function TrimStrip({
   }, [thumbnails, trackWidth])
 
   // ── 平滑播放头 ──
-  const smoothTimeRef = useRef(currentTime)
-  const lastUpdateRef = useRef(performance.now())
+  const [animatedTime, setAnimatedTime] = useState(currentTime)
+  const animatedTimeRef = useRef(currentTime)
   const rafAnimRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!playing) { smoothTimeRef.current = currentTime; return }
-    smoothTimeRef.current = currentTime
-    lastUpdateRef.current = performance.now()
+    if (!playing || Math.abs(currentTime - animatedTimeRef.current) > 0.35) {
+      animatedTimeRef.current = currentTime
+      setAnimatedTime(currentTime)
+    }
+  }, [playing, currentTime])
+
+  useEffect(() => {
+    if (!playing) return
+    let lastUpdate = performance.now()
     function tick() {
       const now = performance.now()
-      const dt = (now - lastUpdateRef.current) / 1000
-      lastUpdateRef.current = now
-      smoothTimeRef.current = Math.min(smoothTimeRef.current + dt, endTime)
+      const dt = (now - lastUpdate) / 1000
+      lastUpdate = now
+      animatedTimeRef.current = Math.min(animatedTimeRef.current + dt, endTime)
+      setAnimatedTime(animatedTimeRef.current)
       rafAnimRef.current = requestAnimationFrame(tick)
     }
     rafAnimRef.current = requestAnimationFrame(tick)
     return () => {
       if (rafAnimRef.current != null) { cancelAnimationFrame(rafAnimRef.current); rafAnimRef.current = null }
     }
-  }, [playing, currentTime, endTime])
+  }, [playing, endTime])
 
   // ── 坐标转换 ──
   const pxPerSec = duration > 0 && trackWidth > 0 ? trackWidth / duration : 0
@@ -146,7 +155,7 @@ export function TrimStrip({
 
   // ── Drag（无 rAF 节流，直接指针响应） ──
   const dragRef = useRef<{
-    type: 'left-handle' | 'right-handle' | 'playhead' | null
+    type: TrimDragType | null
     startX: number
     startTime: number
     startStartTime: number
@@ -154,7 +163,7 @@ export function TrimStrip({
   }>({ type: null, startX: 0, startTime: 0, startStartTime: 0, startEndTime: 0 })
   const lastSeekRef = useRef(-1)
 
-  const handlePointerDown = useCallback((type: 'left-handle' | 'right-handle' | 'playhead', e: React.PointerEvent) => {
+  const handlePointerDown = useCallback((type: TrimDragType, e: React.PointerEvent) => {
     e.preventDefault()
     e.stopPropagation()
     const target = trackRef.current
@@ -162,16 +171,29 @@ export function TrimStrip({
     target.setPointerCapture(e.pointerId)
     dragRef.current = { type, startX: e.clientX, startTime: currentTime, startStartTime: startTime, startEndTime: endTime }
     lastSeekRef.current = -1
-    setDragging(true)
-  }, [currentTime, startTime, endTime])
+    setDragging(type)
+    if (type === 'left-handle' || type === 'right-handle') onSeek(startTime)
+  }, [currentTime, startTime, endTime, onSeek])
 
   const handleTrackPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left
     const lx = timeToX(startTime)
     const rx = timeToX(endTime)
     if (Math.abs(x - lx) < 20 || Math.abs(x - rx) < 20) return
-    onSeek(xToTime(x))
+    const targetTime = xToTime(x)
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragRef.current = {
+      type: 'playhead',
+      startX: e.clientX,
+      startTime: targetTime,
+      startStartTime: startTime,
+      startEndTime: endTime,
+    }
+    lastSeekRef.current = targetTime
+    setDragging('playhead')
+    onSeek(targetTime)
   }, [startTime, endTime, timeToX, xToTime, onSeek])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
@@ -196,20 +218,29 @@ export function TrimStrip({
     if (Math.abs(target - lastSeekRef.current) < 0.033) return
     lastSeekRef.current = target
 
-    if (doStart) onStartTimeChange(target)
-    if (doEnd) onEndTimeChange(target)
-    onSeek(target) // 左右手柄都跳到当前拖拽位置
+    if (doStart) {
+      onStartTimeChange(target)
+      onSeek(target)
+    } else if (doEnd) {
+      onEndTimeChange(target)
+      // 拖动过程中跟随结束把手，便于确认最后一帧。
+      onSeek(target)
+    } else {
+      onSeek(target)
+    }
   }, [pxPerSec, startTime, endTime, duration, onStartTimeChange, onEndTimeChange, onSeek])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    const drag = dragRef.current
     const target = trackRef.current
     if (target) target.releasePointerCapture(e.pointerId)
+    if (drag.type === 'right-handle') onSeek(drag.startStartTime)
     dragRef.current.type = null
-    setDragging(false)
-  }, [])
+    setDragging(null)
+  }, [onSeek])
 
   // ── 位置 ──
-  const displayTime = playing ? smoothTimeRef.current : currentTime
+  const displayTime = playing ? animatedTime : currentTime
   const leftHandleX = timeToX(startTime)
   const rightHandleX = timeToX(endTime)
   // 播放头保持在选区且不压住两端把手，左把手可始终直接拖动。
@@ -229,7 +260,7 @@ export function TrimStrip({
         {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
       </button>
 
-      <div className={`workspace-trim-track${dragging ? ' is-dragging' : ''}`} ref={trackRef}
+      <div className={`workspace-trim-track${dragging ? ` is-dragging is-dragging-${dragging}` : ''}`} ref={trackRef}
         onPointerDown={handleTrackPointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

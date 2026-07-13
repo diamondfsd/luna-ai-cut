@@ -86,7 +86,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
   const previewRef = useRef<PreviewStageHandle>(null)
-  const trimStateRef = useRef({ trimActive: false, trimEnd: 0 })
+  const trimStateRef = useRef<{ trimActive: boolean; trimEnd: number | null }>({ trimActive: false, trimEnd: null })
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
   const [watermarkMediaSize, setWatermarkMediaSize] = useState<{ w: number; h: number } | null>(null)
@@ -113,7 +113,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
   // 同步截取状态到 ref（避免闭包过期）
   useEffect(() => {
-    trimStateRef.current = { trimActive: edit.trimActive, trimEnd: edit.pipeline.trim?.endTime ?? 0 }
+    trimStateRef.current = { trimActive: edit.trimActive, trimEnd: edit.pipeline.trim?.endTime ?? null }
   }, [edit.trimActive, edit.pipeline.trim?.endTime])
 
 
@@ -148,11 +148,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
 
     // 截取模式下限制当前时间不超过 endTime
     const trimEnd = trimStateRef.current.trimEnd
-    const displayTime = trimEnd != null ? Math.min(state.currentTime, trimEnd) : state.currentTime
+    const displayTime = trimStateRef.current.trimActive && trimEnd != null
+      ? Math.min(state.currentTime, trimEnd)
+      : state.currentTime
     setTrimCurrentTime(displayTime)
 
     // 播放到截取结束时间时自动暂停
-    if (trimStateRef.current.trimActive && state.playing && trimEnd > 0 && state.currentTime >= trimEnd) {
+    if (trimStateRef.current.trimActive && state.playing && trimEnd != null && trimEnd > 0 && state.currentTime >= trimEnd) {
       previewRef.current?.seek(trimEnd)
       if (!previewRef.current?.isPlaying()) return
       previewRef.current?.togglePlay()

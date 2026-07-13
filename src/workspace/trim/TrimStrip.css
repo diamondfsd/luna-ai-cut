@@ -54,10 +54,18 @@
   background: #2d2622;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   touch-action: none;
+  cursor: grab;
 }
 
-.workspace-trim-track.is-dragging,
-.workspace-trim-track.is-dragging * {
+.workspace-trim-track.is-dragging-playhead,
+.workspace-trim-track.is-dragging-playhead * {
+  cursor: grabbing;
+}
+
+.workspace-trim-track.is-dragging-left-handle,
+.workspace-trim-track.is-dragging-left-handle *,
+.workspace-trim-track.is-dragging-right-handle,
+.workspace-trim-track.is-dragging-right-handle * {
   cursor: ew-resize;
 }
 
