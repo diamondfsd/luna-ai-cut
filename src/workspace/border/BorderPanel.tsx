@@ -40,7 +40,6 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
     )
   }, [query])
   const hasTitle = activePreset?.layers.some((layer) => layer.type === 'text' && layer.content.includes('{{title}}')) ?? false
-  const hasMediaLayout = activePreset?.layers.some((layer) => layer.type === 'media') ?? false
   const hasLogo = activePreset?.layers.some((layer) => layer.type === 'logo') ?? false
   const hasDate = activePreset?.layers.some((layer) => layer.type === 'text' && layer.content.includes('{{date}}')) ?? false
   const isVideoMedia = mediaPath ? isVideoPath(mediaPath) : false
@@ -111,17 +110,15 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
                 <span>{value.textColor.toUpperCase()}</span>
               </label>
             </div>
-            {!hasMediaLayout && <ParamSlider label="边框尺寸" value={value.frameSize} min={70} max={135} step={1} onChange={(frameSize) => onChange({ frameSize })} formatValue={(number) => `${number}%`} />}
+            <ParamSlider label="边框尺寸" value={value.frameSize} min={70} max={135} step={1} onChange={(frameSize) => onChange({ frameSize })} formatValue={(number) => `${number}%`} />
             <ParamSlider label="不透明度" value={value.opacity} min={20} max={100} step={1} onChange={(opacity) => onChange({ opacity })} formatValue={(number) => `${number}%`} />
 
-            {hasMediaLayout && (
-              <div className="border-media-controls">
-                <div className="border-edit-section-title">照片布局</div>
-                <ParamSlider label="照片尺寸" value={value.mediaScale} min={70} max={160} step={1} onChange={(mediaScale) => onChange({ mediaScale })} formatValue={(number) => `${number}%`} />
-                <ParamSlider label="水平位置" value={value.mediaOffsetX} min={-50} max={50} step={1} onChange={(mediaOffsetX) => onChange({ mediaOffsetX })} formatValue={(number) => `${number}`} />
-                <ParamSlider label="垂直位置" value={value.mediaOffsetY} min={-50} max={50} step={1} onChange={(mediaOffsetY) => onChange({ mediaOffsetY })} formatValue={(number) => `${number}`} />
-              </div>
-            )}
+            <div className="border-media-controls">
+              <div className="border-edit-section-title">素材布局</div>
+              <ParamSlider label="素材尺寸" value={value.mediaScale} min={70} max={160} step={1} onChange={(mediaScale) => onChange({ mediaScale })} formatValue={(number) => `${number}%`} />
+              <ParamSlider label="水平位置" value={value.mediaOffsetX} min={-50} max={50} step={1} onChange={(mediaOffsetX) => onChange({ mediaOffsetX })} formatValue={(number) => `${number}`} />
+              <ParamSlider label="垂直位置" value={value.mediaOffsetY} min={-50} max={50} step={1} onChange={(mediaOffsetY) => onChange({ mediaOffsetY })} formatValue={(number) => `${number}`} />
+            </div>
 
             {hasTitle && (
               <div className="border-title-row">

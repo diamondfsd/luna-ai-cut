@@ -72,6 +72,74 @@ function videoTemplate(content: string): string {
     .replace(/{{\s*(focalLength|aperture|shutter|iso)\s*}}/g, '')
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+/**
+ * 全画布纸张预设不再用“背景 + 重复素材层”盖住主素材。
+ * 将背景拆成开口四周的四块实体边框，让底下唯一的素材层直接露出。
+ */
+function buildCutoutBackground(
+  background: Extract<DeclarativeCompositionLayer, { type: 'shape' }>,
+  media: Extract<DeclarativeCompositionLayer, { type: 'media' }>,
+  border: BorderSettings,
+): PreviewLayer[] {
+  const borderScale = clamp(border.frameSize / 100, 0.1, 2)
+  const left = clamp(media.rect.x * borderScale, 0, 0.475)
+  const top = clamp(media.rect.y * borderScale, 0, 0.475)
+  const right = clamp((1 - media.rect.x - media.rect.w) * borderScale, 0, 0.475)
+  const bottom = clamp((1 - media.rect.y - media.rect.h) * borderScale, 0, 0.475)
+  const opening = {
+    x: left,
+    y: top,
+    w: 1 - left - right,
+    h: 1 - top - bottom,
+  }
+  const rectangles = [
+    { x: 0, y: 0, w: 1, h: opening.y },
+    { x: 0, y: opening.y + opening.h, w: 1, h: 1 - opening.y - opening.h },
+    { x: 0, y: opening.y, w: opening.x, h: opening.h },
+    { x: opening.x + opening.w, y: opening.y, w: 1 - opening.x - opening.w, h: opening.h },
+  ]
+
+  const underlay: PreviewLayer = {
+    layerType: 'shape',
+    filePath: '',
+    dstX: 0,
+    dstY: 0,
+    dstW: 1,
+    dstH: 1,
+    srcX: 0,
+    srcY: 0,
+    srcW: 1,
+    srcH: 1,
+    opacity: (background.opacity ?? 1) * border.opacity / 100,
+    zIndex: -1,
+    shape: 'rectangle',
+    fillColor: border.backgroundColor,
+  }
+  const frame = rectangles
+    .filter((rect) => rect.w > 0.0001 && rect.h > 0.0001)
+    .map((rect): PreviewLayer => ({
+      layerType: 'shape',
+      filePath: '',
+      dstX: rect.x,
+      dstY: rect.y,
+      dstW: rect.w,
+      dstH: rect.h,
+      srcX: 0,
+      srcY: 0,
+      srcW: 1,
+      srcH: 1,
+      opacity: (background.opacity ?? 1) * border.opacity / 100,
+      zIndex: background.zIndex,
+      shape: 'rectangle',
+      fillColor: border.backgroundColor,
+    }))
+  return [underlay, ...frame]
+}
+
 export interface BuildBorderLayerOptions {
   canvasWidth: number
   canvasHeight: number
@@ -89,9 +157,19 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
   if (!preset) return []
   const variables = metadataVariables(metadata, border.title)
   if (!border.showDate) variables.date = ''
-  // 含媒体层的预设是固定的全画布版式（如拍立得、卡纸）。通用 frameSize
-  // 会连同纸张背景一起缩小并露出底层原图，因此只对底栏/浮层类预设生效。
+  // 含媒体层的预设是固定的全画布版式（如拍立得、卡纸），其 frameSize
+  // 在开口边框生成时单独处理；底栏/浮层预设仍沿用纵向缩放逻辑。
   const hasMediaLayout = preset.layers.some((layer) => layer.type === 'media')
+  const mediaLayout = preset.layers.find((layer) => layer.type === 'media')
+  const cutoutBackground = preset.layers.find((layer) =>
+    layer.type === 'shape'
+    && layer.id === 'background'
+    && layer.rect.x === 0
+    && layer.rect.y === 0
+    && layer.rect.w === 1
+    && layer.rect.h === 1,
+  )
+  const usesCutoutLayout = mediaLayout?.type === 'media' && cutoutBackground?.type === 'shape'
   const scale = hasMediaLayout ? 1 : border.frameSize / 100
   const isVideoMedia = mediaPath ? isVideoPath(mediaPath) : false
 
@@ -100,6 +178,10 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
     if (layer.type === 'logo' && !border.showLogo) return []
     if (layer.id === 'title' && !border.showTitle) return []
     if ((layer.id === 'meta' || layer.id.includes('camera')) && !border.showCameraInfo) return []
+    if (usesCutoutLayout && layer.type === 'media') return []
+    if (usesCutoutLayout && layer === cutoutBackground) {
+      return buildCutoutBackground(cutoutBackground, mediaLayout, border)
+    }
     const h = Math.min(1, layer.rect.h * scale)
     const common = {
       filePath: '', dstX: layer.rect.x, dstY: Math.max(0, 1 - (1 - layer.rect.y) * scale), dstW: layer.rect.w, dstH: h,
