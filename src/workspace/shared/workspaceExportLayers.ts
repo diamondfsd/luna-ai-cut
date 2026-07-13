@@ -1,7 +1,7 @@
 import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer, MediaMetadata } from '../../shared/types'
-import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
+import { applyBorderMediaLayout, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
 
@@ -16,7 +16,7 @@ export function buildWorkspaceExportLayers(
   if (main[0]) {
     const trimStart = pipeline.trim?.startTime
     const trimEnd = pipeline.trim?.endTime
-    main[0] = {
+    main[0] = applyBorderMediaLayout({
       ...main[0],
       color: pipelineColorToRenderColor(pipeline.color),
       transform: pipelineTransformToRenderTransform(pipeline.transform),
@@ -25,7 +25,7 @@ export function buildWorkspaceExportLayers(
       // 截取：设置视频起始时间和有效时长
       ...(trimStart != null ? { videoTime: trimStart } : {}),
       ...(trimStart != null && trimEnd != null ? { videoDuration: trimEnd - trimStart } : {}),
-    }
+    }, pipeline.border)
   }
 
   const layers = buildExportLayers(sourcePath, finalCanvasSize, pipeline.watermark)

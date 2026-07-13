@@ -6,7 +6,7 @@ import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls } from '../ui'
 import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
-import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyBorderMediaLayout, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import './PreviewStage.css'
 
 export interface PreviewStageHandle {
@@ -311,15 +311,18 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const buildAdjustedLayers = useCallback((sourceUrl: string | null): PreviewLayer[] => {
     // 输出画布已经采用裁剪后的比例，媒体层应填满画布，再由渲染变换取出裁剪区域。
     const main = sourceUrl ? buildLayers(sourceUrl) : []
-    if (main[0] && pipeline) {
-      const renderTransform = pipelineTransformToRenderTransform(pipeline.transform)
-      main[0] = {
-        ...main[0],
+    const canvasFrame = main[0]
+    if (canvasFrame && pipeline) {
+      const styledMain = {
+        ...canvasFrame,
         color: pipelineColorToRenderColor(pipeline.color),
-        transform: renderTransform,
+        transform: pipelineTransformToRenderTransform(pipeline.transform),
         lutId: lutFilePath,
         lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
       }
+      main[0] = cropActive
+        ? styledMain
+        : applyBorderMediaLayout(styledMain, pipeline.border)
     }
     const m = main[0]
     if (!m) {
@@ -330,10 +333,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     }
     if (!extraLayers?.length) return main
 
-    const cX = m?.dstX ?? 0
-    const cY = m?.dstY ?? 0
-    const cW = m?.dstW ?? 1
-    const cH = m?.dstH ?? 1
+    const cX = canvasFrame?.dstX ?? 0
+    const cY = canvasFrame?.dstY ?? 0
+    const cW = canvasFrame?.dstW ?? 1
+    const cH = canvasFrame?.dstH ?? 1
     const adjusted = extraLayers.map((l) => ({
       ...l,
       dstX: cX + l.dstX * cW,
@@ -342,7 +345,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       dstH: l.dstH * cH,
     }))
     return [...main, ...adjusted]
-  }, [extraLayers, pipeline, lutFilePath])
+  }, [cropActive, extraLayers, pipeline, lutFilePath])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []
