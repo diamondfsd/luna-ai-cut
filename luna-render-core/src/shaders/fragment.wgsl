@@ -20,6 +20,37 @@ fn glyph_bits(input_code: u32) -> u32 {
     }
 }
 
+fn sample_media_texture(tex_coord: vec2<f32>) -> vec4<f32> {
+    if (params.sampling_quality < 0.5) {
+        return textureSample(src_texture, src_sampler, tex_coord);
+    }
+
+    // A positioned logo can shrink to a small fraction of its source size.
+    // Average across the destination pixel footprint to avoid aliasing thin strokes.
+    let footprint = max(abs(dpdx(tex_coord)), abs(dpdy(tex_coord)));
+    let texel = vec2<f32>(params.texel_x, params.texel_y);
+    if (max(footprint.x / texel.x, footprint.y / texel.y) < 1.5) {
+        return textureSample(src_texture, src_sampler, tex_coord);
+    }
+
+    var premultiplied = vec3<f32>(0.0);
+    var alpha = 0.0;
+    for (var y = -1; y <= 1; y = y + 1) {
+        for (var x = -1; x <= 1; x = x + 1) {
+            let offset = vec2<f32>(f32(x), f32(y)) * footprint / 3.0;
+            let sample = textureSample(src_texture, src_sampler, tex_coord + offset);
+            premultiplied += sample.rgb * sample.a;
+            alpha += sample.a;
+        }
+    }
+    let averaged_alpha = alpha / 9.0;
+    var straight_rgb = vec3<f32>(0.0);
+    if (alpha > 0.0001) {
+        straight_rgb = premultiplied / alpha;
+    }
+    return vec4<f32>(straight_rgb, averaged_alpha);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pixel_x = in.position.x;
@@ -129,8 +160,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         params.src_y + source_local.y * params.src_h,
     );
 
-    var color = textureSample(src_texture, src_sampler, tex_coord);
+    var color = sample_media_texture(tex_coord);
     color = vec4<f32>(apply_color(color.rgb, tex_coord), color.a);
     color.a = color.a * params.opacity;
+    if (params.sampling_quality > 0.5) {
+        color = vec4<f32>(color.rgb * color.a, color.a);
+    }
     return color;
 }
