@@ -31,7 +31,8 @@ import { outputSizeForTransform, pipelineBeautyToRenderBeauty, pipelineColorToRe
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
-import { detectBeautyFaces } from '../workspace/beauty/faceLandmarker'
+import { BEAUTY_ANALYSIS_VERSION, detectBeautyAnalysis } from '../workspace/beauty/beautyAnalysis'
+import { isBeautyModified as hasBeautyChanges } from '../workspace/shared/beautySettings'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -41,8 +42,7 @@ function normalizePipeline(value: unknown): EditPipeline {
 }
 
 function isBeautyModified(pipeline: EditPipeline): boolean {
-  const beauty = pipeline.beauty
-  return beauty.smoothing > 0 || beauty.whitening > 0 || beauty.slimFace > 0 || beauty.bigEyes > 0
+  return hasBeautyChanges(pipeline.beauty)
 }
 
 /** 从 MediaMetadata 中按 key 提取第一个匹配的 EXIF 值 */
@@ -366,7 +366,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     const patch: PipelinePatch = {
       color: data.color,
       effects: data.effects,
-      beauty: data.beauty ? { ...data.beauty, faces: [], analyzed: false } : DEFAULT_PIPELINE.beauty,
+      beauty: data.beauty ? { ...data.beauty, faces: [], skinMask: '', skinMaskWidth: 0, skinMaskHeight: 0, analysisVersion: 0, analyzed: false } : DEFAULT_PIPELINE.beauty,
       lutFilter: data.lutFilter,
       watermark: data.watermark,
       border: data.border,
@@ -405,7 +405,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         writeWorkspacePipelineClipboard({
           color: structuredClone(pipe.color),
           effects: structuredClone(pipe.effects),
-          beauty: { ...structuredClone(pipe.beauty), faces: [], analyzed: false },
+          beauty: { ...structuredClone(pipe.beauty), faces: [], skinMask: '', skinMaskWidth: 0, skinMaskHeight: 0, analysisVersion: 0, analyzed: false },
           lutFilter: structuredClone(pipe.lutFilter),
           watermark: structuredClone(pipe.watermark),
           border: structuredClone(pipe.border),
@@ -442,9 +442,10 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         let pipeline = index === media.activeIndex
           ? activePipeline
           : normalizePipeline((asset as { pipeline?: unknown }).pipeline)
-        if (!isVideoPath(asset.path) && isBeautyModified(pipeline) && !pipeline.beauty.analyzed) {
-          const faces = await detectBeautyFaces(asset.path)
-          pipeline = mergePipeline(pipeline, { beauty: { faces, analyzed: true } })
+        if (!isVideoPath(asset.path) && isBeautyModified(pipeline)
+          && (!pipeline.beauty.analyzed || pipeline.beauty.analysisVersion < BEAUTY_ANALYSIS_VERSION)) {
+          const analysis = await detectBeautyAnalysis(asset.path)
+          pipeline = mergePipeline(pipeline, { beauty: { ...analysis, analyzed: true } })
         }
         const resolution = await window.luna.workspace.getMediaResolution(asset.path)
         const sourceDuration = isVideoPath(asset.path)

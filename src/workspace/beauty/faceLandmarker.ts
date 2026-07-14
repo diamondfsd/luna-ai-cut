@@ -112,6 +112,20 @@ function resampleClosedContour(points: NormalizedLandmark[], count: number): num
   return contour
 }
 
+function encodeLandmarkMesh(points: NormalizedLandmark[]): string {
+  const bytes = new Uint8Array(points.length * 4)
+  const view = new DataView(bytes.buffer)
+  points.forEach((point, index) => {
+    view.setUint16(index * 4, Math.round(Math.max(0, Math.min(1, point.x)) * 65535), true)
+    view.setUint16(index * 4 + 2, Math.round(Math.max(0, Math.min(1, point.y)) * 65535), true)
+  })
+  let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192))
+  }
+  return btoa(binary)
+}
+
 function compactFace(points: NormalizedLandmark[]): BeautyFaceGeometry | null {
   const top = points[10]
   const bottom = points[152]
@@ -146,6 +160,8 @@ function compactFace(points: NormalizedLandmark[]): BeautyFaceGeometry | null {
     mouthRadiusX: mouth.radiusX,
     mouthRadiusY: mouth.radiusY,
     contour,
+    landmarkMesh: encodeLandmarkMesh(points),
+    landmarkCount: points.length,
   }
 }
 

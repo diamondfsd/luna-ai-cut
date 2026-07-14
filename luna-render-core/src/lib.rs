@@ -1,3 +1,4 @@
+mod beauty;
 mod composition;
 mod compositor;
 mod export;
@@ -182,6 +183,8 @@ pub struct RenderBeautyFace {
     pub right_eye_x: f64, pub right_eye_y: f64, pub right_eye_radius_x: f64, pub right_eye_radius_y: f64,
     pub mouth_x: f64, pub mouth_y: f64, pub mouth_radius_x: f64, pub mouth_radius_y: f64,
     pub contour: Vec<f64>,
+    pub landmark_mesh: String,
+    pub landmark_count: u32,
 }
 
 #[napi(object)]
@@ -191,7 +194,33 @@ pub struct RenderBeautySettings {
     pub whitening: f64,
     pub slim_face: f64,
     pub big_eyes: f64,
+    pub complexion: f64,
+    pub warmth: f64,
+    pub rosy: f64,
+    pub skin_texture: f64,
+    pub nasolabial_folds: f64,
+    pub face_shave: f64,
+    pub face_narrow: f64,
+    pub chin: f64,
+    pub forehead: f64,
+    pub eye_distance: f64,
+    pub eye_corner: f64,
+    pub eye_furrows: f64,
+    pub eye_bags: f64,
+    pub eye_bright: f64,
+    pub nose_thin: f64,
+    pub nose_alae: f64,
+    pub nose_length: f64,
+    pub mouth_size: f64,
+    pub teeth_beauty: f64,
+    pub lipstick: f64,
+    pub lipstick_color: String,
+    pub blush: f64,
+    pub blush_color: String,
     pub faces: Vec<RenderBeautyFace>,
+    pub skin_mask: String,
+    pub skin_mask_width: u32,
+    pub skin_mask_height: u32,
     pub debug: bool,
 }
 

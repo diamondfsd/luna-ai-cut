@@ -78,6 +78,7 @@ const SHADER: &str = concat!(
     include_str!("shaders/params.wgsl"),
     include_str!("shaders/common.wgsl"),
     include_str!("shaders/detail.wgsl"),
+    include_str!("shaders/beauty_features.wgsl"),
     include_str!("shaders/beauty.wgsl"),
     include_str!("shaders/curve.wgsl"),
     include_str!("shaders/color.wgsl"),
@@ -158,7 +159,13 @@ struct GpuLayerParams {
     hsl_data: [[f32; 4]; 8],
     beauty_strengths: [f32; 4],
     beauty_debug: [f32; 4],
+    beauty_skin_params: [[f32; 4]; 2],
+    beauty_reshape_params: [f32; 4],
+    beauty_eye_params: [[f32; 4]; 2],
+    beauty_feature_params: [[f32; 4]; 2],
+    beauty_makeup_colors: [[f32; 4]; 2],
     beauty_faces: [[f32; 4]; 48],
+    beauty_landmarks: [[f32; 4]; 72],
 }
 
 fn parse_hex_color(value: Option<&str>, fallback: [f32; 4]) -> [f32; 4] {
@@ -220,38 +227,6 @@ fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 8
                 .unwrap_or(0.0)
                 .clamp(-100.0, 100.0) as f32,
         ];
-    }
-    data
-}
-
-fn pack_beauty_faces(faces: &[crate::RenderBeautyFace]) -> [[f32; 4]; 48] {
-    let mut data = [[0.0; 4]; 48];
-    for (index, face) in faces.iter().take(3).enumerate() {
-        let contour_point_count = face.contour.len() / 2;
-        if contour_point_count < 3 {
-            continue;
-        }
-        let base = index * 16;
-        data[base] = [face.center_x as f32, face.center_y as f32, face.width as f32, face.height as f32];
-        data[base + 1] = [face.left_eye_x as f32, face.left_eye_y as f32, face.left_eye_radius_x as f32, face.left_eye_radius_y as f32];
-        data[base + 2] = [face.right_eye_x as f32, face.right_eye_y as f32, face.right_eye_radius_x as f32, face.right_eye_radius_y as f32];
-        data[base + 3] = [face.mouth_x as f32, face.mouth_y as f32, face.mouth_radius_x as f32, face.mouth_radius_y as f32];
-        let mut contour = [0.0_f32; 48];
-        for target_index in 0..24 {
-            let source_position = target_index as f64 * contour_point_count as f64 / 24.0;
-            let source_index = source_position.floor() as usize % contour_point_count;
-            let next_index = (source_index + 1) % contour_point_count;
-            let ratio = source_position.fract();
-            for axis in 0..2 {
-                let start = face.contour[source_index * 2 + axis];
-                let end = face.contour[next_index * 2 + axis];
-                contour[target_index * 2 + axis] = (start + (end - start) * ratio) as f32;
-            }
-        }
-        for point_pair in 0..12 {
-            let offset = point_pair * 4;
-            data[base + 4 + point_pair].copy_from_slice(&contour[offset..offset + 4]);
-        }
     }
     data
 }
@@ -538,6 +513,8 @@ pub struct Compositor {
     // ── LUT 3D LUT ──
     /// identity LUT（未启用 LUT 时的默认 3D texture 绑定）
     identity_lut: wgpu::Texture,
+    identity_beauty_mask: wgpu::Texture,
+    beauty_mask_cache: HashMap<u64, TextureEntry>,
     /// 用户加载的 LUT <file_path → LutEntry>
     luts: HashMap<String, LutEntry>,
     fonts: HashMap<String, Vec<u8>>,
@@ -614,6 +591,17 @@ fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                 binding: 4,
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            // binding 5: semantic skin mask
+            wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
                 count: None,
             },
         ],
@@ -1061,6 +1049,17 @@ impl Compositor {
         let identity_lut = create_identity_lut(&device, &queue);
         log!("identity_lut created size=2x2x2 format=Rgba8Unorm");
 
+        let identity_beauty_mask = create_rgba_texture(
+            &device,
+            "identity-beauty-mask",
+            1,
+            1,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            1,
+            false,
+        );
+        upload_rgba(&queue, &identity_beauty_mask, &[0, 0, 0, 255], 1, 1);
+
         let procedural_texture = create_rgba_texture(
             &device, "procedural-white", 1, 1,
             wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST, 1, true,
@@ -1095,6 +1094,8 @@ impl Compositor {
             last_preview_log: None,
             staging_buffer: None,
             identity_lut,
+            identity_beauty_mask,
+            beauty_mask_cache: HashMap::new(),
             luts: HashMap::new(),
             fonts: HashMap::new(),
             text_texture_cache: HashMap::new(),
@@ -1583,6 +1584,52 @@ impl Compositor {
         }
     }
 
+    fn ensure_beauty_mask_loaded(
+        &mut self,
+        beauty: &crate::RenderBeautySettings,
+    ) -> Result<Option<u64>, String> {
+        let Some(key) = beauty_mask_key(beauty) else { return Ok(None); };
+        if self.beauty_mask_cache.contains_key(&key) {
+            return Ok(Some(key));
+        }
+        if beauty.skin_mask_width > 512 || beauty.skin_mask_height > 512 {
+            return Err("skin mask size exceeds 512x512".to_string());
+        }
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&beauty.skin_mask)
+            .map_err(|error| format!("decode skin mask failed: {error}"))?;
+        let expected = beauty.skin_mask_width as usize * beauty.skin_mask_height as usize;
+        if decoded.len() != expected {
+            return Err(format!("skin mask size mismatch: {} != {}", decoded.len(), expected));
+        }
+        let mut rgba = Vec::with_capacity(expected * 4);
+        for value in decoded {
+            rgba.extend_from_slice(&[value, value, value, 255]);
+        }
+        let texture = create_rgba_texture(
+            &self.device,
+            "beauty-skin-mask",
+            beauty.skin_mask_width,
+            beauty.skin_mask_height,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            1,
+            false,
+        );
+        upload_rgba(
+            &self.queue,
+            &texture,
+            &rgba,
+            beauty.skin_mask_width,
+            beauty.skin_mask_height,
+        );
+        self.beauty_mask_cache.insert(key, TextureEntry {
+            texture,
+            width: beauty.skin_mask_width,
+            height: beauty.skin_mask_height,
+        });
+        Ok(Some(key))
+    }
+
     // ── 渲染 ──
 
     fn render_impl(
@@ -1624,6 +1671,11 @@ impl Compositor {
             if let Some(path) = &layer.lut_id {
                 if let Err(e) = self.ensure_lut_loaded(path) {
                     log!("LUT 加载失败 {}: {}", path, e);
+                }
+            }
+            if let Some(beauty) = &layer.beauty {
+                if let Err(error) = self.ensure_beauty_mask_loaded(beauty) {
+                    log!("皮肤蒙版加载失败: {}", error);
                 }
             }
         }
@@ -1778,6 +1830,11 @@ impl Compositor {
                     ),
                     None => (&self.identity_lut, 0.0),
                 };
+                let mask_key = beauty_mask_key(&beauty);
+                let beauty_mask_texture = mask_key
+                    .and_then(|key| self.beauty_mask_cache.get(&key).map(|entry| &entry.texture))
+                    .unwrap_or(&self.identity_beauty_mask);
+                let has_beauty_mask = if mask_key.is_some() { 1.0 } else { 0.0 };
 
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
@@ -1903,8 +1960,31 @@ impl Compositor {
                         beauty.slim_face.clamp(0.0, 100.0) as f32,
                         beauty.big_eyes.clamp(0.0, 100.0) as f32,
                     ],
-                    beauty_debug: [if beauty.debug { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0],
+                    beauty_debug: [if beauty.debug { 1.0 } else { 0.0 }, has_beauty_mask, 0.0, 0.0],
+                    beauty_skin_params: [
+                        [beauty.complexion.clamp(0.0, 100.0) as f32, beauty.warmth.clamp(-100.0, 100.0) as f32, beauty.rosy.clamp(0.0, 100.0) as f32, beauty.skin_texture.clamp(0.0, 100.0) as f32],
+                        [beauty.nasolabial_folds.clamp(0.0, 100.0) as f32, 0.0, 0.0, 0.0],
+                    ],
+                    beauty_reshape_params: [
+                        beauty.face_shave.clamp(0.0, 100.0) as f32,
+                        beauty.face_narrow.clamp(0.0, 100.0) as f32,
+                        beauty.chin.clamp(-100.0, 100.0) as f32,
+                        beauty.forehead.clamp(-100.0, 100.0) as f32,
+                    ],
+                    beauty_eye_params: [
+                        [beauty.eye_distance.clamp(-100.0, 100.0) as f32, beauty.eye_corner.clamp(-100.0, 100.0) as f32, beauty.eye_furrows.clamp(0.0, 100.0) as f32, beauty.eye_bags.clamp(0.0, 100.0) as f32],
+                        [beauty.eye_bright.clamp(0.0, 100.0) as f32, 0.0, 0.0, 0.0],
+                    ],
+                    beauty_feature_params: [
+                        [beauty.nose_thin.clamp(0.0, 100.0) as f32, beauty.nose_alae.clamp(0.0, 100.0) as f32, beauty.nose_length.clamp(-100.0, 100.0) as f32, beauty.mouth_size.clamp(-100.0, 100.0) as f32],
+                        [beauty.teeth_beauty.clamp(0.0, 100.0) as f32, beauty.lipstick.clamp(0.0, 100.0) as f32, beauty.blush.clamp(0.0, 100.0) as f32, 0.0],
+                    ],
+                    beauty_makeup_colors: [
+                        parse_hex_color(Some(&beauty.lipstick_color), [0.73, 0.29, 0.37, 1.0]),
+                        parse_hex_color(Some(&beauty.blush_color), [0.85, 0.47, 0.49, 1.0]),
+                    ],
                     beauty_faces: pack_beauty_faces(&beauty.faces),
+                    beauty_landmarks: pack_beauty_landmarks(&beauty.faces),
                 };
 
                 let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1921,6 +2001,7 @@ impl Compositor {
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
                 let lut_view = lut_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let beauty_mask_view = beauty_mask_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
                 let bg_entries = [
                     wgpu::BindGroupEntry {
@@ -1942,6 +2023,10 @@ impl Compositor {
                     wgpu::BindGroupEntry {
                         binding: 4,
                         resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(&beauty_mask_view),
                     },
                 ];
 

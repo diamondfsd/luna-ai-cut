@@ -92,6 +92,8 @@ export interface RenderBeautyFace {
   rightEyeX: number; rightEyeY: number; rightEyeRadiusX: number; rightEyeRadiusY: number
   mouthX: number; mouthY: number; mouthRadiusX: number; mouthRadiusY: number
   contour: number[]
+  landmarkMesh: string
+  landmarkCount: number
 }
 
 export interface RenderBeautySettings {
@@ -99,7 +101,33 @@ export interface RenderBeautySettings {
   whitening: number
   slimFace: number
   bigEyes: number
+  complexion: number
+  warmth: number
+  rosy: number
+  skinTexture: number
+  nasolabialFolds: number
+  faceShave: number
+  faceNarrow: number
+  chin: number
+  forehead: number
+  eyeDistance: number
+  eyeCorner: number
+  eyeFurrows: number
+  eyeBags: number
+  eyeBright: number
+  noseThin: number
+  noseAlae: number
+  noseLength: number
+  mouthSize: number
+  teethBeauty: number
+  lipstick: number
+  lipstickColor: string
+  blush: number
+  blushColor: string
   faces: RenderBeautyFace[]
+  skinMask: string
+  skinMaskWidth: number
+  skinMaskHeight: number
   /** 仅预览使用，导出层保持关闭。 */
   debug: boolean
 }

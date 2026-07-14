@@ -68,7 +68,13 @@ struct LayerParams {
     hsl_data: array<vec4<f32>, 8>,
     beauty_strengths: vec4<f32>,
     beauty_debug: vec4<f32>,
+    beauty_skin_params: array<vec4<f32>, 2>,
+    beauty_reshape_params: vec4<f32>,
+    beauty_eye_params: array<vec4<f32>, 2>,
+    beauty_feature_params: array<vec4<f32>, 2>,
+    beauty_makeup_colors: array<vec4<f32>, 2>,
     beauty_faces: array<vec4<f32>, 48>,
+    beauty_landmarks: array<vec4<f32>, 72>,
 }
 
 @group(0) @binding(0) var src_texture: texture_2d<f32>;
@@ -76,3 +82,4 @@ struct LayerParams {
 @group(0) @binding(2) var<uniform> params: LayerParams;
 @group(0) @binding(3) var lut_texture: texture_3d<f32>;
 @group(0) @binding(4) var lut_sampler: sampler;
+@group(0) @binding(5) var beauty_skin_mask: texture_2d<f32>;

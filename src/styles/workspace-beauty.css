@@ -34,6 +34,47 @@
   border: 0;
 }
 
+.workspace-beauty-control-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.workspace-beauty-control-fieldset:disabled {
+  opacity: 0.48;
+  pointer-events: none;
+}
+
+.workspace-beauty-tabs {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.workspace-beauty-swatches {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0 8px;
+}
+
+.workspace-beauty-swatch {
+  width: 28px;
+  min-width: 28px;
+  padding: 4px;
+  border-style: solid;
+}
+
+.workspace-beauty-swatch span {
+  width: 16px;
+  height: 16px;
+  border: 1px solid color-mix(in srgb, var(--ink) 16%, transparent);
+  border-radius: 50%;
+}
+
+.workspace-beauty-swatch[aria-pressed='true'] {
+  border-color: var(--blue);
+}
+
 .workspace-beauty-debug-toggle {
   display: flex;
   align-items: center;
@@ -63,11 +104,7 @@
 
 .workspace-beauty-debug-legend [data-color='eyes']::before { background: #40ff6b; }
 .workspace-beauty-debug-legend [data-color='mouth']::before { background: #ff9e19; }
-
-.workspace-beauty-controls:disabled {
-  opacity: 0.48;
-  pointer-events: none;
-}
+.workspace-beauty-debug-legend [data-color='skin']::before { background: #ff33ad; }
 
 .workspace-beauty-reset {
   justify-self: end;

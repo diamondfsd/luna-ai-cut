@@ -142,7 +142,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     pipelineClipboardRef.current = {
       color: structuredClone(pipeline.color),
       effects: structuredClone(pipeline.effects),
-      beauty: { ...structuredClone(pipeline.beauty), faces: [], analyzed: false },
+      beauty: { ...structuredClone(pipeline.beauty), faces: [], skinMask: '', skinMaskWidth: 0, skinMaskHeight: 0, analysisVersion: 0, analyzed: false },
       lutFilter: structuredClone(pipeline.lutFilter),
       watermark: structuredClone(pipeline.watermark),
       border: structuredClone(pipeline.border),
@@ -161,7 +161,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     commitPatch({
       color: data.color,
       effects: data.effects,
-      beauty: data.beauty ? { ...data.beauty, faces: [], analyzed: false } : DEFAULT_PIPELINE.beauty,
+      beauty: data.beauty ? { ...data.beauty, faces: [], skinMask: '', skinMaskWidth: 0, skinMaskHeight: 0, analysisVersion: 0, analyzed: false } : DEFAULT_PIPELINE.beauty,
       lutFilter: data.lutFilter,
       watermark: data.watermark,
       border: data.border,

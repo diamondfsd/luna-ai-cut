@@ -15,6 +15,7 @@ import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel } from '../trim/TrimPanel'
 import { BeautyPanel } from '../beauty/BeautyPanel'
+import { isBeautyModified } from '../shared/beautySettings'
 
 export type WorkspaceTool = 'beauty' | 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter'
 
@@ -72,10 +73,6 @@ function isBorderModified(border: typeof DEFAULT_PIPELINE.border): boolean {
 
 function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
   return trim !== null
-}
-
-function isBeautyModified(beauty: typeof DEFAULT_PIPELINE.beauty): boolean {
-  return beauty.smoothing > 0 || beauty.whitening > 0 || beauty.slimFace > 0 || beauty.bigEyes > 0
 }
 
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
