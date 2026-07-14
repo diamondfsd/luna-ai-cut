@@ -331,11 +331,13 @@ if [ -f "$SCRIPT_JS" ]; then
   OS="$(uname -s)"
   if [ "$OS" = "Darwin" ]; then
     sed -i '' "s|tag: '.*'|tag: '${TAG}'|" "$SCRIPT_JS"
+    sed -i '' "s|label: '.*'|label: '${TAG}'|" "$SCRIPT_JS"
     sed -i '' "s|gitcode_mac_arm: '.*'|gitcode_mac_arm: '${mac_arm_dl}'|" "$SCRIPT_JS"
     sed -i '' "s|gitcode_mac_x64: '.*'|gitcode_mac_x64: '${mac_x64_dl}'|" "$SCRIPT_JS"
     sed -i '' "s|gitcode_win: '.*'|gitcode_win: '${win_dl}'|" "$SCRIPT_JS"
   else
     sed -i "s|tag: '.*'|tag: '${TAG}'|" "$SCRIPT_JS"
+    sed -i "s|label: '.*'|label: '${TAG}'|" "$SCRIPT_JS"
     sed -i "s|gitcode_mac_arm: '.*'|gitcode_mac_arm: '${mac_arm_dl}'|" "$SCRIPT_JS"
     sed -i "s|gitcode_mac_x64: '.*'|gitcode_mac_x64: '${mac_x64_dl}'|" "$SCRIPT_JS"
     sed -i "s|gitcode_win: '.*'|gitcode_win: '${win_dl}'|" "$SCRIPT_JS"
