@@ -13,6 +13,8 @@ export interface NetworkDiagnosticCommandResult {
 
 export interface NetworkDiagnosticTcpCheck {
   ok: boolean
+  skipped?: boolean
+  reason?: string
   host: string
   port: number
   localAddress?: string
@@ -46,6 +48,8 @@ export interface NetworkDiagnosticsResult {
   tcpChecks: {
     http80: NetworkDiagnosticTcpCheck
     control6666: NetworkDiagnosticTcpCheck
+    defaultHttp80?: NetworkDiagnosticTcpCheck
+    defaultControl6666?: NetworkDiagnosticTcpCheck
   }
   commands: NetworkDiagnosticCommandResult[]
 }

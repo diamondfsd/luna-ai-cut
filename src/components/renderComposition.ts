@@ -85,6 +85,5 @@ export function buildCompositionFromPreviewLayers(
     })),
   }
 
-  console.log('[Export → Rust]', JSON.stringify(composition, null, 2))
   return composition
 }

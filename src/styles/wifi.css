@@ -138,6 +138,20 @@
   gap: 8px;
 }
 
+.device-connect-diagnostics-header > div {
+  display: flex;
+  gap: 6px;
+}
+
+.device-connect-diagnostics-hint {
+  width: min(100%, 420px);
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+}
+
 .device-connect-diagnostics-raw {
   box-sizing: border-box;
   width: min(100%, 420px);

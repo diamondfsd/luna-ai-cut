@@ -24,6 +24,9 @@ export function DeviceConnectPage({
 }: DeviceConnectPageProps) {
   const [connecting, setConnecting] = useState(false)
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false)
+  const [diagnosticsRunning, setDiagnosticsRunning] = useState(false)
+  const [diagnosticsResult, setDiagnosticsResult] = useState<string | null>(null)
+  const [diagnosticsNotice, setDiagnosticsNotice] = useState<string | null>(null)
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
   const deviceName = activeDevice?.name ?? '设备'
@@ -44,10 +47,7 @@ export function DeviceConnectPage({
     }
   }
 
-  async function handleCopyDiagnostics(): Promise<void> {
-    const text = connection?.diagnosticsRaw
-    if (!text) return
-
+  async function copyDiagnostics(text: string): Promise<boolean> {
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text)
@@ -64,8 +64,42 @@ export function DeviceConnectPage({
       }
       setDiagnosticsCopied(true)
       window.setTimeout(() => setDiagnosticsCopied(false), 1500)
+      return true
     } catch {
       setDiagnosticsCopied(false)
+      return false
+    }
+  }
+
+  async function handleCopyDiagnostics(): Promise<void> {
+    const text = diagnosticsResult ?? connection?.diagnosticsRaw
+    if (!text) return
+    const copied = await copyDiagnostics(text)
+    setDiagnosticsNotice(copied ? '诊断信息已复制，请粘贴发送给开发者。' : '自动复制失败，请点击“复制反馈信息”后发送给开发者。')
+  }
+
+  async function handleRunDiagnostics(): Promise<void> {
+    if (diagnosticsRunning) return
+    setDiagnosticsRunning(true)
+    setDiagnosticsResult(null)
+    setDiagnosticsNotice(null)
+    try {
+      const host = settings?.cameraHost ?? activeDevice?.defaultHost
+      const result = await window.luna.collectNetworkDiagnostics(host)
+      const report = JSON.stringify(result, null, 2)
+      setDiagnosticsResult(report)
+      const copied = await copyDiagnostics(report)
+      setDiagnosticsNotice(copied ? '诊断完成，信息已自动复制，请粘贴发送给开发者。' : '诊断完成，但自动复制失败，请点击“复制反馈信息”后发送给开发者。')
+    } catch (error) {
+      const report = JSON.stringify({
+        error: error instanceof Error ? error.message : String(error),
+        host: settings?.cameraHost ?? activeDevice?.defaultHost ?? null,
+      }, null, 2)
+      setDiagnosticsResult(report)
+      const copied = await copyDiagnostics(report)
+      setDiagnosticsNotice(copied ? '诊断完成，信息已自动复制，请粘贴发送给开发者。' : '诊断完成，但自动复制失败，请点击“复制反馈信息”后发送给开发者。')
+    } finally {
+      setDiagnosticsRunning(false)
     }
   }
 
@@ -112,20 +146,38 @@ export function DeviceConnectPage({
           </dl>
         )}
 
-        {isError && connection?.diagnosticsRaw && (
+        {isError && (
           <div className="device-connect-diagnostics">
             <div className="device-connect-diagnostics-header">
-              <p className="device-connect-section-title">原始诊断信息</p>
+              <p className="device-connect-section-title">连接诊断</p>
+              <div>
+                <Button
+                  variant="primary"
+                  size="mini"
+                  onClick={handleRunDiagnostics}
+                  disabled={diagnosticsRunning}
+                  icon={<RefreshCw className={diagnosticsRunning ? 'spin' : ''} size={13} />}
+                >
+                  {diagnosticsRunning ? '检测中' : '一键检测'}
+                </Button>
               <Button
                 variant="secondary"
                 size="mini"
                 onClick={handleCopyDiagnostics}
+                disabled={!diagnosticsResult && !connection?.diagnosticsRaw}
                 icon={diagnosticsCopied ? <Check size={13} /> : <Copy size={13} />}
               >
-                {diagnosticsCopied ? '已复制' : '复制'}
+                {diagnosticsCopied ? '已复制' : '复制反馈信息'}
               </Button>
+              </div>
             </div>
-            <pre className="device-connect-diagnostics-raw">{connection.diagnosticsRaw}</pre>
+            <p className="device-connect-diagnostics-hint">
+              请先连接相机 Wi-Fi，再点击检测。完成后复制反馈信息发给我们，报告不会自动上传。
+            </p>
+            {diagnosticsNotice && <Alert variant="info" message={diagnosticsNotice} />}
+            {(diagnosticsResult ?? connection?.diagnosticsRaw) && (
+              <pre className="device-connect-diagnostics-raw">{diagnosticsResult ?? connection?.diagnosticsRaw}</pre>
+            )}
           </div>
         )}
 

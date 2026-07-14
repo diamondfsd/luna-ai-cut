@@ -8,8 +8,10 @@ import {
 } from 'react'
 import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
+import { logger } from '../lib/rendererLogger'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
+import { Button } from '../ui'
 import './LrcRender.css'
 
 const PREVIEW_TEXTURE_MAX_SIDE = 3840
@@ -55,6 +57,7 @@ interface RenderPreviewOutput {
 
 interface LunaRenderCore {
   init: () => Promise<void>
+  resetCompatibilityBlock?: () => Promise<void>
   renderPreview: (input: { maxSide?: number; width?: number; height?: number; layers: PreviewLayer[] }) => Promise<RenderPreviewOutput>
   renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) => Promise<RenderPreviewOutput>
   renderCompositionFrameAsync: (composition: CompositionInput, time: number, maxSide?: number) => Promise<RenderPreviewOutput>
@@ -140,13 +143,21 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const videoElementCalledRef = useRef(false)
   const renderingRef = useRef(false)
   const renderQueuedRef = useRef(false)
+  const firstRenderTraceRef = useRef(true)
   const lastVideoFrameAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
   const isSeekingRef = useRef(false) // 标记是否正在 seek
   const seekStartTimeRef = useRef<number | null>(null) // 记录 seek 开始时间
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
   layersRef.current = layers
+
+  async function initializeRenderer(lrc: LunaRenderCore): Promise<void> {
+    logger.info('[预览诊断] 渲染引擎初始化开始')
+    await lrc.init()
+    logger.info('[预览诊断] 渲染引擎初始化完成')
+  }
 
   useEffect(() => {
     const lrc = getLRC()
@@ -157,7 +168,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       return
     }
     destroyRef.current = false
-    lrc.init()
+    initializeRenderer(lrc)
       .then(() => {
         if (!destroyRef.current) {
           setReady(true)
@@ -166,9 +177,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       })
       .catch((error: Error) => {
         if (destroyRef.current) return
-        const msg = `渲染引擎初始化失败: ${error.message}`
-        setFatalError(msg)
-        onError?.(msg)
+        logger.error('[预览诊断] 渲染引擎初始化失败', { error: error.message })
+        const message = '当前显卡驱动无法打开预览，请更新显卡驱动并重启电脑后再试。'
+        setFatalError(message)
+        onError?.(message)
       })
     return () => {
       destroyRef.current = true
@@ -178,6 +190,27 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       onVideoElement?.(null)
     }
   }, [])
+
+  async function retryInitialization(): Promise<void> {
+    const lrc = getLRC()
+    if (!lrc || retrying) return
+    setRetrying(true)
+    setFatalError(null)
+    try {
+      await lrc.resetCompatibilityBlock?.()
+      await initializeRenderer(lrc)
+      setReady(true)
+      onReady?.()
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      logger.error('[预览诊断] 渲染引擎重新检测失败', { error: detail })
+      const message = '仍然无法打开预览，请确认显卡驱动已更新并重启电脑。'
+      setFatalError(message)
+      onError?.(message)
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   function layersWithVideoTime(): PreviewLayer[] {
     return sortedLayers(layersRef.current).map((layer) => {
@@ -201,12 +234,30 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
     renderingRef.current = true
     renderQueuedRef.current = false
+    const traceFirstRender = firstRenderTraceRef.current
+    firstRenderTraceRef.current = false
     try {
       const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
       const composition = buildCompositionFromPreviewLayers(renderLayers, canvasWidth, canvasHeight)
+      if (traceFirstRender) {
+        logger.info('[预览诊断] 首次画面渲染开始', {
+          layerCount: renderLayers.length,
+          videoLayerCount: renderLayers.filter((layer) => layer.isVideo).length,
+          canvasWidth,
+          canvasHeight,
+          maxSide: effectiveMaxSide,
+        })
+      }
       // 使用异步方法，避免阻塞主线程
       const result = await (lrc.renderCompositionFrameAsync ?? lrc.renderCompositionFrame)(composition, 0, effectiveMaxSide)
       if (destroyRef.current) return
+
+      if (traceFirstRender) {
+        logger.info('[预览诊断] 首次画面渲染完成', {
+          width: result.width,
+          height: result.height,
+        })
+      }
 
       if (result.width !== lastMediaSizeRef.current[0] || result.height !== lastMediaSizeRef.current[1]) {
         lastMediaSizeRef.current = [result.width, result.height]
@@ -231,6 +282,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       onRender?.()
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
+      if (traceFirstRender) logger.error('[预览诊断] 首次画面渲染失败', { error: msg })
       onError?.(msg)
     } finally {
       renderingRef.current = false
@@ -349,13 +401,11 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
   if (fatalError) {
     return (
-      <div className={className} style={{
-        width: '100%', height: '100%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <p style={{ color: 'var(--red, #e53e3e)', fontSize: 14, textAlign: 'center', padding: 16 }}>
-          {fatalError}
-        </p>
+      <div className={[className, 'lrc-render-error'].filter(Boolean).join(' ')}>
+        <p>{fatalError}</p>
+        <Button variant="secondary" disabled={retrying} onClick={() => void retryInitialization()}>
+          {retrying ? '正在检测...' : '更新驱动后重新检测'}
+        </Button>
       </div>
     )
   }

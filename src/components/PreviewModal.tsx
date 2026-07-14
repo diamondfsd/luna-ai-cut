@@ -9,6 +9,7 @@ import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { useFileCache } from '../hooks/useFileCache'
 import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
+import { logger } from '../lib/rendererLogger'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
 import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Button, Dialog, toast } from '../ui'
@@ -66,19 +67,29 @@ export function PreviewModal({
   const displaySource = activeSourcePath ? (filePathToPreviewUrl(activeSourcePath) ?? activeSourcePath) : null
   const stageSource = toLocalPath(activeSourcePath)
 
+  useEffect(() => {
+    logger.info('[预览诊断] 预览窗口打开', {
+      filePath: currentFilePath,
+      isRemoteSource,
+      isVideo: isVideoPath(currentFilePath),
+      previewOnly: Boolean(previewOnly),
+    })
+  }, [currentFilePath, isRemoteSource, previewOnly])
+
+  useEffect(() => {
+    if (!activeSourcePath) return
+    logger.info('[预览诊断] 预览资源已就绪', {
+      filePath: activeSourcePath,
+      isRemoteSource,
+    })
+  }, [activeSourcePath, isRemoteSource])
+
   // 批量导出时，检查整个列表是否包含视频；非批量时仅检查当前文件
   const hasVideoInBatch = batchExportMode
     ? (filePathList ?? []).some((fp) => isVideoPath(fp))
     : isVideoPath(currentFilePath)
 
   useEffect(() => {
-    console.log('[PreviewModal] source changed', {
-      currentFilePath,
-      resolvedPath,
-      activeSourcePath,
-      displaySource,
-      stageSource,
-    })
     setWatermarkLayers([])
   }, [currentFilePath, displaySource, resolvedPath, stageSource])
 

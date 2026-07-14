@@ -7,7 +7,6 @@ type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
 const LOG_DIR = 'logs'
 const MAIN_PREFIX = 'main'
 const RENDERER_PREFIX = 'renderer'
-const MAX_LOG_DAYS = 30
 
 function logDir(): string {
   return path.join(app.getPath('userData'), LOG_DIR)
@@ -17,8 +16,13 @@ function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true })
 }
 
+function localDateKey(date: Date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 function logFilePath(prefix: string, date: Date = new Date()): string {
-  const dateStr = date.toISOString().slice(0, 10) // YYYY-MM-DD
+  const dateStr = localDateKey(date)
   const version = app.getVersion()
   return path.join(logDir(), `${prefix}-${dateStr}-${version}.log`)
 }
@@ -71,21 +75,16 @@ function formatLog(level: LogLevel, message: string, meta?: unknown): string {
   return `[${localTimestamp()}] [${level}] ${safeMsg}${metaStr}\n`
 }
 
-/** 清理超过 30 天的日志文件 */
+/** 每次启动只保留当天日志，避免历史调试输出干扰问题定位。 */
 function cleanOldLogs(): void {
   try {
     const dir = logDir()
     const files = fs.readdirSync(dir)
-    const now = Date.now()
+    const today = localDateKey()
     for (const file of files) {
       if (!file.endsWith('.log')) continue
-      const filePath = path.join(dir, file)
-      const stat = fs.statSync(filePath)
-      const ageDays = (now - stat.mtimeMs) / (1000 * 60 * 60 * 24)
-      if (ageDays > MAX_LOG_DAYS) {
-        fs.rmSync(filePath)
-        console.log(`[logger] 已清理过期日志: ${file}`)
-      }
+      const fileDate = file.match(/\d{4}-\d{2}-\d{2}/)?.[0]
+      if (fileDate && fileDate !== today) fs.rmSync(path.join(dir, file))
     }
   } catch {
     // 目录可能还不存在
@@ -145,9 +144,12 @@ export function clearLogs(): void {
     const files = fs.readdirSync(dir)
     let count = 0
     for (const file of files) {
-      if (!file.endsWith('.log')) continue
-      fs.rmSync(path.join(dir, file))
-      count++
+      if (file.endsWith('.log')) {
+        fs.rmSync(path.join(dir, file))
+        count++
+      } else if (file === 'crash-dumps') {
+        fs.rmSync(path.join(dir, file), { recursive: true, force: true })
+      }
     }
     logMainInfo(`已清空 ${count} 个日志文件`)
   } catch {

@@ -43,7 +43,7 @@ function connectionTimeoutStatus(host: string): Promise<ConnectionStatus> {
 
 async function enrichConnectionStatus(status: ConnectionStatus): Promise<ConnectionStatus> {
   try {
-    const diagnostics = await window.luna.collectNetworkDiagnostics()
+    const diagnostics = await window.luna.collectNetworkDiagnostics(status.host)
     return {
       ...status,
       diagnosticsRaw: JSON.stringify(diagnostics, null, 2),
