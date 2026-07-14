@@ -145,6 +145,9 @@ Media Foundation Source Reader
 
 ## Windows 真机验收入口
 
+完整的环境准备、构建、测试矩阵、成功判定和故障排查参见
+[`WINDOWS_GPU_EXPORT_TEST_GUIDE.md`](WINDOWS_GPU_EXPORT_TEST_GUIDE.md)。
+
 进入 worktree 后，先执行：
 
 ```bash
