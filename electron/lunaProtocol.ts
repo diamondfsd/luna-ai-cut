@@ -2,6 +2,7 @@ import { DEFAULT_DEVICE } from './deviceDefaults'
 import { lunaMediaAdapter } from './deviceMedia'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
 import { connectSocket, Insta360TcpSession } from './insta360TcpProtocol'
+import { directHttpFetch } from './directHttp'
 import type { ConnectionStatus, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export const DEFAULT_HOST = DEFAULT_DEVICE.defaultHost
@@ -338,7 +339,7 @@ export class LunaClient {
 
         const tFetch = performance.now()
         logMainInfo(`[HTTP读取] 发起 HTTP GET`, { url, attempt: attempt + 1, sinceStartMs: Math.round(tFetch - t0) })
-        const response = await fetch(url, {
+        const response = await directHttpFetch(url, {
           headers: {
             'User-Agent': 'LunaAI-Cut/0.1',
             'Accept-Encoding': 'identity',
@@ -364,7 +365,7 @@ export class LunaClient {
                 const dirUrl = cameraUrl(this.host, `${cameraPath}${dir}/`)
                 try {
                   logMainDebug(`[HTTP读取] 读取子目录`, { url: dirUrl })
-                  const dirResponse = await fetch(dirUrl, {
+                  const dirResponse = await directHttpFetch(dirUrl, {
                     headers: {
                       'User-Agent': 'LunaAI-Cut/0.1',
                       'Accept-Encoding': 'identity',
