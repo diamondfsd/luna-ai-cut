@@ -165,7 +165,7 @@ struct GpuLayerParams {
     beauty_feature_params: [[f32; 4]; 2],
     beauty_makeup_colors: [[f32; 4]; 2],
     beauty_faces: [[f32; 4]; 48],
-    beauty_landmarks: [[f32; 4]; 72],
+    beauty_landmarks: [[f32; 4]; 120],
 }
 
 fn parse_hex_color(value: Option<&str>, fallback: [f32; 4]) -> [f32; 4] {

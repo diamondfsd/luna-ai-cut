@@ -250,9 +250,9 @@ fn apply_beauty_debug(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
         let face_fill = contour.x * 0.13;
         let face_line = contour.y;
         let debug_feather = face.z * 0.004;
-        let left_line = beauty_landmark_polygon_metrics(uv, face_index, 4u, 8u, debug_feather).z;
-        let right_line = beauty_landmark_polygon_metrics(uv, face_index, 12u, 8u, debug_feather).z;
-        let mouth_line = beauty_landmark_polygon_metrics(uv, face_index, 24u, 12u, debug_feather).z;
+        let left_line = beauty_landmark_polygon_metrics(uv, face_index, 4u, 16u, debug_feather).z;
+        let right_line = beauty_landmark_polygon_metrics(uv, face_index, 20u, 16u, debug_feather).z;
+        let mouth_line = beauty_landmark_polygon_metrics(uv, face_index, 40u, 20u, debug_feather).z;
         let center = beauty_center_mark(uv, face.xy, face);
         result = mix(result, vec3<f32>(0.0, 0.72, 1.0), face_fill);
         result = mix(result, vec3<f32>(0.0, 0.82, 1.0), max(face_line, center) * 0.95);

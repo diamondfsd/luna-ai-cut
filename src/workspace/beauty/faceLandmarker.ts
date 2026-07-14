@@ -2,8 +2,9 @@ import type { FaceLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision
 
 import { workspaceImageCache } from '../shared/imageCache'
 import type { BeautyFaceGeometry } from '../shared/editPipeline'
+import type { BeautyPersonRegion } from './skinSegmenter'
 
-const MAX_DETECTION_SIDE = 1280
+const MAX_DETECTION_SIDE = 2560
 const MAX_FACES = 3
 const FACE_CONTOUR_POINT_COUNT = 24
 const FACE_OVAL_INDICES = [
@@ -126,6 +127,67 @@ function encodeLandmarkMesh(points: NormalizedLandmark[]): string {
   return btoa(binary)
 }
 
+function clampRegion(region: BeautyPersonRegion): BeautyPersonRegion {
+  const x = Math.max(0, Math.min(1, region.x))
+  const y = Math.max(0, Math.min(1, region.y))
+  return {
+    x,
+    y,
+    width: Math.max(0.01, Math.min(1 - x, region.width)),
+    height: Math.max(0.01, Math.min(1 - y, region.height)),
+  }
+}
+
+function expandPersonRegion(region: BeautyPersonRegion, headOnly: boolean): BeautyPersonRegion {
+  const paddingX = region.width * 0.16
+  const paddingTop = region.height * 0.08
+  const x = region.x - paddingX
+  const y = region.y - paddingTop
+  const width = region.width + paddingX * 2
+  const height = headOnly ? region.height * 0.62 + paddingTop : region.height + paddingTop * 1.6
+  return clampRegion({ x, y, width, height })
+}
+
+async function detectFacesInRegion(
+  landmarker: FaceLandmarker,
+  image: Awaited<ReturnType<typeof workspaceImageCache.generate>>,
+  requestedRegion: BeautyPersonRegion,
+): Promise<NormalizedLandmark[][]> {
+  const region = clampRegion(requestedRegion)
+  const sourceX = Math.floor(region.x * image.width)
+  const sourceY = Math.floor(region.y * image.height)
+  const sourceWidth = Math.max(1, Math.min(image.width - sourceX, Math.ceil(region.width * image.width)))
+  const sourceHeight = Math.max(1, Math.min(image.height - sourceY, Math.ceil(region.height * image.height)))
+  const scale = Math.min(1, MAX_DETECTION_SIDE / Math.max(sourceWidth, sourceHeight))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(sourceWidth * scale))
+  canvas.height = Math.max(1, Math.round(sourceHeight * scale))
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('无法分析这张图片')
+  context.drawImage(
+    image.previewBitmap,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  )
+  const mappedRegion = {
+    x: sourceX / image.width,
+    y: sourceY / image.height,
+    width: sourceWidth / image.width,
+    height: sourceHeight / image.height,
+  }
+  return landmarker.detect(canvas).faceLandmarks.map((points) => points.map((point) => ({
+    ...point,
+    x: mappedRegion.x + point.x * mappedRegion.width,
+    y: mappedRegion.y + point.y * mappedRegion.height,
+  })))
+}
+
 function compactFace(points: NormalizedLandmark[]): BeautyFaceGeometry | null {
   const top = points[10]
   const bottom = points[152]
@@ -165,20 +227,35 @@ function compactFace(points: NormalizedLandmark[]): BeautyFaceGeometry | null {
   }
 }
 
-export async function detectBeautyFaces(filePath: string): Promise<BeautyFaceGeometry[]> {
+export async function detectBeautyFaces(filePath: string, personRegions: BeautyPersonRegion[] = []): Promise<BeautyFaceGeometry[]> {
   const [landmarker, image] = await Promise.all([
     getFaceLandmarker(),
     workspaceImageCache.generate(filePath),
   ])
-  const scale = Math.min(1, MAX_DETECTION_SIDE / Math.max(image.width, image.height))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(image.width * scale))
-  canvas.height = Math.max(1, Math.round(image.height * scale))
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('无法分析这张图片')
-  context.drawImage(image.previewBitmap, 0, 0, canvas.width, canvas.height)
-  return landmarker.detect(canvas).faceLandmarks
+  const detected: NormalizedLandmark[][] = []
+  for (const personRegion of personRegions) {
+    const headFaces = await detectFacesInRegion(landmarker, image, expandPersonRegion(personRegion, true))
+    if (headFaces.length > 0) {
+      detected.push(...headFaces)
+    } else {
+      detected.push(...await detectFacesInRegion(landmarker, image, expandPersonRegion(personRegion, false)))
+    }
+    if (detected.length >= MAX_FACES) break
+  }
+  if (detected.length === 0) {
+    detected.push(...await detectFacesInRegion(landmarker, image, { x: 0, y: 0, width: 1, height: 1 }))
+  }
+  const faces = detected
     .map(compactFace)
     .filter((face): face is BeautyFaceGeometry => face !== null)
-    .slice(0, MAX_FACES)
+  const unique: BeautyFaceGeometry[] = []
+  for (const face of faces) {
+    const duplicate = unique.some((candidate) => (
+      Math.hypot(face.centerX - candidate.centerX, face.centerY - candidate.centerY)
+        < Math.min(face.width, candidate.width) * 0.3
+    ))
+    if (!duplicate) unique.push(face)
+    if (unique.length >= MAX_FACES) break
+  }
+  return unique
 }

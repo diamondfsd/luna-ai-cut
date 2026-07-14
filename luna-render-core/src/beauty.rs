@@ -4,13 +4,15 @@ use base64::Engine;
 
 use crate::{RenderBeautyFace, RenderBeautySettings};
 
-const LANDMARK_INDICES: [usize; 48] = [
+const LANDMARK_INDICES: [usize; 80] = [
     10, 152, 234, 454,
-    33, 160, 159, 158, 133, 153, 145, 144,
-    263, 387, 386, 385, 362, 380, 374, 373,
+    33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246,
+    263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466,
     1, 2, 98, 327,
-    61, 40, 37, 0, 267, 270, 291, 321, 314, 17, 84, 91,
-    78, 80, 82, 13, 312, 310, 308, 318, 317, 14, 87, 88,
+    61, 185, 40, 39, 37, 0, 267, 269, 270, 409,
+    291, 375, 321, 405, 314, 17, 84, 181, 91, 146,
+    78, 191, 80, 81, 82, 13, 312, 311, 310, 415,
+    308, 324, 318, 402, 317, 14, 87, 178, 88, 95,
 ];
 
 pub(crate) struct DecodedSkinMask {
@@ -48,8 +50,8 @@ pub(crate) fn pack_faces(faces: &[RenderBeautyFace]) -> [[f32; 4]; 48] {
     data
 }
 
-pub(crate) fn pack_landmarks(faces: &[RenderBeautyFace]) -> [[f32; 4]; 72] {
-    let mut packed = [[0.0_f32; 4]; 72];
+pub(crate) fn pack_landmarks(faces: &[RenderBeautyFace]) -> [[f32; 4]; 120] {
+    let mut packed = [[0.0_f32; 4]; 120];
     for (face_index, face) in faces.iter().take(3).enumerate() {
         let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&face.landmark_mesh) else { continue; };
         if bytes.len() < face.landmark_count as usize * 4 { continue; }
@@ -57,8 +59,8 @@ pub(crate) fn pack_landmarks(faces: &[RenderBeautyFace]) -> [[f32; 4]; 72] {
             if *source >= face.landmark_count as usize { continue; }
             let offset = source * 4;
             let scalar = slot * 2;
-            packed[face_index * 24 + scalar / 4][scalar % 4] = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]) as f32 / 65535.0;
-            packed[face_index * 24 + scalar / 4][scalar % 4 + 1] = u16::from_le_bytes([bytes[offset + 2], bytes[offset + 3]]) as f32 / 65535.0;
+            packed[face_index * 40 + scalar / 4][scalar % 4] = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]) as f32 / 65535.0;
+            packed[face_index * 40 + scalar / 4][scalar % 4 + 1] = u16::from_le_bytes([bytes[offset + 2], bytes[offset + 3]]) as f32 / 65535.0;
         }
     }
     packed

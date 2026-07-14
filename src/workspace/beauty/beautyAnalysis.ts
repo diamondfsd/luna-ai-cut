@@ -2,7 +2,7 @@ import type { BeautyFaceGeometry } from '../shared/editPipeline'
 import { detectBeautyFaces } from './faceLandmarker'
 import { detectBodySkinMask } from './skinSegmenter'
 
-export const BEAUTY_ANALYSIS_VERSION = 3
+export const BEAUTY_ANALYSIS_VERSION = 5
 
 export interface BeautyAnalysisResult {
   faces: BeautyFaceGeometry[]
@@ -13,10 +13,8 @@ export interface BeautyAnalysisResult {
 }
 
 export async function detectBeautyAnalysis(filePath: string): Promise<BeautyAnalysisResult> {
-  const [faces, skinMask] = await Promise.all([
-    detectBeautyFaces(filePath),
-    detectBodySkinMask(filePath),
-  ])
+  const skinMask = await detectBodySkinMask(filePath)
+  const faces = await detectBeautyFaces(filePath, skinMask.personRegions)
   return {
     faces,
     skinMask: skinMask.data,

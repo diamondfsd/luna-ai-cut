@@ -74,7 +74,7 @@ struct LayerParams {
     beauty_feature_params: array<vec4<f32>, 2>,
     beauty_makeup_colors: array<vec4<f32>, 2>,
     beauty_faces: array<vec4<f32>, 48>,
-    beauty_landmarks: array<vec4<f32>, 72>,
+    beauty_landmarks: array<vec4<f32>, 120>,
 }
 
 @group(0) @binding(0) var src_texture: texture_2d<f32>;
