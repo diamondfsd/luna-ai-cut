@@ -129,6 +129,7 @@ async function main() {
   const startTime = Date.now()
   let exportSuccess = true
   let exportError = null
+  let winGpuSuccess = false
 
   // 轮询进度
   const taskId = 'test-gpu-export'
@@ -202,6 +203,9 @@ async function main() {
     // 提取关键日志
     const gpuAdapter = lines.find(l => l.includes('GPU adapter:'))
     const winGpuStart = lines.filter(l => l.includes('[Export:WinGPU] start'))
+    const winGpuCapabilities = lines.filter(l => l.includes('[Export:WinGPU] capabilities'))
+    const winGpuDecoder = lines.filter(l => l.includes('[Export:WinGPU] decoder=media-foundation'))
+    const winGpuPipeline = lines.filter(l => l.includes('[Export:WinGPU] pipeline='))
     const winGpuCompleted = lines.filter(l => l.includes('[Export:WinGPU] completed'))
     const winGpuFallback = lines.filter(l => l.includes('[Export:WinGPU] unavailable'))
     const ffmpegFallback = lines.filter(l => l.includes('[Export:FFmpeg]'))
@@ -221,6 +225,29 @@ async function main() {
       console.log(`  Encoder detect: ${encoderDetect.map(l => l.split(']').slice(1).join(']').trim()).join('; ')}`)
     }
     console.log(`  WinGPU start: ${winGpuStart.length}`)
+    if (winGpuCapabilities.length) {
+      const capability = winGpuCapabilities[winGpuCapabilities.length - 1]
+      const d3d11on12 = capability.match(/d3d11on12=(true|false)/)?.[1] ?? '?'
+      const h264 = capability.match(/h264=(true|false)/)?.[1] ?? '?'
+      const hevc = capability.match(/hevc=(true|false)/)?.[1] ?? '?'
+      console.log(`  WinGPU capabilities: D3D11On12=${d3d11on12} H.264=${h264} HEVC=${hevc}`)
+    }
+    if (winGpuDecoder.length) {
+      const decoder = winGpuDecoder[winGpuDecoder.length - 1]
+      const output = decoder.match(/output=([^ ]+)/)?.[1] ?? '?'
+      const size = decoder.match(/size=([^ ]+)/)?.[1] ?? '?'
+      const sharing = decoder.match(/sharing=([^ ]+)/)?.[1] ?? '?'
+      console.log(`  WinGPU decoder: Media Foundation ${output} ${size} sharing=${sharing}`)
+    } else if (process.platform === 'win32' && winGpuStart.length) {
+      console.log('  WinGPU decoder: not reached (see fallback reason)')
+    }
+    if (winGpuPipeline.length) {
+      const pipeline = winGpuPipeline[winGpuPipeline.length - 1]
+      const stages = pipeline.match(/pipeline=([^ ]+)/)?.[1] ?? '?'
+      const sync = pipeline.match(/sync=([^ ]+)/)?.[1] ?? '?'
+      const readback = pipeline.match(/readback=([^ ]+)/)?.[1] ?? '?'
+      console.log(`  WinGPU pipeline: ${stages} sync=${sync} readback=${readback}`)
+    }
     console.log(`  WinGPU completed: ${winGpuCompleted.length}`)
     console.log(`  WinGPU fallback: ${winGpuFallback.length}`)
     if (winGpuFallback.length) {
@@ -228,6 +255,7 @@ async function main() {
       console.log(`  Fallback reason: ${reason}`)
     }
     console.log(`  FFmpeg fallback logs: ${ffmpegFallback.length}`)
+    winGpuSuccess = winGpuCompleted.length > 0 && winGpuFallback.length === 0 && ffmpegFallback.length === 0
     console.log(`  Audio mux logs: ${audioMux.length}`)
     if (audioMux.length) {
       audioMux.forEach(l => console.log(`    ${l.split('] ').slice(1).join('] ')}`))
@@ -236,11 +264,18 @@ async function main() {
 
   // ── 总结 ──
   console.log('\n══════════════════════════════════════════════')
-  if (exportSuccess && existsSync(outputPath)) {
-    console.log('  ✅ TEST PASSED — Export succeeded')
+  const outputExists = existsSync(outputPath)
+  const testPassed = exportSuccess && outputExists && (process.platform !== 'win32' || winGpuSuccess)
+  if (testPassed) {
+    console.log(process.platform === 'win32'
+      ? '  ✅ TEST PASSED — WinGPU export succeeded without FFmpeg fallback'
+      : '  ✅ TEST PASSED — Export succeeded')
   } else {
-    console.log('  ❌ TEST FAILED — Export failed or no output')
+    console.log(process.platform === 'win32' && exportSuccess && outputExists
+      ? '  ❌ TEST FAILED — Output exists, but WinGPU fell back to FFmpeg'
+      : '  ❌ TEST FAILED — Export failed or no output')
     if (exportError) console.log('  Error:', exportError)
+    process.exitCode = 1
   }
   console.log('══════════════════════════════════════════════')
 }
