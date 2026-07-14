@@ -218,6 +218,10 @@ function tcpCheck(params: {
   })
 }
 
+function skippedTcpCheck(host: string, port: number, reason: string): NetworkDiagnosticsResult['tcpChecks']['http80'] {
+  return { ok: false, skipped: true, reason, host, port, durationMs: 0 }
+}
+
 function getMacCommands(targetHost: string): DiagnosticCommand[] {
   return [
     {
@@ -261,12 +265,6 @@ function getMacCommands(targetHost: string): DiagnosticCommand[] {
       command: 'ping',
       args: ['-c', '3', '-W', '1000', targetHost],
       timeoutMs: 7000,
-    },
-    {
-      key: 'nc_http_80',
-      command: 'nc',
-      args: ['-vz', '-G', '3', targetHost, String(HTTP_PORT)],
-      timeoutMs: 6000,
     },
     {
       key: 'nc_control_6666',
@@ -392,23 +390,32 @@ export async function collectLunaNetworkDiagnostics(targetHost = CAMERA_HOST): P
   const commands = getCommandsByPlatform(targetHost)
   logMainDebug('[网络诊断] 收集诊断信息', { localCameraSubnetIp, resolvedLocalAddress, commandCount: commands.length })
 
-  const [commandResults, tcpHttp, tcpControl, defaultHttp, defaultControl] = await Promise.all([
+  const [commandResults, tcpControl, defaultControl] = await Promise.all([
     Promise.all(commands.map(runCommand)),
-    tcpCheck({
-      host: targetHost,
-      port: HTTP_PORT,
-      localAddress: localCameraSubnetIp ?? undefined,
-      timeoutMs: 3000,
-    }),
     tcpCheck({
       host: targetHost,
       port: CONTROL_PORT,
       localAddress: localCameraSubnetIp ?? undefined,
       timeoutMs: 3000,
     }),
-    tcpCheck({ host: targetHost, port: HTTP_PORT, timeoutMs: 3000 }),
     tcpCheck({ host: targetHost, port: CONTROL_PORT, timeoutMs: 3000 }),
   ])
+
+  const controlAvailable = tcpControl.ok || defaultControl.ok
+  const [tcpHttp, defaultHttp] = controlAvailable
+    ? await Promise.all([
+        tcpCheck({
+          host: targetHost,
+          port: HTTP_PORT,
+          localAddress: tcpControl.ok ? localCameraSubnetIp ?? undefined : undefined,
+          timeoutMs: 3000,
+        }),
+        tcpCheck({ host: targetHost, port: HTTP_PORT, timeoutMs: 3000 }),
+      ])
+    : [
+        skippedTcpCheck(targetHost, HTTP_PORT, '控制端口 6666 未建立，按设备启动顺序跳过 HTTP 检测'),
+        skippedTcpCheck(targetHost, HTTP_PORT, '控制端口 6666 未建立，按设备启动顺序跳过 HTTP 检测'),
+      ]
 
   return {
     timestamp: new Date().toISOString(),

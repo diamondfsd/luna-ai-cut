@@ -13,6 +13,8 @@ export interface NetworkDiagnosticCommandResult {
 
 export interface NetworkDiagnosticTcpCheck {
   ok: boolean
+  skipped?: boolean
+  reason?: string
   host: string
   port: number
   localAddress?: string
