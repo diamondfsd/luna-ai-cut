@@ -1588,44 +1588,25 @@ impl Compositor {
         &mut self,
         beauty: &crate::RenderBeautySettings,
     ) -> Result<Option<u64>, String> {
-        let Some(key) = beauty_mask_key(beauty) else { return Ok(None); };
+        let Some(key) = crate::beauty::mask_key(beauty) else { return Ok(None); };
         if self.beauty_mask_cache.contains_key(&key) {
             return Ok(Some(key));
         }
-        if beauty.skin_mask_width > 512 || beauty.skin_mask_height > 512 {
-            return Err("skin mask size exceeds 512x512".to_string());
-        }
-        let decoded = base64::engine::general_purpose::STANDARD
-            .decode(&beauty.skin_mask)
-            .map_err(|error| format!("decode skin mask failed: {error}"))?;
-        let expected = beauty.skin_mask_width as usize * beauty.skin_mask_height as usize;
-        if decoded.len() != expected {
-            return Err(format!("skin mask size mismatch: {} != {}", decoded.len(), expected));
-        }
-        let mut rgba = Vec::with_capacity(expected * 4);
-        for value in decoded {
-            rgba.extend_from_slice(&[value, value, value, 255]);
-        }
+        let Some(decoded) = crate::beauty::decode_skin_mask(beauty)? else { return Ok(None); };
         let texture = create_rgba_texture(
             &self.device,
             "beauty-skin-mask",
-            beauty.skin_mask_width,
-            beauty.skin_mask_height,
+            decoded.width,
+            decoded.height,
             wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             1,
             false,
         );
-        upload_rgba(
-            &self.queue,
-            &texture,
-            &rgba,
-            beauty.skin_mask_width,
-            beauty.skin_mask_height,
-        );
-        self.beauty_mask_cache.insert(key, TextureEntry {
+        upload_rgba(&self.queue, &texture, &decoded.rgba, decoded.width, decoded.height);
+        self.beauty_mask_cache.insert(decoded.key, TextureEntry {
             texture,
-            width: beauty.skin_mask_width,
-            height: beauty.skin_mask_height,
+            width: decoded.width,
+            height: decoded.height,
         });
         Ok(Some(key))
     }
@@ -1830,7 +1811,7 @@ impl Compositor {
                     ),
                     None => (&self.identity_lut, 0.0),
                 };
-                let mask_key = beauty_mask_key(&beauty);
+                let mask_key = crate::beauty::mask_key(&beauty);
                 let beauty_mask_texture = mask_key
                     .and_then(|key| self.beauty_mask_cache.get(&key).map(|entry| &entry.texture))
                     .unwrap_or(&self.identity_beauty_mask);
@@ -1983,8 +1964,8 @@ impl Compositor {
                         parse_hex_color(Some(&beauty.lipstick_color), [0.73, 0.29, 0.37, 1.0]),
                         parse_hex_color(Some(&beauty.blush_color), [0.85, 0.47, 0.49, 1.0]),
                     ],
-                    beauty_faces: pack_beauty_faces(&beauty.faces),
-                    beauty_landmarks: pack_beauty_landmarks(&beauty.faces),
+                    beauty_faces: crate::beauty::pack_faces(&beauty.faces),
+                    beauty_landmarks: crate::beauty::pack_landmarks(&beauty.faces),
                 };
 
                 let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {

@@ -1,7 +1,7 @@
 import { RotateCcw, ScanFace } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { Button, LoadingIndicator, PillTabs, Switch } from '../../ui'
+import { Button, ButtonGroup, LoadingIndicator, Switch } from '../../ui'
 import { isImagePath } from '../../lib/fileUtils'
 import type { BeautySettings } from '../shared/editPipeline'
 import { DEFAULT_BEAUTY_SETTINGS, isBeautyModified } from '../shared/beautySettings'
@@ -89,11 +89,11 @@ export function BeautyPanel({ value, filePath, onChange, debug, onDebugChange }:
         </div>
       )}
 
-      <PillTabs
+      <ButtonGroup
         value={tab}
-        onValueChange={setTab}
+        onChange={setTab}
         className="workspace-beauty-tabs"
-        items={[
+        options={[
           { value: 'skin', label: '肤质' }, { value: 'reshape', label: '脸型' },
           { value: 'eyes', label: '眼部' }, { value: 'nose', label: '鼻部' },
           { value: 'mouth', label: '嘴部' }, { value: 'makeup', label: '美妆' },

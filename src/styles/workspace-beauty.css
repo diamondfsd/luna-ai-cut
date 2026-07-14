@@ -47,8 +47,19 @@
 }
 
 .workspace-beauty-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
   width: 100%;
-  overflow-x: auto;
+}
+
+.workspace-beauty-tabs .ui-btn-group-btn {
+  width: 100%;
+  height: 26px;
+  min-width: 0;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
 }
 
 .workspace-beauty-swatches {
