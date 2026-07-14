@@ -39,6 +39,11 @@
       "to": "luna-render-core/luna-render-core.node"
     },
     {
+      "from": "luna-render-core/models",
+      "to": "luna-render-core/models",
+      "filter": ["**/*.onnx", "README.md"]
+    },
+    {
       "from": "public/luts",
       "to": "luts",
       "filter": ["**/*"]

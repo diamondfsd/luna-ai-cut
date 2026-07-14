@@ -148,6 +148,15 @@ fn apply_beauty_local_color(result_input: vec3<f32>, source: vec3<f32>, uv: vec2
         let right_eye = params.beauty_faces[base + 2u];
         let mouth = params.beauty_faces[base + 3u];
 
+        let jaw_strength = params.beauty_reshape_params.x / 100.0;
+        if (jaw_strength > 0.0) {
+            let chin = beauty_landmark(face_index, 1u);
+            let under_chin = chin + vec2<f32>(face.z * 0.06, face.w * 0.1);
+            let jaw_mask = beauty_ellipse_mask(uv, under_chin, face.zw * vec2<f32>(0.34, 0.16));
+            let jaw_smooth = beauty_bilateral(uv, 18.0, 2.2);
+            result = mix(result, jaw_smooth * 1.012, jaw_mask * jaw_strength * 0.78);
+        }
+
         let fold_strength = params.beauty_skin_params[1].x / 100.0;
         if (fold_strength > 0.0) {
             let folds = max(

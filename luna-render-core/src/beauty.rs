@@ -55,8 +55,9 @@ pub(crate) fn pack_landmarks(faces: &[RenderBeautyFace]) -> [[f32; 4]; 120] {
     for (face_index, face) in faces.iter().take(3).enumerate() {
         let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&face.landmark_mesh) else { continue; };
         if bytes.len() < face.landmark_count as usize * 4 { continue; }
-        for (slot, source) in LANDMARK_INDICES.iter().enumerate() {
-            if *source >= face.landmark_count as usize { continue; }
+        for slot in 0..80 {
+            let source = if face.landmark_count == 80 { slot } else { LANDMARK_INDICES[slot] };
+            if source >= face.landmark_count as usize { continue; }
             let offset = source * 4;
             let scalar = slot * 2;
             packed[face_index * 40 + scalar / 4][scalar % 4] = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]) as f32 / 65535.0;

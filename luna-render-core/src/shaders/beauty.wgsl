@@ -133,6 +133,13 @@ fn beauty_bilateral(uv: vec2<f32>, radius: f32, color_factor: f32) -> vec3<f32> 
     return sum / max(weight_sum, 0.0001);
 }
 
+fn beauty_even_tone(uv: vec2<f32>) -> vec3<f32> {
+    let medium = beauty_bilateral(uv, 9.0, 2.8);
+    let broad = beauty_bilateral(uv, 20.0, 1.9);
+    let wide = beauty_bilateral(uv, 34.0, 1.35);
+    return medium * 0.24 + broad * 0.48 + wide * 0.28;
+}
+
 fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
     let smoothing = clamp(params.beauty_strengths.x / 100.0, 0.0, 1.0);
     let whitening = clamp(params.beauty_strengths.y / 100.0, 0.0, 1.0);
@@ -147,7 +154,8 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
         + params.beauty_eye_params[1].x / 100.0
         + params.beauty_feature_params[1].x / 100.0
         + params.beauty_feature_params[1].y / 100.0
-        + params.beauty_feature_params[1].z / 100.0;
+        + params.beauty_feature_params[1].z / 100.0
+        + params.beauty_reshape_params.x / 100.0;
     if (color_activity <= 0.0) { return input; }
 
     var face_mask = 0.0;
@@ -190,9 +198,12 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
     }
     let complexion = params.beauty_skin_params[0].x / 100.0;
     if (complexion > 0.0) {
-        let even_tone = beauty_bilateral(uv, 10.0, 4.5);
-        let complexion_target = even_tone + (input - even_tone) * 0.24;
-        result = mix(result, complexion_target, whitening_mask * complexion * 0.56);
+        let even_tone = beauty_even_tone(uv);
+        let tone_difference = distance(input, even_tone);
+        let retained_detail = mix(0.08, 0.0, smoothstep(0.014, 0.09, tone_difference));
+        let complexion_target = even_tone + (input - even_tone) * retained_detail
+            + vec3<f32>(0.065, 0.047, 0.04) * face_mask;
+        result = mix(result, complexion_target, whitening_mask * complexion * 0.96);
     }
     let warmth = params.beauty_skin_params[0].y / 100.0;
     if (abs(warmth) > 0.0) {

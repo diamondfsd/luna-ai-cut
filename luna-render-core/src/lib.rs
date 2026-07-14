@@ -1,4 +1,5 @@
 mod beauty;
+mod beauty_analysis;
 mod composition;
 mod compositor;
 mod export;
@@ -9,7 +10,7 @@ mod media;
 use std::sync::{LazyLock, Mutex};
 
 use compositor::Compositor;
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{AsyncTask, Buffer};
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 
@@ -231,6 +232,21 @@ macro_rules! log {
     };
 }
 pub(crate) use log;
+
+#[napi]
+pub fn analyze_beauty_async(
+    ffmpeg_path: String,
+    ffprobe_path: String,
+    image_path: String,
+    model_dir: String,
+) -> AsyncTask<beauty_analysis::BeautyAnalysisTask> {
+    AsyncTask::new(beauty_analysis::BeautyAnalysisTask::new(
+        ffmpeg_path,
+        ffprobe_path,
+        image_path,
+        model_dir,
+    ))
+}
 
 /// 两套独立 compositor：预览和导出互不争锁
 static COMPOSITOR_PREVIEW: LazyLock<Mutex<Option<Compositor>>> = LazyLock::new(|| Mutex::new(None));

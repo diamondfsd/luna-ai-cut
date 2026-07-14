@@ -100,6 +100,18 @@ export const DEFAULT_BEAUTY_SETTINGS: BeautySettings = {
   analyzed: false,
 }
 
+export type BeautyParameterPreset = Pick<BeautySettings, 'skin' | 'reshape' | 'eyes' | 'nose' | 'mouth' | 'makeup'>
+
+/** 偏向自然人像精修：优先均匀肤色与淡化瑕疵，五官调整保持克制。 */
+export const NATURAL_BEAUTY_PRESET: BeautyParameterPreset = {
+  skin: { smoothing: 86, whitening: 18, complexion: 100, warmth: 2, rosy: 8, texture: 10, nasolabialFolds: 65 },
+  reshape: { slimFace: 45, faceShave: 58, faceNarrow: 32, chin: 12, forehead: 0 },
+  eyes: { bigEyes: 8, distance: 0, corner: 3, furrows: 0, bags: 72, bright: 18 },
+  nose: { thin: 12, alae: 6, length: 0 },
+  mouth: { size: 0, teeth: 18 },
+  makeup: { lipstick: 14, lipstickColor: '#b94b5f', blush: 10, blushColor: '#d8797d' },
+}
+
 type LegacyBeautySettings = Partial<BeautySettings> & {
   smoothing?: number
   whitening?: number

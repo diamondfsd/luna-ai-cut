@@ -1,8 +1,5 @@
 import type { BeautyFaceGeometry } from '../shared/editPipeline'
-import { detectBeautyFaces } from './faceLandmarker'
-import { detectBodySkinMask } from './skinSegmenter'
-
-export const BEAUTY_ANALYSIS_VERSION = 5
+export const BEAUTY_ANALYSIS_VERSION = 7
 
 export interface BeautyAnalysisResult {
   faces: BeautyFaceGeometry[]
@@ -13,13 +10,9 @@ export interface BeautyAnalysisResult {
 }
 
 export async function detectBeautyAnalysis(filePath: string): Promise<BeautyAnalysisResult> {
-  const skinMask = await detectBodySkinMask(filePath)
-  const faces = await detectBeautyFaces(filePath, skinMask.personRegions)
-  return {
-    faces,
-    skinMask: skinMask.data,
-    skinMaskWidth: skinMask.width,
-    skinMaskHeight: skinMask.height,
-    analysisVersion: BEAUTY_ANALYSIS_VERSION,
-  }
+  const api = (window as unknown as {
+    lunaRenderCore?: { analyzeBeauty?: (imagePath: string) => Promise<BeautyAnalysisResult> }
+  }).lunaRenderCore
+  if (!api?.analyzeBeauty) throw new Error('当前版本暂时无法分析这张图片')
+  return api.analyzeBeauty(filePath)
 }

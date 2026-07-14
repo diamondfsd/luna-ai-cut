@@ -1,10 +1,10 @@
-import { RotateCcw, ScanFace } from 'lucide-react'
+import { RotateCcw, ScanFace, Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button, ButtonGroup, LoadingIndicator, Switch } from '../../ui'
 import { isImagePath } from '../../lib/fileUtils'
 import type { BeautySettings } from '../shared/editPipeline'
-import { DEFAULT_BEAUTY_SETTINGS, isBeautyModified } from '../shared/beautySettings'
+import { DEFAULT_BEAUTY_SETTINGS, isBeautyModified, NATURAL_BEAUTY_PRESET } from '../shared/beautySettings'
 import { BEAUTY_ANALYSIS_VERSION, detectBeautyAnalysis } from './beautyAnalysis'
 import { BeautyEyeControls } from './BeautyEyeControls'
 import { BeautyMakeupControls } from './BeautyMakeupControls'
@@ -57,6 +57,8 @@ export function BeautyPanel({ value, filePath, onChange, debug, onDebugChange }:
   }
 
   const disabled = status !== 'ready'
+  const hasFaces = value.faces.length > 0
+  const hasSkin = Boolean(value.skinMask)
   const retry = () => {
     onChangeRef.current({ faces: [], skinMask: '', skinMaskWidth: 0, skinMaskHeight: 0, analysisVersion: 0, analyzed: false })
     setRetryKey((key) => key + 1)
@@ -66,13 +68,15 @@ export function BeautyPanel({ value, filePath, onChange, debug, onDebugChange }:
       <div className={`workspace-beauty-status ${status}`}>
         {status === 'analyzing' ? <LoadingIndicator /> : <ScanFace size={17} />}
         <span>
-          {status === 'analyzing' && '正在识别皮肤区域…'}
-          {status === 'ready' && '已识别皮肤区域'}
-          {status === 'empty' && '未识别到清晰皮肤区域'}
-          {status === 'error' && '皮肤区域识别没有完成'}
+          {status === 'analyzing' && '正在识别皮肤和面部…'}
+          {status === 'ready' && hasSkin && hasFaces && '已识别皮肤和面部'}
+          {status === 'ready' && hasSkin && !hasFaces && '已识别皮肤，未找到清晰面部'}
+          {status === 'ready' && !hasSkin && hasFaces && '已识别面部区域'}
+          {status === 'empty' && '未识别到清晰皮肤或面部'}
+          {status === 'error' && '皮肤和面部识别没有完成'}
         </span>
-        {(status === 'error' || status === 'empty') && (
-          <Button variant="secondary" size="mini" onClick={retry}>{status === 'empty' ? '重新识别' : '重试'}</Button>
+        {status !== 'analyzing' && status !== 'idle' && (
+          <Button variant="secondary" size="mini" onClick={retry}>{status === 'error' ? '重试' : '重新识别'}</Button>
         )}
       </div>
 
@@ -88,6 +92,17 @@ export function BeautyPanel({ value, filePath, onChange, debug, onDebugChange }:
           <span data-color="mouth">嘴部保护</span>
         </div>
       )}
+
+      <Button
+        className="workspace-beauty-preset"
+        variant="primary"
+        size="compact"
+        icon={<Sparkles size={14} />}
+        disabled={disabled}
+        onClick={() => onChange(NATURAL_BEAUTY_PRESET)}
+      >
+        自然全效
+      </Button>
 
       <ButtonGroup
         value={tab}

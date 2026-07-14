@@ -252,6 +252,7 @@ interface CompositionInput {
 
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
+  analyzeBeauty: (imagePath: string) => ipcRenderer.invoke('lrc:analyzeBeauty', imagePath),
   loadTexture: (data: Buffer, width: number, height: number) =>
     ipcRenderer.invoke('lrc:loadTexture', data, width, height),
   updateTexture: (textureId: number, data: Buffer) =>

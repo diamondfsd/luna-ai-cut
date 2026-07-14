@@ -15,6 +15,7 @@ import {
   exportCompositionImageAsync as lrcExportCompositionImageAsync,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
+  analyzeBeauty as lrcAnalyzeBeauty,
 } from './lunaRenderCore'
 
 // 导入纹理管理方法
@@ -73,6 +74,16 @@ export function register(ctx: RegisterContext): void {
   ipcMain.handle('lrc:init', safe('init', async (_event: IpcMainInvokeEvent, logPath?: string) => {
     ensureInit(logPath)
     rcLog('lrc:init OK')
+  }))
+
+  ipcMain.handle('lrc:analyzeBeauty', safe('analyzeBeauty', async (
+    _event: IpcMainInvokeEvent,
+    imagePath: string,
+  ) => {
+    const modelDir = app.isPackaged
+      ? join(process.resourcesPath, 'luna-render-core', 'models')
+      : join(process.env.APP_ROOT ?? join(import.meta.dirname, '..'), 'luna-render-core', 'models')
+    return lrcAnalyzeBeauty(getFfmpegPath(), getFfprobePath(), imagePath, modelDir)
   }))
 
   // 纹理管理方法

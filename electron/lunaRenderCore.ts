@@ -72,6 +72,14 @@ export interface RenderPreviewOutput {
   data: Buffer
 }
 
+export interface NativeBeautyAnalysis {
+  faces: unknown[]
+  skinMask: string
+  skinMaskWidth: number
+  skinMaskHeight: number
+  analysisVersion: number
+}
+
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
   loadTexture(data: Buffer, width: number, height: number): number
@@ -90,6 +98,12 @@ interface LunaRenderCoreNative {
   exportCompositionImageAsync(input: any): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
+  analyzeBeautyAsync(
+    ffmpegPath: string,
+    ffprobePath: string,
+    imagePath: string,
+    modelDir: string,
+  ): Promise<NativeBeautyAnalysis>
 }
 
 let native: LunaRenderCoreNative | null = null
@@ -211,4 +225,13 @@ export function getExportTaskProgress(taskId: string): [number, number] | null {
   const result = getNative().getExportTaskProgress(taskId)
   if (!result) return null
   return [result[0], result[1]]
+}
+
+export function analyzeBeauty(
+  ffmpegPath: string,
+  ffprobePath: string,
+  imagePath: string,
+  modelDir: string,
+): Promise<NativeBeautyAnalysis> {
+  return getNative().analyzeBeautyAsync(ffmpegPath, ffprobePath, imagePath, modelDir)
 }
