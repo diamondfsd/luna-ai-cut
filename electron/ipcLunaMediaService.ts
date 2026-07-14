@@ -24,7 +24,7 @@ import {
 } from './fileService'
 import type { IpcContext } from './ipcContext'
 import { listSampleFiles } from './localMedia'
-import { logMainDebug, logMainError, logMainInfo, logMainWarn } from './loggerService'
+import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
 
 function mediaKindForPath(filePath: string): LunaFile['kind'] {
@@ -85,7 +85,6 @@ export function register(ctx: IpcContext): void {
     const key = sourceUrl
     const existingTask = ctx.previewCacheTasks.get(key)
     if (existingTask) {
-      logMainDebug(`[缓存] 缓存任务已存在，复用`, { key })
       return existingTask
     }
 
@@ -100,8 +99,6 @@ export function register(ctx: IpcContext): void {
       file.previewUrl = previewUrl
     }
 
-    logMainInfo(`[缓存] 开始缓存文件`, { key, fileName: file.name, kind: file.kind })
-
     // 先用标记占位，防止并发调用重复检查
     const marker = Promise.resolve(true)
     ctx.previewCacheTasks.set(key, marker)
@@ -110,7 +107,6 @@ export function register(ctx: IpcContext): void {
       // 快速检查：已有缓存则直接返回，不进入下载队列
       const existingPath = await resolveExistingCache(file)
       if (existingPath) {
-        logMainInfo(`[缓存] 缓存已存在，跳过下载`, { key, existingPath })
         const cacheDir = await previewCacheDir()
         const thumbDir = thumbnailDir(cacheDir)
         const thumbnailKey = thumbnailKeyFor(file)
@@ -127,7 +123,6 @@ export function register(ctx: IpcContext): void {
       }
 
       // 无缓存，入队下载（受并发限制）
-      logMainInfo(`[缓存] 缓存不存在，入队下载`, { key })
       const task = ctx.enqueuePreviewTask(async () => {
         let cacheFilePath: string | null = null
         try {
@@ -243,7 +238,6 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('downloads:listFiles', async () => {
     const settings = await getSettings()
     const resolvedDir = getLocalResourcesDir(settings)
-    logMainInfo('[下载列表] 读取目录', { resolvedDir, localResourcesDir: settings.localResourcesDir, downloadDir: settings.downloadDir })
     const files = await listDownloadedFiles(resolvedDir)
     if (resolvedDir) {
       await resolveLocalThumbnails(files, resolvedDir)

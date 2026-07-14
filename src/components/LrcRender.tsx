@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type { CompositionInput, PreviewLayer } from '../shared/types'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
+import { logger } from '../lib/rendererLogger'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import './LrcRender.css'
@@ -140,6 +141,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const videoElementCalledRef = useRef(false)
   const renderingRef = useRef(false)
   const renderQueuedRef = useRef(false)
+  const firstRenderTraceRef = useRef(true)
   const lastVideoFrameAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
   const isSeekingRef = useRef(false) // 标记是否正在 seek
@@ -157,9 +159,11 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       return
     }
     destroyRef.current = false
+    logger.info('[预览诊断] 渲染引擎初始化开始')
     lrc.init()
       .then(() => {
         if (!destroyRef.current) {
+          logger.info('[预览诊断] 渲染引擎初始化完成')
           setReady(true)
           onReady?.()
         }
@@ -167,6 +171,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       .catch((error: Error) => {
         if (destroyRef.current) return
         const msg = `渲染引擎初始化失败: ${error.message}`
+        logger.error('[预览诊断] 渲染引擎初始化失败', { error: error.message })
         setFatalError(msg)
         onError?.(msg)
       })
@@ -201,12 +206,30 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
     renderingRef.current = true
     renderQueuedRef.current = false
+    const traceFirstRender = firstRenderTraceRef.current
+    firstRenderTraceRef.current = false
     try {
       const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
       const composition = buildCompositionFromPreviewLayers(renderLayers, canvasWidth, canvasHeight)
+      if (traceFirstRender) {
+        logger.info('[预览诊断] 首次画面渲染开始', {
+          layerCount: renderLayers.length,
+          videoLayerCount: renderLayers.filter((layer) => layer.isVideo).length,
+          canvasWidth,
+          canvasHeight,
+          maxSide: effectiveMaxSide,
+        })
+      }
       // 使用异步方法，避免阻塞主线程
       const result = await (lrc.renderCompositionFrameAsync ?? lrc.renderCompositionFrame)(composition, 0, effectiveMaxSide)
       if (destroyRef.current) return
+
+      if (traceFirstRender) {
+        logger.info('[预览诊断] 首次画面渲染完成', {
+          width: result.width,
+          height: result.height,
+        })
+      }
 
       if (result.width !== lastMediaSizeRef.current[0] || result.height !== lastMediaSizeRef.current[1]) {
         lastMediaSizeRef.current = [result.width, result.height]
@@ -231,6 +254,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       onRender?.()
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
+      if (traceFirstRender) logger.error('[预览诊断] 首次画面渲染失败', { error: msg })
       onError?.(msg)
     } finally {
       renderingRef.current = false

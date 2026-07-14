@@ -21,6 +21,7 @@ import {
 import { getNative, cleanNativeInput } from './lunaRenderCore'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import * as exportTaskService from './exportTaskService'
+import { logMainError, logMainInfo } from './loggerService'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
@@ -58,12 +59,19 @@ function rcLog(msg: string): void {
 
 /** 包装 handler：自动 catch 异常并记日志 */
 function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
+  let firstCall = true
   return (async (...args: any[]) => {
+    const traceThisCall = firstCall
+    firstCall = false
+    if (traceThisCall) logMainInfo('[LRC] 首次调用开始', { label })
     try {
-      return await fn(...args)
+      const result = await fn(...args)
+      if (traceThisCall) logMainInfo('[LRC] 首次调用完成', { label })
+      return result
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       rcLog(`ERROR in ${label}: ${msg}`)
+      logMainError('[LRC] 调用失败', { label, error: msg })
       throw err
     }
   }) as unknown as T

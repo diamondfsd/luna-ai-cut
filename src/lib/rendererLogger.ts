@@ -5,8 +5,11 @@
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
+import { serializeDiagnosticValue } from '../shared/crashDiagnosticUtils'
+
 /** 标记当前日志是否来自 logger 方法，避免 console 拦截重复发送 */
 let _fromLogger = false
+let _initialized = false
 
 function sendLog(level: LogLevel, message: string, meta?: unknown): void {
   try {
@@ -59,20 +62,15 @@ export const logger = {
 
 /**
  * 初始化渲染进程日志系统
- * - 替换 console.log/warn/error 方法，让所有 console 输出也通过 IPC 发送到主进程
- * - 这样可以捕获第三方库的 console 输出
+ * - 仅转存 console.warn/error，避免组件调试输出淹没诊断信息
+ * - 显式 logger 调用仍按调用方指定的级别落盘
  */
 export function initRendererLogger(): void {
-  const originalLog = console.log.bind(console)
+  if (_initialized) return
+  _initialized = true
+
   const originalWarn = console.warn.bind(console)
   const originalError = console.error.bind(console)
-  const originalInfo = console.info.bind(console)
-  const originalDebug = console.debug.bind(console)
-
-  console.log = (...args: unknown[]) => {
-    if (!_fromLogger) sendLog('info', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
-    originalLog(...args)
-  }
   console.warn = (...args: unknown[]) => {
     if (!_fromLogger) sendLog('warn', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
     originalWarn(...args)
@@ -81,14 +79,27 @@ export function initRendererLogger(): void {
     if (!_fromLogger) sendLog('error', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
     originalError(...args)
   }
-  console.info = (...args: unknown[]) => {
-    if (!_fromLogger) sendLog('info', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
-    originalInfo(...args)
+
+  window.addEventListener('error', (event) => {
+    sendLog('error', '[诊断] 渲染进程全局异常', {
+      message: event.message,
+      filename: event.filename,
+      line: event.lineno,
+      column: event.colno,
+      error: serializeDiagnosticValue(event.error),
+    })
+  }, true)
+  window.addEventListener('unhandledrejection', (event) => {
+    sendLog('error', '[诊断] 渲染进程未处理的异步异常', {
+      reason: serializeDiagnosticValue(event.reason),
+    })
+  })
+
+  const logRoute = () => {
+    sendLog('info', '[诊断] 当前页面', { route: window.location.hash || '#/library' })
   }
-  console.debug = (...args: unknown[]) => {
-    if (!_fromLogger) sendLog('debug', args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
-    originalDebug(...args)
-  }
+  window.addEventListener('hashchange', logRoute)
 
   logger.info('渲染进程日志系统初始化完成')
+  logRoute()
 }
