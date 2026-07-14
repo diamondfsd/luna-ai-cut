@@ -3,6 +3,57 @@ fn beauty_landmark(face_index: u32, slot: u32) -> vec2<f32> {
     return select(packed.xy, packed.zw, slot % 2u == 1u);
 }
 
+fn beauty_landmark_polygon_metrics(
+    uv: vec2<f32>, face_index: u32, start: u32, count: u32, feather: f32,
+) -> vec3<f32> {
+    var previous = beauty_landmark(face_index, start + count - 1u);
+    var inside = false;
+    var edge_distance = 1000.0;
+    for (var index = 0u; index < 12u; index += 1u) {
+        if (index >= count) { break; }
+        let current = beauty_landmark(face_index, start + index);
+        edge_distance = min(edge_distance, beauty_segment_distance(uv, previous, current));
+        if ((current.y > uv.y) != (previous.y > uv.y)) {
+            let crossing_x = (previous.x - current.x) * (uv.y - current.y)
+                / (previous.y - current.y) + current.x;
+            if (uv.x < crossing_x) { inside = !inside; }
+        }
+        previous = current;
+    }
+    let inner_fill = select(0.0, smoothstep(0.0, feather, edge_distance), inside);
+    let expanded_fill = select(1.0 - smoothstep(0.0, feather, edge_distance), 1.0, inside);
+    let outline = 1.0 - smoothstep(feather * 0.2, feather, edge_distance);
+    return vec3<f32>(inner_fill, expanded_fill, outline);
+}
+
+fn beauty_left_eye_mask(uv: vec2<f32>, face_index: u32, feather: f32) -> f32 {
+    return beauty_landmark_polygon_metrics(uv, face_index, 4u, 8u, feather).x;
+}
+
+fn beauty_right_eye_mask(uv: vec2<f32>, face_index: u32, feather: f32) -> f32 {
+    return beauty_landmark_polygon_metrics(uv, face_index, 12u, 8u, feather).x;
+}
+
+fn beauty_outer_mouth_mask(uv: vec2<f32>, face_index: u32, feather: f32) -> f32 {
+    return beauty_landmark_polygon_metrics(uv, face_index, 24u, 12u, feather).x;
+}
+
+fn beauty_inner_mouth_mask(uv: vec2<f32>, face_index: u32, feather: f32) -> f32 {
+    return beauty_landmark_polygon_metrics(uv, face_index, 36u, 12u, feather).x;
+}
+
+fn beauty_left_eye_protection(uv: vec2<f32>, face_index: u32, feather: f32) -> f32 {
+    return beauty_landmark_polygon_metrics(uv, face_index, 4u, 8u, feather).y;
+}
+
+fn beauty_right_eye_protection(uv: vec2<f32>, face_index: u32, feather: f32) -> f32 {
+    return beauty_landmark_polygon_metrics(uv, face_index, 12u, 8u, feather).y;
+}
+
+fn beauty_mouth_protection(uv: vec2<f32>, face_index: u32, feather: f32) -> f32 {
+    return beauty_landmark_polygon_metrics(uv, face_index, 24u, 12u, feather).y;
+}
+
 fn beauty_ellipse_mask(uv: vec2<f32>, center: vec2<f32>, radius: vec2<f32>) -> f32 {
     let p = (uv - center) / max(radius, vec2<f32>(0.0001));
     return 1.0 - smoothstep(0.55, 1.0, dot(p, p));
@@ -99,16 +150,16 @@ fn apply_beauty_local_color(result_input: vec3<f32>, source: vec3<f32>, uv: vec2
 
         let fold_strength = params.beauty_skin_params[1].x / 100.0;
         let folds = max(
-            beauty_segment_mask(uv, beauty_landmark(face_index, 22u), beauty_landmark(face_index, 25u), face.z * 0.026),
-            beauty_segment_mask(uv, beauty_landmark(face_index, 23u), beauty_landmark(face_index, 26u), face.z * 0.026),
+            beauty_segment_mask(uv, beauty_landmark(face_index, 22u), beauty_landmark(face_index, 24u), face.z * 0.026),
+            beauty_segment_mask(uv, beauty_landmark(face_index, 23u), beauty_landmark(face_index, 30u), face.z * 0.026),
         );
         let local_smooth = beauty_bilateral(uv, 7.0, 5.0);
         result = mix(result, local_smooth * 1.025, folds * fold_strength * 0.46);
 
         let eye_bright = params.beauty_eye_params[1].x / 100.0;
         let eye_mask = max(
-            beauty_ellipse_mask(uv, left_eye.xy, left_eye.zw * vec2<f32>(1.05, 1.18)),
-            beauty_ellipse_mask(uv, right_eye.xy, right_eye.zw * vec2<f32>(1.05, 1.18)),
+            beauty_left_eye_mask(uv, face_index, face.z * 0.006),
+            beauty_right_eye_mask(uv, face_index, face.z * 0.006),
         );
         let screened = 1.0 - (1.0 - result) * (1.0 - result);
         result = mix(result, screened, eye_mask * eye_bright * 0.22);
@@ -124,14 +175,14 @@ fn apply_beauty_local_color(result_input: vec3<f32>, source: vec3<f32>, uv: vec2
         let furrows = params.beauty_eye_params[0].z / 100.0;
         result = mix(result, result + vec3<f32>(0.035, 0.025, 0.018), under_mask * furrows * 0.38);
 
-        let inner_mouth = beauty_ellipse_mask(uv, mouth.xy, mouth.zw * vec2<f32>(0.62, 0.58));
+        let inner_mouth = beauty_inner_mouth_mask(uv, face_index, face.z * 0.005);
         let luminance = dot(source, vec3<f32>(0.299, 0.587, 0.114));
         let chroma = max(source.r, max(source.g, source.b)) - min(source.r, min(source.g, source.b));
         let teeth_confidence = smoothstep(0.28, 0.62, luminance) * (1.0 - smoothstep(0.1, 0.32, chroma));
         let teeth = params.beauty_feature_params[1].x / 100.0;
         result = mix(result, 1.0 - (1.0 - result) * 0.72, inner_mouth * teeth_confidence * teeth * 0.72);
 
-        let outer_lip = beauty_ellipse_mask(uv, mouth.xy, mouth.zw * vec2<f32>(1.08, 1.22));
+        let outer_lip = beauty_outer_mouth_mask(uv, face_index, face.z * 0.007);
         let lip_mask = outer_lip * (1.0 - inner_mouth) * smoothstep(0.05, 0.25, chroma + source.r - source.g);
         let lipstick = params.beauty_feature_params[1].y / 100.0;
         let lip_color = params.beauty_makeup_colors[0].rgb;

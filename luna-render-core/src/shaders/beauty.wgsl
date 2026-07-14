@@ -160,12 +160,13 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
         let right_eye = params.beauty_faces[base + 2u];
         let mouth = params.beauty_faces[base + 3u];
         let contour_mask = beauty_contour_metrics(uv, face, base).x;
+        let feature_feather = face.z * 0.02;
         let features = max(
             max(
-                beauty_feature_mask(uv, left_eye, vec2<f32>(1.18, 1.35)),
-                beauty_feature_mask(uv, right_eye, vec2<f32>(1.18, 1.35)),
+                beauty_left_eye_protection(uv, face_index, feature_feather),
+                beauty_right_eye_protection(uv, face_index, feature_feather),
             ),
-            beauty_feature_mask(uv, mouth, vec2<f32>(1.08, 1.3)),
+            beauty_mouth_protection(uv, face_index, feature_feather * 0.85),
         );
         protected_features = max(protected_features, features);
         face_mask = max(face_mask, contour_mask * (1.0 - features));
@@ -248,9 +249,10 @@ fn apply_beauty_debug(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
         let contour = beauty_contour_metrics(uv, face, base);
         let face_fill = contour.x * 0.13;
         let face_line = contour.y;
-        let left_line = beauty_outline(uv, vec4<f32>(left_eye.xy, left_eye.zw * vec2<f32>(2.36, 2.7)), 0.035);
-        let right_line = beauty_outline(uv, vec4<f32>(right_eye.xy, right_eye.zw * vec2<f32>(2.36, 2.7)), 0.035);
-        let mouth_line = beauty_outline(uv, vec4<f32>(mouth.xy, mouth.zw * vec2<f32>(2.16, 2.6)), 0.035);
+        let debug_feather = face.z * 0.004;
+        let left_line = beauty_landmark_polygon_metrics(uv, face_index, 4u, 8u, debug_feather).z;
+        let right_line = beauty_landmark_polygon_metrics(uv, face_index, 12u, 8u, debug_feather).z;
+        let mouth_line = beauty_landmark_polygon_metrics(uv, face_index, 24u, 12u, debug_feather).z;
         let center = beauty_center_mark(uv, face.xy, face);
         result = mix(result, vec3<f32>(0.0, 0.72, 1.0), face_fill);
         result = mix(result, vec3<f32>(0.0, 0.82, 1.0), max(face_line, center) * 0.95);
