@@ -944,7 +944,16 @@ impl Compositor {
         let path = log_path.unwrap_or("luna-rc.log");
         log_init(path);
         log!("Creating wgpu instance...");
+        // Windows 默认枚举 Vulkan 和 D3D12。部分旧版 Intel Vulkan 驱动会在
+        // 枚举阶段直接访问冲突，进程无法捕获，因此 Windows 只启用 D3D12。
+        let backends = if cfg!(target_os = "windows") {
+            wgpu::Backends::DX12
+        } else {
+            wgpu::Backends::default()
+        };
+        log!("Enabled wgpu backends: {:?}", backends);
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
