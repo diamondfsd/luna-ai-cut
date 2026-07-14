@@ -4,6 +4,7 @@
   "appId": "com.diamondfsd.lunaaicut",
   "asar": true,
   "asarUnpack": [],
+  "afterPack": "scripts/after-pack-adhoc.mjs",
   "productName": "Luna AI Cut",
   "directories": {
     "output": "release/${version}",
@@ -70,6 +71,7 @@
   ],
   "mac": {
     "icon": "build/icon.icns",
+    "identity": "-",
     "target": [
       {
         "target": "dmg",
