@@ -59,8 +59,8 @@ function bounds(points: NormalizedLandmark[], indices: number[]): { centerX: num
   return {
     centerX: (minX + maxX) / 2,
     centerY: (minY + maxY) / 2,
-    radiusX: Math.max(0.006, (maxX - minX) * 0.62),
-    radiusY: Math.max(0.004, (maxY - minY) * 1.05),
+    radiusX: Math.max(0.004, (maxX - minX) * 0.5),
+    radiusY: Math.max(0.003, (maxY - minY) * 0.5),
   }
 }
 
