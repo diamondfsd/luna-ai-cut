@@ -160,8 +160,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         params.src_y + source_local.y * params.src_h,
     );
 
-    var color = sample_media_texture(tex_coord);
-    color = vec4<f32>(apply_color(color.rgb, tex_coord), color.a);
+    let beauty_coord = apply_beauty_warp(tex_coord);
+    var color = sample_media_texture(beauty_coord);
+    color = vec4<f32>(apply_beauty_color(color.rgb, beauty_coord), color.a);
+    color = vec4<f32>(apply_color(color.rgb, beauty_coord), color.a);
     color.a = color.a * params.opacity;
     if (params.sampling_quality > 0.5) {
         color = vec4<f32>(color.rgb * color.a, color.a);

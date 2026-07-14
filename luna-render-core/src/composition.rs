@@ -13,7 +13,7 @@ use crate::compositor::log_write;
 use crate::compositor::{Compositor, PreviewLayerInput};
 use crate::export::{cleanup_task, register_task, QualityPreset};
 use crate::media::probe_video_info;
-use crate::{LayerPositioning, RenderColorAdjustments, RenderLayerTransform, RenderPreviewOutput};
+use crate::{LayerPositioning, RenderBeautySettings, RenderColorAdjustments, RenderLayerTransform, RenderPreviewOutput};
 
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
@@ -62,6 +62,7 @@ pub struct CompositionLayer {
     pub z_index: Option<i32>,
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
+    pub beauty: Option<RenderBeautySettings>,
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
@@ -314,6 +315,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
             z_index: layer.z_index.unwrap_or(0),
             color: layer.color.clone().unwrap_or_default(),
             transform: layer.transform.clone().unwrap_or_default(),
+            beauty: layer.beauty.clone().unwrap_or_default(),
             positioning: layer.positioning.clone(),
             lut_id: layer.lut_id.clone(),
             lut_intensity: layer.lut_intensity,

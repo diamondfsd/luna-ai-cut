@@ -174,6 +174,25 @@ impl Default for RenderLayerTransform {
     }
 }
 
+#[napi(object)]
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct RenderBeautyFace {
+    pub center_x: f64, pub center_y: f64, pub width: f64, pub height: f64,
+    pub left_eye_x: f64, pub left_eye_y: f64, pub left_eye_radius_x: f64, pub left_eye_radius_y: f64,
+    pub right_eye_x: f64, pub right_eye_y: f64, pub right_eye_radius_x: f64, pub right_eye_radius_y: f64,
+    pub mouth_x: f64, pub mouth_y: f64, pub mouth_radius_x: f64, pub mouth_radius_y: f64,
+}
+
+#[napi(object)]
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct RenderBeautySettings {
+    pub smoothing: f64,
+    pub whitening: f64,
+    pub slim_face: f64,
+    pub big_eyes: f64,
+    pub faces: Vec<RenderBeautyFace>,
+}
+
 // ── 跨模块日志宏 ──
 macro_rules! log {
     ($($arg:tt)*) => {
@@ -240,6 +259,7 @@ pub struct RenderLayer {
     pub z_index: i32,
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
+    pub beauty: Option<RenderBeautySettings>,
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
@@ -265,6 +285,7 @@ pub struct PreviewLayer {
     pub z_index: i32,
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
+    pub beauty: Option<RenderBeautySettings>,
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
@@ -429,6 +450,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             z_index: l.z_index,
             color: l.color.clone().unwrap_or_default(),
             transform: l.transform.clone().unwrap_or_default(),
+            beauty: l.beauty.clone().unwrap_or_default(),
             positioning: l.positioning.clone(),
             lut_id: l.lut_id.clone(),
             lut_intensity: l.lut_intensity,
@@ -485,6 +507,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     z_index: item.layer.z_index,
                     color: item.layer.color.clone().unwrap_or_default(),
                     transform: item.layer.transform.clone().unwrap_or_default(),
+                    beauty: item.layer.beauty.clone().unwrap_or_default(),
                     positioning: item.layer.positioning.clone(),
                     lut_id: item.layer.lut_id.clone(),
                     lut_intensity: item.layer.lut_intensity,

@@ -1,4 +1,4 @@
-import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
+import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
@@ -14,8 +14,9 @@ import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/ty
 import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel } from '../trim/TrimPanel'
+import { BeautyPanel } from '../beauty/BeautyPanel'
 
-export type WorkspaceTool = 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter'
+export type WorkspaceTool = 'beauty' | 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -73,9 +74,14 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
   return trim !== null
 }
 
+function isBeautyModified(beauty: typeof DEFAULT_PIPELINE.beauty): boolean {
+  return beauty.smoothing > 0 || beauty.whitening > 0 || beauty.slimFace > 0 || beauty.bigEyes > 0
+}
+
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
   { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
+  { value: 'beauty', label: '美颜', icon: <Sparkles size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
@@ -85,6 +91,7 @@ const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element
 function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'crop') return '裁剪工具'
   if (tool === 'trim') return '截取'
+  if (tool === 'beauty') return '美颜'
   if (tool === 'watermark') return '水印'
   if (tool === 'border') return '边框'
   if (tool === 'filter') return '滤镜'
@@ -114,6 +121,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
     color: isColorModified(edit.pipeline.color),
     crop: isCropModified(edit.pipeline.transform),
     trim: isTrimModified(edit.pipeline.trim),
+    beauty: isBeautyModified(edit.pipeline.beauty),
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
   }), [edit.pipeline])
@@ -205,6 +213,12 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
               value={edit.pipeline.color}
               onChange={(color) => edit.updateWorkspacePanel({ color })}
               onActivatePipette={() => edit.setPipetteActive(true)}
+            />
+          ) : edit.activeTool === 'beauty' ? (
+            <BeautyPanel
+              value={edit.pipeline.beauty}
+              filePath={mediaCtx.activeMedia?.path}
+              onChange={(beauty) => edit.updateWorkspacePanel({ beauty })}
             />
           ) : edit.activeTool === 'crop' ? (
             <>

@@ -1,5 +1,8 @@
 import type { WatermarkSettings } from '../../shared/types'
 import { EDIT_PARAMETER_RANGES, clampNumber } from './editParameterRanges'
+import { DEFAULT_BEAUTY_SETTINGS, normalizeBeautySettings, type BeautySettings } from './beautySettings'
+
+export type { BeautyFaceGeometry, BeautySettings } from './beautySettings'
 
 export interface CropRect {
   x: number
@@ -118,6 +121,7 @@ export interface EditPipeline {
     sharpen: number
     denoise: number
   }
+  beauty: BeautySettings
   lutFilter: {
     activeId: string | null
     /** 滤镜强度 1-100，默认 100 */
@@ -132,6 +136,7 @@ export type PipelinePatch = {
   transform?: Partial<EditPipeline['transform']>
   color?: Partial<EditPipeline['color']>
   effects?: Partial<EditPipeline['effects']>
+  beauty?: Partial<EditPipeline['beauty']>
   lutFilter?: Partial<EditPipeline['lutFilter']>
   watermark?: Partial<EditPipeline['watermark']>
   border?: Partial<EditPipeline['border']>
@@ -213,6 +218,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     sharpen: 0,
     denoise: 0,
   },
+  beauty: DEFAULT_BEAUTY_SETTINGS,
   lutFilter: {
     activeId: null,
     intensity: 30,
@@ -399,6 +405,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
       sharpen: clampNumber(pipeline.effects.sharpen, effects.sharpen),
       denoise: clampNumber(pipeline.effects.denoise, effects.denoise),
     },
+    beauty: normalizeBeautySettings(pipeline.beauty),
   }
 }
 
@@ -429,6 +436,7 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
       curve: mergeCurve(pipeline.color.curve, patch.color?.curve),
     },
     effects: { ...pipeline.effects, ...patch.effects },
+    beauty: { ...pipeline.beauty, ...patch.beauty },
     lutFilter: { ...pipeline.lutFilter, ...patch.lutFilter },
     watermark: { ...pipeline.watermark, ...patch.watermark },
     border: { ...pipeline.border, ...patch.border },

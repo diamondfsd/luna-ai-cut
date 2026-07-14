@@ -6,7 +6,7 @@ import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls } from '../ui'
 import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
-import { applyBorderMediaLayout, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyBorderMediaLayout, outputSizeForTransform, pipelineBeautyToRenderBeauty, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import './PreviewStage.css'
 
 export interface PreviewStageHandle {
@@ -305,7 +305,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     [isDisplayVideo, pipeline, resolution],
   )
 
-  // ── LUT 滤镜：直接传文件路径给 Rust ──
   const lutFilePath = pipeline?.lutFilter?.activeId ?? undefined
 
   const buildAdjustedLayers = useCallback((sourceUrl: string | null): PreviewLayer[] => {
@@ -317,6 +316,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         ...canvasFrame,
         color: pipelineColorToRenderColor(pipeline.color),
         transform: pipelineTransformToRenderTransform(pipeline.transform),
+        beauty: pipelineBeautyToRenderBeauty(pipeline.beauty),
         lutId: lutFilePath,
         lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
       }

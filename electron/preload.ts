@@ -245,6 +245,7 @@ interface CompositionInput {
     zIndex?: number
     color?: unknown
     transform?: unknown
+    beauty?: unknown
     positioning?: unknown
   }>
 }

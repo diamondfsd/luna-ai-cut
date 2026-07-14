@@ -14,6 +14,7 @@ const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
 export interface WorkspacePipelineClipboardData {
   color: EditPipeline['color']
   effects: EditPipeline['effects']
+  beauty: EditPipeline['beauty']
   lutFilter: EditPipeline['lutFilter']
   watermark: EditPipeline['watermark']
   border: EditPipeline['border']
@@ -127,6 +128,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     () => mergePipeline(previewPipeline, {
       color: DEFAULT_PIPELINE.color,
       effects: DEFAULT_PIPELINE.effects,
+      beauty: DEFAULT_PIPELINE.beauty,
       lutFilter: DEFAULT_PIPELINE.lutFilter,
       border: { ...DEFAULT_PIPELINE.border, enabled: previewPipeline.border.enabled },
     }),
@@ -140,6 +142,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     pipelineClipboardRef.current = {
       color: structuredClone(pipeline.color),
       effects: structuredClone(pipeline.effects),
+      beauty: { ...structuredClone(pipeline.beauty), faces: [], analyzed: false },
       lutFilter: structuredClone(pipeline.lutFilter),
       watermark: structuredClone(pipeline.watermark),
       border: structuredClone(pipeline.border),
@@ -155,8 +158,15 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       return stored
     })()
     if (!data) return
-    commitPatch({ color: data.color, effects: data.effects, lutFilter: data.lutFilter, watermark: data.watermark, border: data.border })
-    toast.success('已粘贴调色、滤镜、水印和边框设置')
+    commitPatch({
+      color: data.color,
+      effects: data.effects,
+      beauty: data.beauty ? { ...data.beauty, faces: [], analyzed: false } : DEFAULT_PIPELINE.beauty,
+      lutFilter: data.lutFilter,
+      watermark: data.watermark,
+      border: data.border,
+    })
+    toast.success('已粘贴编辑设置')
   }, [commitPatch])
 
   // Crop-aware pipeline update: draft in crop mode, commit otherwise

@@ -27,16 +27,22 @@ import { TrimStrip } from '../workspace/trim/TrimStrip'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
-import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { outputSizeForTransform, pipelineBeautyToRenderBeauty, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
+import { detectBeautyFaces } from '../workspace/beauty/faceLandmarker'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
 function normalizePipeline(value: unknown): EditPipeline {
   if (!value || typeof value !== 'object') return createDefaultPipeline()
   return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
+}
+
+function isBeautyModified(pipeline: EditPipeline): boolean {
+  const beauty = pipeline.beauty
+  return beauty.smoothing > 0 || beauty.whitening > 0 || beauty.slimFace > 0 || beauty.bigEyes > 0
 }
 
 /** 从 MediaMetadata 中按 key 提取第一个匹配的 EXIF 值 */
@@ -240,6 +246,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       mediaLayerStyle: {
         color: pipelineColorToRenderColor(stagePipeline.color),
         transform: pipelineTransformToRenderTransform(stagePipeline.transform),
+        beauty: pipelineBeautyToRenderBeauty(stagePipeline.beauty),
         lutId: stagePipeline.lutFilter.activeId ?? undefined,
         lutIntensity: stagePipeline.lutFilter.intensity,
         isVideo: media.activeMedia?.path ? isVideoPath(media.activeMedia.path) : false,
@@ -358,6 +365,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
     const patch: PipelinePatch = {
       color: data.color,
       effects: data.effects,
+      beauty: data.beauty ? { ...data.beauty, faces: [], analyzed: false } : DEFAULT_PIPELINE.beauty,
       lutFilter: data.lutFilter,
       watermark: data.watermark,
       border: data.border,
@@ -396,6 +404,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         writeWorkspacePipelineClipboard({
           color: structuredClone(pipe.color),
           effects: structuredClone(pipe.effects),
+          beauty: { ...structuredClone(pipe.beauty), faces: [], analyzed: false },
           lutFilter: structuredClone(pipe.lutFilter),
           watermark: structuredClone(pipe.watermark),
           border: structuredClone(pipe.border),
@@ -429,9 +438,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
         : edit.pipeline
       const sources: BatchExportSource[] = await Promise.all(exportIndices.map(async (index) => {
         const asset = media.media[index]
-        const pipeline = index === media.activeIndex
+        let pipeline = index === media.activeIndex
           ? activePipeline
           : normalizePipeline((asset as { pipeline?: unknown }).pipeline)
+        if (!isVideoPath(asset.path) && isBeautyModified(pipeline) && !pipeline.beauty.analyzed) {
+          const faces = await detectBeautyFaces(asset.path)
+          pipeline = mergePipeline(pipeline, { beauty: { faces, analyzed: true } })
+        }
         const resolution = await window.luna.workspace.getMediaResolution(asset.path)
         const sourceDuration = isVideoPath(asset.path)
           ? await window.luna.workspace.getVideoDuration(asset.path).catch(() => 0)

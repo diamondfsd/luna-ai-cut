@@ -1,0 +1,53 @@
+.workspace-beauty-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.workspace-beauty-status {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--panel, #fff);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace-beauty-status.ready {
+  border-color: color-mix(in srgb, var(--blue) 24%, var(--hairline));
+  color: var(--blue);
+}
+
+.workspace-beauty-status > span {
+  flex: 1;
+}
+
+.workspace-beauty-controls {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.workspace-beauty-controls:disabled {
+  opacity: 0.48;
+  pointer-events: none;
+}
+
+.workspace-beauty-reset {
+  justify-self: end;
+}
+
+.workspace-beauty-message {
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}

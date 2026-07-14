@@ -86,6 +86,21 @@ export interface RenderLayerTransform {
   translateY?: number
 }
 
+export interface RenderBeautyFace {
+  centerX: number; centerY: number; width: number; height: number
+  leftEyeX: number; leftEyeY: number; leftEyeRadiusX: number; leftEyeRadiusY: number
+  rightEyeX: number; rightEyeY: number; rightEyeRadiusX: number; rightEyeRadiusY: number
+  mouthX: number; mouthY: number; mouthRadiusX: number; mouthRadiusY: number
+}
+
+export interface RenderBeautySettings {
+  smoothing: number
+  whitening: number
+  slimFace: number
+  bigEyes: number
+  faces: RenderBeautyFace[]
+}
+
 export interface PreviewLayer {
   layerType?: 'media' | 'shape' | 'text' | 'logo' | 'decoration'
   filePath: string
@@ -101,6 +116,7 @@ export interface PreviewLayer {
   zIndex: number
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
+  beauty?: RenderBeautySettings
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   /** 3D LUT 文件路径（传给 Rust 自行加载解析） */
@@ -152,6 +168,7 @@ export interface CompositionLayer {
   zIndex?: number
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
+  beauty?: RenderBeautySettings
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   /** 3D LUT 文件路径 */
   lutId?: string
@@ -180,6 +197,7 @@ export interface RenderLayer {
   opacity?: number; zIndex?: number
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
+  beauty?: RenderBeautySettings
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   /** 3D LUT 文件路径 */
   lutId?: string

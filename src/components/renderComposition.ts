@@ -66,6 +66,7 @@ export function buildCompositionFromPreviewLayers(
       zIndex: layer.zIndex ?? index,
       color: layer.color,
       transform: layer.transform,
+      beauty: layer.beauty,
       positioning: layer.positioning,
       lutId: layer.lutId,
       lutIntensity: layer.lutIntensity,

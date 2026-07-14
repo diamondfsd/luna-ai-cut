@@ -78,6 +78,7 @@ const SHADER: &str = concat!(
     include_str!("shaders/params.wgsl"),
     include_str!("shaders/common.wgsl"),
     include_str!("shaders/detail.wgsl"),
+    include_str!("shaders/beauty.wgsl"),
     include_str!("shaders/curve.wgsl"),
     include_str!("shaders/color.wgsl"),
     include_str!("shaders/fragment.wgsl"),
@@ -155,6 +156,8 @@ struct GpuLayerParams {
     text_data: [[f32; 4]; 32],
     curve_data: [[f32; 4]; 30],
     hsl_data: [[f32; 4]; 8],
+    beauty_strengths: [f32; 4],
+    beauty_faces: [[f32; 4]; 12],
 }
 
 fn parse_hex_color(value: Option<&str>, fallback: [f32; 4]) -> [f32; 4] {
@@ -220,6 +223,18 @@ fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 8
     data
 }
 
+fn pack_beauty_faces(faces: &[crate::RenderBeautyFace]) -> [[f32; 4]; 12] {
+    let mut data = [[0.0; 4]; 12];
+    for (index, face) in faces.iter().take(3).enumerate() {
+        let base = index * 4;
+        data[base] = [face.center_x as f32, face.center_y as f32, face.width as f32, face.height as f32];
+        data[base + 1] = [face.left_eye_x as f32, face.left_eye_y as f32, face.left_eye_radius_x as f32, face.left_eye_radius_y as f32];
+        data[base + 2] = [face.right_eye_x as f32, face.right_eye_y as f32, face.right_eye_radius_x as f32, face.right_eye_radius_y as f32];
+        data[base + 3] = [face.mouth_x as f32, face.mouth_y as f32, face.mouth_radius_x as f32, face.mouth_radius_y as f32];
+    }
+    data
+}
+
 // ── render_preview 层输入 ──
 
 /// 单个渲染层描述（静态图或视频帧）
@@ -242,6 +257,7 @@ pub struct PreviewLayerInput {
     pub z_index: i32,
     pub color: crate::RenderColorAdjustments,
     pub transform: crate::RenderLayerTransform,
+    pub beauty: crate::RenderBeautySettings,
     pub positioning: Option<crate::LayerPositioning>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
@@ -1697,6 +1713,7 @@ impl Compositor {
                     (source_aspect, 1.0)
                 };
                 let color = layer.color.clone().unwrap_or_default();
+                let beauty = layer.beauty.clone().unwrap_or_default();
                 let mut curve_data = [[0.0; 4]; 30];
                 let curve_rgb_count = pack_curve_points(&mut curve_data, 0, &color.curve.rgb);
                 let curve_luminance_count =
@@ -1859,6 +1876,13 @@ impl Compositor {
                     text_data,
                     curve_data,
                     hsl_data,
+                    beauty_strengths: [
+                        beauty.smoothing.clamp(0.0, 100.0) as f32,
+                        beauty.whitening.clamp(0.0, 100.0) as f32,
+                        beauty.slim_face.clamp(0.0, 100.0) as f32,
+                        beauty.big_eyes.clamp(0.0, 100.0) as f32,
+                    ],
+                    beauty_faces: pack_beauty_faces(&beauty.faces),
                 };
 
                 let params_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -2613,6 +2637,7 @@ impl Compositor {
                     z_index: layer.z_index,
                     color: Some(layer.color.clone()),
                     transform: Some(transform),
+                    beauty: Some(layer.beauty.clone()),
                     positioning: layer.positioning.clone(),
                     lut_id: layer.lut_id.clone(),
                     lut_intensity: layer.lut_intensity,

@@ -43,6 +43,7 @@ export interface CompositionInput {
     zIndex?: number
     color?: Partial<RenderColorAdjustments>
     transform?: Partial<RenderLayerTransform>
+    beauty?: unknown
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
   }>
 }
@@ -211,4 +212,3 @@ export function getExportTaskProgress(taskId: string): [number, number] | null {
   if (!result) return null
   return [result[0], result[1]]
 }
-

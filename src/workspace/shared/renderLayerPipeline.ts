@@ -1,4 +1,4 @@
-import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform } from '../../shared/types'
+import type { PreviewLayer, RenderBeautySettings, RenderColorAdjustments, RenderLayerTransform } from '../../shared/types'
 import type { BorderSettings } from './editPipeline'
 import { HSL_CHANNELS, type EditPipeline } from './editPipeline'
 import { shouldSwapOrientation } from '../transform/cropGeometry'
@@ -51,6 +51,16 @@ export function pipelineTransformToRenderTransform(transform: EditPipeline['tran
     flipH: transform.flipH,
     flipV: transform.flipV,
     scale: transform.scale,
+  }
+}
+
+export function pipelineBeautyToRenderBeauty(beauty: EditPipeline['beauty']): RenderBeautySettings {
+  return {
+    smoothing: beauty.smoothing,
+    whitening: beauty.whitening,
+    slimFace: beauty.slimFace,
+    bigEyes: beauty.bigEyes,
+    faces: beauty.faces,
   }
 }
 
