@@ -37,9 +37,20 @@ jobs:
 
       - name: Build macOS DMG
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
         run: pnpm run pack:mac:arm64
+
+      - name: Verify macOS Ad Hoc signature
+        shell: bash
+        run: |
+          app_path="$(find release -type d -name '*.app' -print -quit)"
+          test -n "$app_path" || { echo "未找到 macOS App"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          codesign --display --verbose=4 "$app_path" 2>&1 | grep -q 'Signature=adhoc' || {
+            echo "macOS App 不是 Ad Hoc 签名: $app_path"
+            exit 1
+          }
+          echo "Ad Hoc 签名校验通过: $app_path"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -81,9 +92,20 @@ jobs:
 
       - name: Build macOS x64 DMG
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
         run: pnpm run pack:mac:x64
+
+      - name: Verify macOS x64 Ad Hoc signature
+        shell: bash
+        run: |
+          app_path="$(find release -type d -name '*.app' -print -quit)"
+          test -n "$app_path" || { echo "未找到 macOS App"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          codesign --display --verbose=4 "$app_path" 2>&1 | grep -q 'Signature=adhoc' || {
+            echo "macOS x64 App 不是 Ad Hoc 签名: $app_path"
+            exit 1
+          }
+          echo "Ad Hoc 签名校验通过: $app_path"
 
       - name: Upload macOS x64 artifact
         uses: actions/upload-artifact@v4

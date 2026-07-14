@@ -136,7 +136,12 @@ if [ "$UPLOAD_ONLY" = false ]; then
   const AdmZip = require('adm-zip');
   const zip = new AdmZip();
   zip.addLocalFolder('dist-electron', 'dist-electron', (f) => f !== 'dist-electron/main.js');
-  zip.addLocalFolder('dist', 'dist');
+  // 字体和内置 LUT 由正式安装包的 Resources 目录提供，主进程不会从热更新
+  // 目录读取它们。排除这两类静态资源，避免每次热更新重复上传约 110 MB。
+  zip.addLocalFolder('dist', 'dist', (f) => {
+    const normalized = f.replaceAll('\\\\', '/');
+    return !normalized.startsWith('dist/fonts/') && !normalized.startsWith('dist/luts/');
+  });
   if (require('fs').existsSync('electron')) {
     const swiftFiles = require('fs').readdirSync('electron').filter(f => f.endsWith('.swift'));
     for (const f of swiftFiles) {
@@ -179,7 +184,12 @@ EOF
     console.error('缺少文件:', missing.join(', '));
     process.exit(1);
   }
-  console.log('  ✓ 文件结构正确 (' + entries.length + ' 个文件)');
+  const duplicatedResources = entries.filter(e => e.entryName.startsWith('dist/fonts/') || e.entryName.startsWith('dist/luts/'));
+  if (duplicatedResources.length > 0) {
+    console.error('热更新包不应包含安装包资源:', duplicatedResources.slice(0, 5).map(e => e.entryName).join(', '));
+    process.exit(1);
+  }
+  console.log('  ✓ 文件结构正确，已排除 fonts/luts (' + entries.length + ' 个文件)');
   "
   echo ""
   ok "热更新包构建完成: ${FULL_VERSION}"
