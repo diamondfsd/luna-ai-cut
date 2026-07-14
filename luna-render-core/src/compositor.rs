@@ -176,6 +176,8 @@ struct TextureEntry {
     texture: wgpu::Texture,
     width: u32,
     height: u32,
+    #[cfg(target_os = "windows")]
+    external: bool,
 }
 
 fn pack_curve_points(
@@ -466,8 +468,8 @@ pub struct Compositor {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
-    /// BGRA sRGB 格式渲染管线（macOS Metal External）
-    #[cfg(target_os = "macos")]
+    /// BGRA sRGB 格式渲染管线（macOS Metal / Windows Direct3D 外部纹理）
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pipeline_bgra: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
@@ -879,6 +881,73 @@ impl Compositor {
         Ok(Retained::as_ptr(hal_device.raw_device()) as *mut std::ffi::c_void)
     }
 
+    /// 取得 wgpu 正在使用的 D3D12 设备和队列。返回的 COM 引用与
+    /// compositor 共用同一个 adapter，供 D3D11On12 / Media Foundation 使用。
+    #[cfg(target_os = "windows")]
+    pub(crate) fn dx12_device_and_queue(
+        &self,
+    ) -> Result<(
+        windows::Win32::Graphics::Direct3D12::ID3D12Device,
+        windows::Win32::Graphics::Direct3D12::ID3D12CommandQueue,
+    ), String> {
+        let hal_device = unsafe { self.device.as_hal::<wgpu::hal::api::Dx12>() }
+            .ok_or_else(|| "当前图形设备未使用 Direct3D 12".to_string())?;
+        Ok((
+            hal_device.raw_device().clone(),
+            hal_device.raw_queue().clone(),
+        ))
+    }
+
+    /// 将同一 D3D12 设备创建的 BGRA 视频表面包装成 wgpu 纹理。
+    /// 调用方必须保证外部资源在 wgpu 工作完成前保持有效，并负责跨 API 同步。
+    #[cfg(target_os = "windows")]
+    #[allow(dead_code)]
+    pub(crate) unsafe fn wrap_external_dx12_texture(
+        &self,
+        resource: windows::Win32::Graphics::Direct3D12::ID3D12Resource,
+        width: u32,
+        height: u32,
+        usage: wgpu::TextureUsages,
+        initialized: bool,
+    ) -> Result<wgpu::Texture, String> {
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let hal_texture = unsafe {
+            wgpu::hal::dx12::Device::texture_from_raw(
+                resource,
+                wgpu::TextureFormat::Bgra8UnormSrgb,
+                wgpu::TextureDimension::D2,
+                size,
+                1,
+                1,
+            )
+        };
+        let descriptor = wgpu::TextureDescriptor {
+            label: Some("Media Foundation Direct3D texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            usage,
+            view_formats: &[],
+        };
+        Ok(unsafe {
+            self.device.create_texture_from_hal::<wgpu::hal::api::Dx12>(
+                hal_texture,
+                &descriptor,
+                if initialized {
+                    wgpu::wgt::TextureUses::RESOURCE
+                } else {
+                    wgpu::wgt::TextureUses::UNINITIALIZED
+                },
+            )
+        })
+    }
+
     /// 将 CoreVideo 创建的 MTLTexture 包装成同一 Device 下的 wgpu Texture。
     /// 调用方必须确保关联的 CVPixelBuffer 在返回纹理使用结束前保持存活。
     #[cfg(target_os = "macos")]
@@ -1011,7 +1080,7 @@ impl Compositor {
             wgpu::TextureFormat::Rgba8UnormSrgb,
             "compositor pipeline",
         );
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let pipeline_bgra = create_compositor_pipeline(
             &device,
             &pipeline_layout,
@@ -1034,13 +1103,19 @@ impl Compositor {
             wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
         );
         let mut initial_textures = HashMap::new();
-        initial_textures.insert(0, TextureEntry { texture: procedural_texture, width: 1, height: 1 });
+        initial_textures.insert(0, TextureEntry {
+            texture: procedural_texture,
+            width: 1,
+            height: 1,
+            #[cfg(target_os = "windows")]
+            external: false,
+        });
 
         Ok(Self {
             device,
             queue,
             pipeline,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             pipeline_bgra,
             sampler,
             bind_group_layout: bgl,
@@ -1179,6 +1254,8 @@ impl Compositor {
                 texture,
                 width,
                 height,
+                #[cfg(target_os = "windows")]
+                external: false,
             },
         );
         Ok(id)
@@ -1638,13 +1715,13 @@ impl Compositor {
                 multiview_mask: None,
             });
 
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             let render_pipeline = if output_tex.format() == wgpu::TextureFormat::Bgra8UnormSrgb {
                 &self.pipeline_bgra
             } else {
                 &self.pipeline
             };
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             let render_pipeline = &self.pipeline;
             rpass.set_pipeline(render_pipeline);
 
@@ -1911,7 +1988,34 @@ impl Compositor {
         }
 
         if !readback {
+            // D3D11On12 requires every unwrapped resource to be back in COMMON
+            // before its return fence is signalled. On D3D12, PRESENT aliases
+            // COMMON, so record the native interop barriers in the same command
+            // buffer as the composition work.
+            #[cfg(target_os = "windows")]
+            {
+                let mut seen = std::collections::HashSet::new();
+                let mut transitions = sorted
+                    .iter()
+                    .filter(|layer| seen.insert(layer.texture_id))
+                    .filter_map(|layer| self.textures.get(&layer.texture_id))
+                    .filter(|entry| entry.external)
+                    .map(|entry| wgpu::wgt::TextureTransition {
+                        texture: &entry.texture,
+                        selector: None,
+                        state: wgpu::wgt::TextureUses::PRESENT,
+                    })
+                    .collect::<Vec<_>>();
+                transitions.push(wgpu::wgt::TextureTransition {
+                    texture: output_tex,
+                    selector: None,
+                    state: wgpu::wgt::TextureUses::PRESENT,
+                });
+                encoder.transition_resources(std::iter::empty(), transitions.into_iter());
+            }
+
             self.queue.submit(Some(encoder.finish()));
+            #[cfg(target_os = "macos")]
             self.device
                 .poll(wgpu::PollType::Wait {
                     submission_index: None,
@@ -2016,7 +2120,8 @@ impl Compositor {
     /// 直接提交给 VideoToolbox 编码。
     /// 渲染到外部 wgpu 纹理（macOS Metal / Windows D3D12 共享纹理），
     /// 不经过 staging buffer，也不回读 CPU。
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[allow(dead_code)]
     pub(crate) fn render_into_external_texture(
         &mut self,
         target: wgpu::Texture,
@@ -2036,7 +2141,8 @@ impl Compositor {
     }
 
     /// 注册一个外部输入纹理（macOS Metal / Windows D3D12）。
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[allow(dead_code)]
     pub(crate) fn register_external_texture(
         &mut self,
         texture: wgpu::Texture,
@@ -2051,18 +2157,21 @@ impl Compositor {
                 texture,
                 width,
                 height,
+                #[cfg(target_os = "windows")]
+                external: true,
             },
         );
         texture_id
     }
 
     /// 移除逐帧外部纹理。
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[allow(dead_code)]
     pub(crate) fn unregister_external_texture(&mut self, texture_id: u32) {
         self.textures.remove(&texture_id);
     }
 
-    /// 等待 GPU 完成所有已提交的工作（用于跨 API 同步）。
+    /// 等待 Metal 完成所有已提交的工作（用于 macOS 跨 API 同步）。
     #[cfg(target_os = "macos")]
     #[allow(dead_code)]
     pub(crate) fn wait_for_gpu(&self) -> Result<(), String> {
