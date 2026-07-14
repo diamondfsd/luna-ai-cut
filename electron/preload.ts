@@ -251,6 +251,7 @@ interface CompositionInput {
 
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
+  resetCompatibilityBlock: () => ipcRenderer.invoke('lrc:resetCompatibilityBlock'),
   loadTexture: (data: Buffer, width: number, height: number) =>
     ipcRenderer.invoke('lrc:loadTexture', data, width, height),
   updateTexture: (textureId: number, data: Buffer) =>
