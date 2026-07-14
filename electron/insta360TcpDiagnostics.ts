@@ -1,4 +1,5 @@
 import * as net from 'node:net'
+import { directHttpFetch } from './directHttp'
 
 const UCD2_MAGIC = Buffer.from('UCD2')
 const UCD2_FILE = 0x04
@@ -555,7 +556,7 @@ async function probeHttpFiles(host: string, files: Insta360DiagnosticFile[], log
   const results: Insta360HttpProbeResult[] = []
   for (const file of targets) {
     try {
-      const response = await fetch(file.url, { method: 'HEAD', signal: AbortSignal.timeout(2500) })
+      const response = await directHttpFetch(file.url, { method: 'HEAD', signal: AbortSignal.timeout(2500), timeoutMs: 2500 })
       const result = {
         path: file.path,
         ok: response.ok,
@@ -573,7 +574,7 @@ async function probeHttpFiles(host: string, files: Insta360DiagnosticFile[], log
   }
   if (results.length === 0) {
     try {
-      const response = await fetch(`http://${host}/`, { signal: AbortSignal.timeout(2000) })
+      const response = await directHttpFetch(`http://${host}/`, { signal: AbortSignal.timeout(2000), timeoutMs: 2000 })
       results.push({
         path: '/',
         ok: response.ok,

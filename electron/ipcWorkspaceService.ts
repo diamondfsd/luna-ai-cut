@@ -10,7 +10,7 @@ import probe from 'probe-image-size'
 import { getSettings } from './fileService'
 import { safeName } from './filePathUtils'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
-import { logMainInfo } from './loggerService'
+import { logMainError } from './loggerService'
 import { combineLivePhoto, isGoogleMotionPhoto } from './livePhotoService'
 import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
 import {
@@ -136,17 +136,13 @@ export function register(): void {
   })
 
   ipcMain.handle('workspace:getMediaResolution', async (_event, filePath: string) => {
-    logMainInfo(`[workspace:getMediaResolution] REQUEST filePath=${filePath}`)
     // 统一使用 ffprobe（非阻塞，只读文件头），避免同步解码大图阻塞主进程。
     // 同时读取 stream 与首帧，按 Rust 渲染层同样的规则处理视频 display matrix 和图片 Orientation。
     try {
       const resolution = await probeDisplayResolution(filePath)
-      logMainInfo(
-        `[workspace:getMediaResolution] encoded=${resolution.encodedWidth}x${resolution.encodedHeight} rotation=${resolution.rotation} display=${resolution.width}x${resolution.height} filePath=${filePath}`,
-      )
       return { width: resolution.width, height: resolution.height }
     } catch (error) {
-      logMainInfo(`[workspace:getMediaResolution] FAILED filePath=${filePath} error=${error instanceof Error ? error.message : String(error)}`)
+      logMainError(`[workspace:getMediaResolution] FAILED filePath=${filePath} error=${error instanceof Error ? error.message : String(error)}`)
       throw error instanceof Error ? error : new Error(`无法获取文件分辨率: ${filePath}`)
     }
   })
