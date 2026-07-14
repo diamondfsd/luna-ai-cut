@@ -5,10 +5,14 @@ import type { BeautyFaceGeometry } from '../shared/editPipeline'
 
 const MAX_DETECTION_SIDE = 1280
 const MAX_FACES = 3
-const FACE_CONTOUR_INDICES = [
-  10, 297, 284, 389, 454, 361, 397, 379,
-  152, 176, 150, 172, 132, 234, 162, 54,
+const FACE_CONTOUR_POINT_COUNT = 24
+const FACE_OVAL_INDICES = [
+  10, 338, 297, 332, 284, 251, 389, 356, 454,
+  323, 361, 288, 397, 365, 379, 378, 400, 377,
+  152, 148, 176, 149, 150, 136, 172, 58, 132,
+  93, 234, 127, 162, 21, 54, 103, 67, 109,
 ] as const
+const PROFILE_SUPPORT_INDICES = [1, 2, 98, 327] as const
 
 let landmarkerPromise: Promise<FaceLandmarker> | null = null
 
@@ -64,6 +68,50 @@ function bounds(points: NormalizedLandmark[], indices: number[]): { centerX: num
   }
 }
 
+function convexHull(points: NormalizedLandmark[]): NormalizedLandmark[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y)
+  if (sorted.length <= 2) return sorted
+  const cross = (origin: NormalizedLandmark, a: NormalizedLandmark, b: NormalizedLandmark) => (
+    (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x)
+  )
+  const lower: NormalizedLandmark[] = []
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) lower.pop()
+    lower.push(point)
+  }
+  const upper: NormalizedLandmark[] = []
+  for (const point of [...sorted].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) upper.pop()
+    upper.push(point)
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1))
+}
+
+function resampleClosedContour(points: NormalizedLandmark[], count: number): number[] {
+  if (points.length < 3) return []
+  const lengths = points.map((point, index) => {
+    const next = points[(index + 1) % points.length]
+    return Math.hypot(next.x - point.x, next.y - point.y)
+  })
+  const perimeter = lengths.reduce((sum, length) => sum + length, 0)
+  if (perimeter <= 0) return []
+  const contour: number[] = []
+  let edgeIndex = 0
+  let edgeStartDistance = 0
+  for (let index = 0; index < count; index += 1) {
+    const targetDistance = perimeter * index / count
+    while (edgeIndex < lengths.length - 1 && edgeStartDistance + lengths[edgeIndex] < targetDistance) {
+      edgeStartDistance += lengths[edgeIndex]
+      edgeIndex += 1
+    }
+    const start = points[edgeIndex]
+    const end = points[(edgeIndex + 1) % points.length]
+    const ratio = lengths[edgeIndex] > 0 ? (targetDistance - edgeStartDistance) / lengths[edgeIndex] : 0
+    contour.push(start.x + (end.x - start.x) * ratio, start.y + (end.y - start.y) * ratio)
+  }
+  return contour
+}
+
 function compactFace(points: NormalizedLandmark[]): BeautyFaceGeometry | null {
   const top = points[10]
   const bottom = points[152]
@@ -75,11 +123,11 @@ function compactFace(points: NormalizedLandmark[]): BeautyFaceGeometry | null {
   const leftEye = bounds(points, [33, 133, 160, 159, 158, 144, 145, 153])
   const rightEye = bounds(points, [263, 362, 387, 386, 385, 373, 374, 380])
   const mouth = bounds(points, [61, 291, 13, 14, 78, 308])
-  const contour = FACE_CONTOUR_INDICES.flatMap((index) => {
-    const point = points[index]
-    return point ? [point.x, point.y] : []
-  })
-  if (contour.length !== FACE_CONTOUR_INDICES.length * 2) return null
+  const outlinePoints = [...FACE_OVAL_INDICES, ...PROFILE_SUPPORT_INDICES]
+    .map((index) => points[index])
+    .filter((point): point is NormalizedLandmark => Boolean(point))
+  const contour = resampleClosedContour(convexHull(outlinePoints), FACE_CONTOUR_POINT_COUNT)
+  if (contour.length !== FACE_CONTOUR_POINT_COUNT * 2) return null
   return {
     centerX: center.x,
     centerY: center.y,

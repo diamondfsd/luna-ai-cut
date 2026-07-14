@@ -158,7 +158,7 @@ struct GpuLayerParams {
     hsl_data: [[f32; 4]; 8],
     beauty_strengths: [f32; 4],
     beauty_debug: [f32; 4],
-    beauty_faces: [[f32; 4]; 36],
+    beauty_faces: [[f32; 4]; 48],
 }
 
 fn parse_hex_color(value: Option<&str>, fallback: [f32; 4]) -> [f32; 4] {
@@ -224,24 +224,33 @@ fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 8
     data
 }
 
-fn pack_beauty_faces(faces: &[crate::RenderBeautyFace]) -> [[f32; 4]; 36] {
-    let mut data = [[0.0; 4]; 36];
+fn pack_beauty_faces(faces: &[crate::RenderBeautyFace]) -> [[f32; 4]; 48] {
+    let mut data = [[0.0; 4]; 48];
     for (index, face) in faces.iter().take(3).enumerate() {
-        let base = index * 12;
+        let contour_point_count = face.contour.len() / 2;
+        if contour_point_count < 3 {
+            continue;
+        }
+        let base = index * 16;
         data[base] = [face.center_x as f32, face.center_y as f32, face.width as f32, face.height as f32];
         data[base + 1] = [face.left_eye_x as f32, face.left_eye_y as f32, face.left_eye_radius_x as f32, face.left_eye_radius_y as f32];
         data[base + 2] = [face.right_eye_x as f32, face.right_eye_y as f32, face.right_eye_radius_x as f32, face.right_eye_radius_y as f32];
         data[base + 3] = [face.mouth_x as f32, face.mouth_y as f32, face.mouth_radius_x as f32, face.mouth_radius_y as f32];
-        for point_pair in 0..8 {
-            let offset = point_pair * 4;
-            if face.contour.len() >= offset + 4 {
-                data[base + 4 + point_pair] = [
-                    face.contour[offset] as f32,
-                    face.contour[offset + 1] as f32,
-                    face.contour[offset + 2] as f32,
-                    face.contour[offset + 3] as f32,
-                ];
+        let mut contour = [0.0_f32; 48];
+        for target_index in 0..24 {
+            let source_position = target_index as f64 * contour_point_count as f64 / 24.0;
+            let source_index = source_position.floor() as usize % contour_point_count;
+            let next_index = (source_index + 1) % contour_point_count;
+            let ratio = source_position.fract();
+            for axis in 0..2 {
+                let start = face.contour[source_index * 2 + axis];
+                let end = face.contour[next_index * 2 + axis];
+                contour[target_index * 2 + axis] = (start + (end - start) * ratio) as f32;
             }
+        }
+        for point_pair in 0..12 {
+            let offset = point_pair * 4;
+            data[base + 4 + point_pair].copy_from_slice(&contour[offset..offset + 4]);
         }
     }
     data

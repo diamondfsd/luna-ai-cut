@@ -12,11 +12,11 @@ fn beauty_segment_distance(point: vec2<f32>, start: vec2<f32>, end: vec2<f32>) -
 fn beauty_contour_metrics(uv: vec2<f32>, face: vec4<f32>, base: u32) -> vec2<f32> {
     let face_size = max(face.zw, vec2<f32>(0.0001));
     let point = (uv - face.xy) / face_size;
-    var previous = (beauty_contour_point(base, 15u) - face.xy) / face_size;
+    var previous = (beauty_contour_point(base, 23u) - face.xy) / face_size;
     var inside = false;
     var edge_distance = 1000.0;
 
-    for (var index = 0u; index < 16u; index = index + 1u) {
+    for (var index = 0u; index < 24u; index = index + 1u) {
         let current = (beauty_contour_point(base, index) - face.xy) / face_size;
         edge_distance = min(edge_distance, beauty_segment_distance(point, previous, current));
         if ((current.y > point.y) != (previous.y > point.y)) {
@@ -27,7 +27,7 @@ fn beauty_contour_metrics(uv: vec2<f32>, face: vec4<f32>, base: u32) -> vec2<f32
         previous = current;
     }
 
-    let fill = select(0.0, smoothstep(0.0, 0.12, edge_distance), inside);
+    let fill = select(0.0, smoothstep(0.0, 0.055, edge_distance), inside);
     let outline = 1.0 - smoothstep(0.008, 0.018, edge_distance);
     return vec2<f32>(fill, outline);
 }
@@ -53,7 +53,7 @@ fn apply_beauty_warp(input_uv: vec2<f32>) -> vec2<f32> {
     let slim = clamp(params.beauty_strengths.z / 100.0, 0.0, 1.0);
     let eyes = clamp(params.beauty_strengths.w / 100.0, 0.0, 1.0);
     for (var face_index = 0u; face_index < 3u; face_index = face_index + 1u) {
-        let base = face_index * 12u;
+        let base = face_index * 16u;
         let face = params.beauty_faces[base];
         if (face.z <= 0.0001 || face.w <= 0.0001) { continue; }
         let left_eye = params.beauty_faces[base + 1u];
@@ -79,48 +79,54 @@ fn apply_beauty_warp(input_uv: vec2<f32>) -> vec2<f32> {
     return clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0));
 }
 
-fn beauty_bilateral_weight(center: vec3<f32>, sample: vec3<f32>, spatial_weight: f32) -> f32 {
-    let color_distance = min(distance(center, sample) * 8.0, 1.0);
-    return spatial_weight * (1.0 - color_distance);
+fn beauty_bilateral_weight(
+    center: vec3<f32>,
+    sample: vec3<f32>,
+    spatial_weight: f32,
+    color_factor: f32,
+) -> f32 {
+    let color_distance = min(distance(center, sample) * color_factor, 1.0);
+    let range_weight = 1.0 - color_distance;
+    return spatial_weight * range_weight * range_weight;
 }
 
-fn beauty_bilateral(uv: vec2<f32>, radius: f32) -> vec3<f32> {
+fn beauty_bilateral(uv: vec2<f32>, radius: f32, color_factor: f32) -> vec3<f32> {
     let texel = vec2<f32>(params.texel_x, params.texel_y) * radius;
     let center = sample_image(uv);
     var sum = center * 0.2;
     var weight_sum = 0.2;
 
     let right = sample_image(uv + vec2<f32>(texel.x, 0.0));
-    let right_weight = beauty_bilateral_weight(center, right, 0.14);
+    let right_weight = beauty_bilateral_weight(center, right, 0.14, color_factor);
     sum = sum + right * right_weight;
     weight_sum = weight_sum + right_weight;
     let left = sample_image(uv - vec2<f32>(texel.x, 0.0));
-    let left_weight = beauty_bilateral_weight(center, left, 0.14);
+    let left_weight = beauty_bilateral_weight(center, left, 0.14, color_factor);
     sum = sum + left * left_weight;
     weight_sum = weight_sum + left_weight;
     let bottom = sample_image(uv + vec2<f32>(0.0, texel.y));
-    let bottom_weight = beauty_bilateral_weight(center, bottom, 0.14);
+    let bottom_weight = beauty_bilateral_weight(center, bottom, 0.14, color_factor);
     sum = sum + bottom * bottom_weight;
     weight_sum = weight_sum + bottom_weight;
     let top = sample_image(uv - vec2<f32>(0.0, texel.y));
-    let top_weight = beauty_bilateral_weight(center, top, 0.14);
+    let top_weight = beauty_bilateral_weight(center, top, 0.14, color_factor);
     sum = sum + top * top_weight;
     weight_sum = weight_sum + top_weight;
 
     let bottom_right = sample_image(uv + texel);
-    let bottom_right_weight = beauty_bilateral_weight(center, bottom_right, 0.06);
+    let bottom_right_weight = beauty_bilateral_weight(center, bottom_right, 0.06, color_factor);
     sum = sum + bottom_right * bottom_right_weight;
     weight_sum = weight_sum + bottom_right_weight;
     let top_left = sample_image(uv - texel);
-    let top_left_weight = beauty_bilateral_weight(center, top_left, 0.06);
+    let top_left_weight = beauty_bilateral_weight(center, top_left, 0.06, color_factor);
     sum = sum + top_left * top_left_weight;
     weight_sum = weight_sum + top_left_weight;
     let top_right = sample_image(uv + vec2<f32>(texel.x, -texel.y));
-    let top_right_weight = beauty_bilateral_weight(center, top_right, 0.06);
+    let top_right_weight = beauty_bilateral_weight(center, top_right, 0.06, color_factor);
     sum = sum + top_right * top_right_weight;
     weight_sum = weight_sum + top_right_weight;
     let bottom_left = sample_image(uv + vec2<f32>(-texel.x, texel.y));
-    let bottom_left_weight = beauty_bilateral_weight(center, bottom_left, 0.06);
+    let bottom_left_weight = beauty_bilateral_weight(center, bottom_left, 0.06, color_factor);
     sum = sum + bottom_left * bottom_left_weight;
     weight_sum = weight_sum + bottom_left_weight;
     return sum / max(weight_sum, 0.0001);
@@ -133,7 +139,7 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
 
     var skin_mask = 0.0;
     for (var face_index = 0u; face_index < 3u; face_index = face_index + 1u) {
-        let base = face_index * 12u;
+        let base = face_index * 16u;
         let face = params.beauty_faces[base];
         if (face.z <= 0.0001 || face.w <= 0.0001) { continue; }
         let left_eye = params.beauty_faces[base + 1u];
@@ -149,9 +155,12 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
 
     var result = input;
     if (smoothing > 0.0) {
-        let mean_color = beauty_bilateral(uv, 2.0 + smoothing * 4.0);
-        let detail_preserved = mean_color + (input - mean_color) * (0.38 - smoothing * 0.12);
-        result = mix(result, detail_preserved, skin_mask * smoothing * 0.82);
+        let fine = beauty_bilateral(uv, 2.5 + smoothing * 3.5, 8.0);
+        let coarse = beauty_bilateral(uv, 6.0 + smoothing * 8.0, 5.0);
+        let smoothed_base = mix(fine, coarse, smoothing * 0.76);
+        let fine_detail = input - fine;
+        let detail_preserved = smoothed_base + fine_detail * (0.34 - smoothing * 0.14);
+        result = mix(result, detail_preserved, skin_mask * smoothing * 0.92);
     }
     if (whitening > 0.0) {
         let luminance = dot(result, vec3<f32>(0.299, 0.587, 0.114));
@@ -181,7 +190,7 @@ fn apply_beauty_debug(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
     if (params.beauty_debug.x < 0.5) { return input; }
     var result = input;
     for (var face_index = 0u; face_index < 3u; face_index = face_index + 1u) {
-        let base = face_index * 12u;
+        let base = face_index * 16u;
         let face = params.beauty_faces[base];
         if (face.z <= 0.0001 || face.w <= 0.0001) { continue; }
         let left_eye = params.beauty_faces[base + 1u];
