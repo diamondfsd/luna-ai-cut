@@ -38,7 +38,7 @@ export function register(): void {
     cancelBluetoothScan()
   })
 
-  ipcMain.handle('luna:collectNetworkDiagnostics', () => collectLunaNetworkDiagnostics())
+  ipcMain.handle('luna:collectNetworkDiagnostics', (_event, host?: string) => collectLunaNetworkDiagnostics(host))
 
   ipcMain.handle('devtools:open', () => {
     BrowserWindow.getFocusedWindow()?.webContents.openDevTools({ mode: 'detach' })

@@ -78,7 +78,7 @@ export interface LunaApi {
   disconnect(host?: string): Promise<void>
   cacheFile(params: { sourceUrl: string; previewUrl?: string | null }): Promise<boolean>
   getWifiStatus: () => Promise<WifiDebugResult<WifiDebugStatus>>
-  collectNetworkDiagnostics: () => Promise<NetworkDiagnosticsResult>
+  collectNetworkDiagnostics: (host?: string) => Promise<NetworkDiagnosticsResult>
   scanWifi: () => Promise<WifiDebugResult<WifiDebugNetwork[]>>
   connectWifi: (options: WifiConnectOptions) => Promise<WifiDebugResult<WifiDebugStatus>>
   disconnectWifi: () => Promise<WifiDebugResult<WifiDebugStatus>>
