@@ -108,18 +108,17 @@ function runCommand(item: DiagnosticCommand): Promise<CommandResult> {
   })
 }
 
-function findCameraSubnetIp(): string | null {
+function findCameraSubnetIp(targetHost: string): string | null {
   const interfaces = os.networkInterfaces()
+  const targetParts = targetHost.split('.').map(Number)
+  if (targetParts.length !== 4 || targetParts.some(Number.isNaN)) return null
+  const ip4toInt = (ip: string): number => ip.split('.').reduce((acc, octet) => ((acc << 8) | Number(octet)) >>> 0, 0)
+  const target = ip4toInt(targetHost)
 
   for (const list of Object.values(interfaces)) {
     for (const item of list ?? []) {
-      if (
-        item.family === 'IPv4' &&
-        !item.internal &&
-        item.address.startsWith('192.168.42.')
-      ) {
-        return item.address
-      }
+      if (item.family !== 'IPv4' || item.internal || !item.netmask) continue
+      if ((target & ip4toInt(item.netmask)) === (ip4toInt(item.address) & ip4toInt(item.netmask))) return item.address
     }
   }
 
@@ -130,8 +129,7 @@ function findCameraSubnetIp(): string | null {
  * 通过子网掩码匹配目标主机，找到需要绑定的本地地址。
  * 与 connectSocket 中的 resolveLocalAddress 逻辑一致。
  */
-function resolveCameraLocalAddress(): string | null {
-  const targetHost = CAMERA_HOST
+function resolveCameraLocalAddress(targetHost: string): string | null {
   const parts = targetHost.split('.')
   if (parts.length !== 4 || parts.some((p) => !/^\d{1,3}$/.test(p))) return null
 
@@ -220,7 +218,7 @@ function tcpCheck(params: {
   })
 }
 
-function getMacCommands(): DiagnosticCommand[] {
+function getMacCommands(targetHost: string): DiagnosticCommand[] {
   return [
     {
       key: 'wifi_ssid',
@@ -237,7 +235,7 @@ function getMacCommands(): DiagnosticCommand[] {
     {
       key: 'route_camera',
       command: 'route',
-      args: ['get', CAMERA_HOST],
+      args: ['get', targetHost],
       timeoutMs: 5000,
     },
     {
@@ -255,25 +253,25 @@ function getMacCommands(): DiagnosticCommand[] {
     {
       key: 'arp_camera',
       command: 'arp',
-      args: ['-n', CAMERA_HOST],
+      args: ['-n', targetHost],
       timeoutMs: 5000,
     },
     {
       key: 'ping_camera',
       command: 'ping',
-      args: ['-c', '3', '-W', '1000', CAMERA_HOST],
+      args: ['-c', '3', '-W', '1000', targetHost],
       timeoutMs: 7000,
     },
     {
       key: 'nc_http_80',
       command: 'nc',
-      args: ['-vz', '-G', '3', CAMERA_HOST, String(HTTP_PORT)],
+      args: ['-vz', '-G', '3', targetHost, String(HTTP_PORT)],
       timeoutMs: 6000,
     },
     {
       key: 'nc_control_6666',
       command: 'nc',
-      args: ['-vz', '-G', '3', CAMERA_HOST, String(CONTROL_PORT)],
+      args: ['-vz', '-G', '3', targetHost, String(CONTROL_PORT)],
       timeoutMs: 6000,
     },
     {
@@ -381,33 +379,35 @@ function getLinuxCommands(): DiagnosticCommand[] {
   ]
 }
 
-function getCommandsByPlatform(): DiagnosticCommand[] {
-  if (process.platform === 'darwin') return getMacCommands()
+function getCommandsByPlatform(targetHost: string): DiagnosticCommand[] {
+  if (process.platform === 'darwin') return getMacCommands(targetHost)
   if (process.platform === 'win32') return getWindowsCommands()
   return getLinuxCommands()
 }
 
-export async function collectLunaNetworkDiagnostics(): Promise<NetworkDiagnosticsResult> {
+export async function collectLunaNetworkDiagnostics(targetHost = CAMERA_HOST): Promise<NetworkDiagnosticsResult> {
   const startedAt = Date.now()
-  const localCameraSubnetIp = findCameraSubnetIp()
-  const resolvedLocalAddress = resolveCameraLocalAddress()
-  const commands = getCommandsByPlatform()
+  const localCameraSubnetIp = findCameraSubnetIp(targetHost)
+  const resolvedLocalAddress = resolveCameraLocalAddress(targetHost)
+  const commands = getCommandsByPlatform(targetHost)
   logMainDebug('[网络诊断] 收集诊断信息', { localCameraSubnetIp, resolvedLocalAddress, commandCount: commands.length })
 
-  const [commandResults, tcpHttp, tcpControl] = await Promise.all([
+  const [commandResults, tcpHttp, tcpControl, defaultHttp, defaultControl] = await Promise.all([
     Promise.all(commands.map(runCommand)),
     tcpCheck({
-      host: CAMERA_HOST,
+      host: targetHost,
       port: HTTP_PORT,
       localAddress: localCameraSubnetIp ?? undefined,
       timeoutMs: 3000,
     }),
     tcpCheck({
-      host: CAMERA_HOST,
+      host: targetHost,
       port: CONTROL_PORT,
       localAddress: localCameraSubnetIp ?? undefined,
       timeoutMs: 3000,
     }),
+    tcpCheck({ host: targetHost, port: HTTP_PORT, timeoutMs: 3000 }),
+    tcpCheck({ host: targetHost, port: CONTROL_PORT, timeoutMs: 3000 }),
   ])
 
   return {
@@ -424,7 +424,7 @@ export async function collectLunaNetworkDiagnostics(): Promise<NetworkDiagnostic
     },
 
     camera: {
-      host: CAMERA_HOST,
+      host: targetHost,
       httpPort: HTTP_PORT,
       controlPort: CONTROL_PORT,
     },
@@ -438,6 +438,8 @@ export async function collectLunaNetworkDiagnostics(): Promise<NetworkDiagnostic
     tcpChecks: {
       http80: tcpHttp,
       control6666: tcpControl,
+      defaultHttp80: defaultHttp,
+      defaultControl6666: defaultControl,
     },
 
     commands: commandResults,
