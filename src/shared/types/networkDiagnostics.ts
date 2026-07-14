@@ -46,6 +46,8 @@ export interface NetworkDiagnosticsResult {
   tcpChecks: {
     http80: NetworkDiagnosticTcpCheck
     control6666: NetworkDiagnosticTcpCheck
+    defaultHttp80?: NetworkDiagnosticTcpCheck
+    defaultControl6666?: NetworkDiagnosticTcpCheck
   }
   commands: NetworkDiagnosticCommandResult[]
 }
