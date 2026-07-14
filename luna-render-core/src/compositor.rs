@@ -158,7 +158,7 @@ struct GpuLayerParams {
     hsl_data: [[f32; 4]; 8],
     beauty_strengths: [f32; 4],
     beauty_debug: [f32; 4],
-    beauty_faces: [[f32; 4]; 12],
+    beauty_faces: [[f32; 4]; 36],
 }
 
 fn parse_hex_color(value: Option<&str>, fallback: [f32; 4]) -> [f32; 4] {
@@ -224,14 +224,25 @@ fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 8
     data
 }
 
-fn pack_beauty_faces(faces: &[crate::RenderBeautyFace]) -> [[f32; 4]; 12] {
-    let mut data = [[0.0; 4]; 12];
+fn pack_beauty_faces(faces: &[crate::RenderBeautyFace]) -> [[f32; 4]; 36] {
+    let mut data = [[0.0; 4]; 36];
     for (index, face) in faces.iter().take(3).enumerate() {
-        let base = index * 4;
+        let base = index * 12;
         data[base] = [face.center_x as f32, face.center_y as f32, face.width as f32, face.height as f32];
         data[base + 1] = [face.left_eye_x as f32, face.left_eye_y as f32, face.left_eye_radius_x as f32, face.left_eye_radius_y as f32];
         data[base + 2] = [face.right_eye_x as f32, face.right_eye_y as f32, face.right_eye_radius_x as f32, face.right_eye_radius_y as f32];
         data[base + 3] = [face.mouth_x as f32, face.mouth_y as f32, face.mouth_radius_x as f32, face.mouth_radius_y as f32];
+        for point_pair in 0..8 {
+            let offset = point_pair * 4;
+            if face.contour.len() >= offset + 4 {
+                data[base + 4 + point_pair] = [
+                    face.contour[offset] as f32,
+                    face.contour[offset + 1] as f32,
+                    face.contour[offset + 2] as f32,
+                    face.contour[offset + 3] as f32,
+                ];
+            }
+        }
     }
     data
 }

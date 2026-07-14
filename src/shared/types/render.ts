@@ -91,6 +91,7 @@ export interface RenderBeautyFace {
   leftEyeX: number; leftEyeY: number; leftEyeRadiusX: number; leftEyeRadiusY: number
   rightEyeX: number; rightEyeY: number; rightEyeRadiusX: number; rightEyeRadiusY: number
   mouthX: number; mouthY: number; mouthRadiusX: number; mouthRadiusY: number
+  contour: number[]
 }
 
 export interface RenderBeautySettings {

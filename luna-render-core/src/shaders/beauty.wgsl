@@ -1,7 +1,43 @@
-fn beauty_ellipse_mask(uv: vec2<f32>, ellipse: vec4<f32>, edge: f32) -> f32 {
-    let radius = max(ellipse.zw * 0.5, vec2<f32>(0.0001));
-    let p = (uv - ellipse.xy) / radius;
-    return 1.0 - smoothstep(max(0.0, 1.0 - edge), 1.0, dot(p, p));
+fn beauty_contour_point(base: u32, index: u32) -> vec2<f32> {
+    let packed = params.beauty_faces[base + 4u + index / 2u];
+    return select(packed.xy, packed.zw, index % 2u == 1u);
+}
+
+fn beauty_segment_distance(point: vec2<f32>, start: vec2<f32>, end: vec2<f32>) -> f32 {
+    let segment = end - start;
+    let projection = clamp(dot(point - start, segment) / max(dot(segment, segment), 0.000001), 0.0, 1.0);
+    return length(point - (start + segment * projection));
+}
+
+fn beauty_contour_metrics(uv: vec2<f32>, face: vec4<f32>, base: u32) -> vec2<f32> {
+    let face_size = max(face.zw, vec2<f32>(0.0001));
+    let point = (uv - face.xy) / face_size;
+    var previous = (beauty_contour_point(base, 15u) - face.xy) / face_size;
+    var inside = false;
+    var edge_distance = 1000.0;
+
+    for (var index = 0u; index < 16u; index = index + 1u) {
+        let current = (beauty_contour_point(base, index) - face.xy) / face_size;
+        edge_distance = min(edge_distance, beauty_segment_distance(point, previous, current));
+        if ((current.y > point.y) != (previous.y > point.y)) {
+            let crossing_x = (previous.x - current.x) * (point.y - current.y)
+                / (previous.y - current.y) + current.x;
+            if (point.x < crossing_x) { inside = !inside; }
+        }
+        previous = current;
+    }
+
+    let fill = select(0.0, smoothstep(0.0, 0.075, edge_distance), inside);
+    let outline = 1.0 - smoothstep(0.008, 0.018, edge_distance);
+    return vec2<f32>(fill, outline);
+}
+
+fn beauty_skin_confidence(color: vec3<f32>) -> f32 {
+    let cb = 0.5 - 0.168736 * color.r - 0.331264 * color.g + 0.5 * color.b;
+    let cr = 0.5 + 0.5 * color.r - 0.418688 * color.g - 0.081312 * color.b;
+    let cb_match = smoothstep(0.25, 0.34, cb) * (1.0 - smoothstep(0.50, 0.57, cb));
+    let cr_match = smoothstep(0.48, 0.54, cr) * (1.0 - smoothstep(0.70, 0.77, cr));
+    return 0.12 + 0.88 * cb_match * cr_match;
 }
 
 fn beauty_eye_mask(uv: vec2<f32>, eye: vec4<f32>, scale: f32) -> f32 {
@@ -25,7 +61,7 @@ fn apply_beauty_warp(input_uv: vec2<f32>) -> vec2<f32> {
     let slim = clamp(params.beauty_strengths.z / 100.0, 0.0, 1.0);
     let eyes = clamp(params.beauty_strengths.w / 100.0, 0.0, 1.0);
     for (var face_index = 0u; face_index < 3u; face_index = face_index + 1u) {
-        let base = face_index * 4u;
+        let base = face_index * 12u;
         let face = params.beauty_faces[base];
         if (face.z <= 0.0001 || face.w <= 0.0001) { continue; }
         let left_eye = params.beauty_faces[base + 1u];
@@ -72,16 +108,17 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
 
     var skin_mask = 0.0;
     for (var face_index = 0u; face_index < 3u; face_index = face_index + 1u) {
-        let base = face_index * 4u;
+        let base = face_index * 12u;
         let face = params.beauty_faces[base];
         if (face.z <= 0.0001 || face.w <= 0.0001) { continue; }
         let left_eye = params.beauty_faces[base + 1u];
         let right_eye = params.beauty_faces[base + 2u];
         let mouth = params.beauty_faces[base + 3u];
-        var mask = beauty_ellipse_mask(uv, face, 0.24);
+        var mask = beauty_contour_metrics(uv, face, base).x;
         mask = mask * (1.0 - beauty_eye_mask(uv, left_eye, 2.1));
         mask = mask * (1.0 - beauty_eye_mask(uv, right_eye, 2.1));
         mask = mask * (1.0 - beauty_eye_mask(uv, mouth, 1.65));
+        mask = mask * beauty_skin_confidence(input);
         skin_mask = max(skin_mask, mask);
     }
     if (skin_mask <= 0.0) { return input; }
@@ -119,14 +156,15 @@ fn apply_beauty_debug(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
     if (params.beauty_debug.x < 0.5) { return input; }
     var result = input;
     for (var face_index = 0u; face_index < 3u; face_index = face_index + 1u) {
-        let base = face_index * 4u;
+        let base = face_index * 12u;
         let face = params.beauty_faces[base];
         if (face.z <= 0.0001 || face.w <= 0.0001) { continue; }
         let left_eye = params.beauty_faces[base + 1u];
         let right_eye = params.beauty_faces[base + 2u];
         let mouth = params.beauty_faces[base + 3u];
-        let face_fill = beauty_ellipse_mask(uv, face, 0.18) * 0.13;
-        let face_line = beauty_outline(uv, face, 0.012);
+        let contour = beauty_contour_metrics(uv, face, base);
+        let face_fill = contour.x * 0.13;
+        let face_line = contour.y;
         let left_line = beauty_outline(uv, vec4<f32>(left_eye.xy, left_eye.zw * 4.2), 0.035);
         let right_line = beauty_outline(uv, vec4<f32>(right_eye.xy, right_eye.zw * 4.2), 0.035);
         let mouth_line = beauty_outline(uv, vec4<f32>(mouth.xy, mouth.zw * 3.3), 0.035);

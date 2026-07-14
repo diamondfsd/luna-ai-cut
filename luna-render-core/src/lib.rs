@@ -181,6 +181,7 @@ pub struct RenderBeautyFace {
     pub left_eye_x: f64, pub left_eye_y: f64, pub left_eye_radius_x: f64, pub left_eye_radius_y: f64,
     pub right_eye_x: f64, pub right_eye_y: f64, pub right_eye_radius_x: f64, pub right_eye_radius_y: f64,
     pub mouth_x: f64, pub mouth_y: f64, pub mouth_radius_x: f64, pub mouth_radius_y: f64,
+    pub contour: Vec<f64>,
 }
 
 #[napi(object)]

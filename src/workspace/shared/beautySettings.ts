@@ -17,6 +17,8 @@ export interface BeautyFaceGeometry {
   mouthY: number
   mouthRadiusX: number
   mouthRadiusY: number
+  /** 顺时针排列的 16 个脸部外轮廓点，保存为 x/y 交错数组。 */
+  contour: number[]
 }
 
 export interface BeautySettings {
@@ -52,6 +54,9 @@ export function normalizeBeautySettings(input: Partial<BeautySettings> | undefin
         rightEyeRadiusX: unit(face.rightEyeRadiusX), rightEyeRadiusY: unit(face.rightEyeRadiusY),
         mouthX: unit(face.mouthX), mouthY: unit(face.mouthY),
         mouthRadiusX: unit(face.mouthRadiusX), mouthRadiusY: unit(face.mouthRadiusY),
+        contour: Array.isArray(face.contour)
+          ? face.contour.slice(0, 32).map(unit)
+          : [],
       }))
     : []
   return {

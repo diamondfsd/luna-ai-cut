@@ -5,6 +5,10 @@ import type { BeautyFaceGeometry } from '../shared/editPipeline'
 
 const MAX_DETECTION_SIDE = 1280
 const MAX_FACES = 3
+const FACE_CONTOUR_INDICES = [
+  10, 297, 284, 389, 454, 361, 397, 379,
+  152, 176, 150, 172, 132, 234, 162, 54,
+] as const
 
 let landmarkerPromise: Promise<FaceLandmarker> | null = null
 
@@ -71,6 +75,11 @@ function compactFace(points: NormalizedLandmark[]): BeautyFaceGeometry | null {
   const leftEye = bounds(points, [33, 133, 160, 159, 158, 144, 145, 153])
   const rightEye = bounds(points, [263, 362, 387, 386, 385, 373, 374, 380])
   const mouth = bounds(points, [61, 291, 13, 14, 78, 308])
+  const contour = FACE_CONTOUR_INDICES.flatMap((index) => {
+    const point = points[index]
+    return point ? [point.x, point.y] : []
+  })
+  if (contour.length !== FACE_CONTOUR_INDICES.length * 2) return null
   return {
     centerX: center.x,
     centerY: center.y,
@@ -88,6 +97,7 @@ function compactFace(points: NormalizedLandmark[]): BeautyFaceGeometry | null {
     mouthY: mouth.centerY,
     mouthRadiusX: mouth.radiusX,
     mouthRadiusY: mouth.radiusY,
+    contour,
   }
 }
 

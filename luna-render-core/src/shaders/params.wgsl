@@ -68,7 +68,7 @@ struct LayerParams {
     hsl_data: array<vec4<f32>, 8>,
     beauty_strengths: vec4<f32>,
     beauty_debug: vec4<f32>,
-    beauty_faces: array<vec4<f32>, 12>,
+    beauty_faces: array<vec4<f32>, 36>,
 }
 
 @group(0) @binding(0) var src_texture: texture_2d<f32>;
