@@ -15,6 +15,7 @@ import {
   exportCompositionImageAsync as lrcExportCompositionImageAsync,
   cancelExportTask as lrcCancelExportTask,
   getExportTaskProgress as lrcGetExportTaskProgress,
+  resetRenderCompatibilityBlock,
 } from './lunaRenderCore'
 
 // 导入纹理管理方法
@@ -78,6 +79,11 @@ function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
 }
 
 export function register(ctx: RegisterContext): void {
+  ipcMain.handle('lrc:resetCompatibilityBlock', async () => {
+    resetRenderCompatibilityBlock()
+    logMainInfo('[LRC] 已解除渲染兼容保护，等待重新检测')
+  })
+
   ipcMain.handle('lrc:init', safe('init', async (_event: IpcMainInvokeEvent, logPath?: string) => {
     ensureInit(logPath)
     rcLog('lrc:init OK')
