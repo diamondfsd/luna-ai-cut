@@ -8,8 +8,9 @@ use napi_derive::napi;
 use tract_onnx::prelude::*;
 
 use crate::{RenderBeautyFace, media::probe_video_dimensions};
+use crate::beauty_person::{detect_people, person_head_crop};
 
-const ANALYSIS_VERSION: u32 = 7;
+const ANALYSIS_VERSION: u32 = 9;
 const DETECTOR_SIDE: usize = 640;
 const LANDMARK_SIDE: usize = 192;
 const PARSING_SIDE: usize = 512;
@@ -17,36 +18,37 @@ const MASK_SIDE: usize = 128;
 const MAX_IMAGE_SIDE: u32 = 2560;
 const MAX_FACES: usize = 3;
 
-type ModelPlan = TypedRunnableModel<TypedModel>;
+pub(crate) type ModelPlan = TypedRunnableModel<TypedModel>;
 
 struct BeautyModels {
     root: PathBuf,
+    person: ModelPlan,
     detector: ModelPlan,
     landmarks: ModelPlan,
     parsing: ModelPlan,
 }
 
 #[derive(Clone)]
-struct RgbImage {
-    width: usize,
-    height: usize,
-    pixels: Vec<u8>,
+pub(crate) struct RgbImage {
+    pub(crate) width: usize,
+    pub(crate) height: usize,
+    pub(crate) pixels: Vec<u8>,
 }
 
 #[derive(Clone, Copy)]
-struct FaceBox {
-    x1: f32,
-    y1: f32,
-    x2: f32,
-    y2: f32,
-    score: f32,
+pub(crate) struct FaceBox {
+    pub(crate) x1: f32,
+    pub(crate) y1: f32,
+    pub(crate) x2: f32,
+    pub(crate) y2: f32,
+    pub(crate) score: f32,
 }
 
 #[derive(Clone, Copy)]
-struct Crop {
-    x: f32,
-    y: f32,
-    size: f32,
+pub(crate) struct Crop {
+    pub(crate) x: f32,
+    pub(crate) y: f32,
+    pub(crate) size: f32,
 }
 
 #[napi(object)]
@@ -76,6 +78,7 @@ fn with_models<T>(root: &Path, run: impl FnOnce(&BeautyModels) -> Result<T, Stri
     if needs_reload {
         *guard = Some(BeautyModels {
             root: root.to_path_buf(),
+            person: load_model(&root.join("person-yolox-nano.onnx"), &[1, 3, 416, 416])?,
             detector: load_model(&root.join("scrfd-500m-kps.onnx"), &[1, 3, DETECTOR_SIDE, DETECTOR_SIDE])?,
             landmarks: load_model(&root.join("face-landmarks-106.onnx"), &[1, 3, LANDMARK_SIDE, LANDMARK_SIDE])?,
             parsing: load_model(&root.join("face-parsing-resnet18.onnx"), &[1, 3, PARSING_SIDE, PARSING_SIDE])?,
@@ -104,7 +107,7 @@ fn decode_image(ffmpeg: &str, ffprobe: &str, path: &str) -> Result<RgbImage, Str
     Ok(RgbImage { width, height, pixels: output.stdout })
 }
 
-fn sample(image: &RgbImage, x: f32, y: f32) -> [f32; 3] {
+pub(crate) fn sample(image: &RgbImage, x: f32, y: f32) -> [f32; 3] {
     if x < 0.0 || y < 0.0 || x > image.width as f32 - 1.0 || y > image.height as f32 - 1.0 {
         return [0.0; 3];
     }
@@ -148,31 +151,35 @@ fn image_tensor(image: &RgbImage, side: usize, crop: Crop, normalize: bool, bgr:
     tract_ndarray::Array4::from_shape_vec((1, 3, side, side), data).expect("tensor shape").into_tensor()
 }
 
-fn detect_faces(models: &BeautyModels, image: &RgbImage) -> Result<Vec<FaceBox>, String> {
-    let ratio = DETECTOR_SIDE as f32 / image.width.max(image.height) as f32;
-    let crop = Crop { x: 0.0, y: 0.0, size: DETECTOR_SIDE as f32 / ratio };
+fn detect_faces_in_crop(models: &BeautyModels, image: &RgbImage, crop: Crop) -> Result<Vec<FaceBox>, String> {
     let input = image_tensor(image, DETECTOR_SIDE, crop, false, true, true);
     let outputs = models.detector.run(tvec!(input.into()))
         .map_err(|error| format!("人脸检测失败: {error}"))?;
     let mut faces = Vec::new();
+    let mut max_score = 0.0f32;
     for (level, stride) in [8usize, 16, 32].iter().enumerate() {
         let scores = outputs[level].to_array_view::<f32>().map_err(|error| error.to_string())?;
         let boxes = outputs[3 + level].to_array_view::<f32>().map_err(|error| error.to_string())?;
         let feature_width = DETECTOR_SIDE / stride;
         for index in 0..scores.len() {
             let score = scores[[index, 0]];
+            max_score = max_score.max(score);
             if score < 0.5 { continue; }
             let cell = index / 2;
             let anchor_x = (cell % feature_width) as f32 * *stride as f32;
             let anchor_y = (cell / feature_width) as f32 * *stride as f32;
-            let x1 = (anchor_x - boxes[[index, 0]] * *stride as f32) / ratio;
-            let y1 = (anchor_y - boxes[[index, 1]] * *stride as f32) / ratio;
-            let x2 = (anchor_x + boxes[[index, 2]] * *stride as f32) / ratio;
-            let y2 = (anchor_y + boxes[[index, 3]] * *stride as f32) / ratio;
+            let scale = crop.size / DETECTOR_SIDE as f32;
+            let x1 = crop.x + (anchor_x - boxes[[index, 0]] * *stride as f32) * scale;
+            let y1 = crop.y + (anchor_y - boxes[[index, 1]] * *stride as f32) * scale;
+            let x2 = crop.x + (anchor_x + boxes[[index, 2]] * *stride as f32) * scale;
+            let y2 = crop.y + (anchor_y + boxes[[index, 3]] * *stride as f32) * scale;
             if x1 < image.width as f32 && y1 < image.height as f32 {
                 faces.push(FaceBox { x1: x1.max(0.0), y1: y1.max(0.0), x2: x2.min(image.width as f32), y2: y2.min(image.height as f32), score });
             }
         }
+    }
+    if std::env::var_os("LUNA_BEAUTY_DEBUG").is_some() {
+        eprintln!("[beauty-analysis] detector max_score={max_score:.4} candidates={}", faces.len());
     }
     faces.sort_by(|a, b| b.score.total_cmp(&a.score));
     let mut selected = Vec::new();
@@ -184,7 +191,23 @@ fn detect_faces(models: &BeautyModels, image: &RgbImage) -> Result<Vec<FaceBox>,
     Ok(selected)
 }
 
-fn intersection_over_union(a: FaceBox, b: FaceBox) -> f32 {
+fn detect_faces(models: &BeautyModels, image: &RgbImage) -> Result<Vec<FaceBox>, String> {
+    let full_size = image.width.max(image.height) as f32;
+    let mut faces = detect_faces_in_crop(models, image, Crop { x: 0.0, y: 0.0, size: full_size })?;
+    for person in detect_people(&models.person, image)? {
+        faces.extend(detect_faces_in_crop(models, image, person_head_crop(person))?);
+    }
+    faces.sort_by(|a, b| b.score.total_cmp(&a.score));
+    let mut selected = Vec::new();
+    for face in faces {
+        if selected.iter().any(|candidate| intersection_over_union(face, *candidate) > 0.4) { continue; }
+        selected.push(face);
+        if selected.len() == MAX_FACES { break; }
+    }
+    Ok(selected)
+}
+
+pub(crate) fn intersection_over_union(a: FaceBox, b: FaceBox) -> f32 {
     let intersection = (a.x2.min(b.x2) - a.x1.max(b.x1)).max(0.0)
         * (a.y2.min(b.y2) - a.y1.max(b.y1)).max(0.0);
     let area_a = (a.x2 - a.x1).max(0.0) * (a.y2 - a.y1).max(0.0);
@@ -385,11 +408,12 @@ fn analyze(ffmpeg: &str, ffprobe: &str, image_path: &str, model_dir: &str) -> Re
             let landmarks = detect_landmarks(models, &image, *detection)?;
             faces.push(compact_face(&landmarks, &image, *detection));
         }
+        let has_skin = mask.iter().any(|value| *value != 0);
         Ok(NativeBeautyAnalysis {
             faces,
-            skin_mask: base64::engine::general_purpose::STANDARD.encode(mask),
-            skin_mask_width: MASK_SIDE as u32,
-            skin_mask_height: MASK_SIDE as u32,
+            skin_mask: if has_skin { base64::engine::general_purpose::STANDARD.encode(mask) } else { String::new() },
+            skin_mask_width: if has_skin { MASK_SIDE as u32 } else { 0 },
+            skin_mask_height: if has_skin { MASK_SIDE as u32 } else { 0 },
             analysis_version: ANALYSIS_VERSION,
         })
     })

@@ -1,5 +1,5 @@
 import type { BeautyFaceGeometry } from '../shared/editPipeline'
-export const BEAUTY_ANALYSIS_VERSION = 7
+export const BEAUTY_ANALYSIS_VERSION = 9
 
 export interface BeautyAnalysisResult {
   faces: BeautyFaceGeometry[]

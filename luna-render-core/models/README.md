@@ -11,6 +11,10 @@ These models are loaded only by `luna-render-core`; the renderer process does no
   SHA-256: `5e4447f50245bbd7966bd6c0fa52938c61474a04ec7def48753668a9d8b4ea3a`.
 - `face-landmarks-106.onnx`: UniFace/InsightFace 106-point facial landmark model.
   SHA-256: `f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf`.
+- `person-yolox-nano.onnx`: official YOLOX-Nano COCO detector used only to
+  locate people before a higher-resolution face-detection pass. YOLOX code is
+  Apache-2.0 licensed.
+  SHA-256: `c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d`.
 
 Do not ship `face-parsing-resnet18.onnx` in a commercial distribution without
 replacing it with weights trained from appropriately licensed data.

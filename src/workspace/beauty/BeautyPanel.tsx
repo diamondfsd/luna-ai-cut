@@ -86,7 +86,7 @@ export function BeautyPanel({ value, filePath, onChange, debug, onDebugChange }:
       </label>
       {debug && (
         <div className="workspace-beauty-debug-legend" aria-label="识别区域颜色说明">
-          <span data-color="skin">身体皮肤</span>
+          <span data-color="skin">皮肤区域</span>
           <span data-color="face">脸部范围</span>
           <span data-color="eyes">眼部范围</span>
           <span data-color="mouth">嘴部保护</span>

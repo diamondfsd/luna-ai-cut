@@ -1572,13 +1572,6 @@ impl Compositor {
                     ));
                 }
                 let texture = create_lut_3d_texture(&self.device, &self.queue, size, &values);
-                log!(
-                    "load_lut_file path={} size={}x{}x{}",
-                    path,
-                    size,
-                    size,
-                    size
-                );
                 Ok(entry.insert(LutEntry { texture, size }))
             }
         }
@@ -2653,7 +2646,7 @@ impl Compositor {
                     || last_src_h != src_h
                     || last_out_w != planned.width
                     || last_out_h != planned.height
-                    || now.duration_since(last_at).as_millis() >= 1000
+                    || now.duration_since(last_at).as_millis() >= 2000
             }
             None => true,
         };

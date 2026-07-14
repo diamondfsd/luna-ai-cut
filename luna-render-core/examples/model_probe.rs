@@ -6,6 +6,8 @@ fn print_onnx(path: &str) -> TractResult<()> {
         &[1, 3, 640, 640]
     } else if path.contains("landmarks") {
         &[1, 3, 192, 192]
+    } else if path.contains("yolox") {
+        &[1, 3, 416, 416]
     } else {
         &[1, 3, 512, 512]
     };
@@ -25,5 +27,6 @@ fn main() -> TractResult<()> {
     print_onnx("models/scrfd-500m-kps.onnx")?;
     print_onnx("models/face-landmarks-106.onnx")?;
     print_onnx("models/face-parsing-resnet18.onnx")?;
+    print_onnx("models/person-yolox-nano.onnx")?;
     Ok(())
 }
