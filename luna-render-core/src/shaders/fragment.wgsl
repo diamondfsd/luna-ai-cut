@@ -164,6 +164,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var color = sample_media_texture(beauty_coord);
     color = vec4<f32>(apply_beauty_color(color.rgb, beauty_coord), color.a);
     color = vec4<f32>(apply_color(color.rgb, beauty_coord), color.a);
+    color = vec4<f32>(apply_beauty_debug(color.rgb, tex_coord), color.a);
     color.a = color.a * params.opacity;
     if (params.sampling_quality > 0.5) {
         color = vec4<f32>(color.rgb * color.a, color.a);

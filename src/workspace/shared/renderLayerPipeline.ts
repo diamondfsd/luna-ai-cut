@@ -54,13 +54,14 @@ export function pipelineTransformToRenderTransform(transform: EditPipeline['tran
   }
 }
 
-export function pipelineBeautyToRenderBeauty(beauty: EditPipeline['beauty']): RenderBeautySettings {
+export function pipelineBeautyToRenderBeauty(beauty: EditPipeline['beauty'], debug = false): RenderBeautySettings {
   return {
     smoothing: beauty.smoothing,
     whitening: beauty.whitening,
     slimFace: beauty.slimFace,
     bigEyes: beauty.bigEyes,
     faces: beauty.faces,
+    debug,
   }
 }
 

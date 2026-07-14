@@ -101,9 +101,11 @@ function titleForTool(tool: WorkspaceTool): string {
 interface WorkspaceEditSidebarProps {
   mediaSize?: { w: number; h: number } | null
   duration: number
+  beautyDebug: boolean
+  onBeautyDebugChange: (value: boolean) => void
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, beautyDebug, onBeautyDebugChange }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -219,6 +221,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
               value={edit.pipeline.beauty}
               filePath={mediaCtx.activeMedia?.path}
               onChange={(beauty) => edit.updateWorkspacePanel({ beauty })}
+              debug={beautyDebug}
+              onDebugChange={onBeautyDebugChange}
             />
           ) : edit.activeTool === 'crop' ? (
             <>

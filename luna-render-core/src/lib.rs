@@ -191,6 +191,7 @@ pub struct RenderBeautySettings {
     pub slim_face: f64,
     pub big_eyes: f64,
     pub faces: Vec<RenderBeautyFace>,
+    pub debug: bool,
 }
 
 // ── 跨模块日志宏 ──

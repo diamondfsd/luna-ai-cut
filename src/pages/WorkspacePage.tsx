@@ -104,6 +104,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   const [exportDialogDir, setExportDialogDir] = useState('')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
+  const [beautyDebug, setBeautyDebug] = useState(false)
 
   // ── 截取（Trim）状态 ──
   const [trimCurrentTime, setTrimCurrentTime] = useState(0)
@@ -246,13 +247,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
       mediaLayerStyle: {
         color: pipelineColorToRenderColor(stagePipeline.color),
         transform: pipelineTransformToRenderTransform(stagePipeline.transform),
-        beauty: pipelineBeautyToRenderBeauty(stagePipeline.beauty),
+        beauty: pipelineBeautyToRenderBeauty(stagePipeline.beauty, beautyDebug),
         lutId: stagePipeline.lutFilter.activeId ?? undefined,
         lutIntensity: stagePipeline.lutFilter.intensity,
         isVideo: media.activeMedia?.path ? isVideoPath(media.activeMedia.path) : false,
       },
     })
-  }, [edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
+  }, [beautyDebug, edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
 
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
@@ -639,6 +640,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
             url={media.activeMedia?.path ?? null}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
+            beautyDebug={beautyDebug}
             extraLayers={combinedExtraLayers}
             cropActive={edit.cropActive}
             hideControls={edit.trimActive}
@@ -653,6 +655,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
             duration={activeTrimDuration}
+            beautyDebug={beautyDebug}
+            onBeautyDebugChange={setBeautyDebug}
           />
 
           {edit.trimActive ? (

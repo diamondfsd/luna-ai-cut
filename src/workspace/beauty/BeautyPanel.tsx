@@ -1,7 +1,7 @@
 import { RotateCcw, ScanFace } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { Button, LoadingIndicator } from '../../ui'
+import { Button, LoadingIndicator, Switch } from '../../ui'
 import { isImagePath } from '../../lib/fileUtils'
 import { ParamSlider } from '../components/ParamSlider'
 import type { BeautySettings } from '../shared/editPipeline'
@@ -12,9 +12,11 @@ interface BeautyPanelProps {
   value: BeautySettings
   filePath?: string
   onChange: (patch: Partial<BeautySettings>) => void
+  debug: boolean
+  onDebugChange: (value: boolean) => void
 }
 
-export function BeautyPanel({ value, filePath, onChange }: BeautyPanelProps) {
+export function BeautyPanel({ value, filePath, onChange, debug, onDebugChange }: BeautyPanelProps) {
   const [status, setStatus] = useState<'idle' | 'analyzing' | 'ready' | 'empty' | 'error'>('idle')
   const [retryKey, setRetryKey] = useState(0)
   const onChangeRef = useRef(onChange)
@@ -66,6 +68,18 @@ export function BeautyPanel({ value, filePath, onChange }: BeautyPanelProps) {
           <Button variant="secondary" size="mini" onClick={retry}>{status === 'empty' ? '重新识别' : '重试'}</Button>
         )}
       </div>
+
+      <label className="workspace-beauty-debug-toggle">
+        <span>显示识别区域</span>
+        <Switch checked={debug} onCheckedChange={onDebugChange} ariaLabel="显示美颜识别区域" />
+      </label>
+      {debug && (
+        <div className="workspace-beauty-debug-legend" aria-label="识别区域颜色说明">
+          <span data-color="face">脸部范围</span>
+          <span data-color="eyes">眼部范围</span>
+          <span data-color="mouth">嘴部保护</span>
+        </div>
+      )}
 
       <fieldset className="workspace-beauty-controls" disabled={disabled}>
         <ParamSlider label="磨皮" value={value.smoothing} min={0} max={100} onChange={(smoothing) => onChange({ smoothing })} formatValue={String} />

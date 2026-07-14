@@ -99,3 +99,42 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
     }
     return clamp(result, vec3<f32>(0.0), vec3<f32>(1.0));
 }
+
+fn beauty_outline(uv: vec2<f32>, ellipse: vec4<f32>, thickness: f32) -> f32 {
+    let radius = max(ellipse.zw * 0.5, vec2<f32>(0.0001));
+    let distance = length((uv - ellipse.xy) / radius);
+    return 1.0 - smoothstep(thickness, thickness * 2.0, abs(distance - 1.0));
+}
+
+fn beauty_center_mark(uv: vec2<f32>, center: vec2<f32>, face: vec4<f32>) -> f32 {
+    let pixel = abs(uv - center);
+    let line_x = 1.0 - smoothstep(0.0015, 0.0035, pixel.x);
+    let line_y = 1.0 - smoothstep(0.0015, 0.0035, pixel.y);
+    let extent_x = 1.0 - smoothstep(face.z * 0.045, face.z * 0.06, pixel.x);
+    let extent_y = 1.0 - smoothstep(face.w * 0.045, face.w * 0.06, pixel.y);
+    return max(line_x * extent_y, line_y * extent_x);
+}
+
+fn apply_beauty_debug(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
+    if (params.beauty_debug.x < 0.5) { return input; }
+    var result = input;
+    for (var face_index = 0u; face_index < 3u; face_index = face_index + 1u) {
+        let base = face_index * 4u;
+        let face = params.beauty_faces[base];
+        if (face.z <= 0.0001 || face.w <= 0.0001) { continue; }
+        let left_eye = params.beauty_faces[base + 1u];
+        let right_eye = params.beauty_faces[base + 2u];
+        let mouth = params.beauty_faces[base + 3u];
+        let face_fill = beauty_ellipse_mask(uv, face, 0.18) * 0.13;
+        let face_line = beauty_outline(uv, face, 0.012);
+        let left_line = beauty_outline(uv, vec4<f32>(left_eye.xy, left_eye.zw * 4.2), 0.035);
+        let right_line = beauty_outline(uv, vec4<f32>(right_eye.xy, right_eye.zw * 4.2), 0.035);
+        let mouth_line = beauty_outline(uv, vec4<f32>(mouth.xy, mouth.zw * 3.3), 0.035);
+        let center = beauty_center_mark(uv, face.xy, face);
+        result = mix(result, vec3<f32>(0.0, 0.72, 1.0), face_fill);
+        result = mix(result, vec3<f32>(0.0, 0.82, 1.0), max(face_line, center) * 0.95);
+        result = mix(result, vec3<f32>(0.25, 1.0, 0.42), max(left_line, right_line) * 0.95);
+        result = mix(result, vec3<f32>(1.0, 0.62, 0.1), mouth_line * 0.95);
+    }
+    return result;
+}

@@ -34,6 +34,36 @@
   border: 0;
 }
 
+.workspace-beauty-debug-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.workspace-beauty-debug-legend {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.workspace-beauty-debug-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: #00b8ff;
+}
+
+.workspace-beauty-debug-legend [data-color='eyes']::before { background: #40ff6b; }
+.workspace-beauty-debug-legend [data-color='mouth']::before { background: #ff9e19; }
+
 .workspace-beauty-controls:disabled {
   opacity: 0.48;
   pointer-events: none;

@@ -157,6 +157,7 @@ struct GpuLayerParams {
     curve_data: [[f32; 4]; 30],
     hsl_data: [[f32; 4]; 8],
     beauty_strengths: [f32; 4],
+    beauty_debug: [f32; 4],
     beauty_faces: [[f32; 4]; 12],
 }
 
@@ -1882,6 +1883,7 @@ impl Compositor {
                         beauty.slim_face.clamp(0.0, 100.0) as f32,
                         beauty.big_eyes.clamp(0.0, 100.0) as f32,
                     ],
+                    beauty_debug: [if beauty.debug { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0],
                     beauty_faces: pack_beauty_faces(&beauty.faces),
                 };
 

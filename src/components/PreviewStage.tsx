@@ -22,6 +22,7 @@ interface PreviewStageProps {
   pending?: boolean
   extraLayers?: PreviewLayer[]
   pipeline?: EditPipeline
+  beautyDebug?: boolean
   cropActive?: boolean
   hideControls?: boolean
   onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void
@@ -102,7 +103,7 @@ function projectCanvasFor(resolution: MediaResolution | null, fullResolution = f
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onPlayStateChange }: PreviewStageProps,
+    { url, pending = false, extraLayers, pipeline, beautyDebug = false, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -110,7 +111,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   // ── 媒体分辨率 ──
   const [resolution, setResolution] = useState<MediaResolution | null>(null)
 
-  // ── 加载状态（url 切换时自动 loading） ──
   const [loading, setLoading] = useState(false)
   const prevUrlRef = useRef<string | null>(null)
 
@@ -316,7 +316,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         ...canvasFrame,
         color: pipelineColorToRenderColor(pipeline.color),
         transform: pipelineTransformToRenderTransform(pipeline.transform),
-        beauty: pipelineBeautyToRenderBeauty(pipeline.beauty),
+        beauty: pipelineBeautyToRenderBeauty(pipeline.beauty, beautyDebug),
         lutId: lutFilePath,
         lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
       }
@@ -345,7 +345,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       dstH: l.dstH * cH,
     }))
     return [...main, ...adjusted]
-  }, [cropActive, extraLayers, pipeline, lutFilePath])
+  }, [beautyDebug, cropActive, extraLayers, pipeline, lutFilePath])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []

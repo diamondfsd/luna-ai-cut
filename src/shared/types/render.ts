@@ -99,6 +99,8 @@ export interface RenderBeautySettings {
   slimFace: number
   bigEyes: number
   faces: RenderBeautyFace[]
+  /** 仅预览使用，导出层保持关闭。 */
+  debug: boolean
 }
 
 export interface PreviewLayer {
