@@ -633,6 +633,58 @@ impl Task for ExportCompositionVideoTask {
             }
         }
 
+        // Windows 使用同一 D3D12 设备链完成硬件解码、颜色转换、wgpu 合成和
+        // Media Foundation 硬件编码。能力、素材或驱动不兼容时继续使用 FFmpeg 导出。
+        #[cfg(target_os = "windows")]
+        if self.input.hardware.unwrap_or(true) {
+            let bitrate_bps = bitrate
+                .trim_end_matches(['k', 'K'])
+                .parse::<u64>()
+                .unwrap_or(50_000)
+                .saturating_mul(1_000);
+            log_write(&format!(
+                "[Export:WinGPU] start output={} frames={} fps={} bitrate={}",
+                self.input.output_path, total_frames, fps, bitrate_bps,
+            ));
+            let windows_result = crate::lock_export(|compositor| {
+                compositor.clear_video_decoders();
+                crate::windows::export_video(
+                    compositor,
+                    &self.input.ffmpeg_path,
+                    &self.input.ffprobe_path,
+                    &self.input.output_path,
+                    &self.input.composition,
+                    fps,
+                    total_frames,
+                    bitrate_bps,
+                    task.as_ref(),
+                )
+            });
+            match windows_result {
+                Ok(()) => {
+                    log_write("[Export:WinGPU] completed");
+                    if let Some(ref id) = self.input.task_id {
+                        cleanup_task(id);
+                    }
+                    return Ok(());
+                }
+                Err(error) if task.as_ref().is_some_and(|state| state.is_cancelled()) => {
+                    return Err(error);
+                }
+                Err(error) => {
+                    log_write(&format!(
+                        "[Export:WinGPU] unavailable, falling back to FFmpeg: {}",
+                        error
+                    ));
+                    if let Some(ref state) = task {
+                        state
+                            .current_frame
+                            .store(0, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
+            }
+        }
+
         let mut args = vec![
             "-y".to_string(),
             "-hide_banner".to_string(),
@@ -701,7 +753,7 @@ impl Task for ExportCompositionVideoTask {
             Ok(())
         })?;
         for frame in 0..total_frames {
-            if task.as_ref().map_or(false, |state| state.is_cancelled()) {
+            if task.as_ref().is_some_and(|state| state.is_cancelled()) {
                 return Err(napi::Error::from_reason("导出已取消"));
             }
             let time = frame as f64 / fps;
