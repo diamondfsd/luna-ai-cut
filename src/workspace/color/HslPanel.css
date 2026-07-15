@@ -1,0 +1,34 @@
+.workspace-hsl-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workspace-hsl-toolbar .workspace-panel-tabs {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-hsl-custom-channel {
+  margin-top: 5px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.workspace-hsl-custom-header {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace-hsl-custom-swatch {
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+}

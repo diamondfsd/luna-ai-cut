@@ -69,7 +69,7 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
     c = c * ratio;
 
     var hsl = rgb_to_hsl(sat3(c));
-    for (var i = 0u; i < 8u; i = i + 1u) {
+    for (var i = 0u; i < 12u; i = i + 1u) {
         let channel = params.hsl_data[i];
         let target_hue = channel.x / 360.0;
         let distance_to_target = abs(fract(hsl.x - target_hue + 0.5) - 0.5);

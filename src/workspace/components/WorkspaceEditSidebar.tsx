@@ -2,7 +2,7 @@ import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, Sliders
 import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
-import { createDefaultPipeline, DEFAULT_PIPELINE } from '../shared/editPipeline'
+import { createDefaultPipeline, DEFAULT_PIPELINE, HSL_CHANNELS } from '../shared/editPipeline'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
@@ -37,7 +37,11 @@ function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
     color.levelsBlack !== d.levelsBlack ||
     color.levelsGray !== d.levelsGray ||
     color.levelsWhite !== d.levelsWhite ||
-    Object.values(color.hslChannels).some((channel) => channel.hueShift !== 0 || channel.saturation !== 0 || channel.luminance !== 0) ||
+    color.customHslChannels.length > 0 ||
+    HSL_CHANNELS.some((channel) => {
+      const current = color.hslChannels[channel.key]
+      return current.hueShift !== 0 || current.saturation !== 0 || current.luminance !== 0
+    }) ||
     color.clarity !== d.clarity ||
     color.texture !== d.texture ||
     color.sharpen !== d.sharpen ||
