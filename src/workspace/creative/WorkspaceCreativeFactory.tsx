@@ -1,6 +1,8 @@
-import { ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { Button } from '../../ui'
+import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { CREATIVE_CATALOG, type CreativeModeId } from './creativeCatalog'
 import { ColorRevealCreative } from './color-reveal/ColorRevealCreative'
 import { TripleStitchCreative } from './triple-stitch/TripleStitchCreative'
@@ -17,6 +19,7 @@ const CREATIVE_RENDERERS: Record<CreativeModeId, (onBack: () => void) => ReactNo
 }
 
 export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange }: WorkspaceCreativeFactoryProps) {
+  const media = useWorkspaceMedia()
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspaceCreativeFactory render creativeModeId=${creativeModeId}`)
   if (creativeModeId) {
     return CREATIVE_RENDERERS[creativeModeId](() => onCreativeModeChange(null))
@@ -25,6 +28,9 @@ export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange 
   return (
     <section className="workspace-creative-list-page">
       <header className="workspace-creative-list-header">
+        <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={media.backToProjects}>
+          返回工作台列表
+        </Button>
         <div>
           <h2>创意效果</h2>
           <p>选择一个效果开始制作</p>

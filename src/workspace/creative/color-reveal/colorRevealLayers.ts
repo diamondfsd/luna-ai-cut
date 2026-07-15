@@ -48,6 +48,7 @@ export function buildColorRevealLayers(options: ColorRevealLayerOptions): Previe
     } : afterColor
     const shared: PreviewLayer = {
       ...layer,
+      fit: 'cover',
       ...(isVideo ? {
         videoTime: trimStart,
         videoOffset: forExport ? effectStart : undefined,
