@@ -19,6 +19,15 @@
   white-space: nowrap;
 }
 
+.workspace-mask-quality-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .workspace-mask-setting-row {
   display: flex;
   align-items: center;

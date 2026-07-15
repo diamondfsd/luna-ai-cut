@@ -3,12 +3,17 @@ import { Brush, Eraser, Eye, EyeOff, Sparkles, Trash2 } from 'lucide-react'
 import { Button, ButtonGroup, IconButton, Switch, Tooltip } from '../../ui'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
-import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
+import { useWorkspaceMask, type SegmentationModelId } from '../context/WorkspaceMaskContext'
 import './MaskPanel.css'
 
 const BRUSH_MODES = [
   { value: 'paint', label: <><Brush size={14} />添加</> },
   { value: 'erase', label: <><Eraser size={14} />移除</> },
+]
+
+const SEGMENTATION_MODES: Array<{ value: SegmentationModelId; label: string }> = [
+  { value: 'segformer-b0-ade20k', label: '标准' },
+  { value: 'segformer-b2-ade20k', label: '精细' },
 ]
 
 export function MaskPanel() {
@@ -32,6 +37,14 @@ export function MaskPanel() {
           {mask.busy ? '正在识别' : '智能选择'}
         </Button>
         <span>{settings?.kind === 'semantic' ? settings.className ?? '已选择区域' : '点击画面选择区域'}</span>
+      </div>
+      <div className="workspace-mask-quality-row">
+        <span>识别质量</span>
+        <ButtonGroup
+          options={SEGMENTATION_MODES}
+          value={mask.segmentationModel}
+          onChange={mask.setSegmentationModel}
+        />
       </div>
 
       <ButtonGroup
