@@ -29,6 +29,12 @@ export interface WorkspaceTripleStitchState {
   watermarkStyle: string
 }
 
+export interface WorkspaceColorRevealState {
+  saturation: number
+  contrast: number
+  transitionDuration: number
+}
+
 export interface WorkspaceProject {
   id: string
   name: string
@@ -38,5 +44,6 @@ export interface WorkspaceProject {
   assets: WorkspaceProjectAsset[]
   creative?: {
     tripleStitch?: WorkspaceTripleStitchState
+    colorReveal?: WorkspaceColorRevealState
   }
 }

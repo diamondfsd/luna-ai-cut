@@ -149,6 +149,7 @@ export function AppRoutes() {
           <WorkspacePage
             workspaceMode={workspaceMode}
             creativeModeId={creativeModeId}
+            onCreativeModeChange={setCreativeModeId}
             pageActive={isActive('/workspace')}
             onEditingChange={setWorkspaceEditing}
           />

@@ -52,6 +52,14 @@ pub struct CompositionRect {
 
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
+pub struct CompositionReveal {
+    pub direction: String,
+    pub start: f64,
+    pub duration: f64,
+}
+
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionLayer {
     pub id: Option<String>,
     pub layer_type: Option<String>,
@@ -60,14 +68,25 @@ pub struct CompositionLayer {
     pub fit: Option<String>,
     pub opacity: Option<f64>,
     pub z_index: Option<i32>,
+    pub reveal: Option<CompositionReveal>,
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
-    pub shape: Option<String>, pub fill_color: Option<String>, pub corner_radius: Option<f64>,
-    pub stroke_color: Option<String>, pub stroke_width: Option<f64>, pub content: Option<String>,
-    pub font_size: Option<f64>, pub font_family: Option<String>, pub font_file: Option<String>, pub font_weight: Option<f64>, pub text_color: Option<String>, pub text_align: Option<String>, pub vertical_align: Option<String>,
+    pub shape: Option<String>,
+    pub fill_color: Option<String>,
+    pub corner_radius: Option<f64>,
+    pub stroke_color: Option<String>,
+    pub stroke_width: Option<f64>,
+    pub content: Option<String>,
+    pub font_size: Option<f64>,
+    pub font_family: Option<String>,
+    pub font_file: Option<String>,
+    pub font_weight: Option<f64>,
+    pub text_color: Option<String>,
+    pub text_align: Option<String>,
+    pub vertical_align: Option<String>,
 }
 
 #[napi(object)]
@@ -287,7 +306,10 @@ pub(crate) fn mux_primary_audio(
         log_write(&format!("[Export:Audio] 音频合并失败: {}", stderr.trim()));
         return Err(format!("音频合成失败: {}", stderr.trim()));
     }
-    log_write(&format!("[Export:Audio] 音频合并成功 output={}", mux_output.display()));
+    log_write(&format!(
+        "[Export:Audio] 音频合并成功 output={}",
+        mux_output.display()
+    ));
     std::fs::remove_file(silent_video).map_err(|error| format!("清理临时视频失败: {error}"))?;
     Ok(mux_output)
 }
@@ -296,30 +318,66 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
     input
         .layers
         .iter()
-        .map(|layer| PreviewLayerInput {
-            layer_type: layer.layer_type.clone(),
-            file_path: layer.source.path.clone(),
-            is_video: is_video_source(&layer.source),
-            video_time: layer_time(&layer.source, time),
-            fit: layer.fit.clone().unwrap_or_else(|| "cover".to_string()),
-            dst_x: layer.rect.x,
-            dst_y: layer.rect.y,
-            dst_w: layer.rect.w,
-            dst_h: layer.rect.h,
-            src_x: 0.0,
-            src_y: 0.0,
-            src_w: 1.0,
-            src_h: 1.0,
-            opacity: layer.opacity.unwrap_or(1.0),
-            z_index: layer.z_index.unwrap_or(0),
-            color: layer.color.clone().unwrap_or_default(),
-            transform: layer.transform.clone().unwrap_or_default(),
-            positioning: layer.positioning.clone(),
-            lut_id: layer.lut_id.clone(),
-            lut_intensity: layer.lut_intensity,
-            shape: layer.shape.clone(), fill_color: layer.fill_color.clone(), corner_radius: layer.corner_radius,
-            stroke_color: layer.stroke_color.clone(), stroke_width: layer.stroke_width, content: layer.content.clone(),
-            font_size: layer.font_size, font_family: layer.font_family.clone(), font_file: layer.font_file.clone(), font_weight: layer.font_weight, text_color: layer.text_color.clone(), text_align: layer.text_align.clone(), vertical_align: layer.vertical_align.clone(),
+        .map(|layer| {
+            let reveal_progress = layer
+                .reveal
+                .as_ref()
+                .map(|reveal| {
+                    if reveal.duration <= 0.0 {
+                        1.0
+                    } else {
+                        ((time - reveal.start) / reveal.duration).clamp(0.0, 1.0)
+                    }
+                })
+                .unwrap_or(1.0);
+            let reveal_width = if layer
+                .reveal
+                .as_ref()
+                .is_some_and(|reveal| reveal.direction == "left-to-right")
+            {
+                reveal_progress
+            } else {
+                1.0
+            };
+            PreviewLayerInput {
+                layer_type: layer.layer_type.clone(),
+                file_path: layer.source.path.clone(),
+                is_video: is_video_source(&layer.source),
+                video_time: layer_time(&layer.source, time),
+                fit: layer.fit.clone().unwrap_or_else(|| "cover".to_string()),
+                dst_x: layer.rect.x,
+                dst_y: layer.rect.y,
+                dst_w: layer.rect.w * reveal_width,
+                dst_h: layer.rect.h,
+                src_x: 0.0,
+                src_y: 0.0,
+                src_w: reveal_width,
+                src_h: 1.0,
+                opacity: if reveal_width <= 0.0 {
+                    0.0
+                } else {
+                    layer.opacity.unwrap_or(1.0)
+                },
+                z_index: layer.z_index.unwrap_or(0),
+                color: layer.color.clone().unwrap_or_default(),
+                transform: layer.transform.clone().unwrap_or_default(),
+                positioning: layer.positioning.clone(),
+                lut_id: layer.lut_id.clone(),
+                lut_intensity: layer.lut_intensity,
+                shape: layer.shape.clone(),
+                fill_color: layer.fill_color.clone(),
+                corner_radius: layer.corner_radius,
+                stroke_color: layer.stroke_color.clone(),
+                stroke_width: layer.stroke_width,
+                content: layer.content.clone(),
+                font_size: layer.font_size,
+                font_family: layer.font_family.clone(),
+                font_file: layer.font_file.clone(),
+                font_weight: layer.font_weight,
+                text_color: layer.text_color.clone(),
+                text_align: layer.text_align.clone(),
+                vertical_align: layer.vertical_align.clone(),
+            }
         })
         .collect()
 }
@@ -538,9 +596,7 @@ impl Task for ExportCompositionVideoTask {
             .input
             .fps
             .or(self.input.composition.canvas.fps)
-            .or_else(|| {
-                infer_composition_fps(&self.input.ffprobe_path, &self.input.composition)
-            })
+            .or_else(|| infer_composition_fps(&self.input.ffprobe_path, &self.input.composition))
             .unwrap_or(30.0)
             .max(1.0);
         let duration = self
@@ -772,9 +828,8 @@ impl Task for ExportCompositionVideoTask {
             std::fs::remove_file(&self.input.output_path)
                 .map_err(|e| napi::Error::from_reason(format!("替换旧导出文件失败: {}", e)))?;
         }
-        std::fs::rename(&completed_output, &self.input.output_path).map_err(|e| {
-            napi::Error::from_reason(format!("保存导出文件失败: {}", e))
-        })?;
+        std::fs::rename(&completed_output, &self.input.output_path)
+            .map_err(|e| napi::Error::from_reason(format!("保存导出文件失败: {}", e)))?;
 
         if let Some(ref id) = self.input.task_id {
             cleanup_task(id);
