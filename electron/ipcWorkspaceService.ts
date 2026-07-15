@@ -185,8 +185,13 @@ export function register(): void {
     return readWorkspaceColorMetadata(filePath)
   })
 
-  ipcMain.handle('workspace:segmentImage', async (_event, filePath: string, point?: { x: number; y: number }) => {
-    const model = await loadModel('segformer-b0-ade20k')
+  ipcMain.handle('workspace:segmentImage', async (
+    _event,
+    filePath: string,
+    point?: { x: number; y: number },
+    modelId: 'segformer-b0-ade20k' | 'segformer-b2-ade20k' = 'segformer-b0-ade20k',
+  ) => {
+    const model = await loadModel(modelId)
     const { stdout } = await execFileAsync(getFfmpegPath(), [
       '-v', 'error',
       '-i', filePath,

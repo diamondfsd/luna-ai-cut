@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-export type ModelId = 'segformer-b0-ade20k'
+export type ModelId = 'segformer-b0-ade20k' | 'segformer-b2-ade20k'
 
 interface ModelDefinition {
   fileName: string
@@ -29,6 +29,14 @@ export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = {
     sha256: '3e5c18a4be395f16646438d54c42377ddc202edfa33d5eced0c9506de75c44c2',
     license: 'NVIDIA SegFormer License (open-source non-commercial use only)',
     source: 'https://modelscope.cn/models/Xenova/segformer-b0-finetuned-ade-512-512',
+    licenseUrl: 'https://github.com/NVlabs/SegFormer/blob/master/LICENSE',
+  },
+  'segformer-b2-ade20k': {
+    fileName: 'model.onnx',
+    url: 'https://modelscope.cn/models/Xenova/segformer-b2-finetuned-ade-512-512/resolve/master/onnx/model.onnx',
+    sha256: '819c15e6af8c4de3359c1de7ab0a17d0dde495df1d16f8908a7163f8038e0fa0',
+    license: 'NVIDIA SegFormer License (open-source non-commercial use only)',
+    source: 'https://modelscope.cn/models/Xenova/segformer-b2-finetuned-ade-512-512',
     licenseUrl: 'https://github.com/NVlabs/SegFormer/blob/master/LICENSE',
   },
 }

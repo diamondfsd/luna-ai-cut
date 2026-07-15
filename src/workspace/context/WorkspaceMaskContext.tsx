@@ -6,6 +6,7 @@ import { useWorkspaceEdit } from './WorkspaceEditContext'
 import { useWorkspaceMedia } from './WorkspaceMediaContext'
 
 export type MaskBrushMode = 'paint' | 'erase'
+export type SegmentationModelId = 'segformer-b0-ade20k' | 'segformer-b2-ade20k'
 
 interface WorkspaceMaskValue {
   available: boolean
@@ -22,6 +23,8 @@ interface WorkspaceMaskValue {
   busy: boolean
   semanticPicking: boolean
   setSemanticPicking: (value: boolean) => void
+  segmentationModel: SegmentationModelId
+  setSegmentationModel: (value: SegmentationModelId) => void
   commitMask: (data: Uint8Array) => Promise<void>
   updateMaskSettings: (patch: { opacity?: number; inverted?: boolean; feather?: number }) => void
   removeMask: () => Promise<void>
@@ -57,7 +60,12 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   const [maskSize, setMaskSize] = useState<{ width: number; height: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const [semanticPicking, setSemanticPicking] = useState(false)
-  const available = Boolean(media.activeMedia?.path && isImagePath(media.activeMedia.path))
+  const [segmentationModel, setSegmentationModelState] = useState<SegmentationModelId>(() => (
+    localStorage.getItem('workspace_segmentation_model') === 'segformer-b2-ade20k'
+      ? 'segformer-b2-ade20k'
+      : 'segformer-b0-ade20k'
+  ))
+  const available = Boolean(media.currentProject && media.activeMedia?.path && isImagePath(media.activeMedia.path))
   const activeMask = edit.pipeline.colorMask
   const activeMaskPath = activeMask?.path
   const activeMediaId = media.activeMedia?.id
@@ -137,18 +145,15 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   }, [activeMask, edit])
 
   const removeMask = useCallback(async () => {
-    if (activeMask && media.currentProject) {
-      await window.luna.workspace.deleteColorMask(media.currentProject.id, activeMask.path).catch(() => undefined)
-    }
     if (maskSize) setMaskData(new Uint8Array(maskSize.width * maskSize.height))
     edit.commitPatch({ colorMask: null })
-  }, [activeMask, edit, maskSize, media.currentProject])
+  }, [edit, maskSize])
 
   const generateSemanticMask = useCallback(async (point?: { x: number; y: number }) => {
     if (!media.activeMedia || !media.currentProject || !maskSize) return
     setBusy(true)
     try {
-      const result = await window.luna.workspace.segmentImage(media.activeMedia.path, point)
+      const result = await window.luna.workspace.segmentImage(media.activeMedia.path, point, segmentationModel)
       setMaskSize({ width: result.width, height: result.height })
       const data = new Uint8Array(result.bytes)
       setMaskData(data)
@@ -179,7 +184,12 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false)
     }
-  }, [activeMask, edit, maskSize, media.activeMedia, media.currentProject])
+  }, [activeMask, edit, maskSize, media.activeMedia, media.currentProject, segmentationModel])
+
+  const setSegmentationModel = useCallback((model: SegmentationModelId) => {
+    setSegmentationModelState(model)
+    localStorage.setItem('workspace_segmentation_model', model)
+  }, [])
 
   const value = useMemo<WorkspaceMaskValue>(() => ({
     available,
@@ -196,11 +206,13 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     busy,
     semanticPicking,
     setSemanticPicking,
+    segmentationModel,
+    setSegmentationModel,
     commitMask,
     updateMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [available, brushMode, brushSize, busy, commitMask, editing, generateSemanticMask, maskData, maskSize, removeMask, semanticPicking, showOverlay, updateMaskSettings])
+  }), [available, brushMode, brushSize, busy, commitMask, editing, generateSemanticMask, maskData, maskSize, removeMask, segmentationModel, semanticPicking, setSegmentationModel, showOverlay, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }
