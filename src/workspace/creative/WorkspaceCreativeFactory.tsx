@@ -1,27 +1,56 @@
-import { LayoutTemplate } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
+import type { ReactNode } from 'react'
 
-import type { CreativeModeId } from '../components/WorkspaceModeHeader'
+import { CREATIVE_CATALOG, type CreativeModeId } from './creativeCatalog'
+import { ColorRevealCreative } from './color-reveal/ColorRevealCreative'
 import { TripleStitchCreative } from './triple-stitch/TripleStitchCreative'
 import './creative-factory.css'
 
 interface WorkspaceCreativeFactoryProps {
   creativeModeId: CreativeModeId | null
+  onCreativeModeChange: (modeId: CreativeModeId | null) => void
 }
 
-export function WorkspaceCreativeFactory({ creativeModeId }: WorkspaceCreativeFactoryProps) {
+const CREATIVE_RENDERERS: Record<CreativeModeId, (onBack: () => void) => ReactNode> = {
+  'color-reveal': (onBack) => <ColorRevealCreative onBack={onBack} />,
+  'triple-stitch': (onBack) => <TripleStitchCreative onBack={onBack} />,
+}
+
+export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange }: WorkspaceCreativeFactoryProps) {
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspaceCreativeFactory render creativeModeId=${creativeModeId}`)
-  if (creativeModeId === 'triple-stitch') {
-    return <TripleStitchCreative />
+  if (creativeModeId) {
+    return CREATIVE_RENDERERS[creativeModeId](() => onCreativeModeChange(null))
   }
 
   return (
     <section className="workspace-creative-list-page">
+      <header className="workspace-creative-list-header">
+        <div>
+          <h2>创意效果</h2>
+          <p>选择一个效果开始制作</p>
+        </div>
+      </header>
       <div className="workspace-creative-list">
-        <button className="workspace-creative-card workspace-creative-card--active" type="button">
-          <LayoutTemplate size={22} />
-          <strong>Live 三拼</strong>
-          <span>将三个素材拼成 9:16 竖版内容</span>
-        </button>
+        {CREATIVE_CATALOG.map((item) => {
+          const ItemIcon = item.icon
+          return (
+            <button
+              key={item.id}
+              className="workspace-creative-card"
+              type="button"
+              onClick={() => onCreativeModeChange(item.id)}
+            >
+              <span className={`workspace-creative-preview ${item.previewClassName}`} aria-hidden="true">
+                <ItemIcon size={24} />
+              </span>
+              <span className="workspace-creative-card-copy">
+                <strong>{item.name}</strong>
+                <span>{item.description}</span>
+              </span>
+              <ArrowRight className="workspace-creative-card-arrow" size={17} />
+            </button>
+          )
+        })}
       </div>
     </section>
   )

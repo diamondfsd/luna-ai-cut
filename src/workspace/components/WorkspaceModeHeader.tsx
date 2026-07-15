@@ -1,7 +1,8 @@
 import '../../styles/workspace-mode.css'
+import { getCreativeCatalogItem, type CreativeModeId } from '../creative/creativeCatalog'
 
 export type WorkspaceMode = 'edit' | 'creative'
-export type CreativeModeId = 'triple-stitch'
+export type { CreativeModeId } from '../creative/creativeCatalog'
 
 interface WorkspaceModeHeaderProps {
   mode: WorkspaceMode
@@ -18,6 +19,7 @@ export function WorkspaceModeHeader({
   onCreativeModeChange,
   variant = 'header',
 }: WorkspaceModeHeaderProps) {
+  const activeCreative = getCreativeCatalogItem(creativeModeId)
   const switcher = (
     <div className="workspace-mode-switcher">
       <button
@@ -29,7 +31,7 @@ export function WorkspaceModeHeader({
       <button
         className={`workspace-mode-btn workspace-mode-btn-creative${mode === 'creative' ? ' active' : ''}`}
         onClick={() => {
-          onCreativeModeChange('triple-stitch')
+          onCreativeModeChange(null)
           onModeChange('creative')
         }}
       >
@@ -45,8 +47,8 @@ export function WorkspaceModeHeader({
   return (
     <header className="workspace-mode-header">
       {switcher}
-      {mode === 'creative' && creativeModeId === 'triple-stitch' && (
-        <span className="workspace-mode-subtitle">三拼视频</span>
+      {mode === 'creative' && activeCreative && (
+        <span className="workspace-mode-subtitle">{activeCreative.subtitle}</span>
       )}
     </header>
   )

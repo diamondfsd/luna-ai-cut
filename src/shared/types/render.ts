@@ -90,6 +90,8 @@ export interface PreviewLayer {
   layerType?: 'media' | 'shape' | 'text' | 'logo' | 'decoration'
   filePath: string
   isVideo?: boolean
+  /** 显式相同的 key 会复用同一份视频解码纹理。 */
+  videoSourceKey?: string
   videoTime?: number
   /** 截取后的有效时长（秒）。不设则用源视频完整时长。 */
   videoDuration?: number
@@ -99,6 +101,8 @@ export interface PreviewLayer {
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number
   zIndex: number
+  /** 仅导出合成使用；实时预览由调用方按播放进度更新裁剪。 */
+  reveal?: CompositionReveal
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
@@ -133,6 +137,12 @@ export interface CompositionInput {
   layers: CompositionLayer[]
 }
 
+export interface CompositionReveal {
+  direction: 'left-to-right'
+  start: number
+  duration: number
+}
+
 export interface CompositionLayer {
   layerType?: 'media' | 'shape' | 'text' | 'logo' | 'decoration'
   id?: string
@@ -150,6 +160,8 @@ export interface CompositionLayer {
   fit?: 'cover' | 'contain' | string
   opacity?: number
   zIndex?: number
+  /** 按合成时间从左向右展开当前图层。 */
+  reveal?: CompositionReveal
   color?: RenderColorAdjustments
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
