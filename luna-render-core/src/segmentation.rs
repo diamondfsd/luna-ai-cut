@@ -209,6 +209,7 @@ pub fn segment(
     rgb: Buffer,
     point_x: f64,
     point_y: f64,
+    target_class_id: Option<u32>,
 ) -> Result<SegmentationResult, String> {
     let input = preprocess(rgb.as_ref())?;
     let sessions = SESSION.get_or_init(|| Mutex::new(None));
@@ -250,10 +251,13 @@ pub fn segment(
     let classes = class_map(logits);
     let seed_x = (point_x.clamp(0.0, 1.0) * (OUTPUT_SIZE - 1) as f64).round() as usize;
     let seed_y = (point_y.clamp(0.0, 1.0) * (OUTPUT_SIZE - 1) as f64).round() as usize;
-    let class_id = classes[seed_y * OUTPUT_SIZE + seed_x] as usize;
+    let class_id = target_class_id
+        .map(|value| value as usize)
+        .filter(|value| *value < CLASS_COUNT)
+        .unwrap_or(classes[seed_y * OUTPUT_SIZE + seed_x] as usize);
     let targets = selected_classes(class_id);
     let probability = target_probability(logits, &targets);
-    let selected = if class_id == 2 || WATER_CLASSES.contains(&class_id) {
+    let selected = if target_class_id.is_some() || class_id == 2 || WATER_CLASSES.contains(&class_id) {
         classes
             .iter()
             .map(|value| targets.contains(&(*value as usize)))

@@ -124,10 +124,22 @@
 
 .workspace-color-mask-layer-actions {
   display: flex;
-  max-width: 58px;
-  flex-wrap: wrap;
+  max-width: 86px;
   justify-content: flex-end;
   padding-right: 3px;
+}
+
+.workspace-color-mask-layer-menu {
+  display: grid;
+  width: 156px;
+  gap: 3px;
+  padding: 6px;
+}
+
+.workspace-color-mask-layer-menu .ui-btn {
+  width: 100%;
+  justify-content: flex-start;
+  border: 0;
 }
 
 .workspace-mask-editor-dialog {
