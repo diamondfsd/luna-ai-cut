@@ -37,8 +37,7 @@ export interface WorkspaceColorRevealState {
   transitionDuration: number
   initialHoldDuration?: number
   midpointHoldDuration?: number
-  initialTitle?: string
-  revealedTitle?: string
+  stageMode?: 'two' | 'three'
 }
 
 export interface WorkspaceProject {

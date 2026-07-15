@@ -70,25 +70,6 @@ fn reveal_progress(reveal: &CompositionReveal, time: f64) -> f64 {
     1.0
 }
 
-fn layer_opacity(layer: &CompositionLayer, time: f64) -> f64 {
-    let start = layer.visible_start;
-    let end = layer.visible_end;
-    if start.is_some_and(|start| time < start) || end.is_some_and(|end| time >= end) {
-        return 0.0;
-    }
-
-    let mut progress: f64 = 1.0;
-    let fade_in = layer.fade_in_duration.unwrap_or(0.0).max(0.0);
-    if let Some(start) = start.filter(|_| fade_in > 0.0) {
-        progress = progress.min(((time - start) / fade_in).clamp(0.0, 1.0));
-    }
-    let fade_out = layer.fade_out_duration.unwrap_or(0.0).max(0.0);
-    if let Some(end) = end.filter(|_| fade_out > 0.0) {
-        progress = progress.min(((end - time) / fade_out).clamp(0.0, 1.0));
-    }
-    layer.opacity.unwrap_or(1.0).clamp(0.0, 1.0) * progress
-}
-
 pub(crate) fn infer_composition_duration(
     ffprobe_path: &str,
     input: &CompositionInput,
@@ -286,7 +267,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 src_y: 0.0,
                 src_w: 1.0,
                 src_h: 1.0,
-                opacity: layer_opacity(layer, time),
+                opacity: layer.opacity.unwrap_or(1.0),
                 reveal_progress: reveal_width,
                 z_index: layer.z_index.unwrap_or(0),
                 color: layer.color.clone().unwrap_or_default(),

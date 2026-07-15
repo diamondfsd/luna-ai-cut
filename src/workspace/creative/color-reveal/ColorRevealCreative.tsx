@@ -6,14 +6,13 @@ import { MultipleLayerVideoPreviewLrcRender } from '../../../components/Multiple
 import { resolveExportConfig } from '../../../components/previewStageExport'
 import { buildCompositionFromPreviewLayers } from '../../../components/renderComposition'
 import type { CompositionInput, MediaMetadata, PreviewLayer, VideoExportSettings } from '../../../shared/types'
-import { Button, IconButton, Input, VideoControls, toast } from '../../../ui'
+import { Button, IconButton, SegmentedControl, VideoControls, toast } from '../../../ui'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
-import { COLOR_REVEAL_TITLE_FADE_DURATION, createColorRevealTitleLayer, createPreviewColorRevealTitleLayer } from './colorRevealLayers'
 import './color-reveal.css'
 
 const DEFAULT_SATURATION = -80
@@ -21,9 +20,8 @@ const DEFAULT_GRAY = 70
 const DEFAULT_TRANSITION_DURATION = 2.5
 const DEFAULT_INITIAL_HOLD_DURATION = 1
 const DEFAULT_MIDPOINT_HOLD_DURATION = 0.6
-const DEFAULT_INITIAL_TITLE = 'i-log OFF'
-const DEFAULT_REVEALED_TITLE = 'i-log ON'
-
+const DEFAULT_STAGE_MODE = 'three'
+type ColorRevealStageMode = 'two' | 'three'
 function savedGray(state: { gray?: number; contrast?: number } | undefined): number {
   if (typeof state?.gray === 'number') return state.gray
   if (typeof state?.contrast === 'number') return Math.min(100, state.contrast * 3)
@@ -47,7 +45,6 @@ interface LunaCompositionExportApi {
 interface ColorRevealCreativeProps {
   onBack: () => void
 }
-
 function outputPath(exportDir: string, fileName: string): string {
   return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
 }
@@ -69,8 +66,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   const [transitionDuration, setTransitionDuration] = useState(savedState?.transitionDuration ?? DEFAULT_TRANSITION_DURATION)
   const [initialHoldDuration, setInitialHoldDuration] = useState(savedState?.initialHoldDuration ?? DEFAULT_INITIAL_HOLD_DURATION)
   const [midpointHoldDuration, setMidpointHoldDuration] = useState(savedState?.midpointHoldDuration ?? DEFAULT_MIDPOINT_HOLD_DURATION)
-  const [initialTitle, setInitialTitle] = useState(savedState?.initialTitle ?? DEFAULT_INITIAL_TITLE)
-  const [revealedTitle, setRevealedTitle] = useState(savedState?.revealedTitle ?? DEFAULT_REVEALED_TITLE)
+  const [stageMode, setStageMode] = useState<ColorRevealStageMode>(savedState?.stageMode ?? DEFAULT_STAGE_MODE)
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
   const [duration, setDuration] = useState(0)
   const [borderMetadata, setBorderMetadata] = useState<MediaMetadata | null>(null)
@@ -84,7 +80,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   const currentTimeRef = useRef(0)
   const trimStart = pipeline.trim?.startTime ?? 0
   const sourceDuration = Math.max(0, (pipeline.trim?.endTime ?? duration) - trimStart)
-  const effectStart = initialHoldDuration + COLOR_REVEAL_TITLE_FADE_DURATION
+  const effectStart = initialHoldDuration
   const creativeDuration = sourceDuration + effectStart
   currentTimeRef.current = currentTime
 
@@ -95,8 +91,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
     setTransitionDuration(nextSavedState?.transitionDuration ?? DEFAULT_TRANSITION_DURATION)
     setInitialHoldDuration(nextSavedState?.initialHoldDuration ?? DEFAULT_INITIAL_HOLD_DURATION)
     setMidpointHoldDuration(nextSavedState?.midpointHoldDuration ?? DEFAULT_MIDPOINT_HOLD_DURATION)
-    setInitialTitle(nextSavedState?.initialTitle ?? DEFAULT_INITIAL_TITLE)
-    setRevealedTitle(nextSavedState?.revealedTitle ?? DEFAULT_REVEALED_TITLE)
+    setStageMode(nextSavedState?.stageMode ?? DEFAULT_STAGE_MODE)
   }, [media.currentProject?.id])
 
   useEffect(() => {
@@ -170,8 +165,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
           transitionDuration,
           initialHoldDuration,
           midpointHoldDuration,
-          initialTitle,
-          revealedTitle,
+          stageMode,
         },
       },
     }
@@ -182,7 +176,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       projectSaveTimerRef.current = null
       void window.luna.workspace.saveProject(nextProject).catch(() => {})
     }, 300)
-  }, [gray, initialHoldDuration, initialTitle, midpointHoldDuration, revealedTitle, saturation, transitionDuration])
+  }, [gray, initialHoldDuration, midpointHoldDuration, saturation, stageMode, transitionDuration])
 
   useEffect(() => () => {
     if (projectSaveTimerRef.current !== null) window.clearTimeout(projectSaveTimerRef.current)
@@ -220,54 +214,59 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         videoDuration: sourceDuration || undefined,
         videoSourceKey: 'color-reveal-main',
       }
+      const grayLayer: PreviewLayer = {
+        ...shared,
+        color: beforeColor,
+        lutId: undefined,
+        lutIntensity: undefined,
+      }
+      if (stageMode === 'two') {
+        return [
+          grayLayer,
+          {
+            ...shared,
+            zIndex: layer.zIndex + 0.01,
+            reveal: {
+              direction: 'left-to-right' as const,
+              start: revealStart,
+              duration: transitionDuration,
+              midpointHold: midpointHoldDuration,
+              easing: 'ease-in-out' as const,
+            },
+          },
+        ]
+      }
+
+      const halfDuration = transitionDuration / 2
       return [
-        { ...shared, color: beforeColor },
+        grayLayer,
         {
           ...shared,
+          color: undefined,
+          lutId: undefined,
+          lutIntensity: undefined,
           zIndex: layer.zIndex + 0.01,
           reveal: {
             direction: 'left-to-right' as const,
             start: revealStart,
-            duration: transitionDuration,
-            midpointHold: midpointHoldDuration,
+            duration: halfDuration,
+            easing: 'ease-in-out' as const,
+          },
+        },
+        {
+          ...shared,
+          zIndex: layer.zIndex + 0.02,
+          reveal: {
+            direction: 'left-to-right' as const,
+            start: revealStart + halfDuration + midpointHoldDuration,
+            duration: halfDuration,
             easing: 'ease-in-out' as const,
           },
         },
       ]
     })
-    const titleLayers: PreviewLayer[] = []
-    if (forExport) {
-      if (initialTitle.trim()) {
-        titleLayers.push(createColorRevealTitleLayer(
-          initialTitle.trim(),
-          1,
-          0,
-          effectStart,
-          undefined,
-          COLOR_REVEAL_TITLE_FADE_DURATION,
-        ))
-      }
-      if (revealedTitle.trim()) {
-        titleLayers.push(createColorRevealTitleLayer(
-          revealedTitle.trim(),
-          1,
-          effectStart,
-          undefined,
-          COLOR_REVEAL_TITLE_FADE_DURATION,
-        ))
-      }
-    } else {
-      const previewTitle = createPreviewColorRevealTitleLayer(
-        currentTime,
-        initialHoldDuration,
-        effectStart,
-        initialTitle,
-        revealedTitle,
-      )
-      if (previewTitle) titleLayers.push(previewTitle)
-    }
-    return [...mediaLayers, ...titleLayers]
-  }, [activeAsset, currentTime, editedLayers, effectStart, gray, initialHoldDuration, initialTitle, midpointHoldDuration, revealedTitle, saturation, sourceDuration, transitionDuration, trimStart])
+    return mediaLayers
+  }, [activeAsset, editedLayers, effectStart, gray, midpointHoldDuration, saturation, sourceDuration, stageMode, transitionDuration, trimStart])
 
   const previewLayers = useMemo(() => buildEffectLayers(false), [buildEffectLayers])
   const handlePreviewError = useCallback((message: string) => toast.error(message), [])
@@ -305,8 +304,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
     setTransitionDuration(Math.min(DEFAULT_TRANSITION_DURATION, Math.max(0.5, duration || DEFAULT_TRANSITION_DURATION)))
     setInitialHoldDuration(DEFAULT_INITIAL_HOLD_DURATION)
     setMidpointHoldDuration(DEFAULT_MIDPOINT_HOLD_DURATION)
-    setInitialTitle(DEFAULT_INITIAL_TITLE)
-    setRevealedTitle(DEFAULT_REVEALED_TITLE)
+    setStageMode(DEFAULT_STAGE_MODE)
     handleSeek(0)
   }
 
@@ -372,7 +370,6 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
               canvasWidth={outputSize.width}
               canvasHeight={outputSize.height}
               playing={playing && currentTime >= effectStart}
-              timelineTime={currentTime}
               decodeQuality={1}
               interactiveImageLayerIndexes={[]}
               onVideoElement={setVideoElement}
@@ -400,33 +397,21 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         <div className="color-reveal-panel-head">
           <div>
             <strong>效果设置</strong>
-            <span>首帧停留后，曲线推进至一半并停顿，再完成色彩还原</span>
+            <span>{stageMode === 'three' ? '灰片过渡到原图，停顿后再呈现调色滤镜' : '灰片曲线过渡到调色滤镜，中段短暂停顿'}</span>
           </div>
         </div>
         <div className="color-reveal-param-list">
-          <div className="color-reveal-text-fields">
-            <label>
-              <span>初始标题</span>
-              <Input
-                variant="compact"
-                fullWidth
-                value={initialTitle}
-                maxLength={40}
-                placeholder="输入灰片阶段标题"
-                onChange={(event) => setInitialTitle(event.currentTarget.value)}
-              />
-            </label>
-            <label>
-              <span>变化标题</span>
-              <Input
-                variant="compact"
-                fullWidth
-                value={revealedTitle}
-                maxLength={40}
-                placeholder="输入色彩变化标题"
-                onChange={(event) => setRevealedTitle(event.currentTarget.value)}
-              />
-            </label>
+          <div className="color-reveal-mode-field">
+            <span>变化阶段</span>
+            <SegmentedControl
+              ariaLabel="色彩变化阶段"
+              value={stageMode}
+              options={[
+                { value: 'two', label: '两段' },
+                { value: 'three', label: '三段' },
+              ]}
+              onChange={setStageMode}
+            />
           </div>
           <ParamSlider label="灰片饱和度" value={saturation} min={-100} max={0} onChange={setSaturation} />
           <ParamSlider label="灰度" value={gray} min={0} max={100} onChange={setGray} />

@@ -1,4 +1,4 @@
-import type { CompositionReveal, PreviewLayer } from '../shared/types'
+import type { CompositionReveal } from '../shared/types'
 
 function easeInOutCubic(value: number): number {
   const progress = Math.max(0, Math.min(1, value))
@@ -32,24 +32,4 @@ export function compositionRevealProgress(reveal: CompositionReveal, time: numbe
     return 0.5 + applyEasing(secondHalf, reveal.easing) * 0.5
   }
   return 1
-}
-
-/** 计算图层显示区间内的渐入渐出透明度。渐出完成后，渐入才可开始。 */
-export function compositionLayerOpacity(layer: PreviewLayer, time: number): number {
-  const baseOpacity = Math.max(0, Math.min(1, layer.opacity ?? 1))
-  const start = layer.visibleStart
-  const end = layer.visibleEnd
-  if (start !== undefined && time < start) return 0
-  if (end !== undefined && time >= end) return 0
-
-  let progress = 1
-  const fadeIn = Math.max(0, layer.fadeInDuration ?? 0)
-  if (start !== undefined && fadeIn > 0) {
-    progress = Math.min(progress, Math.max(0, (time - start) / fadeIn))
-  }
-  const fadeOut = Math.max(0, layer.fadeOutDuration ?? 0)
-  if (end !== undefined && fadeOut > 0) {
-    progress = Math.min(progress, Math.max(0, (end - time) / fadeOut))
-  }
-  return baseOpacity * progress
 }
