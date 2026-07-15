@@ -29,7 +29,8 @@ import {
 } from './colorPresetsService'
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
-import { loadModel } from './modelLoader'
+import { loadModel, loadSamModel, type ModelId } from './modelLoader'
+import { SAM_MODEL, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { getNative } from './lunaRenderCore'
 import { deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 
@@ -189,24 +190,62 @@ export function register(): void {
     _event,
     filePath: string,
     point?: { x: number; y: number },
-    modelId: 'segformer-b0-ade20k' | 'segformer-b2-ade20k' = 'segformer-b0-ade20k',
+    modelId: SegmentationModelId = 'segformer-b0-ade20k',
   ) => {
-    const model = await loadModel(modelId)
+    const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
+      _event.sender.send('workspace:segmentation-progress', { phase, label, percent })
+    }
+    const totalStartedAt = performance.now()
+    const modelStartedAt = performance.now()
+    const isSam = modelId === SAM_MODEL.id
+    reportProgress('model', '正在准备模型', null)
+    const model = isSam
+      ? await loadSamModel((progress) => reportProgress(
+        'model',
+        progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
+        Math.round(progress.completedBytes / progress.totalBytes * 100),
+      ))
+      : await loadModel(modelId as ModelId, (progress) => reportProgress(
+        'model',
+        progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
+        Math.round(progress.completedBytes / progress.totalBytes * 100),
+      ))
+    const modelLoadMs = performance.now() - modelStartedAt
+    reportProgress('preparing', '正在准备图片', null)
+    const decodeStartedAt = performance.now()
+    const sourceSize = isSam ? await probeDisplayResolution(filePath) : null
+    const samScale = sourceSize ? Math.min(1, 1024 / Math.max(sourceSize.width, sourceSize.height)) : 1
+    const samWidth = sourceSize ? Math.max(1, Math.round(sourceSize.width * samScale)) : 512
+    const samHeight = sourceSize ? Math.max(1, Math.round(sourceSize.height * samScale)) : 512
+    const filter = isSam
+      ? `scale=${samWidth}:${samHeight}:flags=bilinear,pad=1024:1024:0:0:color=black`
+      : 'scale=512:512:flags=bilinear'
     const { stdout } = await execFileAsync(getFfmpegPath(), [
       '-v', 'error',
       '-i', filePath,
-      '-vf', 'scale=512:512:flags=bilinear',
+      '-vf', filter,
       '-frames:v', '1',
       '-f', 'rawvideo',
       '-pix_fmt', 'rgb24',
       'pipe:1',
-    ], { encoding: 'buffer', maxBuffer: 512 * 512 * 3 + 1024 })
-    const result = getNative().segmentImage(
-      model.path,
-      Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout),
-      point?.x ?? 0.5,
-      point?.y ?? 0.5,
-    )
+    ], { encoding: 'buffer', maxBuffer: 1024 * 1024 * 3 + 1024 })
+    const imagePrepareMs = performance.now() - decodeStartedAt
+    const inferenceStartedAt = performance.now()
+    reportProgress('recognizing', '正在识别', null)
+    const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
+    const result = 'visionEncoderPath' in model
+      ? getNative().segmentSam(
+        model.visionEncoderPath,
+        model.promptDecoderPath,
+        rgb,
+        samWidth,
+        samHeight,
+        point?.x ?? 0.5,
+        point?.y ?? 0.5,
+      )
+      : getNative().segmentImage(model.path, rgb, point?.x ?? 0.5, point?.y ?? 0.5)
+    const inferenceMs = performance.now() - inferenceStartedAt
+    const classId = 'classId' in result && typeof result.classId === 'number' ? result.classId : -1
     const classNames: Record<number, string> = {
       2: '天空',
       4: '树木',
@@ -223,9 +262,15 @@ export function register(): void {
     return {
       width: result.width,
       height: result.height,
-      classId: result.classId,
-      className: classNames[result.classId] ?? '选中区域',
+      classId,
+      className: isSam ? '已选对象' : classNames[classId] ?? '选中区域',
       modelId: model.id,
+      performance: {
+        modelLoadMs: Math.round(modelLoadMs),
+        imagePrepareMs: Math.round(imagePrepareMs),
+        inferenceMs: Math.round(inferenceMs),
+        totalMs: Math.round(performance.now() - totalStartedAt),
+      },
       bytes: result.bytes.buffer.slice(result.bytes.byteOffset, result.bytes.byteOffset + result.bytes.byteLength),
     }
   })

@@ -2,11 +2,20 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { toast } from '../../ui'
 import { isImagePath } from '../../lib/fileUtils'
+import type { SegmentationModelId } from '../../shared/segmentationModels'
+import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
 import { useWorkspaceEdit } from './WorkspaceEditContext'
 import { useWorkspaceMedia } from './WorkspaceMediaContext'
 
 export type MaskBrushMode = 'paint' | 'erase'
-export type SegmentationModelId = 'segformer-b0-ade20k' | 'segformer-b2-ade20k'
+export type { SegmentationModelId } from '../../shared/segmentationModels'
+
+export interface SegmentationPerformance {
+  modelLoadMs: number
+  imagePrepareMs: number
+  inferenceMs: number
+  totalMs: number
+}
 
 interface WorkspaceMaskValue {
   available: boolean
@@ -25,6 +34,8 @@ interface WorkspaceMaskValue {
   setSemanticPicking: (value: boolean) => void
   segmentationModel: SegmentationModelId
   setSegmentationModel: (value: SegmentationModelId) => void
+  lastSegmentationPerformance: SegmentationPerformance | null
+  segmentationProgress: WorkspaceSegmentationProgress | null
   commitMask: (data: Uint8Array) => Promise<void>
   updateMaskSettings: (patch: { opacity?: number; inverted?: boolean; feather?: number }) => void
   removeMask: () => Promise<void>
@@ -60,17 +71,22 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   const [maskSize, setMaskSize] = useState<{ width: number; height: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const [semanticPicking, setSemanticPicking] = useState(false)
-  const [segmentationModel, setSegmentationModelState] = useState<SegmentationModelId>(() => (
-    localStorage.getItem('workspace_segmentation_model') === 'segformer-b2-ade20k'
-      ? 'segformer-b2-ade20k'
+  const [lastSegmentationPerformance, setLastSegmentationPerformance] = useState<SegmentationPerformance | null>(null)
+  const [segmentationProgress, setSegmentationProgress] = useState<WorkspaceSegmentationProgress | null>(null)
+  const [segmentationModel, setSegmentationModelState] = useState<SegmentationModelId>(() => {
+    const saved = localStorage.getItem('workspace_segmentation_model')
+    return saved === 'segformer-b1-ade20k' || saved === 'segformer-b2-ade20k' || saved === 'segformer-b3-ade20k'
+      ? saved
       : 'segformer-b0-ade20k'
-  ))
+  })
   const available = Boolean(media.currentProject && media.activeMedia?.path && isImagePath(media.activeMedia.path))
   const activeMask = edit.pipeline.colorMask
   const activeMaskPath = activeMask?.path
   const activeMediaId = media.activeMedia?.id
   const activeMediaPath = media.activeMedia?.path
   const projectId = media.currentProject?.id
+
+  useEffect(() => window.luna.onWorkspaceSegmentationProgress(setSegmentationProgress), [])
 
   useEffect(() => {
     let canceled = false
@@ -152,8 +168,10 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   const generateSemanticMask = useCallback(async (point?: { x: number; y: number }) => {
     if (!media.activeMedia || !media.currentProject || !maskSize) return
     setBusy(true)
+    setSegmentationProgress({ phase: 'model', label: '正在准备模型', percent: null })
     try {
       const result = await window.luna.workspace.segmentImage(media.activeMedia.path, point, segmentationModel)
+      setLastSegmentationPerformance(result.performance)
       setMaskSize({ width: result.width, height: result.height })
       const data = new Uint8Array(result.bytes)
       setMaskData(data)
@@ -183,6 +201,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
       toast.error(error instanceof Error ? error.message : '智能选择失败')
     } finally {
       setBusy(false)
+      setSegmentationProgress(null)
     }
   }, [activeMask, edit, maskSize, media.activeMedia, media.currentProject, segmentationModel])
 
@@ -208,11 +227,13 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     setSemanticPicking,
     segmentationModel,
     setSegmentationModel,
+    lastSegmentationPerformance,
+    segmentationProgress,
     commitMask,
     updateMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [available, brushMode, brushSize, busy, commitMask, editing, generateSemanticMask, maskData, maskSize, removeMask, segmentationModel, semanticPicking, setSegmentationModel, showOverlay, updateMaskSettings])
+  }), [available, brushMode, brushSize, busy, commitMask, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, removeMask, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }
