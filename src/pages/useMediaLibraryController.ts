@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 
 import type { DownloadProgress, LunaFile, PreviewResult } from '../shared/types'
 import { useMediaLibraryTransferActions } from './useMediaLibraryTransferActions'
+import { useCameraMediaDelete } from './useCameraMediaDelete'
 import { useApp } from '../context/AppContext'
 import { useOptionalDownloadProgress } from '../context/DownloadProgressContext'
 import { useExportProgress } from '../context/ExportProgressContext'
@@ -468,6 +469,13 @@ export function useMediaLibraryController(pageType: PageType) {
     loadExportLibrary,
   })
 
+  const cameraDelete = useCameraMediaDelete({
+    selectedFiles,
+    settings,
+    setSelected,
+    reload: loadCameraLibrary,
+  })
+
   // ═══════════════════════════════════════════
   // 在文件管理器中显示
   // ═══════════════════════════════════════════
@@ -518,7 +526,9 @@ export function useMediaLibraryController(pageType: PageType) {
     activeDownloadFileNames,
     setActiveDownloadFileNames,
     cacheFailedIds,
+    canDeleteCameraFiles: activeDeviceId === 'luna-ultra',
     loadCameraLibrary,
+    ...cameraDelete,
 
     // 本地页面专用
     viewMode,
