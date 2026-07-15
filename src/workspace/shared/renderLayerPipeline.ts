@@ -39,7 +39,10 @@ export function pipelineColorToRenderColor(color: EditPipeline['color']): Render
     levelsBlack: color.levelsBlack,
     levelsGray: color.levelsGray,
     levelsWhite: color.levelsWhite,
-    hslChannels: HSL_CHANNELS.map((channel) => color.hslChannels[channel.key]),
+    hslChannels: [
+      ...HSL_CHANNELS.map((channel) => color.hslChannels[channel.key]),
+      ...color.customHslChannels,
+    ],
   }
 }
 

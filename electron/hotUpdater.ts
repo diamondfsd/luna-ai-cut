@@ -28,6 +28,14 @@ const VERSION_FILE = () => join(HOT_DIR(), 'version.json')
 const GITCODE_API = 'https://api.gitcode.com/api/v5/repos/diamondfsd/luna-ai-cut-package-release'
 const GITCODE_DL = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download'
 
+function currentPlatformPackage(): string {
+  if (process.platform === 'darwin') {
+    return process.arch === 'x64' ? 'darwin-x64' : 'darwin-arm64'
+  }
+  if (process.platform === 'win32') return 'win32-x64'
+  return `${process.platform}-${process.arch}`
+}
+
 // ── 类型 ──
 
 /** renderer-latest.json 清单结构 */
@@ -116,12 +124,16 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
     const data = await res.json() as { assets?: Array<{ name: string; browser_download_url?: string }> }
     const assets = data.assets ?? []
 
-    // 筛选 renderer-*-hot.*.zip 附件
-    const hotZips = assets.filter(a => {
-      return a.name.startsWith('renderer-') &&
-             a.name.endsWith('.zip') &&
-             /renderer-\d+\.\d+\.\d+-hot\.\d+\.zip$/.test(a.name)
-    })
+    const platform = currentPlatformPackage()
+    const platformPattern = new RegExp(
+      `^renderer-\\d+\\.\\d+\\.\\d+-hot\\.\\d+-${platform}\\.zip$`,
+    )
+    const legacyPattern = /^renderer-\d+\.\d+\.\d+-hot\.\d+\.zip$/
+    // 优先使用当前平台的包，保留旧版通用 ZIP 的兼容回退。
+    const hotZips = assets.filter((asset) => platformPattern.test(asset.name))
+    if (hotZips.length === 0) {
+      hotZips.push(...assets.filter((asset) => legacyPattern.test(asset.name)))
+    }
 
     if (hotZips.length === 0) return null
 
@@ -136,6 +148,7 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
     // "renderer-1.3.1-hot.6.zip" → "1.3.1-hot.6"
     const version = latest.name
       .replace(/^renderer-/, '')
+      .replace(new RegExp(`-${platform}\\.zip$`), '')
       .replace(/\.zip$/, '')
 
     // 查找对应的发布说明文件
@@ -256,11 +269,17 @@ export async function applyHotUpdate(info: HotUpdateCheckResult): Promise<void> 
   // 4. 删除旧的热更新文件
   const oldDistElectron = join(hotDir, 'dist-electron')
   const oldDist = join(hotDir, 'dist')
+  const pendingNative = join(hotDir, 'pending-native')
   if (existsSync(oldDistElectron)) {
     rmSync(oldDistElectron, { recursive: true, force: true })
   }
   if (existsSync(oldDist)) {
     rmSync(oldDist, { recursive: true, force: true })
+  }
+  // 原生模块不能在 Windows 的当前进程中覆盖：保留为 pending-native，
+  // 由下次启动的 bootstrap 在加载主进程代码前完成切换。
+  if (existsSync(pendingNative)) {
+    rmSync(pendingNative, { recursive: true, force: true })
   }
 
   // 5. 移动新文件
