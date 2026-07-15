@@ -145,6 +145,8 @@ export interface CompositionReveal {
   /** 实际运动时长，不包含中段停顿。 */
   duration: number
   midpointHold?: number
+  /** 到达中点后回退的画面宽度比例。 */
+  midpointBounce?: number
   easing?: 'linear' | 'ease-in-out'
 }
 
