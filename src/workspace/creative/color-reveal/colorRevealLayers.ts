@@ -74,7 +74,7 @@ export function buildColorRevealLayers(options: ColorRevealLayerOptions): Previe
             start: revealStart,
             duration: transitionDuration,
             midpointHold: midpointHoldDuration,
-            midpointBounce: 0.03,
+            midpointBounce: 0.035,
             easing: 'ease-in-out',
           },
         },
