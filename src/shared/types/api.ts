@@ -110,7 +110,7 @@ export interface LunaApi {
     getVideoDuration(filePath: string): Promise<number>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
-    segmentImage(filePath: string, point?: { x: number; y: number }, modelId?: import('../segmentationModels').SegmentationModelId): Promise<{
+    segmentImage(filePath: string, point?: { x: number; y: number }, modelId?: import('../segmentationModels').SegmentationModelId, targetClassId?: number): Promise<{
       width: number
       height: number
       classId: number

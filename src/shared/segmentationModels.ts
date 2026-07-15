@@ -125,3 +125,14 @@ export type SegmentationModelId = SemanticSegmentationModelId | SamSegmentationM
 export function isSamSegmentationModel(id: string): id is SamSegmentationModelId {
   return SAM_MODELS.some((model) => model.id === id)
 }
+
+export const COMMON_SEGMENTATION_TARGETS = [
+  { classId: 2, label: '天空' },
+  { classId: 21, label: '海洋 / 水面' },
+  { classId: 12, label: '人物' },
+  { classId: 4, label: '树木' },
+  { classId: 9, label: '草地' },
+  { classId: 17, label: '植物' },
+  { classId: 20, label: '车辆' },
+  { classId: 1, label: '建筑' },
+] as const

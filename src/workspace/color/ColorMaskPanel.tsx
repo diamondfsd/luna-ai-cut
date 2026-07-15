@@ -1,7 +1,7 @@
-import { ArrowDown, ArrowUp, Eye, EyeOff, Pencil, Plus, SlidersHorizontal } from 'lucide-react'
+import { Copy, Eye, EyeOff, MoreHorizontal, Pencil, Plus, RefreshCcw, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
-import { Button, Dialog, IconButton, Input, Tooltip } from '../../ui'
+import { Button, Dialog, IconButton, Input, Popover, PopoverClose, PopoverContent, PopoverTrigger, Tooltip } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
@@ -106,10 +106,18 @@ export function ColorMaskPanel() {
                   <Tooltip content={layer.enabled ? '隐藏这一层' : '显示这一层'}>
                     <IconButton variant="ghost" size="mini" icon={layer.enabled ? <Eye size={14} /> : <EyeOff size={14} />} aria-label={layer.enabled ? '隐藏这一层' : '显示这一层'} onClick={() => mask.updateLayer(layer.id, { enabled: !layer.enabled })} />
                   </Tooltip>
-                  {active && <>
-                    <IconButton variant="ghost" size="mini" icon={<ArrowUp size={13} />} aria-label="上移蒙版" disabled={index === 0} onClick={() => mask.moveActiveLayer(-1)} />
-                    <IconButton variant="ghost" size="mini" icon={<ArrowDown size={13} />} aria-label="下移蒙版" disabled={index === edit.pipeline.colorMasks.length - 1} onClick={() => mask.moveActiveLayer(1)} />
-                  </>}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <IconButton variant="ghost" size="mini" icon={<MoreHorizontal size={15} />} aria-label="更多图层操作" />
+                    </PopoverTrigger>
+                    <PopoverContent className="workspace-color-mask-layer-menu" align="end">
+                      <PopoverClose asChild><Button variant="ghost" size="mini" icon={<Copy size={13} />} onClick={() => mask.duplicateLayer(layer.id)}>复制图层</Button></PopoverClose>
+                      <PopoverClose asChild><Button variant="ghost" size="mini" icon={<RefreshCcw size={13} />} onClick={() => mask.updateLayer(layer.id, { inverted: !layer.inverted })}>反向蒙版</Button></PopoverClose>
+                      <PopoverClose asChild><Button variant="ghost" size="mini" disabled={index === 0} onClick={() => mask.moveLayer(layer.id, -1)}>上移一层</Button></PopoverClose>
+                      <PopoverClose asChild><Button variant="ghost" size="mini" disabled={index === edit.pipeline.colorMasks.length - 1} onClick={() => mask.moveLayer(layer.id, 1)}>下移一层</Button></PopoverClose>
+                      <PopoverClose asChild><Button variant="danger" size="mini" icon={<Trash2 size={13} />} onClick={() => mask.removeLayer(layer.id)}>删除图层</Button></PopoverClose>
+                    </PopoverContent>
+                  </Popover>
                 </span>
               </div>
             )
