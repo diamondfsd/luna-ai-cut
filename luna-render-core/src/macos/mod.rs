@@ -101,7 +101,13 @@ impl Decoder {
         let path = c_path(path)?;
         let mut error = error_buffer();
         let raw = unsafe {
-            luna_av_decoder_create(path.as_ptr(), metal_device, max_decode_edge, error.as_mut_ptr(), error.len())
+            luna_av_decoder_create(
+                path.as_ptr(),
+                metal_device,
+                max_decode_edge,
+                error.as_mut_ptr(),
+                error.len(),
+            )
         };
         if raw.is_null() {
             Err(bridge_error(&error, "无法启动 macOS 视频解码"))
@@ -307,10 +313,16 @@ pub(crate) fn export_video(
                     std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
                     std::collections::hash_map::Entry::Vacant(entry) => {
                         // 计算此层在画布上的实际显示像素尺寸，作为解码上限
-                        let display_w = (layer.dst_w.abs() * composition.canvas.width as f64).ceil() as u32;
-                        let display_h = (layer.dst_h.abs() * composition.canvas.height as f64).ceil() as u32;
+                        let display_w =
+                            (layer.dst_w.abs() * composition.canvas.width as f64).ceil() as u32;
+                        let display_h =
+                            (layer.dst_h.abs() * composition.canvas.height as f64).ceil() as u32;
                         let decode_max_side = display_w.max(display_h).max(360); // 不低于 360px
-                        entry.insert(Decoder::new(&layer.file_path, metal_device, decode_max_side)?)
+                        entry.insert(Decoder::new(
+                            &layer.file_path,
+                            metal_device,
+                            decode_max_side,
+                        )?)
                     }
                 };
 
@@ -420,7 +432,6 @@ pub(crate) fn export_video(
         cum_acquire_us += acquire_us;
         cum_render_us += render_us;
         cum_append_us += append_us;
-
 
         if let Some(state) = task {
             state

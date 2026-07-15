@@ -10,6 +10,8 @@ mod media;
 mod segmentation;
 pub mod sam_segmentation;
 mod sam_core;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use std::sync::{LazyLock, Mutex};
 
@@ -106,6 +108,22 @@ pub(crate) fn lock_export<T>(
     f: impl FnOnce(&mut Compositor) -> Result<T, String>,
 ) -> napi::Result<T> {
     lock_compositor(&COMPOSITOR_EXPORT, "export", f)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn reset_export_compositor() -> napi::Result<()> {
+    let log_path = COMPOSITOR_LOG_PATH
+        .lock()
+        .map_err(|e| napi::Error::from_reason(format!("lock compositor log path: {}", e)))?
+        .clone();
+    let replacement = Compositor::new(log_path.as_deref())
+        .map_err(|e| napi::Error::from_reason(format!("reinitialize export compositor: {}", e)))?;
+    let mut guard = COMPOSITOR_EXPORT
+        .lock()
+        .map_err(|e| napi::Error::from_reason(format!("lock export compositor: {}", e)))?;
+    *guard = Some(replacement);
+    log!("reset_export_compositor OK after Windows GPU fallback");
+    Ok(())
 }
 
 // ─────────────── napi exports ───────────────

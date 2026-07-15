@@ -425,6 +425,27 @@ impl Compositor {
         }
 
         if !readback {
+            #[cfg(target_os = "windows")]
+            {
+                let mut seen = std::collections::HashSet::new();
+                let mut transitions = sorted
+                    .iter()
+                    .filter(|layer| seen.insert(layer.texture_id))
+                    .filter_map(|layer| self.textures.get(&layer.texture_id))
+                    .filter(|entry| entry.external)
+                    .map(|entry| wgpu::wgt::TextureTransition {
+                        texture: &entry.texture,
+                        selector: None,
+                        state: wgpu::wgt::TextureUses::PRESENT,
+                    })
+                    .collect::<Vec<_>>();
+                transitions.push(wgpu::wgt::TextureTransition {
+                    texture: output_tex,
+                    selector: None,
+                    state: wgpu::wgt::TextureUses::PRESENT,
+                });
+                encoder.transition_resources(std::iter::empty(), transitions.into_iter());
+            }
             self.queue.submit(Some(encoder.finish()));
             self.device
                 .poll(wgpu::PollType::Wait {

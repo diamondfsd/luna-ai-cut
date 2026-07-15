@@ -9,13 +9,15 @@ pub use frame::{
 pub use image_export::{
     export_composition_image_async, ExportCompositionImageInput, ExportCompositionImageTask,
 };
+#[cfg(target_os = "windows")]
+pub(crate) use timeline::is_video_source;
 pub(crate) use timeline::{composition_layers, mux_primary_audio};
 pub use video_export::{export_composition_video_async, ExportCompositionVideoTask};
 
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{LazyLock, Mutex};
 
 use napi::bindgen_prelude::AsyncTask;

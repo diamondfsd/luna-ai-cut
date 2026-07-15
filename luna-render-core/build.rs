@@ -22,5 +22,6 @@ fn main() {
         println!("cargo:rerun-if-changed=src/macos/av_bridge.m");
     }
 
-    // Windows: 使用 FFmpeg 进行解码和编码（支持 GPU 编码器如 nvenc/qsv/amf）
+    // Windows 原生链路通过 windows-rs 直接链接 D3D11On12 与 Media Foundation。
+    // 不需要额外 C/C++ bridge；不支持的机器仍由 Rust 导出层回退到 FFmpeg。
 }

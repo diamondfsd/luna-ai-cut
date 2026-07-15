@@ -5,6 +5,7 @@ import { MediaGallery } from '../components/MediaGallery'
 import { MediaLibraryToolbar } from '../components/MediaLibraryToolbar'
 import { PreviewModal } from '../components/PreviewModal'
 import { useMediaLibraryController, MediaLibraryCtx } from './useMediaLibraryController'
+import { Modal } from '../ui'
 import '../styles/library.css'
 
 /** 格式化日期，年月日和星期之间加空格 */
@@ -114,6 +115,22 @@ export function CameraMediaPage() {
           }}
         />
       )}
+
+      <Modal
+        open={controller.showCameraDeleteDialog}
+        onOpenChange={controller.setShowCameraDeleteDialog}
+        title="删除相机素材"
+        description={`将从 Luna 相机中永久删除已选的 ${controller.selectedFiles.length} 个素材。`}
+        confirmText="确认删除"
+        confirmVariant="danger"
+        confirmDisabled={controller.deletingCameraFiles}
+        confirmLoading={controller.deletingCameraFiles}
+        onConfirm={() => void controller.deleteSelectedCameraFiles()}
+      >
+        <p className="delete-dialog-copy">
+          此操作无法撤销。已经下载到电脑的文件不会受到影响。
+        </p>
+      </Modal>
     </MediaLibraryCtx.Provider>
   )
 }

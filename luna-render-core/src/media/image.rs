@@ -1,5 +1,7 @@
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+
+use super::command;
 
 pub(crate) fn decode_static_image_scaled(
     ffmpeg: &str,
@@ -34,7 +36,7 @@ pub(crate) fn decode_static_image_scaled(
     };
 
     let local_path = normalize_local_path(path);
-    let mut process = Command::new(ffmpeg)
+    let mut process = command(ffmpeg)
         .args([
             "-i",
             &local_path,
@@ -111,7 +113,7 @@ pub(crate) fn normalize_local_path(path: &str) -> String {
 }
 
 fn probe_image_json(ffprobe: &str, path: &str) -> Result<serde_json::Value, String> {
-    let output = Command::new(ffprobe)
+    let output = command(ffprobe)
         .args([
             "-v",
             "quiet",

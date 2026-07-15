@@ -3,6 +3,7 @@ use super::timeline::{
     ffmpeg_fallback_temp_path, infer_composition_duration, infer_composition_fps,
 };
 use super::*;
+use crate::media::command;
 use napi_derive::napi;
 
 /// ffmpeg 路径 -> 最佳可用硬件 H.264 编码器缓存。
@@ -13,6 +14,10 @@ static HW_ENCODER_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
 /// 用一个 1x1 纯色帧实际测试编码器是否能正常初始化并输出
 /// 这能捕获编译支持但运行时不可用的情况（如 nvcuda.dll 缺失）
 fn test_encoder_works(ffmpeg_path: &str, encoder: &str) -> bool {
+    // H.264 hardware encoders commonly reject 1x1 input. Use a small,
+    // standards-compliant frame so supported encoders are not rejected.
+    const TEST_WIDTH: usize = 64;
+    const TEST_HEIGHT: usize = 64;
     let mut args = vec![
         "-y".to_string(),
         "-hide_banner".to_string(),
@@ -23,7 +28,7 @@ fn test_encoder_works(ffmpeg_path: &str, encoder: &str) -> bool {
         "-pix_fmt".to_string(),
         "rgba".to_string(),
         "-s".to_string(),
-        "1x1".to_string(),
+        format!("{}x{}", TEST_WIDTH, TEST_HEIGHT),
         "-r".to_string(),
         "1".to_string(),
         "-i".to_string(),
@@ -41,7 +46,7 @@ fn test_encoder_works(ffmpeg_path: &str, encoder: &str) -> bool {
     }
     args.push("-".to_string()); // 输出到 stdout（null mux 会丢弃）
 
-    let result = Command::new(ffmpeg_path)
+    let result = command(ffmpeg_path)
         .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -51,7 +56,8 @@ fn test_encoder_works(ffmpeg_path: &str, encoder: &str) -> bool {
             // 写入 4 字节 RGBA（1x1 像素）
             if let Some(ref mut stdin) = child.stdin {
                 use std::io::Write;
-                let _ = stdin.write_all(&[0u8; 4]);
+                let frame = vec![0u8; TEST_WIDTH * TEST_HEIGHT * 4];
+                let _ = stdin.write_all(&frame);
             }
             child.wait_with_output()
         });
@@ -88,7 +94,7 @@ fn best_hardware_encoder(ffmpeg_path: &str) -> Option<String> {
     }
 
     // 先用 -encoders 列表快速过滤出"编译支持"的编码器
-    let list_output = Command::new(ffmpeg_path)
+    let list_output = command(ffmpeg_path)
         .args(["-hide_banner", "-encoders"])
         .output()
         .ok();
@@ -227,6 +233,66 @@ impl Task for ExportCompositionVideoTask {
             }
         }
 
+        #[cfg(target_os = "windows")]
+        if self.input.hardware.unwrap_or(true)
+            && std::env::var_os("LUNA_WINDOWS_ZERO_COPY_EXPORT").is_some()
+        {
+            let bitrate_bps = bitrate
+                .trim_end_matches(['k', 'K'])
+                .parse::<u64>()
+                .unwrap_or(50_000)
+                .saturating_mul(1_000);
+            log_write(&format!(
+                "[Export:WinGPU] start output={} frames={} fps={} bitrate={}",
+                self.input.output_path, total_frames, fps, bitrate_bps,
+            ));
+            let windows_result = crate::lock_export(|compositor| {
+                compositor.clear_video_decoders();
+                crate::windows::export_video(
+                    compositor,
+                    &self.input.ffmpeg_path,
+                    &self.input.ffprobe_path,
+                    &self.input.output_path,
+                    &self.input.composition,
+                    fps,
+                    total_frames,
+                    bitrate_bps,
+                    task.as_ref(),
+                )
+            });
+            match windows_result {
+                Ok(()) => {
+                    log_write("[Export:WinGPU] completed");
+                    if let Some(ref id) = self.input.task_id {
+                        cleanup_task(id);
+                    }
+                    return Ok(());
+                }
+                Err(error) if task.as_ref().is_some_and(|state| state.is_cancelled()) => {
+                    return Err(error)
+                }
+                Err(error) => {
+                    log_write(&format!(
+                        "[Export:WinGPU] unavailable, falling back to FFmpeg: {}",
+                        error
+                    ));
+                    // D3D11On12 / Media Foundation failures can leave wgpu's shared D3D12
+                    // device unusable. Recreate only the export compositor before the CPU
+                    // encoding fallback starts; the preview compositor remains untouched.
+                    crate::reset_export_compositor().map_err(|reset_error| {
+                        napi::Error::from_reason(format!(
+                            "Windows GPU export failed ({error}); export renderer recovery failed: {reset_error}"
+                        ))
+                    })?;
+                    if let Some(ref state) = task {
+                        state
+                            .current_frame
+                            .store(0, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
+            }
+        }
+
         let mut args = vec![
             "-y".to_string(),
             "-hide_banner".to_string(),
@@ -276,7 +342,7 @@ impl Task for ExportCompositionVideoTask {
                 .map_err(|e| napi::Error::from_reason(format!("create output dir: {}", e)))?;
         }
 
-        let mut child = Command::new(&self.input.ffmpeg_path)
+        let mut child = command(&self.input.ffmpeg_path)
             .args(args)
             .stdin(Stdio::piped())
             .stderr(Stdio::piped())

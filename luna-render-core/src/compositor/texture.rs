@@ -1,4 +1,5 @@
 use super::*;
+use crate::media::command;
 use crate::{log, log_error};
 
 impl Compositor {
@@ -160,6 +161,8 @@ impl Compositor {
                 texture,
                 width,
                 height,
+                #[cfg(target_os = "windows")]
+                external: false,
             },
         );
         Ok(id)
@@ -227,7 +230,7 @@ impl Compositor {
         }
 
         // ── ffprobe 获取原始尺寸 + EXIF 旋转 ──
-        let probe_output = Command::new(ffprobe)
+        let probe_output = command(ffprobe)
             .args([
                 "-v",
                 "quiet",
@@ -371,14 +374,14 @@ impl Compositor {
                     path,
                     cache_str
                 );
-                let zscale_avail = Command::new(ffmpeg)
+                let zscale_avail = command(ffmpeg)
                     .args(["-filters"])
                     .stderr(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::null())
                     .output()
                     .map(|o| String::from_utf8_lossy(&o.stderr).contains("zscale"))
                     .unwrap_or(false);
-                let mut norm = Command::new(ffmpeg);
+                let mut norm = command(ffmpeg);
                 norm.args(["-y", "-i", path]);
                 if is_hdr_transfer && zscale_avail {
                     norm.args(["-vf", "zscale=transfer=linear,tonemap=hable,zscale=transfer=bt709:p=bt709:m=bt709,format=rgb24"]);
@@ -428,7 +431,7 @@ impl Compositor {
         };
 
         // ── ffmpeg 解码 + resize → rawvideo ──
-        let mut proc = Command::new(ffmpeg)
+        let mut proc = command(ffmpeg)
             .args([
                 "-i",
                 &use_path,
