@@ -1,6 +1,7 @@
 import type { PreviewLayer } from '../../../shared/types'
 
 const TITLE_FONT_FILE = 'fonts/SourceHanSansSC-Bold.otf'
+export const COLOR_REVEAL_TITLE_FADE_DURATION = 0.35
 
 export function createColorRevealTitleLayer(
   content: string,
@@ -37,4 +38,25 @@ export function createColorRevealTitleLayer(
     fadeInDuration,
     fadeOutDuration,
   }
+}
+
+export function createPreviewColorRevealTitleLayer(
+  time: number,
+  initialHoldDuration: number,
+  effectStart: number,
+  initialTitle: string,
+  revealedTitle: string,
+): PreviewLayer | null {
+  if (time < effectStart) {
+    const opacity = time <= initialHoldDuration
+      ? 1
+      : Math.max(0, (effectStart - time) / COLOR_REVEAL_TITLE_FADE_DURATION)
+    return initialTitle.trim() && opacity > 0
+      ? createColorRevealTitleLayer(initialTitle.trim(), opacity, 0)
+      : null
+  }
+  const opacity = Math.min(1, (time - effectStart) / COLOR_REVEAL_TITLE_FADE_DURATION)
+  return revealedTitle.trim() && opacity > 0
+    ? createColorRevealTitleLayer(revealedTitle.trim(), opacity, 0)
+    : null
 }
