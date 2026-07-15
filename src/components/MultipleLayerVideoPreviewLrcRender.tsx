@@ -86,6 +86,8 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
   canvasHeight?: number
   /** 是否正在播放（true=视频播放中，false=暂停） */
   playing?: boolean
+  /** 静态图层动画使用的合成时间。 */
+  compositionTime?: number
   /**
    * 视频解码质量系数。
    * 每个视频层的解码分辨率 = 该层在预览画布上的显示尺寸 × decodeQuality。
@@ -119,7 +121,7 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
 export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
-      { layers, className, canvasWidth, canvasHeight, playing = false, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes },
+      { layers, className, canvasWidth, canvasHeight, playing = false, compositionTime, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes },
       ref,
     ) {
       const outputCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -148,6 +150,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       layersRef.current = layers
       const playingRef = useRef(playing)
       playingRef.current = playing
+      const compositionTimeRef = useRef(compositionTime)
+      compositionTimeRef.current = compositionTime
       const canvasWidthRef = useRef(canvasWidth)
       canvasWidthRef.current = canvasWidth
       const canvasHeightRef = useRef(canvasHeight)
@@ -529,9 +533,9 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             }
 
             const reveal = layer.reveal
-            const revealTime = layer.isVideo
+            const revealTime = compositionTimeRef.current ?? (layer.isVideo
               ? videoStatesRef.current.get(videoLayerKey(layer, i))?.video.currentTime ?? 0
-              : 0
+              : 0)
             const revealProgress = reveal ? compositionRevealProgress(reveal, revealTime) : 1
             renderLayers.push({
               textureId,
@@ -734,6 +738,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
   ) => {
     return (
       prevProps.playing === nextProps.playing &&
+      prevProps.compositionTime === nextProps.compositionTime &&
       prevProps.decodeQuality === nextProps.decodeQuality &&
       prevProps.canvasWidth === nextProps.canvasWidth &&
       prevProps.canvasHeight === nextProps.canvasHeight &&
