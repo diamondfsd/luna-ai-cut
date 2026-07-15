@@ -61,11 +61,23 @@ fn reveal_progress(reveal: &CompositionReveal, time: f64) -> f64 {
         return apply_easing(elapsed / half_duration) * 0.5;
     }
     if elapsed < half_duration + midpoint_hold {
-        return 0.5;
+        let bounce = reveal.midpoint_bounce.unwrap_or(0.0).clamp(0.0, 0.49);
+        if bounce <= 0.0 {
+            return 0.5;
+        }
+        let bounce_progress = (elapsed - half_duration) / midpoint_hold;
+        let smooth_recoil = (std::f64::consts::PI * bounce_progress).sin().powi(2);
+        return 0.5 - smooth_recoil * bounce;
     }
     if elapsed < duration + midpoint_hold {
         let second_half = (elapsed - half_duration - midpoint_hold) / half_duration;
-        return 0.5 + apply_easing(second_half) * 0.5;
+        let second_half_progress = if reveal.midpoint_bounce.unwrap_or(0.0) > 0.0 {
+            let compressed = (second_half / 0.65).clamp(0.0, 1.0);
+            compressed * compressed
+        } else {
+            apply_easing(second_half)
+        };
+        return 0.5 + second_half_progress * 0.5;
     }
     1.0
 }
@@ -305,6 +317,7 @@ mod tests {
             start: 1.0,
             duration: 2.0,
             midpoint_hold: Some(0.5),
+            midpoint_bounce: None,
             easing: Some("ease-in-out".to_string()),
         }
     }
@@ -323,6 +336,15 @@ mod tests {
         let reveal = staged_reveal();
         assert!(reveal_progress(&reveal, 1.25) < 0.125);
         assert!(reveal_progress(&reveal, 2.75) < 0.625);
+    }
+
+    #[test]
+    fn staged_reveal_can_bounce_after_midpoint() {
+        let mut reveal = staged_reveal();
+        reveal.midpoint_bounce = Some(0.04);
+        assert!((reveal_progress(&reveal, 2.25) - 0.46).abs() < 0.0001);
+        assert!((reveal_progress(&reveal, 2.5) - 0.5).abs() < 0.0001);
+        assert!(reveal_progress(&reveal, 3.2) > 0.99);
     }
 
     #[test]
