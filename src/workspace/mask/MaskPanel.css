@@ -27,43 +27,9 @@
   color: var(--blue);
 }
 
-.workspace-mask-step-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border-radius: 9px;
-  background: var(--parchment);
-}
-
-.workspace-mask-step-icon {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--canvas);
-  color: var(--blue);
-}
-
-.workspace-mask-step-card > div,
-.workspace-mask-setting-row > span {
-  display: grid;
-  gap: 2px;
-}
-
-.workspace-mask-step-card strong,
 .workspace-mask-setting-row strong {
   color: var(--ink);
   font-size: 12px;
-}
-
-.workspace-mask-step-card div > span,
-.workspace-mask-setting-row small,
-.workspace-mask-model-note {
-  color: var(--muted);
-  font-size: 11px;
 }
 
 .workspace-mask-field {
@@ -78,12 +44,6 @@
   gap: 7px;
 }
 
-.workspace-mask-auto-targets > span,
-.workspace-mask-or {
-  color: var(--muted);
-  font-size: 11px;
-}
-
 .workspace-mask-auto-targets > div {
   display: flex;
   flex-wrap: wrap;
@@ -92,24 +52,6 @@
 
 .workspace-mask-auto-targets .ui-btn {
   border-style: solid;
-}
-
-.workspace-mask-or {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.workspace-mask-or::before,
-.workspace-mask-or::after {
-  height: 1px;
-  flex: 1;
-  background: var(--hairline);
-  content: '';
-}
-
-.workspace-mask-model-note {
-  margin-top: -8px;
 }
 
 .workspace-mask-progress {

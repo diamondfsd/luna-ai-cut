@@ -1,4 +1,4 @@
-import { Brush, Eraser, Eye, EyeOff, MousePointer2, Sparkles } from 'lucide-react'
+import { Brush, Eraser, Eye, EyeOff, Sparkles } from 'lucide-react'
 
 import { Accordion, Button, ButtonGroup, Select, Switch } from '../../ui'
 import { COMMON_SEGMENTATION_TARGETS, SAM_MODELS, SEGMENTATION_MODELS } from '../../shared/segmentationModels'
@@ -23,19 +23,13 @@ function formatDuration(milliseconds: number): string {
 export function MaskPanel() {
   const mask = useWorkspaceMask()
   const settings = mask.activeMask
-  const selectedModel = MODELS.find((model) => model.id === mask.segmentationModel)
 
   return (
     <div className="workspace-mask-panel">
       <section className="workspace-mask-auto-section">
         <div className="workspace-mask-section-heading"><Sparkles size={15} /><strong>自动选择</strong></div>
         <div className="workspace-mask-editor-section">
-          <div className="workspace-mask-step-card">
-            <span className="workspace-mask-step-icon"><MousePointer2 size={18} /></span>
-            <div><strong>点击画面中的对象</strong><span>应用会识别点击位置并生成蒙版</span></div>
-          </div>
           <div className="workspace-mask-auto-targets">
-            <span>无需点击，直接选择常用主体</span>
             <div>
               {COMMON_SEGMENTATION_TARGETS.map((target) => (
                 <Button key={target.classId} variant="ghost" size="mini" disabled={mask.busy} onClick={() => void mask.generateSemanticMask(undefined, target.classId)}>
@@ -44,7 +38,6 @@ export function MaskPanel() {
               ))}
             </div>
           </div>
-          <div className="workspace-mask-or"><span>或点选任意对象</span></div>
           <label className="workspace-mask-field">
             <span>识别模型</span>
             <Select
@@ -59,7 +52,6 @@ export function MaskPanel() {
               }))}
             />
           </label>
-          {selectedModel && <span className="workspace-mask-model-note">输入 {selectedModel.inputSize}×{selectedModel.inputSize}，首次使用会自动下载</span>}
           <Button
             variant="primary"
             size="compact"
@@ -89,10 +81,6 @@ export function MaskPanel() {
 
       <Accordion title={<span className="workspace-mask-accordion-title"><Brush size={14} />画笔修补</span>} defaultOpen>
         <div className="workspace-mask-editor-section">
-          <div className="workspace-mask-step-card">
-            <span className="workspace-mask-step-icon"><Brush size={18} /></span>
-            <div><strong>直接在画面上涂抹</strong><span>添加遗漏区域，或擦除多余选区</span></div>
-          </div>
           <ButtonGroup options={BRUSH_MODES} value={mask.brushMode} onChange={(value) => mask.setBrushMode(value as 'paint' | 'erase')} />
           <ParamSlider label="画笔大小" value={mask.brushSize} min={1} max={30} onChange={mask.setBrushSize} formatValue={(value) => `${Math.round(value)}%`} />
           <Button variant="secondary" size="compact" icon={mask.showOverlay ? <EyeOff size={14} /> : <Eye size={14} />} onClick={() => mask.setShowOverlay(!mask.showOverlay)}>
@@ -106,7 +94,7 @@ export function MaskPanel() {
           <ParamSlider label="羽化" value={settings?.feather ?? 0} min={0} max={40} onChange={(feather) => mask.updateMaskSettings({ feather })} formatValue={(value) => `${Math.round(value)} px`} />
           <ParamSlider label="不透明度" value={Math.round((settings?.opacity ?? 1) * 100)} min={0} max={100} onChange={(opacity) => mask.updateMaskSettings({ opacity: opacity / 100 })} formatValue={(value) => `${Math.round(value)}%`} />
           <label className="workspace-mask-setting-row">
-            <span><strong>反向蒙版</strong><small>交换选中与未选中的区域</small></span>
+            <strong>反向蒙版</strong>
             <Switch ariaLabel="反向蒙版" checked={settings?.inverted ?? false} disabled={!settings} onCheckedChange={(inverted) => mask.updateMaskSettings({ inverted })} />
           </label>
         </div>

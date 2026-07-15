@@ -62,9 +62,6 @@ export function ColorMaskPanel() {
         </div>
       ) : (
         <>
-          <div className="workspace-color-mask-current">
-            <span>{mask.activeMask ? `正在调整：${mask.activeMask.name}` : '正在调整：全局'}</span>
-          </div>
           <ColorPanel
             value={selectedColor}
             onChange={(color) => mask.activeMask
@@ -79,7 +76,6 @@ export function ColorMaskPanel() {
         <div className="workspace-color-mask-layers-header">
           <div>
             <strong>蒙版图层</strong>
-            <span>点击图层切换局部调色</span>
           </div>
           <Button variant="secondary" size="mini" icon={<Plus size={13} />} disabled={!mask.available} onClick={mask.createMask}>
             新建

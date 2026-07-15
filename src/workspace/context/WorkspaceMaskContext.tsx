@@ -74,6 +74,7 @@ function workingMaskSize(width: number, height: number): { width: number; height
 export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
+  const { canUndo, canRedo, undo, redo } = edit
   const [editing, setEditing] = useState(false)
   const [brushMode, setBrushMode] = useState<MaskBrushMode>('paint')
   const [brushSize, setBrushSize] = useState(36)
@@ -102,6 +103,23 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   }, [activeLayerId, activeMediaId, edit.pipeline.colorMasks])
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress(setSegmentationProgress), [])
+
+  useEffect(() => {
+    if (!editing) return
+    const handleUndoRedo = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable]')) return
+      const shouldUndo = event.code === 'KeyZ' && !event.shiftKey
+      const shouldRedo = (event.code === 'KeyZ' && event.shiftKey) || (event.code === 'KeyY' && event.ctrlKey)
+      if (!shouldUndo && !shouldRedo) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (shouldUndo && canUndo) undo()
+      if (shouldRedo && canRedo) redo()
+    }
+    window.addEventListener('keydown', handleUndoRedo, { capture: true })
+    return () => window.removeEventListener('keydown', handleUndoRedo, { capture: true })
+  }, [canRedo, canUndo, editing, redo, undo])
 
   useEffect(() => {
     let canceled = false

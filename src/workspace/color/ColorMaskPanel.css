@@ -3,11 +3,6 @@
   gap: 12px;
 }
 
-.workspace-color-mask-current {
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .workspace-mask-inline-editor {
   display: grid;
   gap: 12px;
