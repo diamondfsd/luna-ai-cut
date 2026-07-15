@@ -1,4 +1,4 @@
-import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
+import { Check, ChevronLeft, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
@@ -165,23 +165,41 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 />
               </label>
             </>
+          ) : edit.activeTool === 'color' && mask.editing ? (
+            <>
+              <IconButton
+                variant="ghost"
+                size="mini"
+                className="workspace-mask-editor-back"
+                icon={<ChevronLeft size={16} />}
+                aria-label="退出蒙版编辑"
+                onClick={() => { mask.setEditing(false); mask.setSemanticPicking(false) }}
+              />
+              <h2>{mask.activeMask ? `编辑蒙版 · ${mask.activeMask.name}` : '新建蒙版'}</h2>
+            </>
           ) : (
             <h2>{titleForTool(edit.activeTool)}</h2>
           )}
           {edit.activeTool === 'color' && (
             <span className="workspace-tool-panel-actions">
-              {(mask.activeMask ? isColorModified(mask.activeMask.color) : isColorModified(edit.pipeline.color)) && <span className="ui-accordion-modified-dot" />}
-              <Tooltip content="重置全部调色">
-                <IconButton
-                  variant="ghost"
-                  size="compact"
-                  icon={<RotateCcw size={14} />}
-                  onClick={() => mask.activeMask
-                    ? mask.updateActiveLayer({ color: createDefaultPipeline().color })
-                    : edit.updateWorkspacePanel({ color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects })}
-                  aria-label="重置全部调色"
-                />
-              </Tooltip>
+              {mask.editing ? (
+                <Button variant="primary" size="mini" onClick={() => { mask.setEditing(false); mask.setSemanticPicking(false) }}>完成</Button>
+              ) : (
+                <>
+                  {(mask.activeMask ? isColorModified(mask.activeMask.color) : isColorModified(edit.pipeline.color)) && <span className="ui-accordion-modified-dot" />}
+                  <Tooltip content="重置全部调色">
+                    <IconButton
+                      variant="ghost"
+                      size="compact"
+                      icon={<RotateCcw size={14} />}
+                      onClick={() => mask.activeMask
+                        ? mask.updateActiveLayer({ color: createDefaultPipeline().color })
+                        : edit.updateWorkspacePanel({ color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects })}
+                      aria-label="重置全部调色"
+                    />
+                  </Tooltip>
+                </>
+              )}
             </span>
           )}
           {edit.activeTool === 'trim' && (

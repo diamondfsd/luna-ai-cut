@@ -1,7 +1,7 @@
 import { Copy, Eye, EyeOff, MoreHorizontal, Pencil, Plus, RefreshCcw, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
-import { Button, Dialog, IconButton, Input, Popover, PopoverClose, PopoverContent, PopoverTrigger, Tooltip } from '../../ui'
+import { Button, IconButton, Input, Popover, PopoverClose, PopoverContent, PopoverTrigger, Tooltip } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
@@ -51,23 +51,29 @@ export function ColorMaskPanel() {
   const mask = useWorkspaceMask()
   const selectedColor = mask.activeMask?.color ?? edit.pipeline.color
 
-  const closeEditor = () => {
-    mask.setEditing(false)
-    mask.setSemanticPicking(false)
-  }
-
   return (
     <div className="workspace-color-mask-panel">
-      <div className="workspace-color-mask-current">
-        <span>{mask.activeMask ? `正在调整：${mask.activeMask.name}` : '正在调整：全局'}</span>
-      </div>
-      <ColorPanel
-        value={selectedColor}
-        onChange={(color) => mask.activeMask
-          ? mask.updateActiveLayer({ color: { ...mask.activeMask.color, ...color } })
-          : edit.updateWorkspacePanel({ color })}
-        onActivatePipette={mask.activeMask ? undefined : () => edit.setPipetteActive(true)}
-      />
+      {mask.editing ? (
+        <div className="workspace-mask-inline-editor">
+          {mask.activeMask && (
+            <Input variant="compact" fullWidth aria-label="蒙版名称" value={mask.activeMask.name} onChange={(event) => mask.updateActiveLayer({ name: event.target.value })} />
+          )}
+          <MaskPanel />
+        </div>
+      ) : (
+        <>
+          <div className="workspace-color-mask-current">
+            <span>{mask.activeMask ? `正在调整：${mask.activeMask.name}` : '正在调整：全局'}</span>
+          </div>
+          <ColorPanel
+            value={selectedColor}
+            onChange={(color) => mask.activeMask
+              ? mask.updateActiveLayer({ color: { ...mask.activeMask.color, ...color } })
+              : edit.updateWorkspacePanel({ color })}
+            onActivatePipette={mask.activeMask ? undefined : () => edit.setPipetteActive(true)}
+          />
+        </>
+      )}
 
       <section className="workspace-color-mask-layers" aria-label="蒙版图层">
         <div className="workspace-color-mask-layers-header">
@@ -85,7 +91,7 @@ export function ColorMaskPanel() {
               variant="ghost"
               size="compact"
               className="workspace-color-mask-layer-select"
-              onClick={() => mask.setActiveLayerId(null)}
+              onClick={() => { mask.setActiveLayerId(null); mask.setEditing(false) }}
             >
               <span className="workspace-color-mask-global-thumbnail"><SlidersHorizontal size={18} /></span>
               <span className="workspace-color-mask-layer-label"><strong>全局调色</strong><small>整张画面</small></span>
@@ -125,24 +131,6 @@ export function ColorMaskPanel() {
         </div>
       </section>
 
-      <Dialog
-        open={mask.editing}
-        onOpenChange={(open) => open ? mask.setEditing(true) : closeEditor()}
-        title={mask.activeMask ? `编辑“${mask.activeMask.name}”` : '新建蒙版'}
-        description="使用智能选择或画笔调整蒙版范围；列表缩略图中的黑色区域为当前选区。"
-        className="workspace-mask-editor-dialog"
-        modal={false}
-        showOverlay={false}
-        closeOnMaskClick={false}
-        footer={<Button variant="primary" onClick={closeEditor}>完成</Button>}
-      >
-        <div className="workspace-mask-editor-body">
-          {mask.activeMask && (
-            <Input variant="compact" fullWidth aria-label="蒙版名称" value={mask.activeMask.name} onChange={(event) => mask.updateActiveLayer({ name: event.target.value })} />
-          )}
-          <MaskPanel />
-        </div>
-      </Dialog>
     </div>
   )
 }

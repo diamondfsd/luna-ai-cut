@@ -1,7 +1,6 @@
 import { Brush, Eraser, Eye, EyeOff, MousePointer2, Sparkles } from 'lucide-react'
-import { useState } from 'react'
 
-import { Button, ButtonGroup, PillTabs, Select, Switch } from '../../ui'
+import { Accordion, Button, ButtonGroup, Select, Switch } from '../../ui'
 import { COMMON_SEGMENTATION_TARGETS, SAM_MODELS, SEGMENTATION_MODELS } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
@@ -24,23 +23,12 @@ function formatDuration(milliseconds: number): string {
 export function MaskPanel() {
   const mask = useWorkspaceMask()
   const settings = mask.activeMask
-  const [section, setSection] = useState('smart')
   const selectedModel = MODELS.find((model) => model.id === mask.segmentationModel)
 
   return (
     <div className="workspace-mask-panel">
-      <PillTabs
-        value={section}
-        onValueChange={setSection}
-        className="workspace-mask-editor-tabs"
-        items={[
-          { value: 'smart', label: '智能选择' },
-          { value: 'brush', label: '画笔修补' },
-          { value: 'edge', label: '边缘调整' },
-        ]}
-      />
-
-      {section === 'smart' && (
+      <section className="workspace-mask-auto-section">
+        <div className="workspace-mask-section-heading"><Sparkles size={15} /><strong>自动选择</strong></div>
         <div className="workspace-mask-editor-section">
           <div className="workspace-mask-step-card">
             <span className="workspace-mask-step-icon"><MousePointer2 size={18} /></span>
@@ -97,9 +85,9 @@ export function MaskPanel() {
             </div>
           )}
         </div>
-      )}
+      </section>
 
-      {section === 'brush' && (
+      <Accordion title={<span className="workspace-mask-accordion-title"><Brush size={14} />画笔修补</span>} defaultOpen>
         <div className="workspace-mask-editor-section">
           <div className="workspace-mask-step-card">
             <span className="workspace-mask-step-icon"><Brush size={18} /></span>
@@ -111,9 +99,9 @@ export function MaskPanel() {
             {mask.showOverlay ? '隐藏选区提示' : '显示选区提示'}
           </Button>
         </div>
-      )}
+      </Accordion>
 
-      {section === 'edge' && (
+      <Accordion title="边缘" modified={(settings?.feather ?? 0) > 0 || (settings?.opacity ?? 1) < 1 || settings?.inverted === true}>
         <div className="workspace-mask-editor-section">
           <ParamSlider label="羽化" value={settings?.feather ?? 0} min={0} max={40} onChange={(feather) => mask.updateMaskSettings({ feather })} formatValue={(value) => `${Math.round(value)} px`} />
           <ParamSlider label="不透明度" value={Math.round((settings?.opacity ?? 1) * 100)} min={0} max={100} onChange={(opacity) => mask.updateMaskSettings({ opacity: opacity / 100 })} formatValue={(value) => `${Math.round(value)}%`} />
@@ -122,7 +110,7 @@ export function MaskPanel() {
             <Switch ariaLabel="反向蒙版" checked={settings?.inverted ?? false} disabled={!settings} onCheckedChange={(inverted) => mask.updateMaskSettings({ inverted })} />
           </label>
         </div>
-      )}
+      </Accordion>
     </div>
   )
 }
