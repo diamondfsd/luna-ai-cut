@@ -43,6 +43,20 @@ function hexToHue(hex: string): number {
   return normalizeHue(Math.round(sector * 60))
 }
 
+function hueToHex(hue: number): string {
+  const normalized = normalizeHue(hue) / 60
+  const chroma = 0.92
+  const x = chroma * (1 - Math.abs(normalized % 2 - 1))
+  const [red, green, blue] = normalized < 1 ? [chroma, x, 0]
+    : normalized < 2 ? [x, chroma, 0]
+      : normalized < 3 ? [0, chroma, x]
+        : normalized < 4 ? [0, x, chroma]
+          : normalized < 5 ? [x, 0, chroma]
+            : [chroma, 0, x]
+  const toHex = (value: number) => Math.round((value + 0.04) * 255).toString(16).padStart(2, '0')
+  return `#${toHex(red)}${toHex(green)}${toHex(blue)}`
+}
+
 function channelGradient(hue: number, hueShift: number, mode: HslMode): string {
   const targetHue = normalizeHue(hue + hueShift)
   if (mode === 'hue') {
@@ -104,7 +118,7 @@ export function HslPanel({ value, modified, onChange }: HslPanelProps) {
       const result = await new EyeDropper().open()
       onChange({
         customHslChannels: [
-          { hue: hexToHue(result.sRGBHex), hueShift: 0, saturation: 0, luminance: 0 },
+          { hue: hexToHue(result.sRGBHex), hueShift: 0, saturation: 0, luminance: 0, sourceColor: result.sRGBHex.toUpperCase() },
           ...value.customHslChannels,
         ],
       })
@@ -144,21 +158,22 @@ export function HslPanel({ value, modified, onChange }: HslPanelProps) {
       <div className="workspace-hsl-channel-list">
         {value.customHslChannels.map((channel, index) => (
           <div className="workspace-hsl-custom-channel" key={`${channel.hue}-${index}`}>
-            <div className="workspace-hsl-custom-header">
-              <span className="workspace-hsl-custom-swatch" style={{ background: hueColor(channel.hue, 92) }} />
-              <span>自定义颜色 {index + 1}</span>
-              <Tooltip content="移除自定义颜色">
-                <IconButton
-                  variant="ghost"
-                  size="mini"
-                  icon={<X size={13} />}
-                  onClick={() => onChange({ customHslChannels: value.customHslChannels.filter((_, itemIndex) => itemIndex !== index) })}
-                />
-              </Tooltip>
-            </div>
             <ColorBarSlider color={channelGradient(channel.hue, channel.hueShift, mode)}>
               <ParamSlider
-                label=""
+                label={(
+                  <span className="workspace-hsl-custom-label">
+                    <span className="workspace-hsl-custom-swatch" style={{ background: channel.sourceColor ?? hueColor(channel.hue, 92) }} />
+                    <span>{(channel.sourceColor ?? hueToHex(channel.hue)).toUpperCase()}</span>
+                    <Tooltip content="移除自定义颜色">
+                      <IconButton
+                        variant="ghost"
+                        size="mini"
+                        icon={<X size={13} />}
+                        onClick={() => onChange({ customHslChannels: value.customHslChannels.filter((_, itemIndex) => itemIndex !== index) })}
+                      />
+                    </Tooltip>
+                  </span>
+                )}
                 value={channelValue(channel, mode)}
                 {...range}
                 onChange={(next) => updateCustomChannel(index, next)}
