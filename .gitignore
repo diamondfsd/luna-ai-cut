@@ -46,4 +46,6 @@ release*/
 .worktrees/
 luna-render-core/target/
 *.node
+luna-render-core/sam-segmentation-worker
+luna-render-core/sam-segmentation-worker.exe
 worktrees/

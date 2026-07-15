@@ -8,7 +8,8 @@ mod logging;
 mod macos;
 mod media;
 mod segmentation;
-mod sam_segmentation;
+pub mod sam_segmentation;
+mod sam_core;
 
 use std::sync::{LazyLock, Mutex};
 
