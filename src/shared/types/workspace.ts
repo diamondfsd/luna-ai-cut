@@ -35,6 +35,10 @@ export interface WorkspaceColorRevealState {
   /** 兼容旧版灰片反差配置。 */
   contrast?: number
   transitionDuration: number
+  initialHoldDuration?: number
+  midpointHoldDuration?: number
+  initialTitle?: string
+  revealedTitle?: string
 }
 
 export interface WorkspaceProject {

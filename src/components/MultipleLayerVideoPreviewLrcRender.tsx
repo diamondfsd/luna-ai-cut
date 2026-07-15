@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, forwardRef, memo, useImperativeHandle } from 'react'
 import type { PreviewLayer } from '../shared/types'
+import { compositionLayerOpacity, compositionRevealProgress } from '../lib/revealProgress'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { COMPOSITION_RENDER_FPS } from './renderComposition'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
@@ -85,6 +86,8 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
   canvasHeight?: number
   /** 是否正在播放（true=视频播放中，false=暂停） */
   playing?: boolean
+  /** 创意合成时间，用于文字等非视频层的显示区间和渐变。 */
+  timelineTime?: number
   /**
    * 视频解码质量系数。
    * 每个视频层的解码分辨率 = 该层在预览画布上的显示尺寸 × decodeQuality。
@@ -118,7 +121,7 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
 export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
-      { layers, className, canvasWidth, canvasHeight, playing = false, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes },
+      { layers, className, canvasWidth, canvasHeight, playing = false, timelineTime = 0, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes },
       ref,
     ) {
       const outputCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -147,6 +150,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       layersRef.current = layers
       const playingRef = useRef(playing)
       playingRef.current = playing
+      const timelineTimeRef = useRef(timelineTime)
+      timelineTimeRef.current = timelineTime
       const canvasWidthRef = useRef(canvasWidth)
       canvasWidthRef.current = canvasWidth
       const canvasHeightRef = useRef(canvasHeight)
@@ -382,6 +387,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         void renderFrame()
       }, [ready, playing])
 
+      useEffect(() => {
+        if (readyRef.current) void renderFrame()
+      }, [timelineTime])
+
       // ── 加载图片纹理 ──
       async function loadImageTexture(filePath: string): Promise<number> {
         const lrc = lrcRef.current
@@ -531,9 +540,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             const revealTime = layer.isVideo
               ? videoStatesRef.current.get(videoLayerKey(layer, i))?.video.currentTime ?? 0
               : 0
-            const revealProgress = reveal
-              ? Math.max(0, Math.min(1, (revealTime - reveal.start) / Math.max(0.001, reveal.duration)))
-              : 1
+            const revealProgress = reveal ? compositionRevealProgress(reveal, revealTime) : 1
             renderLayers.push({
               textureId,
               fit: layer.fit,
@@ -545,7 +552,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               srcY: layer.srcY ?? 0,
               srcW: layer.srcW ?? 1,
               srcH: layer.srcH ?? 1,
-              opacity: layer.opacity ?? 1,
+              opacity: compositionLayerOpacity(layer, timelineTimeRef.current),
               revealProgress,
               zIndex: layer.zIndex ?? 0,
               color: layer.color,
@@ -735,6 +742,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
   ) => {
     return (
       prevProps.playing === nextProps.playing &&
+      prevProps.timelineTime === nextProps.timelineTime &&
       prevProps.decodeQuality === nextProps.decodeQuality &&
       prevProps.canvasWidth === nextProps.canvasWidth &&
       prevProps.canvasHeight === nextProps.canvasHeight &&

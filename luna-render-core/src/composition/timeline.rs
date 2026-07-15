@@ -29,7 +29,64 @@ fn layer_time(source: &CompositionSource, composition_time: f64) -> f64 {
             t = start + (t - start).rem_euclid(duration);
         }
     }
-    t.max(0.0)
+    t.max(start.max(0.0))
+}
+
+fn ease_in_out_cubic(value: f64) -> f64 {
+    let progress = value.clamp(0.0, 1.0);
+    if progress < 0.5 {
+        4.0 * progress * progress * progress
+    } else {
+        1.0 - (-2.0 * progress + 2.0).powi(3) / 2.0
+    }
+}
+
+fn reveal_progress(reveal: &CompositionReveal, time: f64) -> f64 {
+    let duration = reveal.duration.max(0.001);
+    let elapsed = time - reveal.start;
+    if elapsed <= 0.0 {
+        return 0.0;
+    }
+    let apply_easing = |value: f64| match reveal.easing.as_deref() {
+        Some("ease-in-out") => ease_in_out_cubic(value),
+        _ => value.clamp(0.0, 1.0),
+    };
+    let midpoint_hold = reveal.midpoint_hold.unwrap_or(0.0).max(0.0);
+    if midpoint_hold <= 0.0 {
+        return apply_easing(elapsed / duration);
+    }
+
+    let half_duration = duration / 2.0;
+    if elapsed < half_duration {
+        return apply_easing(elapsed / half_duration) * 0.5;
+    }
+    if elapsed < half_duration + midpoint_hold {
+        return 0.5;
+    }
+    if elapsed < duration + midpoint_hold {
+        let second_half = (elapsed - half_duration - midpoint_hold) / half_duration;
+        return 0.5 + apply_easing(second_half) * 0.5;
+    }
+    1.0
+}
+
+fn layer_opacity(layer: &CompositionLayer, time: f64) -> f64 {
+    let start = layer.visible_start;
+    let end = layer.visible_end;
+    if start.is_some_and(|start| time < start) || end.is_some_and(|end| time >= end) {
+        return 0.0;
+    }
+
+    let mut progress: f64 = 1.0;
+    let fade_in = layer.fade_in_duration.unwrap_or(0.0).max(0.0);
+    if let Some(start) = start.filter(|_| fade_in > 0.0) {
+        progress = progress.min(((time - start) / fade_in).clamp(0.0, 1.0));
+    }
+    let fade_out = layer.fade_out_duration.unwrap_or(0.0).max(0.0);
+    if let Some(end) = end.filter(|_| fade_out > 0.0) {
+        progress = progress.min(((end - time) / fade_out).clamp(0.0, 1.0));
+    }
+    layer.opacity.unwrap_or(1.0).clamp(0.0, 1.0) * progress
 }
 
 pub(crate) fn infer_composition_duration(
@@ -204,13 +261,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
             let reveal_progress = layer
                 .reveal
                 .as_ref()
-                .map(|reveal| {
-                    if reveal.duration <= 0.0 {
-                        1.0
-                    } else {
-                        ((time - reveal.start) / reveal.duration).clamp(0.0, 1.0)
-                    }
-                })
+                .map(|reveal| reveal_progress(reveal, time))
                 .unwrap_or(1.0);
             let reveal_width = if layer
                 .reveal
@@ -235,7 +286,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 src_y: 0.0,
                 src_w: 1.0,
                 src_h: 1.0,
-                opacity: layer.opacity.unwrap_or(1.0),
+                opacity: layer_opacity(layer, time),
                 reveal_progress: reveal_width,
                 z_index: layer.z_index.unwrap_or(0),
                 color: layer.color.clone().unwrap_or_default(),
@@ -259,4 +310,54 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        layer_time, reveal_progress, CompositionReveal, CompositionSource, CompositionSourceTime,
+    };
+
+    fn staged_reveal() -> CompositionReveal {
+        CompositionReveal {
+            direction: "left-to-right".to_string(),
+            start: 1.0,
+            duration: 2.0,
+            midpoint_hold: Some(0.5),
+            easing: Some("ease-in-out".to_string()),
+        }
+    }
+
+    #[test]
+    fn staged_reveal_holds_at_midpoint() {
+        let reveal = staged_reveal();
+        assert_eq!(reveal_progress(&reveal, 1.0), 0.0);
+        assert_eq!(reveal_progress(&reveal, 2.0), 0.5);
+        assert_eq!(reveal_progress(&reveal, 2.4), 0.5);
+        assert_eq!(reveal_progress(&reveal, 3.5), 1.0);
+    }
+
+    #[test]
+    fn staged_reveal_uses_curved_half_transitions() {
+        let reveal = staged_reveal();
+        assert!(reveal_progress(&reveal, 1.25) < 0.125);
+        assert!(reveal_progress(&reveal, 2.75) < 0.625);
+    }
+
+    #[test]
+    fn source_offset_holds_the_trimmed_first_frame() {
+        let source = CompositionSource {
+            path: "clip.mp4".to_string(),
+            source_type: Some("video".to_string()),
+            time: Some(CompositionSourceTime {
+                offset: Some(1.0),
+                start: Some(5.0),
+                duration: Some(10.0),
+                loop_enabled: Some(false),
+            }),
+        };
+        assert_eq!(layer_time(&source, 0.0), 5.0);
+        assert_eq!(layer_time(&source, 0.8), 5.0);
+        assert_eq!(layer_time(&source, 1.5), 5.5);
+    }
 }

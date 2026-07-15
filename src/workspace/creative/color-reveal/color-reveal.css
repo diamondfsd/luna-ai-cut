@@ -53,26 +53,6 @@
   display: block;
 }
 
-.color-reveal-label {
-  position: absolute;
-  top: 12px;
-  z-index: 3;
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.5);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 11px;
-  pointer-events: none;
-}
-
-.color-reveal-label--before {
-  left: 12px;
-}
-
-.color-reveal-label--after {
-  right: 12px;
-}
-
 .color-reveal-empty {
   display: grid;
   justify-items: center;
@@ -129,6 +109,22 @@
 .color-reveal-param-list {
   display: grid;
   gap: 13px;
+}
+
+.color-reveal-text-fields {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 2px;
+}
+
+.color-reveal-text-fields label {
+  display: grid;
+  gap: 6px;
+}
+
+.color-reveal-text-fields label > span {
+  color: #b8b8b8;
+  font-size: 12px;
 }
 
 .color-reveal-actions {

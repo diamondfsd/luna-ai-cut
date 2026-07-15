@@ -6,18 +6,24 @@ import { MultipleLayerVideoPreviewLrcRender } from '../../../components/Multiple
 import { resolveExportConfig } from '../../../components/previewStageExport'
 import { buildCompositionFromPreviewLayers } from '../../../components/renderComposition'
 import type { CompositionInput, MediaMetadata, PreviewLayer, VideoExportSettings } from '../../../shared/types'
-import { Button, IconButton, VideoControls, toast } from '../../../ui'
+import { Button, IconButton, Input, VideoControls, toast } from '../../../ui'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
+import { createColorRevealTitleLayer } from './colorRevealLayers'
 import './color-reveal.css'
 
 const DEFAULT_SATURATION = -80
 const DEFAULT_GRAY = 70
 const DEFAULT_TRANSITION_DURATION = 2.5
+const DEFAULT_INITIAL_HOLD_DURATION = 1
+const DEFAULT_MIDPOINT_HOLD_DURATION = 0.6
+const DEFAULT_INITIAL_TITLE = 'i-log OFF'
+const DEFAULT_REVEALED_TITLE = 'i-log ON'
+const TITLE_FADE_DURATION = 0.35
 
 function savedGray(state: { gray?: number; contrast?: number } | undefined): number {
   if (typeof state?.gray === 'number') return state.gray
@@ -62,6 +68,10 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   const [saturation, setSaturation] = useState(savedState?.saturation ?? DEFAULT_SATURATION)
   const [gray, setGray] = useState(savedGray(savedState))
   const [transitionDuration, setTransitionDuration] = useState(savedState?.transitionDuration ?? DEFAULT_TRANSITION_DURATION)
+  const [initialHoldDuration, setInitialHoldDuration] = useState(savedState?.initialHoldDuration ?? DEFAULT_INITIAL_HOLD_DURATION)
+  const [midpointHoldDuration, setMidpointHoldDuration] = useState(savedState?.midpointHoldDuration ?? DEFAULT_MIDPOINT_HOLD_DURATION)
+  const [initialTitle, setInitialTitle] = useState(savedState?.initialTitle ?? DEFAULT_INITIAL_TITLE)
+  const [revealedTitle, setRevealedTitle] = useState(savedState?.revealedTitle ?? DEFAULT_REVEALED_TITLE)
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
   const [duration, setDuration] = useState(0)
   const [borderMetadata, setBorderMetadata] = useState<MediaMetadata | null>(null)
@@ -72,12 +82,22 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   const [exporting, setExporting] = useState(false)
   const projectSaveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
+  const currentTimeRef = useRef(0)
+  const trimStart = pipeline.trim?.startTime ?? 0
+  const sourceDuration = Math.max(0, (pipeline.trim?.endTime ?? duration) - trimStart)
+  const effectStart = initialHoldDuration + TITLE_FADE_DURATION
+  const creativeDuration = sourceDuration + effectStart
+  currentTimeRef.current = currentTime
 
   useEffect(() => {
     const nextSavedState = media.currentProject?.creative?.colorReveal
     setSaturation(nextSavedState?.saturation ?? DEFAULT_SATURATION)
     setGray(savedGray(nextSavedState))
     setTransitionDuration(nextSavedState?.transitionDuration ?? DEFAULT_TRANSITION_DURATION)
+    setInitialHoldDuration(nextSavedState?.initialHoldDuration ?? DEFAULT_INITIAL_HOLD_DURATION)
+    setMidpointHoldDuration(nextSavedState?.midpointHoldDuration ?? DEFAULT_MIDPOINT_HOLD_DURATION)
+    setInitialTitle(nextSavedState?.initialTitle ?? DEFAULT_INITIAL_TITLE)
+    setRevealedTitle(nextSavedState?.revealedTitle ?? DEFAULT_REVEALED_TITLE)
   }, [media.currentProject?.id])
 
   useEffect(() => {
@@ -106,37 +126,37 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
 
   useEffect(() => {
     if (!videoElement) return
-    const trimStart = pipeline.trim?.startTime ?? 0
-    const trimEnd = pipeline.trim?.endTime ?? duration
-    const syncTime = () => {
-      const nextTime = Math.max(0, videoElement.currentTime - trimStart)
-      setCurrentTime(nextTime)
-      if (videoElement.currentTime >= trimEnd && playing) {
-        videoElement.pause()
-        setPlaying(false)
-      }
-    }
     const handleEnded = () => setPlaying(false)
-    videoElement.addEventListener('timeupdate', syncTime)
-    videoElement.addEventListener('seeked', syncTime)
     videoElement.addEventListener('ended', handleEnded)
     return () => {
-      videoElement.removeEventListener('timeupdate', syncTime)
-      videoElement.removeEventListener('seeked', syncTime)
       videoElement.removeEventListener('ended', handleEnded)
     }
-  }, [duration, pipeline.trim?.endTime, pipeline.trim?.startTime, playing, videoElement])
+  }, [videoElement])
 
   useEffect(() => {
-    if (!playing || !videoElement) return
+    if (!playing) return
     let frame = 0
-    const updatePlayhead = () => {
-      setCurrentTime(Math.max(0, videoElement.currentTime - (pipeline.trim?.startTime ?? 0)))
+    let previous = performance.now()
+    const updatePlayhead = (now: number) => {
+      const elapsed = Math.max(0, (now - previous) / 1000)
+      previous = now
+      const previousTime = currentTimeRef.current
+      const nextTime = Math.min(creativeDuration, previousTime + elapsed)
+      if (videoElement && previousTime < effectStart && nextTime >= effectStart) {
+        videoElement.currentTime = trimStart
+      }
+      currentTimeRef.current = nextTime
+      setCurrentTime(nextTime)
+      if (nextTime >= creativeDuration) {
+        videoElement?.pause()
+        setPlaying(false)
+        return
+      }
       frame = requestAnimationFrame(updatePlayhead)
     }
     frame = requestAnimationFrame(updatePlayhead)
     return () => cancelAnimationFrame(frame)
-  }, [pipeline.trim?.startTime, playing, videoElement])
+  }, [creativeDuration, effectStart, playing, trimStart, videoElement])
 
   useEffect(() => {
     const currentProject = media.currentProject
@@ -145,7 +165,15 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       ...currentProject,
       creative: {
         ...currentProject.creative,
-        colorReveal: { saturation, gray, transitionDuration },
+        colorReveal: {
+          saturation,
+          gray,
+          transitionDuration,
+          initialHoldDuration,
+          midpointHoldDuration,
+          initialTitle,
+          revealedTitle,
+        },
       },
     }
     pendingProjectRef.current = nextProject
@@ -155,7 +183,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       projectSaveTimerRef.current = null
       void window.luna.workspace.saveProject(nextProject).catch(() => {})
     }, 300)
-  }, [gray, saturation, transitionDuration])
+  }, [gray, initialHoldDuration, initialTitle, midpointHoldDuration, revealedTitle, saturation, transitionDuration])
 
   useEffect(() => () => {
     if (projectSaveTimerRef.current !== null) window.clearTimeout(projectSaveTimerRef.current)
@@ -165,8 +193,6 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   const outputSize = useMemo(() => sourceSize
     ? outputSizeForTransform(sourceSize, pipeline.transform)
     : null, [pipeline.transform, sourceSize])
-  const trimStart = pipeline.trim?.startTime ?? 0
-  const effectDuration = Math.max(0, (pipeline.trim?.endTime ?? duration) - trimStart)
   const editedLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
     return buildWorkspaceExportLayers(activeAsset.path, sourceSize, pipeline, borderMetadata)
@@ -174,8 +200,8 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
 
   const buildEffectLayers = useCallback((forExport: boolean): PreviewLayer[] => {
     if (!activeAsset) return []
-    const revealStart = forExport ? 0 : trimStart
-    return editedLayers.flatMap((layer) => {
+    const revealStart = forExport ? effectStart : trimStart
+    const mediaLayers = editedLayers.flatMap((layer) => {
       if (!layer.isVideo || layer.filePath !== activeAsset.path) return [layer]
       const afterColor = layer.color
       const beforeColor = afterColor ? {
@@ -191,7 +217,8 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       const shared = {
         ...layer,
         videoTime: trimStart,
-        videoDuration: effectDuration || undefined,
+        videoOffset: forExport ? effectStart : undefined,
+        videoDuration: sourceDuration || undefined,
         videoSourceKey: 'color-reveal-main',
       }
       return [
@@ -199,34 +226,77 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         {
           ...shared,
           zIndex: layer.zIndex + 0.01,
-          reveal: { direction: 'left-to-right' as const, start: revealStart, duration: transitionDuration },
+          reveal: {
+            direction: 'left-to-right' as const,
+            start: revealStart,
+            duration: transitionDuration,
+            midpointHold: midpointHoldDuration,
+            easing: 'ease-in-out' as const,
+          },
         },
       ]
     })
-  }, [activeAsset, editedLayers, effectDuration, gray, saturation, transitionDuration, trimStart])
+    const titleLayers: PreviewLayer[] = []
+    if (initialTitle.trim()) {
+      titleLayers.push(createColorRevealTitleLayer(
+        initialTitle.trim(),
+        1,
+        0,
+        effectStart,
+        undefined,
+        TITLE_FADE_DURATION,
+      ))
+    }
+    if (revealedTitle.trim()) {
+      titleLayers.push(createColorRevealTitleLayer(
+        revealedTitle.trim(),
+        1,
+        effectStart,
+        undefined,
+        TITLE_FADE_DURATION,
+      ))
+    }
+    return [...mediaLayers, ...titleLayers]
+  }, [activeAsset, editedLayers, effectStart, gray, initialHoldDuration, initialTitle, midpointHoldDuration, revealedTitle, saturation, sourceDuration, transitionDuration, trimStart])
 
   const previewLayers = useMemo(() => buildEffectLayers(false), [buildEffectLayers])
   const handlePreviewError = useCallback((message: string) => toast.error(message), [])
 
   function buildExportComposition(width: number, height: number, fps: number | null): CompositionInput {
     if (!activeAsset) throw new Error('请选择一个视频素材')
-    return buildCompositionFromPreviewLayers(
+    const composition = buildCompositionFromPreviewLayers(
       buildEffectLayers(true),
       width,
       height,
-      { fps: fps ?? undefined, duration: effectDuration || undefined },
+      { fps: fps ?? undefined, duration: creativeDuration || undefined },
     )
+    composition.canvas.duration = creativeDuration || undefined
+    return composition
   }
 
   function handleSeek(time: number): void {
     setCurrentTime(time)
-    if (videoElement) videoElement.currentTime = trimStart + time
+    currentTimeRef.current = time
+    if (videoElement) videoElement.currentTime = trimStart + Math.max(0, time - effectStart)
+  }
+
+  function togglePlayback(): void {
+    if (playing) {
+      setPlaying(false)
+      return
+    }
+    if (currentTime >= creativeDuration) handleSeek(0)
+    setPlaying(true)
   }
 
   function resetParameters(): void {
     setSaturation(DEFAULT_SATURATION)
     setGray(DEFAULT_GRAY)
     setTransitionDuration(Math.min(DEFAULT_TRANSITION_DURATION, Math.max(0.5, duration || DEFAULT_TRANSITION_DURATION)))
+    setInitialHoldDuration(DEFAULT_INITIAL_HOLD_DURATION)
+    setMidpointHoldDuration(DEFAULT_MIDPOINT_HOLD_DURATION)
+    setInitialTitle(DEFAULT_INITIAL_TITLE)
+    setRevealedTitle(DEFAULT_REVEALED_TITLE)
     handleSeek(0)
   }
 
@@ -239,10 +309,10 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
       const resolved = resolveExportConfig(config, outputSize.width, outputSize.height)
       const stamp = Date.now()
-      const fileName = `color-reveal-${stamp}.mp4`
+      const fileName = `i-log-color-reveal-${stamp}.mp4`
       const path = outputPath(settings.exportDir, fileName)
       const itemId = `color_reveal_${stamp}`
-      const task = await window.luna.exportTask.create('灰片变正片', [{
+      const task = await window.luna.exportTask.create('i-log 色彩还原', [{
         id: itemId,
         sourcePath: activeAsset.path,
         outputPath: path,
@@ -252,7 +322,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         path,
         buildExportComposition(resolved.width, resolved.height, resolved.fps),
         resolved.fps,
-        effectDuration || null,
+        creativeDuration || null,
         true,
         itemId,
         resolved.qualityPreset,
@@ -269,7 +339,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
     }
   }
 
-  const transitionMax = Math.max(0.5, Math.min(8, effectDuration || 8))
+  const transitionMax = Math.max(0.5, Math.min(8, sourceDuration || 8))
 
   return (
     <section className="color-reveal-page">
@@ -277,7 +347,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>
           创意列表
         </Button>
-        <span>灰片变正片</span>
+        <span>i-log 色彩还原</span>
       </header>
 
       <div className="color-reveal-preview">
@@ -291,19 +361,18 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
               layers={previewLayers}
               canvasWidth={outputSize.width}
               canvasHeight={outputSize.height}
-              playing={playing}
+              playing={playing && currentTime >= effectStart}
+              timelineTime={currentTime}
               decodeQuality={1}
               interactiveImageLayerIndexes={[]}
               onVideoElement={setVideoElement}
               onError={handlePreviewError}
             />
-            <div className="color-reveal-label color-reveal-label--before">灰片</div>
-            <div className="color-reveal-label color-reveal-label--after">正片</div>
             <VideoControls
               currentTime={currentTime}
-              duration={effectDuration}
+              duration={creativeDuration}
               playing={playing}
-              onToggle={() => setPlaying((value) => !value)}
+              onToggle={togglePlayback}
               onSeek={handleSeek}
               step={0.01}
             />
@@ -321,19 +390,61 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         <div className="color-reveal-panel-head">
           <div>
             <strong>效果设置</strong>
-            <span>灰片从左向右过渡为当前调色效果</span>
+            <span>首帧停留后，曲线推进至一半并停顿，再完成色彩还原</span>
           </div>
         </div>
         <div className="color-reveal-param-list">
+          <div className="color-reveal-text-fields">
+            <label>
+              <span>初始标题</span>
+              <Input
+                variant="compact"
+                fullWidth
+                value={initialTitle}
+                maxLength={40}
+                placeholder="输入灰片阶段标题"
+                onChange={(event) => setInitialTitle(event.currentTarget.value)}
+              />
+            </label>
+            <label>
+              <span>变化标题</span>
+              <Input
+                variant="compact"
+                fullWidth
+                value={revealedTitle}
+                maxLength={40}
+                placeholder="输入色彩变化标题"
+                onChange={(event) => setRevealedTitle(event.currentTarget.value)}
+              />
+            </label>
+          </div>
           <ParamSlider label="灰片饱和度" value={saturation} min={-100} max={0} onChange={setSaturation} />
           <ParamSlider label="灰度" value={gray} min={0} max={100} onChange={setGray} />
           <ParamSlider
-            label="过渡时长"
+            label="首帧停留"
+            value={initialHoldDuration}
+            min={0}
+            max={3}
+            step={0.1}
+            onChange={setInitialHoldDuration}
+            formatValue={(value) => `${value.toFixed(1)}s`}
+          />
+          <ParamSlider
+            label="曲线变化"
             value={Math.min(transitionDuration, transitionMax)}
             min={0.5}
             max={transitionMax}
             step={0.1}
             onChange={setTransitionDuration}
+            formatValue={(value) => `${value.toFixed(1)}s`}
+          />
+          <ParamSlider
+            label="中段停顿"
+            value={midpointHoldDuration}
+            min={0}
+            max={2}
+            step={0.1}
+            onChange={setMidpointHoldDuration}
             formatValue={(value) => `${value.toFixed(1)}s`}
           />
         </div>
@@ -366,7 +477,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         open={exportDialogOpen}
         tone="dark"
         onOpenChange={setExportDialogOpen}
-        title="生成创意视频"
+        title="生成 i-log 色彩还原视频"
         description="设置生成视频的分辨率、码率和帧率"
         loading={exporting}
         confirmLabel="开始生成"
