@@ -38,3 +38,13 @@ export interface LunaFile {
   frameRate?: number
   duration?: number
 }
+
+export interface CameraDeleteFailure {
+  path: string
+  error: string
+}
+
+export interface CameraDeleteResult {
+  deleted: string[]
+  failed: CameraDeleteFailure[]
+}

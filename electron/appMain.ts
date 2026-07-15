@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
 import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './crashDiagnostics'
+import { cameraPathsForFiles } from './cameraDeletePaths'
 
 import {
   getLocalResourcesDir,
@@ -382,6 +383,33 @@ function registerIpc(): void {
       return files
     } catch (error) {
       logMainError(`[HTTP读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, error: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
+  })
+
+  ipcMain.handle('luna:deleteCameraFiles', async (_event, files: LunaFile[], host?: string) => {
+    if (!Array.isArray(files) || files.length === 0) throw new Error('请先选择要删除的相机素材')
+    const settings = await getSettings()
+    const normalizedHost = host || settings.cameraHost
+    const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
+    if (deviceId !== DEFAULT_DEVICE.id) throw new Error('当前设备暂不支持在应用中删除相机素材')
+
+    const cameraPaths = cameraPathsForFiles(files, normalizedHost)
+    logMainInfo('[相机删除] 收到删除请求', {
+      host: normalizedHost,
+      selectedCount: files.length,
+      pathCount: cameraPaths.length,
+    })
+    try {
+      return await lunaProtocol().deleteFiles(cameraPaths, {
+        deviceId,
+        host: normalizedHost,
+      })
+    } catch (error) {
+      logMainError('[相机删除] 删除失败', {
+        host: normalizedHost,
+        error: error instanceof Error ? error.message : String(error),
+      })
       throw error
     }
   })
