@@ -273,7 +273,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>
           创意列表
         </Button>
-        <span>i-log 色彩还原</span>
+        <span>色彩还原</span>
       </header>
 
       <div className="color-reveal-preview">
@@ -391,7 +391,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         open={exportDialogOpen}
         tone="dark"
         onOpenChange={setExportDialogOpen}
-        title={exportCount > 1 ? `生成 ${exportCount} 个色彩还原视频` : '生成 i-log 色彩还原视频'}
+        title={exportCount > 1 ? `生成 ${exportCount} 个色彩还原视频` : '生成色彩还原视频'}
         description={exportCount > 1 ? '所有选中素材将使用相同的生成设置' : '设置生成视频的分辨率、码率和帧率'}
         loading={exporting}
         confirmLabel="开始生成"
