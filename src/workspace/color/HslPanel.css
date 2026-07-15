@@ -16,13 +16,14 @@
   border-top: 1px solid var(--hairline);
 }
 
-.workspace-hsl-custom-header {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) 28px;
+.workspace-hsl-custom-label {
+  display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: var(--muted);
-  font-size: 12px;
+}
+
+.workspace-hsl-custom-label .ui-icon-btn {
+  margin-left: 1px;
 }
 
 .workspace-hsl-custom-swatch {

@@ -27,6 +27,7 @@ export interface HslChannelAdjust {
   hueShift: number
   saturation: number
   luminance: number
+  sourceColor?: string
 }
 
 export interface VideoTrimState {
@@ -397,6 +398,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
         hueShift: clampNumber(channel.hueShift, EDIT_PARAMETER_RANGES.hsl.hue),
         saturation: clampNumber(channel.saturation, EDIT_PARAMETER_RANGES.hsl.saturation),
         luminance: clampNumber(channel.luminance, EDIT_PARAMETER_RANGES.hsl.luminance),
+        sourceColor: /^#[0-9a-f]{6}$/i.test(channel.sourceColor ?? '') ? channel.sourceColor : undefined,
       })),
 
       clarity: clampNumber(pipeline.color.clarity, color.clarity),
