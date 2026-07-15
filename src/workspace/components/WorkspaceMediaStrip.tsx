@@ -1,11 +1,11 @@
-import { ImageOff } from 'lucide-react'
+import { FolderOpen, ImageOff } from 'lucide-react'
 import { type MouseEvent, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset } from '../../shared/types'
 import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../shared/editPipeline'
 import type { PipelinePatch } from '../shared/editPipeline'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
-import { LivePhotoBadge, VideoPlayBadge } from '../../ui'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, LivePhotoBadge, VideoPlayBadge, toast } from '../../ui'
 import { ThumbImage } from '../../components/ThumbImage'
 
 /** 检查素材的 pipeline 是否有非默认的修改 */
@@ -98,6 +98,14 @@ export function WorkspaceMediaStrip() {
     }
   }
 
+  async function revealAsset(filePath: string): Promise<void> {
+    try {
+      await window.luna.revealFile(filePath)
+    } catch {
+      toast.error('无法打开所在文件夹')
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -116,17 +124,26 @@ export function WorkspaceMediaStrip() {
         const isDragHighlighted = dragHighlighted.has(index)
         const isModified = !isBroken && isAssetModified(item)
         return (
-          <button
-            key={item.id}
-            className={`workspace-thumb${isActive ? ' active' : ''}${isSelected || isDragHighlighted ? ' selected' : ''}${isBroken ? ' is-broken' : ''}`}
-            type="button"
-            onClick={(e) => handleClick(index, e)}
-          >
-            {isModified && <span className="workspace-thumb-modified-dot" />}
-            {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : <ThumbImage src={item.path} alt="" draggable={false} />}
-            {item.kind === 'video' && <VideoPlayBadge size={20} />}
-            {item.isLivePhoto && <LivePhotoBadge size={22} className="workspace-thumb-live-chip" />}
-          </button>
+          <ContextMenu key={item.id}>
+            <ContextMenuTrigger asChild>
+              <button
+                className={`workspace-thumb${isActive ? ' active' : ''}${isSelected || isDragHighlighted ? ' selected' : ''}${isBroken ? ' is-broken' : ''}`}
+                type="button"
+                onClick={(e) => handleClick(index, e)}
+              >
+                {isModified && <span className="workspace-thumb-modified-dot" />}
+                {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : <ThumbImage src={item.path} alt="" draggable={false} />}
+                {item.kind === 'video' && <VideoPlayBadge size={20} />}
+                {item.isLivePhoto && <LivePhotoBadge size={22} className="workspace-thumb-live-chip" />}
+              </button>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem onSelect={() => void revealAsset(item.path)}>
+                <FolderOpen size={15} />
+                打开所在文件夹
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         )
       })}
       {dragRect && (

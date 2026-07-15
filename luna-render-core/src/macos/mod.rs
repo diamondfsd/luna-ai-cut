@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::composition::{composition_layers, mux_primary_audio, CompositionInput};
-use crate::compositor::{decode_static_image_scaled, Compositor, PreviewTextureInfo};
+use crate::compositor::{Compositor, PreviewTextureInfo};
 use crate::export::TaskState;
+use crate::media::decode_static_image_scaled;
 
 const ERROR_CAPACITY: usize = 1024;
 
@@ -100,7 +101,13 @@ impl Decoder {
         let path = c_path(path)?;
         let mut error = error_buffer();
         let raw = unsafe {
-            luna_av_decoder_create(path.as_ptr(), metal_device, max_decode_edge, error.as_mut_ptr(), error.len())
+            luna_av_decoder_create(
+                path.as_ptr(),
+                metal_device,
+                max_decode_edge,
+                error.as_mut_ptr(),
+                error.len(),
+            )
         };
         if raw.is_null() {
             Err(bridge_error(&error, "无法启动 macOS 视频解码"))
@@ -280,13 +287,11 @@ pub(crate) fn export_video(
     let mut cum_acquire_us = 0u64;
     let mut cum_render_us = 0u64;
     let mut cum_append_us = 0u64;
-    let log_interval = (total_frames / 10).max(1);
 
     for frame_index in 0..total_frames {
         if task.is_some_and(|state| state.is_cancelled()) {
             return Err("导出已取消".to_string());
         }
-        let frame_start = std::time::Instant::now();
         let time = frame_index as f64 / fps;
         let layer_inputs = composition_layers(composition, time);
         let mut source_layers = Vec::with_capacity(layer_inputs.len());
@@ -308,10 +313,16 @@ pub(crate) fn export_video(
                     std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
                     std::collections::hash_map::Entry::Vacant(entry) => {
                         // 计算此层在画布上的实际显示像素尺寸，作为解码上限
-                        let display_w = (layer.dst_w.abs() * composition.canvas.width as f64).ceil() as u32;
-                        let display_h = (layer.dst_h.abs() * composition.canvas.height as f64).ceil() as u32;
+                        let display_w =
+                            (layer.dst_w.abs() * composition.canvas.width as f64).ceil() as u32;
+                        let display_h =
+                            (layer.dst_h.abs() * composition.canvas.height as f64).ceil() as u32;
                         let decode_max_side = display_w.max(display_h).max(360); // 不低于 360px
-                        entry.insert(Decoder::new(&layer.file_path, metal_device, decode_max_side)?)
+                        entry.insert(Decoder::new(
+                            &layer.file_path,
+                            metal_device,
+                            decode_max_side,
+                        )?)
                     }
                 };
 
@@ -416,26 +427,11 @@ pub(crate) fn export_video(
         writer.append(&output_frame, frame_index)?;
         let append_us = t0.elapsed().as_micros() as u64;
 
-        let frame_us = frame_start.elapsed().as_micros() as u64;
         cum_decode_us += decode_us;
         cum_plan_us += plan_us;
         cum_acquire_us += acquire_us;
         cum_render_us += render_us;
         cum_append_us += append_us;
-
-        if frame_index % log_interval == 0 || frame_index == total_frames - 1 {
-            crate::compositor::log_write(&format!(
-                "[Export:MacGPU:Timing] frame {}/{} | total={:.0}ms decode={:.0}ms plan={:.0}ms acquire={:.0}ms render={:.0}ms append={:.0}ms",
-                frame_index,
-                total_frames,
-                frame_us as f64 / 1000.0,
-                decode_us as f64 / 1000.0,
-                plan_us as f64 / 1000.0,
-                acquire_us as f64 / 1000.0,
-                render_us as f64 / 1000.0,
-                append_us as f64 / 1000.0,
-            ));
-        }
 
         if let Some(state) = task {
             state
@@ -445,7 +441,7 @@ pub(crate) fn export_video(
     }
 
     let total_us = export_start.elapsed().as_micros() as u64;
-    crate::compositor::log_write(&format!(
+    crate::logging::write(&format!(
         "[Export:MacGPU:Timing] SUMMARY total={:.0}ms | cum_decode={:.0}ms cum_plan={:.0}ms cum_acquire={:.0}ms cum_render={:.0}ms cum_append={:.0}ms",
         total_us as f64 / 1000.0,
         cum_decode_us as f64 / 1000.0,

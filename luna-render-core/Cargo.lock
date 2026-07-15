@@ -502,6 +502,7 @@ dependencies = [
  "serde_json",
  "swash",
  "wgpu",
+ "windows",
 ]
 
 [[package]]
