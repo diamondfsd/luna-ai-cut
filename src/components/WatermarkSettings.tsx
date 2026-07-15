@@ -24,7 +24,6 @@ export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, isLan
   const filePath = settings.imagePath || getCachedWatermarkPath(settings.style)
   if (!filePath) return null
   const positioning = positioningForOrient(isLandscape, settings.position)
-  console.log('[WatermarkStaticLayer] build', { filePath, style: settings.style, isLandscape, positioning })
   return {
     filePath,
     dstX: 0, dstY: 0, dstW: 1, dstH: 1,
@@ -150,11 +149,6 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     window.luna.workspace.getMediaResolution(filePath)
       .then((resolution) => {
         if (!cancelled) {
-          console.log('[WatermarkSettings] media resolution', {
-            filePath,
-            width: resolution.width,
-            height: resolution.height,
-          })
           setResolvedMediaSize({ w: resolution.width, h: resolution.height })
         }
       })
@@ -213,15 +207,6 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     const layer = enriched.imagePath
       ? buildWatermarkStaticLayer(enriched, isLandscape)
       : undefined
-    console.log('[WatermarkSettings] computed layer', {
-      filePath,
-      mediaSize: effectiveMediaWidth && effectiveMediaHeight ? `${effectiveMediaWidth}x${effectiveMediaHeight}` : null,
-      style: next.style,
-      position: next.position,
-      isLandscape,
-      watermarkSize: info ? `${info.width}x${info.height}` : null,
-      layer,
-    })
     setInternalSettings(enriched)
     onChange(enriched, layer ?? undefined)
   }, [currentSettings, onChange, filePath, effectiveMediaWidth, effectiveMediaHeight])

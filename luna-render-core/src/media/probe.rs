@@ -1,4 +1,4 @@
-use std::process::Command;
+use super::command;
 
 /// 简易 URL 百分比解码（仅处理 `%XX`，ffprobe/ffmpeg 不支持 URL 编码的路径）
 fn normalize_path(path: &str) -> String {
@@ -52,8 +52,15 @@ pub struct VideoInfo {
 
 pub fn probe_video_dimensions(ffprobe: &str, input: &str) -> Result<(u32, u32), String> {
     let local = normalize_path(input);
-    let output = Command::new(ffprobe)
-        .args(["-v", "quiet", "-print_format", "json", "-show_streams", &local])
+    let output = command(ffprobe)
+        .args([
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_streams",
+            &local,
+        ])
         .output()
         .map_err(|e| format!("ffprobe {}: {}", input, e))?;
     if !output.status.success() {
@@ -74,8 +81,16 @@ pub fn probe_video_dimensions(ffprobe: &str, input: &str) -> Result<(u32, u32), 
 
 pub fn probe_video_info(ffprobe: &str, input: &str) -> Result<VideoInfo, String> {
     let local = normalize_path(input);
-    let output = Command::new(ffprobe)
-        .args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", &local])
+    let output = command(ffprobe)
+        .args([
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            &local,
+        ])
         .output()
         .map_err(|e| format!("ffprobe: {}", e))?;
     if !output.status.success() {

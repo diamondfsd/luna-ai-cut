@@ -110,7 +110,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   getBorderLogoPath: (logoId: string) => ipcRenderer.invoke('luna:getBorderLogoPath', logoId) as Promise<string>,
   disconnect: (host?: string) => ipcRenderer.invoke('luna:disconnect', host),
   getWifiStatus: () => ipcRenderer.invoke('wifiDebug:getStatus'),
-  collectNetworkDiagnostics: () => ipcRenderer.invoke('luna:collectNetworkDiagnostics') as Promise<NetworkDiagnosticsResult>,
+  collectNetworkDiagnostics: (host?: string) => ipcRenderer.invoke('luna:collectNetworkDiagnostics', host) as Promise<NetworkDiagnosticsResult>,
   scanWifi: () => ipcRenderer.invoke('wifiDebug:scan'),
   connectWifi: (options: WifiConnectOptions) => ipcRenderer.invoke('wifiDebug:connect', options),
   disconnectWifi: () => ipcRenderer.invoke('wifiDebug:disconnect'),
@@ -251,6 +251,7 @@ interface CompositionInput {
 
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
+  resetCompatibilityBlock: () => ipcRenderer.invoke('lrc:resetCompatibilityBlock'),
   loadTexture: (data: Buffer, width: number, height: number) =>
     ipcRenderer.invoke('lrc:loadTexture', data, width, height),
   updateTexture: (textureId: number, data: Buffer) =>

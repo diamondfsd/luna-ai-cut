@@ -81,6 +81,20 @@ export async function loadCreativeImageAspect(asset: WorkspaceMediaAsset): Promi
   })
 }
 
+export async function loadCreativeImageSize(asset: WorkspaceMediaAsset): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const width = img.naturalWidth
+      const height = img.naturalHeight
+      if (width > 0 && height > 0) resolve({ width, height })
+      else reject(new Error(`无法读取「${asset.name}」的尺寸`))
+    }
+    img.onerror = () => reject(new Error(`无法加载「${asset.name}」`))
+    img.src = assetSourceUrl(asset)
+  })
+}
+
 export async function loadCreativeVideoSource(asset: WorkspaceMediaAsset): Promise<HTMLVideoElement> {
   let sourceUrl = assetSourceUrl(asset)
   if (asset.isLivePhoto) {

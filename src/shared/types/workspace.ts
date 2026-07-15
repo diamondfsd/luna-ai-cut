@@ -29,6 +29,17 @@ export interface WorkspaceTripleStitchState {
   watermarkStyle: string
 }
 
+export interface WorkspaceColorRevealState {
+  saturation: number
+  gray: number
+  /** 兼容旧版灰片反差配置。 */
+  contrast?: number
+  transitionDuration: number
+  initialHoldDuration?: number
+  midpointHoldDuration?: number
+  stageMode?: 'two' | 'three'
+}
+
 export interface WorkspaceProject {
   id: string
   name: string
@@ -38,5 +49,6 @@ export interface WorkspaceProject {
   assets: WorkspaceProjectAsset[]
   creative?: {
     tripleStitch?: WorkspaceTripleStitchState
+    colorReveal?: WorkspaceColorRevealState
   }
 }

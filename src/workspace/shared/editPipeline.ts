@@ -27,6 +27,7 @@ export interface HslChannelAdjust {
   hueShift: number
   saturation: number
   luminance: number
+  sourceColor?: string
 }
 
 export interface VideoTrimState {
@@ -107,6 +108,7 @@ export interface EditPipeline {
 
     // HSL (multi-band)
     hslChannels: Record<HslChannelKey, HslChannelAdjust>
+    customHslChannels: HslChannelAdjust[]
 
     // Detail
     clarity: number
@@ -203,6 +205,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     levelsWhite: 1,
 
     hslChannels: createDefaultHslChannels(),
+    customHslChannels: [],
 
     clarity: 0,
     texture: 0,
@@ -273,6 +276,7 @@ export const CURVE_DEFAULTS: Partial<EditPipeline['color']> = {
 
 export const HSL_DEFAULTS: Partial<EditPipeline['color']> = {
   hslChannels: createDefaultHslChannels(),
+  customHslChannels: [],
 }
 
 export const GRADING_DEFAULTS: Partial<EditPipeline['color']> = {
@@ -389,6 +393,13 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
       levelsWhite: clampNumber(pipeline.color.levelsWhite, levels.white),
 
       hslChannels: normalizeHslChannels(pipeline.color.hslChannels),
+      customHslChannels: (pipeline.color.customHslChannels ?? []).slice(0, 4).map((channel) => ({
+        hue: clampNumber(channel.hue, { min: 0, max: 360 }),
+        hueShift: clampNumber(channel.hueShift, EDIT_PARAMETER_RANGES.hsl.hue),
+        saturation: clampNumber(channel.saturation, EDIT_PARAMETER_RANGES.hsl.saturation),
+        luminance: clampNumber(channel.luminance, EDIT_PARAMETER_RANGES.hsl.luminance),
+        sourceColor: /^#[0-9a-f]{6}$/i.test(channel.sourceColor ?? '') ? channel.sourceColor : undefined,
+      })),
 
       clarity: clampNumber(pipeline.color.clarity, color.clarity),
       texture: clampNumber(pipeline.color.texture, color.texture),
