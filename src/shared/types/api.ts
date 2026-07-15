@@ -22,6 +22,12 @@ import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } fr
 import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
 
+export interface WorkspaceSegmentationProgress {
+  phase: 'model' | 'preparing' | 'recognizing'
+  label: string
+  percent: number | null
+}
+
 export interface LunaApi {
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
@@ -104,12 +110,18 @@ export interface LunaApi {
     getVideoDuration(filePath: string): Promise<number>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
-    segmentImage(filePath: string, point?: { x: number; y: number }, modelId?: 'segformer-b0-ade20k' | 'segformer-b2-ade20k'): Promise<{
+    segmentImage(filePath: string, point?: { x: number; y: number }, modelId?: import('../segmentationModels').SegmentationModelId): Promise<{
       width: number
       height: number
       classId: number
       className: string
       modelId: string
+      performance: {
+        modelLoadMs: number
+        imagePrepareMs: number
+        inferenceMs: number
+        totalMs: number
+      }
       bytes: ArrayBuffer
     }>
     listProjects(): Promise<WorkspaceProject[]>
@@ -128,6 +140,7 @@ export interface LunaApi {
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void
+  onWorkspaceSegmentationProgress(callback: (progress: WorkspaceSegmentationProgress) => void): () => void
   onConnectionLost(callback: () => void): () => void
   onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string; thumbnailUrl: string }) => void): () => void
   onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null }) => void): () => void

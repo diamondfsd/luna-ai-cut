@@ -126,7 +126,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     getVideoDuration: (filePath: string) => ipcRenderer.invoke('workspace:getVideoDuration', filePath),
     isLivePhoto: (filePath: string) => ipcRenderer.invoke('workspace:isLivePhoto', filePath),
     readColorMetadata: (filePath: string) => ipcRenderer.invoke('workspace:readColorMetadata', filePath),
-    segmentImage: (filePath: string, point?: { x: number; y: number }, modelId?: 'segformer-b0-ade20k' | 'segformer-b2-ade20k') => ipcRenderer.invoke('workspace:segmentImage', filePath, point, modelId),
+    segmentImage: (filePath: string, point?: { x: number; y: number }, modelId?: import('../src/shared/segmentationModels').SegmentationModelId) => ipcRenderer.invoke('workspace:segmentImage', filePath, point, modelId),
     listProjects: () => ipcRenderer.invoke('workspace:listProjects'),
     createProject: (name: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:createProject', name, assets),
     addAssetsToProject: (projectId: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:addAssetsToProject', projectId, assets),
@@ -150,6 +150,11 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     const listener = (_event: Electron.IpcRendererEvent, progress: ExportProgress): void => callback(progress)
     ipcRenderer.on('export:progress', listener)
     return () => ipcRenderer.off('export:progress', listener)
+  },
+  onWorkspaceSegmentationProgress: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceSegmentationProgress): void => callback(progress)
+    ipcRenderer.on('workspace:segmentation-progress', listener)
+    return () => ipcRenderer.off('workspace:segmentation-progress', listener)
   },
   onConnectionLost: (callback: () => void) => {
     const listener = (): void => callback()

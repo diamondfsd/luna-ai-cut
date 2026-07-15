@@ -8,6 +8,7 @@ mod logging;
 mod macos;
 mod media;
 mod segmentation;
+mod sam_segmentation;
 
 use std::sync::{LazyLock, Mutex};
 
@@ -21,6 +22,27 @@ pub fn segment_image(
     point_y: f64,
 ) -> napi::Result<segmentation::SegmentationResult> {
     segmentation::segment(model_path, rgb, point_x, point_y).map_err(napi::Error::from_reason)
+}
+
+#[napi]
+pub fn segment_sam(
+    vision_encoder_path: String,
+    prompt_decoder_path: String,
+    rgb: Buffer,
+    source_width: u32,
+    source_height: u32,
+    point_x: f64,
+    point_y: f64,
+) -> napi::Result<sam_segmentation::SamSegmentationResult> {
+    sam_segmentation::segment(
+        vision_encoder_path,
+        prompt_decoder_path,
+        rgb,
+        source_width,
+        source_height,
+        point_x,
+        point_y,
+    ).map_err(napi::Error::from_reason)
 }
 pub use color_source::{resolve_render_source, ColorInfo, ResolvedRenderSource};
 pub use composition::*;
