@@ -13,7 +13,7 @@ import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
-import { createColorRevealTitleLayer } from './colorRevealLayers'
+import { COLOR_REVEAL_TITLE_FADE_DURATION, createColorRevealTitleLayer, createPreviewColorRevealTitleLayer } from './colorRevealLayers'
 import './color-reveal.css'
 
 const DEFAULT_SATURATION = -80
@@ -23,7 +23,6 @@ const DEFAULT_INITIAL_HOLD_DURATION = 1
 const DEFAULT_MIDPOINT_HOLD_DURATION = 0.6
 const DEFAULT_INITIAL_TITLE = 'i-log OFF'
 const DEFAULT_REVEALED_TITLE = 'i-log ON'
-const TITLE_FADE_DURATION = 0.35
 
 function savedGray(state: { gray?: number; contrast?: number } | undefined): number {
   if (typeof state?.gray === 'number') return state.gray
@@ -85,7 +84,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   const currentTimeRef = useRef(0)
   const trimStart = pipeline.trim?.startTime ?? 0
   const sourceDuration = Math.max(0, (pipeline.trim?.endTime ?? duration) - trimStart)
-  const effectStart = initialHoldDuration + TITLE_FADE_DURATION
+  const effectStart = initialHoldDuration + COLOR_REVEAL_TITLE_FADE_DURATION
   const creativeDuration = sourceDuration + effectStart
   currentTimeRef.current = currentTime
 
@@ -237,27 +236,38 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       ]
     })
     const titleLayers: PreviewLayer[] = []
-    if (initialTitle.trim()) {
-      titleLayers.push(createColorRevealTitleLayer(
-        initialTitle.trim(),
-        1,
-        0,
+    if (forExport) {
+      if (initialTitle.trim()) {
+        titleLayers.push(createColorRevealTitleLayer(
+          initialTitle.trim(),
+          1,
+          0,
+          effectStart,
+          undefined,
+          COLOR_REVEAL_TITLE_FADE_DURATION,
+        ))
+      }
+      if (revealedTitle.trim()) {
+        titleLayers.push(createColorRevealTitleLayer(
+          revealedTitle.trim(),
+          1,
+          effectStart,
+          undefined,
+          COLOR_REVEAL_TITLE_FADE_DURATION,
+        ))
+      }
+    } else {
+      const previewTitle = createPreviewColorRevealTitleLayer(
+        currentTime,
+        initialHoldDuration,
         effectStart,
-        undefined,
-        TITLE_FADE_DURATION,
-      ))
-    }
-    if (revealedTitle.trim()) {
-      titleLayers.push(createColorRevealTitleLayer(
-        revealedTitle.trim(),
-        1,
-        effectStart,
-        undefined,
-        TITLE_FADE_DURATION,
-      ))
+        initialTitle,
+        revealedTitle,
+      )
+      if (previewTitle) titleLayers.push(previewTitle)
     }
     return [...mediaLayers, ...titleLayers]
-  }, [activeAsset, editedLayers, effectStart, gray, initialHoldDuration, initialTitle, midpointHoldDuration, revealedTitle, saturation, sourceDuration, transitionDuration, trimStart])
+  }, [activeAsset, currentTime, editedLayers, effectStart, gray, initialHoldDuration, initialTitle, midpointHoldDuration, revealedTitle, saturation, sourceDuration, transitionDuration, trimStart])
 
   const previewLayers = useMemo(() => buildEffectLayers(false), [buildEffectLayers])
   const handlePreviewError = useCallback((message: string) => toast.error(message), [])
