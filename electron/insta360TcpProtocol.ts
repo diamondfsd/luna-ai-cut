@@ -2,6 +2,9 @@ import * as net from 'node:net'
 import * as os from 'node:os'
 
 import { logMainDebug, logMainInfo, logMainWarn } from './loggerService'
+import { deleteCameraPaths } from './insta360CameraDelete'
+import { parseDeviceInfo } from './insta360DeviceInfo'
+import type { Insta360TcpDeviceInfo } from './insta360DeviceInfo'
 
 const UCD2_MAGIC = Buffer.from('UCD2')
 const UCD2_VERSION = 0x01
@@ -20,15 +23,6 @@ interface ExactCommand {
   code: number
   requestId: number
   packet: Buffer
-}
-
-export interface Insta360TcpDeviceInfo {
-  serial?: string
-  deviceName?: string
-  firmware?: string
-  ssid?: string
-  wifiPassword?: string
-  rawStrings: string[]
 }
 
 export interface Insta360RawResponse {
@@ -210,41 +204,6 @@ function parseRawResponse(payload: Buffer): Insta360RawResponse | null {
     flags: raw.readUInt32LE(5),
     body: raw.subarray(9),
     trailer: payload.subarray(4 + rawLen, 4 + rawLen + 4),
-  }
-}
-
-function extractAsciiStrings(data: Buffer): string[] {
-  const strings: string[] = []
-  let current = ''
-  for (const byte of data) {
-    if (byte >= 0x20 && byte <= 0x7e) {
-      current += String.fromCharCode(byte)
-    } else {
-      if (current.length >= 4) strings.push(current)
-      current = ''
-    }
-  }
-  if (current.length >= 4) strings.push(current)
-  return strings
-}
-
-export function parseDeviceInfo(responses: Insta360RawResponse[]): Insta360TcpDeviceInfo | null {
-  const rawStrings = [...new Set(responses.flatMap((response) => extractAsciiStrings(response.body)))]
-  if (rawStrings.length === 0) return null
-
-  const deviceName = rawStrings.find((text) => /Insta360|Luna|Ultra|GO Ultra/i.test(text))
-  const serial = rawStrings.find((text) => /^[A-Z0-9]{8,}$/.test(text) && !text.includes(' '))
-  const firmware = rawStrings.find((text) => /^v?\d+\.\d+\.\d+/.test(text))
-  const ssid = rawStrings.find((text) => /Luna|Ultra|\.OSC|GO/i.test(text) && text !== deviceName)
-  const wifiPassword = rawStrings.find((text) => /^[A-Z0-9]{8}$/.test(text) && text !== serial)
-
-  return {
-    serial,
-    deviceName,
-    firmware,
-    ssid,
-    wifiPassword,
-    rawStrings,
   }
 }
 
@@ -452,6 +411,14 @@ export class Insta360TcpSession {
       await delay(20)
     }
     return [...paths]
+  }
+
+  async deleteFilePaths(cameraPaths: string[]) {
+    return deleteCameraPaths({
+      host: this.host,
+      cameraPaths,
+      sendCommand: (code, body, timeoutMs) => this.sendCommand(code, body, timeoutMs),
+    })
   }
 
   private onData(data: Buffer): void {
