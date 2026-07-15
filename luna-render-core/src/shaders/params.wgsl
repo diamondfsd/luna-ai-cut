@@ -59,6 +59,7 @@ struct LayerParams {
     lut_size: f32,
     lut_intensity: f32,
     sampling_quality: f32,
+    mask_params: vec4<f32>,
     procedural: vec4<f32>,
     fill_rgba: vec4<f32>,
     stroke_rgba: vec4<f32>,
@@ -73,3 +74,4 @@ struct LayerParams {
 @group(0) @binding(2) var<uniform> params: LayerParams;
 @group(0) @binding(3) var lut_texture: texture_3d<f32>;
 @group(0) @binding(4) var lut_sampler: sampler;
+@group(0) @binding(5) var mask_texture: texture_2d<f32>;

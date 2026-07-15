@@ -30,6 +30,19 @@ export interface HslChannelAdjust {
   sourceColor?: string
 }
 
+export interface ColorMaskRef {
+  path: string
+  width: number
+  height: number
+  opacity: number
+  inverted: boolean
+  feather: number
+  kind: 'brush' | 'semantic'
+  classId?: number
+  className?: string
+  modelId?: string
+}
+
 export interface VideoTrimState {
   /** Trim start time in seconds */
   startTime: number
@@ -59,6 +72,8 @@ export interface BorderSettings {
 export interface EditPipeline {
   /** 视频截取：非破坏性时间范围裁剪。图片素材忽略此字段。 */
   trim: VideoTrimState | null
+  /** 当前整套调色使用的局部蒙版；图片视为视频的第 0 帧。 */
+  colorMask: ColorMaskRef | null
   transform: {
     crop: CropRect | null
     orientation: number
@@ -131,6 +146,7 @@ export interface EditPipeline {
 
 export type PipelinePatch = {
   trim?: VideoTrimState | null
+  colorMask?: ColorMaskRef | null
   transform?: Partial<EditPipeline['transform']>
   color?: Partial<EditPipeline['color']>
   effects?: Partial<EditPipeline['effects']>
@@ -167,6 +183,7 @@ export function createDefaultHslChannels(): Record<HslChannelKey, HslChannelAdju
 
 export const DEFAULT_PIPELINE: EditPipeline = {
   trim: null,
+  colorMask: null,
   transform: {
     crop: null,
     orientation: 0,
@@ -360,6 +377,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   return {
     ...pipeline,
     trim,
+    colorMask: normalizeColorMask(pipeline.colorMask),
     watermark: { ...DEFAULT_PIPELINE.watermark, ...(pipeline.watermark ?? {}) },
     border: normalizeBorder(pipeline.border),
     color: {
@@ -413,6 +431,22 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   }
 }
 
+function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef | null {
+  if (!mask || typeof mask.path !== 'string' || !mask.path) return null
+  return {
+    path: mask.path,
+    width: Math.max(1, Math.round(Number(mask.width) || 1)),
+    height: Math.max(1, Math.round(Number(mask.height) || 1)),
+    opacity: clampNumber(Number(mask.opacity ?? 1), { min: 0, max: 1 }),
+    inverted: Boolean(mask.inverted),
+    feather: clampNumber(Number(mask.feather ?? 0), { min: 0, max: 40 }),
+    kind: mask.kind === 'semantic' ? 'semantic' : 'brush',
+    classId: Number.isInteger(mask.classId) ? mask.classId : undefined,
+    className: typeof mask.className === 'string' ? mask.className : undefined,
+    modelId: typeof mask.modelId === 'string' ? mask.modelId : undefined,
+  }
+}
+
 function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSettings {
   const value = input as (Partial<BorderSettings> & { bottomColor?: unknown }) | undefined
   const legacyColor = typeof value?.bottomColor === 'string' ? value.bottomColor : undefined
@@ -433,6 +467,7 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
 export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): EditPipeline {
   return normalizePipeline({
     trim: patch.trim !== undefined ? patch.trim : pipeline.trim,
+    colorMask: patch.colorMask !== undefined ? patch.colorMask : pipeline.colorMask,
     transform: { ...pipeline.transform, ...patch.transform },
     color: {
       ...pipeline.color,

@@ -95,12 +95,23 @@ export interface LunaApi {
   workspace: {
     loadTrimThumbnailCache(videoPath: string, duration: number): Promise<ArrayBuffer | null>
     saveTrimThumbnailCache(videoPath: string, duration: number, bytes: ArrayBuffer): Promise<void>
+    saveColorMask(projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number): Promise<{ path: string; width: number; height: number }>
+    loadColorMask(projectId: string, filePath: string): Promise<{ width: number; height: number; bytes: ArrayBuffer }>
+    deleteColorMask(projectId: string, filePath: string): Promise<void>
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>
     getVideoDuration(filePath: string): Promise<number>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
+    segmentImage(filePath: string, point?: { x: number; y: number }): Promise<{
+      width: number
+      height: number
+      classId: number
+      className: string
+      modelId: string
+      bytes: ArrayBuffer
+    }>
     listProjects(): Promise<WorkspaceProject[]>
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>

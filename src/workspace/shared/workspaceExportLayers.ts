@@ -22,6 +22,10 @@ export function buildWorkspaceExportLayers(
       transform: pipelineTransformToRenderTransform(pipeline.transform),
       lutId: pipeline.lutFilter.activeId ?? undefined,
       lutIntensity: pipeline.lutFilter.intensity,
+      maskPath: pipeline.colorMask?.path,
+      maskOpacity: pipeline.colorMask?.opacity,
+      maskInverted: pipeline.colorMask?.inverted,
+      maskFeather: pipeline.colorMask?.feather,
       // 截取：设置视频起始时间和有效时长
       ...(trimStart != null ? { videoTime: trimStart } : {}),
       ...(trimStart != null && trimEnd != null ? { videoDuration: trimEnd - trimStart } : {}),
@@ -44,6 +48,10 @@ export function buildWorkspaceExportLayers(
         transform: pipelineTransformToRenderTransform(pipeline.transform),
         lutId: pipeline.lutFilter.activeId ?? undefined,
         lutIntensity: pipeline.lutFilter.intensity,
+        maskPath: pipeline.colorMask?.path,
+        maskOpacity: pipeline.colorMask?.opacity,
+        maskInverted: pipeline.colorMask?.inverted,
+        maskFeather: pipeline.colorMask?.feather,
       },
     })
     result.push(...borderLayers)

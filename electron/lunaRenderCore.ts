@@ -44,6 +44,10 @@ export interface CompositionInput {
     opacity?: number
     zIndex?: number
     color?: Partial<RenderColorAdjustments>
+    maskPath?: string
+    maskOpacity?: number
+    maskInverted?: boolean
+    maskFeather?: number
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
   }>
@@ -91,6 +95,12 @@ interface LunaRenderCoreNative {
   exportCompositionImageAsync(input: any): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
+  segmentImage(modelPath: string, rgb: Buffer, pointX: number, pointY: number): {
+    width: number
+    height: number
+    classId: number
+    bytes: Buffer
+  }
 }
 
 let native: LunaRenderCoreNative | null = null

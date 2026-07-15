@@ -10,6 +10,7 @@ import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit
 import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/WorkspaceMediaContext'
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
 import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
+import { WorkspaceMaskProvider, useWorkspaceMask } from '../workspace/context/WorkspaceMaskContext'
 import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
 import { PreviewStage, type PreviewStageHandle } from '../components/PreviewStage'
@@ -24,6 +25,7 @@ import type { CreativeModeId, WorkspaceMode } from '../workspace/components/Work
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
+import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
@@ -66,15 +68,17 @@ export function WorkspacePage({ workspaceMode, creativeModeId, onCreativeModeCha
     <WorkspaceEditProvider>
       <WorkspaceMediaProvider routeState={routeState} locationKey={location.key}>
         <WorkspaceCanvasProvider>
-          <ErrorBoundary>
-            <WorkspacePageInner
-              workspaceMode={workspaceMode}
-              creativeModeId={creativeModeId}
-              onCreativeModeChange={onCreativeModeChange}
-              pageActive={pageActive}
-              onEditingChange={onEditingChange}
-            />
-          </ErrorBoundary>
+          <WorkspaceMaskProvider>
+            <ErrorBoundary>
+              <WorkspacePageInner
+                workspaceMode={workspaceMode}
+                creativeModeId={creativeModeId}
+                onCreativeModeChange={onCreativeModeChange}
+                pageActive={pageActive}
+                onEditingChange={onEditingChange}
+              />
+            </ErrorBoundary>
+          </WorkspaceMaskProvider>
         </WorkspaceCanvasProvider>
       </WorkspaceMediaProvider>
     </WorkspaceEditProvider>
@@ -87,6 +91,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
+  const mask = useWorkspaceMask()
   const previewRef = useRef<PreviewStageHandle>(null)
   const trimStateRef = useRef<{ trimActive: boolean; trimEnd: number | null }>({ trimActive: false, trimEnd: null })
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -237,6 +242,10 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         lutId: stagePipeline.lutFilter.activeId ?? undefined,
         lutIntensity: stagePipeline.lutFilter.intensity,
         isVideo: media.activeMedia?.path ? isVideoPath(media.activeMedia.path) : false,
+        maskPath: stagePipeline.colorMask?.path,
+        maskOpacity: stagePipeline.colorMask?.opacity,
+        maskInverted: stagePipeline.colorMask?.inverted,
+        maskFeather: stagePipeline.colorMask?.feather,
       },
     })
   }, [edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
@@ -623,7 +632,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             hideControls={edit.trimActive}
             onMetricsChange={canvas.setPreviewMetrics}
             onMediaSize={handleMediaSize}
-            renderOverlay={() => (edit.cropActive ? <CropOverlay /> : null)}
+            renderOverlay={() => (edit.cropActive ? <CropOverlay /> : mask.editing ? <MaskOverlay /> : null)}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
             onPlayStateChange={handlePlayStateChange}

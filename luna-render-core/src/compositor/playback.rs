@@ -424,16 +424,34 @@ impl Compositor {
                 }
             };
 
-            let entry = self
+            let (texture_width, texture_height) = self
                 .textures
                 .get(&tex_id)
+                .map(|entry| (entry.width, entry.height))
                 .ok_or_else(|| format!("texture {} not found", tex_id))?;
+            let mut prepared_layer = (*layer).clone();
+            if let Some(mask_path) = layer.mask_path.as_deref() {
+                let mask_id = if let Some(tid) = self.mask_texture_cache.get(mask_path).copied() {
+                    tid
+                } else {
+                    let (rgba, w, h) = decode_static_image_scaled(
+                        ffmpeg,
+                        ffprobe,
+                        mask_path,
+                        decode_max_side,
+                    )?;
+                    let tid = self.load_mask_texture(&rgba, w, h)?;
+                    self.mask_texture_cache.insert(mask_path.to_string(), tid);
+                    tid
+                };
+                prepared_layer.mask_texture_id = Some(mask_id);
+            }
             source_layers.push((
-                (*layer).clone(),
+                prepared_layer,
                 PreviewTextureInfo {
                     texture_id: tex_id,
-                    width: entry.width,
-                    height: entry.height,
+                    width: texture_width,
+                    height: texture_height,
                 },
             ));
         }

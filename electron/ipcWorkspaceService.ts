@@ -29,6 +29,9 @@ import {
 } from './colorPresetsService'
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
+import { loadModel } from './modelLoader'
+import { getNative } from './lunaRenderCore'
+import { deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
@@ -131,6 +134,21 @@ export function register(): void {
     await saveTrimThumbnailCache(videoPath, duration, bytes)
   })
 
+  ipcMain.handle('workspace:saveColorMask', async (_event, projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number) => {
+    const settings = await getSettings()
+    return saveColorMask(settings.downloadDir, projectId, assetId, width, height, bytes, feather)
+  })
+
+  ipcMain.handle('workspace:loadColorMask', async (_event, projectId: string, filePath: string) => {
+    const settings = await getSettings()
+    return loadColorMask(settings.downloadDir, projectId, filePath)
+  })
+
+  ipcMain.handle('workspace:deleteColorMask', async (_event, projectId: string, filePath: string) => {
+    const settings = await getSettings()
+    await deleteColorMask(settings.downloadDir, projectId, filePath)
+  })
+
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
     return loadWorkspacePreview(filePath)
   })
@@ -165,6 +183,46 @@ export function register(): void {
 
   ipcMain.handle('workspace:readColorMetadata', async (_event, filePath: string) => {
     return readWorkspaceColorMetadata(filePath)
+  })
+
+  ipcMain.handle('workspace:segmentImage', async (_event, filePath: string, point?: { x: number; y: number }) => {
+    const model = await loadModel('segformer-b0-ade20k')
+    const { stdout } = await execFileAsync(getFfmpegPath(), [
+      '-v', 'error',
+      '-i', filePath,
+      '-vf', 'scale=512:512:flags=bilinear',
+      '-frames:v', '1',
+      '-f', 'rawvideo',
+      '-pix_fmt', 'rgb24',
+      'pipe:1',
+    ], { encoding: 'buffer', maxBuffer: 512 * 512 * 3 + 1024 })
+    const result = getNative().segmentImage(
+      model.path,
+      Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout),
+      point?.x ?? 0.5,
+      point?.y ?? 0.5,
+    )
+    const classNames: Record<number, string> = {
+      2: '天空',
+      4: '树木',
+      9: '草地',
+      12: '人物',
+      17: '植物',
+      20: '车辆',
+      21: '水面',
+      26: '海面',
+      60: '河流',
+      109: '泳池',
+      128: '湖面',
+    }
+    return {
+      width: result.width,
+      height: result.height,
+      classId: result.classId,
+      className: classNames[result.classId] ?? '选中区域',
+      modelId: model.id,
+      bytes: result.bytes.buffer.slice(result.bytes.byteOffset, result.bytes.byteOffset + result.bytes.byteLength),
+    }
   })
 
   ipcMain.handle('workspace:listProjects', async () => {

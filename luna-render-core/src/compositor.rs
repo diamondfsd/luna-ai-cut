@@ -114,6 +114,7 @@ struct GpuLayerParams {
     lut_size: f32,
     lut_intensity: f32,
     sampling_quality: f32,
+    mask_params: [f32; 4],
     procedural: [f32; 4],
     fill_rgba: [f32; 4],
     stroke_rgba: [f32; 4],
@@ -227,6 +228,8 @@ pub struct Compositor {
     // ── render_preview 内部状态 ──
     /// 静态图路径→纹理ID LRU 缓存
     texture_cache: HashMap<String, u32>,
+    /// 灰度蒙版使用线性 RGBA 纹理，不能与 sRGB 媒体纹理共用缓存。
+    mask_texture_cache: HashMap<String, u32>,
     /// LRU 顺序（前=最旧，后=最新）
     cache_order: VecDeque<String>,
     /// 已探测过的静态图片显示尺寸（已应用 EXIF 旋转）
@@ -413,6 +416,7 @@ impl Compositor {
             max_texture_size,
             output_texture: None,
             texture_cache: HashMap::new(),
+            mask_texture_cache: HashMap::new(),
             cache_order: VecDeque::new(),
             static_image_probed: HashMap::new(),
             video_probed: HashMap::new(),

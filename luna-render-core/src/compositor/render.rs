@@ -222,6 +222,7 @@ impl Compositor {
                     None => (&self.identity_lut, 0.0),
                 };
 
+                let has_mask = layer.mask_texture_id.is_some();
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
                     dst_x: (pos_dst_x * canvas_width as f64) as f32,
@@ -333,6 +334,12 @@ impl Compositor {
                     } else {
                         0.0
                     },
+                    mask_params: [
+                        if has_mask { layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0) as f32 } else { 1.0 },
+                        if has_mask && layer.mask_inverted.unwrap_or(false) { 1.0 } else { 0.0 },
+                        if has_mask { layer.mask_feather.unwrap_or(0.0).clamp(0.0, 40.0) as f32 } else { 0.0 },
+                        0.0,
+                    ],
                     procedural: [
                         procedural_kind,
                         if procedural_kind > 1.5 {
@@ -370,6 +377,14 @@ impl Compositor {
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
                 let lut_view = lut_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let mask_entry = layer
+                    .mask_texture_id
+                    .and_then(|id| self.textures.get(&id))
+                    .or_else(|| self.textures.get(&0))
+                    .ok_or_else(|| "identity mask texture not found".to_string())?;
+                let mask_view = mask_entry
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
 
                 let bg_entries = [
                     wgpu::BindGroupEntry {
@@ -391,6 +406,10 @@ impl Compositor {
                     wgpu::BindGroupEntry {
                         binding: 4,
                         resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(&mask_view),
                     },
                 ];
 
