@@ -8,7 +8,7 @@
  *    改动此文件意味着需要发布完整安装包，丧失热更新优势。
  */
 import { app } from 'electron'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -22,6 +22,8 @@ async function boot(): Promise<void> {
   const hotDir = join(app.getPath('userData'), '.luna-hot')
   const versionFile = join(hotDir, 'version.json')
   const hotMain = join(hotDir, 'dist-electron', 'luna-appMain.js')
+
+  activatePendingNativeUpdate(hotDir)
 
   // 检查是否有有效的热更新版本
   let hotVersion = readHotVersion(versionFile)
@@ -54,6 +56,23 @@ async function boot(): Promise<void> {
   }
   // 加载 asar 内置的 fallback 版本
   await import('./appMain.ts')
+}
+
+/**
+ * 原生模块在运行中的 Windows 进程内会被锁定，因此热更新先下载到
+ * pending-native；新进程在加载热更新主进程前再移动到实际加载位置。
+ */
+function activatePendingNativeUpdate(hotDir: string): void {
+  const pending = join(hotDir, 'pending-native', 'luna-render-core.node')
+  if (!existsSync(pending)) return
+
+  const targetDir = join(hotDir, 'luna-render-core')
+  const target = join(targetDir, 'luna-render-core.node')
+  mkdirSync(targetDir, { recursive: true })
+  rmSync(target, { force: true })
+  renameSync(pending, target)
+  rmSync(join(hotDir, 'pending-native'), { recursive: true, force: true })
+  console.log('[hot-update] 已切换原生渲染模块')
 }
 
 function readHotVersion(filePath: string): string | null {
