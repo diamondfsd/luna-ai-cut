@@ -71,6 +71,7 @@ pub struct CompositionReveal {
     pub start: f64,
     pub duration: f64,
     pub midpoint_hold: Option<f64>,
+    pub midpoint_bounce: Option<f64>,
     pub easing: Option<String>,
 }
 
