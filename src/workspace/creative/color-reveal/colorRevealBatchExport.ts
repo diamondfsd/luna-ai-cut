@@ -114,7 +114,7 @@ export async function queueColorRevealBatchExport(options: ColorRevealBatchExpor
     }
   }))
 
-  const task = await window.luna.exportTask.create('i-log 色彩还原', entries.map((entry) => ({
+  const task = await window.luna.exportTask.create('色彩还原', entries.map((entry) => ({
     id: entry.itemId,
     sourcePath: entry.asset.path,
     outputPath: entry.path,
