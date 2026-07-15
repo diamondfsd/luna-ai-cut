@@ -180,7 +180,10 @@ impl Compositor {
             .ok_or_else(|| format!("mask texture size overflow: {}x{}", width, height))?
             as usize;
         if width == 0 || height == 0 || data.len() < expected {
-            return Err(format!("invalid mask texture data for {}x{}", width, height));
+            return Err(format!(
+                "invalid mask texture data for {}x{}",
+                width, height
+            ));
         }
         let id = self.next_texture_id;
         self.next_texture_id += 1;
@@ -194,7 +197,14 @@ impl Compositor {
             false,
         );
         upload_rgba(&self.queue, &texture, &data[..expected], width, height);
-        self.textures.insert(id, TextureEntry { texture, width, height });
+        self.textures.insert(
+            id,
+            TextureEntry {
+                texture,
+                width,
+                height,
+            },
+        );
         Ok(id)
     }
 

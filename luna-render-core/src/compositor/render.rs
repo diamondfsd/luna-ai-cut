@@ -335,9 +335,21 @@ impl Compositor {
                         0.0
                     },
                     mask_params: [
-                        if has_mask { layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0) as f32 } else { 1.0 },
-                        if has_mask && layer.mask_inverted.unwrap_or(false) { 1.0 } else { 0.0 },
-                        if has_mask { layer.mask_feather.unwrap_or(0.0).clamp(0.0, 40.0) as f32 } else { 0.0 },
+                        if has_mask {
+                            layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0) as f32
+                        } else {
+                            1.0
+                        },
+                        if has_mask && layer.mask_inverted.unwrap_or(false) {
+                            1.0
+                        } else {
+                            0.0
+                        },
+                        if has_mask {
+                            layer.mask_feather.unwrap_or(0.0).clamp(0.0, 40.0) as f32
+                        } else {
+                            0.0
+                        },
                         0.0,
                     ],
                     procedural: [

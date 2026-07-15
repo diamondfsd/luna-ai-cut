@@ -30,10 +30,21 @@ import {
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
 import { loadModel, loadSamModel, type ModelId } from './modelLoader'
-import { isSamSegmentationModel, type SegmentationModelId } from '../src/shared/segmentationModels'
+import { isSamSegmentationModel, SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { getNative } from './lunaRenderCore'
 import { segmentSamInWorker } from './samSegmentationService'
 import { deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
+
+const MASKFORMER_COMMON_CLASS_IDS: Record<number, number> = {
+  1: 1,
+  2: 2,
+  4: 3,
+  9: 12,
+  12: 11,
+  17: 16,
+  20: 14,
+  21: 24,
+}
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
@@ -217,13 +228,15 @@ export function register(): void {
     if (isSam) logMainInfo('[SAM] 模型准备完成', { modelLoadMs: Math.round(modelLoadMs) })
     reportProgress('preparing', '正在准备图片', null)
     const decodeStartedAt = performance.now()
+    const semanticDefinition = isSam ? null : SEGMENTATION_MODELS.find((item) => item.id === modelId)
+    const semanticInputSize = semanticDefinition?.inputSize ?? 512
     const sourceSize = isSam ? await probeDisplayResolution(filePath) : null
     const samScale = sourceSize ? Math.min(1, 1024 / Math.max(sourceSize.width, sourceSize.height)) : 1
     const samWidth = sourceSize ? Math.max(1, Math.round(sourceSize.width * samScale)) : 512
     const samHeight = sourceSize ? Math.max(1, Math.round(sourceSize.height * samScale)) : 512
     const filter = isSam
       ? `scale=${samWidth}:${samHeight}:flags=bilinear,pad=1024:1024:0:0:color=black`
-      : 'scale=512:512:flags=bilinear'
+      : `scale=${semanticInputSize}:${semanticInputSize}:flags=bilinear`
     const { stdout } = await execFileAsync(getFfmpegPath(), [
       '-v', 'error',
       '-i', filePath,
@@ -238,6 +251,9 @@ export function register(): void {
     reportProgress('recognizing', '正在识别', null)
     const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
     if (isSam) logMainInfo('[SAM] 开始原生识别', { width: samWidth, height: samHeight, bytes: rgb.byteLength })
+    const nativeTargetClassId = modelId === 'maskformer-r101-ade20k-full' && targetClassId !== undefined
+      ? MASKFORMER_COMMON_CLASS_IDS[targetClassId] ?? targetClassId
+      : targetClassId
     const result = 'visionEncoderPath' in model
       ? await segmentSamInWorker({
         visionEncoderPath: model.visionEncoderPath,
@@ -248,7 +264,7 @@ export function register(): void {
         pointX: point?.x ?? 0.5,
         pointY: point?.y ?? 0.5,
       })
-      : getNative().segmentImage(model.path, rgb, point?.x ?? 0.5, point?.y ?? 0.5, targetClassId)
+      : getNative().segmentImage(model.path, rgb, point?.x ?? 0.5, point?.y ?? 0.5, nativeTargetClassId, semanticInputSize)
     const inferenceMs = performance.now() - inferenceStartedAt
     if (isSam) logMainInfo('[SAM] 原生识别完成', { inferenceMs: Math.round(inferenceMs) })
     const classId = 'classId' in result && typeof result.classId === 'number' ? result.classId : -1
@@ -261,16 +277,36 @@ export function register(): void {
       17: '植物',
       20: '车辆',
       21: '水面',
+      22: '海洋',
+      24: '水面',
       26: '海面',
       60: '河流',
       109: '泳池',
       128: '湖面',
     }
+    const maskFormerClassNames: Record<number, string> = {
+      1: '建筑',
+      2: '天空',
+      3: '树木',
+      11: '人物',
+      12: '草地',
+      14: '车辆',
+      16: '植物',
+      22: '海洋',
+      24: '水面',
+      71: '瀑布',
+    }
+    const reportedClassId = targetClassId ?? classId
+    const className = targetClassId !== undefined
+      ? classNames[targetClassId] ?? '选中区域'
+      : modelId === 'maskformer-r101-ade20k-full'
+        ? maskFormerClassNames[classId] ?? '选中区域'
+        : classNames[classId] ?? '选中区域'
     return {
       width: result.width,
       height: result.height,
-      classId,
-      className: isSam ? '已选对象' : classNames[classId] ?? '选中区域',
+      classId: reportedClassId,
+      className: isSam ? '已选对象' : className,
       modelId: model.id,
       performance: {
         modelLoadMs: Math.round(modelLoadMs),

@@ -7,9 +7,9 @@ mod logging;
 #[cfg(target_os = "macos")]
 mod macos;
 mod media;
-mod segmentation;
-pub mod sam_segmentation;
 mod sam_core;
+pub mod sam_segmentation;
+mod segmentation;
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -24,8 +24,17 @@ pub fn segment_image(
     point_x: f64,
     point_y: f64,
     target_class_id: Option<u32>,
+    input_size: Option<u32>,
 ) -> napi::Result<segmentation::SegmentationResult> {
-    segmentation::segment(model_path, rgb, point_x, point_y, target_class_id).map_err(napi::Error::from_reason)
+    segmentation::segment(
+        model_path,
+        rgb,
+        point_x,
+        point_y,
+        target_class_id,
+        input_size,
+    )
+    .map_err(napi::Error::from_reason)
 }
 
 #[napi]
@@ -46,7 +55,8 @@ pub fn segment_sam(
         source_height,
         point_x,
         point_y,
-    ).map_err(napi::Error::from_reason)
+    )
+    .map_err(napi::Error::from_reason)
 }
 pub use color_source::{resolve_render_source, ColorInfo, ResolvedRenderSource};
 pub use composition::*;

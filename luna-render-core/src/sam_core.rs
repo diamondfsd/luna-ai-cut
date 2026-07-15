@@ -13,7 +13,11 @@ pub struct SamMask {
 }
 
 fn preprocess(rgb: &[u8], source_width: usize, source_height: usize) -> Result<Vec<f32>, String> {
-    if source_width == 0 || source_height == 0 || source_width > INPUT_SIZE || source_height > INPUT_SIZE {
+    if source_width == 0
+        || source_height == 0
+        || source_width > INPUT_SIZE
+        || source_height > INPUT_SIZE
+    {
         return Err("SAM 图片尺寸无效".to_string());
     }
     if rgb.len() != INPUT_SIZE * INPUT_SIZE * 3 {
@@ -42,7 +46,8 @@ fn bilinear(values: &[f32], x: f32, y: f32) -> f32 {
     let tx = (x - left as f32).clamp(0.0, 1.0);
     let ty = (y - top as f32).clamp(0.0, 1.0);
     let upper = values[top * MASK_SIZE + left] * (1.0 - tx) + values[top * MASK_SIZE + right] * tx;
-    let lower = values[bottom * MASK_SIZE + left] * (1.0 - tx) + values[bottom * MASK_SIZE + right] * tx;
+    let lower =
+        values[bottom * MASK_SIZE + left] * (1.0 - tx) + values[bottom * MASK_SIZE + right] * tx;
     upper * (1.0 - ty) + lower * ty
 }
 
@@ -59,10 +64,15 @@ pub fn segment(
     let source_height = source_height as usize;
     let input = preprocess(rgb, source_width, source_height)?;
     let sessions = SESSIONS.get_or_init(|| Mutex::new(None));
-    let mut guard = sessions.lock().map_err(|_| "SAM 模型状态不可用".to_string())?;
-    let reload = guard.as_ref().map(|(encoder, decoder, _, _)| {
-        encoder != &vision_encoder_path || decoder != &prompt_decoder_path
-    }).unwrap_or(true);
+    let mut guard = sessions
+        .lock()
+        .map_err(|_| "SAM 模型状态不可用".to_string())?;
+    let reload = guard
+        .as_ref()
+        .map(|(encoder, decoder, _, _)| {
+            encoder != &vision_encoder_path || decoder != &prompt_decoder_path
+        })
+        .unwrap_or(true);
     if reload {
         let threads = std::thread::available_parallelism()
             .map(|count| count.get().saturating_sub(1).clamp(1, 4))
@@ -84,44 +94,69 @@ pub fn segment(
     let (_, _, encoder, decoder) = guard.as_mut().ok_or_else(|| "SAM 模型未加载".to_string())?;
     let image = Tensor::from_array(([1usize, 3, INPUT_SIZE, INPUT_SIZE], input))
         .map_err(|error| format!("创建 SAM 图片输入失败: {error}"))?;
-    let embeddings = encoder.run(ort::inputs!["pixel_values" => image])
+    let embeddings = encoder
+        .run(ort::inputs!["pixel_values" => image])
         .map_err(|error| format!("SAM 图片分析失败: {error}"))?;
-    if embeddings.len() < 2 { return Err("SAM 图片模型结果不完整".to_string()); }
-    let (_, image_embeddings) = embeddings[0].try_extract_tensor::<f32>()
+    if embeddings.len() < 2 {
+        return Err("SAM 图片模型结果不完整".to_string());
+    }
+    let (_, image_embeddings) = embeddings[0]
+        .try_extract_tensor::<f32>()
         .map_err(|error| format!("读取 SAM 图片特征失败: {error}"))?;
     let image_embeddings = image_embeddings.to_vec();
-    let (_, image_positional_embeddings) = embeddings[1].try_extract_tensor::<f32>()
+    let (_, image_positional_embeddings) = embeddings[1]
+        .try_extract_tensor::<f32>()
         .map_err(|error| format!("读取 SAM 图片位置特征失败: {error}"))?;
     let image_positional_embeddings = image_positional_embeddings.to_vec();
-    if image_embeddings.len() != 256 * 64 * 64 || image_positional_embeddings.len() != 256 * 64 * 64 {
+    if image_embeddings.len() != 256 * 64 * 64 || image_positional_embeddings.len() != 256 * 64 * 64
+    {
         return Err("SAM 图片模型结果尺寸不兼容".to_string());
     }
-    let point = Tensor::from_array(([1usize, 1, 1, 2], vec![
-        (point_x.clamp(0.0, 1.0) * (source_width.saturating_sub(1)) as f64) as f32,
-        (point_y.clamp(0.0, 1.0) * (source_height.saturating_sub(1)) as f64) as f32,
-    ])).map_err(|error| format!("创建 SAM 点选输入失败: {error}"))?;
+    let point = Tensor::from_array((
+        [1usize, 1, 1, 2],
+        vec![
+            (point_x.clamp(0.0, 1.0) * (source_width.saturating_sub(1)) as f64) as f32,
+            (point_y.clamp(0.0, 1.0) * (source_height.saturating_sub(1)) as f64) as f32,
+        ],
+    ))
+    .map_err(|error| format!("创建 SAM 点选输入失败: {error}"))?;
     let labels = Tensor::from_array(([1usize, 1, 1], vec![1i64]))
         .map_err(|error| format!("创建 SAM 点选输入失败: {error}"))?;
     let image_embeddings = Tensor::from_array(([1usize, 256, 64, 64], image_embeddings))
         .map_err(|error| format!("创建 SAM 图片特征失败: {error}"))?;
-    let image_positional_embeddings = Tensor::from_array(([1usize, 256, 64, 64], image_positional_embeddings))
-        .map_err(|error| format!("创建 SAM 图片位置特征失败: {error}"))?;
-    let outputs = decoder.run(ort::inputs![
-        "input_points" => point,
-        "input_labels" => labels,
-        "image_embeddings" => image_embeddings,
-        "image_positional_embeddings" => image_positional_embeddings,
-    ]).map_err(|error| format!("SAM 蒙版生成失败: {error}"))?;
-    if outputs.len() < 2 { return Err("SAM 点选模型结果不完整".to_string()); }
-    let (_, scores) = outputs[0].try_extract_tensor::<f32>()
+    let image_positional_embeddings =
+        Tensor::from_array(([1usize, 256, 64, 64], image_positional_embeddings))
+            .map_err(|error| format!("创建 SAM 图片位置特征失败: {error}"))?;
+    let outputs = decoder
+        .run(ort::inputs![
+            "input_points" => point,
+            "input_labels" => labels,
+            "image_embeddings" => image_embeddings,
+            "image_positional_embeddings" => image_positional_embeddings,
+        ])
+        .map_err(|error| format!("SAM 蒙版生成失败: {error}"))?;
+    if outputs.len() < 2 {
+        return Err("SAM 点选模型结果不完整".to_string());
+    }
+    let (_, scores) = outputs[0]
+        .try_extract_tensor::<f32>()
         .map_err(|error| format!("读取 SAM 结果失败: {error}"))?;
-    if scores.len() < 3 { return Err("SAM 点选模型评分不完整".to_string()); }
-    let best_mask = scores.iter().enumerate().max_by(|(_, a), (_, b)| a.total_cmp(b))
-        .map(|(index, _)| index).unwrap_or(0);
-    let (_, masks) = outputs[1].try_extract_tensor::<f32>()
+    if scores.len() < 3 {
+        return Err("SAM 点选模型评分不完整".to_string());
+    }
+    let best_mask = scores
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(index, _)| index)
+        .unwrap_or(0);
+    let (_, masks) = outputs[1]
+        .try_extract_tensor::<f32>()
         .map_err(|error| format!("读取 SAM 蒙版失败: {error}"))?;
     let offset = best_mask * MASK_SIZE * MASK_SIZE;
-    if masks.len() < offset + MASK_SIZE * MASK_SIZE { return Err("SAM 点选模型蒙版不完整".to_string()); }
+    if masks.len() < offset + MASK_SIZE * MASK_SIZE {
+        return Err("SAM 点选模型蒙版不完整".to_string());
+    }
     let selected = &masks[offset..offset + MASK_SIZE * MASK_SIZE];
     let mut bytes = vec![0u8; source_width * source_height];
     for y in 0..source_height {
@@ -132,5 +167,9 @@ pub fn segment(
             bytes[y * source_width + x] = (probability * 255.0).round() as u8;
         }
     }
-    Ok(SamMask { width: source_width as u32, height: source_height as u32, bytes })
+    Ok(SamMask {
+        width: source_width as u32,
+        height: source_height as u32,
+        bytes,
+    })
 }
