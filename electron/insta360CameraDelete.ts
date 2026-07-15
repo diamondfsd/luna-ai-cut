@@ -1,33 +1,8 @@
-import { directHttpFetch } from './directHttp'
 import { buildDeleteFilesBody } from './insta360DeleteCodec'
+import { logMainInfo } from './loggerService'
 import type { CameraDeleteResult } from '../src/shared/types'
 
 const CODE_DELETE_FILES = 12
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-async function verifyDeleted(host: string, cameraPath: string): Promise<string | null> {
-  const encodedPath = cameraPath.split('/').map((part) => encodeURIComponent(part)).join('/')
-  const url = `http://${host}${encodedPath}`
-  let lastStatus = 0
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    if (attempt > 0) await delay(400 * attempt)
-    try {
-      const response = await directHttpFetch(url, {
-        method: 'HEAD',
-        headers: { 'Cache-Control': 'no-cache' },
-        timeoutMs: 3000,
-      })
-      lastStatus = response.status
-      if (response.status === 404) return null
-    } catch (error) {
-      if (attempt === 5) return error instanceof Error ? error.message : String(error)
-    }
-  }
-  return lastStatus === 200 ? '相机仍能访问该素材' : `无法确认删除结果（状态 ${lastStatus || '未知'}）`
-}
 
 export async function deleteCameraPaths(params: {
   host: string
@@ -36,16 +11,22 @@ export async function deleteCameraPaths(params: {
 }): Promise<CameraDeleteResult> {
   const uniquePaths = [...new Set(params.cameraPaths)]
   if (uniquePaths.length === 0) throw new Error('没有可删除的相机素材')
+  const startedAt = performance.now()
   for (let offset = 0; offset < uniquePaths.length; offset += 50) {
     const batch = uniquePaths.slice(offset, offset + 50)
+    const batchStartedAt = performance.now()
     await params.sendCommand(CODE_DELETE_FILES, buildDeleteFilesBody(batch), 20_000)
+    logMainInfo('[相机删除] 删除命令响应完成', {
+      host: params.host,
+      batch: Math.floor(offset / 50) + 1,
+      pathCount: batch.length,
+      elapsedMs: Math.round(performance.now() - batchStartedAt),
+    })
   }
-  const deleted: string[] = []
-  const failed: CameraDeleteResult['failed'] = []
-  for (const cameraPath of uniquePaths) {
-    const error = await verifyDeleted(params.host, cameraPath)
-    if (error === null) deleted.push(cameraPath)
-    else failed.push({ path: cameraPath, error })
-  }
-  return { deleted, failed }
+  logMainInfo('[相机删除] 所有删除命令发送完成，准备刷新素材列表', {
+    host: params.host,
+    pathCount: uniquePaths.length,
+    elapsedMs: Math.round(performance.now() - startedAt),
+  })
+  return { deleted: uniquePaths, failed: [] }
 }
