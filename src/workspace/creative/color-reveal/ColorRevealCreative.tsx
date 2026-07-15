@@ -16,8 +16,14 @@ import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import './color-reveal.css'
 
 const DEFAULT_SATURATION = -80
-const DEFAULT_CONTRAST = 20
+const DEFAULT_GRAY = 70
 const DEFAULT_TRANSITION_DURATION = 2.5
+
+function savedGray(state: { gray?: number; contrast?: number } | undefined): number {
+  if (typeof state?.gray === 'number') return state.gray
+  if (typeof state?.contrast === 'number') return Math.min(100, state.contrast * 3)
+  return DEFAULT_GRAY
+}
 
 interface LunaCompositionExportApi {
   exportCompositionVideo(
@@ -54,7 +60,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   const pipeline = edit.pipeline
   const savedState = media.currentProject?.creative?.colorReveal
   const [saturation, setSaturation] = useState(savedState?.saturation ?? DEFAULT_SATURATION)
-  const [contrast, setContrast] = useState(savedState?.contrast ?? DEFAULT_CONTRAST)
+  const [gray, setGray] = useState(savedGray(savedState))
   const [transitionDuration, setTransitionDuration] = useState(savedState?.transitionDuration ?? DEFAULT_TRANSITION_DURATION)
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
   const [duration, setDuration] = useState(0)
@@ -70,7 +76,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   useEffect(() => {
     const nextSavedState = media.currentProject?.creative?.colorReveal
     setSaturation(nextSavedState?.saturation ?? DEFAULT_SATURATION)
-    setContrast(nextSavedState?.contrast ?? DEFAULT_CONTRAST)
+    setGray(savedGray(nextSavedState))
     setTransitionDuration(nextSavedState?.transitionDuration ?? DEFAULT_TRANSITION_DURATION)
   }, [media.currentProject?.id])
 
@@ -139,7 +145,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       ...currentProject,
       creative: {
         ...currentProject.creative,
-        colorReveal: { saturation, contrast, transitionDuration },
+        colorReveal: { saturation, gray, transitionDuration },
       },
     }
     pendingProjectRef.current = nextProject
@@ -149,7 +155,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       projectSaveTimerRef.current = null
       void window.luna.workspace.saveProject(nextProject).catch(() => {})
     }, 300)
-  }, [contrast, saturation, transitionDuration])
+  }, [gray, saturation, transitionDuration])
 
   useEffect(() => () => {
     if (projectSaveTimerRef.current !== null) window.clearTimeout(projectSaveTimerRef.current)
@@ -161,7 +167,6 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
     : null, [pipeline.transform, sourceSize])
   const trimStart = pipeline.trim?.startTime ?? 0
   const effectDuration = Math.max(0, (pipeline.trim?.endTime ?? duration) - trimStart)
-  const revealProgress = Math.min(1, Math.max(0, currentTime / Math.max(0.1, transitionDuration)))
   const editedLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
     return buildWorkspaceExportLayers(activeAsset.path, sourceSize, pipeline, borderMetadata)
@@ -175,8 +180,13 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       const afterColor = layer.color
       const beforeColor = afterColor ? {
         ...afterColor,
-        saturation: Math.max(-100, Math.min(100, afterColor.saturation + saturation)),
-        contrast: Math.max(-100, Math.min(100, afterColor.contrast + contrast)),
+        saturation: Math.max(-100, Math.min(100, afterColor.saturation + saturation - gray * 0.2)),
+        contrast: Math.max(-100, Math.min(100, afterColor.contrast - gray * 0.55)),
+        shadows: Math.max(-100, Math.min(100, afterColor.shadows + gray * 0.28)),
+        blacks: Math.max(-100, Math.min(100, afterColor.blacks + gray * 0.32)),
+        whites: Math.max(-100, Math.min(100, afterColor.whites - gray * 0.22)),
+        clarity: Math.max(-100, Math.min(100, afterColor.clarity - gray * 0.18)),
+        curveLift: Math.max(-100, Math.min(100, afterColor.curveLift + gray * 0.12)),
       } : afterColor
       const shared = {
         ...layer,
@@ -193,7 +203,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         },
       ]
     })
-  }, [activeAsset, contrast, editedLayers, effectDuration, saturation, transitionDuration, trimStart])
+  }, [activeAsset, editedLayers, effectDuration, gray, saturation, transitionDuration, trimStart])
 
   const previewLayers = useMemo(() => buildEffectLayers(false), [buildEffectLayers])
   const handlePreviewError = useCallback((message: string) => toast.error(message), [])
@@ -215,13 +225,14 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
 
   function resetParameters(): void {
     setSaturation(DEFAULT_SATURATION)
-    setContrast(DEFAULT_CONTRAST)
+    setGray(DEFAULT_GRAY)
     setTransitionDuration(Math.min(DEFAULT_TRANSITION_DURATION, Math.max(0.5, duration || DEFAULT_TRANSITION_DURATION)))
     handleSeek(0)
   }
 
   async function handleExport(config: VideoExportSettings): Promise<void> {
     if (!activeAsset || !outputSize || exporting) return
+    setExportDialogOpen(false)
     setExporting(true)
     try {
       const settings = await window.luna.getSettings()
@@ -237,7 +248,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         outputPath: path,
         label: '创意视频',
       }])
-      await renderApi().exportCompositionVideo(
+      void renderApi().exportCompositionVideo(
         path,
         buildExportComposition(resolved.width, resolved.height, resolved.fps),
         resolved.fps,
@@ -247,8 +258,10 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         resolved.qualityPreset,
         task.id,
         itemId,
-      )
-      toast.success('视频已生成')
+      ).catch(() => {
+        // 失败状态由导出任务服务记录并展示。
+      })
+      toast.success('已加入导出任务')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '视频生成失败')
     } finally {
@@ -284,9 +297,6 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
               onVideoElement={setVideoElement}
               onError={handlePreviewError}
             />
-            {revealProgress > 0 && revealProgress < 1 && (
-              <div className="color-reveal-divider" style={{ left: `${revealProgress * 100}%` }} />
-            )}
             <div className="color-reveal-label color-reveal-label--before">灰片</div>
             <div className="color-reveal-label color-reveal-label--after">正片</div>
             <VideoControls
@@ -316,7 +326,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         </div>
         <div className="color-reveal-param-list">
           <ParamSlider label="灰片饱和度" value={saturation} min={-100} max={0} onChange={setSaturation} />
-          <ParamSlider label="灰片反差" value={contrast} min={0} max={50} onChange={setContrast} />
+          <ParamSlider label="灰度" value={gray} min={0} max={100} onChange={setGray} />
           <ParamSlider
             label="过渡时长"
             value={Math.min(transitionDuration, transitionMax)}

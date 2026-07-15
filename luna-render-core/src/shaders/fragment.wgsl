@@ -68,6 +68,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let local_x = (pixel_x - params.dst_x) / params.dst_w;
     let local_y = (pixel_y - params.dst_y) / params.dst_h;
 
+    if (params.procedural.x < 0.5 && local_x > params.text_meta.w) {
+        discard;
+    }
+
     if (params.procedural.x > 0.5 && params.procedural.x < 1.5) {
         let p = vec2<f32>(local_x, local_y);
         let shape_kind = params.procedural.y;
@@ -161,7 +165,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     );
 
     var color = sample_media_texture(tex_coord);
-    color = vec4<f32>(apply_color(color.rgb, tex_coord), color.a);
+    color = vec4<f32>(apply_color(color.rgb, tex_coord, local_x), color.a);
     color.a = color.a * params.opacity;
     if (params.sampling_quality > 0.5) {
         color = vec4<f32>(color.rgb * color.a, color.a);
