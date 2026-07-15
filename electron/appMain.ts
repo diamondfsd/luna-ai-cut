@@ -24,7 +24,7 @@ import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
-import { cancelExportTask } from './lunaRenderCore'
+import { cancelExportTask, warmupRenderCore } from './lunaRenderCore'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -203,6 +203,16 @@ function createWindow(): void {
     },
   })
   attachWindowCrashDiagnostics(win)
+  win.webContents.once('did-finish-load', () => {
+    setTimeout(() => {
+      void warmupRenderCore().then(
+        () => logMainInfo('[LRC] 后台预热完成'),
+        (error) => logMainWarn('[LRC] 后台预热失败，将在首次使用时重试', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      )
+    }, 200)
+  })
 }
 
 // Quit when all windows are closed, except on macOS. There, it's common
