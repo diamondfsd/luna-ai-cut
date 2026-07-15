@@ -29,6 +29,7 @@ pub(crate) fn detect_people(model: &ModelPlan, image: &RgbImage) -> Result<Vec<F
     let outputs = model.run(tvec!(input.into())).map_err(|error| format!("人物检测失败: {error}"))?;
     let predictions = outputs[0].to_array_view::<f32>().map_err(|error| error.to_string())?;
     let mut people = Vec::new();
+    let mut max_score = 0.0f32;
     let mut index = 0usize;
     for stride in [8usize, 16, 32] {
         let grid_width = INPUT_SIDE / stride;
@@ -36,6 +37,7 @@ pub(crate) fn detect_people(model: &ModelPlan, image: &RgbImage) -> Result<Vec<F
         for grid_y in 0..grid_height {
             for grid_x in 0..grid_width {
                 let score = predictions[[0, index, 4]] * predictions[[0, index, 5]];
+                max_score = max_score.max(score);
                 if score >= 0.25 {
                     let center_x = (predictions[[0, index, 0]] + grid_x as f32) * stride as f32 / ratio;
                     let center_y = (predictions[[0, index, 1]] + grid_y as f32) * stride as f32 / ratio;
@@ -60,6 +62,7 @@ pub(crate) fn detect_people(model: &ModelPlan, image: &RgbImage) -> Result<Vec<F
         selected.push(person);
         if selected.len() == MAX_PEOPLE { break; }
     }
+    crate::log!("[Beauty] YOLOX max_score={max_score:.4} people={}", selected.len());
     Ok(selected)
 }
 

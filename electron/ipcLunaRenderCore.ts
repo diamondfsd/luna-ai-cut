@@ -83,7 +83,14 @@ export function register(ctx: RegisterContext): void {
     const modelDir = app.isPackaged
       ? join(process.resourcesPath, 'luna-render-core', 'models')
       : join(process.env.APP_ROOT ?? join(import.meta.dirname, '..'), 'luna-render-core', 'models')
-    return lrcAnalyzeBeauty(getFfmpegPath(), getFfprobePath(), imagePath, modelDir)
+    rcLog(`lrc:analyzeBeauty start image=${imagePath} models=${modelDir}`)
+    const startedAt = Date.now()
+    const result = await lrcAnalyzeBeauty(getFfmpegPath(), getFfprobePath(), imagePath, modelDir)
+    rcLog(
+      `lrc:analyzeBeauty done version=${result.analysisVersion} faces=${result.faces.length} `
+      + `mask=${result.skinMaskWidth}x${result.skinMaskHeight} elapsed=${Date.now() - startedAt}ms`,
+    )
+    return result
   }))
 
   // 纹理管理方法

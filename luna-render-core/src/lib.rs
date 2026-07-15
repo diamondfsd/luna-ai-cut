@@ -1,5 +1,6 @@
 mod beauty;
 mod beauty_analysis;
+mod beauty_face_crop;
 mod beauty_person;
 mod composition;
 mod compositor;

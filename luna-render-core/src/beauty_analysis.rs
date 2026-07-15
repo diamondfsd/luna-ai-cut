@@ -1,23 +1,22 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{LazyLock, Mutex};
-
 use base64::Engine;
 use napi::{Env, Task};
 use napi_derive::napi;
 use tract_onnx::prelude::*;
-
 use crate::{RenderBeautyFace, media::probe_video_dimensions};
+use crate::beauty_face_crop::detect_face_from_parsing;
 use crate::beauty_person::{detect_people, person_head_crop};
 
-const ANALYSIS_VERSION: u32 = 9;
+const ANALYSIS_VERSION: u32 = 13;
 const DETECTOR_SIDE: usize = 640;
 const LANDMARK_SIDE: usize = 192;
 const PARSING_SIDE: usize = 512;
-const MASK_SIDE: usize = 128;
+const MASK_SIDE: usize = 512;
 const MAX_IMAGE_SIDE: u32 = 2560;
 const MAX_FACES: usize = 3;
-
+const MAX_FACE_CANDIDATES: usize = 8;
 pub(crate) type ModelPlan = TypedRunnableModel<TypedModel>;
 
 struct BeautyModels {
@@ -76,6 +75,7 @@ fn with_models<T>(root: &Path, run: impl FnOnce(&BeautyModels) -> Result<T, Stri
     let mut guard = MODELS.lock().map_err(|error| format!("锁定美颜模型失败: {error}"))?;
     let needs_reload = guard.as_ref().is_none_or(|models| models.root != root);
     if needs_reload {
+        crate::log!("[Beauty] loading ONNX models from {}", root.display());
         *guard = Some(BeautyModels {
             root: root.to_path_buf(),
             person: load_model(&root.join("person-yolox-nano.onnx"), &[1, 3, 416, 416])?,
@@ -83,6 +83,7 @@ fn with_models<T>(root: &Path, run: impl FnOnce(&BeautyModels) -> Result<T, Stri
             landmarks: load_model(&root.join("face-landmarks-106.onnx"), &[1, 3, LANDMARK_SIDE, LANDMARK_SIDE])?,
             parsing: load_model(&root.join("face-parsing-resnet18.onnx"), &[1, 3, PARSING_SIDE, PARSING_SIDE])?,
         });
+        crate::log!("[Beauty] ONNX models ready");
     }
     run(guard.as_ref().expect("models initialized"))
 }
@@ -92,6 +93,7 @@ fn decode_image(ffmpeg: &str, ffprobe: &str, path: &str) -> Result<RgbImage, Str
     let scale = (MAX_IMAGE_SIDE as f64 / source_width.max(source_height) as f64).min(1.0);
     let width = (source_width as f64 * scale).round().max(1.0) as usize;
     let height = (source_height as f64 * scale).round().max(1.0) as usize;
+    crate::log!("[Beauty] decode path={} source={}x{} analysis={}x{}", path, source_width, source_height, width, height);
     let filter = format!("scale={width}:{height}");
     let output = Command::new(ffmpeg)
         .args(["-v", "error", "-i", path, "-vf", &filter, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"])
@@ -127,7 +129,7 @@ pub(crate) fn sample(image: &RgbImage, x: f32, y: f32) -> [f32; 3] {
     rgb
 }
 
-fn image_tensor(image: &RgbImage, side: usize, crop: Crop, normalize: bool, bgr: bool, centered: bool) -> Tensor {
+pub(crate) fn image_tensor(image: &RgbImage, side: usize, crop: Crop, normalize: bool, bgr: bool, centered: bool) -> Tensor {
     let mut data = vec![0.0f32; 3 * side * side];
     for y in 0..side {
         for x in 0..side {
@@ -157,9 +159,11 @@ fn detect_faces_in_crop(models: &BeautyModels, image: &RgbImage, crop: Crop) -> 
         .map_err(|error| format!("人脸检测失败: {error}"))?;
     let mut faces = Vec::new();
     let mut max_score = 0.0f32;
+    let mut rejected_geometry = 0usize;
     for (level, stride) in [8usize, 16, 32].iter().enumerate() {
         let scores = outputs[level].to_array_view::<f32>().map_err(|error| error.to_string())?;
         let boxes = outputs[3 + level].to_array_view::<f32>().map_err(|error| error.to_string())?;
+        let keypoints = outputs[6 + level].to_array_view::<f32>().map_err(|error| error.to_string())?;
         let feature_width = DETECTOR_SIDE / stride;
         for index in 0..scores.len() {
             let score = scores[[index, 0]];
@@ -173,37 +177,77 @@ fn detect_faces_in_crop(models: &BeautyModels, image: &RgbImage, crop: Crop) -> 
             let y1 = crop.y + (anchor_y - boxes[[index, 1]] * *stride as f32) * scale;
             let x2 = crop.x + (anchor_x + boxes[[index, 2]] * *stride as f32) * scale;
             let y2 = crop.y + (anchor_y + boxes[[index, 3]] * *stride as f32) * scale;
-            if x1 < image.width as f32 && y1 < image.height as f32 {
-                faces.push(FaceBox { x1: x1.max(0.0), y1: y1.max(0.0), x2: x2.min(image.width as f32), y2: y2.min(image.height as f32), score });
+            let face = FaceBox { x1: x1.max(0.0), y1: y1.max(0.0), x2: x2.min(image.width as f32), y2: y2.min(image.height as f32), score };
+            let points = std::array::from_fn(|point| [
+                crop.x + (anchor_x + keypoints[[index, point * 2]] * *stride as f32) * scale,
+                crop.y + (anchor_y + keypoints[[index, point * 2 + 1]] * *stride as f32) * scale,
+            ]);
+            if x2 <= 0.0 || y2 <= 0.0 || x1 >= image.width as f32 || y1 >= image.height as f32
+                || !valid_scrfd_geometry(face, points) {
+                rejected_geometry += 1;
+                continue;
             }
+            faces.push(face);
         }
     }
-    if std::env::var_os("LUNA_BEAUTY_DEBUG").is_some() {
-        eprintln!("[beauty-analysis] detector max_score={max_score:.4} candidates={}", faces.len());
-    }
+    crate::log!(
+        "[Beauty] SCRFD crop=({:.0},{:.0},{:.0}) max_score={max_score:.4} candidates={} geometry_rejected={rejected_geometry}",
+        crop.x, crop.y, crop.size, faces.len(),
+    );
     faces.sort_by(|a, b| b.score.total_cmp(&a.score));
     let mut selected = Vec::new();
     for face in faces {
         if selected.iter().any(|candidate| intersection_over_union(face, *candidate) > 0.4) { continue; }
         selected.push(face);
-        if selected.len() == MAX_FACES { break; }
+        if selected.len() == MAX_FACE_CANDIDATES { break; }
     }
+    crate::log!("[Beauty] SCRFD selected={}", selected.len());
     Ok(selected)
 }
 
+fn valid_scrfd_geometry(face: FaceBox, points: [[f32; 2]; 5]) -> bool {
+    let width = face.x2 - face.x1;
+    let height = face.y2 - face.y1;
+    if !width.is_finite() || !height.is_finite() || width < 12.0 || height < 12.0
+        || !(0.5..=1.8).contains(&(width / height)) {
+        return false;
+    }
+    let margin_x = width * 0.2;
+    let margin_y = height * 0.2;
+    if points.iter().any(|point| !point[0].is_finite() || !point[1].is_finite()
+        || point[0] < face.x1 - margin_x || point[0] > face.x2 + margin_x
+        || point[1] < face.y1 - margin_y || point[1] > face.y2 + margin_y) {
+        return false;
+    }
+    let eye_y = (points[0][1] + points[1][1]) * 0.5;
+    let mouth_y = (points[3][1] + points[4][1]) * 0.5;
+    let eye_distance = (points[1][0] - points[0][0]).abs();
+    mouth_y > eye_y + height * 0.06
+        && points[2][1] > eye_y - height * 0.08
+        && points[2][1] < mouth_y + height * 0.08
+        && eye_distance > width * 0.06
+}
+
 fn detect_faces(models: &BeautyModels, image: &RgbImage) -> Result<Vec<FaceBox>, String> {
-    let full_size = image.width.max(image.height) as f32;
-    let mut faces = detect_faces_in_crop(models, image, Crop { x: 0.0, y: 0.0, size: full_size })?;
-    for person in detect_people(&models.person, image)? {
-        faces.extend(detect_faces_in_crop(models, image, person_head_crop(person))?);
+    let people = detect_people(&models.person, image)?;
+    crate::log!("[Beauty] analyzing faces only inside {} person crops", people.len());
+    let mut faces = Vec::new();
+    for person in people {
+        let crop = person_head_crop(person);
+        if let Some(face) = detect_face_from_parsing(&models.parsing, image, crop, person.score)? {
+            faces.push(face);
+        } else {
+            faces.extend(detect_faces_in_crop(models, image, crop)?);
+        }
     }
     faces.sort_by(|a, b| b.score.total_cmp(&a.score));
     let mut selected = Vec::new();
     for face in faces {
         if selected.iter().any(|candidate| intersection_over_union(face, *candidate) > 0.4) { continue; }
         selected.push(face);
-        if selected.len() == MAX_FACES { break; }
+        if selected.len() == MAX_FACE_CANDIDATES { break; }
     }
+    crate::log!("[Beauty] merged face candidates={}", selected.len());
     Ok(selected)
 }
 
@@ -374,7 +418,13 @@ fn parse_skin(models: &BeautyModels, image: &RgbImage, faces: &[FaceBox]) -> Res
                 total_samples += 1;
             }
         }
-        if skin_samples as f32 / (total_samples as f32) < 0.035 || feature_samples < 3 { continue; }
+        let skin_ratio = skin_samples as f32 / total_samples as f32;
+        let accepted_face = skin_ratio >= 0.035 && feature_samples >= 3;
+        crate::log!(
+            "[Beauty] parsing face score={:.4} skin_ratio={skin_ratio:.4} features={} accepted={accepted_face}",
+            face.score, feature_samples,
+        );
+        if !accepted_face { continue; }
         accepted.push(*face);
         for mask_y in 0..MASK_SIDE {
             for mask_x in 0..MASK_SIDE {
@@ -394,14 +444,17 @@ fn parse_skin(models: &BeautyModels, image: &RgbImage, faces: &[FaceBox]) -> Res
                 }
             }
         }
+        if accepted.len() == MAX_FACES { break; }
     }
     Ok((output, accepted))
 }
 
 fn analyze(ffmpeg: &str, ffprobe: &str, image_path: &str, model_dir: &str) -> Result<NativeBeautyAnalysis, String> {
+    crate::log!("[Beauty] analyze start version={} path={}", ANALYSIS_VERSION, image_path);
     let image = decode_image(ffmpeg, ffprobe, image_path)?;
     with_models(Path::new(model_dir), |models| {
         let detections = detect_faces(models, &image)?;
+        crate::log!("[Beauty] face candidates before parsing={}", detections.len());
         let (mask, accepted) = parse_skin(models, &image, &detections)?;
         let mut faces = Vec::new();
         for detection in &accepted {
@@ -409,6 +462,7 @@ fn analyze(ffmpeg: &str, ffprobe: &str, image_path: &str, model_dir: &str) -> Re
             faces.push(compact_face(&landmarks, &image, *detection));
         }
         let has_skin = mask.iter().any(|value| *value != 0);
+        crate::log!("[Beauty] analyze done faces={} skin_pixels={}", faces.len(), mask.iter().filter(|value| **value != 0).count());
         Ok(NativeBeautyAnalysis {
             faces,
             skin_mask: if has_skin { base64::engine::general_purpose::STANDARD.encode(mask) } else { String::new() },

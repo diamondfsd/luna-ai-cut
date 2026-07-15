@@ -120,6 +120,7 @@
 .workspace-beauty-debug-legend [data-color='eyes']::before { background: #40ff6b; }
 .workspace-beauty-debug-legend [data-color='mouth']::before { background: #ff9e19; }
 .workspace-beauty-debug-legend [data-color='skin']::before { background: #ff33ad; }
+.workspace-beauty-debug-legend [data-color='boundary']::before { background: #0dffe6; }
 
 .workspace-beauty-reset {
   justify-self: end;
