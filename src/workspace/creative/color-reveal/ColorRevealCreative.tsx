@@ -3,9 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { MultipleLayerVideoPreviewLrcRender } from '../../../components/MultipleLayerVideoPreviewLrcRender'
-import { resolveExportConfig } from '../../../components/previewStageExport'
-import { buildCompositionFromPreviewLayers } from '../../../components/renderComposition'
-import type { CompositionInput, MediaMetadata, PreviewLayer, VideoExportSettings } from '../../../shared/types'
+import type { MediaMetadata, PreviewLayer, VideoExportSettings } from '../../../shared/types'
 import { Button, IconButton, SegmentedControl, VideoControls, toast } from '../../../ui'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
@@ -13,52 +11,33 @@ import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
+import { normalizeCreativePipeline } from '../shared/creativeMedia'
+import {
+  colorRevealCreativeDuration,
+  colorRevealTransitionMax,
+  DEFAULT_GRAY,
+  DEFAULT_INITIAL_HOLD_DURATION,
+  DEFAULT_MIDPOINT_HOLD_DURATION,
+  DEFAULT_SATURATION,
+  DEFAULT_STAGE_MODE,
+  DEFAULT_TRANSITION_DURATION,
+  IMAGE_CREATIVE_DURATION,
+  savedGray,
+} from './colorRevealConfig'
+import { buildColorRevealLayers } from './colorRevealLayers'
+import { queueColorRevealBatchExport } from './colorRevealBatchExport'
 import './color-reveal.css'
 
-const DEFAULT_SATURATION = -80
-const DEFAULT_GRAY = 70
-const DEFAULT_TRANSITION_DURATION = 2.5
-const DEFAULT_INITIAL_HOLD_DURATION = 1
-const DEFAULT_MIDPOINT_HOLD_DURATION = 0.6
-const DEFAULT_STAGE_MODE = 'three'
 type ColorRevealStageMode = 'two' | 'three'
-function savedGray(state: { gray?: number; contrast?: number } | undefined): number {
-  if (typeof state?.gray === 'number') return state.gray
-  if (typeof state?.contrast === 'number') return Math.min(100, state.contrast * 3)
-  return DEFAULT_GRAY
-}
-
-interface LunaCompositionExportApi {
-  exportCompositionVideo(
-    outputPath: string,
-    composition: CompositionInput,
-    fps: number | null,
-    duration: number | null,
-    hardware: boolean,
-    taskId?: string,
-    qualityPreset?: string,
-    exportTaskId?: string,
-    exportItemId?: string,
-  ): Promise<void>
-}
 
 interface ColorRevealCreativeProps {
   onBack: () => void
-}
-function outputPath(exportDir: string, fileName: string): string {
-  return exportDir.endsWith('/') ? `${exportDir}${fileName}` : `${exportDir}/${fileName}`
-}
-
-function renderApi(): LunaCompositionExportApi {
-  const api = (window as unknown as { lunaRenderCore?: LunaCompositionExportApi }).lunaRenderCore
-  if (!api) throw new Error('渲染引擎未初始化')
-  return api
 }
 
 export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
-  const activeAsset = media.activeMedia?.kind === 'video' ? media.activeMedia : null
+  const activeAsset = media.activeMedia
   const pipeline = edit.pipeline
   const savedState = media.currentProject?.creative?.colorReveal
   const [saturation, setSaturation] = useState(savedState?.saturation ?? DEFAULT_SATURATION)
@@ -78,10 +57,15 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   const projectSaveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
   const currentTimeRef = useRef(0)
+  const isImage = activeAsset?.kind === 'image'
   const trimStart = pipeline.trim?.startTime ?? 0
-  const sourceDuration = Math.max(0, (pipeline.trim?.endTime ?? duration) - trimStart)
+  const sourceDuration = isImage
+    ? IMAGE_CREATIVE_DURATION
+    : Math.max(0, (pipeline.trim?.endTime ?? duration) - trimStart)
   const effectStart = initialHoldDuration
-  const creativeDuration = sourceDuration + effectStart
+  const creativeDuration = colorRevealCreativeDuration(isImage, sourceDuration, effectStart)
+  const transitionMax = colorRevealTransitionMax(isImage, creativeDuration, sourceDuration, effectStart, midpointHoldDuration)
+  const effectiveTransitionDuration = Math.min(transitionDuration, transitionMax)
   currentTimeRef.current = currentTime
 
   useEffect(() => {
@@ -98,13 +82,15 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
     setCurrentTime(0)
     setPlaying(false)
     setSourceSize(null)
-    setDuration(0)
+    setDuration(activeAsset?.kind === 'image' ? IMAGE_CREATIVE_DURATION : 0)
     setBorderMetadata(null)
     if (!activeAsset) return
     let cancelled = false
     Promise.all([
       window.luna.workspace.getMediaResolution(activeAsset.path),
-      window.luna.workspace.getVideoDuration(activeAsset.path),
+      activeAsset.kind === 'video'
+        ? window.luna.workspace.getVideoDuration(activeAsset.path)
+        : Promise.resolve(IMAGE_CREATIVE_DURATION),
       window.luna.getMediaMetadataByPath(activeAsset.path).catch(() => ({ groups: [] })),
     ]).then(([size, videoDuration, metadata]) => {
       if (cancelled) return
@@ -113,7 +99,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       setBorderMetadata(metadata)
       setTransitionDuration((value) => Math.min(value, Math.max(0.5, videoDuration)))
     }).catch((error) => {
-      if (!cancelled) toast.error(error instanceof Error ? error.message : '无法读取视频信息')
+      if (!cancelled) toast.error(error instanceof Error ? error.message : '无法读取素材信息')
     })
     return () => { cancelled = true }
   }, [activeAsset?.id, activeAsset?.path])
@@ -193,95 +179,31 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
 
   const buildEffectLayers = useCallback((forExport: boolean): PreviewLayer[] => {
     if (!activeAsset) return []
-    const revealStart = forExport ? effectStart : trimStart
-    const mediaLayers = editedLayers.flatMap((layer) => {
-      if (!layer.isVideo || layer.filePath !== activeAsset.path) return [layer]
-      const afterColor = layer.color
-      const beforeColor = afterColor ? {
-        ...afterColor,
-        saturation: Math.max(-100, Math.min(100, afterColor.saturation + saturation - gray * 0.2)),
-        contrast: Math.max(-100, Math.min(100, afterColor.contrast - gray * 0.55)),
-        shadows: Math.max(-100, Math.min(100, afterColor.shadows + gray * 0.28)),
-        blacks: Math.max(-100, Math.min(100, afterColor.blacks + gray * 0.32)),
-        whites: Math.max(-100, Math.min(100, afterColor.whites - gray * 0.22)),
-        clarity: Math.max(-100, Math.min(100, afterColor.clarity - gray * 0.18)),
-        curveLift: Math.max(-100, Math.min(100, afterColor.curveLift + gray * 0.12)),
-      } : afterColor
-      const shared = {
-        ...layer,
-        videoTime: trimStart,
-        videoOffset: forExport ? effectStart : undefined,
-        videoDuration: sourceDuration || undefined,
-        videoSourceKey: 'color-reveal-main',
-      }
-      const grayLayer: PreviewLayer = {
-        ...shared,
-        color: beforeColor,
-        lutId: undefined,
-        lutIntensity: undefined,
-      }
-      if (stageMode === 'two') {
-        return [
-          grayLayer,
-          {
-            ...shared,
-            zIndex: layer.zIndex + 0.01,
-            reveal: {
-              direction: 'left-to-right' as const,
-              start: revealStart,
-              duration: transitionDuration,
-              midpointHold: midpointHoldDuration,
-              easing: 'ease-in-out' as const,
-            },
-          },
-        ]
-      }
-
-      const halfDuration = transitionDuration / 2
-      return [
-        grayLayer,
-        {
-          ...shared,
-          color: undefined,
-          lutId: undefined,
-          lutIntensity: undefined,
-          zIndex: layer.zIndex + 0.01,
-          reveal: {
-            direction: 'left-to-right' as const,
-            start: revealStart,
-            duration: halfDuration,
-            easing: 'ease-in-out' as const,
-          },
-        },
-        {
-          ...shared,
-          zIndex: layer.zIndex + 0.02,
-          reveal: {
-            direction: 'left-to-right' as const,
-            start: revealStart + halfDuration + midpointHoldDuration,
-            duration: halfDuration,
-            easing: 'ease-in-out' as const,
-          },
-        },
-      ]
+    const revealStart = forExport || activeAsset.kind === 'image' ? effectStart : trimStart
+    return buildColorRevealLayers({
+      sourcePath: activeAsset.path,
+      layers: editedLayers,
+      isVideo: activeAsset.kind === 'video',
+      trimStart,
+      sourceDuration,
+      effectStart,
+      revealStart,
+      transitionDuration: effectiveTransitionDuration,
+      midpointHoldDuration,
+      saturation,
+      gray,
+      stageMode,
+      forExport,
     })
-    return mediaLayers
-  }, [activeAsset, editedLayers, effectStart, gray, midpointHoldDuration, saturation, sourceDuration, stageMode, transitionDuration, trimStart])
+  }, [activeAsset, editedLayers, effectStart, effectiveTransitionDuration, gray, midpointHoldDuration, saturation, sourceDuration, stageMode, trimStart])
 
   const previewLayers = useMemo(() => buildEffectLayers(false), [buildEffectLayers])
   const handlePreviewError = useCallback((message: string) => toast.error(message), [])
-
-  function buildExportComposition(width: number, height: number, fps: number | null): CompositionInput {
-    if (!activeAsset) throw new Error('请选择一个视频素材')
-    const composition = buildCompositionFromPreviewLayers(
-      buildEffectLayers(true),
-      width,
-      height,
-      { fps: fps ?? undefined, duration: creativeDuration || undefined },
-    )
-    composition.canvas.duration = creativeDuration || undefined
-    return composition
-  }
+  const exportableIndices = (media.selectedIndices.size > 0
+    ? [...media.selectedIndices]
+    : [media.activeIndex]
+  ).filter((index) => Boolean(media.media[index]) && !media.brokenPaths.has(media.media[index].path))
+  const exportCount = exportableIndices.length
 
   function handleSeek(time: number): void {
     setCurrentTime(time)
@@ -309,45 +231,39 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
   }
 
   async function handleExport(config: VideoExportSettings): Promise<void> {
-    if (!activeAsset || !outputSize || exporting) return
+    if (exporting || exportCount === 0) return
     setExportDialogOpen(false)
     setExporting(true)
     try {
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
-      const resolved = resolveExportConfig(config, outputSize.width, outputSize.height)
-      const stamp = Date.now()
-      const fileName = `i-log-color-reveal-${stamp}.mp4`
-      const path = outputPath(settings.exportDir, fileName)
-      const itemId = `color_reveal_${stamp}`
-      const task = await window.luna.exportTask.create('i-log 色彩还原', [{
-        id: itemId,
-        sourcePath: activeAsset.path,
-        outputPath: path,
-        label: '创意视频',
-      }])
-      void renderApi().exportCompositionVideo(
-        path,
-        buildExportComposition(resolved.width, resolved.height, resolved.fps),
-        resolved.fps,
-        creativeDuration || null,
-        true,
-        itemId,
-        resolved.qualityPreset,
-        task.id,
-        itemId,
-      ).catch(() => {
-        // 失败状态由导出任务服务记录并展示。
+      const sources = exportableIndices.map((index) => {
+        const asset = media.media[index]
+        return {
+          asset,
+          pipeline: index === media.activeIndex
+            ? pipeline
+            : normalizeCreativePipeline((asset as { pipeline?: unknown }).pipeline),
+        }
       })
-      toast.success('已加入导出任务')
+      const count = await queueColorRevealBatchExport({
+        sources,
+        exportDir: settings.exportDir,
+        config,
+        saturation,
+        gray,
+        transitionDuration,
+        initialHoldDuration,
+        midpointHoldDuration,
+        stageMode,
+      })
+      toast.success(count > 1 ? `已加入导出队列：${count} 个素材` : '已加入生成任务')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '视频生成失败')
     } finally {
       setExporting(false)
     }
   }
-
-  const transitionMax = Math.max(0.5, Math.min(8, sourceDuration || 8))
 
   return (
     <section className="color-reveal-page">
@@ -370,6 +286,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
               canvasWidth={outputSize.width}
               canvasHeight={outputSize.height}
               playing={playing && currentTime >= effectStart}
+              compositionTime={isImage ? currentTime : undefined}
               decodeQuality={1}
               interactiveImageLayerIndexes={[]}
               onVideoElement={setVideoElement}
@@ -387,8 +304,8 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         ) : (
           <div className="color-reveal-empty">
             <WandSparkles size={28} />
-            <strong>选择一个视频素材</strong>
-            <span>在下方素材栏中选择需要制作的调色视频</span>
+            <strong>选择一个图片或视频素材</strong>
+            <span>在下方素材栏中选择需要制作色彩还原的素材</span>
           </div>
         )}
       </div>
@@ -456,10 +373,10 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
             variant="primary"
             size="compact"
             icon={<Download size={14} />}
-            disabled={!activeAsset || !outputSize || exporting}
+            disabled={exportCount === 0 || exporting}
             onClick={() => setExportDialogOpen(true)}
           >
-            {exporting ? '生成中' : '生成视频'}
+            {exporting ? '加入中' : exportCount > 1 ? `生成 ${exportCount} 个视频` : '生成视频'}
           </Button>
         </div>
       </aside>
@@ -472,8 +389,8 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
         open={exportDialogOpen}
         tone="dark"
         onOpenChange={setExportDialogOpen}
-        title="生成 i-log 色彩还原视频"
-        description="设置生成视频的分辨率、码率和帧率"
+        title={exportCount > 1 ? `生成 ${exportCount} 个色彩还原视频` : '生成 i-log 色彩还原视频'}
+        description={exportCount > 1 ? '所有选中素材将使用相同的生成设置' : '设置生成视频的分辨率、码率和帧率'}
         loading={exporting}
         confirmLabel="开始生成"
         confirmLoadingLabel="生成中..."
