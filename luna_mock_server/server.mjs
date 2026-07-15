@@ -21,6 +21,7 @@ const UCD2_MAGIC = Buffer.from('UCD2')
 const UCD2_FILE = 0x04
 const UCD2_STREAM = 0x05
 const authGate = createHttpAuthGate(3000)
+const deletedCameraPaths = new Set()
 
 function argValue(name) {
   const prefix = `${name}=`
@@ -69,6 +70,34 @@ function buildRawResponse(code, requestId, body = Buffer.alloc(0)) {
   return Buffer.concat([length, raw, Buffer.alloc(4)])
 }
 
+function readVarint(buffer, start) {
+  let value = 0
+  let shift = 0
+  let offset = start
+  while (offset < buffer.length && shift <= 28) {
+    const byte = buffer[offset]
+    offset += 1
+    value |= (byte & 0x7f) << shift
+    if ((byte & 0x80) === 0) return { value, offset }
+    shift += 7
+  }
+  return null
+}
+
+function parseDeletePaths(body) {
+  const paths = []
+  let offset = 0
+  while (offset < body.length) {
+    const tag = readVarint(body, offset)
+    if (!tag || tag.value !== 0x0a) break
+    const length = readVarint(body, tag.offset)
+    if (!length || length.offset + length.value > body.length) break
+    paths.push(body.subarray(length.offset, length.offset + length.value).toString('utf8'))
+    offset = length.offset + length.value
+  }
+  return paths
+}
+
 function parseUcd2Frames(buffer) {
   const frames = []
   let rest = buffer
@@ -105,6 +134,11 @@ function responseForUcd2Frame(frame) {
   const raw = frame.subarray(rawOffset, rawOffset + rawLen)
   const code = raw.readUInt16LE(0)
   const requestId = raw.readUInt16LE(3)
+  if (code === 12) {
+    for (const cameraPath of parseDeletePaths(raw.subarray(9))) {
+      deletedCameraPaths.add(path.posix.normalize(cameraPath))
+    }
+  }
   return buildUcd2(UCD2_FILE, seq, buildRawResponse(code, requestId))
 }
 
@@ -281,6 +315,8 @@ ${rows.map((row) => row.html).join('\n')}
     const relative = path.relative(baseDir, filePath).split(path.sep).join('/')
     const date = parseTimestamp(name) || stats.mtime
     const href = hrefForIndex(relative, cameraDir)
+    const cameraPath = decodeURIComponent(new URL(href, `http://luna.mock${normalizedPath}`).pathname)
+    if (deletedCameraPaths.has(path.posix.normalize(cameraPath))) continue
     rows.push({
       time: date.getTime(),
       html: `<a href="${escapeHtml(href)}">${escapeHtml(name)}</a> ${formatIndexDate(date)} ${pad(date.getHours())}:${pad(date.getMinutes())} ${formatSize(stats.size)}`,
@@ -400,6 +436,12 @@ const httpServer = createHttpServer(async (request, response) => {
       return
     }
 
+    if (deletedCameraPaths.has(path.posix.normalize(decodeURIComponent(url.pathname)))) {
+      response.writeHead(404)
+      response.end('Not found')
+      return
+    }
+
     if (isIndexRequest(url.pathname, matchedStorage)) {
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
       // 非默认存储路径返回空目录，避免素材重复
@@ -417,6 +459,14 @@ const httpServer = createHttpServer(async (request, response) => {
     if (!stats.isFile()) {
       response.writeHead(404)
       response.end('Not found')
+      return
+    }
+    if (request.method === 'HEAD') {
+      response.writeHead(200, {
+        'Content-Length': stats.size,
+        'Content-Type': contentType(filePath),
+      })
+      response.end()
       return
     }
     sendThrottledFile(request, response, filePath, stats)

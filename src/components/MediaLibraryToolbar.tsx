@@ -153,14 +153,27 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                     </Button>
                   </>
                 ) : (
-                  <Button
-                    variant="primary" size="compact"
-                    onClick={() => void ctrl.startDownload()}
-                    title={`下载已选素材，合计 ${formatBytes(ctrl.totalSelectedBytes)}`}
-                    icon={ctrl.downloading ? <Loader2 className="spin" size={15} /> : <Download size={15} />}
-                  >
-                    下载 ({ctrl.selectedFiles.length})
-                  </Button>
+                  <>
+                    {ctrl.canDeleteCameraFiles && (
+                      <Button
+                        variant="danger"
+                        size="compact"
+                        disabled={ctrl.deletingCameraFiles}
+                        onClick={() => ctrl.setShowCameraDeleteDialog(true)}
+                      >
+                        <Trash2 size={14} />
+                        删除 ({ctrl.selectedFiles.length})
+                      </Button>
+                    )}
+                    <Button
+                      variant="primary" size="compact"
+                      onClick={() => void ctrl.startDownload()}
+                      title={`下载已选素材，合计 ${formatBytes(ctrl.totalSelectedBytes)}`}
+                      icon={ctrl.downloading ? <Loader2 className="spin" size={15} /> : <Download size={15} />}
+                    >
+                      下载 ({ctrl.selectedFiles.length})
+                    </Button>
+                  </>
                 )}
               </div>
             </>
@@ -263,6 +276,18 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
           <span className="export-error">
             {ctrl.deleteError}
             <button onClick={() => ctrl.setDeleteError(null)} title="关闭">&times;</button>
+          </span>
+        )}
+        {isCamera && ctrl.cameraDeleteError && (
+          <span className="export-error">
+            {ctrl.cameraDeleteError}
+            <Button
+              variant="ghost"
+              size="mini"
+              icon={<X size={12} />}
+              onClick={() => ctrl.setCameraDeleteError(null)}
+              title="关闭"
+            />
           </span>
         )}
         {isCamera && downloadProgress.size > 0 && (
