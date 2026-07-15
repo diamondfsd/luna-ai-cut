@@ -10,7 +10,7 @@ import probe from 'probe-image-size'
 import { getSettings } from './fileService'
 import { safeName } from './filePathUtils'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
-import { logMainError } from './loggerService'
+import { logMainError, logMainInfo } from './loggerService'
 import { combineLivePhoto, isGoogleMotionPhoto } from './livePhotoService'
 import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
 import {
@@ -32,6 +32,7 @@ import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailC
 import { loadModel, loadSamModel, type ModelId } from './modelLoader'
 import { SAM_MODEL, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { getNative } from './lunaRenderCore'
+import { segmentSamInWorker } from './samSegmentationService'
 import { deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
@@ -198,6 +199,7 @@ export function register(): void {
     const totalStartedAt = performance.now()
     const modelStartedAt = performance.now()
     const isSam = modelId === SAM_MODEL.id
+    if (isSam) logMainInfo('[SAM] 智能选择开始')
     reportProgress('model', '正在准备模型', null)
     const model = isSam
       ? await loadSamModel((progress) => reportProgress(
@@ -211,6 +213,7 @@ export function register(): void {
         Math.round(progress.completedBytes / progress.totalBytes * 100),
       ))
     const modelLoadMs = performance.now() - modelStartedAt
+    if (isSam) logMainInfo('[SAM] 模型准备完成', { modelLoadMs: Math.round(modelLoadMs) })
     reportProgress('preparing', '正在准备图片', null)
     const decodeStartedAt = performance.now()
     const sourceSize = isSam ? await probeDisplayResolution(filePath) : null
@@ -233,18 +236,20 @@ export function register(): void {
     const inferenceStartedAt = performance.now()
     reportProgress('recognizing', '正在识别', null)
     const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
+    if (isSam) logMainInfo('[SAM] 开始原生识别', { width: samWidth, height: samHeight, bytes: rgb.byteLength })
     const result = 'visionEncoderPath' in model
-      ? getNative().segmentSam(
-        model.visionEncoderPath,
-        model.promptDecoderPath,
+      ? await segmentSamInWorker({
+        visionEncoderPath: model.visionEncoderPath,
+        promptDecoderPath: model.promptDecoderPath,
         rgb,
-        samWidth,
-        samHeight,
-        point?.x ?? 0.5,
-        point?.y ?? 0.5,
-      )
+        sourceWidth: samWidth,
+        sourceHeight: samHeight,
+        pointX: point?.x ?? 0.5,
+        pointY: point?.y ?? 0.5,
+      })
       : getNative().segmentImage(model.path, rgb, point?.x ?? 0.5, point?.y ?? 0.5)
     const inferenceMs = performance.now() - inferenceStartedAt
+    if (isSam) logMainInfo('[SAM] 原生识别完成', { inferenceMs: Math.round(inferenceMs) })
     const classId = 'classId' in result && typeof result.classId === 'number' ? result.classId : -1
     const classNames: Record<number, string> = {
       2: '天空',
