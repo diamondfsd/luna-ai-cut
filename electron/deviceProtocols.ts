@@ -3,7 +3,7 @@ import { DEFAULT_HOST, LunaClient } from './lunaProtocol'
 import { DEFAULT_DEVICE, GO_ULTRA_DEVICE } from './deviceDefaults'
 import { GoUltraClient, AuthState } from './goUltraProtocol'
 import { logMainInfo, logMainWarn, logMainError } from './loggerService'
-import type { ConnectionStatus, DeviceConnectOptions, DeviceDefinition, DeviceStorageOption, LunaFile } from '../src/shared/types'
+import type { CameraDeleteResult, ConnectionStatus, DeviceConnectOptions, DeviceDefinition, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export interface DeviceProtocol {
   readonly definition: DeviceDefinition
@@ -11,6 +11,7 @@ export interface DeviceProtocol {
   checkStatus(host?: string): Promise<ConnectionStatus>
   connect(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   listFiles(options?: DeviceConnectOptions): Promise<LunaFile[]>
+  deleteFiles(cameraPaths: string[], options?: DeviceConnectOptions): Promise<CameraDeleteResult>
   disconnect(host?: string): Promise<void>
 }
 
@@ -115,6 +116,15 @@ export class LunaUltraProtocol implements DeviceProtocol {
     logMainInfo(`[设备协议] 文件列表读取完成`, { host, storageId, fileCount: files.length, elapsedSec: elapsed })
     client.startKeepAlive()
     return files
+  }
+
+  async deleteFiles(cameraPaths: string[], options?: DeviceConnectOptions): Promise<CameraDeleteResult> {
+    const settings = await getSettings()
+    const host = options?.host || settings.cameraHost || this.definition.defaultHost
+    const client = this.clientFor(host, this.controlPortForHost(host))
+    const result = await client.deleteFilePaths(cameraPaths)
+    client.startKeepAlive()
+    return result
   }
 
   async disconnect(host?: string): Promise<void> {
@@ -222,6 +232,10 @@ export class GoUltraProtocol implements DeviceProtocol {
       id: `go-ultra:${f.name}`,
       storageId: 'internal',
     }))
+  }
+
+  async deleteFiles(): Promise<CameraDeleteResult> {
+    throw new Error('当前设备暂不支持在应用中删除相机素材')
   }
 
   async disconnect(host?: string): Promise<void> {
