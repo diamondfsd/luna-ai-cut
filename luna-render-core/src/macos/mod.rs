@@ -424,19 +424,6 @@ pub(crate) fn export_video(
         cum_render_us += render_us;
         cum_append_us += append_us;
 
-        if frame_index % log_interval == 0 || frame_index == total_frames - 1 {
-            crate::logging::write(&format!(
-                "[Export:MacGPU:Timing] frame {}/{} | total={:.0}ms decode={:.0}ms plan={:.0}ms acquire={:.0}ms render={:.0}ms append={:.0}ms",
-                frame_index,
-                total_frames,
-                frame_us as f64 / 1000.0,
-                decode_us as f64 / 1000.0,
-                plan_us as f64 / 1000.0,
-                acquire_us as f64 / 1000.0,
-                render_us as f64 / 1000.0,
-                append_us as f64 / 1000.0,
-            ));
-        }
 
         if let Some(state) = task {
             state
