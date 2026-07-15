@@ -192,6 +192,7 @@ export function register(): void {
     filePath: string,
     point?: { x: number; y: number },
     modelId: SegmentationModelId = 'segformer-b0-ade20k',
+    targetClassId?: number,
   ) => {
     const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
       _event.sender.send('workspace:segmentation-progress', { phase, label, percent })
@@ -247,12 +248,13 @@ export function register(): void {
         pointX: point?.x ?? 0.5,
         pointY: point?.y ?? 0.5,
       })
-      : getNative().segmentImage(model.path, rgb, point?.x ?? 0.5, point?.y ?? 0.5)
+      : getNative().segmentImage(model.path, rgb, point?.x ?? 0.5, point?.y ?? 0.5, targetClassId)
     const inferenceMs = performance.now() - inferenceStartedAt
     if (isSam) logMainInfo('[SAM] 原生识别完成', { inferenceMs: Math.round(inferenceMs) })
     const classId = 'classId' in result && typeof result.classId === 'number' ? result.classId : -1
     const classNames: Record<number, string> = {
       2: '天空',
+      1: '建筑',
       4: '树木',
       9: '草地',
       12: '人物',

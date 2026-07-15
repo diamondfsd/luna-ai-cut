@@ -1,14 +1,16 @@
-import { Brush, Eraser, Eye, EyeOff, Sparkles, Trash2 } from 'lucide-react'
+import { Brush, Eraser, Eye, EyeOff, MousePointer2, Sparkles } from 'lucide-react'
+import { useState } from 'react'
 
-import { Button, ButtonGroup, IconButton, Switch, Tooltip } from '../../ui'
-import { SAM_MODELS, SEGMENTATION_MODELS } from '../../shared/segmentationModels'
+import { Button, ButtonGroup, PillTabs, Select, Switch } from '../../ui'
+import { COMMON_SEGMENTATION_TARGETS, SAM_MODELS, SEGMENTATION_MODELS } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import './MaskPanel.css'
 
+const MODELS = [...SEGMENTATION_MODELS, ...SAM_MODELS]
 const BRUSH_MODES = [
   { value: 'paint', label: <><Brush size={14} />添加</> },
-  { value: 'erase', label: <><Eraser size={14} />移除</> },
+  { value: 'erase', label: <><Eraser size={14} />擦除</> },
 ]
 
 function formatModelSize(sizeBytes: number): string {
@@ -16,128 +18,111 @@ function formatModelSize(sizeBytes: number): string {
 }
 
 function formatDuration(milliseconds: number): string {
-  return milliseconds < 1_000 ? `${milliseconds} ms` : `${(milliseconds / 1_000).toFixed(2)} 秒`
+  return milliseconds < 1_000 ? `${Math.round(milliseconds)} ms` : `${(milliseconds / 1_000).toFixed(2)} 秒`
 }
 
 export function MaskPanel() {
   const mask = useWorkspaceMask()
   const settings = mask.activeMask
+  const [section, setSection] = useState('smart')
+  const selectedModel = MODELS.find((model) => model.id === mask.segmentationModel)
 
   return (
     <div className="workspace-mask-panel">
-      <div className="workspace-mask-smart-row">
-        <Button
-          variant="primary"
-          size="compact"
-          icon={<Sparkles size={15} />}
-          disabled={mask.busy}
-          onClick={() => {
-            mask.setEditing(true)
-            mask.setSemanticPicking(true)
-          }}
-        >
-          {mask.busy ? mask.segmentationProgress?.label ?? '正在处理中' : '智能选择'}
-        </Button>
-        <span>{settings?.kind === 'semantic' ? settings.className ?? '已选择区域' : '点击画面选择区域'}</span>
-      </div>
-      {mask.segmentationProgress && (
-        <div className="workspace-mask-progress" aria-live="polite">
-          <div>
-            <span>{mask.segmentationProgress.label}</span>
-            {mask.segmentationProgress.percent !== null && <span>{mask.segmentationProgress.percent}%</span>}
+      <PillTabs
+        value={section}
+        onValueChange={setSection}
+        className="workspace-mask-editor-tabs"
+        items={[
+          { value: 'smart', label: '智能选择' },
+          { value: 'brush', label: '画笔修补' },
+          { value: 'edge', label: '边缘调整' },
+        ]}
+      />
+
+      {section === 'smart' && (
+        <div className="workspace-mask-editor-section">
+          <div className="workspace-mask-step-card">
+            <span className="workspace-mask-step-icon"><MousePointer2 size={18} /></span>
+            <div><strong>点击画面中的对象</strong><span>应用会识别点击位置并生成蒙版</span></div>
           </div>
-          <div
-            className="workspace-mask-progress-track"
-            role="progressbar"
-            aria-label={mask.segmentationProgress.label}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={mask.segmentationProgress.percent ?? undefined}
-          >
-            <span
-              className={mask.segmentationProgress.percent === null ? 'is-indeterminate' : undefined}
-              style={mask.segmentationProgress.percent === null ? undefined : { width: `${mask.segmentationProgress.percent}%` }}
-            />
+          <div className="workspace-mask-auto-targets">
+            <span>无需点击，直接选择常用主体</span>
+            <div>
+              {COMMON_SEGMENTATION_TARGETS.map((target) => (
+                <Button key={target.classId} variant="ghost" size="mini" disabled={mask.busy} onClick={() => void mask.generateSemanticMask(undefined, target.classId)}>
+                  {target.label}
+                </Button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
-      <div className="workspace-mask-models" aria-label="识别模型">
-        <span className="workspace-mask-section-label">识别模型</span>
-        <div className="workspace-mask-model-list">
-          {[...SEGMENTATION_MODELS, ...SAM_MODELS].map((model) => (
-            <Button
-              key={model.id}
-              variant={mask.segmentationModel === model.id ? 'primary' : 'secondary'}
-              className="workspace-mask-model-option"
+          <div className="workspace-mask-or"><span>或点选任意对象</span></div>
+          <label className="workspace-mask-field">
+            <span>识别模型</span>
+            <Select
+              variant="compact"
+              fullWidth
+              value={mask.segmentationModel}
               disabled={mask.busy}
-              onClick={() => mask.setSegmentationModel(model.id)}
-            >
-              <span>{model.name}</span>
-              <span>{model.description} · {formatModelSize(model.sizeBytes)} · {model.inputSize}×{model.inputSize}</span>
-            </Button>
-          ))}
-        </div>
-      </div>
-      {mask.lastSegmentationPerformance && (
-        <div className="workspace-mask-performance" aria-label="最近一次识别耗时">
-          <span className="workspace-mask-section-label">最近一次识别</span>
-          <dl>
-            <div><dt>模型准备</dt><dd>{formatDuration(mask.lastSegmentationPerformance.modelLoadMs)}</dd></div>
-            <div><dt>图像准备</dt><dd>{formatDuration(mask.lastSegmentationPerformance.imagePrepareMs)}</dd></div>
-            <div><dt>识别</dt><dd>{formatDuration(mask.lastSegmentationPerformance.inferenceMs)}</dd></div>
-            <div><dt>总耗时</dt><dd>{formatDuration(mask.lastSegmentationPerformance.totalMs)}</dd></div>
-          </dl>
+              onValueChange={(value) => mask.setSegmentationModel(value as typeof mask.segmentationModel)}
+              options={MODELS.map((model) => ({
+                value: model.id,
+                label: `${model.name} · ${model.description} · ${formatModelSize(model.sizeBytes)}`,
+              }))}
+            />
+          </label>
+          {selectedModel && <span className="workspace-mask-model-note">输入 {selectedModel.inputSize}×{selectedModel.inputSize}，首次使用会自动下载</span>}
+          <Button
+            variant="primary"
+            size="compact"
+            icon={<Sparkles size={15} />}
+            disabled={mask.busy}
+            onClick={() => mask.setSemanticPicking(true)}
+          >
+            {mask.busy ? mask.segmentationProgress?.label ?? '正在处理中' : '开始点选对象'}
+          </Button>
+          {mask.segmentationProgress && (
+            <div className="workspace-mask-progress" aria-live="polite">
+              <div><span>{mask.segmentationProgress.label}</span>{mask.segmentationProgress.percent !== null && <span>{mask.segmentationProgress.percent}%</span>}</div>
+              <div className="workspace-mask-progress-track" role="progressbar" aria-label={mask.segmentationProgress.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={mask.segmentationProgress.percent ?? undefined}>
+                <span className={mask.segmentationProgress.percent === null ? 'is-indeterminate' : undefined} style={mask.segmentationProgress.percent === null ? undefined : { width: `${mask.segmentationProgress.percent}%` }} />
+              </div>
+            </div>
+          )}
+          {mask.lastSegmentationPerformance && (
+            <div className="workspace-mask-performance">
+              <span>模型 {formatDuration(mask.lastSegmentationPerformance.modelLoadMs)}</span>
+              <span>识别 {formatDuration(mask.lastSegmentationPerformance.inferenceMs)}</span>
+              <strong>总计 {formatDuration(mask.lastSegmentationPerformance.totalMs)}</strong>
+            </div>
+          )}
         </div>
       )}
 
-      <ButtonGroup
-        options={BRUSH_MODES}
-        value={mask.brushMode}
-        onChange={(value) => mask.setBrushMode(value as 'paint' | 'erase')}
-      />
-      <ParamSlider label="画笔大小" value={mask.brushSize} min={1} max={30} onChange={mask.setBrushSize} formatValue={(value) => `${Math.round(value)}%`} />
-      <ParamSlider
-        label="羽化"
-        value={settings?.feather ?? 0}
-        min={0}
-        max={40}
-        onChange={(feather) => mask.updateMaskSettings({ feather })}
-        formatValue={(value) => `${Math.round(value)} px`}
-      />
-      <ParamSlider
-        label="不透明度"
-        value={Math.round((settings?.opacity ?? 1) * 100)}
-        min={0}
-        max={100}
-        onChange={(opacity) => mask.updateMaskSettings({ opacity: opacity / 100 })}
-        formatValue={(value) => `${Math.round(value)}%`}
-      />
+      {section === 'brush' && (
+        <div className="workspace-mask-editor-section">
+          <div className="workspace-mask-step-card">
+            <span className="workspace-mask-step-icon"><Brush size={18} /></span>
+            <div><strong>直接在画面上涂抹</strong><span>添加遗漏区域，或擦除多余选区</span></div>
+          </div>
+          <ButtonGroup options={BRUSH_MODES} value={mask.brushMode} onChange={(value) => mask.setBrushMode(value as 'paint' | 'erase')} />
+          <ParamSlider label="画笔大小" value={mask.brushSize} min={1} max={30} onChange={mask.setBrushSize} formatValue={(value) => `${Math.round(value)}%`} />
+          <Button variant="secondary" size="compact" icon={mask.showOverlay ? <EyeOff size={14} /> : <Eye size={14} />} onClick={() => mask.setShowOverlay(!mask.showOverlay)}>
+            {mask.showOverlay ? '隐藏选区提示' : '显示选区提示'}
+          </Button>
+        </div>
+      )}
 
-      <label className="workspace-mask-setting-row">
-        <span>反选蒙版</span>
-        <Switch ariaLabel="反选蒙版" checked={settings?.inverted ?? false} onCheckedChange={(inverted) => mask.updateMaskSettings({ inverted })} />
-      </label>
-
-      <div className="workspace-mask-actions">
-        <Button
-          variant="secondary"
-          size="compact"
-          icon={mask.showOverlay ? <EyeOff size={14} /> : <Eye size={14} />}
-          onClick={() => mask.setShowOverlay(!mask.showOverlay)}
-        >
-          {mask.showOverlay ? '隐藏蒙版' : '显示蒙版'}
-        </Button>
-        <Tooltip content="删除蒙版">
-          <IconButton
-            variant="ghost"
-            size="compact"
-            icon={<Trash2 size={15} />}
-            disabled={!settings}
-            onClick={() => void mask.removeMask()}
-            aria-label="删除蒙版"
-          />
-        </Tooltip>
-      </div>
+      {section === 'edge' && (
+        <div className="workspace-mask-editor-section">
+          <ParamSlider label="羽化" value={settings?.feather ?? 0} min={0} max={40} onChange={(feather) => mask.updateMaskSettings({ feather })} formatValue={(value) => `${Math.round(value)} px`} />
+          <ParamSlider label="不透明度" value={Math.round((settings?.opacity ?? 1) * 100)} min={0} max={100} onChange={(opacity) => mask.updateMaskSettings({ opacity: opacity / 100 })} formatValue={(value) => `${Math.round(value)}%`} />
+          <label className="workspace-mask-setting-row">
+            <span><strong>反向蒙版</strong><small>交换选中与未选中的区域</small></span>
+            <Switch ariaLabel="反向蒙版" checked={settings?.inverted ?? false} disabled={!settings} onCheckedChange={(inverted) => mask.updateMaskSettings({ inverted })} />
+          </label>
+        </div>
+      )}
     </div>
   )
 }
