@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::composition::{composition_layers, mux_primary_audio, CompositionInput};
-use crate::compositor::{decode_static_image_scaled, Compositor, PreviewTextureInfo};
+use crate::compositor::{Compositor, PreviewTextureInfo};
 use crate::export::TaskState;
+use crate::media::decode_static_image_scaled;
 
 const ERROR_CAPACITY: usize = 1024;
 
@@ -424,7 +425,7 @@ pub(crate) fn export_video(
         cum_append_us += append_us;
 
         if frame_index % log_interval == 0 || frame_index == total_frames - 1 {
-            crate::compositor::log_write(&format!(
+            crate::logging::write(&format!(
                 "[Export:MacGPU:Timing] frame {}/{} | total={:.0}ms decode={:.0}ms plan={:.0}ms acquire={:.0}ms render={:.0}ms append={:.0}ms",
                 frame_index,
                 total_frames,
@@ -445,7 +446,7 @@ pub(crate) fn export_video(
     }
 
     let total_us = export_start.elapsed().as_micros() as u64;
-    crate::compositor::log_write(&format!(
+    crate::logging::write(&format!(
         "[Export:MacGPU:Timing] SUMMARY total={:.0}ms | cum_decode={:.0}ms cum_plan={:.0}ms cum_acquire={:.0}ms cum_render={:.0}ms cum_append={:.0}ms",
         total_us as f64 / 1000.0,
         cum_decode_us as f64 / 1000.0,
