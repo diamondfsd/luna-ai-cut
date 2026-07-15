@@ -111,18 +111,13 @@
   gap: 13px;
 }
 
-.color-reveal-text-fields {
+.color-reveal-mode-field {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding-bottom: 2px;
 }
 
-.color-reveal-text-fields label {
-  display: grid;
-  gap: 6px;
-}
-
-.color-reveal-text-fields label > span {
+.color-reveal-mode-field > span {
   color: #b8b8b8;
   font-size: 12px;
 }
