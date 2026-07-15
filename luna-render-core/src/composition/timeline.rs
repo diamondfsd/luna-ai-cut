@@ -1,0 +1,262 @@
+use super::*;
+
+pub(crate) fn is_video_source(source: &CompositionSource) -> bool {
+    match source.source_type.as_deref().unwrap_or("auto") {
+        "video" => true,
+        "image" => false,
+        _ => {
+            let lower = source.path.to_lowercase();
+            [
+                ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".insv", ".lrv",
+            ]
+            .iter()
+            .any(|ext| lower.ends_with(ext))
+        }
+    }
+}
+
+fn layer_time(source: &CompositionSource, composition_time: f64) -> f64 {
+    let source_time = source.time.as_ref();
+    let offset = source_time.and_then(|time| time.offset).unwrap_or(0.0);
+    let start = source_time.and_then(|time| time.start).unwrap_or(0.0);
+    let mut t = start + composition_time - offset;
+    if let Some(duration) = source_time.and_then(|time| time.duration) {
+        if source_time
+            .and_then(|time| time.loop_enabled)
+            .unwrap_or(false)
+            && duration > 0.0
+        {
+            t = start + (t - start).rem_euclid(duration);
+        }
+    }
+    t.max(0.0)
+}
+
+pub(crate) fn infer_composition_duration(
+    ffprobe_path: &str,
+    input: &CompositionInput,
+) -> Option<f64> {
+    input.layers.iter().find_map(|layer| {
+        if !is_video_source(&layer.source) {
+            return None;
+        }
+        let source_time = layer.source.time.as_ref();
+        if let Some(duration) = source_time.and_then(|time| time.duration) {
+            return (duration > 0.0).then_some(duration);
+        }
+        let start = source_time.and_then(|time| time.start).unwrap_or(0.0);
+        probe_video_info(ffprobe_path, &layer.source.path)
+            .ok()
+            .and_then(|info| {
+                let remaining = info.duration_secs - start.max(0.0);
+                (remaining > 0.0).then_some(remaining)
+            })
+    })
+}
+
+pub(crate) fn infer_composition_fps(ffprobe_path: &str, input: &CompositionInput) -> Option<f64> {
+    input.layers.iter().find_map(|layer| {
+        if !is_video_source(&layer.source) {
+            return None;
+        }
+        probe_video_info(ffprobe_path, &layer.source.path)
+            .ok()
+            .map(|info| info.fps)
+            .filter(|fps| fps.is_finite() && *fps > 0.0)
+    })
+}
+
+/// FFmpeg fallback 临时文件路径
+pub(crate) fn ffmpeg_fallback_temp_path(output: &str) -> PathBuf {
+    let path = Path::new(output);
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("export.mp4");
+    path.with_file_name(format!(".{file_name}.ffmpeg-fallback-partial.mp4"))
+}
+
+/// 公共的音频合并函数 — 将第一条视频层的音频合入无声视频。
+/// 如果源无音频或合并失败，返回原始无声视频路径。
+pub(crate) fn mux_primary_audio(
+    ffmpeg_path: &str,
+    ffprobe_path: &str,
+    silent_video: &Path,
+    output_path: &str,
+    composition: &CompositionInput,
+    duration: f64,
+) -> Result<PathBuf, String> {
+    let Some(layer) = composition
+        .layers
+        .iter()
+        .find(|layer| is_video_source(&layer.source))
+    else {
+        log_write(&format!(
+            "[Export:Audio] 无视频层，跳过音频合并 output={}",
+            output_path
+        ));
+        return Ok(silent_video.to_path_buf());
+    };
+    let info = match probe_video_info(ffprobe_path, &layer.source.path) {
+        Ok(info) => info,
+        Err(error) => {
+            log_write(&format!(
+                "[Export:Audio] probe 失败，跳过音频合并: {}",
+                error
+            ));
+            return Ok(silent_video.to_path_buf());
+        }
+    };
+    if !info.audio.has_audio {
+        log_write(&format!(
+            "[Export:Audio] 源无音频轨，跳过 source={}",
+            layer.source.path
+        ));
+        return Ok(silent_video.to_path_buf());
+    }
+
+    let timing = layer.source.time.as_ref();
+    let offset = timing.and_then(|time| time.offset).unwrap_or(0.0).max(0.0);
+    if offset >= duration {
+        log_write(&format!(
+            "[Export:Audio] offset({:.2}) >= duration({:.2})，跳过",
+            offset, duration
+        ));
+        return Ok(silent_video.to_path_buf());
+    }
+    let start = timing.and_then(|time| time.start).unwrap_or(0.0).max(0.0);
+    let active_duration = timing
+        .and_then(|time| time.duration)
+        .unwrap_or(duration - offset)
+        .min(duration - offset)
+        .max(0.001);
+    let mux_output = Path::new(output_path).with_file_name(format!(
+        ".{}.audio-mux-partial.mp4",
+        Path::new(output_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("export.mp4")
+    ));
+    let _ = std::fs::remove_file(&mux_output);
+    let filter = format!("[1:a:0]asetpts=PTS-STARTPTS+{:.6}/TB[aout]", offset);
+    let mut args = vec![
+        "-y".to_string(),
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(),
+        "error".to_string(),
+        "-i".to_string(),
+        silent_video.to_string_lossy().into_owned(),
+    ];
+    if timing.and_then(|time| time.loop_enabled).unwrap_or(false) {
+        args.extend(["-stream_loop".to_string(), "-1".to_string()]);
+    }
+    args.extend([
+        "-ss".to_string(),
+        format!("{start:.6}"),
+        "-t".to_string(),
+        format!("{active_duration:.6}"),
+        "-i".to_string(),
+        layer.source.path.clone(),
+        "-filter_complex".to_string(),
+        filter,
+        "-map".to_string(),
+        "0:v:0".to_string(),
+        "-map".to_string(),
+        "[aout]".to_string(),
+        "-c:v".to_string(),
+        "copy".to_string(),
+        "-c:a".to_string(),
+        "aac".to_string(),
+        "-b:a".to_string(),
+        "192k".to_string(),
+        "-t".to_string(),
+        format!("{duration:.6}"),
+        "-movflags".to_string(),
+        "+faststart".to_string(),
+        mux_output.to_string_lossy().into_owned(),
+    ]);
+    log_write(&format!(
+        "[Export:Audio] 开始音频合并 source={} offset={:.3} start={:.3} duration={:.3}",
+        layer.source.path, offset, start, active_duration
+    ));
+    let result = Command::new(ffmpeg_path)
+        .args(&args)
+        .output()
+        .map_err(|error| format!("启动音频合成失败: {error}"))?;
+    if !result.status.success() {
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        log_write(&format!("[Export:Audio] 音频合并失败: {}", stderr.trim()));
+        return Err(format!("音频合成失败: {}", stderr.trim()));
+    }
+    log_write(&format!(
+        "[Export:Audio] 音频合并成功 output={}",
+        mux_output.display()
+    ));
+    std::fs::remove_file(silent_video).map_err(|error| format!("清理临时视频失败: {error}"))?;
+    Ok(mux_output)
+}
+
+pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<PreviewLayerInput> {
+    input
+        .layers
+        .iter()
+        .map(|layer| {
+            let reveal_progress = layer
+                .reveal
+                .as_ref()
+                .map(|reveal| {
+                    if reveal.duration <= 0.0 {
+                        1.0
+                    } else {
+                        ((time - reveal.start) / reveal.duration).clamp(0.0, 1.0)
+                    }
+                })
+                .unwrap_or(1.0);
+            let reveal_width = if layer
+                .reveal
+                .as_ref()
+                .is_some_and(|reveal| reveal.direction == "left-to-right")
+            {
+                reveal_progress
+            } else {
+                1.0
+            };
+            PreviewLayerInput {
+                layer_type: layer.layer_type.clone(),
+                file_path: layer.source.path.clone(),
+                is_video: is_video_source(&layer.source),
+                video_time: layer_time(&layer.source, time),
+                fit: layer.fit.clone().unwrap_or_else(|| "cover".to_string()),
+                dst_x: layer.rect.x,
+                dst_y: layer.rect.y,
+                dst_w: layer.rect.w,
+                dst_h: layer.rect.h,
+                src_x: 0.0,
+                src_y: 0.0,
+                src_w: 1.0,
+                src_h: 1.0,
+                opacity: layer.opacity.unwrap_or(1.0),
+                reveal_progress: reveal_width,
+                z_index: layer.z_index.unwrap_or(0),
+                color: layer.color.clone().unwrap_or_default(),
+                transform: layer.transform.clone().unwrap_or_default(),
+                positioning: layer.positioning.clone(),
+                lut_id: layer.lut_id.clone(),
+                lut_intensity: layer.lut_intensity,
+                shape: layer.shape.clone(),
+                fill_color: layer.fill_color.clone(),
+                corner_radius: layer.corner_radius,
+                stroke_color: layer.stroke_color.clone(),
+                stroke_width: layer.stroke_width,
+                content: layer.content.clone(),
+                font_size: layer.font_size,
+                font_family: layer.font_family.clone(),
+                font_file: layer.font_file.clone(),
+                font_weight: layer.font_weight,
+                text_color: layer.text_color.clone(),
+                text_align: layer.text_align.clone(),
+                vertical_align: layer.vertical_align.clone(),
+            }
+        })
+        .collect()
+}
