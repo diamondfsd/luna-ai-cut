@@ -8,6 +8,15 @@
   font-size: 12px;
 }
 
+.workspace-mask-inline-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.workspace-mask-editor-back {
+  margin-right: 6px;
+}
+
 .workspace-color-mask-layers {
   position: sticky;
   z-index: 2;
@@ -140,26 +149,4 @@
   width: 100%;
   justify-content: flex-start;
   border: 0;
-}
-
-.workspace-mask-editor-dialog {
-  right: 24px;
-  left: auto;
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(780px, calc(100vh - 40px));
-  transform: translateY(-50%);
-}
-
-.workspace-mask-editor-body {
-  max-height: calc(100vh - 220px);
-  overflow: auto;
-  padding: 16px;
-}
-
-@media (max-width: 760px) {
-  .workspace-mask-editor-dialog {
-    right: 16px;
-    left: 16px;
-    width: auto;
-  }
 }

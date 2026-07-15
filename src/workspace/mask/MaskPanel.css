@@ -4,8 +4,27 @@
   gap: 14px;
 }
 
-.workspace-mask-editor-tabs {
-  width: 100%;
+.workspace-mask-auto-section {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.workspace-mask-section-heading,
+.workspace-mask-accordion-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.workspace-mask-section-heading {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.workspace-mask-section-heading svg,
+.workspace-mask-accordion-title svg {
+  color: var(--blue);
 }
 
 .workspace-mask-step-card {
