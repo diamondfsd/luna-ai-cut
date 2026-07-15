@@ -14,9 +14,9 @@ export interface CreativeCatalogItem {
 export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
   {
     id: 'color-reveal',
-    name: '灰片变正片',
-    subtitle: '灰片变正片',
-    description: '从左向右揭示调色后的完整画面',
+    name: 'i-log 色彩还原',
+    subtitle: 'i-log 色彩还原',
+    description: '首帧停留后，分段揭示还原后的色彩',
     icon: WandSparkles,
     previewClassName: 'workspace-creative-preview--color',
   },

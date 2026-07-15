@@ -70,6 +70,8 @@ pub struct CompositionReveal {
     pub direction: String,
     pub start: f64,
     pub duration: f64,
+    pub midpoint_hold: Option<f64>,
+    pub easing: Option<String>,
 }
 
 #[napi(object)]
@@ -83,6 +85,10 @@ pub struct CompositionLayer {
     pub opacity: Option<f64>,
     pub z_index: Option<i32>,
     pub reveal: Option<CompositionReveal>,
+    pub visible_start: Option<f64>,
+    pub visible_end: Option<f64>,
+    pub fade_in_duration: Option<f64>,
+    pub fade_out_duration: Option<f64>,
     pub color: Option<RenderColorAdjustments>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,

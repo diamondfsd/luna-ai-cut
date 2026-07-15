@@ -49,7 +49,7 @@ export function buildCompositionFromPreviewLayers(
         time: layer.isVideo
           ? {
               start: layer.videoTime ?? 0,
-              offset: 0,
+              offset: layer.videoOffset ?? 0,
               duration: layer.videoDuration,
               loopEnabled: false,
             }
@@ -65,6 +65,10 @@ export function buildCompositionFromPreviewLayers(
       opacity: layer.opacity ?? 1,
       zIndex: layer.zIndex ?? index,
       reveal: layer.reveal,
+      visibleStart: layer.visibleStart,
+      visibleEnd: layer.visibleEnd,
+      fadeInDuration: layer.fadeInDuration,
+      fadeOutDuration: layer.fadeOutDuration,
       color: layer.color,
       transform: layer.transform,
       positioning: layer.positioning,
