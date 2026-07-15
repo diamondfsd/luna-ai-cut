@@ -120,7 +120,7 @@ struct GpuLayerParams {
     text_meta: [f32; 4],
     text_data: [[f32; 4]; 32],
     curve_data: [[f32; 4]; 30],
-    hsl_data: [[f32; 4]; 8],
+    hsl_data: [[f32; 4]; 12],
 }
 
 fn parse_hex_color(value: Option<&str>, fallback: [f32; 4]) -> [f32; 4] {
@@ -176,15 +176,16 @@ fn pack_curve_points(
     count as f32
 }
 
-fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 8] {
+fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 12] {
     let defaults = [0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 285.0, 320.0];
-    let mut data = [[0.0; 4]; 8];
-    for (index, default_hue) in defaults.iter().enumerate() {
+    let mut data = [[0.0; 4]; 12];
+    for index in 0..data.len() {
         let channel = channels.get(index);
+        let default_hue = defaults.get(index).copied().unwrap_or(0.0);
         data[index] = [
             channel
                 .map(|c| c.hue)
-                .unwrap_or(*default_hue)
+                .unwrap_or(default_hue)
                 .clamp(0.0, 360.0) as f32,
             channel
                 .map(|c| c.hue_shift)
