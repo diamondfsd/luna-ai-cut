@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { Slider as RadixSlider } from 'radix-ui'
 
 interface ParamSliderProps {
-  label: string
+  label: ReactNode
   value: number
   min: number
   max: number
