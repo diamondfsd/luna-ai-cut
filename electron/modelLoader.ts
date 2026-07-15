@@ -8,6 +8,7 @@ export type ModelId = SemanticSegmentationModelId
 
 interface ModelDefinition {
   fileName: string
+  version: string
   url: string
   sha256: string
   sizeBytes: number
@@ -40,12 +41,13 @@ export interface LoadedSamModel {
 
 export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntries(SEGMENTATION_MODELS.map((model) => [model.id, {
     fileName: 'model.onnx',
+    version: model.version,
     url: model.url,
     sha256: model.sha256,
     sizeBytes: model.sizeBytes,
-    license: 'NVIDIA SegFormer License (open-source non-commercial use only)',
-    source: `https://modelscope.cn/models/Xenova/${model.id.replace('-ade20k', '')}-finetuned-ade-512-512`,
-    licenseUrl: 'https://github.com/NVlabs/SegFormer/blob/master/LICENSE',
+    license: model.license,
+    source: model.source,
+    licenseUrl: model.licenseUrl,
 }])) as Record<ModelId, ModelDefinition>
 
 const pendingLoads = new Map<ModelId, Promise<LoadedModel>>()
