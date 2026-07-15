@@ -201,20 +201,6 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
     LunaMetalFrame *frame = [[LunaMetalFrame alloc] initWithPixelBuffer:pixelBuffer textureCache:_textureCache pts:_currentPTS error:error];
     t_texture = CFAbsoluteTimeGetCurrent();
 
-    // ── 每 10 帧打印一次耗时（每个 decoder 独立计数） ──
-    static int global_frame_count = 0;
-    int f = global_frame_count++;
-    if (f < 3 || f % 30 == 0) {
-        NSLog(@"[LunaAV:Timing] frame=%d path=%@ restart=%.1fms copy=%.1fms texture=%.1fms total=%.1fms didRestart=%d",
-              f,
-              _url.lastPathComponent,
-              (t_restart - t0) * 1000.0,
-              (t_copy - t_restart) * 1000.0,
-              (t_texture - t_copy) * 1000.0,
-              (t_texture - t0) * 1000.0,
-              didRestart);
-    }
-
     return frame;
 }
 
