@@ -11,7 +11,7 @@ import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
-import { normalizeCreativePipeline } from '../shared/creativeMedia'
+import { loadCreativeImageSize, normalizeCreativePipeline } from '../shared/creativeMedia'
 import {
   colorRevealCreativeDuration,
   colorRevealTransitionMax,
@@ -87,7 +87,9 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
     if (!activeAsset) return
     let cancelled = false
     Promise.all([
-      window.luna.workspace.getMediaResolution(activeAsset.path),
+      activeAsset.kind === 'image'
+        ? loadCreativeImageSize(activeAsset)
+        : window.luna.workspace.getMediaResolution(activeAsset.path),
       activeAsset.kind === 'video'
         ? window.luna.workspace.getVideoDuration(activeAsset.path)
         : Promise.resolve(IMAGE_CREATIVE_DURATION),
@@ -277,7 +279,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       <div className="color-reveal-preview">
         {activeAsset && outputSize ? (
           <div
-            className="color-reveal-stage ui-video-controls-host"
+            className={`color-reveal-stage ui-video-controls-host ${outputSize.width > outputSize.height ? 'is-landscape' : 'is-portrait'}`}
             style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }}
           >
             <MultipleLayerVideoPreviewLrcRender
