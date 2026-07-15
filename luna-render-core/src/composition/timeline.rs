@@ -52,7 +52,13 @@ fn reveal_progress(reveal: &CompositionReveal, time: f64) -> f64 {
         _ => value.clamp(0.0, 1.0),
     };
     let midpoint_hold = reveal.midpoint_hold.unwrap_or(0.0).max(0.0);
-    if midpoint_hold <= 0.0 {
+    let bounce = reveal.midpoint_bounce.unwrap_or(0.0).clamp(0.0, 0.49);
+    let midpoint_duration = if bounce > 0.0 {
+        midpoint_hold.min(0.8)
+    } else {
+        midpoint_hold
+    };
+    if midpoint_duration <= 0.0 {
         return apply_easing(elapsed / duration);
     }
 
@@ -60,20 +66,29 @@ fn reveal_progress(reveal: &CompositionReveal, time: f64) -> f64 {
     if elapsed < half_duration {
         return apply_easing(elapsed / half_duration) * 0.5;
     }
-    if elapsed < half_duration + midpoint_hold {
-        let bounce = reveal.midpoint_bounce.unwrap_or(0.0).clamp(0.0, 0.49);
+    if elapsed < half_duration + midpoint_duration {
         if bounce <= 0.0 {
             return 0.5;
         }
-        let bounce_progress = (elapsed - half_duration) / midpoint_hold;
-        let smooth_recoil = (std::f64::consts::PI * bounce_progress).sin().powi(2);
-        return 0.5 - smooth_recoil * bounce;
+        let bounce_progress = (elapsed - half_duration) / midpoint_duration;
+        let damping_ratio: f64 = 0.32;
+        let damped_frequency = std::f64::consts::PI;
+        let natural_frequency = damped_frequency / (1.0 - damping_ratio.powi(2)).sqrt();
+        let decay = damping_ratio * natural_frequency;
+        let peak_time = (damped_frequency / decay).atan() / damped_frequency;
+        let peak = (-decay * peak_time).exp() * (damped_frequency * peak_time).sin();
+        let spring_recoil = (-decay * bounce_progress).exp()
+            * (damped_frequency * bounce_progress).sin()
+            / peak;
+        return 0.5 - spring_recoil * bounce;
     }
-    if elapsed < duration + midpoint_hold {
-        let second_half = (elapsed - half_duration - midpoint_hold) / half_duration;
+    if elapsed < duration + midpoint_duration {
+        let second_half = (elapsed - half_duration - midpoint_duration) / half_duration;
         let second_half_progress = if reveal.midpoint_bounce.unwrap_or(0.0) > 0.0 {
-            let compressed = (second_half / 0.65).clamp(0.0, 1.0);
-            compressed * compressed
+            let compressed = (second_half / 0.28).clamp(0.0, 1.0);
+            let initial_velocity = 0.16;
+            initial_velocity * compressed
+                + (1.0 - initial_velocity) * compressed * compressed
         } else {
             apply_easing(second_half)
         };
@@ -342,9 +357,10 @@ mod tests {
     fn staged_reveal_can_bounce_after_midpoint() {
         let mut reveal = staged_reveal();
         reveal.midpoint_bounce = Some(0.04);
-        assert!((reveal_progress(&reveal, 2.25) - 0.46).abs() < 0.0001);
+        assert!(reveal_progress(&reveal, 2.2) < 0.461);
         assert!((reveal_progress(&reveal, 2.5) - 0.5).abs() < 0.0001);
-        assert!(reveal_progress(&reveal, 3.2) > 0.99);
+        assert!(reveal_progress(&reveal, 2.55) > 0.5);
+        assert!(reveal_progress(&reveal, 2.78) > 0.99);
     }
 
     #[test]
