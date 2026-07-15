@@ -1,0 +1,7 @@
+.workspace-mask-overlay {
+  position: absolute;
+  z-index: 8;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}

@@ -147,7 +147,7 @@ export interface BuildBorderLayerOptions {
   metadata: MediaMetadata | null
   /** 当前素材。带 media 层的预设可借此重新安排照片在画布中的位置。 */
   mediaPath?: string | null
-  mediaLayerStyle?: Pick<PreviewLayer, 'color' | 'transform' | 'lutId' | 'lutIntensity' | 'isVideo'>
+  mediaLayerStyle?: Pick<PreviewLayer, 'color' | 'transform' | 'lutId' | 'lutIntensity' | 'isVideo' | 'maskPath' | 'maskOpacity' | 'maskInverted' | 'maskFeather'>
 }
 
 /** JSON 预设直接转换为 wgpu 原生层，不在浏览器中进行任何栅格化。 */

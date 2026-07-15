@@ -7,10 +7,21 @@ mod logging;
 #[cfg(target_os = "macos")]
 mod macos;
 mod media;
+mod segmentation;
 
 use std::sync::{LazyLock, Mutex};
 
 pub use api_types::*;
+
+#[napi]
+pub fn segment_image(
+    model_path: String,
+    rgb: Buffer,
+    point_x: f64,
+    point_y: f64,
+) -> napi::Result<segmentation::SegmentationResult> {
+    segmentation::segment(model_path, rgb, point_x, point_y).map_err(napi::Error::from_reason)
+}
 pub use color_source::{resolve_render_source, ColorInfo, ResolvedRenderSource};
 pub use composition::*;
 use compositor::Compositor;
@@ -179,6 +190,11 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             reveal_progress: 1.0,
             z_index: l.z_index,
             color: l.color.clone().unwrap_or_default(),
+            mask_path: l.mask_path.clone(),
+            mask_texture_id: None,
+            mask_opacity: l.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
+            mask_inverted: l.mask_inverted.unwrap_or(false),
+            mask_feather: l.mask_feather.unwrap_or(0.0).clamp(0.0, 40.0),
             transform: l.transform.clone().unwrap_or_default(),
             positioning: l.positioning.clone(),
             lut_id: l.lut_id.clone(),
@@ -246,6 +262,11 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     reveal_progress: 1.0,
                     z_index: item.layer.z_index,
                     color: item.layer.color.clone().unwrap_or_default(),
+                    mask_path: item.layer.mask_path.clone(),
+                    mask_texture_id: None,
+                    mask_opacity: item.layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
+                    mask_inverted: item.layer.mask_inverted.unwrap_or(false),
+                    mask_feather: item.layer.mask_feather.unwrap_or(0.0).clamp(0.0, 40.0),
                     transform: item.layer.transform.clone().unwrap_or_default(),
                     positioning: item.layer.positioning.clone(),
                     lut_id: item.layer.lut_id.clone(),

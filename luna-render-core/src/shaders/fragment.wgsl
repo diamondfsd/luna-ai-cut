@@ -51,6 +51,25 @@ fn sample_media_texture(tex_coord: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(straight_rgb, averaged_alpha);
 }
 
+fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
+    let feather_px = params.mask_params.z;
+    if (feather_px < 0.5) {
+        return textureSample(mask_texture, src_sampler, tex_coord).r;
+    }
+    let dimensions = vec2<f32>(textureDimensions(mask_texture));
+    let offset = vec2<f32>(feather_px) / max(dimensions, vec2<f32>(1.0));
+    var value = textureSample(mask_texture, src_sampler, tex_coord).r * 4.0;
+    value += textureSample(mask_texture, src_sampler, tex_coord + vec2<f32>(offset.x, 0.0)).r * 2.0;
+    value += textureSample(mask_texture, src_sampler, tex_coord - vec2<f32>(offset.x, 0.0)).r * 2.0;
+    value += textureSample(mask_texture, src_sampler, tex_coord + vec2<f32>(0.0, offset.y)).r * 2.0;
+    value += textureSample(mask_texture, src_sampler, tex_coord - vec2<f32>(0.0, offset.y)).r * 2.0;
+    value += textureSample(mask_texture, src_sampler, tex_coord + offset).r;
+    value += textureSample(mask_texture, src_sampler, tex_coord - offset).r;
+    value += textureSample(mask_texture, src_sampler, tex_coord + vec2<f32>(offset.x, -offset.y)).r;
+    value += textureSample(mask_texture, src_sampler, tex_coord + vec2<f32>(-offset.x, offset.y)).r;
+    return value / 16.0;
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pixel_x = in.position.x;
@@ -168,7 +187,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     );
 
     var color = sample_media_texture(tex_coord);
-    color = vec4<f32>(apply_color(color.rgb, tex_coord, local_x), color.a);
+    let adjusted = apply_color(color.rgb, tex_coord, local_x);
+    var mask_value = sample_color_mask(tex_coord);
+    if (params.mask_params.y > 0.5) {
+        mask_value = 1.0 - mask_value;
+    }
+    mask_value = clamp(mask_value * params.mask_params.x, 0.0, 1.0);
+    color = vec4<f32>(mix(color.rgb, adjusted, mask_value), color.a);
     color.a = color.a * params.opacity;
     if (params.sampling_quality > 0.5) {
         color = vec4<f32>(color.rgb * color.a, color.a);

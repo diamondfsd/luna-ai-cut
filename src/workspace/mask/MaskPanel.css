@@ -1,0 +1,36 @@
+.workspace-mask-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.workspace-mask-smart-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workspace-mask-smart-row > span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-mask-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace-mask-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+  border-top: 1px solid var(--hairline);
+}

@@ -165,6 +165,36 @@ impl Compositor {
         Ok(id)
     }
 
+    pub(super) fn load_mask_texture(
+        &mut self,
+        data: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<u32, String> {
+        let expected = width
+            .checked_mul(height)
+            .and_then(|value| value.checked_mul(4))
+            .ok_or_else(|| format!("mask texture size overflow: {}x{}", width, height))?
+            as usize;
+        if width == 0 || height == 0 || data.len() < expected {
+            return Err(format!("invalid mask texture data for {}x{}", width, height));
+        }
+        let id = self.next_texture_id;
+        self.next_texture_id += 1;
+        let texture = create_rgba_texture(
+            &self.device,
+            "color-mask",
+            width,
+            height,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            1,
+            false,
+        );
+        upload_rgba(&self.queue, &texture, &data[..expected], width, height);
+        self.textures.insert(id, TextureEntry { texture, width, height });
+        Ok(id)
+    }
+
     pub fn load_texture_from_path(
         &mut self,
         ffmpeg: &str,

@@ -106,6 +106,10 @@ export interface PreviewLayer {
   /** 仅导出合成使用；实时预览由调用方按播放进度更新裁剪。 */
   reveal?: CompositionReveal
   color?: RenderColorAdjustments
+  maskPath?: string
+  maskOpacity?: number
+  maskInverted?: boolean
+  maskFeather?: number
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
@@ -170,6 +174,10 @@ export interface CompositionLayer {
   /** 按合成时间从左向右展开当前图层。 */
   reveal?: CompositionReveal
   color?: RenderColorAdjustments
+  maskPath?: string
+  maskOpacity?: number
+  maskInverted?: boolean
+  maskFeather?: number
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   /** 3D LUT 文件路径 */
@@ -198,6 +206,10 @@ export interface RenderLayer {
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
   color?: RenderColorAdjustments
+  maskPath?: string
+  maskOpacity?: number
+  maskInverted?: boolean
+  maskFeather?: number
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   /** 3D LUT 文件路径 */

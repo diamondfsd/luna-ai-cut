@@ -319,6 +319,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         transform: pipelineTransformToRenderTransform(pipeline.transform),
         lutId: lutFilePath,
         lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
+        maskPath: pipeline.colorMask?.path,
+        maskOpacity: pipeline.colorMask?.opacity,
+        maskInverted: pipeline.colorMask?.inverted,
+        maskFeather: pipeline.colorMask?.feather,
       }
       main[0] = cropActive
         ? styledMain
