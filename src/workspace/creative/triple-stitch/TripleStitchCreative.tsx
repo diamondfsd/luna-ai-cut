@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Download, Minus, Move, Plus, RotateCcw } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, Download, Minus, Move, Plus, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
 
@@ -171,7 +171,7 @@ function compositionApi(): LunaCompositionExportApi {
   return api
 }
 
-export function TripleStitchCreative() {
+export function TripleStitchCreative({ onBack }: { onBack: () => void }) {
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] TripleStitchCreative mount at ${performance.now().toFixed(0)}ms`)
   const media = useWorkspaceMedia()
   const renderCountRef = useRef(0)
@@ -690,6 +690,12 @@ export function TripleStitchCreative() {
 
   return (
     <section className="triple-stitch-page">
+      <header className="triple-stitch-toolbar">
+        <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>
+          创意列表
+        </Button>
+        <span>Live 三拼</span>
+      </header>
       <div className="triple-stitch-preview">
         <div className="triple-stitch-board ui-video-controls-host">
           <MultipleLayerVideoPreviewLrcRender

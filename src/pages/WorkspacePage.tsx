@@ -52,11 +52,12 @@ function extractExifValue(metadata: MediaMetadata, key: string): string | null {
 interface WorkspacePageProps {
   workspaceMode: WorkspaceMode
   creativeModeId: CreativeModeId | null
+  onCreativeModeChange: (modeId: CreativeModeId | null) => void
   pageActive: boolean
   onEditingChange?: (editing: boolean) => void
 }
 
-export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
+export function WorkspacePage({ workspaceMode, creativeModeId, onCreativeModeChange, pageActive, onEditingChange }: WorkspacePageProps) {
   // 非活跃时不渲染：AppRoute 的 preserve 只隐藏不卸载，不跳过会导致 context 消费者持续响应全局 state 变化
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
@@ -69,6 +70,7 @@ export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEdi
             <WorkspacePageInner
               workspaceMode={workspaceMode}
               creativeModeId={creativeModeId}
+              onCreativeModeChange={onCreativeModeChange}
               pageActive={pageActive}
               onEditingChange={onEditingChange}
             />
@@ -81,7 +83,7 @@ export function WorkspacePage({ workspaceMode, creativeModeId, pageActive, onEdi
 
 // ── inner page that consumes all three contexts ──
 
-function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditingChange }: WorkspacePageProps) {
+function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChange, pageActive, onEditingChange }: WorkspacePageProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
@@ -593,7 +595,10 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, pageActive, onEditi
   return (
     <div className={`workspace-layout${edit.trimActive ? ' trim-active' : ''}`}>
       {workspaceMode === 'creative' ? (
-        <WorkspaceCreativeFactory creativeModeId={creativeModeId ?? 'triple-stitch'} />
+        <WorkspaceCreativeFactory
+          creativeModeId={creativeModeId}
+          onCreativeModeChange={onCreativeModeChange}
+        />
       ) : (
         <>
           <WorkspacePreviewToolbar
