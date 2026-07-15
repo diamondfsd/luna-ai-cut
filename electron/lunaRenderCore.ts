@@ -101,6 +101,11 @@ interface LunaRenderCoreNative {
     classId: number
     bytes: Buffer
   }
+  segmentSam(visionEncoderPath: string, promptDecoderPath: string, rgb: Buffer, sourceWidth: number, sourceHeight: number, pointX: number, pointY: number): {
+    width: number
+    height: number
+    bytes: Buffer
+  }
 }
 
 let native: LunaRenderCoreNative | null = null

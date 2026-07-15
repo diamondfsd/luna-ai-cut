@@ -1,9 +1,10 @@
 import { Brush, Eraser, Eye, EyeOff, Sparkles, Trash2 } from 'lucide-react'
 
 import { Button, ButtonGroup, IconButton, Switch, Tooltip } from '../../ui'
+import { SAM_MODEL, SEGMENTATION_MODELS } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
-import { useWorkspaceMask, type SegmentationModelId } from '../context/WorkspaceMaskContext'
+import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import './MaskPanel.css'
 
 const BRUSH_MODES = [
@@ -11,10 +12,13 @@ const BRUSH_MODES = [
   { value: 'erase', label: <><Eraser size={14} />移除</> },
 ]
 
-const SEGMENTATION_MODES: Array<{ value: SegmentationModelId; label: string }> = [
-  { value: 'segformer-b0-ade20k', label: '标准' },
-  { value: 'segformer-b2-ade20k', label: '精细' },
-]
+function formatModelSize(sizeBytes: number): string {
+  return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function formatDuration(milliseconds: number): string {
+  return milliseconds < 1_000 ? `${milliseconds} ms` : `${(milliseconds / 1_000).toFixed(2)} 秒`
+}
 
 export function MaskPanel() {
   const edit = useWorkspaceEdit()
@@ -34,18 +38,59 @@ export function MaskPanel() {
             mask.setSemanticPicking(true)
           }}
         >
-          {mask.busy ? '正在识别' : '智能选择'}
+          {mask.busy ? mask.segmentationProgress?.label ?? '正在处理中' : '智能选择'}
         </Button>
         <span>{settings?.kind === 'semantic' ? settings.className ?? '已选择区域' : '点击画面选择区域'}</span>
       </div>
-      <div className="workspace-mask-quality-row">
-        <span>识别质量</span>
-        <ButtonGroup
-          options={SEGMENTATION_MODES}
-          value={mask.segmentationModel}
-          onChange={mask.setSegmentationModel}
-        />
+      {mask.segmentationProgress && (
+        <div className="workspace-mask-progress" aria-live="polite">
+          <div>
+            <span>{mask.segmentationProgress.label}</span>
+            {mask.segmentationProgress.percent !== null && <span>{mask.segmentationProgress.percent}%</span>}
+          </div>
+          <div
+            className="workspace-mask-progress-track"
+            role="progressbar"
+            aria-label={mask.segmentationProgress.label}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={mask.segmentationProgress.percent ?? undefined}
+          >
+            <span
+              className={mask.segmentationProgress.percent === null ? 'is-indeterminate' : undefined}
+              style={mask.segmentationProgress.percent === null ? undefined : { width: `${mask.segmentationProgress.percent}%` }}
+            />
+          </div>
+        </div>
+      )}
+      <div className="workspace-mask-models" aria-label="识别模型">
+        <span className="workspace-mask-section-label">识别模型</span>
+        <div className="workspace-mask-model-list">
+          {[...SEGMENTATION_MODELS, SAM_MODEL].map((model) => (
+            <Button
+              key={model.id}
+              variant={mask.segmentationModel === model.id ? 'primary' : 'secondary'}
+              className="workspace-mask-model-option"
+              disabled={mask.busy}
+              onClick={() => mask.setSegmentationModel(model.id)}
+            >
+              <span>{model.name}</span>
+              <span>{model.description} · {formatModelSize(model.sizeBytes)}</span>
+            </Button>
+          ))}
+        </div>
       </div>
+      {mask.lastSegmentationPerformance && (
+        <div className="workspace-mask-performance" aria-label="最近一次识别耗时">
+          <span className="workspace-mask-section-label">最近一次识别</span>
+          <dl>
+            <div><dt>模型准备</dt><dd>{formatDuration(mask.lastSegmentationPerformance.modelLoadMs)}</dd></div>
+            <div><dt>图像准备</dt><dd>{formatDuration(mask.lastSegmentationPerformance.imagePrepareMs)}</dd></div>
+            <div><dt>识别</dt><dd>{formatDuration(mask.lastSegmentationPerformance.inferenceMs)}</dd></div>
+            <div><dt>总耗时</dt><dd>{formatDuration(mask.lastSegmentationPerformance.totalMs)}</dd></div>
+          </dl>
+        </div>
+      )}
 
       <ButtonGroup
         options={BRUSH_MODES}
