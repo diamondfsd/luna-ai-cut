@@ -1,4 +1,4 @@
-fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>) -> vec3<f32> {
+fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32> {
     let raw = input;
     let blurred = blur3(tex_coord);
     let detail = raw - blurred;
@@ -69,19 +69,42 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>) -> vec3<f32> {
     c = c * ratio;
 
     var hsl = rgb_to_hsl(sat3(c));
-    for (var i = 0u; i < 8u; i = i + 1u) {
+    let source_hsl = hsl;
+    // Low-chroma pixels have an unstable hue. Excluding them prevents neutral
+    // texture and sensor noise from turning into saturated color speckles.
+    let chroma_weight = smoothstep(0.04, 0.16, source_hsl.y);
+    let shadow_weight = smoothstep(0.015, 0.08, source_hsl.z);
+    let highlight_weight = 1.0 - smoothstep(0.92, 0.995, source_hsl.z);
+    for (var i = 0u; i < 12u; i = i + 1u) {
         let channel = params.hsl_data[i];
         let target_hue = channel.x / 360.0;
-        let distance_to_target = abs(fract(hsl.x - target_hue + 0.5) - 0.5);
-        let band = 1.0 - smoothstep(0.08, 0.28, distance_to_target);
+        let distance_to_target = abs(fract(source_hsl.x - target_hue + 0.5) - 0.5);
+        let band = (1.0 - smoothstep(0.04, 0.13, distance_to_target))
+            * chroma_weight * shadow_weight * highlight_weight;
         hsl.x = fract(hsl.x + channel.y / 360.0 * band);
-        hsl.y = sat1(hsl.y + channel.z / 100.0 * band);
-        hsl.z = sat1(hsl.z + channel.w / 100.0 * band);
+        let saturation_adjustment = channel.z / 100.0 * band;
+        if (saturation_adjustment >= 0.0) {
+            hsl.y = hsl.y + (1.0 - hsl.y) * saturation_adjustment;
+        } else {
+            hsl.y = hsl.y * (1.0 + saturation_adjustment);
+        }
+        let luminance_adjustment = channel.w / 100.0 * band;
+        if (luminance_adjustment >= 0.0) {
+            hsl.z = hsl.z + (1.0 - hsl.z) * luminance_adjustment;
+        } else {
+            hsl.z = hsl.z * (1.0 + luminance_adjustment);
+        }
     }
     c = hsl_to_rgb(hsl);
 
     c = c + detail * params.sharpen / 100.0 * 1.5;
     c = apply_lut(c);
+    let reveal_progress = params.text_meta.w;
+    if (reveal_progress > 0.001 && reveal_progress < 0.999) {
+        let edge_distance_px = (reveal_progress - layer_x) * params.dst_w;
+        let edge_alpha = (1.0 - smoothstep(0.0, 0.8, edge_distance_px)) * 0.28;
+        c = mix(c, vec3<f32>(1.0), sat1(edge_alpha));
+    }
     return sat3(c);
 }
 

@@ -110,7 +110,9 @@ export function normalizeColor(color?: Partial<RenderColorAdjustments>): RenderC
 const DEFAULT_HSL_CHANNELS = [0, 30, 60, 120, 180, 240, 285, 320]
 
 function normalizeHslChannels(channels?: Array<{ hue?: number; hueShift?: number; saturation?: number; luminance?: number }>): RenderColorAdjustments['hslChannels'] {
-  return DEFAULT_HSL_CHANNELS.map((defaultHue, index) => {
+  const count = Math.min(12, Math.max(DEFAULT_HSL_CHANNELS.length, channels?.length ?? 0))
+  return Array.from({ length: count }, (_, index) => {
+    const defaultHue = DEFAULT_HSL_CHANNELS[index] ?? 0
     const channel = Array.isArray(channels) ? channels[index] : undefined
     return {
       hue: clampNumber(channel?.hue ?? defaultHue, 0, 360),

@@ -1,4 +1,4 @@
-import type { EditPipeline } from '../shared/editPipeline'
+import { HSL_CHANNELS, type EditPipeline } from '../shared/editPipeline'
 import { CurvePanel } from './CurvePanel'
 import { DetailPanel } from './DetailPanel'
 import { GradingPanel } from './GradingPanel'
@@ -24,7 +24,10 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
       value.vibrance !== 0 || value.saturation !== 0,
     curve: activeCurve.length > 0 ||
       value.levelsBlack !== 0 || value.levelsWhite !== 1,
-    hsl: Object.values(value.hslChannels).some((channel) => channel.hueShift !== 0 || channel.saturation !== 0 || channel.luminance !== 0),
+    hsl: value.customHslChannels.length > 0 || HSL_CHANNELS.some((channel) => {
+      const current = value.hslChannels[channel.key]
+      return current.hueShift !== 0 || current.saturation !== 0 || current.luminance !== 0
+    }),
     grading: value.gradeShadowsAmount !== 0 || value.gradeMidAmount !== 0 || value.gradeHighlightsAmount !== 0,
     detail: value.sharpen !== 0 || value.denoise !== 0,
   }

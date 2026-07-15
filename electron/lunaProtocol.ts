@@ -2,6 +2,7 @@ import { DEFAULT_DEVICE } from './deviceDefaults'
 import { lunaMediaAdapter } from './deviceMedia'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
 import { connectSocket, Insta360TcpSession } from './insta360TcpProtocol'
+import { directHttpFetch } from './directHttp'
 import type { ConnectionStatus, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export const DEFAULT_HOST = DEFAULT_DEVICE.defaultHost
@@ -246,19 +247,6 @@ export class LunaClient {
     let controlError: string | null = null
 
     logMainInfo(`[状态检测] 开始端口探测`, { host: this.host })
-    const t1 = performance.now()
-    try {
-      const endpoint = httpEndpoint(this.host)
-      const socket = await connectSocket(endpoint.host, endpoint.port, 1500)
-      socket.destroy()
-      httpOk = true
-      logMainInfo(`[状态检测] HTTP 端口探测成功`, { host: this.host, hostPort: `${endpoint.host}:${endpoint.port}`, elapsedMs: Math.round(performance.now() - t1) })
-    } catch (error) {
-      httpError = error instanceof Error ? error.message : String(error)
-      message = `服务不可用：${httpError}`
-      logMainWarn(`[状态检测] HTTP 端口探测失败`, { host: this.host, elapsedMs: Math.round(performance.now() - t1), error: httpError })
-    }
-
     const t2 = performance.now()
     if (this.controlSession?.isOpen) {
       controlOk = true
@@ -274,6 +262,23 @@ export class LunaClient {
         message = `控制端口不可用：${controlError}`
         logMainWarn(`[状态检测] 控制端口探测失败`, { host: this.host, elapsedMs: Math.round(performance.now() - t2), error: controlError })
       }
+    }
+
+    if (controlOk) {
+      const t1 = performance.now()
+      try {
+        const endpoint = httpEndpoint(this.host)
+        const socket = await connectSocket(endpoint.host, endpoint.port, 1500)
+        socket.destroy()
+        httpOk = true
+        logMainInfo(`[状态检测] HTTP 端口探测成功`, { host: this.host, hostPort: `${endpoint.host}:${endpoint.port}`, elapsedMs: Math.round(performance.now() - t1) })
+      } catch (error) {
+        httpError = error instanceof Error ? error.message : String(error)
+        message = `HTTP 服务不可用：${httpError}`
+        logMainWarn(`[状态检测] HTTP 端口探测失败`, { host: this.host, elapsedMs: Math.round(performance.now() - t1), error: httpError })
+      }
+    } else {
+      logMainWarn(`[状态检测] 控制端口未建立，跳过 HTTP 探测`, { host: this.host, port: this.controlPort })
     }
 
     if (httpOk && controlOk) {
@@ -334,7 +339,7 @@ export class LunaClient {
 
         const tFetch = performance.now()
         logMainInfo(`[HTTP读取] 发起 HTTP GET`, { url, attempt: attempt + 1, sinceStartMs: Math.round(tFetch - t0) })
-        const response = await fetch(url, {
+        const response = await directHttpFetch(url, {
           headers: {
             'User-Agent': 'LunaAI-Cut/0.1',
             'Accept-Encoding': 'identity',
@@ -360,7 +365,7 @@ export class LunaClient {
                 const dirUrl = cameraUrl(this.host, `${cameraPath}${dir}/`)
                 try {
                   logMainDebug(`[HTTP读取] 读取子目录`, { url: dirUrl })
-                  const dirResponse = await fetch(dirUrl, {
+                  const dirResponse = await directHttpFetch(dirUrl, {
                     headers: {
                       'User-Agent': 'LunaAI-Cut/0.1',
                       'Accept-Encoding': 'identity',
