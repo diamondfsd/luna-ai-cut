@@ -95,30 +95,113 @@ fn connected_component(
     selected
 }
 
-fn upscale_and_soften(selected: &[bool]) -> Vec<u8> {
-    let mut full = vec![0u8; INPUT_SIZE * INPUT_SIZE];
-    for y in 0..INPUT_SIZE {
-        for x in 0..INPUT_SIZE {
-            full[y * INPUT_SIZE + x] = if selected[(y / 4) * OUTPUT_SIZE + x / 4] {
-                255
-            } else {
-                0
-            };
+fn target_probability(logits: &[f32], targets: &[usize]) -> Vec<f32> {
+    let plane = OUTPUT_SIZE * OUTPUT_SIZE;
+    let mut probability = vec![0.0f32; plane];
+    for pixel in 0..plane {
+        let mut maximum = f32::NEG_INFINITY;
+        for class_id in 0..CLASS_COUNT {
+            maximum = maximum.max(logits[class_id * plane + pixel]);
         }
+        let mut total = 0.0;
+        let mut selected = 0.0;
+        for class_id in 0..CLASS_COUNT {
+            let value = (logits[class_id * plane + pixel] - maximum).exp();
+            total += value;
+            if targets.contains(&class_id) {
+                selected += value;
+            }
+        }
+        probability[pixel] = selected / total.max(f32::EPSILON);
     }
-    let mut softened = full.clone();
-    for y in 1..INPUT_SIZE - 1 {
-        for x in 1..INPUT_SIZE - 1 {
-            let mut total = 0u32;
-            for offset_y in y - 1..=y + 1 {
-                for offset_x in x - 1..=x + 1 {
-                    total += full[offset_y * INPUT_SIZE + offset_x] as u32;
+    probability
+}
+
+fn dilate_selection(selected: &[bool]) -> Vec<bool> {
+    let mut dilated = selected.to_vec();
+    for y in 0..OUTPUT_SIZE {
+        for x in 0..OUTPUT_SIZE {
+            if !selected[y * OUTPUT_SIZE + x] {
+                continue;
+            }
+            for offset_y in -1i32..=1 {
+                for offset_x in -1i32..=1 {
+                    let next_x = x as i32 + offset_x;
+                    let next_y = y as i32 + offset_y;
+                    if next_x >= 0
+                        && next_x < OUTPUT_SIZE as i32
+                        && next_y >= 0
+                        && next_y < OUTPUT_SIZE as i32
+                    {
+                        dilated[next_y as usize * OUTPUT_SIZE + next_x as usize] = true;
+                    }
                 }
             }
-            softened[y * INPUT_SIZE + x] = (total / 9) as u8;
         }
     }
-    softened
+    dilated
+}
+
+fn guided_upscale(probability: &[f32], selection: &[bool], rgb: &[u8]) -> Vec<u8> {
+    let selection = dilate_selection(selection);
+    let mut output = vec![0u8; INPUT_SIZE * INPUT_SIZE];
+    let scale = INPUT_SIZE as f32 / OUTPUT_SIZE as f32;
+    let color_sigma = 0.12f32;
+    for y in 0..INPUT_SIZE {
+        for x in 0..INPUT_SIZE {
+            let low_x = (x as f32 + 0.5) / scale - 0.5;
+            let low_y = (y as f32 + 0.5) / scale - 0.5;
+            let center = (y * INPUT_SIZE + x) * 3;
+            let center_color = [
+                rgb[center] as f32 / 255.0,
+                rgb[center + 1] as f32 / 255.0,
+                rgb[center + 2] as f32 / 255.0,
+            ];
+            let mut weighted = 0.0;
+            let mut weight_sum = 0.0;
+            for offset_y in -2i32..=2 {
+                for offset_x in -2i32..=2 {
+                    let sample_x =
+                        (low_x.floor() as i32 + offset_x).clamp(0, OUTPUT_SIZE as i32 - 1) as usize;
+                    let sample_y =
+                        (low_y.floor() as i32 + offset_y).clamp(0, OUTPUT_SIZE as i32 - 1) as usize;
+                    let low_index = sample_y * OUTPUT_SIZE + sample_x;
+                    if !selection[low_index] {
+                        continue;
+                    }
+                    let guide_x = ((sample_x as f32 + 0.5) * scale)
+                        .floor()
+                        .clamp(0.0, (INPUT_SIZE - 1) as f32)
+                        as usize;
+                    let guide_y = ((sample_y as f32 + 0.5) * scale)
+                        .floor()
+                        .clamp(0.0, (INPUT_SIZE - 1) as f32)
+                        as usize;
+                    let guide = (guide_y * INPUT_SIZE + guide_x) * 3;
+                    let color_distance = (0..3)
+                        .map(|channel| {
+                            let difference =
+                                center_color[channel] - rgb[guide + channel] as f32 / 255.0;
+                            difference * difference
+                        })
+                        .sum::<f32>();
+                    let spatial_x = sample_x as f32 - low_x;
+                    let spatial_y = sample_y as f32 - low_y;
+                    let spatial_weight =
+                        (-(spatial_x * spatial_x + spatial_y * spatial_y) / 4.5).exp();
+                    let color_weight = (-color_distance / (2.0 * color_sigma * color_sigma)).exp();
+                    let weight = spatial_weight * color_weight;
+                    weighted += probability[low_index] * weight;
+                    weight_sum += weight;
+                }
+            }
+            let value = weighted / weight_sum.max(f32::EPSILON);
+            let soft = ((value - 0.12) / (0.55 - 0.12)).clamp(0.0, 1.0);
+            let smooth = soft * soft * (3.0 - 2.0 * soft);
+            output[y * INPUT_SIZE + x] = (smooth * 255.0).round() as u8;
+        }
+    }
+    output
 }
 
 pub fn segment(
@@ -169,6 +252,7 @@ pub fn segment(
     let seed_y = (point_y.clamp(0.0, 1.0) * (OUTPUT_SIZE - 1) as f64).round() as usize;
     let class_id = classes[seed_y * OUTPUT_SIZE + seed_x] as usize;
     let targets = selected_classes(class_id);
+    let probability = target_probability(logits, &targets);
     let selected = if class_id == 2 || WATER_CLASSES.contains(&class_id) {
         classes
             .iter()
@@ -181,7 +265,7 @@ pub fn segment(
         width: INPUT_SIZE as u32,
         height: INPUT_SIZE as u32,
         class_id: class_id as u32,
-        bytes: upscale_and_soften(&selected).into(),
+        bytes: guided_upscale(&probability, &selected, rgb.as_ref()).into(),
     })
 }
 
@@ -212,5 +296,22 @@ mod tests {
     fn water_classes_are_grouped() {
         assert_eq!(selected_classes(26), WATER_CLASSES);
         assert_eq!(selected_classes(2), vec![2]);
+    }
+
+    #[test]
+    fn guided_upscale_keeps_soft_boundary_values() {
+        let mut probability = vec![0.0f32; OUTPUT_SIZE * OUTPUT_SIZE];
+        let mut selection = vec![false; OUTPUT_SIZE * OUTPUT_SIZE];
+        for y in 0..OUTPUT_SIZE {
+            for x in 0..OUTPUT_SIZE / 2 {
+                probability[y * OUTPUT_SIZE + x] = 0.9;
+                selection[y * OUTPUT_SIZE + x] = true;
+            }
+        }
+        let rgb = vec![128u8; INPUT_SIZE * INPUT_SIZE * 3];
+        let mask = guided_upscale(&probability, &selection, &rgb);
+        assert!(mask.iter().any(|value| *value > 0 && *value < 255));
+        assert!(mask[INPUT_SIZE / 2 * INPUT_SIZE + INPUT_SIZE / 4] > 240);
+        assert_eq!(mask[INPUT_SIZE / 2 * INPUT_SIZE + INPUT_SIZE * 3 / 4], 0);
     }
 }
