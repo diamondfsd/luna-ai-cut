@@ -1,0 +1,31 @@
+.ui-context-menu-content {
+  z-index: 1000;
+  min-width: 176px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: #292929;
+  color: #f2f2f2;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+  animation: ui-fade-in 100ms ease;
+  transform-origin: var(--radix-context-menu-content-transform-origin);
+}
+
+.ui-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
+  padding: 6px 9px;
+  border-radius: 4px;
+  outline: none;
+  font-size: 13px;
+  line-height: 1;
+  cursor: default;
+  user-select: none;
+}
+
+.ui-context-menu-item[data-highlighted] {
+  background: var(--blue);
+  color: #fff;
+}

@@ -9,8 +9,11 @@
 
 .workspace-creative-list-header {
   display: flex;
-  align-items: flex-end;
-  min-height: 96px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 12px;
+  min-height: 116px;
   padding: 22px 26px 18px;
   border-bottom: 1px solid #303030;
 }

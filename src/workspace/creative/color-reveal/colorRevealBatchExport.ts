@@ -4,6 +4,7 @@ import type { CompositionInput, VideoExportSettings, WorkspaceMediaAsset } from 
 import type { EditPipeline } from '../../shared/editPipeline'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
+import { loadCreativeImageSize } from '../shared/creativeMedia'
 import { colorRevealCreativeDuration, colorRevealTransitionMax, IMAGE_CREATIVE_DURATION } from './colorRevealConfig'
 import { buildColorRevealLayers } from './colorRevealLayers'
 
@@ -57,7 +58,9 @@ export async function queueColorRevealBatchExport(options: ColorRevealBatchExpor
   const stamp = Date.now()
   const entries = await Promise.all(options.sources.map(async ({ asset, pipeline }, index) => {
     const isImage = asset.kind === 'image'
-    const resolution = await window.luna.workspace.getMediaResolution(asset.path)
+    const resolution = isImage
+      ? await loadCreativeImageSize(asset)
+      : await window.luna.workspace.getMediaResolution(asset.path)
     const mediaDuration = isImage
       ? IMAGE_CREATIVE_DURATION
       : await window.luna.workspace.getVideoDuration(asset.path)
