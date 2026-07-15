@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 
 import type { AppSettings, LunaFile } from '../shared/types'
+import { toast } from '../ui'
 
 interface CameraMediaDeleteProps {
   selectedFiles: LunaFile[]
@@ -27,6 +28,7 @@ export function useCameraMediaDelete({ selectedFiles, settings, setSelected, rel
       setSelected(new Set())
       setShowCameraDeleteDialog(false)
       await reload()
+      toast.success(`删除完成：${selectedFiles.length} 个素材`)
     } catch (error) {
       setCameraDeleteError(error instanceof Error ? error.message : String(error))
       setSelected(new Set())
