@@ -281,13 +281,11 @@ pub(crate) fn export_video(
     let mut cum_acquire_us = 0u64;
     let mut cum_render_us = 0u64;
     let mut cum_append_us = 0u64;
-    let log_interval = (total_frames / 10).max(1);
 
     for frame_index in 0..total_frames {
         if task.is_some_and(|state| state.is_cancelled()) {
             return Err("导出已取消".to_string());
         }
-        let frame_start = std::time::Instant::now();
         let time = frame_index as f64 / fps;
         let layer_inputs = composition_layers(composition, time);
         let mut source_layers = Vec::with_capacity(layer_inputs.len());
@@ -417,7 +415,6 @@ pub(crate) fn export_video(
         writer.append(&output_frame, frame_index)?;
         let append_us = t0.elapsed().as_micros() as u64;
 
-        let frame_us = frame_start.elapsed().as_micros() as u64;
         cum_decode_us += decode_us;
         cum_plan_us += plan_us;
         cum_acquire_us += acquire_us;

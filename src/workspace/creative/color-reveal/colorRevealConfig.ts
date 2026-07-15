@@ -2,7 +2,7 @@ export const DEFAULT_SATURATION = -80
 export const DEFAULT_GRAY = 70
 export const DEFAULT_TRANSITION_DURATION = 2.5
 export const DEFAULT_INITIAL_HOLD_DURATION = 0.2
-export const DEFAULT_MIDPOINT_HOLD_DURATION = 0.6
+export const DEFAULT_MIDPOINT_HOLD_DURATION = 0.8
 export const DEFAULT_STAGE_MODE = 'two' as const
 export const IMAGE_CREATIVE_DURATION = 5
 

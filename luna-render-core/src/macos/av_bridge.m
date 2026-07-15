@@ -172,15 +172,9 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
 }
 
 - (LunaMetalFrame *)frameAt:(double)seconds error:(NSError **)error {
-    CFAbsoluteTime t0 = CFAbsoluteTimeGetCurrent();
-    CFAbsoluteTime t_restart = 0, t_copy = 0, t_texture = 0;
-    BOOL didRestart = NO;
-
     if (!_currentSample || seconds + 0.05 < _currentPTS) {
         if (![self restartAt:seconds error:error]) return nil;
-        didRestart = YES;
     }
-    t_restart = CFAbsoluteTimeGetCurrent();
 
     while (_nextSample) {
         double nextPTS = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(_nextSample));
@@ -190,7 +184,6 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
         _currentPTS = isfinite(nextPTS) ? nextPTS : seconds;
         _nextSample = [_output copyNextSampleBuffer];
     }
-    t_copy = CFAbsoluteTimeGetCurrent();
 
     if (!_currentSample) {
         if (_reader.status == AVAssetReaderStatusFailed && error) *error = _reader.error;
@@ -199,7 +192,6 @@ static void luna_write_error(char *buffer, size_t length, NSError *error, NSStri
     CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(_currentSample);
     if (!pixelBuffer) return nil;
     LunaMetalFrame *frame = [[LunaMetalFrame alloc] initWithPixelBuffer:pixelBuffer textureCache:_textureCache pts:_currentPTS error:error];
-    t_texture = CFAbsoluteTimeGetCurrent();
 
     return frame;
 }
