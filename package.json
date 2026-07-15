@@ -22,6 +22,7 @@
     "init:rust": "node scripts/setup-rust.mjs",
     "build:rust": "node scripts/build-native.mjs",
     "build:app": "tsc && vite build",
+    "publish:hot": "node scripts/publish-hot-update.mjs",
     "test:workspace": "node scripts/test-workspace-geometry.mjs",
     "test:diagnostics": "node scripts/test-crash-diagnostics.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",

@@ -103,10 +103,15 @@ export function getNative(): LunaRenderCoreNative {
   //      （extraResources 将 luna-render-core 复制到 resources/）
   //   2. 开发时：APP_ROOT/luna-render-core/luna-render-core.node
   //      （build-native.mjs 复制到项目根目录 luna-render-core/）
-  const candidates = [
-    join(process.resourcesPath || '', 'luna-render-core', 'luna-render-core.node'),
-    join(process.env.APP_ROOT || join(import.meta.dirname, '..'), 'luna-render-core', 'luna-render-core.node'),
-  ]
+  const appRootNative = join(
+    process.env.APP_ROOT || join(import.meta.dirname, '..'),
+    'luna-render-core',
+    'luna-render-core.node',
+  )
+  const packagedNative = join(process.resourcesPath || '', 'luna-render-core', 'luna-render-core.node')
+  // 热更新的 appMain 会将 APP_ROOT 指向 userData/.luna-hot，必须优先加载
+  // 其中已切换的新原生模块；正式安装包则回退到 resources 目录。
+  const candidates = [appRootNative, packagedNative]
   for (const nodePath of candidates) {
     try {
       native = require(nodePath) as LunaRenderCoreNative
