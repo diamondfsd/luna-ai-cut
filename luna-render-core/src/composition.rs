@@ -9,7 +9,9 @@ pub use frame::{
 pub use image_export::{
     export_composition_image_async, ExportCompositionImageInput, ExportCompositionImageTask,
 };
-pub(crate) use timeline::{composition_layers, is_video_source, mux_primary_audio};
+#[cfg(target_os = "windows")]
+pub(crate) use timeline::is_video_source;
+pub(crate) use timeline::{composition_layers, mux_primary_audio};
 pub use video_export::{export_composition_video_async, ExportCompositionVideoTask};
 
 use std::collections::HashMap;
