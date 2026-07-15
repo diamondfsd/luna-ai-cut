@@ -22,6 +22,7 @@ export type ColorLutParams = Pick<EditPipeline['color'],
   | 'gradeHighlightsAmount'
   | 'gradeHighlightsHue'
   | 'hslChannels'
+  | 'customHslChannels'
   | 'curve'
 >
 
@@ -48,6 +49,7 @@ export function buildColorLutParams(color: EditPipeline['color']): ColorLutParam
     gradeHighlightsAmount: color.gradeHighlightsAmount,
     gradeHighlightsHue: color.gradeHighlightsHue,
     hslChannels: color.hslChannels,
+    customHslChannels: color.customHslChannels,
     curve: color.curve,
   }
 }
