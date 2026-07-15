@@ -2,7 +2,7 @@ import { app } from 'electron'
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { SAM_MODEL, SEGMENTATION_MODELS, type SemanticSegmentationModelId } from '../src/shared/segmentationModels'
+import { SAM_MODELS, SEGMENTATION_MODELS, type SamSegmentationModelId, type SemanticSegmentationModelId } from '../src/shared/segmentationModels'
 
 export type ModelId = SemanticSegmentationModelId
 
@@ -30,7 +30,7 @@ export interface LoadedModel {
 }
 
 export interface LoadedSamModel {
-  id: typeof SAM_MODEL.id
+  id: SamSegmentationModelId
   visionEncoderPath: string
   promptDecoderPath: string
   sha256: Record<'visionEncoder' | 'promptDecoder', string>
@@ -49,7 +49,7 @@ export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntri
 }])) as Record<ModelId, ModelDefinition>
 
 const pendingLoads = new Map<ModelId, Promise<LoadedModel>>()
-let pendingSamLoad: Promise<LoadedSamModel> | null = null
+const pendingSamLoads = new Map<SamSegmentationModelId, Promise<LoadedSamModel>>()
 
 function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex')
@@ -122,35 +122,40 @@ export function loadModel(id: ModelId, onProgress?: (progress: ModelLoadProgress
   return request
 }
 
-async function loadSamModelOnce(onProgress?: (progress: ModelLoadProgress) => void): Promise<LoadedSamModel> {
-  const modelDir = path.join(app.getPath('userData'), 'models', SAM_MODEL.id)
+async function loadSamModelOnce(id: SamSegmentationModelId, onProgress?: (progress: ModelLoadProgress) => void): Promise<LoadedSamModel> {
+  const definition = SAM_MODELS.find((model) => model.id === id)
+  if (!definition) throw new Error(`未知点选模型: ${id}`)
+  const modelDir = path.join(app.getPath('userData'), 'models', definition.id)
   await mkdir(modelDir, { recursive: true })
-  const totalBytes = SAM_MODEL.sizeBytes
-  const visionEncoderPath = await loadModelFile(modelDir, SAM_MODEL.files.visionEncoder, (progress) => {
+  const totalBytes = definition.sizeBytes
+  const visionEncoderPath = await loadModelFile(modelDir, definition.files.visionEncoder, (progress) => {
     onProgress?.({ completedBytes: progress.completedBytes, totalBytes })
   })
-  const promptDecoderPath = await loadModelFile(modelDir, SAM_MODEL.files.promptDecoder, (progress) => {
+  const promptDecoderPath = await loadModelFile(modelDir, definition.files.promptDecoder, (progress) => {
     onProgress?.({
-      completedBytes: SAM_MODEL.files.visionEncoder.sizeBytes + progress.completedBytes,
+      completedBytes: definition.files.visionEncoder.sizeBytes + progress.completedBytes,
       totalBytes,
     })
   })
-  await writeFile(path.join(modelDir, 'model.json'), JSON.stringify(SAM_MODEL, null, 2), 'utf8')
+  await writeFile(path.join(modelDir, 'model.json'), JSON.stringify(definition, null, 2), 'utf8')
   return {
-    id: SAM_MODEL.id,
+    id: definition.id,
     visionEncoderPath,
     promptDecoderPath,
     sha256: {
-      visionEncoder: SAM_MODEL.files.visionEncoder.sha256,
-      promptDecoder: SAM_MODEL.files.promptDecoder.sha256,
+      visionEncoder: definition.files.visionEncoder.sha256,
+      promptDecoder: definition.files.promptDecoder.sha256,
     },
-    license: SAM_MODEL.license,
-    source: SAM_MODEL.source,
+    license: definition.license,
+    source: definition.source,
   }
 }
 
 /** 下载并校验 SAM 点选蒙版模型；缓存命中时不会访问网络。 */
-export function loadSamModel(onProgress?: (progress: ModelLoadProgress) => void): Promise<LoadedSamModel> {
-  if (!pendingSamLoad) pendingSamLoad = loadSamModelOnce(onProgress).finally(() => { pendingSamLoad = null })
-  return pendingSamLoad
+export function loadSamModel(id: SamSegmentationModelId, onProgress?: (progress: ModelLoadProgress) => void): Promise<LoadedSamModel> {
+  const pending = pendingSamLoads.get(id)
+  if (pending) return pending
+  const request = loadSamModelOnce(id, onProgress).finally(() => pendingSamLoads.delete(id))
+  pendingSamLoads.set(id, request)
+  return request
 }

@@ -1,12 +1,10 @@
 import type { WatermarkSettings } from '../../shared/types'
 import { EDIT_PARAMETER_RANGES, clampNumber } from './editParameterRanges'
+import type { ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
+import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 
-export interface CropRect {
-  x: number
-  y: number
-  w: number
-  h: number
-}
+export type { ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
+export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
 export type ToneCurveChannel = 'rgb' | 'luminance' | 'red' | 'green' | 'blue'
@@ -28,26 +26,6 @@ export interface HslChannelAdjust {
   saturation: number
   luminance: number
   sourceColor?: string
-}
-
-export interface ColorMaskRef {
-  path: string
-  width: number
-  height: number
-  opacity: number
-  inverted: boolean
-  feather: number
-  kind: 'brush' | 'semantic'
-  classId?: number
-  className?: string
-  modelId?: string
-}
-
-export interface VideoTrimState {
-  /** Trim start time in seconds */
-  startTime: number
-  /** Trim end time in seconds */
-  endTime: number
 }
 
 export interface BorderSettings {
@@ -74,6 +52,8 @@ export interface EditPipeline {
   trim: VideoTrimState | null
   /** 当前整套调色使用的局部蒙版；图片视为视频的第 0 帧。 */
   colorMask: ColorMaskRef | null
+  /** 按列表顺序叠加的局部调色蒙版。 */
+  colorMasks: ColorMaskLayer[]
   transform: {
     crop: CropRect | null
     orientation: number
@@ -147,6 +127,7 @@ export interface EditPipeline {
 export type PipelinePatch = {
   trim?: VideoTrimState | null
   colorMask?: ColorMaskRef | null
+  colorMasks?: ColorMaskLayer[]
   transform?: Partial<EditPipeline['transform']>
   color?: Partial<EditPipeline['color']>
   effects?: Partial<EditPipeline['effects']>
@@ -184,6 +165,7 @@ export function createDefaultHslChannels(): Record<HslChannelKey, HslChannelAdju
 export const DEFAULT_PIPELINE: EditPipeline = {
   trim: null,
   colorMask: null,
+  colorMasks: [],
   transform: {
     crop: null,
     orientation: 0,
@@ -374,10 +356,19 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
     trim = { startTime: start, endTime: end }
   }
 
+  const legacyMask = normalizeColorMask(pipeline.colorMask)
+  const rawColorMasks = Array.isArray(pipeline.colorMasks) ? pipeline.colorMasks : []
+  const colorMasks = (rawColorMasks.length > 0
+    ? rawColorMasks
+    : legacyMask ? [{ ...legacyMask, id: 'mask-1', name: '蒙版 1', enabled: true, color: DEFAULT_PIPELINE.color }] : [])
+    .map(normalizeColorMaskLayer)
+    .filter((layer): layer is ColorMaskLayer => layer !== null)
+
   return {
     ...pipeline,
     trim,
-    colorMask: normalizeColorMask(pipeline.colorMask),
+    colorMask: null,
+    colorMasks,
     watermark: { ...DEFAULT_PIPELINE.watermark, ...(pipeline.watermark ?? {}) },
     border: normalizeBorder(pipeline.border),
     color: {
@@ -431,6 +422,25 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   }
 }
 
+function normalizeColorMaskLayer(input: ColorMaskLayer): ColorMaskLayer | null {
+  const mask = normalizeColorMask(input)
+  if (!mask) return null
+  const colorInput = input.color ?? DEFAULT_PIPELINE.color
+  const color = normalizePipeline({
+    ...createDefaultPipeline(),
+    color: { ...DEFAULT_PIPELINE.color, ...colorInput },
+    colorMask: null,
+    colorMasks: [],
+  }).color
+  return {
+    ...mask,
+    id: typeof input.id === 'string' && input.id ? input.id : `mask-${Date.now()}`,
+    name: typeof input.name === 'string' && input.name.trim() ? input.name.trim().slice(0, 40) : '局部蒙版',
+    enabled: input.enabled !== false,
+    color,
+  }
+}
+
 function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef | null {
   if (!mask || typeof mask.path !== 'string' || !mask.path) return null
   return {
@@ -468,6 +478,7 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
   return normalizePipeline({
     trim: patch.trim !== undefined ? patch.trim : pipeline.trim,
     colorMask: patch.colorMask !== undefined ? patch.colorMask : pipeline.colorMask,
+    colorMasks: patch.colorMasks !== undefined ? patch.colorMasks : pipeline.colorMasks,
     transform: { ...pipeline.transform, ...patch.transform },
     color: {
       ...pipeline.color,
@@ -481,11 +492,4 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
   })
 }
 
-export function serializePipeline(pipeline: EditPipeline): string {
-  return JSON.stringify(pipeline)
-}
-
-export function deserializePipeline(value: string): EditPipeline {
-  const parsed = JSON.parse(value) as PipelinePatch
-  return mergePipeline(createDefaultPipeline(), parsed)
-}
+export { deserializePipeline, serializePipeline } from './editPipelineSerialization'

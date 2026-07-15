@@ -242,10 +242,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         lutId: stagePipeline.lutFilter.activeId ?? undefined,
         lutIntensity: stagePipeline.lutFilter.intensity,
         isVideo: media.activeMedia?.path ? isVideoPath(media.activeMedia.path) : false,
-        maskPath: stagePipeline.colorMask?.path,
-        maskOpacity: stagePipeline.colorMask?.opacity,
-        maskInverted: stagePipeline.colorMask?.inverted,
-        maskFeather: stagePipeline.colorMask?.feather,
       },
     })
   }, [edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])

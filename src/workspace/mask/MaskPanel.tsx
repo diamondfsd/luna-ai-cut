@@ -1,9 +1,8 @@
 import { Brush, Eraser, Eye, EyeOff, Sparkles, Trash2 } from 'lucide-react'
 
 import { Button, ButtonGroup, IconButton, Switch, Tooltip } from '../../ui'
-import { SAM_MODEL, SEGMENTATION_MODELS } from '../../shared/segmentationModels'
+import { SAM_MODELS, SEGMENTATION_MODELS } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
-import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import './MaskPanel.css'
 
@@ -21,9 +20,8 @@ function formatDuration(milliseconds: number): string {
 }
 
 export function MaskPanel() {
-  const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
-  const settings = edit.pipeline.colorMask
+  const settings = mask.activeMask
 
   return (
     <div className="workspace-mask-panel">
@@ -66,7 +64,7 @@ export function MaskPanel() {
       <div className="workspace-mask-models" aria-label="识别模型">
         <span className="workspace-mask-section-label">识别模型</span>
         <div className="workspace-mask-model-list">
-          {[...SEGMENTATION_MODELS, SAM_MODEL].map((model) => (
+          {[...SEGMENTATION_MODELS, ...SAM_MODELS].map((model) => (
             <Button
               key={model.id}
               variant={mask.segmentationModel === model.id ? 'primary' : 'secondary'}
@@ -75,7 +73,7 @@ export function MaskPanel() {
               onClick={() => mask.setSegmentationModel(model.id)}
             >
               <span>{model.name}</span>
-              <span>{model.description} · {formatModelSize(model.sizeBytes)}</span>
+              <span>{model.description} · {formatModelSize(model.sizeBytes)} · {model.inputSize}×{model.inputSize}</span>
             </Button>
           ))}
         </div>

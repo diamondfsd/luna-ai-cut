@@ -6,7 +6,7 @@ import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls } from '../ui'
 import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
-import { applyBorderMediaLayout, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import './PreviewStage.css'
 
 export interface PreviewStageHandle {
@@ -319,14 +319,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         transform: pipelineTransformToRenderTransform(pipeline.transform),
         lutId: lutFilePath,
         lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
-        maskPath: pipeline.colorMask?.path,
-        maskOpacity: pipeline.colorMask?.opacity,
-        maskInverted: pipeline.colorMask?.inverted,
-        maskFeather: pipeline.colorMask?.feather,
       }
       main[0] = cropActive
         ? styledMain
         : applyBorderMediaLayout(styledMain, pipeline.border)
+      main.splice(1, 0, ...buildLocalColorLayers(main[0], pipeline))
     }
     const m = main[0]
     if (!m) {

@@ -67,6 +67,10 @@ export interface DialogProps {
    * @default true
    */
   closeOnMaskClick?: boolean
+  /** 是否使用模态交互；关闭后可继续操作弹窗外的画面。 */
+  modal?: boolean
+  /** 是否显示页面遮罩。 */
+  showOverlay?: boolean
 }
 
 export function Dialog({
@@ -82,6 +86,8 @@ export function Dialog({
   variant = 'dialog',
   tone = 'default',
   closeOnMaskClick = true,
+  modal = true,
+  showOverlay = true,
 }: DialogProps) {
   const zRef = useRef<{ id: string; zIndex: number } | null>(null)
 
@@ -120,10 +126,10 @@ export function Dialog({
   const isFullscreen = variant === 'fullscreen'
 
   return (
-    <RadixDialog.Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
+    <RadixDialog.Root open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen} modal={modal}>
       {trigger && <RadixDialog.Trigger asChild>{trigger}</RadixDialog.Trigger>}
       <RadixDialog.Portal>
-        <DialogOverlay style={{ zIndex: oZ }} />
+        {showOverlay && <DialogOverlay style={{ zIndex: oZ }} />}
         <RadixDialog.Content
           className={`ui-dialog-content ${isFullscreen ? 'ui-dialog-fullscreen' : ''} ${tone === 'dark' ? 'ui-dialog-dark' : ''} ${className ?? ''}`}
           style={{ zIndex: cZ }}
