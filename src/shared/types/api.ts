@@ -1,6 +1,6 @@
 import type { AppSettings, CacheStats, AiConfig } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
-import type { LunaFile } from './media'
+import type { CameraDeleteResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
 import type { WatermarkSettings } from './watermark'
 import type { VideoExportSettings } from './video'
@@ -53,6 +53,7 @@ export interface LunaApi {
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   checkConnection(host?: string): Promise<ConnectionStatus>
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>
+  deleteCameraFiles(files: LunaFile[], host?: string): Promise<CameraDeleteResult>
   listSampleFiles(): Promise<LunaFile[]>
   listDownloadedFiles(downloadDir?: string): Promise<LunaFile[]>
   listExportFiles(exportDir?: string): Promise<LunaFile[]>

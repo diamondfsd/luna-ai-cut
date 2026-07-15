@@ -21,7 +21,7 @@ use crate::RenderLayer;
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use wgpu::TexelCopyBufferInfo;
 use wgpu::TexelCopyBufferLayout;
 use wgpu::TexelCopyTextureInfo;
@@ -160,6 +160,8 @@ struct TextureEntry {
     texture: wgpu::Texture,
     width: u32,
     height: u32,
+    #[cfg(target_os = "windows")]
+    external: bool,
 }
 
 fn pack_curve_points(
@@ -275,7 +277,6 @@ struct VideoDecoder {
 
 /// 创建 bind group layout（每个 layer 一个，含 LUT 3D texture 可选绑定）
 impl Compositor {
-    #[cfg(target_os = "macos")]
     pub fn new(log_path: Option<&str>) -> Result<Self, String> {
         // 初始化文件日志
         let path = log_path.unwrap_or("luna-rc.log");
@@ -400,6 +401,8 @@ impl Compositor {
                 texture: procedural_texture,
                 width: 1,
                 height: 1,
+                #[cfg(target_os = "windows")]
+                external: false,
             },
         );
 

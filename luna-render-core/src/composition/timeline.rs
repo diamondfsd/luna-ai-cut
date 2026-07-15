@@ -1,4 +1,5 @@
 use super::*;
+use crate::media::command;
 
 pub(crate) fn is_video_source(source: &CompositionSource) -> bool {
     match source.source_type.as_deref().unwrap_or("auto") {
@@ -77,9 +78,8 @@ fn reveal_progress(reveal: &CompositionReveal, time: f64) -> f64 {
         let decay = damping_ratio * natural_frequency;
         let peak_time = (damped_frequency / decay).atan() / damped_frequency;
         let peak = (-decay * peak_time).exp() * (damped_frequency * peak_time).sin();
-        let spring_recoil = (-decay * bounce_progress).exp()
-            * (damped_frequency * bounce_progress).sin()
-            / peak;
+        let spring_recoil =
+            (-decay * bounce_progress).exp() * (damped_frequency * bounce_progress).sin() / peak;
         return 0.5 - spring_recoil * bounce;
     }
     if elapsed < duration + midpoint_duration {
@@ -87,8 +87,7 @@ fn reveal_progress(reveal: &CompositionReveal, time: f64) -> f64 {
         let second_half_progress = if reveal.midpoint_bounce.unwrap_or(0.0) > 0.0 {
             let compressed = (second_half / 0.28).clamp(0.0, 1.0);
             let initial_velocity = 0.16;
-            initial_velocity * compressed
-                + (1.0 - initial_velocity) * compressed * compressed
+            initial_velocity * compressed + (1.0 - initial_velocity) * compressed * compressed
         } else {
             apply_easing(second_half)
         };
@@ -244,7 +243,7 @@ pub(crate) fn mux_primary_audio(
         "[Export:Audio] 开始音频合并 source={} offset={:.3} start={:.3} duration={:.3}",
         layer.source.path, offset, start, active_duration
     ));
-    let result = Command::new(ffmpeg_path)
+    let result = command(ffmpeg_path)
         .args(&args)
         .output()
         .map_err(|error| format!("启动音频合成失败: {error}"))?;

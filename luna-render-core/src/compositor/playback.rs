@@ -1,5 +1,6 @@
 use super::*;
 use crate::log;
+use crate::media::command;
 
 impl Compositor {
     pub(super) fn get_cached_texture(&mut self, path: &str) -> Option<u32> {
@@ -207,7 +208,7 @@ impl Compositor {
             "pipe:1".to_string(),
         ]);
 
-        let mut proc = Command::new(ffmpeg)
+        let mut proc = command(ffmpeg)
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

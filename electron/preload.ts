@@ -77,6 +77,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),
   listFiles: (host?: string, storageId?: string) => ipcRenderer.invoke('luna:listFiles', host, storageId),
+  deleteCameraFiles: (files: LunaFile[], host?: string) => ipcRenderer.invoke('luna:deleteCameraFiles', files, host),
   listSampleFiles: () => ipcRenderer.invoke('luna:listSampleFiles'),
   listDownloadedFiles: (downloadDir?: string) => ipcRenderer.invoke('downloads:listFiles', downloadDir),
   listExportFiles: (exportDir?: string) => ipcRenderer.invoke('exports:listFiles', exportDir),

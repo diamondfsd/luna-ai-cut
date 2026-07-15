@@ -32,9 +32,9 @@ pub struct ResolvedRenderSource {
 
 /// 检测素材颜色信息
 fn probe_color_info(ffprobe: &str, path: &str) -> Result<ColorInfo, String> {
-    use std::process::Command;
+    use crate::media::command;
 
-    let output = Command::new(ffprobe)
+    let output = command(ffprobe)
         .args([
             "-v",
             "quiet",
@@ -152,8 +152,9 @@ pub fn resolve_render_source(
     original_path: String,
     cache_dir: String,
 ) -> napi::Result<ResolvedRenderSource> {
+    use crate::media::command;
     use std::path::Path;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     crate::log!(
         "resolve_render_source: input path={} cache={}",
@@ -208,7 +209,7 @@ pub fn resolve_render_source(
     }
 
     // ── 构造 ffmpeg normalize 命令 ──
-    let zscale_available = Command::new(&ffmpeg_path)
+    let zscale_available = command(&ffmpeg_path)
         .args(["-filters"])
         .stderr(Stdio::piped())
         .stdout(Stdio::null())
@@ -220,7 +221,7 @@ pub fn resolve_render_source(
         })
         .unwrap_or(false);
 
-    let mut cmd = Command::new(&ffmpeg_path);
+    let mut cmd = command(&ffmpeg_path);
     cmd.args(["-y", "-i", &original_path]);
 
     let mut cmd_log = format!("{} -y -i {}", ffmpeg_path, original_path);

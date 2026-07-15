@@ -1,5 +1,6 @@
 use super::frame::render_composition_frame_with;
 use super::*;
+use crate::media::command;
 use napi_derive::napi;
 
 #[napi(object)]
@@ -96,7 +97,7 @@ impl Task for ExportCompositionImageTask {
                 .map_err(|e| napi::Error::from_reason(format!("create output dir: {}", e)))?;
         }
 
-        let mut proc = Command::new(&self.input.ffmpeg_path)
+        let mut proc = command(&self.input.ffmpeg_path)
             .args(&args)
             .stdin(Stdio::piped())
             .stderr(Stdio::piped())

@@ -16,7 +16,7 @@
 | `SearchField` | 搜索输入框（基于 Input 封装），带放大镜图标 |
 | `Select` | 下拉选择器（基于 Radix Select），支持 `pill` / `compact` / `ghost` 三种主题，可选 icon 和 fullWidth |
 | `Accordion` | 手风琴折叠面板（基于 Radix Collapsible），支持受控/非受控模式 |
-| `SegmentedControl` | 分段选择器，用于媒体过滤和尺寸切换 |
+| `ButtonGroup` | 分段选择器，用于媒体过滤和尺寸切换 |
 | `Switch` | 开关控件，用于二进制设置项（基于 Radix） |
 | `Tooltip` | 悬停提示（基于 Radix） |
 | `Dialog` | 弹窗，统一通过 `title` / `description` / `footer` / `children` 等 props 使用（基于 Radix） |
