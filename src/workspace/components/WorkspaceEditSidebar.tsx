@@ -1,4 +1,4 @@
-import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
+import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, ScanSearch, Scissors, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
@@ -14,8 +14,10 @@ import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/ty
 import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel } from '../trim/TrimPanel'
+import { MaskPanel } from '../mask/MaskPanel'
+import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 
-export type WorkspaceTool = 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter'
+export type WorkspaceTool = 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -80,6 +82,7 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
   { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
+  { value: 'mask', label: '蒙版', icon: <ScanSearch size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
@@ -92,6 +95,7 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'watermark') return '水印'
   if (tool === 'border') return '边框'
   if (tool === 'filter') return '滤镜'
+  if (tool === 'mask') return '蒙版'
   return '色彩调节'
 }
 
@@ -104,6 +108,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
+  const mask = useWorkspaceMask()
 
   const refH = mediaSize?.h ?? 2160
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
@@ -120,6 +125,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
     trim: isTrimModified(edit.pipeline.trim),
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
+    mask: edit.pipeline.colorMask !== null,
   }), [edit.pipeline])
 
   // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
@@ -210,6 +216,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
               onChange={(color) => edit.updateWorkspacePanel({ color })}
               onActivatePipette={() => edit.setPipetteActive(true)}
             />
+          ) : edit.activeTool === 'mask' ? (
+            <MaskPanel />
           ) : edit.activeTool === 'crop' ? (
             <>
               <Accordion
@@ -290,7 +298,11 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                   size="compact"
                   icon={item.icon}
                   aria-label={item.label}
-                  onClick={() => edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)}
+                  disabled={item.value === 'mask' && !mask.available}
+                  onClick={() => {
+                    mask.setEditing(item.value === 'mask')
+                    edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)
+                  }}
                 />
               </Tooltip>
               {toolModified[item.value] && <span className="workspace-tool-rail-dot" />}

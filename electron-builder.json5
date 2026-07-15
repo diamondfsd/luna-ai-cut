@@ -35,8 +35,9 @@
       "filter": ["**/*"]
     },
     {
-      "from": "luna-render-core/luna-render-core.node",
-      "to": "luna-render-core/luna-render-core.node"
+      "from": "luna-render-core",
+      "to": "luna-render-core",
+      "filter": ["luna-render-core.node", "*.dylib", "*.dll", "*.so*"]
     },
     {
       "from": "public/luts",
