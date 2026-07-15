@@ -1,7 +1,7 @@
 import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer, MediaMetadata } from '../../shared/types'
-import { applyBorderMediaLayout, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
+import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
 
@@ -22,10 +22,6 @@ export function buildWorkspaceExportLayers(
       transform: pipelineTransformToRenderTransform(pipeline.transform),
       lutId: pipeline.lutFilter.activeId ?? undefined,
       lutIntensity: pipeline.lutFilter.intensity,
-      maskPath: pipeline.colorMask?.path,
-      maskOpacity: pipeline.colorMask?.opacity,
-      maskInverted: pipeline.colorMask?.inverted,
-      maskFeather: pipeline.colorMask?.feather,
       // 截取：设置视频起始时间和有效时长
       ...(trimStart != null ? { videoTime: trimStart } : {}),
       ...(trimStart != null && trimEnd != null ? { videoDuration: trimEnd - trimStart } : {}),
@@ -34,6 +30,7 @@ export function buildWorkspaceExportLayers(
 
   const layers = buildExportLayers(sourcePath, finalCanvasSize, pipeline.watermark)
   const result = main[0] ? [{ ...layers[0], ...main[0] }, ...layers.slice(1)] : layers
+  if (result[0]) result.splice(1, 0, ...buildLocalColorLayers(result[0], pipeline))
 
   // 边框层（如果有元数据）
   if (pipeline.border.enabled && borderMetadata !== undefined) {
@@ -48,10 +45,6 @@ export function buildWorkspaceExportLayers(
         transform: pipelineTransformToRenderTransform(pipeline.transform),
         lutId: pipeline.lutFilter.activeId ?? undefined,
         lutIntensity: pipeline.lutFilter.intensity,
-        maskPath: pipeline.colorMask?.path,
-        maskOpacity: pipeline.colorMask?.opacity,
-        maskInverted: pipeline.colorMask?.inverted,
-        maskFeather: pipeline.colorMask?.feather,
       },
     })
     result.push(...borderLayers)

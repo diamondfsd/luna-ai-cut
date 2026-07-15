@@ -46,6 +46,53 @@ export function pipelineColorToRenderColor(color: EditPipeline['color']): Render
   }
 }
 
+/** 将局部参数作为相对调整叠加到全局调色。 */
+export function pipelineColorWithLocalAdjustments(
+  globalColor: EditPipeline['color'],
+  localColor: EditPipeline['color'],
+): RenderColorAdjustments {
+  const global = pipelineColorToRenderColor(globalColor)
+  const local = pipelineColorToRenderColor(localColor)
+  const combined = { ...global }
+  const additive = [
+    'exposure', 'brightness', 'contrast', 'saturation', 'vibrance', 'temperature', 'tint',
+    'highlights', 'shadows', 'whites', 'blacks', 'clarity', 'texture', 'sharpen', 'denoise',
+    'curveLift', 'curveContrast', 'gradeShadowsAmount', 'gradeMidAmount', 'gradeHighlightsAmount',
+  ] as const
+  for (const key of additive) combined[key] = global[key] + local[key]
+  combined.levelsBlack = global.levelsBlack + local.levelsBlack
+  combined.levelsGray = global.levelsGray + local.levelsGray - 0.5
+  combined.levelsWhite = global.levelsWhite + local.levelsWhite - 1
+  if (local.gradeShadowsAmount !== 0) combined.gradeShadowsHue = local.gradeShadowsHue
+  if (local.gradeMidAmount !== 0) combined.gradeMidHue = local.gradeMidHue
+  if (local.gradeHighlightsAmount !== 0) combined.gradeHighlightsHue = local.gradeHighlightsHue
+  combined.curve = {
+    rgb: local.curve.rgb.length ? local.curve.rgb : global.curve.rgb,
+    luminance: local.curve.luminance.length ? local.curve.luminance : global.curve.luminance,
+    red: local.curve.red.length ? local.curve.red : global.curve.red,
+    green: local.curve.green.length ? local.curve.green : global.curve.green,
+    blue: local.curve.blue.length ? local.curve.blue : global.curve.blue,
+  }
+  combined.hslChannels = global.hslChannels.map((channel, index) => ({
+    ...channel,
+    hueShift: channel.hueShift + (local.hslChannels[index]?.hueShift ?? 0),
+    saturation: channel.saturation + (local.hslChannels[index]?.saturation ?? 0),
+    luminance: channel.luminance + (local.hslChannels[index]?.luminance ?? 0),
+  }))
+  return combined
+}
+
+export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline): PreviewLayer[] {
+  return pipeline.colorMasks.filter((layer) => layer.enabled).reverse().map((layer) => ({
+    ...base,
+    color: pipelineColorWithLocalAdjustments(pipeline.color, layer.color),
+    maskPath: layer.path,
+    maskOpacity: layer.opacity,
+    maskInverted: layer.inverted,
+    maskFeather: layer.feather,
+  }))
+}
+
 export function pipelineTransformToRenderTransform(transform: EditPipeline['transform']): RenderLayerTransform {
   return {
     crop: transform.crop,

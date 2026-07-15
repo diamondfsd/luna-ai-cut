@@ -1,0 +1,153 @@
+.workspace-color-mask-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.workspace-color-mask-current {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace-color-mask-layers {
+  position: sticky;
+  z-index: 2;
+  bottom: -16px;
+  display: grid;
+  gap: 8px;
+  padding: 12px 0 16px;
+  border-top: 1px solid var(--hairline);
+  background: var(--canvas);
+}
+
+.workspace-color-mask-layers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workspace-color-mask-layers-header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.workspace-color-mask-layers-header strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.workspace-color-mask-layers-header span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.workspace-color-mask-layer-list {
+  display: grid;
+  max-height: 240px;
+  overflow-y: auto;
+  gap: 5px;
+}
+
+.workspace-color-mask-layer {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  background: var(--canvas);
+}
+
+.workspace-color-mask-layer.is-active {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 6%, var(--canvas));
+}
+
+.workspace-color-mask-layer-select {
+  display: flex;
+  min-width: 0;
+  height: auto;
+  min-height: 54px;
+  flex: 1;
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 4px 7px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.workspace-color-mask-thumbnail,
+.workspace-color-mask-global-thumbnail {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.workspace-color-mask-thumbnail {
+  image-rendering: auto;
+}
+
+.workspace-color-mask-global-thumbnail {
+  display: grid;
+  place-items: center;
+  background: var(--parchment);
+  color: var(--muted);
+}
+
+.workspace-color-mask-layer-label {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.workspace-color-mask-layer-label strong,
+.workspace-color-mask-layer-label small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-color-mask-layer-label strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workspace-color-mask-layer-label small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.workspace-color-mask-layer-actions {
+  display: flex;
+  max-width: 58px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-right: 3px;
+}
+
+.workspace-mask-editor-dialog {
+  right: 24px;
+  left: auto;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(780px, calc(100vh - 40px));
+  transform: translateY(-50%);
+}
+
+.workspace-mask-editor-body {
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+  padding: 16px;
+}
+
+@media (max-width: 760px) {
+  .workspace-mask-editor-dialog {
+    right: 16px;
+    left: 16px;
+    width: auto;
+  }
+}

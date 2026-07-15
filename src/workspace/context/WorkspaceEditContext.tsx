@@ -128,6 +128,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       color: DEFAULT_PIPELINE.color,
       effects: DEFAULT_PIPELINE.effects,
       lutFilter: DEFAULT_PIPELINE.lutFilter,
+      colorMasks: [],
       border: { ...DEFAULT_PIPELINE.border, enabled: previewPipeline.border.enabled },
     }),
     [previewPipeline],

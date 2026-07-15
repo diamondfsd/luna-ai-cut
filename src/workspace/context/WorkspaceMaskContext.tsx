@@ -2,10 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { toast } from '../../ui'
 import { isImagePath } from '../../lib/fileUtils'
-import type { SegmentationModelId } from '../../shared/segmentationModels'
+import { SEGMENTATION_MODELS, SAM_MODELS, type SegmentationModelId } from '../../shared/segmentationModels'
 import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
 import { useWorkspaceEdit } from './WorkspaceEditContext'
 import { useWorkspaceMedia } from './WorkspaceMediaContext'
+import { createDefaultPipeline, type ColorMaskLayer } from '../shared/editPipeline'
 
 export type MaskBrushMode = 'paint' | 'erase'
 export type { SegmentationModelId } from '../../shared/segmentationModels'
@@ -36,6 +37,15 @@ interface WorkspaceMaskValue {
   setSegmentationModel: (value: SegmentationModelId) => void
   lastSegmentationPerformance: SegmentationPerformance | null
   segmentationProgress: WorkspaceSegmentationProgress | null
+  activeLayerId: string | null
+  activeMask: ColorMaskLayer | null
+  setActiveLayerId: (id: string | null) => void
+  createMask: () => void
+  updateLayer: (id: string, patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'color'>>) => void
+  updateActiveLayer: (patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'color'>>) => void
+  duplicateLayer: (id: string) => void
+  removeLayer: (id: string) => void
+  moveActiveLayer: (direction: -1 | 1) => void
   commitMask: (data: Uint8Array) => Promise<void>
   updateMaskSettings: (patch: { opacity?: number; inverted?: boolean; feather?: number }) => void
   removeMask: () => Promise<void>
@@ -73,18 +83,22 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   const [semanticPicking, setSemanticPicking] = useState(false)
   const [lastSegmentationPerformance, setLastSegmentationPerformance] = useState<SegmentationPerformance | null>(null)
   const [segmentationProgress, setSegmentationProgress] = useState<WorkspaceSegmentationProgress | null>(null)
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
   const [segmentationModel, setSegmentationModelState] = useState<SegmentationModelId>(() => {
     const saved = localStorage.getItem('workspace_segmentation_model')
-    return saved === 'segformer-b1-ade20k' || saved === 'segformer-b2-ade20k' || saved === 'segformer-b3-ade20k'
-      ? saved
-      : 'segformer-b0-ade20k'
+    const model = [...SEGMENTATION_MODELS, ...SAM_MODELS].find((item) => item.id === saved)
+    return model?.id ?? 'segformer-b0-ade20k'
   })
   const available = Boolean(media.currentProject && media.activeMedia?.path && isImagePath(media.activeMedia.path))
-  const activeMask = edit.pipeline.colorMask
+  const activeMask = edit.pipeline.colorMasks.find((layer) => layer.id === activeLayerId) ?? null
   const activeMaskPath = activeMask?.path
   const activeMediaId = media.activeMedia?.id
   const activeMediaPath = media.activeMedia?.path
   const projectId = media.currentProject?.id
+
+  useEffect(() => {
+    if (activeLayerId && !edit.pipeline.colorMasks.some((layer) => layer.id === activeLayerId)) setActiveLayerId(null)
+  }, [activeLayerId, activeMediaId, edit.pipeline.colorMasks])
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress(setSegmentationProgress), [])
 
@@ -134,8 +148,8 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
         activeMask?.feather ?? 0,
       )
       setMaskData(new Uint8Array(data))
-      edit.commitPatch({
-        colorMask: {
+      const layerId = activeMask?.id ?? `mask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      const layer: ColorMaskLayer = {
           path: saved.path,
           width: saved.width,
           height: saved.height,
@@ -146,8 +160,15 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
           classId: activeMask?.classId,
           className: activeMask?.className,
           modelId: activeMask?.modelId,
-        },
-      })
+          id: layerId,
+          name: activeMask?.name ?? `蒙版 ${edit.pipeline.colorMasks.length + 1}`,
+          enabled: activeMask?.enabled ?? true,
+          color: activeMask?.color ?? createDefaultPipeline().color,
+      }
+      edit.commitPatch({ colorMasks: activeMask
+        ? edit.pipeline.colorMasks.map((item) => item.id === layerId ? layer : item)
+        : [...edit.pipeline.colorMasks, layer] })
+      setActiveLayerId(layerId)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '保存蒙版失败')
     } finally {
@@ -157,13 +178,61 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
 
   const updateMaskSettings = useCallback((patch: { opacity?: number; inverted?: boolean; feather?: number }) => {
     if (!activeMask) return
-    edit.commitPatch({ colorMask: { ...activeMask, ...patch } })
+    edit.commitPatch({ colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === activeMask.id ? { ...layer, ...patch } : layer) })
   }, [activeMask, edit])
+
+  const updateLayer = useCallback((id: string, patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'color'>>) => {
+    edit.commitPatch({ colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === id ? { ...layer, ...patch } : layer) })
+  }, [edit])
+
+  const updateActiveLayer = useCallback((patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'color'>>) => {
+    if (activeMask) updateLayer(activeMask.id, patch)
+  }, [activeMask, updateLayer])
+
+  const duplicateLayer = useCallback((id: string) => {
+    const index = edit.pipeline.colorMasks.findIndex((layer) => layer.id === id)
+    if (index < 0) return
+    const source = edit.pipeline.colorMasks[index]
+    const copy: ColorMaskLayer = {
+      ...structuredClone(source),
+      id: `mask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: `${source.name} 副本`,
+    }
+    const next = [...edit.pipeline.colorMasks]
+    next.splice(index + 1, 0, copy)
+    edit.commitPatch({ colorMasks: next })
+    setActiveLayerId(copy.id)
+  }, [edit])
+
+  const removeLayer = useCallback((id: string) => {
+    edit.commitPatch({ colorMasks: edit.pipeline.colorMasks.filter((layer) => layer.id !== id) })
+    if (activeLayerId === id) setActiveLayerId(null)
+  }, [activeLayerId, edit])
+
+  const moveActiveLayer = useCallback((direction: -1 | 1) => {
+    if (!activeMask) return
+    const current = edit.pipeline.colorMasks.findIndex((layer) => layer.id === activeMask.id)
+    const target = current + direction
+    if (current < 0 || target < 0 || target >= edit.pipeline.colorMasks.length) return
+    const next = [...edit.pipeline.colorMasks]
+    ;[next[current], next[target]] = [next[target], next[current]]
+    edit.commitPatch({ colorMasks: next })
+  }, [activeMask, edit])
+
+  const createMask = useCallback(() => {
+    setActiveLayerId(null)
+    setEditing(true)
+    setSemanticPicking(false)
+    if (maskSize) setMaskData(new Uint8Array(maskSize.width * maskSize.height))
+  }, [maskSize])
 
   const removeMask = useCallback(async () => {
     if (maskSize) setMaskData(new Uint8Array(maskSize.width * maskSize.height))
-    edit.commitPatch({ colorMask: null })
-  }, [edit, maskSize])
+    if (!activeMask) return
+    edit.commitPatch({ colorMasks: edit.pipeline.colorMasks.filter((layer) => layer.id !== activeMask.id) })
+    setActiveLayerId(null)
+    setEditing(false)
+  }, [activeMask, edit, maskSize])
 
   const generateSemanticMask = useCallback(async (point?: { x: number; y: number }) => {
     if (!media.activeMedia || !media.currentProject || !maskSize) return
@@ -183,8 +252,8 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
         result.bytes,
         activeMask?.feather ?? 2,
       )
-      edit.commitPatch({
-        colorMask: {
+      const layerId = activeMask?.id ?? `mask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      const layer: ColorMaskLayer = {
           path: saved.path,
           width: saved.width,
           height: saved.height,
@@ -195,8 +264,15 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
           classId: result.classId,
           className: result.className,
           modelId: result.modelId,
-        },
-      })
+          id: layerId,
+          name: activeMask?.name ?? result.className ?? `蒙版 ${edit.pipeline.colorMasks.length + 1}`,
+          enabled: activeMask?.enabled ?? true,
+          color: activeMask?.color ?? createDefaultPipeline().color,
+      }
+      edit.commitPatch({ colorMasks: activeMask
+        ? edit.pipeline.colorMasks.map((item) => item.id === layerId ? layer : item)
+        : [...edit.pipeline.colorMasks, layer] })
+      setActiveLayerId(layerId)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '智能选择失败')
     } finally {
@@ -229,11 +305,20 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     setSegmentationModel,
     lastSegmentationPerformance,
     segmentationProgress,
+    activeLayerId,
+    activeMask,
+    setActiveLayerId,
+    createMask,
+    updateLayer,
+    updateActiveLayer,
+    duplicateLayer,
+    removeLayer,
+    moveActiveLayer,
     commitMask,
     updateMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [available, brushMode, brushSize, busy, commitMask, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, removeMask, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushMode, brushSize, busy, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, removeLayer, removeMask, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }
