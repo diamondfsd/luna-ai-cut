@@ -347,17 +347,14 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 fit: layer.fit.clone().unwrap_or_else(|| "cover".to_string()),
                 dst_x: layer.rect.x,
                 dst_y: layer.rect.y,
-                dst_w: layer.rect.w * reveal_width,
+                dst_w: layer.rect.w,
                 dst_h: layer.rect.h,
                 src_x: 0.0,
                 src_y: 0.0,
-                src_w: reveal_width,
+                src_w: 1.0,
                 src_h: 1.0,
-                opacity: if reveal_width <= 0.0 {
-                    0.0
-                } else {
-                    layer.opacity.unwrap_or(1.0)
-                },
+                opacity: layer.opacity.unwrap_or(1.0),
+                reveal_progress: reveal_width,
                 z_index: layer.z_index.unwrap_or(0),
                 color: layer.color.clone().unwrap_or_default(),
                 transform: layer.transform.clone().unwrap_or_default(),

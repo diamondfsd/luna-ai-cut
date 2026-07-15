@@ -31,7 +31,9 @@ export interface WorkspaceTripleStitchState {
 
 export interface WorkspaceColorRevealState {
   saturation: number
-  contrast: number
+  gray: number
+  /** 兼容旧版灰片反差配置。 */
+  contrast?: number
   transitionDuration: number
 }
 

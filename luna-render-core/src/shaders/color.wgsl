@@ -1,4 +1,4 @@
-fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>) -> vec3<f32> {
+fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32> {
     let raw = input;
     let blurred = blur3(tex_coord);
     let detail = raw - blurred;
@@ -82,6 +82,12 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>) -> vec3<f32> {
 
     c = c + detail * params.sharpen / 100.0 * 1.5;
     c = apply_lut(c);
+    let reveal_progress = params.text_meta.w;
+    if (reveal_progress > 0.001 && reveal_progress < 0.999) {
+        let edge_distance_px = (reveal_progress - layer_x) * params.dst_w;
+        let edge_alpha = (1.0 - smoothstep(0.0, 0.8, edge_distance_px)) * 0.28;
+        c = mix(c, vec3<f32>(1.0), sat1(edge_alpha));
+    }
     return sat3(c);
 }
 
