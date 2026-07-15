@@ -30,7 +30,7 @@ import {
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
 import { loadModel, loadSamModel, type ModelId } from './modelLoader'
-import { SAM_MODEL, type SegmentationModelId } from '../src/shared/segmentationModels'
+import { isSamSegmentationModel, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { getNative } from './lunaRenderCore'
 import { segmentSamInWorker } from './samSegmentationService'
 import { deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
@@ -198,11 +198,11 @@ export function register(): void {
     }
     const totalStartedAt = performance.now()
     const modelStartedAt = performance.now()
-    const isSam = modelId === SAM_MODEL.id
+    const isSam = isSamSegmentationModel(modelId)
     if (isSam) logMainInfo('[SAM] 智能选择开始')
     reportProgress('model', '正在准备模型', null)
     const model = isSam
-      ? await loadSamModel((progress) => reportProgress(
+      ? await loadSamModel(modelId, (progress) => reportProgress(
         'model',
         progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
         Math.round(progress.completedBytes / progress.totalBytes * 100),

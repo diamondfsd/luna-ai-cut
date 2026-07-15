@@ -1,4 +1,4 @@
-import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, ScanSearch, Scissors, SlidersHorizontal, X } from 'lucide-react'
+import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
@@ -6,7 +6,7 @@ import { createDefaultPipeline, DEFAULT_PIPELINE, HSL_CHANNELS } from '../shared
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
-import { ColorPanel } from '../color/ColorPanel'
+import { ColorMaskPanel } from '../color/ColorMaskPanel'
 import { FilterPanel } from '../lut/FilterPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
@@ -14,7 +14,6 @@ import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/ty
 import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel } from '../trim/TrimPanel'
-import { MaskPanel } from '../mask/MaskPanel'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 
 export type WorkspaceTool = 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask'
@@ -81,8 +80,7 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
 
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
-  { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
-  { value: 'mask', label: '蒙版', icon: <ScanSearch size={22} /> },
+  { value: 'color', label: '调色与蒙版', icon: <SlidersHorizontal size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
@@ -95,8 +93,7 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'watermark') return '水印'
   if (tool === 'border') return '边框'
   if (tool === 'filter') return '滤镜'
-  if (tool === 'mask') return '蒙版'
-  return '色彩调节'
+  return '调色与蒙版'
 }
 
 interface WorkspaceEditSidebarProps {
@@ -120,12 +117,12 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
   // 各面板是否有未保存的修改
   const toolModified = useMemo(() => ({
     filter: isFilterModified(edit.pipeline.lutFilter),
-    color: isColorModified(edit.pipeline.color),
+    color: isColorModified(edit.pipeline.color) || edit.pipeline.colorMasks.some((layer) => isColorModified(layer.color)),
     crop: isCropModified(edit.pipeline.transform),
     trim: isTrimModified(edit.pipeline.trim),
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
-    mask: edit.pipeline.colorMask !== null,
+    mask: edit.pipeline.colorMasks.length > 0,
   }), [edit.pipeline])
 
   // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
@@ -173,13 +170,15 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
           )}
           {edit.activeTool === 'color' && (
             <span className="workspace-tool-panel-actions">
-              {isColorModified(edit.pipeline.color) && <span className="ui-accordion-modified-dot" />}
+              {(mask.activeMask ? isColorModified(mask.activeMask.color) : isColorModified(edit.pipeline.color)) && <span className="ui-accordion-modified-dot" />}
               <Tooltip content="重置全部调色">
                 <IconButton
                   variant="ghost"
                   size="compact"
                   icon={<RotateCcw size={14} />}
-                  onClick={() => edit.updateWorkspacePanel({ color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects })}
+                  onClick={() => mask.activeMask
+                    ? mask.updateActiveLayer({ color: createDefaultPipeline().color })
+                    : edit.updateWorkspacePanel({ color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects })}
                   aria-label="重置全部调色"
                 />
               </Tooltip>
@@ -211,13 +210,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
               searchKey={filterSearchKey}
             />
           ) : edit.activeTool === 'color' ? (
-            <ColorPanel
-              value={edit.pipeline.color}
-              onChange={(color) => edit.updateWorkspacePanel({ color })}
-              onActivatePipette={() => edit.setPipetteActive(true)}
-            />
-          ) : edit.activeTool === 'mask' ? (
-            <MaskPanel />
+            <ColorMaskPanel />
           ) : edit.activeTool === 'crop' ? (
             <>
               <Accordion
