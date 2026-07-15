@@ -169,12 +169,13 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
         let mouth = params.beauty_faces[base + 3u];
         let contour_mask = beauty_contour_metrics(uv, face, base).x;
         let feature_feather = face.z * 0.02;
+        let mouth_feather = face.z * 0.045;
         let features = max(
             max(
                 beauty_left_eye_protection(uv, face_index, feature_feather),
                 beauty_right_eye_protection(uv, face_index, feature_feather),
             ),
-            beauty_mouth_protection(uv, face_index, feature_feather * 0.85),
+            beauty_mouth_protection(uv, face_index, mouth_feather),
         );
         protected_features = max(protected_features, features);
         face_mask = max(face_mask, contour_mask * (1.0 - features));
@@ -184,8 +185,8 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
         textureSample(beauty_skin_mask, src_sampler, uv).r * (1.0 - protected_features),
         params.beauty_debug.y > 0.5,
     );
-    let whitening_mask = max(face_mask, semantic_skin);
-    if (face_mask <= 0.0 && whitening_mask <= 0.0) { return input; }
+    let skin_effect_mask = select(face_mask, semantic_skin, params.beauty_debug.y > 0.5);
+    if (skin_effect_mask <= 0.0) { return input; }
 
     var result = input;
     if (smoothing > 0.0) {
@@ -194,7 +195,7 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
         let smoothed_base = mix(fine, coarse, smoothing * 0.76);
         let fine_detail = input - fine;
         let detail_preserved = smoothed_base + fine_detail * (0.34 - smoothing * 0.14);
-        result = mix(result, detail_preserved, face_mask * smoothing * 0.92);
+        result = mix(result, detail_preserved, skin_effect_mask * smoothing * 0.92);
     }
     let complexion = params.beauty_skin_params[0].x / 100.0;
     if (complexion > 0.0) {
@@ -202,27 +203,27 @@ fn apply_beauty_color(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
         let tone_difference = distance(input, even_tone);
         let retained_detail = mix(0.08, 0.0, smoothstep(0.014, 0.09, tone_difference));
         let complexion_target = even_tone + (input - even_tone) * retained_detail
-            + vec3<f32>(0.065, 0.047, 0.04) * face_mask;
-        result = mix(result, complexion_target, whitening_mask * complexion * 0.96);
+            + vec3<f32>(0.065, 0.047, 0.04) * skin_effect_mask;
+        result = mix(result, complexion_target, skin_effect_mask * complexion * 0.96);
     }
     let warmth = params.beauty_skin_params[0].y / 100.0;
     if (abs(warmth) > 0.0) {
-        result += vec3<f32>(0.02, 0.004, -0.02) * warmth * whitening_mask;
+        result += vec3<f32>(0.02, 0.004, -0.02) * warmth * skin_effect_mask;
     }
     let rosy = params.beauty_skin_params[0].z / 100.0;
     if (rosy > 0.0) {
-        result += vec3<f32>(0.045, 0.008, 0.012) * rosy * whitening_mask;
+        result += vec3<f32>(0.045, 0.008, 0.012) * rosy * skin_effect_mask;
     }
     if (whitening > 0.0) {
         let luminance = dot(result, vec3<f32>(0.299, 0.587, 0.114));
         let screened = 1.0 - (1.0 - result) * (1.0 - result);
         let tone_amount = whitening * (0.12 + luminance * 0.18);
-        result = mix(result, screened, whitening_mask * tone_amount);
+        result = mix(result, screened, skin_effect_mask * tone_amount);
     }
     let skin_texture = params.beauty_skin_params[0].w / 100.0;
     if (skin_texture > 0.0) {
         let texture_base = beauty_bilateral(uv, 2.8, 9.0);
-        result += (input - texture_base) * face_mask * skin_texture * 0.65;
+        result += (input - texture_base) * skin_effect_mask * skin_texture * 0.65;
     }
     result = apply_beauty_local_color(result, input, uv);
     return clamp(result, vec3<f32>(0.0), vec3<f32>(1.0));
@@ -246,20 +247,8 @@ fn beauty_center_mark(uv: vec2<f32>, center: vec2<f32>, face: vec4<f32>) -> f32 
 fn apply_beauty_debug(input: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
     if (params.beauty_debug.x < 0.5) { return input; }
     if (params.beauty_debug.y < 0.5) { return input; }
-    let mask_size = max(vec2<f32>(textureDimensions(beauty_skin_mask)), vec2<f32>(1.0));
-    let mask_texel = vec2<f32>(1.0) / mask_size;
     let skin = textureSample(beauty_skin_mask, src_sampler, uv).r;
-    let edge_delta = max(
-        max(
-            abs(skin - textureSample(beauty_skin_mask, src_sampler, uv + vec2<f32>(mask_texel.x, 0.0)).r),
-            abs(skin - textureSample(beauty_skin_mask, src_sampler, uv - vec2<f32>(mask_texel.x, 0.0)).r),
-        ),
-        max(
-            abs(skin - textureSample(beauty_skin_mask, src_sampler, uv + vec2<f32>(0.0, mask_texel.y)).r),
-            abs(skin - textureSample(beauty_skin_mask, src_sampler, uv - vec2<f32>(0.0, mask_texel.y)).r),
-        ),
-    );
-    let edge = smoothstep(0.06, 0.45, edge_delta);
+    let edge = 1.0 - smoothstep(0.08, 0.24, abs(skin - 0.5));
     var result = mix(input, vec3<f32>(1.0, 0.2, 0.68), skin * 0.28);
     result = mix(result, vec3<f32>(0.05, 1.0, 0.9), edge * 0.98);
     return result;

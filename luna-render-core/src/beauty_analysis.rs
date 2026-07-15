@@ -5,11 +5,9 @@ use base64::Engine;
 use napi::{Env, Task};
 use napi_derive::napi;
 use tract_onnx::prelude::*;
-use crate::{RenderBeautyFace, media::probe_video_dimensions};
-use crate::beauty_face_crop::detect_face_from_parsing;
-use crate::beauty_person::{detect_people, person_head_crop};
+use crate::{RenderBeautyFace, beauty_face_crop::detect_face_from_parsing, beauty_mask::smooth_skin_mask, beauty_person::{detect_people, person_head_crop}, media::probe_video_dimensions};
 
-const ANALYSIS_VERSION: u32 = 13;
+const ANALYSIS_VERSION: u32 = 14;
 const DETECTOR_SIDE: usize = 640;
 const LANDMARK_SIDE: usize = 192;
 const PARSING_SIDE: usize = 512;
@@ -455,7 +453,8 @@ fn analyze(ffmpeg: &str, ffprobe: &str, image_path: &str, model_dir: &str) -> Re
     with_models(Path::new(model_dir), |models| {
         let detections = detect_faces(models, &image)?;
         crate::log!("[Beauty] face candidates before parsing={}", detections.len());
-        let (mask, accepted) = parse_skin(models, &image, &detections)?;
+        let (raw_mask, accepted) = parse_skin(models, &image, &detections)?;
+        let mask = smooth_skin_mask(&raw_mask, MASK_SIDE, MASK_SIDE);
         let mut faces = Vec::new();
         for detection in &accepted {
             let landmarks = detect_landmarks(models, &image, *detection)?;
