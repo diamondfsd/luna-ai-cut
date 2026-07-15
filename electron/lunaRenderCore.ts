@@ -5,7 +5,9 @@
  * 为 IPC 层提供类型安全的调用接口。
  * 可选字段在此层填充默认值后传入 Rust。
  */
+import { app } from 'electron'
 import { createRequire } from 'node:module'
+import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   type LayerPositioningData,
@@ -118,11 +120,48 @@ export function getNative(): LunaRenderCoreNative {
 }
 
 let initialized = false
+const INIT_GUARD_FILE = '.lrc-init-running.json'
+export const LRC_COMPATIBILITY_BLOCKED = 'LRC_COMPATIBILITY_BLOCKED'
+
+function initGuardPath(): string {
+  return join(app.getPath('userData'), INIT_GUARD_FILE)
+}
+
+function writeInitGuard(): void {
+  writeFileSync(initGuardPath(), JSON.stringify({
+    pid: process.pid,
+    version: app.getVersion(),
+    platform: process.platform,
+    startedAt: new Date().toISOString(),
+  }), 'utf8')
+}
+
+function clearInitGuard(): void {
+  try {
+    rmSync(initGuardPath(), { force: true })
+  } catch {
+    // 清理失败时保留保护状态，避免持续触发 native 崩溃。
+  }
+}
+
+export function resetRenderCompatibilityBlock(): void {
+  clearInitGuard()
+}
 
 export function ensureInit(logPath?: string): void {
-  if (!initialized) {
+  if (initialized) return
+  if (existsSync(initGuardPath())) {
+    throw new Error(`${LRC_COMPATIBILITY_BLOCKED}: previous native initialization did not complete`)
+  }
+
+  writeInitGuard()
+  try {
     getNative().initCompositor(logPath ?? undefined)
     initialized = true
+    clearInitGuard()
+  } catch (error) {
+    clearInitGuard()
+    throw error
   }
 }
 
@@ -211,4 +250,3 @@ export function getExportTaskProgress(taskId: string): [number, number] | null {
   if (!result) return null
   return [result[0], result[1]]
 }
-

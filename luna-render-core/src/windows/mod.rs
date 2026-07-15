@@ -67,7 +67,7 @@ pub(crate) fn export_video(
     let interop = device::InteropDevice::new(&d3d12_device, &d3d12_queue)?;
     let encoders = capabilities::probe_hardware_encoders()?;
 
-    crate::compositor::log_write(&format!(
+    crate::logging::write(&format!(
         "[Export:WinGPU] capabilities d3d11on12=true h264={} hevc={}",
         encoders.h264, encoders.hevc,
     ));
@@ -81,7 +81,7 @@ pub(crate) fn export_video(
             .read_frame_at(0)?
             .ok_or_else(|| "视频中没有可解码的画面".to_string())?;
         decoder::validate_d3d12_interop(&frame, &interop.d3d11on12_device, &d3d12_queue)?;
-        crate::compositor::log_write(&format!(
+        crate::logging::write(&format!(
             "[Export:WinGPU] decoder=media-foundation output={} size={}x{} rotation={} subresource={} sharing=d3d11on12-unwrap",
             frame.format.label(),
             frame.width,
@@ -96,7 +96,7 @@ pub(crate) fn export_video(
     }
     let hevc = !encoders.h264 && encoders.hevc;
 
-    crate::compositor::log_write(&format!(
+    crate::logging::write(&format!(
         "[Export:WinGPU] pipeline=mf-decode,d3d11-video-process,wgpu-compose,mf-{} sync=d3d12-fence readback=false",
         if hevc { "hevc" } else { "h264" },
     ));

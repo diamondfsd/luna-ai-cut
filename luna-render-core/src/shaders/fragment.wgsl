@@ -68,6 +68,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let local_x = (pixel_x - params.dst_x) / params.dst_w;
     let local_y = (pixel_y - params.dst_y) / params.dst_h;
 
+    if (params.procedural.x < 0.5 && local_x > params.text_meta.w) {
+        discard;
+    }
+
     if (params.procedural.x > 0.5 && params.procedural.x < 1.5) {
         let p = vec2<f32>(local_x, local_y);
         let shape_kind = params.procedural.y;
@@ -85,15 +89,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if (stroke_px > 0.0 && params.stroke_rgba.a > 0.0) {
             let edge_px = min(min(local_x * params.dst_w, (1.0 - local_x) * params.dst_w), min(local_y * params.dst_h, (1.0 - local_y) * params.dst_h));
             if (edge_px <= stroke_px) {
-                return vec4<f32>(params.stroke_rgba.rgb, params.stroke_rgba.a * params.opacity);
+                let stroke_alpha = params.stroke_rgba.a * params.opacity;
+                return vec4<f32>(params.stroke_rgba.rgb * stroke_alpha, stroke_alpha);
             }
         }
-        return vec4<f32>(params.fill_rgba.rgb, params.fill_rgba.a * params.opacity);
+        let fill_alpha = params.fill_rgba.a * params.opacity;
+        return vec4<f32>(params.fill_rgba.rgb * fill_alpha, fill_alpha);
     }
 
     if (params.procedural.x > 2.5) {
         let glyph_color = textureSample(src_texture, src_sampler, vec2<f32>(local_x, local_y));
-        return vec4<f32>(glyph_color.rgb, glyph_color.a * params.opacity);
+        return vec4<f32>(glyph_color.rgb * params.opacity, glyph_color.a * params.opacity);
     }
 
     if (params.procedural.x > 1.5) {
@@ -127,7 +133,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let bits = glyph_bits(u32(code));
         let ink = ((bits >> (row * 3u + col)) & 1u) == 1u;
         if (!ink || u32(code) == 32u) { discard; }
-        return vec4<f32>(params.fill_rgba.rgb, params.fill_rgba.a * params.opacity);
+        let text_alpha = params.fill_rgba.a * params.opacity;
+        return vec4<f32>(params.fill_rgba.rgb * text_alpha, text_alpha);
     }
     let frame_uv = vec2<f32>(
         params.crop_x + local_x * params.crop_w,
@@ -161,7 +168,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     );
 
     var color = sample_media_texture(tex_coord);
-    color = vec4<f32>(apply_color(color.rgb, tex_coord), color.a);
+    color = vec4<f32>(apply_color(color.rgb, tex_coord, local_x), color.a);
     color.a = color.a * params.opacity;
     if (params.sampling_quality > 0.5) {
         color = vec4<f32>(color.rgb * color.a, color.a);

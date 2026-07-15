@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::composition::{composition_layers, mux_primary_audio, CompositionInput};
-use crate::compositor::{decode_static_image_scaled, Compositor, PreviewTextureInfo};
+use crate::compositor::{Compositor, PreviewTextureInfo};
 use crate::export::TaskState;
+use crate::media::decode_static_image_scaled;
 
 use super::converter::{D3d12TextureLease, VideoConverter};
 use super::decoder::VideoDecoder;
@@ -288,7 +289,7 @@ fn export_frames(
                     .store(frame_index + 1, std::sync::atomic::Ordering::SeqCst);
             }
             if frame_index % log_interval == 0 || frame_index + 1 == total_frames {
-                crate::compositor::log_write(&format!(
+                crate::logging::write(&format!(
                     "[Export:WinGPU:Timing] frame={}/{} frame_ms={:.1} elapsed_ms={:.0}",
                     frame_index + 1,
                     total_frames,
@@ -305,7 +306,7 @@ fn export_frames(
         let _ = compositor.release_texture(texture_id);
     }
     export_result?;
-    crate::compositor::log_write(&format!(
+    crate::logging::write(&format!(
         "[Export:WinGPU:Timing] summary frames={} total_ms={:.0}",
         total_frames,
         started.elapsed().as_secs_f64() * 1000.0,

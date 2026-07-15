@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
 import { initLogger, logMainInfo, logMainError, logMainWarn, logRendererMessage } from './loggerService'
+import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './crashDiagnostics'
 
 import {
   getLocalResourcesDir,
@@ -31,6 +32,8 @@ import type {
 } from '../src/shared/types'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+installCrashDiagnostics()
 
 // The built directory structure
 //
@@ -199,6 +202,7 @@ function createWindow(): void {
       activeExportControllers.clear()
     },
   })
+  attachWindowCrashDiagnostics(win)
 }
 
 // Quit when all windows are closed, except on macOS. There, it's common
