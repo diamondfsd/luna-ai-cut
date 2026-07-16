@@ -241,9 +241,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     } else {
       wasPlayingBeforeSeekRef.current = false
     }
-    // 重置恢复播放标志
     shouldResumePlaybackRef.current = false
-    // 显示 loading 状态
     setLoading(true)
   }
 
@@ -455,6 +453,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               interactiveImageLayerIndexes={cropActive ? [] : undefined}
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
               onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
+              onViewportChange={syncCanvasMetrics}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
             />

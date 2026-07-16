@@ -1,6 +1,7 @@
 import {
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   forwardRef,
@@ -47,6 +48,8 @@ export interface LrcRenderProps {
   /** 受控查看比例：null 表示适应窗口，1 表示画布像素与屏幕像素 1:1。 */
   imageScale?: number | null
   onImageScaleChange?: (scale: number | null) => void
+  /** 画布缩放或平移后通知外部覆盖层同步位置。 */
+  onViewportChange?: () => void
 }
 
 interface RenderPreviewOutput {
@@ -123,6 +126,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     maxImageScale = 2,
     imageScale,
     onImageScaleChange,
+    onViewportChange,
   },
   ref,
 ) {
@@ -152,6 +156,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const [fatalError, setFatalError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
   layersRef.current = layers
+
+  useLayoutEffect(() => {
+    onViewportChange?.()
+  }, [imageInteraction.style, onViewportChange])
 
   async function initializeRenderer(lrc: LunaRenderCore): Promise<void> {
     logger.info('[预览诊断] 渲染引擎初始化开始')
@@ -441,6 +449,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     prevProps.maxImageScale === nextProps.maxImageScale &&
     prevProps.imageScale === nextProps.imageScale &&
     prevProps.onImageScaleChange === nextProps.onImageScaleChange &&
+    prevProps.onViewportChange === nextProps.onViewportChange &&
     JSON.stringify(prevProps.interactiveImageLayerIndexes) === JSON.stringify(nextProps.interactiveImageLayerIndexes) &&
     layersEqual(prevProps.layers, nextProps.layers)
   )
