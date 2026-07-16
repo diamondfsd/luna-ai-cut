@@ -7,7 +7,7 @@ import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
 import { useWorkspaceEdit } from './WorkspaceEditContext'
 import { useWorkspaceMedia } from './WorkspaceMediaContext'
 import { createDefaultPipeline, type ColorMaskLayer } from '../shared/editPipeline'
-import { createMaskOperation, isMatchingMaskOperation, type MaskOperation } from '../mask/maskOperationIdentity'
+import { createMaskOperation, isMatchingMaskOperation, isMatchingSegmentationRequest, type MaskOperation } from '../mask/maskOperationIdentity'
 import { modelForAutomaticSelection } from '../mask/maskModelMode'
 import { mergeCompletedColorMaskLayer, moveColorMaskLayer } from '../color/colorMaskLayerOperations'
 
@@ -40,6 +40,7 @@ interface WorkspaceMaskValue {
   setSegmentationModel: (value: SegmentationModelId) => void
   lastSegmentationPerformance: SegmentationPerformance | null
   segmentationProgress: WorkspaceSegmentationProgress | null
+  cancelSegmentation: () => void
   activeLayerId: string | null
   activeMask: ColorMaskLayer | null
   setActiveLayerId: (id: string | null) => void
@@ -75,7 +76,7 @@ function workingMaskSize(width: number, height: number): { width: number; height
   }
 }
 
-export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
+export function WorkspaceMaskProvider({ children, active }: { children: ReactNode; active: boolean }) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const { canUndo, canRedo, undo, redo } = edit
@@ -95,7 +96,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     const model = [...SEGMENTATION_MODELS, ...SAM_MODELS].find((item) => item.id === saved)
     return model?.id ?? 'segformer-b0-ade20k'
   })
-  const available = Boolean(media.currentProject && media.activeMedia?.path && isImagePath(media.activeMedia.path))
+  const available = active && Boolean(media.currentProject && media.activeMedia?.path && isImagePath(media.activeMedia.path))
   const activeMask = edit.pipeline.colorMasks.find((layer) => layer.id === activeLayerId) ?? null
   const activeMaskPath = activeMask?.path
   const activeMediaId = media.activeMedia?.id
@@ -106,21 +107,34 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   const colorMasksRef = useRef(edit.pipeline.colorMasks)
   colorMasksRef.current = edit.pipeline.colorMasks
   const applySystemUpdate = edit.applySystemUpdate
-  const currentIdentityRef = useRef({ projectId, assetId: activeMediaId })
+  const currentIdentityRef = useRef({ projectId, assetId: activeMediaId, active })
   const previousIdentity = currentIdentityRef.current
-  if (previousIdentity.projectId !== projectId || previousIdentity.assetId !== activeMediaId) {
-    currentIdentityRef.current = { projectId, assetId: activeMediaId }
-    operationGenerationRef.current += 1
-    activeOperationRef.current = null
+  if (previousIdentity.projectId !== projectId || previousIdentity.assetId !== activeMediaId || previousIdentity.active !== active) {
+    currentIdentityRef.current = { projectId, assetId: activeMediaId, active }
   }
 
-  const beginOperation = useCallback((kind: MaskOperation['kind'], operationProjectId: string, assetId: string): MaskOperation => {
-    const operation = createMaskOperation(operationGenerationRef.current, kind, operationProjectId, assetId)
+  const cancelRequest = useCallback((operation: MaskOperation | null): void => {
+    if (!operation?.requestId) return
+    void window.luna.workspace.cancelSegmentation(operation.requestId).catch(() => undefined)
+  }, [])
+
+  const invalidateActiveOperation = useCallback((): void => {
+    const operation = activeOperationRef.current
+    operationGenerationRef.current += 1
+    activeOperationRef.current = null
+    setBusy(false)
+    setSegmentationProgress(null)
+    cancelRequest(operation)
+  }, [cancelRequest])
+
+  const beginOperation = useCallback((kind: MaskOperation['kind'], operationProjectId: string, assetId: string, requestId?: string): MaskOperation => {
+    cancelRequest(activeOperationRef.current)
+    const operation = createMaskOperation(operationGenerationRef.current, kind, operationProjectId, assetId, requestId)
     operationGenerationRef.current = operation.generation
     activeOperationRef.current = operation
     setBusy(true)
     return operation
-  }, [])
+  }, [cancelRequest])
 
   const isCurrentOperation = useCallback((operation: MaskOperation): boolean => {
     return isMatchingMaskOperation(activeOperationRef.current, operation, currentIdentityRef.current)
@@ -133,22 +147,35 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     setSegmentationProgress(null)
   }, [isCurrentOperation])
 
+  const cancelSegmentation = useCallback((): void => {
+    if (activeOperationRef.current?.kind === 'segmentation') invalidateActiveOperation()
+  }, [invalidateActiveOperation])
+
+  useEffect(() => () => {
+    const operation = activeOperationRef.current
+    activeOperationRef.current = null
+    cancelRequest(operation)
+  }, [cancelRequest])
+
   useEffect(() => {
     if (activeLayerId && !edit.pipeline.colorMasks.some((layer) => layer.id === activeLayerId)) setActiveLayerId(null)
   }, [activeLayerId, activeMediaId, edit.pipeline.colorMasks])
 
   useEffect(() => {
+    invalidateActiveOperation()
     setEditing(false)
     setActiveLayerId(null)
     setSemanticPicking(false)
     setShowOverlay(true)
     setBusy(false)
     setSegmentationProgress(null)
-  }, [activeMediaId, projectId])
+  }, [active, activeMediaId, invalidateActiveOperation, projectId])
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
     const operation = activeOperationRef.current
-    if (operation?.kind === 'segmentation' && isCurrentOperation(operation)) setSegmentationProgress(progress)
+    if (isMatchingSegmentationRequest(operation, progress.requestId) && operation && isCurrentOperation(operation)) {
+      setSegmentationProgress(progress)
+    }
   }), [isCurrentOperation])
 
   useEffect(() => {
@@ -346,14 +373,15 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     const operationAssetId = media.activeMedia.id
     const operationMediaPath = media.activeMedia.path
     const operationMask = activeMask
-    const operation = beginOperation('segmentation', operationProjectId, operationAssetId)
-    setSegmentationProgress({ phase: 'model', label: '正在准备模型', percent: null })
+    const requestId = crypto.randomUUID()
+    const operation = beginOperation('segmentation', operationProjectId, operationAssetId, requestId)
+    setSegmentationProgress({ requestId, phase: 'model', label: '正在准备模型', percent: null })
     try {
       const modelId = targetClassId !== undefined
         ? modelForAutomaticSelection(segmentationModel)
         : segmentationModel
-      const result = await window.luna.workspace.segmentImage(operationMediaPath, point, modelId, targetClassId)
-      if (!isCurrentOperation(operation)) return
+      const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, point, modelId, targetClassId })
+      if (result.requestId !== requestId || !isCurrentOperation(operation)) return
       setLastSegmentationPerformance(result.performance)
       const data = new Uint8Array(result.bytes)
       if (targetClassId !== undefined && !data.some((value) => value > 0)) {
@@ -425,6 +453,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     setSegmentationModel,
     lastSegmentationPerformance,
     segmentationProgress,
+    cancelSegmentation,
     activeLayerId,
     activeMask,
     setActiveLayerId,
@@ -440,7 +469,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushMode, brushSize, busy, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, moveLayer, removeLayer, removeMask, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushMode, brushSize, busy, cancelSegmentation, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, moveLayer, removeLayer, removeMask, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }

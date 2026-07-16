@@ -59,18 +59,30 @@ async function unusedPort() {
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
+    const { allowFailure = false, timeoutMs = 0, ...spawnOptions } = options
     const child = spawn(command, args, {
       cwd: projectRoot,
       env: process.env,
-      ...options,
+      ...spawnOptions,
     })
     let stdout = ''
     let stderr = ''
+    let timedOut = false
+    const timer = timeoutMs > 0 ? setTimeout(() => {
+      timedOut = true
+      child.kill('SIGKILL')
+    }, timeoutMs) : null
     child.stdout?.on('data', (chunk) => { stdout += chunk })
     child.stderr?.on('data', (chunk) => { stderr += chunk })
-    child.once('error', reject)
+    child.once('error', (error) => {
+      if (timer) clearTimeout(timer)
+      reject(error)
+    })
     child.once('exit', (code, signal) => {
-      if (code === 0 || options.allowFailure) {
+      if (timer) clearTimeout(timer)
+      if (timedOut) {
+        reject(new Error(`${command} ${args.join(' ')} 超时 (${timeoutMs}ms)`))
+      } else if (code === 0 || allowFailure) {
         resolve({ code, signal, stdout, stderr })
       } else {
         reject(new Error(`${command} ${args.join(' ')} 失败 (${code ?? signal})\n${stderr || stdout}`))
@@ -80,7 +92,7 @@ function run(command, args, options = {}) {
 }
 
 async function agentBrowser(port, session, ...args) {
-  return run('agent-browser', ['--session', session, '--cdp', String(port), ...args])
+  return run('agent-browser', ['--session', session, '--cdp', String(port), ...args], { timeoutMs: 20_000 })
 }
 
 class CdpClient {
@@ -104,6 +116,7 @@ class CdpClient {
         const pending = this.pending.get(message.id)
         if (!pending) return
         this.pending.delete(message.id)
+        clearTimeout(pending.timer)
         if (message.error) pending.reject(new Error(message.error.message))
         else pending.resolve(message.result)
         return
@@ -123,7 +136,11 @@ class CdpClient {
   send(method, params = {}) {
     return new Promise((resolve, reject) => {
       const id = ++this.nextId
-      this.pending.set(id, { resolve, reject })
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new Error(`CDP ${method} 超时`))
+      }, 20_000)
+      this.pending.set(id, { resolve, reject, timer })
       this.socket.send(JSON.stringify({ id, method, params }))
     })
   }

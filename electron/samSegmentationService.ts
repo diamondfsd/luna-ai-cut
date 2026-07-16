@@ -35,16 +35,17 @@ function workerPath(): string {
 }
 
 /** 在独立 Rust 进程中运行 SAM，避免底层运行时异常终止 Electron 主进程。 */
-export function segmentSamInWorker(input: SamSegmentationInput): Promise<SamSegmentationResult> {
-  return runSamWorker(input)
+export function segmentSamInWorker(input: SamSegmentationInput, signal?: AbortSignal): Promise<SamSegmentationResult> {
+  return runSamWorker(input, signal)
 }
 
-async function runSamWorker(input: SamSegmentationInput): Promise<SamSegmentationResult> {
+async function runSamWorker(input: SamSegmentationInput, signal?: AbortSignal): Promise<SamSegmentationResult> {
   const directory = await mkdtemp(join(tmpdir(), 'luna-sam-'))
   const inputPath = join(directory, 'input.rgb')
   const outputPath = join(directory, 'output.mask')
   try {
-    await writeFile(inputPath, input.rgb)
+    signal?.throwIfAborted()
+    await writeFile(inputPath, input.rgb, { signal })
     await execFileAsync(workerPath(), [
       input.visionEncoderPath,
       input.promptDecoderPath,
@@ -54,8 +55,8 @@ async function runSamWorker(input: SamSegmentationInput): Promise<SamSegmentatio
       String(input.sourceHeight),
       String(input.pointX),
       String(input.pointY),
-    ], { timeout: 90_000, maxBuffer: 64 * 1024 })
-    const bytes = await readFile(outputPath)
+    ], { timeout: 90_000, maxBuffer: 64 * 1024, signal })
+    const bytes = await readFile(outputPath, { signal })
     const expectedSize = input.sourceWidth * input.sourceHeight
     if (bytes.byteLength !== expectedSize) throw new Error('SAM 返回的蒙版尺寸无效')
     return { width: input.sourceWidth, height: input.sourceHeight, bytes }
