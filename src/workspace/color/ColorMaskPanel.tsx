@@ -133,13 +133,16 @@ export function ColorMaskPanel() {
                   <span className="workspace-color-mask-layer-label"><strong>{layer.name}</strong></span>
                 </Button>
                 <span className="workspace-color-mask-layer-actions">
-                  <Tooltip content="重置这一层的调色">
+                  <Tooltip content="重置这一层的调色和混合模式">
                     <IconButton
                       variant="ghost"
                       size="mini"
                       icon={<RotateCcw size={14} />}
-                      aria-label={`重置${layer.name}的调色`}
-                      onClick={() => mask.updateLayer(layer.id, { color: createDefaultPipeline().color })}
+                      aria-label={`重置${layer.name}的调色和混合模式`}
+                      onClick={() => mask.updateLayer(layer.id, {
+                        color: createDefaultPipeline().color,
+                        blendMode: 'normal',
+                      })}
                     />
                   </Tooltip>
                   {!mask.editing && (
