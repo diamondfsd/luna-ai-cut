@@ -1,12 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import { toast } from '../../ui'
 import { isImagePath } from '../../lib/fileUtils'
-import { isSamSegmentationModel, SEGMENTATION_MODELS, SAM_MODELS, type SegmentationModelId } from '../../shared/segmentationModels'
+import { SEGMENTATION_MODELS, SAM_MODELS, type SegmentationModelId } from '../../shared/segmentationModels'
 import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
 import { useWorkspaceEdit } from './WorkspaceEditContext'
 import { useWorkspaceMedia } from './WorkspaceMediaContext'
 import { createDefaultPipeline, type ColorMaskLayer } from '../shared/editPipeline'
+import { createMaskOperation, isMatchingMaskOperation, type MaskOperation } from '../mask/maskOperationIdentity'
+import { modelForAutomaticSelection } from '../mask/maskModelMode'
+import { mergeCompletedColorMaskLayer, moveColorMaskLayer } from '../color/colorMaskLayerOperations'
 
 export type MaskBrushMode = 'paint' | 'erase'
 export type { SegmentationModelId } from '../../shared/segmentationModels'
@@ -97,12 +100,51 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   const activeMediaId = media.activeMedia?.id
   const activeMediaPath = media.activeMedia?.path
   const projectId = media.currentProject?.id
+  const operationGenerationRef = useRef(0)
+  const activeOperationRef = useRef<MaskOperation | null>(null)
+  const colorMasksRef = useRef(edit.pipeline.colorMasks)
+  colorMasksRef.current = edit.pipeline.colorMasks
+  const commitEditPatch = edit.commitPatch
+  const currentIdentityRef = useRef({ projectId, assetId: activeMediaId })
+  const previousIdentity = currentIdentityRef.current
+  if (previousIdentity.projectId !== projectId || previousIdentity.assetId !== activeMediaId) {
+    currentIdentityRef.current = { projectId, assetId: activeMediaId }
+    operationGenerationRef.current += 1
+    activeOperationRef.current = null
+  }
+
+  const beginOperation = useCallback((kind: MaskOperation['kind'], operationProjectId: string, assetId: string): MaskOperation => {
+    const operation = createMaskOperation(operationGenerationRef.current, kind, operationProjectId, assetId)
+    operationGenerationRef.current = operation.generation
+    activeOperationRef.current = operation
+    setBusy(true)
+    return operation
+  }, [])
+
+  const isCurrentOperation = useCallback((operation: MaskOperation): boolean => {
+    return isMatchingMaskOperation(activeOperationRef.current, operation, currentIdentityRef.current)
+  }, [])
+
+  const finishOperation = useCallback((operation: MaskOperation): void => {
+    if (!isCurrentOperation(operation)) return
+    activeOperationRef.current = null
+    setBusy(false)
+    setSegmentationProgress(null)
+  }, [isCurrentOperation])
 
   useEffect(() => {
     if (activeLayerId && !edit.pipeline.colorMasks.some((layer) => layer.id === activeLayerId)) setActiveLayerId(null)
   }, [activeLayerId, activeMediaId, edit.pipeline.colorMasks])
 
-  useEffect(() => window.luna.onWorkspaceSegmentationProgress(setSegmentationProgress), [])
+  useEffect(() => {
+    setBusy(false)
+    setSegmentationProgress(null)
+  }, [activeMediaId, projectId])
+
+  useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
+    const operation = activeOperationRef.current
+    if (operation?.kind === 'segmentation' && isCurrentOperation(operation)) setSegmentationProgress(progress)
+  }), [isCurrentOperation])
 
   useEffect(() => {
     if (!editing) return
@@ -123,78 +165,109 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let canceled = false
-    if (!available || !activeMediaPath) {
+    if (!available || !projectId || !activeMediaId || !activeMediaPath) {
       setEditing(false)
       setMaskData(null)
       setMaskSize(null)
       return
     }
-    if (!activeMaskPath || !projectId) {
+    if (!activeMaskPath) {
+      const operation = beginOperation('load', projectId, activeMediaId)
       window.luna.workspace.getMediaResolution(activeMediaPath).then((size) => {
-        if (canceled) return
+        if (canceled || !isCurrentOperation(operation)) return
         const working = workingMaskSize(size.width, size.height)
         setMaskSize(working)
         setMaskData(new Uint8Array(working.width * working.height))
-      }).catch(() => undefined)
-      return () => { canceled = true }
+      }).catch(() => undefined).finally(() => finishOperation(operation))
+      return () => {
+        canceled = true
+        finishOperation(operation)
+      }
     }
-    setBusy(true)
+    const operation = beginOperation('load', projectId, activeMediaId)
+    const operationMaskId = activeMask?.id
     window.luna.workspace.loadColorMask(projectId, activeMaskPath).then((loaded) => {
-      if (canceled) return
+      if (canceled || !isCurrentOperation(operation)) return
       setMaskSize({ width: loaded.width, height: loaded.height })
       setMaskData(new Uint8Array(loaded.bytes))
-    }).catch(() => {
-      if (!canceled) toast.error('无法读取当前蒙版')
+    }).catch(async () => {
+      if (canceled || !isCurrentOperation(operation)) return
+      if (operationMaskId) {
+        commitEditPatch({
+          colorMasks: colorMasksRef.current.map((layer) => layer.id === operationMaskId
+            ? { ...layer, enabled: false, loadError: 'missing-or-damaged' as const }
+            : layer),
+        })
+      }
+      toast.error('蒙版文件不可用，可重新编辑这一层')
+      try {
+        const size = await window.luna.workspace.getMediaResolution(activeMediaPath)
+        if (canceled || !isCurrentOperation(operation)) return
+        const working = workingMaskSize(size.width, size.height)
+        setMaskSize(working)
+        setMaskData(new Uint8Array(working.width * working.height))
+      } catch {
+        // The layer remains disabled even when a blank rebuild canvas cannot be prepared.
+      }
     }).finally(() => {
-      if (!canceled) setBusy(false)
+      finishOperation(operation)
     })
-    return () => { canceled = true }
-  }, [activeMaskPath, activeMediaId, activeMediaPath, available, projectId])
+    return () => {
+      canceled = true
+      finishOperation(operation)
+    }
+  }, [activeMask?.id, activeMaskPath, activeMediaId, activeMediaPath, available, beginOperation, commitEditPatch, finishOperation, isCurrentOperation, projectId])
 
   const commitMask = useCallback(async (data: Uint8Array) => {
     if (!media.currentProject || !media.activeMedia || !maskSize) {
       toast.error('请先在项目中打开一张图片')
       return
     }
-    setBusy(true)
+    const operationProjectId = media.currentProject.id
+    const operationAssetId = media.activeMedia.id
+    const operationMaskSize = maskSize
+    const operationMask = activeMask
+    const operation = beginOperation('save', operationProjectId, operationAssetId)
     try {
       const saved = await window.luna.workspace.saveColorMask(
-        media.currentProject.id,
-        media.activeMedia.id,
-        maskSize.width,
-        maskSize.height,
+        operationProjectId,
+        operationAssetId,
+        operationMaskSize.width,
+        operationMaskSize.height,
         data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
-        activeMask?.feather ?? 0,
+        operationMask?.feather ?? 0,
       )
+      if (!isCurrentOperation(operation)) return
       setMaskData(new Uint8Array(data))
-      const layerId = activeMask?.id ?? `mask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      const layerId = operationMask?.id ?? `mask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
       const layer: ColorMaskLayer = {
           path: saved.path,
           width: saved.width,
           height: saved.height,
-          opacity: activeMask?.opacity ?? 1,
-          inverted: activeMask?.inverted ?? false,
-          feather: activeMask?.feather ?? 0,
-          kind: activeMask?.kind ?? 'brush',
-          classId: activeMask?.classId,
-          className: activeMask?.className,
-          modelId: activeMask?.modelId,
+          opacity: operationMask?.opacity ?? 1,
+          inverted: operationMask?.inverted ?? false,
+          feather: operationMask?.feather ?? 0,
+          kind: operationMask?.kind ?? 'brush',
+          classId: operationMask?.classId,
+          className: operationMask?.className,
+          modelId: operationMask?.modelId,
           id: layerId,
-          name: activeMask?.name ?? `蒙版 ${edit.pipeline.colorMasks.length + 1}`,
-          enabled: activeMask?.enabled ?? true,
-          blendMode: activeMask?.blendMode ?? 'normal',
-          color: activeMask?.color ?? createDefaultPipeline().color,
+          name: operationMask?.name ?? `蒙版 ${colorMasksRef.current.length + 1}`,
+          enabled: operationMask?.enabled ?? true,
+          loadError: undefined,
+          blendMode: operationMask?.blendMode ?? 'normal',
+          color: operationMask?.color ?? createDefaultPipeline().color,
       }
-      edit.commitPatch({ colorMasks: activeMask
-        ? edit.pipeline.colorMasks.map((item) => item.id === layerId ? layer : item)
-        : [...edit.pipeline.colorMasks, layer] })
+      const nextLayers = mergeCompletedColorMaskLayer(colorMasksRef.current, operationMask?.id ?? null, layer)
+      if (nextLayers === colorMasksRef.current) return
+      edit.commitPatch({ colorMasks: nextLayers })
       setActiveLayerId(layerId)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '保存蒙版失败')
+      if (isCurrentOperation(operation)) toast.error(error instanceof Error ? error.message : '保存蒙版失败')
     } finally {
-      setBusy(false)
+      finishOperation(operation)
     }
-  }, [activeMask, edit, maskSize, media.activeMedia, media.currentProject])
+  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskSize, media.activeMedia, media.currentProject])
 
   const updateMaskSettings = useCallback((patch: { opacity?: number; inverted?: boolean; feather?: number }) => {
     if (!activeMask) return
@@ -230,12 +303,8 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   }, [activeLayerId, edit])
 
   const moveLayer = useCallback((id: string, direction: -1 | 1) => {
-    const current = edit.pipeline.colorMasks.findIndex((layer) => layer.id === id)
-    const target = current + direction
-    if (current < 0 || target < 0 || target >= edit.pipeline.colorMasks.length) return
-    const next = [...edit.pipeline.colorMasks]
-    ;[next[current], next[target]] = [next[target], next[current]]
-    edit.commitPatch({ colorMasks: next })
+    const next = moveColorMaskLayer(edit.pipeline.colorMasks, id, direction)
+    if (next !== edit.pipeline.colorMasks) edit.commitPatch({ colorMasks: next })
   }, [edit])
 
   const moveActiveLayer = useCallback((direction: -1 | 1) => {
@@ -259,58 +328,64 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
 
   const generateSemanticMask = useCallback(async (point?: { x: number; y: number }, targetClassId?: number) => {
     if (!media.activeMedia || !media.currentProject || !maskSize) return
-    setBusy(true)
+    const operationProjectId = media.currentProject.id
+    const operationAssetId = media.activeMedia.id
+    const operationMediaPath = media.activeMedia.path
+    const operationMask = activeMask
+    const operation = beginOperation('segmentation', operationProjectId, operationAssetId)
     setSegmentationProgress({ phase: 'model', label: '正在准备模型', percent: null })
     try {
-      const modelId = targetClassId !== undefined && isSamSegmentationModel(segmentationModel)
-        ? 'segformer-b0-ade20k'
+      const modelId = targetClassId !== undefined
+        ? modelForAutomaticSelection(segmentationModel)
         : segmentationModel
-      const result = await window.luna.workspace.segmentImage(media.activeMedia.path, point, modelId, targetClassId)
+      const result = await window.luna.workspace.segmentImage(operationMediaPath, point, modelId, targetClassId)
+      if (!isCurrentOperation(operation)) return
       setLastSegmentationPerformance(result.performance)
-      setMaskSize({ width: result.width, height: result.height })
       const data = new Uint8Array(result.bytes)
       if (targetClassId !== undefined && !data.some((value) => value > 0)) {
-        toast.error(`画面中没有识别到${result.className}`)
+        toast.error(`未找到${result.className}，可使用画笔手动选择`)
         return
       }
-      setMaskData(data)
       const saved = await window.luna.workspace.saveColorMask(
-        media.currentProject.id,
-        media.activeMedia.id,
+        operationProjectId,
+        operationAssetId,
         result.width,
         result.height,
         result.bytes,
-        activeMask?.feather ?? 2,
+        operationMask?.feather ?? 2,
       )
-      const layerId = activeMask?.id ?? `mask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      if (!isCurrentOperation(operation)) return
+      setMaskSize({ width: result.width, height: result.height })
+      setMaskData(data)
+      const layerId = operationMask?.id ?? `mask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
       const layer: ColorMaskLayer = {
           path: saved.path,
           width: saved.width,
           height: saved.height,
-          opacity: activeMask?.opacity ?? 1,
-          inverted: activeMask?.inverted ?? false,
-          feather: activeMask?.feather ?? 2,
+          opacity: operationMask?.opacity ?? 1,
+          inverted: operationMask?.inverted ?? false,
+          feather: operationMask?.feather ?? 2,
           kind: 'semantic',
           classId: result.classId,
           className: result.className,
           modelId: result.modelId,
           id: layerId,
-          name: activeMask?.name ?? result.className ?? `蒙版 ${edit.pipeline.colorMasks.length + 1}`,
-          enabled: activeMask?.enabled ?? true,
-          blendMode: activeMask?.blendMode ?? 'normal',
-          color: activeMask?.color ?? createDefaultPipeline().color,
+          name: operationMask?.name ?? result.className ?? `蒙版 ${colorMasksRef.current.length + 1}`,
+          enabled: operationMask?.enabled ?? true,
+          loadError: undefined,
+          blendMode: operationMask?.blendMode ?? 'normal',
+          color: operationMask?.color ?? createDefaultPipeline().color,
       }
-      edit.commitPatch({ colorMasks: activeMask
-        ? edit.pipeline.colorMasks.map((item) => item.id === layerId ? layer : item)
-        : [...edit.pipeline.colorMasks, layer] })
+      const nextLayers = mergeCompletedColorMaskLayer(colorMasksRef.current, operationMask?.id ?? null, layer)
+      if (nextLayers === colorMasksRef.current) return
+      edit.commitPatch({ colorMasks: nextLayers })
       setActiveLayerId(layerId)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '智能选择失败')
+      if (isCurrentOperation(operation)) toast.error(error instanceof Error ? error.message : '智能选择失败')
     } finally {
-      setBusy(false)
-      setSegmentationProgress(null)
+      finishOperation(operation)
     }
-  }, [activeMask, edit, maskSize, media.activeMedia, media.currentProject, segmentationModel])
+  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskSize, media.activeMedia, media.currentProject, segmentationModel])
 
   const setSegmentationModel = useCallback((model: SegmentationModelId) => {
     setSegmentationModelState(model)

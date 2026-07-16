@@ -5,9 +5,10 @@ import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
+const e2eCdpPort = process.env.LUNA_E2E_CDP_PORT ?? '9332'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
@@ -16,6 +17,9 @@ export default defineConfig({
     electron({
       main: {
         entry: 'electron/main.ts',
+        onstart: mode === 'e2e'
+          ? ({ startup }) => startup(['.', '--no-sandbox', `--remote-debugging-port=${e2eCdpPort}`])
+          : undefined,
         vite: {
           build: {
             rollupOptions: {
@@ -41,4 +45,4 @@ export default defineConfig({
           : {},
     }),
   ],
-})
+}))

@@ -436,7 +436,8 @@ function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { bl
     ...mask,
     id: typeof input.id === 'string' && input.id ? input.id : `mask-${Date.now()}`,
     name: typeof input.name === 'string' && input.name.trim() ? input.name.trim().slice(0, 40) : '局部蒙版',
-    enabled: input.enabled !== false,
+    enabled: input.loadError ? false : input.enabled !== false,
+    loadError: input.loadError === 'missing-or-damaged' ? input.loadError : undefined,
     blendMode: normalizeColorMaskBlendMode(input.blendMode),
     color,
   }

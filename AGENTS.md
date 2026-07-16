@@ -168,6 +168,15 @@ Radix 基元用于提供行为和可访问性，不施加视觉样式。**不要
 - 只有用户明确提出需要界面化 UI 测试或指定具体测试场景时，才启动应用并执行相关测试。
 - 仍需按改动风险执行构建、类型检查、Lint 和适用的非界面自动化测试。
 
+用户明确要求 Electron UI 测试时，优先使用 `agent-browser`：
+
+- 使用 `pnpm dev:e2e` 启动应用，默认只在本机开放 CDP 端口 `9332`；并行测试其他 Electron 应用时，通过 `LUNA_E2E_CDP_PORT=<独立端口> pnpm dev:e2e` 隔离。
+- 每个任务使用独立 `--session`，并在每条命令上显式传入 `--cdp <端口>`；不要让两个 Agent 同时控制同一 Electron 实例。
+- 同一 CDP 目标上的 `snapshot`、交互、截图和控制台检查必须串行。页面变化后重新 `snapshot`，不复用旧 `@eN` 引用。
+- `agent-browser connect` 若连接到空白 target，改用每条命令显式 `--cdp`。拖拽或截图命令被中断后，换一个新的 session 重新连接，避免沿用失效状态。
+- `agent-browser drag` 在 HTML5 手柄上超时时，可在单一 CDP WebSocket 连接内连续发送 `mousePressed`、带 `buttons: 1` 的多段 `mouseMoved` 和 `mouseReleased`；必须同时验证顺序变化与一次撤销恢复。
+- GPU 预览使 CDP 截图超时时，保留可访问性快照和控制台证据，并使用系统窗口捕获补视觉证据；macOS 按精确窗口标题/窗口 ID 定位，避免误截其他 Electron 应用，不得把截图工具超时误报为产品缺陷。
+
 在添加新的可复用控件之前：
 
 1. 检查 `src/ui` 是否已有匹配的组件。

@@ -62,6 +62,25 @@
   color: var(--ink);
 }
 
+.workspace-color-mask-layers-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.workspace-color-mask-layers-header-actions small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.workspace-color-mask-create-trigger {
+  display: inline-flex;
+}
+
 .workspace-color-mask-layer-list {
   display: grid;
   max-height: min(270px, 38vh);
@@ -70,6 +89,7 @@
 }
 
 .workspace-color-mask-layer {
+  position: relative;
   display: flex;
   min-height: 52px;
   align-items: center;
@@ -80,10 +100,39 @@
   background: color-mix(in srgb, var(--parchment) 42%, transparent);
 }
 
+.workspace-color-mask-layer.is-dragging {
+  opacity: 0.45;
+}
+
+.workspace-color-mask-layer.is-drop-before::before,
+.workspace-color-mask-layer.is-drop-after::after {
+  position: absolute;
+  z-index: 2;
+  right: 2px;
+  left: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--blue);
+  content: '';
+  pointer-events: none;
+}
+
+.workspace-color-mask-layer.is-drop-before::before {
+  top: -3px;
+}
+
+.workspace-color-mask-layer.is-drop-after::after {
+  bottom: -3px;
+}
+
 .workspace-color-mask-layer.is-active {
   border-color: var(--blue);
   box-shadow: inset 0 0 0 1px var(--blue);
   background: color-mix(in srgb, var(--blue) 6%, var(--canvas));
+}
+
+.workspace-color-mask-layer.is-unavailable {
+  border-color: color-mix(in srgb, #d93025 45%, var(--hairline));
 }
 
 .workspace-color-mask-layer-eye,
@@ -99,6 +148,16 @@
 .workspace-color-mask-layer-eye-button.ui-icon-btn {
   flex: 0 0 28px;
   color: var(--ink);
+}
+
+.workspace-color-mask-drag-handle.ui-icon-btn {
+  flex: 0 0 24px;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.workspace-color-mask-drag-handle.ui-icon-btn:active {
+  cursor: grabbing;
 }
 
 .workspace-color-mask-global-icon {
@@ -149,6 +208,15 @@
   white-space: nowrap;
 }
 
+.workspace-color-mask-layer-status {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #d93025;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
 .workspace-color-mask-layer-actions {
   display: flex;
   flex: 0 0 auto;
@@ -171,8 +239,24 @@
   font-size: 11px;
 }
 
+.workspace-color-mask-blend-description {
+  padding: 0 4px 6px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .workspace-color-mask-layer-menu .ui-btn {
   width: 100%;
   justify-content: flex-start;
   border: 0;
+}
+
+.workspace-color-mask-rename-dialog {
+  width: min(360px, calc(100vw - 32px));
+}
+
+.workspace-color-mask-rename-form {
+  display: grid;
+  padding: 4px 0;
 }
