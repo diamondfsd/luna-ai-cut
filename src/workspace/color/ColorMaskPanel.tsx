@@ -1,7 +1,8 @@
 import { Copy, Eye, EyeOff, Globe2, MoreHorizontal, Pencil, Plus, RefreshCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
-import { Button, IconButton, Popover, PopoverClose, PopoverContent, PopoverTrigger, Tooltip } from '../../ui'
+import { Button, IconButton, Popover, PopoverClose, PopoverContent, PopoverTrigger, Select, Tooltip } from '../../ui'
+import type { ColorMaskBlendMode } from '../shared/editPipeline'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
@@ -11,6 +12,12 @@ import './ColorMaskPanel.css'
 
 const THUMBNAIL_WIDTH = 68
 const THUMBNAIL_HEIGHT = 42
+const BLEND_MODE_OPTIONS = [
+  { value: 'normal', label: '正常' },
+  { value: 'multiply', label: '正片叠底' },
+  { value: 'screen', label: '滤色' },
+  { value: 'add', label: '线性减淡' },
+]
 
 function MaskThumbnail({ path, inverted }: { path: string; inverted: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -128,6 +135,16 @@ export function ColorMaskPanel() {
                       <IconButton variant="ghost" size="mini" icon={<MoreHorizontal size={17} />} aria-label="更多图层操作" />
                     </PopoverTrigger>
                     <PopoverContent className="workspace-color-mask-layer-menu" align="end">
+                      <label className="workspace-color-mask-blend-field">
+                        <span>混合模式</span>
+                        <Select
+                          variant="compact"
+                          fullWidth
+                          value={layer.blendMode}
+                          options={BLEND_MODE_OPTIONS}
+                          onValueChange={(blendMode) => mask.updateLayer(layer.id, { blendMode: blendMode as ColorMaskBlendMode })}
+                        />
+                      </label>
                       <PopoverClose asChild><Button variant="ghost" size="compact" icon={<Copy size={14} />} onClick={() => mask.duplicateLayer(layer.id)}>复制图层</Button></PopoverClose>
                       <PopoverClose asChild><Button variant="ghost" size="compact" icon={<RefreshCcw size={14} />} onClick={() => mask.updateLayer(layer.id, { inverted: !layer.inverted })}>反向蒙版</Button></PopoverClose>
                       <PopoverClose asChild><Button variant="danger" size="compact" icon={<Trash2 size={14} />} onClick={() => mask.removeLayer(layer.id)}>删除图层</Button></PopoverClose>

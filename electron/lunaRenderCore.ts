@@ -43,6 +43,7 @@ export interface CompositionInput {
     rect: { x: number; y: number; w: number; h: number }
     fit?: 'cover' | 'contain' | string
     opacity?: number
+    blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
     zIndex?: number
     color?: Partial<RenderColorAdjustments>
     maskPath?: string

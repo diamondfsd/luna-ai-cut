@@ -294,6 +294,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 src_w: 1.0,
                 src_h: 1.0,
                 opacity: layer.opacity.unwrap_or(1.0),
+                blend_mode: layer.blend_mode.clone(),
                 reveal_progress: reveal_width,
                 z_index: layer.z_index.unwrap_or(0),
                 color: layer.color.clone().unwrap_or_default(),
