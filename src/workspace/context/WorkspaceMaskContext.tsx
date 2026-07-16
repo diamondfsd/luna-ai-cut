@@ -40,6 +40,8 @@ interface WorkspaceMaskValue {
   setSegmentationModel: (value: SegmentationModelId) => void
   lastSegmentationPerformance: SegmentationPerformance | null
   segmentationProgress: WorkspaceSegmentationProgress | null
+  segmentationError: string | null
+  clearSegmentationError: () => void
   cancelSegmentation: () => void
   activeLayerId: string | null
   activeMask: ColorMaskLayer | null
@@ -90,6 +92,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const [semanticPicking, setSemanticPicking] = useState(false)
   const [lastSegmentationPerformance, setLastSegmentationPerformance] = useState<SegmentationPerformance | null>(null)
   const [segmentationProgress, setSegmentationProgress] = useState<WorkspaceSegmentationProgress | null>(null)
+  const [segmentationError, setSegmentationError] = useState<string | null>(null)
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
   const [segmentationModel, setSegmentationModelState] = useState<SegmentationModelId>(() => {
     const saved = localStorage.getItem('workspace_segmentation_model')
@@ -150,6 +153,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const cancelSegmentation = useCallback((): void => {
     if (activeOperationRef.current?.kind === 'segmentation') invalidateActiveOperation()
   }, [invalidateActiveOperation])
+  const clearSegmentationError = useCallback(() => setSegmentationError(null), [])
 
   useEffect(() => () => {
     const operation = activeOperationRef.current
@@ -169,6 +173,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setShowOverlay(true)
     setBusy(false)
     setSegmentationProgress(null)
+    setSegmentationError(null)
   }, [active, activeMediaId, invalidateActiveOperation, projectId])
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
@@ -375,6 +380,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     const operationMask = activeMask
     const requestId = crypto.randomUUID()
     const operation = beginOperation('segmentation', operationProjectId, operationAssetId, requestId)
+    setSegmentationError(null)
     setSegmentationProgress({ requestId, phase: 'model', label: '正在准备模型', percent: null })
     try {
       const modelId = targetClassId !== undefined
@@ -385,7 +391,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       setLastSegmentationPerformance(result.performance)
       const data = new Uint8Array(result.bytes)
       if (targetClassId !== undefined && !data.some((value) => value > 0)) {
-        toast.error(`未找到${result.className}，可使用画笔手动选择`)
+        setSegmentationError(`未找到${result.className}，可使用画笔手动选择`)
         return
       }
       const saved = await window.luna.workspace.saveColorMask(
@@ -423,7 +429,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       edit.commitPatch({ colorMasks: nextLayers })
       setActiveLayerId(layerId)
     } catch (error) {
-      if (isCurrentOperation(operation)) toast.error(error instanceof Error ? error.message : '智能选择失败')
+      if (isCurrentOperation(operation)) setSegmentationError(error instanceof Error ? error.message : '自动选择失败，请重试')
     } finally {
       finishOperation(operation)
     }
@@ -453,6 +459,8 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setSegmentationModel,
     lastSegmentationPerformance,
     segmentationProgress,
+    segmentationError,
+    clearSegmentationError,
     cancelSegmentation,
     activeLayerId,
     activeMask,
@@ -469,7 +477,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushMode, brushSize, busy, cancelSegmentation, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, moveLayer, removeLayer, removeMask, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushMode, brushSize, busy, cancelSegmentation, clearSegmentationError, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, moveLayer, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }

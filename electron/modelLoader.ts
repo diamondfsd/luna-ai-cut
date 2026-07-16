@@ -1,9 +1,10 @@
 import { app } from 'electron'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { SAM_MODELS, SEGMENTATION_MODELS, type SamSegmentationModelId, type SemanticSegmentationModelId } from '../src/shared/segmentationModels'
+import { SAM_MODELS, SEGMENTATION_MODELS, type SamSegmentationModelId, type SegmentationModelId, type SemanticSegmentationModelId } from '../src/shared/segmentationModels'
 import { loadVerifiedModelFile } from './modelFileService'
 import { SharedLoadRegistry } from './sharedLoadRegistry'
+import { hasCachedModelFiles } from './modelCacheStatus'
 
 export type ModelId = SemanticSegmentationModelId
 
@@ -38,6 +39,12 @@ export interface LoadedSamModel {
   sha256: Record<'visionEncoder' | 'promptDecoder', string>
   license: string
   source: string
+}
+
+export interface ModelCacheStatus {
+  modelId: SegmentationModelId
+  cached: boolean
+  sizeBytes: number
 }
 
 export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntries(SEGMENTATION_MODELS.map((model) => [model.id, {
@@ -116,4 +123,24 @@ export function loadSamModel(id: SamSegmentationModelId, onProgress?: (progress:
     signal,
     onProgress,
   })
+}
+
+export async function getModelCacheStatus(id: SegmentationModelId): Promise<ModelCacheStatus> {
+  const semanticDefinition = MODEL_REGISTRY[id as ModelId]
+  if (semanticDefinition) {
+    const modelDir = path.join(app.getPath('userData'), 'models', id)
+    return {
+      modelId: id,
+      cached: await hasCachedModelFiles(modelDir, [semanticDefinition]),
+      sizeBytes: semanticDefinition.sizeBytes,
+    }
+  }
+  const samDefinition = SAM_MODELS.find((model) => model.id === id)
+  if (!samDefinition) throw new Error(`未知模型: ${id}`)
+  const modelDir = path.join(app.getPath('userData'), 'models', id)
+  return {
+    modelId: id,
+    cached: await hasCachedModelFiles(modelDir, Object.values(samDefinition.files)),
+    sizeBytes: samDefinition.sizeBytes,
+  }
 }

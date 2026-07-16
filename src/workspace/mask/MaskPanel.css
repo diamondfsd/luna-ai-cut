@@ -157,6 +157,25 @@
   animation: workspace-mask-progress 1.1s ease-in-out infinite;
 }
 
+.workspace-mask-auto-error {
+  display: grid;
+  gap: 8px;
+  margin-left: 64px;
+  color: var(--danger, #b42318);
+  font-size: 12px;
+}
+
+.workspace-mask-auto-error p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.workspace-mask-auto-error > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .workspace-mask-setting-row {
   min-height: 34px;
 }
