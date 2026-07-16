@@ -34,6 +34,9 @@ import type {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+const e2eUserDataDir = process.env.LUNA_E2E_USER_DATA_DIR
+if (!app.isPackaged && e2eUserDataDir) app.setPath('userData', path.resolve(e2eUserDataDir))
+
 installCrashDiagnostics()
 
 // The built directory structure

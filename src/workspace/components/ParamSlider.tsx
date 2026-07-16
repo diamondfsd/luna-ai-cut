@@ -8,6 +8,7 @@ interface ParamSliderProps {
   max: number
   step?: number
   onChange: (value: number) => void
+  onCommit?: (value: number) => void
   formatValue?: (value: number) => string
 }
 
@@ -28,6 +29,7 @@ export function ParamSlider({
   max,
   step = 1,
   onChange,
+  onCommit,
   formatValue = formatSigned,
 }: ParamSliderProps) {
   const zeroRatio = max - min > 0 ? (0 - min) / (max - min) : 0.5
@@ -75,7 +77,8 @@ export function ParamSlider({
       cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-    onChange(next)
+    const commitChange = onCommit ?? onChange
+    commitChange(next)
   }
 
   useEffect(() => {

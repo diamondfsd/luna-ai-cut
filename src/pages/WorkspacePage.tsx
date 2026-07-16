@@ -13,6 +13,7 @@ import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/contex
 import { WorkspaceMaskProvider, useWorkspaceMask } from '../workspace/context/WorkspaceMaskContext'
 import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
+import { updateProjectAssetPipeline } from '../workspace/shared/workspaceProjectPipeline'
 import { PreviewStage, type PreviewStageHandle } from '../components/PreviewStage'
 import { WorkspaceMediaStrip } from '../workspace/components/WorkspaceMediaStrip'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
@@ -314,28 +315,39 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   // ── Auto-save project when pipeline changes ──
   const saveTimerRef = useRef<number | null>(null)
+  const pendingProjectSaveRef = useRef<WorkspaceProject | null>(null)
+  const retainedMaskPathsRef = useRef(edit.retainedMaskPaths)
+  const setCurrentProject = media.setCurrentProject
+  retainedMaskPathsRef.current = edit.retainedMaskPaths
+  const flushProjectSave = useCallback(() => {
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = null
+    const pending = pendingProjectSaveRef.current
+    pendingProjectSaveRef.current = null
+    if (!pending) return
+    window.luna.workspace.saveProject(pending)
+      .then(() => window.luna.workspace.cleanupColorMasks(pending.id, retainedMaskPathsRef.current))
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : String(error))
+      })
+  }, [])
+
+  useEffect(() => () => flushProjectSave(), [flushProjectSave])
+
   useEffect(() => {
     if (workspaceMode !== 'edit') {
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
+      flushProjectSave()
       return
     }
     if (!media.currentProject || !media.activeMedia) return
-    const nextProject: WorkspaceProject = {
-      ...media.currentProject,
-      assets: media.currentProject.assets.map((asset, index) =>
-        index === media.activeIndex ? { ...asset, pipeline: edit.pipeline } : asset,
-      ),
-    }
+    if (pendingProjectSaveRef.current?.id !== media.currentProject.id) flushProjectSave()
+    const nextProject = updateProjectAssetPipeline(media.currentProject, media.activeIndex, edit.pipeline)
+    // Keep the latest pipeline in memory immediately so a sub-500ms asset switch cannot drop it.
+    setCurrentProject(nextProject)
+    pendingProjectSaveRef.current = nextProject
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = window.setTimeout(() => {
-      window.luna.workspace.saveProject(nextProject).catch((error) => {
-        toast.error(error instanceof Error ? error.message : String(error))
-      })
-      // 更新内存状态：切回图片时能保留修改后的参数
-      media.setCurrentProject(nextProject)
-    }, 500)
-  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, edit.pipeline, workspaceMode])
+    saveTimerRef.current = window.setTimeout(flushProjectSave, 500)
+  }, [edit.pipeline, flushProjectSave, media.activeIndex, media.activeMedia?.path, media.currentProject?.id, setCurrentProject, workspaceMode])
 
   function handlePastePipeline(): void {
     const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])

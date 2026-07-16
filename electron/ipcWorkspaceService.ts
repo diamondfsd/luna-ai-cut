@@ -33,7 +33,7 @@ import { loadModel, loadSamModel, type ModelId } from './modelLoader'
 import { isSamSegmentationModel, SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { getNative } from './lunaRenderCore'
 import { segmentSamInWorker } from './samSegmentationService'
-import { deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
+import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 
 const MASKFORMER_COMMON_CLASS_IDS: Record<number, number> = {
   1: 1,
@@ -160,6 +160,11 @@ export function register(): void {
   ipcMain.handle('workspace:deleteColorMask', async (_event, projectId: string, filePath: string) => {
     const settings = await getSettings()
     await deleteColorMask(settings.downloadDir, projectId, filePath)
+  })
+
+  ipcMain.handle('workspace:cleanupColorMasks', async (_event, projectId: string, retainedPaths: string[]) => {
+    const settings = await getSettings()
+    return cleanupUnreferencedColorMasks(settings.downloadDir, projectId, retainedPaths)
   })
 
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {

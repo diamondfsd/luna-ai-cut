@@ -4,6 +4,7 @@ import * as path from 'node:path'
 const PROJECTS_DIR = 'workspace-projects'
 const MASKS_DIR = 'masks'
 const MAX_MASK_PIXELS = 100_000_000
+const DEFAULT_ORPHAN_GRACE_MS = 60 * 60 * 1000
 
 function safePathSegment(value: string, fallback: string): string {
   return value.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || fallback
@@ -11,8 +12,16 @@ function safePathSegment(value: string, fallback: string): string {
 
 function projectDirectory(downloadDir: string, projectId: string): string {
   const safeProjectId = safePathSegment(projectId, '')
-  if (!safeProjectId || safeProjectId !== projectId) throw new Error('项目标识无效')
-  return path.resolve(downloadDir, PROJECTS_DIR, safeProjectId)
+  if (!safeProjectId || safeProjectId !== projectId || projectId === '.' || projectId === '..') {
+    throw new Error('项目标识无效')
+  }
+  const root = path.resolve(downloadDir, PROJECTS_DIR)
+  const directory = path.resolve(root, safeProjectId)
+  const relative = path.relative(root, directory)
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('项目标识无效')
+  }
+  return directory
 }
 
 function maskDirectory(downloadDir: string, projectId: string): string {
@@ -58,7 +67,9 @@ function parsePgm(buffer: Buffer): { width: number; height: number; bytes: Uint8
   if (Number(nextToken()) !== 255) throw new Error('蒙版灰度范围无效')
   const pixels = checkedDimensions(width, height)
   if (offset >= buffer.length || buffer[offset] > 32) throw new Error('蒙版文件格式无效')
+  const delimiter = buffer[offset]
   offset += 1
+  if (delimiter === 13 && buffer[offset] === 10) offset += 1
   if (buffer.length - offset !== pixels) throw new Error('蒙版文件数据不完整')
   return { width, height, bytes: new Uint8Array(buffer.subarray(offset)) }
 }
@@ -109,4 +120,61 @@ export async function loadColorMask(
 
 export async function deleteColorMask(downloadDir: string, projectId: string, filePath: string): Promise<void> {
   await fs.rm(await resolveExistingMaskPath(downloadDir, projectId, filePath), { force: true })
+}
+
+function collectPersistedMaskPaths(value: unknown, paths: Set<string>): void {
+  if (typeof value === 'string') {
+    if (path.extname(value).toLowerCase() === '.pgm') paths.add(path.resolve(value))
+    return
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectPersistedMaskPaths(item, paths)
+    return
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) collectPersistedMaskPaths(item, paths)
+  }
+}
+
+export async function cleanupUnreferencedColorMasks(
+  downloadDir: string,
+  projectId: string,
+  retainedPaths: string[],
+  minimumAgeMs = DEFAULT_ORPHAN_GRACE_MS,
+): Promise<{ deleted: number; retained: number }> {
+  const projectDir = projectDirectory(downloadDir, projectId)
+  const masksDir = maskDirectory(downloadDir, projectId)
+  const project = JSON.parse(await fs.readFile(path.join(projectDir, 'project.json'), 'utf8')) as unknown
+  const reachable = new Set<string>()
+  collectPersistedMaskPaths(project, reachable)
+  for (const retainedPath of retainedPaths) reachable.add(path.resolve(retainedPath))
+
+  const realMasksDir = await fs.realpath(masksDir).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null
+    throw error
+  })
+  if (!realMasksDir) return { deleted: 0, retained: 0 }
+  const entries = await fs.readdir(realMasksDir, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return []
+    throw error
+  })
+  let deleted = 0
+  let retained = 0
+  const now = Date.now()
+  for (const entry of entries) {
+    if (!entry.isFile() || entry.isSymbolicLink() || path.extname(entry.name).toLowerCase() !== '.pgm') continue
+    const filePath = path.resolve(realMasksDir, entry.name)
+    if (reachable.has(filePath)) {
+      retained += 1
+      continue
+    }
+    const stats = await fs.lstat(filePath)
+    if (minimumAgeMs > 0 && now - stats.mtimeMs < minimumAgeMs) {
+      retained += 1
+      continue
+    }
+    await fs.rm(filePath, { force: true })
+    deleted += 1
+  }
+  return { deleted, retained }
 }
