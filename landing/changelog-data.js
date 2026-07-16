@@ -2,6 +2,84 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.5.2",
+    "title": "v1.5.2 — 发布说明",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>Windows GPU 导出</strong>：新增 Windows 平台零拷贝 GPU 硬件加速导出，大幅提升 Windows 端视频导出性能</li>\n<li><strong>色彩揭晓创意</strong>：新增 Color Reveal 创意模板，支持颜色渐变揭晓动画效果</li>\n<li><strong>HSL 自定义调色</strong>：新增 HSL 色彩面板，支持 Hue/Saturation/Lightness 精细调节</li>\n<li><strong>Insta360 相机媒体删除</strong>：新增 Insta360 相机素材本地删除功能，支持设备端文件清理</li>\n<li><strong>热更新发布平台</strong>：新增统一的热更新发布通道，支持增量修复快速推送</li>\n<li><strong>GPU 渲染预热</strong>：页面加载后自动预热渲染核心，减少首次操作延迟</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 Windows Vulkan 驱动崩溃</strong>：避免在部分 Windows 显卡驱动下 Vulkan 初始化导致的崩溃问题</li>\n<li><strong>修复预览崩溃诊断</strong>：增强预览崩溃的日志采集和诊断能力</li>\n<li><strong>消除非 Windows 平台警告</strong>：静默非 Windows 平台下渲染核心加载的冗余警告</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li><strong>HSL 调色面板</strong>：新增 HSL 面板界面，集成到调色工作流中</li>\n<li><strong>创意工厂样式优化</strong>：调整创意模板创建流程的交互样式</li>\n<li><strong>代码风格规则优化</strong>：统一渲染核心代码风格</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>更新官网下载链接至 v1.5.2</li>\n<li>新增 Windows GPU 导出测试指南</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.5.1",
+    "title": "v1.5.1",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复部分 macOS 无法连接相机的问题</strong>：macOS 构建改为使用 Ad Hoc 签名，并在 CI 中增加签名校验，提升连接相机 Wi-Fi 热点时访问本地网络的兼容性。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>macOS 发布包增加本地网络访问说明</strong>：保留相机连接所需的网络权限配置。</li>\n<li><strong>热更新包体积优化</strong>：内置字体和 LUT 由正式安装包提供，避免重复打入热更新包。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.5.0-hot.3",
+    "title": "v1.5.0-hot.3 — 热更新发布说明",
+    "bodyHtml": "<h3>改进</h3>\n<ul>\n<li><strong>缩小热更新包体积</strong>：热更新不再重复包含安装包已经提供的内置字体和 LUT 资源，包体积从约 110 MB 降至约 1.7 MB。</li>\n<li><strong>保持资源加载方式不变</strong>：内置字体、LUT 仍由已安装应用提供，用户导入的 LUT 不受影响。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.5.0-hot.2",
+    "title": "v1.5.0-hot.2 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>调整设备连接检测顺序</strong>：优先建立 6666 控制通道，再进行后续服务确认，避免相机服务启动顺序造成误判。</li>\n<li><strong>相机 HTTP 请求改为直连</strong>：访问相机局域网文件服务时不经过系统 HTTP 代理，减少 VPN、代理配置对相机连接的影响。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>改进网络诊断结果</strong>：控制通道未建立时不再并行探测依赖它的 HTTP 服务。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.5.0-hot.1",
+    "title": "v1.5.0-hot.1 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>增强 Mac 本地网络连接诊断</strong>：设备连接失败时可以在连接页面一键检测网络状态。</li>\n<li><strong>支持对比不同连接方式</strong>：同时记录系统默认路由和绑定本地地址的连接结果，帮助定位部分 Mac 无法连接相机的问题。</li>\n<li><strong>支持当前设备地址诊断</strong>：诊断不再固定使用 Luna 默认地址。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>自动复制诊断反馈</strong>：检测完成后自动复制诊断信息，用户可直接粘贴发送给开发者。</li>\n<li><strong>复制失败时提供提示</strong>：系统无法自动复制时，可手动点击复制反馈信息。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.5.0",
+    "title": "v1.5.0 — 发布说明",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>工作台全新架构</strong>：基于 WGPU 的 Luna Render Core 渲染引擎重构，支持 GPU 硬件加速渲染和预览</li>\n<li><strong>GPU 硬件导出加速</strong>：</li>\n</ul>\n<p>\n  - macOS: Apple Metal 硬件导出支持（零拷贝 GPU 渲染导出）\n<br>\n  - Windows: Media Foundation + D3D12 硬件导出\n</p>\n<ul>\n<li><strong>边框（Border）编辑功能</strong>：支持自定义边框样式、颜色、大小</li>\n<li><strong>水印（Watermark）功能升级</strong>：全新水印设置面板，支持文字水印、图片水印、位置调整</li>\n<li><strong>色彩预设面板</strong>（Color Preset）：快速应用预设色彩方案</li>\n<li><strong>LUT 滤镜系统</strong>：</li>\n</ul>\n<p>\n  - 内置 LUT 滤镜库\n<br>\n  - 支持导入自定义 LUT（.cube）\n<br>\n  - HSL 色彩调整支持\n<br>\n  - LUT 导出兼容\n</p>\n<ul>\n<li><strong>直播图/实况照片导出</strong>（Live Photo）：支持导出 iOS Live Photo 格式</li>\n<li><strong>三连拼图</strong>（Triple Stitch）：创意多图拼接功能</li>\n<li><strong>视频裁剪与截取</strong>（Video Trim）：支持裁剪视频起止点，智能缓存</li>\n<li><strong>导出任务面板</strong>：全新导出对话框，后台导出任务管理，支持批量导出</li>\n<li><strong>热更新系统</strong>：增量更新支持，快速修复推送</li>\n<li><strong>图片预览增强</strong>：缩略图缓存、渐进式加载</li>\n<li><strong>全局滚动条美化</strong></li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li>修复裁剪旋转一系列问题</li>\n<li>修复 Windows 工作台导出 LUT 路径反斜杠被 ffmpeg 当转义字符导致路径丢失</li>\n<li>修复 Windows LUT filter path 转义问题</li>\n<li>修复连接失败诊断信息展示 &amp; Wi-Fi 调试状态检测</li>\n<li>修复 GPU 渲染空帧和纹理丢失问题</li>\n<li>修复水印渲染大小和位置错误</li>\n<li>修复导出预览逻辑和下载逻辑</li>\n<li>修复大图导出失败问题</li>\n<li>修复视频首帧黑屏问题</li>\n<li>修复 Windows 构建和图标问题</li>\n<li>修复实况照片渲染和播放问题</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li>工作台（Workspace）页面 UI 重构</li>\n<li>工具栏和操作按钮样式更新</li>\n<li>新导入对话框和模态框设计</li>\n<li>三连拼图/创意布局 UI</li>\n<li>色彩预设和滤镜面板样式优化</li>\n<li>导出对话框全新设计</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>Rust 原生模块集成加速</li>\n<li>网络诊断信息及连接超时诊断收集</li>\n<li>热更新构建流程改进</li>\n<li>大量代码清理和重构</li>\n<li>隐藏调试功能入口</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.4.0-hot.12",
+    "title": "v1.4.0-hot.12 — 热更新发布说明",
+    "bodyHtml": "<h3>改进</h3>\n<ul>\n<li><strong>添加网络诊断信息</strong>：连接超时或失败时，自动采集全面的网络诊断数据（ping、路由、端口探测、子网匹配等），展示在连接页诊断面板中，方便排查连接问题</li>\n<li><strong>优化连接超时体验</strong>：<code>enrichConnectionStatus</code> 降级为完整的网络诊断收集，失败时回退到基础 Wi-Fi 状态检测</li>\n<li><strong>控制会话绑定地址日志</strong>：<code>resolveLocalAddress</code> 结果写入主进程 debug 日志，便于追踪多网卡场景下的路由绑定情况</li>\n<li><strong>减少无谓重试</strong>：Luna Ultra 控制会话建立重试次数从 6 次降至 3 次，加快连接失败时的反馈速度</li>\n</ul>\n<h3>技术变更</h3>\n<ul>\n<li>新增 <code>electron/networkDiagnostics.ts</code>：主进程网络诊断服务</li>\n<li>新增 <code>src/shared/types/networkDiagnostics.ts</code>：诊断结果类型定义</li>\n<li>新增 IPC 通道 <code>luna:collectNetworkDiagnostics</code>，暴露 <code>window.luna.collectNetworkDiagnostics()</code></li>\n<li>新增 <code>network.resolvedLocalAddress</code> 字段：通过子网掩码匹配目标主机，显示实际绑定的本地地址（与 <code>connectSocket</code> 逻辑一致）</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.4.0-hot.11",
+    "title": "v1.4.0-hot.11 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复连接 PO 逻辑</strong>：重构连接协议（Connect PO）逻辑，优化设备连接流程稳定性</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>Mock Server 增强</strong>：新增 HTTP Auth 网关鉴权支持，提升本地调试体验</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.4.0-hot.10",
+    "title": "v1.4.0-hot.10 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>多网卡路由问题</strong>：修复 macOS 上同时连接普通 Wi-Fi 和 Luna 相机网络时，TCP 连接被 macOS Service Order 错误路由到主网卡导致连接超时的问题。现在自动检测本机与目标在同一子网的 IP 地址，强制 socket 绑定到正确网卡（<code>localAddress</code> 绑定）</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li>无</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.4.0-hot.9",
+    "title": "v1.4.0-hot.9 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>连接失败诊断信息展示</strong>：连接失败时自动采集系统网卡信息，展示诊断面板并支持一键复制，方便排查连接问题</li>\n<li><strong>Windows Wi-Fi 调试接口注册条件</strong>：修复 <code>wifiDebug:getStatus</code> 被错误包含在 Windows 平台条件判断内的问题，确保各平台均可获取系统网络状态</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>Wi-Fi 调试状态检测重构</strong>：从依赖 <code>airport</code>/<code>netsh wlan show interfaces</code> 改为通用跨平台实现，基于 <code>os.networkInterfaces()</code> 直接采集系统网卡信息，提升兼容性和稳定性</li>\n<li><strong>精简日志输出</strong>：移除缩略图生成、文件缓存等流程中的冗余 debug/info 日志，减少日志文件冗余</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.4.0-hot.8",
+    "title": "v1.4.0-hot.8 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>水印大小不一致</strong>：修复 <code>watermarkService.ts</code>、<code>MediaPreviewPanel.tsx</code>、<code>PreviewStage.tsx</code> 三处遗漏的 <code>Math.min(..., wmInfo.width)</code> 水印宽度上限限制，导出和预览的水印不再被 PNG 原图宽度卡住</li>\n<li><strong>超大图导出编码失败</strong>：检测源图尺寸，任一维 &gt; 12000 时自动使用 <code>-pix_fmt yuvj420p -threads 1</code> 避免 mjpeg 编码器初始化失败</li>\n<li><strong>移除工具栏遗留导出报错</strong>：导出错误已统一在导出弹窗展示，移除工具栏中旧的 <code>exportError</code> 横幅</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>导出错误详情弹窗</strong>：导出弹窗中失败项可直接点击查看完整错误日志，支持一键复制，复制后 toast 提示</li>\n<li><strong>任务级错误入口</strong>：导出任务行增加感叹号按钮，可查看该任务所有失败文件的完整错误汇总</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.4.0-hot.7",
+    "title": "v1.4.0-hot.7 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>Windows 工作台调色导出失败</strong>：修复 FFmpeg <code>lut3d</code> 滤镜读取 LUT 文件时，Windows 盘符路径中的冒号被误解析为滤镜参数分隔符，导致导出失败的问题。现在会统一把 LUT 路径转换为 FFmpeg 可识别的安全格式。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>导出诊断日志增强</strong>：新增 LUT 文件状态、传入管线前路径、filter 路径转换结果等日志，便于定位 Windows 环境下的导出路径问题。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.4.0-hot.6",
+    "title": "v1.4.0-hot.6 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>Windows 工作台导出 LUT 路径裸盘符错误</strong>：当导出目录设为裸盘符（如 <code>E:</code>）时，<code>path.join</code> 不自动添加目录分隔符，导致 <code>E:.lut_xxx.cube</code> 传入 ffmpeg 后冒号被误当作选项分隔符解析失败。现改为使用系统临时目录存放 LUT 文件，避免依赖导出目录的路径格式。</li>\n</ul>\n<ul>\n<li><strong>色调（Tint）参数方向错误</strong>：正 tint 值应使画面偏红/品红，负 tint 值应使画面偏绿，此前公式符号写反，导致预览和导出效果相反。已修正 LUT 生成器和 direct 回退模式中的 tint 计算公式。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>ffmpeg filter 路径可靠性</strong>：在 <code>pipelineCompiler.ts</code> 中增加裸盘符路径防御性处理（<code>E:.lut_</code> → <code>E:/.lut_</code>），防止类似问题再次出现。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.4.0-hot.5",
     "title": "v1.4.0-hot.5 — 热更新发布说明",
     "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>Windows 工作台导出 LUT 路径错误</strong>：ffmpeg filter_complex 中传入的 Windows 路径反斜杠 <code>\\</code> 被 ffmpeg 解析器当作转义字符处理，导致 <code>C:\\Users\\...\\.cube</code> 路径中的反斜杠和盘符全部丢失，导出失败。现修复为将 Windows 路径中的反斜杠替换为前斜杠传参（ffmpeg on Windows 支持前斜杠路径）</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>ffmpeg filter_complex 路径兼容性</strong>：在 <code>pipelineCompiler.ts</code> 中构造 <code>lut3d=file=...</code> 参数时，对 Windows 平台路径做反斜杠 → 前斜杠转换，避免再次出现类似转义问题</li>\n</ul>",
