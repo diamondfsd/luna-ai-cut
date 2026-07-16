@@ -11,7 +11,7 @@ use crate::media::decode_static_image_scaled;
 const ERROR_CAPACITY: usize = 1024;
 
 fn is_procedural_layer(layer_type: Option<&str>) -> bool {
-    layer_type.unwrap_or("media") != "media"
+    crate::compositor::is_procedural_layer_type(layer_type)
 }
 
 #[repr(C)]
@@ -480,6 +480,7 @@ mod tests {
     fn only_media_layers_require_file_decoding() {
         assert!(!is_procedural_layer(None));
         assert!(!is_procedural_layer(Some("media")));
+        assert!(!is_procedural_layer(Some("local-color")));
         assert!(is_procedural_layer(Some("shape")));
         assert!(is_procedural_layer(Some("text")));
         assert!(is_procedural_layer(Some("logo")));

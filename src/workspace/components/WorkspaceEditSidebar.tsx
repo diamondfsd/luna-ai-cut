@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
+import { ArrowLeft, Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Accordion, Button, IconButton, Tooltip } from '../../ui'
@@ -171,7 +171,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 variant="ghost"
                 size="mini"
                 className="workspace-mask-editor-back"
-                icon={<ChevronLeft size={16} />}
+                icon={<ArrowLeft size={20} />}
                 aria-label="退出蒙版编辑"
                 onClick={() => { mask.setEditing(false); mask.setSemanticPicking(false) }}
               />
@@ -183,7 +183,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
           {edit.activeTool === 'color' && (
             <span className="workspace-tool-panel-actions">
               {mask.editing ? (
-                <Button variant="primary" size="mini" onClick={() => { mask.setEditing(false); mask.setSemanticPicking(false) }}>完成</Button>
+                <Button className="workspace-mask-editor-done" variant="ghost" size="mini" onClick={() => { mask.setEditing(false); mask.setSemanticPicking(false) }}>完成</Button>
               ) : (
                 <>
                   {(mask.activeMask ? isColorModified(mask.activeMask.color) : isColorModified(edit.pipeline.color)) && <span className="ui-accordion-modified-dot" />}

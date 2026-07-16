@@ -85,6 +85,7 @@ export function pipelineColorWithLocalAdjustments(
 export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline): PreviewLayer[] {
   return pipeline.colorMasks.filter((layer) => layer.enabled).reverse().map((layer) => ({
     ...base,
+    layerType: 'local-color' as const,
     color: pipelineColorWithLocalAdjustments(pipeline.color, layer.color),
     maskPath: layer.path,
     maskOpacity: layer.opacity,
