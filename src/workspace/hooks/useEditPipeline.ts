@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react'
 
 import type { EditPipeline, PipelinePatch } from '../shared/editPipeline'
 import { createDefaultPipeline, mergePipeline } from '../shared/editPipeline'
-import { createEditHistory, pushHistory, resetHistory, undoHistory, redoHistory } from '../shared/editHistory'
-import type { EditHistory } from '../shared/editHistory'
+import { collectHistoryMaskPaths, createEditHistory, mapHistoryPipelines, pushHistory, resetHistory, undoHistory, redoHistory } from '../shared/editHistory'
+import type { EditHistory, HistoryGroup } from '../shared/editHistory'
 
 export function useEditPipeline() {
   const [history, setHistory] = useState<EditHistory>(() => createEditHistory(createDefaultPipeline()))
@@ -20,8 +20,12 @@ export function useEditPipeline() {
     setHistory(redoHistory)
   }, [])
 
-  const commitPatch = useCallback((patch: PipelinePatch) => {
-    setHistory((current) => pushHistory(current, mergePipeline(current.present, patch)))
+  const commitPatch = useCallback((patch: PipelinePatch, group?: HistoryGroup) => {
+    setHistory((current) => pushHistory(current, mergePipeline(current.present, patch), group))
+  }, [])
+
+  const applySystemUpdate = useCallback((update: (pipeline: EditPipeline) => EditPipeline) => {
+    setHistory((current) => mapHistoryPipelines(current, update))
   }, [])
 
   const resetPipeline = useCallback(() => {
@@ -39,6 +43,8 @@ export function useEditPipeline() {
     undo,
     redo,
     commitPatch,
+    applySystemUpdate,
+    retainedMaskPaths: collectHistoryMaskPaths(history),
     resetPipeline,
     initializePipeline,
     setHistory,

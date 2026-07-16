@@ -171,6 +171,7 @@ Radix 基元用于提供行为和可访问性，不施加视觉样式。**不要
 用户明确要求 Electron UI 测试时，优先使用 `agent-browser`：
 
 - 使用 `pnpm dev:e2e` 启动应用，默认只在本机开放 CDP 端口 `9332`；并行测试其他 Electron 应用时，通过 `LUNA_E2E_CDP_PORT=<独立端口> pnpm dev:e2e` 隔离。
+- 需要隔离设置、缓存和项目数据时，同时设置 `LUNA_E2E_USER_DATA_DIR=<临时目录>`，并在该目录的 `settings.json` 中将 `downloadDir`、`localResourcesDir` 和 `exportDir` 指向测试目录；不得复用用户现有项目制造损坏或只读场景。
 - 每个任务使用独立 `--session`，并在每条命令上显式传入 `--cdp <端口>`；不要让两个 Agent 同时控制同一 Electron 实例。
 - 同一 CDP 目标上的 `snapshot`、交互、截图和控制台检查必须串行。页面变化后重新 `snapshot`，不复用旧 `@eN` 引用。
 - `agent-browser connect` 若连接到空白 target，改用每条命令显式 `--cdp`。拖拽或截图命令被中断后，换一个新的 session 重新连接，避免沿用失效状态。

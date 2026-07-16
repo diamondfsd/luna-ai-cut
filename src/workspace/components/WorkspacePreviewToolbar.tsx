@@ -3,6 +3,7 @@ import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, ImagePlus, Mini
 import { Button, IconButton, Tooltip, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
+import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { createDefaultPipeline } from '../shared/editPipeline'
 import './WorkspacePreviewToolbar.css'
 
@@ -31,6 +32,7 @@ export function WorkspacePreviewToolbar({
 }: WorkspacePreviewToolbarProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
+  const mask = useWorkspaceMask()
   const scalePercent = viewScale === 'fit' ? null : viewScale
 
   function changeScale(delta: number): void {
@@ -79,10 +81,10 @@ export function WorkspacePreviewToolbar({
         </Tooltip>
         <div className="workspace-toolbar-divider" />
         <Tooltip content="撤销">
-          <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={!edit.canUndo} onClick={edit.undo} />
+          <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={!edit.canUndo || mask.busy} onClick={edit.undo} />
         </Tooltip>
         <Tooltip content="重做">
-          <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={!edit.canRedo} onClick={edit.redo} />
+          <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={!edit.canRedo || mask.busy} onClick={edit.redo} />
         </Tooltip>
         <div className="workspace-toolbar-divider" />
         <Tooltip content="复制调色参数">
