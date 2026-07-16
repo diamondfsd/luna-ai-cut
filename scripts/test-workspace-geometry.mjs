@@ -4,7 +4,7 @@ import { Buffer } from 'node:buffer'
 import ts from 'typescript'
 
 const source = await readFile(new URL('../src/workspace/transform/cropGeometry.ts', import.meta.url), 'utf8')
-const shaderSource = await readFile(new URL('../src/workspace/renderer/shaders/pipeline.glsl', import.meta.url), 'utf8')
+const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -99,12 +99,25 @@ assert.equal(geometry.isCropInsideImage(resized, sourceAspect, 0, 0), true)
 const rotatedPoint = geometry.framePointToSourceUv({ x: 0.25, y: 0.5 }, sourceAspect, 0, 30)
 assert.ok(rotatedPoint.y > 0.5, 'CPU rotation matches shader inverse rotation direction')
 
+const sourcePoint = { x: 0.18, y: 0.72 }
+const framePoint = geometry.sourceUvToFramePoint(sourcePoint, sourceAspect, 90, -12.5)
+const roundTripPoint = geometry.framePointToSourceUv(framePoint, sourceAspect, 90, -12.5)
+close(roundTripPoint.x, sourcePoint.x, 'source/frame x transform round trip')
+close(roundTripPoint.y, sourcePoint.y, 'source/frame y transform round trip')
+
 const rect = geometry.containRect(1000, 1000, 16 / 9)
 close(rect.width, 1000, 'contain rect width')
 close(rect.height, 562.5, 'contain rect height')
 close(rect.y, 218.75, 'contain rect vertical center')
 
-assert.ok(shaderSource.includes('vec2 outputUv = vec2(uv.x, 1.0 - uv.y);'), 'shader must convert WebGL UV into top-left output space before crop')
-assert.ok(!shaderSource.includes('vec2 sampleUv = vec2(uv.x, 1.0 - uv.y);'), 'shader source sampling must not flip the top-left crop space again')
+assert.match(
+  shaderSource,
+  /radians_value\s*=\s*\(params\.orientation\s*\+\s*params\.rotate\)/,
+  'WGSL must combine orientation and fine rotation before inverse source sampling',
+)
+assert.match(shaderSource, /centered\.x\s*\*\s*c\s*\+\s*centered\.y\s*\*\s*s/, 'WGSL x rotation must match CPU inverse transform')
+assert.match(shaderSource, /-centered\.x\s*\*\s*s\s*\+\s*centered\.y\s*\*\s*c/, 'WGSL y rotation must match CPU inverse transform')
+assert.match(shaderSource, /if\s*\(params\.flip_h\s*>\s*0\.5\)[\s\S]*?centered\.x\s*=\s*-centered\.x/, 'WGSL must apply horizontal flip in source space')
+assert.match(shaderSource, /if\s*\(params\.flip_v\s*>\s*0\.5\)[\s\S]*?centered\.y\s*=\s*-centered\.y/, 'WGSL must apply vertical flip in source space')
 
 console.log('workspace geometry tests passed')

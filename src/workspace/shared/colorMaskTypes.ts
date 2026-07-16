@@ -19,6 +19,7 @@ export interface ColorMaskLayer extends ColorMaskRef {
   id: string
   name: string
   enabled: boolean
+  loadError?: 'missing-or-damaged'
   blendMode: ColorMaskBlendMode
   color: EditPipeline['color']
 }

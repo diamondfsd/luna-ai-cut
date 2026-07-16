@@ -436,9 +436,35 @@ impl Compositor {
                 let mask_id = if let Some(tid) = self.mask_texture_cache.get(mask_path).copied() {
                     tid
                 } else {
-                    let (rgba, w, h) =
-                        decode_static_image_scaled(ffmpeg, ffprobe, mask_path, decode_max_side)?;
-                    let tid = self.load_mask_texture(&rgba, w, h)?;
+                    let (rgba, w, h) = match decode_static_image_scaled(
+                        ffmpeg,
+                        ffprobe,
+                        mask_path,
+                        decode_max_side,
+                    ) {
+                        Ok(decoded) => decoded,
+                        Err(error) => {
+                            log!(
+                                "skip source {} because mask {} is unavailable: {}",
+                                layer.file_path,
+                                mask_path,
+                                error
+                            );
+                            continue;
+                        }
+                    };
+                    let tid = match self.load_mask_texture(&rgba, w, h) {
+                        Ok(tid) => tid,
+                        Err(error) => {
+                            log!(
+                                "skip source {} because mask {} cannot be uploaded: {}",
+                                layer.file_path,
+                                mask_path,
+                                error
+                            );
+                            continue;
+                        }
+                    };
                     self.mask_texture_cache.insert(mask_path.to_string(), tid);
                     tid
                 };
