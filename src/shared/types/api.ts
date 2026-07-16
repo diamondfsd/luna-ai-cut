@@ -38,6 +38,12 @@ export interface WorkspaceSegmentationProgress {
   percent: number | null
 }
 
+export interface WorkspaceSegmentationModelStatus {
+  modelId: SegmentationModelId
+  cached: boolean
+  sizeBytes: number
+}
+
 export interface LunaApi {
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
@@ -122,6 +128,7 @@ export interface LunaApi {
     getVideoDuration(filePath: string): Promise<number>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
+    getSegmentationModelStatus(modelId: SegmentationModelId): Promise<WorkspaceSegmentationModelStatus>
     segmentImage(request: WorkspaceSegmentationRequest): Promise<{
       requestId: string
       width: number

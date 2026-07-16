@@ -1,7 +1,7 @@
 import { Brush, Cloud, Eraser, TreePine, UserRound, Waves, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { Accordion, Button, ButtonGroup, Select, Switch } from '../../ui'
+import { Accordion, Button, ButtonGroup, Dialog, Select, Switch } from '../../ui'
 import { COMMON_SEGMENTATION_TARGETS, SEGMENTATION_MODELS } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
@@ -30,6 +30,10 @@ export function MaskPanel() {
   const initialTarget = AUTO_TARGETS.find((target) => target.classId === settings?.classId)?.classId ?? AUTO_TARGETS[0].classId
   const [targetClassId, setTargetClassId] = useState<number>(initialTarget)
   const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
+  const [checkingModel, setCheckingModel] = useState(false)
+  const [modelStatusError, setModelStatusError] = useState<string | null>(null)
+  const [pendingDownload, setPendingDownload] = useState<{ modelId: typeof segmentationModel; sizeBytes: number; targetClassId: number } | null>(null)
+  const confirmedDownloadsRef = useRef(new Set<string>())
 
   useEffect(() => {
     const classId = mask.activeMask?.classId
@@ -67,6 +71,40 @@ export function MaskPanel() {
       }))
     : PRODUCT_MODEL_OPTIONS
 
+  const clearAutomaticSelectionError = (): void => {
+    setModelStatusError(null)
+    mask.clearSegmentationError()
+  }
+
+  const startAutomaticSelection = async (): Promise<void> => {
+    if (mask.busy || checkingModel) return
+    clearAutomaticSelectionError()
+    setCheckingModel(true)
+    try {
+      const modelId = modelForAutomaticSelection(segmentationModel)
+      const status = await window.luna.workspace.getSegmentationModelStatus(modelId)
+      if (!status.cached && !confirmedDownloadsRef.current.has(modelId)) {
+        setPendingDownload({ modelId, sizeBytes: status.sizeBytes, targetClassId: target.classId })
+        return
+      }
+      void mask.generateSemanticMask(undefined, target.classId)
+    } catch (error) {
+      setModelStatusError(error instanceof Error ? error.message : '无法检查自动选择资源，请重试')
+    } finally {
+      setCheckingModel(false)
+    }
+  }
+
+  const confirmDownload = (): void => {
+    if (!pendingDownload) return
+    confirmedDownloadsRef.current.add(pendingDownload.modelId)
+    const confirmedTargetClassId = pendingDownload.targetClassId
+    setPendingDownload(null)
+    void mask.generateSemanticMask(undefined, confirmedTargetClassId)
+  }
+
+  const automaticSelectionError = modelStatusError ?? mask.segmentationError
+
   return (
     <div className="workspace-mask-panel">
       <section className="workspace-mask-auto-section">
@@ -79,7 +117,7 @@ export function MaskPanel() {
                 key={item.classId}
                 variant="ghost"
                 className={item.classId === targetClassId ? 'is-active' : undefined}
-                disabled={mask.busy}
+                disabled={mask.busy || checkingModel}
                 onClick={() => setTargetClassId(item.classId)}
               >
                 <Icon size={20} />
@@ -94,7 +132,7 @@ export function MaskPanel() {
             variant="compact"
             fullWidth
             value={developerMode ? automaticSelectionModel : productModelMode}
-            disabled={mask.busy || developerMode === null}
+            disabled={mask.busy || checkingModel || developerMode === null}
             onValueChange={(value) => setSegmentationModel(
               developerMode
                 ? value as typeof segmentationModel
@@ -112,10 +150,10 @@ export function MaskPanel() {
           <Button
             variant="primary"
             className="workspace-mask-apply-button"
-            disabled={mask.busy || developerMode === null}
-            onClick={() => void mask.generateSemanticMask(undefined, target.classId)}
+            disabled={mask.busy || checkingModel || developerMode === null}
+            onClick={() => void startAutomaticSelection()}
           >
-            {mask.busy ? '正在处理' : '应用自动选择'}
+            {checkingModel ? '正在检查' : mask.busy ? '正在处理' : '应用自动选择'}
           </Button>
         )}
         {mask.segmentationProgress && (
@@ -123,6 +161,15 @@ export function MaskPanel() {
             <div><span>{mask.segmentationProgress.label}</span>{mask.segmentationProgress.percent !== null && <span>{mask.segmentationProgress.percent}%</span>}</div>
             <div className="workspace-mask-progress-track" role="progressbar" aria-label={mask.segmentationProgress.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={mask.segmentationProgress.percent ?? undefined}>
               <span className={mask.segmentationProgress.percent === null ? 'is-indeterminate' : undefined} style={mask.segmentationProgress.percent === null ? undefined : { width: `${mask.segmentationProgress.percent}%` }} />
+            </div>
+          </div>
+        )}
+        {automaticSelectionError && !mask.segmentationProgress && (
+          <div className="workspace-mask-auto-error" role="alert">
+            <p>{automaticSelectionError}</p>
+            <div>
+              <Button size="mini" variant="secondary" onClick={() => void startAutomaticSelection()}>重试</Button>
+              <Button size="mini" variant="ghost" onClick={clearAutomaticSelectionError}>继续使用画笔</Button>
             </div>
           </div>
         )}
@@ -169,6 +216,16 @@ export function MaskPanel() {
           </label>
         </div>
       </section>
+      <Dialog
+        open={pendingDownload !== null}
+        onOpenChange={(open) => { if (!open) setPendingDownload(null) }}
+        title="下载自动选择资源"
+        description={pendingDownload ? `首次使用需要下载 ${formatModelSize(pendingDownload.sizeBytes)}，下载完成后会保存在本机。` : undefined}
+        footer={<>
+          <Button variant="secondary" onClick={() => setPendingDownload(null)}>取消</Button>
+          <Button variant="primary" onClick={confirmDownload}>下载并继续</Button>
+        </>}
+      />
     </div>
   )
 }

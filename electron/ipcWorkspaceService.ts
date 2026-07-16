@@ -29,7 +29,7 @@ import {
 } from './colorPresetsService'
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
-import { loadModel, loadSamModel, type ModelId } from './modelLoader'
+import { getModelCacheStatus, loadModel, loadSamModel, type ModelId } from './modelLoader'
 import { isSamSegmentationModel, SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { getNative } from './lunaRenderCore'
 import { segmentSamInWorker } from './samSegmentationService'
@@ -214,11 +214,12 @@ export function register(): void {
   ipcMain.handle('workspace:isLivePhoto', async (_event, filePath: string) => {
     return isGoogleMotionPhoto(filePath)
   })
-
   ipcMain.handle('workspace:readColorMetadata', async (_event, filePath: string) => {
     return readWorkspaceColorMetadata(filePath)
   })
-
+  ipcMain.handle('workspace:getSegmentationModelStatus', async (_event, modelId: SegmentationModelId) => {
+    return getModelCacheStatus(modelId)
+  })
   ipcMain.handle('workspace:cancelSegmentation', (event, requestId: string) => {
     if (typeof requestId !== 'string' || requestId.length === 0) return false
     return segmentationTasks.cancel(event.sender.id, requestId)
@@ -363,12 +364,10 @@ export function register(): void {
     const settings = await getSettings()
     return listWorkspaceProjects(settings.downloadDir)
   })
-
   ipcMain.handle('workspace:createProject', async (_event, name: string, assets: WorkspaceMediaAsset[]) => {
     const settings = await getSettings()
     return createWorkspaceProject(settings.downloadDir, name, assets)
   })
-
   ipcMain.handle('workspace:addAssetsToProject', async (_event, projectId: string, assets: WorkspaceMediaAsset[]) => {
     const settings = await getSettings()
     return addAssetsToWorkspaceProject(settings.downloadDir, projectId, assets)

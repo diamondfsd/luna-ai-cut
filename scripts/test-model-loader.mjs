@@ -26,6 +26,7 @@ function responseFor(bytes, { status = 200, contentLength = bytes.byteLength } =
 async function compileModule() {
   const program = ts.createProgram([
     path.join(projectRoot, 'electron/modelFileService.ts'),
+    path.join(projectRoot, 'electron/modelCacheStatus.ts'),
     path.join(projectRoot, 'electron/sharedLoadRegistry.ts'),
   ], {
     target: ts.ScriptTarget.ES2022,
@@ -45,6 +46,7 @@ try {
   await compileModule()
   const { loadVerifiedModelFile, writeAll } = await import(pathToFileURL(path.join(compiledRoot, 'electron/modelFileService.js')))
   const { SharedLoadRegistry } = await import(pathToFileURL(path.join(compiledRoot, 'electron/sharedLoadRegistry.js')))
+  const { hasCachedModelFiles } = await import(pathToFileURL(path.join(compiledRoot, 'electron/modelCacheStatus.js')))
   const modelDir = path.join(temporaryRoot, 'model')
   const bytes = Buffer.from('luna-model-fixture-v1')
   const definition = {
@@ -53,6 +55,13 @@ try {
     sha256: hash(bytes),
     sizeBytes: bytes.byteLength,
   }
+  const statusDir = path.join(temporaryRoot, 'status')
+  assert.equal(await hasCachedModelFiles(statusDir, [{ fileName: 'model.onnx', sizeBytes: bytes.byteLength }]), false)
+  await mkdir(statusDir, { recursive: true })
+  await writeFile(path.join(statusDir, 'model.onnx'), bytes.subarray(0, bytes.byteLength - 1))
+  assert.equal(await hasCachedModelFiles(statusDir, [{ fileName: 'model.onnx', sizeBytes: bytes.byteLength }]), false)
+  await writeFile(path.join(statusDir, 'model.onnx'), bytes)
+  assert.equal(await hasCachedModelFiles(statusDir, [{ fileName: 'model.onnx', sizeBytes: bytes.byteLength }]), true)
 
   const shortWriteOutput = Buffer.alloc(bytes.byteLength)
   await writeAll({
