@@ -1,13 +1,16 @@
-import { Copy, Eye, EyeOff, MoreHorizontal, Pencil, Plus, RefreshCcw, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Copy, Eye, EyeOff, Globe2, MoreHorizontal, Pencil, Plus, RefreshCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
-import { Button, IconButton, Input, Popover, PopoverClose, PopoverContent, PopoverTrigger, Tooltip } from '../../ui'
+import { Button, IconButton, Popover, PopoverClose, PopoverContent, PopoverTrigger, Tooltip } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { MaskPanel } from '../mask/MaskPanel'
 import { ColorPanel } from './ColorPanel'
 import './ColorMaskPanel.css'
+
+const THUMBNAIL_WIDTH = 68
+const THUMBNAIL_HEIGHT = 42
 
 function MaskThumbnail({ path, inverted }: { path: string; inverted: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -22,28 +25,35 @@ function MaskThumbnail({ path, inverted }: { path: string; inverted: boolean }) 
       if (cancelled) return
       const context = canvas.getContext('2d')
       if (!context) return
-      const size = 48
-      const pixels = new Uint8ClampedArray(size * size * 4)
+      context.fillStyle = '#fff'
+      context.fillRect(0, 0, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
+
+      const scale = Math.min(THUMBNAIL_WIDTH / mask.width, THUMBNAIL_HEIGHT / mask.height)
+      const width = Math.max(1, Math.round(mask.width * scale))
+      const height = Math.max(1, Math.round(mask.height * scale))
+      const offsetX = Math.floor((THUMBNAIL_WIDTH - width) / 2)
+      const offsetY = Math.floor((THUMBNAIL_HEIGHT - height) / 2)
+      const pixels = new Uint8ClampedArray(width * height * 4)
       const source = new Uint8Array(mask.bytes)
-      for (let y = 0; y < size; y += 1) {
-        for (let x = 0; x < size; x += 1) {
-          const sourceX = Math.min(mask.width - 1, Math.floor(x / size * mask.width))
-          const sourceY = Math.min(mask.height - 1, Math.floor(y / size * mask.height))
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const sourceX = Math.min(mask.width - 1, Math.floor(x / width * mask.width))
+          const sourceY = Math.min(mask.height - 1, Math.floor(y / height * mask.height))
           const selected = source[sourceY * mask.width + sourceX]
           const value = inverted ? selected : 255 - selected
-          const offset = (y * size + x) * 4
+          const offset = (y * width + x) * 4
           pixels[offset] = value
           pixels[offset + 1] = value
           pixels[offset + 2] = value
           pixels[offset + 3] = 255
         }
       }
-      context.putImageData(new ImageData(pixels, size, size), 0, 0)
+      context.putImageData(new ImageData(pixels, width, height), offsetX, offsetY)
     }).catch(() => undefined)
     return () => { cancelled = true }
   }, [inverted, path, projectId])
 
-  return <canvas ref={canvasRef} className="workspace-color-mask-thumbnail" width={48} height={48} aria-label="蒙版缩略图" />
+  return <canvas ref={canvasRef} className="workspace-color-mask-thumbnail" width={THUMBNAIL_WIDTH} height={THUMBNAIL_HEIGHT} aria-label="蒙版缩略图" />
 }
 
 export function ColorMaskPanel() {
@@ -52,72 +62,73 @@ export function ColorMaskPanel() {
   const selectedColor = mask.activeMask?.color ?? edit.pipeline.color
 
   return (
-    <div className="workspace-color-mask-panel">
+    <div className={`workspace-color-mask-panel${mask.editing ? ' is-editing' : ''}`}>
       {mask.editing ? (
-        <div className="workspace-mask-inline-editor">
-          {mask.activeMask && (
-            <Input variant="compact" fullWidth aria-label="蒙版名称" value={mask.activeMask.name} onChange={(event) => mask.updateActiveLayer({ name: event.target.value })} />
-          )}
-          <MaskPanel />
-        </div>
+        <div className="workspace-mask-inline-editor"><MaskPanel /></div>
       ) : (
-        <>
-          <ColorPanel
-            value={selectedColor}
-            onChange={(color) => mask.activeMask
-              ? mask.updateActiveLayer({ color: { ...mask.activeMask.color, ...color } })
-              : edit.updateWorkspacePanel({ color })}
-            onActivatePipette={mask.activeMask ? undefined : () => edit.setPipetteActive(true)}
-          />
-        </>
+        <ColorPanel
+          value={selectedColor}
+          onChange={(color) => mask.activeMask
+            ? mask.updateActiveLayer({ color: { ...mask.activeMask.color, ...color } })
+            : edit.updateWorkspacePanel({ color })}
+          onActivatePipette={mask.activeMask ? undefined : () => edit.setPipetteActive(true)}
+        />
       )}
 
       <section className="workspace-color-mask-layers" aria-label="蒙版图层">
         <div className="workspace-color-mask-layers-header">
-          <div>
-            <strong>蒙版图层</strong>
-          </div>
-          <Button variant="secondary" size="mini" icon={<Plus size={13} />} disabled={!mask.available} onClick={mask.createMask}>
-            新建
-          </Button>
+          <strong>蒙版图层</strong>
+          <Tooltip content="新建蒙版">
+            <IconButton variant="ghost" size="mini" icon={<Plus size={18} />} aria-label="新建蒙版" disabled={!mask.available} onClick={mask.createMask} />
+          </Tooltip>
         </div>
         <div className="workspace-color-mask-layer-list">
-          <div className={`workspace-color-mask-layer${!mask.activeMask ? ' is-active' : ''}`}>
+          <div className={`workspace-color-mask-layer workspace-color-mask-global-layer${!mask.activeMask ? ' is-active' : ''}`}>
+            <Eye className="workspace-color-mask-layer-eye" size={17} aria-hidden="true" />
+            <Globe2 className="workspace-color-mask-global-icon" size={18} aria-hidden="true" />
             <Button
               variant="ghost"
               size="compact"
               className="workspace-color-mask-layer-select"
               onClick={() => { mask.setActiveLayerId(null); mask.setEditing(false) }}
             >
-              <span className="workspace-color-mask-global-thumbnail"><SlidersHorizontal size={18} /></span>
-              <span className="workspace-color-mask-layer-label"><strong>全局调色</strong><small>整张画面</small></span>
+              <span className="workspace-color-mask-global-thumbnail" />
+              <span className="workspace-color-mask-layer-label"><strong>全局调色</strong></span>
             </Button>
+            <MoreHorizontal className="workspace-color-mask-static-more" size={17} aria-hidden="true" />
           </div>
-          {edit.pipeline.colorMasks.map((layer, index) => {
+          {edit.pipeline.colorMasks.map((layer) => {
             const active = mask.activeLayerId === layer.id
             return (
               <div className={`workspace-color-mask-layer${active ? ' is-active' : ''}`} key={layer.id}>
+                <Tooltip content={layer.enabled ? '隐藏这一层' : '显示这一层'}>
+                  <IconButton
+                    variant="ghost"
+                    size="mini"
+                    className="workspace-color-mask-layer-eye-button"
+                    icon={layer.enabled ? <Eye size={17} /> : <EyeOff size={17} />}
+                    aria-label={layer.enabled ? '隐藏这一层' : '显示这一层'}
+                    onClick={() => mask.updateLayer(layer.id, { enabled: !layer.enabled })}
+                  />
+                </Tooltip>
                 <Button variant="ghost" size="compact" className="workspace-color-mask-layer-select" onClick={() => mask.setActiveLayerId(layer.id)}>
                   <MaskThumbnail path={layer.path} inverted={layer.inverted} />
-                  <span className="workspace-color-mask-layer-label"><strong>{layer.name}</strong><small>{layer.kind === 'semantic' ? layer.className ?? '智能蒙版' : '画笔蒙版'}</small></span>
+                  <span className="workspace-color-mask-layer-label"><strong>{layer.name}</strong></span>
                 </Button>
                 <span className="workspace-color-mask-layer-actions">
-                  <Tooltip content="编辑蒙版">
-                    <IconButton variant="ghost" size="mini" icon={<Pencil size={14} />} aria-label="编辑蒙版" onClick={() => { mask.setActiveLayerId(layer.id); mask.setEditing(true) }} />
-                  </Tooltip>
-                  <Tooltip content={layer.enabled ? '隐藏这一层' : '显示这一层'}>
-                    <IconButton variant="ghost" size="mini" icon={layer.enabled ? <Eye size={14} /> : <EyeOff size={14} />} aria-label={layer.enabled ? '隐藏这一层' : '显示这一层'} onClick={() => mask.updateLayer(layer.id, { enabled: !layer.enabled })} />
-                  </Tooltip>
+                  {!mask.editing && (
+                    <Tooltip content="编辑蒙版">
+                      <IconButton variant="ghost" size="mini" icon={<Pencil size={14} />} aria-label="编辑蒙版" onClick={() => { mask.setActiveLayerId(layer.id); mask.setEditing(true) }} />
+                    </Tooltip>
+                  )}
                   <Popover>
                     <PopoverTrigger asChild>
-                      <IconButton variant="ghost" size="mini" icon={<MoreHorizontal size={15} />} aria-label="更多图层操作" />
+                      <IconButton variant="ghost" size="mini" icon={<MoreHorizontal size={17} />} aria-label="更多图层操作" />
                     </PopoverTrigger>
                     <PopoverContent className="workspace-color-mask-layer-menu" align="end">
-                      <PopoverClose asChild><Button variant="ghost" size="mini" icon={<Copy size={13} />} onClick={() => mask.duplicateLayer(layer.id)}>复制图层</Button></PopoverClose>
-                      <PopoverClose asChild><Button variant="ghost" size="mini" icon={<RefreshCcw size={13} />} onClick={() => mask.updateLayer(layer.id, { inverted: !layer.inverted })}>反向蒙版</Button></PopoverClose>
-                      <PopoverClose asChild><Button variant="ghost" size="mini" disabled={index === 0} onClick={() => mask.moveLayer(layer.id, -1)}>上移一层</Button></PopoverClose>
-                      <PopoverClose asChild><Button variant="ghost" size="mini" disabled={index === edit.pipeline.colorMasks.length - 1} onClick={() => mask.moveLayer(layer.id, 1)}>下移一层</Button></PopoverClose>
-                      <PopoverClose asChild><Button variant="danger" size="mini" icon={<Trash2 size={13} />} onClick={() => mask.removeLayer(layer.id)}>删除图层</Button></PopoverClose>
+                      <PopoverClose asChild><Button variant="ghost" size="compact" icon={<Copy size={14} />} onClick={() => mask.duplicateLayer(layer.id)}>复制图层</Button></PopoverClose>
+                      <PopoverClose asChild><Button variant="ghost" size="compact" icon={<RefreshCcw size={14} />} onClick={() => mask.updateLayer(layer.id, { inverted: !layer.inverted })}>反向蒙版</Button></PopoverClose>
+                      <PopoverClose asChild><Button variant="danger" size="compact" icon={<Trash2 size={14} />} onClick={() => mask.removeLayer(layer.id)}>删除图层</Button></PopoverClose>
                     </PopoverContent>
                   </Popover>
                 </span>
@@ -126,7 +137,6 @@ export function ColorMaskPanel() {
           })}
         </div>
       </section>
-
     </div>
   )
 }

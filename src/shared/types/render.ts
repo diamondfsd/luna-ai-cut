@@ -87,7 +87,7 @@ export interface RenderLayerTransform {
 }
 
 export interface PreviewLayer {
-  layerType?: 'media' | 'shape' | 'text' | 'logo' | 'decoration'
+  layerType?: 'media' | 'local-color' | 'shape' | 'text' | 'logo' | 'decoration'
   filePath: string
   isVideo?: boolean
   /** 显式相同的 key 会复用同一份视频解码纹理。 */
@@ -155,7 +155,7 @@ export interface CompositionReveal {
 }
 
 export interface CompositionLayer {
-  layerType?: 'media' | 'shape' | 'text' | 'logo' | 'decoration'
+  layerType?: 'media' | 'local-color' | 'shape' | 'text' | 'logo' | 'decoration'
   id?: string
   source: {
     path: string
