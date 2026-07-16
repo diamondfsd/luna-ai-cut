@@ -21,8 +21,18 @@ import type { UpdateInfo, HotUpdateCheckResult, ReleaseNoteItem } from './update
 import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } from './workspace'
 import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
+import type { SegmentationModelId } from '../segmentationModels'
+
+export interface WorkspaceSegmentationRequest {
+  requestId: string
+  filePath: string
+  point?: { x: number; y: number }
+  modelId?: SegmentationModelId
+  targetClassId?: number
+}
 
 export interface WorkspaceSegmentationProgress {
+  requestId: string
   phase: 'model' | 'preparing' | 'recognizing'
   label: string
   percent: number | null
@@ -112,7 +122,8 @@ export interface LunaApi {
     getVideoDuration(filePath: string): Promise<number>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
-    segmentImage(filePath: string, point?: { x: number; y: number }, modelId?: import('../segmentationModels').SegmentationModelId, targetClassId?: number): Promise<{
+    segmentImage(request: WorkspaceSegmentationRequest): Promise<{
+      requestId: string
       width: number
       height: number
       classId: number
@@ -126,6 +137,7 @@ export interface LunaApi {
       }
       bytes: ArrayBuffer
     }>
+    cancelSegmentation(requestId: string): Promise<boolean>
     listProjects(): Promise<WorkspaceProject[]>
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>

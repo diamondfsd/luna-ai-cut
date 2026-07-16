@@ -1,4 +1,4 @@
-import { Brush, Cloud, Eraser, TreePine, UserRound, Waves } from 'lucide-react'
+import { Brush, Cloud, Eraser, TreePine, UserRound, Waves, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Accordion, Button, ButtonGroup, Select, Switch } from '../../ui'
@@ -103,14 +103,21 @@ export function MaskPanel() {
             options={modelOptions}
           />
         </label>
-        <Button
-          variant="primary"
-          className="workspace-mask-apply-button"
-          disabled={mask.busy || developerMode === null}
-          onClick={() => void mask.generateSemanticMask(undefined, target.classId)}
-        >
-          {mask.busy ? mask.segmentationProgress?.label ?? '正在处理' : '应用自动选择'}
-        </Button>
+        {mask.segmentationProgress ? (
+          <Button variant="secondary" className="workspace-mask-apply-button" onClick={mask.cancelSegmentation}>
+            <X size={16} />
+            取消自动选择
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            className="workspace-mask-apply-button"
+            disabled={mask.busy || developerMode === null}
+            onClick={() => void mask.generateSemanticMask(undefined, target.classId)}
+          >
+            {mask.busy ? '正在处理' : '应用自动选择'}
+          </Button>
+        )}
         {mask.segmentationProgress && (
           <div className="workspace-mask-progress" aria-live="polite">
             <div><span>{mask.segmentationProgress.label}</span>{mask.segmentationProgress.percent !== null && <span>{mask.segmentationProgress.percent}%</span>}</div>

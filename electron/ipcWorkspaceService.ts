@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceMediaAsset, WorkspaceProject } from '../src/shared/types'
+import type { WorkspaceMediaAsset, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from './fileService'
@@ -34,6 +34,7 @@ import { isSamSegmentationModel, SEGMENTATION_MODELS, type SegmentationModelId }
 import { getNative } from './lunaRenderCore'
 import { segmentSamInWorker } from './samSegmentationService'
 import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
+import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 
 const MASKFORMER_COMMON_CLASS_IDS: Record<number, number> = {
   1: 1,
@@ -139,6 +140,21 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
 }
 
 export function register(): void {
+  const segmentationTasks = new SegmentationTaskRegistry()
+  const watchedSenders = new Set<number>()
+  const watchSender = (sender: Electron.WebContents): void => {
+    if (watchedSenders.has(sender.id)) return
+    watchedSenders.add(sender.id)
+    const cancelSenderTasks = (): void => { segmentationTasks.cancelOwner(sender.id) }
+    sender.on('render-process-gone', cancelSenderTasks)
+    sender.on('did-start-navigation', (_event, _url, isSameDocument, isMainFrame) => {
+      if (isMainFrame && !isSameDocument) cancelSenderTasks()
+    })
+    sender.once('destroyed', () => {
+      cancelSenderTasks()
+      watchedSenders.delete(sender.id)
+    })
+  }
   ipcMain.handle('workspace:loadTrimThumbnailCache', async (_event, videoPath: string, duration: number) => {
     return loadTrimThumbnailCache(videoPath, duration)
   })
@@ -203,16 +219,29 @@ export function register(): void {
     return readWorkspaceColorMetadata(filePath)
   })
 
-  ipcMain.handle('workspace:segmentImage', async (
-    _event,
-    filePath: string,
-    point?: { x: number; y: number },
-    modelId: SegmentationModelId = 'segformer-b0-ade20k',
-    targetClassId?: number,
-  ) => {
-    const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
-      _event.sender.send('workspace:segmentation-progress', { phase, label, percent })
+  ipcMain.handle('workspace:cancelSegmentation', (event, requestId: string) => {
+    if (typeof requestId !== 'string' || requestId.length === 0) return false
+    return segmentationTasks.cancel(event.sender.id, requestId)
+  })
+  ipcMain.handle('workspace:segmentImage', async (event, request: WorkspaceSegmentationRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) {
+      throw new Error('自动选择任务标识无效')
     }
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('图片路径无效')
+    const { requestId, filePath, point, targetClassId } = request
+    const modelId: SegmentationModelId = request.modelId ?? 'segformer-b0-ade20k'
+    const task = segmentationTasks.begin(event.sender.id, requestId)
+    const { signal } = task.controller
+    watchSender(event.sender)
+    const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
+      if (!segmentationTasks.isActive(task) || event.sender.isDestroyed()) return
+      try {
+        event.sender.send('workspace:segmentation-progress', { requestId, phase, label, percent })
+      } catch {
+        segmentationTasks.cancel(event.sender.id, requestId)
+      }
+    }
+    try {
     const totalStartedAt = performance.now()
     const modelStartedAt = performance.now()
     const isSam = isSamSegmentationModel(modelId)
@@ -223,12 +252,13 @@ export function register(): void {
         'model',
         progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
         Math.round(progress.completedBytes / progress.totalBytes * 100),
-      ))
+      ), signal)
       : await loadModel(modelId as ModelId, (progress) => reportProgress(
         'model',
         progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
         Math.round(progress.completedBytes / progress.totalBytes * 100),
-      ))
+      ), signal)
+    signal.throwIfAborted()
     const modelLoadMs = performance.now() - modelStartedAt
     if (isSam) logMainInfo('[SAM] 模型准备完成', { modelLoadMs: Math.round(modelLoadMs) })
     reportProgress('preparing', '正在准备图片', null)
@@ -250,10 +280,12 @@ export function register(): void {
       '-f', 'rawvideo',
       '-pix_fmt', 'rgb24',
       'pipe:1',
-    ], { encoding: 'buffer', maxBuffer: 1024 * 1024 * 3 + 1024 })
+    ], { encoding: 'buffer', maxBuffer: 1024 * 1024 * 3 + 1024, signal })
+    signal.throwIfAborted()
     const imagePrepareMs = performance.now() - decodeStartedAt
     const inferenceStartedAt = performance.now()
     reportProgress('recognizing', '正在识别', null)
+    signal.throwIfAborted()
     const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
     if (isSam) logMainInfo('[SAM] 开始原生识别', { width: samWidth, height: samHeight, bytes: rgb.byteLength })
     const nativeTargetClassId = modelId === 'maskformer-r101-ade20k-full' && targetClassId !== undefined
@@ -268,8 +300,9 @@ export function register(): void {
         sourceHeight: samHeight,
         pointX: point?.x ?? 0.5,
         pointY: point?.y ?? 0.5,
-      })
+      }, signal)
       : getNative().segmentImage(model.path, rgb, point?.x ?? 0.5, point?.y ?? 0.5, nativeTargetClassId, semanticInputSize)
+    signal.throwIfAborted()
     const inferenceMs = performance.now() - inferenceStartedAt
     if (isSam) logMainInfo('[SAM] 原生识别完成', { inferenceMs: Math.round(inferenceMs) })
     const classId = 'classId' in result && typeof result.classId === 'number' ? result.classId : -1
@@ -308,6 +341,7 @@ export function register(): void {
         ? maskFormerClassNames[classId] ?? '选中区域'
         : classNames[classId] ?? '选中区域'
     return {
+      requestId,
       width: result.width,
       height: result.height,
       classId: reportedClassId,
@@ -321,8 +355,10 @@ export function register(): void {
       },
       bytes: result.bytes.buffer.slice(result.bytes.byteOffset, result.bytes.byteOffset + result.bytes.byteLength),
     }
+    } finally {
+      segmentationTasks.finish(task)
+    }
   })
-
   ipcMain.handle('workspace:listProjects', async () => {
     const settings = await getSettings()
     return listWorkspaceProjects(settings.downloadDir)
@@ -461,5 +497,4 @@ export function register(): void {
     const settings = await getSettings()
     return renameColorPreset(settings.downloadDir, id, newName)
   })
-
 }
