@@ -48,4 +48,6 @@ luna-render-core/target/
 *.node
 luna-render-core/sam-segmentation-worker
 luna-render-core/sam-segmentation-worker.exe
+luna-render-core/semantic-segmentation-worker
+luna-render-core/semantic-segmentation-worker.exe
 worktrees/
