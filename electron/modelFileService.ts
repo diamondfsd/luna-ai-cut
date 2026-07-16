@@ -10,6 +10,7 @@ const MAX_MODEL_BYTES = 1024 * 1024 * 1024
 export interface ModelFileDefinition {
   fileName: string
   url: string
+  mirrors?: readonly string[]
   sha256: string
   sizeBytes: number
 }

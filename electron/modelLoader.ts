@@ -12,6 +12,7 @@ interface ModelDefinition {
   fileName: string
   version: string
   url: string
+  mirrors?: readonly string[]
   sha256: string
   sizeBytes: number
   license: string
@@ -51,6 +52,7 @@ export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntri
     fileName: 'model.onnx',
     version: model.version,
     url: model.url,
+    mirrors: 'mirrors' in model ? model.mirrors : undefined,
     sha256: model.sha256,
     sizeBytes: model.sizeBytes,
     license: model.license,
@@ -63,7 +65,7 @@ const pendingSamLoads = new SharedLoadRegistry<SamSegmentationModelId, LoadedSam
 
 async function loadModelFile(
   modelDir: string,
-  definition: Pick<ModelDefinition, 'fileName' | 'url' | 'sha256' | 'sizeBytes'>,
+  definition: Pick<ModelDefinition, 'fileName' | 'url' | 'mirrors' | 'sha256' | 'sizeBytes'>,
   onProgress?: (progress: ModelLoadProgress) => void,
   signal?: AbortSignal,
 ): Promise<string> {

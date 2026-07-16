@@ -95,6 +95,22 @@ try {
   assert.equal(cacheFetches, 0, '完整缓存命中不得联网')
 
   await rm(finalPath)
+  const requestedSources = []
+  await downloadVerifiedFile(destinationDir, {
+    ...definition,
+    mirrors: ['https://gitcode.example/resource.zip'],
+  }, {
+    fetcher: async (url) => {
+      requestedSources.push(String(url))
+      return requestedSources.length === 1
+        ? new Response('unavailable', { status: 503 })
+        : new Response(bytes)
+    },
+  })
+  assert.deepEqual(requestedSources, [definition.url, 'https://gitcode.example/resource.zip'])
+  assert.deepEqual(await readFile(finalPath), bytes, '首选源失败后应使用相同文件的备用源')
+
+  await rm(finalPath)
   const ignoredRangePartial = path.join(destinationDir, `${definition.fileName}.${definition.sha256.slice(0, 16)}.download`)
   await writeFile(ignoredRangePartial, bytes.subarray(0, 5))
   await downloadVerifiedFile(destinationDir, definition, {
