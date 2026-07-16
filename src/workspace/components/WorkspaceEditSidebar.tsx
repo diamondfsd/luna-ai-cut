@@ -217,7 +217,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
             </span>
           )}
         </header>
-        <div className="workspace-tool-panel-body">
+        <div className={`workspace-tool-panel-body${edit.activeTool === 'color' ? ' is-color-panel' : ''}`}>
           {edit.activeTool === 'filter' ? (
             <FilterPanel
               activeLutId={edit.pipeline.lutFilter.activeId}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
@@ -37,6 +37,7 @@ export function MaskOverlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const draftRef = useRef<Uint8Array | null>(null)
   const lastPointRef = useRef<{ x: number; y: number } | null>(null)
+  const [cursorPoint, setCursorPoint] = useState<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     draftRef.current = mask.maskData ? new Uint8Array(mask.maskData) : null
@@ -106,6 +107,25 @@ export function MaskOverlay() {
   if (!mask.editing || !mask.maskSize) return null
   const imageRect = canvas.imageRect
 
+  const brushCursorDiameter = (() => {
+    if (!cursorPoint) return mask.brushSize
+    const centerX = cursorPoint.x / Math.max(1, imageRect.width)
+    const centerY = cursorPoint.y / Math.max(1, imageRect.height)
+    const center = displayToSource(centerX, centerY)
+    const stepX = displayToSource(centerX + 1 / Math.max(1, imageRect.width), centerY)
+    const stepY = displayToSource(centerX, centerY + 1 / Math.max(1, imageRect.height))
+    const sourcePerPixelX = Math.hypot(
+      (stepX.x - center.x) * mask.maskSize.width,
+      (stepX.y - center.y) * mask.maskSize.height,
+    )
+    const sourcePerPixelY = Math.hypot(
+      (stepY.x - center.x) * mask.maskSize.width,
+      (stepY.y - center.y) * mask.maskSize.height,
+    )
+    const sourcePerPixel = Math.max(0.001, (sourcePerPixelX + sourcePerPixelY) / 2)
+    return Math.max(2, mask.brushSize / sourcePerPixel)
+  })()
+
   function pointForEvent(event: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } {
     const rect = event.currentTarget.getBoundingClientRect()
     const source = displayToSource((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height)
@@ -121,7 +141,7 @@ export function MaskOverlay() {
     const point = pointForEvent(event)
     const previous = lastPointRef.current ?? point
     const distance = Math.hypot(point.x - previous.x, point.y - previous.y)
-    const radius = mask.brushSize / 100 * Math.min(mask.maskSize.width, mask.maskSize.height)
+    const radius = mask.brushSize / 2
     const steps = Math.max(1, Math.ceil(distance / Math.max(1, radius * 0.3)))
     for (let step = 0; step <= steps; step++) {
       const ratio = step / steps
@@ -140,46 +160,62 @@ export function MaskOverlay() {
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="workspace-mask-overlay"
-      width={displaySize.width}
-      height={displaySize.height}
-      style={{
-        left: imageRect.x,
-        top: imageRect.y,
-        width: imageRect.width,
-        height: imageRect.height,
-        opacity: mask.showOverlay ? 1 : 0,
-        cursor: mask.semanticPicking ? 'crosshair' : undefined,
-      }}
-      onPointerDown={(event) => {
-        if (mask.semanticPicking) {
-          const point = pointForEvent(event)
-          void mask.generateSemanticMask({
-            x: point.x / mask.maskSize!.width,
-            y: point.y / mask.maskSize!.height,
-          })
-          mask.setSemanticPicking(false)
-          return
-        }
-        event.currentTarget.setPointerCapture(event.pointerId)
-        lastPointRef.current = null
-        paint(event)
-      }}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) paint(event)
-      }}
-      onPointerUp={(event) => {
-        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-        event.currentTarget.releasePointerCapture(event.pointerId)
-        lastPointRef.current = null
-        if (draftRef.current) void mask.commitMask(new Uint8Array(draftRef.current))
-      }}
-      onPointerCancel={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-        lastPointRef.current = null
-      }}
-    />
+    <div
+      className="workspace-mask-overlay-shell"
+      style={{ left: imageRect.x, top: imageRect.y, width: imageRect.width, height: imageRect.height }}
+    >
+      <canvas
+        ref={canvasRef}
+        className="workspace-mask-overlay"
+        width={displaySize.width}
+        height={displaySize.height}
+        style={{
+          opacity: mask.showOverlay ? 1 : 0,
+          cursor: mask.semanticPicking ? 'crosshair' : undefined,
+        }}
+        onPointerEnter={(event) => setCursorPoint({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY })}
+        onPointerLeave={() => setCursorPoint(null)}
+        onPointerDown={(event) => {
+          if (mask.semanticPicking) {
+            const point = pointForEvent(event)
+            void mask.generateSemanticMask({
+              x: point.x / mask.maskSize!.width,
+              y: point.y / mask.maskSize!.height,
+            })
+            mask.setSemanticPicking(false)
+            return
+          }
+          event.currentTarget.setPointerCapture(event.pointerId)
+          lastPointRef.current = null
+          paint(event)
+        }}
+        onPointerMove={(event) => {
+          setCursorPoint({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY })
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) paint(event)
+        }}
+        onPointerUp={(event) => {
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+          event.currentTarget.releasePointerCapture(event.pointerId)
+          lastPointRef.current = null
+          if (draftRef.current) void mask.commitMask(new Uint8Array(draftRef.current))
+        }}
+        onPointerCancel={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+          lastPointRef.current = null
+          setCursorPoint(null)
+        }}
+      />
+      {!mask.semanticPicking && cursorPoint && (
+        <span
+          className={`workspace-mask-brush-cursor${mask.brushMode === 'erase' ? ' is-erase' : ''}`}
+          style={{
+            left: cursorPoint.x,
+            top: cursorPoint.y,
+            width: brushCursorDiameter,
+            height: brushCursorDiameter,
+          }}
+        />
+      )}
+    </div>
   )
 }
