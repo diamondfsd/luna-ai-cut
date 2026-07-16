@@ -39,6 +39,7 @@ scripts/deploy-release.conf
 
 # Test resources
 test-resources/
+test-results/
 dist*
 release*/
 
