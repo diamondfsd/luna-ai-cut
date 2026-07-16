@@ -32,6 +32,7 @@
     "test:model-loader": "node scripts/test-model-loader.mjs",
     "test:downloads": "node scripts/test-resumable-download.mjs",
     "test:resource-packs": "node scripts/test-runtime-resource-packs.mjs",
+    "test:resources": "node scripts/test-runtime-resource-service.mjs",
     "test:diagnostics": "node scripts/test-crash-diagnostics.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
     "test:insta360-tcp": "node scripts/test-insta360-tcp.mjs",
