@@ -1,4 +1,4 @@
-import { isSamSegmentationModel, type SegmentationModelId, type SemanticSegmentationModelId } from '../../shared/segmentationModels'
+import { isSamSegmentationModel, isSpecializedSegmentationModel, type SegmentationModelId, type SemanticSegmentationModelId } from '../../shared/segmentationModels'
 
 export const FAST_MODEL_ID: SemanticSegmentationModelId = 'segformer-b0-ade20k'
 export const FINE_MODEL_ID: SemanticSegmentationModelId = 'segformer-b2-ade20k'
@@ -21,6 +21,6 @@ export function modelForProductMode(mode: MaskProductMode): SemanticSegmentation
 }
 
 export function modelForAutomaticSelection(modelId: SegmentationModelId): SemanticSegmentationModelId {
-  if (!isSamSegmentationModel(modelId)) return modelId
+  if (!isSamSegmentationModel(modelId) && !isSpecializedSegmentationModel(modelId)) return modelId
   return modelForProductMode(productModeForModel(modelId))
 }

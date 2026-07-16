@@ -459,6 +459,7 @@ function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef
     kind: mask.kind === 'semantic' ? 'semantic' : 'brush',
     classId: Number.isInteger(mask.classId) ? mask.classId : undefined,
     className: typeof mask.className === 'string' ? mask.className : undefined,
+    targetId: typeof mask.targetId === 'string' ? mask.targetId as ColorMaskLayer['targetId'] : undefined,
     modelId: typeof mask.modelId === 'string' ? mask.modelId : undefined,
   }
 }

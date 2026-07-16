@@ -1,4 +1,5 @@
 import type { EditPipeline } from './editPipeline'
+import type { AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
 
 export type ColorMaskBlendMode = 'normal' | 'multiply' | 'screen' | 'add'
 
@@ -12,6 +13,7 @@ export interface ColorMaskRef {
   kind: 'brush' | 'semantic'
   classId?: number
   className?: string
+  targetId?: AutomaticSegmentationTargetId
   modelId?: string
 }
 

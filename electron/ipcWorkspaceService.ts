@@ -30,9 +30,10 @@ import {
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
 import { getModelCacheStatus, loadModel, loadSamModel, type ModelId } from './modelLoader'
-import { isSamSegmentationModel, SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
+import { automaticSegmentationTarget, isSamSegmentationModel, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { segmentSamInWorker } from './samSegmentationService'
 import { segmentSemanticInWorker } from './semanticSegmentationService'
+import { segmentSpecializedInWorker } from './specializedSegmentationService'
 import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 
@@ -229,8 +230,11 @@ export function register(): void {
       throw new Error('自动选择任务标识无效')
     }
     if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('图片路径无效')
-    const { requestId, filePath, point, targetClassId } = request
-    const modelId: SegmentationModelId = request.modelId ?? 'segformer-b0-ade20k'
+    const { requestId, filePath, point } = request
+    const target = request.targetId ? automaticSegmentationTarget(request.targetId) : undefined
+    if (request.targetId && !target) throw new Error('自动选择类型无效')
+    const targetClassId = target?.classId ?? request.targetClassId
+    const modelId: SegmentationModelId = target?.modelId ?? request.modelId ?? 'segformer-b0-ade20k'
     const task = segmentationTasks.begin(event.sender.id, requestId)
     const { signal } = task.controller
     watchSender(event.sender)
@@ -246,6 +250,7 @@ export function register(): void {
     const totalStartedAt = performance.now()
     const modelStartedAt = performance.now()
     const isSam = isSamSegmentationModel(modelId)
+    const specializedDefinition = SPECIALIZED_SEGMENTATION_MODELS.find((item) => item.id === modelId)
     if (isSam) logMainInfo('[SAM] 智能选择开始')
     reportProgress('model', '正在准备模型', null)
     const model = isSam
@@ -264,15 +269,26 @@ export function register(): void {
     if (isSam) logMainInfo('[SAM] 模型准备完成', { modelLoadMs: Math.round(modelLoadMs) })
     reportProgress('preparing', '正在准备图片', null)
     const decodeStartedAt = performance.now()
-    const semanticDefinition = isSam ? null : SEGMENTATION_MODELS.find((item) => item.id === modelId)
+    const semanticDefinition = isSam || specializedDefinition ? null : SEGMENTATION_MODELS.find((item) => item.id === modelId)
     const semanticInputSize = semanticDefinition?.inputSize ?? 512
-    const sourceSize = isSam ? await probeDisplayResolution(filePath) : null
+    const sourceSize = isSam || specializedDefinition ? await probeDisplayResolution(filePath) : null
     const samScale = sourceSize ? Math.min(1, 1024 / Math.max(sourceSize.width, sourceSize.height)) : 1
     const samWidth = sourceSize ? Math.max(1, Math.round(sourceSize.width * samScale)) : 512
     const samHeight = sourceSize ? Math.max(1, Math.round(sourceSize.height * samScale)) : 512
+    const yoloScale = specializedDefinition?.backend === 'yolo26-seg' && sourceSize
+      ? Math.min(640 / sourceSize.width, 640 / sourceSize.height)
+      : 1
+    const yoloWidth = Math.max(1, Math.round((sourceSize?.width ?? 640) * yoloScale))
+    const yoloHeight = Math.max(1, Math.round((sourceSize?.height ?? 640) * yoloScale))
+    const yoloPadX = Math.floor((640 - yoloWidth) / 2)
+    const yoloPadY = Math.floor((640 - yoloHeight) / 2)
     const filter = isSam
       ? `scale=${samWidth}:${samHeight}:flags=bilinear,pad=1024:1024:0:0:color=black`
-      : `scale=${semanticInputSize}:${semanticInputSize}:flags=bilinear`
+      : specializedDefinition?.backend === 'yolo26-seg'
+        ? `scale=${yoloWidth}:${yoloHeight}:flags=bilinear,pad=640:640:${yoloPadX}:${yoloPadY}:color=0x727272`
+        : specializedDefinition?.backend === 'birefnet-general-lite'
+          ? 'scale=1024:1024:flags=bilinear'
+          : `scale=${semanticInputSize}:${semanticInputSize}:flags=bilinear`
     const { stdout } = await execFileAsync(getFfmpegPath(), [
       '-v', 'error',
       '-i', filePath,
@@ -292,7 +308,18 @@ export function register(): void {
     const nativeTargetClassId = modelId === 'maskformer-r101-ade20k-full' && targetClassId !== undefined
       ? MASKFORMER_COMMON_CLASS_IDS[targetClassId] ?? targetClassId
       : targetClassId
-    const result = 'visionEncoderPath' in model
+    const result = specializedDefinition && 'path' in model
+      ? await segmentSpecializedInWorker({
+        backend: specializedDefinition.backend,
+        modelPath: model.path,
+        rgb,
+        scaledWidth: specializedDefinition.backend === 'yolo26-seg' ? yoloWidth : 1024,
+        scaledHeight: specializedDefinition.backend === 'yolo26-seg' ? yoloHeight : 1024,
+        padX: specializedDefinition.backend === 'yolo26-seg' ? yoloPadX : 0,
+        padY: specializedDefinition.backend === 'yolo26-seg' ? yoloPadY : 0,
+        outputSize: 512,
+      }, signal)
+      : 'visionEncoderPath' in model
       ? await segmentSamInWorker({
         visionEncoderPath: model.visionEncoderPath,
         promptDecoderPath: model.promptDecoderPath,
@@ -343,17 +370,18 @@ export function register(): void {
       71: '瀑布',
     }
     const reportedClassId = targetClassId ?? classId
-    const className = targetClassId !== undefined
+    const className = target?.label ?? (targetClassId !== undefined
       ? classNames[targetClassId] ?? '选中区域'
       : modelId === 'maskformer-r101-ade20k-full'
         ? maskFormerClassNames[classId] ?? '选中区域'
-        : classNames[classId] ?? '选中区域'
+        : classNames[classId] ?? '选中区域')
     return {
       requestId,
       width: result.width,
       height: result.height,
       classId: reportedClassId,
       className: isSam ? '已选对象' : className,
+      targetId: target?.id,
       modelId: model.id,
       performance: {
         modelLoadMs: Math.round(modelLoadMs),

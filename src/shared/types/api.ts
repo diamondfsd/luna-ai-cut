@@ -21,13 +21,14 @@ import type { UpdateInfo, HotUpdateCheckResult, ReleaseNoteItem } from './update
 import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } from './workspace'
 import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
-import type { SegmentationModelId } from '../segmentationModels'
+import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
   filePath: string
   point?: { x: number; y: number }
   modelId?: SegmentationModelId
+  targetId?: AutomaticSegmentationTargetId
   targetClassId?: number
 }
 
@@ -135,6 +136,7 @@ export interface LunaApi {
       height: number
       classId: number
       className: string
+      targetId?: AutomaticSegmentationTargetId
       modelId: string
       performance: {
         modelLoadMs: number

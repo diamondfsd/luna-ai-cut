@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { toast } from '../../ui'
 import { isImagePath } from '../../lib/fileUtils'
-import { SEGMENTATION_MODELS, SAM_MODELS, type SegmentationModelId } from '../../shared/segmentationModels'
+import { automaticSegmentationTarget, SEGMENTATION_MODELS, SAM_MODELS, type AutomaticSegmentationTargetId, type SegmentationModelId } from '../../shared/segmentationModels'
 import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
 import { useWorkspaceEdit } from './WorkspaceEditContext'
 import { useWorkspaceMedia } from './WorkspaceMediaContext'
@@ -57,7 +57,7 @@ interface WorkspaceMaskValue {
   updateMaskSettings: (patch: { opacity?: number; inverted?: boolean; feather?: number }) => void
   updateGroupedMaskSettings: (patch: { opacity?: number; feather?: number }, groupKey: string, finalize?: boolean) => void
   removeMask: () => Promise<void>
-  generateSemanticMask: (point?: { x: number; y: number }, targetClassId?: number) => Promise<void>
+  generateSemanticMask: (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId) => Promise<void>
 }
 
 const WorkspaceMaskContext = createContext<WorkspaceMaskValue | null>(null)
@@ -76,6 +76,15 @@ function workingMaskSize(width: number, height: number): { width: number; height
     width: Math.max(1, Math.round(width * scale)),
     height: Math.max(1, Math.round(height * scale)),
   }
+}
+
+function hasUsableAutomaticMask(data: Uint8Array): boolean {
+  const requiredPixels = Math.max(16, Math.floor(data.length * 0.0005))
+  let selectedPixels = 0
+  for (const value of data) {
+    if (value >= 128 && ++selectedPixels >= requiredPixels) return true
+  }
+  return false
 }
 
 export function WorkspaceMaskProvider({ children, active }: { children: ReactNode; active: boolean }) {
@@ -289,6 +298,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
           kind: operationMask?.kind ?? 'brush',
           classId: operationMask?.classId,
           className: operationMask?.className,
+          targetId: operationMask?.targetId,
           modelId: operationMask?.modelId,
           id: layerId,
           name: operationMask?.name ?? `蒙版 ${colorMasksRef.current.length + 1}`,
@@ -372,7 +382,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setEditing(false)
   }, [activeMask, edit, maskSize])
 
-  const generateSemanticMask = useCallback(async (point?: { x: number; y: number }, targetClassId?: number) => {
+  const generateSemanticMask = useCallback(async (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId) => {
     if (!media.activeMedia || !media.currentProject || !maskSize) return
     const operationProjectId = media.currentProject.id
     const operationAssetId = media.activeMedia.id
@@ -383,14 +393,13 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setSegmentationError(null)
     setSegmentationProgress({ requestId, phase: 'model', label: '正在准备模型', percent: null })
     try {
-      const modelId = targetClassId !== undefined
-        ? modelForAutomaticSelection(segmentationModel)
-        : segmentationModel
-      const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, point, modelId, targetClassId })
+      const target = targetId ? automaticSegmentationTarget(targetId) : undefined
+      const modelId = target?.modelId ?? modelForAutomaticSelection(segmentationModel)
+      const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, point, modelId, targetId, targetClassId: target?.classId })
       if (result.requestId !== requestId || !isCurrentOperation(operation)) return
       setLastSegmentationPerformance(result.performance)
       const data = new Uint8Array(result.bytes)
-      if (targetClassId !== undefined && !data.some((value) => value > 0)) {
+      if (targetId !== undefined && !hasUsableAutomaticMask(data)) {
         setSegmentationError(`未找到${result.className}，可使用画笔手动选择`)
         return
       }
@@ -416,6 +425,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
           kind: 'semantic',
           classId: result.classId,
           className: result.className,
+          targetId: result.targetId,
           modelId: result.modelId,
           id: layerId,
           name: operationMask?.name ?? result.className ?? `蒙版 ${colorMasksRef.current.length + 1}`,

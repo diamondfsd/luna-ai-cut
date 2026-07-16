@@ -1,12 +1,12 @@
 import { app } from 'electron'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { SAM_MODELS, SEGMENTATION_MODELS, type SamSegmentationModelId, type SegmentationModelId, type SemanticSegmentationModelId } from '../src/shared/segmentationModels'
+import { SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SamSegmentationModelId, type SegmentationModelId, type SingleFileSegmentationModelId } from '../src/shared/segmentationModels'
 import { loadVerifiedModelFile } from './modelFileService'
 import { SharedLoadRegistry } from './sharedLoadRegistry'
 import { hasCachedModelFiles } from './modelCacheStatus'
 
-export type ModelId = SemanticSegmentationModelId
+export type ModelId = SingleFileSegmentationModelId
 
 interface ModelDefinition {
   fileName: string
@@ -48,7 +48,7 @@ export interface ModelCacheStatus {
   sizeBytes: number
 }
 
-export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntries(SEGMENTATION_MODELS.map((model) => [model.id, {
+export const MODEL_REGISTRY: Record<ModelId, ModelDefinition> = Object.fromEntries([...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS].map((model) => [model.id, {
     fileName: 'model.onnx',
     version: model.version,
     url: model.url,
