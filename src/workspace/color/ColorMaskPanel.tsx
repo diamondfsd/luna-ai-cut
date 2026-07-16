@@ -63,17 +63,19 @@ export function ColorMaskPanel() {
 
   return (
     <div className={`workspace-color-mask-panel${mask.editing ? ' is-editing' : ''}`}>
-      {mask.editing ? (
-        <div className="workspace-mask-inline-editor"><MaskPanel /></div>
-      ) : (
-        <ColorPanel
-          value={selectedColor}
-          onChange={(color) => mask.activeMask
-            ? mask.updateActiveLayer({ color: { ...mask.activeMask.color, ...color } })
-            : edit.updateWorkspacePanel({ color })}
-          onActivatePipette={mask.activeMask ? undefined : () => edit.setPipetteActive(true)}
-        />
-      )}
+      <div className="workspace-color-mask-content">
+        {mask.editing ? (
+          <div className="workspace-mask-inline-editor"><MaskPanel /></div>
+        ) : (
+          <ColorPanel
+            value={selectedColor}
+            onChange={(color) => mask.activeMask
+              ? mask.updateActiveLayer({ color: { ...mask.activeMask.color, ...color } })
+              : edit.updateWorkspacePanel({ color })}
+            onActivatePipette={mask.activeMask ? undefined : () => edit.setPipetteActive(true)}
+          />
+        )}
+      </div>
 
       <section className="workspace-color-mask-layers" aria-label="蒙版图层">
         <div className="workspace-color-mask-layers-header">
