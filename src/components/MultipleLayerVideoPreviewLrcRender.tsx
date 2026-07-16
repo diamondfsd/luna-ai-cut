@@ -549,6 +549,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               srcW: layer.srcW ?? 1,
               srcH: layer.srcH ?? 1,
               opacity: layer.opacity ?? 1,
+              blendMode: layer.blendMode,
               revealProgress,
               zIndex: layer.zIndex ?? 0,
               color: layer.color,

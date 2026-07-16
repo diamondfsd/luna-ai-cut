@@ -163,9 +163,18 @@
 
 .workspace-color-mask-layer-menu {
   display: grid;
-  width: 148px;
-  gap: 2px;
+  width: 174px;
+  gap: 4px;
   padding: 6px;
+}
+
+.workspace-color-mask-blend-field {
+  display: grid;
+  gap: 5px;
+  padding: 4px 4px 7px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .workspace-color-mask-layer-menu .ui-btn {

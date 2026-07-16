@@ -102,6 +102,7 @@ export interface PreviewLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number
+  blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
   zIndex: number
   /** 仅导出合成使用；实时预览由调用方按播放进度更新裁剪。 */
   reveal?: CompositionReveal
@@ -170,6 +171,7 @@ export interface CompositionLayer {
   rect: { x: number; y: number; w: number; h: number }
   fit?: 'cover' | 'contain' | string
   opacity?: number
+  blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
   zIndex?: number
   /** 按合成时间从左向右展开当前图层。 */
   reveal?: CompositionReveal
@@ -205,6 +207,7 @@ export interface RenderLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+  blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
   color?: RenderColorAdjustments
   maskPath?: string
   maskOpacity?: number

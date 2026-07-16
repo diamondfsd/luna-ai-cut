@@ -1,5 +1,7 @@
 import type { EditPipeline } from './editPipeline'
 
+export type ColorMaskBlendMode = 'normal' | 'multiply' | 'screen' | 'add'
+
 export interface ColorMaskRef {
   path: string
   width: number
@@ -17,5 +19,6 @@ export interface ColorMaskLayer extends ColorMaskRef {
   id: string
   name: string
   enabled: boolean
+  blendMode: ColorMaskBlendMode
   color: EditPipeline['color']
 }

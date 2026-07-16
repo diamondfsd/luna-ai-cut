@@ -1,9 +1,9 @@
 import type { WatermarkSettings } from '../../shared/types'
 import { EDIT_PARAMETER_RANGES, clampNumber } from './editParameterRanges'
-import type { ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
+import type { ColorMaskBlendMode, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 
-export type { ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
+export type { ColorMaskBlendMode, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
 export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
@@ -422,7 +422,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   }
 }
 
-function normalizeColorMaskLayer(input: ColorMaskLayer): ColorMaskLayer | null {
+function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { blendMode?: ColorMaskBlendMode }): ColorMaskLayer | null {
   const mask = normalizeColorMask(input)
   if (!mask) return null
   const colorInput = input.color ?? DEFAULT_PIPELINE.color
@@ -437,8 +437,13 @@ function normalizeColorMaskLayer(input: ColorMaskLayer): ColorMaskLayer | null {
     id: typeof input.id === 'string' && input.id ? input.id : `mask-${Date.now()}`,
     name: typeof input.name === 'string' && input.name.trim() ? input.name.trim().slice(0, 40) : '局部蒙版',
     enabled: input.enabled !== false,
+    blendMode: normalizeColorMaskBlendMode(input.blendMode),
     color,
   }
+}
+
+function normalizeColorMaskBlendMode(value: ColorMaskBlendMode | undefined): ColorMaskBlendMode {
+  return value === 'multiply' || value === 'screen' || value === 'add' ? value : 'normal'
 }
 
 function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef | null {

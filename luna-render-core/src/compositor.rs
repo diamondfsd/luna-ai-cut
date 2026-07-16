@@ -10,7 +10,7 @@ mod texture;
 mod tests;
 
 use gpu::{
-    align_to, create_compositor_pipeline, create_identity_lut, create_lut_3d_texture,
+    align_to, create_compositor_pipelines, create_identity_lut, create_lut_3d_texture,
     create_rgba_texture, layer_bind_group_layout, parse_cube_lut, upload_rgba,
 };
 use preview::{plan_cover_scale, plan_cover_transform, resolve_positioning};
@@ -218,10 +218,10 @@ fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 1
 pub struct Compositor {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipeline: wgpu::RenderPipeline,
+    pipelines: gpu::BlendPipelines,
     /// BGRA sRGB 格式渲染管线（macOS Metal External）
     #[cfg(target_os = "macos")]
-    pipeline_bgra: wgpu::RenderPipeline,
+    pipelines_bgra: gpu::BlendPipelines,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
 
@@ -355,7 +355,7 @@ impl Compositor {
             immediate_size: 0,
         });
 
-        let pipeline = create_compositor_pipeline(
+        let pipelines = create_compositor_pipelines(
             &device,
             &pipeline_layout,
             &shader,
@@ -363,7 +363,7 @@ impl Compositor {
             "compositor pipeline",
         );
         #[cfg(target_os = "macos")]
-        let pipeline_bgra = create_compositor_pipeline(
+        let pipelines_bgra = create_compositor_pipelines(
             &device,
             &pipeline_layout,
             &shader,
@@ -413,9 +413,9 @@ impl Compositor {
         Ok(Self {
             device,
             queue,
-            pipeline,
+            pipelines,
             #[cfg(target_os = "macos")]
-            pipeline_bgra,
+            pipelines_bgra,
             sampler,
             bind_group_layout: bgl,
             textures: initial_textures,

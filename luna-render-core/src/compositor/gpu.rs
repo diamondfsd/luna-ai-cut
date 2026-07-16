@@ -70,13 +70,102 @@ pub(super) fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupL
     })
 }
 
-pub(super) fn create_compositor_pipeline(
+pub(super) struct BlendPipelines {
+    normal: wgpu::RenderPipeline,
+    multiply: wgpu::RenderPipeline,
+    screen: wgpu::RenderPipeline,
+    add: wgpu::RenderPipeline,
+}
+
+impl BlendPipelines {
+    pub(super) fn get(&self, blend_mode: Option<&str>) -> &wgpu::RenderPipeline {
+        match blend_mode {
+            Some("multiply") => &self.multiply,
+            Some("screen") => &self.screen,
+            Some("add") => &self.add,
+            _ => &self.normal,
+        }
+    }
+}
+
+pub(super) fn create_compositor_pipelines(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
     shader: &wgpu::ShaderModule,
     format: wgpu::TextureFormat,
     label: &str,
+) -> BlendPipelines {
+    BlendPipelines {
+        normal: create_compositor_pipeline(
+            device,
+            layout,
+            shader,
+            format,
+            &format!("{label} normal"),
+            "normal",
+        ),
+        multiply: create_compositor_pipeline(
+            device,
+            layout,
+            shader,
+            format,
+            &format!("{label} multiply"),
+            "multiply",
+        ),
+        screen: create_compositor_pipeline(
+            device,
+            layout,
+            shader,
+            format,
+            &format!("{label} screen"),
+            "screen",
+        ),
+        add: create_compositor_pipeline(
+            device,
+            layout,
+            shader,
+            format,
+            &format!("{label} add"),
+            "add",
+        ),
+    }
+}
+
+fn create_compositor_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    format: wgpu::TextureFormat,
+    label: &str,
+    blend_mode: &str,
 ) -> wgpu::RenderPipeline {
+    let alpha = wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::One,
+        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+        operation: wgpu::BlendOperation::Add,
+    };
+    let color = match blend_mode {
+        "multiply" => wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::Dst,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        },
+        "screen" => wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::OneMinusSrc,
+            operation: wgpu::BlendOperation::Add,
+        },
+        "add" => wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        },
+        _ => wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        },
+    };
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(label),
         layout: Some(layout),
@@ -92,7 +181,7 @@ pub(super) fn create_compositor_pipeline(
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                blend: Some(wgpu::BlendState { color, alpha }),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
