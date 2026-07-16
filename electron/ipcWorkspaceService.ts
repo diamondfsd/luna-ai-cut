@@ -31,8 +31,8 @@ import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
 import { getModelCacheStatus, loadModel, loadSamModel, type ModelId } from './modelLoader'
 import { isSamSegmentationModel, SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
-import { getNative } from './lunaRenderCore'
 import { segmentSamInWorker } from './samSegmentationService'
+import { segmentSemanticInWorker } from './semanticSegmentationService'
 import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 
@@ -302,7 +302,14 @@ export function register(): void {
         pointX: point?.x ?? 0.5,
         pointY: point?.y ?? 0.5,
       }, signal)
-      : getNative().segmentImage(model.path, rgb, point?.x ?? 0.5, point?.y ?? 0.5, nativeTargetClassId, semanticInputSize)
+      : await segmentSemanticInWorker({
+        modelPath: model.path,
+        rgb,
+        pointX: point?.x ?? 0.5,
+        pointY: point?.y ?? 0.5,
+        targetClassId: nativeTargetClassId,
+        inputSize: semanticInputSize,
+      }, signal)
     signal.throwIfAborted()
     const inferenceMs = performance.now() - inferenceStartedAt
     if (isSam) logMainInfo('[SAM] 原生识别完成', { inferenceMs: Math.round(inferenceMs) })

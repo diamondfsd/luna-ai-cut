@@ -17,6 +17,14 @@ use std::sync::{LazyLock, Mutex};
 
 pub use api_types::*;
 
+#[napi(object)]
+pub struct SegmentationResult {
+    pub width: u32,
+    pub height: u32,
+    pub class_id: u32,
+    pub bytes: Buffer,
+}
+
 #[napi]
 pub fn segment_image(
     model_path: String,
@@ -25,15 +33,21 @@ pub fn segment_image(
     point_y: f64,
     target_class_id: Option<u32>,
     input_size: Option<u32>,
-) -> napi::Result<segmentation::SegmentationResult> {
+) -> napi::Result<SegmentationResult> {
     segmentation::segment(
         model_path,
-        rgb,
+        rgb.to_vec(),
         point_x,
         point_y,
         target_class_id,
         input_size,
     )
+    .map(|result| SegmentationResult {
+        width: result.width,
+        height: result.height,
+        class_id: result.class_id,
+        bytes: result.bytes.into(),
+    })
     .map_err(napi::Error::from_reason)
 }
 

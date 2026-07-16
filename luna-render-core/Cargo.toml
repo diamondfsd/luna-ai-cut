@@ -11,6 +11,10 @@ crate-type = ["cdylib", "rlib"]
 name = "sam-segmentation-worker"
 path = "src/bin/sam_segmentation_worker.rs"
 
+[[bin]]
+name = "semantic-segmentation-worker"
+path = "src/bin/semantic_segmentation_worker.rs"
+
 [dependencies]
 napi = { version = "2", features = ["full"] }
 napi-derive = "2"

@@ -1,5 +1,3 @@
-use napi::bindgen_prelude::Buffer;
-use napi_derive::napi;
 use ort::{session::Session, value::Tensor};
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
@@ -11,12 +9,11 @@ const MASKFORMER_WATER_CLASSES: [usize; 3] = [22, 24, 71];
 
 static SESSION: OnceLock<Mutex<Option<(String, Session)>>> = OnceLock::new();
 
-#[napi(object)]
 pub struct SegmentationResult {
     pub width: u32,
     pub height: u32,
     pub class_id: u32,
-    pub bytes: Buffer,
+    pub bytes: Vec<u8>,
 }
 
 fn preprocess(rgb: &[u8], input_size: usize) -> Result<Vec<f32>, String> {
@@ -299,7 +296,7 @@ fn guided_upscale(
 
 pub fn segment(
     model_path: String,
-    rgb: Buffer,
+    rgb: Vec<u8>,
     point_x: f64,
     point_y: f64,
     target_class_id: Option<u32>,
@@ -309,7 +306,7 @@ pub fn segment(
     if !(256..=1024).contains(&input_size) {
         return Err(format!("分割输入尺寸不支持: {input_size}"));
     }
-    let input = preprocess(rgb.as_ref(), input_size)?;
+    let input = preprocess(&rgb, input_size)?;
     let sessions = SESSION.get_or_init(|| Mutex::new(None));
     let mut guard = sessions
         .lock()
@@ -432,11 +429,10 @@ pub fn segment(
         bytes: guided_upscale(
             &probability,
             &selected,
-            rgb.as_ref(),
+            &rgb,
             input_size,
             output_size,
         )
-        .into(),
     })
 }
 
