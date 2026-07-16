@@ -15,6 +15,10 @@ path = "src/bin/sam_segmentation_worker.rs"
 name = "semantic-segmentation-worker"
 path = "src/bin/semantic_segmentation_worker.rs"
 
+[[bin]]
+name = "specialized-segmentation-worker"
+path = "src/bin/specialized_segmentation_worker.rs"
+
 [dependencies]
 napi = { version = "2", features = ["full"] }
 napi-derive = "2"

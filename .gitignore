@@ -50,4 +50,6 @@ luna-render-core/sam-segmentation-worker
 luna-render-core/sam-segmentation-worker.exe
 luna-render-core/semantic-segmentation-worker
 luna-render-core/semantic-segmentation-worker.exe
+luna-render-core/specialized-segmentation-worker
+luna-render-core/specialized-segmentation-worker.exe
 worktrees/

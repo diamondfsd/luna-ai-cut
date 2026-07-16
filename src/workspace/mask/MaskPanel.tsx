@@ -1,19 +1,13 @@
-import { Brush, Cloud, Eraser, TreePine, UserRound, Waves, X } from 'lucide-react'
+import { Brush, Cloud, Eraser, ScanSearch, TreePine, UserRound, Waves, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { Accordion, Button, ButtonGroup, Dialog, Select, Switch } from '../../ui'
-import { COMMON_SEGMENTATION_TARGETS, SEGMENTATION_MODELS } from '../../shared/segmentationModels'
+import { Accordion, Button, ButtonGroup, Dialog, Switch } from '../../ui'
+import { AUTOMATIC_SEGMENTATION_TARGETS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
-import { modelForAutomaticSelection, modelForProductMode, productModeForModel, type MaskProductMode } from './maskModelMode'
 import './MaskPanel.css'
 
-const AUTO_TARGETS = COMMON_SEGMENTATION_TARGETS.slice(0, 4)
-const TARGET_ICONS = [Cloud, Waves, UserRound, TreePine]
-const PRODUCT_MODEL_OPTIONS = [
-  { value: 'fast', label: '快速' },
-  { value: 'fine', label: '精细' },
-]
+const TARGET_ICONS = { sky: Cloud, water: Waves, person: UserRound, subject: ScanSearch, tree: TreePine }
 const BRUSH_MODES = [
   { value: 'paint', label: <><Brush size={18} />添加</> },
   { value: 'erase', label: <><Eraser size={18} />擦除</> },
@@ -26,19 +20,18 @@ function formatModelSize(sizeBytes: number): string {
 export function MaskPanel() {
   const mask = useWorkspaceMask()
   const settings = mask.activeMask
-  const { segmentationModel, setSegmentationModel } = mask
-  const initialTarget = AUTO_TARGETS.find((target) => target.classId === settings?.classId)?.classId ?? AUTO_TARGETS[0].classId
-  const [targetClassId, setTargetClassId] = useState<number>(initialTarget)
+  const initialTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === settings?.targetId || target.classId === settings?.classId)?.id ?? 'sky'
+  const [targetId, setTargetId] = useState<AutomaticSegmentationTargetId>(initialTarget)
   const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
   const [checkingModel, setCheckingModel] = useState(false)
   const [modelStatusError, setModelStatusError] = useState<string | null>(null)
-  const [pendingDownload, setPendingDownload] = useState<{ modelId: typeof segmentationModel; sizeBytes: number; targetClassId: number } | null>(null)
+  const [pendingDownload, setPendingDownload] = useState<{ modelId: typeof AUTOMATIC_SEGMENTATION_TARGETS[number]['modelId']; sizeBytes: number; targetId: AutomaticSegmentationTargetId } | null>(null)
   const confirmedDownloadsRef = useRef(new Set<string>())
 
   useEffect(() => {
-    const classId = mask.activeMask?.classId
-    if (classId !== undefined && AUTO_TARGETS.some((target) => target.classId === classId)) setTargetClassId(classId)
-  }, [mask.activeMask?.classId])
+    const activeTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === mask.activeMask?.targetId || target.classId === mask.activeMask?.classId)
+    if (activeTarget) setTargetId(activeTarget.id)
+  }, [mask.activeMask?.classId, mask.activeMask?.targetId])
 
   useEffect(() => {
     let active = true
@@ -52,24 +45,11 @@ export function MaskPanel() {
     return () => { active = false }
   }, [])
 
-  useEffect(() => {
-    if (developerMode !== false) return
-    const productModel = modelForProductMode(productModeForModel(segmentationModel))
-    if (productModel !== segmentationModel) setSegmentationModel(productModel)
-  }, [developerMode, segmentationModel, setSegmentationModel])
-
   const target = useMemo(
-    () => AUTO_TARGETS.find((item) => item.classId === targetClassId) ?? AUTO_TARGETS[0],
-    [targetClassId],
+    () => AUTOMATIC_SEGMENTATION_TARGETS.find((item) => item.id === targetId) ?? AUTOMATIC_SEGMENTATION_TARGETS[0],
+    [targetId],
   )
-  const productModelMode = productModeForModel(segmentationModel)
-  const automaticSelectionModel = modelForAutomaticSelection(segmentationModel)
-  const modelOptions = developerMode
-    ? SEGMENTATION_MODELS.map((model) => ({
-        value: model.id,
-        label: `${model.name} · ${formatModelSize(model.sizeBytes)}`,
-      }))
-    : PRODUCT_MODEL_OPTIONS
+  const automaticSelectionModel = [...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS].find((model) => model.id === target.modelId)
 
   const clearAutomaticSelectionError = (): void => {
     setModelStatusError(null)
@@ -81,13 +61,13 @@ export function MaskPanel() {
     clearAutomaticSelectionError()
     setCheckingModel(true)
     try {
-      const modelId = modelForAutomaticSelection(segmentationModel)
+      const modelId = target.modelId
       const status = await window.luna.workspace.getSegmentationModelStatus(modelId)
       if (!status.cached && !confirmedDownloadsRef.current.has(modelId)) {
-        setPendingDownload({ modelId, sizeBytes: status.sizeBytes, targetClassId: target.classId })
+        setPendingDownload({ modelId, sizeBytes: status.sizeBytes, targetId: target.id })
         return
       }
-      void mask.generateSemanticMask(undefined, target.classId)
+      void mask.generateSemanticMask(undefined, target.id)
     } catch (error) {
       setModelStatusError(error instanceof Error ? error.message : '无法检查自动选择资源，请重试')
     } finally {
@@ -98,9 +78,9 @@ export function MaskPanel() {
   const confirmDownload = (): void => {
     if (!pendingDownload) return
     confirmedDownloadsRef.current.add(pendingDownload.modelId)
-    const confirmedTargetClassId = pendingDownload.targetClassId
+    const confirmedTargetId = pendingDownload.targetId
     setPendingDownload(null)
-    void mask.generateSemanticMask(undefined, confirmedTargetClassId)
+    void mask.generateSemanticMask(undefined, confirmedTargetId)
   }
 
   const automaticSelectionError = modelStatusError ?? mask.segmentationError
@@ -110,37 +90,28 @@ export function MaskPanel() {
       <section className="workspace-mask-auto-section">
         <h3 className="workspace-mask-section-heading">自动选择</h3>
         <div className="workspace-mask-auto-targets" aria-label="自动选择类型">
-          {AUTO_TARGETS.map((item, index) => {
-            const Icon = TARGET_ICONS[index]
+          {AUTOMATIC_SEGMENTATION_TARGETS.map((item) => {
+            const Icon = TARGET_ICONS[item.id]
             return (
               <Button
-                key={item.classId}
+                key={item.id}
                 variant="ghost"
-                className={item.classId === targetClassId ? 'is-active' : undefined}
+                className={item.id === targetId ? 'is-active' : undefined}
                 disabled={mask.busy || checkingModel}
-                onClick={() => setTargetClassId(item.classId)}
+                onClick={() => setTargetId(item.id)}
               >
                 <Icon size={20} />
-                {item.label.replace(' / 水面', '')}
+                {item.label}
               </Button>
             )
           })}
         </div>
-        <label className="workspace-mask-model-field">
-          <strong>{developerMode ? '模型' : '质量'}</strong>
-          <Select
-            variant="compact"
-            fullWidth
-            value={developerMode ? automaticSelectionModel : productModelMode}
-            disabled={mask.busy || checkingModel || developerMode === null}
-            onValueChange={(value) => setSegmentationModel(
-              developerMode
-                ? value as typeof segmentationModel
-                : modelForProductMode(value as MaskProductMode),
-            )}
-            options={modelOptions}
-          />
-        </label>
+        {developerMode && automaticSelectionModel && (
+          <div className="workspace-mask-model-field">
+            <strong>模型</strong>
+            <span>{automaticSelectionModel.name} · {formatModelSize(automaticSelectionModel.sizeBytes)}</span>
+          </div>
+        )}
         {mask.segmentationProgress ? (
           <Button variant="secondary" className="workspace-mask-apply-button" onClick={mask.cancelSegmentation}>
             <X size={16} />
