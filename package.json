@@ -26,6 +26,7 @@
     "publish:hot": "node scripts/publish-hot-update.mjs",
     "test:workspace": "node scripts/test-workspace-geometry.mjs",
     "test:mask": "node scripts/test-mask-safety.mjs",
+    "test:mask:e2e": "node scripts/test-mask-e2e.mjs",
     "test:diagnostics": "node scripts/test-crash-diagnostics.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
     "test:insta360-tcp": "node scripts/test-insta360-tcp.mjs",

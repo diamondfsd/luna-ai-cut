@@ -81,10 +81,10 @@ export function WorkspacePreviewToolbar({
         </Tooltip>
         <div className="workspace-toolbar-divider" />
         <Tooltip content="撤销">
-          <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={!edit.canUndo || mask.busy} onClick={edit.undo} />
+          <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} aria-label="撤销" disabled={!edit.canUndo || mask.busy} onClick={edit.undo} />
         </Tooltip>
         <Tooltip content="重做">
-          <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={!edit.canRedo || mask.busy} onClick={edit.redo} />
+          <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} aria-label="重做" disabled={!edit.canRedo || mask.busy} onClick={edit.redo} />
         </Tooltip>
         <div className="workspace-toolbar-divider" />
         <Tooltip content="复制调色参数">
