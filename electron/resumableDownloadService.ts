@@ -7,6 +7,7 @@ const DEFAULT_MAX_BYTES = 2 * 1024 * 1024 * 1024
 export interface DownloadDefinition {
   fileName: string
   url: string
+  mirrors?: readonly string[]
   sha256: string
   sizeBytes: number
 }
@@ -87,7 +88,7 @@ function rangeStartsAt(response: Response, offset: number, expectedBytes: number
   return start === offset && end >= start && end < expectedBytes && total === expectedBytes
 }
 
-export async function downloadVerifiedFile(
+async function downloadVerifiedFileFromSource(
   destinationDir: string,
   definition: DownloadDefinition,
   options: DownloadOptions = {},
@@ -174,4 +175,22 @@ export async function downloadVerifiedFile(
   } finally {
     await handle?.close().catch(() => undefined)
   }
+}
+
+export async function downloadVerifiedFile(
+  destinationDir: string,
+  definition: DownloadDefinition,
+  options: DownloadOptions = {},
+): Promise<string> {
+  const sources = [...new Set([definition.url, ...(definition.mirrors ?? [])])]
+  let lastError: unknown
+  for (const url of sources) {
+    try {
+      return await downloadVerifiedFileFromSource(destinationDir, { ...definition, url, mirrors: undefined }, options)
+    } catch (error) {
+      if (options.signal?.aborted) throw error
+      lastError = error
+    }
+  }
+  throw lastError ?? new Error(`${options.label ?? '资源'}没有可用下载源`)
 }
