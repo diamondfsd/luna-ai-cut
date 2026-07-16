@@ -377,6 +377,7 @@ impl Compositor {
         for path in inactive_video_paths {
             self.remove_video_decoder(&path);
         }
+        self.retain_active_mask_textures(layers)?;
 
         let mut source_layers = Vec::with_capacity(layers.len());
         // 解码最大边长：export 时传入了有效 max_side（如 8192），
