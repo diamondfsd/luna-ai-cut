@@ -8,6 +8,7 @@ import { useOptionalDownloadProgress } from '../context/DownloadProgressContext'
 import { useExportProgress } from '../context/ExportProgressContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { logger } from '../lib/rendererLogger'
+import { subscribeThumbnailReady } from '../lib/thumbnailReady'
 
 type MediaFilter = 'all' | 'image' | 'video'
 type DownloadStatusFilter = 'all' | 'downloaded' | 'not-downloaded'
@@ -215,7 +216,7 @@ export function useMediaLibraryController(pageType: PageType) {
 
   // 监听缓存缩略图完成
   useEffect(() => {
-    return window.luna.onThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
+    return subscribeThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
       const matches = (file: LunaFile): boolean =>
         file.id === fileId || file.name === fileName || file.downloadName === downloadName
       setCacheFailedIds((current) => {

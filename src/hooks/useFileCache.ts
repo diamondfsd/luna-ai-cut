@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { subscribeThumbnailReady } from '../lib/thumbnailReady'
 
 interface FileCache {
   /** 缩略图 URL（本地 file:// 路径或 null） */
@@ -59,7 +60,7 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
         setIsLoading(false)
       })
 
-    const unsubscribe = window.luna.onThumbnailReady(({ fileId, cacheFilePath: cachedPath, thumbnailUrl: thumbUrl }) => {
+    const unsubscribe = subscribeThumbnailReady(({ fileId, cacheFilePath: cachedPath, thumbnailUrl: thumbUrl }) => {
       if (fileId !== sourceUrl) return
       if (cachedPath) setCacheFilePath(cachedPath)
       if (thumbUrl) setThumbnailUrl(thumbUrl)

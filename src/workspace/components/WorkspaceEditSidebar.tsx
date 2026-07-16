@@ -1,7 +1,7 @@
 import { ArrowLeft, Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { Accordion, Button, IconButton, Tooltip } from '../../ui'
+import { Accordion, Button, Dialog, IconButton, Tooltip } from '../../ui'
 import { createDefaultPipeline, DEFAULT_PIPELINE, HSL_CHANNELS } from '../shared/editPipeline'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
@@ -113,6 +113,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
 
   // 滤镜搜索关键字
   const [filterSearchKey, setFilterSearchKey] = useState('')
+  const [resetColorDialogOpen, setResetColorDialogOpen] = useState(false)
 
   // 各面板是否有未保存的修改
   const toolModified = useMemo(() => ({
@@ -142,6 +143,26 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
     () => (size: { width?: number; height?: number }) => edit.handleCropSizeChange(size, canvas.sourceAspect, mediaSize ?? undefined),
     [edit.handleCropSizeChange, canvas.sourceAspect, mediaSize],
   )
+
+  const resetAllColor = () => {
+    edit.commitPatch({
+      color: DEFAULT_PIPELINE.color,
+      effects: DEFAULT_PIPELINE.effects,
+      colorMasks: [],
+    })
+    mask.setActiveLayerId(null)
+    mask.setEditing(false)
+    mask.setSemanticPicking(false)
+    setResetColorDialogOpen(false)
+  }
+
+  const requestResetAllColor = () => {
+    if (edit.pipeline.colorMasks.length > 0) {
+      setResetColorDialogOpen(true)
+      return
+    }
+    resetAllColor()
+  }
 
   // 水印检测由 WatermarkSettings 内部根据 filePath 自动完成
 
@@ -186,16 +207,14 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 <Button className="workspace-mask-editor-done" variant="ghost" size="mini" onClick={() => { mask.setEditing(false); mask.setSemanticPicking(false) }}>完成</Button>
               ) : (
                 <>
-                  {(mask.activeMask ? isColorModified(mask.activeMask.color) : isColorModified(edit.pipeline.color)) && <span className="ui-accordion-modified-dot" />}
-                  <Tooltip content="重置全部调色">
+                  {toolModified.color && <span className="ui-accordion-modified-dot" />}
+                  <Tooltip content="重置全部调色与蒙版">
                     <IconButton
                       variant="ghost"
                       size="compact"
                       icon={<RotateCcw size={14} />}
-                      onClick={() => mask.activeMask
-                        ? mask.updateActiveLayer({ color: createDefaultPipeline().color })
-                        : edit.updateWorkspacePanel({ color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects })}
-                      aria-label="重置全部调色"
+                      onClick={requestResetAllColor}
+                      aria-label="重置全部调色与蒙版"
                     />
                   </Tooltip>
                 </>
@@ -321,6 +340,19 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
           ))}
         </div>
       </nav>
+      <Dialog
+        open={resetColorDialogOpen}
+        onOpenChange={setResetColorDialogOpen}
+        title="重置全部调色？"
+        description="所有全局调色设置和蒙版都会被清除，此操作可以撤销。"
+        tone="dark"
+        footer={(
+          <>
+            <Button variant="secondary" size="compact" onClick={() => setResetColorDialogOpen(false)}>取消</Button>
+            <Button variant="danger" size="compact" icon={<RotateCcw size={14} />} onClick={resetAllColor}>全部重置</Button>
+          </>
+        )}
+      />
     </aside>
   )
 }

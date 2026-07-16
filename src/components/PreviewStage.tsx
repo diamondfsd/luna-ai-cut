@@ -86,12 +86,11 @@ export function calcAspectRatio(width: number, height: number): number {
 }
 
 const VIDEO_PREVIEW_MAX_SIDE = 1440
-const GPU_CANVAS_MAX_SIDE = 8192
+const IMAGE_PREVIEW_MAX_SIDE = 1920
 
-function projectCanvasFor(resolution: MediaResolution | null, fullResolution = false): StageSize | null {
+function projectCanvasFor(resolution: MediaResolution | null, maxSide: number): StageSize | null {
   if (!resolution) return null
   const sourceMaxSide = Math.max(resolution.width, resolution.height)
-  const maxSide = fullResolution ? GPU_CANVAS_MAX_SIDE : VIDEO_PREVIEW_MAX_SIDE
   if (sourceMaxSide <= maxSide) return { width: resolution.width, height: resolution.height }
   const scale = maxSide / sourceMaxSide
   return {
@@ -300,7 +299,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const previewCanvas = useMemo(
     () => projectCanvasFor(
       resolution && pipeline ? outputSizeForTransform(resolution, pipeline.transform) : resolution,
-      !isDisplayVideo,
+      isDisplayVideo ? VIDEO_PREVIEW_MAX_SIDE : IMAGE_PREVIEW_MAX_SIDE,
     ),
     [isDisplayVideo, pipeline, resolution],
   )

@@ -1,3 +1,4 @@
+mod cache;
 mod external;
 mod gpu;
 mod layer_kind;
@@ -5,17 +6,17 @@ mod lut;
 mod playback;
 mod preview;
 mod render;
-mod texture;
 #[cfg(test)]
 mod tests;
+mod texture;
 
 use gpu::{
     align_to, create_compositor_pipelines, create_identity_lut, create_lut_3d_texture,
     create_rgba_texture, layer_bind_group_layout, parse_cube_lut, upload_rgba,
 };
+pub(crate) use layer_kind::is_procedural_layer_type;
 use preview::{plan_cover_scale, plan_cover_transform, resolve_positioning};
 pub(crate) use preview::{PreviewLayerInput, PreviewTextureInfo};
-pub(crate) use layer_kind::is_procedural_layer_type;
 
 use crate::media::{
     decode_static_image_scaled, fit_output_size, normalize_local_path,

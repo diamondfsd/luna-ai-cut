@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Download, FileQuestion, FolderOpen, Loader2, X } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
+import { subscribeThumbnailReady } from '../lib/thumbnailReady'
 import type { DownloadProgress, LunaFile } from '../shared/types'
 import { Button, DropdownPanel, IconButton } from '../ui'
 import '../styles/download-progress.css'
@@ -100,7 +101,7 @@ export function DownloadProgressModal({
 
   // 监听缩略图就绪，动态更新缩略图
   useEffect(() => {
-    return window.luna.onThumbnailReady(({ fileId, fileName, thumbnailUrl }) => {
+    return subscribeThumbnailReady(({ fileId, fileName, thumbnailUrl }) => {
       let updated = false
       for (const file of fileSnapshotsRef.current.values()) {
         if (file.id === fileId || file.name === fileName) {
