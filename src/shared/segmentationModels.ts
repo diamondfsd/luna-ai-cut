@@ -79,6 +79,39 @@ export const SEGMENTATION_MODELS = [
   },
 ] as const
 
+export const SPECIALIZED_SEGMENTATION_MODELS = [
+  {
+    id: 'yolo26s-seg',
+    backend: 'yolo26-seg',
+    name: 'YOLO26s-seg',
+    description: '人物识别',
+    inputSize: 640,
+    sizeBytes: 41_912_273,
+    url: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/runtime-resources-v1.1.0/yolo26s-seg.onnx',
+    mirrors: ['https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26s-seg.onnx'],
+    sha256: 'd205b2c489e7cf0cdb183bb23e56dc8a32a79602e8c5b1f5ecb01af0dc6822c3',
+    version: 'ultralytics-assets-v8.4.0',
+    license: 'AGPL-3.0',
+    source: 'https://github.com/ultralytics/assets/releases/tag/v8.4.0',
+    licenseUrl: 'https://github.com/ultralytics/ultralytics/blob/main/LICENSE',
+  },
+  {
+    id: 'birefnet-general-lite',
+    backend: 'birefnet-general-lite',
+    name: 'BiRefNet General Lite',
+    description: '主体识别',
+    inputSize: 1024,
+    sizeBytes: 224_005_088,
+    url: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/runtime-resources-v1.1.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx',
+    mirrors: ['https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx'],
+    sha256: '5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333',
+    version: 'v1-epoch-232',
+    license: 'MIT',
+    source: 'https://github.com/ZhengPeng7/BiRefNet/releases/tag/v1',
+    licenseUrl: 'https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE',
+  },
+] as const
+
 const SAM_DECODER = {
   fileName: 'prompt_encoder_mask_decoder_quantized.onnx',
   sizeBytes: 4_903_810,
@@ -161,11 +194,36 @@ export const SAM_MODELS = [
 export const SAM_MODEL = SAM_MODELS[2]
 
 export type SemanticSegmentationModelId = typeof SEGMENTATION_MODELS[number]['id']
+export type SpecializedSegmentationModelId = typeof SPECIALIZED_SEGMENTATION_MODELS[number]['id']
 export type SamSegmentationModelId = typeof SAM_MODELS[number]['id']
-export type SegmentationModelId = SemanticSegmentationModelId | SamSegmentationModelId
+export type SingleFileSegmentationModelId = SemanticSegmentationModelId | SpecializedSegmentationModelId
+export type SegmentationModelId = SingleFileSegmentationModelId | SamSegmentationModelId
 
 export function isSamSegmentationModel(id: string): id is SamSegmentationModelId {
   return SAM_MODELS.some((model) => model.id === id)
+}
+
+export function isSpecializedSegmentationModel(id: string): id is SpecializedSegmentationModelId {
+  return SPECIALIZED_SEGMENTATION_MODELS.some((model) => model.id === id)
+}
+
+export const AUTOMATIC_SEGMENTATION_TARGETS = [
+  { id: 'sky', classId: 2, label: '天空', modelId: 'segformer-b0-ade20k' },
+  { id: 'water', classId: 21, label: '水面', modelId: 'segformer-b0-ade20k' },
+  { id: 'person', classId: 12, label: '人物', modelId: 'yolo26s-seg' },
+  { id: 'subject', classId: -1, label: '主体', modelId: 'birefnet-general-lite' },
+  { id: 'tree', classId: 4, label: '树木', modelId: 'segformer-b0-ade20k' },
+] as const satisfies ReadonlyArray<{
+  id: string
+  classId: number
+  label: string
+  modelId: SingleFileSegmentationModelId
+}>
+
+export type AutomaticSegmentationTargetId = typeof AUTOMATIC_SEGMENTATION_TARGETS[number]['id']
+
+export function automaticSegmentationTarget(id: string) {
+  return AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === id)
 }
 
 export const COMMON_SEGMENTATION_TARGETS = [
