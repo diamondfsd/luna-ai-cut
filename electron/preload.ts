@@ -122,6 +122,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     saveColorMask: (projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number) => ipcRenderer.invoke('workspace:saveColorMask', projectId, assetId, width, height, bytes, feather),
     loadColorMask: (projectId: string, filePath: string) => ipcRenderer.invoke('workspace:loadColorMask', projectId, filePath),
     deleteColorMask: (projectId: string, filePath: string) => ipcRenderer.invoke('workspace:deleteColorMask', projectId, filePath),
+    cleanupColorMasks: (projectId: string, retainedPaths: string[]) => ipcRenderer.invoke('workspace:cleanupColorMasks', projectId, retainedPaths),
     loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
     getMediaResolution: (filePath: string) => ipcRenderer.invoke('workspace:getMediaResolution', filePath),
     getVideoDuration: (filePath: string) => ipcRenderer.invoke('workspace:getVideoDuration', filePath),

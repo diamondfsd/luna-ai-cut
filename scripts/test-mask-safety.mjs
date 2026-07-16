@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -51,21 +51,25 @@ async function compileModules(entryPaths) {
 try {
   await compileModules([
     'electron/workspaceProjectService.ts',
+    'electron/colorMaskService.ts',
     'src/workspace/shared/editPipeline.ts',
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
     'src/workspace/mask/maskModelMode.ts',
     'src/workspace/color/colorMaskLayerOperations.ts',
+    'src/workspace/shared/workspaceProjectPipeline.ts',
   ])
 
   const projectService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/workspaceProjectService.js')))
+  const maskService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/colorMaskService.js')))
   const pipelineModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipeline.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
   const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
+  const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
   const { createDefaultPipeline, mergePipeline } = pipelineModule
 
   const legacy = mergePipeline(createDefaultPipeline(), {
@@ -138,6 +142,23 @@ try {
   assert.equal(history.present.color.exposure, 0)
   history = historyModule.redoHistory(history)
   assert.equal(history.present.color.exposure, 1)
+  let groupedHistory = historyModule.createEditHistory(initial)
+  for (let value = 1; value <= 30; value += 1) {
+    groupedHistory = historyModule.pushHistory(
+      groupedHistory,
+      mergePipeline(groupedHistory.present, { color: { exposure: value / 30 } }),
+      { key: 'mask:layer-a:opacity' },
+    )
+  }
+  groupedHistory = historyModule.pushHistory(
+    groupedHistory,
+    mergePipeline(groupedHistory.present, { color: { exposure: 1 } }),
+    { key: 'mask:layer-a:opacity', finalize: true },
+  )
+  assert.equal(groupedHistory.past.length, 1, 'one continuous slider gesture must create one undo state')
+  assert.equal(groupedHistory.activeGroup, null, 'finalizing a gesture must close its history group')
+  groupedHistory = historyModule.undoHistory(groupedHistory)
+  assert.equal(groupedHistory.present.color.exposure, 0, 'one undo must revert the whole slider gesture')
   for (let index = 0; index < 65; index += 1) {
     history = historyModule.pushHistory(history, mergePipeline(history.present, { color: { exposure: index / 100 } }))
   }
@@ -223,6 +244,13 @@ try {
   assert.equal(mergedCompletion[1].feather, 27, 'completion must preserve edge settings changed while busy')
   assert.equal(mergedCompletion[1].color.exposure, 0.8, 'completion must preserve local color changed while busy')
   assert.equal(mergedCompletion[1].path, '/new-mask.pgm', 'completion must apply the newly saved mask file')
+  const repairedLayer = layerOperations.mergeCompletedColorMaskLayer(
+    [{ ...reorderFixture[1], enabled: false, loadError: 'missing-or-damaged' }],
+    'hidden',
+    completedLayer,
+  )
+  assert.equal(repairedLayer[0].enabled, true, 'repairing an unavailable mask must make the layer visible again')
+  assert.equal(repairedLayer[0].loadError, undefined, 'repairing an unavailable mask must clear its error state')
   const deletedWhileBusy = editedWhileBusy.filter((layer) => layer.id !== 'hidden')
   assert.equal(
     layerOperations.mergeCompletedColorMaskLayer(deletedWhileBusy, 'hidden', completedLayer),
@@ -237,6 +265,18 @@ try {
   assert.deepEqual(reorderHistory.present.colorMasks.map((layer) => layer.id), ['bottom', 'hidden', 'top'])
   reorderHistory = historyModule.redoHistory(reorderHistory)
   assert.deepEqual(reorderHistory.present.colorMasks.map((layer) => layer.id), ['hidden', 'top', 'bottom'])
+
+  const systemUpdatedHistory = historyModule.mapHistoryPipelines(reorderHistory, (pipeline) => ({
+    ...pipeline,
+    colorMasks: pipeline.colorMasks.map((layer) => layer.id === 'hidden'
+      ? { ...layer, enabled: false, loadError: 'missing-or-damaged' }
+      : layer),
+  }))
+  assert.equal(systemUpdatedHistory.past.length, reorderHistory.past.length, 'system repair must not add an undo state')
+  for (const pipeline of [...systemUpdatedHistory.past, systemUpdatedHistory.present, ...systemUpdatedHistory.future]) {
+    const layer = pipeline.colorMasks.find((item) => item.id === 'hidden')
+    if (layer) assert.equal(layer.enabled, false, 'system repair must update every reachable history snapshot')
+  }
 
   const firstOperation = operationIdentity.createMaskOperation(0, 'segmentation', 'project-a', 'asset-a')
   assert.equal(
@@ -265,6 +305,20 @@ try {
   const project = await projectService.createWorkspaceProject(projectDataRoot, 'Mask Safety', [])
   const firstSave = { ...project, name: 'First save' }
   const secondSave = { ...project, name: 'Second save' }
+  const twoAssetProject = {
+    ...project,
+    assets: [
+      { id: 'asset-a', name: 'A', path: '/a.jpg', kind: 'image' },
+      { id: 'asset-b', name: 'B', path: '/b.jpg', kind: 'image' },
+    ],
+  }
+  const pipelineA = createDefaultPipeline()
+  pipelineA.colorMasks = [{ ...legacy.colorMasks[0], id: 'a-mask', path: '/a-mask.pgm' }]
+  const pipelineB = mergePipeline(createDefaultPipeline(), { color: { exposure: 0.5 } })
+  const withAEdit = projectPipeline.updateProjectAssetPipeline(twoAssetProject, 0, pipelineA)
+  const withBothEdits = projectPipeline.updateProjectAssetPipeline(withAEdit, 1, pipelineB)
+  assert.equal(withBothEdits.assets[0].pipeline.colorMasks[0].path, '/a-mask.pgm', 'switching to B must preserve A edits in memory')
+  assert.equal(withBothEdits.assets[1].pipeline.color.exposure, 0.5, 'B must receive only its own pipeline')
   await Promise.all([
     projectService.saveWorkspaceProject(projectDataRoot, firstSave),
     projectService.saveWorkspaceProject(projectDataRoot, secondSave),
@@ -287,6 +341,72 @@ try {
   assert.equal(projectAfterFailure.name, 'Second save', 'failed saves must preserve the previous complete project')
   const projectEntries = await readdir(project.dir)
   assert.equal(projectEntries.some((entry) => entry.endsWith('.tmp')), false, 'failed or completed saves must not leak temporary files')
+
+  const maskBytes = new Uint8Array([0, 1, 127, 255])
+  const maskInput = maskBytes.buffer.slice(maskBytes.byteOffset, maskBytes.byteOffset + maskBytes.byteLength)
+  const firstMask = await maskService.saveColorMask(projectDataRoot, project.id, 'asset-a', 2, 2, maskInput, 0)
+  const firstMaskSnapshot = await readFile(firstMask.path)
+  const loadedMask = await maskService.loadColorMask(projectDataRoot, project.id, firstMask.path)
+  assert.deepEqual(new Uint8Array(loadedMask.bytes), maskBytes, 'PGM save/load must preserve exact bytes')
+  const secondMask = await maskService.saveColorMask(projectDataRoot, project.id, 'asset-a', 2, 2, maskInput, 40)
+  assert.notEqual(secondMask.path, firstMask.path, 'every mask save must create an immutable version path')
+  assert.deepEqual(await readFile(firstMask.path), firstMaskSnapshot, 'a later save must not mutate an older mask version')
+
+  await assert.rejects(
+    maskService.saveColorMask(projectDataRoot, project.id, 'asset-a', 0, 2, maskInput, 0),
+    /尺寸无效/,
+  )
+  await assert.rejects(
+    maskService.saveColorMask(projectDataRoot, project.id, 'asset-a', 2, 2, new Uint8Array([1]).buffer, 0),
+    /数据与尺寸不匹配/,
+  )
+  await assert.rejects(
+    maskService.saveColorMask(projectDataRoot, '.', 'asset-a', 2, 2, maskInput, 0),
+    /项目标识无效/,
+  )
+  await assert.rejects(
+    maskService.saveColorMask(projectDataRoot, '..', 'asset-a', 2, 2, maskInput, 0),
+    /项目标识无效/,
+  )
+
+  const masksDirectory = path.dirname(firstMask.path)
+  const crlfMaskPath = path.join(masksDirectory, 'crlf.pgm')
+  await writeFile(crlfMaskPath, Buffer.concat([Buffer.from('P5\r\n2 2\r\n255\r\n', 'ascii'), Buffer.from(maskBytes)]))
+  const crlfMask = await maskService.loadColorMask(projectDataRoot, project.id, crlfMaskPath)
+  assert.deepEqual(new Uint8Array(crlfMask.bytes), maskBytes, 'PGM reader must accept CRLF headers')
+
+  const outsideDirectory = path.join(temporaryRoot, 'outside')
+  await mkdir(outsideDirectory, { recursive: true })
+  const outsideMaskPath = path.join(outsideDirectory, 'outside.pgm')
+  await writeFile(outsideMaskPath, Buffer.concat([Buffer.from('P5\n2 2\n255\n', 'ascii'), Buffer.from(maskBytes)]))
+  await assert.rejects(maskService.loadColorMask(projectDataRoot, project.id, outsideMaskPath), /不属于当前项目/)
+  await assert.rejects(maskService.deleteColorMask(projectDataRoot, project.id, outsideMaskPath), /不属于当前项目/)
+  const symlinkMaskPath = path.join(masksDirectory, 'outside-link.pgm')
+  await symlink(outsideMaskPath, symlinkMaskPath)
+  await assert.rejects(maskService.loadColorMask(projectDataRoot, project.id, symlinkMaskPath), /不属于当前项目/)
+
+  const damagedMaskPath = path.join(masksDirectory, 'damaged.pgm')
+  await writeFile(damagedMaskPath, Buffer.from('P5\n2 2\n255\n\x00', 'binary'))
+  await assert.rejects(maskService.loadColorMask(projectDataRoot, project.id, damagedMaskPath), /数据不完整/)
+
+  const persistedProject = {
+    ...secondSave,
+    assets: [{
+      id: 'asset-a',
+      name: 'Asset A',
+      path: '/fixture/image.jpg',
+      kind: 'image',
+      pipeline: { colorMasks: [{ path: firstMask.path }] },
+    }],
+  }
+  await projectService.saveWorkspaceProject(projectDataRoot, persistedProject)
+  const cleanup = await maskService.cleanupUnreferencedColorMasks(projectDataRoot, project.id, [secondMask.path], 0)
+  assert.equal(cleanup.deleted, 2, 'cleanup must remove only unreachable regular PGM files')
+  assert.equal(existsSync(firstMask.path), true, 'project.json references must survive cleanup')
+  assert.equal(existsSync(secondMask.path), true, 'session history references must survive cleanup')
+  assert.equal(existsSync(crlfMaskPath), false, 'unreferenced PGM files must be removed')
+  assert.equal(existsSync(damagedMaskPath), false, 'unreferenced damaged PGM files must be removable')
+  assert.equal(existsSync(symlinkMaskPath), true, 'cleanup must not follow or delete symbolic links')
 
   console.log('mask safety tests passed')
 } finally {

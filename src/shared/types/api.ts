@@ -105,6 +105,7 @@ export interface LunaApi {
     saveColorMask(projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number): Promise<{ path: string; width: number; height: number }>
     loadColorMask(projectId: string, filePath: string): Promise<{ width: number; height: number; bytes: ArrayBuffer }>
     deleteColorMask(projectId: string, filePath: string): Promise<void>
+    cleanupColorMasks(projectId: string, retainedPaths: string[]): Promise<{ deleted: number; retained: number }>
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>

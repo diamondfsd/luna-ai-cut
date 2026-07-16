@@ -52,6 +52,7 @@ interface WorkspaceMaskValue {
   moveActiveLayer: (direction: -1 | 1) => void
   commitMask: (data: Uint8Array) => Promise<void>
   updateMaskSettings: (patch: { opacity?: number; inverted?: boolean; feather?: number }) => void
+  updateGroupedMaskSettings: (patch: { opacity?: number; feather?: number }, groupKey: string, finalize?: boolean) => void
   removeMask: () => Promise<void>
   generateSemanticMask: (point?: { x: number; y: number }, targetClassId?: number) => Promise<void>
 }
@@ -104,7 +105,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   const activeOperationRef = useRef<MaskOperation | null>(null)
   const colorMasksRef = useRef(edit.pipeline.colorMasks)
   colorMasksRef.current = edit.pipeline.colorMasks
-  const commitEditPatch = edit.commitPatch
+  const applySystemUpdate = edit.applySystemUpdate
   const currentIdentityRef = useRef({ projectId, assetId: activeMediaId })
   const previousIdentity = currentIdentityRef.current
   if (previousIdentity.projectId !== projectId || previousIdentity.assetId !== activeMediaId) {
@@ -137,6 +138,10 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   }, [activeLayerId, activeMediaId, edit.pipeline.colorMasks])
 
   useEffect(() => {
+    setEditing(false)
+    setActiveLayerId(null)
+    setSemanticPicking(false)
+    setShowOverlay(true)
     setBusy(false)
     setSegmentationProgress(null)
   }, [activeMediaId, projectId])
@@ -149,6 +154,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!editing) return
     const handleUndoRedo = (event: KeyboardEvent) => {
+      if (busy) return
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return
       if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable]')) return
       const shouldUndo = event.code === 'KeyZ' && !event.shiftKey
@@ -161,7 +167,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     }
     window.addEventListener('keydown', handleUndoRedo, { capture: true })
     return () => window.removeEventListener('keydown', handleUndoRedo, { capture: true })
-  }, [canRedo, canUndo, editing, redo, undo])
+  }, [busy, canRedo, canUndo, editing, redo, undo])
 
   useEffect(() => {
     let canceled = false
@@ -193,11 +199,12 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     }).catch(async () => {
       if (canceled || !isCurrentOperation(operation)) return
       if (operationMaskId) {
-        commitEditPatch({
-          colorMasks: colorMasksRef.current.map((layer) => layer.id === operationMaskId
+        applySystemUpdate((pipeline) => ({
+          ...pipeline,
+          colorMasks: pipeline.colorMasks.map((layer) => layer.id === operationMaskId
             ? { ...layer, enabled: false, loadError: 'missing-or-damaged' as const }
             : layer),
-        })
+        }))
       }
       toast.error('蒙版文件不可用，可重新编辑这一层')
       try {
@@ -216,7 +223,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
       canceled = true
       finishOperation(operation)
     }
-  }, [activeMask?.id, activeMaskPath, activeMediaId, activeMediaPath, available, beginOperation, commitEditPatch, finishOperation, isCurrentOperation, projectId])
+  }, [activeMask?.id, activeMaskPath, activeMediaId, activeMediaPath, applySystemUpdate, available, beginOperation, finishOperation, isCurrentOperation, projectId])
 
   const commitMask = useCallback(async (data: Uint8Array) => {
     if (!media.currentProject || !media.activeMedia || !maskSize) {
@@ -272,6 +279,13 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
   const updateMaskSettings = useCallback((patch: { opacity?: number; inverted?: boolean; feather?: number }) => {
     if (!activeMask) return
     edit.commitPatch({ colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === activeMask.id ? { ...layer, ...patch } : layer) })
+  }, [activeMask, edit])
+
+  const updateGroupedMaskSettings = useCallback((patch: { opacity?: number; feather?: number }, groupKey: string, finalize = false) => {
+    if (!activeMask) return
+    edit.commitPatch({
+      colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === activeMask.id ? { ...layer, ...patch } : layer),
+    }, { key: `mask:${activeMask.id}:${groupKey}`, finalize })
   }, [activeMask, edit])
 
   const updateLayer = useCallback((id: string, patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'inverted' | 'blendMode' | 'color'>>) => {
@@ -423,9 +437,10 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     moveActiveLayer,
     commitMask,
     updateMaskSettings,
+    updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushMode, brushSize, busy, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, moveLayer, removeLayer, removeMask, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushMode, brushSize, busy, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, moveLayer, removeLayer, removeMask, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }

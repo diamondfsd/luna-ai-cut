@@ -2,6 +2,7 @@ import { createContext, useContext, useCallback, useEffect, useMemo, useRef, use
 
 import type { EditPipeline, PipelinePatch } from '../shared/editPipeline'
 import { DEFAULT_PIPELINE, mergePipeline } from '../shared/editPipeline'
+import type { HistoryGroup } from '../shared/editHistory'
 import { toast } from '../../ui'
 import { type CropPreset } from '../transform/TransformPanel'
 import { useEditPipeline } from '../hooks/useEditPipeline'
@@ -38,7 +39,9 @@ interface WorkspaceEditValue {
   canRedo: boolean
   undo: () => void
   redo: () => void
-  commitPatch: (patch: PipelinePatch) => void
+  commitPatch: (patch: PipelinePatch, group?: HistoryGroup) => void
+  applySystemUpdate: (update: (pipeline: EditPipeline) => EditPipeline) => void
+  retainedMaskPaths: string[]
   resetPipeline: () => void
   initializePipeline: (pipe: EditPipeline) => void
 
@@ -105,6 +108,8 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     undo,
     redo,
     commitPatch,
+    applySystemUpdate,
+    retainedMaskPaths,
     resetPipeline,
     initializePipeline,
   } = useEditPipeline()
@@ -246,6 +251,8 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     undo,
     redo,
     commitPatch,
+    applySystemUpdate,
+    retainedMaskPaths,
     resetPipeline,
     initializePipeline,
     activeTool,
@@ -269,6 +276,8 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     undo,
     redo,
     commitPatch,
+    applySystemUpdate,
+    retainedMaskPaths,
     resetPipeline,
     initializePipeline,
     activeTool,

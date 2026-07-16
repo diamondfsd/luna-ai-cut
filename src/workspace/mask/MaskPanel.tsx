@@ -138,8 +138,24 @@ export function MaskPanel() {
       <section className="workspace-mask-edge-section">
         <h3 className="workspace-mask-section-heading">边缘</h3>
         <div className="workspace-mask-editor-section">
-          <ParamSlider label="羽化" value={settings?.feather ?? 0} min={0} max={40} onChange={(feather) => mask.updateMaskSettings({ feather })} formatValue={(value) => `${Math.round(value)}`} />
-          <ParamSlider label="不透明度" value={Math.round((settings?.opacity ?? 1) * 100)} min={0} max={100} onChange={(opacity) => mask.updateMaskSettings({ opacity: opacity / 100 })} formatValue={(value) => `${Math.round(value)}`} />
+          <ParamSlider
+            label="羽化"
+            value={settings?.feather ?? 0}
+            min={0}
+            max={40}
+            onChange={(feather) => mask.updateGroupedMaskSettings({ feather }, 'feather')}
+            onCommit={(feather) => mask.updateGroupedMaskSettings({ feather }, 'feather', true)}
+            formatValue={(value) => `${Math.round(value)}`}
+          />
+          <ParamSlider
+            label="不透明度"
+            value={Math.round((settings?.opacity ?? 1) * 100)}
+            min={0}
+            max={100}
+            onChange={(opacity) => mask.updateGroupedMaskSettings({ opacity: opacity / 100 }, 'opacity')}
+            onCommit={(opacity) => mask.updateGroupedMaskSettings({ opacity: opacity / 100 }, 'opacity', true)}
+            formatValue={(value) => `${Math.round(value)}`}
+          />
           <label className="workspace-mask-setting-row">
             <strong>反相蒙版</strong>
             <Switch ariaLabel="反相蒙版" checked={settings?.inverted ?? false} disabled={!settings} onCheckedChange={(inverted) => mask.updateMaskSettings({ inverted })} />
