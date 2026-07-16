@@ -69,12 +69,14 @@ const dest = join(rcDir, 'luna-render-core.node')
 copyFileSync(src, dest)
 console.log('[build-native] ✅', dest)
 
-const workerName = isWin ? 'sam-segmentation-worker.exe' : 'sam-segmentation-worker'
-const workerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), workerName)
-const workerDest = join(rcDir, workerName)
-copyFileSync(workerSrc, workerDest)
-if (!isWin) chmodSync(workerDest, 0o755)
-console.log('[build-native] ✅', workerDest)
+for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker']) {
+  const workerName = isWin ? `${baseName}.exe` : baseName
+  const workerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), workerName)
+  const workerDest = join(rcDir, workerName)
+  copyFileSync(workerSrc, workerDest)
+  if (!isWin) chmodSync(workerDest, 0o755)
+  console.log('[build-native] ✅', workerDest)
+}
 
 // ONNX Runtime 使用动态库。ort 的 copy-dylibs 会将目标平台运行库放到
 // target/release，统一复制到 .node 同目录供开发与打包加载。

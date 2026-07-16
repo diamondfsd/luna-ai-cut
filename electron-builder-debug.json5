@@ -24,6 +24,11 @@
       "to": "luna-render-core/luna-render-core.node"
     },
     {
+      "from": "luna-render-core",
+      "to": "luna-render-core",
+      "filter": ["sam-segmentation-worker", "sam-segmentation-worker.exe", "semantic-segmentation-worker", "semantic-segmentation-worker.exe", "*.dylib", "*.dll", "*.so*"]
+    },
+    {
       "from": "src/assets/logos",
       "to": "logos",
       "filter": ["**/*.png"]
