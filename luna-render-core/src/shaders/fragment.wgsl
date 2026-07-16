@@ -193,6 +193,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         mask_value = 1.0 - mask_value;
     }
     mask_value = clamp(mask_value * params.mask_params.x, 0.0, 1.0);
+    if (params.mask_params.w > 0.5) {
+        let layer_alpha = color.a * params.opacity * mask_value;
+        return vec4<f32>(adjusted * layer_alpha, layer_alpha);
+    }
     color = vec4<f32>(mix(color.rgb, adjusted, mask_value), color.a);
     color.a = color.a * params.opacity;
     if (params.sampling_quality > 0.5) {

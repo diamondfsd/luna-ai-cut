@@ -350,7 +350,11 @@ impl Compositor {
                         } else {
                             0.0
                         },
-                        0.0,
+                        if has_mask && layer.layer_type.as_deref() == Some("local-color") {
+                            1.0
+                        } else {
+                            0.0
+                        },
                     ],
                     procedural: [
                         procedural_kind,

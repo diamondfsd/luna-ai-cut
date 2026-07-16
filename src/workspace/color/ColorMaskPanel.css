@@ -1,81 +1,108 @@
 .workspace-color-mask-panel {
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 
 .workspace-mask-inline-editor {
   display: grid;
-  gap: 12px;
 }
 
 .workspace-mask-editor-back {
   margin-right: 6px;
 }
 
+.workspace-mask-editor-done.ui-btn {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-weight: 700;
+}
+
 .workspace-color-mask-layers {
-  position: sticky;
-  z-index: 2;
-  bottom: -16px;
   display: grid;
-  gap: 8px;
-  padding: 12px 0 16px;
+  gap: 10px;
+  padding-top: 14px;
   border-top: 1px solid var(--hairline);
-  background: var(--canvas);
+}
+
+.workspace-color-mask-panel.is-editing .workspace-color-mask-layers {
+  margin: 0 -14px -16px;
+  padding: 16px 14px 18px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px 8px 0 0;
+  background: color-mix(in srgb, var(--canvas) 94%, #000);
 }
 
 .workspace-color-mask-layers-header {
   display: flex;
+  min-height: 28px;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 
-.workspace-color-mask-layers-header > div {
-  display: grid;
-  gap: 2px;
-}
-
 .workspace-color-mask-layers-header strong {
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
 }
 
-.workspace-color-mask-layers-header span {
-  color: var(--muted);
-  font-size: 11px;
+.workspace-color-mask-layers-header .ui-icon-btn {
+  color: var(--ink);
 }
 
 .workspace-color-mask-layer-list {
   display: grid;
-  max-height: 240px;
+  max-height: 270px;
   overflow-y: auto;
-  gap: 5px;
+  gap: 4px;
 }
 
 .workspace-color-mask-layer {
   display: flex;
-  min-height: 56px;
+  min-height: 52px;
   align-items: center;
-  gap: 2px;
-  border: 1px solid var(--hairline);
-  border-radius: 9px;
-  background: var(--canvas);
+  gap: 3px;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--parchment) 42%, transparent);
 }
 
 .workspace-color-mask-layer.is-active {
   border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue);
   background: color-mix(in srgb, var(--blue) 6%, var(--canvas));
 }
 
-.workspace-color-mask-layer-select {
+.workspace-color-mask-layer-eye,
+.workspace-color-mask-global-icon {
+  flex: 0 0 auto;
+  color: var(--ink);
+}
+
+.workspace-color-mask-layer-eye {
+  margin-left: 4px;
+}
+
+.workspace-color-mask-layer-eye-button.ui-icon-btn {
+  flex: 0 0 28px;
+  color: var(--ink);
+}
+
+.workspace-color-mask-global-icon {
+  margin: 0 2px;
+  color: var(--muted);
+}
+
+.workspace-color-mask-layer-select.ui-btn {
   display: flex;
   min-width: 0;
   height: auto;
-  min-height: 54px;
+  min-height: 46px;
   flex: 1;
   justify-content: flex-start;
-  gap: 9px;
-  padding: 4px 7px;
+  gap: 10px;
+  padding: 2px 4px;
   border: 0;
   background: transparent;
   color: var(--ink);
@@ -84,11 +111,11 @@
 
 .workspace-color-mask-thumbnail,
 .workspace-color-mask-global-thumbnail {
-  width: 44px;
-  height: 44px;
+  width: 68px;
+  height: 42px;
   flex: 0 0 auto;
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--ink) 35%, var(--hairline));
+  border-radius: 2px;
   background: #fff;
 }
 
@@ -96,47 +123,36 @@
   image-rendering: auto;
 }
 
-.workspace-color-mask-global-thumbnail {
-  display: grid;
-  place-items: center;
-  background: var(--parchment);
-  color: var(--muted);
-}
-
 .workspace-color-mask-layer-label {
   display: grid;
   min-width: 0;
-  gap: 2px;
 }
 
-.workspace-color-mask-layer-label strong,
-.workspace-color-mask-layer-label small {
+.workspace-color-mask-layer-label strong {
   overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.workspace-color-mask-layer-label strong {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.workspace-color-mask-layer-label small {
-  color: var(--muted);
-  font-size: 10px;
-}
-
 .workspace-color-mask-layer-actions {
   display: flex;
-  max-width: 86px;
+  flex: 0 0 auto;
   justify-content: flex-end;
-  padding-right: 3px;
+}
+
+.workspace-color-mask-static-more {
+  margin: 0 4px;
+  flex: 0 0 auto;
+  color: var(--muted);
 }
 
 .workspace-color-mask-layer-menu {
   display: grid;
-  width: 156px;
-  gap: 3px;
+  width: 148px;
+  gap: 2px;
   padding: 6px;
 }
 

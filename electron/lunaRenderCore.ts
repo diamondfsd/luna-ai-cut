@@ -29,6 +29,7 @@ export interface CompositionInput {
   }
   layers: Array<{
     id?: string
+    layerType?: 'media' | 'local-color' | 'shape' | 'text' | 'logo' | 'decoration'
     source: {
       path: string
       sourceType?: 'auto' | 'image' | 'video' | string

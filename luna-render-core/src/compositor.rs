@@ -1,10 +1,13 @@
 mod external;
 mod gpu;
+mod layer_kind;
 mod lut;
 mod playback;
 mod preview;
 mod render;
 mod texture;
+#[cfg(test)]
+mod tests;
 
 use gpu::{
     align_to, create_compositor_pipeline, create_identity_lut, create_lut_3d_texture,
@@ -12,6 +15,7 @@ use gpu::{
 };
 use preview::{plan_cover_scale, plan_cover_transform, resolve_positioning};
 pub(crate) use preview::{PreviewLayerInput, PreviewTextureInfo};
+pub(crate) use layer_kind::is_procedural_layer_type;
 
 use crate::media::{
     decode_static_image_scaled, fit_output_size, normalize_local_path,
@@ -482,19 +486,4 @@ fn calc_optimal_decode_max_edge(
 
 fn cached_texture_is_sufficient(width: u32, height: u32, required_max_edge: u32) -> bool {
     width.max(height) >= required_max_edge
-}
-
-#[cfg(test)]
-mod tests {
-    use super::cached_texture_is_sufficient;
-
-    #[test]
-    fn rejects_thumbnail_texture_for_workspace_preview() {
-        assert!(!cached_texture_is_sufficient(124, 220, 2560));
-    }
-
-    #[test]
-    fn reuses_larger_texture_for_smaller_preview() {
-        assert!(cached_texture_is_sufficient(1440, 2560, 220));
-    }
 }

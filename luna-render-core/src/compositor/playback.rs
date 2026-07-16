@@ -384,7 +384,7 @@ impl Compositor {
         let decode_max_side = max_side.unwrap_or(PREVIEW_MAX_SIZE).max(1);
 
         for layer in layers {
-            let procedural = layer.layer_type.as_deref().unwrap_or("media") != "media";
+            let procedural = super::is_procedural_layer_type(layer.layer_type.as_deref());
             let tex_id = if procedural {
                 0
             } else if layer.is_video {
