@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import { spawn, spawnSync } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
 import {
@@ -12,6 +13,7 @@ import {
 import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import process from 'node:process'
 
 const projectRoot = path.resolve(import.meta.dirname, '..')
 const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-mask-e2e-'))
