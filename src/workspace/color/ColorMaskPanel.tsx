@@ -1,8 +1,8 @@
-import { Copy, Eye, EyeOff, Globe2, MoreHorizontal, Pencil, Plus, RefreshCcw, Trash2 } from 'lucide-react'
+import { Copy, Eye, EyeOff, Globe2, MoreHorizontal, Pencil, Plus, RefreshCcw, RotateCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 import { Button, IconButton, Popover, PopoverClose, PopoverContent, PopoverTrigger, Select, Tooltip } from '../../ui'
-import type { ColorMaskBlendMode } from '../shared/editPipeline'
+import { createDefaultPipeline, type ColorMaskBlendMode } from '../shared/editPipeline'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
@@ -104,7 +104,15 @@ export function ColorMaskPanel() {
               <span className="workspace-color-mask-global-thumbnail" />
               <span className="workspace-color-mask-layer-label"><strong>全局调色</strong></span>
             </Button>
-            <MoreHorizontal className="workspace-color-mask-static-more" size={17} aria-hidden="true" />
+            <Tooltip content="重置全局调色">
+              <IconButton
+                variant="ghost"
+                size="mini"
+                icon={<RotateCcw size={14} />}
+                aria-label="重置全局调色"
+                onClick={() => edit.updateWorkspacePanel({ color: createDefaultPipeline().color, effects: createDefaultPipeline().effects })}
+              />
+            </Tooltip>
           </div>
           {edit.pipeline.colorMasks.map((layer) => {
             const active = mask.activeLayerId === layer.id
@@ -125,6 +133,15 @@ export function ColorMaskPanel() {
                   <span className="workspace-color-mask-layer-label"><strong>{layer.name}</strong></span>
                 </Button>
                 <span className="workspace-color-mask-layer-actions">
+                  <Tooltip content="重置这一层的调色">
+                    <IconButton
+                      variant="ghost"
+                      size="mini"
+                      icon={<RotateCcw size={14} />}
+                      aria-label={`重置${layer.name}的调色`}
+                      onClick={() => mask.updateLayer(layer.id, { color: createDefaultPipeline().color })}
+                    />
+                  </Tooltip>
                   {!mask.editing && (
                     <Tooltip content="编辑蒙版">
                       <IconButton variant="ghost" size="mini" icon={<Pencil size={14} />} aria-label="编辑蒙版" onClick={() => { mask.setActiveLayerId(layer.id); mask.setEditing(true) }} />

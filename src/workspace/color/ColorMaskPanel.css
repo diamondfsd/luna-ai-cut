@@ -155,12 +155,6 @@
   justify-content: flex-end;
 }
 
-.workspace-color-mask-static-more {
-  margin: 0 4px;
-  flex: 0 0 auto;
-  color: var(--muted);
-}
-
 .workspace-color-mask-layer-menu {
   display: grid;
   width: 174px;

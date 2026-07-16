@@ -517,22 +517,4 @@ impl Compositor {
         );
         Ok(())
     }
-
-    pub fn release_texture(&mut self, texture_id: u32) -> Result<(), String> {
-        self.textures
-            .remove(&texture_id)
-            .ok_or_else(|| format!("texture {} not found", texture_id))?;
-        // 同步清理缓存中的条目
-        if let Some(path) = self
-            .texture_cache
-            .iter()
-            .find(|(_, &tid)| tid == texture_id)
-            .map(|(p, _)| p.clone())
-        {
-            self.texture_cache.remove(&path);
-            self.cache_order.retain(|k| k != &path);
-        }
-        log!("release_texture id={}", texture_id);
-        Ok(())
-    }
 }
