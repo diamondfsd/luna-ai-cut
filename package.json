@@ -30,6 +30,7 @@
     "test:mask": "node scripts/test-mask-safety.mjs && node scripts/test-segmentation-task-registry.mjs",
     "test:mask:e2e": "node scripts/test-mask-e2e.mjs",
     "test:model-loader": "node scripts/test-model-loader.mjs",
+    "test:downloads": "node scripts/test-resumable-download.mjs",
     "test:resource-packs": "node scripts/test-runtime-resource-packs.mjs",
     "test:diagnostics": "node scripts/test-crash-diagnostics.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
