@@ -278,27 +278,35 @@ try {
     if (layer) assert.equal(layer.enabled, false, 'system repair must update every reachable history snapshot')
   }
 
-  const firstOperation = operationIdentity.createMaskOperation(0, 'segmentation', 'project-a', 'asset-a')
+  const firstOperation = operationIdentity.createMaskOperation(0, 'segmentation', 'project-a', 'asset-a', 'request-a')
+  assert.equal(operationIdentity.isMatchingSegmentationRequest(firstOperation, 'request-a'), true)
+  assert.equal(operationIdentity.isMatchingSegmentationRequest(firstOperation, 'request-b'), false, 'progress from another request must be ignored')
   assert.equal(
-    operationIdentity.isMatchingMaskOperation(firstOperation, firstOperation, { projectId: 'project-a', assetId: 'asset-a' }),
+    operationIdentity.isMatchingMaskOperation(firstOperation, firstOperation, { projectId: 'project-a', assetId: 'asset-a', active: true }),
     true,
     'the active operation must match its original project and asset',
   )
   const nextOperation = operationIdentity.createMaskOperation(firstOperation.generation, 'load', 'project-a', 'asset-a')
+  assert.equal(operationIdentity.isMatchingSegmentationRequest(nextOperation, 'request-a'), false, 'non-segmentation work must ignore progress')
   assert.equal(
-    operationIdentity.isMatchingMaskOperation(nextOperation, firstOperation, { projectId: 'project-a', assetId: 'asset-a' }),
+    operationIdentity.isMatchingMaskOperation(nextOperation, firstOperation, { projectId: 'project-a', assetId: 'asset-a', active: true }),
     false,
     'a newer generation must invalidate an older async result',
   )
   assert.equal(
-    operationIdentity.isMatchingMaskOperation(firstOperation, firstOperation, { projectId: 'project-a', assetId: 'asset-b' }),
+    operationIdentity.isMatchingMaskOperation(firstOperation, firstOperation, { projectId: 'project-a', assetId: 'asset-b', active: true }),
     false,
     'switching assets must invalidate an older async result',
   )
   assert.equal(
-    operationIdentity.isMatchingMaskOperation(firstOperation, firstOperation, { projectId: 'project-b', assetId: 'asset-a' }),
+    operationIdentity.isMatchingMaskOperation(firstOperation, firstOperation, { projectId: 'project-b', assetId: 'asset-a', active: true }),
     false,
     'switching projects must invalidate an older async result',
+  )
+  assert.equal(
+    operationIdentity.isMatchingMaskOperation(firstOperation, firstOperation, { projectId: 'project-a', assetId: 'asset-a', active: false }),
+    false,
+    'leaving the editing workspace must invalidate an older async result',
   )
 
   const projectDataRoot = path.join(temporaryRoot, 'project-data')
