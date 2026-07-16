@@ -26,6 +26,7 @@ function responseFor(bytes, { status = 200, contentLength = bytes.byteLength } =
 async function compileModule() {
   const program = ts.createProgram([
     path.join(projectRoot, 'electron/modelFileService.ts'),
+    path.join(projectRoot, 'electron/resumableDownloadService.ts'),
     path.join(projectRoot, 'electron/modelCacheStatus.ts'),
     path.join(projectRoot, 'electron/sharedLoadRegistry.ts'),
   ], {
@@ -145,7 +146,7 @@ try {
     (error) => error?.name === 'AbortError',
   )
   assert.equal(existsSync(modelPath), false, 'canceled download must not publish a model')
-  assert.equal((await readdir(modelDir)).some((name) => name.endsWith('.download')), false, 'canceled download must clean temporary files')
+  assert.equal((await readdir(modelDir)).some((name) => name.endsWith('.download')), true, 'canceled download must preserve resumable temporary data')
 
   await loadVerifiedModelFile(modelDir, definition, { fetcher: async () => responseFor(bytes) })
   assert.deepEqual(await readFile(modelPath), bytes, 'retry after cancellation must succeed')
