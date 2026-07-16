@@ -32,6 +32,7 @@ export function ParamSlider({
   onCommit,
   formatValue = formatSigned,
 }: ParamSliderProps) {
+  const accessibleLabel = typeof label === 'string' ? label : '参数'
   const zeroRatio = max - min > 0 ? (0 - min) / (max - min) : 0.5
   const valueRatio = max - min > 0 ? (value - min) / (max - min) : 0.5
   const fillLeft = Math.min(zeroRatio, valueRatio) * 100
@@ -94,6 +95,7 @@ export function ParamSlider({
         <input
           ref={inputRef}
           type="number"
+          aria-label={`${accessibleLabel}数值`}
           className="workspace-param-value-input"
           min={min}
           max={max}
@@ -127,6 +129,7 @@ export function ParamSlider({
           </RadixSlider.Track>
           <RadixSlider.Thumb
             className="workspace-slider-thumb"
+            aria-label={`${accessibleLabel}滑块`}
             onDoubleClick={() => onChange(min <= 0 && max >= 0 ? 0 : min)}
           />
         </RadixSlider.Root>
