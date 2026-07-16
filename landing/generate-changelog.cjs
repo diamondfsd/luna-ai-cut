@@ -1,6 +1,6 @@
 /** generate-changelog.cjs
  *
- *  扫描项目根目录下的 RELEASE_NOTES_*.md 文件，
+ *  扫描项目根目录及 old-release-log 下的 RELEASE_NOTES_*.md 文件，
  *  生成 landing/changelog-data.js，供 changelog.html 读取。
  *
  *  用法：node landing/generate-changelog.cjs
@@ -11,10 +11,23 @@ const path = require('path')
 
 const ROOT = path.resolve(__dirname, '..')
 const OUTPUT = path.join(__dirname, 'changelog-data.js')
+const RELEASE_NOTE_DIRS = [ROOT, path.join(ROOT, 'old-release-log')]
+
+function isReleaseNote(file) {
+  return /^RELEASE_NOTES_v[\d.]+(-hot\.\d+)?\.md$/.test(file)
+}
 
 // ── 文件排序 ──────────────────────────────
-const files = fs.readdirSync(ROOT)
-  .filter(f => /^RELEASE_NOTES_v[\d.]+(-hot\.\d+)?\.md$/.test(f))
+const releaseNotePaths = new Map()
+for (const dir of RELEASE_NOTE_DIRS) {
+  if (!fs.existsSync(dir)) continue
+  for (const file of fs.readdirSync(dir).filter(isReleaseNote)) {
+    // 根目录优先，避免归档过程中出现同名文件时生成重复记录。
+    if (!releaseNotePaths.has(file)) releaseNotePaths.set(file, path.join(dir, file))
+  }
+}
+
+const files = [...releaseNotePaths.keys()]
   .sort((a, b) => {
     const ta = a.replace(/^RELEASE_NOTES_v/, '').replace(/\.md$/, '')
     const tb = b.replace(/^RELEASE_NOTES_v/, '').replace(/\.md$/, '')
@@ -90,7 +103,7 @@ function mdToHtml(md) {
 
 // ── 读取并转换各文件 ──────────────────────
 const entries = files.map((f) => {
-  const raw = fs.readFileSync(path.join(ROOT, f), 'utf-8').trim()
+  const raw = fs.readFileSync(releaseNotePaths.get(f), 'utf-8').trim()
   const lines = raw.split('\n')
   const titleLine = lines[0].replace(/^#\s*/, '')
   const bodyMd = lines.slice(1).join('\n').trim()

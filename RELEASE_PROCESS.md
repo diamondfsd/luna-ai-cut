@@ -95,6 +95,8 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 ./scripts/deploy-release.sh v<版本号>
 ```
 
+部署脚本会同步更新官网下载地址和更新日志，并提交、推送 Landing 页面变更。脚本执行前需确保对应的 `RELEASE_NOTES_v<版本号>.md` 已存在。
+
 > 前置条件：
 > - `gh` CLI 已安装并登录 (`gh auth status`)
 > - `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件
