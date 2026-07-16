@@ -137,7 +137,7 @@ export function MaskOverlay() {
 
   function paint(event: React.PointerEvent<HTMLCanvasElement>): void {
     const data = draftRef.current
-    if (!data || !mask.maskSize) return
+    if (mask.busy || !data || !mask.maskSize) return
     const point = pointForEvent(event)
     const previous = lastPointRef.current ?? point
     const distance = Math.hypot(point.x - previous.x, point.y - previous.y)
@@ -159,6 +159,16 @@ export function MaskOverlay() {
     render(data)
   }
 
+  function restoreCommittedMask(): void {
+    draftRef.current = mask.maskData ? new Uint8Array(mask.maskData) : null
+    if (draftRef.current) {
+      render(draftRef.current)
+      return
+    }
+    const context = canvasRef.current?.getContext('2d')
+    context?.clearRect(0, 0, displaySize.width, displaySize.height)
+  }
+
   return (
     <div
       className="workspace-mask-overlay-shell"
@@ -171,11 +181,12 @@ export function MaskOverlay() {
         height={displaySize.height}
         style={{
           opacity: mask.showOverlay ? 1 : 0,
-          cursor: mask.semanticPicking ? 'crosshair' : undefined,
+          cursor: mask.busy ? 'wait' : mask.semanticPicking ? 'crosshair' : undefined,
         }}
         onPointerEnter={(event) => setCursorPoint({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY })}
         onPointerLeave={() => setCursorPoint(null)}
         onPointerDown={(event) => {
+          if (mask.busy) return
           if (mask.semanticPicking) {
             const point = pointForEvent(event)
             void mask.generateSemanticMask({
@@ -191,21 +202,26 @@ export function MaskOverlay() {
         }}
         onPointerMove={(event) => {
           setCursorPoint({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY })
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) paint(event)
+          if (!mask.busy && event.currentTarget.hasPointerCapture(event.pointerId)) paint(event)
         }}
         onPointerUp={(event) => {
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
           event.currentTarget.releasePointerCapture(event.pointerId)
           lastPointRef.current = null
+          if (mask.busy) {
+            restoreCommittedMask()
+            return
+          }
           if (draftRef.current) void mask.commitMask(new Uint8Array(draftRef.current))
         }}
         onPointerCancel={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
           lastPointRef.current = null
           setCursorPoint(null)
+          restoreCommittedMask()
         }}
       />
-      {!mask.semanticPicking && cursorPoint && (
+      {!mask.busy && !mask.semanticPicking && cursorPoint && (
         <span
           className={`workspace-mask-brush-cursor${mask.brushMode === 'erase' ? ' is-erase' : ''}`}
           style={{
