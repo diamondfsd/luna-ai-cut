@@ -41,7 +41,7 @@ interface WorkspaceMaskValue {
   activeMask: ColorMaskLayer | null
   setActiveLayerId: (id: string | null) => void
   createMask: () => void
-  updateLayer: (id: string, patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'inverted' | 'color'>>) => void
+  updateLayer: (id: string, patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'inverted' | 'blendMode' | 'color'>>) => void
   updateActiveLayer: (patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'color'>>) => void
   duplicateLayer: (id: string) => void
   removeLayer: (id: string) => void
@@ -182,6 +182,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
           id: layerId,
           name: activeMask?.name ?? `蒙版 ${edit.pipeline.colorMasks.length + 1}`,
           enabled: activeMask?.enabled ?? true,
+          blendMode: activeMask?.blendMode ?? 'normal',
           color: activeMask?.color ?? createDefaultPipeline().color,
       }
       edit.commitPatch({ colorMasks: activeMask
@@ -200,7 +201,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
     edit.commitPatch({ colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === activeMask.id ? { ...layer, ...patch } : layer) })
   }, [activeMask, edit])
 
-  const updateLayer = useCallback((id: string, patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'inverted' | 'color'>>) => {
+  const updateLayer = useCallback((id: string, patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'inverted' | 'blendMode' | 'color'>>) => {
     edit.commitPatch({ colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === id ? { ...layer, ...patch } : layer) })
   }, [edit])
 
@@ -296,6 +297,7 @@ export function WorkspaceMaskProvider({ children }: { children: ReactNode }) {
           id: layerId,
           name: activeMask?.name ?? result.className ?? `蒙版 ${edit.pipeline.colorMasks.length + 1}`,
           enabled: activeMask?.enabled ?? true,
+          blendMode: activeMask?.blendMode ?? 'normal',
           color: activeMask?.color ?? createDefaultPipeline().color,
       }
       edit.commitPatch({ colorMasks: activeMask

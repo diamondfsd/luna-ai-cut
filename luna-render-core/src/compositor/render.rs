@@ -92,17 +92,17 @@ impl Compositor {
                 multiview_mask: None,
             });
 
-            #[cfg(target_os = "macos")]
-            let render_pipeline = if output_tex.format() == wgpu::TextureFormat::Bgra8UnormSrgb {
-                &self.pipeline_bgra
-            } else {
-                &self.pipeline
-            };
-            #[cfg(not(target_os = "macos"))]
-            let render_pipeline = &self.pipeline;
-            rpass.set_pipeline(render_pipeline);
-
             for layer in &sorted {
+                #[cfg(target_os = "macos")]
+                let pipelines = if output_tex.format() == wgpu::TextureFormat::Bgra8UnormSrgb {
+                    &self.pipelines_bgra
+                } else {
+                    &self.pipelines
+                };
+                #[cfg(not(target_os = "macos"))]
+                let pipelines = &self.pipelines;
+                rpass.set_pipeline(pipelines.get(layer.blend_mode.as_deref()));
+
                 let tex_entry = self.textures.get(&layer.texture_id).ok_or_else(|| {
                     log_error!("render: texture {} not found", layer.texture_id);
                     format!("texture {} not found", layer.texture_id)

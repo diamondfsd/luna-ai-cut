@@ -86,6 +86,7 @@ pub struct CompositionLayer {
     pub rect: CompositionRect,
     pub fit: Option<String>,
     pub opacity: Option<f64>,
+    pub blend_mode: Option<String>,
     pub z_index: Option<i32>,
     pub reveal: Option<CompositionReveal>,
     pub color: Option<RenderColorAdjustments>,
