@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Accordion, Button, Dialog, IconButton, Tooltip } from '../../ui'
 import { createDefaultPipeline, DEFAULT_PIPELINE, HSL_CHANNELS } from '../shared/editPipeline'
@@ -99,9 +99,10 @@ function titleForTool(tool: WorkspaceTool): string {
 interface WorkspaceEditSidebarProps {
   mediaSize?: { w: number; h: number } | null
   duration: number
+  allowWatermark: boolean
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -114,6 +115,20 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
   // 滤镜搜索关键字
   const [filterSearchKey, setFilterSearchKey] = useState('')
   const [resetColorDialogOpen, setResetColorDialogOpen] = useState(false)
+  const setActiveTool = edit.setActiveTool
+  const setMaskEditing = mask.setEditing
+  const activeTool = edit.activeTool === 'watermark' && !allowWatermark ? 'color' : edit.activeTool
+  const visibleToolItems = useMemo(
+    () => allowWatermark ? TOOL_ITEMS : TOOL_ITEMS.filter((item) => item.value !== 'watermark'),
+    [allowWatermark],
+  )
+
+  useEffect(() => {
+    if (!allowWatermark && edit.activeTool === 'watermark') {
+      setMaskEditing(false)
+      setActiveTool('color')
+    }
+  }, [allowWatermark, edit.activeTool, setActiveTool, setMaskEditing])
 
   // 各面板是否有未保存的修改
   const toolModified = useMemo(() => ({
@@ -164,13 +179,11 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
     resetAllColor()
   }
 
-  // 水印检测由 WatermarkSettings 内部根据 filePath 自动完成
-
   return (
     <aside className="workspace-edit-sidebar">
       <section className="workspace-tool-panel">
         <header className="workspace-tool-panel-header">
-          {edit.activeTool === 'filter' ? (
+          {activeTool === 'filter' ? (
             <>
               <h2 className="filter-panel-title">滤镜</h2>
               <label className="filter-search-header">
@@ -186,7 +199,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 />
               </label>
             </>
-          ) : edit.activeTool === 'color' && mask.editing ? (
+          ) : activeTool === 'color' && mask.editing ? (
             <>
               <IconButton
                 variant="ghost"
@@ -199,9 +212,9 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
               <h2>{mask.activeMask ? `编辑蒙版 · ${mask.activeMask.name}` : '新建蒙版'}</h2>
             </>
           ) : (
-            <h2>{titleForTool(edit.activeTool)}</h2>
+            <h2>{titleForTool(activeTool)}</h2>
           )}
-          {edit.activeTool === 'color' && (
+          {activeTool === 'color' && (
             <span className="workspace-tool-panel-actions">
               {mask.editing ? (
                 <Button className="workspace-mask-editor-done" variant="ghost" size="mini" onClick={() => { mask.setEditing(false); mask.setSemanticPicking(false) }}>完成</Button>
@@ -221,7 +234,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
               )}
             </span>
           )}
-          {edit.activeTool === 'trim' && (
+          {activeTool === 'trim' && (
             <span className="workspace-tool-panel-actions">
               {isTrimModified(edit.pipeline.trim) && <span className="ui-accordion-modified-dot" />}
               <Tooltip content="重置截取">
@@ -236,8 +249,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
             </span>
           )}
         </header>
-        <div className={`workspace-tool-panel-body${edit.activeTool === 'color' ? ' is-color-panel' : ''}`}>
-          {edit.activeTool === 'filter' ? (
+        <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}`}>
+          {activeTool === 'filter' ? (
             <FilterPanel
               activeLutId={edit.pipeline.lutFilter.activeId}
               onChange={(lutId) => edit.updateWorkspacePanel({ lutFilter: { activeId: lutId } })}
@@ -246,9 +259,9 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
               mediaPath={mediaCtx.activeMedia?.path}
               searchKey={filterSearchKey}
             />
-          ) : edit.activeTool === 'color' ? (
+          ) : activeTool === 'color' ? (
             <ColorMaskPanel />
-          ) : edit.activeTool === 'crop' ? (
+          ) : activeTool === 'crop' ? (
             <>
               <Accordion
                 title="裁剪"
@@ -284,7 +297,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 </Button>
               </div>
             </>
-          ) : edit.activeTool === 'trim' ? (
+          ) : activeTool === 'trim' ? (
             <TrimPanel
               startTime={edit.pipeline.trim?.startTime ?? 0}
               endTime={edit.pipeline.trim?.endTime ?? 0}
@@ -298,7 +311,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 edit.commitPatch({ trim: { startTime: curStart, endTime: time } })
               }}
             />
-          ) : edit.activeTool === 'border' ? (
+          ) : activeTool === 'border' ? (
             <BorderPanel
               value={edit.pipeline.border}
               onChange={(border) => edit.updateWorkspacePanel({ border })}
@@ -320,11 +333,11 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
       </section>
       <nav className="workspace-tool-rail" aria-label="工作台工具">
         <div className="workspace-tool-rail-main">
-          {TOOL_ITEMS.map((item) => (
+          {visibleToolItems.map((item) => (
             <div key={item.value} className="workspace-tool-rail-item">
               <Tooltip content={item.label}>
                 <IconButton
-                  variant={edit.activeTool === item.value ? 'outline' : 'ghost'}
+                  variant={activeTool === item.value ? 'outline' : 'ghost'}
                   size="compact"
                   icon={item.icon}
                   aria-label={item.label}
