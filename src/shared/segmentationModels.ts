@@ -125,20 +125,6 @@ export const SPECIALIZED_SEGMENTATION_MODELS = [
     source: 'https://modelscope.cn/models/briaai/RMBG-1.4',
     licenseUrl: 'https://huggingface.co/briaai/RMBG-1.4/blob/main/README.md',
   },
-  {
-    id: 'rmbg-2.0-fp16',
-    backend: 'rmbg-2.0',
-    name: 'RMBG 2.0 FP16',
-    description: '主体对比测试',
-    inputSize: 1024,
-    sizeBytes: 513_576_499,
-    url: 'https://modelscope.cn/models/briaai/RMBG-2.0/resolve/master/onnx/model_fp16.onnx',
-    sha256: '9dc47db40d113090ba5d7a13d8fcfd9ee4eda510ce92613219b2fe19da4746f6',
-    version: 'master-fp16',
-    license: 'CC BY-NC 4.0',
-    source: 'https://modelscope.cn/models/briaai/RMBG-2.0',
-    licenseUrl: 'https://huggingface.co/briaai/RMBG-2.0/blob/main/README.md',
-  },
 ] as const
 
 const SAM_DECODER = {
@@ -227,11 +213,11 @@ export type SpecializedSegmentationModelId = typeof SPECIALIZED_SEGMENTATION_MOD
 export type SamSegmentationModelId = typeof SAM_MODELS[number]['id']
 export type SingleFileSegmentationModelId = SemanticSegmentationModelId | SpecializedSegmentationModelId
 export type SegmentationModelId = SingleFileSegmentationModelId | SamSegmentationModelId
-export type SubjectSegmentationModelId = 'birefnet-general-lite' | 'rmbg-1.4' | 'rmbg-2.0-fp16'
+export type SubjectSegmentationModelId = 'birefnet-general-lite' | 'rmbg-1.4'
 
 export const SUBJECT_SEGMENTATION_MODELS = SPECIALIZED_SEGMENTATION_MODELS.filter(
   (model): model is typeof SPECIALIZED_SEGMENTATION_MODELS[number] & { id: SubjectSegmentationModelId } =>
-    model.id === 'birefnet-general-lite' || model.id === 'rmbg-1.4' || model.id === 'rmbg-2.0-fp16',
+    model.id === 'birefnet-general-lite' || model.id === 'rmbg-1.4',
 )
 
 export function isSubjectSegmentationModel(id: string): id is SubjectSegmentationModelId {

@@ -33,6 +33,8 @@ export async function prepareBiRefNetMpsResources(
   signal?: AbortSignal,
 ): Promise<BiRefNetMpsResources | null> {
   if (!supportsBiRefNetMpsResources()) return null
+  signal?.throwIfAborted()
+  if (preparedResources) return preparedResources
   const runtime = RUNTIME_RESOURCE_DEFINITIONS.birefnetMpsRuntime
   const model = RUNTIME_RESOURCE_DEFINITIONS.birefnetMpsModel
   const totalArchiveBytes = runtime.archiveBytes + model.archiveBytes

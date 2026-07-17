@@ -12,7 +12,7 @@ import {
 } from './specializedSegmentationAttempt.js'
 import { getPreparedBiRefNetMpsResources } from './birefNetMpsResourceService.js'
 
-export type SpecializedSegmentationBackend = 'yolo26-seg' | 'birefnet-general-lite' | 'rmbg-1.4' | 'rmbg-2.0'
+export type SpecializedSegmentationBackend = 'yolo26-seg' | 'birefnet-general-lite' | 'rmbg-1.4'
 
 interface SpecializedSegmentationInput {
   backend: SpecializedSegmentationBackend

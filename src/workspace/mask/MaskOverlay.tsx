@@ -103,10 +103,11 @@ export function MaskOverlay() {
     if (mask.maskData) render(mask.maskData)
     // render depends on the same visual inputs listed here and is intentionally local to this component.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas.imageRect, canvas.sourceAspect, edit.pipeline.transform, mask.maskData, mask.maskSize])
+  }, [canvas.sourceAspect, displaySize.height, displaySize.width, edit.pipeline.transform, mask.maskData, mask.maskSize])
 
   if (!mask.editing || !mask.maskSize) return null
   const imageRect = canvas.imageRect
+  const interactive = mask.brushActive || mask.semanticPicking
 
   const brushCursorDiameter = (() => {
     if (!cursorPoint) return mask.brushSize
@@ -173,7 +174,7 @@ export function MaskOverlay() {
   return (
     <div
       className="workspace-mask-overlay-shell"
-      style={{ left: imageRect.x, top: imageRect.y, width: imageRect.width, height: imageRect.height }}
+      style={{ left: imageRect.x, top: imageRect.y, width: imageRect.width, height: imageRect.height, pointerEvents: interactive ? 'auto' : 'none' }}
     >
       <canvas
         ref={canvasRef}
@@ -182,7 +183,7 @@ export function MaskOverlay() {
         height={displaySize.height}
         style={{
           opacity: mask.showOverlay ? 1 : 0,
-          cursor: mask.busy ? 'wait' : mask.semanticPicking ? 'crosshair' : undefined,
+          cursor: mask.busy ? 'wait' : mask.semanticPicking ? 'crosshair' : mask.brushActive ? 'none' : undefined,
         }}
         onPointerEnter={(event) => setCursorPoint({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY })}
         onPointerLeave={() => setCursorPoint(null)}
@@ -197,6 +198,7 @@ export function MaskOverlay() {
             mask.setSemanticPicking(false)
             return
           }
+          if (!mask.brushActive) return
           event.currentTarget.setPointerCapture(event.pointerId)
           lastPointRef.current = null
           paint(event)
@@ -222,7 +224,7 @@ export function MaskOverlay() {
           restoreCommittedMask()
         }}
       />
-      {!mask.busy && !mask.semanticPicking && cursorPoint && (
+      {!mask.busy && mask.brushActive && !mask.semanticPicking && cursorPoint && (
         <span
           className={`workspace-mask-brush-cursor${mask.brushMode === 'erase' ? ' is-erase' : ''}`}
           style={{

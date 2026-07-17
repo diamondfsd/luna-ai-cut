@@ -4,6 +4,7 @@
 }
 
 .workspace-mask-auto-section,
+.workspace-mask-brush-section,
 .workspace-mask-edge-section,
 .workspace-mask-editor-section {
   display: grid;
@@ -16,6 +17,11 @@
 
 .workspace-mask-edge-section {
   padding: 22px 0 18px;
+  border-top: 1px solid var(--hairline);
+}
+
+.workspace-mask-brush-section {
+  padding: 22px 0 24px;
   border-top: 1px solid var(--hairline);
 }
 
@@ -168,20 +174,6 @@
   font-weight: 600;
 }
 
-.workspace-mask-panel > .ui-accordion {
-  padding: 5px 0 20px;
-  border-top: 1px solid var(--hairline);
-}
-
-.workspace-mask-panel > .ui-accordion .ui-accordion-header {
-  min-height: 48px;
-  padding: 0;
-}
-
-.workspace-mask-panel > .ui-accordion .ui-accordion-body {
-  padding: 6px 0 0;
-}
-
 .workspace-mask-mode-row {
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr);
@@ -191,7 +183,7 @@
 
 .workspace-mask-brush-modes.ui-btn-group {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
