@@ -247,6 +247,7 @@ try {
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'rmbg-1.4')
   assert.equal(segmentationModels.automaticSegmentationTarget('person'), undefined)
+  assert.equal(segmentationModels.modelForSegmentationRequest('ade20k-12', 'rmbg-1.4'), 'segformer-b5-ade20k')
   assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'segformer-b3-ade20k'), 'segformer-b3-ade20k')
 
   assert.equal(layerOperations.normalizeColorMaskName('  天空细节  ', '原名称'), '天空细节')
