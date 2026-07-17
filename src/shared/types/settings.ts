@@ -16,6 +16,8 @@ export interface AppSettings {
   mockTcpPort?: number
   mockRateMbps?: number
   exportAppleLivePhoto?: boolean
+  /** 工作台最近一次导入本地文件时使用的目录 */
+  workspaceImportDir?: string
   /** 扩展 LUT 滤镜目录路径（.cube 文件目录树，按文件夹分组） */
   lutDir?: string
 }
