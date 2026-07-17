@@ -59,6 +59,7 @@ try {
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
     'src/workspace/mask/maskModelMode.ts',
+    'src/workspace/mask/maskPreviewSampling.ts',
     'src/shared/segmentationModels.ts',
     'src/workspace/color/colorMaskLayerOperations.ts',
     'src/workspace/shared/workspaceProjectPipeline.ts',
@@ -72,10 +73,27 @@ try {
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
   const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
+  const previewSampling = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskPreviewSampling.js')))
   const segmentationModels = await import(pathToFileURL(path.join(temporaryRoot, 'src/shared/segmentationModels.js')))
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
   const { createDefaultPipeline, mergePipeline } = pipelineModule
+
+  const impulse = new Float32Array(9)
+  impulse[4] = 255
+  assert.deepEqual(
+    [...previewSampling.featherMaskPreview(impulse, 9, 1, 0, 1, 1)],
+    [...impulse],
+    'zero feather must preserve preview values',
+  )
+  const featheredImpulse = previewSampling.featherMaskPreview(impulse, 9, 1, 2, 1, 1)
+  assert.ok(featheredImpulse[4] < 255 && featheredImpulse[3] > 0, 'feather must soften both sides of a mask edge')
+  close(featheredImpulse.reduce((sum, value) => sum + value, 0), 255, 'feather must preserve mask intensity', 0.001)
+  close(
+    previewSampling.sampleMaskBilinear(new Uint8Array([0, 255]), 2, 1, 0.5, 0.5),
+    127.5,
+    'mask preview sampling must interpolate neighboring pixels',
+  )
 
   const legacy = mergePipeline(createDefaultPipeline(), {
     colorMask: {
@@ -227,9 +245,8 @@ try {
   assert.equal(modelMode.modelForAutomaticSelection('segformer-b3-ade20k'), 'segformer-b3-ade20k')
 
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
-  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'u2net'), 'u2net')
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'rmbg-1.4')
-  assert.equal(segmentationModels.modelForSegmentationRequest('person', 'rmbg-1.4'), 'yolo26s-seg')
+  assert.equal(segmentationModels.automaticSegmentationTarget('person'), undefined)
   assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'segformer-b3-ade20k'), 'segformer-b3-ade20k')
 
   assert.equal(layerOperations.normalizeColorMaskName('  天空细节  ', '原名称'), '天空细节')

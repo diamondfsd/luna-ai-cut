@@ -15,11 +15,6 @@ const PREFETCH_ITEMS: PrefetchItem[] = [
     load: (signal) => loadModel('rmbg-1.4', undefined, signal),
   },
   {
-    modelId: 'yolo26s-seg',
-    label: '人物模型',
-    load: (signal) => loadModel('yolo26s-seg', undefined, signal),
-  },
-  {
     modelId: 'segformer-b5-ade20k',
     label: '语义模型',
     load: (signal) => loadModel('segformer-b5-ade20k', undefined, signal),
