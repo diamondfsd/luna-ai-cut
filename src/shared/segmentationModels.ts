@@ -1,3 +1,5 @@
+import { ADE20K_REMAINING_SEGMENTATION_TARGETS } from './ade20kSegmentationTargets'
+
 export const SEGMENTATION_MODELS = [
   {
     id: 'segformer-b0-ade20k',
@@ -110,20 +112,6 @@ export const SPECIALIZED_SEGMENTATION_MODELS = [
     source: 'https://modelscope.cn/models/briaai/RMBG-1.4',
     licenseUrl: 'https://huggingface.co/briaai/RMBG-1.4/blob/main/README.md',
   },
-  {
-    id: 'u2net',
-    backend: 'u2net',
-    name: 'U²-Net',
-    description: '主体对比测试',
-    inputSize: 320,
-    sizeBytes: 175_997_641,
-    url: 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx',
-    sha256: '8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491',
-    version: 'rembg-v0.0.0',
-    license: 'Apache-2.0',
-    source: 'https://github.com/danielgatis/rembg#models',
-    licenseUrl: 'https://github.com/xuebinqin/U-2-Net/blob/master/LICENSE',
-  },
 ] as const
 
 const SAM_DECODER = {
@@ -212,25 +200,11 @@ export type SpecializedSegmentationModelId = typeof SPECIALIZED_SEGMENTATION_MOD
 export type SamSegmentationModelId = typeof SAM_MODELS[number]['id']
 export type SingleFileSegmentationModelId = SemanticSegmentationModelId | SpecializedSegmentationModelId
 export type SegmentationModelId = SingleFileSegmentationModelId | SamSegmentationModelId
-export type SubjectSegmentationModelId = 'rmbg-1.4' | 'u2net'
-
-export const SUBJECT_SEGMENTATION_MODELS = SPECIALIZED_SEGMENTATION_MODELS.filter(
-  (model): model is typeof SPECIALIZED_SEGMENTATION_MODELS[number] & { id: SubjectSegmentationModelId } =>
-    model.id === 'rmbg-1.4' || model.id === 'u2net',
-)
-
-export function isSubjectSegmentationModel(id: string): id is SubjectSegmentationModelId {
-  return SUBJECT_SEGMENTATION_MODELS.some((model) => model.id === id)
-}
-
 export function modelForSegmentationRequest(
   targetId: AutomaticSegmentationTargetId | undefined,
   requestedModelId: SegmentationModelId | undefined,
 ): SegmentationModelId {
   const target = targetId ? automaticSegmentationTarget(targetId) : undefined
-  if (target?.id === 'subject' && requestedModelId && isSubjectSegmentationModel(requestedModelId)) {
-    return requestedModelId
-  }
   return target?.modelId ?? requestedModelId ?? 'segformer-b0-ade20k'
 }
 
@@ -247,20 +221,21 @@ export function isSpecializedSegmentationModel(id: string): id is SpecializedSeg
 export const AUTOMATIC_SEGMENTATION_TARGETS = [
   { id: 'sky', classId: 2, label: '天空', modelId: 'segformer-b5-ade20k' },
   { id: 'water', classId: 21, label: '水面', modelId: 'segformer-b5-ade20k' },
-  { id: 'person', classId: 12, label: '人物', modelId: 'yolo26s-seg' },
-  { id: 'subject', classId: -1, label: '主体', modelId: 'rmbg-1.4' },
   { id: 'tree', classId: 4, label: '树木', modelId: 'segformer-b5-ade20k' },
   { id: 'building', classId: 1, label: '建筑', modelId: 'segformer-b5-ade20k' },
   { id: 'vehicle', classId: 20, label: '车辆', modelId: 'segformer-b5-ade20k' },
   { id: 'mountain', classId: 16, label: '山体', modelId: 'segformer-b5-ade20k' },
-] as const satisfies ReadonlyArray<{
+  { id: 'subject', classId: -1, label: '主体', modelId: 'rmbg-1.4' },
+  ...ADE20K_REMAINING_SEGMENTATION_TARGETS,
+] satisfies ReadonlyArray<{
   id: string
   classId: number
   label: string
   modelId: SingleFileSegmentationModelId
 }>
 
-export type AutomaticSegmentationTargetId = typeof AUTOMATIC_SEGMENTATION_TARGETS[number]['id']
+export type AutomaticSegmentationTarget = typeof AUTOMATIC_SEGMENTATION_TARGETS[number]
+export type AutomaticSegmentationTargetId = AutomaticSegmentationTarget['id']
 
 export function automaticSegmentationTarget(id: string) {
   return AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === id)
@@ -269,7 +244,6 @@ export function automaticSegmentationTarget(id: string) {
 export const COMMON_SEGMENTATION_TARGETS = [
   { classId: 2, label: '天空' },
   { classId: 21, label: '海洋 / 水面' },
-  { classId: 12, label: '人物' },
   { classId: 4, label: '树木' },
   { classId: 9, label: '草地' },
   { classId: 17, label: '植物' },

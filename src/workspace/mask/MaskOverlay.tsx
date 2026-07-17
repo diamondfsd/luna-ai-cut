@@ -4,6 +4,7 @@ import { DEFAULT_POINT_SEGMENTATION_MODEL_ID } from '../../shared/segmentationMo
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
+import { featherMaskPreview, sampleMaskBilinear } from './maskPreviewSampling'
 import './MaskOverlay.css'
 
 function drawBrush(
@@ -29,26 +30,6 @@ function drawBrush(
       data[index] = erase ? Math.min(data[index], 255 - amount) : Math.max(data[index], amount)
     }
   }
-}
-
-function sampleMaskBilinear(
-  data: Uint8Array,
-  width: number,
-  height: number,
-  normalizedX: number,
-  normalizedY: number,
-): number {
-  const sourceX = Math.max(0, Math.min(width - 1, normalizedX * width - 0.5))
-  const sourceY = Math.max(0, Math.min(height - 1, normalizedY * height - 0.5))
-  const x0 = Math.floor(sourceX)
-  const y0 = Math.floor(sourceY)
-  const x1 = Math.min(width - 1, x0 + 1)
-  const y1 = Math.min(height - 1, y0 + 1)
-  const tx = sourceX - x0
-  const ty = sourceY - y0
-  const top = data[y0 * width + x0] * (1 - tx) + data[y0 * width + x1] * tx
-  const bottom = data[y1 * width + x0] * (1 - tx) + data[y1 * width + x1] * tx
-  return top * (1 - ty) + bottom * ty
 }
 
 export function MaskOverlay() {
@@ -100,14 +81,45 @@ export function MaskOverlay() {
     if (!element || !mask.maskSize) return
     const context = element.getContext('2d')
     if (!context) return
-    const image = context.createImageData(displaySize.width, displaySize.height)
+    const previewMask = new Float32Array(displaySize.width * displaySize.height)
+    const center = displayToSource(0.5, 0.5)
+    const stepX = displayToSource(0.5 + 1 / displaySize.width, 0.5)
+    const stepY = displayToSource(0.5, 0.5 + 1 / displaySize.height)
+    const sourcePixelsPerPreviewPixelX = Math.max(0.0001, Math.hypot(
+      (stepX.x - center.x) * mask.maskSize.width,
+      (stepX.y - center.y) * mask.maskSize.height,
+    ))
+    const sourcePixelsPerPreviewPixelY = Math.max(0.0001, Math.hypot(
+      (stepY.x - center.x) * mask.maskSize.width,
+      (stepY.y - center.y) * mask.maskSize.height,
+    ))
     for (let y = 0; y < displaySize.height; y++) {
       for (let x = 0; x < displaySize.width; x++) {
         const source = displayToSource((x + 0.5) / displaySize.width, (y + 0.5) / displaySize.height)
+        if (source.x >= 0 && source.x <= 1 && source.y >= 0 && source.y <= 1) {
+          previewMask[y * displaySize.width + x] = sampleMaskBilinear(
+            data,
+            mask.maskSize.width,
+            mask.maskSize.height,
+            source.x,
+            source.y,
+          )
+        }
+      }
+    }
+    const feathered = featherMaskPreview(
+      previewMask,
+      displaySize.width,
+      displaySize.height,
+      mask.activeMask?.feather ?? 0,
+      sourcePixelsPerPreviewPixelX,
+      sourcePixelsPerPreviewPixelY,
+    )
+    const image = context.createImageData(displaySize.width, displaySize.height)
+    for (let y = 0; y < displaySize.height; y++) {
+      for (let x = 0; x < displaySize.width; x++) {
         const outputIndex = y * displaySize.width + x
-        const alpha = source.x < 0 || source.x > 1 || source.y < 0 || source.y > 1
-          ? 0
-          : Math.round(sampleMaskBilinear(data, mask.maskSize.width, mask.maskSize.height, source.x, source.y) * 0.55)
+        const alpha = Math.round(feathered[outputIndex] * 0.55)
         image.data[outputIndex * 4] = 255
         image.data[outputIndex * 4 + 1] = 52
         image.data[outputIndex * 4 + 2] = 76
@@ -121,7 +133,7 @@ export function MaskOverlay() {
     if (mask.maskData) render(mask.maskData)
     // render depends on the same visual inputs listed here and is intentionally local to this component.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas.sourceAspect, displaySize.height, displaySize.width, edit.pipeline.transform, mask.maskData, mask.maskSize])
+  }, [canvas.sourceAspect, displaySize.height, displaySize.width, edit.pipeline.transform, mask.activeMask?.feather, mask.maskData, mask.maskSize])
 
   if (!mask.editing || !mask.maskSize) return null
   const imageRect = canvas.imageRect

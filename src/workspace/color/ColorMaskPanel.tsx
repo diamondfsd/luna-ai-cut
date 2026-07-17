@@ -7,6 +7,7 @@ import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { MaskPanel } from '../mask/MaskPanel'
+import { featherMaskPreview, sampleMaskBilinear } from '../mask/maskPreviewSampling'
 import { ColorPanel } from './ColorPanel'
 import { normalizeColorMaskName, reorderColorMaskLayers, type ColorMaskDropPosition } from './colorMaskLayerOperations'
 import './ColorMaskPanel.css'
@@ -26,34 +27,61 @@ const BLEND_MODE_DESCRIPTIONS: Record<ColorMaskBlendMode, string> = {
   add: '更强地提亮选中的区域',
 }
 
-function MaskThumbnail({ path, inverted }: { path: string; inverted: boolean }) {
+function MaskThumbnail({ path, inverted, feather }: { path: string; inverted: boolean; feather: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const media = useWorkspaceMedia()
   const projectId = media.currentProject?.id
+  const [sourceMask, setSourceMask] = useState<{ width: number; height: number; data: Uint8Array } | null>(null)
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !projectId) return
+    setSourceMask(null)
+    if (!projectId) return
     let cancelled = false
     window.luna.workspace.loadColorMask(projectId, path).then((mask) => {
       if (cancelled) return
-      const context = canvas.getContext('2d')
-      if (!context) return
-      context.fillStyle = '#fff'
-      context.fillRect(0, 0, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
+      setSourceMask({ width: mask.width, height: mask.height, data: new Uint8Array(mask.bytes) })
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [path, projectId])
 
-      const scale = Math.min(THUMBNAIL_WIDTH / mask.width, THUMBNAIL_HEIGHT / mask.height)
-      const width = Math.max(1, Math.round(mask.width * scale))
-      const height = Math.max(1, Math.round(mask.height * scale))
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const context = canvas.getContext('2d')
+    if (!context) return
+    context.fillStyle = '#fff'
+    context.fillRect(0, 0, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
+    if (!sourceMask) return
+
+      const scale = Math.min(THUMBNAIL_WIDTH / sourceMask.width, THUMBNAIL_HEIGHT / sourceMask.height)
+      const width = Math.max(1, Math.round(sourceMask.width * scale))
+      const height = Math.max(1, Math.round(sourceMask.height * scale))
       const offsetX = Math.floor((THUMBNAIL_WIDTH - width) / 2)
       const offsetY = Math.floor((THUMBNAIL_HEIGHT - height) / 2)
       const pixels = new Uint8ClampedArray(width * height * 4)
-      const source = new Uint8Array(mask.bytes)
+      const previewMask = new Float32Array(width * height)
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
-          const sourceX = Math.min(mask.width - 1, Math.floor(x / width * mask.width))
-          const sourceY = Math.min(mask.height - 1, Math.floor(y / height * mask.height))
-          const selected = source[sourceY * mask.width + sourceX]
+          previewMask[y * width + x] = sampleMaskBilinear(
+            sourceMask.data,
+            sourceMask.width,
+            sourceMask.height,
+            (x + 0.5) / width,
+            (y + 0.5) / height,
+          )
+        }
+      }
+      const feathered = featherMaskPreview(
+        previewMask,
+        width,
+        height,
+        feather,
+        sourceMask.width / width,
+        sourceMask.height / height,
+      )
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const selected = feathered[y * width + x]
           const value = inverted ? selected : 255 - selected
           const offset = (y * width + x) * 4
           pixels[offset] = value
@@ -63,9 +91,7 @@ function MaskThumbnail({ path, inverted }: { path: string; inverted: boolean }) 
         }
       }
       context.putImageData(new ImageData(pixels, width, height), offsetX, offsetY)
-    }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [inverted, path, projectId])
+  }, [feather, inverted, sourceMask])
 
   return <canvas ref={canvasRef} className="workspace-color-mask-thumbnail" width={THUMBNAIL_WIDTH} height={THUMBNAIL_HEIGHT} aria-label="蒙版缩略图" />
 }
@@ -206,7 +232,7 @@ export function ColorMaskPanel() {
                   />
                 </Tooltip>
                 <Button variant="ghost" size="compact" className="workspace-color-mask-layer-select" onClick={() => mask.setActiveLayerId(layer.id)}>
-                  <MaskThumbnail path={layer.path} inverted={layer.inverted} />
+                  <MaskThumbnail path={layer.path} inverted={layer.inverted} feather={layer.feather} />
                   <span className="workspace-color-mask-layer-label">
                     <strong onDoubleClick={(event) => { event.stopPropagation(); openRename(layer) }}>{layer.name}</strong>
                     {layer.loadError && <small className="workspace-color-mask-layer-status"><AlertTriangle size={12} />文件不可用，可重新编辑</small>}

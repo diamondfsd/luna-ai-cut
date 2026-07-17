@@ -1,16 +1,16 @@
-import { Brush, Building2, CarFront, Cloud, Crosshair, Eraser, Hand, Mountain, ScanSearch, TreePine, UserRound, Waves, X } from 'lucide-react'
+import { Brush, Building2, CarFront, Check, Cloud, Crosshair, Eraser, Hand, MoreHorizontal, Mountain, ScanSearch, TreePine, Waves, X } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Button, ButtonGroup, Select, Switch } from '../../ui'
-import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, isSubjectSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTargetId, type SubjectSegmentationModelId } from '../../shared/segmentationModels'
+import { Button, ButtonGroup, Popover, PopoverContent, PopoverTrigger, SearchField, Switch } from '../../ui'
+import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTarget, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import './MaskPanel.css'
 
-const TARGET_ICONS = {
+const TARGET_ICONS: Record<string, LucideIcon> = {
   sky: Cloud,
   water: Waves,
-  person: UserRound,
   subject: ScanSearch,
   tree: TreePine,
   building: Building2,
@@ -22,13 +22,12 @@ const BRUSH_MODES = [
   { value: 'paint', label: <><Brush size={18} />添加</> },
   { value: 'erase', label: <><Eraser size={18} />擦除</> },
 ]
-const CATEGORY_TARGETS = AUTOMATIC_SEGMENTATION_TARGETS.filter((target) => target.id !== 'subject')
+const PRIMARY_TARGET_IDS = ['sky', 'water', 'tree', 'building', 'vehicle', 'mountain'] as const
+const CATEGORY_TARGETS = PRIMARY_TARGET_IDS.map((id) => AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === id)!)
 const SUBJECT_TARGET = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === 'subject')!
-const SUBJECT_MODEL_STORAGE_KEY = 'workspace_subject_segmentation_model'
-const SUBJECT_MODEL_OPTIONS = [
-  { value: 'rmbg-1.4', label: 'RMBG 1.4（当前）' },
-  { value: 'u2net', label: 'U²-Net' },
-]
+const MORE_TARGETS = AUTOMATIC_SEGMENTATION_TARGETS.filter(
+  (target) => target.id !== 'subject' && !PRIMARY_TARGET_IDS.some((id) => id === target.id),
+)
 function formatModelSize(sizeBytes: number): string {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
 }
@@ -40,28 +39,19 @@ export function MaskPanel() {
   const [targetId, setTargetId] = useState<AutomaticSegmentationTargetId>(initialTarget)
   const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
   const [runningTargetId, setRunningTargetId] = useState<AutomaticSegmentationTargetId | null>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [moreSearch, setMoreSearch] = useState('')
   const [selectionMode, setSelectionMode] = useState<'target' | 'point'>(() => settings?.modelId && isSamSegmentationModel(settings.modelId) ? 'point' : 'target')
-  const [subjectModelId, setSubjectModelId] = useState<SubjectSegmentationModelId>(() => {
-    const saved = localStorage.getItem(SUBJECT_MODEL_STORAGE_KEY)
-    return saved && isSubjectSegmentationModel(saved) ? saved : 'rmbg-1.4'
-  })
 
   useEffect(() => {
     const activeTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === mask.activeMask?.targetId || target.classId === mask.activeMask?.classId)
     if (activeTarget) {
       setTargetId(activeTarget.id)
       setSelectionMode('target')
-      if (activeTarget.id === 'subject' && mask.activeMask?.modelId && isSubjectSegmentationModel(mask.activeMask.modelId)) {
-        setSubjectModelId(mask.activeMask.modelId)
-      }
     } else if (mask.activeMask?.modelId && isSamSegmentationModel(mask.activeMask.modelId)) {
       setSelectionMode('point')
     }
   }, [mask.activeMask?.classId, mask.activeMask?.modelId, mask.activeMask?.targetId])
-
-  useEffect(() => {
-    localStorage.setItem(SUBJECT_MODEL_STORAGE_KEY, subjectModelId)
-  }, [subjectModelId])
 
   useEffect(() => {
     let active = true
@@ -82,11 +72,20 @@ export function MaskPanel() {
   const automaticSelectionModel = [...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS, ...SAM_MODELS].find(
     (model) => model.id === (selectionMode === 'point'
       ? DEFAULT_POINT_SEGMENTATION_MODEL_ID
-      : target.id === 'subject' ? subjectModelId : target.modelId),
+      : target.modelId),
   )
   const pointSelectionRunning = selectionMode === 'point' && runningTargetId === null && mask.busy && mask.segmentationProgress !== null
   const pointProgress = pointSelectionRunning ? mask.segmentationProgress : null
   const pointProgressIndeterminate = !pointProgress || pointProgress.percent === null
+  const normalizedMoreSearch = moreSearch.trim().toLocaleLowerCase('zh-CN')
+  const filteredMoreTargets = useMemo(
+    () => normalizedMoreSearch
+      ? MORE_TARGETS.filter((item) => item.label.toLocaleLowerCase('zh-CN').includes(normalizedMoreSearch))
+      : MORE_TARGETS,
+    [normalizedMoreSearch],
+  )
+  const moreSelected = selectionMode === 'target' && MORE_TARGETS.some((item) => item.id === targetId)
+  const moreRunning = runningTargetId !== null && MORE_TARGETS.some((item) => item.id === runningTargetId)
 
   const clearAutomaticSelectionError = (): void => {
     mask.clearSegmentationError()
@@ -107,7 +106,7 @@ export function MaskPanel() {
     try {
       const selectedTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((item) => item.id === selectedTargetId)
       if (!selectedTarget) return
-      await mask.generateSemanticMask(undefined, selectedTargetId, selectedTargetId === 'subject' ? subjectModelId : undefined)
+      await mask.generateSemanticMask(undefined, selectedTargetId)
     } finally {
       setRunningTargetId(null)
     }
@@ -135,7 +134,7 @@ export function MaskPanel() {
   }
 
   const automaticSelectionError = mask.segmentationError
-  const renderTargetButton = (item: typeof AUTOMATIC_SEGMENTATION_TARGETS[number]) => {
+  const renderTargetButton = (item: AutomaticSegmentationTarget) => {
     const Icon = TARGET_ICONS[item.id]
     const isRunning = runningTargetId === item.id
     const progress = isRunning ? mask.segmentationProgress : null
@@ -168,6 +167,68 @@ export function MaskPanel() {
         <h3 className="workspace-mask-section-heading">自动选择</h3>
         <div className="workspace-mask-auto-targets" aria-label="自动选择类型">
           {CATEGORY_TARGETS.map(renderTargetButton)}
+          <Popover open={moreOpen} onOpenChange={(open) => { setMoreOpen(open); if (!open) setMoreSearch('') }}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                className={[moreSelected ? 'is-active' : '', moreRunning ? 'is-running' : ''].filter(Boolean).join(' ') || undefined}
+                disabled={(mask.busy || runningTargetId !== null) && !moreRunning}
+                aria-label="选择更多自动类型"
+              >
+                <span className="workspace-mask-target-content">
+                  <MoreHorizontal size={20} />
+                  <span>更多</span>
+                </span>
+                {moreRunning && (
+                  <span className="workspace-mask-target-progress" aria-hidden="true">
+                    <span
+                      className={!mask.segmentationProgress || mask.segmentationProgress.percent === null ? 'is-indeterminate' : undefined}
+                      style={mask.segmentationProgress?.percent === null ? undefined : { width: `${mask.segmentationProgress?.percent ?? 0}%` }}
+                    />
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="workspace-mask-more-popover" align="end" sideOffset={8}>
+              <div className="workspace-mask-more-search" data-popover-header>
+                <SearchField
+                  fullWidth
+                  value={moreSearch}
+                  onChange={(event) => setMoreSearch(event.target.value)}
+                  placeholder="搜索类型"
+                  aria-label="搜索自动选择类型"
+                />
+              </div>
+              <div className="workspace-mask-more-list" role="listbox" aria-label="更多自动选择类型">
+                {filteredMoreTargets.map((item) => {
+                  const isSelected = selectionMode === 'target' && item.id === targetId
+                  const isRunning = runningTargetId === item.id
+                  return (
+                    <Button
+                      key={item.id}
+                      variant="ghost"
+                      size="mini"
+                      role="option"
+                      aria-selected={isSelected}
+                      className={isSelected ? 'is-active' : undefined}
+                      disabled={(mask.busy || runningTargetId !== null) && !isRunning}
+                      onClick={() => {
+                        void startAutomaticSelection(item.id)
+                        if (!isRunning) {
+                          setMoreOpen(false)
+                          setMoreSearch('')
+                        }
+                      }}
+                    >
+                      <span>{item.label}</span>
+                      {isRunning ? <X size={15} /> : isSelected ? <Check size={15} /> : null}
+                    </Button>
+                  )
+                })}
+                {filteredMoreTargets.length === 0 && <p className="workspace-mask-more-empty">没有匹配的类型</p>}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="workspace-mask-smart-targets" aria-label="主体与点选">
           {renderTargetButton(SUBJECT_TARGET)}
@@ -192,19 +253,6 @@ export function MaskPanel() {
             )}
           </Button>
         </div>
-        <label className="workspace-mask-subject-model-field">
-          <strong>主体模型</strong>
-          <Select
-            variant="compact"
-            fullWidth
-            disabled={mask.busy || runningTargetId !== null}
-            options={SUBJECT_MODEL_OPTIONS}
-            value={subjectModelId}
-            onValueChange={(value) => {
-              if (isSubjectSegmentationModel(value)) setSubjectModelId(value)
-            }}
-          />
-        </label>
         {mask.segmentationProgress && (
           <div className="workspace-mask-auto-progress" role="status">
             <span>{mask.segmentationProgress.label}</span>

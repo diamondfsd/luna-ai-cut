@@ -10,7 +10,7 @@ import {
   runSpecializedWorkerAttempt,
 } from './specializedSegmentationAttempt.js'
 
-export type SpecializedSegmentationBackend = 'yolo26-seg' | 'rmbg-1.4' | 'u2net'
+export type SpecializedSegmentationBackend = 'yolo26-seg' | 'rmbg-1.4'
 
 interface SpecializedSegmentationInput {
   backend: SpecializedSegmentationBackend
