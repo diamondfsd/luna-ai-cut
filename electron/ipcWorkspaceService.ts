@@ -265,8 +265,8 @@ export function register(): void {
         Math.round(progress.completedBytes / progress.totalBytes * 100),
       ), signal)
     signal.throwIfAborted()
-    const modelLoadMs = performance.now() - modelStartedAt
-    if (isSam) logMainInfo('[SAM] 模型准备完成', { modelLoadMs: Math.round(modelLoadMs) })
+    const modelFileLoadMs = performance.now() - modelStartedAt
+    if (isSam) logMainInfo('[SAM] 模型准备完成', { modelLoadMs: Math.round(modelFileLoadMs) })
     reportProgress('preparing', '正在准备图片', null)
     const decodeStartedAt = performance.now()
     const semanticDefinition = isSam || specializedDefinition ? null : SEGMENTATION_MODELS.find((item) => item.id === modelId)
@@ -339,6 +339,27 @@ export function register(): void {
       }, signal)
     signal.throwIfAborted()
     const inferenceMs = performance.now() - inferenceStartedAt
+    const specializedMetrics = specializedDefinition && 'sessionLoadMs' in result
+      ? result as typeof result & {
+        sessionLoadMs: number
+        sessionReused: boolean
+        workerInferenceMs: number
+        executionBackend: 'onnx-cpu' | 'pytorch-mps'
+        fallbackReason?: string
+      }
+      : null
+    const sessionLoadMs = specializedMetrics?.sessionLoadMs ?? 0
+    const modelLoadMs = modelFileLoadMs + sessionLoadMs
+    if (specializedDefinition && specializedMetrics) {
+      logMainInfo('[Mask] 专用模型识别完成', {
+        backend: specializedDefinition.backend,
+        sessionReused: specializedMetrics.sessionReused,
+        sessionLoadMs,
+        workerInferenceMs: specializedMetrics.workerInferenceMs,
+        executionBackend: specializedMetrics.executionBackend,
+        fallbackReason: specializedMetrics.fallbackReason,
+      })
+    }
     if (isSam) logMainInfo('[SAM] 原生识别完成', { inferenceMs: Math.round(inferenceMs) })
     const classId = 'classId' in result && typeof result.classId === 'number' ? result.classId : -1
     const classNames: Record<number, string> = {
