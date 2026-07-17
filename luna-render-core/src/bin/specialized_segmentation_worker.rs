@@ -180,6 +180,12 @@ fn run() -> Result<(), String> {
         "birefnet-general-lite" => {
             specialized_segmentation::segment_birefnet(&args[2], &rgb, output_size)?
         }
+        "rmbg-1.4" | "rmbg-2.0" => specialized_segmentation::segment_rmbg(
+            &args[1],
+            &args[2],
+            &rgb,
+            output_size,
+        )?,
         _ => return Err("不支持的专用分割模型".to_string()),
     };
     if mask.len() != output_size * output_size {

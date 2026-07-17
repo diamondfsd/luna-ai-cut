@@ -1,8 +1,8 @@
 import { Brush, Building2, CarFront, Cloud, Crosshair, Eraser, Mountain, ScanSearch, TreePine, UserRound, Waves, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Accordion, Button, ButtonGroup, Switch } from '../../ui'
-import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
+import { Accordion, Button, ButtonGroup, Select, Switch } from '../../ui'
+import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, isSubjectSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTargetId, type SubjectSegmentationModelId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import './MaskPanel.css'
@@ -23,6 +23,12 @@ const BRUSH_MODES = [
 ]
 const CATEGORY_TARGETS = AUTOMATIC_SEGMENTATION_TARGETS.filter((target) => target.id !== 'subject')
 const SUBJECT_TARGET = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === 'subject')!
+const SUBJECT_MODEL_STORAGE_KEY = 'workspace_subject_segmentation_model'
+const SUBJECT_MODEL_OPTIONS = [
+  { value: 'birefnet-general-lite', label: 'BiRefNet Lite（当前）' },
+  { value: 'rmbg-1.4', label: 'RMBG 1.4' },
+  { value: 'rmbg-2.0-fp16', label: 'RMBG 2.0 FP16' },
+]
 function formatModelSize(sizeBytes: number): string {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
 }
@@ -35,16 +41,27 @@ export function MaskPanel() {
   const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
   const [runningTargetId, setRunningTargetId] = useState<AutomaticSegmentationTargetId | null>(null)
   const [selectionMode, setSelectionMode] = useState<'target' | 'point'>(() => settings?.modelId && isSamSegmentationModel(settings.modelId) ? 'point' : 'target')
+  const [subjectModelId, setSubjectModelId] = useState<SubjectSegmentationModelId>(() => {
+    const saved = localStorage.getItem(SUBJECT_MODEL_STORAGE_KEY)
+    return saved && isSubjectSegmentationModel(saved) ? saved : 'birefnet-general-lite'
+  })
 
   useEffect(() => {
     const activeTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === mask.activeMask?.targetId || target.classId === mask.activeMask?.classId)
     if (activeTarget) {
       setTargetId(activeTarget.id)
       setSelectionMode('target')
+      if (activeTarget.id === 'subject' && mask.activeMask?.modelId && isSubjectSegmentationModel(mask.activeMask.modelId)) {
+        setSubjectModelId(mask.activeMask.modelId)
+      }
     } else if (mask.activeMask?.modelId && isSamSegmentationModel(mask.activeMask.modelId)) {
       setSelectionMode('point')
     }
   }, [mask.activeMask?.classId, mask.activeMask?.modelId, mask.activeMask?.targetId])
+
+  useEffect(() => {
+    localStorage.setItem(SUBJECT_MODEL_STORAGE_KEY, subjectModelId)
+  }, [subjectModelId])
 
   useEffect(() => {
     let active = true
@@ -63,7 +80,9 @@ export function MaskPanel() {
     [targetId],
   )
   const automaticSelectionModel = [...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS, ...SAM_MODELS].find(
-    (model) => model.id === (selectionMode === 'point' ? DEFAULT_POINT_SEGMENTATION_MODEL_ID : target.modelId),
+    (model) => model.id === (selectionMode === 'point'
+      ? DEFAULT_POINT_SEGMENTATION_MODEL_ID
+      : target.id === 'subject' ? subjectModelId : target.modelId),
   )
   const pointSelectionRunning = selectionMode === 'point' && runningTargetId === null && mask.busy && mask.segmentationProgress !== null
   const pointProgress = pointSelectionRunning ? mask.segmentationProgress : null
@@ -87,7 +106,7 @@ export function MaskPanel() {
     try {
       const selectedTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((item) => item.id === selectedTargetId)
       if (!selectedTarget) return
-      await mask.generateSemanticMask(undefined, selectedTargetId)
+      await mask.generateSemanticMask(undefined, selectedTargetId, selectedTargetId === 'subject' ? subjectModelId : undefined)
     } finally {
       setRunningTargetId(null)
     }
@@ -171,6 +190,19 @@ export function MaskPanel() {
             )}
           </Button>
         </div>
+        <label className="workspace-mask-subject-model-field">
+          <strong>主体模型</strong>
+          <Select
+            variant="compact"
+            fullWidth
+            disabled={mask.busy || runningTargetId !== null}
+            options={SUBJECT_MODEL_OPTIONS}
+            value={subjectModelId}
+            onValueChange={(value) => {
+              if (isSubjectSegmentationModel(value)) setSubjectModelId(value)
+            }}
+          />
+        </label>
         {mask.segmentationProgress && (
           <div className="workspace-mask-auto-progress" role="status">
             <span>{mask.segmentationProgress.label}</span>

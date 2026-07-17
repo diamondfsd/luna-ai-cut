@@ -15,6 +15,10 @@ pub fn preprocess_birefnet(rgb: &[u8]) -> Result<Vec<f32>, String> {
     )
 }
 
+pub fn preprocess_rmbg14(rgb: &[u8]) -> Result<Vec<f32>, String> {
+    preprocess(rgb, BIREFNET_SIZE, Some(([0.5; 3], [1.0; 3])))
+}
+
 fn preprocess(
     rgb: &[u8],
     size: usize,
@@ -140,6 +144,46 @@ pub fn birefnet_mask(
     Ok(output)
 }
 
+fn probability_mask(
+    values: &[f32],
+    width: usize,
+    height: usize,
+    output_size: usize,
+    transform: impl Fn(f32) -> f32,
+) -> Result<Vec<u8>, String> {
+    if width == 0 || height == 0 || output_size == 0 || values.len() != width * height {
+        return Err("主体模型输出尺寸不兼容".to_string());
+    }
+    let mut probabilities = vec![0.0f32; output_size * output_size];
+    for y in 0..output_size {
+        let source_y = (y as f32 + 0.5) * height as f32 / output_size as f32 - 0.5;
+        for x in 0..output_size {
+            let source_x = (x as f32 + 0.5) * width as f32 / output_size as f32 - 0.5;
+            probabilities[y * output_size + x] =
+                transform(bilinear_sample(values, width, height, source_x, source_y));
+        }
+    }
+    Ok(probabilities
+        .into_iter()
+        .map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8)
+        .collect())
+}
+
+fn rmbg14_mask(
+    values: &[f32],
+    width: usize,
+    height: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let minimum = values.iter().copied().fold(f32::INFINITY, f32::min);
+    let maximum = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let range = maximum - minimum;
+    if !minimum.is_finite() || !maximum.is_finite() || range <= f32::EPSILON {
+        return Err("RMBG 1.4 返回了无效蒙版".to_string());
+    }
+    probability_mask(values, width, height, output_size, |value| (value - minimum) / range)
+}
+
 fn session(model_path: &str) -> Result<Session, String> {
     let threads = std::thread::available_parallelism()
         .map(|count| count.get().saturating_sub(1).clamp(1, 4))
@@ -155,6 +199,8 @@ fn session(model_path: &str) -> Result<Session, String> {
 pub enum SpecializedSession {
     Yolo(Session),
     BiRefNet(Session),
+    Rmbg14(Session),
+    Rmbg20(Session),
 }
 
 impl SpecializedSession {
@@ -162,6 +208,8 @@ impl SpecializedSession {
         match backend {
             "yolo26-seg" => Ok(Self::Yolo(session(model_path)?)),
             "birefnet-general-lite" => Ok(Self::BiRefNet(session(model_path)?)),
+            "rmbg-1.4" => Ok(Self::Rmbg14(session(model_path)?)),
+            "rmbg-2.0" => Ok(Self::Rmbg20(session(model_path)?)),
             _ => Err("不支持的专用分割模型".to_string()),
         }
     }
@@ -186,6 +234,8 @@ impl SpecializedSession {
                 output_size,
             ),
             Self::BiRefNet(session) => segment_birefnet_with_session(session, rgb, output_size),
+            Self::Rmbg14(session) => segment_rmbg_with_session(session, rgb, output_size, true),
+            Self::Rmbg20(session) => segment_rmbg_with_session(session, rgb, output_size, false),
         }
     }
 }
@@ -293,6 +343,46 @@ fn segment_birefnet_with_session(
     birefnet_mask(logits, shape[3] as usize, shape[2] as usize, output_size)
 }
 
+pub fn segment_rmbg(
+    backend: &str,
+    model_path: &str,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let mut session = session(model_path)?;
+    segment_rmbg_with_session(&mut session, rgb, output_size, backend == "rmbg-1.4")
+}
+
+fn segment_rmbg_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+    normalize_minmax: bool,
+) -> Result<Vec<u8>, String> {
+    let input = if normalize_minmax { preprocess_rmbg14(rgb)? } else { preprocess_birefnet(rgb)? };
+    let tensor = Tensor::from_array(([1usize, 3, BIREFNET_SIZE, BIREFNET_SIZE], input))
+        .map_err(|error| format!("创建 RMBG 输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("RMBG 主体识别失败: {error}"))?;
+    let (_, output) = outputs
+        .iter()
+        .find(|(_, output)| output.shape().as_ref() == [1, 1, BIREFNET_SIZE as i64, BIREFNET_SIZE as i64])
+        .or_else(|| outputs.iter().find(|(_, output)| output.shape().len() == 4))
+        .ok_or_else(|| "RMBG 缺少蒙版输出".to_string())?;
+    let (shape, values) = output
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("读取 RMBG 输出失败: {error}"))?;
+    if shape.len() != 4 || shape[0] != 1 || shape[1] != 1 {
+        return Err(format!("RMBG 输出尺寸不兼容: {shape:?}"));
+    }
+    if normalize_minmax {
+        rmbg14_mask(values, shape[3] as usize, shape[2] as usize, output_size)
+    } else {
+        probability_mask(values, shape[3] as usize, shape[2] as usize, output_size, |value| value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,5 +401,18 @@ mod tests {
         let mask = birefnet_mask(&[-8.0, 8.0, -8.0, 8.0], 2, 2, 2).unwrap();
         assert!(mask[0] < 2);
         assert!(mask[1] > 200);
+    }
+
+    #[test]
+    fn rmbg14_normalizes_the_model_range() {
+        let mask = rmbg14_mask(&[-2.0, 0.0, 1.0, 2.0], 2, 2, 2).unwrap();
+        assert_eq!(mask[0], 0);
+        assert_eq!(mask[3], 255);
+    }
+
+    #[test]
+    fn rmbg20_preserves_probability_values() {
+        let mask = probability_mask(&[0.0, 0.25, 0.5, 1.0], 2, 2, 2, |value| value).unwrap();
+        assert_eq!(mask, vec![0, 64, 128, 255]);
     }
 }

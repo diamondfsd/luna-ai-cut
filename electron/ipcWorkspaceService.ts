@@ -30,7 +30,7 @@ import {
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
 import { getModelCacheStatus, loadModel, loadSamModel, type ModelId } from './modelLoader'
-import { AUTOMATIC_SEGMENTATION_TARGETS, automaticSegmentationTarget, isSamSegmentationModel, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
+import { AUTOMATIC_SEGMENTATION_TARGETS, automaticSegmentationTarget, isSamSegmentationModel, modelForSegmentationRequest, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { segmentSamInWorker } from './samSegmentationService'
 import { segmentSemanticInWorker } from './semanticSegmentationService'
 import { segmentSpecializedInWorker } from './specializedSegmentationService'
@@ -242,7 +242,7 @@ export function register(): void {
     const target = request.targetId ? automaticSegmentationTarget(request.targetId) : undefined
     if (request.targetId && !target) throw new Error('自动选择类型无效')
     const targetClassId = target?.classId ?? request.targetClassId
-    const modelId: SegmentationModelId = target?.modelId ?? request.modelId ?? 'segformer-b0-ade20k'
+    const modelId = modelForSegmentationRequest(target?.id, request.modelId)
     const finishForegroundSegmentation = beginForegroundSegmentation(modelId)
     const task = segmentationTasks.begin(event.sender.id, requestId)
     const { signal } = task.controller
@@ -328,7 +328,7 @@ export function register(): void {
       ? `scale=${samWidth}:${samHeight}:flags=bilinear,pad=1024:1024:0:0:color=black`
       : specializedDefinition?.backend === 'yolo26-seg'
         ? `scale=${yoloWidth}:${yoloHeight}:flags=bilinear,pad=640:640:${yoloPadX}:${yoloPadY}:color=0x727272`
-        : specializedDefinition?.backend === 'birefnet-general-lite'
+        : specializedDefinition
           ? 'scale=1024:1024:flags=bilinear'
           : `scale=${semanticInputSize}:${semanticInputSize}:flags=bilinear`
     const { stdout } = await execFileAsync(getFfmpegPath(), [
