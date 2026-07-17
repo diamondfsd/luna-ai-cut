@@ -130,6 +130,7 @@ export interface LunaApi {
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     getSegmentationModelStatus(modelId: SegmentationModelId): Promise<WorkspaceSegmentationModelStatus>
+    prepareSegmentationModels(modelIds: SegmentationModelId[]): Promise<void>
     segmentImage(request: WorkspaceSegmentationRequest): Promise<{
       requestId: string
       width: number

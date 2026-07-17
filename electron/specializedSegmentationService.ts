@@ -36,12 +36,21 @@ function onnxWorkerLaunch(): SpecializedWorkerLaunch {
 }
 
 function mpsWorkerLaunch(): SpecializedWorkerLaunch | null {
-  const python = process.env.LUNA_BIREFNET_MPS_PYTHON
-  if (app.isPackaged || process.platform !== 'darwin' || process.arch !== 'arm64' || !python) return null
+  if (process.platform !== 'darwin' || process.arch !== 'arm64') return null
   const appRoot = process.env.APP_ROOT ?? join(import.meta.dirname, '..')
+  const overridePython = process.env.LUNA_BIREFNET_MPS_PYTHON
+  if (overridePython) {
+    return {
+      executable: overridePython,
+      args: [process.env.LUNA_BIREFNET_MPS_WORKER ?? join(appRoot, 'scripts', 'birefnet-mps-worker.py'), '--server'],
+    }
+  }
+  const sidecarRoot = app.isPackaged
+    ? join(process.resourcesPath, 'birefnet-mps-sidecar')
+    : join(appRoot, 'release', 'experiments', 'birefnet-mps-sidecar')
   return {
-    executable: python,
-    args: [join(appRoot, 'scripts', 'birefnet-mps-worker.py'), '--server'],
+    executable: join(sidecarRoot, 'birefnet-mps-worker'),
+    args: ['--server'],
   }
 }
 

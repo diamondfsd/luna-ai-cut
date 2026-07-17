@@ -57,17 +57,22 @@ fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
         return textureSample(mask_texture, src_sampler, tex_coord).r;
     }
     let dimensions = vec2<f32>(textureDimensions(mask_texture));
-    let offset = vec2<f32>(feather_px) / max(dimensions, vec2<f32>(1.0));
-    var value = textureSample(mask_texture, src_sampler, tex_coord).r * 4.0;
-    value += textureSample(mask_texture, src_sampler, tex_coord + vec2<f32>(offset.x, 0.0)).r * 2.0;
-    value += textureSample(mask_texture, src_sampler, tex_coord - vec2<f32>(offset.x, 0.0)).r * 2.0;
-    value += textureSample(mask_texture, src_sampler, tex_coord + vec2<f32>(0.0, offset.y)).r * 2.0;
-    value += textureSample(mask_texture, src_sampler, tex_coord - vec2<f32>(0.0, offset.y)).r * 2.0;
-    value += textureSample(mask_texture, src_sampler, tex_coord + offset).r;
-    value += textureSample(mask_texture, src_sampler, tex_coord - offset).r;
-    value += textureSample(mask_texture, src_sampler, tex_coord + vec2<f32>(offset.x, -offset.y)).r;
-    value += textureSample(mask_texture, src_sampler, tex_coord + vec2<f32>(-offset.x, offset.y)).r;
-    return value / 16.0;
+    let step = vec2<f32>(feather_px * 0.5) / max(dimensions, vec2<f32>(1.0));
+    var value = 0.0;
+    var total_weight = 0.0;
+    for (var y = -2; y <= 2; y = y + 1) {
+        let ay = abs(y);
+        let wy = select(select(6.0, 4.0, ay == 1), 1.0, ay == 2);
+        for (var x = -2; x <= 2; x = x + 1) {
+            let ax = abs(x);
+            let wx = select(select(6.0, 4.0, ax == 1), 1.0, ax == 2);
+            let weight = wx * wy;
+            let sample_offset = vec2<f32>(f32(x), f32(y)) * step;
+            value += textureSample(mask_texture, src_sampler, tex_coord + sample_offset).r * weight;
+            total_weight += weight;
+        }
+    }
+    return value / total_weight;
 }
 
 @fragment

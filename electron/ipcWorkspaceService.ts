@@ -30,7 +30,7 @@ import {
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
 import { getModelCacheStatus, loadModel, loadSamModel, type ModelId } from './modelLoader'
-import { automaticSegmentationTarget, isSamSegmentationModel, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
+import { AUTOMATIC_SEGMENTATION_TARGETS, automaticSegmentationTarget, isSamSegmentationModel, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { segmentSamInWorker } from './samSegmentationService'
 import { segmentSemanticInWorker } from './semanticSegmentationService'
 import { segmentSpecializedInWorker } from './specializedSegmentationService'
@@ -220,6 +220,12 @@ export function register(): void {
   })
   ipcMain.handle('workspace:getSegmentationModelStatus', async (_event, modelId: SegmentationModelId) => {
     return getModelCacheStatus(modelId)
+  })
+  ipcMain.handle('workspace:prepareSegmentationModels', async (_event, modelIds: SegmentationModelId[]) => {
+    if (!Array.isArray(modelIds)) throw new Error('自动选择模型列表无效')
+    const automaticModelIds = new Set<SegmentationModelId>(AUTOMATIC_SEGMENTATION_TARGETS.map((target) => target.modelId))
+    const uniqueModelIds = [...new Set(modelIds)].filter((modelId) => automaticModelIds.has(modelId))
+    for (const modelId of uniqueModelIds) await loadModel(modelId as ModelId)
   })
   ipcMain.handle('workspace:cancelSegmentation', (event, requestId: string) => {
     if (typeof requestId !== 'string' || requestId.length === 0) return false
