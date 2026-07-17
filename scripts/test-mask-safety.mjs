@@ -59,6 +59,7 @@ try {
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
     'src/workspace/mask/maskModelMode.ts',
+    'src/shared/segmentationModels.ts',
     'src/workspace/color/colorMaskLayerOperations.ts',
     'src/workspace/shared/workspaceProjectPipeline.ts',
   ])
@@ -71,6 +72,7 @@ try {
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
   const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
+  const segmentationModels = await import(pathToFileURL(path.join(temporaryRoot, 'src/shared/segmentationModels.js')))
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
   const { createDefaultPipeline, mergePipeline } = pipelineModule
@@ -223,6 +225,12 @@ try {
   assert.equal(modelMode.modelForAutomaticSelection('slimsam-50-uniform'), 'segformer-b0-ade20k')
   assert.equal(modelMode.modelForAutomaticSelection('sam-vit-b'), 'segformer-b2-ade20k')
   assert.equal(modelMode.modelForAutomaticSelection('segformer-b3-ade20k'), 'segformer-b3-ade20k')
+
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-2.0-fp16'), 'rmbg-2.0-fp16')
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'birefnet-general-lite')
+  assert.equal(segmentationModels.modelForSegmentationRequest('person', 'rmbg-1.4'), 'yolo26s-seg')
+  assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'segformer-b3-ade20k'), 'segformer-b3-ade20k')
 
   assert.equal(layerOperations.normalizeColorMaskName('  天空细节  ', '原名称'), '天空细节')
   assert.equal(layerOperations.normalizeColorMaskName('   ', '原名称'), '原名称', 'blank names must keep the original')
