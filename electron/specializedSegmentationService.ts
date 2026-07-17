@@ -8,11 +8,9 @@ import {
 } from './specializedWorkerClient.js'
 import {
   runSpecializedWorkerAttempt,
-  runSpecializedWorkerWithFallback,
 } from './specializedSegmentationAttempt.js'
-import { getPreparedBiRefNetMpsResources } from './birefNetMpsResourceService.js'
 
-export type SpecializedSegmentationBackend = 'yolo26-seg' | 'birefnet-general-lite' | 'rmbg-1.4'
+export type SpecializedSegmentationBackend = 'yolo26-seg' | 'rmbg-1.4' | 'u2net'
 
 interface SpecializedSegmentationInput {
   backend: SpecializedSegmentationBackend
@@ -36,48 +34,10 @@ function onnxWorkerLaunch(): SpecializedWorkerLaunch {
   }
 }
 
-function mpsWorkerLaunch(): SpecializedWorkerLaunch | null {
-  if (process.platform !== 'darwin' || process.arch !== 'arm64') return null
-  const appRoot = process.env.APP_ROOT ?? join(import.meta.dirname, '..')
-  const overridePython = process.env.LUNA_BIREFNET_MPS_PYTHON
-  if (overridePython) {
-    return {
-      executable: overridePython,
-      args: [process.env.LUNA_BIREFNET_MPS_WORKER ?? join(appRoot, 'scripts', 'birefnet-mps-worker.py'), '--server'],
-    }
-  }
-  const prepared = getPreparedBiRefNetMpsResources()
-  if (prepared) {
-    return {
-      executable: join(prepared.runtimeRoot, 'birefnet-mps-worker'),
-      args: ['--server'],
-      env: {
-        LUNA_BIREFNET_MPS_MODEL: prepared.modelRoot,
-        HF_HUB_OFFLINE: '1',
-        TRANSFORMERS_OFFLINE: '1',
-      },
-    }
-  }
-  if (app.isPackaged) return null
-  const sidecarRoot = app.isPackaged
-    ? join(process.resourcesPath, 'birefnet-mps-sidecar')
-    : join(appRoot, 'release', 'experiments', 'birefnet-mps-sidecar')
-  return {
-    executable: join(sidecarRoot, 'birefnet-mps-worker'),
-    args: ['--server'],
-  }
-}
-
 const onnxWorker = new SpecializedWorkerClient(onnxWorkerLaunch)
-const mpsWorker = new SpecializedWorkerClient(() => {
-  const launch = mpsWorkerLaunch()
-  if (!launch) throw new Error('MPS 工作进程未配置')
-  return launch
-})
 
 export function shutdownSpecializedSegmentationWorker(): void {
   onnxWorker.shutdown()
-  mpsWorker.shutdown()
 }
 
 export async function segmentSpecializedInWorker(
@@ -90,8 +50,7 @@ export async function segmentSpecializedInWorker(
   sessionLoadMs: number
   workerInferenceMs: number
   sessionReused: boolean
-  executionBackend: 'onnx-cpu' | 'pytorch-mps'
-  fallbackReason?: string
+  executionBackend: 'onnx-cpu'
 }> {
   const directory = await mkdtemp(join(tmpdir(), 'luna-specialized-'))
   const inputPath = join(directory, 'input.rgb')
@@ -110,39 +69,13 @@ export async function segmentSpecializedInWorker(
       padY: input.padY,
       outputSize: input.outputSize,
     }
-    let executionBackend: 'onnx-cpu' | 'pytorch-mps' = 'onnx-cpu'
-    let fallbackReason: string | undefined
-    const runAttempt = (worker: SpecializedWorkerClient) => runSpecializedWorkerAttempt(
-      worker,
+    const attempt = await runSpecializedWorkerAttempt(
+      onnxWorker,
       command,
       outputPath,
       input.outputSize * input.outputSize,
       signal,
     )
-    let attempt: Awaited<ReturnType<typeof runAttempt>>
-    if (input.backend === 'birefnet-general-lite' && mpsWorkerLaunch()) {
-      const outcome = await runSpecializedWorkerWithFallback(
-        async () => {
-          const result = await runAttempt(mpsWorker)
-          executionBackend = 'pytorch-mps'
-          return result
-        },
-        async () => {
-          mpsWorker.shutdown()
-          return await runAttempt(onnxWorker)
-        },
-        signal,
-      )
-      attempt = outcome.attempt
-      fallbackReason = outcome.fallbackReason
-      if (fallbackReason) {
-        executionBackend = 'onnx-cpu'
-      } else {
-        executionBackend = 'pytorch-mps'
-      }
-    } else {
-      attempt = await runAttempt(onnxWorker)
-    }
     return {
       width: input.outputSize,
       height: input.outputSize,
@@ -150,8 +83,7 @@ export async function segmentSpecializedInWorker(
       sessionLoadMs: attempt.result.sessionLoadMs,
       workerInferenceMs: attempt.result.inferenceMs,
       sessionReused: attempt.result.sessionReused,
-      executionBackend,
-      fallbackReason,
+      executionBackend: 'onnx-cpu',
     }
   } finally {
     await rm(directory, { recursive: true, force: true })

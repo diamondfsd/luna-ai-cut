@@ -181,6 +181,7 @@ fn run() -> Result<(), String> {
             specialized_segmentation::segment_birefnet(&args[2], &rgb, output_size)?
         }
         "rmbg-1.4" => specialized_segmentation::segment_rmbg(&args[2], &rgb, output_size)?,
+        "silueta" => specialized_segmentation::segment_silueta(&args[2], &rgb, output_size)?,
         _ => return Err("不支持的专用分割模型".to_string()),
     };
     if mask.len() != output_size * output_size {

@@ -32,9 +32,8 @@ import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailC
 import { getModelCacheStatus, loadModel, loadSamModel, type ModelId } from './modelLoader'
 import { AUTOMATIC_SEGMENTATION_TARGETS, automaticSegmentationTarget, isSamSegmentationModel, modelForSegmentationRequest, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
 import { segmentSamInWorker } from './samSegmentationService'
-import { segmentSemanticInWorker } from './semanticSegmentationService'
+import { prepareSemanticRefinementGuide, segmentSemanticInWorker } from './semanticSegmentationService'
 import { segmentSpecializedInWorker } from './specializedSegmentationService'
-import { prepareBiRefNetMpsResources } from './birefNetMpsResourceService'
 import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 import { beginForegroundSegmentation } from './segmentationModelPrefetchService'
@@ -274,22 +273,6 @@ export function register(): void {
     })
     if (isSam) logMainInfo('[SAM] 智能选择开始')
     reportProgress('model', '正在准备模型', null)
-    let mpsResourcesReady = false
-    if (specializedDefinition?.backend === 'birefnet-general-lite') {
-      try {
-        const prepared = await prepareBiRefNetMpsResources(
-          (progress) => reportProgress('model', progress.label, Math.round(progress.percent * 0.6)),
-          signal,
-        )
-        mpsResourcesReady = prepared !== null
-      } catch (error) {
-        if (signal.aborted) throw error
-        logMainWarn('[Mask] MPS 扩展准备失败，将使用兼容模式', {
-          requestId,
-          reason: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
     const model = isSam
       ? await loadSamModel(modelId, (progress) => reportProgress(
         'model',
@@ -298,12 +281,10 @@ export function register(): void {
       ), signal)
       : await loadModel(modelId as ModelId, (progress) => {
         const ratio = progress.totalBytes > 0 ? progress.completedBytes / progress.totalBytes : 0
-        const percentStart = mpsResourcesReady ? 60 : 0
-        const compatibilityLabel = mpsResourcesReady ? '兼容模型' : '模型'
         reportProgress(
           'model',
-          progress.completedBytes === progress.totalBytes ? `正在校验${compatibilityLabel}` : `正在下载${compatibilityLabel}`,
-          Math.round(percentStart + ratio * (100 - percentStart)),
+          progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
+          Math.round(ratio * 100),
         )
       }, signal)
     signal.throwIfAborted()
@@ -313,7 +294,7 @@ export function register(): void {
     const decodeStartedAt = performance.now()
     const semanticDefinition = isSam || specializedDefinition ? null : SEGMENTATION_MODELS.find((item) => item.id === modelId)
     const semanticInputSize = semanticDefinition?.inputSize ?? 512
-    const sourceSize = isSam || specializedDefinition ? await probeDisplayResolution(filePath) : null
+    const sourceSize = await probeDisplayResolution(filePath)
     const samScale = sourceSize ? Math.min(1, 1024 / Math.max(sourceSize.width, sourceSize.height)) : 1
     const samWidth = sourceSize ? Math.max(1, Math.round(sourceSize.width * samScale)) : 512
     const samHeight = sourceSize ? Math.max(1, Math.round(sourceSize.height * samScale)) : 512
@@ -329,17 +310,23 @@ export function register(): void {
       : specializedDefinition?.backend === 'yolo26-seg'
         ? `scale=${yoloWidth}:${yoloHeight}:flags=bilinear,pad=640:640:${yoloPadX}:${yoloPadY}:color=0x727272`
         : specializedDefinition
-          ? 'scale=1024:1024:flags=bilinear'
+          ? `scale=${specializedDefinition.inputSize}:${specializedDefinition.inputSize}:flags=bilinear`
           : `scale=${semanticInputSize}:${semanticInputSize}:flags=bilinear`
-    const { stdout } = await execFileAsync(getFfmpegPath(), [
-      '-v', 'error',
-      '-i', filePath,
-      '-vf', filter,
-      '-frames:v', '1',
-      '-f', 'rawvideo',
-      '-pix_fmt', 'rgb24',
-      'pipe:1',
-    ], { encoding: 'buffer', maxBuffer: 1024 * 1024 * 3 + 1024, signal })
+    const semanticGuidePromise = semanticDefinition
+      ? prepareSemanticRefinementGuide(filePath, sourceSize, signal)
+      : Promise.resolve(null)
+    const [{ stdout }, semanticGuide] = await Promise.all([
+      execFileAsync(getFfmpegPath(), [
+        '-v', 'error',
+        '-i', filePath,
+        '-vf', filter,
+        '-frames:v', '1',
+        '-f', 'rawvideo',
+        '-pix_fmt', 'rgb24',
+        'pipe:1',
+      ], { encoding: 'buffer', maxBuffer: 1024 * 1024 * 3 + 1024, signal }),
+      semanticGuidePromise,
+    ])
     signal.throwIfAborted()
     const imagePrepareMs = performance.now() - decodeStartedAt
     const inferenceStartedAt = performance.now()
@@ -355,8 +342,8 @@ export function register(): void {
         backend: specializedDefinition.backend,
         modelPath: model.path,
         rgb,
-        scaledWidth: specializedDefinition.backend === 'yolo26-seg' ? yoloWidth : 1024,
-        scaledHeight: specializedDefinition.backend === 'yolo26-seg' ? yoloHeight : 1024,
+        scaledWidth: specializedDefinition.backend === 'yolo26-seg' ? yoloWidth : specializedDefinition.inputSize,
+        scaledHeight: specializedDefinition.backend === 'yolo26-seg' ? yoloHeight : specializedDefinition.inputSize,
         padX: specializedDefinition.backend === 'yolo26-seg' ? yoloPadX : 0,
         padY: specializedDefinition.backend === 'yolo26-seg' ? yoloPadY : 0,
         outputSize: 512,
@@ -378,6 +365,7 @@ export function register(): void {
         pointY: point?.y ?? 0.5,
         targetClassId: nativeTargetClassId,
         inputSize: semanticInputSize,
+        guide: semanticGuide ?? undefined,
       }, signal)
     signal.throwIfAborted()
     const inferenceMs = performance.now() - inferenceStartedAt

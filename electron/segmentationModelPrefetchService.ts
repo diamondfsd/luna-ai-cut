@@ -1,5 +1,4 @@
 import type { SegmentationModelId } from '../src/shared/segmentationModels.js'
-import { prepareBiRefNetMpsResources } from './birefNetMpsResourceService.js'
 import { logMainInfo, logMainWarn } from './loggerService.js'
 import { loadModel, type ModelId } from './modelLoader.js'
 
@@ -11,14 +10,9 @@ interface PrefetchItem {
 
 const PREFETCH_ITEMS: PrefetchItem[] = [
   {
-    modelId: 'birefnet-general-lite',
-    label: '主体 MPS 资源',
-    load: (signal) => prepareBiRefNetMpsResources(undefined, signal),
-  },
-  {
-    modelId: 'birefnet-general-lite',
-    label: '主体兼容模型',
-    load: (signal) => loadModel('birefnet-general-lite', undefined, signal),
+    modelId: 'rmbg-1.4',
+    label: '主体模型',
+    load: (signal) => loadModel('rmbg-1.4', undefined, signal),
   },
   {
     modelId: 'yolo26s-seg',

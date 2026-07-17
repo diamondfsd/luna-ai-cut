@@ -2,6 +2,8 @@ use ort::{session::Session, value::Tensor};
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 
+use crate::segmentation_refinement::{refine_mask, RefinementGuide};
+
 const DEFAULT_INPUT_SIZE: usize = 512;
 const CLASS_COUNT: usize = 150;
 const WATER_CLASSES: [usize; 5] = [21, 26, 60, 109, 128];
@@ -201,99 +203,7 @@ fn maskformer_target_probability(
         .collect()
 }
 
-fn dilate_selection(selected: &[bool], output_size: usize) -> Vec<bool> {
-    let mut dilated = selected.to_vec();
-    for y in 0..output_size {
-        for x in 0..output_size {
-            if !selected[y * output_size + x] {
-                continue;
-            }
-            for offset_y in -1i32..=1 {
-                for offset_x in -1i32..=1 {
-                    let next_x = x as i32 + offset_x;
-                    let next_y = y as i32 + offset_y;
-                    if next_x >= 0
-                        && next_x < output_size as i32
-                        && next_y >= 0
-                        && next_y < output_size as i32
-                    {
-                        dilated[next_y as usize * output_size + next_x as usize] = true;
-                    }
-                }
-            }
-        }
-    }
-    dilated
-}
-
-fn guided_upscale(
-    probability: &[f32],
-    selection: &[bool],
-    rgb: &[u8],
-    input_size: usize,
-    output_size: usize,
-) -> Vec<u8> {
-    let selection = dilate_selection(selection, output_size);
-    let mut output = vec![0u8; input_size * input_size];
-    let scale = input_size as f32 / output_size as f32;
-    let color_sigma = 0.12f32;
-    for y in 0..input_size {
-        for x in 0..input_size {
-            let low_x = (x as f32 + 0.5) / scale - 0.5;
-            let low_y = (y as f32 + 0.5) / scale - 0.5;
-            let center = (y * input_size + x) * 3;
-            let center_color = [
-                rgb[center] as f32 / 255.0,
-                rgb[center + 1] as f32 / 255.0,
-                rgb[center + 2] as f32 / 255.0,
-            ];
-            let mut weighted = 0.0;
-            let mut weight_sum = 0.0;
-            for offset_y in -2i32..=2 {
-                for offset_x in -2i32..=2 {
-                    let sample_x =
-                        (low_x.floor() as i32 + offset_x).clamp(0, output_size as i32 - 1) as usize;
-                    let sample_y =
-                        (low_y.floor() as i32 + offset_y).clamp(0, output_size as i32 - 1) as usize;
-                    let low_index = sample_y * output_size + sample_x;
-                    if !selection[low_index] {
-                        continue;
-                    }
-                    let guide_x = ((sample_x as f32 + 0.5) * scale)
-                        .floor()
-                        .clamp(0.0, (input_size - 1) as f32)
-                        as usize;
-                    let guide_y = ((sample_y as f32 + 0.5) * scale)
-                        .floor()
-                        .clamp(0.0, (input_size - 1) as f32)
-                        as usize;
-                    let guide = (guide_y * input_size + guide_x) * 3;
-                    let color_distance = (0..3)
-                        .map(|channel| {
-                            let difference =
-                                center_color[channel] - rgb[guide + channel] as f32 / 255.0;
-                            difference * difference
-                        })
-                        .sum::<f32>();
-                    let spatial_x = sample_x as f32 - low_x;
-                    let spatial_y = sample_y as f32 - low_y;
-                    let spatial_weight =
-                        (-(spatial_x * spatial_x + spatial_y * spatial_y) / 4.5).exp();
-                    let color_weight = (-color_distance / (2.0 * color_sigma * color_sigma)).exp();
-                    let weight = spatial_weight * color_weight;
-                    weighted += probability[low_index] * weight;
-                    weight_sum += weight;
-                }
-            }
-            let value = weighted / weight_sum.max(f32::EPSILON);
-            let soft = ((value - 0.12) / (0.55 - 0.12)).clamp(0.0, 1.0);
-            let smooth = soft * soft * (3.0 - 2.0 * soft);
-            output[y * input_size + x] = (smooth * 255.0).round() as u8;
-        }
-    }
-    output
-}
-
+#[allow(dead_code)]
 pub fn segment(
     model_path: String,
     rgb: Vec<u8>,
@@ -301,6 +211,26 @@ pub fn segment(
     point_y: f64,
     target_class_id: Option<u32>,
     input_size: Option<u32>,
+) -> Result<SegmentationResult, String> {
+    segment_with_guide(
+        model_path,
+        rgb,
+        point_x,
+        point_y,
+        target_class_id,
+        input_size,
+        None,
+    )
+}
+
+pub fn segment_with_guide(
+    model_path: String,
+    rgb: Vec<u8>,
+    point_x: f64,
+    point_y: f64,
+    target_class_id: Option<u32>,
+    input_size: Option<u32>,
+    guide: Option<RefinementGuide>,
 ) -> Result<SegmentationResult, String> {
     let input_size = input_size.unwrap_or(DEFAULT_INPUT_SIZE as u32) as usize;
     if !(256..=1024).contains(&input_size) {
@@ -422,17 +352,17 @@ pub fn segment(
             };
         (output_size, class_id, probability, selected)
     };
+    let guide = guide.unwrap_or(RefinementGuide {
+        rgb,
+        width: input_size,
+        height: input_size,
+    });
+    let bytes = refine_mask(&probability, &selected, output_size, &guide)?;
     Ok(SegmentationResult {
-        width: input_size as u32,
-        height: input_size as u32,
+        width: guide.width as u32,
+        height: guide.height as u32,
         class_id: class_id as u32,
-        bytes: guided_upscale(
-            &probability,
-            &selected,
-            &rgb,
-            input_size,
-            output_size,
-        )
+        bytes,
     })
 }
 
@@ -466,24 +396,5 @@ mod tests {
     fn water_classes_are_grouped() {
         assert_eq!(selected_classes(26), WATER_CLASSES);
         assert_eq!(selected_classes(2), vec![2]);
-    }
-
-    #[test]
-    fn guided_upscale_keeps_soft_boundary_values() {
-        let input_size = 512;
-        let output_size = 128;
-        let mut probability = vec![0.0f32; output_size * output_size];
-        let mut selection = vec![false; output_size * output_size];
-        for y in 0..output_size {
-            for x in 0..output_size / 2 {
-                probability[y * output_size + x] = 0.9;
-                selection[y * output_size + x] = true;
-            }
-        }
-        let rgb = vec![128u8; input_size * input_size * 3];
-        let mask = guided_upscale(&probability, &selection, &rgb, input_size, output_size);
-        assert!(mask.iter().any(|value| *value > 0 && *value < 255));
-        assert!(mask[input_size / 2 * input_size + input_size / 4] > 240);
-        assert_eq!(mask[input_size / 2 * input_size + input_size * 3 / 4], 0);
     }
 }
