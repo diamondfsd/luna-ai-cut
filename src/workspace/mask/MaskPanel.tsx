@@ -26,8 +26,8 @@ const CATEGORY_TARGETS = AUTOMATIC_SEGMENTATION_TARGETS.filter((target) => targe
 const SUBJECT_TARGET = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === 'subject')!
 const SUBJECT_MODEL_STORAGE_KEY = 'workspace_subject_segmentation_model'
 const SUBJECT_MODEL_OPTIONS = [
-  { value: 'birefnet-general-lite', label: 'BiRefNet Lite（当前）' },
-  { value: 'rmbg-1.4', label: 'RMBG 1.4' },
+  { value: 'rmbg-1.4', label: 'RMBG 1.4（当前）' },
+  { value: 'u2net', label: 'U²-Net' },
 ]
 function formatModelSize(sizeBytes: number): string {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
@@ -43,7 +43,7 @@ export function MaskPanel() {
   const [selectionMode, setSelectionMode] = useState<'target' | 'point'>(() => settings?.modelId && isSamSegmentationModel(settings.modelId) ? 'point' : 'target')
   const [subjectModelId, setSubjectModelId] = useState<SubjectSegmentationModelId>(() => {
     const saved = localStorage.getItem(SUBJECT_MODEL_STORAGE_KEY)
-    return saved && isSubjectSegmentationModel(saved) ? saved : 'birefnet-general-lite'
+    return saved && isSubjectSegmentationModel(saved) ? saved : 'rmbg-1.4'
   })
 
   useEffect(() => {

@@ -2,6 +2,7 @@ use ort::{session::Session, value::Tensor};
 
 const YOLO_SIZE: usize = 640;
 const BIREFNET_SIZE: usize = 1024;
+const SILUETA_SIZE: usize = 320;
 
 pub fn preprocess_yolo(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(rgb, YOLO_SIZE, None)
@@ -17,6 +18,14 @@ pub fn preprocess_birefnet(rgb: &[u8]) -> Result<Vec<f32>, String> {
 
 pub fn preprocess_rmbg14(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(rgb, BIREFNET_SIZE, Some(([0.5; 3], [1.0; 3])))
+}
+
+pub fn preprocess_silueta(rgb: &[u8]) -> Result<Vec<f32>, String> {
+    preprocess(
+        rgb,
+        SILUETA_SIZE,
+        Some(([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])),
+    )
 }
 
 fn preprocess(
@@ -169,7 +178,7 @@ fn probability_mask(
         .collect())
 }
 
-fn rmbg14_mask(
+fn normalized_subject_mask(
     values: &[f32],
     width: usize,
     height: usize,
@@ -179,9 +188,11 @@ fn rmbg14_mask(
     let maximum = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let range = maximum - minimum;
     if !minimum.is_finite() || !maximum.is_finite() || range <= f32::EPSILON {
-        return Err("RMBG 1.4 返回了无效蒙版".to_string());
+        return Err("主体模型返回了无效蒙版".to_string());
     }
-    probability_mask(values, width, height, output_size, |value| (value - minimum) / range)
+    probability_mask(values, width, height, output_size, |value| {
+        (value - minimum) / range
+    })
 }
 
 fn session(model_path: &str) -> Result<Session, String> {
@@ -200,6 +211,7 @@ pub enum SpecializedSession {
     Yolo(Session),
     BiRefNet(Session),
     Rmbg14(Session),
+    Silueta(Session),
 }
 
 impl SpecializedSession {
@@ -208,6 +220,7 @@ impl SpecializedSession {
             "yolo26-seg" => Ok(Self::Yolo(session(model_path)?)),
             "birefnet-general-lite" => Ok(Self::BiRefNet(session(model_path)?)),
             "rmbg-1.4" => Ok(Self::Rmbg14(session(model_path)?)),
+            "silueta" => Ok(Self::Silueta(session(model_path)?)),
             _ => Err("不支持的专用分割模型".to_string()),
         }
     }
@@ -233,6 +246,7 @@ impl SpecializedSession {
             ),
             Self::BiRefNet(session) => segment_birefnet_with_session(session, rgb, output_size),
             Self::Rmbg14(session) => segment_rmbg_with_session(session, rgb, output_size),
+            Self::Silueta(session) => segment_silueta_with_session(session, rgb, output_size),
         }
     }
 }
@@ -358,7 +372,9 @@ fn segment_rmbg_with_session(
         .map_err(|error| format!("RMBG 主体识别失败: {error}"))?;
     let (_, output) = outputs
         .iter()
-        .find(|(_, output)| output.shape().as_ref() == [1, 1, BIREFNET_SIZE as i64, BIREFNET_SIZE as i64])
+        .find(|(_, output)| {
+            output.shape().as_ref() == [1, 1, BIREFNET_SIZE as i64, BIREFNET_SIZE as i64]
+        })
         .or_else(|| outputs.iter().find(|(_, output)| output.shape().len() == 4))
         .ok_or_else(|| "RMBG 缺少蒙版输出".to_string())?;
     let (shape, values) = output
@@ -367,7 +383,41 @@ fn segment_rmbg_with_session(
     if shape.len() != 4 || shape[0] != 1 || shape[1] != 1 {
         return Err(format!("RMBG 输出尺寸不兼容: {shape:?}"));
     }
-    rmbg14_mask(values, shape[3] as usize, shape[2] as usize, output_size)
+    normalized_subject_mask(values, shape[3] as usize, shape[2] as usize, output_size)
+}
+
+pub fn segment_silueta(
+    model_path: &str,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let mut session = session(model_path)?;
+    segment_silueta_with_session(&mut session, rgb, output_size)
+}
+
+fn segment_silueta_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let input = preprocess_silueta(rgb)?;
+    let tensor = Tensor::from_array(([1usize, 3, SILUETA_SIZE, SILUETA_SIZE], input))
+        .map_err(|error| format!("创建 Silueta 输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("Silueta 主体识别失败: {error}"))?;
+    let output = outputs
+        .iter()
+        .next()
+        .map(|(_, output)| output)
+        .ok_or_else(|| "Silueta 缺少蒙版输出".to_string())?;
+    let (shape, values) = output
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("读取 Silueta 输出失败: {error}"))?;
+    if shape.len() != 4 || shape[0] != 1 || shape[1] != 1 {
+        return Err(format!("Silueta 输出尺寸不兼容: {shape:?}"));
+    }
+    normalized_subject_mask(values, shape[3] as usize, shape[2] as usize, output_size)
 }
 
 #[cfg(test)]
@@ -391,8 +441,8 @@ mod tests {
     }
 
     #[test]
-    fn rmbg14_normalizes_the_model_range() {
-        let mask = rmbg14_mask(&[-2.0, 0.0, 1.0, 2.0], 2, 2, 2).unwrap();
+    fn subject_models_normalize_the_model_range() {
+        let mask = normalized_subject_mask(&[-2.0, 0.0, 1.0, 2.0], 2, 2, 2).unwrap();
         assert_eq!(mask[0], 0);
         assert_eq!(mask[3], 255);
     }

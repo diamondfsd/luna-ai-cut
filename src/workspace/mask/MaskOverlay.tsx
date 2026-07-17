@@ -31,6 +31,26 @@ function drawBrush(
   }
 }
 
+function sampleMaskBilinear(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  normalizedX: number,
+  normalizedY: number,
+): number {
+  const sourceX = Math.max(0, Math.min(width - 1, normalizedX * width - 0.5))
+  const sourceY = Math.max(0, Math.min(height - 1, normalizedY * height - 0.5))
+  const x0 = Math.floor(sourceX)
+  const y0 = Math.floor(sourceY)
+  const x1 = Math.min(width - 1, x0 + 1)
+  const y1 = Math.min(height - 1, y0 + 1)
+  const tx = sourceX - x0
+  const ty = sourceY - y0
+  const top = data[y0 * width + x0] * (1 - tx) + data[y0 * width + x1] * tx
+  const bottom = data[y1 * width + x0] * (1 - tx) + data[y1 * width + x1] * tx
+  return top * (1 - ty) + bottom * ty
+}
+
 export function MaskOverlay() {
   const canvas = useWorkspaceCanvas()
   const edit = useWorkspaceEdit()
@@ -84,12 +104,10 @@ export function MaskOverlay() {
     for (let y = 0; y < displaySize.height; y++) {
       for (let x = 0; x < displaySize.width; x++) {
         const source = displayToSource((x + 0.5) / displaySize.width, (y + 0.5) / displaySize.height)
-        const sourceX = Math.max(0, Math.min(mask.maskSize.width - 1, Math.floor(source.x * mask.maskSize.width)))
-        const sourceY = Math.max(0, Math.min(mask.maskSize.height - 1, Math.floor(source.y * mask.maskSize.height)))
         const outputIndex = y * displaySize.width + x
         const alpha = source.x < 0 || source.x > 1 || source.y < 0 || source.y > 1
           ? 0
-          : Math.round(data[sourceY * mask.maskSize.width + sourceX] * 0.55)
+          : Math.round(sampleMaskBilinear(data, mask.maskSize.width, mask.maskSize.height, source.x, source.y) * 0.55)
         image.data[outputIndex * 4] = 255
         image.data[outputIndex * 4 + 1] = 52
         image.data[outputIndex * 4 + 2] = 76
@@ -108,6 +126,7 @@ export function MaskOverlay() {
   if (!mask.editing || !mask.maskSize) return null
   const imageRect = canvas.imageRect
   const interactive = mask.brushActive || mask.semanticPicking
+  const effectiveBrushSize = mask.brushSize * Math.max(mask.maskSize.width, mask.maskSize.height) / 512
 
   const brushCursorDiameter = (() => {
     if (!cursorPoint) return mask.brushSize
@@ -125,7 +144,7 @@ export function MaskOverlay() {
       (stepY.y - center.y) * mask.maskSize.height,
     )
     const sourcePerPixel = Math.max(0.001, (sourcePerPixelX + sourcePerPixelY) / 2)
-    return Math.max(2, mask.brushSize / sourcePerPixel)
+    return Math.max(2, effectiveBrushSize / sourcePerPixel)
   })()
 
   function pointForEvent(event: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } {
@@ -143,7 +162,7 @@ export function MaskOverlay() {
     const point = pointForEvent(event)
     const previous = lastPointRef.current ?? point
     const distance = Math.hypot(point.x - previous.x, point.y - previous.y)
-    const radius = mask.brushSize / 2
+    const radius = effectiveBrushSize / 2
     const steps = Math.max(1, Math.ceil(distance / Math.max(1, radius * 0.3)))
     for (let step = 0; step <= steps; step++) {
       const ratio = step / steps
