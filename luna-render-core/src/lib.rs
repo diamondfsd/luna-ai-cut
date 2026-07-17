@@ -10,6 +10,7 @@ mod media;
 mod sam_core;
 pub mod sam_segmentation;
 mod segmentation;
+mod segmentation_refinement;
 #[cfg(target_os = "windows")]
 mod windows;
 

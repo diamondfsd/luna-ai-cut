@@ -96,21 +96,6 @@ export const SPECIALIZED_SEGMENTATION_MODELS = [
     licenseUrl: 'https://github.com/ultralytics/ultralytics/blob/main/LICENSE',
   },
   {
-    id: 'birefnet-general-lite',
-    backend: 'birefnet-general-lite',
-    name: 'BiRefNet General Lite',
-    description: '主体识别',
-    inputSize: 1024,
-    sizeBytes: 224_005_088,
-    url: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/runtime-resources-v1.1.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx',
-    mirrors: ['https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx'],
-    sha256: '5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333',
-    version: 'v1-epoch-232',
-    license: 'MIT',
-    source: 'https://github.com/ZhengPeng7/BiRefNet/releases/tag/v1',
-    licenseUrl: 'https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE',
-  },
-  {
     id: 'rmbg-1.4',
     backend: 'rmbg-1.4',
     name: 'RMBG 1.4',
@@ -124,6 +109,20 @@ export const SPECIALIZED_SEGMENTATION_MODELS = [
     license: 'Apache-2.0',
     source: 'https://modelscope.cn/models/briaai/RMBG-1.4',
     licenseUrl: 'https://huggingface.co/briaai/RMBG-1.4/blob/main/README.md',
+  },
+  {
+    id: 'u2net',
+    backend: 'u2net',
+    name: 'U²-Net',
+    description: '主体对比测试',
+    inputSize: 320,
+    sizeBytes: 175_997_641,
+    url: 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx',
+    sha256: '8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491',
+    version: 'rembg-v0.0.0',
+    license: 'Apache-2.0',
+    source: 'https://github.com/danielgatis/rembg#models',
+    licenseUrl: 'https://github.com/xuebinqin/U-2-Net/blob/master/LICENSE',
   },
 ] as const
 
@@ -213,11 +212,11 @@ export type SpecializedSegmentationModelId = typeof SPECIALIZED_SEGMENTATION_MOD
 export type SamSegmentationModelId = typeof SAM_MODELS[number]['id']
 export type SingleFileSegmentationModelId = SemanticSegmentationModelId | SpecializedSegmentationModelId
 export type SegmentationModelId = SingleFileSegmentationModelId | SamSegmentationModelId
-export type SubjectSegmentationModelId = 'birefnet-general-lite' | 'rmbg-1.4'
+export type SubjectSegmentationModelId = 'rmbg-1.4' | 'u2net'
 
 export const SUBJECT_SEGMENTATION_MODELS = SPECIALIZED_SEGMENTATION_MODELS.filter(
   (model): model is typeof SPECIALIZED_SEGMENTATION_MODELS[number] & { id: SubjectSegmentationModelId } =>
-    model.id === 'birefnet-general-lite' || model.id === 'rmbg-1.4',
+    model.id === 'rmbg-1.4' || model.id === 'u2net',
 )
 
 export function isSubjectSegmentationModel(id: string): id is SubjectSegmentationModelId {
@@ -249,7 +248,7 @@ export const AUTOMATIC_SEGMENTATION_TARGETS = [
   { id: 'sky', classId: 2, label: '天空', modelId: 'segformer-b5-ade20k' },
   { id: 'water', classId: 21, label: '水面', modelId: 'segformer-b5-ade20k' },
   { id: 'person', classId: 12, label: '人物', modelId: 'yolo26s-seg' },
-  { id: 'subject', classId: -1, label: '主体', modelId: 'birefnet-general-lite' },
+  { id: 'subject', classId: -1, label: '主体', modelId: 'rmbg-1.4' },
   { id: 'tree', classId: 4, label: '树木', modelId: 'segformer-b5-ade20k' },
   { id: 'building', classId: 1, label: '建筑', modelId: 'segformer-b5-ade20k' },
   { id: 'vehicle', classId: 20, label: '车辆', modelId: 'segformer-b5-ade20k' },

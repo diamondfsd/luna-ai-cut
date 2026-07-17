@@ -227,7 +227,8 @@ try {
   assert.equal(modelMode.modelForAutomaticSelection('segformer-b3-ade20k'), 'segformer-b3-ade20k')
 
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
-  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'birefnet-general-lite')
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'u2net'), 'u2net')
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest('person', 'rmbg-1.4'), 'yolo26s-seg')
   assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'segformer-b3-ade20k'), 'segformer-b3-ade20k')
 
