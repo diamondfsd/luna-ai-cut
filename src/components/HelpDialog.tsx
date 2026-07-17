@@ -5,6 +5,7 @@ import { Code2, ExternalLink, FileText, HelpCircle, Loader2, RefreshCw, Trash2, 
 import type { HotUpdateCheckResult, UpdateInfo } from '../shared/types'
 import { Button, Dialog } from '../ui'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog'
+import douyinQrCode from '../../public/my-douyin-qr-code.jpg'
 
 interface HelpDialogProps {
   children?: ReactNode
@@ -192,7 +193,7 @@ export function HelpDialog({ children }: HelpDialogProps) {
           <div className="help-douyin-section">
             <span className="help-section-label">关注抖音</span>
             <p className="help-douyin-desc">获取使用技巧、问题反馈和更新动态</p>
-            <img src="./my-douyin-qr-code.jpg" alt="抖音二维码" className="help-qr-code" />
+            <img src={douyinQrCode} alt="抖音二维码" className="help-qr-code" />
             <span className="help-douyin-id">抖音号：62542925</span>
           </div>
 

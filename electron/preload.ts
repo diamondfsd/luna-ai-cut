@@ -1,6 +1,5 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import type {
-  AiConfig,
   AppSettings,
   DeviceDebugApi,
   DeviceDebugEvent,
@@ -105,8 +104,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   openPath: (targetPath: string) => ipcRenderer.invoke('files:openPath', targetPath),
   openPhotosApp: () => ipcRenderer.invoke('files:openPhotosApp'),
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
-  aiChat: (config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) =>
-    ipcRenderer.invoke('ai:chat', config, systemPrompt, messages),
   readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),
   getWatermarkPath: (style: string, kind: 'image' | 'video') => ipcRenderer.invoke('luna:getWatermarkPath', style, kind) as Promise<{ filePath: string; width: number; height: number }>,
   getBorderLogoPath: (logoId: string) => ipcRenderer.invoke('luna:getBorderLogoPath', logoId) as Promise<string>,

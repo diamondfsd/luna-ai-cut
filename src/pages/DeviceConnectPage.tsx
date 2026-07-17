@@ -5,7 +5,7 @@ import type { AppSettings, ConnectionStatus, DeviceConnectionPhase, DeviceDefini
 import { Alert, Button } from '../ui'
 import { HelpDialog } from '../components/HelpDialog'
 import '../styles/wifi.css'
-import lunaIcon from '/luna-icon.png'
+import lunaIcon from '../../public/luna-icon.png'
 
 interface DeviceConnectPageProps {
   activeDevice?: DeviceDefinition
