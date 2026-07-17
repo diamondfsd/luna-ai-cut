@@ -79,8 +79,8 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
 }
 
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
-  { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
   { value: 'color', label: '调色与蒙版', icon: <SlidersHorizontal size={22} /> },
+  { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
