@@ -450,7 +450,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
               maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}
-              interactiveImageLayerIndexes={cropActive ? [] : undefined}
+              interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
               onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
               onViewportChange={syncCanvasMetrics}
