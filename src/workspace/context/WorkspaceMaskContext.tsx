@@ -11,57 +11,10 @@ import { createDefaultPipeline, type ColorMaskLayer } from '../shared/editPipeli
 import { createMaskOperation, isMatchingMaskOperation, isMatchingSegmentationRequest, type MaskOperation } from '../mask/maskOperationIdentity'
 import { modelForAutomaticSelection } from '../mask/maskModelMode'
 import { mergeCompletedColorMaskLayer, moveColorMaskLayer } from '../color/colorMaskLayerOperations'
+import { applyMaskSelectionOperation, hasUsableMask, resampleMask, type MaskSelectionOperation } from '../mask/maskSelectionOperations'
+import type { SegmentationPerformance, WorkspaceMaskValue } from './WorkspaceMaskContextTypes'
 
-export type MaskBrushMode = 'paint' | 'erase'
 export type { SegmentationModelId } from '../../shared/segmentationModels'
-
-export interface SegmentationPerformance {
-  modelLoadMs: number
-  imagePrepareMs: number
-  inferenceMs: number
-  totalMs: number
-}
-
-interface WorkspaceMaskValue {
-  available: boolean
-  editing: boolean
-  setEditing: (value: boolean) => void
-  brushMode: MaskBrushMode
-  setBrushMode: (value: MaskBrushMode) => void
-  brushActive: boolean
-  setBrushActive: (value: boolean) => void
-  brushSize: number
-  setBrushSize: (value: number) => void
-  showOverlay: boolean
-  setShowOverlay: (value: boolean) => void
-  maskData: Uint8Array | null
-  maskSize: { width: number; height: number } | null
-  busy: boolean
-  semanticPicking: boolean
-  setSemanticPicking: (value: boolean) => void
-  segmentationModel: SegmentationModelId
-  setSegmentationModel: (value: SegmentationModelId) => void
-  lastSegmentationPerformance: SegmentationPerformance | null
-  segmentationProgress: WorkspaceSegmentationProgress | null
-  segmentationError: string | null
-  clearSegmentationError: () => void
-  cancelSegmentation: () => void
-  activeLayerId: string | null
-  activeMask: ColorMaskLayer | null
-  setActiveLayerId: (id: string | null) => void
-  createMask: () => void
-  updateLayer: (id: string, patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'inverted' | 'blendMode' | 'color'>>) => void
-  updateActiveLayer: (patch: Partial<Pick<ColorMaskLayer, 'name' | 'enabled' | 'color'>>) => void
-  duplicateLayer: (id: string) => void
-  removeLayer: (id: string) => void
-  moveLayer: (id: string, direction: -1 | 1) => void
-  moveActiveLayer: (direction: -1 | 1) => void
-  commitMask: (data: Uint8Array) => Promise<void>
-  updateMaskSettings: (patch: { opacity?: number; inverted?: boolean; feather?: number }) => void
-  updateGroupedMaskSettings: (patch: { opacity?: number; feather?: number }, groupKey: string, finalize?: boolean) => void
-  removeMask: () => Promise<void>
-  generateSemanticMask: (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId, modelId?: SegmentationModelId) => Promise<void>
-}
 
 const WorkspaceMaskContext = createContext<WorkspaceMaskValue | null>(null)
 
@@ -81,21 +34,12 @@ function workingMaskSize(width: number, height: number): { width: number; height
   }
 }
 
-function hasUsableAutomaticMask(data: Uint8Array): boolean {
-  const requiredPixels = Math.max(16, Math.floor(data.length * 0.0005))
-  let selectedPixels = 0
-  for (const value of data) {
-    if (value >= 128 && ++selectedPixels >= requiredPixels) return true
-  }
-  return false
-}
-
 export function WorkspaceMaskProvider({ children, active }: { children: ReactNode; active: boolean }) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const { canUndo, canRedo, undo, redo } = edit
   const [editing, setEditing] = useState(false)
-  const [brushMode, setBrushMode] = useState<MaskBrushMode>('paint')
+  const [selectionOperation, setSelectionOperation] = useState<MaskSelectionOperation>('replace')
   const [brushActive, setBrushActive] = useState(false)
   const [brushSize, setBrushSize] = useState(36)
   const [showOverlay, setShowOverlay] = useState(true)
@@ -184,6 +128,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setBrushActive(false)
     setActiveLayerId(null)
     setSemanticPicking(false)
+    setSelectionOperation('replace')
     setShowOverlay(true)
     setBusy(false)
     setSegmentationProgress(null)
@@ -218,6 +163,33 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     window.addEventListener('keydown', handleUndoRedo, { capture: true })
     return () => window.removeEventListener('keydown', handleUndoRedo, { capture: true })
   }, [busy, canRedo, canUndo, editing, redo, undo])
+
+  useEffect(() => {
+    if (!editing) return
+    const handleToolShortcut = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable]')) return
+      if (event.code === 'KeyO') {
+        event.preventDefault()
+        setShowOverlay((visible) => !visible)
+        return
+      }
+      if (busy) return
+      if (event.code === 'KeyK' && !event.shiftKey) {
+        event.preventDefault()
+        setSemanticPicking(false)
+        setBrushActive(true)
+        return
+      }
+      if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
+        event.preventDefault()
+        const direction = event.code === 'BracketLeft' ? -1 : 1
+        setBrushSize((size) => Math.max(1, Math.min(100, size + direction * 4)))
+      }
+    }
+    window.addEventListener('keydown', handleToolShortcut, { capture: true })
+    return () => window.removeEventListener('keydown', handleToolShortcut, { capture: true })
+  }, [busy, editing])
 
   useEffect(() => {
     let canceled = false
@@ -381,6 +353,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setEditing(true)
     setBrushActive(false)
     setSemanticPicking(false)
+    setSelectionOperation('replace')
     if (maskSize) setMaskData(new Uint8Array(maskSize.width * maskSize.height))
   }, [maskSize])
 
@@ -398,6 +371,10 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     const operationAssetId = media.activeMedia.id
     const operationMediaPath = media.activeMedia.path
     const operationMask = activeMask
+    const operationSelectionMode = selectionOperation
+    const operationBaseMask = maskData && maskSize
+      ? resampleMask(maskData, maskSize.width, maskSize.height, maskSize.width, maskSize.height)
+      : null
     const requestId = crypto.randomUUID()
     const operation = beginOperation('segmentation', operationProjectId, operationAssetId, requestId)
     setBrushActive(false)
@@ -410,18 +387,22 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, point, modelId, targetId, targetClassId: target?.classId })
       if (result.requestId !== requestId || !isCurrentOperation(operation)) return
       setLastSegmentationPerformance(result.performance)
-      const data = new Uint8Array(result.bytes)
-      if (targetId !== undefined && !hasUsableAutomaticMask(data)) {
+      const generatedData = new Uint8Array(result.bytes)
+      if (targetId !== undefined && !hasUsableMask(generatedData)) {
         logger.warn('[Mask] 自动选择未找到有效区域', { requestId, targetId, modelId: result.modelId })
         setSegmentationError(`未找到${result.className}，可使用画笔手动选择`)
         return
       }
+      const baseData = operationBaseMask && maskSize
+        ? resampleMask(operationBaseMask, maskSize.width, maskSize.height, result.width, result.height)
+        : new Uint8Array(result.width * result.height)
+      const data = applyMaskSelectionOperation(baseData, generatedData, operationSelectionMode)
       const saved = await window.luna.workspace.saveColorMask(
         operationProjectId,
         operationAssetId,
         result.width,
         result.height,
-        result.bytes,
+        data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
         operationMask?.feather ?? 2,
       )
       if (!isCurrentOperation(operation)) return
@@ -463,7 +444,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     } finally {
       finishOperation(operation)
     }
-  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskSize, media.activeMedia, media.currentProject, segmentationModel])
+  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskData, maskSize, media.activeMedia, media.currentProject, segmentationModel, selectionOperation])
 
   const setSegmentationModel = useCallback((model: SegmentationModelId) => {
     setSegmentationModelState(model)
@@ -474,8 +455,8 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     available,
     editing,
     setEditing,
-    brushMode,
-    setBrushMode,
+    selectionOperation,
+    setSelectionOperation,
     brushActive,
     setBrushActive,
     brushSize,
@@ -509,7 +490,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushActive, brushMode, brushSize, busy, cancelSegmentation, clearSegmentationError, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, moveLayer, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushActive, brushSize, busy, cancelSegmentation, clearSegmentationError, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, moveLayer, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }
