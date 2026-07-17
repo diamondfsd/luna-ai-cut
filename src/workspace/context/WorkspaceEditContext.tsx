@@ -114,7 +114,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     initializePipeline,
   } = useEditPipeline()
 
-  const [activeTool, setActiveTool] = useState<WorkspaceTool>('filter')
+  const [activeTool, setActiveTool] = useState<WorkspaceTool>('color')
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [pipetteActive, setPipetteActive] = useState(false)
 
@@ -193,7 +193,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       if (trimMachine.trimActive && activeTool === 'trim') {
         // 再次点击退出截取模式
         trimMachine.deactivateTrim()
-        setActiveTool('filter')
+        setActiveTool('color')
         return
       }
       // 首次进入截取模式时，如果 pipeline.trim 为 null 则初始化为完整范围
