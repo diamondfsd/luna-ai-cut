@@ -35,6 +35,7 @@ import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
+import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -106,6 +107,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const [exportDialogDir, setExportDialogDir] = useState('')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
+  const allowWatermark = useLunaUltraWatermark(media.activeMedia)
 
   // ── 截取（Trim）状态 ──
   const [trimCurrentTime, setTrimCurrentTime] = useState(0)
@@ -222,12 +224,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   // ── 从 pipeline 水印设置自动生成预览层 ──
   const watermarkLayer = useMemo(() => {
+    if (!allowWatermark) return []
     const wm = edit.pipeline.watermark
     if (!wm?.enabled) return []
     if (!finalCanvasSize) return []
     const layer = buildResolvedWatermarkStaticLayer(wm, finalCanvasSize.width, finalCanvasSize.height)
     return layer ? [layer] : []
-  }, [edit.pipeline.watermark, finalCanvasSize])
+  }, [allowWatermark, edit.pipeline.watermark, finalCanvasSize])
 
   // ── 边框预览层（JSON 预设解析为多个独立合成层） ──
   const borderLayer = useMemo(() => {
@@ -449,10 +452,11 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         const borderMeta = pipeline.border?.enabled
           ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => null)
           : null
+        const allowAssetWatermark = await canUseLunaUltraWatermark(asset.path, asset.kind)
         return {
           sourcePath: asset.path,
           outputBaseName: asset.name.replace(/\.[^.]+$/, '') || 'export',
-          layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline, borderMeta),
+          layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline, borderMeta, allowAssetWatermark),
           outputSize: outputSizeForTransform(resolution, pipeline.transform),
           mediaDuration: isVideoPath(asset.path)
             ? Math.max(0, Math.min(sourceDuration, trimEnd) - trimStart)
@@ -662,6 +666,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
             duration={activeTrimDuration}
+            allowWatermark={allowWatermark}
           />
 
           {edit.trimActive ? (

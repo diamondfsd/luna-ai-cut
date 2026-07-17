@@ -9,7 +9,8 @@ export function buildWorkspaceExportLayers(
   sourcePath: string,
   resolution: { width: number; height: number },
   pipeline: EditPipeline,
-  borderMetadata?: MediaMetadata | null,
+  borderMetadata: MediaMetadata | null | undefined,
+  allowWatermark: boolean,
 ): PreviewLayer[] {
   const finalCanvasSize = outputSizeForTransform(resolution, pipeline.transform)
   const main = buildLayers(sourcePath)
@@ -28,7 +29,7 @@ export function buildWorkspaceExportLayers(
     }, pipeline.border)
   }
 
-  const layers = buildExportLayers(sourcePath, finalCanvasSize, pipeline.watermark)
+  const layers = buildExportLayers(sourcePath, finalCanvasSize, allowWatermark ? pipeline.watermark : null)
   const result = main[0] ? [{ ...layers[0], ...main[0] }, ...layers.slice(1)] : layers
   if (result[0]) result.splice(1, 0, ...buildLocalColorLayers(result[0], pipeline))
 
