@@ -62,13 +62,14 @@ function MaskThumbnail({ path, inverted, feather }: { path: string; inverted: bo
     const previewMask = new Float32Array(width * height)
     for (let y = 0; y < height; y += 1) {
       for (let x = 0; x < width; x += 1) {
-        previewMask[y * width + x] = sampleMaskBilinear(
+        const selected = sampleMaskBilinear(
           sourceMask.data,
           sourceMask.width,
           sourceMask.height,
           (x + 0.5) / width,
           (y + 0.5) / height,
         )
+        previewMask[y * width + x] = inverted ? 255 - selected : selected
       }
     }
     const feathered = featherMaskPreview(
@@ -81,8 +82,7 @@ function MaskThumbnail({ path, inverted, feather }: { path: string; inverted: bo
     )
     for (let y = 0; y < height; y += 1) {
       for (let x = 0; x < width; x += 1) {
-        const selected = feathered[y * width + x]
-        const value = inverted ? selected : 255 - selected
+        const value = 255 - feathered[y * width + x]
         const offset = (y * width + x) * 4
         pixels[offset] = value
         pixels[offset + 1] = value

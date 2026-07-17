@@ -87,8 +87,9 @@ try {
     'zero feather must preserve preview values',
   )
   const featheredImpulse = previewSampling.featherMaskPreview(impulse, 9, 1, 2, 1, 1)
-  assert.ok(featheredImpulse[4] < 255 && featheredImpulse[3] > 0, 'feather must soften both sides of a mask edge')
-  close(featheredImpulse.reduce((sum, value) => sum + value, 0), 255, 'feather must preserve mask intensity', 0.001)
+  assert.equal(featheredImpulse[4], 255, 'outward feather must preserve the original selection')
+  assert.ok(featheredImpulse[3] > 0, 'outward feather must add a soft transition beyond the original edge')
+  assert.ok(featheredImpulse.reduce((sum, value) => sum + value, 0) > 255, 'outward feather must expand the effective selection')
   close(
     previewSampling.sampleMaskBilinear(new Uint8Array([0, 255]), 2, 1, 0.5, 0.5),
     127.5,

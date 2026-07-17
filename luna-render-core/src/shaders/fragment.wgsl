@@ -51,10 +51,16 @@ fn sample_media_texture(tex_coord: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(straight_rgb, averaged_alpha);
 }
 
+fn sample_effective_color_mask(tex_coord: vec2<f32>) -> f32 {
+    let value = textureSample(mask_texture, src_sampler, tex_coord).r;
+    return select(value, 1.0 - value, params.mask_params.y > 0.5);
+}
+
 fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
+    let original = sample_effective_color_mask(tex_coord);
     let feather_px = params.mask_params.z;
     if (feather_px < 0.5) {
-        return textureSample(mask_texture, src_sampler, tex_coord).r;
+        return original;
     }
     let dimensions = vec2<f32>(textureDimensions(mask_texture));
     let step = vec2<f32>(feather_px * 0.5) / max(dimensions, vec2<f32>(1.0));
@@ -68,11 +74,12 @@ fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
             let wx = select(select(6.0, 4.0, ax == 1), 1.0, ax == 2);
             let weight = wx * wy;
             let sample_offset = vec2<f32>(f32(x), f32(y)) * step;
-            value += textureSample(mask_texture, src_sampler, tex_coord + sample_offset).r * weight;
+            value += sample_effective_color_mask(tex_coord + sample_offset) * weight;
             total_weight += weight;
         }
     }
-    return value / total_weight;
+    let softened = min(1.0, value / total_weight * 2.0);
+    return max(original, softened);
 }
 
 @fragment
@@ -193,11 +200,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     var color = sample_media_texture(tex_coord);
     let adjusted = apply_color(color.rgb, tex_coord, local_x);
-    var mask_value = sample_color_mask(tex_coord);
-    if (params.mask_params.y > 0.5) {
-        mask_value = 1.0 - mask_value;
-    }
-    mask_value = clamp(mask_value * params.mask_params.x, 0.0, 1.0);
+    let mask_value = clamp(sample_color_mask(tex_coord) * params.mask_params.x, 0.0, 1.0);
     if (params.mask_params.w > 0.5) {
         let layer_alpha = color.a * params.opacity * mask_value;
         return vec4<f32>(adjusted * layer_alpha, layer_alpha);
