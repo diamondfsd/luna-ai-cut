@@ -30,6 +30,7 @@
     "publish:birefnet-mps-resources": "node scripts/publish-birefnet-mps-resources.mjs",
     "test:workspace": "node scripts/test-workspace-geometry.mjs",
     "test:mask": "node scripts/test-mask-safety.mjs && node scripts/test-segmentation-task-registry.mjs && node scripts/test-specialized-worker-client.mjs && node scripts/test-birefnet-mps-progress.mjs",
+    "test:mask:render": "node scripts/build-native.mjs && node scripts/test-mask-render-consistency.mjs",
     "test:semantic-worker": "node scripts/test-semantic-worker-protocol.mjs",
     "test:mask:e2e": "node scripts/test-mask-e2e.mjs",
     "test:model-loader": "node scripts/test-model-loader.mjs",

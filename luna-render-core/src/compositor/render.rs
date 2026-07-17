@@ -222,7 +222,6 @@ impl Compositor {
                     None => (&self.identity_lut, 0.0),
                 };
 
-                let has_mask = layer.mask_texture_id.is_some();
                 let params = GpuLayerParams {
                     // dst_* 转像素坐标（用于像素级命中检测）
                     dst_x: (pos_dst_x * canvas_width as f64) as f32,
@@ -334,28 +333,7 @@ impl Compositor {
                     } else {
                         0.0
                     },
-                    mask_params: [
-                        if has_mask {
-                            layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0) as f32
-                        } else {
-                            1.0
-                        },
-                        if has_mask && layer.mask_inverted.unwrap_or(false) {
-                            1.0
-                        } else {
-                            0.0
-                        },
-                        if has_mask {
-                            layer.mask_feather.unwrap_or(2.0).clamp(0.0, 40.0) as f32
-                        } else {
-                            0.0
-                        },
-                        if has_mask && layer.layer_type.as_deref() == Some("local-color") {
-                            1.0
-                        } else {
-                            0.0
-                        },
-                    ],
+                    mask_params: mask_params(layer),
                     procedural: [
                         procedural_kind,
                         if procedural_kind > 1.5 {

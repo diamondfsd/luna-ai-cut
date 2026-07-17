@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -55,6 +56,7 @@ try {
     'src/workspace/shared/editPipeline.ts',
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
+    'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
     'src/workspace/mask/maskModelMode.ts',
     'src/workspace/color/colorMaskLayerOperations.ts',
@@ -66,6 +68,7 @@ try {
   const pipelineModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipeline.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
+  const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
   const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
@@ -131,6 +134,25 @@ try {
   close(combined.levelsBlack, 0.15, 'local black level must add to global level')
   assert.equal(combined.hslChannels[0].saturation, 20, 'local HSL must add to the matching global channel')
   assert.equal(combined.gradeShadowsHue, 80, 'active local grading hue must override global hue')
+  globalColor.temperature = 14
+  localColor.temperature = -4
+  globalColor.curve.points.rgb = [{ x: 0.4, y: 0.5 }]
+  localColor.curve.points.red = [{ x: 0.6, y: 0.7 }]
+  const fullParameterSet = renderModule.pipelineColorWithLocalAdjustments(globalColor, localColor)
+  assert.equal(fullParameterSet.temperature, 10, 'local temperature must add to global temperature')
+  assert.deepEqual(fullParameterSet.curve.rgb, globalColor.curve.points.rgb, 'an untouched local curve must retain the global curve')
+  assert.deepEqual(fullParameterSet.curve.red, localColor.curve.points.red, 'an edited local curve must override the same global channel')
+
+  const snapshotSource = [{
+    filePath: '/image.jpg', dstX: 0, dstY: 0, dstW: 1, dstH: 1,
+    srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 1, zIndex: 0,
+    color: { exposure: 0.5 }, transform: { orientation: 90, rotate: 0, flipH: false, flipV: false, scale: 1 },
+  }]
+  const renderSnapshot = exportSnapshot.snapshotPreviewLayers(snapshotSource)
+  snapshotSource[0].color.exposure = 2
+  snapshotSource[0].transform.flipH = true
+  assert.equal(renderSnapshot[0].color.exposure, 0.5, 'queued export color must be an immutable snapshot')
+  assert.equal(renderSnapshot[0].transform.flipH, false, 'queued export transform must be an immutable snapshot')
 
   const initial = createDefaultPipeline()
   let history = historyModule.createEditHistory(initial)
@@ -166,14 +188,14 @@ try {
 
   const ordered = createDefaultPipeline()
   ordered.colorMasks = [
-    { ...legacy.colorMasks[0], id: 'bottom', name: 'Bottom', enabled: true, path: '/bottom.pgm', blendMode: 'multiply' },
-    { ...legacy.colorMasks[0], id: 'hidden', name: 'Hidden', enabled: false, path: '/hidden.pgm', blendMode: 'normal' },
     { ...legacy.colorMasks[0], id: 'top', name: 'Top', enabled: true, path: '/top.pgm', blendMode: 'screen' },
+    { ...legacy.colorMasks[0], id: 'hidden', name: 'Hidden', enabled: false, path: '/hidden.pgm', blendMode: 'normal' },
+    { ...legacy.colorMasks[0], id: 'bottom', name: 'Bottom', enabled: true, path: '/bottom.pgm', blendMode: 'multiply' },
   ]
   const baseLayer = { filePath: '/image.jpg', dstX: 0, dstY: 0, dstW: 100, dstH: 100 }
   const layers = renderModule.buildLocalColorLayers(baseLayer, ordered)
-  assert.deepEqual(layers.map((layer) => layer.maskPath), ['/top.pgm', '/bottom.pgm'], 'enabled mask layers must render in reverse stack order')
-  assert.deepEqual(layers.map((layer) => layer.blendMode), ['screen', 'multiply'])
+  assert.deepEqual(layers.map((layer) => layer.maskPath), ['/bottom.pgm', '/top.pgm'], 'the visual top layer must render last')
+  assert.deepEqual(layers.map((layer) => layer.blendMode), ['multiply', 'screen'])
   assert.ok(layers.every((layer) => layer.layerType === 'local-color'))
   assert.deepEqual(
     renderModule.buildLocalColorLayers(baseLayer, unavailable),
@@ -214,14 +236,14 @@ try {
     'dropping onto the same layer must not create a commit',
   )
   const movedAcross = layerOperations.reorderColorMaskLayers(reorderFixture, 'bottom', 'top', 'after')
-  assert.deepEqual(movedAcross.map((layer) => layer.id), ['hidden', 'top', 'bottom'])
+  assert.deepEqual(movedAcross.map((layer) => layer.id), ['top', 'bottom', 'hidden'])
   const movedBefore = layerOperations.reorderColorMaskLayers(reorderFixture, 'top', 'bottom', 'before')
-  assert.deepEqual(movedBefore.map((layer) => layer.id), ['top', 'bottom', 'hidden'])
-  assert.equal(layerOperations.moveColorMaskLayer(reorderFixture, 'bottom', -1), reorderFixture, 'the first layer cannot move up')
-  assert.equal(layerOperations.moveColorMaskLayer(reorderFixture, 'top', 1), reorderFixture, 'the last layer cannot move down')
+  assert.deepEqual(movedBefore.map((layer) => layer.id), ['hidden', 'top', 'bottom'])
+  assert.equal(layerOperations.moveColorMaskLayer(reorderFixture, 'top', -1), reorderFixture, 'the first layer cannot move up')
+  assert.equal(layerOperations.moveColorMaskLayer(reorderFixture, 'bottom', 1), reorderFixture, 'the last layer cannot move down')
   assert.deepEqual(
     layerOperations.moveColorMaskLayer(reorderFixture, 'hidden', -1).map((layer) => layer.id),
-    ['hidden', 'bottom', 'top'],
+    ['hidden', 'top', 'bottom'],
   )
 
   const completedLayer = {
@@ -239,7 +261,7 @@ try {
     reorderFixture[0],
   ]
   const mergedCompletion = layerOperations.mergeCompletedColorMaskLayer(editedWhileBusy, 'hidden', completedLayer)
-  assert.deepEqual(mergedCompletion.map((layer) => layer.id), ['top', 'hidden', 'bottom'], 'completion must preserve the latest layer order')
+  assert.deepEqual(mergedCompletion.map((layer) => layer.id), ['bottom', 'hidden', 'top'], 'completion must preserve the latest layer order')
   assert.equal(mergedCompletion[1].name, '最新名称', 'completion must preserve a rename made while busy')
   assert.equal(mergedCompletion[1].feather, 27, 'completion must preserve edge settings changed while busy')
   assert.equal(mergedCompletion[1].color.exposure, 0.8, 'completion must preserve local color changed while busy')
@@ -260,11 +282,11 @@ try {
 
   let reorderHistory = historyModule.createEditHistory(ordered)
   reorderHistory = historyModule.pushHistory(reorderHistory, { ...ordered, colorMasks: movedAcross })
-  assert.deepEqual(reorderHistory.present.colorMasks.map((layer) => layer.id), ['hidden', 'top', 'bottom'])
+  assert.deepEqual(reorderHistory.present.colorMasks.map((layer) => layer.id), ['top', 'bottom', 'hidden'])
   reorderHistory = historyModule.undoHistory(reorderHistory)
-  assert.deepEqual(reorderHistory.present.colorMasks.map((layer) => layer.id), ['bottom', 'hidden', 'top'])
+  assert.deepEqual(reorderHistory.present.colorMasks.map((layer) => layer.id), ['top', 'hidden', 'bottom'])
   reorderHistory = historyModule.redoHistory(reorderHistory)
-  assert.deepEqual(reorderHistory.present.colorMasks.map((layer) => layer.id), ['hidden', 'top', 'bottom'])
+  assert.deepEqual(reorderHistory.present.colorMasks.map((layer) => layer.id), ['top', 'bottom', 'hidden'])
 
   const systemUpdatedHistory = historyModule.mapHistoryPipelines(reorderHistory, (pipeline) => ({
     ...pipeline,
