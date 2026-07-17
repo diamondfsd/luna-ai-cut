@@ -178,7 +178,6 @@ fn run() -> Result<(), String> {
             output_size,
         )?,
         "rmbg-1.4" => specialized_segmentation::segment_rmbg(&args[2], &rgb, output_size)?,
-        "u2net" => specialized_segmentation::segment_u2net(&args[2], &rgb, output_size)?,
         _ => return Err("不支持的专用分割模型".to_string()),
     };
     if mask.len() != output_size * output_size {
