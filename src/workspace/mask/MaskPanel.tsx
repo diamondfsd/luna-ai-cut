@@ -23,8 +23,6 @@ const BRUSH_MODES = [
 ]
 const CATEGORY_TARGETS = AUTOMATIC_SEGMENTATION_TARGETS.filter((target) => target.id !== 'subject')
 const SUBJECT_TARGET = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === 'subject')!
-const AUTOMATIC_MODEL_IDS = [...new Set(AUTOMATIC_SEGMENTATION_TARGETS.map((target) => target.modelId))]
-
 function formatModelSize(sizeBytes: number): string {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
 }
@@ -89,15 +87,6 @@ export function MaskPanel() {
     try {
       const selectedTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((item) => item.id === selectedTargetId)
       if (!selectedTarget) return
-      try {
-        const status = await window.luna.workspace.getSegmentationModelStatus(selectedTarget.modelId)
-        if (!status.cached) {
-          const prioritizedModels = [selectedTarget.modelId, ...AUTOMATIC_MODEL_IDS.filter((modelId) => modelId !== selectedTarget.modelId)]
-          void window.luna.workspace.prepareSegmentationModels(prioritizedModels).catch(() => undefined)
-        }
-      } catch {
-        // The selection request below uses the same loader and reports actionable errors.
-      }
       await mask.generateSemanticMask(undefined, selectedTargetId)
     } finally {
       setRunningTargetId(null)
@@ -182,6 +171,12 @@ export function MaskPanel() {
             )}
           </Button>
         </div>
+        {mask.segmentationProgress && (
+          <div className="workspace-mask-auto-progress" role="status">
+            <span>{mask.segmentationProgress.label}</span>
+            {mask.segmentationProgress.percent !== null && <strong>{mask.segmentationProgress.percent}%</strong>}
+          </div>
+        )}
         {developerMode && automaticSelectionModel && (
           <div className="workspace-mask-model-field">
             <strong>模型</strong>

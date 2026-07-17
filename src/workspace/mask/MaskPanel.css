@@ -40,6 +40,29 @@
   border-top: 1px solid var(--hairline);
 }
 
+.workspace-mask-auto-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace-mask-auto-progress span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-mask-auto-progress strong {
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 .workspace-mask-auto-targets .ui-btn,
 .workspace-mask-smart-targets .ui-btn {
   position: relative;
