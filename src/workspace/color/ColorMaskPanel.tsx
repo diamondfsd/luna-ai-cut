@@ -53,44 +53,44 @@ function MaskThumbnail({ path, inverted, feather }: { path: string; inverted: bo
     context.fillRect(0, 0, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
     if (!sourceMask) return
 
-      const scale = Math.min(THUMBNAIL_WIDTH / sourceMask.width, THUMBNAIL_HEIGHT / sourceMask.height)
-      const width = Math.max(1, Math.round(sourceMask.width * scale))
-      const height = Math.max(1, Math.round(sourceMask.height * scale))
-      const offsetX = Math.floor((THUMBNAIL_WIDTH - width) / 2)
-      const offsetY = Math.floor((THUMBNAIL_HEIGHT - height) / 2)
-      const pixels = new Uint8ClampedArray(width * height * 4)
-      const previewMask = new Float32Array(width * height)
-      for (let y = 0; y < height; y += 1) {
-        for (let x = 0; x < width; x += 1) {
-          previewMask[y * width + x] = sampleMaskBilinear(
-            sourceMask.data,
-            sourceMask.width,
-            sourceMask.height,
-            (x + 0.5) / width,
-            (y + 0.5) / height,
-          )
-        }
+    const scale = Math.min(THUMBNAIL_WIDTH / sourceMask.width, THUMBNAIL_HEIGHT / sourceMask.height)
+    const width = Math.max(1, Math.round(sourceMask.width * scale))
+    const height = Math.max(1, Math.round(sourceMask.height * scale))
+    const offsetX = Math.floor((THUMBNAIL_WIDTH - width) / 2)
+    const offsetY = Math.floor((THUMBNAIL_HEIGHT - height) / 2)
+    const pixels = new Uint8ClampedArray(width * height * 4)
+    const previewMask = new Float32Array(width * height)
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        previewMask[y * width + x] = sampleMaskBilinear(
+          sourceMask.data,
+          sourceMask.width,
+          sourceMask.height,
+          (x + 0.5) / width,
+          (y + 0.5) / height,
+        )
       }
-      const feathered = featherMaskPreview(
-        previewMask,
-        width,
-        height,
-        feather,
-        sourceMask.width / width,
-        sourceMask.height / height,
-      )
-      for (let y = 0; y < height; y += 1) {
-        for (let x = 0; x < width; x += 1) {
-          const selected = feathered[y * width + x]
-          const value = inverted ? selected : 255 - selected
-          const offset = (y * width + x) * 4
-          pixels[offset] = value
-          pixels[offset + 1] = value
-          pixels[offset + 2] = value
-          pixels[offset + 3] = 255
-        }
+    }
+    const feathered = featherMaskPreview(
+      previewMask,
+      width,
+      height,
+      feather,
+      sourceMask.width / width,
+      sourceMask.height / height,
+    )
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const selected = feathered[y * width + x]
+        const value = inverted ? selected : 255 - selected
+        const offset = (y * width + x) * 4
+        pixels[offset] = value
+        pixels[offset + 1] = value
+        pixels[offset + 2] = value
+        pixels[offset + 3] = 255
       }
-      context.putImageData(new ImageData(pixels, width, height), offsetX, offsetY)
+    }
+    context.putImageData(new ImageData(pixels, width, height), offsetX, offsetY)
   }, [feather, inverted, sourceMask])
 
   return <canvas ref={canvasRef} className="workspace-color-mask-thumbnail" width={THUMBNAIL_WIDTH} height={THUMBNAIL_HEIGHT} aria-label="蒙版缩略图" />

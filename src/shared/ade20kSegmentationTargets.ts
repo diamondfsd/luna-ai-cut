@@ -1,6 +1,7 @@
 const ADE20K_MODEL_ID = 'segformer-b5-ade20k' as const
 
 const ADE20K_REMAINING_CLASSES = [
+  [12, '人物'],
   [9, '草地'],
   [6, '道路'],
   [17, '植物'],
