@@ -199,6 +199,8 @@ export type SamSegmentationModelId = typeof SAM_MODELS[number]['id']
 export type SingleFileSegmentationModelId = SemanticSegmentationModelId | SpecializedSegmentationModelId
 export type SegmentationModelId = SingleFileSegmentationModelId | SamSegmentationModelId
 
+export const DEFAULT_POINT_SEGMENTATION_MODEL_ID: SamSegmentationModelId = 'slimsam-77-uniform'
+
 export function isSamSegmentationModel(id: string): id is SamSegmentationModelId {
   return SAM_MODELS.some((model) => model.id === id)
 }
@@ -208,11 +210,14 @@ export function isSpecializedSegmentationModel(id: string): id is SpecializedSeg
 }
 
 export const AUTOMATIC_SEGMENTATION_TARGETS = [
-  { id: 'sky', classId: 2, label: '天空', modelId: 'segformer-b0-ade20k' },
-  { id: 'water', classId: 21, label: '水面', modelId: 'segformer-b0-ade20k' },
+  { id: 'sky', classId: 2, label: '天空', modelId: 'segformer-b5-ade20k' },
+  { id: 'water', classId: 21, label: '水面', modelId: 'segformer-b5-ade20k' },
   { id: 'person', classId: 12, label: '人物', modelId: 'yolo26s-seg' },
   { id: 'subject', classId: -1, label: '主体', modelId: 'birefnet-general-lite' },
-  { id: 'tree', classId: 4, label: '树木', modelId: 'segformer-b0-ade20k' },
+  { id: 'tree', classId: 4, label: '树木', modelId: 'segformer-b5-ade20k' },
+  { id: 'building', classId: 1, label: '建筑', modelId: 'segformer-b5-ade20k' },
+  { id: 'vehicle', classId: 20, label: '车辆', modelId: 'segformer-b5-ade20k' },
+  { id: 'mountain', classId: 16, label: '山体', modelId: 'segformer-b5-ade20k' },
 ] as const satisfies ReadonlyArray<{
   id: string
   classId: number
@@ -233,6 +238,7 @@ export const COMMON_SEGMENTATION_TARGETS = [
   { classId: 4, label: '树木' },
   { classId: 9, label: '草地' },
   { classId: 17, label: '植物' },
+  { classId: 16, label: '山体' },
   { classId: 20, label: '车辆' },
   { classId: 1, label: '建筑' },
 ] as const

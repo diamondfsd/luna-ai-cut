@@ -32,19 +32,39 @@
   gap: 7px;
 }
 
-.workspace-mask-auto-targets .ui-btn {
+.workspace-mask-smart-targets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+
+.workspace-mask-auto-targets .ui-btn,
+.workspace-mask-smart-targets .ui-btn {
   position: relative;
   min-width: 0;
-  height: 54px;
   overflow: hidden;
-  padding: 0 5px;
-  flex-direction: column;
-  gap: 5px;
   border: 1px solid var(--hairline);
   border-radius: 7px;
   background: transparent;
   color: var(--ink);
   font-size: 11px;
+}
+
+.workspace-mask-auto-targets .ui-btn {
+  height: 54px;
+  padding: 0 5px;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.workspace-mask-smart-targets .ui-btn {
+  height: 42px;
+  justify-content: flex-start;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  font-size: 12px;
 }
 
 .workspace-mask-target-content {
@@ -79,12 +99,19 @@
   animation: workspace-mask-progress 1.1s ease-in-out infinite;
 }
 
-.workspace-mask-auto-targets .ui-btn:hover:not(:disabled) {
+.workspace-mask-smart-targets .workspace-mask-target-content {
+  flex-direction: row;
+  gap: 8px;
+}
+
+.workspace-mask-auto-targets .ui-btn:hover:not(:disabled),
+.workspace-mask-smart-targets .ui-btn:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--blue) 60%, var(--hairline));
   background: color-mix(in srgb, var(--blue) 5%, transparent);
 }
 
-.workspace-mask-auto-targets .ui-btn.is-active {
+.workspace-mask-auto-targets .ui-btn.is-active,
+.workspace-mask-smart-targets .ui-btn.is-active {
   border-color: var(--blue);
   box-shadow: inset 0 0 0 1px var(--blue);
   color: var(--ink);

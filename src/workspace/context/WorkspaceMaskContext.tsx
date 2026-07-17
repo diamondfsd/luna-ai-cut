@@ -57,7 +57,7 @@ interface WorkspaceMaskValue {
   updateMaskSettings: (patch: { opacity?: number; inverted?: boolean; feather?: number }) => void
   updateGroupedMaskSettings: (patch: { opacity?: number; feather?: number }, groupKey: string, finalize?: boolean) => void
   removeMask: () => Promise<void>
-  generateSemanticMask: (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId) => Promise<void>
+  generateSemanticMask: (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId, modelId?: SegmentationModelId) => Promise<void>
 }
 
 const WorkspaceMaskContext = createContext<WorkspaceMaskValue | null>(null)
@@ -382,7 +382,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setEditing(false)
   }, [activeMask, edit, maskSize])
 
-  const generateSemanticMask = useCallback(async (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId) => {
+  const generateSemanticMask = useCallback(async (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId, requestedModelId?: SegmentationModelId) => {
     if (!media.activeMedia || !media.currentProject || !maskSize) return
     const operationProjectId = media.currentProject.id
     const operationAssetId = media.activeMedia.id
@@ -394,7 +394,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setSegmentationProgress({ requestId, phase: 'model', label: '正在准备模型', percent: null })
     try {
       const target = targetId ? automaticSegmentationTarget(targetId) : undefined
-      const modelId = target?.modelId ?? modelForAutomaticSelection(segmentationModel)
+      const modelId = requestedModelId ?? target?.modelId ?? modelForAutomaticSelection(segmentationModel)
       const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, point, modelId, targetId, targetClassId: target?.classId })
       if (result.requestId !== requestId || !isCurrentOperation(operation)) return
       setLastSegmentationPerformance(result.performance)
