@@ -1,7 +1,7 @@
-import { Brush, Building2, CarFront, Cloud, Crosshair, Eraser, Mountain, ScanSearch, TreePine, UserRound, Waves, X } from 'lucide-react'
+import { Brush, Building2, CarFront, Cloud, Crosshair, Eraser, Hand, Mountain, ScanSearch, TreePine, UserRound, Waves, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Accordion, Button, ButtonGroup, Select, Switch } from '../../ui'
+import { Button, ButtonGroup, Select, Switch } from '../../ui'
 import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, isSubjectSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTargetId, type SubjectSegmentationModelId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
@@ -18,6 +18,7 @@ const TARGET_ICONS = {
   mountain: Mountain,
 }
 const BRUSH_MODES = [
+  { value: 'move', label: <><Hand size={18} />移动</> },
   { value: 'paint', label: <><Brush size={18} />添加</> },
   { value: 'erase', label: <><Eraser size={18} />擦除</> },
 ]
@@ -27,7 +28,6 @@ const SUBJECT_MODEL_STORAGE_KEY = 'workspace_subject_segmentation_model'
 const SUBJECT_MODEL_OPTIONS = [
   { value: 'birefnet-general-lite', label: 'BiRefNet Lite（当前）' },
   { value: 'rmbg-1.4', label: 'RMBG 1.4' },
-  { value: 'rmbg-2.0-fp16', label: 'RMBG 2.0 FP16' },
 ]
 function formatModelSize(sizeBytes: number): string {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
@@ -100,6 +100,7 @@ export function MaskPanel() {
     if (mask.busy || runningTargetId !== null) return
     clearAutomaticSelectionError()
     mask.setSemanticPicking(false)
+    mask.setBrushActive(false)
     setSelectionMode('target')
     setTargetId(selectedTargetId)
     setRunningTargetId(selectedTargetId)
@@ -119,6 +120,7 @@ export function MaskPanel() {
     }
     if (mask.busy || runningTargetId !== null) return
     clearAutomaticSelectionError()
+    mask.setBrushActive(false)
     setSelectionMode('point')
     mask.setSemanticPicking(!mask.semanticPicking)
   }
@@ -220,17 +222,31 @@ export function MaskPanel() {
             <p>{automaticSelectionError}</p>
             <div>
               <Button size="mini" variant="secondary" onClick={retryAutomaticSelection}>重试</Button>
-              <Button size="mini" variant="ghost" onClick={clearAutomaticSelectionError}>继续使用画笔</Button>
+              <Button size="mini" variant="ghost" onClick={() => { clearAutomaticSelectionError(); mask.setBrushActive(true) }}>使用画笔修补</Button>
             </div>
           </div>
         )}
       </section>
 
-      <Accordion title="画笔修补" defaultOpen>
+      <section className="workspace-mask-brush-section">
+        <h3 className="workspace-mask-section-heading">画笔修补</h3>
         <div className="workspace-mask-editor-section">
           <div className="workspace-mask-mode-row">
-            <strong>模式</strong>
-            <ButtonGroup className="workspace-mask-brush-modes" options={BRUSH_MODES} value={mask.brushMode} onChange={(value) => mask.setBrushMode(value as 'paint' | 'erase')} />
+            <strong>工具</strong>
+            <ButtonGroup
+              className="workspace-mask-brush-modes"
+              options={BRUSH_MODES}
+              value={mask.brushActive ? mask.brushMode : 'move'}
+              onChange={(value) => {
+                mask.setSemanticPicking(false)
+                if (value === 'move') {
+                  mask.setBrushActive(false)
+                  return
+                }
+                mask.setBrushMode(value as 'paint' | 'erase')
+                mask.setBrushActive(true)
+              }}
+            />
           </div>
           <ParamSlider label="画笔大小" value={mask.brushSize} min={1} max={100} onChange={mask.setBrushSize} formatValue={(value) => `${Math.round(value)}`} />
           <label className="workspace-mask-setting-row">
@@ -238,7 +254,7 @@ export function MaskPanel() {
             <Switch ariaLabel="显示选区" checked={mask.showOverlay} onCheckedChange={mask.setShowOverlay} />
           </label>
         </div>
-      </Accordion>
+      </section>
 
       <section className="workspace-mask-edge-section">
         <h3 className="workspace-mask-section-heading">边缘</h3>
