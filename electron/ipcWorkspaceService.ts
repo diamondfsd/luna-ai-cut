@@ -10,7 +10,7 @@ import probe from 'probe-image-size'
 import { getSettings } from './fileService'
 import { safeName } from './filePathUtils'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
-import { logMainError, logMainInfo } from './loggerService'
+import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { combineLivePhoto, isGoogleMotionPhoto } from './livePhotoService'
 import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
 import {
@@ -37,6 +37,7 @@ import { segmentSpecializedInWorker } from './specializedSegmentationService'
 import { prepareBiRefNetMpsResources } from './birefNetMpsResourceService'
 import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
+import { beginForegroundSegmentation } from './segmentationModelPrefetchService'
 
 const MASKFORMER_COMMON_CLASS_IDS: Record<number, number> = {
   1: 1,
@@ -242,11 +243,18 @@ export function register(): void {
     if (request.targetId && !target) throw new Error('自动选择类型无效')
     const targetClassId = target?.classId ?? request.targetClassId
     const modelId: SegmentationModelId = target?.modelId ?? request.modelId ?? 'segformer-b0-ade20k'
+    const finishForegroundSegmentation = beginForegroundSegmentation(modelId)
     const task = segmentationTasks.begin(event.sender.id, requestId)
     const { signal } = task.controller
     watchSender(event.sender)
+    let lastProgressLogKey = ''
     const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
       if (!segmentationTasks.isActive(task) || event.sender.isDestroyed()) return
+      const progressLogKey = `${phase}:${label}:${percent === null ? 'pending' : Math.floor(percent / 10)}`
+      if (progressLogKey !== lastProgressLogKey) {
+        lastProgressLogKey = progressLogKey
+        logMainInfo('[Mask] 自动选择进度', { requestId, targetId: target?.id, modelId, phase, label, percent })
+      }
       try {
         event.sender.send('workspace:segmentation-progress', { requestId, phase, label, percent })
       } catch {
@@ -258,17 +266,26 @@ export function register(): void {
     const modelStartedAt = performance.now()
     const isSam = isSamSegmentationModel(modelId)
     const specializedDefinition = SPECIALIZED_SEGMENTATION_MODELS.find((item) => item.id === modelId)
+    logMainInfo('[Mask] 自动选择开始', {
+      requestId,
+      targetId: target?.id,
+      modelId,
+      fileName: path.basename(filePath),
+    })
     if (isSam) logMainInfo('[SAM] 智能选择开始')
     reportProgress('model', '正在准备模型', null)
+    let mpsResourcesReady = false
     if (specializedDefinition?.backend === 'birefnet-general-lite') {
       try {
-        await prepareBiRefNetMpsResources(
-          (progress) => reportProgress('model', progress.label, progress.percent),
+        const prepared = await prepareBiRefNetMpsResources(
+          (progress) => reportProgress('model', progress.label, Math.round(progress.percent * 0.6)),
           signal,
         )
+        mpsResourcesReady = prepared !== null
       } catch (error) {
         if (signal.aborted) throw error
-        logMainInfo('[Mask] MPS 扩展准备失败，将使用兼容模式', {
+        logMainWarn('[Mask] MPS 扩展准备失败，将使用兼容模式', {
+          requestId,
           reason: error instanceof Error ? error.message : String(error),
         })
       }
@@ -279,11 +296,16 @@ export function register(): void {
         progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
         Math.round(progress.completedBytes / progress.totalBytes * 100),
       ), signal)
-      : await loadModel(modelId as ModelId, (progress) => reportProgress(
-        'model',
-        progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
-        Math.round(progress.completedBytes / progress.totalBytes * 100),
-      ), signal)
+      : await loadModel(modelId as ModelId, (progress) => {
+        const ratio = progress.totalBytes > 0 ? progress.completedBytes / progress.totalBytes : 0
+        const percentStart = mpsResourcesReady ? 60 : 0
+        const compatibilityLabel = mpsResourcesReady ? '兼容模型' : '模型'
+        reportProgress(
+          'model',
+          progress.completedBytes === progress.totalBytes ? `正在校验${compatibilityLabel}` : `正在下载${compatibilityLabel}`,
+          Math.round(percentStart + ratio * (100 - percentStart)),
+        )
+      }, signal)
     signal.throwIfAborted()
     const modelFileLoadMs = performance.now() - modelStartedAt
     if (isSam) logMainInfo('[SAM] 模型准备完成', { modelLoadMs: Math.round(modelFileLoadMs) })
@@ -417,7 +439,7 @@ export function register(): void {
       : modelId === 'maskformer-r101-ade20k-full'
         ? maskFormerClassNames[classId] ?? '选中区域'
         : classNames[classId] ?? '选中区域')
-    return {
+    const response = {
       requestId,
       width: result.width,
       height: result.height,
@@ -433,8 +455,22 @@ export function register(): void {
       },
       bytes: result.bytes.buffer.slice(result.bytes.byteOffset, result.bytes.byteOffset + result.bytes.byteLength),
     }
+    logMainInfo('[Mask] 自动选择成功', {
+      requestId,
+      targetId: target?.id,
+      modelId: model.id,
+      totalMs: response.performance.totalMs,
+      selectedBytes: result.bytes.byteLength,
+    })
+    return response
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      if (signal.aborted) logMainWarn('[Mask] 自动选择已取消', { requestId, targetId: target?.id, modelId, reason })
+      else logMainError('[Mask] 自动选择失败', { requestId, targetId: target?.id, modelId, reason })
+      throw error
     } finally {
       segmentationTasks.finish(task)
+      finishForegroundSegmentation()
     }
   })
   ipcMain.handle('workspace:listProjects', async () => {

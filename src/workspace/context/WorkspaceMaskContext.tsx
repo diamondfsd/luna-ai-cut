@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { toast } from '../../ui'
 import { isImagePath } from '../../lib/fileUtils'
+import { logger } from '../../lib/rendererLogger'
 import { automaticSegmentationTarget, SEGMENTATION_MODELS, SAM_MODELS, type AutomaticSegmentationTargetId, type SegmentationModelId } from '../../shared/segmentationModels'
 import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
 import { useWorkspaceEdit } from './WorkspaceEditContext'
@@ -390,6 +391,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     const operationMask = activeMask
     const requestId = crypto.randomUUID()
     const operation = beginOperation('segmentation', operationProjectId, operationAssetId, requestId)
+    logger.info('[Mask] 用户开始自动选择', { requestId, targetId, modelId: requestedModelId, assetId: operationAssetId })
     setSegmentationError(null)
     setSegmentationProgress({ requestId, phase: 'model', label: '正在准备模型', percent: null })
     try {
@@ -400,6 +402,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       setLastSegmentationPerformance(result.performance)
       const data = new Uint8Array(result.bytes)
       if (targetId !== undefined && !hasUsableAutomaticMask(data)) {
+        logger.warn('[Mask] 自动选择未找到有效区域', { requestId, targetId, modelId: result.modelId })
         setSegmentationError(`未找到${result.className}，可使用画笔手动选择`)
         return
       }
@@ -438,8 +441,15 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       if (nextLayers === colorMasksRef.current) return
       edit.commitPatch({ colorMasks: nextLayers })
       setActiveLayerId(layerId)
+      logger.info('[Mask] 自动选择结果已应用', { requestId, targetId, modelId: result.modelId, layerId, performance: result.performance })
     } catch (error) {
-      if (isCurrentOperation(operation)) setSegmentationError(error instanceof Error ? error.message : '自动选择失败，请重试')
+      const message = error instanceof Error ? error.message : '自动选择失败，请重试'
+      if (isCurrentOperation(operation)) {
+        logger.error('[Mask] 自动选择未应用', { requestId, targetId, modelId: requestedModelId, message })
+        setSegmentationError(message)
+      } else {
+        logger.info('[Mask] 自动选择已取消或结果已过期', { requestId, targetId, modelId: requestedModelId, message })
+      }
     } finally {
       finishOperation(operation)
     }

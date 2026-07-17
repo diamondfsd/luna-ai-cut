@@ -1,10 +1,11 @@
-import { Plus } from 'lucide-react'
+import { FolderOpen, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { MediaGallery } from '../../components/MediaGallery'
 import type { WorkspaceMediaAsset } from '../../shared/types'
 import { Button, Dialog, toast } from '../../ui'
 import { MediaLibraryCtx, useMediaLibraryController } from '../../pages/useMediaLibraryController'
+import { chooseWorkspaceMediaAssets } from '../shared/workspaceLocalMedia'
 import '../../styles/library.css'
 import './WorkspaceImportDialog.css'
 
@@ -65,6 +66,21 @@ export function WorkspaceImportDialog({ open, onOpenChange, existingPaths, onImp
     }
   }
 
+  async function handleChooseLocalFiles(): Promise<void> {
+    try {
+      const assets = await chooseWorkspaceMediaAssets(existingPaths)
+      if (assets.length === 0) return
+      setImporting(true)
+      await onImport(assets)
+      onOpenChange(false)
+      toast.success(`已导入 ${assets.length} 个本地文件`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '导入失败')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   return (
     <MediaLibraryCtx.Provider value={controller}>
       <Dialog
@@ -76,6 +92,9 @@ export function WorkspaceImportDialog({ open, onOpenChange, existingPaths, onImp
         footer={(
           <>
             <span className="workspace-import-count">已选择 {controller.selectedFiles.length} 个</span>
+            <Button variant="secondary" size="compact" icon={<FolderOpen size={14} />} onClick={() => void handleChooseLocalFiles()} disabled={importing}>
+              选择本地文件
+            </Button>
             <Button variant="secondary" size="compact" onClick={() => onOpenChange(false)} disabled={importing}>取消</Button>
             <Button variant="primary" size="compact" icon={<Plus size={14} />} disabled={controller.selectedFiles.length === 0 || importing} onClick={() => void handleImport()}>
               {importing ? '导入中' : '导入素材'}

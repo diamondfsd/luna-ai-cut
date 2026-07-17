@@ -4,15 +4,11 @@ import path from 'node:path'
 
 import { RUNTIME_RESOURCE_DEFINITIONS } from './runtimeResourceDefinitions.js'
 import { loadRuntimeResource, type RuntimeResourceProgress } from './runtimeResourceService.js'
+import { mapBiRefNetMpsProgress, type BiRefNetMpsResourceProgress } from './birefNetMpsProgress.js'
 
 export interface BiRefNetMpsResources {
   runtimeRoot: string
   modelRoot: string
-}
-
-export interface BiRefNetMpsResourceProgress {
-  label: string
-  percent: number | null
 }
 
 let preparedResources: BiRefNetMpsResources | null = null
@@ -32,26 +28,6 @@ function sevenZipPath(): string {
     : path.join(appRoot, 'node_modules', '7zip-bin', process.platform === 'win32' ? 'win' : 'mac', process.arch, process.platform === 'win32' ? '7za.exe' : '7za')
 }
 
-function mapProgress(
-  progress: RuntimeResourceProgress,
-  label: string,
-  completedArchiveBytes: number,
-  totalArchiveBytes: number,
-  currentArchiveBytes: number,
-): BiRefNetMpsResourceProgress {
-  if (progress.phase !== 'download') {
-    return {
-      label: progress.phase === 'install' ? `正在安装${label}` : `正在校验${label}`,
-      percent: null,
-    }
-  }
-  const ratio = progress.totalBytes > 0 ? progress.completedBytes / progress.totalBytes : 0
-  return {
-    label: `正在下载${label}`,
-    percent: Math.round((completedArchiveBytes + currentArchiveBytes * ratio) / totalArchiveBytes * 100),
-  }
-}
-
 export async function prepareBiRefNetMpsResources(
   onProgress?: (progress: BiRefNetMpsResourceProgress) => void,
   signal?: AbortSignal,
@@ -63,11 +39,11 @@ export async function prepareBiRefNetMpsResources(
   const options = { signal, sevenZipPath: sevenZipPath() }
   const runtimeRoot = await loadRuntimeResource(resourceCacheRoot(), runtime, {
     ...options,
-    onProgress: (progress) => onProgress?.(mapProgress(progress, '运行组件', 0, totalArchiveBytes, runtime.archiveBytes)),
+    onProgress: (progress: RuntimeResourceProgress) => onProgress?.(mapBiRefNetMpsProgress(progress, '运行组件', 0, totalArchiveBytes, runtime.archiveBytes)),
   })
   const modelRoot = await loadRuntimeResource(resourceCacheRoot(), model, {
     ...options,
-    onProgress: (progress) => onProgress?.(mapProgress(progress, '主体模型', runtime.archiveBytes, totalArchiveBytes, model.archiveBytes)),
+    onProgress: (progress: RuntimeResourceProgress) => onProgress?.(mapBiRefNetMpsProgress(progress, '主体模型', runtime.archiveBytes, totalArchiveBytes, model.archiveBytes)),
   })
   await Promise.all([
     access(path.join(runtimeRoot, 'birefnet-mps-worker')),

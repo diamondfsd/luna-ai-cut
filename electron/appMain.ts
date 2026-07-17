@@ -27,6 +27,7 @@ import { appIconPath, createMainWindow } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { cancelExportTask, warmupRenderCore } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
+import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -217,6 +218,7 @@ function createWindow(): void {
         }),
       )
     }, 200)
+    setTimeout(() => startSegmentationModelPrefetch(), 1_000)
   })
 }
 
@@ -247,6 +249,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   abortAllExports()
+  stopSegmentationModelPrefetch()
   shutdownSpecializedSegmentationWorker()
   stopAllKeepAlive()
   cleanupDeviceDebug()

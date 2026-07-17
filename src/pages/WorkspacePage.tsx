@@ -34,6 +34,7 @@ import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformTo
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
+import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -492,6 +493,17 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
     media.setActiveIndex(firstNewIndex)
   }
 
+  async function handleImportLocalFiles(): Promise<void> {
+    try {
+      const assets = await chooseWorkspaceMediaAssets(new Set(media.media.map((asset) => asset.path)))
+      if (assets.length === 0) return
+      await handleImportAssets(assets)
+      toast.success(`已导入 ${assets.length} 个本地文件`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '导入失败')
+    }
+  }
+
   // ── onEditingChange ──
   useEffect(() => {
     onEditingChange?.(media.editorOpen)
@@ -624,6 +636,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             exportableSelectionCount={exportableSelectionCount}
             exportButtonText={exportButtonText}
             onImport={() => setImportDialogOpen(true)}
+            onImportLocal={() => void handleImportLocalFiles()}
             onExport={() => void handleWorkspaceExport()}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}

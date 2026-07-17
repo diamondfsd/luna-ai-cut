@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, ImagePlus, Minimize2, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, FileUp, ImagePlus, Minimize2, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 
 import { Button, IconButton, Tooltip, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
@@ -15,6 +15,7 @@ interface WorkspacePreviewToolbarProps {
   exportableSelectionCount: number
   exportButtonText: string
   onImport: () => void
+  onImportLocal: () => void
   onExport: () => void
   viewScale: WorkspaceViewScale
   onViewScaleChange: (scale: WorkspaceViewScale) => void
@@ -26,6 +27,7 @@ export function WorkspacePreviewToolbar({
   exportableSelectionCount,
   exportButtonText,
   onImport,
+  onImportLocal,
   onExport,
   viewScale,
   onViewScaleChange,
@@ -75,6 +77,9 @@ export function WorkspacePreviewToolbar({
         <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={media.backToProjects}>返回工作台</Button>
         <Button variant="toolbar" size="compact" icon={<ImagePlus size={14} />} onClick={onImport}>
           添加素材
+        </Button>
+        <Button variant="toolbar" size="compact" icon={<FileUp size={14} />} onClick={onImportLocal}>
+          导入
         </Button>
         <Tooltip content="重置">
           <IconButton variant="ghost" size="compact" icon={<RotateCcw size={16} />} disabled={!hasActiveMedia} onClick={resetAdjustments} />
