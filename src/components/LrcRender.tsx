@@ -314,9 +314,14 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
           if (oldestKey === undefined) break
           staticFrameCacheRef.current.delete(oldestKey)
         }
-        if (staticFrameKey(layersWithVideoTime(), effectiveMaxSide) !== cacheKey) {
-          renderQueuedRef.current = true
-          return
+        const currentKey = staticFrameKey(layersWithVideoTime(), effectiveMaxSide)
+        if (currentKey !== cacheKey) {
+          const currentFrame = currentKey ? staticFrameCacheRef.current.get(currentKey) : undefined
+          if (currentFrame) {
+            renderQueuedRef.current = false
+            paintFrame(currentFrame)
+            return
+          }
         }
       }
       paintFrame(frame)
