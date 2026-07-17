@@ -147,6 +147,19 @@
   gap: 10px;
 }
 
+.workspace-mask-subject-model-field {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.workspace-mask-subject-model-field > strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .workspace-mask-model-field > strong,
 .workspace-mask-mode-row > strong,
 .workspace-mask-setting-row strong {

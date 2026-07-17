@@ -110,6 +110,35 @@ export const SPECIALIZED_SEGMENTATION_MODELS = [
     source: 'https://github.com/ZhengPeng7/BiRefNet/releases/tag/v1',
     licenseUrl: 'https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE',
   },
+  {
+    id: 'rmbg-1.4',
+    backend: 'rmbg-1.4',
+    name: 'RMBG 1.4',
+    description: '主体对比测试',
+    inputSize: 1024,
+    sizeBytes: 176_153_355,
+    url: 'https://modelscope.cn/models/briaai/RMBG-1.4/resolve/master/onnx/model.onnx',
+    mirrors: ['https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx'],
+    sha256: '8cafcf770b06757c4eaced21b1a88e57fd2b66de01b8045f35f01535ba742e0f',
+    version: 'main-fp32',
+    license: 'Apache-2.0',
+    source: 'https://modelscope.cn/models/briaai/RMBG-1.4',
+    licenseUrl: 'https://huggingface.co/briaai/RMBG-1.4/blob/main/README.md',
+  },
+  {
+    id: 'rmbg-2.0-fp16',
+    backend: 'rmbg-2.0',
+    name: 'RMBG 2.0 FP16',
+    description: '主体对比测试',
+    inputSize: 1024,
+    sizeBytes: 513_576_499,
+    url: 'https://modelscope.cn/models/briaai/RMBG-2.0/resolve/master/onnx/model_fp16.onnx',
+    sha256: '9dc47db40d113090ba5d7a13d8fcfd9ee4eda510ce92613219b2fe19da4746f6',
+    version: 'master-fp16',
+    license: 'CC BY-NC 4.0',
+    source: 'https://modelscope.cn/models/briaai/RMBG-2.0',
+    licenseUrl: 'https://huggingface.co/briaai/RMBG-2.0/blob/main/README.md',
+  },
 ] as const
 
 const SAM_DECODER = {
@@ -198,6 +227,27 @@ export type SpecializedSegmentationModelId = typeof SPECIALIZED_SEGMENTATION_MOD
 export type SamSegmentationModelId = typeof SAM_MODELS[number]['id']
 export type SingleFileSegmentationModelId = SemanticSegmentationModelId | SpecializedSegmentationModelId
 export type SegmentationModelId = SingleFileSegmentationModelId | SamSegmentationModelId
+export type SubjectSegmentationModelId = 'birefnet-general-lite' | 'rmbg-1.4' | 'rmbg-2.0-fp16'
+
+export const SUBJECT_SEGMENTATION_MODELS = SPECIALIZED_SEGMENTATION_MODELS.filter(
+  (model): model is typeof SPECIALIZED_SEGMENTATION_MODELS[number] & { id: SubjectSegmentationModelId } =>
+    model.id === 'birefnet-general-lite' || model.id === 'rmbg-1.4' || model.id === 'rmbg-2.0-fp16',
+)
+
+export function isSubjectSegmentationModel(id: string): id is SubjectSegmentationModelId {
+  return SUBJECT_SEGMENTATION_MODELS.some((model) => model.id === id)
+}
+
+export function modelForSegmentationRequest(
+  targetId: AutomaticSegmentationTargetId | undefined,
+  requestedModelId: SegmentationModelId | undefined,
+): SegmentationModelId {
+  const target = targetId ? automaticSegmentationTarget(targetId) : undefined
+  if (target?.id === 'subject' && requestedModelId && isSubjectSegmentationModel(requestedModelId)) {
+    return requestedModelId
+  }
+  return target?.modelId ?? requestedModelId ?? 'segformer-b0-ade20k'
+}
 
 export const DEFAULT_POINT_SEGMENTATION_MODEL_ID: SamSegmentationModelId = 'slimsam-77-uniform'
 
