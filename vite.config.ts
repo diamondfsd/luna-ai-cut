@@ -9,6 +9,7 @@ const e2eCdpPort = process.env.LUNA_E2E_CDP_PORT ?? '9332'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  publicDir: false,
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

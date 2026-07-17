@@ -1,4 +1,4 @@
-import type { AppSettings, CacheStats, AiConfig } from './settings'
+import type { AppSettings, CacheStats } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
 import type { CameraDeleteResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
@@ -95,7 +95,6 @@ export interface LunaApi {
   openPath(targetPath: string): Promise<void>
   openPhotosApp(): Promise<void>
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
-  aiChat(config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>): Promise<string>
   readExifModel(localPath: string): Promise<string | null>
   getWatermarkPath(style: string, kind: 'image' | 'video'): Promise<{ filePath: string; width: number; height: number }>
   getBorderLogoPath(logoId: string): Promise<string>
