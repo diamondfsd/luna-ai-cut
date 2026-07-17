@@ -26,6 +26,7 @@ import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { cancelExportTask, warmupRenderCore } from './lunaRenderCore'
+import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -246,6 +247,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   abortAllExports()
+  shutdownSpecializedSegmentationWorker()
   stopAllKeepAlive()
   cleanupDeviceDebug()
   void stopMockServer()
