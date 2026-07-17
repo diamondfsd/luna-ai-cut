@@ -169,7 +169,7 @@ export async function chooseMockMediaDir(): Promise<string | null> {
 export async function chooseWorkspaceMediaFiles(): Promise<string[]> {
   const settings = await getSettings()
   const result = await dialog.showOpenDialog({
-    defaultPath: getLocalResourcesDir(settings),
+    defaultPath: settings.workspaceImportDir || app.getPath('downloads'),
     properties: ['openFile', 'multiSelections'],
     title: '选择要导入工作台的图片或视频',
     filters: [
@@ -183,5 +183,8 @@ export async function chooseWorkspaceMediaFiles(): Promise<string[]> {
     ],
   })
 
-  return result.canceled ? [] : result.filePaths
+  if (result.canceled || result.filePaths.length === 0) return []
+
+  await saveSettings({ workspaceImportDir: path.dirname(result.filePaths[0]) })
+  return result.filePaths
 }
