@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { chmod, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { promisify } from 'node:util'
 import AdmZip from 'adm-zip'
 import {
   downloadVerifiedFile,
@@ -11,6 +13,7 @@ import type { RuntimeResourceDefinition } from './runtimeResourceDefinitions.js'
 
 const MARKER_NAME = '.luna-resource.json'
 const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
+const execFileAsync = promisify(execFile)
 
 interface InstalledFile {
   path: string
@@ -36,6 +39,7 @@ export interface RuntimeResourceLoadOptions {
   signal?: AbortSignal
   onProgress?: (progress: RuntimeResourceProgress) => void
   fetcher?: typeof fetch
+  sevenZipPath?: string
 }
 
 const loads = new SharedLoadRegistry<string, string, RuntimeResourceProgress>()
@@ -45,7 +49,8 @@ function validateDefinition(definition: RuntimeResourceDefinition): void {
     throw new Error('资源标识不安全')
   }
   if (!/^[a-z0-9][a-z0-9-]*$/.test(definition.archiveRoot)) throw new Error('资源根目录不安全')
-  if (path.basename(definition.fileName) !== definition.fileName || !definition.fileName.endsWith('.zip')) {
+  const expectedSuffix = definition.archiveFormat === '7z' ? '.7z' : '.zip'
+  if (path.basename(definition.fileName) !== definition.fileName || !definition.fileName.endsWith(expectedSuffix)) {
     throw new Error('资源包文件名不安全')
   }
   if (!Number.isInteger(definition.unpackedBytes) || definition.unpackedBytes <= 0) throw new Error('资源解包大小异常')
@@ -68,7 +73,7 @@ function safeEntryPath(entryName: string, definition: RuntimeResourceDefinition)
   }
   if (parts[0] !== definition.archiveRoot) throw new Error('资源包根目录不匹配')
   const extension = path.posix.extname(entryName).toLowerCase()
-  if (!definition.allowedExtensions.includes(extension)) throw new Error('资源包包含不允许的文件类型')
+  if (definition.allowedExtensions && !definition.allowedExtensions.includes(extension)) throw new Error('资源包包含不允许的文件类型')
   return parts.join('/')
 }
 
@@ -122,7 +127,7 @@ async function validateCache(
     let completedBytes = 0
     for (const file of marker.files) {
       signal?.throwIfAborted()
-      if (safeEntryPath(file.path, definition) !== file.path || !Number.isInteger(file.bytes) || file.bytes <= 0) return false
+      if (safeEntryPath(file.path, definition) !== file.path || !Number.isInteger(file.bytes) || file.bytes < 0) return false
       const info = await lstat(path.join(installDir, file.path))
       if (!info.isFile() || info.size !== file.bytes) return false
       completedBytes += file.bytes
@@ -188,12 +193,99 @@ async function installArchive(
   await writeFile(path.join(stagingDir, MARKER_NAME), `${JSON.stringify(marker, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
 }
 
+interface SevenZipEntry {
+  path: string
+  size: number
+}
+
+function parseSevenZipEntries(output: string, definition: RuntimeResourceDefinition): SevenZipEntry[] {
+  const entries: SevenZipEntry[] = []
+  const seen = new Set<string>()
+  for (const block of output.split(/\r?\n\r?\n/)) {
+    const fields = new Map<string, string>()
+    for (const line of block.split(/\r?\n/)) {
+      const separator = line.indexOf(' = ')
+      if (separator > 0) fields.set(line.slice(0, separator), line.slice(separator + 3))
+    }
+    const entryPath = fields.get('Path')
+    if (!entryPath) continue
+    const attributes = fields.get('Attributes') ?? ''
+    if (attributes.startsWith('D')) {
+      if (entryPath !== definition.archiveRoot && !entryPath.startsWith(`${definition.archiveRoot}/`)) {
+        throw new Error('资源包根目录不匹配')
+      }
+      continue
+    }
+    const safePath = safeEntryPath(entryPath, definition)
+    const comparisonPath = safePath.toLocaleLowerCase('en-US')
+    if (seen.has(comparisonPath)) throw new Error('资源包包含重复文件')
+    seen.add(comparisonPath)
+    const size = Number(fields.get('Size'))
+    if (!Number.isSafeInteger(size) || size < 0) throw new Error('资源文件大小异常')
+    entries.push({ path: safePath, size })
+  }
+  const totalBytes = entries.reduce((total, entry) => total + entry.size, 0)
+  if (entries.length !== definition.expectedFileCount || totalBytes !== definition.unpackedBytes) {
+    throw new Error('资源包内容与清单不匹配')
+  }
+  return entries
+}
+
+async function installSevenZipArchive(
+  archivePath: string,
+  stagingDir: string,
+  definition: RuntimeResourceDefinition,
+  sevenZipPath: string,
+  signal: AbortSignal,
+  report: (progress: RuntimeResourceProgress) => void,
+): Promise<void> {
+  const listResult = await execFileAsync(sevenZipPath, ['l', '-slt', '-ba', archivePath], {
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+    signal,
+  })
+  const entries = parseSevenZipEntries(listResult.stdout, definition)
+  report({ phase: 'install', completedBytes: 0, totalBytes: definition.unpackedBytes })
+  await execFileAsync(sevenZipPath, ['x', '-y', `-o${stagingDir}`, archivePath], {
+    encoding: 'utf8',
+    maxBuffer: 4 * 1024 * 1024,
+    signal,
+  })
+  const diskFiles = await listFiles(stagingDir)
+  if (diskFiles.length !== entries.length) throw new Error('资源解包文件数量异常')
+  const entrySizes = new Map(entries.map((entry) => [entry.path, entry.size]))
+  const markerFiles: InstalledFile[] = []
+  let completedBytes = 0
+  for (const file of diskFiles) {
+    signal.throwIfAborted()
+    const expectedBytes = entrySizes.get(file)
+    const info = await lstat(path.join(stagingDir, file))
+    if (!info.isFile() || expectedBytes === undefined || info.size !== expectedBytes) throw new Error('资源解包内容异常')
+    markerFiles.push({ path: file, bytes: info.size })
+    completedBytes += info.size
+    report({ phase: 'verify', completedBytes, totalBytes: definition.unpackedBytes })
+  }
+  for (const executablePath of definition.executablePaths ?? []) {
+    if (!entrySizes.has(executablePath)) throw new Error('资源包缺少可执行文件')
+    await chmod(path.join(stagingDir, executablePath), 0o755)
+  }
+  const marker: InstallMarker = {
+    schemaVersion: 1,
+    id: definition.id,
+    version: definition.version,
+    archiveSha256: definition.sha256,
+    files: markerFiles,
+  }
+  await writeFile(path.join(stagingDir, MARKER_NAME), `${JSON.stringify(marker, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
+}
+
 async function performLoad(
   cacheRoot: string,
   definition: RuntimeResourceDefinition,
   signal: AbortSignal,
   report: (progress: RuntimeResourceProgress) => void,
   fetcher?: typeof fetch,
+  sevenZipPath?: string,
 ): Promise<string> {
   validateDefinition(definition)
   const packRoot = path.join(cacheRoot, definition.id)
@@ -219,7 +311,12 @@ async function performLoad(
   const stagingDir = path.join(packRoot, `.${definition.version}.${randomUUID()}.staging`)
   try {
     await mkdir(stagingDir, { recursive: false })
-    await installArchive(archivePath, stagingDir, definition, signal, report)
+    if (definition.archiveFormat === '7z') {
+      if (!sevenZipPath) throw new Error('缺少资源解压组件')
+      await installSevenZipArchive(archivePath, stagingDir, definition, sevenZipPath, signal, report)
+    } else {
+      await installArchive(archivePath, stagingDir, definition, signal, report)
+    }
     signal.throwIfAborted()
     if (!await validateCache(stagingDir, definition, report, signal)) throw new Error('资源安装校验失败')
     await rename(stagingDir, installDir)
@@ -237,7 +334,7 @@ export function loadRuntimeResource(
   options: RuntimeResourceLoadOptions = {},
 ): Promise<string> {
   const key = `${path.resolve(cacheRoot)}\0${definition.id}\0${definition.version}\0${definition.sha256}`
-  return loads.load(key, (signal, report) => performLoad(cacheRoot, definition, signal, report, options.fetcher), options)
+  return loads.load(key, (signal, report) => performLoad(cacheRoot, definition, signal, report, options.fetcher, options.sevenZipPath), options)
 }
 
 export async function getRuntimeResourceCachePath(
