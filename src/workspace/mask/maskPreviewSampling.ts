@@ -66,7 +66,8 @@ export function featherMaskPreview(
       for (let tap = 0; tap < FEATHER_WEIGHTS.length; tap += 1) {
         value += sampleScalarBilinear(horizontal, width, height, x, y + (tap - 2) * stepY) * FEATHER_WEIGHTS[tap]
       }
-      output[y * width + x] = value / FEATHER_WEIGHT_TOTAL
+      const index = y * width + x
+      output[index] = Math.max(data[index], Math.min(255, value / FEATHER_WEIGHT_TOTAL * 2))
     }
   }
   return output
