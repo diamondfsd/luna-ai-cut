@@ -1,7 +1,7 @@
 import { Brush, Cloud, Eraser, ScanSearch, TreePine, UserRound, Waves, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { Accordion, Button, ButtonGroup, Dialog, Switch } from '../../ui'
+import { Accordion, Button, ButtonGroup, Switch } from '../../ui'
 import { AUTOMATIC_SEGMENTATION_TARGETS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
@@ -12,6 +12,7 @@ const BRUSH_MODES = [
   { value: 'paint', label: <><Brush size={18} />添加</> },
   { value: 'erase', label: <><Eraser size={18} />擦除</> },
 ]
+const AUTOMATIC_MODEL_IDS = [...new Set(AUTOMATIC_SEGMENTATION_TARGETS.map((target) => target.modelId))]
 
 function formatModelSize(sizeBytes: number): string {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
@@ -23,10 +24,7 @@ export function MaskPanel() {
   const initialTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === settings?.targetId || target.classId === settings?.classId)?.id ?? 'sky'
   const [targetId, setTargetId] = useState<AutomaticSegmentationTargetId>(initialTarget)
   const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
-  const [checkingModel, setCheckingModel] = useState(false)
-  const [modelStatusError, setModelStatusError] = useState<string | null>(null)
-  const [pendingDownload, setPendingDownload] = useState<{ modelId: typeof AUTOMATIC_SEGMENTATION_TARGETS[number]['modelId']; sizeBytes: number; targetId: AutomaticSegmentationTargetId } | null>(null)
-  const confirmedDownloadsRef = useRef(new Set<string>())
+  const [runningTargetId, setRunningTargetId] = useState<AutomaticSegmentationTargetId | null>(null)
 
   useEffect(() => {
     const activeTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === mask.activeMask?.targetId || target.classId === mask.activeMask?.classId)
@@ -52,38 +50,37 @@ export function MaskPanel() {
   const automaticSelectionModel = [...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS].find((model) => model.id === target.modelId)
 
   const clearAutomaticSelectionError = (): void => {
-    setModelStatusError(null)
     mask.clearSegmentationError()
   }
 
-  const startAutomaticSelection = async (): Promise<void> => {
-    if (mask.busy || checkingModel) return
+  const startAutomaticSelection = async (selectedTargetId: AutomaticSegmentationTargetId): Promise<void> => {
+    if (runningTargetId === selectedTargetId && mask.busy) {
+      mask.cancelSegmentation()
+      return
+    }
+    if (mask.busy || runningTargetId !== null) return
     clearAutomaticSelectionError()
-    setCheckingModel(true)
+    setTargetId(selectedTargetId)
+    setRunningTargetId(selectedTargetId)
     try {
-      const modelId = target.modelId
-      const status = await window.luna.workspace.getSegmentationModelStatus(modelId)
-      if (!status.cached && !confirmedDownloadsRef.current.has(modelId)) {
-        setPendingDownload({ modelId, sizeBytes: status.sizeBytes, targetId: target.id })
-        return
+      const selectedTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((item) => item.id === selectedTargetId)
+      if (!selectedTarget) return
+      try {
+        const status = await window.luna.workspace.getSegmentationModelStatus(selectedTarget.modelId)
+        if (!status.cached) {
+          const prioritizedModels = [selectedTarget.modelId, ...AUTOMATIC_MODEL_IDS.filter((modelId) => modelId !== selectedTarget.modelId)]
+          void window.luna.workspace.prepareSegmentationModels(prioritizedModels).catch(() => undefined)
+        }
+      } catch {
+        // The selection request below uses the same loader and reports actionable errors.
       }
-      void mask.generateSemanticMask(undefined, target.id)
-    } catch (error) {
-      setModelStatusError(error instanceof Error ? error.message : '无法检查自动选择资源，请重试')
+      await mask.generateSemanticMask(undefined, selectedTargetId)
     } finally {
-      setCheckingModel(false)
+      setRunningTargetId(null)
     }
   }
 
-  const confirmDownload = (): void => {
-    if (!pendingDownload) return
-    confirmedDownloadsRef.current.add(pendingDownload.modelId)
-    const confirmedTargetId = pendingDownload.targetId
-    setPendingDownload(null)
-    void mask.generateSemanticMask(undefined, confirmedTargetId)
-  }
-
-  const automaticSelectionError = modelStatusError ?? mask.segmentationError
+  const automaticSelectionError = mask.segmentationError
 
   return (
     <div className="workspace-mask-panel">
@@ -92,16 +89,27 @@ export function MaskPanel() {
         <div className="workspace-mask-auto-targets" aria-label="自动选择类型">
           {AUTOMATIC_SEGMENTATION_TARGETS.map((item) => {
             const Icon = TARGET_ICONS[item.id]
+            const isRunning = runningTargetId === item.id
+            const progress = isRunning ? mask.segmentationProgress : null
+            const indeterminate = !progress || progress.percent === null
             return (
               <Button
                 key={item.id}
                 variant="ghost"
-                className={item.id === targetId ? 'is-active' : undefined}
-                disabled={mask.busy || checkingModel}
-                onClick={() => setTargetId(item.id)}
+                className={[item.id === targetId ? 'is-active' : '', isRunning ? 'is-running' : ''].filter(Boolean).join(' ') || undefined}
+                disabled={(mask.busy || runningTargetId !== null) && !isRunning}
+                aria-label={isRunning ? `取消${item.label}自动选择` : `${item.label}自动选择`}
+                onClick={() => void startAutomaticSelection(item.id)}
               >
-                <Icon size={20} />
-                {item.label}
+                <span className="workspace-mask-target-content">
+                  {isRunning ? <X size={18} /> : <Icon size={20} />}
+                  <span>{progress?.percent !== null && progress?.percent !== undefined ? `${progress.percent}%` : item.label}</span>
+                </span>
+                {isRunning && (
+                  <span className="workspace-mask-target-progress" aria-hidden="true">
+                    <span className={indeterminate ? 'is-indeterminate' : undefined} style={indeterminate ? undefined : { width: `${progress?.percent ?? 0}%` }} />
+                  </span>
+                )}
               </Button>
             )
           })}
@@ -112,34 +120,11 @@ export function MaskPanel() {
             <span>{automaticSelectionModel.name} · {formatModelSize(automaticSelectionModel.sizeBytes)}</span>
           </div>
         )}
-        {mask.segmentationProgress ? (
-          <Button variant="secondary" className="workspace-mask-apply-button" onClick={mask.cancelSegmentation}>
-            <X size={16} />
-            取消自动选择
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            className="workspace-mask-apply-button"
-            disabled={mask.busy || checkingModel || developerMode === null}
-            onClick={() => void startAutomaticSelection()}
-          >
-            {checkingModel ? '正在检查' : mask.busy ? '正在处理' : '应用自动选择'}
-          </Button>
-        )}
-        {mask.segmentationProgress && (
-          <div className="workspace-mask-progress" aria-live="polite">
-            <div><span>{mask.segmentationProgress.label}</span>{mask.segmentationProgress.percent !== null && <span>{mask.segmentationProgress.percent}%</span>}</div>
-            <div className="workspace-mask-progress-track" role="progressbar" aria-label={mask.segmentationProgress.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={mask.segmentationProgress.percent ?? undefined}>
-              <span className={mask.segmentationProgress.percent === null ? 'is-indeterminate' : undefined} style={mask.segmentationProgress.percent === null ? undefined : { width: `${mask.segmentationProgress.percent}%` }} />
-            </div>
-          </div>
-        )}
         {automaticSelectionError && !mask.segmentationProgress && (
           <div className="workspace-mask-auto-error" role="alert">
             <p>{automaticSelectionError}</p>
             <div>
-              <Button size="mini" variant="secondary" onClick={() => void startAutomaticSelection()}>重试</Button>
+              <Button size="mini" variant="secondary" onClick={() => void startAutomaticSelection(targetId)}>重试</Button>
               <Button size="mini" variant="ghost" onClick={clearAutomaticSelectionError}>继续使用画笔</Button>
             </div>
           </div>
@@ -165,7 +150,7 @@ export function MaskPanel() {
         <div className="workspace-mask-editor-section">
           <ParamSlider
             label="羽化"
-            value={settings?.feather ?? 0}
+            value={settings?.feather ?? 2}
             min={0}
             max={40}
             onChange={(feather) => mask.updateGroupedMaskSettings({ feather }, 'feather')}
@@ -187,16 +172,6 @@ export function MaskPanel() {
           </label>
         </div>
       </section>
-      <Dialog
-        open={pendingDownload !== null}
-        onOpenChange={(open) => { if (!open) setPendingDownload(null) }}
-        title="下载自动选择资源"
-        description={pendingDownload ? `首次使用需要下载 ${formatModelSize(pendingDownload.sizeBytes)}，下载完成后会保存在本机。` : undefined}
-        footer={<>
-          <Button variant="secondary" onClick={() => setPendingDownload(null)}>取消</Button>
-          <Button variant="primary" onClick={confirmDownload}>下载并继续</Button>
-        </>}
-      />
     </div>
   )
 }

@@ -283,7 +283,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
         operationMaskSize.width,
         operationMaskSize.height,
         data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
-        operationMask?.feather ?? 0,
+        operationMask?.feather ?? 2,
       )
       if (!isCurrentOperation(operation)) return
       setMaskData(new Uint8Array(data))
@@ -294,7 +294,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
           height: saved.height,
           opacity: operationMask?.opacity ?? 1,
           inverted: operationMask?.inverted ?? false,
-          feather: operationMask?.feather ?? 0,
+          feather: operationMask?.feather ?? 2,
           kind: operationMask?.kind ?? 'brush',
           classId: operationMask?.classId,
           className: operationMask?.className,
