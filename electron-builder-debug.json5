@@ -4,6 +4,7 @@
   "appId": "com.diamondfsd.luna-device-debug",
   "asar": true,
   "asarUnpack": [],
+  "afterPack": "scripts/after-pack-adhoc.mjs",
   "productName": "Luna Device Debug",
   "directories": {
     "output": "release-debug",
@@ -36,6 +37,8 @@
   ],
   "mac": {
     "icon": "build-debug/icon.icns",
+    // electron-builder 不签名；afterPack 统一执行 Ad Hoc 签名。
+    "identity": null,
     "target": [
       {
         "target": "dmg",
