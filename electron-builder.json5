@@ -16,11 +16,6 @@
   ],
   "extraResources": [
     {
-      "from": "public/fonts",
-      "to": "fonts",
-      "filter": ["**/*.otf", "**/*.ttf"]
-    },
-    {
       "from": "build/icon.png",
       "to": "icon.png"
     },
@@ -38,11 +33,6 @@
       "from": "luna-render-core",
       "to": "luna-render-core",
       "filter": ["luna-render-core.node", "sam-segmentation-worker", "sam-segmentation-worker.exe", "semantic-segmentation-worker", "semantic-segmentation-worker.exe", "specialized-segmentation-worker", "specialized-segmentation-worker.exe", "*.dylib", "*.dll", "*.so*"]
-    },
-    {
-      "from": "public/luts",
-      "to": "luts",
-      "filter": ["**/*"]
     },
     {
       "from": "src/assets/watermark",
