@@ -4,6 +4,7 @@
 }
 
 .workspace-mask-auto-section,
+.workspace-mask-operation-section,
 .workspace-mask-brush-section,
 .workspace-mask-edge-section,
 .workspace-mask-editor-section {
@@ -13,6 +14,10 @@
 
 .workspace-mask-auto-section {
   padding: 8px 0 24px;
+}
+
+.workspace-mask-operation-section {
+  padding: 8px 0 20px;
 }
 
 .workspace-mask-edge-section {
@@ -227,13 +232,22 @@
   gap: 10px;
 }
 
-.workspace-mask-brush-modes.ui-btn-group {
+.workspace-mask-brush-modes.ui-btn-group,
+.workspace-mask-operation-modes.ui-btn-group {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
-.workspace-mask-brush-modes .ui-btn-group-btn {
+.workspace-mask-brush-modes.ui-btn-group {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workspace-mask-operation-modes.ui-btn-group {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.workspace-mask-brush-modes .ui-btn-group-btn,
+.workspace-mask-operation-modes .ui-btn-group-btn {
   height: 36px;
   gap: 8px;
   border: 1px solid var(--hairline);
@@ -242,7 +256,8 @@
   color: var(--ink);
 }
 
-.workspace-mask-brush-modes .ui-btn-group-btn.active {
+.workspace-mask-brush-modes .ui-btn-group-btn.active,
+.workspace-mask-operation-modes .ui-btn-group-btn.active {
   border-color: var(--blue);
   box-shadow: inset 0 0 0 1px var(--blue);
   color: var(--ink);

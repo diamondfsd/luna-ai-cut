@@ -22,6 +22,6 @@
   pointer-events: none;
 }
 
-.workspace-mask-brush-cursor.is-erase {
+.workspace-mask-brush-cursor.is-subtract {
   border-style: dashed;
 }

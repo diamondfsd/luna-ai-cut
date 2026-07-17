@@ -1,11 +1,12 @@
-import { Brush, Building2, CarFront, Check, Cloud, Crosshair, Eraser, Hand, MoreHorizontal, Mountain, ScanSearch, TreePine, Waves, X } from 'lucide-react'
+import { Brush, Building2, CarFront, Check, Cloud, Crosshair, Hand, Minus, MoreHorizontal, Mountain, MousePointer2, Plus, ScanSearch, TreePine, Waves, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { Button, ButtonGroup, Popover, PopoverContent, PopoverTrigger, SearchField, Switch } from '../../ui'
 import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTarget, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
+import type { MaskSelectionOperation } from './maskSelectionOperations'
 import './MaskPanel.css'
 
 const TARGET_ICONS: Record<string, LucideIcon> = {
@@ -17,10 +18,14 @@ const TARGET_ICONS: Record<string, LucideIcon> = {
   vehicle: CarFront,
   mountain: Mountain,
 }
-const BRUSH_MODES = [
+const BRUSH_TOOLS = [
   { value: 'move', label: <><Hand size={18} />移动</> },
-  { value: 'paint', label: <><Brush size={18} />添加</> },
-  { value: 'erase', label: <><Eraser size={18} />擦除</> },
+  { value: 'brush', label: <><Brush size={18} />画笔</> },
+]
+const SELECTION_OPERATIONS: Array<{ value: MaskSelectionOperation; label: ReactNode }> = [
+  { value: 'replace', label: <><MousePointer2 size={16} />选择</> },
+  { value: 'add', label: <><Plus size={16} />叠加</> },
+  { value: 'subtract', label: <><Minus size={16} />减去</> },
 ]
 const PRIMARY_TARGET_IDS = ['sky', 'water', 'tree', 'building', 'vehicle', 'mountain'] as const
 const CATEGORY_TARGETS = PRIMARY_TARGET_IDS.map((id) => AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === id)!)
@@ -41,15 +46,15 @@ export function MaskPanel() {
   const [runningTargetId, setRunningTargetId] = useState<AutomaticSegmentationTargetId | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const [moreSearch, setMoreSearch] = useState('')
-  const [selectionMode, setSelectionMode] = useState<'target' | 'point'>(() => settings?.modelId && isSamSegmentationModel(settings.modelId) ? 'point' : 'target')
+  const [automaticMode, setAutomaticMode] = useState<'target' | 'point'>(() => settings?.modelId && isSamSegmentationModel(settings.modelId) ? 'point' : 'target')
 
   useEffect(() => {
     const activeTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === mask.activeMask?.targetId || target.classId === mask.activeMask?.classId)
     if (activeTarget) {
       setTargetId(activeTarget.id)
-      setSelectionMode('target')
+      setAutomaticMode('target')
     } else if (mask.activeMask?.modelId && isSamSegmentationModel(mask.activeMask.modelId)) {
-      setSelectionMode('point')
+      setAutomaticMode('point')
     }
   }, [mask.activeMask?.classId, mask.activeMask?.modelId, mask.activeMask?.targetId])
 
@@ -70,11 +75,11 @@ export function MaskPanel() {
     [targetId],
   )
   const automaticSelectionModel = [...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS, ...SAM_MODELS].find(
-    (model) => model.id === (selectionMode === 'point'
+    (model) => model.id === (automaticMode === 'point'
       ? DEFAULT_POINT_SEGMENTATION_MODEL_ID
       : target.modelId),
   )
-  const pointSelectionRunning = selectionMode === 'point' && runningTargetId === null && mask.busy && mask.segmentationProgress !== null
+  const pointSelectionRunning = automaticMode === 'point' && runningTargetId === null && mask.busy && mask.segmentationProgress !== null
   const pointProgress = pointSelectionRunning ? mask.segmentationProgress : null
   const pointProgressIndeterminate = !pointProgress || pointProgress.percent === null
   const normalizedMoreSearch = moreSearch.trim().toLocaleLowerCase('zh-CN')
@@ -84,7 +89,7 @@ export function MaskPanel() {
       : MORE_TARGETS,
     [normalizedMoreSearch],
   )
-  const moreSelected = selectionMode === 'target' && MORE_TARGETS.some((item) => item.id === targetId)
+  const moreSelected = automaticMode === 'target' && MORE_TARGETS.some((item) => item.id === targetId)
   const moreRunning = runningTargetId !== null && MORE_TARGETS.some((item) => item.id === runningTargetId)
 
   const clearAutomaticSelectionError = (): void => {
@@ -100,7 +105,7 @@ export function MaskPanel() {
     clearAutomaticSelectionError()
     mask.setSemanticPicking(false)
     mask.setBrushActive(false)
-    setSelectionMode('target')
+    setAutomaticMode('target')
     setTargetId(selectedTargetId)
     setRunningTargetId(selectedTargetId)
     try {
@@ -120,12 +125,12 @@ export function MaskPanel() {
     if (mask.busy || runningTargetId !== null) return
     clearAutomaticSelectionError()
     mask.setBrushActive(false)
-    setSelectionMode('point')
+    setAutomaticMode('point')
     mask.setSemanticPicking(!mask.semanticPicking)
   }
 
   const retryAutomaticSelection = (): void => {
-    if (selectionMode === 'point') {
+    if (automaticMode === 'point') {
       clearAutomaticSelectionError()
       mask.setSemanticPicking(true)
       return
@@ -143,7 +148,7 @@ export function MaskPanel() {
       <Button
         key={item.id}
         variant="ghost"
-        className={[selectionMode === 'target' && item.id === targetId ? 'is-active' : '', isRunning ? 'is-running' : ''].filter(Boolean).join(' ') || undefined}
+        className={[automaticMode === 'target' && item.id === targetId ? 'is-active' : '', isRunning ? 'is-running' : ''].filter(Boolean).join(' ') || undefined}
         disabled={(mask.busy || runningTargetId !== null) && !isRunning}
         aria-label={isRunning ? `取消${item.label}自动选择` : `${item.label}自动选择`}
         onClick={() => void startAutomaticSelection(item.id)}
@@ -163,6 +168,15 @@ export function MaskPanel() {
 
   return (
     <div className="workspace-mask-panel">
+      <section className="workspace-mask-operation-section">
+        <h3 className="workspace-mask-section-heading">选区方式</h3>
+        <ButtonGroup
+          className="workspace-mask-operation-modes"
+          options={SELECTION_OPERATIONS}
+          value={mask.selectionOperation}
+          onChange={mask.setSelectionOperation}
+        />
+      </section>
       <section className="workspace-mask-auto-section">
         <h3 className="workspace-mask-section-heading">自动选择</h3>
         <div className="workspace-mask-auto-targets" aria-label="自动选择类型">
@@ -201,7 +215,7 @@ export function MaskPanel() {
               </div>
               <div className="workspace-mask-more-list" role="listbox" aria-label="更多自动选择类型">
                 {filteredMoreTargets.map((item) => {
-                  const isSelected = selectionMode === 'target' && item.id === targetId
+                  const isSelected = automaticMode === 'target' && item.id === targetId
                   const isRunning = runningTargetId === item.id
                   return (
                     <Button
@@ -234,7 +248,7 @@ export function MaskPanel() {
           {renderTargetButton(SUBJECT_TARGET)}
           <Button
             variant="ghost"
-            className={[selectionMode === 'point' ? 'is-active' : '', pointSelectionRunning ? 'is-running' : ''].filter(Boolean).join(' ') || undefined}
+            className={[automaticMode === 'point' ? 'is-active' : '', pointSelectionRunning ? 'is-running' : ''].filter(Boolean).join(' ') || undefined}
             disabled={(mask.busy || runningTargetId !== null) && !pointSelectionRunning}
             aria-label={pointSelectionRunning ? '取消点选' : mask.semanticPicking ? '退出点选' : '使用点选'}
             onClick={togglePointSelection}
@@ -270,7 +284,7 @@ export function MaskPanel() {
             <p>{automaticSelectionError}</p>
             <div>
               <Button size="mini" variant="secondary" onClick={retryAutomaticSelection}>重试</Button>
-              <Button size="mini" variant="ghost" onClick={() => { clearAutomaticSelectionError(); mask.setBrushActive(true) }}>使用画笔修补</Button>
+              <Button size="mini" variant="ghost" onClick={() => { clearAutomaticSelectionError(); mask.setSelectionOperation('add'); mask.setBrushActive(true) }}>使用画笔修补</Button>
             </div>
           </div>
         )}
@@ -283,15 +297,14 @@ export function MaskPanel() {
             <strong>工具</strong>
             <ButtonGroup
               className="workspace-mask-brush-modes"
-              options={BRUSH_MODES}
-              value={mask.brushActive ? mask.brushMode : 'move'}
+              options={BRUSH_TOOLS}
+              value={mask.brushActive ? 'brush' : 'move'}
               onChange={(value) => {
                 mask.setSemanticPicking(false)
                 if (value === 'move') {
                   mask.setBrushActive(false)
                   return
                 }
-                mask.setBrushMode(value as 'paint' | 'erase')
                 mask.setBrushActive(true)
               }}
             />

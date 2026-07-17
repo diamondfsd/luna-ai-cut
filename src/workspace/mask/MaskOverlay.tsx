@@ -5,6 +5,7 @@ import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { featherMaskPreview, sampleMaskBilinear } from './maskPreviewSampling'
+import { combineMaskValue, type MaskSelectionOperation } from './maskSelectionOperations'
 import './MaskOverlay.css'
 
 function drawBrush(
@@ -14,7 +15,7 @@ function drawBrush(
   x: number,
   y: number,
   radius: number,
-  erase: boolean,
+  operation: Exclude<MaskSelectionOperation, 'replace'>,
 ): void {
   const minX = Math.max(0, Math.floor(x - radius))
   const maxX = Math.min(width - 1, Math.ceil(x + radius))
@@ -27,7 +28,7 @@ function drawBrush(
       const edge = Math.max(0, Math.min(1, (radius - distance) / Math.max(1, radius * 0.25)))
       const index = py * width + px
       const amount = Math.round(edge * 255)
-      data[index] = erase ? Math.min(data[index], 255 - amount) : Math.max(data[index], amount)
+      data[index] = combineMaskValue(data[index], amount, operation)
     }
   }
 }
@@ -39,11 +40,39 @@ export function MaskOverlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const draftRef = useRef<Uint8Array | null>(null)
   const lastPointRef = useRef<{ x: number; y: number } | null>(null)
+  const replacePendingRef = useRef(true)
   const [cursorPoint, setCursorPoint] = useState<{ x: number; y: number } | null>(null)
+  const [temporarySubtract, setTemporarySubtract] = useState(false)
 
   useEffect(() => {
     draftRef.current = mask.maskData ? new Uint8Array(mask.maskData) : null
   }, [mask.maskData])
+
+  useEffect(() => {
+    replacePendingRef.current = mask.selectionOperation === 'replace'
+  }, [mask.activeMask?.id, mask.selectionOperation])
+
+  useEffect(() => {
+    if (!mask.brushActive) {
+      setTemporarySubtract(false)
+      return
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Alt') setTemporarySubtract(true)
+    }
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Alt') setTemporarySubtract(false)
+    }
+    const clearModifier = () => setTemporarySubtract(false)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', clearModifier)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', clearModifier)
+    }
+  }, [mask.brushActive])
 
   const displaySize = (() => {
     const aspect = Math.max(0.01, canvas.imageRect.width / Math.max(1, canvas.imageRect.height))
@@ -176,6 +205,7 @@ export function MaskOverlay() {
     const previous = lastPointRef.current ?? point
     const distance = Math.hypot(point.x - previous.x, point.y - previous.y)
     const radius = effectiveBrushSize / 2
+    const operation = event.altKey || mask.selectionOperation === 'subtract' ? 'subtract' : 'add'
     const steps = Math.max(1, Math.ceil(distance / Math.max(1, radius * 0.3)))
     for (let step = 0; step <= steps; step++) {
       const ratio = step / steps
@@ -186,7 +216,7 @@ export function MaskOverlay() {
         previous.x + (point.x - previous.x) * ratio,
         previous.y + (point.y - previous.y) * ratio,
         radius,
-        mask.brushMode === 'erase',
+        operation,
       )
     }
     lastPointRef.current = point
@@ -233,6 +263,10 @@ export function MaskOverlay() {
           if (!mask.brushActive) return
           event.currentTarget.setPointerCapture(event.pointerId)
           lastPointRef.current = null
+          if (mask.selectionOperation === 'replace' && replacePendingRef.current && !event.altKey) {
+            draftRef.current = new Uint8Array(mask.maskSize!.width * mask.maskSize!.height)
+            replacePendingRef.current = false
+          }
           paint(event)
         }}
         onPointerMove={(event) => {
@@ -253,12 +287,13 @@ export function MaskOverlay() {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
           lastPointRef.current = null
           setCursorPoint(null)
+          if (mask.selectionOperation === 'replace') replacePendingRef.current = true
           restoreCommittedMask()
         }}
       />
       {!mask.busy && mask.brushActive && !mask.semanticPicking && cursorPoint && (
         <span
-          className={`workspace-mask-brush-cursor${mask.brushMode === 'erase' ? ' is-erase' : ''}`}
+          className={`workspace-mask-brush-cursor${mask.selectionOperation === 'subtract' || temporarySubtract ? ' is-subtract' : ''}`}
           style={{
             left: cursorPoint.x,
             top: cursorPoint.y,

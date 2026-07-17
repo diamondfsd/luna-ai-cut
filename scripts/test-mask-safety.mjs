@@ -60,6 +60,7 @@ try {
     'src/workspace/mask/maskOperationIdentity.ts',
     'src/workspace/mask/maskModelMode.ts',
     'src/workspace/mask/maskPreviewSampling.ts',
+    'src/workspace/mask/maskSelectionOperations.ts',
     'src/shared/segmentationModels.ts',
     'src/workspace/color/colorMaskLayerOperations.ts',
     'src/workspace/shared/workspaceProjectPipeline.ts',
@@ -74,6 +75,7 @@ try {
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
   const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
   const previewSampling = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskPreviewSampling.js')))
+  const selectionOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskSelectionOperations.js')))
   const segmentationModels = await import(pathToFileURL(path.join(temporaryRoot, 'src/shared/segmentationModels.js')))
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
@@ -94,6 +96,29 @@ try {
     previewSampling.sampleMaskBilinear(new Uint8Array([0, 255]), 2, 1, 0.5, 0.5),
     127.5,
     'mask preview sampling must interpolate neighboring pixels',
+  )
+
+  const baseMask = new Uint8Array([0, 64, 128, 255])
+  const incomingMask = new Uint8Array([255, 128, 64, 0])
+  assert.deepEqual(
+    [...selectionOperations.applyMaskSelectionOperation(baseMask, incomingMask, 'replace')],
+    [...incomingMask],
+    'replace must use only the incoming selection',
+  )
+  assert.deepEqual(
+    [...selectionOperations.applyMaskSelectionOperation(baseMask, incomingMask, 'add')],
+    [255, 128, 128, 255],
+    'add must preserve the greater soft-mask weight',
+  )
+  assert.deepEqual(
+    [...selectionOperations.applyMaskSelectionOperation(baseMask, incomingMask, 'subtract')],
+    [0, 32, 96, 255],
+    'subtract must attenuate rather than binarize soft-mask weights',
+  )
+  assert.deepEqual(
+    [...selectionOperations.resampleMask(new Uint8Array([0, 255]), 2, 1, 4, 1)],
+    [0, 64, 191, 255],
+    'selection composition must resample an existing mask when model output dimensions differ',
   )
 
   const legacy = mergePipeline(createDefaultPipeline(), {
