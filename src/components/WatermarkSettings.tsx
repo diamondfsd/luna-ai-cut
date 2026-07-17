@@ -159,7 +159,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   }, [filePath])
 
   const stylePills = useMemo(() => {
-    const opts = deviceId ? watermarkStyleOptionsForDevice(deviceId) : watermarkStyleOptionsForDevice('luna-ultra')
+    const opts = deviceId ? watermarkStyleOptionsForDevice(deviceId) : []
     return opts.map((opt) => {
       const thumbSrc = WM_SRC[opt.value]?.image
       return {
