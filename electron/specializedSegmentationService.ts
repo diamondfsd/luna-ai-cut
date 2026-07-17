@@ -1,9 +1,15 @@
-import { execFile } from 'node:child_process'
 import { app } from 'electron'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
+import {
+  SpecializedWorkerClient,
+  type SpecializedWorkerLaunch,
+} from './specializedWorkerClient.js'
+import {
+  runSpecializedWorkerAttempt,
+  runSpecializedWorkerWithFallback,
+} from './specializedSegmentationAttempt.js'
 
 export type SpecializedSegmentationBackend = 'yolo26-seg' | 'birefnet-general-lite'
 
@@ -18,40 +24,112 @@ interface SpecializedSegmentationInput {
   outputSize: number
 }
 
-const execFileAsync = promisify(execFile)
-
-function workerPath(): string {
+function onnxWorkerLaunch(): SpecializedWorkerLaunch {
   const executable = process.platform === 'win32' ? 'specialized-segmentation-worker.exe' : 'specialized-segmentation-worker'
   const appRoot = process.env.APP_ROOT ?? join(import.meta.dirname, '..')
-  return app.isPackaged
+  return {
+    executable: app.isPackaged
     ? join(process.resourcesPath, 'luna-render-core', executable)
-    : join(appRoot, 'luna-render-core', executable)
+      : join(appRoot, 'luna-render-core', executable),
+    args: ['--server'],
+  }
+}
+
+function mpsWorkerLaunch(): SpecializedWorkerLaunch | null {
+  const python = process.env.LUNA_BIREFNET_MPS_PYTHON
+  if (app.isPackaged || process.platform !== 'darwin' || process.arch !== 'arm64' || !python) return null
+  const appRoot = process.env.APP_ROOT ?? join(import.meta.dirname, '..')
+  return {
+    executable: python,
+    args: [join(appRoot, 'scripts', 'birefnet-mps-worker.py'), '--server'],
+  }
+}
+
+const onnxWorker = new SpecializedWorkerClient(onnxWorkerLaunch)
+const mpsWorker = new SpecializedWorkerClient(() => {
+  const launch = mpsWorkerLaunch()
+  if (!launch) throw new Error('MPS 工作进程未配置')
+  return launch
+})
+
+export function shutdownSpecializedSegmentationWorker(): void {
+  onnxWorker.shutdown()
+  mpsWorker.shutdown()
 }
 
 export async function segmentSpecializedInWorker(
   input: SpecializedSegmentationInput,
   signal?: AbortSignal,
-): Promise<{ width: number; height: number; bytes: Buffer }> {
+): Promise<{
+  width: number
+  height: number
+  bytes: Buffer
+  sessionLoadMs: number
+  workerInferenceMs: number
+  sessionReused: boolean
+  executionBackend: 'onnx-cpu' | 'pytorch-mps'
+  fallbackReason?: string
+}> {
   const directory = await mkdtemp(join(tmpdir(), 'luna-specialized-'))
   const inputPath = join(directory, 'input.rgb')
   const outputPath = join(directory, 'output.mask')
   try {
     signal?.throwIfAborted()
     await writeFile(inputPath, input.rgb, { signal })
-    await execFileAsync(workerPath(), [
-      input.backend,
-      input.modelPath,
+    const command = {
+      backend: input.backend,
+      modelPath: input.modelPath,
       inputPath,
       outputPath,
-      String(input.scaledWidth),
-      String(input.scaledHeight),
-      String(input.padX),
-      String(input.padY),
-      String(input.outputSize),
-    ], { timeout: 90_000, maxBuffer: 64 * 1024, signal })
-    const bytes = await readFile(outputPath, { signal })
-    if (bytes.byteLength !== input.outputSize * input.outputSize) throw new Error('专用分割返回尺寸无效')
-    return { width: input.outputSize, height: input.outputSize, bytes }
+      scaledWidth: input.scaledWidth,
+      scaledHeight: input.scaledHeight,
+      padX: input.padX,
+      padY: input.padY,
+      outputSize: input.outputSize,
+    }
+    let executionBackend: 'onnx-cpu' | 'pytorch-mps' = 'onnx-cpu'
+    let fallbackReason: string | undefined
+    const runAttempt = (worker: SpecializedWorkerClient) => runSpecializedWorkerAttempt(
+      worker,
+      command,
+      outputPath,
+      input.outputSize * input.outputSize,
+      signal,
+    )
+    let attempt: Awaited<ReturnType<typeof runAttempt>>
+    if (input.backend === 'birefnet-general-lite' && mpsWorkerLaunch()) {
+      const outcome = await runSpecializedWorkerWithFallback(
+        async () => {
+          const result = await runAttempt(mpsWorker)
+          executionBackend = 'pytorch-mps'
+          return result
+        },
+        async () => {
+          mpsWorker.shutdown()
+          return await runAttempt(onnxWorker)
+        },
+        signal,
+      )
+      attempt = outcome.attempt
+      fallbackReason = outcome.fallbackReason
+      if (fallbackReason) {
+        executionBackend = 'onnx-cpu'
+      } else {
+        executionBackend = 'pytorch-mps'
+      }
+    } else {
+      attempt = await runAttempt(onnxWorker)
+    }
+    return {
+      width: input.outputSize,
+      height: input.outputSize,
+      bytes: attempt.bytes,
+      sessionLoadMs: attempt.result.sessionLoadMs,
+      workerInferenceMs: attempt.result.inferenceMs,
+      sessionReused: attempt.result.sessionReused,
+      executionBackend,
+      fallbackReason,
+    }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

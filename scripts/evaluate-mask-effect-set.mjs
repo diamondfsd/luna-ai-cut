@@ -1,6 +1,6 @@
 /* global process */
-import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { execFile, spawn } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -18,6 +18,7 @@ const outputRoot = path.resolve(argument('--output') ?? path.join(repositoryRoot
 const targetFilter = new Set((argument('--targets') ?? '').split(',').filter(Boolean))
 const limit = Number(argument('--limit') ?? Number.POSITIVE_INFINITY)
 const ffmpeg = process.env.FFMPEG_PATH ?? 'ffmpeg'
+const specializedWorkerPath = path.join(repositoryRoot, 'luna-render-core', 'specialized-segmentation-worker')
 
 const modelSpecs = {
   sky: {
@@ -72,6 +73,61 @@ function sha256(bytes) {
 function rounded(milliseconds) {
   return Math.round(milliseconds * 100) / 100
 }
+
+function createSpecializedWorker() {
+  const worker = spawn(specializedWorkerPath, ['--server'], { stdio: ['pipe', 'pipe', 'pipe'] })
+  const pending = new Map()
+  let stdout = ''
+  let stderr = ''
+  worker.stdout.setEncoding('utf8')
+  worker.stderr.setEncoding('utf8')
+  worker.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-8_192) })
+  worker.stdout.on('data', (chunk) => {
+    stdout += chunk
+    let newline = stdout.indexOf('\n')
+    while (newline >= 0) {
+      const line = stdout.slice(0, newline).trim()
+      stdout = stdout.slice(newline + 1)
+      if (line) {
+        const response = JSON.parse(line)
+        const request = pending.get(response.id)
+        if (request) {
+          pending.delete(response.id)
+          clearTimeout(request.timer)
+          if (response.kind === 'result') request.resolve(response)
+          else request.reject(new Error(response.error ?? '专用分割工作进程响应无效'))
+        }
+      }
+      newline = stdout.indexOf('\n')
+    }
+  })
+  worker.once('exit', (code, signal) => {
+    const error = new Error(stderr.trim() || `专用分割工作进程已退出 (${signal ?? code ?? 'unknown'})`)
+    for (const request of pending.values()) {
+      clearTimeout(request.timer)
+      request.reject(error)
+    }
+    pending.clear()
+  })
+  return {
+    segment(command) {
+      const id = randomUUID()
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          worker.kill()
+          reject(new Error('专用分割工作进程超时'))
+        }, 90_000)
+        pending.set(id, { resolve, reject, timer })
+        worker.stdin.write(`${JSON.stringify({ id, op: 'segment', ...command })}\n`)
+      })
+    },
+    close() {
+      if (!worker.killed) worker.kill()
+    },
+  }
+}
+
+let specializedWorker
 
 async function verifyModels(items) {
   const modelIds = new Set(items.map((item) => modelSpecs[item.target].id))
@@ -128,18 +184,32 @@ async function evaluateItem(item, datasetSha) {
     ], { timeout: 30_000, maxBuffer: 64 * 1024 })
     const prepareMs = performance.now() - prepareStartedAt
     const inferenceStartedAt = performance.now()
+    let sessionLoadMs = null
+    let sessionReused = null
+    let workerInferenceMs = null
     if (spec.backend === 'semantic') {
       await execFileAsync(path.join(repositoryRoot, 'luna-render-core', 'semantic-segmentation-worker'), [
         modelPath, rgbPath, workerOutputPath, '0.5', '0.5', String(spec.classId), String(spec.inputSize),
       ], { timeout: 90_000, maxBuffer: 64 * 1024 })
     } else {
-      await execFileAsync(path.join(repositoryRoot, 'luna-render-core', 'specialized-segmentation-worker'), [
-        spec.backend, modelPath, rgbPath, workerOutputPath,
-        String(transform.scaledWidth), String(transform.scaledHeight),
-        String(transform.padX), String(transform.padY), '512',
-      ], { timeout: 90_000, maxBuffer: 64 * 1024 })
+      specializedWorker ??= createSpecializedWorker()
+      const workerResult = await specializedWorker.segment({
+        backend: spec.backend,
+        modelPath,
+        inputPath: rgbPath,
+        outputPath: workerOutputPath,
+        scaledWidth: transform.scaledWidth,
+        scaledHeight: transform.scaledHeight,
+        padX: transform.padX,
+        padY: transform.padY,
+        outputSize: 512,
+      })
+      sessionLoadMs = workerResult.sessionLoadMs
+      sessionReused = workerResult.sessionReused
+      workerInferenceMs = workerResult.inferenceMs
     }
-    const inferenceMs = performance.now() - inferenceStartedAt
+    const workerRoundTripMs = performance.now() - inferenceStartedAt
+    const inferenceMs = workerInferenceMs ?? workerRoundTripMs
     const workerBytes = await readFile(workerOutputPath)
     const width = spec.backend === 'semantic' ? workerBytes.readUInt32LE(0) : 512
     const height = spec.backend === 'semantic' ? workerBytes.readUInt32LE(4) : 512
@@ -172,7 +242,10 @@ async function evaluateItem(item, datasetSha) {
       modelSha256: spec.sha256,
       status,
       prepareMs: rounded(prepareMs),
+      sessionLoadMs,
+      sessionReused,
       inferenceMs: rounded(inferenceMs),
+      workerRoundTripMs: rounded(workerRoundTripMs),
       totalMs: rounded(performance.now() - startedAt),
       maskWidth: width,
       maskHeight: height,
@@ -191,7 +264,10 @@ async function evaluateItem(item, datasetSha) {
       modelSha256: spec.sha256,
       status: 'error',
       prepareMs: null,
+      sessionLoadMs: null,
+      sessionReused: null,
       inferenceMs: null,
+      workerRoundTripMs: null,
       totalMs: rounded(performance.now() - startedAt),
       maskWidth: null,
       maskHeight: null,
@@ -231,6 +307,7 @@ for (const item of selectedItems) {
   results.push(result)
   process.stdout.write(`${result.imageId}\t${result.status}\t${result.foregroundRatio ?? '-'}\t${result.totalMs}ms\n`)
 }
+specializedWorker?.close()
 const summary = {
   runId,
   outputRoot,

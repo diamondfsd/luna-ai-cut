@@ -152,6 +152,44 @@ fn session(model_path: &str) -> Result<Session, String> {
         .map_err(|error| format!("加载专用分割模型失败: {error}"))
 }
 
+pub enum SpecializedSession {
+    Yolo(Session),
+    BiRefNet(Session),
+}
+
+impl SpecializedSession {
+    pub fn load(backend: &str, model_path: &str) -> Result<Self, String> {
+        match backend {
+            "yolo26-seg" => Ok(Self::Yolo(session(model_path)?)),
+            "birefnet-general-lite" => Ok(Self::BiRefNet(session(model_path)?)),
+            _ => Err("不支持的专用分割模型".to_string()),
+        }
+    }
+
+    pub fn segment(
+        &mut self,
+        rgb: &[u8],
+        scaled_width: usize,
+        scaled_height: usize,
+        pad_x: usize,
+        pad_y: usize,
+        output_size: usize,
+    ) -> Result<Vec<u8>, String> {
+        match self {
+            Self::Yolo(session) => segment_yolo_with_session(
+                session,
+                rgb,
+                scaled_width,
+                scaled_height,
+                pad_x,
+                pad_y,
+                output_size,
+            ),
+            Self::BiRefNet(session) => segment_birefnet_with_session(session, rgb, output_size),
+        }
+    }
+}
+
 pub fn segment_yolo(
     model_path: &str,
     rgb: &[u8],
@@ -161,8 +199,28 @@ pub fn segment_yolo(
     pad_y: usize,
     output_size: usize,
 ) -> Result<Vec<u8>, String> {
-    let input = preprocess_yolo(rgb)?;
     let mut session = session(model_path)?;
+    segment_yolo_with_session(
+        &mut session,
+        rgb,
+        scaled_width,
+        scaled_height,
+        pad_x,
+        pad_y,
+        output_size,
+    )
+}
+
+fn segment_yolo_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    scaled_width: usize,
+    scaled_height: usize,
+    pad_x: usize,
+    pad_y: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let input = preprocess_yolo(rgb)?;
     let tensor = Tensor::from_array(([1usize, 3, YOLO_SIZE, YOLO_SIZE], input))
         .map_err(|error| format!("创建 YOLO26s-seg 输入失败: {error}"))?;
     let outputs = session
@@ -208,8 +266,16 @@ pub fn segment_birefnet(
     rgb: &[u8],
     output_size: usize,
 ) -> Result<Vec<u8>, String> {
-    let input = preprocess_birefnet(rgb)?;
     let mut session = session(model_path)?;
+    segment_birefnet_with_session(&mut session, rgb, output_size)
+}
+
+fn segment_birefnet_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let input = preprocess_birefnet(rgb)?;
     let tensor = Tensor::from_array(([1usize, 3, BIREFNET_SIZE, BIREFNET_SIZE], input))
         .map_err(|error| format!("创建 BiRefNet 输入失败: {error}"))?;
     let outputs = session
