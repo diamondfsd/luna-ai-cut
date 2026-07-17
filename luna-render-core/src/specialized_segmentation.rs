@@ -200,7 +200,6 @@ pub enum SpecializedSession {
     Yolo(Session),
     BiRefNet(Session),
     Rmbg14(Session),
-    Rmbg20(Session),
 }
 
 impl SpecializedSession {
@@ -209,7 +208,6 @@ impl SpecializedSession {
             "yolo26-seg" => Ok(Self::Yolo(session(model_path)?)),
             "birefnet-general-lite" => Ok(Self::BiRefNet(session(model_path)?)),
             "rmbg-1.4" => Ok(Self::Rmbg14(session(model_path)?)),
-            "rmbg-2.0" => Ok(Self::Rmbg20(session(model_path)?)),
             _ => Err("不支持的专用分割模型".to_string()),
         }
     }
@@ -234,8 +232,7 @@ impl SpecializedSession {
                 output_size,
             ),
             Self::BiRefNet(session) => segment_birefnet_with_session(session, rgb, output_size),
-            Self::Rmbg14(session) => segment_rmbg_with_session(session, rgb, output_size, true),
-            Self::Rmbg20(session) => segment_rmbg_with_session(session, rgb, output_size, false),
+            Self::Rmbg14(session) => segment_rmbg_with_session(session, rgb, output_size),
         }
     }
 }
@@ -343,23 +340,17 @@ fn segment_birefnet_with_session(
     birefnet_mask(logits, shape[3] as usize, shape[2] as usize, output_size)
 }
 
-pub fn segment_rmbg(
-    backend: &str,
-    model_path: &str,
-    rgb: &[u8],
-    output_size: usize,
-) -> Result<Vec<u8>, String> {
+pub fn segment_rmbg(model_path: &str, rgb: &[u8], output_size: usize) -> Result<Vec<u8>, String> {
     let mut session = session(model_path)?;
-    segment_rmbg_with_session(&mut session, rgb, output_size, backend == "rmbg-1.4")
+    segment_rmbg_with_session(&mut session, rgb, output_size)
 }
 
 fn segment_rmbg_with_session(
     session: &mut Session,
     rgb: &[u8],
     output_size: usize,
-    normalize_minmax: bool,
 ) -> Result<Vec<u8>, String> {
-    let input = if normalize_minmax { preprocess_rmbg14(rgb)? } else { preprocess_birefnet(rgb)? };
+    let input = preprocess_rmbg14(rgb)?;
     let tensor = Tensor::from_array(([1usize, 3, BIREFNET_SIZE, BIREFNET_SIZE], input))
         .map_err(|error| format!("创建 RMBG 输入失败: {error}"))?;
     let outputs = session
@@ -376,11 +367,7 @@ fn segment_rmbg_with_session(
     if shape.len() != 4 || shape[0] != 1 || shape[1] != 1 {
         return Err(format!("RMBG 输出尺寸不兼容: {shape:?}"));
     }
-    if normalize_minmax {
-        rmbg14_mask(values, shape[3] as usize, shape[2] as usize, output_size)
-    } else {
-        probability_mask(values, shape[3] as usize, shape[2] as usize, output_size, |value| value)
-    }
+    rmbg14_mask(values, shape[3] as usize, shape[2] as usize, output_size)
 }
 
 #[cfg(test)]
@@ -408,11 +395,5 @@ mod tests {
         let mask = rmbg14_mask(&[-2.0, 0.0, 1.0, 2.0], 2, 2, 2).unwrap();
         assert_eq!(mask[0], 0);
         assert_eq!(mask[3], 255);
-    }
-
-    #[test]
-    fn rmbg20_preserves_probability_values() {
-        let mask = probability_mask(&[0.0, 0.25, 0.5, 1.0], 2, 2, 2, |value| value).unwrap();
-        assert_eq!(mask, vec![0, 64, 128, 255]);
     }
 }
