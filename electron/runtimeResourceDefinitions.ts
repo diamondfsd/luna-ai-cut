@@ -17,7 +17,6 @@ export interface RuntimeResourceDefinition {
 }
 
 const RELEASE_BASE = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/runtime-resources-v1.0.0'
-const BIREFNET_MPS_RELEASE_BASE = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/birefnet-mps-resources-v1.0.0'
 
 export const RUNTIME_RESOURCE_DEFINITIONS = {
   fonts: {
@@ -47,38 +46,6 @@ export const RUNTIME_RESOURCE_DEFINITIONS = {
     expectedFileCount: 71,
     archiveFormat: 'zip',
     allowedExtensions: ['.cube', '.json'],
-  },
-  birefnetMpsRuntime: {
-    id: 'birefnet-mps-runtime-macos-arm64',
-    kind: 'sidecar',
-    version: '1.0.0',
-    fileName: 'luna-birefnet-mps-runtime-macos-arm64-v1.0.0.7z',
-    url: `${BIREFNET_MPS_RELEASE_BASE}/luna-birefnet-mps-runtime-macos-arm64-v1.0.0.7z`,
-    archiveBytes: 87_403_275,
-    unpackedBytes: 626_185_325,
-    sha256: 'f2abb46e43bf45cb28a51af49020c31b19029c75d0ff318b0f98fca3b1bad817',
-    archiveRoot: 'birefnet-mps-runtime',
-    expectedFileCount: 23_248,
-    archiveFormat: '7z',
-    allowedExtensions: null,
-    executablePaths: [
-      'birefnet-mps-runtime/birefnet-mps-worker',
-      'birefnet-mps-runtime/python/Python.framework/Versions/3.12/bin/python3.12',
-    ],
-  },
-  birefnetMpsModel: {
-    id: 'birefnet-mps-model-lite',
-    kind: 'model',
-    version: '1.0.0',
-    fileName: 'luna-birefnet-mps-model-lite-v1.0.0.7z',
-    url: `${BIREFNET_MPS_RELEASE_BASE}/luna-birefnet-mps-model-lite-v1.0.0.7z`,
-    archiveBytes: 161_073_452,
-    unpackedBytes: 177_727_234,
-    sha256: 'd880691db71d62b0aad84ef1e833d47833d5a348e28e963f3d3c2c8af20d2ec3',
-    archiveRoot: 'birefnet-mps-model',
-    expectedFileCount: 4,
-    archiveFormat: '7z',
-    allowedExtensions: ['.json', '.py', '.safetensors'],
   },
 } as const satisfies Record<string, RuntimeResourceDefinition>
 
