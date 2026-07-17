@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { DEFAULT_POINT_SEGMENTATION_MODEL_ID } from '../../shared/segmentationModels'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
@@ -192,7 +193,7 @@ export function MaskOverlay() {
             void mask.generateSemanticMask({
               x: point.x / mask.maskSize!.width,
               y: point.y / mask.maskSize!.height,
-            })
+            }, undefined, DEFAULT_POINT_SEGMENTATION_MODEL_ID)
             mask.setSemanticPicking(false)
             return
           }
