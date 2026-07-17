@@ -84,12 +84,24 @@
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
     "hardenedRuntime": true,
+    "extraResources": [
+      {
+        "from": "node_modules/7zip-bin/mac/${arch}/7za",
+        "to": "tools/7za"
+      }
+    ],
     "extendInfo": {
       "NSLocalNetworkUsageDescription": "Luna AI Cut 需要访问本地网络来连接 Insta360 相机（Luna / Go Ultra）"
     }
   },
   "win": {
     "icon": "build/icon.ico",
+    "extraResources": [
+      {
+        "from": "node_modules/7zip-bin/win/x64/7za.exe",
+        "to": "tools/7za.exe"
+      }
+    ],
     "target": [
       {
         "target": "nsis",
