@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, readdir, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 import AdmZip from 'adm-zip'
+import { path7za } from '7zip-bin'
 import ts from 'typescript'
 
 const projectRoot = path.resolve(import.meta.dirname, '..')
@@ -35,6 +37,7 @@ function makeFixture(id, entries) {
       sha256: sha256(archive),
       archiveRoot: 'luts',
       expectedFileCount: entries.length,
+      archiveFormat: 'zip',
       allowedExtensions: ['.cube', '.json'],
     },
   }
@@ -105,6 +108,41 @@ try {
     fetcher: async () => { throw new Error('热缓存不应访问网络') },
   })
   assert.equal(hotPath, installedPath)
+
+  const sevenZipSource = path.join(temporaryRoot, 'seven-source', 'runtime')
+  await mkdir(sevenZipSource, { recursive: true })
+  await writeFile(path.join(sevenZipSource, 'worker'), '#!/bin/sh\necho ready\n')
+  await chmod(path.join(sevenZipSource, 'worker'), 0o755)
+  await writeFile(path.join(sevenZipSource, 'config.json'), '{"ready":true}\n')
+  await writeFile(path.join(sevenZipSource, 'empty.txt'), '')
+  const sevenZipArchivePath = path.join(temporaryRoot, 'runtime.7z')
+  execFileSync(path7za, ['a', '-t7z', '-mx=1', sevenZipArchivePath, 'runtime'], {
+    cwd: path.join(sevenZipSource, '..'),
+    stdio: 'ignore',
+  })
+  const sevenZipArchive = await readFile(sevenZipArchivePath)
+  const sevenZipDefinition = {
+    id: 'sevenzip-pack',
+    kind: 'sidecar',
+    version: '1.0.0',
+    fileName: 'runtime.7z',
+    url: 'https://fixture.invalid/runtime.7z',
+    archiveBytes: sevenZipArchive.byteLength,
+    unpackedBytes: Buffer.byteLength('#!/bin/sh\necho ready\n') + Buffer.byteLength('{"ready":true}\n'),
+    sha256: sha256(sevenZipArchive),
+    archiveRoot: 'runtime',
+    expectedFileCount: 3,
+    archiveFormat: '7z',
+    allowedExtensions: null,
+    executablePaths: ['runtime/worker'],
+  }
+  const sevenZipCache = path.join(temporaryRoot, 'sevenzip-cache')
+  const sevenZipInstalled = await loadRuntimeResource(sevenZipCache, sevenZipDefinition, {
+    sevenZipPath: path7za,
+    fetcher: fixtureFetcher(sevenZipArchive),
+  })
+  assert.equal(await readFile(path.join(sevenZipInstalled, 'config.json'), 'utf8'), '{"ready":true}\n')
+  assert.notEqual((await stat(path.join(sevenZipInstalled, 'worker'))).mode & 0o111, 0, '7z 安装后必须恢复 worker 可执行权限')
 
   const concurrent = makeFixture('concurrent-pack', [
     ['luts/shared.cube', 'shared-resource'],

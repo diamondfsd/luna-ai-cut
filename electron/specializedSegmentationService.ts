@@ -10,6 +10,7 @@ import {
   runSpecializedWorkerAttempt,
   runSpecializedWorkerWithFallback,
 } from './specializedSegmentationAttempt.js'
+import { getPreparedBiRefNetMpsResources } from './birefNetMpsResourceService.js'
 
 export type SpecializedSegmentationBackend = 'yolo26-seg' | 'birefnet-general-lite'
 
@@ -45,6 +46,19 @@ function mpsWorkerLaunch(): SpecializedWorkerLaunch | null {
       args: [process.env.LUNA_BIREFNET_MPS_WORKER ?? join(appRoot, 'scripts', 'birefnet-mps-worker.py'), '--server'],
     }
   }
+  const prepared = getPreparedBiRefNetMpsResources()
+  if (prepared) {
+    return {
+      executable: join(prepared.runtimeRoot, 'birefnet-mps-worker'),
+      args: ['--server'],
+      env: {
+        LUNA_BIREFNET_MPS_MODEL: prepared.modelRoot,
+        HF_HUB_OFFLINE: '1',
+        TRANSFORMERS_OFFLINE: '1',
+      },
+    }
+  }
+  if (app.isPackaged) return null
   const sidecarRoot = app.isPackaged
     ? join(process.resourcesPath, 'birefnet-mps-sidecar')
     : join(appRoot, 'release', 'experiments', 'birefnet-mps-sidecar')

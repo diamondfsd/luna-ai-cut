@@ -34,6 +34,7 @@ import { AUTOMATIC_SEGMENTATION_TARGETS, automaticSegmentationTarget, isSamSegme
 import { segmentSamInWorker } from './samSegmentationService'
 import { segmentSemanticInWorker } from './semanticSegmentationService'
 import { segmentSpecializedInWorker } from './specializedSegmentationService'
+import { prepareBiRefNetMpsResources } from './birefNetMpsResourceService'
 import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 
@@ -259,6 +260,19 @@ export function register(): void {
     const specializedDefinition = SPECIALIZED_SEGMENTATION_MODELS.find((item) => item.id === modelId)
     if (isSam) logMainInfo('[SAM] 智能选择开始')
     reportProgress('model', '正在准备模型', null)
+    if (specializedDefinition?.backend === 'birefnet-general-lite') {
+      try {
+        await prepareBiRefNetMpsResources(
+          (progress) => reportProgress('model', progress.label, progress.percent),
+          signal,
+        )
+      } catch (error) {
+        if (signal.aborted) throw error
+        logMainInfo('[Mask] MPS 扩展准备失败，将使用兼容模式', {
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
     const model = isSam
       ? await loadSamModel(modelId, (progress) => reportProgress(
         'model',

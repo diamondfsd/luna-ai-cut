@@ -26,6 +26,7 @@ interface PendingRequest {
 export interface SpecializedWorkerLaunch {
   executable: string
   args: string[]
+  env?: Record<string, string>
 }
 
 function errorFromReason(reason: unknown, fallback: string): Error {
@@ -105,6 +106,7 @@ export class SpecializedWorkerClient {
     const worker = spawn(launch.executable, launch.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      env: launch.env ? { ...process.env, ...launch.env } : process.env,
     })
     this.worker = worker
     this.stdoutBuffer = ''
