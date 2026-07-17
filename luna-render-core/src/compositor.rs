@@ -3,6 +3,7 @@ mod external;
 mod gpu;
 mod layer_kind;
 mod lut;
+mod mask;
 mod playback;
 mod preview;
 mod render;
@@ -15,6 +16,7 @@ use gpu::{
     create_rgba_texture, layer_bind_group_layout, parse_cube_lut, upload_rgba,
 };
 pub(crate) use layer_kind::is_procedural_layer_type;
+use mask::{linear_clamp_sampler_descriptor, mask_params};
 use preview::{plan_cover_scale, plan_cover_transform, resolve_positioning};
 pub(crate) use preview::{PreviewLayerInput, PreviewTextureInfo};
 
@@ -337,16 +339,7 @@ impl Compositor {
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(SHADER)),
         });
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("linear clamp"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        });
+        let sampler = device.create_sampler(&linear_clamp_sampler_descriptor());
 
         let bgl = layer_bind_group_layout(&device);
 
