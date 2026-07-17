@@ -97,13 +97,14 @@ export function MaskOverlay() {
       for (let x = 0; x < displaySize.width; x++) {
         const source = displayToSource((x + 0.5) / displaySize.width, (y + 0.5) / displaySize.height)
         if (source.x >= 0 && source.x <= 1 && source.y >= 0 && source.y <= 1) {
-          previewMask[y * displaySize.width + x] = sampleMaskBilinear(
+          const selected = sampleMaskBilinear(
             data,
             mask.maskSize.width,
             mask.maskSize.height,
             source.x,
             source.y,
           )
+          previewMask[y * displaySize.width + x] = mask.activeMask?.inverted ? 255 - selected : selected
         }
       }
     }
@@ -133,7 +134,7 @@ export function MaskOverlay() {
     if (mask.maskData) render(mask.maskData)
     // render depends on the same visual inputs listed here and is intentionally local to this component.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas.sourceAspect, displaySize.height, displaySize.width, edit.pipeline.transform, mask.activeMask?.feather, mask.maskData, mask.maskSize])
+  }, [canvas.sourceAspect, displaySize.height, displaySize.width, edit.pipeline.transform, mask.activeMask?.feather, mask.activeMask?.inverted, mask.maskData, mask.maskSize])
 
   if (!mask.editing || !mask.maskSize) return null
   const imageRect = canvas.imageRect
