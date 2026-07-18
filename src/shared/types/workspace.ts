@@ -40,11 +40,14 @@ export interface WorkspaceColorRevealState {
   stageMode?: 'two' | 'three'
 }
 
-export type PixelStretchPresetId = 'horizon' | 'vertical' | 'burst'
+export type PixelStretchPresetId = 'left' | 'right' | 'top' | 'bottom' | 'horizontal' | 'vertical'
 
 export interface WorkspacePixelStretchState {
   preset: PixelStretchPresetId
   intensity: number
+  angle: number
+  samplePosition: number
+  ribbonSize: number
   maskPath?: string
   maskAssetId?: string
 }

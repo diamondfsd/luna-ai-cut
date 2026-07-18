@@ -56,6 +56,17 @@ fn sample_effective_color_mask(tex_coord: vec2<f32>) -> f32 {
     return select(value, 1.0 - value, params.mask_params.y > 0.5);
 }
 
+fn sample_pixel_stretch_mask(tex_coord: vec2<f32>) -> f32 {
+    let value = textureSampleLevel(mask_texture, src_sampler, tex_coord, 0.0).r;
+    return select(value, 1.0 - value, params.mask_params.y > 0.5);
+}
+
+fn s_curve_point(t: f32, origin_x: f32, amplitude: f32, aspect: f32) -> vec2<f32> {
+    let y = mix(-0.12, 1.12, t);
+    let x = origin_x - amplitude * sin(t * 6.28318530718);
+    return vec2<f32>((x - origin_x) * aspect, y);
+}
+
 fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
     let original = sample_effective_color_mask(tex_coord);
     let feather_px = params.mask_params.z;
@@ -197,6 +208,82 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         params.src_x + source_local.x * params.src_w,
         params.src_y + source_local.y * params.src_h,
     );
+
+    if (params.pixel_stretch.x > 0.5) {
+        let stretch_mode = params.pixel_stretch.x;
+        let is_s_curve = stretch_mode > 2.5 && stretch_mode < 4.5;
+        if (!is_s_curve && sample_pixel_stretch_mask(tex_coord) > 0.5) {
+            discard;
+        }
+        let amount = clamp(params.pixel_stretch.y / 100.0, 0.0, 1.0);
+        let max_travel = mix(0.18, 1.25, amount);
+        let origin = vec2<f32>(params.pixel_stretch.z, params.pixel_stretch.w);
+        let aspect = max(params.source_aspect, 0.0001);
+        let axial_angle = radians(params.pixel_stretch_extra.x);
+        let axial_scale = max(abs(cos(axial_angle)), 0.08);
+        let ribbon_scale = max(params.pixel_stretch_extra.y, 0.1);
+        var seed = vec2<f32>(origin.x, tex_coord.y);
+        var axial_position = 0.0;
+        let is_horizontal = stretch_mode < 1.5 || (stretch_mode > 4.5 && stretch_mode < 5.5) || (stretch_mode > 6.5 && stretch_mode < 7.5);
+        let is_vertical = (stretch_mode > 1.5 && stretch_mode < 2.5) || (stretch_mode > 5.5 && stretch_mode < 6.5) || stretch_mode > 7.5;
+        if (is_horizontal) {
+            seed = vec2<f32>(origin.x, origin.y + (tex_coord.y - origin.y) / (axial_scale * ribbon_scale));
+            axial_position = (seed.y - origin.y) * 2.0;
+            if ((stretch_mode < 1.5 && tex_coord.x <= origin.x) ||
+                (stretch_mode > 4.5 && stretch_mode < 5.5 && tex_coord.x >= origin.x) ||
+                abs(tex_coord.x - origin.x) > max_travel) {
+                discard;
+            }
+        } else if (is_vertical) {
+            seed = vec2<f32>(origin.x + (tex_coord.x - origin.x) / (axial_scale * ribbon_scale), origin.y);
+            axial_position = (seed.x - origin.x) * 2.0;
+            if ((stretch_mode > 1.5 && stretch_mode < 2.5 && tex_coord.y <= origin.y) ||
+                (stretch_mode > 5.5 && stretch_mode < 6.5 && tex_coord.y >= origin.y) ||
+                abs(tex_coord.y - origin.y) > max_travel) {
+                discard;
+            }
+        } else {
+            let position = vec2<f32>((tex_coord.x - origin.x) * aspect, tex_coord.y);
+            let amplitude = mix(0.22, 0.38, amount);
+            let half_width = mix(0.055, 0.10, amount);
+            var best_t = 0.0;
+            var best_point = s_curve_point(0.0, origin.x, amplitude, aspect);
+            var best_distance = dot(position - best_point, position - best_point);
+            for (var index = 1; index < 64; index = index + 1) {
+                let t = f32(index) / 63.0;
+                let point = s_curve_point(t, origin.x, amplitude, aspect);
+                let distance = dot(position - point, position - point);
+                if (distance < best_distance) {
+                    best_t = t;
+                    best_point = point;
+                    best_distance = distance;
+                }
+            }
+            if (best_distance > half_width * half_width || (stretch_mode > 3.5 && best_t < 0.76)) {
+                discard;
+            }
+            let before = s_curve_point(max(0.0, best_t - 0.01), origin.x, amplitude, aspect);
+            let after = s_curve_point(min(1.0, best_t + 0.01), origin.x, amplitude, aspect);
+            let tangent = normalize(after - before);
+            let normal = vec2<f32>(-tangent.y, tangent.x);
+            let signed_distance = dot(position - best_point, normal);
+            seed = vec2<f32>(origin.x, origin.y + signed_distance / half_width * 0.5);
+        }
+        if (seed.x < 0.0 || seed.x > 1.0 || seed.y < 0.0 || seed.y > 1.0 || sample_pixel_stretch_mask(seed) < 0.5) {
+            discard;
+        }
+        let source_size = vec2<f32>(textureDimensions(src_texture));
+        let seed_pixel = clamp(floor(seed * source_size), vec2<f32>(0.0), source_size - vec2<f32>(1.0));
+        let seed_center = (seed_pixel + vec2<f32>(0.5)) / source_size;
+        let stretched_color = textureSampleLevel(src_texture, src_sampler, seed_center, 0.0);
+        let axial_light = clamp(1.0 - abs(sin(axial_angle)) * 0.10 + sin(axial_angle) * axial_position * 0.08, 0.72, 1.08);
+        let stretched_adjusted = apply_color(stretched_color.rgb, seed, local_x) * axial_light;
+        let stretched_alpha = stretched_color.a * params.opacity;
+        if (params.sampling_quality > 0.5) {
+            return vec4<f32>(stretched_adjusted * stretched_alpha, stretched_alpha);
+        }
+        return vec4<f32>(stretched_adjusted, stretched_alpha);
+    }
 
     var color = sample_media_texture(tex_coord);
     let adjusted = apply_color(color.rgb, tex_coord, local_x);

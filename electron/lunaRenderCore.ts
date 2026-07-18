@@ -29,7 +29,7 @@ export interface CompositionInput {
   }
   layers: Array<{
     id?: string
-    layerType?: 'media' | 'local-color' | 'shape' | 'text' | 'logo' | 'decoration'
+    layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
     source: {
       path: string
       sourceType?: 'auto' | 'image' | 'video' | string
@@ -41,6 +41,7 @@ export interface CompositionInput {
       }
     }
     rect: { x: number; y: number; w: number; h: number }
+    sourceRect?: { x: number; y: number; w: number; h: number }
     fit?: 'cover' | 'contain' | string
     opacity?: number
     blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
@@ -50,6 +51,14 @@ export interface CompositionInput {
     maskOpacity?: number
     maskInverted?: boolean
     maskFeather?: number
+    pixelStretch?: {
+      mode: 'left' | 'right' | 'up' | 'down' | 'horizontal' | 'vertical' | 'swirl' | 'swirl-front'
+      intensity: number
+      originX: number
+      originY: number
+      angle?: number
+      ribbonSize?: number
+    }
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
   }>

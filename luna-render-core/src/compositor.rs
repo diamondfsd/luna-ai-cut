@@ -123,6 +123,8 @@ struct GpuLayerParams {
     sampling_quality: f32,
     mask_params: [f32; 4],
     procedural: [f32; 4],
+    pixel_stretch: [f32; 4],
+    pixel_stretch_extra: [f32; 4],
     fill_rgba: [f32; 4],
     stroke_rgba: [f32; 4],
     text_meta: [f32; 4],
