@@ -1,11 +1,9 @@
 import { ArrowLeft, Brush, Download, PenTool, RotateCcw, ScanSearch } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
-import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { LrcRender } from '../../../components/LrcRender'
-import { resolveExportConfig } from '../../../components/previewStageExport'
-import { buildCompositionFromPreviewLayers } from '../../../components/renderComposition'
-import type { MediaMetadata, PreviewLayer, VideoExportSettings, WorkspacePixelStretchState } from '../../../shared/types'
+import { exportPreviewImage } from '../../../components/previewStageExport'
+import type { MediaMetadata, PreviewLayer, WorkspacePixelStretchState } from '../../../shared/types'
 import { Button, IconButton, SegmentedControl, toast } from '../../../ui'
 import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
 import { ParamSlider } from '../../components/ParamSlider'
@@ -31,7 +29,6 @@ const DEFAULT_SAMPLE_POSITION = 50
 const DEFAULT_RANGE_START = 0
 const DEFAULT_RANGE_END = 100
 const DEFAULT_CONTROL_OFFSET = 0
-const IMAGE_DURATION = 5
 const PIXEL_STRETCH_MASK_LAYER_ID = 'pixel-stretch-subject-mask'
 
 function normalizePreset(value: unknown): WorkspacePixelStretchState['preset'] {
@@ -106,7 +103,6 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   const [pointPicking, setPointPicking] = useState(false)
   const [sampleEditing, setSampleEditing] = useState(false)
   const [maskEditing, setMaskEditing] = useState(false)
-  const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const requestRef = useRef<string | null>(null)
   const automaticAttemptRef = useRef<string | null>(null)
@@ -355,41 +351,40 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     })
   }
 
-  const exportEffect = useCallback(async (config: VideoExportSettings) => {
+  const exportEffect = useCallback(async () => {
     if (!activeAsset || !outputSize || !activeMaskPath || exporting) return
-    setExportOpen(false)
     setExporting(true)
+    let exportTaskId: string | undefined
+    let exportItemId: string | undefined
     try {
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
-      const resolved = resolveExportConfig(config, outputSize.width, outputSize.height)
-      const composition = buildCompositionFromPreviewLayers(effectLayers, resolved.width, resolved.height, { fps: resolved.fps ?? undefined, duration: IMAGE_DURATION })
-      composition.canvas.duration = IMAGE_DURATION
       const stamp = Date.now()
       const name = activeAsset.name.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*]+/g, '-').trim() || 'pixel-stretch'
-      const outputPath = `${settings.exportDir.replace(/\/$/, '')}/${name}-pixel-stretch-${stamp}.mp4`
+      const fileName = `${name}-pixel-stretch-${stamp}.png`
+      const outputPath = `${settings.exportDir.replace(/[\\/]$/, '')}/${fileName}`
       const itemId = `pixel_stretch_${stamp}`
-      const task = await window.luna.exportTask.create('像素拉伸', [{ id: itemId, sourcePath: activeAsset.path, outputPath, label: '创意视频' }])
-      const api = (window as unknown as {
-        lunaRenderCore?: {
-          exportCompositionVideo: (
-            outputPath: string,
-            composition: ReturnType<typeof buildCompositionFromPreviewLayers>,
-            fps: number | null,
-            duration: number | null,
-            hardware: boolean,
-            taskId?: string,
-            qualityPreset?: string,
-            exportTaskId?: string,
-            exportItemId?: string,
-          ) => Promise<void>
-        }
-      }).lunaRenderCore
-      if (!api) throw new Error('渲染引擎未初始化')
-      void api.exportCompositionVideo(outputPath, composition, resolved.fps, IMAGE_DURATION, true, itemId, resolved.qualityPreset, task.id, itemId)
-      toast.success('已加入生成任务')
+      const task = await window.luna.exportTask.create('像素拉伸', [{ id: itemId, sourcePath: activeAsset.path, outputPath, label: '创意图片' }])
+      exportTaskId = task.id
+      exportItemId = itemId
+      await exportPreviewImage({
+        exportDir: settings.exportDir,
+        fileName,
+        width: outputSize.width,
+        height: outputSize.height,
+        layers: effectLayers,
+        format: 'png',
+        quality: 100,
+        exportTaskId: task.id,
+        exportItemId: itemId,
+      })
+      toast.success('图片已导出')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '视频生成失败')
+      const message = error instanceof Error ? error.message : '图片导出失败'
+      if (exportTaskId && exportItemId) {
+        await window.luna.exportTask.updateItem(exportTaskId, exportItemId, { status: 'failed', error: message }).catch(() => undefined)
+      }
+      toast.error(message)
     } finally {
       setExporting(false)
     }
@@ -463,10 +458,9 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
           </fieldset>
         </div>}
       <div className="pixel-stretch-actions"><div className="pixel-stretch-tool-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置参数" aria-label="重置参数" onClick={() => { setPreset(DEFAULT_PRESET); setAngle(DEFAULT_ANGLE); resetSampleEditor() }} /></div>
-        <div><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMaskPath || exporting} onClick={() => setExportOpen(true)}>{exporting ? '加入中' : '生成视频'}</Button></div>
+        <div><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMaskPath || exporting} onClick={() => void exportEffect()}>{exporting ? '导出中' : '导出图片'}</Button></div>
       </div>
     </aside>
     <div className="pixel-stretch-media-strip"><WorkspaceMediaStrip /></div>
-    <ExportSettingsDialog open={exportOpen} tone="dark" onOpenChange={setExportOpen} title="生成像素拉伸视频" description="设置生成视频的分辨率、码率和帧率" loading={exporting} confirmLabel="开始生成" confirmLoadingLabel="生成中..." onConfirm={exportEffect} />
   </section>
 }
