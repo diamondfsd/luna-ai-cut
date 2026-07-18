@@ -161,16 +161,27 @@ const horizontalLayers = pixelStretch.buildPixelStretchLayers({
   intensity: 100,
   angle: 24,
   samplePosition: 25,
-  ribbonSize: 140,
+  sampleEndPosition: 75,
+  sampleRangeStart: 30,
+  sampleRangeEnd: 70,
+  sampleControlStartOffset: 10,
+  sampleControlEndOffset: -10,
   subjectBounds,
 })
 assert.equal(horizontalLayers.length, 3, 'horizontal effect has background, stretch, and subject layers')
 assert.equal(horizontalLayers[1].layerType, 'pixel-stretch', 'stretch layer uses the mask-driven render mode')
 assert.equal(horizontalLayers[1].pixelStretch.mode, 'right', 'right preset extends toward the right')
-assert.equal(horizontalLayers[1].pixelStretch.angle, 24, 'axial rotation is forwarded to the renderer')
-assert.equal(horizontalLayers[1].pixelStretch.ribbonSize, 140, 'ribbon size is forwarded to the renderer')
+assert.equal(horizontalLayers[1].pixelStretch.angle, 24, 'center rotation is forwarded to the renderer')
+assert.equal(horizontalLayers[1].pixelStretch.ribbonSize, 40, 'sampling range is forwarded to the renderer')
+close(horizontalLayers[1].pixelStretch.sampleStart, 8 / 15, 'horizontal sampling range has the expected start')
+close(horizontalLayers[1].pixelStretch.sampleEnd, 4 / 5, 'horizontal sampling range has the expected end')
 close(horizontalLayers[1].pixelStretch.originX, 0.375, 'horizontal sampling follows the selected subject x coordinate')
+close(horizontalLayers[1].pixelStretch.lineEnd, 0.625, 'horizontal sampling line follows the independently selected bottom x coordinate')
+close(horizontalLayers[1].pixelStretch.controlStart, 61 / 120, 'first pen handle controls the sampling curve')
+close(horizontalLayers[1].pixelStretch.controlEnd, 59 / 120, 'second pen handle controls the sampling curve')
 close(horizontalLayers[1].pixelStretch.originY, 2 / 3, 'stretch origin follows the subject center y')
+close(horizontalLayers[1].pixelStretch.centerX, 0.5, 'rotation center follows the subject center x')
+close(horizontalLayers[1].pixelStretch.centerY, 2 / 3, 'rotation center follows the subject center y')
 assert.equal(horizontalLayers[2].layerType, 'local-color', 'foreground subject uses clipping mask semantics')
 assert.equal(horizontalLayers[2].maskPath, 'subject.mask', 'foreground subject keeps its mask')
 
@@ -181,11 +192,18 @@ const verticalLayers = pixelStretch.buildPixelStretchLayers({
   intensity: 100,
   angle: 0,
   samplePosition: 75,
-  ribbonSize: 100,
+  sampleEndPosition: 25,
+  sampleRangeStart: 0,
+  sampleRangeEnd: 100,
+  sampleControlStartOffset: 0,
+  sampleControlEndOffset: 0,
   subjectBounds,
 })
 assert.equal(verticalLayers[1].pixelStretch.mode, 'vertical', 'vertical preset extends both up and down')
 close(verticalLayers[1].pixelStretch.originY, 5 / 6, 'vertical sampling follows the selected subject y coordinate')
+close(verticalLayers[1].pixelStretch.lineEnd, 0.5, 'vertical sampling line follows the independently selected right y coordinate')
+close(verticalLayers[1].pixelStretch.sampleStart, 0.25, 'vertical sampling starts at the subject left edge')
+close(verticalLayers[1].pixelStretch.sampleEnd, 0.75, 'vertical sampling ends at the subject right edge')
 
 for (const [preset, mode] of [['left', 'left'], ['top', 'up'], ['bottom', 'down'], ['horizontal', 'horizontal']]) {
   const layers = pixelStretch.buildPixelStretchLayers({
@@ -195,7 +213,11 @@ for (const [preset, mode] of [['left', 'left'], ['top', 'up'], ['bottom', 'down'
     intensity: 64,
     angle: 0,
     samplePosition: 50,
-    ribbonSize: 100,
+    sampleEndPosition: 50,
+    sampleRangeStart: 0,
+    sampleRangeEnd: 100,
+    sampleControlStartOffset: 0,
+    sampleControlEndOffset: 0,
     subjectBounds,
   })
   assert.equal(layers.length, 3, `${preset} effect uses one paper-strip layer`)

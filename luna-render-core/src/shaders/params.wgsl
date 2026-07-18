@@ -63,6 +63,7 @@ struct LayerParams {
     procedural: vec4<f32>,
     pixel_stretch: vec4<f32>,
     pixel_stretch_extra: vec4<f32>,
+    pixel_stretch_center: vec4<f32>,
     fill_rgba: vec4<f32>,
     stroke_rgba: vec4<f32>,
     text_meta: vec4<f32>,

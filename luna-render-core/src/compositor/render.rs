@@ -186,11 +186,21 @@ impl Compositor {
                     ]
                 });
                 let pixel_stretch_extra = layer.pixel_stretch.as_ref().map_or([0.0; 4], |effect| {
+                    let horizontal = matches!(effect.mode.as_str(), "left" | "right" | "horizontal");
                     [
-                        effect.angle.unwrap_or(0.0).clamp(-85.0, 85.0) as f32,
-                        effect.ribbon_size.unwrap_or(100.0).clamp(10.0, 200.0) as f32 / 100.0,
-                        0.0,
-                        0.0,
+                        effect.angle.unwrap_or(0.0).clamp(-180.0, 180.0) as f32,
+                        effect.line_end.unwrap_or(if horizontal { effect.origin_x } else { effect.origin_y }).clamp(0.0, 1.0) as f32,
+                        effect.sample_start.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
+                        effect.sample_end.unwrap_or(1.0).clamp(0.0, 1.0) as f32,
+                    ]
+                });
+                let pixel_stretch_center = layer.pixel_stretch.as_ref().map_or([0.5, 0.5, 0.0, 0.0], |effect| {
+                    let horizontal = matches!(effect.mode.as_str(), "left" | "right" | "horizontal");
+                    [
+                        effect.center_x.unwrap_or(0.5).clamp(0.0, 1.0) as f32,
+                        effect.center_y.unwrap_or(0.5).clamp(0.0, 1.0) as f32,
+                        effect.control_start.unwrap_or(if horizontal { effect.origin_x } else { effect.origin_y }).clamp(0.0, 1.0) as f32,
+                        effect.control_end.unwrap_or(effect.line_end.unwrap_or(if horizontal { effect.origin_x } else { effect.origin_y })).clamp(0.0, 1.0) as f32,
                     ]
                 });
                 let shape_kind = match layer.shape.as_deref() {
@@ -373,6 +383,7 @@ impl Compositor {
                     ],
                     pixel_stretch,
                     pixel_stretch_extra,
+                    pixel_stretch_center,
                     fill_rgba,
                     stroke_rgba,
                     text_meta: [

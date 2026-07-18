@@ -141,6 +141,13 @@ export interface RenderPixelStretch {
   originY: number
   angle?: number
   ribbonSize?: number
+  sampleStart?: number
+  sampleEnd?: number
+  lineEnd?: number
+  controlStart?: number
+  controlEnd?: number
+  centerX?: number
+  centerY?: number
 }
 
 export interface CompositionInput {

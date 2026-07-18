@@ -58,6 +58,13 @@ export interface CompositionInput {
       originY: number
       angle?: number
       ribbonSize?: number
+      sampleStart?: number
+      sampleEnd?: number
+      lineEnd?: number
+      controlStart?: number
+      controlEnd?: number
+      centerX?: number
+      centerY?: number
     }
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
