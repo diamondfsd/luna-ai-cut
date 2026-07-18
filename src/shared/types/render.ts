@@ -87,7 +87,7 @@ export interface RenderLayerTransform {
 }
 
 export interface PreviewLayer {
-  layerType?: 'media' | 'local-color' | 'shape' | 'text' | 'logo' | 'decoration'
+  layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
   filePath: string
   isVideo?: boolean
   /** 显式相同的 key 会复用同一份视频解码纹理。 */
@@ -111,6 +111,7 @@ export interface PreviewLayer {
   maskOpacity?: number
   maskInverted?: boolean
   maskFeather?: number
+  pixelStretch?: RenderPixelStretch
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
@@ -131,6 +132,15 @@ export interface PreviewLayer {
   textColor?: string
   textAlign?: 'left' | 'center' | 'right'
   verticalAlign?: 'top' | 'middle' | 'bottom'
+}
+
+export interface RenderPixelStretch {
+  mode: 'left' | 'right' | 'up' | 'down' | 'horizontal' | 'vertical' | 'swirl' | 'swirl-front'
+  intensity: number
+  originX: number
+  originY: number
+  angle?: number
+  ribbonSize?: number
 }
 
 export interface CompositionInput {
@@ -156,7 +166,7 @@ export interface CompositionReveal {
 }
 
 export interface CompositionLayer {
-  layerType?: 'media' | 'local-color' | 'shape' | 'text' | 'logo' | 'decoration'
+  layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
   id?: string
   source: {
     path: string
@@ -169,6 +179,8 @@ export interface CompositionLayer {
     }
   }
   rect: { x: number; y: number; w: number; h: number }
+  /** 从源纹理采样的归一化区域；省略时使用完整源图。 */
+  sourceRect?: { x: number; y: number; w: number; h: number }
   fit?: 'cover' | 'contain' | 'stretch' | string
   opacity?: number
   blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
@@ -180,6 +192,7 @@ export interface CompositionLayer {
   maskOpacity?: number
   maskInverted?: boolean
   maskFeather?: number
+  pixelStretch?: RenderPixelStretch
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   /** 3D LUT 文件路径 */

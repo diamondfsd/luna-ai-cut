@@ -84,6 +84,8 @@ pub struct CompositionLayer {
     pub layer_type: Option<String>,
     pub source: CompositionSource,
     pub rect: CompositionRect,
+    #[serde(rename = "sourceRect", alias = "source_rect")]
+    pub source_rect: Option<CompositionRect>,
     pub fit: Option<String>,
     pub opacity: Option<f64>,
     pub blend_mode: Option<String>,
@@ -94,6 +96,8 @@ pub struct CompositionLayer {
     pub mask_opacity: Option<f64>,
     pub mask_inverted: Option<bool>,
     pub mask_feather: Option<f64>,
+    #[serde(rename = "pixelStretch", alias = "pixel_stretch")]
+    pub pixel_stretch: Option<crate::RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<String>,

@@ -149,6 +149,18 @@ pub struct LayerPositioning {
     pub margin_y: f64,
 }
 
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderPixelStretch {
+    pub mode: String,
+    pub intensity: f64,
+    pub origin_x: f64,
+    pub origin_y: f64,
+    pub angle: Option<f64>,
+    pub ribbon_size: Option<f64>,
+}
+
 impl Default for RenderLayerTransform {
     fn default() -> Self {
         Self {
@@ -204,6 +216,7 @@ pub struct RenderLayer {
     pub mask_opacity: Option<f64>,
     pub mask_inverted: Option<bool>,
     pub mask_feather: Option<f64>,
+    pub pixel_stretch: Option<RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<String>,
@@ -234,6 +247,7 @@ pub struct PreviewLayer {
     pub mask_opacity: Option<f64>,
     pub mask_inverted: Option<bool>,
     pub mask_feather: Option<f64>,
+    pub pixel_stretch: Option<RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
     pub lut_id: Option<String>,

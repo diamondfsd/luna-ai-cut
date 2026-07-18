@@ -4,16 +4,18 @@ import { Buffer } from 'node:buffer'
 import ts from 'typescript'
 
 const source = await readFile(new URL('../src/workspace/transform/cropGeometry.ts', import.meta.url), 'utf8')
+const pixelStretchSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchLayers.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
-const compiled = ts.transpileModule(source, {
-  compilerOptions: {
-    module: ts.ModuleKind.ES2020,
-    target: ts.ScriptTarget.ES2020,
-    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
-  },
-}).outputText
+const compilerOptions = {
+  module: ts.ModuleKind.ES2020,
+  target: ts.ScriptTarget.ES2020,
+  importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
+}
+const compiled = ts.transpileModule(source, { compilerOptions }).outputText
+const pixelStretchCompiled = ts.transpileModule(pixelStretchSource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
+const pixelStretch = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchCompiled).toString('base64')}`)
 
 function close(actual, expected, message, epsilon = 0.0001) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${message}: expected ${expected}, got ${actual}`)
@@ -119,5 +121,85 @@ assert.match(shaderSource, /centered\.x\s*\*\s*c\s*\+\s*centered\.y\s*\*\s*s/, '
 assert.match(shaderSource, /-centered\.x\s*\*\s*s\s*\+\s*centered\.y\s*\*\s*c/, 'WGSL y rotation must match CPU inverse transform')
 assert.match(shaderSource, /if\s*\(params\.flip_h\s*>\s*0\.5\)[\s\S]*?centered\.x\s*=\s*-centered\.x/, 'WGSL must apply horizontal flip in source space')
 assert.match(shaderSource, /if\s*\(params\.flip_v\s*>\s*0\.5\)[\s\S]*?centered\.y\s*=\s*-centered\.y/, 'WGSL must apply vertical flip in source space')
+
+const mask = new Uint8Array([
+  0, 0, 0, 0,
+  0, 255, 0, 0,
+  0, 0, 255, 0,
+])
+const subjectBounds = pixelStretch.subjectBoundsFromMask(mask, 4, 3)
+cropClose(subjectBounds, { x: 0.25, y: 1 / 3, w: 0.5, h: 2 / 3 }, 'pixel stretch subject bounds')
+assert.equal(pixelStretch.subjectBoundsFromMask(new Uint8Array(12), 4, 3), null, 'empty mask has no subject bounds')
+assert.equal(pixelStretch.subjectBoundsFromMask(mask, 3, 3), null, 'mask dimensions must match its data')
+
+const solidMask = new Uint8Array(25).fill(255)
+assert.deepEqual(
+  Array.from(pixelStretch.erodeMaskOnePixel(solidMask, 5, 5)),
+  [0, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 255, 255, 255, 0, 0, 255, 255, 255, 0, 0, 0, 0, 0, 0],
+  'one-pixel erosion contracts every mask edge by one pixel',
+)
+assert.equal(pixelStretch.erodeMaskOnePixel(solidMask, 4, 5).length, 0, 'erosion rejects mismatched mask dimensions')
+
+const baseLayer = {
+  filePath: 'subject.png',
+  fit: 'cover',
+  dstX: 0,
+  dstY: 0,
+  dstW: 1,
+  dstH: 1,
+  srcX: 0,
+  srcY: 0,
+  srcW: 1,
+  srcH: 1,
+  opacity: 1,
+  zIndex: 0,
+}
+const horizontalLayers = pixelStretch.buildPixelStretchLayers({
+  layers: [baseLayer],
+  maskPath: 'subject.mask',
+  preset: 'right',
+  intensity: 100,
+  angle: 24,
+  samplePosition: 25,
+  ribbonSize: 140,
+  subjectBounds,
+})
+assert.equal(horizontalLayers.length, 3, 'horizontal effect has background, stretch, and subject layers')
+assert.equal(horizontalLayers[1].layerType, 'pixel-stretch', 'stretch layer uses the mask-driven render mode')
+assert.equal(horizontalLayers[1].pixelStretch.mode, 'right', 'right preset extends toward the right')
+assert.equal(horizontalLayers[1].pixelStretch.angle, 24, 'axial rotation is forwarded to the renderer')
+assert.equal(horizontalLayers[1].pixelStretch.ribbonSize, 140, 'ribbon size is forwarded to the renderer')
+close(horizontalLayers[1].pixelStretch.originX, 0.375, 'horizontal sampling follows the selected subject x coordinate')
+close(horizontalLayers[1].pixelStretch.originY, 2 / 3, 'stretch origin follows the subject center y')
+assert.equal(horizontalLayers[2].layerType, 'local-color', 'foreground subject uses clipping mask semantics')
+assert.equal(horizontalLayers[2].maskPath, 'subject.mask', 'foreground subject keeps its mask')
+
+const verticalLayers = pixelStretch.buildPixelStretchLayers({
+  layers: [baseLayer],
+  maskPath: 'subject.mask',
+  preset: 'vertical',
+  intensity: 100,
+  angle: 0,
+  samplePosition: 75,
+  ribbonSize: 100,
+  subjectBounds,
+})
+assert.equal(verticalLayers[1].pixelStretch.mode, 'vertical', 'vertical preset extends both up and down')
+close(verticalLayers[1].pixelStretch.originY, 5 / 6, 'vertical sampling follows the selected subject y coordinate')
+
+for (const [preset, mode] of [['left', 'left'], ['top', 'up'], ['bottom', 'down'], ['horizontal', 'horizontal']]) {
+  const layers = pixelStretch.buildPixelStretchLayers({
+    layers: [baseLayer],
+    maskPath: 'subject.mask',
+    preset,
+    intensity: 64,
+    angle: 0,
+    samplePosition: 50,
+    ribbonSize: 100,
+    subjectBounds,
+  })
+  assert.equal(layers.length, 3, `${preset} effect uses one paper-strip layer`)
+  assert.equal(layers[1].pixelStretch.mode, mode, `${preset} maps to ${mode}`)
+}
 
 console.log('workspace geometry tests passed')
