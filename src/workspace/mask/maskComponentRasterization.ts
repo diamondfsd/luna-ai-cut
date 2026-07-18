@@ -1,7 +1,21 @@
-import type { ColorMaskComponent, ColorMaskComponentOperation } from '../shared/editPipeline'
+import type { ColorMaskComponent, ColorMaskComponentOperation, ColorMaskLayer } from '../shared/editPipeline'
 import { applyMaskSelectionOperation, resampleMask } from './maskSelectionOperations'
 
 export type MaskRasterSource = (component: Extract<ColorMaskComponent, { type: 'raster' }>) => Uint8Array | null
+
+export function editableMaskComponents(mask: ColorMaskLayer | null): ColorMaskComponent[] {
+  if (mask?.components) return mask.components
+  if (!mask?.path) return []
+  return [{
+    id: `component-base-${mask.id}`, type: 'raster', operation: 'replace', enabled: true, inverted: false,
+    path: mask.path, width: mask.width, height: mask.height,
+  }]
+}
+
+export function gradientTargetComponent(components: ColorMaskComponent[], active: ColorMaskComponent | null): ColorMaskComponent | null {
+  if (active && active.type !== 'linear-gradient' && active.type !== 'radial-gradient') return active
+  return [...components].reverse().find((item) => item.enabled && item.type !== 'linear-gradient' && item.type !== 'radial-gradient') ?? null
+}
 
 function componentValue(value: number, inverted: boolean): number {
   const byte = Math.max(0, Math.min(255, Math.round(value * 255)))
@@ -66,8 +80,12 @@ export function composeMaskComponents(
   rasterSource: MaskRasterSource,
 ): Uint8Array {
   let result = new Uint8Array(width * height)
+  const modifiers = components.filter((component) => component.enabled
+    && (component.type === 'linear-gradient' || component.type === 'radial-gradient')
+    && component.targetComponentId)
   for (const component of components) {
     if (!component.enabled) continue
+    if ((component.type === 'linear-gradient' || component.type === 'radial-gradient') && component.targetComponentId) continue
     let incoming: Uint8Array | null
     if (component.type === 'raster') {
       const source = rasterSource(component)
@@ -77,6 +95,11 @@ export function composeMaskComponents(
       incoming = rasterizeVectorComponent(width, height, component)
     }
     if (!incoming) continue
+    for (const modifier of modifiers) {
+      if (modifier.targetComponentId !== component.id || modifier.type === 'raster') continue
+      const gradient = rasterizeVectorComponent(width, height, modifier)
+      incoming = applyComponentOperation(incoming, gradient, 'intersect')
+    }
     result = applyComponentOperation(result, incoming, component.operation)
   }
   return result

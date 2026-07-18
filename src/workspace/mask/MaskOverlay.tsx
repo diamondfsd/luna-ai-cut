@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_POINT_SEGMENTATION_MODEL_ID } from '../../shared/segmentationModels'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
@@ -6,7 +6,7 @@ import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import type { ColorMaskComponent, ColorMaskComponentOperation } from '../shared/editPipeline'
 import { componentControlHandles, componentOutline, hitTestComponentControl, updateComponentFromDrag, type MaskComponentDragKind } from './maskComponentControls'
 import { applyComponentDraft, drawMaskBrush } from './maskManualRasterization'
-import { composeMaskComponents, rasterizeVectorComponent } from './maskComponentRasterization'
+import { composeMaskComponents, editableMaskComponents, gradientTargetComponent, rasterizeVectorComponent } from './maskComponentRasterization'
 import { featherMaskPreview, sampleMaskBilinear } from './maskPreviewSampling'
 import { applyMaskSelectionOperation, type MaskSelectionOperation } from './maskSelectionOperations'
 import { shapeBoundsFromDrag } from './maskShapeRasterization'
@@ -32,6 +32,7 @@ export function MaskOverlay() {
   const [cursorPoint, setCursorPoint] = useState<{ x: number; y: number } | null>(null)
   const [temporarySubtract, setTemporarySubtract] = useState(false)
   const [componentRasterData, setComponentRasterData] = useState<Map<string, Uint8Array>>(new Map())
+  const maskComponents = useMemo(() => editableMaskComponents(mask.activeMask), [mask.activeMask])
   useEffect(() => {
     draftRef.current = mask.maskData ? new Uint8Array(mask.maskData) : null
   }, [mask.maskData])
@@ -61,7 +62,7 @@ export function MaskOverlay() {
   }, [mask.manualTool])
   useEffect(() => {
     let canceled = false
-    const rasterComponents = (mask.activeMask?.components ?? []).filter((component): component is Extract<ColorMaskComponent, { type: 'raster' }> => component.type === 'raster')
+    const rasterComponents = maskComponents.filter((component): component is Extract<ColorMaskComponent, { type: 'raster' }> => component.type === 'raster')
     if (!mask.projectId || rasterComponents.length === 0) {
       setComponentRasterData(new Map())
       return
@@ -75,7 +76,7 @@ export function MaskOverlay() {
       if (!canceled) setComponentRasterData(new Map())
     })
     return () => { canceled = true }
-  }, [mask.activeMask?.components, mask.projectId])
+  }, [mask.projectId, maskComponents])
   const displaySize = (() => {
     const aspect = Math.max(0.01, canvas.imageRect.width / Math.max(1, canvas.imageRect.height))
     return aspect >= 1
@@ -234,7 +235,6 @@ export function MaskOverlay() {
     const sourcePerPixel = Math.max(0.001, (sourcePerPixelX + sourcePerPixelY) / 2)
     return Math.max(2, effectiveBrushSize / sourcePerPixel)
   })()
-
   function pointForEvent(event: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } {
     const rect = event.currentTarget.getBoundingClientRect()
     const source = displayToSource((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height)
@@ -243,25 +243,23 @@ export function MaskOverlay() {
       y: Math.max(0, Math.min(mask.maskSize!.height - 1, source.y * mask.maskSize!.height)),
     }
   }
-
   function normalizedPointForEvent(event: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } {
     const point = pointForEvent(event)
     return { x: point.x / mask.maskSize!.width, y: point.y / mask.maskSize!.height }
   }
-
   function composeComponentDraft(component: Exclude<ColorMaskComponent, { type: 'raster' }>): Uint8Array | null {
-    const components = mask.activeMask?.components
-    if (!components || !mask.maskSize) return null
+    const components = maskComponents
+    if (!components.length || !mask.maskSize) return null
     const rasterComponents = components.filter((item) => item.type === 'raster')
     if (rasterComponents.some((item) => !componentRasterData.has(item.id))) return null
+    const exists = components.some((item) => item.id === component.id)
     return composeMaskComponents(
       mask.maskSize.width,
       mask.maskSize.height,
-      components.map((item) => item.id === component.id ? component : item),
+      exists ? components.map((item) => item.id === component.id ? component : item) : [...components, component],
       (item) => componentRasterData.get(item.id) ?? null,
     )
   }
-
   function updateActiveComponentDrag(event: React.PointerEvent<HTMLCanvasElement>): boolean {
     const drag = componentDragRef.current
     if (!drag) return false
@@ -273,7 +271,6 @@ export function MaskOverlay() {
     render(data)
     return true
   }
-
   function paint(event: React.PointerEvent<HTMLCanvasElement>): void {
     const base = shapeBaseRef.current
     const stroke = strokeDataRef.current
@@ -292,6 +289,7 @@ export function MaskOverlay() {
         previous.x + (point.x - previous.x) * ratio,
         previous.y + (point.y - previous.y) * ratio,
         radius,
+        mask.brushFeather / 100,
       )
     }
     lastPointRef.current = point
@@ -299,7 +297,6 @@ export function MaskOverlay() {
     draftRef.current = data
     render(data)
   }
-
   function updateVectorDraft(event: React.PointerEvent<HTMLCanvasElement>, kind: NonNullable<typeof vectorTool>): boolean {
     const start = shapeStartRef.current
     const base = shapeBaseRef.current
@@ -317,14 +314,16 @@ export function MaskOverlay() {
       render(base)
       return false
     }
-    const operation: ColorMaskComponentOperation = (kind === 'linear-gradient' || kind === 'radial-gradient') && mask.constrainGradient
-      ? 'intersect'
-      : mask.selectionOperation
+    const isGradient = kind === 'linear-gradient' || kind === 'radial-gradient'
+    const targetComponent = isGradient ? gradientTargetComponent(maskComponents, mask.activeComponent) : null
+    if (isGradient && !targetComponent) return false
+    const operation: ColorMaskComponentOperation = isGradient ? 'intersect' : mask.selectionOperation
     const common = {
       id: componentDraftRef.current?.id ?? `component-${crypto.randomUUID()}`,
       operation,
       enabled: true,
       inverted: false,
+      targetComponentId: componentDraftRef.current?.targetComponentId ?? targetComponent?.id,
     }
     const component: ColorMaskComponent = kind === 'linear-gradient'
       ? {
@@ -347,7 +346,8 @@ export function MaskOverlay() {
         }
     componentDraftRef.current = component
     const incoming = rasterizeVectorComponent(mask.maskSize.width, mask.maskSize.height, component)
-    const data = applyComponentDraft(base, incoming, operation)
+    const data = isGradient ? composeComponentDraft(component) : applyComponentDraft(base, incoming, operation)
+    if (!data) return false
     draftRef.current = data
     render(data)
     return true

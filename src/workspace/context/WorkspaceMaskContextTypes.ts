@@ -27,10 +27,10 @@ export interface WorkspaceMaskValue {
   setSelectionOperation: (value: MaskSelectionOperation) => void
   manualTool: MaskManualTool
   setManualTool: (value: MaskManualTool) => void
-  constrainGradient: boolean
-  setConstrainGradient: (value: boolean) => void
   brushSize: number
   setBrushSize: (value: number) => void
+  brushFeather: number
+  setBrushFeather: (value: number) => void
   showOverlay: boolean
   setShowOverlay: (value: boolean) => void
   maskData: Uint8Array | null

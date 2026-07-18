@@ -524,10 +524,12 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const pastePipelineRef = useRef(handlePastePipeline)
   const setCompareOriginalRef = useRef(edit.setCompareOriginal)
   const togglePlayRef = useRef(handleTrimTogglePlay)
+  const maskEditingRef = useRef(mask.editing)
 
   // Sync refs with latest values
   useEffect(() => { cropActiveRef.current = edit.cropActive }, [edit.cropActive])
   useEffect(() => { trimStateRef.current.trimActive = edit.trimActive }, [edit.trimActive])
+  useEffect(() => { maskEditingRef.current = mask.editing }, [mask.editing])
   useEffect(() => { activeMediaRef.current = media.activeMedia }, [media.activeMedia])
   useEffect(() => { mediaLengthRef.current = media.media.length }, [media.media.length])
   useEffect(() => { selectedIndicesRef.current = media.selectedIndices }, [media.selectedIndices])
@@ -562,7 +564,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       const hasTextSelection = (window.getSelection()?.toString() ?? '').length > 0
       const workspaceStripActive = document.activeElement instanceof HTMLElement && Boolean(document.activeElement.closest('.workspace-media-strip'))
 
-      if ((event.code === 'Delete' || event.code === 'Backspace') && activeMediaRef.current && !cropActiveRef.current) {
+      if ((event.code === 'Delete' || event.code === 'Backspace') && activeMediaRef.current && !cropActiveRef.current && !maskEditingRef.current) {
         const removalCount = selectedIndicesRef.current.size || 1
         if (removalCount >= mediaLengthRef.current) return
         event.preventDefault()

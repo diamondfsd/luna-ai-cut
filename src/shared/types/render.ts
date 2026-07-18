@@ -98,7 +98,7 @@ export interface PreviewLayer {
   /** 截取后的有效时长（秒）。不设则用源视频完整时长。 */
   videoDuration?: number
   /** 纹理在目标区域内的适配方式；cover-scale 保留完整纹理并用基础缩放填满区域 */
-  fit?: 'cover' | 'cover-scale'
+  fit?: 'cover' | 'cover-scale' | 'stretch'
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number
@@ -169,7 +169,7 @@ export interface CompositionLayer {
     }
   }
   rect: { x: number; y: number; w: number; h: number }
-  fit?: 'cover' | 'contain' | string
+  fit?: 'cover' | 'contain' | 'stretch' | string
   opacity?: number
   blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
   zIndex?: number

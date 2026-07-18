@@ -1,8 +1,8 @@
-import { ArrowUpRight, Brush, Building2, CarFront, Check, Circle, CircleDot, Cloud, Crosshair, Hand, Minus, MoreHorizontal, Mountain, MousePointer2, Plus, ScanSearch, Square, TreePine, Waves, X } from 'lucide-react'
+import { ArrowUpRight, Brush, Building2, CarFront, Check, Circle, CircleDot, Cloud, Crosshair, Hand, Minus, MoreHorizontal, Mountain, MousePointer2, Plus, ScanSearch, Sprout, Square, TreePine, Waves, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
-import { Button, ButtonGroup, Popover, PopoverContent, PopoverTrigger, SearchField, Switch } from '../../ui'
+import { Button, ButtonGroup, Popover, PopoverContent, PopoverTrigger, SearchField, Switch, toast } from '../../ui'
 import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTarget, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
@@ -19,6 +19,7 @@ const TARGET_ICONS: Record<string, LucideIcon> = {
   building: Building2,
   vehicle: CarFront,
   mountain: Mountain,
+  'ade20k-9': Sprout,
 }
 const BRUSH_TOOLS: Array<{ value: MaskManualTool; label: ReactNode }> = [
   { value: 'move', label: <><Hand size={18} />移动</> },
@@ -33,7 +34,7 @@ const SELECTION_OPERATIONS: Array<{ value: MaskSelectionOperation; label: ReactN
   { value: 'add', label: <><Plus size={16} />叠加</> },
   { value: 'subtract', label: <><Minus size={16} />减去</> },
 ]
-const PRIMARY_TARGET_IDS = ['sky', 'water', 'tree', 'building', 'vehicle', 'mountain'] as const
+const PRIMARY_TARGET_IDS = ['sky', 'water', 'tree', 'building', 'vehicle', 'mountain', 'ade20k-9'] as const
 const CATEGORY_TARGETS = PRIMARY_TARGET_IDS.map((id) => AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === id)!)
 const SUBJECT_TARGET = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === 'subject')!
 const MORE_TARGETS = AUTOMATIC_SEGMENTATION_TARGETS.filter(
@@ -315,19 +316,22 @@ export function MaskPanel() {
               options={BRUSH_TOOLS}
               value={mask.manualTool}
               onChange={(value) => {
+                const isGradient = value === 'linear-gradient' || value === 'radial-gradient'
+                const hasSelection = Boolean(mask.activeMask?.path || mask.activeMask?.components?.some((component) => component.type !== 'linear-gradient' && component.type !== 'radial-gradient'))
+                if (isGradient && !hasSelection) {
+                  toast.error('请先创建或选择一个选区')
+                  return
+                }
                 mask.setSemanticPicking(false)
                 mask.setManualTool(value)
               }}
             />
           </div>
           {mask.manualTool === 'brush' && (
-            <ParamSlider label="画笔大小" value={mask.brushSize} min={1} max={100} onChange={mask.setBrushSize} formatValue={(value) => `${Math.round(value)}`} />
-          )}
-          {(mask.manualTool === 'linear-gradient' || mask.manualTool === 'radial-gradient') && (
-            <label className="workspace-mask-setting-row">
-              <strong>限制在当前选区</strong>
-              <Switch ariaLabel="限制在当前选区" checked={mask.constrainGradient} onCheckedChange={mask.setConstrainGradient} />
-            </label>
+            <>
+              <ParamSlider label="画笔大小" value={mask.brushSize} min={1} max={100} onChange={mask.setBrushSize} formatValue={(value) => `${Math.round(value)}`} />
+              <ParamSlider label="画笔羽化" value={mask.brushFeather} min={0} max={100} onChange={mask.setBrushFeather} formatValue={(value) => `${Math.round(value)}%`} />
+            </>
           )}
           <label className="workspace-mask-setting-row">
             <strong>显示选区</strong>
