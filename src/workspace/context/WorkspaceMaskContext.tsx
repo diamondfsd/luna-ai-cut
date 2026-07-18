@@ -12,10 +12,10 @@ import { createMaskOperation, isMatchingMaskOperation, isMatchingSegmentationReq
 import { modelForAutomaticSelection } from '../mask/maskModelMode'
 import { mergeCompletedColorMaskLayer, moveColorMaskLayer } from '../color/colorMaskLayerOperations'
 import { applyMaskSelectionOperation, hasUsableMask, resampleMask, type MaskSelectionOperation } from '../mask/maskSelectionOperations'
-import type { SegmentationPerformance, WorkspaceMaskValue } from './WorkspaceMaskContextTypes'
-
+import type { MaskManualTool, SegmentationPerformance, WorkspaceMaskValue } from './WorkspaceMaskContextTypes'
+import { rebuildMaskCache, useMaskComponentPersistence } from './useMaskComponentPersistence'
+import { useMaskShortcuts } from './useMaskShortcuts'
 export type { SegmentationModelId } from '../../shared/segmentationModels'
-
 const WorkspaceMaskContext = createContext<WorkspaceMaskValue | null>(null)
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -40,7 +40,8 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const { canUndo, canRedo, undo, redo } = edit
   const [editing, setEditing] = useState(false)
   const [selectionOperation, setSelectionOperation] = useState<MaskSelectionOperation>('replace')
-  const [brushActive, setBrushActive] = useState(false)
+  const [manualTool, setManualTool] = useState<MaskManualTool>('move')
+  const [constrainGradient, setConstrainGradient] = useState(false)
   const [brushSize, setBrushSize] = useState(36)
   const [showOverlay, setShowOverlay] = useState(true)
   const [maskData, setMaskData] = useState<Uint8Array | null>(null)
@@ -111,6 +112,21 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     if (activeOperationRef.current?.kind === 'segmentation') invalidateActiveOperation()
   }, [invalidateActiveOperation])
   const clearSegmentationError = useCallback(() => setSegmentationError(null), [])
+  const commitLayers = useCallback((layers: ColorMaskLayer[]) => edit.commitPatch({ colorMasks: layers }), [edit])
+  const componentPersistence = useMaskComponentPersistence({
+    activeMask,
+    maskSize,
+    projectId: projectId ?? null,
+    assetId: activeMediaId ?? null,
+    colorMasksRef,
+    beginOperation,
+    finishOperation,
+    isCurrentOperation,
+    commitLayers,
+    setMaskData,
+    setActiveLayerId,
+  })
+  const { setActiveComponentId } = componentPersistence
 
   useEffect(() => () => {
     const operation = activeOperationRef.current
@@ -125,18 +141,19 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   useEffect(() => {
     invalidateActiveOperation()
     setEditing(false)
-    setBrushActive(false)
+    setManualTool('move')
     setActiveLayerId(null)
+    setActiveComponentId(null)
     setSemanticPicking(false)
     setSelectionOperation('replace')
     setShowOverlay(true)
     setBusy(false)
     setSegmentationProgress(null)
     setSegmentationError(null)
-  }, [active, activeMediaId, invalidateActiveOperation, projectId])
+  }, [active, activeMediaId, invalidateActiveOperation, projectId, setActiveComponentId])
 
   useEffect(() => {
-    if (!editing) setBrushActive(false)
+    if (!editing) setManualTool('move')
   }, [editing])
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
@@ -164,32 +181,13 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     return () => window.removeEventListener('keydown', handleUndoRedo, { capture: true })
   }, [busy, canRedo, canUndo, editing, redo, undo])
 
-  useEffect(() => {
-    if (!editing) return
-    const handleToolShortcut = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return
-      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable]')) return
-      if (event.code === 'KeyO') {
-        event.preventDefault()
-        setShowOverlay((visible) => !visible)
-        return
-      }
-      if (busy) return
-      if (event.code === 'KeyK' && !event.shiftKey) {
-        event.preventDefault()
-        setSemanticPicking(false)
-        setBrushActive(true)
-        return
-      }
-      if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
-        event.preventDefault()
-        const direction = event.code === 'BracketLeft' ? -1 : 1
-        setBrushSize((size) => Math.max(1, Math.min(100, size + direction * 4)))
-      }
-    }
-    window.addEventListener('keydown', handleToolShortcut, { capture: true })
-    return () => window.removeEventListener('keydown', handleToolShortcut, { capture: true })
-  }, [busy, editing])
+  useMaskShortcuts({
+    editing, busy, semanticPicking,
+    hasActiveComponent: Boolean(componentPersistence.activeComponent),
+    cancelSegmentation,
+    removeActiveComponent: componentPersistence.removeActiveComponent,
+    setSemanticPicking, setManualTool, setShowOverlay, setBrushSize,
+  })
 
   useEffect(() => {
     let canceled = false
@@ -220,23 +218,41 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       setMaskData(new Uint8Array(loaded.bytes))
     }).catch(async () => {
       if (canceled || !isCurrentOperation(operation)) return
-      if (operationMaskId) {
-        applySystemUpdate((pipeline) => ({
-          ...pipeline,
-          colorMasks: pipeline.colorMasks.map((layer) => layer.id === operationMaskId
-            ? { ...layer, enabled: false, loadError: 'missing-or-damaged' as const }
-            : layer),
-        }))
-      }
-      toast.error('蒙版文件不可用，可重新编辑这一层')
       try {
         const size = await window.luna.workspace.getMediaResolution(activeMediaPath)
         if (canceled || !isCurrentOperation(operation)) return
         const working = workingMaskSize(size.width, size.height)
-        setMaskSize(working)
-        setMaskData(new Uint8Array(working.width * working.height))
+        if (activeMask?.components?.length) {
+          const rebuilt = await rebuildMaskCache(projectId, activeMediaId, working.width, working.height, activeMask.components, activeMask.feather)
+          if (canceled || !isCurrentOperation(operation)) return
+          setMaskSize({ width: rebuilt.width, height: rebuilt.height })
+          setMaskData(rebuilt.data)
+          applySystemUpdate((pipeline) => ({
+            ...pipeline,
+            colorMasks: pipeline.colorMasks.map((layer) => layer.id === operationMaskId
+              ? { ...layer, path: rebuilt.path, width: rebuilt.width, height: rebuilt.height, enabled: true, loadError: undefined }
+              : layer),
+          }))
+          return
+        }
+        throw new Error('没有可恢复的蒙版组件')
       } catch {
-        // The layer remains disabled even when a blank rebuild canvas cannot be prepared.
+        if (operationMaskId) {
+          applySystemUpdate((pipeline) => ({
+            ...pipeline,
+            colorMasks: pipeline.colorMasks.map((layer) => layer.id === operationMaskId
+              ? { ...layer, enabled: false, loadError: 'missing-or-damaged' as const }
+              : layer),
+          }))
+        }
+        toast.error('蒙版文件不可用，可重新编辑这一层')
+        try {
+          const size = await window.luna.workspace.getMediaResolution(activeMediaPath)
+          if (canceled || !isCurrentOperation(operation)) return
+          const working = workingMaskSize(size.width, size.height)
+          setMaskSize(working)
+          setMaskData(new Uint8Array(working.width * working.height))
+        } catch { /* The damaged layer remains disabled. */ }
       }
     }).finally(() => {
       finishOperation(operation)
@@ -245,59 +261,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       canceled = true
       finishOperation(operation)
     }
-  }, [activeMask?.id, activeMaskPath, activeMediaId, activeMediaPath, applySystemUpdate, available, beginOperation, finishOperation, isCurrentOperation, projectId])
-
-  const commitMask = useCallback(async (data: Uint8Array) => {
-    if (!media.currentProject || !media.activeMedia || !maskSize) {
-      toast.error('请先在项目中打开一张图片')
-      return
-    }
-    const operationProjectId = media.currentProject.id
-    const operationAssetId = media.activeMedia.id
-    const operationMaskSize = maskSize
-    const operationMask = activeMask
-    const operation = beginOperation('save', operationProjectId, operationAssetId)
-    try {
-      const saved = await window.luna.workspace.saveColorMask(
-        operationProjectId,
-        operationAssetId,
-        operationMaskSize.width,
-        operationMaskSize.height,
-        data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
-        operationMask?.feather ?? 2,
-      )
-      if (!isCurrentOperation(operation)) return
-      setMaskData(new Uint8Array(data))
-      const layerId = operationMask?.id ?? `mask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-      const layer: ColorMaskLayer = {
-          path: saved.path,
-          width: saved.width,
-          height: saved.height,
-          opacity: operationMask?.opacity ?? 1,
-          inverted: operationMask?.inverted ?? false,
-          feather: operationMask?.feather ?? 2,
-          kind: operationMask?.kind ?? 'brush',
-          classId: operationMask?.classId,
-          className: operationMask?.className,
-          targetId: operationMask?.targetId,
-          modelId: operationMask?.modelId,
-          id: layerId,
-          name: operationMask?.name ?? `蒙版 ${colorMasksRef.current.length + 1}`,
-          enabled: operationMask?.enabled ?? true,
-          loadError: undefined,
-          blendMode: operationMask?.blendMode ?? 'normal',
-          color: operationMask?.color ?? createDefaultPipeline().color,
-      }
-      const nextLayers = mergeCompletedColorMaskLayer(colorMasksRef.current, operationMask?.id ?? null, layer)
-      if (nextLayers === colorMasksRef.current) return
-      edit.commitPatch({ colorMasks: nextLayers })
-      setActiveLayerId(layerId)
-    } catch (error) {
-      if (isCurrentOperation(operation)) toast.error(error instanceof Error ? error.message : '保存蒙版失败')
-    } finally {
-      finishOperation(operation)
-    }
-  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskSize, media.activeMedia, media.currentProject])
+  }, [activeMask?.components, activeMask?.feather, activeMask?.id, activeMaskPath, activeMediaId, activeMediaPath, applySystemUpdate, available, beginOperation, finishOperation, isCurrentOperation, projectId])
 
   const updateMaskSettings = useCallback((patch: { opacity?: number; inverted?: boolean; feather?: number }) => {
     if (!activeMask) return
@@ -351,7 +315,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const createMask = useCallback(() => {
     setActiveLayerId(null)
     setEditing(true)
-    setBrushActive(false)
+    setManualTool('move')
     setSemanticPicking(false)
     setSelectionOperation('replace')
     if (maskSize) setMaskData(new Uint8Array(maskSize.width * maskSize.height))
@@ -377,7 +341,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       : null
     const requestId = crypto.randomUUID()
     const operation = beginOperation('segmentation', operationProjectId, operationAssetId, requestId)
-    setBrushActive(false)
+    setManualTool('move')
     logger.info('[Mask] 用户开始自动选择', { requestId, targetId, modelId: requestedModelId, assetId: operationAssetId })
     setSegmentationError(null)
     setSegmentationProgress({ requestId, phase: 'model', label: '正在准备模型', percent: null })
@@ -397,6 +361,14 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
         ? resampleMask(operationBaseMask, maskSize.width, maskSize.height, result.width, result.height)
         : new Uint8Array(result.width * result.height)
       const data = applyMaskSelectionOperation(baseData, generatedData, operationSelectionMode)
+      const componentSaved = await window.luna.workspace.saveColorMask(
+        operationProjectId,
+        operationAssetId,
+        result.width,
+        result.height,
+        result.bytes,
+        0,
+      )
       const saved = await window.luna.workspace.saveColorMask(
         operationProjectId,
         operationAssetId,
@@ -409,6 +381,27 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       setMaskSize({ width: result.width, height: result.height })
       setMaskData(data)
       const layerId = operationMask?.id ?? `mask-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      const component = {
+        id: `component-${crypto.randomUUID()}`,
+        type: 'raster' as const,
+        operation: operationSelectionMode,
+        enabled: true,
+        inverted: false,
+        path: componentSaved.path,
+        width: componentSaved.width,
+        height: componentSaved.height,
+      }
+      const legacyComponents = operationMask?.path ? [{
+        id: `component-base-${operationMask.id}`,
+        type: 'raster' as const,
+        operation: 'replace' as const,
+        enabled: true,
+        inverted: false,
+        path: operationMask.path,
+        width: operationMask.width,
+        height: operationMask.height,
+      }] : []
+      const existingComponents = operationMask?.components ?? legacyComponents
       const layer: ColorMaskLayer = {
           path: saved.path,
           width: saved.width,
@@ -427,11 +420,13 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
           loadError: undefined,
           blendMode: operationMask?.blendMode ?? 'normal',
           color: operationMask?.color ?? createDefaultPipeline().color,
+          components: component.operation === 'replace' ? [component] : [...existingComponents, component],
       }
       const nextLayers = mergeCompletedColorMaskLayer(colorMasksRef.current, operationMask?.id ?? null, layer)
       if (nextLayers === colorMasksRef.current) return
       edit.commitPatch({ colorMasks: nextLayers })
       setActiveLayerId(layerId)
+      setActiveComponentId(component.id)
       logger.info('[Mask] 自动选择结果已应用', { requestId, targetId, modelId: result.modelId, layerId, performance: result.performance })
     } catch (error) {
       const message = error instanceof Error ? error.message : '自动选择失败，请重试'
@@ -444,7 +439,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     } finally {
       finishOperation(operation)
     }
-  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskData, maskSize, media.activeMedia, media.currentProject, segmentationModel, selectionOperation])
+  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskData, maskSize, media.activeMedia, media.currentProject, segmentationModel, selectionOperation, setActiveComponentId])
 
   const setSegmentationModel = useCallback((model: SegmentationModelId) => {
     setSegmentationModelState(model)
@@ -457,8 +452,10 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setEditing,
     selectionOperation,
     setSelectionOperation,
-    brushActive,
-    setBrushActive,
+    manualTool,
+    setManualTool,
+    constrainGradient,
+    setConstrainGradient,
     brushSize,
     setBrushSize,
     showOverlay,
@@ -485,12 +482,19 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     removeLayer,
     moveLayer,
     moveActiveLayer,
-    commitMask,
+    activeComponentId: componentPersistence.activeComponentId,
+    activeComponent: componentPersistence.activeComponent,
+    projectId: projectId ?? null,
+    setActiveComponentId: componentPersistence.setActiveComponentId,
+    commitMask: componentPersistence.commitMask,
+    removeActiveComponent: componentPersistence.removeActiveComponent,
+    duplicateActiveComponent: componentPersistence.duplicateActiveComponent,
+    updateActiveComponent: componentPersistence.updateActiveComponent,
     updateMaskSettings,
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushActive, brushSize, busy, cancelSegmentation, clearSegmentationError, commitMask, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, maskData, maskSize, moveActiveLayer, moveLayer, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, constrainGradient, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }

@@ -50,6 +50,9 @@ export function collectHistoryMaskPaths(history: EditHistory): string[] {
   for (const pipeline of [...history.past, history.present, ...history.future]) {
     for (const layer of pipeline.colorMasks) {
       if (layer.path) paths.add(layer.path)
+      for (const component of layer.components ?? []) {
+        if (component.type === 'raster' && component.path) paths.add(component.path)
+      }
     }
   }
   return [...paths]

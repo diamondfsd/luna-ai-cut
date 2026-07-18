@@ -6,6 +6,7 @@
 .workspace-mask-auto-section,
 .workspace-mask-operation-section,
 .workspace-mask-brush-section,
+.workspace-mask-components-section,
 .workspace-mask-edge-section,
 .workspace-mask-editor-section {
   display: grid;
@@ -239,7 +240,7 @@
 }
 
 .workspace-mask-brush-modes.ui-btn-group {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .workspace-mask-operation-modes.ui-btn-group {
@@ -256,6 +257,13 @@
   color: var(--ink);
 }
 
+.workspace-mask-brush-modes .ui-btn-group-btn {
+  min-width: 0;
+  padding: 0 5px;
+  gap: 4px;
+  font-size: 11px;
+}
+
 .workspace-mask-brush-modes .ui-btn-group-btn.active,
 .workspace-mask-operation-modes .ui-btn-group-btn.active {
   border-color: var(--blue);
@@ -268,6 +276,46 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.workspace-mask-components-section {
+  padding: 22px 0 24px;
+  border-top: 1px solid var(--hairline);
+}
+
+.workspace-mask-components-list {
+  display: grid;
+  gap: 4px;
+}
+
+.workspace-mask-components-list .ui-btn {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  border-radius: 6px;
+  color: var(--ink);
+}
+
+.workspace-mask-components-list .ui-btn.is-active {
+  background: color-mix(in srgb, var(--blue) 9%, transparent);
+  color: var(--blue);
+}
+
+.workspace-mask-components-list small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.workspace-mask-component-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.workspace-mask-component-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .workspace-mask-auto-error {
