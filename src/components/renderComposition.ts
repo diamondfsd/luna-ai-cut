@@ -61,7 +61,7 @@ export function buildCompositionFromPreviewLayers(
         w: layer.dstW,
         h: layer.dstH,
       },
-      fit: 'cover',
+      fit: layer.fit ?? 'cover',
       opacity: layer.opacity ?? 1,
       blendMode: layer.blendMode,
       zIndex: layer.zIndex ?? index,

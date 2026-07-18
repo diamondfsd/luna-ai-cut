@@ -1,5 +1,4 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-
 import { toast } from '../../ui'
 import { isImagePath } from '../../lib/fileUtils'
 import { logger } from '../../lib/rendererLogger'
@@ -17,7 +16,6 @@ import { rebuildMaskCache, useMaskComponentPersistence } from './useMaskComponen
 import { useMaskShortcuts } from './useMaskShortcuts'
 export type { SegmentationModelId } from '../../shared/segmentationModels'
 const WorkspaceMaskContext = createContext<WorkspaceMaskValue | null>(null)
-
 // eslint-disable-next-line react-refresh/only-export-components
 export function useWorkspaceMask(): WorkspaceMaskValue {
   const value = useContext(WorkspaceMaskContext)
@@ -33,7 +31,6 @@ function workingMaskSize(width: number, height: number): { width: number; height
     height: Math.max(1, Math.round(height * scale)),
   }
 }
-
 export function WorkspaceMaskProvider({ children, active }: { children: ReactNode; active: boolean }) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
@@ -41,8 +38,8 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const [editing, setEditing] = useState(false)
   const [selectionOperation, setSelectionOperation] = useState<MaskSelectionOperation>('replace')
   const [manualTool, setManualTool] = useState<MaskManualTool>('move')
-  const [constrainGradient, setConstrainGradient] = useState(false)
   const [brushSize, setBrushSize] = useState(36)
+  const [brushFeather, setBrushFeather] = useState(25)
   const [showOverlay, setShowOverlay] = useState(true)
   const [maskData, setMaskData] = useState<Uint8Array | null>(null)
   const [maskSize, setMaskSize] = useState<{ width: number; height: number } | null>(null)
@@ -186,7 +183,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     hasActiveComponent: Boolean(componentPersistence.activeComponent),
     cancelSegmentation,
     removeActiveComponent: componentPersistence.removeActiveComponent,
-    setSemanticPicking, setManualTool, setShowOverlay, setBrushSize,
+    setSemanticPicking, setManualTool, setShowOverlay, setBrushSize, setBrushFeather,
   })
 
   useEffect(() => {
@@ -454,10 +451,10 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setSelectionOperation,
     manualTool,
     setManualTool,
-    constrainGradient,
-    setConstrainGradient,
     brushSize,
     setBrushSize,
+    brushFeather,
+    setBrushFeather,
     showOverlay,
     setShowOverlay,
     maskData,
@@ -494,7 +491,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, constrainGradient, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }

@@ -9,6 +9,7 @@ interface ColorMaskComponentBase {
   operation: ColorMaskComponentOperation
   enabled: boolean
   inverted: boolean
+  targetComponentId?: string
 }
 
 export interface ColorMaskRasterComponent extends ColorMaskComponentBase {

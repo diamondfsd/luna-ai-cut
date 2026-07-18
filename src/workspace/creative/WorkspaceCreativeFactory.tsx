@@ -5,6 +5,7 @@ import { Button } from '../../ui'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { CREATIVE_CATALOG, type CreativeModeId } from './creativeCatalog'
 import { ColorRevealCreative } from './color-reveal/ColorRevealCreative'
+import { PixelStretchCreative } from './pixel-stretch/PixelStretchCreative'
 import { TripleStitchCreative } from './triple-stitch/TripleStitchCreative'
 import './creative-factory.css'
 
@@ -15,6 +16,7 @@ interface WorkspaceCreativeFactoryProps {
 
 const CREATIVE_RENDERERS: Record<CreativeModeId, (onBack: () => void) => ReactNode> = {
   'color-reveal': (onBack) => <ColorRevealCreative onBack={onBack} />,
+  'pixel-stretch': (onBack) => <PixelStretchCreative onBack={onBack} />,
   'triple-stitch': (onBack) => <TripleStitchCreative onBack={onBack} />,
 }
 

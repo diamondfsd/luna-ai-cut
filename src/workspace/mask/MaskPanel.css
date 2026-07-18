@@ -10,45 +10,45 @@
 .workspace-mask-edge-section,
 .workspace-mask-editor-section {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .workspace-mask-auto-section {
-  padding: 8px 0 24px;
+  padding: 6px 0 16px;
 }
 
 .workspace-mask-operation-section {
-  padding: 8px 0 20px;
+  padding: 6px 0 14px;
 }
 
 .workspace-mask-edge-section {
-  padding: 22px 0 18px;
+  padding: 16px 0 12px;
   border-top: 1px solid var(--hairline);
 }
 
 .workspace-mask-brush-section {
-  padding: 22px 0 24px;
+  padding: 16px 0;
   border-top: 1px solid var(--hairline);
 }
 
 .workspace-mask-section-heading {
   margin: 0;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .workspace-mask-auto-targets {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 7px;
+  gap: 6px;
 }
 
 .workspace-mask-smart-targets {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding-top: 12px;
+  gap: 6px;
+  padding-top: 8px;
   border-top: 1px solid var(--hairline);
 }
 
@@ -88,14 +88,14 @@
 }
 
 .workspace-mask-auto-targets .ui-btn {
-  height: 54px;
+  height: 48px;
   padding: 0 5px;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .workspace-mask-smart-targets .ui-btn {
-  height: 42px;
+  height: 38px;
   justify-content: flex-start;
   padding: 0 12px;
   background: color-mix(in srgb, var(--ink) 3%, transparent);
@@ -279,7 +279,7 @@
 }
 
 .workspace-mask-components-section {
-  padding: 22px 0 24px;
+  padding: 16px 0;
   border-top: 1px solid var(--hairline);
 }
 

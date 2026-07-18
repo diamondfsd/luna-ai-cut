@@ -8,6 +8,7 @@ export function drawMaskBrush(
   x: number,
   y: number,
   radius: number,
+  feather: number,
 ): void {
   const minX = Math.max(0, Math.floor(x - radius))
   const maxX = Math.min(width - 1, Math.ceil(x + radius))
@@ -17,7 +18,7 @@ export function drawMaskBrush(
     for (let px = minX; px <= maxX; px++) {
       const distance = Math.hypot(px - x, py - y)
       if (distance > radius) continue
-      const edge = Math.max(0, Math.min(1, (radius - distance) / Math.max(1, radius * 0.25)))
+      const edge = feather <= 0 ? 1 : Math.max(0, Math.min(1, (radius - distance) / Math.max(1, radius * feather)))
       const index = py * width + px
       data[index] = combineMaskValue(data[index], Math.round(edge * 255), 'add')
     }
