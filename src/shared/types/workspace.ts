@@ -47,7 +47,13 @@ export interface WorkspacePixelStretchState {
   intensity: number
   angle: number
   samplePosition: number
+  sampleEndPosition: number
+  sampleLocked: boolean
   ribbonSize: number
+  sampleRangeStart?: number
+  sampleRangeEnd?: number
+  sampleControlStartOffset?: number
+  sampleControlEndOffset?: number
   maskPath?: string
   maskAssetId?: string
 }
