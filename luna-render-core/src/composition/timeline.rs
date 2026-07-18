@@ -265,6 +265,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
         .layers
         .iter()
         .map(|layer| {
+            let source_rect = layer.source_rect.as_ref();
             let reveal_progress = layer
                 .reveal
                 .as_ref()
@@ -289,10 +290,10 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 dst_y: layer.rect.y,
                 dst_w: layer.rect.w,
                 dst_h: layer.rect.h,
-                src_x: 0.0,
-                src_y: 0.0,
-                src_w: 1.0,
-                src_h: 1.0,
+                src_x: source_rect.map(|rect| rect.x).unwrap_or(0.0),
+                src_y: source_rect.map(|rect| rect.y).unwrap_or(0.0),
+                src_w: source_rect.map(|rect| rect.w).unwrap_or(1.0),
+                src_h: source_rect.map(|rect| rect.h).unwrap_or(1.0),
                 opacity: layer.opacity.unwrap_or(1.0),
                 blend_mode: layer.blend_mode.clone(),
                 reveal_progress: reveal_width,
@@ -303,6 +304,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 mask_opacity: layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
                 mask_inverted: layer.mask_inverted.unwrap_or(false),
                 mask_feather: layer.mask_feather.unwrap_or(2.0).clamp(0.0, 40.0),
+                pixel_stretch: layer.pixel_stretch.clone(),
                 transform: layer.transform.clone().unwrap_or_default(),
                 positioning: layer.positioning.clone(),
                 lut_id: layer.lut_id.clone(),
@@ -328,7 +330,8 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
 #[cfg(test)]
 mod tests {
     use super::{
-        layer_time, reveal_progress, CompositionReveal, CompositionSource, CompositionSourceTime,
+        composition_layers, layer_time, reveal_progress, CompositionInput, CompositionReveal,
+        CompositionSource, CompositionSourceTime,
     };
 
     fn staged_reveal() -> CompositionReveal {
@@ -383,5 +386,31 @@ mod tests {
         assert_eq!(layer_time(&source, 0.0), 5.0);
         assert_eq!(layer_time(&source, 0.8), 5.0);
         assert_eq!(layer_time(&source, 1.5), 5.5);
+    }
+
+    #[test]
+    fn composition_preserves_source_sampling_rect_and_defaults_to_full_source() {
+        let input: CompositionInput = serde_json::from_str(
+            r#"{
+                "canvas":{"width":100,"height":100},
+                "layers":[
+                    {
+                        "source":{"path":"sample.png"},
+                        "rect":{"x":0,"y":0,"w":1,"h":1},
+                        "sourceRect":{"x":0.42,"y":0.2,"w":0.001,"h":0.6}
+                    },
+                    {
+                        "source":{"path":"legacy.png"},
+                        "rect":{"x":0,"y":0,"w":1,"h":1}
+                    }
+                ]
+            }"#,
+        )
+        .expect("composition JSON should deserialize");
+        let layers = composition_layers(&input, 0.0);
+        assert_eq!((layers[0].src_x, layers[0].src_y), (0.42, 0.2));
+        assert_eq!((layers[0].src_w, layers[0].src_h), (0.001, 0.6));
+        assert_eq!((layers[1].src_x, layers[1].src_y), (0.0, 0.0));
+        assert_eq!((layers[1].src_w, layers[1].src_h), (1.0, 1.0));
     }
 }

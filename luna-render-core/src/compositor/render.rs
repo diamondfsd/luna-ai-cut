@@ -166,6 +166,33 @@ impl Compositor {
                     "text-raster" => 3.0,
                     _ => 0.0,
                 };
+                let pixel_stretch = layer.pixel_stretch.as_ref().map_or([0.0; 4], |effect| {
+                    let mode = match effect.mode.as_str() {
+                        "right" => 1.0,
+                        "down" => 2.0,
+                        "swirl" => 3.0,
+                        "swirl-front" => 4.0,
+                        "left" => 5.0,
+                        "up" => 6.0,
+                        "horizontal" => 7.0,
+                        "vertical" => 8.0,
+                        _ => 0.0,
+                    };
+                    [
+                        mode,
+                        effect.intensity.clamp(0.0, 100.0) as f32,
+                        effect.origin_x.clamp(0.0, 1.0) as f32,
+                        effect.origin_y.clamp(0.0, 1.0) as f32,
+                    ]
+                });
+                let pixel_stretch_extra = layer.pixel_stretch.as_ref().map_or([0.0; 4], |effect| {
+                    [
+                        effect.angle.unwrap_or(0.0).clamp(-85.0, 85.0) as f32,
+                        effect.ribbon_size.unwrap_or(100.0).clamp(10.0, 200.0) as f32 / 100.0,
+                        0.0,
+                        0.0,
+                    ]
+                });
                 let shape_kind = match layer.shape.as_deref() {
                     Some("rounded-rectangle") => 1.0,
                     Some("line") => 2.0,
@@ -344,6 +371,8 @@ impl Compositor {
                         layer.corner_radius.unwrap_or(0.0) as f32,
                         layer.stroke_width.unwrap_or(0.0) as f32,
                     ],
+                    pixel_stretch,
+                    pixel_stretch_extra,
                     fill_rgba,
                     stroke_rgba,
                     text_meta: [

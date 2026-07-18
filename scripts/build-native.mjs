@@ -14,6 +14,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, copyFileSync, existsSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 
 const root = join(import.meta.dirname, '..')
 const rcDir = join(root, 'luna-render-core')
@@ -67,6 +68,13 @@ const src = target
 
 const dest = join(rcDir, 'luna-render-core.node')
 copyFileSync(src, dest)
+if (isMac && process.platform === 'darwin') {
+  const sign = spawnSync('codesign', ['--force', '--sign', '-', dest], { stdio: 'inherit' })
+  if (sign.status !== 0) {
+    console.error('[build-native] ❌ codesign failed')
+    process.exit(1)
+  }
+}
 console.log('[build-native] ✅', dest)
 
 for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker']) {

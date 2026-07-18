@@ -79,6 +79,7 @@ mod tests {
             mask_opacity: Some(1.5),
             mask_inverted: Some(true),
             mask_feather: Some(80.0),
+            pixel_stretch: None,
             transform: None,
             positioning: None,
             lut_id: None,
