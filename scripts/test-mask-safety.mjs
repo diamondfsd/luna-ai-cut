@@ -64,6 +64,7 @@ try {
     'src/workspace/mask/maskShapeRasterization.ts',
     'src/workspace/mask/maskComponentRasterization.ts',
     'src/workspace/mask/maskComponentControls.ts',
+    'src/workspace/mask/maskManualRasterization.ts',
     'src/shared/segmentationModels.ts',
     'src/workspace/color/colorMaskLayerOperations.ts',
     'src/workspace/shared/workspaceProjectPipeline.ts',
@@ -82,6 +83,7 @@ try {
   const shapeRasterization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskShapeRasterization.js')))
   const componentRasterization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskComponentRasterization.js')))
   const componentControls = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskComponentControls.js')))
+  const manualRasterization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskManualRasterization.js')))
   const segmentationModels = await import(pathToFileURL(path.join(temporaryRoot, 'src/shared/segmentationModels.js')))
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
@@ -166,9 +168,20 @@ try {
     { id: 'cut', type: 'raster', operation: 'subtract', enabled: true, inverted: false, path: '/cut.pgm', width: 2, height: 1 },
   ], (component) => component.id === 'base' ? new Uint8Array([255, 128]) : new Uint8Array([128, 255]))
   assert.deepEqual([...composed], [127, 0], 'component composition must apply ordered soft subtraction')
+  const scopedGradient = componentRasterization.composeMaskComponents(2, 1, [
+    { id: 'target', type: 'raster', operation: 'replace', enabled: true, inverted: false, path: '/target.pgm', width: 2, height: 1 },
+    { id: 'other', type: 'raster', operation: 'add', enabled: true, inverted: false, path: '/other.pgm', width: 2, height: 1 },
+    { ...linearGradient, targetComponentId: 'target', operation: 'intersect' },
+  ], (component) => component.id === 'target' ? new Uint8Array([255, 255]) : new Uint8Array([0, 255]))
+  assert.deepEqual([...scopedGradient], [64, 255], 'a gradient modifier must affect only its target selection component')
   const movedGradient = componentControls.updateComponentFromDrag(linearGradient, 'move', { x: 0.5, y: 0.5 }, { x: 0.6, y: 0.4 })
   close(movedGradient.startX, 0.1, 'moving a gradient must translate its start handle')
   close(movedGradient.endY, 0.4, 'moving a gradient must translate its end handle')
+  const hardBrush = new Uint8Array(25)
+  const softBrush = new Uint8Array(25)
+  manualRasterization.drawMaskBrush(hardBrush, 5, 5, 2, 2, 2, 0)
+  manualRasterization.drawMaskBrush(softBrush, 5, 5, 2, 2, 2, 1)
+  assert.ok(hardBrush[7] > softBrush[7] && softBrush[7] > 0, 'brush feather must soften pixels inside the brush edge')
 
   const legacy = mergePipeline(createDefaultPipeline(), {
     colorMask: {

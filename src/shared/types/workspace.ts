@@ -40,6 +40,15 @@ export interface WorkspaceColorRevealState {
   stageMode?: 'two' | 'three'
 }
 
+export type PixelStretchPresetId = 'horizon' | 'vertical' | 'burst'
+
+export interface WorkspacePixelStretchState {
+  preset: PixelStretchPresetId
+  intensity: number
+  maskPath?: string
+  maskAssetId?: string
+}
+
 export interface WorkspaceProject {
   id: string
   name: string
@@ -50,5 +59,6 @@ export interface WorkspaceProject {
   creative?: {
     tripleStitch?: WorkspaceTripleStitchState
     colorReveal?: WorkspaceColorRevealState
+    pixelStretch?: WorkspacePixelStretchState
   }
 }

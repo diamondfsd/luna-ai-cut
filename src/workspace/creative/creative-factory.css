@@ -91,9 +91,14 @@
   background: #384c3c;
 }
 
+.workspace-creative-preview--pixel-stretch {
+  background: repeating-linear-gradient(90deg, #d67b5b 0 7%, #313c56 7% 13%, #d1a656 13% 17%, #2d6772 17% 25%);
+}
+
 .workspace-creative-preview--color::before,
 .workspace-creative-preview--triple::before,
-.workspace-creative-preview--triple::after {
+.workspace-creative-preview--triple::after,
+.workspace-creative-preview--pixel-stretch::before {
   content: '';
   position: absolute;
   left: 0;
@@ -117,6 +122,13 @@
   top: 34%;
   height: 32%;
   background: #735849;
+}
+
+.workspace-creative-preview--pixel-stretch::before {
+  inset: 12% 37% 0;
+  border-radius: 45% 45% 0 0;
+  background: #e7d3bd;
+  box-shadow: 0 -18px 0 -7px #f0d2b5;
 }
 
 .workspace-creative-preview > svg {

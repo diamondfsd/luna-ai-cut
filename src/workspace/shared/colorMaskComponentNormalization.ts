@@ -6,7 +6,13 @@ export function normalizeColorMaskComponent(input: ColorMaskComponent): ColorMas
   const operation: ColorMaskComponentOperation = input.operation === 'add' || input.operation === 'subtract' || input.operation === 'intersect'
     ? input.operation
     : 'replace'
-  const common = { id: input.id, operation, enabled: input.enabled !== false, inverted: Boolean(input.inverted) }
+  const common = {
+    id: input.id,
+    operation,
+    enabled: input.enabled !== false,
+    inverted: Boolean(input.inverted),
+    targetComponentId: typeof input.targetComponentId === 'string' && input.targetComponentId ? input.targetComponentId : undefined,
+  }
   if (input.type === 'raster') {
     if (typeof input.path !== 'string' || !input.path) return null
     return {

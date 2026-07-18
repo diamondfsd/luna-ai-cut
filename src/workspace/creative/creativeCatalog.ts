@@ -1,6 +1,6 @@
-import { LayoutTemplate, WandSparkles, type LucideIcon } from 'lucide-react'
+import { LayoutTemplate, ScanSearch, WandSparkles, type LucideIcon } from 'lucide-react'
 
-export type CreativeModeId = 'triple-stitch' | 'color-reveal'
+export type CreativeModeId = 'triple-stitch' | 'color-reveal' | 'pixel-stretch'
 
 export interface CreativeCatalogItem {
   id: CreativeModeId
@@ -12,6 +12,14 @@ export interface CreativeCatalogItem {
 }
 
 export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
+  {
+    id: 'pixel-stretch',
+    name: '像素拉伸',
+    subtitle: '像素拉伸',
+    description: '识别主体后，将背景延展为像素流动效果',
+    icon: ScanSearch,
+    previewClassName: 'workspace-creative-preview--pixel-stretch',
+  },
   {
     id: 'color-reveal',
     name: '色彩还原',
