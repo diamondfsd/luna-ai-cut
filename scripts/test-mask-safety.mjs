@@ -61,6 +61,9 @@ try {
     'src/workspace/mask/maskModelMode.ts',
     'src/workspace/mask/maskPreviewSampling.ts',
     'src/workspace/mask/maskSelectionOperations.ts',
+    'src/workspace/mask/maskShapeRasterization.ts',
+    'src/workspace/mask/maskComponentRasterization.ts',
+    'src/workspace/mask/maskComponentControls.ts',
     'src/shared/segmentationModels.ts',
     'src/workspace/color/colorMaskLayerOperations.ts',
     'src/workspace/shared/workspaceProjectPipeline.ts',
@@ -76,6 +79,9 @@ try {
   const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
   const previewSampling = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskPreviewSampling.js')))
   const selectionOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskSelectionOperations.js')))
+  const shapeRasterization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskShapeRasterization.js')))
+  const componentRasterization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskComponentRasterization.js')))
+  const componentControls = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskComponentControls.js')))
   const segmentationModels = await import(pathToFileURL(path.join(temporaryRoot, 'src/shared/segmentationModels.js')))
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
@@ -120,6 +126,49 @@ try {
     [0, 64, 191, 255],
     'selection composition must resample an existing mask when model output dimensions differ',
   )
+  assert.deepEqual(
+    shapeRasterization.shapeBoundsFromDrag({ x: 4, y: 4 }, { x: 6, y: 5 }, { centered: true, constrained: true }),
+    { left: 2, top: 2, right: 6, bottom: 6 },
+    'centered constrained shapes must expand equally around their origin',
+  )
+  assert.deepEqual(
+    [...shapeRasterization.rasterizeShapeMask(4, 4, 'rectangle', { left: 1, top: 1, right: 3, bottom: 3 })],
+    [0, 0, 0, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 0, 0, 0],
+    'rectangle selection must include the dragged pixel-center bounds',
+  )
+  assert.equal(
+    [...shapeRasterization.rasterizeShapeMask(5, 5, 'ellipse', { left: 0, top: 0, right: 5, bottom: 5 })].filter(Boolean).length,
+    21,
+    'ellipse selection must exclude pixels outside its curved edge',
+  )
+
+  const linearGradient = {
+    id: 'linear', type: 'linear-gradient', operation: 'replace', enabled: true, inverted: false,
+    startX: 0, startY: 0.5, endX: 1, endY: 0.5,
+  }
+  assert.deepEqual(
+    [...componentRasterization.rasterizeVectorComponent(4, 1, linearGradient)],
+    [32, 96, 159, 223],
+    'linear gradients must retain continuous soft-mask weights',
+  )
+  const rotatedRectangle = {
+    id: 'rotated', type: 'rectangle', operation: 'replace', enabled: true, inverted: false,
+    centerX: 0.5, centerY: 0.5, width: 0.8, height: 0.2, rotation: 90, feather: 0,
+  }
+  const rotatedMask = componentRasterization.rasterizeVectorComponent(5, 5, rotatedRectangle)
+  assert.ok(rotatedMask[2] > rotatedMask[10], 'shape rotation must affect rasterized geometry')
+  const featheredShape = componentRasterization.rasterizeVectorComponent(9, 9, { ...rotatedRectangle, type: 'ellipse', width: 0.8, height: 0.8, rotation: 0, feather: 0.5 })
+  assert.ok(featheredShape[40] > featheredShape[13] && featheredShape[13] > 0, 'component feather must produce a soft edge')
+  const invertedGradient = componentRasterization.rasterizeVectorComponent(4, 1, { ...linearGradient, inverted: true })
+  assert.deepEqual([...invertedGradient], [223, 159, 96, 32], 'component inversion must invert soft weights')
+  const composed = componentRasterization.composeMaskComponents(2, 1, [
+    { id: 'base', type: 'raster', operation: 'replace', enabled: true, inverted: false, path: '/base.pgm', width: 2, height: 1 },
+    { id: 'cut', type: 'raster', operation: 'subtract', enabled: true, inverted: false, path: '/cut.pgm', width: 2, height: 1 },
+  ], (component) => component.id === 'base' ? new Uint8Array([255, 128]) : new Uint8Array([128, 255]))
+  assert.deepEqual([...composed], [127, 0], 'component composition must apply ordered soft subtraction')
+  const movedGradient = componentControls.updateComponentFromDrag(linearGradient, 'move', { x: 0.5, y: 0.5 }, { x: 0.6, y: 0.4 })
+  close(movedGradient.startX, 0.1, 'moving a gradient must translate its start handle')
+  close(movedGradient.endY, 0.4, 'moving a gradient must translate its end handle')
 
   const legacy = mergePipeline(createDefaultPipeline(), {
     colorMask: {
@@ -153,6 +202,15 @@ try {
   assert.equal(normalized.colorMasks[0].blendMode, 'normal')
   assert.equal(normalized.colorMasks[0].opacity, 0)
   assert.equal(normalized.colorMasks[0].feather, 0)
+
+  const normalizedComponents = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    components: [{ ...rotatedRectangle, width: 99, height: -1, rotation: -90, feather: 2 }],
+  }] }).colorMasks[0].components
+  assert.equal(normalizedComponents[0].width, 5)
+  assert.equal(normalizedComponents[0].height, 0.0001)
+  assert.equal(normalizedComponents[0].rotation, 270)
+  assert.equal(normalizedComponents[0].feather, 1)
 
   const featherLimit = mergePipeline(createDefaultPipeline(), {
     colorMasks: [{ ...legacy.colorMasks[0], feather: 40 }],
@@ -231,6 +289,12 @@ try {
     history = historyModule.pushHistory(history, mergePipeline(history.present, { color: { exposure: index / 100 } }))
   }
   assert.equal(history.past.length, 60, 'history must retain at most 60 undo states')
+  const componentHistory = historyModule.createEditHistory(mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    path: '/cache.pgm',
+    components: [{ id: 'source', type: 'raster', operation: 'replace', enabled: true, inverted: false, path: '/source.pgm', width: 2, height: 2 }],
+  }] }))
+  assert.deepEqual(new Set(historyModule.collectHistoryMaskPaths(componentHistory)), new Set(['/cache.pgm', '/source.pgm']), 'history cleanup roots must retain component raster sources')
 
   const ordered = createDefaultPipeline()
   ordered.colorMasks = [

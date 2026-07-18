@@ -1,4 +1,4 @@
-import { Brush, Building2, CarFront, Check, Cloud, Crosshair, Hand, Minus, MoreHorizontal, Mountain, MousePointer2, Plus, ScanSearch, TreePine, Waves, X } from 'lucide-react'
+import { ArrowUpRight, Brush, Building2, CarFront, Check, Circle, CircleDot, Cloud, Crosshair, Hand, Minus, MoreHorizontal, Mountain, MousePointer2, Plus, ScanSearch, Square, TreePine, Waves, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
@@ -6,7 +6,9 @@ import { Button, ButtonGroup, Popover, PopoverContent, PopoverTrigger, SearchFie
 import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTarget, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
+import type { MaskManualTool } from '../context/WorkspaceMaskContextTypes'
 import type { MaskSelectionOperation } from './maskSelectionOperations'
+import { MaskComponentEditor } from './MaskComponentEditor'
 import './MaskPanel.css'
 
 const TARGET_ICONS: Record<string, LucideIcon> = {
@@ -18,9 +20,13 @@ const TARGET_ICONS: Record<string, LucideIcon> = {
   vehicle: CarFront,
   mountain: Mountain,
 }
-const BRUSH_TOOLS = [
+const BRUSH_TOOLS: Array<{ value: MaskManualTool; label: ReactNode }> = [
   { value: 'move', label: <><Hand size={18} />移动</> },
   { value: 'brush', label: <><Brush size={18} />画笔</> },
+  { value: 'rectangle', label: <><Square size={18} />矩形</> },
+  { value: 'ellipse', label: <><Circle size={18} />椭圆</> },
+  { value: 'linear-gradient', label: <><ArrowUpRight size={18} />线性</> },
+  { value: 'radial-gradient', label: <><CircleDot size={18} />径向</> },
 ]
 const SELECTION_OPERATIONS: Array<{ value: MaskSelectionOperation; label: ReactNode }> = [
   { value: 'replace', label: <><MousePointer2 size={16} />选择</> },
@@ -36,6 +42,14 @@ const MORE_TARGETS = AUTOMATIC_SEGMENTATION_TARGETS.filter(
 function formatModelSize(sizeBytes: number): string {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
 }
+
+const COMPONENT_LABELS = {
+  raster: '像素选区',
+  rectangle: '矩形',
+  ellipse: '椭圆',
+  'linear-gradient': '线性渐变',
+  'radial-gradient': '径向渐变',
+} as const
 
 export function MaskPanel() {
   const mask = useWorkspaceMask()
@@ -104,7 +118,7 @@ export function MaskPanel() {
     if (mask.busy || runningTargetId !== null) return
     clearAutomaticSelectionError()
     mask.setSemanticPicking(false)
-    mask.setBrushActive(false)
+    mask.setManualTool('move')
     setAutomaticMode('target')
     setTargetId(selectedTargetId)
     setRunningTargetId(selectedTargetId)
@@ -120,11 +134,12 @@ export function MaskPanel() {
   const togglePointSelection = (): void => {
     if (pointSelectionRunning) {
       mask.cancelSegmentation()
+      mask.setSemanticPicking(false)
       return
     }
     if (mask.busy || runningTargetId !== null) return
     clearAutomaticSelectionError()
-    mask.setBrushActive(false)
+    mask.setManualTool('move')
     setAutomaticMode('point')
     mask.setSemanticPicking(!mask.semanticPicking)
   }
@@ -284,38 +299,69 @@ export function MaskPanel() {
             <p>{automaticSelectionError}</p>
             <div>
               <Button size="mini" variant="secondary" onClick={retryAutomaticSelection}>重试</Button>
-              <Button size="mini" variant="ghost" onClick={() => { clearAutomaticSelectionError(); mask.setSelectionOperation('add'); mask.setBrushActive(true) }}>使用画笔修补</Button>
+              <Button size="mini" variant="ghost" onClick={() => { clearAutomaticSelectionError(); mask.setSelectionOperation('add'); mask.setManualTool('brush') }}>使用画笔修补</Button>
             </div>
           </div>
         )}
       </section>
 
       <section className="workspace-mask-brush-section">
-        <h3 className="workspace-mask-section-heading">画笔修补</h3>
+        <h3 className="workspace-mask-section-heading">手动工具</h3>
         <div className="workspace-mask-editor-section">
           <div className="workspace-mask-mode-row">
             <strong>工具</strong>
             <ButtonGroup
               className="workspace-mask-brush-modes"
               options={BRUSH_TOOLS}
-              value={mask.brushActive ? 'brush' : 'move'}
+              value={mask.manualTool}
               onChange={(value) => {
                 mask.setSemanticPicking(false)
-                if (value === 'move') {
-                  mask.setBrushActive(false)
-                  return
-                }
-                mask.setBrushActive(true)
+                mask.setManualTool(value)
               }}
             />
           </div>
-          <ParamSlider label="画笔大小" value={mask.brushSize} min={1} max={100} onChange={mask.setBrushSize} formatValue={(value) => `${Math.round(value)}`} />
+          {mask.manualTool === 'brush' && (
+            <ParamSlider label="画笔大小" value={mask.brushSize} min={1} max={100} onChange={mask.setBrushSize} formatValue={(value) => `${Math.round(value)}`} />
+          )}
+          {(mask.manualTool === 'linear-gradient' || mask.manualTool === 'radial-gradient') && (
+            <label className="workspace-mask-setting-row">
+              <strong>限制在当前选区</strong>
+              <Switch ariaLabel="限制在当前选区" checked={mask.constrainGradient} onCheckedChange={mask.setConstrainGradient} />
+            </label>
+          )}
           <label className="workspace-mask-setting-row">
             <strong>显示选区</strong>
             <Switch ariaLabel="显示选区" checked={mask.showOverlay} onCheckedChange={mask.setShowOverlay} />
           </label>
         </div>
       </section>
+
+      {(mask.activeMask?.components?.length ?? 0) > 0 && (
+        <section className="workspace-mask-components-section">
+          <h3 className="workspace-mask-section-heading">选区组件</h3>
+          <div className="workspace-mask-components-list">
+            {mask.activeMask!.components!.map((component, index) => (
+              <Button
+                key={component.id}
+                variant="ghost"
+                size="mini"
+                className={component.id === mask.activeComponentId ? 'is-active' : undefined}
+                onClick={() => { mask.setActiveComponentId(component.id); mask.setManualTool('move'); mask.setSemanticPicking(false) }}
+              >
+                <span>{index + 1}. {COMPONENT_LABELS[component.type]}</span>
+                <small>{component.operation === 'replace' ? '选择' : component.operation === 'add' ? '叠加' : component.operation === 'subtract' ? '减去' : '相交'}</small>
+              </Button>
+            ))}
+          </div>
+          {mask.activeComponent && <MaskComponentEditor
+            component={mask.activeComponent}
+            busy={mask.busy}
+            onChange={mask.updateActiveComponent}
+            onDuplicate={mask.duplicateActiveComponent}
+            onRemove={mask.removeActiveComponent}
+          />}
+        </section>
+      )}
 
       <section className="workspace-mask-edge-section">
         <h3 className="workspace-mask-section-heading">边缘</h3>

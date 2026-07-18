@@ -1,25 +1,21 @@
 import type { WatermarkSettings } from '../../shared/types'
 import { EDIT_PARAMETER_RANGES, clampNumber } from './editParameterRanges'
-import type { ColorMaskBlendMode, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
+import type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
+import { normalizeColorMaskComponent } from './colorMaskComponentNormalization'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
-
-export type { ColorMaskBlendMode, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
+export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
 export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
-
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
 export type ToneCurveChannel = 'rgb' | 'luminance' | 'red' | 'green' | 'blue'
 export type HslChannelKey = 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'magenta'
-
 export interface CurvePoint {
   x: number
   y: number
 }
-
 export interface ToneCurveAdjust {
   activeChannel: ToneCurveChannel
   points: Record<ToneCurveChannel, CurvePoint[]>
 }
-
 export interface HslChannelAdjust {
   hue: number
   hueShift: number
@@ -27,7 +23,6 @@ export interface HslChannelAdjust {
   luminance: number
   sourceColor?: string
 }
-
 export interface BorderSettings {
   enabled: boolean
   presetId: string
@@ -440,6 +435,9 @@ function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { bl
     loadError: input.loadError === 'missing-or-damaged' ? input.loadError : undefined,
     blendMode: normalizeColorMaskBlendMode(input.blendMode),
     color,
+    components: Array.isArray(input.components)
+      ? input.components.map(normalizeColorMaskComponent).filter((component): component is ColorMaskComponent => component !== null)
+      : undefined,
   }
 }
 
