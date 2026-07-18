@@ -1,5 +1,5 @@
-import { ArrowLeft, Download, RotateCcw, ScanSearch } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { ArrowLeft, Brush, Download, PenTool, RotateCcw, ScanSearch } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
 import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { LrcRender } from '../../../components/LrcRender'
@@ -12,18 +12,27 @@ import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
+import { useWorkspaceCanvas } from '../../context/WorkspaceCanvasContext'
+import { useWorkspaceMask } from '../../context/WorkspaceMaskContext'
+import { MaskOverlay } from '../../mask/MaskOverlay'
+import { MaskPanel } from '../../mask/MaskPanel'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
+import { createDefaultPipeline, type ColorMaskLayer } from '../../shared/editPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
+import { PixelStretchSampleEditor, type PixelStretchSampleEditorValue } from './PixelStretchSampleEditor'
 import { buildPixelStretchLayers, erodeMaskOnePixel, subjectBoundsFromMask, type SubjectBounds } from './pixelStretchLayers'
 import './pixel-stretch.css'
 
-const DEFAULT_PRESET = 'right' as const
-const DEFAULT_INTENSITY = 64
+const DEFAULT_PRESET = 'horizontal' as const
+const DEFAULT_INTENSITY = 100
 const DEFAULT_ANGLE = 0
 const DEFAULT_SAMPLE_POSITION = 50
-const DEFAULT_RIBBON_SIZE = 100
+const DEFAULT_RANGE_START = 0
+const DEFAULT_RANGE_END = 100
+const DEFAULT_CONTROL_OFFSET = 0
 const IMAGE_DURATION = 5
+const PIXEL_STRETCH_MASK_LAYER_ID = 'pixel-stretch-subject-mask'
 
 function normalizePreset(value: unknown): WorkspacePixelStretchState['preset'] {
   if (value === 'left' || value === 'right' || value === 'top' || value === 'bottom' || value === 'horizontal' || value === 'vertical') return value
@@ -31,48 +40,106 @@ function normalizePreset(value: unknown): WorkspacePixelStretchState['preset'] {
   return value === 'burst' ? 'horizontal' : DEFAULT_PRESET
 }
 
+function normalizePercent(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : fallback
+}
+
+function normalizeOffset(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(-100, Math.min(100, value)) : DEFAULT_CONTROL_OFFSET
+}
+
+function pixelStretchMaskLayer(path: string, width: number, height: number, current?: ColorMaskLayer): ColorMaskLayer {
+  if (current?.path === path) return current
+  return {
+    path,
+    width,
+    height,
+    opacity: 1,
+    inverted: false,
+    feather: 1,
+    kind: 'brush',
+    id: PIXEL_STRETCH_MASK_LAYER_ID,
+    name: '像素拉伸主体',
+    enabled: true,
+    blendMode: 'normal',
+    color: current?.color ?? createDefaultPipeline().color,
+    components: [{
+      id: `component-base-${PIXEL_STRETCH_MASK_LAYER_ID}`,
+      type: 'raster',
+      operation: 'replace',
+      enabled: true,
+      inverted: false,
+      path,
+      width,
+      height,
+    }],
+  }
+}
+
 export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
+  const canvas = useWorkspaceCanvas()
+  const workspaceMask = useWorkspaceMask()
+  const setWorkspaceMaskEditing = workspaceMask.setEditing
   const activeAsset = media.activeMedia
   const projectId = media.currentProject?.id
   const allowWatermark = useLunaUltraWatermark(activeAsset)
   const saved = media.currentProject?.creative?.pixelStretch
   const [preset, setPreset] = useState<WorkspacePixelStretchState['preset']>(normalizePreset(saved?.preset))
-  const [intensity, setIntensity] = useState(saved?.intensity ?? DEFAULT_INTENSITY)
   const [angle, setAngle] = useState(saved?.angle ?? DEFAULT_ANGLE)
   const [samplePosition, setSamplePosition] = useState(saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
-  const [ribbonSize, setRibbonSize] = useState(saved?.ribbonSize ?? DEFAULT_RIBBON_SIZE)
+  const [sampleEndPosition, setSampleEndPosition] = useState(saved?.sampleEndPosition ?? saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
+  const legacyRange = normalizePercent(saved?.ribbonSize, 100)
+  const [sampleRangeStart, setSampleRangeStart] = useState(normalizePercent(saved?.sampleRangeStart, (100 - legacyRange) / 2))
+  const [sampleRangeEnd, setSampleRangeEnd] = useState(normalizePercent(saved?.sampleRangeEnd, (100 + legacyRange) / 2))
+  const [sampleControlStartOffset, setSampleControlStartOffset] = useState(normalizeOffset(saved?.sampleControlStartOffset))
+  const [sampleControlEndOffset, setSampleControlEndOffset] = useState(normalizeOffset(saved?.sampleControlEndOffset))
   const [maskPath, setMaskPath] = useState<string | null>(saved?.maskAssetId === activeAsset?.id ? saved?.maskPath ?? null : null)
+  const [maskOwnerId, setMaskOwnerId] = useState<string | null>(saved?.maskAssetId === activeAsset?.id && saved?.maskPath ? activeAsset?.id ?? null : null)
   const [subjectBounds, setSubjectBounds] = useState<SubjectBounds | null>(null)
+  const [maskData, setMaskData] = useState<{ data: Uint8Array; width: number; height: number } | null>(null)
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
   const [metadata, setMetadata] = useState<MediaMetadata | null>(null)
   const [segmenting, setSegmenting] = useState(false)
   const [progress, setProgress] = useState('')
   const [pointPicking, setPointPicking] = useState(false)
-  const [showSampleGuide, setShowSampleGuide] = useState(false)
+  const [sampleEditing, setSampleEditing] = useState(false)
+  const [maskEditing, setMaskEditing] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const requestRef = useRef<string | null>(null)
   const automaticAttemptRef = useRef<string | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
+  const stageRef = useRef<HTMLDivElement>(null)
   const isImage = activeAsset?.kind === 'image'
+  const activeMaskPath = maskOwnerId === activeAsset?.id ? maskPath : null
   const isHorizontalPreset = preset === 'left' || preset === 'right' || preset === 'horizontal'
+  const creativeMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === PIXEL_STRETCH_MASK_LAYER_ID)
 
   useEffect(() => {
     setPreset(normalizePreset(saved?.preset))
-    setIntensity(saved?.intensity ?? DEFAULT_INTENSITY)
     setAngle(saved?.angle ?? DEFAULT_ANGLE)
     setSamplePosition(saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
-    setRibbonSize(saved?.ribbonSize ?? DEFAULT_RIBBON_SIZE)
+    setSampleEndPosition(saved?.sampleEndPosition ?? saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
+    const restoredLegacyRange = normalizePercent(saved?.ribbonSize, 100)
+    setSampleRangeStart(normalizePercent(saved?.sampleRangeStart, (100 - restoredLegacyRange) / 2))
+    setSampleRangeEnd(normalizePercent(saved?.sampleRangeEnd, (100 + restoredLegacyRange) / 2))
+    setSampleControlStartOffset(normalizeOffset(saved?.sampleControlStartOffset))
+    setSampleControlEndOffset(normalizeOffset(saved?.sampleControlEndOffset))
+    setSampleEditing(false)
+    setMaskEditing(false)
     // 仅在切换项目时恢复创意状态，避免每次暂存参数时重置面板。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [media.currentProject?.id])
 
   useEffect(() => {
-    setMaskPath(saved?.maskAssetId === activeAsset?.id ? saved?.maskPath ?? null : null)
+    const restoredMaskPath = saved?.maskAssetId === activeAsset?.id ? saved?.maskPath ?? null : null
+    setMaskPath(restoredMaskPath)
+    setMaskOwnerId(restoredMaskPath ? activeAsset?.id ?? null : null)
     setSubjectBounds(null)
+    setMaskData(null)
     setSourceSize(null)
     setMetadata(null)
     if (!activeAsset || activeAsset.kind !== 'image') return
@@ -89,10 +156,15 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
       if (!cancelled) toast.error(error instanceof Error ? error.message : '无法读取图片信息')
     })
     return () => { cancelled = true }
-  }, [activeAsset, saved?.maskAssetId, saved?.maskPath])
+  // 只在素材或项目真正变化时初始化；项目参数自动保存不应重置预览。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAsset?.id, activeAsset?.kind, activeAsset?.path, projectId])
 
   useEffect(() => {
     setPointPicking(false)
+    setSampleEditing(false)
+    setMaskEditing(false)
+    setWorkspaceMaskEditing(false)
     setSegmenting(false)
     setProgress('')
     automaticAttemptRef.current = null
@@ -102,27 +174,57 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
       requestRef.current = null
       void window.luna.workspace.cancelSegmentation(requestId)
     }
-  }, [activeAsset?.id])
+  }, [activeAsset?.id, setWorkspaceMaskEditing])
 
   useEffect(() => {
-    if (!maskPath || !projectId) {
+    if (!creativeMaskLayer?.path || !activeAsset || activeAsset.kind !== 'image') return
+    setMaskOwnerId(activeAsset.id)
+    setMaskPath(creativeMaskLayer.path)
+  }, [activeAsset, creativeMaskLayer?.path])
+
+  useEffect(() => () => setWorkspaceMaskEditing(false), [setWorkspaceMaskEditing])
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current
+    if (!stage || !sourceSize || !maskEditing) return
+    const updateMetrics = () => {
+      const rect = stage.getBoundingClientRect()
+      canvas.setPreviewMetrics({
+        imageRect: { x: 0, y: 0, width: rect.width, height: rect.height },
+        sourceAspect: sourceSize.width / sourceSize.height,
+      })
+    }
+    updateMetrics()
+    const observer = new ResizeObserver(updateMetrics)
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [canvas, maskEditing, sourceSize])
+
+  useEffect(() => {
+    if (!activeMaskPath || !projectId) {
       setSubjectBounds(null)
+      setMaskData(null)
       return
     }
     let cancelled = false
-    window.luna.workspace.loadColorMask(projectId, maskPath).then((loaded) => {
+    window.luna.workspace.loadColorMask(projectId, activeMaskPath).then((loaded) => {
       if (cancelled) return
-      const bounds = subjectBoundsFromMask(new Uint8Array(loaded.bytes), loaded.width, loaded.height)
+      const data = new Uint8Array(loaded.bytes)
+      const boundsData = creativeMaskLayer?.inverted ? data.map((value) => 255 - value) : data
+      const bounds = subjectBoundsFromMask(boundsData, loaded.width, loaded.height)
       if (!bounds) throw new Error('主体蒙版为空')
       setSubjectBounds(bounds)
+      setMaskData({ data, width: loaded.width, height: loaded.height })
     }).catch(() => {
       if (!cancelled) {
         setMaskPath(null)
+        setMaskOwnerId(null)
         setSubjectBounds(null)
+        setMaskData(null)
       }
     })
     return () => { cancelled = true }
-  }, [maskPath, projectId])
+  }, [activeMaskPath, creativeMaskLayer?.inverted, projectId])
 
   useEffect(() => {
     const project = media.currentProject
@@ -133,12 +235,18 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
         ...project.creative,
         pixelStretch: {
           preset,
-          intensity,
+          intensity: DEFAULT_INTENSITY,
           angle,
           samplePosition,
-          ribbonSize,
-          maskPath: maskPath ?? undefined,
-          maskAssetId: maskPath ? activeAsset?.id : undefined,
+          sampleEndPosition,
+          sampleLocked: false,
+          ribbonSize: Math.abs(sampleRangeEnd - sampleRangeStart),
+          sampleRangeStart,
+          sampleRangeEnd,
+          sampleControlStartOffset,
+          sampleControlEndOffset,
+          maskPath: activeMaskPath ?? undefined,
+          maskAssetId: activeMaskPath ? activeAsset?.id : undefined,
         },
       },
     }
@@ -151,7 +259,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     }, 300)
   // 参数变化时延迟保存，避免由项目 Context 刷新再次触发保存。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAsset?.id, angle, intensity, maskPath, preset, ribbonSize, samplePosition])
+  }, [activeAsset?.id, activeMaskPath, angle, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -164,9 +272,9 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     if (!activeAsset || !sourceSize) return []
     return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark)
   }, [activeAsset, allowWatermark, edit.pipeline, metadata, sourceSize])
-  const effectLayers = useMemo(() => maskPath && subjectBounds && sourceSize
-    ? buildPixelStretchLayers({ layers: baseLayers, maskPath, preset, intensity, angle, samplePosition, ribbonSize, subjectBounds })
-    : [], [angle, baseLayers, intensity, maskPath, preset, ribbonSize, samplePosition, sourceSize, subjectBounds])
+  const effectLayers = useMemo(() => activeMaskPath && subjectBounds && sourceSize
+    ? buildPixelStretchLayers({ layers: baseLayers, maskPath: activeMaskPath, preset, angle, samplePosition, sampleEndPosition, sampleRangeStart, sampleRangeEnd, sampleControlStartOffset, sampleControlEndOffset, maskInverted: creativeMaskLayer?.inverted, maskFeather: creativeMaskLayer?.feather, subjectBounds })
+    : [], [activeMaskPath, angle, baseLayers, creativeMaskLayer?.feather, creativeMaskLayer?.inverted, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, sourceSize, subjectBounds])
   const previewLayers = effectLayers.length ? effectLayers : baseLayers
 
   const segmentSubject = useCallback(async (point?: { x: number; y: number }) => {
@@ -196,7 +304,16 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
       )
       if (requestRef.current !== requestId) return
       setSubjectBounds(bounds)
+      setMaskData({ data: insetMask, width: result.width, height: result.height })
+      setMaskOwnerId(activeAsset.id)
       setMaskPath(savedMask.path)
+      if (creativeMaskLayer) {
+        edit.commitPatch({
+          colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === PIXEL_STRETCH_MASK_LAYER_ID
+            ? pixelStretchMaskLayer(savedMask.path, result.width, result.height, layer)
+            : layer),
+        })
+      }
       setPointPicking(false)
       toast.success(point ? '已更新选中主体' : '主体已识别，可调整拉伸方式')
     } catch (error) {
@@ -212,17 +329,19 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
         setProgress('')
       }
     }
-  }, [activeAsset, media.currentProject, segmenting])
+  }, [activeAsset, creativeMaskLayer, edit, media.currentProject, segmenting])
 
   useEffect(() => {
-    if (!isImage || !activeAsset || maskPath || segmenting) return
+    if (!isImage || !activeAsset || activeMaskPath || segmenting) return
     if (automaticAttemptRef.current === activeAsset.id) return
     automaticAttemptRef.current = activeAsset.id
     void segmentSubject()
-  }, [activeAsset, isImage, maskPath, segmentSubject, segmenting])
+  }, [activeAsset, activeMaskPath, isImage, segmentSubject, segmenting])
 
   function startPointPicking(): void {
     if (!isImage || segmenting) return
+    setSampleEditing(false)
+    setMaskEditing(false)
     setPointPicking(true)
   }
 
@@ -237,7 +356,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   }
 
   const exportEffect = useCallback(async (config: VideoExportSettings) => {
-    if (!activeAsset || !outputSize || !maskPath || exporting) return
+    if (!activeAsset || !outputSize || !activeMaskPath || exporting) return
     setExportOpen(false)
     setExporting(true)
     try {
@@ -274,51 +393,77 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     } finally {
       setExporting(false)
     }
-  }, [activeAsset, effectLayers, exporting, maskPath, outputSize])
+  }, [activeAsset, activeMaskPath, effectLayers, exporting, outputSize])
 
-  const guide = subjectBounds && maskPath ? (isHorizontalPreset
-    ? {
-        className: 'pixel-stretch-sample-guide is-vertical',
-        style: {
-          left: `${(subjectBounds.x + subjectBounds.w * samplePosition / 100) * 100}%`,
-          top: `${subjectBounds.y * 100}%`,
-          height: `${subjectBounds.h * 100}%`,
-        },
-        label: `X ${samplePosition}%`,
-      }
-    : {
-        className: 'pixel-stretch-sample-guide is-horizontal',
-        style: {
-          left: `${subjectBounds.x * 100}%`,
-          top: `${(subjectBounds.y + subjectBounds.h * samplePosition / 100) * 100}%`,
-          width: `${subjectBounds.w * 100}%`,
-        },
-        label: `Y ${samplePosition}%`,
-      }) : null
+  const sampleEditorValue: PixelStretchSampleEditorValue = {
+    rangeStart: sampleRangeStart,
+    rangeEnd: sampleRangeEnd,
+    anchorStart: samplePosition,
+    anchorEnd: sampleEndPosition,
+    controlStartOffset: sampleControlStartOffset,
+    controlEndOffset: sampleControlEndOffset,
+  }
+
+  function updateSampleEditor(key: keyof PixelStretchSampleEditorValue, value: number): void {
+    if (key === 'rangeStart') setSampleRangeStart(value)
+    else if (key === 'rangeEnd') setSampleRangeEnd(value)
+    else if (key === 'anchorStart') setSamplePosition(value)
+    else if (key === 'anchorEnd') setSampleEndPosition(value)
+    else if (key === 'controlStartOffset') setSampleControlStartOffset(value)
+    else setSampleControlEndOffset(value)
+  }
+
+  function resetSampleEditor(): void {
+    setSamplePosition(DEFAULT_SAMPLE_POSITION)
+    setSampleEndPosition(DEFAULT_SAMPLE_POSITION)
+    setSampleRangeStart(DEFAULT_RANGE_START)
+    setSampleRangeEnd(DEFAULT_RANGE_END)
+    setSampleControlStartOffset(DEFAULT_CONTROL_OFFSET)
+    setSampleControlEndOffset(DEFAULT_CONTROL_OFFSET)
+  }
+
+  function openMaskEditor(): void {
+    if (!activeMaskPath || !maskData) return
+    const layer = pixelStretchMaskLayer(activeMaskPath, maskData.width, maskData.height, creativeMaskLayer)
+    edit.commitPatch({
+      colorMasks: [...edit.pipeline.colorMasks.filter((item) => item.id !== PIXEL_STRETCH_MASK_LAYER_ID), layer],
+    })
+    setPointPicking(false)
+    setSampleEditing(false)
+    setMaskEditing(true)
+    workspaceMask.setActiveLayerId(PIXEL_STRETCH_MASK_LAYER_ID)
+    workspaceMask.setManualTool('move')
+    workspaceMask.setSemanticPicking(false)
+    workspaceMask.setShowOverlay(true)
+    workspaceMask.setEditing(true)
+  }
+
+  function closeMaskEditor(): void {
+    workspaceMask.setEditing(false)
+    setMaskEditing(false)
+  }
 
   return <section className="pixel-stretch-page">
     <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span></header>
     <div className="pixel-stretch-preview">
       {activeAsset && !isImage ? <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>像素拉伸目前支持图片素材</span></div>
-        : previewLayers.length && outputSize ? <div className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} interactiveImageLayerIndexes={[]} onError={toast.error} />{showSampleGuide && guide && <div className={guide.className} style={guide.style}><span>{guide.label}</span></div>}{pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
+        : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} interactiveImageLayerIndexes={[]} onError={toast.error} />{sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{maskEditing && workspaceMask.editing && <MaskOverlay />}{pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
           : activeAsset && isImage ? <img className="pixel-stretch-source-fallback" src={assetSourceUrl(activeAsset)} alt="" />
             : <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要制作效果的图片</span></div>}
     </div>
     <aside className="pixel-stretch-panel"><div className="pixel-stretch-panel-head"><strong>效果设置</strong><span>从主体中心像素延展连续色带</span></div>
-      <div className="pixel-stretch-options"><span>主体识别</span><div className="pixel-stretch-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>主体</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={startPointPicking}>点选</Button></div>
-        {(segmenting || pointPicking) && <span className="pixel-stretch-detect-status">{segmenting ? progress || '正在识别' : '在预览图中点击需要保留的主体'}</span>}
-        <fieldset className="pixel-stretch-effect-controls" disabled={!maskPath || segmenting}>
-          <span>拉伸方向</span><SegmentedControl className="pixel-stretch-presets" ariaLabel="像素拉伸方向" value={preset} options={[{ value: 'left', label: '左边' }, { value: 'right', label: '右边' }, { value: 'top', label: '上面' }, { value: 'bottom', label: '下面' }, { value: 'horizontal', label: '水平' }, { value: 'vertical', label: '垂直' }]} onChange={setPreset} />
-          <div onPointerEnter={() => setShowSampleGuide(true)} onPointerLeave={() => setShowSampleGuide(false)} onFocusCapture={() => setShowSampleGuide(true)} onBlurCapture={() => setShowSampleGuide(false)}>
-            <ParamSlider label={`取色${isHorizontalPreset ? '横' : '纵'}坐标`} value={samplePosition} min={0} max={100} step={1} onChange={setSamplePosition} formatValue={(next) => `${next}%`} />
-          </div>
-          <ParamSlider label={`彩带${isHorizontalPreset ? '高度' : '宽度'}`} value={ribbonSize} min={10} max={200} step={1} onChange={setRibbonSize} formatValue={(next) => `${next}%`} />
-          <ParamSlider label="拉伸强度" value={intensity} min={20} max={100} onChange={setIntensity} />
-          <ParamSlider label="中轴旋转" value={angle} min={-80} max={80} step={1} onChange={setAngle} formatValue={(next) => `${next}°`} />
-        </fieldset>
-      </div>
-      <div className="pixel-stretch-actions"><div className="pixel-stretch-tool-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置参数" aria-label="重置参数" onClick={() => { setPreset(DEFAULT_PRESET); setIntensity(DEFAULT_INTENSITY); setAngle(DEFAULT_ANGLE); setSamplePosition(DEFAULT_SAMPLE_POSITION); setRibbonSize(DEFAULT_RIBBON_SIZE) }} /></div>
-        <div><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!maskPath || exporting} onClick={() => setExportOpen(true)}>{exporting ? '加入中' : '生成视频'}</Button></div>
+      {maskEditing ? <div className="pixel-stretch-full-mask-editor"><Button variant="primary" size="compact" onClick={closeMaskEditor}>完成蒙版调整</Button><MaskPanel /></div>
+        : <div className="pixel-stretch-options"><span>主体识别</span><div className="pixel-stretch-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>主体</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={startPointPicking}>点选</Button></div>
+          {(segmenting || pointPicking) && <span className="pixel-stretch-detect-status">{segmenting ? progress || '正在识别' : '在预览图中点击需要保留的主体'}</span>}
+          <Button variant="secondary" size="compact" icon={<Brush size={14} />} disabled={!maskData || segmenting} onClick={openMaskEditor}>调整蒙版</Button>
+          <fieldset className="pixel-stretch-effect-controls" disabled={!activeMaskPath || segmenting}>
+            <span>拉伸方向</span><SegmentedControl className="pixel-stretch-presets" ariaLabel="像素拉伸方向" value={preset} options={[{ value: 'left', label: '左边' }, { value: 'right', label: '右边' }, { value: 'top', label: '上面' }, { value: 'bottom', label: '下面' }, { value: 'horizontal', label: '水平' }, { value: 'vertical', label: '垂直' }]} onChange={setPreset} />
+            <div className="pixel-stretch-edit-row"><Button variant={sampleEditing ? 'primary' : 'secondary'} size="compact" icon={<PenTool size={14} />} onClick={() => { setPointPicking(false); setSampleEditing((editing) => !editing) }}>{sampleEditing ? '完成取色编辑' : '编辑取色范围'}</Button><Button variant="ghost" size="compact" onClick={resetSampleEditor}>还原</Button></div>
+            <ParamSlider label="中心旋转" value={angle} min={-180} max={180} step={1} onChange={setAngle} formatValue={(next) => `${next}°`} />
+          </fieldset>
+        </div>}
+      <div className="pixel-stretch-actions"><div className="pixel-stretch-tool-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置参数" aria-label="重置参数" onClick={() => { setPreset(DEFAULT_PRESET); setAngle(DEFAULT_ANGLE); resetSampleEditor() }} /></div>
+        <div><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMaskPath || exporting} onClick={() => setExportOpen(true)}>{exporting ? '加入中' : '生成视频'}</Button></div>
       </div>
     </aside>
     <div className="pixel-stretch-media-strip"><WorkspaceMediaStrip /></div>

@@ -35,7 +35,7 @@ function sourcePixels() {
       const band = Math.floor((y - 62) / 7) % 5
       const colors = [[239, 68, 68], [250, 204, 21], [34, 197, 94], [14, 165, 233], [168, 85, 247]]
       const color = colors[Math.max(0, band)]
-      pixels[offset] = color[0]
+      pixels[offset] = Math.min(255, Math.round(color[0] * 0.6 + x))
       pixels[offset + 1] = color[1]
       pixels[offset + 2] = color[2]
     }
@@ -78,7 +78,10 @@ function colorDistance(first, second) {
   return Math.abs(first[0] - second[0]) + Math.abs(first[1] - second[1]) + Math.abs(first[2] - second[2])
 }
 
-async function renderMode(sourcePath, maskPath, mode, angle = 0, outputName = mode, ribbonSize = 100, originX = 0.5, originY = 0.5) {
+async function renderMode(sourcePath, maskPath, mode, angle = 0, outputName = mode, ribbonSize = 100, originX = 0.5, originY = 0.5, sampleStart = 0, sampleEnd = 1, lineEnd = null, centerX = 0.5, centerY = 0.5, controlStart = null, controlEnd = null) {
+  const horizontal = mode === 'left' || mode === 'right' || mode === 'horizontal'
+  const resolvedEnd = lineEnd ?? (horizontal ? originX : originY)
+  const resolvedStart = horizontal ? originX : originY
   const effectLayers = [
     layer(sourcePath),
     layer(sourcePath, {
@@ -86,7 +89,7 @@ async function renderMode(sourcePath, maskPath, mode, angle = 0, outputName = mo
       layerType: 'pixel-stretch',
       zIndex: 1,
       maskPath,
-      pixelStretch: { mode, intensity: 82, originX, originY, angle, ribbonSize },
+      pixelStretch: { mode, intensity: 100, originX, originY, angle, ribbonSize, sampleStart, sampleEnd, lineEnd: resolvedEnd, controlStart: controlStart ?? resolvedStart + (resolvedEnd - resolvedStart) / 3, controlEnd: controlEnd ?? resolvedStart + (resolvedEnd - resolvedStart) * 2 / 3, centerX, centerY },
     }),
     layer(sourcePath, { id: 'subject', layerType: 'local-color', zIndex: 2, maskPath }),
   ]
@@ -193,9 +196,29 @@ try {
     await renderMode(sourcePath, maskPath, 'up')
     await renderMode(sourcePath, maskPath, 'horizontal')
     await renderMode(sourcePath, maskPath, 'vertical')
-    await renderMode(sourcePath, maskPath, 'right', 45, 'right-angle-45')
-    await renderMode(sourcePath, maskPath, 'right', 0, 'right-size-50', 50)
+    await renderMode(sourcePath, maskPath, 'right', 37, 'right-center-rotation-37')
+    await renderMode(sourcePath, maskPath, 'right', 90, 'right-center-rotation-90')
+    let minX = width
+    let maxX = -1
+    let minY = height
+    let maxY = -1
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (realMask[y * width + x] <= 242) continue
+        minX = Math.min(minX, x)
+        maxX = Math.max(maxX, x)
+        minY = Math.min(minY, y)
+        maxY = Math.max(maxY, y)
+      }
+    }
+    const rangeCenterY = (minY + maxY + 1) / (2 * height)
+    const halfRangeY = (maxY - minY + 1) / height * 0.25
+    await renderMode(sourcePath, maskPath, 'right', 0, 'right-size-50', 50, 0.5, 0.5, rangeCenterY - halfRangeY, rangeCenterY + halfRangeY)
     await renderMode(sourcePath, maskPath, 'right', 0, 'right-sample-40', 100, 0.4, 0.5)
+    const rangeStartX = minX / width
+    const rangeWidthX = (maxX - minX + 1) / width
+    await renderMode(sourcePath, maskPath, 'right', 0, 'right-diagonal-sample', 50, rangeStartX + rangeWidthX * 0.4, rangeCenterY, rangeCenterY - halfRangeY, rangeCenterY + halfRangeY, rangeStartX + rangeWidthX * 0.6)
+    await renderMode(sourcePath, maskPath, 'right', 0, 'right-curved-sample', 50, rangeStartX + rangeWidthX * 0.4, rangeCenterY, rangeCenterY - halfRangeY, rangeCenterY + halfRangeY, rangeStartX + rangeWidthX * 0.6, 0.5, 0.5, rangeStartX + rangeWidthX * 0.75, rangeStartX + rangeWidthX * 0.25)
     console.log(`real-image pixel stretch tests passed (${comparedPixels} horizontal and ${comparedVerticalPixels} vertical locked-color pixels); outputs: ${outputRoot}`)
     process.exitCode = 0
   } else {
@@ -227,11 +250,17 @@ try {
     assert.ok(colorDistance(rgbaAt(vertical.data, 96, 20), background) > 80, 'vertical trail must extend up')
     assert.ok(colorDistance(rgbaAt(vertical.data, 96, 170), background) > 80, 'vertical trail must extend down')
 
-    const angled = await renderMode(sourcePath, maskPath, 'right', 60, 'right-angle-60')
-    assert.ok(colorDistance(rgbaAt(right.data, 170, 125), background) > 80, 'flat paper strip keeps its full projected width')
-    assert.ok(colorDistance(rgbaAt(angled.data, 170, 125), background) < 8, 'axial rotation foreshortens the paper strip')
+    const rotated = await renderMode(sourcePath, maskPath, 'right', 90, 'right-angle-90')
+    assert.ok(colorDistance(rgbaAt(rotated.data, 96, 170), background) > 80, '90 degree center rotation turns the right trail downward')
+    assert.ok(colorDistance(rgbaAt(rotated.data, 170, 96), background) < 8, '90 degree center rotation removes the unrotated right trail')
 
-    const narrow = await renderMode(sourcePath, maskPath, 'right', 0, 'right-size-50', 50)
+    const diagonal = await renderMode(sourcePath, maskPath, 'right', 0, 'right-diagonal-sample', 100, 0.42, 0.5, 0.4, 0.6, 0.58)
+    const straight = await renderMode(sourcePath, maskPath, 'right', 0, 'right-straight-sample', 100, 0.42, 0.5, 0.4, 0.6, 0.42)
+    assert.ok(colorDistance(rgbaAt(diagonal.data, 170, 110), rgbaAt(straight.data, 170, 110)) > 10, 'diagonal sampling line changes color according to its second endpoint')
+    const curved = await renderMode(sourcePath, maskPath, 'right', 0, 'right-curved-sample', 100, 0.42, 0.5, 0.4, 0.6, 0.58, 0.5, 0.5, 0.68, 0.32)
+    assert.ok(colorDistance(rgbaAt(curved.data, 170, 86), rgbaAt(diagonal.data, 170, 86)) > 10, 'pen handles change the sampled color along a curved path')
+
+    const narrow = await renderMode(sourcePath, maskPath, 'right', 0, 'right-size-50', 50, 0.5, 0.5, 0.41, 0.59)
     assert.ok(colorDistance(rgbaAt(narrow.data, 170, 125), background) < 8, 'ribbon size controls the paper strip cross-section')
     console.log(`pixel stretch render tests passed; outputs: ${outputRoot}`)
   }

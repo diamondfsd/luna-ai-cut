@@ -216,32 +216,86 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             discard;
         }
         let amount = clamp(params.pixel_stretch.y / 100.0, 0.0, 1.0);
-        let max_travel = mix(0.18, 1.25, amount);
+        let max_travel = 2.0;
         let origin = vec2<f32>(params.pixel_stretch.z, params.pixel_stretch.w);
         let aspect = max(params.source_aspect, 0.0001);
-        let axial_angle = radians(params.pixel_stretch_extra.x);
-        let axial_scale = max(abs(cos(axial_angle)), 0.08);
-        let ribbon_scale = max(params.pixel_stretch_extra.y, 0.1);
+        let center = params.pixel_stretch_center.xy;
+        let rotation = radians(params.pixel_stretch_extra.x);
+        let rotation_cos = cos(rotation);
+        let rotation_sin = sin(rotation);
+        let rotated_delta = (tex_coord - center) * vec2<f32>(aspect, 1.0);
+        let unrotated_delta = vec2<f32>(
+            rotated_delta.x * rotation_cos + rotated_delta.y * rotation_sin,
+            -rotated_delta.x * rotation_sin + rotated_delta.y * rotation_cos,
+        );
+        let effect_coord = center + unrotated_delta / vec2<f32>(aspect, 1.0);
+        let line_end = params.pixel_stretch_extra.y;
+        let control_start = params.pixel_stretch_center.z;
+        let control_end = params.pixel_stretch_center.w;
+        let sample_start = params.pixel_stretch_extra.z;
+        let sample_end = params.pixel_stretch_extra.w;
         var seed = vec2<f32>(origin.x, tex_coord.y);
-        var axial_position = 0.0;
+        var edge_coverage = 1.0;
         let is_horizontal = stretch_mode < 1.5 || (stretch_mode > 4.5 && stretch_mode < 5.5) || (stretch_mode > 6.5 && stretch_mode < 7.5);
         let is_vertical = (stretch_mode > 1.5 && stretch_mode < 2.5) || (stretch_mode > 5.5 && stretch_mode < 6.5) || stretch_mode > 7.5;
         if (is_horizontal) {
-            seed = vec2<f32>(origin.x, origin.y + (tex_coord.y - origin.y) / (axial_scale * ribbon_scale));
-            axial_position = (seed.y - origin.y) * 2.0;
-            if ((stretch_mode < 1.5 && tex_coord.x <= origin.x) ||
-                (stretch_mode > 4.5 && stretch_mode < 5.5 && tex_coord.x >= origin.x) ||
-                abs(tex_coord.x - origin.x) > max_travel) {
+            let range_min = min(sample_start, sample_end);
+            let range_max = max(sample_start, sample_end);
+            let cross_distance = min(effect_coord.y - range_min, range_max - effect_coord.y);
+            let cross_aa = max(fwidth(effect_coord.y), 0.00001);
+            if (cross_distance < -cross_aa) {
                 discard;
             }
+            edge_coverage = smoothstep(-cross_aa, cross_aa, cross_distance);
+            let range_delta = sample_end - sample_start;
+            let safe_range_delta = select(min(range_delta, -0.0001), max(range_delta, 0.0001), range_delta >= 0.0);
+            let range_t = clamp((effect_coord.y - sample_start) / safe_range_delta, 0.0, 1.0);
+            let inverse_t = 1.0 - range_t;
+            let sample_x = inverse_t * inverse_t * inverse_t * origin.x
+                + 3.0 * inverse_t * inverse_t * range_t * control_start
+                + 3.0 * inverse_t * range_t * range_t * control_end
+                + range_t * range_t * range_t * line_end;
+            seed = vec2<f32>(sample_x, effect_coord.y);
+            var direction_distance = max_travel - abs(effect_coord.x - sample_x);
+            if (stretch_mode < 1.5) {
+                direction_distance = min(direction_distance, effect_coord.x - sample_x);
+            } else if (stretch_mode > 4.5 && stretch_mode < 5.5) {
+                direction_distance = min(direction_distance, sample_x - effect_coord.x);
+            }
+            let direction_aa = max(fwidth(direction_distance), 0.00001);
+            if (direction_distance < -direction_aa) {
+                discard;
+            }
+            edge_coverage *= smoothstep(-direction_aa, direction_aa, direction_distance);
         } else if (is_vertical) {
-            seed = vec2<f32>(origin.x + (tex_coord.x - origin.x) / (axial_scale * ribbon_scale), origin.y);
-            axial_position = (seed.x - origin.x) * 2.0;
-            if ((stretch_mode > 1.5 && stretch_mode < 2.5 && tex_coord.y <= origin.y) ||
-                (stretch_mode > 5.5 && stretch_mode < 6.5 && tex_coord.y >= origin.y) ||
-                abs(tex_coord.y - origin.y) > max_travel) {
+            let range_min = min(sample_start, sample_end);
+            let range_max = max(sample_start, sample_end);
+            let cross_distance = min(effect_coord.x - range_min, range_max - effect_coord.x);
+            let cross_aa = max(fwidth(effect_coord.x), 0.00001);
+            if (cross_distance < -cross_aa) {
                 discard;
             }
+            edge_coverage = smoothstep(-cross_aa, cross_aa, cross_distance);
+            let range_delta = sample_end - sample_start;
+            let safe_range_delta = select(min(range_delta, -0.0001), max(range_delta, 0.0001), range_delta >= 0.0);
+            let range_t = clamp((effect_coord.x - sample_start) / safe_range_delta, 0.0, 1.0);
+            let inverse_t = 1.0 - range_t;
+            let sample_y = inverse_t * inverse_t * inverse_t * origin.y
+                + 3.0 * inverse_t * inverse_t * range_t * control_start
+                + 3.0 * inverse_t * range_t * range_t * control_end
+                + range_t * range_t * range_t * line_end;
+            seed = vec2<f32>(effect_coord.x, sample_y);
+            var direction_distance = max_travel - abs(effect_coord.y - sample_y);
+            if (stretch_mode > 1.5 && stretch_mode < 2.5) {
+                direction_distance = min(direction_distance, effect_coord.y - sample_y);
+            } else if (stretch_mode > 5.5 && stretch_mode < 6.5) {
+                direction_distance = min(direction_distance, sample_y - effect_coord.y);
+            }
+            let direction_aa = max(fwidth(direction_distance), 0.00001);
+            if (direction_distance < -direction_aa) {
+                discard;
+            }
+            edge_coverage *= smoothstep(-direction_aa, direction_aa, direction_distance);
         } else {
             let position = vec2<f32>((tex_coord.x - origin.x) * aspect, tex_coord.y);
             let amplitude = mix(0.22, 0.38, amount);
@@ -275,10 +329,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let source_size = vec2<f32>(textureDimensions(src_texture));
         let seed_pixel = clamp(floor(seed * source_size), vec2<f32>(0.0), source_size - vec2<f32>(1.0));
         let seed_center = (seed_pixel + vec2<f32>(0.5)) / source_size;
-        let stretched_color = textureSampleLevel(src_texture, src_sampler, seed_center, 0.0);
-        let axial_light = clamp(1.0 - abs(sin(axial_angle)) * 0.10 + sin(axial_angle) * axial_position * 0.08, 0.72, 1.08);
-        let stretched_adjusted = apply_color(stretched_color.rgb, seed, local_x) * axial_light;
-        let stretched_alpha = stretched_color.a * params.opacity;
+        let quarter_turn = round(rotation / 1.57079632679) * 1.57079632679;
+        let needs_rotation_filter = abs(rotation - quarter_turn) > 0.0001;
+        let stretched_color = textureSampleLevel(src_texture, src_sampler, select(seed_center, seed, needs_rotation_filter), 0.0);
+        let stretched_adjusted = apply_color(stretched_color.rgb, seed, local_x);
+        let stretched_alpha = stretched_color.a * params.opacity * edge_coverage;
         if (params.sampling_quality > 0.5) {
             return vec4<f32>(stretched_adjusted * stretched_alpha, stretched_alpha);
         }

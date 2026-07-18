@@ -12,10 +12,15 @@ interface PixelStretchLayerOptions {
   layers: PreviewLayer[]
   maskPath: string
   preset: PixelStretchPresetId
-  intensity: number
   angle: number
   samplePosition: number
-  ribbonSize: number
+  sampleEndPosition: number
+  sampleRangeStart: number
+  sampleRangeEnd: number
+  sampleControlStartOffset: number
+  sampleControlEndOffset: number
+  maskInverted?: boolean
+  maskFeather?: number
   subjectBounds: SubjectBounds
 }
 
@@ -86,21 +91,45 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
   const bounds = options.subjectBounds
   const horizontal = options.preset === 'left' || options.preset === 'right' || options.preset === 'horizontal'
   const sample = Math.max(0, Math.min(1, options.samplePosition / 100))
+  const sampleEndPosition = Math.max(0, Math.min(1, options.sampleEndPosition / 100))
+  const rangeStart = Math.max(0, Math.min(1, options.sampleRangeStart / 100))
+  const rangeEnd = Math.max(0, Math.min(1, options.sampleRangeEnd / 100))
+  const sampleStart = horizontal
+    ? bounds.y + bounds.h * rangeStart
+    : bounds.x + bounds.w * rangeStart
+  const sampleEnd = horizontal
+    ? bounds.y + bounds.h * rangeEnd
+    : bounds.x + bounds.w * rangeEnd
+  const controlStart = Math.max(0, Math.min(1, sample + (sampleEndPosition - sample) / 3 + options.sampleControlStartOffset / 100))
+  const controlEnd = Math.max(0, Math.min(1, sample + (sampleEndPosition - sample) * 2 / 3 + options.sampleControlEndOffset / 100))
   const background: PreviewLayer = { ...main, zIndex: 0 }
   const stretch: PreviewLayer = {
     ...main,
     layerType: 'pixel-stretch',
     maskPath: options.maskPath,
     maskOpacity: 1,
-    maskInverted: false,
+    maskInverted: options.maskInverted ?? false,
     maskFeather: 0,
     pixelStretch: {
       mode: RENDER_MODE_BY_PRESET[options.preset],
-      intensity: options.intensity,
+      intensity: 100,
       originX: horizontal ? bounds.x + bounds.w * sample : bounds.x + bounds.w / 2,
       originY: horizontal ? bounds.y + bounds.h / 2 : bounds.y + bounds.h * sample,
       angle: options.angle,
-      ribbonSize: options.ribbonSize,
+      ribbonSize: Math.round(Math.abs(rangeEnd - rangeStart) * 100),
+      sampleStart,
+      sampleEnd,
+      lineEnd: horizontal
+        ? bounds.x + bounds.w * sampleEndPosition
+        : bounds.y + bounds.h * sampleEndPosition,
+      controlStart: horizontal
+        ? bounds.x + bounds.w * controlStart
+        : bounds.y + bounds.h * controlStart,
+      controlEnd: horizontal
+        ? bounds.x + bounds.w * controlEnd
+        : bounds.y + bounds.h * controlEnd,
+      centerX: bounds.x + bounds.w / 2,
+      centerY: bounds.y + bounds.h / 2,
     },
     zIndex: 1,
   }
@@ -110,8 +139,8 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
     fit: 'cover',
     maskPath: options.maskPath,
     maskOpacity: 1,
-    maskInverted: false,
-    maskFeather: 1,
+    maskInverted: options.maskInverted ?? false,
+    maskFeather: options.maskFeather ?? 1,
     zIndex: 2,
   }
   const decorations = options.layers.slice(1).map((layer, index) => ({

@@ -71,7 +71,7 @@ export function WorkspacePage({ workspaceMode, creativeModeId, onCreativeModeCha
     <WorkspaceEditProvider>
       <WorkspaceMediaProvider routeState={routeState} locationKey={location.key}>
         <WorkspaceCanvasProvider>
-          <WorkspaceMaskProvider active={pageActive && workspaceMode === 'edit'}>
+          <WorkspaceMaskProvider active={pageActive && (workspaceMode === 'edit' || creativeModeId === 'pixel-stretch')}>
             <ErrorBoundary>
               <WorkspacePageInner
                 workspaceMode={workspaceMode}
