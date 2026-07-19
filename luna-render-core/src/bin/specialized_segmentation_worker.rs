@@ -178,6 +178,11 @@ fn run() -> Result<(), String> {
             output_size,
         )?,
         "rmbg-1.4" => specialized_segmentation::segment_rmbg(&args[2], &rgb, output_size)?,
+        "ultraface" | "eye-state" => {
+            let mut session =
+                specialized_segmentation::SpecializedSession::load(&args[1], &args[2])?;
+            session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
+        }
         _ => return Err("不支持的专用分割模型".to_string()),
     };
     if mask.len() != output_size * output_size {

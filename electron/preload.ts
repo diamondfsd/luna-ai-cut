@@ -199,6 +199,32 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     list: () => ipcRenderer.invoke('export-task:list'),
     clear: () => ipcRenderer.invoke('export-task:clear'),
   },
+  aiSelection: {
+    chooseDirectory: () => ipcRenderer.invoke('ai-selection:choose-directory'),
+    start: (request) => ipcRenderer.invoke('ai-selection:start', request),
+    listSessions: () => ipcRenderer.invoke('ai-selection:list'),
+    getSession: (sessionId) => ipcRenderer.invoke('ai-selection:get', sessionId),
+    pause: (sessionId) => ipcRenderer.invoke('ai-selection:pause', sessionId),
+    resume: (sessionId) => ipcRenderer.invoke('ai-selection:resume', sessionId),
+    cancel: (sessionId) => ipcRenderer.invoke('ai-selection:cancel', sessionId),
+    applyOperation: (sessionId, revision, operation) => ipcRenderer.invoke('ai-selection:apply-operation', sessionId, revision, operation),
+    analyzePeople: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-people', sessionId, itemIds),
+    analyzeVideos: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-videos', sessionId, itemIds),
+    undo: (sessionId) => ipcRenderer.invoke('ai-selection:undo', sessionId),
+    redo: (sessionId) => ipcRenderer.invoke('ai-selection:redo', sessionId),
+    createWorkspaceProject: (sessionId, name) => ipcRenderer.invoke('ai-selection:create-project', sessionId, name),
+    removeSession: (sessionId) => ipcRenderer.invoke('ai-selection:remove', sessionId),
+    onProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').AiSelectionProgress): void => callback(progress)
+      ipcRenderer.on('ai-selection:progress', listener)
+      return () => ipcRenderer.off('ai-selection:progress', listener)
+    },
+    onSessionUpdated: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, session: import('../src/shared/types').AiSelectionSession): void => callback(session)
+      ipcRenderer.on('ai-selection:session-updated', listener)
+      return () => ipcRenderer.off('ai-selection:session-updated', listener)
+    },
+  },
 
   // ── 热更新 ──
   getHotUpdateVersion: () => ipcRenderer.invoke('hot-update:current-version'),
@@ -269,7 +295,7 @@ const lunaRenderCoreApi = {
     ipcRenderer.invoke('lrc:loadTexture', data, width, height),
   updateTexture: (textureId: number, data: Buffer) =>
     ipcRenderer.invoke('lrc:updateTexture', textureId, data),
-  renderFrame: (canvasWidth: number, canvasHeight: number, layers: any[]) =>
+  renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[]) =>
     ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
   releaseTexture: (textureId: number) =>
     ipcRenderer.invoke('lrc:releaseTexture', textureId),
