@@ -6,6 +6,7 @@ import ts from 'typescript'
 const source = await readFile(new URL('../src/workspace/transform/cropGeometry.ts', import.meta.url), 'utf8')
 const pixelStretchSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchLayers.ts', import.meta.url), 'utf8')
 const pixelStretchStateSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchState.ts', import.meta.url), 'utf8')
+const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compilerOptions = {
   module: ts.ModuleKind.ES2020,
@@ -13,12 +14,14 @@ const compilerOptions = {
   importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
 }
 const compiled = ts.transpileModule(source, { compilerOptions }).outputText
-const pixelStretchCompiled = ts.transpileModule(pixelStretchSource, { compilerOptions }).outputText
+const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pixelStretchSource.replace(/import \{ buildPixelStretchFlowPath, flattenPixelStretchPath \} from '.\/pixelStretchPath'\n/, '')}`, { compilerOptions }).outputText
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
+const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
 const pixelStretch = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchCompiled).toString('base64')}`)
 const pixelStretchState = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchStateCompiled).toString('base64')}`)
+const pixelStretchPath = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchPathCompiled).toString('base64')}`)
 
 function close(actual, expected, message, epsilon = 0.0001) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${message}: expected ${expected}, got ${actual}`)
@@ -155,6 +158,9 @@ assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'm
 assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'legacy-photo'), legacyPixelStretchState, 'legacy state remains available for its original photo')
 assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'new-photo'), undefined, 'new photo starts from creative defaults')
 assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, undefined), undefined, 'missing photo has no creative parameters')
+assert.equal(pixelStretchState.normalizePixelStretchFlowShape(undefined), 'straight', 'legacy projects keep the straight effect')
+assert.equal(pixelStretchState.normalizePixelStretchFlowShape('cape'), 'cape', 'saved flow shape is restored')
+assert.equal(pixelStretchState.normalizePixelStretchPathPoints([{ x: 0, y: 0 }]), undefined, 'custom path requires seven points')
 
 const baseLayer = {
   filePath: 'subject.png',
@@ -170,6 +176,15 @@ const baseLayer = {
   opacity: 1,
   zIndex: 0,
 }
+const flowBounds = { x: 0.35, y: 0.35, w: 0.3, h: 0.3 }
+for (const shape of ['arc', 'cape', 's-curve']) {
+  const points = pixelStretchPath.buildPixelStretchFlowPath({ shape, preset: 'right', length: 70, curve: 60, aspect: 1, bounds: flowBounds })
+  assert.equal(points.length, 7, `${shape} produces two connected cubic curves`)
+  assert.deepEqual(points[0], { x: 0.5, y: 0.5 }, `${shape} starts at the subject center`)
+  assert.equal(pixelStretchPath.flattenPixelStretchPath(points).length, 14, `${shape} packs seven render points`)
+}
+const customFlowPoints = Array.from({ length: 7 }, (_, index) => ({ x: index / 10, y: index / 20 }))
+assert.equal(pixelStretchPath.buildPixelStretchFlowPath({ shape: 'custom', preset: 'right', length: 70, curve: 60, aspect: 1, bounds: flowBounds, customPoints: customFlowPoints }), customFlowPoints, 'custom flow keeps the edited points')
 const horizontalLayers = pixelStretch.buildPixelStretchLayers({
   layers: [baseLayer],
   maskPath: 'subject.mask',
@@ -200,6 +215,29 @@ close(horizontalLayers[1].pixelStretch.centerX, 0.5, 'rotation center follows th
 close(horizontalLayers[1].pixelStretch.centerY, 2 / 3, 'rotation center follows the sampling endpoints center y')
 assert.equal(horizontalLayers[2].layerType, 'local-color', 'foreground subject uses clipping mask semantics')
 assert.equal(horizontalLayers[2].maskPath, 'subject.mask', 'foreground subject keeps its mask')
+
+const shapedLayers = pixelStretch.buildPixelStretchLayers({
+  layers: [baseLayer],
+  maskPath: 'subject.mask',
+  preset: 'right',
+  angle: 0,
+  samplePosition: 50,
+  sampleEndPosition: 50,
+  sampleRangeStart: 20,
+  sampleRangeEnd: 80,
+  sampleControlStartOffset: 0,
+  sampleControlEndOffset: 0,
+  subjectBounds,
+  sourceAspect: 1,
+  flowShape: 'cape',
+  flowLength: 80,
+  flowCurve: 70,
+  flowWidth: 90,
+  flowEndWidth: 30,
+})
+assert.equal(shapedLayers[1].pixelStretch.pathPoints.length, 14, 'flow shape forwards a two-segment path')
+close(shapedLayers[1].pixelStretch.pathStartWidth, 0.36, 'flow start width follows the sampled strip and width setting')
+close(shapedLayers[1].pixelStretch.pathEndWidth, 0.12, 'flow end width supports a tapered cape')
 
 const verticalLayers = pixelStretch.buildPixelStretchLayers({
   layers: [baseLayer],

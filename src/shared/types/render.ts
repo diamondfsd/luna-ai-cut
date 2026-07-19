@@ -148,6 +148,9 @@ export interface RenderPixelStretch {
   controlEnd?: number
   centerX?: number
   centerY?: number
+  pathPoints?: number[]
+  pathStartWidth?: number
+  pathEndWidth?: number
 }
 
 export interface CompositionInput {

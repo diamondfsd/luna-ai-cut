@@ -126,6 +126,8 @@ struct GpuLayerParams {
     pixel_stretch: [f32; 4],
     pixel_stretch_extra: [f32; 4],
     pixel_stretch_center: [f32; 4],
+    pixel_stretch_path_meta: [f32; 4],
+    pixel_stretch_path_data: [[f32; 4]; 4],
     fill_rgba: [f32; 4],
     stroke_rgba: [f32; 4],
     text_meta: [f32; 4],
