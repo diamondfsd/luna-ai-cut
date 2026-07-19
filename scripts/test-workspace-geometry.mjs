@@ -180,8 +180,8 @@ close(horizontalLayers[1].pixelStretch.lineEnd, 0.625, 'horizontal sampling line
 close(horizontalLayers[1].pixelStretch.controlStart, 61 / 120, 'first pen handle controls the sampling curve')
 close(horizontalLayers[1].pixelStretch.controlEnd, 59 / 120, 'second pen handle controls the sampling curve')
 close(horizontalLayers[1].pixelStretch.originY, 2 / 3, 'stretch origin follows the subject center y')
-close(horizontalLayers[1].pixelStretch.centerX, 0.5, 'rotation center follows the subject center x')
-close(horizontalLayers[1].pixelStretch.centerY, 2 / 3, 'rotation center follows the subject center y')
+close(horizontalLayers[1].pixelStretch.centerX, 0.5, 'rotation center follows the sampling endpoints center x')
+close(horizontalLayers[1].pixelStretch.centerY, 2 / 3, 'rotation center follows the sampling endpoints center y')
 assert.equal(horizontalLayers[2].layerType, 'local-color', 'foreground subject uses clipping mask semantics')
 assert.equal(horizontalLayers[2].maskPath, 'subject.mask', 'foreground subject keeps its mask')
 
@@ -204,6 +204,23 @@ close(verticalLayers[1].pixelStretch.originY, 5 / 6, 'vertical sampling follows 
 close(verticalLayers[1].pixelStretch.lineEnd, 0.5, 'vertical sampling line follows the independently selected right y coordinate')
 close(verticalLayers[1].pixelStretch.sampleStart, 0.25, 'vertical sampling starts at the subject left edge')
 close(verticalLayers[1].pixelStretch.sampleEnd, 0.75, 'vertical sampling ends at the subject right edge')
+
+const offCenterLayers = pixelStretch.buildPixelStretchLayers({
+  layers: [baseLayer],
+  maskPath: 'subject.mask',
+  preset: 'right',
+  intensity: 100,
+  angle: 30,
+  samplePosition: 10,
+  sampleEndPosition: 30,
+  sampleRangeStart: 20,
+  sampleRangeEnd: 60,
+  sampleControlStartOffset: 0,
+  sampleControlEndOffset: 0,
+  subjectBounds,
+})
+close(offCenterLayers[1].pixelStretch.centerX, 0.35, 'rotation center x uses the two sampling endpoint x coordinates')
+close(offCenterLayers[1].pixelStretch.centerY, 0.6, 'rotation center y uses the two sampling endpoint y coordinates')
 
 for (const [preset, mode] of [['left', 'left'], ['top', 'up'], ['bottom', 'down'], ['horizontal', 'horizontal']]) {
   const layers = pixelStretch.buildPixelStretchLayers({

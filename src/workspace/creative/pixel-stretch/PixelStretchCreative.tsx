@@ -20,30 +20,24 @@ import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
 import { PixelStretchSampleEditor, type PixelStretchSampleEditorValue } from './PixelStretchSampleEditor'
 import { buildPixelStretchLayers, erodeMaskOnePixel, subjectBoundsFromMask, type SubjectBounds } from './pixelStretchLayers'
+import {
+  DEFAULT_PIXEL_STRETCH_ANGLE,
+  DEFAULT_PIXEL_STRETCH_CONTROL_OFFSET,
+  DEFAULT_PIXEL_STRETCH_PRESET,
+  DEFAULT_PIXEL_STRETCH_RANGE_END,
+  DEFAULT_PIXEL_STRETCH_RANGE_START,
+  DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION,
+  DEFAULT_PIXEL_STRETCH_SUBJECT_MODEL,
+  normalizePixelStretchOffset,
+  normalizePixelStretchPercent,
+  normalizePixelStretchPreset,
+  normalizePixelStretchSubjectModel,
+  pixelStretchStateForAsset,
+} from './pixelStretchState'
 import './pixel-stretch.css'
 
-const DEFAULT_PRESET = 'horizontal' as const
 const DEFAULT_INTENSITY = 100
-const DEFAULT_ANGLE = 0
-const DEFAULT_SAMPLE_POSITION = 50
-const DEFAULT_RANGE_START = 0
-const DEFAULT_RANGE_END = 100
-const DEFAULT_CONTROL_OFFSET = 0
 const PIXEL_STRETCH_MASK_LAYER_ID = 'pixel-stretch-subject-mask'
-
-function normalizePreset(value: unknown): WorkspacePixelStretchState['preset'] {
-  if (value === 'left' || value === 'right' || value === 'top' || value === 'bottom' || value === 'horizontal' || value === 'vertical') return value
-  if (value === 'horizon') return 'right'
-  return value === 'burst' ? 'horizontal' : DEFAULT_PRESET
-}
-
-function normalizePercent(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : fallback
-}
-
-function normalizeOffset(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.max(-100, Math.min(100, value)) : DEFAULT_CONTROL_OFFSET
-}
 
 function pixelStretchMaskLayer(path: string, width: number, height: number, current?: ColorMaskLayer): ColorMaskLayer {
   if (current?.path === path) return current
@@ -84,6 +78,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   const allowWatermark = useLunaUltraWatermark(activeAsset)
   const saved = media.currentProject?.creative?.pixelStretch
   const [preset, setPreset] = useState<WorkspacePixelStretchState['preset']>(normalizePreset(saved?.preset))
+  const [subjectModel, setSubjectModel] = useState<NonNullable<WorkspacePixelStretchState['subjectModel']>>(normalizeSubjectModel(saved?.subjectModel))
   const [angle, setAngle] = useState(saved?.angle ?? DEFAULT_ANGLE)
   const [samplePosition, setSamplePosition] = useState(saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
   const [sampleEndPosition, setSampleEndPosition] = useState(saved?.sampleEndPosition ?? saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
@@ -117,6 +112,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     setPreset(normalizePreset(saved?.preset))
+    setSubjectModel(normalizeSubjectModel(saved?.subjectModel))
     setAngle(saved?.angle ?? DEFAULT_ANGLE)
     setSamplePosition(saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
     setSampleEndPosition(saved?.sampleEndPosition ?? saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
@@ -233,6 +229,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
         ...project.creative,
         pixelStretch: {
           preset,
+          subjectModel,
           intensity: DEFAULT_INTENSITY,
           angle,
           samplePosition,
@@ -257,7 +254,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     }, 300)
   // 参数变化时延迟保存，避免由项目 Context 刷新再次触发保存。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAsset?.id, activeMaskPath, angle, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart])
+  }, [activeAsset?.id, activeMaskPath, angle, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, subjectModel])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -275,6 +272,19 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     : [], [activeMaskPath, angle, baseLayers, creativeMaskLayer?.feather, creativeMaskLayer?.inverted, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, sourceSize, subjectBounds])
   const previewLayers = showOriginal ? baseLayers : effectLayers.length ? effectLayers : baseLayers
 
+  function changeSubjectModel(value: NonNullable<WorkspacePixelStretchState['subjectModel']>): void {
+    if (value === subjectModel) return
+    const requestId = requestRef.current
+    if (requestId) {
+      requestRef.current = null
+      void window.luna.workspace.cancelSegmentation(requestId)
+      setSegmenting(false)
+      setProgress('')
+    }
+    setPointPicking(false)
+    setSubjectModel(value)
+  }
+
   const segmentSubject = useCallback(async (point?: { x: number; y: number }) => {
     if (!activeAsset || !media.currentProject || activeAsset.kind !== 'image' || segmenting) return
     const requestId = crypto.randomUUID()
@@ -287,7 +297,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     try {
       const result = await window.luna.workspace.segmentImage(point
         ? { requestId, filePath: activeAsset.path, point, modelId: 'slimsam-77-uniform' }
-        : { requestId, filePath: activeAsset.path, targetId: 'subject', modelId: 'rmbg-1.4' })
+        : { requestId, filePath: activeAsset.path, modelId: subjectModel === 'precise' ? 'birefnet-general-lite' : 'rmbg-1.4' })
       if (requestRef.current !== requestId) return
       const insetMask = erodeMaskOnePixel(new Uint8Array(result.bytes), result.width, result.height)
       const bounds = subjectBoundsFromMask(insetMask, result.width, result.height)
@@ -327,7 +337,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
         setProgress('')
       }
     }
-  }, [activeAsset, creativeMaskLayer, edit, media.currentProject, segmenting])
+  }, [activeAsset, creativeMaskLayer, edit, media.currentProject, segmenting, subjectModel])
 
   useEffect(() => {
     if (!isImage || !activeAsset || activeMaskPath || segmenting) return
@@ -410,6 +420,16 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     else setSampleControlEndOffset(value)
   }
 
+  const sampleCoordinate = (samplePosition + sampleEndPosition) / 2
+  const sampleCoordinateHalfSpan = Math.abs(sampleEndPosition - samplePosition) / 2
+
+  function moveSampleCoordinate(value: number): void {
+    const next = Math.max(sampleCoordinateHalfSpan, Math.min(100 - sampleCoordinateHalfSpan, value))
+    const offset = next - sampleCoordinate
+    setSamplePosition(samplePosition + offset)
+    setSampleEndPosition(sampleEndPosition + offset)
+  }
+
   function resetSampleEditor(): void {
     setSamplePosition(DEFAULT_SAMPLE_POSITION)
     setSampleEndPosition(DEFAULT_SAMPLE_POSITION)
@@ -450,12 +470,13 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     </div>
     <aside className="pixel-stretch-panel"><div className="pixel-stretch-panel-head"><strong>效果设置</strong><span>从主体中心像素延展连续色带</span></div>
       {maskEditing ? <div className="pixel-stretch-full-mask-editor"><Button variant="primary" size="compact" onClick={closeMaskEditor}>完成蒙版调整</Button><MaskPanel /></div>
-        : <div className="pixel-stretch-options"><span>主体识别</span><div className="pixel-stretch-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>主体</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={startPointPicking}>点选</Button></div>
+        : <div className="pixel-stretch-options"><span>主体识别</span><fieldset className="pixel-stretch-model-select"><SegmentedControl className="pixel-stretch-presets pixel-stretch-models" ariaLabel="主体识别质量" value={subjectModel} options={[{ value: 'fast', label: '快速' }, { value: 'precise', label: '精准' }]} onChange={changeSubjectModel} /></fieldset><div className="pixel-stretch-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>主体</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={startPointPicking}>点选</Button></div>
           {(segmenting || pointPicking) && <span className="pixel-stretch-detect-status">{segmenting ? progress || '正在识别' : '在预览图中点击需要保留的主体'}</span>}
           <Button variant="secondary" size="compact" icon={<Brush size={14} />} disabled={!maskData || segmenting} onClick={openMaskEditor}>调整蒙版</Button>
           <fieldset className="pixel-stretch-effect-controls" disabled={!activeMaskPath || segmenting}>
             <span>拉伸方向</span><SegmentedControl className="pixel-stretch-presets" ariaLabel="像素拉伸方向" value={preset} options={[{ value: 'left', label: '左边' }, { value: 'right', label: '右边' }, { value: 'top', label: '上面' }, { value: 'bottom', label: '下面' }, { value: 'horizontal', label: '水平' }, { value: 'vertical', label: '垂直' }]} onChange={setPreset} />
             <div className="pixel-stretch-edit-row"><Button variant={sampleEditing ? 'primary' : 'secondary'} size="compact" icon={<PenTool size={14} />} onClick={() => { setPointPicking(false); setSampleEditing((editing) => !editing) }}>{sampleEditing ? '完成取色编辑' : '编辑取色范围'}</Button><Button variant="ghost" size="compact" onClick={resetSampleEditor}>还原</Button></div>
+            <ParamSlider label={`整体取色${isHorizontalPreset ? '横' : '纵'}坐标`} value={sampleCoordinate} min={sampleCoordinateHalfSpan} max={100 - sampleCoordinateHalfSpan} step={1} onChange={moveSampleCoordinate} formatValue={(next) => `${Math.round(next)}%`} />
             <ParamSlider label="中心旋转" value={angle} min={-180} max={180} step={1} onChange={setAngle} formatValue={(next) => `${next}°`} />
           </fieldset>
         </div>}
