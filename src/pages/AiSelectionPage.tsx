@@ -1,31 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, CheckCircle2, CircleAlert, Film, FolderOpen, Images, Layers3, Pause, Play, Redo2, ScanSearch, Sparkles, Square, Tag, Undo2 } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, CircleAlert, Film, Images, Layers3, Maximize2, Pause, Play, Redo2, ScanSearch, Sparkles, Square, Tag, Undo2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { AiMediaThumb } from '../ai-selection/AiMediaThumb'
 import { AiComparisonSurvey } from '../ai-selection/AiComparisonSurvey'
-import { AiSelectionWelcome } from '../ai-selection/AiSelectionWelcome'
+import { AiSelectionTaskPicker } from '../ai-selection/AiSelectionTaskPicker'
 import { AiSelectionWorkflow as AiSelectionWorkflowSteps } from '../ai-selection/AiSelectionWorkflow'
+import { countSimilarityGroups, isRecommendedItem, isReviewItem, matchesResultFilter, matchesSelectionSearch, type AiSelectionResultFilter } from '../ai-selection/aiSelectionView'
 import { useAiSelection } from '../ai-selection/useAiSelection'
+import { showPreviewModal } from '../components/previewModalService'
 import { type AiSelectionItem, type AiSelectionPurpose, type AiSelectionWorkflow } from '../shared/types'
 import { AI_SELECTION_CONTENT_TAG_VERSION } from '../shared/types/aiSelection'
 import { Button, ButtonGroup, SearchField, Select, toast } from '../ui'
 import '../styles/ai-selection.css'
 
-type ResultFilter = 'recommended' | 'compare' | 'review' | 'video' | 'selected' | 'all'
-
 function statusLabel(status: string, phase?: string): string {
   if (status === 'analyzing' && phase === 'photos') return '正在整理照片'
   if (status === 'analyzing' && phase === 'videos') return '照片可以先看，视频还在整理'
   return ({ queued: '即将开始整理', indexing: '正在添加素材', analyzing: '正在整理素材', paused: '已暂停', interrupted: '可以继续整理', completed: '可以开始选片', failed: '整理失败', canceled: '已取消' } as Record<string, string>)[status] ?? status
-}
-
-function isReview(item: AiSelectionItem): boolean {
-  return Boolean(item.error) || item.quality?.grade === 'review' || item.semanticTags.includes('建议复查')
-}
-
-function isRecommended(item: AiSelectionItem): boolean {
-  return item.kind === 'image' && !isReview(item) && Boolean(item.recommendationReason) && item.recommendationReason !== '相似组备选'
 }
 
 function formatTime(seconds: number): string {
@@ -35,25 +27,26 @@ function formatTime(seconds: number): string {
 }
 
 export function AiSelectionPage() {
-  const { sessions, activeId, session, mode, setMode, purpose, setPurpose, workflow, setWorkflow, busy, selectSession, startDirectory, controls } = useAiSelection()
+  const { sessions, session, mode, setMode, purpose, setPurpose, workflow, setWorkflow, busy, loadingSessions, selectSession, closeSession, startTask, removeSession, controls } = useAiSelection()
   const [focusedId, setFocusedId] = useState('')
-  const [filter, setFilter] = useState<ResultFilter>('recommended')
+  const [filter, setFilter] = useState<AiSelectionResultFilter>('recommended')
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
   const items = useMemo(() => session?.items ?? [], [session?.items])
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
   const counts = useMemo(() => ({
-    recommended: items.filter(isRecommended).length,
+    recommended: items.filter(isRecommendedItem).length,
     compare: items.filter((item) => Boolean(item.similarityGroupId)).length,
-    review: items.filter(isReview).length,
+    review: items.filter(isReviewItem).length,
     video: items.filter((item) => item.kind === 'video').length,
     selected: items.filter((item) => item.selected).length,
     all: items.length,
   }), [items])
+  const categoryItems = useMemo(() => items.filter((item) => matchesResultFilter(item, filter)), [filter, items])
   const tagEntries = useMemo(() => {
     const hidden = new Set(['等待分析', '视频故事板', '可用片段'])
     const countsByTag = new Map<string, number>()
-    for (const item of items) for (const tag of item.semanticTags) {
+    for (const item of categoryItems) for (const tag of item.semanticTags) {
       if (!hidden.has(tag)) countsByTag.set(tag, (countsByTag.get(tag) ?? 0) + 1)
     }
     const priority = ['人物', '风景', '城市', '自然风景', '室内', '建筑', '天空', '水面', '美食', '动物', '宠物', '运动', '夜景', '白天', '横屏', '竖屏', '照片', '视频', '短视频', '低光', '模糊', '闭眼', '建议复查']
@@ -62,31 +55,24 @@ export function AiSelectionPage() {
       if (ai >= 0 || bi >= 0) return (ai < 0 ? priority.length : ai) - (bi < 0 ? priority.length : bi)
       return a.localeCompare(b, 'zh-CN')
     })
-  }, [items])
-  const visibleItems = useMemo(() => items.filter((item) => {
-    if (filter === 'recommended') return isRecommended(item)
-    if (filter === 'compare') return Boolean(item.similarityGroupId)
-    if (filter === 'review') return isReview(item)
-    if (filter === 'video') return item.kind === 'video'
-    if (filter === 'selected') return item.selected
-    return true
-  }).filter((item) => {
-    const terms = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
-    if (terms.length === 0) return true
-    const haystack = `${item.name} ${item.semanticTags.join(' ')} ${item.recommendationReason ?? ''} ${item.quality?.reasons.join(' ') ?? ''}`.toLocaleLowerCase()
-    return terms.every((term) => haystack.includes(term)
-      || (['人', '人物', '人像', 'portrait'].some((word) => term.includes(word)) && item.semanticTags.includes('人物'))
-      || (['夜', '晚上', '暗光', 'night'].some((word) => term.includes(word)) && item.semanticTags.includes('夜景'))
-      || (['闭眼', '眨眼'].some((word) => term.includes(word)) && ['闭眼', '眨眼'].some((tag) => item.semanticTags.includes(tag)))
-      || (['切镜', '转场', '变化'].some((word) => term.includes(word)) && item.semanticTags.includes('镜头变化')))
-  }), [filter, items, search])
+  }, [categoryItems])
+  const visibleItems = useMemo(() => categoryItems.filter((item) => matchesSelectionSearch(item, search)), [categoryItems, search])
+  const searchedItems = useMemo(() => items.filter((item) => matchesSelectionSearch(item, search)), [items, search])
+  const navigationCounts = useMemo(() => ({
+    recommended: searchedItems.filter((item) => matchesResultFilter(item, 'recommended')).length,
+    compare: countSimilarityGroups(searchedItems.filter((item) => matchesResultFilter(item, 'compare'))),
+    review: searchedItems.filter((item) => matchesResultFilter(item, 'review')).length,
+    video: searchedItems.filter((item) => matchesResultFilter(item, 'video')).length,
+    selected: searchedItems.filter((item) => matchesResultFilter(item, 'selected')).length,
+    all: searchedItems.length,
+  }), [searchedItems])
   const focused = itemsById.get(focusedId) ?? visibleItems[0] ?? null
   const focusedGroup = session?.similarityGroups.find((group) => group.id === focused?.similarityGroupId) ?? null
   const groupItems = useMemo(() => focusedGroup?.itemIds.map((id) => itemsById.get(id)).filter((item): item is AiSelectionItem => Boolean(item)) ?? [], [focusedGroup, itemsById])
   const running = session?.status === 'indexing' || session?.status === 'analyzing' || session?.status === 'queued'
   const percent = session?.counts.total ? Math.round(session.counts.completed / session.counts.total * 100) : 0
-  const focusCount = new Set(items.filter((item) => isRecommended(item) || isReview(item)).map((item) => item.id)).size
-  const compareGroups = session?.similarityGroups.length ?? 0
+  const focusCount = new Set(items.filter((item) => isRecommendedItem(item) || isReviewItem(item)).map((item) => item.id)).size
+  const visibleCompareGroups = countSimilarityGroups(visibleItems)
   const contentTagCounts = useMemo(() => ({
     total: items.filter((item) => item.kind === 'image' && item.analysisState === 'ready').length,
     completed: items.filter((item) => item.kind === 'image' && item.contentTagVersion === AI_SELECTION_CONTENT_TAG_VERSION).length,
@@ -119,7 +105,7 @@ export function AiSelectionPage() {
     if (session) void controls.apply({ type: 'set-workflow', workflow: next })
   }
 
-  const navigation: Array<{ value: ResultFilter; label: string; icon: typeof Sparkles; helper: string }> = [
+  const navigation: Array<{ value: AiSelectionResultFilter; label: string; icon: typeof Sparkles; helper: string }> = [
     { value: 'recommended', label: 'AI 推荐', icon: Sparkles, helper: '从这里开始浏览，满意的素材直接勾选' },
     { value: 'compare', label: '比较相似照片', icon: Layers3, helper: '同一组只需选出最满意的一张' },
     { value: 'review', label: '查看需留意内容', icon: CircleAlert, helper: '确认这些素材是否仍值得保留' },
@@ -128,6 +114,21 @@ export function AiSelectionPage() {
     { value: 'all', label: '全部素材', icon: Images, helper: '这里保留完整素材，不会遗漏' },
   ]
   const activeNavigation = navigation.find((entry) => entry.value === filter) ?? navigation[0]
+  const visibleCountLabel = filter === 'compare'
+    ? `${visibleCompareGroups} 组 · ${visibleItems.length} 张照片`
+    : filter === 'video'
+      ? `${visibleItems.length} 条视频`
+      : `${visibleItems.length} 个素材`
+
+  function openPreview(item: AiSelectionItem): void {
+    const fileList = visibleItems.map((candidate) => candidate.path)
+    showPreviewModal(item.path, fileList.length > 0 ? fileList : [item.path], true, {
+      onFilePathChange: (filePath) => {
+        const next = items.find((candidate) => candidate.path === filePath)
+        if (next) setFocusedId(next.id)
+      },
+    })
+  }
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -148,10 +149,26 @@ export function AiSelectionPage() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [controls, focused, groupItems, visibleItems])
 
+  if (!session) {
+    return (
+      <section className="ai-selection-page">
+        <AiSelectionTaskPicker
+          sessions={sessions}
+          loading={loadingSessions}
+          busy={busy}
+          onOpenTask={(id) => void selectSession(id)}
+          onCreateTask={startTask}
+          onRemoveTask={removeSession}
+        />
+      </section>
+    )
+  }
+
   return (
     <section className="ai-selection-page">
       <header className="ai-selection-toolbar">
-        <div className="ai-selection-title"><Sparkles size={18} /><span>AI 选片</span></div>
+        <Button variant="ghost" size="compact" icon={<ArrowLeft size={15} />} onClick={closeSession}>任务列表</Button>
+        <div className="ai-selection-title"><Sparkles size={18} /><span>{session.name}</span></div>
         <AiSelectionWorkflowSteps status={session?.status} selectedCount={counts.selected} />
         {session && <span className="ai-selection-status">{statusLabel(session.status, session.phase)} · {session.counts.completed}/{session.counts.total || '—'}</span>}
         {running && <div className="ai-selection-progress" aria-label={`整理进度 ${percent}%`}><span style={{ width: `${percent}%` }} /></div>}
@@ -164,19 +181,13 @@ export function AiSelectionPage() {
         </div>
       </header>
 
-      {!session ? (
-        <AiSelectionWelcome busy={busy} onStart={() => void startDirectory()} />
-      ) : (
-        <div className="ai-selection-layout">
+      <div className="ai-selection-layout">
           <aside className="ai-selection-sidebar">
-            <div className="ai-selection-pane-title">选片任务</div>
-            <Select variant="compact" fullWidth value={activeId} placeholder="选片任务" options={sessions.map((item) => ({ value: item.id, label: item.name }))} onValueChange={(value) => void selectSession(value)} />
-            <Button variant="secondary" size="compact" className="ai-selection-new-task" icon={<FolderOpen size={14} />} disabled={busy} onClick={() => void startDirectory()}>添加新任务</Button>
             <div className="ai-selection-pane-title">接下来</div>
             <nav className="ai-selection-result-nav" aria-label="选片结果分类">
               {navigation.filter((entry) => ['compare', 'review', 'video'].includes(entry.value)).map((entry) => {
                 const Icon = entry.icon
-                const count = entry.value === 'compare' ? compareGroups : counts[entry.value]
+                const count = navigationCounts[entry.value]
                 const suffix = entry.value === 'compare' ? '组' : entry.value === 'video' ? '条' : '项'
                 return <Button key={entry.value} variant="ghost" size="compact" className={filter === entry.value ? 'active' : ''} icon={<Icon size={15} />} onClick={() => { setFilter(entry.value); setFocusedId('') }}><span>{entry.label}</span><strong>{count}{suffix}</strong></Button>
               })}
@@ -185,7 +196,7 @@ export function AiSelectionPage() {
             <nav className="ai-selection-result-nav" aria-label="浏览选片结果">
               {navigation.filter((entry) => ['recommended', 'selected', 'all'].includes(entry.value)).map((entry) => {
                 const Icon = entry.icon
-                return <Button key={entry.value} variant="ghost" size="compact" className={filter === entry.value ? 'active' : ''} icon={<Icon size={15} />} onClick={() => { setFilter(entry.value); setFocusedId('') }}><span>{entry.label}</span><strong>{counts[entry.value]}</strong></Button>
+                return <Button key={entry.value} variant="ghost" size="compact" className={filter === entry.value ? 'active' : ''} icon={<Icon size={15} />} onClick={() => { setFilter(entry.value); setFocusedId('') }}><span>{entry.label}</span><strong>{navigationCounts[entry.value]}</strong></Button>
               })}
             </nav>
             {tagEntries.length > 0 && <div className="ai-selection-tags-panel">
@@ -212,7 +223,7 @@ export function AiSelectionPage() {
               <div className="primary"><strong>{counts.selected}</strong><span>已选择</span></div>
             </div>
             <div className="ai-selection-results-header">
-              <div><strong>{activeNavigation.label}</strong><span>{visibleItems.length} 个素材 · {activeNavigation.helper}</span></div>
+              <div><strong>{activeNavigation.label}</strong><span>{visibleCountLabel} · {activeNavigation.helper}</span></div>
               <SearchField value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索人物、夜景、建筑、动物或文件名" />
             </div>
             {filter === 'compare' && focusedGroup && <AiComparisonSurvey items={groupItems} representativeId={focusedGroup.representativeId} focusedId={focused?.id ?? null} onFocus={setFocusedId} onToggle={(item) => void controls.apply({ type: 'set-selected', itemId: item.id, selected: !item.selected })} onRepresentative={(itemId) => void controls.apply({ type: 'set-representative', groupId: focusedGroup.id, itemId })} />}
@@ -221,13 +232,13 @@ export function AiSelectionPage() {
                 const group = session.similarityGroups.find((candidate) => candidate.id === item.similarityGroupId)
                 const representative = group?.representativeId === item.id
                 return (
-                  <article key={item.id} className={`ai-selection-card${focused?.id === item.id ? ' active' : ''}${item.analysisState === 'pending' ? ' pending' : ''}`} onClick={() => setFocusedId(item.id)}>
+                  <article key={item.id} className={`ai-selection-card${focused?.id === item.id ? ' active' : ''}${item.analysisState === 'pending' ? ' pending' : ''}`} onClick={() => setFocusedId(item.id)} onDoubleClick={() => openPreview(item)} title="双击预览">
                     <div className="ai-selection-thumb"><AiMediaThumb item={item} />
                       <Button variant={item.selected ? 'primary' : 'secondary'} size="mini" className="ai-selection-check" onClick={(event) => { event.stopPropagation(); void controls.apply({ type: 'set-selected', itemId: item.id, selected: !item.selected }) }} aria-label={item.selected ? '取消选择' : '选择素材'}>{item.selected && <Check size={13} />}</Button>
                       {group && <span className="ai-selection-group-badge">{representative ? '推荐' : '备选'} · {group.itemIds.length}</span>}
                       {item.kind === 'video' && <span className="ai-selection-video-badge"><Film size={12} />视频</span>}
                     </div>
-                    <div className="ai-selection-card-meta"><span title={item.name}>{item.name}</span><small>{item.analysisState === 'pending' ? '等待分析' : item.recommendationReason ?? (isReview(item) ? '需要人工确认' : '未发现明显风险')}</small></div>
+                    <div className="ai-selection-card-meta"><span title={item.name}>{item.name}</span><small>{item.analysisState === 'pending' ? '等待分析' : item.recommendationReason ?? (isReviewItem(item) ? '需要人工确认' : '未发现明显风险')}</small></div>
                   </article>
                 )
               })}
@@ -237,9 +248,9 @@ export function AiSelectionPage() {
           <aside className="ai-selection-detail">
             <div className="ai-selection-pane-title">为什么放在这里</div>
             {focused ? <>
-              <div className="ai-selection-detail-preview"><AiMediaThumb item={focused} />{focused.personEvidence?.bounds && <span className="ai-selection-person-box" style={{ left: `${focused.personEvidence.bounds.x * 100}%`, top: `${focused.personEvidence.bounds.y * 100}%`, width: `${focused.personEvidence.bounds.width * 100}%`, height: `${focused.personEvidence.bounds.height * 100}%` }} />}{focused.personEvidence?.primaryFaceBounds && <span className="ai-selection-face-box" style={{ left: `${focused.personEvidence.primaryFaceBounds.x * 100}%`, top: `${focused.personEvidence.primaryFaceBounds.y * 100}%`, width: `${focused.personEvidence.primaryFaceBounds.width * 100}%`, height: `${focused.personEvidence.primaryFaceBounds.height * 100}%` }} />}</div>
+              <button type="button" className="ai-selection-detail-preview" onClick={() => openPreview(focused)} aria-label={`预览 ${focused.name}`}><AiMediaThumb item={focused} />{focused.personEvidence?.bounds && <span className="ai-selection-person-box" style={{ left: `${focused.personEvidence.bounds.x * 100}%`, top: `${focused.personEvidence.bounds.y * 100}%`, width: `${focused.personEvidence.bounds.width * 100}%`, height: `${focused.personEvidence.bounds.height * 100}%` }} />}{focused.personEvidence?.primaryFaceBounds && <span className="ai-selection-face-box" style={{ left: `${focused.personEvidence.primaryFaceBounds.x * 100}%`, top: `${focused.personEvidence.primaryFaceBounds.y * 100}%`, width: `${focused.personEvidence.primaryFaceBounds.width * 100}%`, height: `${focused.personEvidence.primaryFaceBounds.height * 100}%` }} />}<span className="ai-selection-preview-hint"><Maximize2 size={12} />点击查看大图</span></button>
               <h3>{focused.name}</h3>
-              <div className={`ai-selection-decision${isReview(focused) ? ' review' : ''}`}>{focused.recommendationReason ?? (isReview(focused) ? '建议再看一眼' : '没有发现明显问题')}</div>
+              <div className={`ai-selection-decision${isReviewItem(focused) ? ' review' : ''}`}>{focused.recommendationReason ?? (isReviewItem(focused) ? '建议再看一眼' : '没有发现明显问题')}</div>
               {focused.quality?.reasons.length ? <ul>{focused.quality.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p className="ai-selection-muted">没有发现明显问题，可以按内容和喜好决定是否保留。</p>}
               {focused.semanticTags.length > 0 && <section className="ai-selection-detail-tags"><strong>标签</strong><div>{focused.semanticTags.filter((tag) => !['等待分析', '视频故事板', '可用片段'].includes(tag)).map((tag) => <Button key={tag} variant="ghost" size="mini" onClick={() => setSearch(tag)}>{tag}</Button>)}</div></section>}
               {focused.error && <p className="ai-selection-error">这项素材暂时无法读取，可稍后单独重试。</p>}
@@ -269,8 +280,7 @@ export function AiSelectionPage() {
               </section>}
             </> : <p className="ai-selection-muted">选择一项素材，看看推荐理由和相近的其他照片。</p>}
           </aside>
-        </div>
-      )}
+      </div>
     </section>
   )
 }
