@@ -65,6 +65,9 @@ export interface CompositionInput {
       controlEnd?: number
       centerX?: number
       centerY?: number
+      pathPoints?: number[]
+      pathStartWidth?: number
+      pathEndWidth?: number
     }
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
