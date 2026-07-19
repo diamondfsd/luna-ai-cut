@@ -48,6 +48,9 @@ function item(id, capturedAt, overrides = {}) {
     videoKeyframes: [],
     videoSegments: [],
     semanticTags: ['照片'],
+    contentTags: [],
+    contentTagVersion: null,
+    contentTagError: null,
     eventId: null,
     similarityGroupId: null,
     recommendationScore: 80,
@@ -126,6 +129,16 @@ assert.ok(selectionItems.filter((entry) => entry.selected).every((entry) => entr
 applySelectionPlan(selectionItems, [], 'balanced', 'general', 'assist')
 assert.equal(selectionItems.filter((entry) => entry.selected).length, 0)
 assert.equal(selectionItems.filter((entry) => entry.recommendationReason).length, 7)
+
+const peopleItems = [
+  item('no-person', '2026-07-18T01:00:00.000Z'),
+  item('person', '2026-07-18T01:01:00.000Z', { contentTags: ['人物'], semanticTags: ['照片', '人物'] }),
+]
+applySelectionPlan(peopleItems, [], 'deep', 'people', 'auto')
+assert.equal(peopleItems[0].selected, false)
+assert.equal(peopleItems[0].recommendationReason, null)
+assert.equal(peopleItems[1].selected, true)
+assert.equal(peopleItems[1].recommendationReason, '人物素材候选')
 
 const video = item('video-segments', '2026-07-18T01:00:00.000Z', {
   kind: 'video',

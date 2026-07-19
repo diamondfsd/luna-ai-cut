@@ -1,6 +1,8 @@
 use ort::{session::Session, value::Tensor};
 
 const YOLO_SIZE: usize = 640;
+const SEGFORMER_SIZE: usize = 512;
+const SEGFORMER_CLASSES: usize = 150;
 const SUBJECT_SIZE: usize = 1024;
 const ULTRAFACE_WIDTH: usize = 320;
 const ULTRAFACE_HEIGHT: usize = 240;
@@ -12,6 +14,14 @@ pub fn preprocess_yolo(rgb: &[u8]) -> Result<Vec<f32>, String> {
 
 pub fn preprocess_rmbg14(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(rgb, SUBJECT_SIZE, Some(([0.5; 3], [1.0; 3])))
+}
+
+fn preprocess_segformer(rgb: &[u8]) -> Result<Vec<f32>, String> {
+    preprocess(
+        rgb,
+        SEGFORMER_SIZE,
+        Some(([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])),
+    )
 }
 
 fn preprocess_ultraface(rgb: &[u8]) -> Result<Vec<f32>, String> {
@@ -158,6 +168,54 @@ pub fn yolo_person_mask(
     Ok(output)
 }
 
+fn yolo_object_map(
+    detections: &[f32],
+    detection_count: usize,
+    detection_width: usize,
+    scaled_width: usize,
+    scaled_height: usize,
+    pad_x: usize,
+    pad_y: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    if detection_width < 6
+        || detections.len() != detection_count * detection_width
+        || output_size == 0
+    {
+        return Err("YOLO26s-seg 检测输出尺寸不兼容".to_string());
+    }
+    let candidates: Vec<&[f32]> = detections
+        .chunks_exact(detection_width)
+        .filter(|row| row[4] >= 0.3 && (0..80).contains(&(row[5].round() as i32)))
+        .collect();
+    let mut output = vec![0u8; output_size * output_size];
+    let mut scores = vec![0.0f32; output_size * output_size];
+    for row in candidates {
+        let x1 = (((row[0] - pad_x as f32) / scaled_width.max(1) as f32) * output_size as f32)
+            .floor()
+            .clamp(0.0, output_size as f32) as usize;
+        let y1 = (((row[1] - pad_y as f32) / scaled_height.max(1) as f32) * output_size as f32)
+            .floor()
+            .clamp(0.0, output_size as f32) as usize;
+        let x2 = (((row[2] - pad_x as f32) / scaled_width.max(1) as f32) * output_size as f32)
+            .ceil()
+            .clamp(0.0, output_size as f32) as usize;
+        let y2 = (((row[3] - pad_y as f32) / scaled_height.max(1) as f32) * output_size as f32)
+            .ceil()
+            .clamp(0.0, output_size as f32) as usize;
+        for y in y1..y2 {
+            for x in x1..x2 {
+                let index = y * output_size + x;
+                if row[4] > scores[index] {
+                    scores[index] = row[4];
+                    output[index] = row[5].round() as u8 + 1;
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
 fn probability_mask(
     values: &[f32],
     width: usize,
@@ -214,6 +272,8 @@ fn session(model_path: &str) -> Result<Session, String> {
 
 pub enum SpecializedSession {
     Yolo(Session),
+    YoloLabels(Session),
+    SegformerLabels(Session),
     Rmbg14(Session),
     UltraFace(Session),
     EyeState(Session),
@@ -223,6 +283,8 @@ impl SpecializedSession {
     pub fn load(backend: &str, model_path: &str) -> Result<Self, String> {
         match backend {
             "yolo26-seg" => Ok(Self::Yolo(session(model_path)?)),
+            "yolo26-labels" => Ok(Self::YoloLabels(session(model_path)?)),
+            "segformer-labels" => Ok(Self::SegformerLabels(session(model_path)?)),
             "rmbg-1.4" => Ok(Self::Rmbg14(session(model_path)?)),
             "ultraface" => Ok(Self::UltraFace(session(model_path)?)),
             "eye-state" => Ok(Self::EyeState(session(model_path)?)),
@@ -249,6 +311,18 @@ impl SpecializedSession {
                 pad_y,
                 output_size,
             ),
+            Self::YoloLabels(session) => segment_yolo_labels_with_session(
+                session,
+                rgb,
+                scaled_width,
+                scaled_height,
+                pad_x,
+                pad_y,
+                output_size,
+            ),
+            Self::SegformerLabels(session) => {
+                segment_segformer_labels_with_session(session, rgb, output_size)
+            }
             Self::Rmbg14(session) => segment_rmbg_with_session(session, rgb, output_size),
             Self::UltraFace(session) => segment_ultraface_with_session(
                 session,
@@ -417,6 +491,7 @@ fn classify_eye_with_session(
     ])
 }
 
+#[allow(dead_code)]
 pub fn segment_yolo(
     model_path: &str,
     rgb: &[u8],
@@ -488,6 +563,95 @@ fn segment_yolo_with_session(
     )
 }
 
+fn segment_yolo_labels_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    scaled_width: usize,
+    scaled_height: usize,
+    pad_x: usize,
+    pad_y: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let input = preprocess_yolo(rgb)?;
+    let tensor = Tensor::from_array(([1usize, 3, YOLO_SIZE, YOLO_SIZE], input))
+        .map_err(|error| format!("创建 YOLO26s-seg 标签输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("对象标签识别失败: {error}"))?;
+    let (shape, detections) = outputs
+        .iter()
+        .find_map(|(_, output)| {
+            let (shape, values) = output.try_extract_tensor::<f32>().ok()?;
+            (shape.len() == 3 && shape[0] == 1 && shape[2] >= 7)
+                .then(|| (shape.to_vec(), values.to_vec()))
+        })
+        .ok_or_else(|| "YOLO26s-seg 缺少检测输出".to_string())?;
+    yolo_object_map(
+        &detections,
+        shape[1] as usize,
+        shape[2] as usize,
+        scaled_width,
+        scaled_height,
+        pad_x,
+        pad_y,
+        output_size,
+    )
+}
+
+fn segment_segformer_labels_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let input = preprocess_segformer(rgb)?;
+    let tensor = Tensor::from_array(([1usize, 3, SEGFORMER_SIZE, SEGFORMER_SIZE], input))
+        .map_err(|error| format!("创建场景标签输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("场景标签识别失败: {error}"))?;
+    let (_, output) = outputs
+        .iter()
+        .next()
+        .ok_or_else(|| "SegFormer 缺少分类输出".to_string())?;
+    let (shape, logits) = output
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("读取场景标签失败: {error}"))?;
+    if shape.len() != 4
+        || shape[0] != 1
+        || shape[1] != SEGFORMER_CLASSES as i64
+        || shape[2] == 0
+        || shape[3] == 0
+    {
+        return Err(format!("SegFormer 输出尺寸不兼容: {shape:?}"));
+    }
+    let width = shape[3] as usize;
+    let height = shape[2] as usize;
+    let plane = width * height;
+    let mut output = vec![0u8; output_size * output_size];
+    for y in 0..output_size {
+        let source_y = ((y as f32 + 0.5) * height as f32 / output_size as f32)
+            .floor()
+            .min((height - 1) as f32) as usize;
+        for x in 0..output_size {
+            let source_x = ((x as f32 + 0.5) * width as f32 / output_size as f32)
+                .floor()
+                .min((width - 1) as f32) as usize;
+            let pixel = source_y * width + source_x;
+            let mut best_class = 0usize;
+            let mut best_value = f32::NEG_INFINITY;
+            for class_id in 0..SEGFORMER_CLASSES {
+                let value = logits[class_id * plane + pixel];
+                if value > best_value {
+                    best_value = value;
+                    best_class = class_id;
+                }
+            }
+            output[y * output_size + x] = best_class as u8 + 1;
+        }
+    }
+    Ok(output)
+}
+
 pub fn segment_rmbg(model_path: &str, rgb: &[u8], output_size: usize) -> Result<Vec<u8>, String> {
     let mut session = session(model_path)?;
     segment_rmbg_with_session(&mut session, rgb, output_size)
@@ -531,6 +695,13 @@ mod tests {
         ];
         let mask = yolo_person_mask(&detections, 2, 7, &[1.0], 1, 1, 1, 640, 640, 0, 0, 2).unwrap();
         assert!(mask.iter().all(|value| *value > 127));
+    }
+
+    #[test]
+    fn yolo_label_map_keeps_detected_object_classes() {
+        let detections = vec![0.0, 0.0, 640.0, 640.0, 0.9, 2.0, 0.0];
+        let labels = yolo_object_map(&detections, 1, 7, 640, 640, 0, 0, 2).unwrap();
+        assert_eq!(labels, vec![3, 3, 3, 3]);
     }
 
     #[test]

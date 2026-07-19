@@ -209,6 +209,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     cancel: (sessionId) => ipcRenderer.invoke('ai-selection:cancel', sessionId),
     applyOperation: (sessionId, revision, operation) => ipcRenderer.invoke('ai-selection:apply-operation', sessionId, revision, operation),
     analyzePeople: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-people', sessionId, itemIds),
+    analyzeContentTags: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-content-tags', sessionId, itemIds),
     analyzeVideos: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-videos', sessionId, itemIds),
     undo: (sessionId) => ipcRenderer.invoke('ai-selection:undo', sessionId),
     redo: (sessionId) => ipcRenderer.invoke('ai-selection:redo', sessionId),

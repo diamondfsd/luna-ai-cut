@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, CheckCircle2, CircleAlert, Film, FolderOpen, Images, Layers3, Pause, Play, Redo2, Sparkles, Square, Tag, Undo2 } from 'lucide-react'
+import { Check, CheckCircle2, CircleAlert, Film, FolderOpen, Images, Layers3, Pause, Play, Redo2, ScanSearch, Sparkles, Square, Tag, Undo2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { AiMediaThumb } from '../ai-selection/AiMediaThumb'
@@ -7,7 +7,7 @@ import { AiComparisonSurvey } from '../ai-selection/AiComparisonSurvey'
 import { AiSelectionWelcome } from '../ai-selection/AiSelectionWelcome'
 import { AiSelectionWorkflow as AiSelectionWorkflowSteps } from '../ai-selection/AiSelectionWorkflow'
 import { useAiSelection } from '../ai-selection/useAiSelection'
-import type { AiSelectionItem, AiSelectionPurpose, AiSelectionWorkflow } from '../shared/types'
+import { AI_SELECTION_CONTENT_TAG_VERSION, type AiSelectionItem, type AiSelectionPurpose, type AiSelectionWorkflow } from '../shared/types'
 import { Button, ButtonGroup, SearchField, Select, toast } from '../ui'
 import '../styles/ai-selection.css'
 
@@ -55,7 +55,7 @@ export function AiSelectionPage() {
     for (const item of items) for (const tag of item.semanticTags) {
       if (!hidden.has(tag)) countsByTag.set(tag, (countsByTag.get(tag) ?? 0) + 1)
     }
-    const priority = ['人物', '夜景', '白天', '横屏', '竖屏', '照片', '视频', '短视频', '低光', '模糊', '闭眼', '建议复查']
+    const priority = ['人物', '风景', '城市', '自然风景', '室内', '建筑', '天空', '水面', '美食', '动物', '宠物', '运动', '夜景', '白天', '横屏', '竖屏', '照片', '视频', '短视频', '低光', '模糊', '闭眼', '建议复查']
     return [...countsByTag].sort(([a], [b]) => {
       const ai = priority.indexOf(a); const bi = priority.indexOf(b)
       if (ai >= 0 || bi >= 0) return (ai < 0 ? priority.length : ai) - (bi < 0 ? priority.length : bi)
@@ -86,6 +86,11 @@ export function AiSelectionPage() {
   const percent = session?.counts.total ? Math.round(session.counts.completed / session.counts.total * 100) : 0
   const focusCount = new Set(items.filter((item) => isRecommended(item) || isReview(item)).map((item) => item.id)).size
   const compareGroups = session?.similarityGroups.length ?? 0
+  const contentTagCounts = useMemo(() => ({
+    total: items.filter((item) => item.kind === 'image' && item.analysisState === 'ready').length,
+    completed: items.filter((item) => item.kind === 'image' && item.contentTagVersion === AI_SELECTION_CONTENT_TAG_VERSION).length,
+    failed: items.filter((item) => item.kind === 'image' && Boolean(item.contentTagError)).length,
+  }), [items])
 
   async function createProject(): Promise<void> {
     if (!session) return
@@ -183,7 +188,8 @@ export function AiSelectionPage() {
               })}
             </nav>
             {tagEntries.length > 0 && <div className="ai-selection-tags-panel">
-              <div className="ai-selection-pane-title"><Tag size={12} />标签分组</div>
+              <div className="ai-selection-tags-heading"><div className="ai-selection-pane-title"><Tag size={12} />标签分组</div><Button variant="ghost" size="mini" icon={<ScanSearch size={12} />} disabled={busy || contentTagCounts.completed >= contentTagCounts.total} onClick={() => void controls.analyzeContentTags()}>{contentTagCounts.completed >= contentTagCounts.total ? '内容已识别' : '识别内容'}</Button></div>
+              <p className="ai-selection-tags-progress">已识别 {contentTagCounts.completed}/{contentTagCounts.total}{contentTagCounts.failed ? ` · ${contentTagCounts.failed} 项可重试` : ''}</p>
               <div className="ai-selection-tag-list">
                 {tagEntries.map(([tag, count]) => <Button key={tag} variant="ghost" size="mini" className={search.trim() === tag ? 'active' : ''} onClick={() => setSearch(search.trim() === tag ? '' : tag)}><span>{tag}</span><strong>{count}</strong></Button>)}
               </div>
@@ -206,7 +212,7 @@ export function AiSelectionPage() {
             </div>
             <div className="ai-selection-results-header">
               <div><strong>{activeNavigation.label}</strong><span>{visibleItems.length} 个素材 · {activeNavigation.helper}</span></div>
-              <SearchField value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索人物、夜景、竖屏或文件名" />
+              <SearchField value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索人物、夜景、建筑、动物或文件名" />
             </div>
             {filter === 'compare' && focusedGroup && <AiComparisonSurvey items={groupItems} representativeId={focusedGroup.representativeId} focusedId={focused?.id ?? null} onFocus={setFocusedId} onToggle={(item) => void controls.apply({ type: 'set-selected', itemId: item.id, selected: !item.selected })} onRepresentative={(itemId) => void controls.apply({ type: 'set-representative', groupId: focusedGroup.id, itemId })} />}
             {visibleItems.length === 0 ? <div className="ai-selection-no-result">{running ? '正在生成这部分结果…' : '当前没有需要处理的素材'}</div> : <div className="ai-selection-grid">

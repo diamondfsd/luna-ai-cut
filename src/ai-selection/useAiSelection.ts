@@ -91,6 +91,7 @@ export function useAiSelection() {
     redo: () => run(() => window.luna.aiSelection.redo(session!.id)),
     apply: (operation: AiSelectionUserOperation) => run(() => window.luna.aiSelection.applyOperation(session!.id, session!.revision, operation)),
     analyzePeople: (itemIds: string[]) => run(() => window.luna.aiSelection.analyzePeople(session!.id, itemIds)),
+    analyzeContentTags: (itemIds: string[] = []) => run(() => window.luna.aiSelection.analyzeContentTags(session!.id, itemIds)),
     analyzeVideos: (itemIds: string[]) => run(() => window.luna.aiSelection.analyzeVideos(session!.id, itemIds)),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [session, busy])

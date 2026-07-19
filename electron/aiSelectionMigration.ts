@@ -20,5 +20,8 @@ export function normalizeAiSelectionItem(item: AiSelectionItem): void {
   })
   item.videoSegments ??= []
   item.semanticTags ??= [item.kind === 'image' ? '照片' : '视频']
+  item.contentTags ??= []
+  item.contentTagVersion ??= null
+  item.contentTagError ??= null
   refreshBasicSemanticTags(item)
 }

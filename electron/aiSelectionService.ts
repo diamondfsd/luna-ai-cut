@@ -15,10 +15,12 @@ import { applySelectionPlan, buildShootingEvents, buildSimilarityGroups } from '
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { normalizeAiSelectionItem } from './aiSelectionMigration'
 import { analyzePersonEvidence } from './aiSelectionPerson'
+import { analyzeContentTags, CONTENT_TAG_VERSION } from './aiSelectionSemantic'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeVideoStory } from './aiSelectionVideo'
 import { getSettings } from './settingsService'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
+import { refreshBasicSemanticTags } from './aiSelectionTags'
 import { createWorkspaceProject } from './workspaceProjectService'
 
 const ANALYSIS_VERSION = 'selection-redesign-4'
@@ -435,6 +437,41 @@ export async function analyzeAiSelectionPeople(id: string, itemIds: string[]): P
       if (item.personEvidence.eyeState === 'mixed') evidenceTags.push('眨眼', '建议复查')
       if (item.personEvidence.faceVisibility === 'occluded') evidenceTags.push('面部遮挡', '建议复查')
       item.semanticTags = [...new Set([...item.semanticTags, ...evidenceTags])]
+      await updateAndPersist(session, item.name)
+    }
+  } finally {
+    shutdownSpecializedSegmentationWorker()
+  }
+  rebuildSelectionResult(session)
+  await updateAndPersist(session)
+  return publicSession(session)
+}
+
+export async function analyzeAiSelectionContentTags(id: string, itemIds: string[]): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  const requested = itemIds.length > 0 ? new Set(itemIds) : null
+  const targets = session.items.filter((item) => item.kind === 'image'
+    && item.analysisState === 'ready'
+    && (!requested || requested.has(item.id))
+    && item.contentTagVersion !== CONTENT_TAG_VERSION)
+  if (targets.length === 0) return publicSession(session)
+  const controller = new AbortController()
+  try {
+    for (const item of targets) {
+      try {
+        const nextTags = await analyzeContentTags(item, controller.signal)
+        const previousTags = new Set(item.contentTags)
+        item.semanticTags = item.semanticTags.filter((tag) => !previousTags.has(tag))
+        item.contentTags = nextTags
+        item.contentTagVersion = CONTENT_TAG_VERSION
+        item.contentTagError = null
+        item.semanticTags = [...new Set([...item.semanticTags, ...nextTags])]
+        refreshBasicSemanticTags(item)
+        await writeCachedItem(item, session.mode)
+      } catch (error) {
+        item.contentTagError = error instanceof Error ? error.message : String(error)
+      }
       await updateAndPersist(session, item.name)
     }
   } finally {

@@ -168,15 +168,11 @@ fn run() -> Result<(), String> {
     let pad_y = number(&args[8], "纵向留白")?;
     let output_size = number(&args[9], "输出尺寸")?;
     let mask = match args[1].as_str() {
-        "yolo26-seg" => specialized_segmentation::segment_yolo(
-            &args[2],
-            &rgb,
-            scaled_width,
-            scaled_height,
-            pad_x,
-            pad_y,
-            output_size,
-        )?,
+        "yolo26-seg" | "yolo26-labels" | "segformer-labels" => {
+            let mut session =
+                specialized_segmentation::SpecializedSession::load(&args[1], &args[2])?;
+            session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
+        }
         "rmbg-1.4" => specialized_segmentation::segment_rmbg(&args[2], &rgb, output_size)?,
         "ultraface" | "eye-state" => {
             let mut session =
