@@ -10,7 +10,7 @@ import { countSimilarityGroups, isRecommendedItem, isReviewItem, matchesResultFi
 import { useAiSelection } from '../ai-selection/useAiSelection'
 import { showPreviewModal } from '../components/previewModalService'
 import { type AiSelectionItem, type AiSelectionPurpose, type AiSelectionWorkflow } from '../shared/types'
-import { AI_SELECTION_CONTENT_TAG_VERSION } from '../shared/types/aiSelection'
+import { AI_SELECTION_CONTENT_TAG_VERSION } from '../shared/types/aiSelection.ts'
 import { Button, ButtonGroup, SearchField, Select, toast } from '../ui'
 import '../styles/ai-selection.css'
 
