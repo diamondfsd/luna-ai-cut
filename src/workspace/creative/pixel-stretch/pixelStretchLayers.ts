@@ -102,6 +102,15 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
     : bounds.x + bounds.w * rangeEnd
   const controlStart = Math.max(0, Math.min(1, sample + (sampleEndPosition - sample) / 3 + options.sampleControlStartOffset / 100))
   const controlEnd = Math.max(0, Math.min(1, sample + (sampleEndPosition - sample) * 2 / 3 + options.sampleControlEndOffset / 100))
+  const lineEnd = horizontal
+    ? bounds.x + bounds.w * sampleEndPosition
+    : bounds.y + bounds.h * sampleEndPosition
+  const centerX = horizontal
+    ? (bounds.x + bounds.w * sample + lineEnd) / 2
+    : (sampleStart + sampleEnd) / 2
+  const centerY = horizontal
+    ? (sampleStart + sampleEnd) / 2
+    : (bounds.y + bounds.h * sample + lineEnd) / 2
   const background: PreviewLayer = { ...main, zIndex: 0 }
   const stretch: PreviewLayer = {
     ...main,
@@ -119,17 +128,15 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
       ribbonSize: Math.round(Math.abs(rangeEnd - rangeStart) * 100),
       sampleStart,
       sampleEnd,
-      lineEnd: horizontal
-        ? bounds.x + bounds.w * sampleEndPosition
-        : bounds.y + bounds.h * sampleEndPosition,
+      lineEnd,
       controlStart: horizontal
         ? bounds.x + bounds.w * controlStart
         : bounds.y + bounds.h * controlStart,
       controlEnd: horizontal
         ? bounds.x + bounds.w * controlEnd
         : bounds.y + bounds.h * controlEnd,
-      centerX: bounds.x + bounds.w / 2,
-      centerY: bounds.y + bounds.h / 2,
+      centerX,
+      centerY,
     },
     zIndex: 1,
   }

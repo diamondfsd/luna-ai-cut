@@ -27,6 +27,8 @@
 .pixel-stretch-effect-controls:disabled { opacity: 0.45; }
 .pixel-stretch-edit-row { display: flex; align-items: center; gap: 8px; }
 .pixel-stretch-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.pixel-stretch-models { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pixel-stretch-model-select { min-width: 0; margin: 0; padding: 0; border: 0; }
 .pixel-stretch-presets button { min-width: 0; height: 30px; padding: 0 8px; border: 1px solid #3b3b3b; border-radius: 4px; background: #303030; color: #aaa; font-size: 12px; cursor: pointer; }
 .pixel-stretch-presets button:hover { border-color: #555; color: #ddd; }
 .pixel-stretch-presets button.active { border-color: var(--blue); background: var(--blue); color: #fff; }

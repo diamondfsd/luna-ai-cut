@@ -347,8 +347,10 @@ try {
   assert.equal(modelMode.modelForAutomaticSelection('sam-vit-b'), 'segformer-b2-ade20k')
   assert.equal(modelMode.modelForAutomaticSelection('segformer-b3-ade20k'), 'segformer-b3-ade20k')
 
-  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
-  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'rmbg-1.4')
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'birefnet-general-lite')
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'birefnet-general-lite')
+  assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'rmbg-1.4'), 'rmbg-1.4')
+  assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'birefnet-general-lite'), 'birefnet-general-lite')
   assert.equal(segmentationModels.automaticSegmentationTarget('person'), undefined)
   assert.equal(segmentationModels.modelForSegmentationRequest('ade20k-12', 'rmbg-1.4'), 'segformer-b5-ade20k')
   assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'segformer-b3-ade20k'), 'segformer-b3-ade20k')

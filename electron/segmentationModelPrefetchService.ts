@@ -10,9 +10,9 @@ interface PrefetchItem {
 
 const PREFETCH_ITEMS: PrefetchItem[] = [
   {
-    modelId: 'rmbg-1.4',
+    modelId: 'birefnet-general-lite',
     label: '主体模型',
-    load: (signal) => loadModel('rmbg-1.4', undefined, signal),
+    load: (signal) => loadModel('birefnet-general-lite', undefined, signal),
   },
   {
     modelId: 'segformer-b5-ade20k',

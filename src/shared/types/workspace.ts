@@ -41,9 +41,11 @@ export interface WorkspaceColorRevealState {
 }
 
 export type PixelStretchPresetId = 'left' | 'right' | 'top' | 'bottom' | 'horizontal' | 'vertical'
+export type PixelStretchSubjectModel = 'fast' | 'precise'
 
 export interface WorkspacePixelStretchState {
   preset: PixelStretchPresetId
+  subjectModel?: PixelStretchSubjectModel
   intensity: number
   angle: number
   samplePosition: number
@@ -69,5 +71,6 @@ export interface WorkspaceProject {
     tripleStitch?: WorkspaceTripleStitchState
     colorReveal?: WorkspaceColorRevealState
     pixelStretch?: WorkspacePixelStretchState
+    pixelStretchByAssetId?: Record<string, WorkspacePixelStretchState>
   }
 }
