@@ -98,7 +98,7 @@ async function main() {
     await client.send('Page.navigate', { url: `${target.url.split('#')[0]}#/ai-selection` })
     await waitFor('AI 选片页面', async () => {
       const page = await client.evaluate(`({ url: location.href, ready: Boolean(document.querySelector('.ai-selection-page')), text: document.body?.innerText.slice(0, 500) })`)
-      if (page.ready && page.text.includes('添加素材')) return true
+      if (page.ready && page.text.includes('AI 选片任务')) return true
       throw new Error(JSON.stringify(page))
     }, 15_000)
 
@@ -110,6 +110,11 @@ async function main() {
     assert.equal(session.items.length, 5)
     assert.equal(session.items.filter((item) => item.kind === 'video').length, 1)
     assert.ok(session.similarityGroups.length >= 1, '连续实拍照片应形成可比较组')
+
+    await waitFor('选片任务卡片', async () => {
+      const opened = await client.evaluate(`(() => { const card = Array.from(document.querySelectorAll('.ai-selection-task-open')).find((item) => item.textContent?.includes('真实素材自动化选片')); if (!card) return false; card.click(); return true })()`)
+      return opened || null
+    })
 
     const bodyText = await waitFor('选片结果界面', async () => {
       const text = await client.evaluate('document.body.innerText')

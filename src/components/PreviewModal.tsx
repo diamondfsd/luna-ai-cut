@@ -21,6 +21,7 @@ interface PreviewModalProps {
   filePathList?: string[]
   previewOnly?: boolean
   batchExportMode?: boolean
+  onFilePathChange?: (filePath: string) => void
   onClose: () => void
 }
 
@@ -43,6 +44,7 @@ export function PreviewModal({
   filePathList,
   previewOnly,
   batchExportMode,
+  onFilePathChange,
   onClose,
 }: PreviewModalProps) {
   // ── 当前预览文件路径 ──
@@ -52,6 +54,10 @@ export function PreviewModal({
   useEffect(() => {
     setCurrentFilePath(filePath)
   }, [filePath])
+
+  useEffect(() => {
+    onFilePathChange?.(currentFilePath)
+  }, [currentFilePath, onFilePathChange])
 
   // ── 状态 ──
   const [inspectorOpen, setInspectorOpen] = useState(true)
