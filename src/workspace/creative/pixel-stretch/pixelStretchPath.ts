@@ -8,6 +8,8 @@ interface BuildFlowPathOptions {
   curve: number
   aspect: number
   bounds: SubjectBounds
+  start?: PixelStretchPathPoint
+  startInset?: number
   customPoints?: PixelStretchPathPoint[]
 }
 
@@ -31,10 +33,11 @@ export function buildPixelStretchFlowPath(options: BuildFlowPathOptions): PixelS
   if (options.shape === 'custom' && options.customPoints?.length === 7) return options.customPoints
   const aspect = Math.max(0.0001, options.aspect)
   const { direction, normal } = directionForPreset(options.preset, aspect)
-  const start = {
+  const sampleCenter = options.start ?? {
     x: options.bounds.x + options.bounds.w / 2,
     y: options.bounds.y + options.bounds.h / 2,
   }
+  const start = add(sampleCenter, direction, options.startInset ?? 0)
   const distance = Math.max(0.08, options.length / 100)
   const bend = options.curve / 100
 
@@ -59,7 +62,7 @@ export function buildPixelStretchFlowPath(options: BuildFlowPathOptions): PixelS
     return [
       start,
       add(start, direction, distance * 0.18),
-      add(add(join, direction, -distance * 0.2), normal, -distance * 0.08 * bend),
+      add(join, direction, -distance * 0.18),
       join,
       add(join, direction, distance * 0.18),
       add(add(end, direction, -distance * 0.24), normal, -distance * 0.12 * bend),

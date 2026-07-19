@@ -151,6 +151,8 @@ export interface RenderPixelStretch {
   pathPoints?: number[]
   pathStartWidth?: number
   pathEndWidth?: number
+  /** 用邻近的主体颜色补齐取样线中的空隙，生成连续色带。 */
+  fillSampleGaps?: boolean
 }
 
 export interface CompositionInput {

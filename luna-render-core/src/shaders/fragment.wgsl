@@ -92,6 +92,47 @@ fn cubic_flow_path(t: f32) -> vec2<f32> {
         + local_t * local_t * local_t * p3;
 }
 
+fn cubic_flow_path_derivative(t: f32) -> vec2<f32> {
+    let segment = select(0, 1, t >= 0.5);
+    let local_t = select(t * 2.0, (t - 0.5) * 2.0, segment == 1);
+    let base = segment * 3;
+    let p0 = flow_path_control(base);
+    let p1 = flow_path_control(base + 1);
+    let p2 = flow_path_control(base + 2);
+    let p3 = flow_path_control(base + 3);
+    let inverse_t = 1.0 - local_t;
+    return 6.0 * (inverse_t * inverse_t * (p1 - p0)
+        + 2.0 * inverse_t * local_t * (p2 - p1)
+        + local_t * local_t * (p3 - p2));
+}
+
+fn cubic_flow_path_second_derivative(t: f32) -> vec2<f32> {
+    let segment = select(0, 1, t >= 0.5);
+    let local_t = select(t * 2.0, (t - 0.5) * 2.0, segment == 1);
+    let base = segment * 3;
+    let p0 = flow_path_control(base);
+    let p1 = flow_path_control(base + 1);
+    let p2 = flow_path_control(base + 2);
+    let p3 = flow_path_control(base + 3);
+    return 24.0 * (mix(p2 - 2.0 * p1 + p0, p3 - 2.0 * p2 + p1, local_t));
+}
+
+fn pixel_stretch_sample_seed(range_t: f32, horizontal: bool) -> vec2<f32> {
+    let inverse_t = 1.0 - range_t;
+    let start = select(params.pixel_stretch.w, params.pixel_stretch.z, horizontal);
+    let along = inverse_t * inverse_t * inverse_t * start
+        + 3.0 * inverse_t * inverse_t * range_t * params.pixel_stretch_center.z
+        + 3.0 * inverse_t * range_t * range_t * params.pixel_stretch_center.w
+        + range_t * range_t * range_t * params.pixel_stretch_extra.y;
+    let across = mix(params.pixel_stretch_extra.z, params.pixel_stretch_extra.w, range_t);
+    return select(vec2<f32>(across, along), vec2<f32>(along, across), horizontal);
+}
+
+fn valid_pixel_stretch_seed(seed: vec2<f32>) -> bool {
+    return seed.x >= 0.0 && seed.x <= 1.0 && seed.y >= 0.0 && seed.y <= 1.0
+        && sample_pixel_stretch_mask(seed) >= 0.5;
+}
+
 fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
     let original = sample_effective_color_mask(tex_coord);
     let feather_px = params.mask_params.z;
@@ -260,6 +301,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let sample_start = params.pixel_stretch_extra.z;
         let sample_end = params.pixel_stretch_extra.w;
         var seed = vec2<f32>(origin.x, tex_coord.y);
+        var sample_range_t = 0.5;
         var edge_coverage = 1.0;
         let is_horizontal = stretch_mode < 1.5 || (stretch_mode > 4.5 && stretch_mode < 5.5) || (stretch_mode > 6.5 && stretch_mode < 7.5);
         let is_vertical = (stretch_mode > 1.5 && stretch_mode < 2.5) || (stretch_mode > 5.5 && stretch_mode < 6.5) || stretch_mode > 7.5;
@@ -282,20 +324,38 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let coarse_step = 1.0 / 31.0;
             let refine_start = max(0.0, best_t - coarse_step);
             let refine_end = min(1.0, best_t + coarse_step);
-            for (var index = 0; index < 8; index = index + 1) {
-                let path_t = mix(refine_start, refine_end, f32(index) / 7.0);
-                let point_uv = cubic_flow_path(path_t);
+            for (var index = 0; index < 6; index = index + 1) {
+                let point_uv = cubic_flow_path(best_t);
                 let point = point_uv * vec2<f32>(aspect, 1.0);
-                let distance = dot(position - point, position - point);
-                if (distance < best_distance) {
-                    best_t = path_t;
-                    best_point = point;
-                    best_distance = distance;
+                let derivative = cubic_flow_path_derivative(best_t) * vec2<f32>(aspect, 1.0);
+                let second_derivative = cubic_flow_path_second_derivative(best_t) * vec2<f32>(aspect, 1.0);
+                let delta = point - position;
+                let denominator = dot(derivative, derivative) + dot(delta, second_derivative);
+                if (abs(denominator) > 0.0000001) {
+                    best_t = clamp(best_t - dot(delta, derivative) / denominator, refine_start, refine_end);
                 }
             }
-            let before = cubic_flow_path(max(0.0, best_t - 0.004)) * vec2<f32>(aspect, 1.0);
-            let after = cubic_flow_path(min(1.0, best_t + 0.004)) * vec2<f32>(aspect, 1.0);
-            let tangent_delta = after - before;
+            best_point = cubic_flow_path(best_t) * vec2<f32>(aspect, 1.0);
+            let path_start = cubic_flow_path(0.0) * vec2<f32>(aspect, 1.0);
+            let path_start_delta = cubic_flow_path_derivative(0.0) * vec2<f32>(aspect, 1.0);
+            let path_start_fallback = (cubic_flow_path(0.01) - cubic_flow_path(0.0)) * vec2<f32>(aspect, 1.0);
+            let path_start_length = max(length(path_start_delta), 0.000001);
+            let path_start_fallback_length = max(length(path_start_fallback), 0.000001);
+            let path_start_tangent = select(path_start_fallback / path_start_fallback_length, path_start_delta / path_start_length, dot(path_start_delta, path_start_delta) > 0.0000001);
+            let path_end = cubic_flow_path(1.0) * vec2<f32>(aspect, 1.0);
+            let path_end_delta = cubic_flow_path_derivative(1.0) * vec2<f32>(aspect, 1.0);
+            let path_end_fallback = (cubic_flow_path(1.0) - cubic_flow_path(0.99)) * vec2<f32>(aspect, 1.0);
+            let path_end_length = max(length(path_end_delta), 0.000001);
+            let path_end_fallback_length = max(length(path_end_fallback), 0.000001);
+            let path_end_tangent = select(path_end_fallback / path_end_fallback_length, path_end_delta / path_end_length, dot(path_end_delta, path_end_delta) > 0.0000001);
+            if (dot(position - path_start, path_start_tangent) < 0.0) {
+                best_t = 0.0;
+                best_point = path_start;
+            } else if (dot(position - path_end, path_end_tangent) > 0.0) {
+                best_t = 1.0;
+                best_point = path_end;
+            }
+            let tangent_delta = cubic_flow_path_derivative(best_t) * vec2<f32>(aspect, 1.0);
             if (dot(tangent_delta, tangent_delta) < 0.0000001) {
                 discard;
             }
@@ -304,27 +364,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let signed_distance = dot(position - best_point, normal);
             let full_width = mix(params.pixel_stretch_path_meta.y, params.pixel_stretch_path_meta.z, best_t);
             let half_width = max(0.0005, full_width * 0.5);
-            let edge_distance = half_width - abs(signed_distance);
+            var distance_from_centerline = abs(signed_distance);
+            if ((best_t <= 0.00001 && dot(position - best_point, tangent) < 0.0)
+                || (best_t >= 0.99999 && dot(position - best_point, tangent) > 0.0)) {
+                distance_from_centerline = length(position - best_point);
+            }
+            let edge_distance = half_width - distance_from_centerline;
             let edge_aa = max(fwidth(edge_distance), 0.00001);
             if (edge_distance < -edge_aa) {
                 discard;
             }
             edge_coverage = smoothstep(-edge_aa, edge_aa, edge_distance);
-            let range_t = clamp(signed_distance / full_width + 0.5, 0.0, 1.0);
-            let inverse_t = 1.0 - range_t;
-            if (is_horizontal) {
-                let sample_x = inverse_t * inverse_t * inverse_t * origin.x
-                    + 3.0 * inverse_t * inverse_t * range_t * control_start
-                    + 3.0 * inverse_t * range_t * range_t * control_end
-                    + range_t * range_t * range_t * line_end;
-                seed = vec2<f32>(sample_x, mix(sample_start, sample_end, range_t));
-            } else {
-                let sample_y = inverse_t * inverse_t * inverse_t * origin.y
-                    + 3.0 * inverse_t * inverse_t * range_t * control_start
-                    + 3.0 * inverse_t * range_t * range_t * control_end
-                    + range_t * range_t * range_t * line_end;
-                seed = vec2<f32>(mix(sample_start, sample_end, range_t), sample_y);
-            }
+            sample_range_t = clamp(signed_distance / full_width + 0.5, 0.0, 1.0);
+            seed = pixel_stretch_sample_seed(sample_range_t, is_horizontal);
         } else if (is_horizontal) {
             let range_min = min(sample_start, sample_end);
             let range_max = max(sample_start, sample_end);
@@ -336,13 +388,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             edge_coverage = smoothstep(-cross_aa, cross_aa, cross_distance);
             let range_delta = sample_end - sample_start;
             let safe_range_delta = select(min(range_delta, -0.0001), max(range_delta, 0.0001), range_delta >= 0.0);
-            let range_t = clamp((effect_coord.y - sample_start) / safe_range_delta, 0.0, 1.0);
-            let inverse_t = 1.0 - range_t;
-            let sample_x = inverse_t * inverse_t * inverse_t * origin.x
-                + 3.0 * inverse_t * inverse_t * range_t * control_start
-                + 3.0 * inverse_t * range_t * range_t * control_end
-                + range_t * range_t * range_t * line_end;
-            seed = vec2<f32>(sample_x, effect_coord.y);
+            sample_range_t = clamp((effect_coord.y - sample_start) / safe_range_delta, 0.0, 1.0);
+            seed = pixel_stretch_sample_seed(sample_range_t, true);
+            let sample_x = seed.x;
             var direction_distance = max_travel - abs(effect_coord.x - sample_x);
             if (stretch_mode < 1.5) {
                 direction_distance = min(direction_distance, effect_coord.x - sample_x);
@@ -365,13 +413,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             edge_coverage = smoothstep(-cross_aa, cross_aa, cross_distance);
             let range_delta = sample_end - sample_start;
             let safe_range_delta = select(min(range_delta, -0.0001), max(range_delta, 0.0001), range_delta >= 0.0);
-            let range_t = clamp((effect_coord.x - sample_start) / safe_range_delta, 0.0, 1.0);
-            let inverse_t = 1.0 - range_t;
-            let sample_y = inverse_t * inverse_t * inverse_t * origin.y
-                + 3.0 * inverse_t * inverse_t * range_t * control_start
-                + 3.0 * inverse_t * range_t * range_t * control_end
-                + range_t * range_t * range_t * line_end;
-            seed = vec2<f32>(effect_coord.x, sample_y);
+            sample_range_t = clamp((effect_coord.x - sample_start) / safe_range_delta, 0.0, 1.0);
+            seed = pixel_stretch_sample_seed(sample_range_t, false);
+            let sample_y = seed.y;
             var direction_distance = max_travel - abs(effect_coord.y - sample_y);
             if (stretch_mode > 1.5 && stretch_mode < 2.5) {
                 direction_distance = min(direction_distance, effect_coord.y - sample_y);
@@ -410,7 +454,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let signed_distance = dot(position - best_point, normal);
             seed = vec2<f32>(origin.x, origin.y + signed_distance / half_width * 0.5);
         }
-        if (seed.x < 0.0 || seed.x > 1.0 || seed.y < 0.0 || seed.y > 1.0 || sample_pixel_stretch_mask(seed) < 0.5) {
+        var valid_seed = valid_pixel_stretch_seed(seed);
+        if (!valid_seed && params.pixel_stretch_path_meta.w > 0.5 && (is_horizontal || is_vertical)) {
+            for (var index = 1; index <= 48; index = index + 1) {
+                let offset = f32(index) / 48.0;
+                let before_t = max(0.0, sample_range_t - offset);
+                let before_seed = pixel_stretch_sample_seed(before_t, is_horizontal);
+                if (valid_pixel_stretch_seed(before_seed)) {
+                    seed = before_seed;
+                    valid_seed = true;
+                    break;
+                }
+                let after_t = min(1.0, sample_range_t + offset);
+                let after_seed = pixel_stretch_sample_seed(after_t, is_horizontal);
+                if (valid_pixel_stretch_seed(after_seed)) {
+                    seed = after_seed;
+                    valid_seed = true;
+                    break;
+                }
+            }
+        }
+        if (!valid_seed) {
             discard;
         }
         let source_size = vec2<f32>(textureDimensions(src_texture));
