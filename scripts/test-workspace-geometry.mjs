@@ -5,6 +5,7 @@ import ts from 'typescript'
 
 const source = await readFile(new URL('../src/workspace/transform/cropGeometry.ts', import.meta.url), 'utf8')
 const pixelStretchSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchLayers.ts', import.meta.url), 'utf8')
+const pixelStretchStateSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchState.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compilerOptions = {
   module: ts.ModuleKind.ES2020,
@@ -13,9 +14,11 @@ const compilerOptions = {
 }
 const compiled = ts.transpileModule(source, { compilerOptions }).outputText
 const pixelStretchCompiled = ts.transpileModule(pixelStretchSource, { compilerOptions }).outputText
+const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
 const pixelStretch = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchCompiled).toString('base64')}`)
+const pixelStretchState = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchStateCompiled).toString('base64')}`)
 
 function close(actual, expected, message, epsilon = 0.0001) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${message}: expected ${expected}, got ${actual}`)
@@ -139,6 +142,19 @@ assert.deepEqual(
   'one-pixel erosion contracts every mask edge by one pixel',
 )
 assert.equal(pixelStretch.erodeMaskOnePixel(solidMask, 4, 5).length, 0, 'erosion rejects mismatched mask dimensions')
+
+const legacyPixelStretchState = { preset: 'left', maskAssetId: 'legacy-photo', angle: 12 }
+const mappedPixelStretchState = { preset: 'right', maskAssetId: 'mapped-photo', angle: -18 }
+const pixelStretchProject = {
+  creative: {
+    pixelStretch: legacyPixelStretchState,
+    pixelStretchByAssetId: { 'mapped-photo': mappedPixelStretchState },
+  },
+}
+assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'mapped-photo'), mappedPixelStretchState, 'mapped photo restores its own creative parameters')
+assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'legacy-photo'), legacyPixelStretchState, 'legacy state remains available for its original photo')
+assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'new-photo'), undefined, 'new photo starts from creative defaults')
+assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, undefined), undefined, 'missing photo has no creative parameters')
 
 const baseLayer = {
   filePath: 'subject.png',
