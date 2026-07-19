@@ -15,6 +15,7 @@ import { DevPage } from '../pages/DevPage'
 import { DeviceDebugPage } from '../pages/DeviceDebugPage'
 import { DeviceConnectPage } from '../pages/DeviceConnectPage'
 import { LocalMediaPage } from '../pages/LocalMediaPage'
+import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import type { CacheStats } from '../shared/types'
@@ -81,6 +82,7 @@ export function AppRoutes() {
   const routeAccess: [string, boolean][] = [
     ['/library', true],
     ['/local-resources', true],
+    ['/ai-selection', true],
     ['/workspace', true],
     ['/settings', true],
     ['/developer', developerMode],
@@ -143,6 +145,10 @@ export function AppRoutes() {
           <DownloadProgressProvider>
             <LocalMediaPage />
           </DownloadProgressProvider>
+        </AppRoute>
+
+        <AppRoute path="/ai-selection" preserve={false}>
+          <AiSelectionPage />
         </AppRoute>
 
         <AppRoute path="/workspace">

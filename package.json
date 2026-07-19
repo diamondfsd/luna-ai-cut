@@ -39,6 +39,8 @@
     "test:resource-packs": "node scripts/test-runtime-resource-packs.mjs",
     "test:resources": "node scripts/test-runtime-resource-service.mjs",
     "test:diagnostics": "node scripts/test-crash-diagnostics.mjs",
+    "test:ai-selection": "node --experimental-strip-types scripts/test-ai-selection.mjs",
+    "test:ai-selection:e2e": "node scripts/test-ai-selection-e2e.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
     "test:insta360-tcp": "node scripts/test-insta360-tcp.mjs",
     "test:insta360-delete": "node --experimental-strip-types scripts/test-insta360-delete.mjs",

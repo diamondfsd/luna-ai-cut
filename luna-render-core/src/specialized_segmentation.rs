@@ -2,6 +2,9 @@ use ort::{session::Session, value::Tensor};
 
 const YOLO_SIZE: usize = 640;
 const SUBJECT_SIZE: usize = 1024;
+const ULTRAFACE_WIDTH: usize = 320;
+const ULTRAFACE_HEIGHT: usize = 240;
+const EYE_SIZE: usize = 32;
 
 pub fn preprocess_yolo(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(rgb, YOLO_SIZE, None)
@@ -9,6 +12,46 @@ pub fn preprocess_yolo(rgb: &[u8]) -> Result<Vec<f32>, String> {
 
 pub fn preprocess_rmbg14(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(rgb, SUBJECT_SIZE, Some(([0.5; 3], [1.0; 3])))
+}
+
+fn preprocess_ultraface(rgb: &[u8]) -> Result<Vec<f32>, String> {
+    if rgb.len() != YOLO_SIZE * YOLO_SIZE * 3 {
+        return Err(format!("人脸检测图片数据尺寸无效: {}", rgb.len()));
+    }
+    let plane = ULTRAFACE_WIDTH * ULTRAFACE_HEIGHT;
+    let mut output = vec![0.0; plane * 3];
+    for y in 0..ULTRAFACE_HEIGHT {
+        let source_y = ((y as f32 + 0.5) * YOLO_SIZE as f32 / ULTRAFACE_HEIGHT as f32)
+            .floor()
+            .min((YOLO_SIZE - 1) as f32) as usize;
+        for x in 0..ULTRAFACE_WIDTH {
+            let source_x = ((x as f32 + 0.5) * YOLO_SIZE as f32 / ULTRAFACE_WIDTH as f32)
+                .floor()
+                .min((YOLO_SIZE - 1) as f32) as usize;
+            let pixel = y * ULTRAFACE_WIDTH + x;
+            let source = (source_y * YOLO_SIZE + source_x) * 3;
+            for channel in 0..3 {
+                output[channel * plane + pixel] = (rgb[source + channel] as f32 - 127.0) / 128.0;
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn preprocess_eye(rgb: &[u8]) -> Result<Vec<f32>, String> {
+    if rgb.len() != EYE_SIZE * EYE_SIZE * 3 {
+        return Err(format!("眼睛分类图片数据尺寸无效: {}", rgb.len()));
+    }
+    let plane = EYE_SIZE * EYE_SIZE;
+    let mut output = vec![0.0; plane * 3];
+    for pixel in 0..plane {
+        for channel in 0..3 {
+            // Open Model Zoo 模型要求 BGR，并使用转换配置中的 mean/scale。
+            let rgb_channel = 2 - channel;
+            output[channel * plane + pixel] = (rgb[pixel * 3 + rgb_channel] as f32 - 127.0) / 255.0;
+        }
+    }
+    Ok(output)
 }
 
 fn preprocess(
@@ -172,6 +215,8 @@ fn session(model_path: &str) -> Result<Session, String> {
 pub enum SpecializedSession {
     Yolo(Session),
     Rmbg14(Session),
+    UltraFace(Session),
+    EyeState(Session),
 }
 
 impl SpecializedSession {
@@ -179,6 +224,8 @@ impl SpecializedSession {
         match backend {
             "yolo26-seg" => Ok(Self::Yolo(session(model_path)?)),
             "rmbg-1.4" => Ok(Self::Rmbg14(session(model_path)?)),
+            "ultraface" => Ok(Self::UltraFace(session(model_path)?)),
+            "eye-state" => Ok(Self::EyeState(session(model_path)?)),
             _ => Err("不支持的专用分割模型".to_string()),
         }
     }
@@ -203,8 +250,171 @@ impl SpecializedSession {
                 output_size,
             ),
             Self::Rmbg14(session) => segment_rmbg_with_session(session, rgb, output_size),
+            Self::UltraFace(session) => segment_ultraface_with_session(
+                session,
+                rgb,
+                scaled_width,
+                scaled_height,
+                pad_x,
+                pad_y,
+                output_size,
+            ),
+            Self::EyeState(session) => classify_eye_with_session(session, rgb, output_size),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct FaceBox {
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    score: f32,
+}
+
+fn intersection_over_union(a: FaceBox, b: FaceBox) -> f32 {
+    let width = (a.x2.min(b.x2) - a.x1.max(b.x1)).max(0.0);
+    let height = (a.y2.min(b.y2) - a.y1.max(b.y1)).max(0.0);
+    let intersection = width * height;
+    let area_a = (a.x2 - a.x1).max(0.0) * (a.y2 - a.y1).max(0.0);
+    let area_b = (b.x2 - b.x1).max(0.0) * (b.y2 - b.y1).max(0.0);
+    intersection / (area_a + area_b - intersection).max(f32::EPSILON)
+}
+
+fn ultraface_mask(
+    boxes: &[f32],
+    scores: &[f32],
+    scaled_width: usize,
+    scaled_height: usize,
+    pad_x: usize,
+    pad_y: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    if boxes.len() % 4 != 0 || scores.len() != boxes.len() / 2 || output_size == 0 {
+        return Err("UltraFace 输出尺寸不兼容".to_string());
+    }
+    let mut candidates: Vec<FaceBox> = boxes
+        .chunks_exact(4)
+        .zip(scores.chunks_exact(2))
+        .filter_map(|(bounds, probability)| {
+            let score = probability[1];
+            (score >= 0.72).then_some(FaceBox {
+                x1: bounds[0].clamp(0.0, 1.0),
+                y1: bounds[1].clamp(0.0, 1.0),
+                x2: bounds[2].clamp(0.0, 1.0),
+                y2: bounds[3].clamp(0.0, 1.0),
+                score,
+            })
+        })
+        .collect();
+    candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
+    let mut kept: Vec<FaceBox> = Vec::new();
+    for candidate in candidates {
+        if kept
+            .iter()
+            .all(|existing| intersection_over_union(candidate, *existing) < 0.35)
+        {
+            kept.push(candidate);
+        }
+        if kept.len() >= 16 {
+            break;
+        }
+    }
+    let mut mask = vec![0u8; output_size * output_size];
+    let scaled_width = scaled_width.max(1) as f32;
+    let scaled_height = scaled_height.max(1) as f32;
+    for face in kept {
+        let x1 = (((face.x1 * YOLO_SIZE as f32 - pad_x as f32) / scaled_width) * output_size as f32)
+            .floor()
+            .clamp(0.0, output_size as f32) as usize;
+        let y1 = (((face.y1 * YOLO_SIZE as f32 - pad_y as f32) / scaled_height)
+            * output_size as f32)
+            .floor()
+            .clamp(0.0, output_size as f32) as usize;
+        let x2 = (((face.x2 * YOLO_SIZE as f32 - pad_x as f32) / scaled_width) * output_size as f32)
+            .ceil()
+            .clamp(0.0, output_size as f32) as usize;
+        let y2 = (((face.y2 * YOLO_SIZE as f32 - pad_y as f32) / scaled_height)
+            * output_size as f32)
+            .ceil()
+            .clamp(0.0, output_size as f32) as usize;
+        for y in y1..y2 {
+            for x in x1..x2 {
+                mask[y * output_size + x] = 255;
+            }
+        }
+    }
+    Ok(mask)
+}
+
+fn segment_ultraface_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    scaled_width: usize,
+    scaled_height: usize,
+    pad_x: usize,
+    pad_y: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let input = preprocess_ultraface(rgb)?;
+    let tensor = Tensor::from_array(([1usize, 3, ULTRAFACE_HEIGHT, ULTRAFACE_WIDTH], input))
+        .map_err(|error| format!("创建 UltraFace 输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("人脸识别失败: {error}"))?;
+    let mut boxes = None;
+    let mut scores = None;
+    for (_, output) in outputs.iter() {
+        let (shape, values) = output
+            .try_extract_tensor::<f32>()
+            .map_err(|error| format!("读取 UltraFace 输出失败: {error}"))?;
+        if shape.last() == Some(&4) {
+            boxes = Some(values.to_vec());
+        }
+        if shape.last() == Some(&2) {
+            scores = Some(values.to_vec());
+        }
+    }
+    ultraface_mask(
+        &boxes.ok_or_else(|| "UltraFace 缺少人脸框输出".to_string())?,
+        &scores.ok_or_else(|| "UltraFace 缺少置信度输出".to_string())?,
+        scaled_width,
+        scaled_height,
+        pad_x,
+        pad_y,
+        output_size,
+    )
+}
+
+fn classify_eye_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    if output_size != 1 {
+        return Err("眼睛分类输出尺寸必须为 1".to_string());
+    }
+    let input = preprocess_eye(rgb)?;
+    let tensor = Tensor::from_array(([1usize, 3, EYE_SIZE, EYE_SIZE], input))
+        .map_err(|error| format!("创建眼睛分类输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("眼睛状态识别失败: {error}"))?;
+    let (_, output) = outputs
+        .iter()
+        .next()
+        .ok_or_else(|| "眼睛分类缺少输出".to_string())?;
+    let (_, values) = output
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("读取眼睛分类输出失败: {error}"))?;
+    if values.len() < 2 {
+        return Err("眼睛分类输出尺寸不兼容".to_string());
+    }
+    let sum = (values[0] + values[1]).max(f32::EPSILON);
+    Ok(vec![
+        ((values[1] / sum).clamp(0.0, 1.0) * 255.0).round() as u8
+    ])
 }
 
 pub fn segment_yolo(
@@ -328,5 +538,16 @@ mod tests {
         let mask = normalized_subject_mask(&[-2.0, 0.0, 1.0, 2.0], 2, 2, 2).unwrap();
         assert_eq!(mask[0], 0);
         assert_eq!(mask[3], 255);
+    }
+
+    #[test]
+    fn ultraface_filters_low_confidence_and_overlapping_boxes() {
+        let boxes = [
+            0.1, 0.1, 0.4, 0.4, 0.11, 0.11, 0.39, 0.39, 0.6, 0.6, 0.8, 0.8,
+        ];
+        let scores = [0.1, 0.95, 0.1, 0.9, 0.7, 0.3];
+        let mask = ultraface_mask(&boxes, &scores, 640, 640, 0, 0, 20).unwrap();
+        assert!(mask.iter().any(|value| *value == 255));
+        assert_eq!(mask[15 * 20 + 15], 0);
     }
 }

@@ -21,6 +21,12 @@ import type { UpdateInfo, HotUpdateCheckResult, ReleaseNoteItem } from './update
 import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } from './workspace'
 import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
+import type {
+  AiSelectionProgress,
+  AiSelectionSession,
+  AiSelectionStartRequest,
+  AiSelectionUserOperation,
+} from './aiSelection'
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 
 export interface WorkspaceSegmentationRequest {
@@ -114,6 +120,24 @@ export interface LunaApi {
     get(taskId: string): Promise<ExportTaskRecord | undefined>
     list(): Promise<ExportTaskRecord[]>
     clear(): Promise<void>
+  }
+  aiSelection: {
+    chooseDirectory(): Promise<string | null>
+    start(request: AiSelectionStartRequest): Promise<AiSelectionSession>
+    listSessions(): Promise<AiSelectionSession[]>
+    getSession(sessionId: string): Promise<AiSelectionSession | null>
+    pause(sessionId: string): Promise<AiSelectionSession>
+    resume(sessionId: string): Promise<AiSelectionSession>
+    cancel(sessionId: string): Promise<AiSelectionSession>
+    applyOperation(sessionId: string, revision: number, operation: AiSelectionUserOperation): Promise<AiSelectionSession>
+    analyzePeople(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
+    analyzeVideos(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
+    undo(sessionId: string): Promise<AiSelectionSession>
+    redo(sessionId: string): Promise<AiSelectionSession>
+    createWorkspaceProject(sessionId: string, name: string): Promise<WorkspaceProject>
+    removeSession(sessionId: string): Promise<void>
+    onProgress(callback: (progress: AiSelectionProgress) => void): () => void
+    onSessionUpdated(callback: (session: AiSelectionSession) => void): () => void
   }
   workspace: {
     chooseMediaFiles(): Promise<string[]>
