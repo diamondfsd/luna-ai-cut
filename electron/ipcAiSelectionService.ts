@@ -4,6 +4,7 @@ import type { AiSelectionStartRequest, AiSelectionUserOperation } from '../src/s
 import type { IpcContext } from './ipcContext'
 import {
   applyAiSelectionOperation,
+  analyzeAiSelectionContentTags,
   analyzeAiSelectionPeople,
   analyzeAiSelectionVideos,
   cancelAiSelection,
@@ -40,6 +41,7 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('ai-selection:cancel', (_event, sessionId: string) => cancelAiSelection(sessionId))
   ipcMain.handle('ai-selection:apply-operation', (_event, sessionId: string, revision: number, operation: AiSelectionUserOperation) => applyAiSelectionOperation(sessionId, revision, operation))
   ipcMain.handle('ai-selection:analyze-people', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionPeople(sessionId, itemIds))
+  ipcMain.handle('ai-selection:analyze-content-tags', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionContentTags(sessionId, itemIds))
   ipcMain.handle('ai-selection:analyze-videos', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionVideos(sessionId, itemIds))
   ipcMain.handle('ai-selection:undo', (_event, sessionId: string) => undoAiSelection(sessionId))
   ipcMain.handle('ai-selection:redo', (_event, sessionId: string) => redoAiSelection(sessionId))

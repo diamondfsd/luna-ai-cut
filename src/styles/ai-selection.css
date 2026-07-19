@@ -28,6 +28,10 @@
 .ai-selection-browse-title { margin-top: 22px; }
 .ai-selection-tags-panel { margin-top: 22px; }
 .ai-selection-tags-panel .ai-selection-pane-title { display: flex; align-items: center; gap: 5px; }
+.ai-selection-tags-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.ai-selection-tags-heading .ai-selection-pane-title { margin: 0; }
+.ai-selection-tags-heading .ui-btn { padding-inline: 5px; }
+.ai-selection-tags-progress { margin: 5px 0 8px; color: var(--text-secondary, #6e6e73); font-size: 10px; }
 .ai-selection-tag-list { display: flex; flex-wrap: wrap; gap: 5px; }
 .ai-selection-tag-list .ui-btn { min-width: 0; padding-inline: 8px; border: 1px solid var(--border, #d9dce2); }
 .ai-selection-tag-list .ui-btn span { margin-right: 5px; }
