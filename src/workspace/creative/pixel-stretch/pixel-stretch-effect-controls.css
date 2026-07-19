@@ -1,0 +1,4 @@
+.pixel-stretch-flow-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.pixel-stretch-flow-presets button { min-width: 0; height: 30px; padding: 0 6px; border: 1px solid #3b3b3b; border-radius: 4px; background: #303030; color: #aaa; font-size: 12px; cursor: pointer; }
+.pixel-stretch-flow-presets button:hover { border-color: #555; color: #ddd; }
+.pixel-stretch-flow-presets button.active { border-color: var(--blue); background: var(--blue); color: #fff; }

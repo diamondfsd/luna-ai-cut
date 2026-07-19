@@ -186,23 +186,76 @@ impl Compositor {
                     ]
                 });
                 let pixel_stretch_extra = layer.pixel_stretch.as_ref().map_or([0.0; 4], |effect| {
-                    let horizontal = matches!(effect.mode.as_str(), "left" | "right" | "horizontal");
+                    let horizontal =
+                        matches!(effect.mode.as_str(), "left" | "right" | "horizontal");
                     [
                         effect.angle.unwrap_or(0.0).clamp(-180.0, 180.0) as f32,
-                        effect.line_end.unwrap_or(if horizontal { effect.origin_x } else { effect.origin_y }).clamp(0.0, 1.0) as f32,
+                        effect
+                            .line_end
+                            .unwrap_or(if horizontal {
+                                effect.origin_x
+                            } else {
+                                effect.origin_y
+                            })
+                            .clamp(0.0, 1.0) as f32,
                         effect.sample_start.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
                         effect.sample_end.unwrap_or(1.0).clamp(0.0, 1.0) as f32,
                     ]
                 });
-                let pixel_stretch_center = layer.pixel_stretch.as_ref().map_or([0.5, 0.5, 0.0, 0.0], |effect| {
-                    let horizontal = matches!(effect.mode.as_str(), "left" | "right" | "horizontal");
-                    [
-                        effect.center_x.unwrap_or(0.5).clamp(0.0, 1.0) as f32,
-                        effect.center_y.unwrap_or(0.5).clamp(0.0, 1.0) as f32,
-                        effect.control_start.unwrap_or(if horizontal { effect.origin_x } else { effect.origin_y }).clamp(0.0, 1.0) as f32,
-                        effect.control_end.unwrap_or(effect.line_end.unwrap_or(if horizontal { effect.origin_x } else { effect.origin_y })).clamp(0.0, 1.0) as f32,
-                    ]
-                });
+                let pixel_stretch_center =
+                    layer
+                        .pixel_stretch
+                        .as_ref()
+                        .map_or([0.5, 0.5, 0.0, 0.0], |effect| {
+                            let horizontal =
+                                matches!(effect.mode.as_str(), "left" | "right" | "horizontal");
+                            [
+                                effect.center_x.unwrap_or(0.5).clamp(0.0, 1.0) as f32,
+                                effect.center_y.unwrap_or(0.5).clamp(0.0, 1.0) as f32,
+                                effect
+                                    .control_start
+                                    .unwrap_or(if horizontal {
+                                        effect.origin_x
+                                    } else {
+                                        effect.origin_y
+                                    })
+                                    .clamp(0.0, 1.0) as f32,
+                                effect
+                                    .control_end
+                                    .unwrap_or(effect.line_end.unwrap_or(if horizontal {
+                                        effect.origin_x
+                                    } else {
+                                        effect.origin_y
+                                    }))
+                                    .clamp(0.0, 1.0) as f32,
+                            ]
+                        });
+                let pixel_stretch_path_meta =
+                    layer.pixel_stretch.as_ref().map_or([0.0; 4], |effect| {
+                        let enabled = effect
+                            .path_points
+                            .as_ref()
+                            .is_some_and(|points| points.len() == 14);
+                        [
+                            if enabled { 1.0 } else { 0.0 },
+                            effect.path_start_width.unwrap_or(0.2).clamp(0.001, 2.0) as f32,
+                            effect.path_end_width.unwrap_or(0.1).clamp(0.001, 2.0) as f32,
+                            0.0,
+                        ]
+                    });
+                let mut pixel_stretch_path_data = [[0.0; 4]; 4];
+                if let Some(points) = layer
+                    .pixel_stretch
+                    .as_ref()
+                    .and_then(|effect| effect.path_points.as_ref())
+                {
+                    if points.len() == 14 {
+                        for (index, value) in points.iter().enumerate() {
+                            pixel_stretch_path_data[index / 4][index % 4] =
+                                value.clamp(-2.0, 3.0) as f32;
+                        }
+                    }
+                }
                 let shape_kind = match layer.shape.as_deref() {
                     Some("rounded-rectangle") => 1.0,
                     Some("line") => 2.0,
@@ -384,6 +437,8 @@ impl Compositor {
                     pixel_stretch,
                     pixel_stretch_extra,
                     pixel_stretch_center,
+                    pixel_stretch_path_meta,
+                    pixel_stretch_path_data,
                     fill_rgba,
                     stroke_rgba,
                     text_meta: [

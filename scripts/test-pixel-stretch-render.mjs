@@ -78,7 +78,7 @@ function colorDistance(first, second) {
   return Math.abs(first[0] - second[0]) + Math.abs(first[1] - second[1]) + Math.abs(first[2] - second[2])
 }
 
-async function renderMode(sourcePath, maskPath, mode, angle = 0, outputName = mode, ribbonSize = 100, originX = 0.5, originY = 0.5, sampleStart = 0, sampleEnd = 1, lineEnd = null, centerX = 0.5, centerY = 0.5, controlStart = null, controlEnd = null) {
+async function renderMode(sourcePath, maskPath, mode, angle = 0, outputName = mode, ribbonSize = 100, originX = 0.5, originY = 0.5, sampleStart = 0, sampleEnd = 1, lineEnd = null, centerX = 0.5, centerY = 0.5, controlStart = null, controlEnd = null, flow = null) {
   const horizontal = mode === 'left' || mode === 'right' || mode === 'horizontal'
   const resolvedEnd = lineEnd ?? (horizontal ? originX : originY)
   const resolvedStart = horizontal ? originX : originY
@@ -89,7 +89,7 @@ async function renderMode(sourcePath, maskPath, mode, angle = 0, outputName = mo
       layerType: 'pixel-stretch',
       zIndex: 1,
       maskPath,
-      pixelStretch: { mode, intensity: 100, originX, originY, angle, ribbonSize, sampleStart, sampleEnd, lineEnd: resolvedEnd, controlStart: controlStart ?? resolvedStart + (resolvedEnd - resolvedStart) / 3, controlEnd: controlEnd ?? resolvedStart + (resolvedEnd - resolvedStart) * 2 / 3, centerX, centerY },
+      pixelStretch: { mode, intensity: 100, originX, originY, angle, ribbonSize, sampleStart, sampleEnd, lineEnd: resolvedEnd, controlStart: controlStart ?? resolvedStart + (resolvedEnd - resolvedStart) / 3, controlEnd: controlEnd ?? resolvedStart + (resolvedEnd - resolvedStart) * 2 / 3, centerX, centerY, ...(flow || {}) },
     }),
     layer(sourcePath, { id: 'subject', layerType: 'local-color', zIndex: 2, maskPath }),
   ]
@@ -262,6 +262,16 @@ try {
 
     const narrow = await renderMode(sourcePath, maskPath, 'right', 0, 'right-size-50', 50, 0.5, 0.5, 0.41, 0.59)
     assert.ok(colorDistance(rgbaAt(narrow.data, 170, 125), background) < 8, 'ribbon size controls the paper strip cross-section')
+
+    const flow = await renderMode(sourcePath, maskPath, 'right', 0, 'custom-flow', 100, 0.5, 0.5, 0.4, 0.6, 0.5, 0.5, 0.5, null, null, {
+      pathPoints: [0.5, 0.5, 0.62, 0.5, 0.62, 0.25, 0.74, 0.25, 0.86, 0.25, 0.86, 0.72, 0.94, 0.72],
+      pathStartWidth: 0.18,
+      pathEndWidth: 0.06,
+    })
+    assert.ok(colorDistance(rgbaAt(flow.data, 142, 49), background) > 80, 'custom path paints pixels along its first curve')
+    assert.ok(colorDistance(rgbaAt(flow.data, 178, 130), background) > 80, 'custom path paints pixels along its second curve')
+    assert.ok(colorDistance(rgbaAt(flow.data, 150, 150), background) < 8, 'custom path does not fill the surrounding rectangle')
+    assert.ok(colorDistance(rgbaAt(flow.data, 180, 145), background) < 8, 'custom path end width tapers away from its center line')
     console.log(`pixel stretch render tests passed; outputs: ${outputRoot}`)
   }
 } finally {

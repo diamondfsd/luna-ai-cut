@@ -67,6 +67,31 @@ fn s_curve_point(t: f32, origin_x: f32, amplitude: f32, aspect: f32) -> vec2<f32
     return vec2<f32>((x - origin_x) * aspect, y);
 }
 
+fn flow_path_control(index: i32) -> vec2<f32> {
+    let scalar_index = index * 2;
+    let first = scalar_index / 4;
+    let offset = scalar_index % 4;
+    if (offset == 0) {
+        return params.pixel_stretch_path_data[first].xy;
+    }
+    return params.pixel_stretch_path_data[first].zw;
+}
+
+fn cubic_flow_path(t: f32) -> vec2<f32> {
+    let segment = select(0, 1, t >= 0.5);
+    let local_t = select(t * 2.0, (t - 0.5) * 2.0, segment == 1);
+    let base = segment * 3;
+    let p0 = flow_path_control(base);
+    let p1 = flow_path_control(base + 1);
+    let p2 = flow_path_control(base + 2);
+    let p3 = flow_path_control(base + 3);
+    let inverse_t = 1.0 - local_t;
+    return inverse_t * inverse_t * inverse_t * p0
+        + 3.0 * inverse_t * inverse_t * local_t * p1
+        + 3.0 * inverse_t * local_t * local_t * p2
+        + local_t * local_t * local_t * p3;
+}
+
 fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
     let original = sample_effective_color_mask(tex_coord);
     let feather_px = params.mask_params.z;
@@ -238,7 +263,69 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         var edge_coverage = 1.0;
         let is_horizontal = stretch_mode < 1.5 || (stretch_mode > 4.5 && stretch_mode < 5.5) || (stretch_mode > 6.5 && stretch_mode < 7.5);
         let is_vertical = (stretch_mode > 1.5 && stretch_mode < 2.5) || (stretch_mode > 5.5 && stretch_mode < 6.5) || stretch_mode > 7.5;
-        if (is_horizontal) {
+        if (params.pixel_stretch_path_meta.x > 0.5) {
+            let position = effect_coord * vec2<f32>(aspect, 1.0);
+            var best_t = 0.0;
+            var best_point = cubic_flow_path(0.0) * vec2<f32>(aspect, 1.0);
+            var best_distance = dot(position - best_point, position - best_point);
+            for (var index = 1; index < 32; index = index + 1) {
+                let path_t = f32(index) / 31.0;
+                let point_uv = cubic_flow_path(path_t);
+                let point = point_uv * vec2<f32>(aspect, 1.0);
+                let distance = dot(position - point, position - point);
+                if (distance < best_distance) {
+                    best_t = path_t;
+                    best_point = point;
+                    best_distance = distance;
+                }
+            }
+            let coarse_step = 1.0 / 31.0;
+            let refine_start = max(0.0, best_t - coarse_step);
+            let refine_end = min(1.0, best_t + coarse_step);
+            for (var index = 0; index < 8; index = index + 1) {
+                let path_t = mix(refine_start, refine_end, f32(index) / 7.0);
+                let point_uv = cubic_flow_path(path_t);
+                let point = point_uv * vec2<f32>(aspect, 1.0);
+                let distance = dot(position - point, position - point);
+                if (distance < best_distance) {
+                    best_t = path_t;
+                    best_point = point;
+                    best_distance = distance;
+                }
+            }
+            let before = cubic_flow_path(max(0.0, best_t - 0.004)) * vec2<f32>(aspect, 1.0);
+            let after = cubic_flow_path(min(1.0, best_t + 0.004)) * vec2<f32>(aspect, 1.0);
+            let tangent_delta = after - before;
+            if (dot(tangent_delta, tangent_delta) < 0.0000001) {
+                discard;
+            }
+            let tangent = normalize(tangent_delta);
+            let normal = vec2<f32>(-tangent.y, tangent.x);
+            let signed_distance = dot(position - best_point, normal);
+            let full_width = mix(params.pixel_stretch_path_meta.y, params.pixel_stretch_path_meta.z, best_t);
+            let half_width = max(0.0005, full_width * 0.5);
+            let edge_distance = half_width - abs(signed_distance);
+            let edge_aa = max(fwidth(edge_distance), 0.00001);
+            if (edge_distance < -edge_aa) {
+                discard;
+            }
+            edge_coverage = smoothstep(-edge_aa, edge_aa, edge_distance);
+            let range_t = clamp(signed_distance / full_width + 0.5, 0.0, 1.0);
+            let inverse_t = 1.0 - range_t;
+            if (is_horizontal) {
+                let sample_x = inverse_t * inverse_t * inverse_t * origin.x
+                    + 3.0 * inverse_t * inverse_t * range_t * control_start
+                    + 3.0 * inverse_t * range_t * range_t * control_end
+                    + range_t * range_t * range_t * line_end;
+                seed = vec2<f32>(sample_x, mix(sample_start, sample_end, range_t));
+            } else {
+                let sample_y = inverse_t * inverse_t * inverse_t * origin.y
+                    + 3.0 * inverse_t * inverse_t * range_t * control_start
+                    + 3.0 * inverse_t * range_t * range_t * control_end
+                    + range_t * range_t * range_t * line_end;
+                seed = vec2<f32>(mix(sample_start, sample_end, range_t), sample_y);
+            }
+        } else if (is_horizontal) {
             let range_min = min(sample_start, sample_end);
             let range_max = max(sample_start, sample_end);
             let cross_distance = min(effect_coord.y - range_min, range_max - effect_coord.y);

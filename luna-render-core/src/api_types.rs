@@ -166,6 +166,9 @@ pub struct RenderPixelStretch {
     pub control_end: Option<f64>,
     pub center_x: Option<f64>,
     pub center_y: Option<f64>,
+    pub path_points: Option<Vec<f64>>,
+    pub path_start_width: Option<f64>,
+    pub path_end_width: Option<f64>,
 }
 
 impl Default for RenderLayerTransform {

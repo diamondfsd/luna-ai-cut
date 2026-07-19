@@ -1,0 +1,6 @@
+.pixel-stretch-path-editor { position: absolute; inset: 0; z-index: 6; touch-action: none; }
+.pixel-stretch-path-editor svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
+.pixel-stretch-path-control-line { fill: none; stroke: rgba(255, 255, 255, 0.6); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.pixel-stretch-flow-curve { fill: none; stroke: #ff9f1c; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.ui-icon-btn.pixel-stretch-path-point { position: absolute; width: 12px; height: 12px; min-width: 12px; padding: 0; transform: translate(-50%, -50%); border: 2px solid #fff; border-radius: 50%; background: #ff9f1c; cursor: grab; touch-action: none; }
+.ui-icon-btn.pixel-stretch-path-point.is-control { width: 10px; height: 10px; min-width: 10px; border-width: 1px; background: #252525; }

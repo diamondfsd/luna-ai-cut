@@ -1,5 +1,6 @@
 import type { PreviewLayer } from '../../../shared/types'
-import type { PixelStretchPresetId } from '../../../shared/types/workspace'
+import type { PixelStretchFlowShape, PixelStretchPathPoint, PixelStretchPresetId } from '../../../shared/types/workspace'
+import { buildPixelStretchFlowPath, flattenPixelStretchPath } from './pixelStretchPath'
 
 export interface SubjectBounds {
   x: number
@@ -22,6 +23,13 @@ interface PixelStretchLayerOptions {
   maskInverted?: boolean
   maskFeather?: number
   subjectBounds: SubjectBounds
+  sourceAspect?: number
+  flowShape?: PixelStretchFlowShape
+  flowLength?: number
+  flowCurve?: number
+  flowWidth?: number
+  flowEndWidth?: number
+  flowPoints?: PixelStretchPathPoint[]
 }
 
 const RENDER_MODE_BY_PRESET = {
@@ -100,6 +108,17 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
   const sampleEnd = horizontal
     ? bounds.y + bounds.h * rangeEnd
     : bounds.x + bounds.w * rangeEnd
+  const sourceAspect = Math.max(0.0001, options.sourceAspect ?? 1)
+  const flowPath = buildPixelStretchFlowPath({
+    shape: options.flowShape ?? 'straight',
+    preset: options.preset,
+    length: options.flowLength ?? 70,
+    curve: options.flowCurve ?? 60,
+    aspect: sourceAspect,
+    bounds,
+    customPoints: options.flowPoints,
+  })
+  const sampledWidth = Math.abs(sampleEnd - sampleStart) * (horizontal ? 1 : sourceAspect)
   const controlStart = Math.max(0, Math.min(1, sample + (sampleEndPosition - sample) / 3 + options.sampleControlStartOffset / 100))
   const controlEnd = Math.max(0, Math.min(1, sample + (sampleEndPosition - sample) * 2 / 3 + options.sampleControlEndOffset / 100))
   const lineEnd = horizontal
@@ -137,6 +156,9 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
         : bounds.y + bounds.h * controlEnd,
       centerX,
       centerY,
+      pathPoints: flattenPixelStretchPath(flowPath),
+      pathStartWidth: sampledWidth * (options.flowWidth ?? 100) / 100,
+      pathEndWidth: sampledWidth * (options.flowEndWidth ?? 55) / 100,
     },
     zIndex: 1,
   }
