@@ -1,18 +1,18 @@
 import type { WorkspacePixelStretchState, WorkspaceProject } from '../../../shared/types'
 import type { PixelStretchFlowShape, PixelStretchPathPoint } from '../../../shared/types/workspace'
 
-export const DEFAULT_PIXEL_STRETCH_PRESET = 'horizontal' as const
+export const DEFAULT_PIXEL_STRETCH_PRESET = 'right' as const
 export const DEFAULT_PIXEL_STRETCH_SUBJECT_MODEL = 'precise' as const
 export const DEFAULT_PIXEL_STRETCH_ANGLE = 0
 export const DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION = 50
-export const DEFAULT_PIXEL_STRETCH_RANGE_START = 0
-export const DEFAULT_PIXEL_STRETCH_RANGE_END = 100
+export const DEFAULT_PIXEL_STRETCH_RANGE_START = 28
+export const DEFAULT_PIXEL_STRETCH_RANGE_END = 72
 export const DEFAULT_PIXEL_STRETCH_CONTROL_OFFSET = 0
-export const DEFAULT_PIXEL_STRETCH_FLOW_SHAPE: PixelStretchFlowShape = 'straight'
-export const DEFAULT_PIXEL_STRETCH_FLOW_LENGTH = 70
-export const DEFAULT_PIXEL_STRETCH_FLOW_CURVE = 60
-export const DEFAULT_PIXEL_STRETCH_FLOW_WIDTH = 100
-export const DEFAULT_PIXEL_STRETCH_FLOW_END_WIDTH = 55
+export const DEFAULT_PIXEL_STRETCH_FLOW_SHAPE: PixelStretchFlowShape = 'cape'
+export const DEFAULT_PIXEL_STRETCH_FLOW_LENGTH = 95
+export const DEFAULT_PIXEL_STRETCH_FLOW_CURVE = 55
+export const DEFAULT_PIXEL_STRETCH_FLOW_WIDTH = 108
+export const DEFAULT_PIXEL_STRETCH_FLOW_END_WIDTH = 18
 
 export function normalizePixelStretchPreset(value: unknown): WorkspacePixelStretchState['preset'] {
   if (value === 'left' || value === 'right' || value === 'top' || value === 'bottom' || value === 'horizontal' || value === 'vertical') return value

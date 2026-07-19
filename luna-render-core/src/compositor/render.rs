@@ -240,7 +240,11 @@ impl Compositor {
                             if enabled { 1.0 } else { 0.0 },
                             effect.path_start_width.unwrap_or(0.2).clamp(0.001, 2.0) as f32,
                             effect.path_end_width.unwrap_or(0.1).clamp(0.001, 2.0) as f32,
-                            0.0,
+                            if effect.fill_sample_gaps.unwrap_or(false) {
+                                1.0
+                            } else {
+                                0.0
+                            },
                         ]
                     });
                 let mut pixel_stretch_path_data = [[0.0; 4]; 4];

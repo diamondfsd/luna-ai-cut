@@ -54,3 +54,4 @@ luna-render-core/semantic-segmentation-worker.exe
 luna-render-core/specialized-segmentation-worker
 luna-render-core/specialized-segmentation-worker.exe
 worktrees/
+*com*.jpg

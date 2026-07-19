@@ -145,6 +145,8 @@ assert.deepEqual(
   'one-pixel erosion contracts every mask edge by one pixel',
 )
 assert.equal(pixelStretch.erodeMaskOnePixel(solidMask, 4, 5).length, 0, 'erosion rejects mismatched mask dimensions')
+assert.equal(pixelStretch.suggestPixelStretchPreset({ x: 0.1, y: 0.35, w: 0.25, h: 0.3 }, 1), 'right', 'pixel stretch uses the largest open side')
+assert.equal(pixelStretch.suggestPixelStretchPreset({ x: 0.4, y: 0.7, w: 0.2, h: 0.15 }, 1), 'top', 'pixel stretch can prefer vertical open space')
 
 const legacyPixelStretchState = { preset: 'left', maskAssetId: 'legacy-photo', angle: 12 }
 const mappedPixelStretchState = { preset: 'right', maskAssetId: 'mapped-photo', angle: -18 }
@@ -158,7 +160,7 @@ assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'm
 assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'legacy-photo'), legacyPixelStretchState, 'legacy state remains available for its original photo')
 assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'new-photo'), undefined, 'new photo starts from creative defaults')
 assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, undefined), undefined, 'missing photo has no creative parameters')
-assert.equal(pixelStretchState.normalizePixelStretchFlowShape(undefined), 'straight', 'legacy projects keep the straight effect')
+assert.equal(pixelStretchState.normalizePixelStretchFlowShape(undefined), 'cape', 'new pixel stretch projects start with the designed ribbon')
 assert.equal(pixelStretchState.normalizePixelStretchFlowShape('cape'), 'cape', 'saved flow shape is restored')
 assert.equal(pixelStretchState.normalizePixelStretchPathPoints([{ x: 0, y: 0 }]), undefined, 'custom path requires seven points')
 
@@ -182,7 +184,12 @@ for (const shape of ['arc', 'cape', 's-curve']) {
   assert.equal(points.length, 7, `${shape} produces two connected cubic curves`)
   assert.deepEqual(points[0], { x: 0.5, y: 0.5 }, `${shape} starts at the subject center`)
   assert.equal(pixelStretchPath.flattenPixelStretchPath(points).length, 14, `${shape} packs seven render points`)
+  const incoming = { x: points[3].x - points[2].x, y: points[3].y - points[2].y }
+  const outgoing = { x: points[4].x - points[3].x, y: points[4].y - points[3].y }
+  close(incoming.x * outgoing.y - incoming.y * outgoing.x, 0, `${shape} keeps a smooth tangent at the curve join`)
+  assert.ok(incoming.x * outgoing.x + incoming.y * outgoing.y > 0, `${shape} does not reverse direction at the curve join`)
 }
+assert.match(shaderSource, /cubic_flow_path_derivative\(best_t\)/, 'pixel stretch uses the analytic curve tangent instead of segmented samples')
 const customFlowPoints = Array.from({ length: 7 }, (_, index) => ({ x: index / 10, y: index / 20 }))
 assert.equal(pixelStretchPath.buildPixelStretchFlowPath({ shape: 'custom', preset: 'right', length: 70, curve: 60, aspect: 1, bounds: flowBounds, customPoints: customFlowPoints }), customFlowPoints, 'custom flow keeps the edited points')
 const horizontalLayers = pixelStretch.buildPixelStretchLayers({
@@ -202,6 +209,7 @@ const horizontalLayers = pixelStretch.buildPixelStretchLayers({
 assert.equal(horizontalLayers.length, 3, 'horizontal effect has background, stretch, and subject layers')
 assert.equal(horizontalLayers[1].layerType, 'pixel-stretch', 'stretch layer uses the mask-driven render mode')
 assert.equal(horizontalLayers[1].pixelStretch.mode, 'right', 'right preset extends toward the right')
+assert.equal(horizontalLayers[1].pixelStretch.fillSampleGaps, true, 'new ribbons fill gaps in the sampled subject colors')
 assert.equal(horizontalLayers[1].pixelStretch.angle, 24, 'center rotation is forwarded to the renderer')
 assert.equal(horizontalLayers[1].pixelStretch.ribbonSize, 40, 'sampling range is forwarded to the renderer')
 close(horizontalLayers[1].pixelStretch.sampleStart, 8 / 15, 'horizontal sampling range has the expected start')

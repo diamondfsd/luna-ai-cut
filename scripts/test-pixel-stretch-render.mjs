@@ -43,11 +43,12 @@ function sourcePixels() {
   return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
 }
 
-function maskPixels() {
+function maskPixels(withGap = false) {
   const pixels = Buffer.alloc(width * height)
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      pixels[y * width + x] = Math.hypot(x - 96, y - 96) <= 34 ? 255 : 0
+      const inside = Math.hypot(x - 96, y - 96) <= 34
+      pixels[y * width + x] = inside && !(withGap && y >= 90 && y <= 102) ? 255 : 0
     }
   }
   return Buffer.concat([Buffer.from(`P5\n${width} ${height}\n255\n`), pixels])
@@ -127,6 +128,7 @@ try {
   await mkdir(outputRoot, { recursive: true })
   let sourcePath = path.join(temporaryRoot, 'subject.ppm')
   const maskPath = path.join(temporaryRoot, 'subject.pgm')
+  const gappedMaskPath = path.join(temporaryRoot, 'subject-gapped.pgm')
   let realMask = null
   if (realImagePath) {
     sourcePath = path.resolve(realImagePath)
@@ -144,7 +146,7 @@ try {
     assert.equal(realMask.length, width * height, 'real image alpha must match its dimensions')
     await writeFile(maskPath, Buffer.concat([Buffer.from(`P5\n${width} ${height}\n255\n`), realMask]))
   } else {
-    await Promise.all([writeFile(sourcePath, sourcePixels()), writeFile(maskPath, maskPixels())])
+    await Promise.all([writeFile(sourcePath, sourcePixels()), writeFile(maskPath, maskPixels()), writeFile(gappedMaskPath, maskPixels(true))])
   }
   native.initCompositor()
 
@@ -229,6 +231,9 @@ try {
     assert.ok(colorDistance(rgbaAt(right.data, 20, 96), background) < 8, 'right trail must not mirror to the left')
     assert.deepEqual(rgbaAt(right.data, 135, 96), rgbaAt(right.data, 170, 96), 'one right trail must keep one source-pixel color')
 
+    const gapped = await renderMode(sourcePath, gappedMaskPath, 'right', 0, 'right-filled-gaps', 100, 0.5, 0.5, 0, 1, null, 0.5, 0.5, null, null, { fillSampleGaps: true })
+    assert.ok(colorDistance(rgbaAt(gapped.data, 170, 96), background) > 80, 'continuous ribbons fill a gap in the sampled subject colors')
+
     const left = await renderMode(sourcePath, maskPath, 'left')
     assert.ok(colorDistance(rgbaAt(left.data, 20, 96), background) > 80, 'left trail must extend left from the subject')
     assert.ok(colorDistance(rgbaAt(left.data, 170, 96), background) < 8, 'left trail must not mirror to the right')
@@ -270,6 +275,7 @@ try {
     })
     assert.ok(colorDistance(rgbaAt(flow.data, 142, 49), background) > 80, 'custom path paints pixels along its first curve')
     assert.ok(colorDistance(rgbaAt(flow.data, 178, 130), background) > 80, 'custom path paints pixels along its second curve')
+    assert.ok(colorDistance(rgbaAt(flow.data, 20, 96), background) < 8, 'custom path does not extend an infinite strip behind its start point')
     assert.ok(colorDistance(rgbaAt(flow.data, 150, 150), background) < 8, 'custom path does not fill the surrounding rectangle')
     assert.ok(colorDistance(rgbaAt(flow.data, 180, 145), background) < 8, 'custom path end width tapers away from its center line')
     console.log(`pixel stretch render tests passed; outputs: ${outputRoot}`)

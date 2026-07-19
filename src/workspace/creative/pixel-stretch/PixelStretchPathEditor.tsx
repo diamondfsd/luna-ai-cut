@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import type { PixelStretchPathPoint } from '../../../shared/types/workspace'
 import { IconButton } from '../../../ui'
@@ -31,7 +31,15 @@ function rotatePoint(point: PixelStretchPathPoint, center: PixelStretchPathPoint
 export function PixelStretchPathEditor({ points, center, angle, aspect, onChange }: PixelStretchPathEditorProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState<number | null>(null)
-  const displayedPoints = points.map((point) => rotatePoint(point, center, angle, aspect))
+  const [draftPoints, setDraftPoints] = useState(points)
+  const draftPointsRef = useRef(points)
+  const displayedPoints = draftPoints.map((point) => rotatePoint(point, center, angle, aspect))
+
+  useEffect(() => {
+    if (dragging !== null) return
+    draftPointsRef.current = points
+    setDraftPoints(points)
+  }, [dragging, points])
 
   function beginDrag(index: number, event: ReactPointerEvent): void {
     event.preventDefault()
@@ -50,7 +58,9 @@ export function PixelStretchPathEditor({ points, center, angle, aspect, onChange
       y: clamp((event.clientY - rect.top) / rect.height),
     }
     const point = rotatePoint(displayed, center, -angle, aspect)
-    onChange(points.map((current, index) => index === dragging ? point : current))
+    const nextPoints = draftPointsRef.current.map((current, index) => index === dragging ? point : current)
+    draftPointsRef.current = nextPoints
+    setDraftPoints(nextPoints)
   }
 
   function endDrag(event: ReactPointerEvent<HTMLDivElement>): void {
@@ -58,6 +68,7 @@ export function PixelStretchPathEditor({ points, center, angle, aspect, onChange
     event.preventDefault()
     event.stopPropagation()
     setDragging(null)
+    onChange(draftPointsRef.current)
     if (overlayRef.current?.hasPointerCapture(event.pointerId)) overlayRef.current.releasePointerCapture(event.pointerId)
   }
 
