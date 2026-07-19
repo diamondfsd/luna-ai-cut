@@ -1,5 +1,6 @@
 .pixel-stretch-page { grid-column: 1 / -1; grid-row: 1 / -1; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(520px, 1fr) 292px; grid-template-rows: 48px minmax(0, 1fr) 118px; background: #1a1a1a; }
 .pixel-stretch-toolbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid #333; background: #252525; color: #ddd; font-size: 13px; font-weight: 600; }
+.pixel-stretch-compare { margin-left: auto; }
 .pixel-stretch-preview { min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 18px; overflow: hidden; background: #1f1f1f; }
 .pixel-stretch-stage { position: relative; max-width: 100%; max-height: 100%; background: #111; width: auto; height: 100%; }
 .pixel-stretch-stage.is-point-picking { cursor: crosshair; }

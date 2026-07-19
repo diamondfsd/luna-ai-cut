@@ -1,4 +1,4 @@
-import { ArrowLeft, Brush, Download, PenTool, RotateCcw, ScanSearch } from 'lucide-react'
+import { ArrowLeft, Brush, Download, Eye, EyeOff, PenTool, RotateCcw, ScanSearch } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
@@ -103,6 +103,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   const [pointPicking, setPointPicking] = useState(false)
   const [sampleEditing, setSampleEditing] = useState(false)
   const [maskEditing, setMaskEditing] = useState(false)
+  const [showOriginal, setShowOriginal] = useState(false)
   const [exporting, setExporting] = useState(false)
   const requestRef = useRef<string | null>(null)
   const automaticAttemptRef = useRef<string | null>(null)
@@ -126,6 +127,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     setSampleControlEndOffset(normalizeOffset(saved?.sampleControlEndOffset))
     setSampleEditing(false)
     setMaskEditing(false)
+    setShowOriginal(false)
     // 仅在切换项目时恢复创意状态，避免每次暂存参数时重置面板。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [media.currentProject?.id])
@@ -271,7 +273,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   const effectLayers = useMemo(() => activeMaskPath && subjectBounds && sourceSize
     ? buildPixelStretchLayers({ layers: baseLayers, maskPath: activeMaskPath, preset, angle, samplePosition, sampleEndPosition, sampleRangeStart, sampleRangeEnd, sampleControlStartOffset, sampleControlEndOffset, maskInverted: creativeMaskLayer?.inverted, maskFeather: creativeMaskLayer?.feather, subjectBounds })
     : [], [activeMaskPath, angle, baseLayers, creativeMaskLayer?.feather, creativeMaskLayer?.inverted, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, sourceSize, subjectBounds])
-  const previewLayers = effectLayers.length ? effectLayers : baseLayers
+  const previewLayers = showOriginal ? baseLayers : effectLayers.length ? effectLayers : baseLayers
 
   const segmentSubject = useCallback(async (point?: { x: number; y: number }) => {
     if (!activeAsset || !media.currentProject || activeAsset.kind !== 'image' || segmenting) return
@@ -439,10 +441,10 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   }
 
   return <section className="pixel-stretch-page">
-    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span></header>
+    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><Button className="pixel-stretch-compare" variant={showOriginal ? 'toolbar-primary' : 'toolbar'} size="compact" icon={showOriginal ? <EyeOff size={14} /> : <Eye size={14} />} disabled={!isImage || !sourceSize} aria-pressed={showOriginal} title="按住查看原图" onPointerDown={() => setShowOriginal(true)} onPointerUp={() => setShowOriginal(false)} onPointerCancel={() => setShowOriginal(false)} onPointerLeave={() => setShowOriginal(false)} onBlur={() => setShowOriginal(false)} onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') setShowOriginal(true) }} onKeyUp={(event) => { if (event.key === ' ' || event.key === 'Enter') setShowOriginal(false) }}>对比</Button></header>
     <div className="pixel-stretch-preview">
       {activeAsset && !isImage ? <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>像素拉伸目前支持图片素材</span></div>
-        : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} interactiveImageLayerIndexes={[]} onError={toast.error} />{sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{maskEditing && workspaceMask.editing && <MaskOverlay />}{pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
+        : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} interactiveImageLayerIndexes={[]} onError={toast.error} />{!showOriginal && sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{!showOriginal && maskEditing && workspaceMask.editing && <MaskOverlay />}{!showOriginal && pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
           : activeAsset && isImage ? <img className="pixel-stretch-source-fallback" src={assetSourceUrl(activeAsset)} alt="" />
             : <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要制作效果的图片</span></div>}
     </div>
