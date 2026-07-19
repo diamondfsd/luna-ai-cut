@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import type { AiSelectionMode, AiSelectionPurpose, AiSelectionSession, AiSelectionUserOperation, AiSelectionWorkflow } from '../shared/types'
+import type { AiSelectionMode, AiSelectionPurpose, AiSelectionSession, AiSelectionSource, AiSelectionUserOperation, AiSelectionWorkflow } from '../shared/types'
 import { toast } from '../ui'
 
 interface IncomingSelectionState {
@@ -14,26 +14,26 @@ export function useAiSelection() {
   const incoming = location.state as IncomingSelectionState | null
   const startedIncoming = useRef(false)
   const [sessions, setSessions] = useState<AiSelectionSession[]>([])
-  const [activeId, setActiveId] = useState('')
   const [session, setSession] = useState<AiSelectionSession | null>(null)
   const [mode, setMode] = useState<AiSelectionMode>('balanced')
   const [purpose, setPurpose] = useState<AiSelectionPurpose>('general')
   const [workflow, setWorkflow] = useState<AiSelectionWorkflow>('assist')
   const [busy, setBusy] = useState(false)
+  const [loadingSessions, setLoadingSessions] = useState(true)
 
   const upsert = useCallback((next: AiSelectionSession) => {
     setSessions((current) => [next, ...current.filter((item) => item.id !== next.id)].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)))
-    setSession((current) => current?.id === next.id || !current ? next : current)
+    setSession((current) => current?.id === next.id ? next : current)
   }, [])
 
   useEffect(() => {
     void window.luna.aiSelection.listSessions().then((next) => {
       setSessions(next)
-      if (!activeId && next[0]) { setActiveId(next[0].id); setSession(next[0]); setMode(next[0].mode); setPurpose(next[0].purpose); setWorkflow(next[0].workflow) }
     }).catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
+      .finally(() => setLoadingSessions(false))
     const offSession = window.luna.aiSelection.onSessionUpdated(upsert)
     return offSession
-  }, [activeId, upsert])
+  }, [upsert])
 
   useEffect(() => {
     if (!incoming?.paths?.length || startedIncoming.current) return
@@ -45,31 +45,46 @@ export function useAiSelection() {
       mode,
       purpose,
       workflow,
-    }).then((next) => { upsert(next); setActiveId(next.id); setSession(next) })
+    }).then((next) => { upsert(next); setSession(next) })
       .catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
       .finally(() => setBusy(false))
   }, [incoming, mode, purpose, upsert, workflow])
 
   async function selectSession(id: string): Promise<void> {
-    setActiveId(id)
     const next = sessions.find((item) => item.id === id) ?? await window.luna.aiSelection.getSession(id)
     setSession(next)
     if (next) { setMode(next.mode); setPurpose(next.purpose); setWorkflow(next.workflow) }
   }
 
-  async function startDirectory(): Promise<void> {
-    const directory = await window.luna.aiSelection.chooseDirectory()
-    if (!directory) return
+  function closeSession(): void {
+    setSession(null)
+  }
+
+  async function startTask(source: AiSelectionSource, name?: string): Promise<void> {
+    if (busy) return
     setBusy(true)
     try {
-      const parts = directory.split(/[\\/]/).filter(Boolean)
-      const label = parts[parts.length - 1] ?? '素材目录'
-      const next = await window.luna.aiSelection.start({ name: `${label} AI 选片`, source: { kind: 'directory', directory, label }, mode, purpose, workflow })
+      const next = await window.luna.aiSelection.start({ name: name?.trim() || `${source.label} AI 选片`, source, mode, purpose, workflow })
       upsert(next)
-      setActiveId(next.id)
       setSession(next)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error))
+      throw error
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeSession(id: string): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    try {
+      await window.luna.aiSelection.removeSession(id)
+      setSessions((current) => current.filter((item) => item.id !== id))
+      if (session?.id === id) closeSession()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+      throw error
     } finally {
       setBusy(false)
     }
@@ -96,5 +111,21 @@ export function useAiSelection() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [session, busy])
 
-  return { sessions, activeId, session, mode, setMode, purpose, setPurpose, workflow, setWorkflow, busy, selectSession, startDirectory, controls }
+  return {
+    sessions,
+    session,
+    mode,
+    setMode,
+    purpose,
+    setPurpose,
+    workflow,
+    setWorkflow,
+    busy,
+    loadingSessions,
+    selectSession,
+    closeSession,
+    startTask,
+    removeSession,
+    controls,
+  }
 }

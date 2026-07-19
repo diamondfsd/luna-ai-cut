@@ -9,6 +9,11 @@ import {
   hammingDistance,
 } from '../electron/aiSelectionAlgorithms.ts'
 import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
+import {
+  countSimilarityGroups,
+  matchesResultFilter,
+  matchesSelectionSearch,
+} from '../src/ai-selection/aiSelectionView.ts'
 
 function quality(score = 80) {
   return {
@@ -154,5 +159,16 @@ assert.equal(video.selectionSource, 'user')
 video.selected = false
 video.videoSegments.forEach((segment) => { segment.selected = false })
 assert.deepEqual(video.videoSegments.map((segment) => segment.selected), [false, false])
+
+const viewItems = [
+  item('group-person-a', '2026-07-18T01:00:00.000Z', { similarityGroupId: 'group-person', semanticTags: ['照片', '人物'], recommendationReason: '组内人物更清晰' }),
+  item('group-person-b', '2026-07-18T01:00:01.000Z', { similarityGroupId: 'group-person', semanticTags: ['照片', '人物'], recommendationReason: '相似组备选' }),
+  item('night', '2026-07-18T02:00:00.000Z', { semanticTags: ['照片', '夜景'], recommendationReason: '独特内容' }),
+]
+const comparedPeople = viewItems.filter((entry) => matchesResultFilter(entry, 'compare') && matchesSelectionSearch(entry, '人物'))
+assert.equal(comparedPeople.length, 2, '相似筛选应返回真实照片数')
+assert.equal(countSimilarityGroups(comparedPeople), 1, '相似筛选应单独统计组数')
+assert.equal(viewItems.filter((entry) => matchesResultFilter(entry, 'recommended')).length, 2)
+assert.equal(viewItems.filter((entry) => matchesSelectionSearch(entry, '晚上')).length, 1)
 
 console.log('AI selection algorithm tests passed')

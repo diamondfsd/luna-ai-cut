@@ -201,6 +201,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   },
   aiSelection: {
     chooseDirectory: () => ipcRenderer.invoke('ai-selection:choose-directory'),
+    chooseFiles: () => ipcRenderer.invoke('ai-selection:choose-files'),
     start: (request) => ipcRenderer.invoke('ai-selection:start', request),
     listSessions: () => ipcRenderer.invoke('ai-selection:list'),
     getSession: (sessionId) => ipcRenderer.invoke('ai-selection:get', sessionId),
