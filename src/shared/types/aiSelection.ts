@@ -1,4 +1,5 @@
 export type AiSelectionMode = 'quick' | 'balanced' | 'deep'
+export const AI_SELECTION_CONTENT_TAG_VERSION = 'yolo26s-seg+coco80_segformer-b0+ade20k_v2'
 export type AiSelectionPurpose = 'general' | 'people' | 'travel' | 'editing'
 export type AiSelectionWorkflow = 'assist' | 'auto'
 export type AiSelectionStatus = 'queued' | 'indexing' | 'analyzing' | 'paused' | 'interrupted' | 'completed' | 'failed' | 'canceled'
@@ -79,6 +80,9 @@ export interface AiSelectionItem {
   videoKeyframes: AiVideoKeyframe[]
   videoSegments: AiVideoSegment[]
   semanticTags: string[]
+  contentTags: string[]
+  contentTagVersion: string | null
+  contentTagError: string | null
   eventId: string | null
   similarityGroupId: string | null
   recommendationScore: number

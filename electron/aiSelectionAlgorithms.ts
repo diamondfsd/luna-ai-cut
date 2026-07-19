@@ -281,15 +281,17 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSimilarit
   const candidates = items.filter((item) => {
     if (item.analysisState !== 'ready' || item.error || item.quality?.grade === 'review') return false
     if (item.kind === 'video') return purpose === 'editing'
-    if (purpose === 'people' && item.personEvidence && !item.personEvidence.detected) return false
+    if (purpose === 'people' && item.personEvidence?.detected !== true && !item.contentTags.includes('人物')) return false
     const group = grouped.get(item.id)
     return !group || group.representativeId === item.id
   }).sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt))
   const baseRatio = mode === 'quick' ? 0.2 : mode === 'deep' ? 0.5 : 0.35
   const ratio = Math.min(0.65, baseRatio + (purpose === 'travel' ? 0.08 : purpose === 'editing' ? 0.05 : 0))
-  const target = Math.max(groups.length, Math.round(candidates.length * ratio))
+  const candidateIds = new Set(candidates.map((item) => item.id))
+  const eligibleGroups = groups.filter((group) => candidateIds.has(group.representativeId))
+  const target = Math.max(eligibleGroups.length, Math.round(candidates.length * ratio))
   const chosen = new Set<string>()
-  for (const group of groups) chosen.add(group.representativeId)
+  for (const group of eligibleGroups) chosen.add(group.representativeId)
   const remainingTarget = Math.max(0, target - chosen.size)
   if (remainingTarget > 0) {
     const step = candidates.length / remainingTarget

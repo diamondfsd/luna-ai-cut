@@ -11,6 +11,7 @@ const sourceNames = [
   'IMG_20260619_161341_011.jpg',
   'IMG_20260619_161352_012.jpg',
   'IMG_20260619_161405_013.jpg',
+  'IMG_20260620_165522_057.jpg',
   'VID_20260621_110118_207.mp4',
 ]
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
@@ -106,7 +107,7 @@ async function main() {
       const value = await client.evaluate(`window.luna.aiSelection.getSession(${JSON.stringify(sessionId)})`)
       return value?.status === 'completed' ? value : null
     })
-    assert.equal(session.items.length, 4)
+    assert.equal(session.items.length, 5)
     assert.equal(session.items.filter((item) => item.kind === 'video').length, 1)
     assert.ok(session.similarityGroups.length >= 1, '连续实拍照片应形成可比较组')
 
@@ -120,6 +121,14 @@ async function main() {
     assert.equal(hasExcellentGrade, false, '页面不应继续输出无意义的“优秀”评级标签')
 
     const groupIds = session.similarityGroups[0].itemIds
+    const scenicId = session.items.find((item) => item.name === 'IMG_20260620_165522_057.jpg').id
+    const semanticStartedAt = Date.now()
+    const contentSession = await client.evaluate(`window.luna.aiSelection.analyzeContentTags(${JSON.stringify(sessionId)}, ${JSON.stringify([...new Set([...groupIds, scenicId])])})`)
+    const semanticMs = Date.now() - semanticStartedAt
+    const scenic = contentSession.items.find((item) => item.id === scenicId)
+    assert.ok(scenic.contentTags.some((tag) => ['建筑', '天空', '水面'].includes(tag)), '建筑风景照片应获得场景标签')
+    assert.ok(!scenic.contentTags.includes('人物'), '远处非主体小人不应把建筑风景照片标成人物')
+    assert.ok(contentSession.items.some((item) => groupIds.includes(item.id) && item.contentTags.includes('人物')), '人物照片应获得对象标签')
     const peopleSession = await client.evaluate(`window.luna.aiSelection.analyzePeople(${JSON.stringify(sessionId)}, ${JSON.stringify(groupIds)})`)
     assert.ok(peopleSession.items.some((item) => item.personEvidence?.faceCount > 0))
     assert.ok(peopleSession.items.some((item) => item.personEvidence?.eyeState === 'open'))
@@ -137,7 +146,7 @@ async function main() {
     assert.ok(selectedSession.items.find((item) => item.id === videoId).selected)
     assert.deepEqual(client.errors, [])
     succeeded = true
-    console.log(JSON.stringify({ total: session.items.length, groups: session.similarityGroups.length, faces: peopleSession.items.filter((item) => item.personEvidence?.faceCount > 0).length, keyframes: video.videoKeyframes.length, trim: videoAsset.pipeline.trim }))
+    console.log(JSON.stringify({ total: session.items.length, groups: session.similarityGroups.length, scenicTags: scenic.contentTags, semanticMs, faces: peopleSession.items.filter((item) => item.personEvidence?.faceCount > 0).length, keyframes: video.videoKeyframes.length, trim: videoAsset.pipeline.trim }))
     console.log('AI selection Electron integration passed')
   } finally {
     client?.socket.close()
