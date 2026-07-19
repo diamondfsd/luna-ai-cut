@@ -68,6 +68,7 @@ export interface CompositionInput {
       pathPoints?: number[]
       pathStartWidth?: number
       pathEndWidth?: number
+      fillSampleGaps?: boolean
     }
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
@@ -104,16 +105,16 @@ interface LunaRenderCoreNative {
   updateTexture(textureId: number, data: Buffer): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: unknown[]): Buffer
   releaseTexture(textureId: number): void
-  renderCompositionFrame(input: any): RenderPreviewOutput
-  renderCompositionFrameAsync(input: any): Promise<RenderPreviewOutput>
-  exportCompositionVideoAsync(input: any): Promise<void>
+  renderCompositionFrame(input: unknown): RenderPreviewOutput
+  renderCompositionFrameAsync(input: unknown): Promise<RenderPreviewOutput>
+  exportCompositionVideoAsync(input: unknown): Promise<void>
   resolveRenderSource(
     ffmpegPath: string,
     ffprobePath: string,
     originalPath: string,
     cacheDir: string,
   ): { renderPath: string; normalized: boolean; width: number; height: number }
-  exportCompositionImageAsync(input: any): Promise<void>
+  exportCompositionImageAsync(input: unknown): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
   segmentImage(modelPath: string, rgb: Buffer, pointX: number, pointY: number, targetClassId?: number, inputSize?: number): {

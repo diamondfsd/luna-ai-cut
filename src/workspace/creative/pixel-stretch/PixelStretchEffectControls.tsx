@@ -1,7 +1,7 @@
 import { PenTool, Route } from 'lucide-react'
 
 import type { PixelStretchFlowShape, PixelStretchPresetId } from '../../../shared/types/workspace'
-import { Button, SegmentedControl } from '../../../ui'
+import { Accordion, Button, SegmentedControl } from '../../../ui'
 import { ParamSlider } from '../../components/ParamSlider'
 import './pixel-stretch-effect-controls.css'
 
@@ -35,28 +35,30 @@ interface PixelStretchEffectControlsProps {
 export function PixelStretchEffectControls(props: PixelStretchEffectControlsProps) {
   const shaped = props.flowShape !== 'straight'
   return <fieldset className="pixel-stretch-effect-controls" disabled={props.disabled}>
-    <span>拉伸方向</span>
+    <span>色带方向</span>
     <SegmentedControl className="pixel-stretch-presets" ariaLabel="像素拉伸方向" value={props.preset} options={[
       { value: 'left', label: '左边' }, { value: 'right', label: '右边' }, { value: 'top', label: '上面' },
       { value: 'bottom', label: '下面' }, { value: 'horizontal', label: '水平' }, { value: 'vertical', label: '垂直' },
     ]} onChange={props.onPresetChange} />
-    <span>流线造型</span>
+    <span>色带造型</span>
     <SegmentedControl className="pixel-stretch-flow-presets" ariaLabel="流线造型" value={props.flowShape} options={[
-      { value: 'straight', label: '直线' }, { value: 'arc', label: '半圆' }, { value: 'cape', label: '披风' },
-      { value: 's-curve', label: 'S 型' }, { value: 'custom', label: '自定义' },
+      { value: 'cape', label: '飘带' }, { value: 'arc', label: '环绕' },
+      { value: 's-curve', label: '流线' }, { value: 'straight', label: '平直' },
     ]} onChange={props.onFlowShapeChange} />
     <div className="pixel-stretch-edit-row">
-      <Button variant={props.sampleEditing ? 'primary' : 'secondary'} size="compact" icon={<PenTool size={14} />} onClick={props.onToggleSampleEditing}>{props.sampleEditing ? '完成取色编辑' : '编辑取色范围'}</Button>
-      {props.flowShape === 'custom' && <Button variant={props.pathEditing ? 'primary' : 'secondary'} size="compact" icon={<Route size={14} />} onClick={props.onTogglePathEditing}>{props.pathEditing ? '完成流线编辑' : '编辑流线路径'}</Button>}
-      <Button variant="ghost" size="compact" onClick={props.onResetSample}>还原</Button>
+      <Button variant={props.sampleEditing ? 'primary' : 'secondary'} size="compact" icon={<PenTool size={14} />} onClick={props.onToggleSampleEditing}>{props.sampleEditing ? '完成取色' : '调整取色'}</Button>
+      <Button variant={props.pathEditing ? 'primary' : 'secondary'} size="compact" icon={<Route size={14} />} onClick={props.onTogglePathEditing}>{props.pathEditing ? '完成路径' : '自由路径'}</Button>
     </div>
-    <ParamSlider label={`整体取色${props.horizontal ? '横' : '纵'}坐标`} value={props.sampleCoordinate} min={props.sampleCoordinateHalfSpan} max={100 - props.sampleCoordinateHalfSpan} step={1} onChange={props.onSampleCoordinateChange} formatValue={(value) => `${Math.round(value)}%`} />
-    <ParamSlider label="中心旋转" value={props.angle} min={-180} max={180} step={1} onChange={props.onAngleChange} formatValue={(value) => `${value}°`} />
-    {shaped && <>
-      {props.flowShape !== 'custom' && <ParamSlider label="延伸长度" value={props.flowLength} min={10} max={150} step={1} onChange={props.onFlowLengthChange} formatValue={(value) => `${value}%`} />}
-      {props.flowShape !== 'custom' && <ParamSlider label="弯曲程度" value={props.flowCurve} min={0} max={100} step={1} onChange={props.onFlowCurveChange} formatValue={(value) => `${value}%`} />}
-      <ParamSlider label="起点宽度" value={props.flowWidth} min={10} max={150} step={1} onChange={props.onFlowWidthChange} formatValue={(value) => `${value}%`} />
-      <ParamSlider label="末端宽度" value={props.flowEndWidth} min={0} max={150} step={1} onChange={props.onFlowEndWidthChange} formatValue={(value) => `${value}%`} />
-    </>}
+    <Accordion className="pixel-stretch-advanced" title="细节调整">
+      <div className="pixel-stretch-advanced-body">
+        <ParamSlider label={`取色${props.horizontal ? '横' : '纵'}向位置`} value={props.sampleCoordinate} min={props.sampleCoordinateHalfSpan} max={100 - props.sampleCoordinateHalfSpan} step={1} onChange={props.onSampleCoordinateChange} formatValue={(value) => `${Math.round(value)}%`} />
+        <ParamSlider label="色带角度" value={props.angle} min={-180} max={180} step={1} onChange={props.onAngleChange} formatValue={(value) => `${value}°`} />
+        {shaped && props.flowShape !== 'custom' && <ParamSlider label="延伸长度" value={props.flowLength} min={10} max={150} step={1} onChange={props.onFlowLengthChange} formatValue={(value) => `${value}%`} />}
+        {shaped && props.flowShape !== 'custom' && <ParamSlider label="弯曲程度" value={props.flowCurve} min={0} max={100} step={1} onChange={props.onFlowCurveChange} onCommit={props.onFlowCurveChange} formatValue={(value) => `${value}%`} />}
+        {shaped && <ParamSlider label="主体处宽度" value={props.flowWidth} min={10} max={150} step={1} onChange={props.onFlowWidthChange} formatValue={(value) => `${value}%`} />}
+        {shaped && <ParamSlider label="末端宽度" value={props.flowEndWidth} min={0} max={150} step={1} onChange={props.onFlowEndWidthChange} formatValue={(value) => `${value}%`} />}
+        <Button variant="ghost" size="compact" onClick={props.onResetSample}>还原取色位置</Button>
+      </div>
+    </Accordion>
   </fieldset>
 }
