@@ -27,7 +27,6 @@ import {
   DEFAULT_PIXEL_STRETCH_RANGE_END,
   DEFAULT_PIXEL_STRETCH_RANGE_START,
   DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION,
-  DEFAULT_PIXEL_STRETCH_SUBJECT_MODEL,
   normalizePixelStretchOffset,
   normalizePixelStretchPercent,
   normalizePixelStretchPreset,
@@ -75,20 +74,23 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   const setWorkspaceMaskEditing = workspaceMask.setEditing
   const activeAsset = media.activeMedia
   const projectId = media.currentProject?.id
+  const activeAssetId = activeAsset?.id
+  const parameterOwnerKey = projectId && activeAssetId ? `${projectId}:${activeAssetId}` : null
   const allowWatermark = useLunaUltraWatermark(activeAsset)
-  const saved = media.currentProject?.creative?.pixelStretch
-  const [preset, setPreset] = useState<WorkspacePixelStretchState['preset']>(normalizePreset(saved?.preset))
-  const [subjectModel, setSubjectModel] = useState<NonNullable<WorkspacePixelStretchState['subjectModel']>>(normalizeSubjectModel(saved?.subjectModel))
-  const [angle, setAngle] = useState(saved?.angle ?? DEFAULT_ANGLE)
-  const [samplePosition, setSamplePosition] = useState(saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
-  const [sampleEndPosition, setSampleEndPosition] = useState(saved?.sampleEndPosition ?? saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
-  const legacyRange = normalizePercent(saved?.ribbonSize, 100)
-  const [sampleRangeStart, setSampleRangeStart] = useState(normalizePercent(saved?.sampleRangeStart, (100 - legacyRange) / 2))
-  const [sampleRangeEnd, setSampleRangeEnd] = useState(normalizePercent(saved?.sampleRangeEnd, (100 + legacyRange) / 2))
-  const [sampleControlStartOffset, setSampleControlStartOffset] = useState(normalizeOffset(saved?.sampleControlStartOffset))
-  const [sampleControlEndOffset, setSampleControlEndOffset] = useState(normalizeOffset(saved?.sampleControlEndOffset))
-  const [maskPath, setMaskPath] = useState<string | null>(saved?.maskAssetId === activeAsset?.id ? saved?.maskPath ?? null : null)
-  const [maskOwnerId, setMaskOwnerId] = useState<string | null>(saved?.maskAssetId === activeAsset?.id && saved?.maskPath ? activeAsset?.id ?? null : null)
+  const saved = pixelStretchStateForAsset(media.currentProject, activeAssetId)
+  const [preset, setPreset] = useState<WorkspacePixelStretchState['preset']>(normalizePixelStretchPreset(saved?.preset))
+  const [subjectModel, setSubjectModel] = useState<NonNullable<WorkspacePixelStretchState['subjectModel']>>(normalizePixelStretchSubjectModel(saved?.subjectModel))
+  const [angle, setAngle] = useState(saved?.angle ?? DEFAULT_PIXEL_STRETCH_ANGLE)
+  const [samplePosition, setSamplePosition] = useState(saved?.samplePosition ?? DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION)
+  const [sampleEndPosition, setSampleEndPosition] = useState(saved?.sampleEndPosition ?? saved?.samplePosition ?? DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION)
+  const legacyRange = normalizePixelStretchPercent(saved?.ribbonSize, 100)
+  const [sampleRangeStart, setSampleRangeStart] = useState(normalizePixelStretchPercent(saved?.sampleRangeStart, (100 - legacyRange) / 2))
+  const [sampleRangeEnd, setSampleRangeEnd] = useState(normalizePixelStretchPercent(saved?.sampleRangeEnd, (100 + legacyRange) / 2))
+  const [sampleControlStartOffset, setSampleControlStartOffset] = useState(normalizePixelStretchOffset(saved?.sampleControlStartOffset))
+  const [sampleControlEndOffset, setSampleControlEndOffset] = useState(normalizePixelStretchOffset(saved?.sampleControlEndOffset))
+  const [maskPath, setMaskPath] = useState<string | null>(saved?.maskPath ?? null)
+  const [maskOwnerId, setMaskOwnerId] = useState<string | null>(saved?.maskPath ? activeAssetId ?? null : null)
+  const [restoredOwnerKey, setRestoredOwnerKey] = useState(parameterOwnerKey)
   const [subjectBounds, setSubjectBounds] = useState<SubjectBounds | null>(null)
   const [maskData, setMaskData] = useState<{ data: Uint8Array; width: number; height: number } | null>(null)
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
@@ -104,34 +106,39 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   const automaticAttemptRef = useRef<string | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
+  const maskLayerOwnerRef = useRef<string | null>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const isImage = activeAsset?.kind === 'image'
   const activeMaskPath = maskOwnerId === activeAsset?.id ? maskPath : null
   const isHorizontalPreset = preset === 'left' || preset === 'right' || preset === 'horizontal'
   const creativeMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === PIXEL_STRETCH_MASK_LAYER_ID)
+  const activeCreativeMaskLayer = creativeMaskLayer?.path === activeMaskPath ? creativeMaskLayer : undefined
 
   useEffect(() => {
-    setPreset(normalizePreset(saved?.preset))
-    setSubjectModel(normalizeSubjectModel(saved?.subjectModel))
-    setAngle(saved?.angle ?? DEFAULT_ANGLE)
-    setSamplePosition(saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
-    setSampleEndPosition(saved?.sampleEndPosition ?? saved?.samplePosition ?? DEFAULT_SAMPLE_POSITION)
-    const restoredLegacyRange = normalizePercent(saved?.ribbonSize, 100)
-    setSampleRangeStart(normalizePercent(saved?.sampleRangeStart, (100 - restoredLegacyRange) / 2))
-    setSampleRangeEnd(normalizePercent(saved?.sampleRangeEnd, (100 + restoredLegacyRange) / 2))
-    setSampleControlStartOffset(normalizeOffset(saved?.sampleControlStartOffset))
-    setSampleControlEndOffset(normalizeOffset(saved?.sampleControlEndOffset))
+    const restored = pixelStretchStateForAsset(media.currentProject, activeAssetId)
+    setPreset(normalizePixelStretchPreset(restored?.preset))
+    setSubjectModel(normalizePixelStretchSubjectModel(restored?.subjectModel))
+    setAngle(restored?.angle ?? DEFAULT_PIXEL_STRETCH_ANGLE)
+    setSamplePosition(restored?.samplePosition ?? DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION)
+    setSampleEndPosition(restored?.sampleEndPosition ?? restored?.samplePosition ?? DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION)
+    const restoredLegacyRange = normalizePixelStretchPercent(restored?.ribbonSize, 100)
+    setSampleRangeStart(normalizePixelStretchPercent(restored?.sampleRangeStart, (100 - restoredLegacyRange) / 2))
+    setSampleRangeEnd(normalizePixelStretchPercent(restored?.sampleRangeEnd, (100 + restoredLegacyRange) / 2))
+    setSampleControlStartOffset(normalizePixelStretchOffset(restored?.sampleControlStartOffset))
+    setSampleControlEndOffset(normalizePixelStretchOffset(restored?.sampleControlEndOffset))
     setSampleEditing(false)
     setMaskEditing(false)
     setShowOriginal(false)
-    // 仅在切换项目时恢复创意状态，避免每次暂存参数时重置面板。
+    setRestoredOwnerKey(parameterOwnerKey)
+    // 仅在切换素材或项目时恢复创意状态，避免每次暂存参数时重置面板。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [media.currentProject?.id])
+  }, [parameterOwnerKey])
 
   useEffect(() => {
-    const restoredMaskPath = saved?.maskAssetId === activeAsset?.id ? saved?.maskPath ?? null : null
+    const restoredMaskPath = pixelStretchStateForAsset(media.currentProject, activeAssetId)?.maskPath ?? null
     setMaskPath(restoredMaskPath)
-    setMaskOwnerId(restoredMaskPath ? activeAsset?.id ?? null : null)
+    setMaskOwnerId(restoredMaskPath ? activeAssetId ?? null : null)
+    maskLayerOwnerRef.current = null
     setSubjectBounds(null)
     setMaskData(null)
     setSourceSize(null)
@@ -152,7 +159,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     return () => { cancelled = true }
   // 只在素材或项目真正变化时初始化；项目参数自动保存不应重置预览。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAsset?.id, activeAsset?.kind, activeAsset?.path, projectId])
+  }, [activeAssetId, activeAsset?.kind, activeAsset?.path, projectId])
 
   useEffect(() => {
     setPointPicking(false)
@@ -171,10 +178,10 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   }, [activeAsset?.id, setWorkspaceMaskEditing])
 
   useEffect(() => {
-    if (!creativeMaskLayer?.path || !activeAsset || activeAsset.kind !== 'image') return
-    setMaskOwnerId(activeAsset.id)
+    if (!creativeMaskLayer?.path || maskLayerOwnerRef.current !== activeAssetId) return
+    setMaskOwnerId(activeAssetId ?? null)
     setMaskPath(creativeMaskLayer.path)
-  }, [activeAsset, creativeMaskLayer?.path])
+  }, [activeAssetId, creativeMaskLayer?.path])
 
   useEffect(() => () => setWorkspaceMaskEditing(false), [setWorkspaceMaskEditing])
 
@@ -204,7 +211,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     window.luna.workspace.loadColorMask(projectId, activeMaskPath).then((loaded) => {
       if (cancelled) return
       const data = new Uint8Array(loaded.bytes)
-      const boundsData = creativeMaskLayer?.inverted ? data.map((value) => 255 - value) : data
+      const boundsData = activeCreativeMaskLayer?.inverted ? data.map((value) => 255 - value) : data
       const bounds = subjectBoundsFromMask(boundsData, loaded.width, loaded.height)
       if (!bounds) throw new Error('主体蒙版为空')
       setSubjectBounds(bounds)
@@ -218,30 +225,35 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
       }
     })
     return () => { cancelled = true }
-  }, [activeMaskPath, creativeMaskLayer?.inverted, projectId])
+  }, [activeCreativeMaskLayer?.inverted, activeMaskPath, projectId])
 
   useEffect(() => {
     const project = media.currentProject
-    if (!project) return
+    if (!project || !activeAssetId || restoredOwnerKey !== parameterOwnerKey) return
+    const nextState: WorkspacePixelStretchState = {
+      preset,
+      subjectModel,
+      intensity: DEFAULT_INTENSITY,
+      angle,
+      samplePosition,
+      sampleEndPosition,
+      sampleLocked: false,
+      ribbonSize: Math.abs(sampleRangeEnd - sampleRangeStart),
+      sampleRangeStart,
+      sampleRangeEnd,
+      sampleControlStartOffset,
+      sampleControlEndOffset,
+      maskPath: activeMaskPath ?? undefined,
+      maskAssetId: activeMaskPath ? activeAssetId : undefined,
+    }
     const nextProject = {
       ...project,
       creative: {
         ...project.creative,
-        pixelStretch: {
-          preset,
-          subjectModel,
-          intensity: DEFAULT_INTENSITY,
-          angle,
-          samplePosition,
-          sampleEndPosition,
-          sampleLocked: false,
-          ribbonSize: Math.abs(sampleRangeEnd - sampleRangeStart),
-          sampleRangeStart,
-          sampleRangeEnd,
-          sampleControlStartOffset,
-          sampleControlEndOffset,
-          maskPath: activeMaskPath ?? undefined,
-          maskAssetId: activeMaskPath ? activeAsset?.id : undefined,
+        pixelStretch: nextState,
+        pixelStretchByAssetId: {
+          ...project.creative?.pixelStretchByAssetId,
+          [activeAssetId]: nextState,
         },
       },
     }
@@ -254,7 +266,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     }, 300)
   // 参数变化时延迟保存，避免由项目 Context 刷新再次触发保存。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAsset?.id, activeMaskPath, angle, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, subjectModel])
+  }, [activeAssetId, activeMaskPath, angle, parameterOwnerKey, preset, restoredOwnerKey, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, subjectModel])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -268,8 +280,8 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark)
   }, [activeAsset, allowWatermark, edit.pipeline, metadata, sourceSize])
   const effectLayers = useMemo(() => activeMaskPath && subjectBounds && sourceSize
-    ? buildPixelStretchLayers({ layers: baseLayers, maskPath: activeMaskPath, preset, angle, samplePosition, sampleEndPosition, sampleRangeStart, sampleRangeEnd, sampleControlStartOffset, sampleControlEndOffset, maskInverted: creativeMaskLayer?.inverted, maskFeather: creativeMaskLayer?.feather, subjectBounds })
-    : [], [activeMaskPath, angle, baseLayers, creativeMaskLayer?.feather, creativeMaskLayer?.inverted, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, sourceSize, subjectBounds])
+    ? buildPixelStretchLayers({ layers: baseLayers, maskPath: activeMaskPath, preset, angle, samplePosition, sampleEndPosition, sampleRangeStart, sampleRangeEnd, sampleControlStartOffset, sampleControlEndOffset, maskInverted: activeCreativeMaskLayer?.inverted, maskFeather: activeCreativeMaskLayer?.feather, subjectBounds })
+    : [], [activeCreativeMaskLayer?.feather, activeCreativeMaskLayer?.inverted, activeMaskPath, angle, baseLayers, preset, sampleControlEndOffset, sampleControlStartOffset, sampleEndPosition, samplePosition, sampleRangeEnd, sampleRangeStart, sourceSize, subjectBounds])
   const previewLayers = showOriginal ? baseLayers : effectLayers.length ? effectLayers : baseLayers
 
   function changeSubjectModel(value: NonNullable<WorkspacePixelStretchState['subjectModel']>): void {
@@ -316,6 +328,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
       setMaskOwnerId(activeAsset.id)
       setMaskPath(savedMask.path)
       if (creativeMaskLayer) {
+        maskLayerOwnerRef.current = activeAsset.id
         edit.commitPatch({
           colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === PIXEL_STRETCH_MASK_LAYER_ID
             ? pixelStretchMaskLayer(savedMask.path, result.width, result.height, layer)
@@ -340,11 +353,11 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   }, [activeAsset, creativeMaskLayer, edit, media.currentProject, segmenting, subjectModel])
 
   useEffect(() => {
-    if (!isImage || !activeAsset || activeMaskPath || segmenting) return
+    if (!isImage || !activeAsset || activeMaskPath || segmenting || restoredOwnerKey !== parameterOwnerKey) return
     if (automaticAttemptRef.current === activeAsset.id) return
     automaticAttemptRef.current = activeAsset.id
     void segmentSubject()
-  }, [activeAsset, activeMaskPath, isImage, segmentSubject, segmenting])
+  }, [activeAsset, activeMaskPath, isImage, parameterOwnerKey, restoredOwnerKey, segmentSubject, segmenting])
 
   function startPointPicking(): void {
     if (!isImage || segmenting) return
@@ -431,16 +444,17 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   }
 
   function resetSampleEditor(): void {
-    setSamplePosition(DEFAULT_SAMPLE_POSITION)
-    setSampleEndPosition(DEFAULT_SAMPLE_POSITION)
-    setSampleRangeStart(DEFAULT_RANGE_START)
-    setSampleRangeEnd(DEFAULT_RANGE_END)
-    setSampleControlStartOffset(DEFAULT_CONTROL_OFFSET)
-    setSampleControlEndOffset(DEFAULT_CONTROL_OFFSET)
+    setSamplePosition(DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION)
+    setSampleEndPosition(DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION)
+    setSampleRangeStart(DEFAULT_PIXEL_STRETCH_RANGE_START)
+    setSampleRangeEnd(DEFAULT_PIXEL_STRETCH_RANGE_END)
+    setSampleControlStartOffset(DEFAULT_PIXEL_STRETCH_CONTROL_OFFSET)
+    setSampleControlEndOffset(DEFAULT_PIXEL_STRETCH_CONTROL_OFFSET)
   }
 
   function openMaskEditor(): void {
     if (!activeMaskPath || !maskData) return
+    maskLayerOwnerRef.current = activeAssetId ?? null
     const layer = pixelStretchMaskLayer(activeMaskPath, maskData.width, maskData.height, creativeMaskLayer)
     edit.commitPatch({
       colorMasks: [...edit.pipeline.colorMasks.filter((item) => item.id !== PIXEL_STRETCH_MASK_LAYER_ID), layer],
@@ -480,7 +494,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
             <ParamSlider label="中心旋转" value={angle} min={-180} max={180} step={1} onChange={setAngle} formatValue={(next) => `${next}°`} />
           </fieldset>
         </div>}
-      <div className="pixel-stretch-actions"><div className="pixel-stretch-tool-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置参数" aria-label="重置参数" onClick={() => { setPreset(DEFAULT_PRESET); setAngle(DEFAULT_ANGLE); resetSampleEditor() }} /></div>
+      <div className="pixel-stretch-actions"><div className="pixel-stretch-tool-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置参数" aria-label="重置参数" onClick={() => { setPreset(DEFAULT_PIXEL_STRETCH_PRESET); setAngle(DEFAULT_PIXEL_STRETCH_ANGLE); resetSampleEditor() }} /></div>
         <div><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMaskPath || exporting} onClick={() => void exportEffect()}>{exporting ? '导出中' : '导出图片'}</Button></div>
       </div>
     </aside>
