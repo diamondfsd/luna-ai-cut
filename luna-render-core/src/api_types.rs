@@ -230,6 +230,7 @@ pub struct RenderLayer {
     pub pixel_stretch: Option<RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
+    pub restore_lut_id: Option<String>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
 }
@@ -261,6 +262,7 @@ pub struct PreviewLayer {
     pub pixel_stretch: Option<RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
+    pub restore_lut_id: Option<String>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
     pub shape: Option<String>,

@@ -555,6 +555,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               color: layer.color,
               transform: layer.transform,
               positioning,
+              restoreLutId: layer.restoreLutId,
               lutId: layer.lutId,
               lutIntensity: layer.lutIntensity,
               layerType: layer.layerType ?? 'media',

@@ -80,6 +80,7 @@ export function buildCompositionFromPreviewLayers(
       pixelStretch: layer.pixelStretch,
       transform: layer.transform,
       positioning: layer.positioning,
+      restoreLutId: layer.restoreLutId,
       lutId: layer.lutId,
       lutIntensity: layer.lutIntensity,
       shape: layer.shape,

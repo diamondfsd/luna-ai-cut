@@ -115,7 +115,9 @@ export interface PreviewLayer {
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** 3D LUT 文件路径（传给 Rust 自行加载解析） */
+  /** i-Log 技术还原 LUT 文件路径 */
+  restoreLutId?: string
+  /** 创意 3D LUT 文件路径（传给 Rust 自行加载解析） */
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
@@ -207,7 +209,9 @@ export interface CompositionLayer {
   pixelStretch?: RenderPixelStretch
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** 3D LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径 */
+  restoreLutId?: string
+  /** 创意 3D LUT 文件路径 */
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
@@ -240,7 +244,9 @@ export interface RenderLayer {
   maskFeather?: number
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** 3D LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径 */
+  restoreLutId?: string
+  /** 创意 3D LUT 文件路径 */
   lutId?: string
   lutIntensity?: number
 }

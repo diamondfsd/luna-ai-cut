@@ -252,6 +252,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
         <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}`}>
           {activeTool === 'filter' ? (
             <FilterPanel
+              restoreLutId={edit.pipeline.logRestore.activeId}
+              onRestoreChange={(activeId) => edit.updateWorkspacePanel({ logRestore: { activeId } })}
               activeLutId={edit.pipeline.lutFilter.activeId}
               onChange={(lutId, intensity) => edit.updateWorkspacePanel({ lutFilter: {
                 activeId: lutId,

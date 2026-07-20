@@ -252,6 +252,18 @@ try {
   const reopenedPipeline = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline(stressPipeline))
   assert.equal(reopenedPipeline.colorMasks[0].componentSchemaVersion, 1, 'advanced masks must persist an explicit component schema version')
   assert.equal(reopenedPipeline.colorMasks[0].components.length, 50, 'reopening a project must retain all 50 editable components')
+  const dualLutPipeline = mergePipeline(createDefaultPipeline(), {
+    logRestore: { activeId: '/luts/LunaUltra/Luna_I-Log_to_Rec709_BT1886_s65_v2.cube' },
+    lutFilter: { activeId: '/luts/film-look.cube', intensity: 42 },
+  })
+  const reopenedDualLut = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline(dualLutPipeline))
+  assert.equal(reopenedDualLut.logRestore.activeId, dualLutPipeline.logRestore.activeId, 'log restoration LUT must persist independently')
+  assert.equal(reopenedDualLut.lutFilter.activeId, dualLutPipeline.lutFilter.activeId, 'creative LUT must persist independently')
+  const migratedLegacyLut = pipelineSerialization.deserializePipeline(JSON.stringify({
+    lutFilter: { activeId: 'C:\\luts\\Luna_I-Log_to_Rec709_BT1886_s65_v2.cube', intensity: 100 },
+  }))
+  assert.match(migratedLegacyLut.logRestore.activeId, /Luna_I-Log_to_Rec709_BT1886_s65_v2\.cube$/)
+  assert.equal(migratedLegacyLut.lutFilter.activeId, null, 'legacy restoration LUT must leave the creative filter slot')
   assert.deepEqual(
     componentRasterization.composeMaskComponents(80, 40, reopenedPipeline.colorMasks[0].components, () => null),
     componentRasterization.composeMaskComponents(80, 40, stressPipeline.colorMasks[0].components, () => null),

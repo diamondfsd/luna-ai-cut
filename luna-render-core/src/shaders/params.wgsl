@@ -56,6 +56,7 @@ struct LayerParams {
     scale: f32,
     translate_x: f32,
     translate_y: f32,
+    restore_lut_size: f32,
     lut_size: f32,
     lut_intensity: f32,
     sampling_quality: f32,
@@ -80,3 +81,4 @@ struct LayerParams {
 @group(0) @binding(3) var lut_texture: texture_3d<f32>;
 @group(0) @binding(4) var lut_sampler: sampler;
 @group(0) @binding(5) var mask_texture: texture_2d<f32>;
+@group(0) @binding(6) var restore_lut_texture: texture_3d<f32>;

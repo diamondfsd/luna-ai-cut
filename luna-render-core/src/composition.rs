@@ -100,6 +100,7 @@ pub struct CompositionLayer {
     pub pixel_stretch: Option<crate::RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
+    pub restore_lut_id: Option<String>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
     pub shape: Option<String>,

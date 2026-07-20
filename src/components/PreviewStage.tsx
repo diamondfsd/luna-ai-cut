@@ -302,7 +302,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     [isDisplayVideo, pipeline, resolution],
   )
 
-  // ── LUT 滤镜：直接传文件路径给 Rust ──
+  const restoreLutFilePath = pipeline?.logRestore?.activeId ?? undefined
   const lutFilePath = pipeline?.lutFilter?.activeId ?? undefined
 
   const buildAdjustedLayers = useCallback((sourceUrl: string | null): PreviewLayer[] => {
@@ -314,6 +314,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         ...canvasFrame,
         color: pipelineColorToRenderColor(pipeline.color),
         transform: pipelineTransformToRenderTransform(pipeline.transform),
+        restoreLutId: restoreLutFilePath,
         lutId: lutFilePath,
         lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
       }
@@ -343,7 +344,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       dstH: l.dstH * cH,
     }))
     return [...main, ...adjusted]
-  }, [cropActive, extraLayers, pipeline, lutFilePath])
+  }, [cropActive, extraLayers, pipeline, restoreLutFilePath, lutFilePath])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []

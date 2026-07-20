@@ -30,6 +30,7 @@ pub struct PreviewLayerInput {
     pub pixel_stretch: Option<crate::RenderPixelStretch>,
     pub transform: crate::RenderLayerTransform,
     pub positioning: Option<crate::LayerPositioning>,
+    pub restore_lut_id: Option<String>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
     pub shape: Option<String>,
@@ -333,6 +334,7 @@ impl super::Compositor {
                     pixel_stretch: layer.pixel_stretch.clone(),
                     transform: Some(transform),
                     positioning: layer.positioning.clone(),
+                    restore_lut_id: layer.restore_lut_id.clone(),
                     lut_id: layer.lut_id.clone(),
                     lut_intensity: layer.lut_intensity,
                 }
