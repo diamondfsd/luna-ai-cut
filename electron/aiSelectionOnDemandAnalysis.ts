@@ -15,6 +15,29 @@ export interface AiSelectionAnalysisContext {
   rebuild: () => void
 }
 
+async function analyzePersonItem(context: AiSelectionAnalysisContext, item: AiSelectionItem, signal?: AbortSignal): Promise<void> {
+  item.personEvidence = await analyzePersonEvidence(item, signal)
+  const evidenceTags = item.personEvidence.detected ? ['人物', '人像', '主体'] : ['无人像']
+  if (item.personEvidence.faceCount > 0) evidenceTags.push('人脸')
+  if (item.personEvidence.eyeState === 'closed') evidenceTags.push('闭眼', '建议复查')
+  if (item.personEvidence.eyeState === 'mixed') evidenceTags.push('眨眼', '建议复查')
+  if (item.personEvidence.faceVisibility === 'occluded') evidenceTags.push('面部遮挡', '建议复查')
+  item.semanticTags = [...new Set([...item.semanticTags, ...evidenceTags])]
+  refreshBasicSemanticTags(item)
+  await context.writeCachedItem(item)
+}
+
+async function analyzeContentItem(context: AiSelectionAnalysisContext, item: AiSelectionItem, signal?: AbortSignal): Promise<void> {
+  const previousTags = new Set(item.contentTags)
+  item.semanticTags = item.semanticTags.filter((tag) => !previousTags.has(tag))
+  item.contentTags = await analyzeContentTags(item, signal)
+  item.contentTagVersion = CONTENT_TAG_VERSION
+  item.contentTagError = null
+  item.semanticTags = [...new Set([...item.semanticTags, ...item.contentTags])]
+  refreshBasicSemanticTags(item)
+  await context.writeCachedItem(item)
+}
+
 export async function analyzePeopleOnDemand(context: AiSelectionAnalysisContext, itemIds: string[]): Promise<void> {
   const targets = [...new Set(itemIds)].map((itemId) => context.session.items.find((item) => item.id === itemId))
     .filter((item): item is AiSelectionItem => Boolean(item && item.analysisState === 'ready'))
@@ -22,13 +45,7 @@ export async function analyzePeopleOnDemand(context: AiSelectionAnalysisContext,
   const controller = new AbortController()
   try {
     for (const item of targets) {
-      item.personEvidence = await analyzePersonEvidence(item, controller.signal)
-      const evidenceTags = item.personEvidence.detected ? ['人物', '人像', '主体'] : ['无人像']
-      if (item.personEvidence.faceCount > 0) evidenceTags.push('人脸')
-      if (item.personEvidence.eyeState === 'closed') evidenceTags.push('闭眼', '建议复查')
-      if (item.personEvidence.eyeState === 'mixed') evidenceTags.push('眨眼', '建议复查')
-      if (item.personEvidence.faceVisibility === 'occluded') evidenceTags.push('面部遮挡', '建议复查')
-      item.semanticTags = [...new Set([...item.semanticTags, ...evidenceTags])]
+      await analyzePersonItem(context, item, controller.signal)
       await context.update(item.name)
     }
   } finally {
@@ -48,18 +65,55 @@ export async function analyzeContentOnDemand(context: AiSelectionAnalysisContext
   try {
     for (const item of targets) {
       try {
-        const previousTags = new Set(item.contentTags)
-        item.semanticTags = item.semanticTags.filter((tag) => !previousTags.has(tag))
-        item.contentTags = await analyzeContentTags(item, controller.signal)
-        item.contentTagVersion = CONTENT_TAG_VERSION
-        item.contentTagError = null
-        item.semanticTags = [...new Set([...item.semanticTags, ...item.contentTags])]
-        refreshBasicSemanticTags(item)
-        await context.writeCachedItem(item)
+        await analyzeContentItem(context, item, controller.signal)
       } catch (error) {
         item.contentTagError = error instanceof Error ? error.message : String(error)
       }
       await context.update(item.name)
+    }
+  } finally {
+    shutdownSpecializedSegmentationWorker()
+  }
+  context.rebuild()
+  await context.update()
+}
+
+export async function analyzeRecommendationEvidence(context: AiSelectionAnalysisContext, itemIds: string[], signal?: AbortSignal): Promise<void> {
+  const requested = new Set(itemIds)
+  const photos = context.session.items.filter((item) => requested.has(item.id) && item.kind === 'image' && item.analysisState === 'ready')
+  if (photos.length === 0) return
+  try {
+    const contentTargets = photos.filter((item) => item.contentTagVersion !== CONTENT_TAG_VERSION)
+    if (contentTargets.length > 0) {
+      context.session.phase = 'content'
+      await context.update()
+      for (const item of contentTargets) {
+        signal?.throwIfAborted()
+        try {
+          await analyzeContentItem(context, item, signal)
+        } catch (error) {
+          signal?.throwIfAborted()
+          item.contentTagError = error instanceof Error ? error.message : String(error)
+        }
+        await context.update(item.name)
+      }
+    }
+
+    const peopleTargets = photos.filter((item) => !item.personEvidence
+      && (context.session.purpose === 'people' || item.contentTags.includes('人物')))
+    if (peopleTargets.length > 0) {
+      context.session.phase = 'people'
+      await context.update()
+      for (const item of peopleTargets) {
+        signal?.throwIfAborted()
+        try {
+          await analyzePersonItem(context, item, signal)
+        } catch (error) {
+          signal?.throwIfAborted()
+          item.semanticTags = [...new Set([...item.semanticTags, '人物分析未完成'])]
+        }
+        await context.update(item.name)
+      }
     }
   } finally {
     shutdownSpecializedSegmentationWorker()

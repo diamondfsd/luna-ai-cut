@@ -15,12 +15,12 @@ import { applySelectionPlan, buildShootingEvents, buildSimilarityGroups, normali
 import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
-import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
+import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
 
-const ANALYSIS_VERSION = 'selection-dinov2-v2'
+const ANALYSIS_VERSION = 'selection-evidence-v3'
 const ROOT_DIR = 'ai-selection'
 
 interface StoredSession extends AiSelectionSession {
@@ -227,6 +227,8 @@ async function runSession(session: StoredSession): Promise<void> {
       await updateAndPersist(session, batch[batch.length - 1]?.name ?? null)
     }
 
+    await analyzeRecommendationEvidence(analysisContext(session), photos.map((item) => item.id), controller.signal)
+
     controller.signal.throwIfAborted()
     session.phase = 'grouping'
     rebuildSelectionResult(session)
@@ -316,7 +318,7 @@ export async function startAiSelection(request: AiSelectionStartRequest): Promis
     groups: [],
     preferenceProfile: {
       sampleCount: 0,
-      weights: { quality: 0.45, people: 0.2, composition: 0.15, aesthetics: 0.05, relevance: 0.1, diversity: 0.05 },
+      weights: { quality: 0.4, people: 0.2, composition: 0.1, relevance: 0.2, diversity: 0.1 },
     },
     workspaceCreation: { status: 'idle', projectId: null, error: null },
     error: null,
