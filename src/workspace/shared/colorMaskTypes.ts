@@ -6,6 +6,7 @@ export type ColorMaskComponentOperation = 'replace' | 'add' | 'subtract' | 'inte
 
 interface ColorMaskComponentBase {
   id: string
+  loadError?: 'missing-or-damaged'
   operation: ColorMaskComponentOperation
   enabled: boolean
   inverted: boolean
@@ -60,5 +61,6 @@ export interface ColorMaskLayer extends ColorMaskRef {
   loadError?: 'missing-or-damaged'
   blendMode: ColorMaskBlendMode
   color: EditPipeline['color']
+  componentSchemaVersion?: 1
   components?: ColorMaskComponent[]
 }

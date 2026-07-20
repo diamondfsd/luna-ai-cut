@@ -8,7 +8,6 @@ import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import type { MaskManualTool } from '../context/WorkspaceMaskContextTypes'
 import type { MaskSelectionOperation } from './maskSelectionOperations'
-import { MaskComponentEditor } from './MaskComponentEditor'
 import './MaskPanel.css'
 
 const TARGET_ICONS: Record<string, LucideIcon> = {
@@ -21,11 +20,15 @@ const TARGET_ICONS: Record<string, LucideIcon> = {
   mountain: Mountain,
   'ade20k-9': Sprout,
 }
-const BRUSH_TOOLS: Array<{ value: MaskManualTool; label: ReactNode }> = [
+const ADJUSTMENT_TOOLS: Array<{ value: MaskManualTool; label: ReactNode }> = [
   { value: 'move', label: <><Hand size={18} />移动</> },
   { value: 'brush', label: <><Brush size={18} />画笔</> },
+]
+const SHAPE_TOOLS: Array<{ value: MaskManualTool; label: ReactNode }> = [
   { value: 'rectangle', label: <><Square size={18} />矩形</> },
   { value: 'ellipse', label: <><Circle size={18} />椭圆</> },
+]
+const GRADIENT_TOOLS: Array<{ value: MaskManualTool; label: ReactNode }> = [
   { value: 'linear-gradient', label: <><ArrowUpRight size={18} />线性</> },
   { value: 'radial-gradient', label: <><CircleDot size={18} />径向</> },
 ]
@@ -34,6 +37,7 @@ const SELECTION_OPERATIONS: Array<{ value: MaskSelectionOperation; label: ReactN
   { value: 'add', label: <><Plus size={16} />叠加</> },
   { value: 'subtract', label: <><Minus size={16} />减去</> },
 ]
+const ADVANCED_MASK_EDITING_ENABLED = import.meta.env.VITE_ADVANCED_MASK_EDITING !== 'false'
 const PRIMARY_TARGET_IDS = ['sky', 'water', 'tree', 'building', 'vehicle', 'mountain', 'ade20k-9'] as const
 const CATEGORY_TARGETS = PRIMARY_TARGET_IDS.map((id) => AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === id)!)
 const SUBJECT_TARGET = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === 'subject')!
@@ -43,14 +47,6 @@ const MORE_TARGETS = AUTOMATIC_SEGMENTATION_TARGETS.filter(
 function formatModelSize(sizeBytes: number): string {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
 }
-
-const COMPONENT_LABELS = {
-  raster: '像素选区',
-  rectangle: '矩形',
-  ellipse: '椭圆',
-  'linear-gradient': '线性渐变',
-  'radial-gradient': '径向渐变',
-} as const
 
 export function MaskPanel() {
   const mask = useWorkspaceMask()
@@ -154,6 +150,17 @@ export function MaskPanel() {
     void startAutomaticSelection(targetId)
   }
 
+  const selectManualTool = (value: MaskManualTool): void => {
+    const isGradient = value === 'linear-gradient' || value === 'radial-gradient'
+    const hasSelection = Boolean(mask.activeMask?.path || mask.activeMask?.components?.some((component) => component.type !== 'linear-gradient' && component.type !== 'radial-gradient'))
+    if (isGradient && !hasSelection) {
+      toast.error('请先创建或选择一个选区')
+      return
+    }
+    mask.setSemanticPicking(false)
+    mask.setManualTool(value)
+  }
+
   const automaticSelectionError = mask.segmentationError
   const renderTargetButton = (item: AutomaticSegmentationTarget) => {
     const Icon = TARGET_ICONS[item.id]
@@ -184,15 +191,6 @@ export function MaskPanel() {
 
   return (
     <div className="workspace-mask-panel">
-      <section className="workspace-mask-operation-section">
-        <h3 className="workspace-mask-section-heading">选区方式</h3>
-        <ButtonGroup
-          className="workspace-mask-operation-modes"
-          options={SELECTION_OPERATIONS}
-          value={mask.selectionOperation}
-          onChange={mask.setSelectionOperation}
-        />
-      </section>
       <section className="workspace-mask-auto-section">
         <h3 className="workspace-mask-section-heading">自动选择</h3>
         <div className="workspace-mask-auto-targets" aria-label="自动选择类型">
@@ -307,26 +305,50 @@ export function MaskPanel() {
       </section>
 
       <section className="workspace-mask-brush-section">
-        <h3 className="workspace-mask-section-heading">手动工具</h3>
+        <h3 className="workspace-mask-section-heading">选区工具</h3>
         <div className="workspace-mask-editor-section">
-          <div className="workspace-mask-mode-row">
-            <strong>工具</strong>
+          {ADVANCED_MASK_EDITING_ENABLED && (
+            <div className="workspace-mask-tool-row">
+              <strong>方式</strong>
+              <ButtonGroup
+                className="workspace-mask-operation-modes"
+                options={SELECTION_OPERATIONS}
+                value={mask.selectionOperation}
+                onChange={mask.setSelectionOperation}
+              />
+            </div>
+          )}
+          <div className="workspace-mask-tool-row">
+            <strong>调整</strong>
             <ButtonGroup
-              className="workspace-mask-brush-modes"
-              options={BRUSH_TOOLS}
+              className="workspace-mask-tool-modes"
+              options={ADJUSTMENT_TOOLS}
               value={mask.manualTool}
-              onChange={(value) => {
-                const isGradient = value === 'linear-gradient' || value === 'radial-gradient'
-                const hasSelection = Boolean(mask.activeMask?.path || mask.activeMask?.components?.some((component) => component.type !== 'linear-gradient' && component.type !== 'radial-gradient'))
-                if (isGradient && !hasSelection) {
-                  toast.error('请先创建或选择一个选区')
-                  return
-                }
-                mask.setSemanticPicking(false)
-                mask.setManualTool(value)
-              }}
+              onChange={selectManualTool}
             />
           </div>
+          {ADVANCED_MASK_EDITING_ENABLED && (
+            <>
+              <div className="workspace-mask-tool-row">
+                <strong>形状</strong>
+                <ButtonGroup
+                  className="workspace-mask-tool-modes"
+                  options={SHAPE_TOOLS}
+                  value={mask.manualTool}
+                  onChange={selectManualTool}
+                />
+              </div>
+              <div className="workspace-mask-tool-row is-separated">
+                <strong>渐变</strong>
+                <ButtonGroup
+                  className="workspace-mask-tool-modes"
+                  options={GRADIENT_TOOLS}
+                  value={mask.manualTool}
+                  onChange={selectManualTool}
+                />
+              </div>
+            </>
+          )}
           {mask.manualTool === 'brush' && (
             <>
               <ParamSlider label="画笔大小" value={mask.brushSize} min={1} max={100} onChange={mask.setBrushSize} formatValue={(value) => `${Math.round(value)}`} />
@@ -339,33 +361,6 @@ export function MaskPanel() {
           </label>
         </div>
       </section>
-
-      {(mask.activeMask?.components?.length ?? 0) > 0 && (
-        <section className="workspace-mask-components-section">
-          <h3 className="workspace-mask-section-heading">选区组件</h3>
-          <div className="workspace-mask-components-list">
-            {mask.activeMask!.components!.map((component, index) => (
-              <Button
-                key={component.id}
-                variant="ghost"
-                size="mini"
-                className={component.id === mask.activeComponentId ? 'is-active' : undefined}
-                onClick={() => { mask.setActiveComponentId(component.id); mask.setManualTool('move'); mask.setSemanticPicking(false) }}
-              >
-                <span>{index + 1}. {COMPONENT_LABELS[component.type]}</span>
-                <small>{component.operation === 'replace' ? '选择' : component.operation === 'add' ? '叠加' : component.operation === 'subtract' ? '减去' : '相交'}</small>
-              </Button>
-            ))}
-          </div>
-          {mask.activeComponent && <MaskComponentEditor
-            component={mask.activeComponent}
-            busy={mask.busy}
-            onChange={mask.updateActiveComponent}
-            onDuplicate={mask.duplicateActiveComponent}
-            onRemove={mask.removeActiveComponent}
-          />}
-        </section>
-      )}
 
       <section className="workspace-mask-edge-section">
         <h3 className="workspace-mask-section-heading">边缘</h3>
