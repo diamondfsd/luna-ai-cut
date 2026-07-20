@@ -154,3 +154,17 @@ export function composeMaskComponents(
   }
   return result
 }
+
+export function composeBaseSelectionComponents(
+  width: number,
+  height: number,
+  components: ColorMaskComponent[],
+  rasterSource: MaskRasterSource,
+): Uint8Array {
+  return composeMaskComponents(
+    width,
+    height,
+    components.filter((component) => component.type !== 'linear-gradient' && component.type !== 'radial-gradient'),
+    rasterSource,
+  )
+}
