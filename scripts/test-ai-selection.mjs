@@ -9,6 +9,7 @@ import {
   hammingDistance,
 } from '../electron/aiSelectionAlgorithms.ts'
 import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
+import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
 import {
   countSimilarityGroups,
   matchesResultFilter,
@@ -56,12 +57,22 @@ function item(id, capturedAt, overrides = {}) {
     contentTags: [],
     contentTagVersion: null,
     contentTagError: null,
-    eventId: null,
-    similarityGroupId: null,
+    sceneId: null,
+    groupId: null,
     recommendationScore: 80,
     recommendationReason: null,
-    selected: true,
-    selectionSource: 'ai',
+    state: 'undecided',
+    decisionSource: 'ai',
+    flags: { lowQuality: false, duplicate: false, closedEyes: false, analysisFailed: false },
+    scores: {
+      quality: { raw: 80, normalized: 0.8, weight: 0.45 },
+      people: { raw: null, normalized: 0, weight: 0.2 },
+      composition: { raw: null, normalized: 0, weight: 0.15 },
+      aesthetics: { raw: null, normalized: 0, weight: 0.05 },
+      relevance: { raw: null, normalized: 0, weight: 0.1 },
+      diversity: { raw: null, normalized: 0, weight: 0.05 },
+      total: 80,
+    },
     error: null,
     ...overrides,
   }
@@ -111,17 +122,17 @@ const exactItems = [
   item('near-a', '2026-07-18T01:00:02.000Z', { perceptualHash: 'aaaaaaaaaaaaaaaa' }),
   item('near-b', '2026-07-18T01:00:03.000Z', { perceptualHash: 'aaaaaaaaaaaaaaab' }),
 ]
-const oneEvent = [{ id: 'event', name: 'event', startAt: exactItems[0].capturedAt, endAt: exactItems[3].capturedAt, itemIds: exactItems.map((entry) => entry.id), userModified: false }]
+const oneEvent = [{ id: 'event', name: 'event', startAt: exactItems[0].capturedAt, endAt: exactItems[3].capturedAt, itemIds: exactItems.map((entry) => entry.id), coverItemId: exactItems[0].id, confirmation: 'pending', recommendedCount: 0, userModified: false }]
 const groups = buildSimilarityGroups(exactItems, oneEvent)
 assert.equal(groups.length, 2)
-assert.equal(groups.find((group) => group.kind === 'exact')?.representativeId, 'exact-b')
-assert.deepEqual(groups.find((group) => group.kind === 'near')?.itemIds, ['near-a', 'near-b'])
+assert.equal(groups.find((group) => group.kind === 'duplicate')?.representativeId, 'exact-b')
+assert.deepEqual(groups.find((group) => group.kind === 'burst')?.itemIds, ['near-a', 'near-b'])
 
 const exposureVariants = [
   item('exposure-a', '2026-07-18T01:00:00.000Z', { perceptualHash: '0000000000000000', luminanceHistogram: [1, 0, 0, 0] }),
   item('exposure-b', '2026-07-18T01:00:10.000Z', { perceptualHash: 'ffffffffffffffff', luminanceHistogram: [0, 0, 0, 1] }),
 ]
-const exposureEvent = [{ id: 'exposure-event', name: 'event', startAt: exposureVariants[0].capturedAt, endAt: exposureVariants[1].capturedAt, itemIds: exposureVariants.map((entry) => entry.id), userModified: false }]
+const exposureEvent = [{ id: 'exposure-event', name: 'event', startAt: exposureVariants[0].capturedAt, endAt: exposureVariants[1].capturedAt, itemIds: exposureVariants.map((entry) => entry.id), coverItemId: exposureVariants[0].id, confirmation: 'pending', recommendedCount: 0, userModified: false }]
 assert.deepEqual(buildSimilarityGroups(exposureVariants, exposureEvent)[0]?.itemIds, ['exposure-a', 'exposure-b'])
 
 const selectionItems = Array.from({ length: 20 }, (_, index) => item(`selection-${index}`, `2026-07-18T01:00:${String(index).padStart(2, '0')}.000Z`, {
@@ -129,46 +140,60 @@ const selectionItems = Array.from({ length: 20 }, (_, index) => item(`selection-
   luminanceHistogram: [0.05, 0.15, 0.3, 0.5],
 }))
 applySelectionPlan(selectionItems, [], 'balanced')
-assert.equal(selectionItems.filter((entry) => entry.selected).length, 7)
-assert.ok(selectionItems.filter((entry) => entry.selected).every((entry) => entry.recommendationReason))
-applySelectionPlan(selectionItems, [], 'balanced', 'general', 'assist')
-assert.equal(selectionItems.filter((entry) => entry.selected).length, 0)
-assert.equal(selectionItems.filter((entry) => entry.recommendationReason).length, 7)
+assert.equal(selectionItems.filter((entry) => entry.state === 'recommended').length, 7)
+assert.ok(selectionItems.filter((entry) => entry.state === 'recommended').every((entry) => entry.recommendationReason))
+selectionItems[0].state = 'rejected'
+selectionItems[0].decisionSource = 'user'
+applySelectionPlan(selectionItems, [], 'deep')
+assert.equal(selectionItems[0].state, 'rejected', '人工决定不能被推荐重算覆盖')
 
 const peopleItems = [
   item('no-person', '2026-07-18T01:00:00.000Z'),
   item('person', '2026-07-18T01:01:00.000Z', { contentTags: ['人物'], semanticTags: ['照片', '人物'] }),
 ]
-applySelectionPlan(peopleItems, [], 'deep', 'people', 'auto')
-assert.equal(peopleItems[0].selected, false)
+applySelectionPlan(peopleItems, [], 'deep', 'people')
+assert.equal(peopleItems[0].state, 'undecided')
 assert.equal(peopleItems[0].recommendationReason, null)
-assert.equal(peopleItems[1].selected, true)
+assert.equal(peopleItems[1].state, 'recommended')
 assert.equal(peopleItems[1].recommendationReason, '人物素材候选')
 
 const video = item('video-segments', '2026-07-18T01:00:00.000Z', {
   kind: 'video',
   videoSegments: [
-    { id: 'segment-a', startTime: 0, endTime: 2, status: 'usable', reasons: [], selected: false },
-    { id: 'segment-b', startTime: 2, endTime: 4, status: 'usable', reasons: [], selected: false },
+    { id: 'segment-a', startTime: 0, endTime: 2, status: 'usable', reasons: [], state: 'recommended', decisionSource: 'ai' },
+    { id: 'segment-b', startTime: 2, endTime: 4, status: 'usable', reasons: [], state: 'alternative', decisionSource: 'ai' },
   ],
 })
-applyVideoSegmentSelection(video, 'segment-b', true)
-assert.equal(video.selected, true)
-assert.deepEqual(video.videoSegments.map((segment) => segment.selected), [false, true])
-assert.equal(video.selectionSource, 'user')
-video.selected = false
-video.videoSegments.forEach((segment) => { segment.selected = false })
-assert.deepEqual(video.videoSegments.map((segment) => segment.selected), [false, false])
+applyVideoSegmentSelection(video, 'segment-b', 'kept')
+assert.equal(video.state, 'kept')
+assert.deepEqual(video.videoSegments.map((segment) => segment.state), ['recommended', 'kept'])
+assert.equal(video.decisionSource, 'user')
 
 const viewItems = [
-  item('group-person-a', '2026-07-18T01:00:00.000Z', { similarityGroupId: 'group-person', semanticTags: ['照片', '人物'], recommendationReason: '组内人物更清晰' }),
-  item('group-person-b', '2026-07-18T01:00:01.000Z', { similarityGroupId: 'group-person', semanticTags: ['照片', '人物'], recommendationReason: '相似组备选' }),
+  item('group-person-a', '2026-07-18T01:00:00.000Z', { groupId: 'group-person', state: 'recommended', semanticTags: ['照片', '人物'], recommendationReason: '组内人物更清晰' }),
+  item('group-person-b', '2026-07-18T01:00:01.000Z', { groupId: 'group-person', state: 'alternative', semanticTags: ['照片', '人物'], recommendationReason: '相似组备选' }),
   item('night', '2026-07-18T02:00:00.000Z', { semanticTags: ['照片', '夜景'], recommendationReason: '独特内容' }),
 ]
-const comparedPeople = viewItems.filter((entry) => matchesResultFilter(entry, 'compare') && matchesSelectionSearch(entry, '人物'))
+const comparedPeople = viewItems.filter((entry) => matchesResultFilter(entry, 'recommended') && matchesSelectionSearch(entry, '人物'))
 assert.equal(comparedPeople.length, 2, '相似筛选应返回真实照片数')
 assert.equal(countSimilarityGroups(comparedPeople), 1, '相似筛选应单独统计组数')
 assert.equal(viewItems.filter((entry) => matchesResultFilter(entry, 'recommended')).length, 2)
 assert.equal(viewItems.filter((entry) => matchesSelectionSearch(entry, '晚上')).length, 1)
+
+const sceneSession = {
+  preset: 'balanced',
+  purpose: 'general',
+  target: { mode: 'preset', value: null },
+  items: [item('scene-best', '2026-07-18T04:00:00.000Z', { state: 'recommended' }), item('scene-alt', '2026-07-18T04:00:01.000Z', { state: 'alternative' })],
+  scenes: [{ id: 'scene', name: '场景', startAt: '2026-07-18T04:00:00.000Z', endAt: '2026-07-18T04:00:01.000Z', itemIds: ['scene-best', 'scene-alt'], coverItemId: 'scene-best', confirmation: 'pending', recommendedCount: 1, userModified: false }],
+  groups: [],
+  preferenceProfile: { sampleCount: 0, weights: { quality: 0.45, people: 0.2, composition: 0.15, aesthetics: 0.05, relevance: 0.1, diversity: 0.05 } },
+}
+applyAiSelectionUserOperation(sceneSession, { type: 'confirm-scene', sceneId: 'scene' })
+assert.deepEqual(sceneSession.items.map((entry) => entry.state), ['kept', 'rejected'])
+assert.deepEqual(sceneSession.items.map((entry) => entry.decisionSource), ['user', 'user'])
+assert.equal(sceneSession.scenes[0].confirmation, 'confirmed')
+applyAiSelectionUserOperation(sceneSession, { type: 'set-state', itemId: 'scene-best', state: 'kept' })
+assert.equal(sceneSession.preferenceProfile.sampleCount, 1)
 
 console.log('AI selection algorithm tests passed')

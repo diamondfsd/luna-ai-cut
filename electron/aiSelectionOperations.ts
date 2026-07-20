@@ -1,76 +1,103 @@
-import type { AiSelectionItem, AiSelectionSession, AiSelectionUserOperation, AiShootingEvent } from '../src/shared/types'
-import { applySelectionPlan, applyVideoSegmentSelection } from './aiSelectionAlgorithms'
+import type { AiSelectionItem, AiSelectionSession, AiSelectionUserOperation } from '../src/shared/types'
+import { applySelectionPlan, applyVideoSegmentSelection, normalizeSelectionTarget } from './aiSelectionAlgorithms.ts'
 
-export type AiSelectionSnapshot = Pick<AiSelectionSession, 'mode' | 'purpose' | 'workflow' | 'items' | 'events' | 'similarityGroups'>
+export type AiSelectionSnapshot = Pick<AiSelectionSession, 'preset' | 'purpose' | 'target' | 'items' | 'scenes' | 'groups' | 'preferenceProfile'>
 
 export function createAiSelectionSnapshot(session: AiSelectionSnapshot): AiSelectionSnapshot {
-  return structuredClone({ mode: session.mode, purpose: session.purpose, workflow: session.workflow, items: session.items, events: session.events, similarityGroups: session.similarityGroups })
+  return structuredClone({
+    preset: session.preset,
+    purpose: session.purpose,
+    target: session.target,
+    items: session.items,
+    scenes: session.scenes,
+    groups: session.groups,
+    preferenceProfile: session.preferenceProfile,
+  })
+}
+
+function requireItem(items: AiSelectionItem[], id: string): AiSelectionItem {
+  const item = items.find((candidate) => candidate.id === id)
+  if (!item) throw new Error('素材不存在')
+  return item
+}
+
+function acceptRecommendations(items: AiSelectionItem[]): void {
+  for (const item of items) {
+    if (item.decisionSource === 'user') continue
+    if (item.state === 'recommended') { item.state = 'kept'; item.decisionSource = 'user' }
+    else if (item.state === 'alternative') { item.state = 'rejected'; item.decisionSource = 'user' }
+  }
+}
+
+function learnPreference(session: AiSelectionSnapshot, item: AiSelectionItem, kept: boolean): void {
+  const direction = kept ? 1 : -1
+  const keys = Object.keys(session.preferenceProfile.weights) as Array<keyof typeof session.preferenceProfile.weights>
+  for (const key of keys) {
+    const signal = item.scores[key].normalized - 0.5
+    session.preferenceProfile.weights[key] = Math.max(0.02, session.preferenceProfile.weights[key] + direction * signal * 0.025)
+  }
+  const total = keys.reduce((sum, key) => sum + session.preferenceProfile.weights[key], 0) || 1
+  keys.forEach((key) => { session.preferenceProfile.weights[key] /= total })
+  session.preferenceProfile.sampleCount += 1
 }
 
 export function applyAiSelectionUserOperation(session: AiSelectionSnapshot, operation: AiSelectionUserOperation): void {
-  if (operation.type === 'set-density') {
-    session.mode = operation.mode
-    applySelectionPlan(session.items, session.similarityGroups, session.mode, session.purpose, session.workflow)
-  } else if (operation.type === 'set-purpose') {
+  if (operation.type === 'set-preset') {
+    session.preset = operation.preset
+    applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
+    return
+  }
+  if (operation.type === 'set-purpose') {
     session.purpose = operation.purpose
-    applySelectionPlan(session.items, session.similarityGroups, session.mode, session.purpose, session.workflow)
-  } else if (operation.type === 'set-workflow') {
-    session.workflow = operation.workflow
-    applySelectionPlan(session.items, session.similarityGroups, session.mode, session.purpose, session.workflow)
-  } else if (operation.type === 'set-selected') {
-    const item = session.items.find((candidate) => candidate.id === operation.itemId)
-    if (!item) throw new Error('素材不存在')
-    item.selected = operation.selected
-    item.selectionSource = 'user'
-    if (!operation.selected) item.videoSegments.forEach((segment) => { segment.selected = false })
-  } else if (operation.type === 'set-video-segment') {
-    const item = session.items.find((candidate) => candidate.id === operation.itemId)
-    if (!item) throw new Error('视频片段不存在')
-    applyVideoSegmentSelection(item, operation.segmentId, operation.selected)
-  } else if (operation.type === 'set-representative') {
-    const group = session.similarityGroups.find((candidate) => candidate.id === operation.groupId)
+    applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
+    return
+  }
+  if (operation.type === 'set-target') {
+    session.target = normalizeSelectionTarget(operation.target)
+    applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
+    return
+  }
+  if (operation.type === 'set-state') {
+    const item = requireItem(session.items, operation.itemId)
+    item.state = operation.state
+    item.decisionSource = 'user'
+    if (operation.state === 'kept' || operation.state === 'rejected') learnPreference(session, item, operation.state === 'kept')
+    if (item.kind === 'video' && operation.state === 'rejected') {
+      item.videoSegments.forEach((segment) => { segment.state = 'rejected'; segment.decisionSource = 'user' })
+    }
+    return
+  }
+  if (operation.type === 'set-video-segment-state') {
+    applyVideoSegmentSelection(requireItem(session.items, operation.itemId), operation.segmentId, operation.state)
+    return
+  }
+  if (operation.type === 'set-representative') {
+    const group = session.groups.find((candidate) => candidate.id === operation.groupId)
     if (!group?.itemIds.includes(operation.itemId)) throw new Error('相似组或素材不存在')
     group.representativeId = operation.itemId
+    group.confirmation = 'confirmed'
     group.userModified = true
     for (const id of group.itemIds) {
-      const item = session.items.find((candidate) => candidate.id === id)
-      if (!item) continue
-      item.selected = id === operation.itemId
-      item.selectionSource = 'user'
+      const item = requireItem(session.items, id)
+      item.state = id === operation.itemId ? 'kept' : 'rejected'
+      item.decisionSource = 'user'
     }
-  } else if (operation.type === 'rename-event') {
-    const event = session.events.find((candidate) => candidate.id === operation.eventId)
-    if (!event) throw new Error('拍摄事件不存在')
-    event.name = operation.name.trim() || event.name
-    event.userModified = true
-  } else if (operation.type === 'merge-events') {
-    const targets = session.events.filter((event) => operation.eventIds.includes(event.id))
-    if (targets.length < 2) throw new Error('请选择至少两个拍摄事件')
-    const merged = targets.sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))[0]
-    merged.itemIds = [...new Set(targets.flatMap((event) => event.itemIds))]
-    merged.endAt = targets.reduce((latest, event) => Date.parse(event.endAt) > Date.parse(latest) ? event.endAt : latest, merged.endAt)
-    merged.userModified = true
-    session.events = session.events.filter((event) => event === merged || !operation.eventIds.includes(event.id))
-    merged.itemIds.forEach((id) => { const item = session.items.find((candidate) => candidate.id === id); if (item) item.eventId = merged.id })
-  } else if (operation.type === 'split-event') {
-    const event = session.events.find((candidate) => candidate.id === operation.eventId)
-    const index = event?.itemIds.indexOf(operation.beforeItemId) ?? -1
-    if (!event || index <= 0) throw new Error('拆分位置无效')
-    const secondIds = event.itemIds.splice(index)
-    const secondItems = secondIds.map((id) => session.items.find((item) => item.id === id)).filter((item): item is AiSelectionItem => Boolean(item))
-    const second: AiShootingEvent = { id: `${event.id}_split_${Date.now()}`, name: `${event.name} 2`, startAt: secondItems[0].capturedAt, endAt: secondItems[secondItems.length - 1].capturedAt, itemIds: secondIds, userModified: true }
-    event.endAt = session.items.find((item) => item.id === event.itemIds[event.itemIds.length - 1])?.capturedAt ?? event.endAt
-    event.userModified = true
-    session.events.splice(session.events.indexOf(event) + 1, 0, second)
-    secondIds.forEach((id) => { const item = session.items.find((candidate) => candidate.id === id); if (item) item.eventId = second.id })
-  } else if (operation.type === 'remove-from-group') {
-    const group = session.similarityGroups.find((candidate) => candidate.id === operation.groupId)
+    return
+  }
+  if (operation.type === 'confirm-group') {
+    const group = session.groups.find((candidate) => candidate.id === operation.groupId)
     if (!group) throw new Error('相似组不存在')
-    group.itemIds = group.itemIds.filter((id) => id !== operation.itemId)
-    group.userModified = true
-    const item = session.items.find((candidate) => candidate.id === operation.itemId)
-    if (item) item.similarityGroupId = null
-    if (group.representativeId === operation.itemId) group.representativeId = group.itemIds[0] ?? ''
-    if (group.itemIds.length < 2) session.similarityGroups = session.similarityGroups.filter((candidate) => candidate.id !== group.id)
+    acceptRecommendations(group.itemIds.map((id) => requireItem(session.items, id)))
+    group.confirmation = 'confirmed'
+    return
+  }
+  const scene = session.scenes.find((candidate) => candidate.id === operation.sceneId)
+  if (!scene) throw new Error('场景不存在')
+  if (operation.type === 'confirm-scene') {
+    acceptRecommendations(scene.itemIds.map((id) => requireItem(session.items, id)))
+    scene.confirmation = 'confirmed'
+    session.groups.filter((group) => group.sceneId === scene.id).forEach((group) => { group.confirmation = 'confirmed' })
+  } else if (operation.type === 'reopen-scene') {
+    scene.confirmation = 'reopened'
   }
 }

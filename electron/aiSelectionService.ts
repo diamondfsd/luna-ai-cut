@@ -11,19 +11,14 @@ import type {
   AiSelectionUserOperation,
   WorkspaceProject,
 } from '../src/shared/types'
-import { applySelectionPlan, buildShootingEvents, buildSimilarityGroups } from './aiSelectionAlgorithms'
+import { applySelectionPlan, buildShootingEvents, buildSimilarityGroups, normalizeSelectionTarget } from './aiSelectionAlgorithms'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
-import { normalizeAiSelectionItem } from './aiSelectionMigration'
-import { analyzePersonEvidence } from './aiSelectionPerson'
-import { analyzeContentTags, CONTENT_TAG_VERSION } from './aiSelectionSemantic'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
-import { analyzeVideoStory } from './aiSelectionVideo'
+import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
 import { getSettings } from './settingsService'
-import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
-import { refreshBasicSemanticTags } from './aiSelectionTags'
 import { createWorkspaceProject } from './workspaceProjectService'
 
-const ANALYSIS_VERSION = 'selection-redesign-4'
+const ANALYSIS_VERSION = 'selection-scenes-v1'
 const ROOT_DIR = 'ai-selection'
 
 interface StoredSession extends AiSelectionSession {
@@ -52,24 +47,22 @@ function sessionPath(id: string): string {
   return path.join(rootDir(), 'sessions', `${id}.json`)
 }
 
-function itemCachePath(id: string, mode: AiSelectionSession['mode']): string {
+function itemCachePath(id: string, preset: AiSelectionSession['preset']): string {
   if (!/^media_[a-f0-9]+$/.test(id)) throw new Error('素材缓存标识无效')
-  return path.join(rootDir(), 'items', id, `${ANALYSIS_VERSION}-${mode}.json`)
+  return path.join(rootDir(), 'items', id, `${ANALYSIS_VERSION}-${preset}.json`)
 }
 
-async function readCachedItem(id: string, mode: AiSelectionSession['mode']): Promise<AiSelectionItem | null> {
+async function readCachedItem(id: string, preset: AiSelectionSession['preset']): Promise<AiSelectionItem | null> {
   try {
-    const item = JSON.parse(await fs.readFile(itemCachePath(id, mode), 'utf8')) as AiSelectionItem
-    normalizeAiSelectionItem(item)
-    return item
+    return JSON.parse(await fs.readFile(itemCachePath(id, preset), 'utf8')) as AiSelectionItem
   } catch {
     return null
   }
 }
 
-async function writeCachedItem(item: AiSelectionItem, mode: AiSelectionSession['mode']): Promise<void> {
+async function writeCachedItem(item: AiSelectionItem, preset: AiSelectionSession['preset']): Promise<void> {
   if (item.error) return
-  const destination = itemCachePath(item.id, mode)
+  const destination = itemCachePath(item.id, preset)
   await fs.mkdir(path.dirname(destination), { recursive: true })
   const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`
   try {
@@ -87,11 +80,16 @@ function publicSession(session: StoredSession): AiSelectionSession {
 }
 
 function refreshCounts(session: StoredSession): void {
+  const attention = (item: AiSelectionItem): boolean => item.flags.lowQuality || item.flags.closedEyes || item.flags.analysisFailed
   session.counts = {
     total: session.counts.total,
     completed: session.items.filter((item) => item.analysisState !== 'pending').length,
     failed: session.items.filter((item) => Boolean(item.error)).length,
-    selected: session.items.filter((item) => item.selected).length,
+    recommended: session.items.filter((item) => item.state === 'recommended').length,
+    attention: session.items.filter(attention).length,
+    kept: session.items.filter((item) => item.state === 'kept').length,
+    rejected: session.items.filter((item) => item.state === 'rejected').length,
+    undecided: session.items.filter((item) => item.state === 'undecided').length,
   }
 }
 
@@ -122,27 +120,10 @@ async function ensureLoaded(): Promise<void> {
     if (!entry.isFile() || !entry.name.endsWith('.json')) continue
     try {
       const parsed = JSON.parse(await fs.readFile(path.join(directory, entry.name), 'utf8')) as StoredSession
-      if (parsed.schemaVersion !== 1 || !parsed.id) continue
+      if (parsed.schemaVersion !== 1 || parsed.analysisVersion !== ANALYSIS_VERSION || !parsed.id) continue
       parsed.undoStack ??= []
       parsed.redoStack ??= []
-      parsed.purpose ??= 'general'
-      parsed.workflow ??= 'assist'
-      parsed.undoStack.forEach((snapshot) => { snapshot.mode ??= parsed.mode; snapshot.purpose ??= parsed.purpose; snapshot.workflow ??= parsed.workflow })
-      parsed.redoStack.forEach((snapshot) => { snapshot.mode ??= parsed.mode; snapshot.purpose ??= parsed.purpose; snapshot.workflow ??= parsed.workflow })
-      parsed.items.forEach((item) => {
-        normalizeAiSelectionItem(item)
-      })
-      parsed.similarityGroups.forEach((group) => {
-        group.reason ??= group.kind === 'exact' ? '完全相同的文件' : '画面相似'
-        group.confidence ??= group.kind === 'exact' ? 1 : 0.7
-      })
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
-      if (parsed.analysisVersion !== ANALYSIS_VERSION && parsed.items.some((item) => item.analysisState === 'ready')) {
-        parsed.analysisVersion = ANALYSIS_VERSION
-        rebuildSelectionResult(parsed)
-        refreshCounts(parsed)
-        await persist(parsed)
-      }
       refreshCounts(parsed)
       sessions.set(parsed.id, parsed)
     } catch {
@@ -178,19 +159,29 @@ function abortLike(error: unknown): boolean {
 }
 
 function rebuildSelectionResult(session: StoredSession): void {
-  const generatedEvents = buildShootingEvents(session.items)
-  const existingModifiedEvents = session.events.filter((event) => event.userModified)
-  session.events = existingModifiedEvents.length > 0 ? existingModifiedEvents : generatedEvents
-  const eventByItem = new Map(session.events.flatMap((event) => event.itemIds.map((id) => [id, event.id] as const)))
-  session.items.forEach((item) => { item.eventId = eventByItem.get(item.id) ?? null })
-  const generatedGroups = buildSimilarityGroups(session.items, session.events)
-  const modifiedGroups = session.similarityGroups.filter((group) => group.userModified)
+  const generatedScenes = buildShootingEvents(session.items)
+  const existingModifiedScenes = session.scenes.filter((scene) => scene.userModified || scene.confirmation !== 'pending')
+  const claimedSceneItems = new Set(existingModifiedScenes.flatMap((scene) => scene.itemIds))
+  const remainingScenes = generatedScenes.flatMap((scene) => {
+    const itemIds = scene.itemIds.filter((id) => !claimedSceneItems.has(id))
+    if (itemIds.length === 0) return []
+    return [{ ...scene, itemIds, coverItemId: itemIds.includes(scene.coverItemId) ? scene.coverItemId : itemIds[0] }]
+  })
+  session.scenes = [...existingModifiedScenes, ...remainingScenes].sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))
+  const sceneByItem = new Map(session.scenes.flatMap((scene) => scene.itemIds.map((id) => [id, scene.id] as const)))
+  session.items.forEach((item) => { item.sceneId = sceneByItem.get(item.id) ?? null })
+  const generatedGroups = buildSimilarityGroups(session.items, session.scenes)
+  const modifiedGroups = session.groups.filter((group) => group.userModified || group.confirmation !== 'pending')
   const modifiedItemIds = new Set(modifiedGroups.flatMap((group) => group.itemIds))
-  session.similarityGroups = [
+  session.groups = [
     ...modifiedGroups,
     ...generatedGroups.filter((group) => !group.itemIds.some((id) => modifiedItemIds.has(id))),
   ]
-  applySelectionPlan(session.items, session.similarityGroups, session.mode, session.purpose, session.workflow)
+  applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
+  for (const scene of session.scenes) {
+    scene.recommendedCount = scene.itemIds.filter((id) => session.items.find((item) => item.id === id)?.state === 'recommended').length
+    scene.coverItemId = scene.itemIds.find((id) => session.items.find((item) => item.id === id)?.state === 'recommended') ?? scene.coverItemId
+  }
 }
 
 async function runSession(session: StoredSession): Promise<void> {
@@ -225,10 +216,10 @@ async function runSession(session: StoredSession): Promise<void> {
       const analyzed = await Promise.all(batch.map(async (media): Promise<AiSelectionItem> => {
         try {
           const needsExactHash = (sizeCounts.get(media.bytes) ?? 0) > 1
-          const cached = await readCachedItem(media.id, session.mode)
+          const cached = await readCachedItem(media.id, session.preset)
           const reusable = cached && (!needsExactHash || Boolean(cached.exactHash)) ? cached : null
-          const item = reusable ?? await analyzeIndexedMedia(media, session.mode, needsExactHash, controller.signal)
-          if (!reusable) await writeCachedItem(item, session.mode)
+          const item = reusable ?? await analyzeIndexedMedia(media, session.preset, needsExactHash, controller.signal)
+          if (!reusable) await writeCachedItem(item, session.preset)
           return item
         } catch (error) {
           if (abortLike(error)) throw error
@@ -255,9 +246,9 @@ async function runSession(session: StoredSession): Promise<void> {
       const analyzed = await Promise.all(batch.map(async (media): Promise<AiSelectionItem> => {
         try {
           // Large videos never receive a full-file hash during the first pass.
-          const cached = await readCachedItem(media.id, session.mode)
-          const item = cached ?? await analyzeIndexedMedia(media, session.mode, false, controller.signal)
-          if (!cached) await writeCachedItem(item, session.mode)
+          const cached = await readCachedItem(media.id, session.preset)
+          const item = cached ?? await analyzeIndexedMedia(media, session.preset, false, controller.signal)
+          if (!cached) await writeCachedItem(item, session.preset)
           return item
         } catch (error) {
           if (abortLike(error)) throw error
@@ -272,7 +263,7 @@ async function runSession(session: StoredSession): Promise<void> {
     session.phase = 'ranking'
     await updateAndPersist(session)
     session.phase = 'done'
-    session.status = 'completed'
+    session.status = 'ready'
     await updateAndPersist(session)
   } catch (error) {
     if (!abortLike(error)) {
@@ -314,18 +305,23 @@ export async function startAiSelection(request: AiSelectionStartRequest): Promis
     id,
     name: request.name?.trim() || request.source.label || 'AI 选片',
     source: structuredClone(request.source),
-    mode: request.mode,
+    preset: request.preset,
     purpose: request.purpose ?? 'general',
-    workflow: request.workflow ?? 'assist',
+    target: normalizeSelectionTarget(request.target ?? { mode: 'preset', value: null }),
     status: 'queued',
     phase: 'indexing',
     revision: 1,
     createdAt: now,
     updatedAt: now,
-    counts: { total: 0, completed: 0, failed: 0, selected: 0 },
+    counts: { total: 0, completed: 0, failed: 0, recommended: 0, attention: 0, kept: 0, rejected: 0, undecided: 0 },
     items: [],
-    events: [],
-    similarityGroups: [],
+    scenes: [],
+    groups: [],
+    preferenceProfile: {
+      sampleCount: 0,
+      weights: { quality: 0.45, people: 0.2, composition: 0.15, aesthetics: 0.05, relevance: 0.1, diversity: 0.05 },
+    },
+    workspaceCreation: { status: 'idle', projectId: null, error: null },
     error: null,
     canUndo: false,
     canRedo: false,
@@ -385,12 +381,13 @@ export async function cancelAiSelection(id: string): Promise<AiSelectionSession>
 }
 
 function restoreSnapshot(session: StoredSession, snapshot: AiSelectionSnapshot): void {
-  session.mode = snapshot.mode
+  session.preset = snapshot.preset
   session.purpose = snapshot.purpose
-  session.workflow = snapshot.workflow
+  session.target = structuredClone(snapshot.target)
   session.items = structuredClone(snapshot.items)
-  session.events = structuredClone(snapshot.events)
-  session.similarityGroups = structuredClone(snapshot.similarityGroups)
+  session.scenes = structuredClone(snapshot.scenes)
+  session.groups = structuredClone(snapshot.groups)
+  session.preferenceProfile = structuredClone(snapshot.preferenceProfile)
 }
 
 export async function applyAiSelectionOperation(id: string, revision: number, operation: AiSelectionUserOperation): Promise<AiSelectionSession> {
@@ -424,102 +421,72 @@ export async function redoAiSelection(id: string): Promise<AiSelectionSession> {
 export async function analyzeAiSelectionPeople(id: string, itemIds: string[]): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
-  const targets = [...new Set(itemIds)].map((itemId) => session.items.find((item) => item.id === itemId))
-    .filter((item): item is AiSelectionItem => Boolean(item && item.analysisState === 'ready'))
-  if (targets.length === 0) throw new Error('没有可进行人物分析的素材')
-  const controller = new AbortController()
-  try {
-    for (const item of targets) {
-      item.personEvidence = await analyzePersonEvidence(item, controller.signal)
-      const evidenceTags = item.personEvidence.detected ? ['人物', '人像', '主体'] : ['无人像']
-      if (item.personEvidence.faceCount > 0) evidenceTags.push('人脸')
-      if (item.personEvidence.eyeState === 'closed') evidenceTags.push('闭眼', '建议复查')
-      if (item.personEvidence.eyeState === 'mixed') evidenceTags.push('眨眼', '建议复查')
-      if (item.personEvidence.faceVisibility === 'occluded') evidenceTags.push('面部遮挡', '建议复查')
-      item.semanticTags = [...new Set([...item.semanticTags, ...evidenceTags])]
-      await updateAndPersist(session, item.name)
-    }
-  } finally {
-    shutdownSpecializedSegmentationWorker()
-  }
-  rebuildSelectionResult(session)
-  await updateAndPersist(session)
+  await analyzePeopleOnDemand(analysisContext(session), itemIds)
   return publicSession(session)
 }
 
 export async function analyzeAiSelectionContentTags(id: string, itemIds: string[]): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
-  const requested = itemIds.length > 0 ? new Set(itemIds) : null
-  const targets = session.items.filter((item) => item.kind === 'image'
-    && item.analysisState === 'ready'
-    && (!requested || requested.has(item.id))
-    && item.contentTagVersion !== CONTENT_TAG_VERSION)
-  if (targets.length === 0) return publicSession(session)
-  const controller = new AbortController()
-  try {
-    for (const item of targets) {
-      try {
-        const nextTags = await analyzeContentTags(item, controller.signal)
-        const previousTags = new Set(item.contentTags)
-        item.semanticTags = item.semanticTags.filter((tag) => !previousTags.has(tag))
-        item.contentTags = nextTags
-        item.contentTagVersion = CONTENT_TAG_VERSION
-        item.contentTagError = null
-        item.semanticTags = [...new Set([...item.semanticTags, ...nextTags])]
-        refreshBasicSemanticTags(item)
-        await writeCachedItem(item, session.mode)
-      } catch (error) {
-        item.contentTagError = error instanceof Error ? error.message : String(error)
-      }
-      await updateAndPersist(session, item.name)
-    }
-  } finally {
-    shutdownSpecializedSegmentationWorker()
-  }
-  rebuildSelectionResult(session)
-  await updateAndPersist(session)
+  await analyzeContentOnDemand(analysisContext(session), itemIds)
   return publicSession(session)
 }
 
 export async function analyzeAiSelectionVideos(id: string, itemIds: string[]): Promise<AiSelectionSession> {
   await ensureLoaded()
   const session = requireSession(id)
-  const targets = [...new Set(itemIds)].map((itemId) => session.items.find((item) => item.id === itemId))
-    .filter((item): item is AiSelectionItem => Boolean(item && item.kind === 'video' && item.analysisState === 'ready' && item.duration && item.duration > 0.2))
-  if (targets.length === 0) throw new Error('没有可以整理的视频')
-  const controller = new AbortController()
-  for (const item of targets) {
-    if (item.videoKeyframes.length > 0) continue
-    const story = await analyzeVideoStory(item, item.duration ?? 1, path.join(rootDir(), 'video-stories'), controller.signal)
-    item.videoKeyframes = story.keyframes
-    item.videoSegments = story.segments
-    const usable = story.segments.filter((segment) => segment.status === 'usable').length
-    item.semanticTags = [...new Set([...item.semanticTags, '视频故事板', usable > 0 ? '可用片段' : '建议复查', ...story.keyframes.flatMap((frame) => frame.semanticTags)])]
-    item.recommendationReason = usable > 0 ? '已整理出可以快速查看的视频片段' : '这些视频片段建议再看一眼'
-    await writeCachedItem(item, session.mode)
-    await updateAndPersist(session, item.name)
-  }
+  await analyzeVideosOnDemand(analysisContext(session), itemIds)
   return publicSession(session)
+}
+
+function analysisContext(session: StoredSession) {
+  return {
+    session,
+    cacheRoot: rootDir(),
+    writeCachedItem: (item: AiSelectionItem) => writeCachedItem(item, session.preset),
+    update: (label?: string | null) => updateAndPersist(session, label),
+    rebuild: () => rebuildSelectionResult(session),
+  }
 }
 
 export async function createProjectFromAiSelection(id: string, name: string): Promise<WorkspaceProject> {
   await ensureLoaded()
   const session = requireSession(id)
-  const assets = session.items.filter((item) => item.selected && !item.error).map((item) => {
-    const segment = item.videoSegments.find((candidate) => candidate.selected)
-    return {
+  if (session.workspaceCreation.status === 'creating') throw new Error('工作台项目正在创建')
+  if (session.workspaceCreation.status === 'created') throw new Error('这个任务已经创建过工作台项目')
+  const assets = session.items.filter((item) => item.state === 'kept' && !item.error).flatMap((item) => {
+    const segments = item.videoSegments.filter((candidate) => candidate.state === 'kept')
+    if (item.kind === 'video' && segments.length > 0) return segments.map((segment, index) => ({
+      id: `${item.id}_${segment.id}`,
+      name: segments.length > 1 ? `${item.name} 片段 ${index + 1}` : item.name,
+      path: item.path,
+      kind: item.kind,
+      thumbnailUrl: item.videoKeyframes.find((frame) => frame.time >= segment.startTime)?.thumbnailUrl ?? item.thumbnailUrl,
+      pipeline: { trim: { startTime: segment.startTime, endTime: segment.endTime } },
+    }))
+    return [{
       id: item.id,
       name: item.name,
       path: item.path,
       kind: item.kind,
       thumbnailUrl: item.thumbnailUrl,
-      ...(segment ? { pipeline: { trim: { startTime: segment.startTime, endTime: segment.endTime } } } : {}),
-    }
+    }]
   })
   if (assets.length === 0) throw new Error('请先选择至少一个可用素材')
-  const settings = await getSettings()
-  return createWorkspaceProject(settings.downloadDir, name.trim() || session.name, assets)
+  session.workspaceCreation = { status: 'creating', projectId: null, error: null }
+  await updateAndPersist(session)
+  try {
+    const settings = await getSettings()
+    const project = await createWorkspaceProject(settings.downloadDir, name.trim() || session.name, assets)
+    session.workspaceCreation = { status: 'created', projectId: project.id, error: null }
+    session.status = 'completed'
+    await updateAndPersist(session)
+    return project
+  } catch (error) {
+    session.workspaceCreation = { status: 'failed', projectId: null, error: error instanceof Error ? error.message : String(error) }
+    await updateAndPersist(session)
+    throw error
+  }
 }
 
 export async function removeAiSelectionSession(id: string): Promise<void> {
