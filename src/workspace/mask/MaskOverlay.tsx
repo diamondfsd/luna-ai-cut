@@ -8,7 +8,8 @@ import { componentControlHandles, componentOutline, hitTestComponentControl, sho
 import { applyComponentDraft, drawMaskBrush } from './maskManualRasterization'
 import { composeMaskComponents, editableMaskComponents, gradientTargetComponent, rasterizeVectorComponent } from './maskComponentRasterization'
 import { featherMaskPreview, sampleMaskBilinear } from './maskPreviewSampling'
-import { drawMaskSelectionBoundary } from './maskSelectionBoundary'
+import { MaskBrushCursor } from './MaskBrushCursor'
+import { MaskSelectionBoundaryCanvas, type MaskSelectionBoundaryHandle } from './MaskSelectionBoundaryCanvas'
 import { applyMaskSelectionOperation, type MaskSelectionOperation } from './maskSelectionOperations'
 import { shapeBoundsFromDrag } from './maskShapeRasterization'
 import './MaskOverlay.css'
@@ -17,6 +18,7 @@ export function MaskOverlay() {
   const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const selectionBoundaryRef = useRef<MaskSelectionBoundaryHandle>(null)
   const draftRef = useRef<Uint8Array | null>(null)
   const lastPointRef = useRef<{ x: number; y: number } | null>(null)
   const replacePendingRef = useRef(true)
@@ -131,18 +133,14 @@ export function MaskOverlay() {
     if (!component || component.type === 'raster' || !shouldShowComponentControls(mask.manualTool, Boolean(componentDraftRef.current))) return
     const outline = componentOutline(component).map((point) => sourceToDisplay(point.x, point.y))
     context.save()
-    context.strokeStyle = 'rgba(0, 0, 0, 0.9)'
-    context.lineWidth = 2.5
-    context.setLineDash([5, 4])
+    context.strokeStyle = 'rgba(0, 0, 0, 0.82)'
+    context.lineWidth = 2
     context.beginPath()
     outline.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y))
     context.stroke()
     context.strokeStyle = '#ffffff'
-    context.lineWidth = 1.25
-    context.lineDashOffset = 4.5
+    context.lineWidth = 0.85
     context.stroke()
-    context.lineDashOffset = 0
-    context.setLineDash([])
     for (const handle of componentControlHandles(component)) {
       const point = sourceToDisplay(handle.x, handle.y)
       context.beginPath()
@@ -207,7 +205,8 @@ export function MaskOverlay() {
     }
     context.putImageData(image, 0, 0)
     const activeControl = componentDraftRef.current ?? mask.activeComponent
-    if (activeControl?.type === 'linear-gradient' || activeControl?.type === 'radial-gradient') drawMaskSelectionBoundary(context, feathered, displaySize.width, displaySize.height)
+    if (activeControl?.type === 'linear-gradient' || activeControl?.type === 'radial-gradient') selectionBoundaryRef.current?.show(feathered)
+    else selectionBoundaryRef.current?.clear()
     drawActiveComponentControls(context)
   }
   useEffect(() => {
@@ -489,11 +488,9 @@ export function MaskOverlay() {
           restoreCommittedMask()
         }}
       />
+      <MaskSelectionBoundaryCanvas ref={selectionBoundaryRef} width={displaySize.width} height={displaySize.height} />
       {!mask.busy && mask.manualTool === 'brush' && !mask.semanticPicking && cursorPoint && (
-        <span
-          className={`workspace-mask-brush-cursor${mask.selectionOperation === 'subtract' || temporarySubtract ? ' is-subtract' : ''}`}
-          style={{ left: cursorPoint.x, top: cursorPoint.y, width: brushCursorDiameter, height: brushCursorDiameter }}
-        />
+        <MaskBrushCursor x={cursorPoint.x} y={cursorPoint.y} diameter={brushCursorDiameter} subtract={mask.selectionOperation === 'subtract' || temporarySubtract} />
       )}
     </div>
   )
