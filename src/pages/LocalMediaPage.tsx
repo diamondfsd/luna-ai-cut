@@ -96,6 +96,7 @@ export function LocalMediaPage() {
 
       {pageActive && controller.previewFile && (
         <PreviewModal
+          lightweightPreview
           filePath={
             controller.previewFile.downloadFilePath
             ?? controller.previewFile.localPath
