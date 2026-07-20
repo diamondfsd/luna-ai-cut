@@ -66,7 +66,7 @@ function item(id, capturedAt, overrides = {}) {
     recommendationReason: null,
     state: 'undecided',
     decisionSource: 'ai',
-    flags: { lowQuality: false, duplicate: false, closedEyes: false, analysisFailed: false },
+    flags: { aiRecommended: false, lowQuality: false, duplicate: false, closedEyes: false, analysisFailed: false },
     scores: {
       quality: { raw: 80, normalized: 0.8, weight: 0.45 },
       people: { raw: null, normalized: 0, weight: 0.2 },
@@ -153,11 +153,13 @@ const selectionItems = Array.from({ length: 20 }, (_, index) => item(`selection-
 }))
 applySelectionPlan(selectionItems, [], 'balanced')
 assert.equal(selectionItems.filter((entry) => entry.state === 'recommended').length, 7)
+assert.equal(selectionItems.filter((entry) => entry.flags.aiRecommended).length, 7)
 assert.ok(selectionItems.filter((entry) => entry.state === 'recommended').every((entry) => entry.recommendationReason))
 selectionItems[0].state = 'rejected'
 selectionItems[0].decisionSource = 'user'
 applySelectionPlan(selectionItems, [], 'deep')
 assert.equal(selectionItems[0].state, 'rejected', '人工决定不能被推荐重算覆盖')
+assert.equal(typeof selectionItems[0].flags.aiRecommended, 'boolean', '人工决定与 AI 推荐身份必须独立保存')
 
 const groupedSelectionItems = [
   item('group-target-a', '2026-07-18T01:00:00.000Z'),
@@ -195,14 +197,14 @@ assert.deepEqual(video.videoSegments.map((segment) => segment.state), ['recommen
 assert.equal(video.decisionSource, 'user')
 
 const viewItems = [
-  item('group-person-a', '2026-07-18T01:00:00.000Z', { groupId: 'group-person', state: 'recommended', semanticTags: ['照片', '人物'], recommendationReason: '组内人物更清晰' }),
+  item('group-person-a', '2026-07-18T01:00:00.000Z', { groupId: 'group-person', state: 'recommended', flags: { aiRecommended: true, lowQuality: false, duplicate: false, closedEyes: false, analysisFailed: false }, semanticTags: ['照片', '人物'], recommendationReason: '组内人物更清晰' }),
   item('group-person-b', '2026-07-18T01:00:01.000Z', { groupId: 'group-person', state: 'alternative', semanticTags: ['照片', '人物'], recommendationReason: '相似组备选' }),
   item('night', '2026-07-18T02:00:00.000Z', { semanticTags: ['照片', '夜景'], recommendationReason: '独特内容' }),
 ]
 const comparedPeople = viewItems.filter((entry) => matchesResultFilter(entry, 'recommended') && matchesSelectionSearch(entry, '人物'))
-assert.equal(comparedPeople.length, 2, '相似筛选应返回真实照片数')
+assert.equal(comparedPeople.length, 1, 'AI 推荐不能混入相似组备选素材')
 assert.equal(countSimilarityGroups(comparedPeople), 1, '相似筛选应单独统计组数')
-assert.equal(viewItems.filter((entry) => matchesResultFilter(entry, 'recommended')).length, 2)
+assert.equal(viewItems.filter((entry) => matchesResultFilter(entry, 'recommended')).length, 1)
 assert.equal(viewItems.filter((entry) => matchesSelectionSearch(entry, '晚上')).length, 1)
 
 const sceneSession = {
@@ -220,5 +222,7 @@ assert.deepEqual(sceneSession.items.map((entry) => entry.decisionSource), ['user
 assert.equal(sceneSession.scenes[0].confirmation, 'confirmed')
 applyAiSelectionUserOperation(sceneSession, { type: 'set-state', itemId: 'scene-best', state: 'kept' })
 assert.equal(sceneSession.preferenceProfile.sampleCount, 1)
+applyAiSelectionUserOperation(sceneSession, { type: 'set-items-state', itemIds: ['scene-best', 'scene-alt'], state: 'kept' })
+assert.deepEqual(sceneSession.items.map((entry) => entry.state), ['kept', 'kept'])
 
 console.log('AI selection algorithm tests passed')

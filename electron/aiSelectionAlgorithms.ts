@@ -393,6 +393,7 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
   }
 
   for (const item of items) {
+    item.flags.aiRecommended = chosen.has(item.id)
     if (item.decisionSource === 'user') continue
     const group = grouped.get(item.id)
     if (item.quality?.grade === 'review' || item.error || item.flags.closedEyes) {
