@@ -29,6 +29,7 @@ export interface MediaDetails {
 
 interface MediaInspectorProps {
   filePath: string
+  proxyPreview?: boolean
   onToggleCollapse?: () => void
   /** 顶部额外内容（如水印设置） */
   header?: React.ReactNode
@@ -279,7 +280,7 @@ function MetadataSection({ section, metaMap }: { section: SectionDef; metaMap: M
 
 // ─── Component ─────────────────────────────────────────
 
-export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInspectorProps) {
+export function MediaInspector({ filePath, proxyPreview = false, onToggleCollapse, header }: MediaInspectorProps) {
   const kind = useMemo(() => mediaKindFromPath(filePath), [filePath])
 
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadata | null>(null)
@@ -292,14 +293,17 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
 
   // 获取媒体分辨率（延迟 100ms 避免与渲染 IPC 竞争主进程）
   useEffect(() => {
-    if (!filePath) return
+    if (!filePath || proxyPreview) {
+      setMediaDetails((current) => ({ ...current, width: null, height: null }))
+      return
+    }
     const timer = setTimeout(() => {
       window.luna.workspace.getMediaResolution(filePath)
         .then(({ width, height }) => setMediaDetails(prev => ({ ...prev, width, height })))
         .catch(() => {})
     }, 100)
     return () => clearTimeout(timer)
-  }, [filePath])
+  }, [filePath, proxyPreview])
 
   // 构建直方图
   useEffect(() => {
@@ -370,7 +374,7 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
             <dt>拍摄时间</dt>
             <dd>{formatCapturedAt(metaMap.get('DateTimeOriginal') ?? metaMap.get('ModifyDate') ?? null)}</dd>
           </div>
-          {(kind !== 'video' || isDownloaded) && (
+          {!proxyPreview && (kind !== 'video' || isDownloaded) && (
             <div>
               <dt>分辨率</dt>
               <dd>{mediaDetails.width && mediaDetails.height
@@ -435,10 +439,10 @@ export function MediaInspector({ filePath, onToggleCollapse, header }: MediaInsp
           <span className="eyebrow">视频参数</span>
           <dl>
             {metaMap.get('时长') && <div><dt>时长</dt><dd>{metaMap.get('时长')}</dd></div>}
-            {metaMap.get('分辨率') && <div><dt>分辨率</dt><dd>{metaMap.get('分辨率')}</dd></div>}
-            {metaMap.get('帧率') && <div><dt>帧率</dt><dd>{metaMap.get('帧率')}</dd></div>}
-            {metaMap.get('码率') && <div><dt>码率</dt><dd>{metaMap.get('码率')}</dd></div>}
-            {metaMap.get('视频编码') && <div><dt>编码</dt><dd>{metaMap.get('视频编码')}</dd></div>}
+            {!proxyPreview && metaMap.get('分辨率') && <div><dt>分辨率</dt><dd>{metaMap.get('分辨率')}</dd></div>}
+            {!proxyPreview && metaMap.get('帧率') && <div><dt>帧率</dt><dd>{metaMap.get('帧率')}</dd></div>}
+            {!proxyPreview && metaMap.get('码率') && <div><dt>码率</dt><dd>{metaMap.get('码率')}</dd></div>}
+            {!proxyPreview && metaMap.get('视频编码') && <div><dt>编码</dt><dd>{metaMap.get('视频编码')}</dd></div>}
           </dl>
         </section>
       )}
