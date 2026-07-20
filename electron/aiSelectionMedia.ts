@@ -191,6 +191,7 @@ function averageQuality(qualities: AiMediaQualityMetrics[]): AiMediaQualityMetri
 
 function selectionFlags(quality: AiMediaQualityMetrics | null, error: unknown): AiSelectionItem['flags'] {
   return {
+    aiRecommended: false,
     lowQuality: quality?.grade === 'review',
     duplicate: false,
     closedEyes: false,

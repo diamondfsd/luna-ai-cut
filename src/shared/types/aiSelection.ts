@@ -66,6 +66,7 @@ export interface AiVideoSegment {
 }
 
 export interface AiSelectionFlags {
+  aiRecommended: boolean
   lowQuality: boolean
   duplicate: boolean
   closedEyes: boolean
@@ -214,6 +215,7 @@ export type AiSelectionUserOperation =
   | { type: 'set-purpose'; purpose: AiSelectionPurpose }
   | { type: 'set-target'; target: AiSelectionTarget }
   | { type: 'set-state'; itemId: string; state: AiSelectionState }
+  | { type: 'set-items-state'; itemIds: string[]; state: AiSelectionState }
   | { type: 'set-video-segment-state'; itemId: string; segmentId: string; state: AiSelectionState }
   | { type: 'set-representative'; groupId: string; itemId: string }
   | { type: 'confirm-group'; groupId: string }

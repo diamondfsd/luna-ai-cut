@@ -6,8 +6,14 @@ export function isReviewItem(item: AiSelectionItem): boolean {
   return item.flags.lowQuality || item.flags.closedEyes || item.flags.analysisFailed
 }
 
+export function isAiRecommended(item: AiSelectionItem): boolean {
+  if (typeof item.flags.aiRecommended === 'boolean') return item.flags.aiRecommended
+  return item.state === 'recommended'
+    || (item.state === 'kept' && Boolean(item.recommendationReason) && item.recommendationReason !== '相似组备选')
+}
+
 export function matchesResultFilter(item: AiSelectionItem, filter: AiSelectionResultFilter): boolean {
-  if (filter === 'recommended') return item.state === 'recommended' || item.state === 'alternative'
+  if (filter === 'recommended') return isAiRecommended(item)
   if (filter === 'attention') return isReviewItem(item) || item.state === 'undecided'
   if (filter === 'kept') return item.state === 'kept'
   if (filter === 'rejected') return item.state === 'rejected'

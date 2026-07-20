@@ -59,11 +59,24 @@ export function applyAiSelectionUserOperation(session: AiSelectionSnapshot, oper
   }
   if (operation.type === 'set-state') {
     const item = requireItem(session.items, operation.itemId)
+    item.flags.aiRecommended ??= item.state === 'recommended'
     item.state = operation.state
     item.decisionSource = 'user'
     if (operation.state === 'kept' || operation.state === 'rejected') learnPreference(session, item, operation.state === 'kept')
     if (item.kind === 'video' && operation.state === 'rejected') {
       item.videoSegments.forEach((segment) => { segment.state = 'rejected'; segment.decisionSource = 'user' })
+    }
+    return
+  }
+  if (operation.type === 'set-items-state') {
+    const targets = [...new Set(operation.itemIds)].map((id) => requireItem(session.items, id))
+    for (const item of targets) {
+      item.flags.aiRecommended ??= item.state === 'recommended'
+      item.state = operation.state
+      item.decisionSource = 'user'
+      if (item.kind === 'video' && operation.state === 'rejected') {
+        item.videoSegments.forEach((segment) => { segment.state = 'rejected'; segment.decisionSource = 'user' })
+      }
     }
     return
   }

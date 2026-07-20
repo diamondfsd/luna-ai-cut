@@ -6,7 +6,8 @@ export function refreshAiSelectionCounts(session: AiSelectionSession): void {
     total: session.counts.total,
     completed: session.items.filter((item) => item.analysisState !== 'pending').length,
     failed: session.items.filter((item) => Boolean(item.error)).length,
-    recommended: session.items.filter((item) => item.state === 'recommended').length,
+    recommended: session.items.filter((item) => item.flags.aiRecommended
+      ?? (item.state === 'recommended' || (item.state === 'kept' && Boolean(item.recommendationReason) && item.recommendationReason !== '相似组备选'))).length,
     attention: session.items.filter(attention).length,
     kept: session.items.filter((item) => item.state === 'kept').length,
     rejected: session.items.filter((item) => item.state === 'rejected').length,
