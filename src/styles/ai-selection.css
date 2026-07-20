@@ -138,12 +138,11 @@
 .ai-selection-survey-actions > span { margin-left: auto; display: flex; align-items: center; gap: 3px; color: var(--blue, #06c); font-size: 10px; }
 .ai-selection-card { min-width: 0; border: 2px solid transparent; border-radius: 9px; padding: 3px; background: var(--surface, #fff); cursor: pointer; }
 .ai-selection-card:hover { border-color: #c9cdd3; }
-.ai-selection-card.active { border-color: var(--blue, #06c); box-shadow: 0 0 0 1px var(--blue, #06c); }
 .ai-selection-card.pending { opacity: .72; }
 .ai-selection-thumb { position: relative; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 7px; background: #e5e7ea; }
 .ai-selection-thumb img, .ai-selection-detail-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ai-selection-check.ui-icon-btn { position: absolute; top: 7px; right: 7px; flex: 0 0 28px; width: 28px; min-width: 28px; height: 28px; min-height: 28px; border-radius: 50%; background: rgba(255,255,255,.92); }
-.ai-selection-check.ui-icon-btn.selected { border-color: var(--blue, #06c); background: var(--blue, #06c); color: white; }
+.ai-selection-check.ui-icon-btn { position: absolute; top: 7px; right: 7px; flex: 0 0 28px; width: 28px; min-width: 28px; height: 28px; min-height: 28px; border: 2px solid var(--blue, #06c); border-radius: 50%; background: transparent; color: var(--blue, #06c); }
+.ai-selection-check.ui-icon-btn:hover, .ai-selection-check.ui-icon-btn.selected { border-color: var(--blue, #06c); background: transparent; color: var(--blue, #06c); }
 .ai-selection-card.state-rejected { opacity: .55; }
 .ai-selection-card.state-kept { border-color: color-mix(in srgb, var(--blue, #06c) 48%, transparent); }
 .ai-selection-attention-badge { position: absolute; top: 8px; left: 8px; width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,.92); color: #a46000; display: grid; place-items: center; }

@@ -2,7 +2,7 @@ export type AiSelectionPreset = 'quick' | 'balanced' | 'deep'
 export const AI_SELECTION_CONTENT_TAG_VERSION = 'yolo26s-seg+coco80_segformer-b0+ade20k_v2'
 export type AiSelectionPurpose = 'general' | 'people' | 'travel' | 'editing'
 export type AiSelectionStatus = 'queued' | 'indexing' | 'analyzing' | 'paused' | 'interrupted' | 'ready' | 'completed' | 'failed' | 'canceled'
-export type AiSelectionPhase = 'indexing' | 'metadata' | 'photos' | 'grouping' | 'ranking' | 'videos' | 'done'
+export type AiSelectionPhase = 'indexing' | 'metadata' | 'photos' | 'content' | 'people' | 'grouping' | 'ranking' | 'videos' | 'done'
 export type AiMediaQualityGrade = 'excellent' | 'good' | 'fair' | 'review'
 export type AiSelectionState = 'recommended' | 'alternative' | 'kept' | 'rejected' | 'undecided'
 export type AiSelectionDecisionSource = 'ai' | 'user'
@@ -83,7 +83,6 @@ export interface AiSelectionScores {
   quality: AiSelectionScoreDimension
   people: AiSelectionScoreDimension
   composition: AiSelectionScoreDimension
-  aesthetics: AiSelectionScoreDimension
   relevance: AiSelectionScoreDimension
   diversity: AiSelectionScoreDimension
   total: number

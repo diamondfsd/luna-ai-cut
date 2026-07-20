@@ -203,12 +203,11 @@ function selectionScores(quality: AiMediaQualityMetrics | null): AiSelectionScor
   const normalized = (quality?.score ?? 0) / 100
   const dimension = (raw: number | null, value: number, weight: number) => ({ raw, normalized: value, weight })
   return {
-    quality: dimension(quality?.score ?? null, normalized, 0.45),
-    people: dimension(null, 0, 0.2),
-    composition: dimension(null, 0, 0.15),
-    aesthetics: dimension(null, 0, 0.05),
-    relevance: dimension(null, 0, 0.1),
-    diversity: dimension(null, 0, 0.05),
+    quality: dimension(quality?.score ?? null, normalized, 0.4),
+    people: dimension(null, 0.5, 0.2),
+    composition: dimension(null, 0.5, 0.1),
+    relevance: dimension(null, 0.5, 0.2),
+    diversity: dimension(null, 0.5, 0.1),
     total: quality?.score ?? 0,
   }
 }

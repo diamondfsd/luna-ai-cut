@@ -15,6 +15,8 @@ type SelectionStage = 'overview' | 'recommended' | 'scenes' | 'compare' | 'revie
 
 function statusLabel(status: string, phase?: string): string {
   if (status === 'analyzing' && phase === 'photos') return '正在整理照片'
+  if (status === 'analyzing' && phase === 'content') return '正在理解画面内容'
+  if (status === 'analyzing' && phase === 'people') return '正在检查人物与闭眼'
   if (status === 'analyzing' && phase === 'videos') return '视频整理中'
   return ({ queued: '等待整理', indexing: '正在添加素材', analyzing: '正在整理素材', paused: '已暂停', interrupted: '可以继续', ready: '可以开始选片', completed: '已创建项目', failed: '整理失败', canceled: '已取消' } as Record<string, string>)[status] ?? status
 }
@@ -66,7 +68,7 @@ export function AiSelectionPage() {
     if (stage === 'review') return searchedItems.filter((item) => matchesResultFilter(item, filter))
     return searchedItems
   }, [activeGroup?.itemIds, activeScene?.itemIds, filter, groupsByItem, searchedItems, stage])
-  const focused = itemsById.get(focusedId) ?? visibleItems[0] ?? null
+  const focused = itemsById.get(focusedId) ?? null
   const running = session?.status === 'indexing' || session?.status === 'analyzing' || session?.status === 'queued'
   const percent = session?.counts.total ? Math.round(session.counts.completed / session.counts.total * 100) : 0
   const countSceneStacks = (itemIds: string[]): number => new Set(itemIds.map((id) => groupsByItem.get(id)?.id ?? id)).size
@@ -119,29 +121,9 @@ export function AiSelectionPage() {
     setFocusedId('')
   }
 
-  function selectAdjacent(direction: -1 | 1): void {
-    if (visibleItems.length === 0) return
-    const index = Math.max(0, visibleItems.findIndex((item) => item.id === focused?.id))
-    setFocusedId(visibleItems[(index + direction + visibleItems.length) % visibleItems.length].id)
-  }
-
   useEffect(() => {
     setStage('overview'); setSearch(''); setFocusedId(''); setSceneId(''); setGroupId('')
   }, [session?.id])
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      const target = event.target as HTMLElement | null
-      if (target?.matches('input, textarea, [contenteditable="true"]') || !focused) return
-      if (event.key === 'ArrowLeft') { event.preventDefault(); selectAdjacent(-1) }
-      else if (event.key === 'ArrowRight') { event.preventDefault(); selectAdjacent(1) }
-      else if (event.key.toLowerCase() === 'p') { event.preventDefault(); setItemState(focused, 'kept') }
-      else if (event.key.toLowerCase() === 'x') { event.preventDefault(); setItemState(focused, 'rejected') }
-      else if (event.key.toLowerCase() === 'a') { event.preventDefault(); setItemState(focused, 'alternative') }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  })
 
   if (!session) return <section className="ai-selection-page"><AiSelectionTaskPicker sessions={sessions} loading={loadingSessions} busy={busy} onOpenTask={(id) => void selectSession(id)} onCreateTask={startTask} onRemoveTask={removeSession} /></section>
 
@@ -206,7 +188,7 @@ export function AiSelectionPage() {
       {stage === 'scenes' && activeScene && <header className="ai-selection-view-heading"><div><h2>{formatShootingPeriod(activeScene.startAt, activeScene.endAt)}</h2><span>{visibleItems.length} 组素材</span></div><div className="ai-selection-view-actions">{activeScene.confirmation === 'confirmed' && <Button variant="ghost" size="compact" onClick={() => void controls.apply({ type: 'reopen-scene', sceneId: activeScene.id })}>重新检查</Button>}{selectAllAction}</div></header>}
       {stage === 'compare' && activeGroup && <header className="ai-selection-view-heading"><div><h2>相似素材比较</h2><span>{activeGroup.itemIds.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'review' && <header className="ai-selection-view-heading"><div><h2>{filters.find((entry) => entry.id === filter)?.label}</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
-      {visibleItems.length === 0 ? <div className="ai-selection-no-result">{running ? '正在生成结果…' : stage === 'compare' ? '没有需要比较的相似组' : '没有素材'}</div> : <div className={`ai-selection-grid${stage === 'compare' ? ' compare' : ''}`}>{visibleItems.map((item) => <article key={item.id} className={`ai-selection-card state-${item.state}${focused?.id === item.id ? ' active' : ''}${item.analysisState === 'pending' ? ' pending' : ''}`} onClick={() => setFocusedId(item.id)} onDoubleClick={() => openPreview(item)} title={`${item.name} · ${stateLabel(item.state)}`}>
+      {visibleItems.length === 0 ? <div className="ai-selection-no-result">{running ? '正在生成结果…' : stage === 'compare' ? '没有需要比较的相似组' : '没有素材'}</div> : <div className={`ai-selection-grid${stage === 'compare' ? ' compare' : ''}`}>{visibleItems.map((item) => <article key={item.id} className={`ai-selection-card state-${item.state}${item.analysisState === 'pending' ? ' pending' : ''}`} onClick={() => { setFocusedId(item.id); openPreview(item) }} title={`${item.name} · ${stateLabel(item.state)}`}>
         <div className="ai-selection-thumb"><AiMediaThumb item={item} /><IconButton variant="outline" size="mini" className={`ai-selection-check${item.state === 'kept' ? ' selected' : ''}`} icon={item.state === 'kept' ? <Check size={13} /> : null} onClick={(event) => { event.stopPropagation(); setItemState(item, item.state === 'kept' ? 'undecided' : 'kept') }} aria-label={item.state === 'kept' ? '取消保留' : '保留素材'} />
           {stage === 'scenes' && (groupsByItem.get(item.id)?.itemIds.length ?? 0) > 1 && <span className="ai-selection-group-badge"><Layers3 size={11} />{groupsByItem.get(item.id)?.itemIds.length}</span>}{item.kind === 'video' && <span className="ai-selection-video-badge"><Film size={12} />视频</span>}{isAiRecommended(item) && <span className="ai-selection-recommendation-badge"><Sparkles size={12} />AI 推荐</span>}{isReviewItem(item) && <span className="ai-selection-attention-badge"><CircleAlert size={13} /></span>}
         </div>
