@@ -92,13 +92,14 @@
 }
 
 .workspace-creative-preview--pixel-stretch {
-  background: repeating-linear-gradient(90deg, #d67b5b 0 7%, #313c56 7% 13%, #d1a656 13% 17%, #2d6772 17% 25%);
+  background: #2b313a;
 }
 
 .workspace-creative-preview--color::before,
 .workspace-creative-preview--triple::before,
 .workspace-creative-preview--triple::after,
-.workspace-creative-preview--pixel-stretch::before {
+.workspace-creative-preview--pixel-stretch::before,
+.workspace-creative-preview--pixel-stretch::after {
   content: '';
   position: absolute;
   left: 0;
@@ -125,11 +126,29 @@
 }
 
 .workspace-creative-preview--pixel-stretch::before {
-  inset: 12% 37% 0;
-  border-radius: 45% 45% 0 0;
-  background: #e7d3bd;
-  box-shadow: 0 -18px 0 -7px #f0d2b5;
+  inset: 30% auto 0 19%;
+  width: 24%;
+  border-radius: 48% 48% 10% 10%;
+  background: #d98b68;
+  box-shadow:
+    0 -30px 0 -12px #edc38f,
+    0 0 0 1px rgba(255, 255, 255, 0.16);
 }
+
+.workspace-creative-preview--pixel-stretch::after {
+  left: 37%;
+  right: 7%;
+  top: 34%;
+  height: 7px;
+  background: #d98b68;
+  box-shadow:
+    0 12px 0 #e2b866,
+    0 24px 0 #7189a8,
+    0 36px 0 #426b83,
+    0 48px 0 #b66f67;
+}
+
+.workspace-creative-preview--pixel-stretch > svg { display: none; }
 
 .workspace-creative-preview > svg {
   position: relative;

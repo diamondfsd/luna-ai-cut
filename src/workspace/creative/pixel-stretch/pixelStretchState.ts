@@ -8,7 +8,7 @@ export const DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION = 50
 export const DEFAULT_PIXEL_STRETCH_RANGE_START = 28
 export const DEFAULT_PIXEL_STRETCH_RANGE_END = 72
 export const DEFAULT_PIXEL_STRETCH_CONTROL_OFFSET = 0
-export const DEFAULT_PIXEL_STRETCH_FLOW_SHAPE: PixelStretchFlowShape = 'cape'
+export const DEFAULT_PIXEL_STRETCH_FLOW_SHAPE: PixelStretchFlowShape = 'straight'
 export const DEFAULT_PIXEL_STRETCH_FLOW_LENGTH = 95
 export const DEFAULT_PIXEL_STRETCH_FLOW_CURVE = 55
 export const DEFAULT_PIXEL_STRETCH_FLOW_WIDTH = 108
@@ -33,7 +33,7 @@ export function normalizePixelStretchOffset(value: unknown): number {
 }
 
 export function normalizePixelStretchFlowShape(value: unknown): PixelStretchFlowShape {
-  return value === 'arc' || value === 'cape' || value === 's-curve' || value === 'custom'
+  return value === 'straight' || value === 'arc' || value === 'cape' || value === 's-curve' || value === 'custom'
     ? value
     : DEFAULT_PIXEL_STRETCH_FLOW_SHAPE
 }
