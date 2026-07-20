@@ -7,6 +7,8 @@ const SUBJECT_SIZE: usize = 1024;
 const ULTRAFACE_WIDTH: usize = 320;
 const ULTRAFACE_HEIGHT: usize = 240;
 const EYE_SIZE: usize = 32;
+const DINOV2_SIZE: usize = 224;
+const DINOV2_DIMENSION: usize = 384;
 
 pub fn preprocess_yolo(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(rgb, YOLO_SIZE, None)
@@ -20,6 +22,14 @@ fn preprocess_segformer(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(
         rgb,
         SEGFORMER_SIZE,
+        Some(([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])),
+    )
+}
+
+fn preprocess_dinov2(rgb: &[u8]) -> Result<Vec<f32>, String> {
+    preprocess(
+        rgb,
+        DINOV2_SIZE,
         Some(([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])),
     )
 }
@@ -277,6 +287,7 @@ pub enum SpecializedSession {
     Rmbg14(Session),
     UltraFace(Session),
     EyeState(Session),
+    Dinov2Small(Session),
 }
 
 impl SpecializedSession {
@@ -288,6 +299,7 @@ impl SpecializedSession {
             "rmbg-1.4" => Ok(Self::Rmbg14(session(model_path)?)),
             "ultraface" => Ok(Self::UltraFace(session(model_path)?)),
             "eye-state" => Ok(Self::EyeState(session(model_path)?)),
+            "dinov2-small" => Ok(Self::Dinov2Small(session(model_path)?)),
             _ => Err("不支持的专用分割模型".to_string()),
         }
     }
@@ -334,8 +346,45 @@ impl SpecializedSession {
                 output_size,
             ),
             Self::EyeState(session) => classify_eye_with_session(session, rgb, output_size),
+            Self::Dinov2Small(session) => extract_dinov2_with_session(session, rgb, output_size),
         }
     }
+}
+
+fn extract_dinov2_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    if output_size != DINOV2_DIMENSION {
+        return Err(format!("DINOv2 特征维度不兼容: {output_size}"));
+    }
+    let input = preprocess_dinov2(rgb)?;
+    let tensor = Tensor::from_array(([1usize, 3, DINOV2_SIZE, DINOV2_SIZE], input))
+        .map_err(|error| format!("创建 DINOv2 输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("视觉特征分析失败: {error}"))?;
+    let values = outputs
+        .iter()
+        .find_map(|(_, output)| {
+            let (shape, values) = output.try_extract_tensor::<f32>().ok()?;
+            (shape.len() == 3
+                && shape[0] == 1
+                && shape[1] > 0
+                && shape[2] == DINOV2_DIMENSION as i64)
+                .then(|| values[..DINOV2_DIMENSION].to_vec())
+        })
+        .ok_or_else(|| "DINOv2 缺少图像特征输出".to_string())?;
+    let length = values.iter().map(|value| value * value).sum::<f32>().sqrt();
+    if !length.is_finite() || length <= f32::EPSILON {
+        return Err("DINOv2 返回了无效图像特征".to_string());
+    }
+    let mut bytes = Vec::with_capacity(DINOV2_DIMENSION * std::mem::size_of::<f32>());
+    for value in values {
+        bytes.extend_from_slice(&(value / length).to_le_bytes());
+    }
+    Ok(bytes)
 }
 
 #[derive(Clone, Copy)]
@@ -720,5 +769,13 @@ mod tests {
         let mask = ultraface_mask(&boxes, &scores, 640, 640, 0, 0, 20).unwrap();
         assert!(mask.iter().any(|value| *value == 255));
         assert_eq!(mask[15 * 20 + 15], 0);
+    }
+
+    #[test]
+    fn dinov2_preprocessing_uses_expected_shape() {
+        let rgb = vec![127u8; DINOV2_SIZE * DINOV2_SIZE * 3];
+        let input = preprocess_dinov2(&rgb).unwrap();
+        assert_eq!(input.len(), 3 * DINOV2_SIZE * DINOV2_SIZE);
+        assert!(input.iter().all(|value| value.is_finite()));
     }
 }

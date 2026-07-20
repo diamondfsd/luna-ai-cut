@@ -12,13 +12,15 @@ import type {
   WorkspaceProject,
 } from '../src/shared/types'
 import { applySelectionPlan, buildShootingEvents, buildSimilarityGroups, normalizeSelectionTarget } from './aiSelectionAlgorithms'
+import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
+import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
 
-const ANALYSIS_VERSION = 'selection-scenes-v1'
+const ANALYSIS_VERSION = 'selection-dinov2-v2'
 const ROOT_DIR = 'ai-selection'
 
 interface StoredSession extends AiSelectionSession {
@@ -76,27 +78,17 @@ async function writeCachedItem(item: AiSelectionItem, preset: AiSelectionSession
 
 function publicSession(session: StoredSession): AiSelectionSession {
   const { undoStack, redoStack, ...value } = session
-  return structuredClone({ ...value, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 })
-}
-
-function refreshCounts(session: StoredSession): void {
-  const attention = (item: AiSelectionItem): boolean => item.flags.lowQuality || item.flags.closedEyes || item.flags.analysisFailed
-  session.counts = {
-    total: session.counts.total,
-    completed: session.items.filter((item) => item.analysisState !== 'pending').length,
-    failed: session.items.filter((item) => Boolean(item.error)).length,
-    recommended: session.items.filter((item) => item.state === 'recommended').length,
-    attention: session.items.filter(attention).length,
-    kept: session.items.filter((item) => item.state === 'kept').length,
-    rejected: session.items.filter((item) => item.state === 'rejected').length,
-    undecided: session.items.filter((item) => item.state === 'undecided').length,
-  }
+  return structuredClone({
+    ...value,
+    items: value.items.map((item) => ({ ...item, imageEmbedding: null })),
+    canUndo: undoStack.length > 0, canRedo: redoStack.length > 0,
+  })
 }
 
 function touch(session: StoredSession): void {
   session.revision += 1
   session.updatedAt = new Date().toISOString()
-  refreshCounts(session)
+  refreshAiSelectionCounts(session)
 }
 
 async function persist(session: StoredSession): Promise<void> {
@@ -124,7 +116,7 @@ async function ensureLoaded(): Promise<void> {
       parsed.undoStack ??= []
       parsed.redoStack ??= []
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
-      refreshCounts(parsed)
+      refreshAiSelectionCounts(parsed)
       sessions.set(parsed.id, parsed)
     } catch {
       // Ignore a damaged session; other sessions remain available.
@@ -209,6 +201,11 @@ async function runSession(session: StoredSession): Promise<void> {
     const photos = ordered.filter((item) => item.kind === 'image')
     const videos = ordered.filter((item) => item.kind === 'video')
     session.phase = 'photos'
+    let embeddingModel: Awaited<ReturnType<typeof prepareImageEmbeddingModel>> | undefined
+    if (photos.length > 0) {
+      await updateAndPersist(session, '准备视觉模型')
+      embeddingModel = await prepareImageEmbeddingModel(controller.signal)
+    }
     const pendingPhotos = photos.filter((item) => !completed.has(item.id))
     for (let offset = 0; offset < pendingPhotos.length; offset += 3) {
       controller.signal.throwIfAborted()
@@ -218,7 +215,7 @@ async function runSession(session: StoredSession): Promise<void> {
           const needsExactHash = (sizeCounts.get(media.bytes) ?? 0) > 1
           const cached = await readCachedItem(media.id, session.preset)
           const reusable = cached && (!needsExactHash || Boolean(cached.exactHash)) ? cached : null
-          const item = reusable ?? await analyzeIndexedMedia(media, session.preset, needsExactHash, controller.signal)
+          const item = reusable ?? await analyzeIndexedMedia(media, session.preset, needsExactHash, controller.signal, embeddingModel)
           if (!reusable) await writeCachedItem(item, session.preset)
           return item
         } catch (error) {

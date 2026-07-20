@@ -9,6 +9,7 @@ import exifr from 'exifr'
 import type { AiMediaQualityMetrics, AiSelectionItem, AiSelectionPreset, AiSelectionScores } from '../src/shared/types'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import { analyzeRgb } from './aiSelectionAlgorithms'
+import { analyzeImageEmbedding, IMAGE_EMBEDDING_VERSION } from './aiSelectionEmbedding'
 import { deriveBasicSemanticTags } from './aiSelectionTags'
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif', '.heic', '.heif', '.avif'])
@@ -229,6 +230,7 @@ export async function analyzeIndexedMedia(
   _preset: AiSelectionPreset,
   computeExactHash: boolean,
   signal?: AbortSignal,
+  embeddingModel?: { path: string | null; error: string | null },
 ): Promise<AiSelectionItem> {
   const metadata = await probe(media, signal).catch(() => ({ width: null, height: null, duration: null, capturedAt: null, device: null }))
   const exif = media.kind === 'image' ? await imageExif(media) : { capturedAt: null, device: null }
@@ -242,6 +244,16 @@ export async function analyzeIndexedMedia(
     analyses.push(analyzeRgb(await decodeRgb(media, time, signal), 64, 64))
   }
   const quality = averageQuality(analyses.map((analysis) => analysis.quality))
+  let imageEmbedding: number[] | null = null
+  let embeddingError = embeddingModel?.error ?? null
+  if (media.kind === 'image' && embeddingModel?.path) {
+    try {
+      imageEmbedding = await analyzeImageEmbedding(media.path, embeddingModel.path, signal)
+    } catch (error) {
+      signal?.throwIfAborted()
+      embeddingError = error instanceof Error ? error.message : String(error)
+    }
+  }
   const semanticTags = deriveBasicSemanticTags({
     kind: media.kind,
     capturedAt,
@@ -265,6 +277,9 @@ export async function analyzeIndexedMedia(
     perceptualHash: media.kind === 'image' ? analyses[0].perceptualHash : null,
     luminanceHistogram: media.kind === 'image' ? analyses[0].histogram : null,
     visualSignature: media.kind === 'image' ? analyses[0].visualSignature : null,
+    imageEmbedding,
+    embeddingVersion: imageEmbedding ? IMAGE_EMBEDDING_VERSION : null,
+    embeddingError,
     quality,
     personEvidence: null,
     videoKeyframes: [],
@@ -299,6 +314,9 @@ export function failedItem(media: IndexedMedia, error: unknown): AiSelectionItem
     perceptualHash: null,
     luminanceHistogram: null,
     visualSignature: null,
+    imageEmbedding: null,
+    embeddingVersion: null,
+    embeddingError: null,
     quality: null,
     personEvidence: null,
     videoKeyframes: [],
@@ -333,6 +351,9 @@ export function pendingItem(media: IndexedMedia): AiSelectionItem {
     perceptualHash: null,
     luminanceHistogram: null,
     visualSignature: null,
+    imageEmbedding: null,
+    embeddingVersion: null,
+    embeddingError: null,
     quality: null,
     personEvidence: null,
     videoKeyframes: [],
