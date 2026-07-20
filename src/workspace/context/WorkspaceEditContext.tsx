@@ -15,6 +15,7 @@ const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
 export interface WorkspacePipelineClipboardData {
   color: EditPipeline['color']
   effects: EditPipeline['effects']
+  logRestore: EditPipeline['logRestore']
   lutFilter: EditPipeline['lutFilter']
   watermark: EditPipeline['watermark']
   border: EditPipeline['border']
@@ -132,6 +133,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     () => mergePipeline(previewPipeline, {
       color: DEFAULT_PIPELINE.color,
       effects: DEFAULT_PIPELINE.effects,
+      logRestore: DEFAULT_PIPELINE.logRestore,
       lutFilter: DEFAULT_PIPELINE.lutFilter,
       colorMasks: [],
       border: { ...DEFAULT_PIPELINE.border, enabled: previewPipeline.border.enabled },
@@ -146,6 +148,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     pipelineClipboardRef.current = {
       color: structuredClone(pipeline.color),
       effects: structuredClone(pipeline.effects),
+      logRestore: structuredClone(pipeline.logRestore),
       lutFilter: structuredClone(pipeline.lutFilter),
       watermark: structuredClone(pipeline.watermark),
       border: structuredClone(pipeline.border),
@@ -161,7 +164,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       return stored
     })()
     if (!data) return
-    commitPatch({ color: data.color, effects: data.effects, lutFilter: data.lutFilter, watermark: data.watermark, border: data.border })
+    commitPatch({ color: data.color, effects: data.effects, logRestore: data.logRestore, lutFilter: data.lutFilter, watermark: data.watermark, border: data.border })
     toast.success('已粘贴调色、滤镜、水印和边框设置')
   }, [commitPatch])
 

@@ -68,7 +68,7 @@ async function resolveRuntimePaths<T>(value: T): Promise<T> {
         const root = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.fonts)
         output[key] = joinPackPath(root, relative)
       } else output[key] = item
-    } else if (key === 'lutId' && typeof item === 'string') {
+    } else if ((key === 'lutId' || key === 'restoreLutId') && typeof item === 'string') {
       const relative = relativePackPath(item, 'luts')
       if (existsSync(item) || !relative) output[key] = item
       else {

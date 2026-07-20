@@ -40,13 +40,16 @@
   pointer-events: none;
 }
 
-.html-preview-watermark {
+.html-preview-content > img.html-preview-watermark {
   position: absolute;
   z-index: 1;
   display: block;
   max-width: none;
   max-height: none;
   height: auto;
+  object-fit: fill;
+  filter: none;
+  cursor: default;
   pointer-events: none;
 }
 
