@@ -1,24 +1,16 @@
-import type { AiSelectionItem } from '../shared/types'
+import type { AiSelectionItem, AiSelectionState } from '../shared/types'
 
-export type AiSelectionResultFilter = 'recommended' | 'compare' | 'review' | 'video' | 'selected' | 'all'
+export type AiSelectionResultFilter = 'recommended' | 'attention' | 'kept' | 'rejected' | 'all'
 
 export function isReviewItem(item: AiSelectionItem): boolean {
-  return Boolean(item.error) || item.quality?.grade === 'review' || item.semanticTags.includes('建议复查')
-}
-
-export function isRecommendedItem(item: AiSelectionItem): boolean {
-  return item.kind === 'image'
-    && !isReviewItem(item)
-    && Boolean(item.recommendationReason)
-    && item.recommendationReason !== '相似组备选'
+  return item.flags.lowQuality || item.flags.closedEyes || item.flags.analysisFailed
 }
 
 export function matchesResultFilter(item: AiSelectionItem, filter: AiSelectionResultFilter): boolean {
-  if (filter === 'recommended') return isRecommendedItem(item)
-  if (filter === 'compare') return item.kind === 'image' && Boolean(item.similarityGroupId)
-  if (filter === 'review') return isReviewItem(item)
-  if (filter === 'video') return item.kind === 'video'
-  if (filter === 'selected') return item.selected
+  if (filter === 'recommended') return item.state === 'recommended' || item.state === 'alternative'
+  if (filter === 'attention') return isReviewItem(item) || item.state === 'undecided'
+  if (filter === 'kept') return item.state === 'kept'
+  if (filter === 'rejected') return item.state === 'rejected'
   return true
 }
 
@@ -29,10 +21,13 @@ export function matchesSelectionSearch(item: AiSelectionItem, search: string): b
   return terms.every((term) => haystack.includes(term)
     || (['人', '人物', '人像', 'portrait'].some((word) => term.includes(word)) && item.semanticTags.includes('人物'))
     || (['夜', '晚上', '暗光', 'night'].some((word) => term.includes(word)) && item.semanticTags.includes('夜景'))
-    || (['闭眼', '眨眼'].some((word) => term.includes(word)) && ['闭眼', '眨眼'].some((tag) => item.semanticTags.includes(tag)))
-    || (['切镜', '转场', '变化'].some((word) => term.includes(word)) && item.semanticTags.includes('镜头变化')))
+    || (['闭眼', '眨眼'].some((word) => term.includes(word)) && item.flags.closedEyes))
+}
+
+export function stateLabel(state: AiSelectionState): string {
+  return ({ recommended: '推荐', alternative: '备选', kept: '保留', rejected: '排除', undecided: '待确认' } as const)[state]
 }
 
 export function countSimilarityGroups(items: AiSelectionItem[]): number {
-  return new Set(items.map((item) => item.similarityGroupId).filter(Boolean)).size
+  return new Set(items.map((item) => item.groupId).filter(Boolean)).size
 }

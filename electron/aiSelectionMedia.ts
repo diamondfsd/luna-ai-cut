@@ -6,7 +6,7 @@ import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import exifr from 'exifr'
 
-import type { AiMediaQualityMetrics, AiSelectionItem, AiSelectionMode } from '../src/shared/types'
+import type { AiMediaQualityMetrics, AiSelectionItem, AiSelectionPreset, AiSelectionScores } from '../src/shared/types'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import { analyzeRgb } from './aiSelectionAlgorithms'
 import { deriveBasicSemanticTags } from './aiSelectionTags'
@@ -188,6 +188,29 @@ function averageQuality(qualities: AiMediaQualityMetrics[]): AiMediaQualityMetri
   }
 }
 
+function selectionFlags(quality: AiMediaQualityMetrics | null, error: unknown): AiSelectionItem['flags'] {
+  return {
+    lowQuality: quality?.grade === 'review',
+    duplicate: false,
+    closedEyes: false,
+    analysisFailed: Boolean(error),
+  }
+}
+
+function selectionScores(quality: AiMediaQualityMetrics | null): AiSelectionScores {
+  const normalized = (quality?.score ?? 0) / 100
+  const dimension = (raw: number | null, value: number, weight: number) => ({ raw, normalized: value, weight })
+  return {
+    quality: dimension(quality?.score ?? null, normalized, 0.45),
+    people: dimension(null, 0, 0.2),
+    composition: dimension(null, 0, 0.15),
+    aesthetics: dimension(null, 0, 0.05),
+    relevance: dimension(null, 0, 0.1),
+    diversity: dimension(null, 0, 0.05),
+    total: quality?.score ?? 0,
+  }
+}
+
 export function fullFileHash(filePath: string, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const hash = createHash('sha256')
@@ -203,7 +226,7 @@ export function fullFileHash(filePath: string, signal?: AbortSignal): Promise<st
 
 export async function analyzeIndexedMedia(
   media: IndexedMedia,
-  _mode: AiSelectionMode,
+  _preset: AiSelectionPreset,
   computeExactHash: boolean,
   signal?: AbortSignal,
 ): Promise<AiSelectionItem> {
@@ -250,12 +273,14 @@ export async function analyzeIndexedMedia(
     contentTags: [],
     contentTagVersion: null,
     contentTagError: null,
-    eventId: null,
-    similarityGroupId: null,
+    sceneId: null,
+    groupId: null,
     recommendationScore: quality.score,
     recommendationReason: media.kind === 'video' ? '视频素材，等待片段分析' : null,
-    selected: false,
-    selectionSource: 'ai',
+    state: 'undecided',
+    decisionSource: 'ai',
+    flags: selectionFlags(quality, null),
+    scores: selectionScores(quality),
     error: null,
   }
 }
@@ -282,12 +307,14 @@ export function failedItem(media: IndexedMedia, error: unknown): AiSelectionItem
     contentTags: [],
     contentTagVersion: null,
     contentTagError: null,
-    eventId: null,
-    similarityGroupId: null,
+    sceneId: null,
+    groupId: null,
     recommendationScore: 0,
     recommendationReason: '素材读取失败，需要人工确认',
-    selected: false,
-    selectionSource: 'ai',
+    state: 'undecided',
+    decisionSource: 'ai',
+    flags: selectionFlags(null, error),
+    scores: selectionScores(null),
     error: error instanceof Error ? error.message : String(error),
   }
 }
@@ -314,12 +341,14 @@ export function pendingItem(media: IndexedMedia): AiSelectionItem {
     contentTags: [],
     contentTagVersion: null,
     contentTagError: null,
-    eventId: null,
-    similarityGroupId: null,
+    sceneId: null,
+    groupId: null,
     recommendationScore: 0,
     recommendationReason: media.kind === 'video' ? '等待视频分析' : '等待照片分析',
-    selected: false,
-    selectionSource: 'ai',
+    state: 'undecided',
+    decisionSource: 'ai',
+    flags: selectionFlags(null, null),
+    scores: selectionScores(null),
     error: null,
   }
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import type { AiSelectionMode, AiSelectionPurpose, AiSelectionSession, AiSelectionSource, AiSelectionUserOperation, AiSelectionWorkflow } from '../shared/types'
+import type { AiSelectionPreset, AiSelectionPurpose, AiSelectionSession, AiSelectionSource, AiSelectionTarget, AiSelectionUserOperation } from '../shared/types'
 import { toast } from '../ui'
 
 interface IncomingSelectionState {
@@ -15,9 +15,9 @@ export function useAiSelection() {
   const startedIncoming = useRef(false)
   const [sessions, setSessions] = useState<AiSelectionSession[]>([])
   const [session, setSession] = useState<AiSelectionSession | null>(null)
-  const [mode, setMode] = useState<AiSelectionMode>('balanced')
+  const [preset, setPreset] = useState<AiSelectionPreset>('balanced')
   const [purpose, setPurpose] = useState<AiSelectionPurpose>('general')
-  const [workflow, setWorkflow] = useState<AiSelectionWorkflow>('assist')
+  const [target, setTarget] = useState<AiSelectionTarget>({ mode: 'preset', value: null })
   const [busy, setBusy] = useState(false)
   const [loadingSessions, setLoadingSessions] = useState(true)
 
@@ -42,29 +42,35 @@ export function useAiSelection() {
     void window.luna.aiSelection.start({
       name: incoming.label ?? '本地资源 AI 选片',
       source: { kind: 'files', label: incoming.label ?? '本地资源', paths: incoming.paths },
-      mode,
+      preset,
       purpose,
-      workflow,
+      target,
     }).then((next) => { upsert(next); setSession(next) })
       .catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
       .finally(() => setBusy(false))
-  }, [incoming, mode, purpose, upsert, workflow])
+  }, [incoming, preset, purpose, target, upsert])
 
   async function selectSession(id: string): Promise<void> {
     const next = sessions.find((item) => item.id === id) ?? await window.luna.aiSelection.getSession(id)
     setSession(next)
-    if (next) { setMode(next.mode); setPurpose(next.purpose); setWorkflow(next.workflow) }
+    if (next) { setPreset(next.preset); setPurpose(next.purpose); setTarget(next.target) }
   }
 
   function closeSession(): void {
     setSession(null)
   }
 
-  async function startTask(source: AiSelectionSource, name?: string): Promise<void> {
+  async function startTask(source: AiSelectionSource, name?: string, options?: { preset: AiSelectionPreset; purpose: AiSelectionPurpose; target: AiSelectionTarget }): Promise<void> {
     if (busy) return
     setBusy(true)
     try {
-      const next = await window.luna.aiSelection.start({ name: name?.trim() || `${source.label} AI 选片`, source, mode, purpose, workflow })
+      const next = await window.luna.aiSelection.start({
+        name: name?.trim() || `${source.label} AI 选片`,
+        source,
+        preset: options?.preset ?? preset,
+        purpose: options?.purpose ?? purpose,
+        target: options?.target ?? target,
+      })
       upsert(next)
       setSession(next)
     } catch (error) {
@@ -114,12 +120,12 @@ export function useAiSelection() {
   return {
     sessions,
     session,
-    mode,
-    setMode,
+    preset,
+    setPreset,
     purpose,
     setPurpose,
-    workflow,
-    setWorkflow,
+    target,
+    setTarget,
     busy,
     loadingSessions,
     selectSession,

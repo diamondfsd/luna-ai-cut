@@ -1,16 +1,23 @@
-export type AiSelectionMode = 'quick' | 'balanced' | 'deep'
+export type AiSelectionPreset = 'quick' | 'balanced' | 'deep'
 export const AI_SELECTION_CONTENT_TAG_VERSION = 'yolo26s-seg+coco80_segformer-b0+ade20k_v2'
 export type AiSelectionPurpose = 'general' | 'people' | 'travel' | 'editing'
-export type AiSelectionWorkflow = 'assist' | 'auto'
-export type AiSelectionStatus = 'queued' | 'indexing' | 'analyzing' | 'paused' | 'interrupted' | 'completed' | 'failed' | 'canceled'
+export type AiSelectionStatus = 'queued' | 'indexing' | 'analyzing' | 'paused' | 'interrupted' | 'ready' | 'completed' | 'failed' | 'canceled'
 export type AiSelectionPhase = 'indexing' | 'metadata' | 'photos' | 'grouping' | 'ranking' | 'videos' | 'done'
 export type AiMediaQualityGrade = 'excellent' | 'good' | 'fair' | 'review'
+export type AiSelectionState = 'recommended' | 'alternative' | 'kept' | 'rejected' | 'undecided'
+export type AiSelectionDecisionSource = 'ai' | 'user'
+export type AiSelectionConfirmation = 'pending' | 'confirmed' | 'reopened'
 
 export interface AiSelectionSource {
   kind: 'directory' | 'files'
   label: string
   directory?: string
   paths?: string[]
+}
+
+export interface AiSelectionTarget {
+  mode: 'preset' | 'count' | 'ratio'
+  value: number | null
 }
 
 export interface AiMediaQualityMetrics {
@@ -54,7 +61,36 @@ export interface AiVideoSegment {
   endTime: number
   status: 'usable' | 'review'
   reasons: string[]
-  selected: boolean
+  state: AiSelectionState
+  decisionSource: AiSelectionDecisionSource
+}
+
+export interface AiSelectionFlags {
+  lowQuality: boolean
+  duplicate: boolean
+  closedEyes: boolean
+  analysisFailed: boolean
+}
+
+export interface AiSelectionScoreDimension {
+  raw: number | null
+  normalized: number
+  weight: number
+}
+
+export interface AiSelectionScores {
+  quality: AiSelectionScoreDimension
+  people: AiSelectionScoreDimension
+  composition: AiSelectionScoreDimension
+  aesthetics: AiSelectionScoreDimension
+  relevance: AiSelectionScoreDimension
+  diversity: AiSelectionScoreDimension
+  total: number
+}
+
+export interface AiSelectionPreferenceProfile {
+  sampleCount: number
+  weights: Record<keyof Omit<AiSelectionScores, 'total'>, number>
 }
 
 export interface AiSelectionItem {
@@ -83,32 +119,39 @@ export interface AiSelectionItem {
   contentTags: string[]
   contentTagVersion: string | null
   contentTagError: string | null
-  eventId: string | null
-  similarityGroupId: string | null
+  sceneId: string | null
+  groupId: string | null
   recommendationScore: number
   recommendationReason: string | null
-  selected: boolean
-  selectionSource: 'ai' | 'user'
+  state: AiSelectionState
+  decisionSource: AiSelectionDecisionSource
+  flags: AiSelectionFlags
+  scores: AiSelectionScores
   error: string | null
 }
 
-export interface AiShootingEvent {
+export interface AiSelectionScene {
   id: string
   name: string
   startAt: string
   endAt: string
   itemIds: string[]
+  coverItemId: string
+  confirmation: AiSelectionConfirmation
+  recommendedCount: number
   userModified: boolean
 }
 
-export interface AiSimilarityGroup {
+export interface AiSelectionGroup {
   id: string
-  eventId: string
-  kind: 'exact' | 'near'
+  sceneId: string
+  kind: 'duplicate' | 'burst' | 'similar' | 'singleton'
   itemIds: string[]
   representativeId: string
   reason: string
   confidence: number
+  suggestedKeepCount: number
+  confirmation: AiSelectionConfirmation
   userModified: boolean
 }
 
@@ -116,7 +159,17 @@ export interface AiSelectionCounts {
   total: number
   completed: number
   failed: number
-  selected: number
+  recommended: number
+  attention: number
+  kept: number
+  rejected: number
+  undecided: number
+}
+
+export interface AiSelectionWorkspaceCreation {
+  status: 'idle' | 'creating' | 'created' | 'failed'
+  projectId: string | null
+  error: string | null
 }
 
 export interface AiSelectionSession {
@@ -125,9 +178,9 @@ export interface AiSelectionSession {
   id: string
   name: string
   source: AiSelectionSource
-  mode: AiSelectionMode
+  preset: AiSelectionPreset
   purpose: AiSelectionPurpose
-  workflow: AiSelectionWorkflow
+  target: AiSelectionTarget
   status: AiSelectionStatus
   phase: AiSelectionPhase
   revision: number
@@ -135,8 +188,10 @@ export interface AiSelectionSession {
   updatedAt: string
   counts: AiSelectionCounts
   items: AiSelectionItem[]
-  events: AiShootingEvent[]
-  similarityGroups: AiSimilarityGroup[]
+  scenes: AiSelectionScene[]
+  groups: AiSelectionGroup[]
+  preferenceProfile: AiSelectionPreferenceProfile
+  workspaceCreation: AiSelectionWorkspaceCreation
   error: string | null
   canUndo: boolean
   canRedo: boolean
@@ -152,21 +207,20 @@ export interface AiSelectionProgress {
 }
 
 export type AiSelectionUserOperation =
-  | { type: 'set-density'; mode: AiSelectionMode }
+  | { type: 'set-preset'; preset: AiSelectionPreset }
   | { type: 'set-purpose'; purpose: AiSelectionPurpose }
-  | { type: 'set-workflow'; workflow: AiSelectionWorkflow }
-  | { type: 'set-selected'; itemId: string; selected: boolean }
-  | { type: 'set-video-segment'; itemId: string; segmentId: string; selected: boolean }
+  | { type: 'set-target'; target: AiSelectionTarget }
+  | { type: 'set-state'; itemId: string; state: AiSelectionState }
+  | { type: 'set-video-segment-state'; itemId: string; segmentId: string; state: AiSelectionState }
   | { type: 'set-representative'; groupId: string; itemId: string }
-  | { type: 'rename-event'; eventId: string; name: string }
-  | { type: 'merge-events'; eventIds: string[] }
-  | { type: 'split-event'; eventId: string; beforeItemId: string }
-  | { type: 'remove-from-group'; groupId: string; itemId: string }
+  | { type: 'confirm-group'; groupId: string }
+  | { type: 'confirm-scene'; sceneId: string }
+  | { type: 'reopen-scene'; sceneId: string }
 
 export interface AiSelectionStartRequest {
   name?: string
   source: AiSelectionSource
-  mode: AiSelectionMode
+  preset: AiSelectionPreset
   purpose?: AiSelectionPurpose
-  workflow?: AiSelectionWorkflow
+  target?: AiSelectionTarget
 }
