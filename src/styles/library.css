@@ -330,6 +330,13 @@
   background: var(--blue) !important;
 }
 
+.media-card.selection-outline .select-chip,
+.media-card.selection-outline.selected .select-chip {
+  border: 2px solid var(--blue) !important;
+  background: transparent !important;
+  color: var(--blue) !important;
+}
+
 .download-state {
   top: 12px;
   left: 12px;

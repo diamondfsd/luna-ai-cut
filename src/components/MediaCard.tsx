@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Check, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
 import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
@@ -15,6 +15,10 @@ interface MediaCardProps {
   onPreview: (file: LunaFile) => void
   onRevealPath: (path: string) => void
   onRevealProgress: (progress: DownloadProgress | undefined) => void
+  selectionOnly?: boolean
+  selectionAppearance?: 'filled' | 'outline'
+  overlay?: ReactNode
+  className?: string
 }
 
 function formatDuration(seconds: number): string {
@@ -33,8 +37,14 @@ export function MediaCard({
   onPreview,
   onRevealPath,
   onRevealProgress,
+  selectionOnly = false,
+  selectionAppearance = 'filled',
+  overlay,
+  className,
 }: MediaCardProps) {
   const cardRef = useRef<HTMLElement>(null)
+  const fileRef = useRef(file)
+  fileRef.current = file
   const visibilityFiredRef = useRef(false)
   const [cacheEnabled, setCacheEnabled] = useState(false)
 
@@ -64,7 +74,7 @@ export function MediaCard({
     const filePath = file.downloadFilePath ?? file.localPath ?? file.sourceUrl
     if (!filePath) return
 
-    window.luna.requestVideoFrameRate(file, filePath).catch(() => {})
+    window.luna.requestVideoFrameRate(fileRef.current, filePath).catch(() => {})
     const unsub = window.luna.onVideoFrameRateReady((data) => {
       if (data.fileId === file.id && data.duration != null) {
         setVideoDuration(data.duration)
@@ -87,7 +97,7 @@ export function MediaCard({
   const isLive = file.isLivePhoto || detectedLive
 
   return (
-    <article ref={cardRef} className={selected ? 'media-card selected' : 'media-card'} data-file-id={file.id}>
+    <article ref={cardRef} className={['media-card', selected && 'selected', selectionAppearance === 'outline' && 'selection-outline', className].filter(Boolean).join(' ')} data-file-id={file.id}>
       {showProgress && progress && (
         <button
           className={`download-state ${progress.status}`}
@@ -100,7 +110,9 @@ export function MediaCard({
           {progress.status === 'queued' || progress.status === 'downloading' ? <span>{Math.round(progressValue)}%</span> : null}
         </button>
       )}
-      {isDownloadsPage ? (
+      {selectionOnly ? (
+        <IconButton variant="ghost" className="select-chip" onClick={() => onToggle(file)} title="选择" aria-label={selected ? `取消选择 ${file.name}` : `选择 ${file.name}`} icon={selected ? <Check size={15} /> : undefined} />
+      ) : isDownloadsPage ? (
         <>
           {localPath && (
             <IconButton variant="light" className="downloaded-folder-btn" onClick={() => onRevealPath(localPath)} title="在文件夹中显示" icon={<FolderOpen size={14} />} />
@@ -134,6 +146,7 @@ export function MediaCard({
           <LivePhotoBadge size={28} className="card-live-chip" />
         ) : null}
         {file.kind === 'video' && <VideoPlayBadge size={26} />}
+        {overlay}
       </div>
     </article>
   )
