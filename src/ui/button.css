@@ -45,6 +45,15 @@
   background: var(--blue-dark);
 }
 
+.ui-btn-primary > .ui-btn-icon,
+.ui-btn-primary > .ui-btn-icon > svg,
+.ui-btn-utility > .ui-btn-icon,
+.ui-btn-utility > .ui-btn-icon > svg,
+.ui-btn-toolbar-primary > .ui-btn-icon,
+.ui-btn-toolbar-primary > .ui-btn-icon > svg {
+  color: #fff;
+}
+
 /* secondary — 蓝色边框透明 */
 .ui-btn-secondary {
   min-height: 36px;
