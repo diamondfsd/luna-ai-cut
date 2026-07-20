@@ -8,6 +8,10 @@ export interface MaskControlHandle {
   y: number
 }
 
+export function shouldShowComponentControls(manualTool: string, hasDraft: boolean): boolean {
+  return hasDraft || manualTool === 'move'
+}
+
 function rotatePoint(x: number, y: number, radians: number): { x: number; y: number } {
   return { x: x * Math.cos(radians) - y * Math.sin(radians), y: x * Math.sin(radians) + y * Math.cos(radians) }
 }

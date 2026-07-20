@@ -26,14 +26,25 @@ async function composeStoredComponents(
   width: number,
   height: number,
   components: ColorMaskComponent[],
-): Promise<Uint8Array> {
+): Promise<{ data: Uint8Array; components: ColorMaskComponent[] }> {
   const rasterData = new Map<string, Uint8Array>()
+  const failedIds = new Set<string>()
   const rasterComponents = components.filter((component): component is Extract<ColorMaskComponent, { type: 'raster' }> => component.type === 'raster')
   await Promise.all(rasterComponents.map(async (component) => {
-    const loaded = await window.luna.workspace.loadColorMask(projectId, component.path)
-    rasterData.set(component.id, new Uint8Array(loaded.bytes))
+    try {
+      const loaded = await window.luna.workspace.loadColorMask(projectId, component.path)
+      rasterData.set(component.id, new Uint8Array(loaded.bytes))
+    } catch {
+      failedIds.add(component.id)
+    }
   }))
-  return composeMaskComponents(width, height, components, (component) => rasterData.get(component.id) ?? null)
+  const availableComponents = failedIds.size === 0 ? components : components.map((component) => failedIds.has(component.id)
+    ? { ...component, enabled: false, loadError: 'missing-or-damaged' as const }
+    : component)
+  return {
+    data: composeMaskComponents(width, height, availableComponents, (component) => rasterData.get(component.id) ?? null),
+    components: availableComponents,
+  }
 }
 
 export async function rebuildMaskCache(
@@ -43,14 +54,14 @@ export async function rebuildMaskCache(
   height: number,
   components: ColorMaskComponent[],
   feather: number,
-): Promise<{ data: Uint8Array; path: string; width: number; height: number }> {
-  const data = await composeStoredComponents(projectId, width, height, components)
+): Promise<{ data: Uint8Array; path: string; width: number; height: number; components: ColorMaskComponent[] }> {
+  const composed = await composeStoredComponents(projectId, width, height, components)
   const saved = await window.luna.workspace.saveColorMask(
     projectId, assetId, width, height,
-    data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+    composed.data.buffer.slice(composed.data.byteOffset, composed.data.byteOffset + composed.data.byteLength),
     feather,
   )
-  return { data, ...saved }
+  return { data: composed.data, components: composed.components, ...saved }
 }
 
 function legacyComponents(mask: ColorMaskLayer | null): ColorMaskComponent[] {
@@ -80,7 +91,10 @@ export function useMaskComponentPersistence(options: Options) {
   )
 
   useEffect(() => {
-    if (activeComponentId && !activeMask?.components?.some((component) => component.id === activeComponentId)) setActiveComponentId(null)
+    const components = activeMask?.components ?? []
+    if (activeComponentId && components.some((component) => component.id === activeComponentId)) return
+    const latestEditable = [...components].reverse().find((component) => component.enabled && !component.loadError && component.type !== 'raster')
+    setActiveComponentId(latestEditable?.id ?? null)
   }, [activeComponentId, activeMask?.components])
 
   const saveFinalMask = useCallback(async (data: Uint8Array, components: ColorMaskComponent[] | undefined, nextActiveComponentId: string | null) => {
@@ -117,6 +131,7 @@ export function useMaskComponentPersistence(options: Options) {
         loadError: undefined,
         blendMode: operationMask?.blendMode ?? 'normal',
         color: operationMask?.color ?? createDefaultPipeline().color,
+        componentSchemaVersion: components ? 1 : undefined,
         components,
       }
       const nextLayers = mergeCompletedColorMaskLayer(colorMasksRef.current, operationMask?.id ?? null, layer)
@@ -165,8 +180,8 @@ export function useMaskComponentPersistence(options: Options) {
   const saveComponentList = useCallback(async (components: ColorMaskComponent[], nextActiveComponentId: string | null) => {
     if (!projectId || !maskSize) return
     try {
-      const data = await composeStoredComponents(projectId, maskSize.width, maskSize.height, components)
-      await saveFinalMask(data, components, nextActiveComponentId)
+      const composed = await composeStoredComponents(projectId, maskSize.width, maskSize.height, components)
+      await saveFinalMask(composed.data, composed.components, nextActiveComponentId)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '更新蒙版失败')
     }
