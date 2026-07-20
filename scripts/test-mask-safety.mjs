@@ -176,11 +176,17 @@ try {
     { ...linearGradient, targetComponentId: 'target', operation: 'intersect' },
   ], (component) => component.id === 'target' ? new Uint8Array([255, 255]) : new Uint8Array([0, 255]))
   assert.deepEqual([...scopedGradient], [64, 255], 'a gradient modifier must affect only its target selection component')
+  const baseSelection = componentRasterization.composeBaseSelectionComponents(2, 1, [
+    { id: 'target', type: 'raster', operation: 'replace', enabled: true, inverted: false, path: '/target.pgm', width: 2, height: 1 },
+    { id: 'other', type: 'raster', operation: 'add', enabled: true, inverted: false, path: '/other.pgm', width: 2, height: 1 },
+    { ...linearGradient, targetComponentId: 'target', operation: 'intersect' },
+  ], (component) => component.id === 'target' ? new Uint8Array([255, 255]) : new Uint8Array([0, 255]))
+  assert.deepEqual([...baseSelection], [255, 255], 'selection ants must follow the base AI/brush/shape selection and ignore gradient modifiers')
   const movedGradient = componentControls.updateComponentFromDrag(linearGradient, 'move', { x: 0.5, y: 0.5 }, { x: 0.6, y: 0.4 })
   close(movedGradient.startX, 0.1, 'moving a gradient must translate its start handle')
   close(movedGradient.endY, 0.4, 'moving a gradient must translate its end handle')
-  assert.equal(componentControls.shouldShowComponentControls('linear-gradient', true), true, 'a gradient draft must show its selection frame while drawing')
-  assert.equal(componentControls.shouldShowComponentControls('radial-gradient', true), true, 'a radial draft must show its selection frame while drawing')
+  assert.equal(componentControls.shouldShowComponentControls('linear-gradient', true), true, 'a gradient draft must show its adjustment controls while drawing')
+  assert.equal(componentControls.shouldShowComponentControls('radial-gradient', true), true, 'a radial draft must show its adjustment controls while drawing')
   assert.equal(componentControls.shouldShowComponentControls('move', false), true, 'a committed component must keep its selection frame in adjustment mode')
   assert.equal(componentControls.shouldShowComponentControls('brush', false), false, 'unrelated tools must not show stale component controls')
   const hardBrush = new Uint8Array(25)
