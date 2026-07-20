@@ -160,7 +160,7 @@ assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'm
 assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'legacy-photo'), legacyPixelStretchState, 'legacy state remains available for its original photo')
 assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, 'new-photo'), undefined, 'new photo starts from creative defaults')
 assert.equal(pixelStretchState.pixelStretchStateForAsset(pixelStretchProject, undefined), undefined, 'missing photo has no creative parameters')
-assert.equal(pixelStretchState.normalizePixelStretchFlowShape(undefined), 'cape', 'new pixel stretch projects start with the designed ribbon')
+assert.equal(pixelStretchState.normalizePixelStretchFlowShape(undefined), 'straight', 'new pixel stretch projects start with the visible straight effect')
 assert.equal(pixelStretchState.normalizePixelStretchFlowShape('cape'), 'cape', 'saved flow shape is restored')
 assert.equal(pixelStretchState.normalizePixelStretchPathPoints([{ x: 0, y: 0 }]), undefined, 'custom path requires seven points')
 
