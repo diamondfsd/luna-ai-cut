@@ -23,6 +23,24 @@ function formatTime(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 }
 
+function formatShootingPeriod(startAt: string, endAt: string): string {
+  const start = new Date(startAt)
+  const end = new Date(endAt)
+  const date = `${start.getMonth() + 1}月${start.getDate()}日`
+  const clock = (value: Date): string => `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
+  if (start.toDateString() !== end.toDateString()) return `${date} ${clock(start)} - ${end.getMonth() + 1}月${end.getDate()}日 ${clock(end)}`
+  return clock(start) === clock(end) ? `${date} ${clock(start)}` : `${date} ${clock(start)} - ${clock(end)}`
+}
+
+function selectionReason(item: AiSelectionItem, purpose: AiSelectionPurpose): string {
+  if (item.recommendationReason) return item.recommendationReason
+  if (item.kind === 'video' && purpose !== 'editing') return '当前选片用途不自动推荐视频'
+  if (item.kind === 'video' && item.videoSegments.length === 0) return '尚未分析视频内容'
+  if (item.state === 'kept') return '已由你保留'
+  if (item.state === 'rejected') return '已由你排除'
+  return '未进入当前推荐范围'
+}
+
 export function AiSelectionPage() {
   const selection = useAiSelection()
   const { sessions, session, busy, loadingSessions, selectSession, closeSession, startTask, removeSession, controls } = selection
@@ -161,7 +179,7 @@ export function AiSelectionPage() {
           return <Button key={entry.id} variant="ghost" size="compact" className={stage === entry.id ? 'active' : ''} icon={<Icon size={15} />} onClick={() => selectStage(entry.id)}><span>{entry.label}</span>{entry.count !== undefined && <strong>{entry.count}</strong>}</Button>
         })}</nav>
 
-        {stage === 'scenes' && <div className="ai-selection-sidebar-list">{session.scenes.map((scene, index) => <Button key={scene.id} variant="ghost" size="compact" className={activeScene?.id === scene.id ? 'active' : ''} onClick={() => { setSceneId(scene.id); setFocusedId('') }}><span>时段 {index + 1}</span><strong>{countSceneStacks(scene.itemIds)}</strong></Button>)}</div>}
+        {stage === 'scenes' && <div className="ai-selection-sidebar-list">{session.scenes.map((scene) => { const label = formatShootingPeriod(scene.startAt, scene.endAt); return <Button key={scene.id} variant="ghost" size="compact" className={activeScene?.id === scene.id ? 'active' : ''} title={label} onClick={() => { setSceneId(scene.id); setFocusedId('') }}><span>{label}</span><strong>{countSceneStacks(scene.itemIds)}</strong></Button> })}</div>}
         {stage === 'compare' && <div className="ai-selection-sidebar-list">{pendingGroups.map((group, index) => <Button key={group.id} variant="ghost" size="compact" className={activeGroup?.id === group.id ? 'active' : ''} onClick={() => { setGroupId(group.id); setFocusedId('') }}><span>相似组 {index + 1}</span><strong>{group.itemIds.length}</strong></Button>)}</div>}
         {stage === 'review' && <div className="ai-selection-sidebar-list">{filters.map((entry) => <Button key={entry.id} variant="ghost" size="compact" className={filter === entry.id ? 'active' : ''} onClick={() => { setFilter(entry.id); setFocusedId('') }}><span>{entry.label}</span><strong>{entry.count}</strong></Button>)}</div>}
 
@@ -177,10 +195,10 @@ export function AiSelectionPage() {
 
         {focused && <section className="ai-selection-sidebar-section ai-selection-current-item">
           <strong className="ai-selection-current-name" title={focused.name}>{focused.name}</strong>
-          <div className="ai-selection-state-actions"><Button variant={focused.state === 'kept' ? 'primary' : 'secondary'} size="compact" icon={<Check size={14} />} onClick={() => setItemState(focused, 'kept')}>保留</Button><Button variant={focused.state === 'rejected' ? 'danger' : 'secondary'} size="compact" icon={<X size={14} />} onClick={() => setItemState(focused, 'rejected')}>排除</Button></div>
-          {focused.recommendationReason && <Button variant="ghost" size="compact" onClick={() => setItemState(focused, 'alternative')}>设为备选</Button>}
-          {focused.kind === 'video' && focused.videoKeyframes.length === 0 && <Button variant="secondary" size="compact" disabled={busy || focused.analysisState !== 'ready'} onClick={() => void controls.analyzeVideos([focused.id])}>查看视频片段</Button>}
-          {focused.videoSegments.length > 0 && <div className="ai-selection-keyframes">{focused.videoSegments.map((segment, index) => <button key={segment.id} className={segment.state === 'kept' ? 'selected' : ''} onClick={() => void controls.apply({ type: 'set-video-segment-state', itemId: focused.id, segmentId: segment.id, state: segment.state === 'kept' ? 'rejected' : 'kept' })}><img src={focused.videoKeyframes[index]?.thumbnailUrl} alt="" /><span>{formatTime(segment.startTime)}–{formatTime(segment.endTime)}</span>{segment.state === 'kept' && <Check size={13} />}</button>)}</div>}
+          <div className="ai-selection-current-status"><strong>{stateLabel(focused.state)}</strong><span>{selectionReason(focused, session.purpose)}</span></div>
+          <div className="ai-selection-state-actions"><Button variant={focused.state === 'kept' ? 'primary' : 'secondary'} size="compact" icon={<Check size={14} />} onClick={() => setItemState(focused, 'kept')}>保留素材</Button><Button variant={focused.state === 'rejected' ? 'danger' : 'secondary'} size="compact" icon={<X size={14} />} onClick={() => setItemState(focused, 'rejected')}>排除素材</Button></div>
+          {focused.kind === 'video' && <div className="ai-selection-video-actions"><Button variant="secondary" size="compact" icon={<Play size={14} />} onClick={() => openPreview(focused)}>预览视频</Button>{focused.videoKeyframes.length === 0 && <Button variant="secondary" size="compact" icon={<Film size={14} />} disabled={busy || focused.analysisState !== 'ready'} onClick={() => void controls.analyzeVideos([focused.id])}>分析视频内容</Button>}</div>}
+          {focused.videoSegments.length > 0 && <div className="ai-selection-keyframes"><strong>可选片段</strong>{focused.videoSegments.map((segment, index) => <button key={segment.id} className={segment.state === 'kept' ? 'selected' : ''} onClick={() => void controls.apply({ type: 'set-video-segment-state', itemId: focused.id, segmentId: segment.id, state: segment.state === 'kept' ? 'rejected' : 'kept' })}><img src={focused.videoKeyframes[index]?.thumbnailUrl} alt="" /><span>{formatTime(segment.startTime)} - {formatTime(segment.endTime)}</span>{segment.state === 'kept' && <Check size={13} />}</button>)}</div>}
         </section>}
       </div>
       <div className="ai-selection-sidebar-footer">
@@ -192,7 +210,7 @@ export function AiSelectionPage() {
 
     <main className="ai-selection-results">
       {stage === 'overview' && <div className="ai-selection-summary"><div><strong>{session.scenes.length}</strong><span>拍摄时段</span></div><div><strong>{session.groups.length}</strong><span>相似组</span></div><div><strong>{session.counts.recommended}</strong><span>推荐</span></div><div><strong>{session.counts.attention}</strong><span>需确认</span></div><div className="primary"><strong>{session.counts.kept}</strong><span>已保留</span></div></div>}
-      {stage === 'scenes' && activeScene && <header className="ai-selection-view-heading"><div><h2>{activeScene.name}</h2><span>{visibleItems.length} 组素材</span></div>{activeScene.confirmation === 'confirmed' && <Button variant="ghost" size="compact" onClick={() => void controls.apply({ type: 'reopen-scene', sceneId: activeScene.id })}>重新检查</Button>}</header>}
+      {stage === 'scenes' && activeScene && <header className="ai-selection-view-heading"><div><h2>{formatShootingPeriod(activeScene.startAt, activeScene.endAt)}</h2><span>{visibleItems.length} 组素材</span></div>{activeScene.confirmation === 'confirmed' && <Button variant="ghost" size="compact" onClick={() => void controls.apply({ type: 'reopen-scene', sceneId: activeScene.id })}>重新检查</Button>}</header>}
       {stage === 'compare' && activeGroup && <header className="ai-selection-view-heading"><div><h2>相似素材比较</h2><span>{activeGroup.itemIds.length} 项</span></div></header>}
       {stage === 'review' && <header className="ai-selection-view-heading"><div><h2>{filters.find((entry) => entry.id === filter)?.label}</h2><span>{visibleItems.length} 项</span></div></header>}
       {visibleItems.length === 0 ? <div className="ai-selection-no-result">{running ? '正在生成结果…' : stage === 'compare' ? '没有需要比较的相似组' : '没有素材'}</div> : <div className={`ai-selection-grid${stage === 'compare' ? ' compare' : ''}`}>{visibleItems.map((item) => <article key={item.id} className={`ai-selection-card state-${item.state}${focused?.id === item.id ? ' active' : ''}${item.analysisState === 'pending' ? ' pending' : ''}`} onClick={() => setFocusedId(item.id)} onDoubleClick={() => openPreview(item)} title={`${item.name} · ${stateLabel(item.state)}`}>
