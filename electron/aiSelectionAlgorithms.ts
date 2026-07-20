@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto'
 
 import type {
   AiMediaQualityMetrics,
+  AiSelectionGroup,
   AiSelectionItem,
+  AiSelectionPreset,
+  AiSelectionPreferenceProfile,
   AiSelectionPurpose,
-  AiSelectionWorkflow,
-  AiShootingEvent,
-  AiSimilarityGroup,
+  AiSelectionScene,
+  AiSelectionTarget,
 } from '../src/shared/types'
 
 function stableId(prefix: string, value: string): string {
@@ -29,14 +31,14 @@ function eventName(startAt: string, index: number): string {
   return `${date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })} 拍摄 ${index + 1}`
 }
 
-export function buildShootingEvents(items: AiSelectionItem[]): AiShootingEvent[] {
+export function buildShootingEvents(items: AiSelectionItem[]): AiSelectionScene[] {
   const buckets = new Map<string, AiSelectionItem[]>()
   for (const item of items) {
     const key = `${localDay(item.capturedAt)}\0${item.device ?? 'unknown'}\0${item.path.split(/[\\/]/).slice(0, -1).join('/')}`
     buckets.set(key, [...(buckets.get(key) ?? []), item])
   }
 
-  const events: AiShootingEvent[] = []
+  const events: AiSelectionScene[] = []
   for (const bucket of buckets.values()) {
     bucket.sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt) || a.path.localeCompare(b.path))
     const gaps = bucket.slice(1).map((item, index) => Date.parse(item.capturedAt) - Date.parse(bucket[index].capturedAt))
@@ -54,6 +56,9 @@ export function buildShootingEvents(items: AiSelectionItem[]): AiShootingEvent[]
         startAt: first.capturedAt,
         endAt: last.capturedAt,
         itemIds: current.map((item) => item.id),
+        coverItemId: [...current].sort(compareRepresentative)[0]?.id ?? first.id,
+        confirmation: 'pending',
+        recommendedCount: 0,
         userModified: false,
       })
       current = []
@@ -187,6 +192,12 @@ export function hammingDistance(a: string, b: string): number {
   return count
 }
 
+export function normalizeSelectionTarget(target: AiSelectionTarget): AiSelectionTarget {
+  if (target.mode === 'preset' || !Number.isFinite(target.value)) return { mode: 'preset', value: null }
+  if (target.mode === 'count') return { mode: 'count', value: Math.max(1, Math.round(target.value ?? 1)) }
+  return { mode: 'ratio', value: Math.min(1, Math.max(0.01, target.value ?? 0.35)) }
+}
+
 function histogramSimilarity(a: number[] | null, b: number[] | null): number {
   if (!a || !b || a.length !== b.length) return 0
   const dot = a.reduce((sum, value, index) => sum + value * b[index], 0)
@@ -200,8 +211,8 @@ function vectorSimilarity(a: number[] | null, b: number[] | null): number {
   return a.reduce((sum, value, index) => sum + value * b[index], 0)
 }
 
-export function buildSimilarityGroups(items: AiSelectionItem[], events: AiShootingEvent[]): AiSimilarityGroup[] {
-  const groups: AiSimilarityGroup[] = []
+export function buildSimilarityGroups(items: AiSelectionItem[], scenes: AiSelectionScene[]): AiSelectionGroup[] {
+  const groups: AiSelectionGroup[] = []
   const assigned = new Set<string>()
   const exactBuckets = new Map<string, AiSelectionItem[]>()
   for (const item of items) {
@@ -211,7 +222,7 @@ export function buildSimilarityGroups(items: AiSelectionItem[], events: AiShooti
   for (const bucket of exactBuckets.values()) {
     if (bucket.length < 2) continue
     const representative = [...bucket].sort(compareRepresentative)[0]
-    groups.push({ id: stableId('similar', bucket.map((item) => item.id).join('\0')), eventId: representative.eventId ?? events[0]?.id ?? '', kind: 'exact', itemIds: bucket.map((item) => item.id), representativeId: representative.id, reason: '完全相同的文件', confidence: 1, userModified: false })
+    groups.push({ id: stableId('similar', bucket.map((item) => item.id).join('\0')), sceneId: representative.sceneId ?? scenes[0]?.id ?? '', kind: 'duplicate', itemIds: bucket.map((item) => item.id), representativeId: representative.id, reason: '完全相同的文件', confidence: 1, suggestedKeepCount: 1, confirmation: 'pending', userModified: false })
     bucket.forEach((item) => assigned.add(item.id))
   }
 
@@ -243,17 +254,24 @@ export function buildSimilarityGroups(items: AiSelectionItem[], events: AiShooti
     const representative = [...bucket].sort(compareRepresentative)[0]
     groups.push({
       id: stableId('similar', bucket.map((item) => item.id).join('\0')),
-      eventId: representative.eventId ?? events[0]?.id ?? '',
-      kind: 'near',
+      sceneId: representative.sceneId ?? scenes[0]?.id ?? '',
+      kind: gapKind(bucket),
       itemIds: bucket.map((item) => item.id),
       representativeId: representative.id,
       reason: '同一时刻拍摄，内容相近',
       confidence: 0.78,
+      suggestedKeepCount: 1,
+      confirmation: 'pending',
       userModified: false,
     })
     bucket.forEach((item) => assigned.add(item.id))
   }
   return groups
+}
+
+function gapKind(items: AiSelectionItem[]): AiSelectionGroup['kind'] {
+  const times = items.map((item) => Date.parse(item.capturedAt)).sort((a, b) => a - b)
+  return times[times.length - 1] - times[0] <= 10_000 ? 'burst' : 'similar'
 }
 
 function compareRepresentative(a: AiSelectionItem, b: AiSelectionItem): number {
@@ -270,12 +288,40 @@ function compareRepresentative(a: AiSelectionItem, b: AiSelectionItem): number {
   return b.recommendationScore - a.recommendationScore
 }
 
-export function applySelectionPlan(items: AiSelectionItem[], groups: AiSimilarityGroup[], mode: 'quick' | 'balanced' | 'deep', purpose: AiSelectionPurpose = 'general', workflow: AiSelectionWorkflow = 'auto'): void {
+function refreshScores(item: AiSelectionItem, grouped: boolean, preference?: AiSelectionPreferenceProfile): void {
+  const set = (key: keyof Omit<AiSelectionItem['scores'], 'total'>, raw: number | null, normalized: number): void => {
+    item.scores[key].raw = raw
+    item.scores[key].normalized = Math.min(1, Math.max(0, normalized))
+  }
+  set('quality', item.quality?.score ?? null, (item.quality?.score ?? 0) / 100)
+  set('people', item.personEvidence?.confidence ?? null, item.personEvidence?.detected ? item.personEvidence.confidence : 0)
+  set('composition', item.quality?.edgeScore ?? null, (item.quality?.edgeScore ?? 0) / 24)
+  set('aesthetics', null, (item.quality?.score ?? 0) / 100)
+  set('relevance', item.contentTags.length, Math.min(1, item.contentTags.length / 4))
+  set('diversity', grouped ? 0.5 : 1, grouped ? 0.5 : 1)
+  if (preference) {
+    for (const key of Object.keys(preference.weights) as Array<keyof typeof preference.weights>) {
+      item.scores[key].weight = preference.weights[key]
+    }
+  }
+  const dimensions = Object.values(item.scores).filter((value): value is { normalized: number; weight: number } => typeof value === 'object')
+  const weight = dimensions.reduce((sum, dimension) => sum + dimension.weight, 0) || 1
+  item.scores.total = Math.round(dimensions.reduce((sum, dimension) => sum + dimension.normalized * dimension.weight, 0) / weight * 100)
+  item.recommendationScore = item.scores.total
+}
+
+export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelectionGroup[], preset: AiSelectionPreset, purpose: AiSelectionPurpose = 'general', targetSetting: AiSelectionTarget = { mode: 'preset', value: null }, preference?: AiSelectionPreferenceProfile): void {
+  targetSetting = normalizeSelectionTarget(targetSetting)
   const grouped = new Map(groups.flatMap((group) => group.itemIds.map((id) => [id, group] as const)))
   for (const item of items) {
-    item.similarityGroupId = grouped.get(item.id)?.id ?? null
+    item.groupId = grouped.get(item.id)?.id ?? null
     item.recommendationReason = null
-    if (item.selectionSource === 'ai') item.selected = false
+    item.flags.duplicate = grouped.get(item.id)?.kind === 'duplicate'
+    item.flags.lowQuality = item.quality?.grade === 'review'
+    item.flags.closedEyes = item.personEvidence?.eyeState === 'closed' || item.personEvidence?.eyeState === 'mixed'
+    item.flags.analysisFailed = Boolean(item.error)
+    refreshScores(item, Boolean(grouped.get(item.id)), preference)
+    if (item.decisionSource === 'ai') item.state = 'undecided'
   }
 
   const candidates = items.filter((item) => {
@@ -285,11 +331,16 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSimilarit
     const group = grouped.get(item.id)
     return !group || group.representativeId === item.id
   }).sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt))
-  const baseRatio = mode === 'quick' ? 0.2 : mode === 'deep' ? 0.5 : 0.35
+  const baseRatio = preset === 'quick' ? 0.2 : preset === 'deep' ? 0.5 : 0.35
   const ratio = Math.min(0.65, baseRatio + (purpose === 'travel' ? 0.08 : purpose === 'editing' ? 0.05 : 0))
   const candidateIds = new Set(candidates.map((item) => item.id))
   const eligibleGroups = groups.filter((group) => candidateIds.has(group.representativeId))
-  const target = Math.max(eligibleGroups.length, Math.round(candidates.length * ratio))
+  const requestedTarget = targetSetting.mode === 'count'
+    ? Math.round(targetSetting.value ?? 0)
+    : targetSetting.mode === 'ratio'
+      ? Math.round(candidates.length * Math.min(1, Math.max(0.01, targetSetting.value ?? ratio)))
+      : Math.round(candidates.length * ratio)
+  const target = Math.min(candidates.length, Math.max(eligibleGroups.length, requestedTarget))
   const chosen = new Set<string>()
   for (const group of eligibleGroups) chosen.add(group.representativeId)
   const remainingTarget = Math.max(0, target - chosen.size)
@@ -304,20 +355,30 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSimilarit
   }
 
   for (const item of items) {
-    if (item.selectionSource === 'user') continue
-    item.selected = workflow === 'auto' && chosen.has(item.id)
+    if (item.decisionSource === 'user') continue
     const group = grouped.get(item.id)
-    if (group?.representativeId === item.id) item.recommendationReason = `从 ${group.itemIds.length} 个相似素材中优先推荐`
-    else if (group) item.recommendationReason = '相似组备选'
-    else if (item.quality?.grade === 'review' || item.error) item.recommendationReason = item.quality?.reasons[0] ?? '需要人工确认'
-    else if (chosen.has(item.id)) item.recommendationReason = purpose === 'people' ? '人物素材候选' : purpose === 'travel' ? '用于保持旅程内容覆盖' : purpose === 'editing' ? '可作为剪辑候选素材' : '用于保持拍摄过程的内容覆盖'
+    if (item.quality?.grade === 'review' || item.error || item.flags.closedEyes) {
+      item.state = 'undecided'
+      item.recommendationReason = item.quality?.reasons[0] ?? '需要人工确认'
+    } else if (chosen.has(item.id)) {
+      item.state = 'recommended'
+      item.recommendationReason = group
+        ? `从 ${group.itemIds.length} 个相似素材中优先推荐`
+        : purpose === 'people' ? '人物素材候选' : purpose === 'travel' ? '用于保持旅程内容覆盖' : purpose === 'editing' ? '可作为剪辑候选素材' : '用于保持拍摄过程的内容覆盖'
+    } else if (group) {
+      item.state = 'alternative'
+      item.recommendationReason = '相似组备选'
+    } else {
+      item.state = 'undecided'
+    }
   }
 }
 
-export function applyVideoSegmentSelection(item: AiSelectionItem, segmentId: string, selected: boolean): void {
+export function applyVideoSegmentSelection(item: AiSelectionItem, segmentId: string, state: AiSelectionItem['state']): void {
   const segment = item.videoSegments.find((candidate) => candidate.id === segmentId)
   if (!segment) throw new Error('视频片段不存在')
-  item.videoSegments.forEach((candidate) => { candidate.selected = candidate.id === segment.id ? selected : false })
-  item.selected = item.videoSegments.some((candidate) => candidate.selected)
-  item.selectionSource = 'user'
+  segment.state = state
+  segment.decisionSource = 'user'
+  item.state = item.videoSegments.some((candidate) => candidate.state === 'kept') ? 'kept' : state
+  item.decisionSource = 'user'
 }

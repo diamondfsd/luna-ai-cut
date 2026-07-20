@@ -110,7 +110,8 @@ export async function analyzeVideoStory(
       endTime,
       status: quality.grade === 'review' ? 'review' : 'usable',
       reasons: quality.reasons,
-      selected: false,
+      state: status === 'usable' ? 'recommended' : 'undecided',
+      decisionSource: 'ai',
     })
     await fs.rm(rawPaths[index], { force: true })
   }

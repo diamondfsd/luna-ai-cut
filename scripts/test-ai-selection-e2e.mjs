@@ -102,14 +102,15 @@ async function main() {
       throw new Error(JSON.stringify(page))
     }, 15_000)
 
-    const sessionId = await client.evaluate(`window.luna.aiSelection.start(${JSON.stringify({ name: '真实素材自动化选片', source: { kind: 'directory', directory: fixture, label: '真实素材测试' }, mode: 'balanced' })}).then((session) => session.id)`)
+    const sessionId = await client.evaluate(`window.luna.aiSelection.start(${JSON.stringify({ name: '真实素材自动化选片', source: { kind: 'directory', directory: fixture, label: '真实素材测试' }, preset: 'balanced' })}).then((session) => session.id)`)
     const session = await waitFor('快速选片完成', async () => {
       const value = await client.evaluate(`window.luna.aiSelection.getSession(${JSON.stringify(sessionId)})`)
-      return value?.status === 'completed' ? value : null
+      return value?.status === 'ready' ? value : null
     })
     assert.equal(session.items.length, 5)
     assert.equal(session.items.filter((item) => item.kind === 'video').length, 1)
-    assert.ok(session.similarityGroups.length >= 1, '连续实拍照片应形成可比较组')
+    assert.ok(session.groups.length >= 1, '连续实拍照片应形成可比较组')
+    assert.ok(session.items.some((item) => item.state === 'recommended'), '新任务应默认给出推荐结果')
 
     await waitFor('选片任务卡片', async () => {
       const opened = await client.evaluate(`(() => { const card = Array.from(document.querySelectorAll('.ai-selection-task-open')).find((item) => item.textContent?.includes('真实素材自动化选片')); if (!card) return false; card.click(); return true })()`)
@@ -118,14 +119,15 @@ async function main() {
 
     const bodyText = await waitFor('选片结果界面', async () => {
       const text = await client.evaluate('document.body.innerText')
-      return text.includes('比较相似照片') ? text : null
+      return text.includes('分析概览') ? text : null
     })
-    for (const label of ['添加素材', '自动整理', '比较确认', '完成选片', 'AI 推荐', '比较相似照片', '查看需留意内容', '挑选视频片段', '已选素材', '标签分组']) assert.ok(bodyText.includes(label), `页面应显示“${label}”`)
+    for (const label of ['分析概览', '场景确认', '精准比较', '全局复核', '选片设置', '创建工作台项目']) assert.ok(bodyText.includes(label), `页面应显示“${label}”`)
+    for (const retiredLabel of ['添加素材', '自动整理', '比较确认', '接下来', '标签分组']) assert.ok(!bodyText.includes(retiredLabel), `主界面不应恢复旧流程“${retiredLabel}”`)
     for (const developerCopy of ['本地轻量模型', '关键帧', '裁剪范围', '技术指标', '后台分析']) assert.ok(!bodyText.includes(developerCopy), `页面不应显示开发说明“${developerCopy}”`)
     const hasExcellentGrade = await client.evaluate(`Array.from(document.querySelectorAll('span, strong, em')).some((item) => item.textContent?.trim() === '优秀')`)
     assert.equal(hasExcellentGrade, false, '页面不应继续输出无意义的“优秀”评级标签')
 
-    const groupIds = session.similarityGroups[0].itemIds
+    const groupIds = session.groups[0].itemIds
     const scenicId = session.items.find((item) => item.name === 'IMG_20260620_165522_057.jpg').id
     const semanticStartedAt = Date.now()
     const contentSession = await client.evaluate(`window.luna.aiSelection.analyzeContentTags(${JSON.stringify(sessionId)}, ${JSON.stringify([...new Set([...groupIds, scenicId])])})`)
@@ -144,14 +146,14 @@ async function main() {
     assert.equal(video.videoKeyframes.length, 5)
     assert.equal(video.videoSegments.length, 5)
     const segment = video.videoSegments.find((item) => item.status === 'usable') ?? video.videoSegments[0]
-    const selectedSession = await client.evaluate(`window.luna.aiSelection.applyOperation(${JSON.stringify(sessionId)}, ${storySession.revision}, ${JSON.stringify({ type: 'set-video-segment', itemId: videoId, segmentId: segment.id, selected: true })})`)
+    const selectedSession = await client.evaluate(`window.luna.aiSelection.applyOperation(${JSON.stringify(sessionId)}, ${storySession.revision}, ${JSON.stringify({ type: 'set-video-segment-state', itemId: videoId, segmentId: segment.id, state: 'kept' })})`)
     const project = await client.evaluate(`window.luna.aiSelection.createWorkspaceProject(${JSON.stringify(sessionId)}, '自动化选片工程')`)
-    const videoAsset = project.assets.find((item) => item.id === videoId)
+    const videoAsset = project.assets.find((item) => item.path === video.path && item.pipeline?.trim)
     assert.deepEqual(videoAsset.pipeline.trim, { startTime: segment.startTime, endTime: segment.endTime })
-    assert.ok(selectedSession.items.find((item) => item.id === videoId).selected)
+    assert.equal(selectedSession.items.find((item) => item.id === videoId).state, 'kept')
     assert.deepEqual(client.errors, [])
     succeeded = true
-    console.log(JSON.stringify({ total: session.items.length, groups: session.similarityGroups.length, scenicTags: scenic.contentTags, semanticMs, faces: peopleSession.items.filter((item) => item.personEvidence?.faceCount > 0).length, keyframes: video.videoKeyframes.length, trim: videoAsset.pipeline.trim }))
+    console.log(JSON.stringify({ total: session.items.length, groups: session.groups.length, scenicTags: scenic.contentTags, semanticMs, faces: peopleSession.items.filter((item) => item.personEvidence?.faceCount > 0).length, keyframes: video.videoKeyframes.length, trim: videoAsset.pipeline.trim }))
     console.log('AI selection Electron integration passed')
   } finally {
     client?.socket.close()
