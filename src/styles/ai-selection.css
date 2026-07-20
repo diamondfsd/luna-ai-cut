@@ -117,7 +117,7 @@
 .ai-selection-content-analysis small { color: var(--text-secondary, #6e6e73); font-size: 11px; }
 .ai-selection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); align-content: start; gap: 10px; }
 .ai-selection-grid.compare { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-.ai-selection-grid.compare .ai-selection-thumb { aspect-ratio: 3 / 2; }
+.ai-selection-grid.compare .media-frame { aspect-ratio: 3 / 2; }
 .ai-selection-view-heading { min-height: 48px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ai-selection-view-heading > div { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
 .ai-selection-view-heading h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
@@ -136,22 +136,14 @@
 .ai-selection-survey-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .ai-selection-survey-actions { display: flex; align-items: center; gap: 4px; }
 .ai-selection-survey-actions > span { margin-left: auto; display: flex; align-items: center; gap: 3px; color: var(--blue, #06c); font-size: 10px; }
-.ai-selection-card { min-width: 0; border: 2px solid transparent; border-radius: 9px; padding: 3px; background: var(--surface, #fff); cursor: pointer; }
-.ai-selection-card:hover { border-color: #c9cdd3; }
-.ai-selection-card.pending { opacity: .72; }
-.ai-selection-thumb { position: relative; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 7px; background: #e5e7ea; }
-.ai-selection-thumb img, .ai-selection-detail-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ai-selection-check.ui-icon-btn { position: absolute; top: 7px; right: 7px; flex: 0 0 28px; width: 28px; min-width: 28px; height: 28px; min-height: 28px; border: 2px solid var(--blue, #06c); border-radius: 50%; background: transparent; color: var(--blue, #06c); }
-.ai-selection-check.ui-icon-btn:hover, .ai-selection-check.ui-icon-btn.selected { border-color: var(--blue, #06c); background: transparent; color: var(--blue, #06c); }
-.ai-selection-card.state-rejected { opacity: .55; }
-.ai-selection-card.state-kept { border-color: color-mix(in srgb, var(--blue, #06c) 48%, transparent); }
-.ai-selection-attention-badge { position: absolute; top: 8px; left: 8px; width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,.92); color: #a46000; display: grid; place-items: center; }
-.ai-selection-recommendation-badge { position: absolute; left: 8px; bottom: 8px; height: 24px; padding: 0 7px; border-radius: 5px; background: rgba(255,255,255,.94); color: var(--blue, #06c); display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 650; }
-.ai-selection-video-badge + .ai-selection-recommendation-badge { left: 58px; }
-.ai-selection-group-badge + .ai-selection-recommendation-badge { left: 48px; }
-.ai-selection-group-badge, .ai-selection-video-badge { position: absolute; left: 6px; bottom: 6px; padding: 3px 6px; border-radius: 5px; background: rgba(20,20,22,.72); color: white; font-size: 10px; display: flex; align-items: center; gap: 3px; }
-.ai-selection-group-badge + .ai-selection-video-badge { bottom: 30px; }
-.ai-selection-thumb-placeholder { width: 100%; height: 100%; display: grid; place-items: center; color: #8a8d92; }
+.ai-selection-media-card.pending { opacity: .72; }
+.ai-selection-media-card.rejected { opacity: .55; }
+.ai-selection-card-badges { position: absolute; top: 10px; left: 10px; z-index: 3; display: flex; align-items: center; gap: 5px; pointer-events: none; }
+.ai-selection-card-badges > span { min-height: 24px; padding: 0 7px; border-radius: 5px; background: rgba(255,255,255,.94); display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 650; }
+.ai-selection-recommendation-badge { color: var(--blue, #06c); }
+.ai-selection-group-badge { color: var(--text-primary, #1d1d1f); }
+.ai-selection-card-badges > .ai-selection-attention-badge { width: 24px; padding: 0; border-radius: 50%; justify-content: center; color: #a46000; }
+.ai-selection-detail-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ai-selection-card-meta { padding: 7px 3px 3px; display: flex; flex-direction: column; gap: 2px; }
 .ai-selection-card-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .ai-selection-detail-preview { position: relative; width: 100%; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; border: 0; border-radius: 8px; background: #e5e7ea; color: inherit; cursor: zoom-in; display: block; }

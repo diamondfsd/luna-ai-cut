@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Check, CheckCircle2, CircleAlert, Film, Grid2X2, Images, Layers3, ListChecks, Pause, Play, Redo2, Settings2, Sparkles, Square, Undo2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { AiMediaThumb } from '../ai-selection/AiMediaThumb'
 import { AiSelectionTaskPicker } from '../ai-selection/AiSelectionTaskPicker'
-import { isAiRecommended, isReviewItem, matchesResultFilter, matchesSelectionSearch, stateLabel, type AiSelectionResultFilter } from '../ai-selection/aiSelectionView'
+import { isAiRecommended, isReviewItem, matchesResultFilter, matchesSelectionSearch, type AiSelectionResultFilter } from '../ai-selection/aiSelectionView'
 import { useAiSelection } from '../ai-selection/useAiSelection'
+import { MediaCard } from '../components/MediaCard'
 import { showPreviewModal } from '../components/previewModalService'
-import type { AiSelectionItem, AiSelectionPurpose, AiSelectionState, AiSelectionTarget } from '../shared/types'
+import type { AiSelectionItem, AiSelectionPurpose, AiSelectionState, AiSelectionTarget, LunaFile } from '../shared/types'
 import { Button, ButtonGroup, Dialog, IconButton, Input, SearchField, Select, Tooltip, toast } from '../ui'
 import '../styles/ai-selection.css'
 
@@ -32,6 +32,41 @@ function formatShootingPeriod(startAt: string, endAt: string): string {
   const clock = (value: Date): string => `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
   if (start.toDateString() !== end.toDateString()) return `${date} ${clock(start)} - ${end.getMonth() + 1}月${end.getDate()}日 ${clock(end)}`
   return clock(start) === clock(end) ? `${date} ${clock(start)}` : `${date} ${clock(start)} - ${clock(end)}`
+}
+
+function mediaFileForSelection(item: AiSelectionItem): LunaFile {
+  const capturedAt = new Date(item.capturedAt)
+  const extension = item.name.match(/\.([^.]+)$/)?.[1]?.toLowerCase() ?? ''
+  return {
+    id: item.id,
+    name: item.name,
+    href: item.path,
+    sourceUrl: item.path,
+    url: item.path,
+    dateText: capturedAt.toLocaleDateString('zh-CN'),
+    timeText: capturedAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+    sizeText: '',
+    bytes: item.bytes,
+    kind: item.kind,
+    extension,
+    capturedAt: item.capturedAt,
+    groupDay: item.capturedAt.slice(0, 10),
+    groupHour: item.capturedAt.slice(0, 13),
+    videoKey: null,
+    previewName: null,
+    previewUrl: item.thumbnailUrl ?? item.videoKeyframes[0]?.thumbnailUrl ?? null,
+    cacheFilePath: item.path,
+    downloadFilePath: null,
+    thumbnailUrl: item.thumbnailUrl,
+    isLivePhoto: false,
+    livePhotoVideoName: null,
+    livePhotoVideoUrl: null,
+    livePhotoCacheFilePath: null,
+    downloadName: item.name,
+    canPreview: true,
+    localPath: item.path,
+    duration: item.duration ?? undefined,
+  }
 }
 
 export function AiSelectionPage() {
@@ -188,11 +223,26 @@ export function AiSelectionPage() {
       {stage === 'scenes' && activeScene && <header className="ai-selection-view-heading"><div><h2>{formatShootingPeriod(activeScene.startAt, activeScene.endAt)}</h2><span>{visibleItems.length} 组素材</span></div><div className="ai-selection-view-actions">{activeScene.confirmation === 'confirmed' && <Button variant="ghost" size="compact" onClick={() => void controls.apply({ type: 'reopen-scene', sceneId: activeScene.id })}>重新检查</Button>}{selectAllAction}</div></header>}
       {stage === 'compare' && activeGroup && <header className="ai-selection-view-heading"><div><h2>相似素材比较</h2><span>{activeGroup.itemIds.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'review' && <header className="ai-selection-view-heading"><div><h2>{filters.find((entry) => entry.id === filter)?.label}</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
-      {visibleItems.length === 0 ? <div className="ai-selection-no-result">{running ? '正在生成结果…' : stage === 'compare' ? '没有需要比较的相似组' : '没有素材'}</div> : <div className={`ai-selection-grid${stage === 'compare' ? ' compare' : ''}`}>{visibleItems.map((item) => <article key={item.id} className={`ai-selection-card state-${item.state}${item.analysisState === 'pending' ? ' pending' : ''}`} onClick={() => { setFocusedId(item.id); openPreview(item) }} title={`${item.name} · ${stateLabel(item.state)}`}>
-        <div className="ai-selection-thumb"><AiMediaThumb item={item} /><IconButton variant="outline" size="mini" className={`ai-selection-check${item.state === 'kept' ? ' selected' : ''}`} icon={item.state === 'kept' ? <Check size={13} /> : null} onClick={(event) => { event.stopPropagation(); setItemState(item, item.state === 'kept' ? 'undecided' : 'kept') }} aria-label={item.state === 'kept' ? '取消保留' : '保留素材'} />
-          {stage === 'scenes' && (groupsByItem.get(item.id)?.itemIds.length ?? 0) > 1 && <span className="ai-selection-group-badge"><Layers3 size={11} />{groupsByItem.get(item.id)?.itemIds.length}</span>}{item.kind === 'video' && <span className="ai-selection-video-badge"><Film size={12} />视频</span>}{isAiRecommended(item) && <span className="ai-selection-recommendation-badge"><Sparkles size={12} />AI 推荐</span>}{isReviewItem(item) && <span className="ai-selection-attention-badge"><CircleAlert size={13} /></span>}
-        </div>
-      </article>)}</div>}
+      {visibleItems.length === 0 ? <div className="ai-selection-no-result">{running ? '正在生成结果…' : stage === 'compare' ? '没有需要比较的相似组' : '没有素材'}</div> : <div className={`ai-selection-grid${stage === 'compare' ? ' compare' : ''}`}>{visibleItems.map((item) => <MediaCard
+        key={item.id}
+        file={mediaFileForSelection(item)}
+        isDownloadsPage={false}
+        selected={item.state === 'kept'}
+        progress={undefined}
+        selectVisible
+        selectionOnly
+        selectionAppearance="outline"
+        className={`ai-selection-media-card${item.state === 'rejected' ? ' rejected' : ''}${item.analysisState === 'pending' ? ' pending' : ''}`}
+        onToggle={() => setItemState(item, item.state === 'kept' ? 'undecided' : 'kept')}
+        onPreview={() => { setFocusedId(item.id); openPreview(item) }}
+        onRevealPath={() => undefined}
+        onRevealProgress={() => undefined}
+        overlay={<div className="ai-selection-card-badges">
+          {isAiRecommended(item) && <span className="ai-selection-recommendation-badge"><Sparkles size={12} />AI 推荐</span>}
+          {stage === 'scenes' && (groupsByItem.get(item.id)?.itemIds.length ?? 0) > 1 && <span className="ai-selection-group-badge"><Layers3 size={11} />{groupsByItem.get(item.id)?.itemIds.length}</span>}
+          {isReviewItem(item) && <span className="ai-selection-attention-badge" aria-label="需要复核"><CircleAlert size={13} /></span>}
+        </div>}
+      />)}</div>}
     </main>
   </div>
   <SelectionSettings open={settingsOpen} onOpenChange={setSettingsOpen} selection={selection} />
