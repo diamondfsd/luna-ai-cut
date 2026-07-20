@@ -231,7 +231,6 @@ export function AiSelectionPage() {
         progress={undefined}
         selectVisible
         selectionOnly
-        selectionAppearance="outline"
         className={`ai-selection-media-card${item.state === 'rejected' ? ' rejected' : ''}${item.analysisState === 'pending' ? ' pending' : ''}`}
         onToggle={() => setItemState(item, item.state === 'kept' ? 'undecided' : 'kept')}
         onPreview={() => { setFocusedId(item.id); openPreview(item) }}

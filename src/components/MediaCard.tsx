@@ -16,7 +16,6 @@ interface MediaCardProps {
   onRevealPath: (path: string) => void
   onRevealProgress: (progress: DownloadProgress | undefined) => void
   selectionOnly?: boolean
-  selectionAppearance?: 'filled' | 'outline'
   overlay?: ReactNode
   className?: string
 }
@@ -38,7 +37,6 @@ export function MediaCard({
   onRevealPath,
   onRevealProgress,
   selectionOnly = false,
-  selectionAppearance = 'filled',
   overlay,
   className,
 }: MediaCardProps) {
@@ -97,7 +95,7 @@ export function MediaCard({
   const isLive = file.isLivePhoto || detectedLive
 
   return (
-    <article ref={cardRef} className={['media-card', selected && 'selected', selectionAppearance === 'outline' && 'selection-outline', className].filter(Boolean).join(' ')} data-file-id={file.id}>
+    <article ref={cardRef} className={['media-card', selected && 'selected', className].filter(Boolean).join(' ')} data-file-id={file.id}>
       {showProgress && progress && (
         <button
           className={`download-state ${progress.status}`}
