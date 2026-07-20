@@ -180,9 +180,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
 
   useMaskShortcuts({
     editing, busy, semanticPicking,
-    hasActiveComponent: Boolean(componentPersistence.activeComponent),
     cancelSegmentation,
-    removeActiveComponent: componentPersistence.removeActiveComponent,
     setSemanticPicking, setManualTool, setShowOverlay, setBrushSize, setBrushFeather,
   })
 
@@ -227,7 +225,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
           applySystemUpdate((pipeline) => ({
             ...pipeline,
             colorMasks: pipeline.colorMasks.map((layer) => layer.id === operationMaskId
-              ? { ...layer, path: rebuilt.path, width: rebuilt.width, height: rebuilt.height, enabled: true, loadError: undefined }
+              ? { ...layer, path: rebuilt.path, width: rebuilt.width, height: rebuilt.height, enabled: true, loadError: undefined, components: rebuilt.components }
               : layer),
           }))
           return

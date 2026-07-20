@@ -1,5 +1,5 @@
 import type { ColorMaskComponent, ColorMaskComponentOperation, ColorMaskLayer } from '../shared/editPipeline'
-import { applyMaskSelectionOperation, resampleMask } from './maskSelectionOperations'
+import { resampleMask } from './maskSelectionOperations'
 
 export type MaskRasterSource = (component: Extract<ColorMaskComponent, { type: 'raster' }>) => Uint8Array | null
 
@@ -22,8 +22,13 @@ function componentValue(value: number, inverted: boolean): number {
   return inverted ? 255 - byte : byte
 }
 
-export function rasterizeVectorComponent(width: number, height: number, component: Exclude<ColorMaskComponent, { type: 'raster' }>): Uint8Array {
-  const result = new Uint8Array(width * height)
+function applyVectorComponent(
+  width: number,
+  height: number,
+  component: Exclude<ColorMaskComponent, { type: 'raster' }>,
+  result: Uint8Array,
+  operation: ColorMaskComponentOperation,
+): void {
   if (component.type === 'linear-gradient') {
     const deltaX = component.endX - component.startX
     const deltaY = component.endY - component.startY
@@ -33,10 +38,15 @@ export function rasterizeVectorComponent(width: number, height: number, componen
         const px = (x + 0.5) / width
         const py = (y + 0.5) / height
         const amount = lengthSquared <= 1e-8 ? 0 : Math.max(0, Math.min(1, ((px - component.startX) * deltaX + (py - component.startY) * deltaY) / lengthSquared))
-        result[y * width + x] = componentValue(amount, component.inverted)
+        const index = y * width + x
+        const incoming = componentValue(amount, component.inverted)
+        if (operation === 'replace') result[index] = incoming
+        else if (operation === 'add') result[index] = Math.max(result[index], incoming)
+        else if (operation === 'subtract') result[index] = Math.round(result[index] * (255 - incoming) / 255)
+        else result[index] = Math.round(result[index] * incoming / 255)
       }
     }
-    return result
+    return
   }
 
   const radians = component.rotation * Math.PI / 180
@@ -44,8 +54,21 @@ export function rasterizeVectorComponent(width: number, height: number, componen
   const sine = Math.sin(radians)
   const radiusX = Math.max(0.00005, component.width / 2)
   const radiusY = Math.max(0.00005, component.height / 2)
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
+  let startX = 0
+  let endX = width
+  let startY = 0
+  let endY = height
+  if (!component.inverted && operation !== 'intersect') {
+    const boundX = Math.abs(cosine) * radiusX + Math.abs(sine) * radiusY
+    const boundY = Math.abs(sine) * radiusX + Math.abs(cosine) * radiusY
+    startX = Math.max(0, Math.floor((component.centerX - boundX) * width))
+    endX = Math.min(width, Math.ceil((component.centerX + boundX) * width))
+    startY = Math.max(0, Math.floor((component.centerY - boundY) * height))
+    endY = Math.min(height, Math.ceil((component.centerY + boundY) * height))
+    if (operation === 'replace') result.fill(0)
+  }
+  for (let y = startY; y < endY; y += 1) {
+    for (let x = startX; x < endX; x += 1) {
       const dx = (x + 0.5) / width - component.centerX
       const dy = (y + 0.5) / height - component.centerY
       const localX = (dx * cosine + dy * sine) / radiusX
@@ -60,17 +83,33 @@ export function rasterizeVectorComponent(width: number, height: number, componen
       } else {
         amount = Math.max(0, Math.min(1, (1 - distance) / component.feather))
       }
-      result[y * width + x] = componentValue(amount, component.inverted)
+      const index = y * width + x
+      const incoming = componentValue(amount, component.inverted)
+      if (operation === 'replace') result[index] = incoming
+      else if (operation === 'add') result[index] = Math.max(result[index], incoming)
+      else if (operation === 'subtract') result[index] = Math.round(result[index] * (255 - incoming) / 255)
+      else result[index] = Math.round(result[index] * incoming / 255)
     }
   }
+}
+
+export function rasterizeVectorComponent(width: number, height: number, component: Exclude<ColorMaskComponent, { type: 'raster' }>): Uint8Array {
+  const result = new Uint8Array(width * height)
+  applyVectorComponent(width, height, component, result, 'replace')
   return result
 }
 
-function applyComponentOperation(base: Uint8Array, incoming: Uint8Array, operation: ColorMaskComponentOperation): Uint8Array {
-  if (operation !== 'intersect') return applyMaskSelectionOperation(base, incoming, operation)
-  const result = new Uint8Array(base.length)
-  for (let index = 0; index < base.length; index += 1) result[index] = Math.round(base[index] * incoming[index] / 255)
-  return result
+function applyComponentOperation(base: Uint8Array, incoming: Uint8Array, operation: ColorMaskComponentOperation): void {
+  if (base.length !== incoming.length) throw new Error('蒙版尺寸不一致')
+  if (operation === 'replace') {
+    base.set(incoming)
+    return
+  }
+  for (let index = 0; index < base.length; index += 1) {
+    if (operation === 'add') base[index] = Math.max(base[index], incoming[index])
+    else if (operation === 'subtract') base[index] = Math.round(base[index] * (255 - incoming[index]) / 255)
+    else base[index] = Math.round(base[index] * incoming[index] / 255)
+  }
 }
 
 export function composeMaskComponents(
@@ -79,13 +118,24 @@ export function composeMaskComponents(
   components: ColorMaskComponent[],
   rasterSource: MaskRasterSource,
 ): Uint8Array {
-  let result = new Uint8Array(width * height)
+  const result = new Uint8Array(width * height)
   const modifiers = components.filter((component) => component.enabled
     && (component.type === 'linear-gradient' || component.type === 'radial-gradient')
     && component.targetComponentId)
+  const modifiersByTarget = new Map<string, typeof modifiers>()
+  for (const modifier of modifiers) {
+    const targetModifiers = modifiersByTarget.get(modifier.targetComponentId!) ?? []
+    targetModifiers.push(modifier)
+    modifiersByTarget.set(modifier.targetComponentId!, targetModifiers)
+  }
   for (const component of components) {
     if (!component.enabled) continue
     if ((component.type === 'linear-gradient' || component.type === 'radial-gradient') && component.targetComponentId) continue
+    const componentModifiers = modifiersByTarget.get(component.id) ?? []
+    if (component.type !== 'raster' && componentModifiers.length === 0) {
+      applyVectorComponent(width, height, component, result, component.operation)
+      continue
+    }
     let incoming: Uint8Array | null
     if (component.type === 'raster') {
       const source = rasterSource(component)
@@ -95,12 +145,12 @@ export function composeMaskComponents(
       incoming = rasterizeVectorComponent(width, height, component)
     }
     if (!incoming) continue
-    for (const modifier of modifiers) {
-      if (modifier.targetComponentId !== component.id || modifier.type === 'raster') continue
+    for (const modifier of componentModifiers) {
+      if (modifier.type === 'raster') continue
       const gradient = rasterizeVectorComponent(width, height, modifier)
-      incoming = applyComponentOperation(incoming, gradient, 'intersect')
+      applyComponentOperation(incoming, gradient, 'intersect')
     }
-    result = applyComponentOperation(result, incoming, component.operation)
+    applyComponentOperation(result, incoming, component.operation)
   }
   return result
 }

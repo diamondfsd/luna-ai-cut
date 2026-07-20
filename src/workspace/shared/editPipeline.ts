@@ -435,6 +435,7 @@ function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { bl
     loadError: input.loadError === 'missing-or-damaged' ? input.loadError : undefined,
     blendMode: normalizeColorMaskBlendMode(input.blendMode),
     color,
+    componentSchemaVersion: Array.isArray(input.components) ? 1 : undefined,
     components: Array.isArray(input.components)
       ? input.components.map(normalizeColorMaskComponent).filter((component): component is ColorMaskComponent => component !== null)
       : undefined,

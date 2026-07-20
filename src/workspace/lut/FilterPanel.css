@@ -22,6 +22,37 @@
   gap: 16px;
 }
 
+.lut-restore-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 2px 2px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.lut-restore-row > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lut-restore-row strong {
+  color: #f5f7fb;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lut-restore-row small {
+  color: #8e97a5;
+  font-size: 11px;
+}
+
+.lut-restore-row .toggle-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 /* ═══ 当前滤镜卡片 ═══ */
 
 .filter-current-placeholder {

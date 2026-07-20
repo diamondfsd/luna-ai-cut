@@ -4,9 +4,7 @@
 }
 
 .workspace-mask-auto-section,
-.workspace-mask-operation-section,
 .workspace-mask-brush-section,
-.workspace-mask-components-section,
 .workspace-mask-edge-section,
 .workspace-mask-editor-section {
   display: grid;
@@ -14,11 +12,7 @@
 }
 
 .workspace-mask-auto-section {
-  padding: 6px 0 16px;
-}
-
-.workspace-mask-operation-section {
-  padding: 6px 0 14px;
+  padding: 4px 0 14px;
 }
 
 .workspace-mask-edge-section {
@@ -27,7 +21,7 @@
 }
 
 .workspace-mask-brush-section {
-  padding: 16px 0;
+  padding: 14px 0;
   border-top: 1px solid var(--hairline);
 }
 
@@ -219,52 +213,57 @@
 }
 
 .workspace-mask-model-field > strong,
-.workspace-mask-mode-row > strong,
+.workspace-mask-tool-row > strong,
 .workspace-mask-setting-row strong {
   color: var(--ink);
   font-size: 12px;
   font-weight: 600;
 }
 
-.workspace-mask-mode-row {
+.workspace-mask-tool-row {
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
 }
 
-.workspace-mask-brush-modes.ui-btn-group,
+.workspace-mask-tool-row.is-separated {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+
+.workspace-mask-tool-modes.ui-btn-group,
 .workspace-mask-operation-modes.ui-btn-group {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
-.workspace-mask-brush-modes.ui-btn-group {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.workspace-mask-tool-modes.ui-btn-group {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .workspace-mask-operation-modes.ui-btn-group {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.workspace-mask-brush-modes .ui-btn-group-btn,
+.workspace-mask-tool-modes .ui-btn-group-btn,
 .workspace-mask-operation-modes .ui-btn-group-btn {
-  height: 36px;
-  gap: 8px;
+  height: 34px;
+  gap: 6px;
   border: 1px solid var(--hairline);
   border-radius: 7px;
   background: transparent;
   color: var(--ink);
 }
 
-.workspace-mask-brush-modes .ui-btn-group-btn {
+.workspace-mask-tool-modes .ui-btn-group-btn {
   min-width: 0;
-  padding: 0 5px;
-  gap: 4px;
-  font-size: 11px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
-.workspace-mask-brush-modes .ui-btn-group-btn.active,
+.workspace-mask-tool-modes .ui-btn-group-btn.active,
 .workspace-mask-operation-modes .ui-btn-group-btn.active {
   border-color: var(--blue);
   box-shadow: inset 0 0 0 1px var(--blue);
@@ -276,46 +275,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-.workspace-mask-components-section {
-  padding: 16px 0;
-  border-top: 1px solid var(--hairline);
-}
-
-.workspace-mask-components-list {
-  display: grid;
-  gap: 4px;
-}
-
-.workspace-mask-components-list .ui-btn {
-  width: 100%;
-  min-width: 0;
-  justify-content: space-between;
-  border-radius: 6px;
-  color: var(--ink);
-}
-
-.workspace-mask-components-list .ui-btn.is-active {
-  background: color-mix(in srgb, var(--blue) 9%, transparent);
-  color: var(--blue);
-}
-
-.workspace-mask-components-list small {
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.workspace-mask-component-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.workspace-mask-component-editor {
-  display: grid;
-  gap: 10px;
-  margin-top: 10px;
 }
 
 .workspace-mask-auto-error {

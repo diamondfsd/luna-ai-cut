@@ -54,6 +54,7 @@ try {
     'electron/workspaceProjectService.ts',
     'electron/colorMaskService.ts',
     'src/workspace/shared/editPipeline.ts',
+    'src/workspace/shared/editPipelineSerialization.ts',
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
     'src/workspace/shared/exportLayerSnapshot.ts',
@@ -73,6 +74,7 @@ try {
   const projectService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/workspaceProjectService.js')))
   const maskService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/colorMaskService.js')))
   const pipelineModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipeline.js')))
+  const pipelineSerialization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipelineSerialization.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
@@ -177,6 +179,10 @@ try {
   const movedGradient = componentControls.updateComponentFromDrag(linearGradient, 'move', { x: 0.5, y: 0.5 }, { x: 0.6, y: 0.4 })
   close(movedGradient.startX, 0.1, 'moving a gradient must translate its start handle')
   close(movedGradient.endY, 0.4, 'moving a gradient must translate its end handle')
+  assert.equal(componentControls.shouldShowComponentControls('linear-gradient', true), true, 'a gradient draft must show its selection frame while drawing')
+  assert.equal(componentControls.shouldShowComponentControls('radial-gradient', true), true, 'a radial draft must show its selection frame while drawing')
+  assert.equal(componentControls.shouldShowComponentControls('move', false), true, 'a committed component must keep its selection frame in adjustment mode')
+  assert.equal(componentControls.shouldShowComponentControls('brush', false), false, 'unrelated tools must not show stale component controls')
   const hardBrush = new Uint8Array(25)
   const softBrush = new Uint8Array(25)
   manualRasterization.drawMaskBrush(hardBrush, 5, 5, 2, 2, 2, 0)
@@ -224,6 +230,58 @@ try {
   assert.equal(normalizedComponents[0].height, 0.0001)
   assert.equal(normalizedComponents[0].rotation, 270)
   assert.equal(normalizedComponents[0].feather, 1)
+
+  const fiftyComponents = Array.from({ length: 50 }, (_, index) => ({
+    ...rotatedRectangle,
+    id: `shape-${index}`,
+    operation: index === 0 ? 'replace' : index % 3 === 0 ? 'subtract' : 'add',
+    centerX: (index % 10 + 0.5) / 10,
+    centerY: (Math.floor(index / 10) + 0.5) / 5,
+    width: 0.08,
+    height: 0.12,
+  }))
+  const stressPipeline = mergePipeline(createDefaultPipeline(), {
+    colorMasks: [{ ...legacy.colorMasks[0], components: fiftyComponents }],
+  })
+  const reopenedPipeline = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline(stressPipeline))
+  assert.equal(reopenedPipeline.colorMasks[0].componentSchemaVersion, 1, 'advanced masks must persist an explicit component schema version')
+  assert.equal(reopenedPipeline.colorMasks[0].components.length, 50, 'reopening a project must retain all 50 editable components')
+  assert.deepEqual(
+    componentRasterization.composeMaskComponents(80, 40, reopenedPipeline.colorMasks[0].components, () => null),
+    componentRasterization.composeMaskComponents(80, 40, stressPipeline.colorMasks[0].components, () => null),
+    'component order and output must remain stable after serialization',
+  )
+  const fiftyComponentStart = performance.now()
+  const fiftyComponentPreview = componentRasterization.composeMaskComponents(1024, 683, reopenedPipeline.colorMasks[0].components, () => null)
+  const fiftyComponentDuration = performance.now() - fiftyComponentStart
+  assert.equal(fiftyComponentPreview.length, 1024 * 683)
+  assert.ok(fiftyComponentDuration < 2000, `50-component preview recomposition took ${fiftyComponentDuration.toFixed(1)} ms`)
+
+  const largeImageStart = performance.now()
+  const largeImageMask = componentRasterization.rasterizeVectorComponent(6000, 4000, {
+    ...rotatedRectangle,
+    id: 'large-image-gradient',
+    type: 'linear-gradient',
+    startX: 0.1,
+    startY: 0.2,
+    endX: 0.9,
+    endY: 0.8,
+  })
+  const largeImageDuration = performance.now() - largeImageStart
+  assert.equal(largeImageMask.length, 24_000_000)
+  assert.ok(largeImageMask[0] < largeImageMask.at(-1), '24 MP gradient must retain its direction')
+  assert.ok(largeImageDuration < 2000, `24 MP component rasterization took ${largeImageDuration.toFixed(1)} ms`)
+  console.log(`mask component performance: 50 components ${fiftyComponentDuration.toFixed(1)} ms; 24 MP ${largeImageDuration.toFixed(1)} ms`)
+  const withUnknownComponent = pipelineSerialization.deserializePipeline(JSON.stringify({
+    ...stressPipeline,
+    colorMasks: [{ ...stressPipeline.colorMasks[0], components: [...fiftyComponents, { id: 'future', type: 'future-tool' }] }],
+  }))
+  assert.equal(withUnknownComponent.colorMasks[0].components.length, 50, 'unknown future components must be ignored without disabling the mask')
+  const damagedComponent = mergePipeline(createDefaultPipeline(), {
+    colorMasks: [{ ...legacy.colorMasks[0], components: [{ ...rotatedRectangle, loadError: 'missing-or-damaged', enabled: true }] }],
+  }).colorMasks[0].components[0]
+  assert.equal(damagedComponent.enabled, false, 'a damaged component must be isolated without disabling its whole mask layer')
+  assert.equal(damagedComponent.loadError, 'missing-or-damaged')
 
   const featherLimit = mergePipeline(createDefaultPipeline(), {
     colorMasks: [{ ...legacy.colorMasks[0], feather: 40 }],

@@ -8,8 +8,9 @@ export function normalizeColorMaskComponent(input: ColorMaskComponent): ColorMas
     : 'replace'
   const common = {
     id: input.id,
+    loadError: input.loadError === 'missing-or-damaged' ? input.loadError : undefined,
     operation,
-    enabled: input.enabled !== false,
+    enabled: input.loadError ? false : input.enabled !== false,
     inverted: Boolean(input.inverted),
     targetComponentId: typeof input.targetComponentId === 'string' && input.targetComponentId ? input.targetComponentId : undefined,
   }

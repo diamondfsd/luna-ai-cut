@@ -253,7 +253,10 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
           {activeTool === 'filter' ? (
             <FilterPanel
               activeLutId={edit.pipeline.lutFilter.activeId}
-              onChange={(lutId) => edit.updateWorkspacePanel({ lutFilter: { activeId: lutId } })}
+              onChange={(lutId, intensity) => edit.updateWorkspacePanel({ lutFilter: {
+                activeId: lutId,
+                ...(intensity === undefined ? {} : { intensity }),
+              } })}
               intensity={edit.pipeline.lutFilter.intensity}
               onIntensityChange={(intensity) => edit.updateWorkspacePanel({ lutFilter: { intensity } })}
               mediaPath={mediaCtx.activeMedia?.path}
