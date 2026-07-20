@@ -5,6 +5,8 @@ export interface PreviewState {
   previewOnly?: boolean
   /** true 表示批量导出模式，显示"导出全部"按钮 */
   batchExportMode?: boolean
+  /** 本地资源使用原生媒体元素和 CSS 水印，不启动后端预览渲染器。 */
+  lightweightPreview?: boolean
 }
 
 type SetStateFn = (state: PreviewState | null) => void
@@ -35,5 +37,5 @@ export function showBatchExportModal(
   filePath: string,
   fileList: string[],
 ): void {
-  setPreviewState?.({ filePath, fileList, batchExportMode: true })
+  setPreviewState?.({ filePath, fileList, batchExportMode: true, lightweightPreview: true })
 }

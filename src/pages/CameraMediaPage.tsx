@@ -4,9 +4,18 @@ import { useLocation } from 'react-router-dom'
 import { MediaGallery } from '../components/MediaGallery'
 import { MediaLibraryToolbar } from '../components/MediaLibraryToolbar'
 import { PreviewModal } from '../components/PreviewModal'
+import type { LunaFile } from '../shared/types'
 import { useMediaLibraryController, MediaLibraryCtx } from './useMediaLibraryController'
 import { Modal } from '../ui'
 import '../styles/library.css'
+
+function previewPath(file: LunaFile): string {
+  return file.downloadFilePath ?? file.localPath ?? file.previewUrl ?? file.sourceUrl ?? file.id
+}
+
+function usesProxyPreview(file: LunaFile): boolean {
+  return !file.downloadFilePath && !file.localPath && Boolean(file.previewUrl) && previewPath(file) === file.previewUrl
+}
 
 /** 格式化日期，年月日和星期之间加空格 */
 function groupTitle(group: string): string {
@@ -105,10 +114,9 @@ export function CameraMediaPage() {
       {pageActive && controller.previewFile && (
         <PreviewModal
           previewOnly
-          filePath={controller.previewFile.previewUrl || controller.previewFile.sourceUrl || ''}
-          filePathList={controller.filteredFiles.map(
-            (f) => f.previewUrl || f.sourceUrl || f.id,
-          )}
+          filePath={previewPath(controller.previewFile)}
+          filePathList={controller.filteredFiles.map(previewPath)}
+          proxyPreviewPaths={controller.filteredFiles.filter(usesProxyPreview).map(previewPath)}
           onClose={() => {
             controller.setPreviewFile(null)
             controller.setPreviewFiles([])
