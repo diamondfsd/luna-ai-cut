@@ -324,22 +324,81 @@ function compareRepresentative(a: AiSelectionItem, b: AiSelectionItem): number {
   const aSubjectEdge = a.personEvidence?.subjectEdgeScore ?? 0
   const bSubjectEdge = b.personEvidence?.subjectEdgeScore ?? 0
   const eyeScore = (item: AiSelectionItem): number => item.personEvidence?.eyeState === 'open' ? 4 : item.personEvidence?.eyeState === 'closed' ? -10 : item.personEvidence?.eyeState === 'mixed' ? -5 : 0
-  if (aSubjectEdge + eyeScore(a) !== bSubjectEdge + eyeScore(b)) return (bSubjectEdge + eyeScore(b)) - (aSubjectEdge + eyeScore(a))
+  if (eyeScore(a) !== eyeScore(b)) return eyeScore(b) - eyeScore(a)
+  if (a.recommendationScore !== b.recommendationScore) return b.recommendationScore - a.recommendationScore
+  if (aSubjectEdge !== bSubjectEdge) return bSubjectEdge - aSubjectEdge
   if (aEdge !== bEdge) return bEdge - aEdge
-  return b.recommendationScore - a.recommendationScore
+  return a.id.localeCompare(b.id)
 }
 
-function refreshScores(item: AiSelectionItem, grouped: boolean, preference?: AiSelectionPreferenceProfile): void {
+function personScore(item: AiSelectionItem, purpose: AiSelectionPurpose): { raw: number | null; normalized: number } {
+  const evidence = item.personEvidence
+  if (!evidence) return { raw: null, normalized: 0.5 }
+  if (!evidence.detected) return { raw: 0, normalized: purpose === 'people' ? 0 : 0.4 }
+  const eye = evidence.eyeState === 'open' ? 1 : evidence.eyeState === 'closed' ? 0 : evidence.eyeState === 'mixed' ? 0.2 : 0.55
+  const visibility = evidence.faceVisibility === 'clear' ? 1 : evidence.faceVisibility === 'small' ? 0.65 : evidence.faceVisibility === 'occluded' ? 0.25 : 0.5
+  const sharpness = Math.min(1, Math.max(0, (evidence.subjectEdgeScore ?? 8) / 18))
+  return {
+    raw: evidence.confidence,
+    normalized: evidence.confidence * 0.35 + sharpness * 0.35 + eye * 0.2 + visibility * 0.1,
+  }
+}
+
+function compositionScore(item: AiSelectionItem): { raw: number | null; normalized: number } {
+  const bounds = item.personEvidence?.bounds
+  if (!bounds) return { raw: null, normalized: 0.5 }
+  const centerX = bounds.x + bounds.width / 2
+  const centerY = bounds.y + bounds.height / 2
+  const anchors = [1 / 3, 0.5, 2 / 3]
+  const distance = Math.min(...anchors.flatMap((x) => anchors.map((y) => Math.hypot(centerX - x, centerY - y))))
+  const placement = Math.max(0, 1 - distance / 0.48)
+  const coverage = bounds.width * bounds.height
+  const scale = coverage < 0.015 ? coverage / 0.015 : coverage > 0.7 ? Math.max(0, 1 - (coverage - 0.7) / 0.3) : 1
+  const normalized = placement * 0.65 + scale * 0.35
+  return { raw: Number(distance.toFixed(4)), normalized }
+}
+
+const TRAVEL_TAGS = new Set(['风景', '自然风景', '城市', '建筑', '天空', '水面', '海洋', '山体', '美食', '人物', '动物'])
+const EDITING_TAGS = new Set(['人物', '车辆', '动物', '运动', '风景', '自然风景', '城市', '建筑', '美食', '室内'])
+
+function relevanceScore(item: AiSelectionItem, purpose: AiSelectionPurpose): { raw: number | null; normalized: number } {
+  const tags = new Set(item.contentTags)
+  if (purpose === 'people') {
+    const matched = item.personEvidence?.detected === true || tags.has('人物')
+    return { raw: matched ? 1 : 0, normalized: matched ? 1 : 0 }
+  }
+  const purposeTags = purpose === 'travel' ? TRAVEL_TAGS : purpose === 'editing' ? EDITING_TAGS : null
+  if (purposeTags) {
+    const matches = [...tags].filter((tag) => purposeTags.has(tag)).length
+    const videoEvidence = purpose === 'editing' && item.kind === 'video' && item.videoSegments.some((segment) => segment.status === 'usable')
+    return { raw: matches + Number(videoEvidence), normalized: Math.min(1, matches / 3 + (videoEvidence ? 0.35 : 0)) }
+  }
+  if (item.contentTagVersion === null) return { raw: null, normalized: 0.5 }
+  return { raw: tags.size, normalized: Math.min(1, 0.35 + tags.size / 8) }
+}
+
+function diversityScore(item: AiSelectionItem, grouped: boolean, tagFrequency: Map<string, number>): { raw: number | null; normalized: number } {
+  const tags = item.contentTags.filter((tag) => tagFrequency.has(tag))
+  if (tags.length === 0) return { raw: null, normalized: grouped ? 0.3 : 0.5 }
+  const rarity = tags.reduce((sum, tag) => sum + 1 / (tagFrequency.get(tag) ?? 1), 0) / tags.length
+  const normalized = Math.min(1, 0.35 + rarity * 0.65) * (grouped ? 0.65 : 1)
+  return { raw: Number(rarity.toFixed(4)), normalized }
+}
+
+function refreshScores(item: AiSelectionItem, grouped: boolean, purpose: AiSelectionPurpose, tagFrequency: Map<string, number>, preference?: AiSelectionPreferenceProfile): void {
   const set = (key: keyof Omit<AiSelectionItem['scores'], 'total'>, raw: number | null, normalized: number): void => {
     item.scores[key].raw = raw
     item.scores[key].normalized = Math.min(1, Math.max(0, normalized))
   }
   set('quality', item.quality?.score ?? null, (item.quality?.score ?? 0) / 100)
-  set('people', item.personEvidence?.confidence ?? null, item.personEvidence?.detected ? item.personEvidence.confidence : 0)
-  set('composition', item.quality?.edgeScore ?? null, (item.quality?.edgeScore ?? 0) / 24)
-  set('aesthetics', null, (item.quality?.score ?? 0) / 100)
-  set('relevance', item.contentTags.length, Math.min(1, item.contentTags.length / 4))
-  set('diversity', grouped ? 0.5 : 1, grouped ? 0.5 : 1)
+  const people = personScore(item, purpose)
+  const composition = compositionScore(item)
+  const relevance = relevanceScore(item, purpose)
+  const diversity = diversityScore(item, grouped, tagFrequency)
+  set('people', people.raw, people.normalized)
+  set('composition', composition.raw, composition.normalized)
+  set('relevance', relevance.raw, relevance.normalized)
+  set('diversity', diversity.raw, diversity.normalized)
   if (preference) {
     for (const key of Object.keys(preference.weights) as Array<keyof typeof preference.weights>) {
       item.scores[key].weight = preference.weights[key]
@@ -351,9 +410,22 @@ function refreshScores(item: AiSelectionItem, grouped: boolean, preference?: AiS
   item.recommendationScore = item.scores.total
 }
 
+function recommendationReason(item: AiSelectionItem, group: AiSelectionGroup | undefined, purpose: AiSelectionPurpose): string {
+  const reasons = [group ? `相似组 ${group.itemIds.length} 选 1` : null, `综合评分 ${item.recommendationScore}`]
+  if (item.personEvidence?.eyeState === 'open') reasons.push('人物睁眼')
+  if ((item.personEvidence?.subjectEdgeScore ?? 0) >= 10) reasons.push('人物主体清晰')
+  if ((item.quality?.score ?? 0) >= 88) reasons.push('画面细节和曝光良好')
+  const relevantTags = purpose === 'travel' ? TRAVEL_TAGS : purpose === 'editing' ? EDITING_TAGS : null
+  const contentTag = item.contentTags.find((tag) => !relevantTags || relevantTags.has(tag))
+  if (contentTag) reasons.push(`识别到${contentTag}`)
+  return reasons.filter((value): value is string => Boolean(value)).slice(0, 4).join(' · ')
+}
+
 export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelectionGroup[], preset: AiSelectionPreset, purpose: AiSelectionPurpose = 'general', targetSetting: AiSelectionTarget = { mode: 'preset', value: null }, preference?: AiSelectionPreferenceProfile): void {
   targetSetting = normalizeSelectionTarget(targetSetting)
   const grouped = new Map(groups.flatMap((group) => group.itemIds.map((id) => [id, group] as const)))
+  const tagFrequency = new Map<string, number>()
+  for (const item of items) for (const tag of new Set(item.contentTags)) tagFrequency.set(tag, (tagFrequency.get(tag) ?? 0) + 1)
   for (const item of items) {
     item.groupId = grouped.get(item.id)?.id ?? null
     item.recommendationReason = null
@@ -361,12 +433,12 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
     item.flags.lowQuality = item.quality?.grade === 'review'
     item.flags.closedEyes = item.personEvidence?.eyeState === 'closed' || item.personEvidence?.eyeState === 'mixed'
     item.flags.analysisFailed = Boolean(item.error)
-    refreshScores(item, Boolean(grouped.get(item.id)), preference)
+    refreshScores(item, Boolean(grouped.get(item.id)), purpose, tagFrequency, preference)
     if (item.decisionSource === 'ai') item.state = 'undecided'
   }
 
   const candidates = items.filter((item) => {
-    if (item.analysisState !== 'ready' || item.error || item.quality?.grade === 'review') return false
+    if (item.analysisState !== 'ready' || item.error || item.quality?.grade === 'review' || item.flags.closedEyes) return false
     if (item.kind === 'video') return purpose === 'editing'
     if (purpose === 'people' && item.personEvidence?.detected !== true && !item.contentTags.includes('人物')) return false
     const group = grouped.get(item.id)
@@ -398,12 +470,12 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
     const group = grouped.get(item.id)
     if (item.quality?.grade === 'review' || item.error || item.flags.closedEyes) {
       item.state = 'undecided'
-      item.recommendationReason = item.quality?.reasons[0] ?? '需要人工确认'
+      item.recommendationReason = item.flags.closedEyes
+        ? item.personEvidence?.eyeState === 'mixed' ? '双眼状态不一致，需要确认' : '检测到闭眼，需要确认'
+        : item.quality?.reasons[0] ?? (item.error ? '素材分析失败' : '需要人工确认')
     } else if (chosen.has(item.id)) {
       item.state = 'recommended'
-      item.recommendationReason = group
-        ? `从 ${group.itemIds.length} 个相似素材中优先推荐`
-        : purpose === 'people' ? '人物素材候选' : purpose === 'travel' ? '用于保持旅程内容覆盖' : purpose === 'editing' ? '可作为剪辑候选素材' : '用于保持拍摄过程的内容覆盖'
+      item.recommendationReason = recommendationReason(item, group, purpose)
     } else if (group) {
       item.state = 'alternative'
       item.recommendationReason = '相似组备选'

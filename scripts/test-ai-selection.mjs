@@ -68,12 +68,11 @@ function item(id, capturedAt, overrides = {}) {
     decisionSource: 'ai',
     flags: { aiRecommended: false, lowQuality: false, duplicate: false, closedEyes: false, analysisFailed: false },
     scores: {
-      quality: { raw: 80, normalized: 0.8, weight: 0.45 },
-      people: { raw: null, normalized: 0, weight: 0.2 },
-      composition: { raw: null, normalized: 0, weight: 0.15 },
-      aesthetics: { raw: null, normalized: 0, weight: 0.05 },
-      relevance: { raw: null, normalized: 0, weight: 0.1 },
-      diversity: { raw: null, normalized: 0, weight: 0.05 },
+      quality: { raw: 80, normalized: 0.8, weight: 0.4 },
+      people: { raw: null, normalized: 0.5, weight: 0.2 },
+      composition: { raw: null, normalized: 0.5, weight: 0.1 },
+      relevance: { raw: null, normalized: 0.5, weight: 0.2 },
+      diversity: { raw: null, normalized: 0.5, weight: 0.1 },
       total: 80,
     },
     error: null,
@@ -182,7 +181,30 @@ applySelectionPlan(peopleItems, [], 'deep', 'people')
 assert.equal(peopleItems[0].state, 'undecided')
 assert.equal(peopleItems[0].recommendationReason, null)
 assert.equal(peopleItems[1].state, 'recommended')
-assert.equal(peopleItems[1].recommendationReason, '人物素材候选')
+assert.match(peopleItems[1].recommendationReason, /^综合评分 \d+ · 识别到人物$/)
+
+const faceEvidence = (eyeState, subjectEdgeScore) => ({
+  detected: true,
+  coverage: 0.2,
+  confidence: 0.8,
+  subjectEdgeScore,
+  bounds: { x: 0.28, y: 0.16, width: 0.34, height: 0.68 },
+  faceCount: 1,
+  primaryFaceBounds: { x: 0.36, y: 0.2, width: 0.15, height: 0.2 },
+  faceVisibility: 'clear',
+  eyeState,
+  closedEyeConfidence: eyeState === 'closed' ? 0.9 : 0.1,
+  reason: eyeState === 'closed' ? '检测到高可信闭眼' : '人物睁眼',
+})
+const eyeSelectionItems = [
+  item('closed-higher-quality', '2026-07-18T02:00:00.000Z', { quality: quality(96), personEvidence: faceEvidence('closed', 15), contentTags: ['人物'], contentTagVersion: 'test' }),
+  item('open-lower-quality', '2026-07-18T02:00:01.000Z', { quality: quality(78), personEvidence: faceEvidence('open', 11), contentTags: ['人物'], contentTagVersion: 'test' }),
+]
+applySelectionPlan(eyeSelectionItems, [], 'deep', 'people', { mode: 'count', value: 1 })
+assert.equal(eyeSelectionItems[0].state, 'undecided', '高分闭眼素材不能进入 AI 推荐')
+assert.equal(eyeSelectionItems[0].flags.closedEyes, true)
+assert.equal(eyeSelectionItems[1].state, 'recommended')
+assert.match(eyeSelectionItems[1].recommendationReason, /人物睁眼/)
 
 const video = item('video-segments', '2026-07-18T01:00:00.000Z', {
   kind: 'video',
@@ -214,7 +236,7 @@ const sceneSession = {
   items: [item('scene-best', '2026-07-18T04:00:00.000Z', { state: 'recommended' }), item('scene-alt', '2026-07-18T04:00:01.000Z', { state: 'alternative' })],
   scenes: [{ id: 'scene', name: '场景', startAt: '2026-07-18T04:00:00.000Z', endAt: '2026-07-18T04:00:01.000Z', itemIds: ['scene-best', 'scene-alt'], coverItemId: 'scene-best', confirmation: 'pending', recommendedCount: 1, userModified: false }],
   groups: [],
-  preferenceProfile: { sampleCount: 0, weights: { quality: 0.45, people: 0.2, composition: 0.15, aesthetics: 0.05, relevance: 0.1, diversity: 0.05 } },
+  preferenceProfile: { sampleCount: 0, weights: { quality: 0.4, people: 0.2, composition: 0.1, relevance: 0.2, diversity: 0.1 } },
 }
 applyAiSelectionUserOperation(sceneSession, { type: 'confirm-scene', sceneId: 'scene' })
 assert.deepEqual(sceneSession.items.map((entry) => entry.state), ['kept', 'rejected'])
