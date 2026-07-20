@@ -34,7 +34,7 @@ function eventName(startAt: string, index: number): string {
 export function buildShootingEvents(items: AiSelectionItem[]): AiSelectionScene[] {
   const buckets = new Map<string, AiSelectionItem[]>()
   for (const item of items) {
-    const key = `${localDay(item.capturedAt)}\0${item.device ?? 'unknown'}\0${item.path.split(/[\\/]/).slice(0, -1).join('/')}`
+    const key = `${localDay(item.capturedAt)}\0${item.device ?? 'unknown'}`
     buckets.set(key, [...(buckets.get(key) ?? []), item])
   }
 
@@ -43,7 +43,7 @@ export function buildShootingEvents(items: AiSelectionItem[]): AiSelectionScene[
     bucket.sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt) || a.path.localeCompare(b.path))
     const gaps = bucket.slice(1).map((item, index) => Date.parse(item.capturedAt) - Date.parse(bucket[index].capturedAt))
       .filter((gap) => gap > 0 && gap < 2 * 60 * 60 * 1000)
-    const threshold = Math.max(5 * 60_000, Math.min(30 * 60_000, 3 * (percentile(gaps, 0.75) || 10 * 60_000)))
+    const threshold = Math.max(20 * 60_000, Math.min(60 * 60_000, 4 * (percentile(gaps, 0.75) || 15 * 60_000)))
     let current: AiSelectionItem[] = []
     const flush = (): void => {
       if (current.length === 0) return
@@ -67,7 +67,7 @@ export function buildShootingEvents(items: AiSelectionItem[]): AiSelectionScene[
     for (const item of bucket) {
       const previous = current[current.length - 1]
       const gap = previous ? Date.parse(item.capturedAt) - Date.parse(previous.capturedAt) : 0
-      if (previous && (gap > threshold || gap > 90 * 60_000)) flush()
+      if (previous && (gap > threshold || gap > 2 * 60 * 60_000)) flush()
       current.push(item)
     }
     flush()
@@ -208,7 +208,42 @@ function histogramSimilarity(a: number[] | null, b: number[] | null): number {
 
 function vectorSimilarity(a: number[] | null, b: number[] | null): number {
   if (!a || !b || a.length !== b.length) return 0
-  return a.reduce((sum, value, index) => sum + value * b[index], 0)
+  const dot = a.reduce((sum, value, index) => sum + value * b[index], 0)
+  const lengthA = Math.sqrt(a.reduce((sum, value) => sum + value * value, 0))
+  const lengthB = Math.sqrt(b.reduce((sum, value) => sum + value * value, 0))
+  return dot / Math.max(0.000001, lengthA * lengthB)
+}
+
+function validEmbedding(item: AiSelectionItem): number[] | null {
+  return item.imageEmbedding?.length === 384 && item.imageEmbedding.every(Number.isFinite)
+    ? item.imageEmbedding
+    : null
+}
+
+function nearDuplicateEvidence(a: AiSelectionItem, b: AiSelectionItem): { matched: boolean; confidence: number } {
+  const gap = Math.abs(Date.parse(a.capturedAt) - Date.parse(b.capturedAt))
+  if (gap > 2 * 60_000 || a.sceneId !== b.sceneId) return { matched: false, confidence: 0 }
+  const aRatio = (a.width ?? 1) / (a.height ?? 1)
+  const bRatio = (b.width ?? 1) / (b.height ?? 1)
+  if (Math.abs(aRatio - bRatio) / Math.max(aRatio, bRatio) > 0.08) return { matched: false, confidence: 0 }
+
+  const distance = hammingDistance(a.perceptualHash!, b.perceptualHash!)
+  const color = histogramSimilarity(a.luminanceHistogram, b.luminanceHistogram)
+  const visual = vectorSimilarity(a.visualSignature, b.visualSignature)
+  const aEmbedding = validEmbedding(a)
+  const bEmbedding = validEmbedding(b)
+  if (aEmbedding && bEmbedding) {
+    const semantic = vectorSimilarity(aEmbedding, bEmbedding)
+    const supportedMatch = gap <= 30_000 && semantic >= 0.94 && (distance <= 18 || visual >= 0.98)
+    const veryStrongMatch = gap <= 10_000 && semantic >= 0.975
+    return {
+      matched: supportedMatch || veryStrongMatch,
+      confidence: supportedMatch || veryStrongMatch ? Math.min(0.99, Math.max(0.85, semantic)) : 0,
+    }
+  }
+
+  const conservativeFallback = gap <= 10_000 && distance <= 10 && color >= 0.82 && visual >= 0.985
+  return { matched: conservativeFallback, confidence: conservativeFallback ? 0.8 : 0 }
 }
 
 export function buildSimilarityGroups(items: AiSelectionItem[], scenes: AiSelectionScene[]): AiSelectionGroup[] {
@@ -229,27 +264,33 @@ export function buildSimilarityGroups(items: AiSelectionItem[], scenes: AiSelect
   const candidates = items
     .filter((item) => item.kind === 'image' && item.perceptualHash && !assigned.has(item.id))
     .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt))
-  for (const leader of candidates) {
-    if (assigned.has(leader.id)) continue
-    const bucket = [leader]
-    for (const candidate of candidates) {
-      if (candidate.id === leader.id || assigned.has(candidate.id)) continue
-      const gap = Math.abs(Date.parse(candidate.capturedAt) - Date.parse(leader.capturedAt))
-      if (gap > 2 * 60_000) continue
-      const leaderRatio = (leader.width ?? 1) / (leader.height ?? 1)
-      const candidateRatio = (candidate.width ?? 1) / (candidate.height ?? 1)
-      if (Math.abs(leaderRatio - candidateRatio) / Math.max(leaderRatio, candidateRatio) > 0.08) continue
-      const distance = hammingDistance(leader.perceptualHash!, candidate.perceptualHash!)
-      const color = histogramSimilarity(leader.luminanceHistogram, candidate.luminanceHistogram)
-      const visual = vectorSimilarity(leader.visualSignature, candidate.visualSignature)
-      const strongMatch = distance <= 12 && color >= 0.65
-      const continuousMatch = gap <= 30_000 && distance <= 18 && color >= 0.8
-      const visualMatch = gap <= 20_000 && distance <= 22 && color >= 0.82 && visual >= 0.97
-      // 连拍中动作和自动曝光会让 dHash/亮度直方图大幅变化；极短时间且空间色彩布局
-      // 高度一致时仍应进入同组，由用户并排比较，而不是被漏到普通文件流。
-      const exposureVariantMatch = gap <= 20_000 && visual >= 0.985
-      if (strongMatch || continuousMatch || visualMatch || exposureVariantMatch) bucket.push(candidate)
+  const parent = candidates.map((_, index) => index)
+  const confidenceByRoot = candidates.map(() => 1)
+  const find = (index: number): number => {
+    while (parent[index] !== index) { parent[index] = parent[parent[index]]; index = parent[index] }
+    return index
+  }
+  const union = (left: number, right: number, confidence: number): void => {
+    const leftRoot = find(left)
+    const rightRoot = find(right)
+    if (leftRoot === rightRoot) { confidenceByRoot[leftRoot] = Math.min(confidenceByRoot[leftRoot], confidence); return }
+    parent[rightRoot] = leftRoot
+    confidenceByRoot[leftRoot] = Math.min(confidenceByRoot[leftRoot], confidenceByRoot[rightRoot], confidence)
+  }
+  for (let left = 0; left < candidates.length; left += 1) {
+    for (let right = left + 1; right < candidates.length; right += 1) {
+      const gap = Date.parse(candidates[right].capturedAt) - Date.parse(candidates[left].capturedAt)
+      if (gap > 2 * 60_000) break
+      const evidence = nearDuplicateEvidence(candidates[left], candidates[right])
+      if (evidence.matched) union(left, right, evidence.confidence)
     }
+  }
+  const buckets = new Map<number, AiSelectionItem[]>()
+  candidates.forEach((item, index) => {
+    const root = find(index)
+    buckets.set(root, [...(buckets.get(root) ?? []), item])
+  })
+  for (const [root, bucket] of buckets) {
     if (bucket.length < 2) continue
     const representative = [...bucket].sort(compareRepresentative)[0]
     groups.push({
@@ -258,8 +299,8 @@ export function buildSimilarityGroups(items: AiSelectionItem[], scenes: AiSelect
       kind: gapKind(bucket),
       itemIds: bucket.map((item) => item.id),
       representativeId: representative.id,
-      reason: '同一时刻拍摄，内容相近',
-      confidence: 0.78,
+      reason: validEmbedding(representative) ? '视觉模型识别为同一连拍或近似画面' : '短时间内拍摄，画面细节高度一致',
+      confidence: Number(confidenceByRoot[find(root)].toFixed(3)),
       suggestedKeepCount: 1,
       confirmation: 'pending',
       userModified: false,
@@ -333,16 +374,13 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
   }).sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt))
   const baseRatio = preset === 'quick' ? 0.2 : preset === 'deep' ? 0.5 : 0.35
   const ratio = Math.min(0.65, baseRatio + (purpose === 'travel' ? 0.08 : purpose === 'editing' ? 0.05 : 0))
-  const candidateIds = new Set(candidates.map((item) => item.id))
-  const eligibleGroups = groups.filter((group) => candidateIds.has(group.representativeId))
   const requestedTarget = targetSetting.mode === 'count'
     ? Math.round(targetSetting.value ?? 0)
     : targetSetting.mode === 'ratio'
       ? Math.round(candidates.length * Math.min(1, Math.max(0.01, targetSetting.value ?? ratio)))
       : Math.round(candidates.length * ratio)
-  const target = Math.min(candidates.length, Math.max(eligibleGroups.length, requestedTarget))
+  const target = Math.min(candidates.length, Math.max(0, requestedTarget))
   const chosen = new Set<string>()
-  for (const group of eligibleGroups) chosen.add(group.representativeId)
   const remainingTarget = Math.max(0, target - chosen.size)
   if (remainingTarget > 0) {
     const step = candidates.length / remainingTarget

@@ -146,10 +146,10 @@
 .ai-selection-attention-badge { position: absolute; top: 8px; left: 8px; width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,.92); color: #a46000; display: grid; place-items: center; }
 .ai-selection-recommendation-badge { position: absolute; left: 8px; bottom: 8px; width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,.92); color: var(--blue, #06c); display: grid; place-items: center; }
 .ai-selection-video-badge + .ai-selection-recommendation-badge { left: 58px; }
+.ai-selection-group-badge + .ai-selection-recommendation-badge { left: 48px; }
 .ai-selection-state-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .ai-selection-state-actions .ui-btn { min-width: 0; }
-.ai-selection-group-badge, .ai-selection-video-badge { position: absolute; left: 6px; bottom: 6px; padding: 3px 6px; border-radius: 5px; background: rgba(20,20,22,.72); color: white; font-size: 10px; }
-.ai-selection-video-badge { display: flex; align-items: center; gap: 3px; }
+.ai-selection-group-badge, .ai-selection-video-badge { position: absolute; left: 6px; bottom: 6px; padding: 3px 6px; border-radius: 5px; background: rgba(20,20,22,.72); color: white; font-size: 10px; display: flex; align-items: center; gap: 3px; }
 .ai-selection-group-badge + .ai-selection-video-badge { bottom: 30px; }
 .ai-selection-thumb-placeholder { width: 100%; height: 100%; display: grid; place-items: center; color: #8a8d92; }
 .ai-selection-card-meta { padding: 7px 3px 3px; display: flex; flex-direction: column; gap: 2px; }

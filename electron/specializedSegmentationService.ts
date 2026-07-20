@@ -10,7 +10,7 @@ import {
   runSpecializedWorkerAttempt,
 } from './specializedSegmentationAttempt.js'
 
-export type SpecializedSegmentationBackend = 'yolo26-seg' | 'yolo26-labels' | 'segformer-labels' | 'rmbg-1.4' | 'ultraface' | 'eye-state'
+export type SpecializedSegmentationBackend = 'yolo26-seg' | 'yolo26-labels' | 'segformer-labels' | 'rmbg-1.4' | 'ultraface' | 'eye-state' | 'dinov2-small'
 
 interface SpecializedSegmentationInput {
   backend: SpecializedSegmentationBackend
@@ -85,6 +85,43 @@ export async function segmentSpecializedInWorker(
       sessionReused: attempt.result.sessionReused,
       executionBackend: 'onnx-cpu',
     }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
+
+export async function extractImageEmbeddingInWorker(
+  modelPath: string,
+  rgb: Buffer,
+  signal?: AbortSignal,
+): Promise<number[]> {
+  const dimension = 384
+  const directory = await mkdtemp(join(tmpdir(), 'luna-embedding-'))
+  const inputPath = join(directory, 'input.rgb')
+  const outputPath = join(directory, 'output.embedding')
+  try {
+    signal?.throwIfAborted()
+    await writeFile(inputPath, rgb, { signal })
+    const attempt = await runSpecializedWorkerAttempt(
+      onnxWorker,
+      {
+        backend: 'dinov2-small',
+        modelPath,
+        inputPath,
+        outputPath,
+        scaledWidth: 224,
+        scaledHeight: 224,
+        padX: 0,
+        padY: 0,
+        outputSize: dimension,
+      },
+      outputPath,
+      dimension * Float32Array.BYTES_PER_ELEMENT,
+      signal,
+    )
+    const embedding = Array.from({ length: dimension }, (_, index) => attempt.bytes.readFloatLE(index * 4))
+    if (embedding.some((value) => !Number.isFinite(value))) throw new Error('视觉模型返回了无效特征')
+    return embedding
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

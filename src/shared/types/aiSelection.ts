@@ -111,6 +111,9 @@ export interface AiSelectionItem {
   perceptualHash: string | null
   luminanceHistogram: number[] | null
   visualSignature: number[] | null
+  imageEmbedding: number[] | null
+  embeddingVersion: string | null
+  embeddingError: string | null
   quality: AiMediaQualityMetrics | null
   personEvidence: AiPersonEvidence | null
   videoKeyframes: AiVideoKeyframe[]

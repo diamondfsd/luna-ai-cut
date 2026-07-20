@@ -49,6 +49,9 @@ function item(id, capturedAt, overrides = {}) {
     perceptualHash: '0f0f0f0f0f0f0f0f',
     luminanceHistogram: [0.1, 0.2, 0.3, 0.4],
     visualSignature: Array.from({ length: 48 }, () => 1 / Math.sqrt(48)),
+    imageEmbedding: null,
+    embeddingVersion: null,
+    embeddingError: null,
     quality: quality(),
     personEvidence: null,
     videoKeyframes: [],
@@ -116,11 +119,17 @@ const events = buildShootingEvents(eventItems)
 assert.equal(events.length, 2)
 assert.deepEqual(events[0].itemIds, ['a', 'b'])
 
+const crossDirectoryEvent = buildShootingEvents([
+  item('directory-a', '2026-07-18T01:00:00.000Z', { path: '/tmp/a/directory-a.jpg' }),
+  item('directory-b', '2026-07-18T01:01:00.000Z', { path: '/tmp/b/directory-b.jpg' }),
+])
+assert.equal(crossDirectoryEvent.length, 1, '同一设备的连续拍摄不能因目录不同被拆开')
+
 const exactItems = [
   item('exact-a', '2026-07-18T01:00:00.000Z', { exactHash: 'same', recommendationScore: 70 }),
   item('exact-b', '2026-07-18T01:00:01.000Z', { exactHash: 'same', recommendationScore: 90 }),
-  item('near-a', '2026-07-18T01:00:02.000Z', { perceptualHash: 'aaaaaaaaaaaaaaaa' }),
-  item('near-b', '2026-07-18T01:00:03.000Z', { perceptualHash: 'aaaaaaaaaaaaaaab' }),
+  item('near-a', '2026-07-18T01:00:02.000Z', { perceptualHash: 'aaaaaaaaaaaaaaaa', sceneId: 'event' }),
+  item('near-b', '2026-07-18T01:00:03.000Z', { perceptualHash: 'aaaaaaaaaaaaaaab', sceneId: 'event' }),
 ]
 const oneEvent = [{ id: 'event', name: 'event', startAt: exactItems[0].capturedAt, endAt: exactItems[3].capturedAt, itemIds: exactItems.map((entry) => entry.id), coverItemId: exactItems[0].id, confirmation: 'pending', recommendedCount: 0, userModified: false }]
 const groups = buildSimilarityGroups(exactItems, oneEvent)
@@ -129,11 +138,14 @@ assert.equal(groups.find((group) => group.kind === 'duplicate')?.representativeI
 assert.deepEqual(groups.find((group) => group.kind === 'burst')?.itemIds, ['near-a', 'near-b'])
 
 const exposureVariants = [
-  item('exposure-a', '2026-07-18T01:00:00.000Z', { perceptualHash: '0000000000000000', luminanceHistogram: [1, 0, 0, 0] }),
-  item('exposure-b', '2026-07-18T01:00:10.000Z', { perceptualHash: 'ffffffffffffffff', luminanceHistogram: [0, 0, 0, 1] }),
+  item('exposure-a', '2026-07-18T01:00:00.000Z', { perceptualHash: '0000000000000000', luminanceHistogram: [1, 0, 0, 0], imageEmbedding: [127, ...Array(383).fill(0)], embeddingVersion: 'test', sceneId: 'exposure-event' }),
+  item('exposure-b', '2026-07-18T01:00:10.000Z', { perceptualHash: 'ffffffffffffffff', luminanceHistogram: [0, 0, 0, 1], imageEmbedding: [124, 25, ...Array(382).fill(0)], embeddingVersion: 'test', sceneId: 'exposure-event' }),
 ]
 const exposureEvent = [{ id: 'exposure-event', name: 'event', startAt: exposureVariants[0].capturedAt, endAt: exposureVariants[1].capturedAt, itemIds: exposureVariants.map((entry) => entry.id), coverItemId: exposureVariants[0].id, confirmation: 'pending', recommendedCount: 0, userModified: false }]
 assert.deepEqual(buildSimilarityGroups(exposureVariants, exposureEvent)[0]?.itemIds, ['exposure-a', 'exposure-b'])
+
+const colorOnlyVariants = exposureVariants.map((entry) => ({ ...entry, id: `${entry.id}-color`, imageEmbedding: null, embeddingVersion: null }))
+assert.equal(buildSimilarityGroups(colorOnlyVariants, exposureEvent).length, 0, '仅颜色布局接近不能判为相似')
 
 const selectionItems = Array.from({ length: 20 }, (_, index) => item(`selection-${index}`, `2026-07-18T01:00:${String(index).padStart(2, '0')}.000Z`, {
   perceptualHash: `${index.toString(16).padStart(16, '0')}`,
@@ -146,6 +158,19 @@ selectionItems[0].state = 'rejected'
 selectionItems[0].decisionSource = 'user'
 applySelectionPlan(selectionItems, [], 'deep')
 assert.equal(selectionItems[0].state, 'rejected', '人工决定不能被推荐重算覆盖')
+
+const groupedSelectionItems = [
+  item('group-target-a', '2026-07-18T01:00:00.000Z'),
+  item('group-target-b', '2026-07-18T01:00:01.000Z'),
+  item('group-target-c', '2026-07-18T01:00:02.000Z'),
+  item('group-target-d', '2026-07-18T01:00:03.000Z'),
+]
+const forcedGroups = [
+  { id: 'target-group-1', sceneId: 'event', kind: 'burst', itemIds: ['group-target-a', 'group-target-b'], representativeId: 'group-target-a', reason: '', confidence: 0.9, suggestedKeepCount: 1, confirmation: 'pending', userModified: false },
+  { id: 'target-group-2', sceneId: 'event', kind: 'burst', itemIds: ['group-target-c', 'group-target-d'], representativeId: 'group-target-c', reason: '', confidence: 0.9, suggestedKeepCount: 1, confirmation: 'pending', userModified: false },
+]
+applySelectionPlan(groupedSelectionItems, forcedGroups, 'balanced', 'general', { mode: 'count', value: 1 })
+assert.equal(groupedSelectionItems.filter((entry) => entry.state === 'recommended').length, 1, '相似组不能强制突破用户设置的推荐数量')
 
 const peopleItems = [
   item('no-person', '2026-07-18T01:00:00.000Z'),
