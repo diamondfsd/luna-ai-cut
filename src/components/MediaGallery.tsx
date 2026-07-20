@@ -31,8 +31,8 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
     if (!gallery) return
 
     const rect = gallery.getBoundingClientRect()
-    const left = Math.min(dragStartRef.current.x, e.clientX) - rect.left
-    const top = Math.min(dragStartRef.current.y, e.clientY) - rect.top
+    const left = Math.min(dragStartRef.current.x, e.clientX) - rect.left + gallery.scrollLeft
+    const top = Math.min(dragStartRef.current.y, e.clientY) - rect.top + gallery.scrollTop
     const width = Math.abs(e.clientX - dragStartRef.current.x)
     const height = Math.abs(e.clientY - dragStartRef.current.y)
     setDragRect({ left, top, width, height })
