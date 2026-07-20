@@ -106,10 +106,8 @@ export interface EditPipeline {
     sharpen: number
     denoise: number
   }
-  effects: {
-    sharpen: number
-    denoise: number
-  }
+  effects: { sharpen: number; denoise: number }
+  logRestore: { activeId: string | null }
   lutFilter: {
     activeId: string | null
     /** 滤镜强度 1-100，默认 100 */
@@ -126,6 +124,7 @@ export type PipelinePatch = {
   transform?: Partial<EditPipeline['transform']>
   color?: Partial<EditPipeline['color']>
   effects?: Partial<EditPipeline['effects']>
+  logRestore?: Partial<EditPipeline['logRestore']>
   lutFilter?: Partial<EditPipeline['lutFilter']>
   watermark?: Partial<EditPipeline['watermark']>
   border?: Partial<EditPipeline['border']>
@@ -206,10 +205,8 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     sharpen: 0,
     denoise: 0,
   },
-  effects: {
-    sharpen: 0,
-    denoise: 0,
-  },
+  effects: { sharpen: 0, denoise: 0 },
+  logRestore: { activeId: null },
   lutFilter: {
     activeId: null,
     intensity: 30,
@@ -481,6 +478,8 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
 }
 
 export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): EditPipeline {
+  const legacyRestoreId = patch.logRestore === undefined && typeof patch.lutFilter?.activeId === 'string' &&
+    /Luna_I-Log_to_Rec709_BT1886_s65_v2\.cube$/i.test(patch.lutFilter.activeId.replace(/\\/g, '/')) ? patch.lutFilter.activeId : null
   return normalizePipeline({
     trim: patch.trim !== undefined ? patch.trim : pipeline.trim,
     colorMask: patch.colorMask !== undefined ? patch.colorMask : pipeline.colorMask,
@@ -492,10 +491,10 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
       curve: mergeCurve(pipeline.color.curve, patch.color?.curve),
     },
     effects: { ...pipeline.effects, ...patch.effects },
-    lutFilter: { ...pipeline.lutFilter, ...patch.lutFilter },
+    logRestore: { ...pipeline.logRestore, ...patch.logRestore, ...(legacyRestoreId ? { activeId: legacyRestoreId } : {}) },
+    lutFilter: { ...pipeline.lutFilter, ...patch.lutFilter, ...(legacyRestoreId ? { activeId: null } : {}) },
     watermark: { ...pipeline.watermark, ...patch.watermark },
     border: { ...pipeline.border, ...patch.border },
   })
 }
-
 export { deserializePipeline, serializePipeline } from './editPipelineSerialization'

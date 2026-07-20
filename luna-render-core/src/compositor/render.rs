@@ -38,6 +38,11 @@ impl Compositor {
 
         // 预加载所有层需要的 LUT（在借用 self.output_texture 之前）
         for layer in &sorted {
+            if let Some(path) = &layer.restore_lut_id {
+                if let Err(e) = self.ensure_lut_loaded(path) {
+                    log!("还原 LUT 加载失败 {}: {}", path, e);
+                }
+            }
             if let Some(path) = &layer.lut_id {
                 if let Err(e) = self.ensure_lut_loaded(path) {
                     log!("LUT 加载失败 {}: {}", path, e);
@@ -307,7 +312,14 @@ impl Compositor {
                     tex_entry.height as f64,
                 );
 
-                // ── 确定当前层的 LUT（已在 render loop 前预加载） ──
+                let (restore_lut_texture, restore_lut_size) = match &layer.restore_lut_id {
+                    Some(path) => self.luts.get(path.as_str()).map_or_else(
+                        || (&self.identity_lut, 0.0),
+                        |entry| (&entry.texture, entry.size as f32),
+                    ),
+                    None => (&self.identity_lut, 0.0),
+                };
+                // ── 确定当前层的创意 LUT（已在 render loop 前预加载） ──
                 let (lut_texture, lut_size) = match &layer.lut_id {
                     Some(path) => self.luts.get(path.as_str()).map_or_else(
                         || (&self.identity_lut, 0.0),
@@ -420,6 +432,7 @@ impl Compositor {
                         .as_ref()
                         .and_then(|t| t.translate_y)
                         .unwrap_or(0.0) as f32,
+                    restore_lut_size,
                     lut_size,
                     lut_intensity: layer.lut_intensity.unwrap_or(100.0) as f32,
                     sampling_quality: if layer.positioning.is_some() {
@@ -427,6 +440,7 @@ impl Compositor {
                     } else {
                         0.0
                     },
+                    lut_padding: [0.0; 3],
                     mask_params: mask_params(layer),
                     procedural: [
                         procedural_kind,
@@ -470,6 +484,8 @@ impl Compositor {
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
                 let lut_view = lut_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let restore_lut_view =
+                    restore_lut_texture.create_view(&wgpu::TextureViewDescriptor::default());
                 let mask_entry = layer
                     .mask_texture_id
                     .and_then(|id| self.textures.get(&id))
@@ -503,6 +519,10 @@ impl Compositor {
                     wgpu::BindGroupEntry {
                         binding: 5,
                         resource: wgpu::BindingResource::TextureView(&mask_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::TextureView(&restore_lut_view),
                     },
                 ];
 

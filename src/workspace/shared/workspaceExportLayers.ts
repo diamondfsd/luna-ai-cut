@@ -21,6 +21,7 @@ export function buildWorkspaceExportLayers(
       ...main[0],
       color: pipelineColorToRenderColor(pipeline.color),
       transform: pipelineTransformToRenderTransform(pipeline.transform),
+      restoreLutId: pipeline.logRestore.activeId ?? undefined,
       lutId: pipeline.lutFilter.activeId ?? undefined,
       lutIntensity: pipeline.lutFilter.intensity,
       // 截取：设置视频起始时间和有效时长
@@ -44,6 +45,7 @@ export function buildWorkspaceExportLayers(
       mediaLayerStyle: {
         color: pipelineColorToRenderColor(pipeline.color),
         transform: pipelineTransformToRenderTransform(pipeline.transform),
+        restoreLutId: pipeline.logRestore.activeId ?? undefined,
         lutId: pipeline.lutFilter.activeId ?? undefined,
         lutIntensity: pipeline.lutFilter.intensity,
       },

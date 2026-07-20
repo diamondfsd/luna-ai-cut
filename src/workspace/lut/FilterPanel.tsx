@@ -7,10 +7,12 @@ import { FilterItem } from './FilterItem'
 import { LutImportDialog } from './LutImportDialog'
 import { lutManager } from './LutManager'
 import { ParamSlider } from '../components/ParamSlider'
-import { CREATIVE_LUT_DEFAULT_INTENSITY, findLunaUltraRestoreLut, isLunaUltraRestoreLut, LUNA_ULTRA_RESTORE_INTENSITY } from './lunaUltraRestoreLut'
+import { findLunaUltraRestoreLut, isLunaUltraRestoreLut, isLunaUltraTechnicalLut } from './lunaUltraRestoreLut'
 import './FilterPanel.css'
 
 interface FilterPanelProps {
+  restoreLutId: string | null
+  onRestoreChange: (lutId: string | null) => void
   activeLutId: string | null
   onChange: (lutId: string | null, intensity?: number) => void
   intensity?: number
@@ -21,7 +23,7 @@ interface FilterPanelProps {
   searchKey?: string
 }
 
-export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
+export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<string>('全部')
@@ -36,7 +38,7 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
     [allLuts, activeLutId],
   )
   const restoreLut = useMemo(() => findLunaUltraRestoreLut(allLuts), [allLuts])
-  const restoreActive = isLunaUltraRestoreLut(activeLutId)
+  const restoreActive = isLunaUltraRestoreLut(restoreLutId)
 
   // 解析 lutDir
   async function resolveLutDir(): Promise<string> {
@@ -60,7 +62,7 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
       setAllLuts(luts)
       const cats: string[] = ['全部']
       const seen = new Set<string>()
-      for (const lut of luts) {
+      for (const lut of luts.filter((item) => !isLunaUltraTechnicalLut(item.filePath))) {
         if (!seen.has(lut.category)) {
           seen.add(lut.category)
           cats.push(lut.category)
@@ -85,7 +87,8 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
 
   // 按 tab + searchKey 过滤
   const filteredLuts = useMemo(() => {
-    let result = activeTab === '全部' ? allLuts : allLuts.filter((l) => l.category === activeTab)
+    let result = allLuts.filter((lut) => !isLunaUltraTechnicalLut(lut.filePath))
+    if (activeTab !== '全部') result = result.filter((l) => l.category === activeTab)
     if (searchKey) {
       const kw = searchKey.toLowerCase()
       result = result.filter((l) => l.name.toLowerCase().includes(kw))
@@ -98,13 +101,12 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
       onChange(null)
       return
     }
-    onChange(id, restoreActive ? CREATIVE_LUT_DEFAULT_INTENSITY : undefined)
-  }, [activeLutId, onChange, restoreActive])
+    onChange(id)
+  }, [activeLutId, onChange])
 
   const handleRestoreChange = useCallback((checked: boolean) => {
-    if (checked && restoreLut) onChange(restoreLut.filePath, LUNA_ULTRA_RESTORE_INTENSITY)
-    else if (!checked) onChange(null, CREATIVE_LUT_DEFAULT_INTENSITY)
-  }, [onChange, restoreLut])
+    onRestoreChange(checked && restoreLut ? restoreLut.filePath : null)
+  }, [onRestoreChange, restoreLut])
 
   // 导入成功回调
   const handleImportSuccess = useCallback(async (lutPath: string) => {
@@ -173,7 +175,7 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
           {activeLutInfo ? (
             <div className="current-info">
               <div className="current-top">
-                <span className="current-name">{restoreActive ? 'LUT 还原' : activeLutInfo.name}</span>
+                <span className="current-name">{activeLutInfo.name}</span>
                 <div className="current-actions">
                   <Popover>
                     <PopoverTrigger asChild>
@@ -220,7 +222,7 @@ export function FilterPanel({ activeLutId, onChange, intensity = 30, onIntensity
                   </button>
                 </div>
               </div>
-              {onIntensityChange && !restoreActive && (
+              {onIntensityChange && (
                 <ParamSlider
                   label="强度"
                   value={intensity}

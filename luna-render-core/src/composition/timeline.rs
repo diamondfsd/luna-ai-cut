@@ -307,6 +307,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 pixel_stretch: layer.pixel_stretch.clone(),
                 transform: layer.transform.clone().unwrap_or_default(),
                 positioning: layer.positioning.clone(),
+                restore_lut_id: layer.restore_lut_id.clone(),
                 lut_id: layer.lut_id.clone(),
                 lut_intensity: layer.lut_intensity,
                 shape: layer.shape.clone(),

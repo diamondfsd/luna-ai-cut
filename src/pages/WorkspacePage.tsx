@@ -244,6 +244,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       mediaLayerStyle: {
         color: pipelineColorToRenderColor(stagePipeline.color),
         transform: pipelineTransformToRenderTransform(stagePipeline.transform),
+        restoreLutId: stagePipeline.logRestore.activeId ?? undefined,
         lutId: stagePipeline.lutFilter.activeId ?? undefined,
         lutIntensity: stagePipeline.lutFilter.intensity,
         isVideo: media.activeMedia?.path ? isVideoPath(media.activeMedia.path) : false,
@@ -368,6 +369,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
     const patch: PipelinePatch = {
       color: data.color,
       effects: data.effects,
+      logRestore: data.logRestore,
       lutFilter: data.lutFilter,
       watermark: data.watermark,
       border: data.border,
@@ -406,6 +408,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         writeWorkspacePipelineClipboard({
           color: structuredClone(pipe.color),
           effects: structuredClone(pipe.effects),
+          logRestore: structuredClone(pipe.logRestore),
           lutFilter: structuredClone(pipe.lutFilter),
           watermark: structuredClone(pipe.watermark),
           border: structuredClone(pipe.border),

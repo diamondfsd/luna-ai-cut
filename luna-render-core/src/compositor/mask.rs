@@ -82,6 +82,7 @@ mod tests {
             pixel_stretch: None,
             transform: None,
             positioning: None,
+            restore_lut_id: None,
             lut_id: None,
             lut_intensity: None,
         }
