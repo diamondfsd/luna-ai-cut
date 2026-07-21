@@ -46,6 +46,7 @@ function defaultSettings(): AppSettings {
     deviceStorage: { [DEFAULT_DEVICE.id]: 'all' },
     developerMode: false,
     exportAppleLivePhoto: false,
+    workspacePreviewQuality: 'balanced',
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
     mockHttpPort: DEFAULT_DEVICE.mock.httpPort,

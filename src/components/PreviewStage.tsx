@@ -29,6 +29,7 @@ interface PreviewStageProps {
   renderOverlay?: () => ReactNode
   viewScale?: 'fit' | number
   onViewScaleChange?: (scale: 'fit' | number) => void
+  previewMaxSide?: number
   /** 播放/暂停/当前时间变更回调 */
   onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
 }
@@ -85,9 +86,6 @@ export function calcAspectRatio(width: number, height: number): number {
   return Math.round((width / height) * 100) / 100
 }
 
-const VIDEO_PREVIEW_MAX_SIDE = 1440
-const IMAGE_PREVIEW_MAX_SIDE = 1920
-
 function projectCanvasFor(resolution: MediaResolution | null, maxSide: number): StageSize | null {
   if (!resolution) return null
   const sourceMaxSide = Math.max(resolution.width, resolution.height)
@@ -101,7 +99,7 @@ function projectCanvasFor(resolution: MediaResolution | null, maxSide: number): 
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onPlayStateChange }: PreviewStageProps,
+    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, previewMaxSide = 1440, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -297,10 +295,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const previewCanvas = useMemo(
     () => projectCanvasFor(
       resolution && pipeline ? outputSizeForTransform(resolution, pipeline.transform) : resolution,
-      isDisplayVideo ? VIDEO_PREVIEW_MAX_SIDE : IMAGE_PREVIEW_MAX_SIDE,
+      Math.min(3840, Math.max(1, previewMaxSide)),
     ),
-    [isDisplayVideo, pipeline, resolution],
+    [pipeline, previewMaxSide, resolution],
   )
+
+  useEffect(() => {
+    if (previewCanvas) setLoading(true)
+  }, [previewCanvas])
 
   const restoreLutFilePath = pipeline?.logRestore?.activeId ?? undefined
   const lutFilePath = pipeline?.lutFilter?.activeId ?? undefined
@@ -438,6 +440,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               layers={layers}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
+              maxSide={Math.min(3840, Math.max(1, previewMaxSide))}
               playing={playing}
               onRender={handleRender}
               onVideoElement={handleVideoElement}

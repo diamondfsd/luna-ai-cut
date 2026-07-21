@@ -1,6 +1,7 @@
 import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, FileUp, ImagePlus, Minimize2, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 
-import { Button, IconButton, Tooltip, toast } from '../../ui'
+import { Button, IconButton, Select, Tooltip, toast } from '../../ui'
+import type { WorkspacePreviewQuality } from '../../shared/types/settings'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
@@ -19,6 +20,8 @@ interface WorkspacePreviewToolbarProps {
   onExport: () => void
   viewScale: WorkspaceViewScale
   onViewScaleChange: (scale: WorkspaceViewScale) => void
+  previewQuality: WorkspacePreviewQuality
+  onPreviewQualityChange: (quality: WorkspacePreviewQuality) => void
 }
 
 export function WorkspacePreviewToolbar({
@@ -31,6 +34,8 @@ export function WorkspacePreviewToolbar({
   onExport,
   viewScale,
   onViewScaleChange,
+  previewQuality,
+  onPreviewQualityChange,
 }: WorkspacePreviewToolbarProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
@@ -107,14 +112,29 @@ export function WorkspacePreviewToolbar({
           </>
         )}
       </div>
-      <div className="workspace-zoom-control" aria-label="预览缩放">
-        <IconButton variant="ghost" size="mini" icon={<Minus size={14} />} onClick={() => changeScale(-10)} aria-label="缩小预览" />
-        <span>{scalePercent === null ? '适应' : `${scalePercent}%`}</span>
-        <IconButton variant="ghost" size="mini" icon={<Plus size={14} />} onClick={() => changeScale(10)} aria-label="放大预览" />
-        <div className="workspace-toolbar-divider" />
-        <Tooltip content="适应窗口">
-          <IconButton variant="ghost" size="mini" icon={<Minimize2 size={14} />} onClick={() => onViewScaleChange('fit')} />
-        </Tooltip>
+      <div className="workspace-toolbar-center">
+        <Select
+          className="workspace-preview-quality"
+          variant="compact"
+          placeholder="预览清晰度，原图最高 4K"
+          value={previewQuality}
+          options={[
+            { value: 'smooth', label: '流畅' },
+            { value: 'balanced', label: '平衡' },
+            { value: 'high', label: '高清' },
+            { value: 'original', label: '原图' },
+          ]}
+          onValueChange={(value) => onPreviewQualityChange(value as WorkspacePreviewQuality)}
+        />
+        <div className="workspace-zoom-control" aria-label="预览缩放">
+          <IconButton variant="ghost" size="mini" icon={<Minus size={14} />} onClick={() => changeScale(-10)} aria-label="缩小预览" />
+          <span>{scalePercent === null ? '适应' : `${scalePercent}%`}</span>
+          <IconButton variant="ghost" size="mini" icon={<Plus size={14} />} onClick={() => changeScale(10)} aria-label="放大预览" />
+          <div className="workspace-toolbar-divider" />
+          <Tooltip content="适应窗口">
+            <IconButton variant="ghost" size="mini" icon={<Minimize2 size={14} />} onClick={() => onViewScaleChange('fit')} />
+          </Tooltip>
+        </div>
       </div>
       <div className="workspace-toolbar-group workspace-toolbar-actions">
         <Button

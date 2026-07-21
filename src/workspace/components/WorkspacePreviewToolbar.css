@@ -18,6 +18,10 @@
   justify-content: flex-end;
 }
 
+.workspace-toolbar-center { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
+
+.workspace-preview-quality { width: 76px; min-width: 76px; }
+
 .workspace-toolbar-left,
 .workspace-toolbar-actions {
   min-width: 0;
