@@ -80,6 +80,7 @@ function localLayer(sourcePath, maskPath, options = {}) {
     color: renderColor(options.color ?? { exposure: -0.75, temperature: 12, saturation: 18 }),
     maskPath, maskOpacity: options.opacity ?? 1, maskInverted: options.inverted ?? false,
     maskFeather: options.feather ?? 0,
+    maskTrack: options.maskTrack,
   }
 }
 
@@ -108,6 +109,39 @@ function pixelDeltaAt(first, second, x, y) {
   return Math.abs(first[index] - second[index])
     + Math.abs(first[index + 1] - second[index + 1])
     + Math.abs(first[index + 2] - second[index + 2])
+}
+
+function changedPixelCentroid(base, adjusted) {
+  let weight = 0
+  let weightedX = 0
+  let weightedY = 0
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const delta = pixelDeltaAt(base, adjusted, x, y)
+      weight += delta
+      weightedX += delta * x
+      weightedY += delta * y
+    }
+  }
+  return { x: weightedX / weight, y: weightedY / weight }
+}
+
+function fixedMaskTrack(transform) {
+  return {
+    version: 1,
+    anchorTime: 0,
+    startTime: 0,
+    endTime: 0,
+    keyframes: [{
+      time: 0,
+      translateX: 0,
+      translateY: 0,
+      scale: 1,
+      rotation: 0,
+      confidence: 1,
+      ...transform,
+    }],
+  }
 }
 
 async function decodeRgba(filePath) {
@@ -154,6 +188,21 @@ try {
     mediaLayer(sourcePath), localLayer(sourcePath, rectMaskPath),
   ]))
   assert.ok(pixelDifference(base, normal).changed > 150, 'normal mask must change the selected region')
+
+  const translated = await renderAndMatchExport('tracked-translation', composition([
+    mediaLayer(sourcePath),
+    localLayer(sourcePath, rectMaskPath, { maskTrack: fixedMaskTrack({ translateX: 0.25 }) }),
+  ]))
+  const normalCentroid = changedPixelCentroid(base, normal)
+  const translatedCentroid = changedPixelCentroid(base, translated)
+  assert.ok(translatedCentroid.x > normalCentroid.x + width * 0.18, 'positive track translation must move only the mask effect to the right')
+  assert.ok(pixelDifference(base, translated).changed < width * height * 0.5, 'track translation must not transform the source image')
+
+  const scaledRotated = await renderAndMatchExport('tracked-scale-rotation', composition([
+    mediaLayer(sourcePath),
+    localLayer(sourcePath, rectMaskPath, { maskTrack: fixedMaskTrack({ scale: 1.35, rotation: 0.35 }) }),
+  ]))
+  assert.ok(pixelDifference(normal, scaledRotated).changed > 50, 'track scale and rotation must transform the mask effect')
 
   const opacityZero = await renderAndMatchExport('opacity-zero', composition([
     mediaLayer(sourcePath), localLayer(sourcePath, rectMaskPath, { opacity: 0 }),

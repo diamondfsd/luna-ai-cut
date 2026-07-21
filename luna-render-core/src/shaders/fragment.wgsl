@@ -134,7 +134,20 @@ fn valid_pixel_stretch_seed(seed: vec2<f32>) -> bool {
 }
 
 fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
-    let mask_sample = textureSample(mask_texture, src_sampler, tex_coord);
+    let dimensions = vec2<f32>(textureDimensions(mask_texture));
+    let translated = (tex_coord - vec2<f32>(0.5) - params.mask_transform.xy) * dimensions;
+    let angle = params.mask_transform.w;
+    let cosine = cos(angle);
+    let sine = sin(angle);
+    let unrotated = vec2<f32>(
+        cosine * translated.x + sine * translated.y,
+        -sine * translated.x + cosine * translated.y,
+    );
+    let mask_coord = unrotated / max(params.mask_transform.z, 0.0001) / dimensions + vec2<f32>(0.5);
+    if (mask_coord.x < 0.0 || mask_coord.x > 1.0 || mask_coord.y < 0.0 || mask_coord.y > 1.0) {
+        return 0.0;
+    }
+    let mask_sample = textureSample(mask_texture, src_sampler, mask_coord);
     let inverted = params.mask_params.y > 0.5;
     let original = select(mask_sample.r, 1.0 - mask_sample.r, inverted);
     let feather_px = params.mask_params.z;

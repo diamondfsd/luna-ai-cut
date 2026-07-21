@@ -77,6 +77,7 @@ export function buildCompositionFromPreviewLayers(
       maskOpacity: layer.maskOpacity,
       maskInverted: layer.maskInverted,
       maskFeather: layer.maskFeather,
+      maskTrack: layer.maskTrack,
       pixelStretch: layer.pixelStretch,
       transform: layer.transform,
       positioning: layer.positioning,

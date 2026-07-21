@@ -2,8 +2,9 @@ import type { WatermarkSettings } from '../../shared/types'
 import { EDIT_PARAMETER_RANGES, clampNumber } from './editParameterRanges'
 import type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
 import { normalizeColorMaskComponent } from './colorMaskComponentNormalization'
+import { normalizeMaskTrack } from '../mask/maskTrack'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
-export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
+export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskLayer, ColorMaskRef, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
 export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
 export type ToneCurveChannel = 'rgb' | 'luminance' | 'red' | 'green' | 'blue'
@@ -436,6 +437,7 @@ function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { bl
     components: Array.isArray(input.components)
       ? input.components.map(normalizeColorMaskComponent).filter((component): component is ColorMaskComponent => component !== null)
       : undefined,
+    track: normalizeMaskTrack(input.track),
   }
 }
 

@@ -442,6 +442,18 @@ impl Compositor {
                     },
                     lut_padding: [0.0; 3],
                     mask_params: mask_params(layer),
+                    mask_transform: layer
+                        .mask_transform
+                        .as_ref()
+                        .map(|transform| {
+                            [
+                                transform.translate_x as f32,
+                                transform.translate_y as f32,
+                                transform.scale.clamp(0.1, 10.0) as f32,
+                                transform.rotation as f32,
+                            ]
+                        })
+                        .unwrap_or([0.0, 0.0, 1.0, 0.0]),
                     procedural: [
                         procedural_kind,
                         if procedural_kind > 1.5 {

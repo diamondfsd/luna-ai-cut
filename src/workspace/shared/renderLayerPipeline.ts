@@ -92,6 +92,7 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     maskOpacity: layer.opacity,
     maskInverted: layer.inverted,
     maskFeather: layer.feather,
+    maskTrack: layer.track,
   }))
 }
 

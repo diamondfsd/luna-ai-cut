@@ -40,6 +40,24 @@ export interface ColorMaskLinearGradientComponent extends ColorMaskComponentBase
 
 export type ColorMaskComponent = ColorMaskRasterComponent | ColorMaskShapeComponent | ColorMaskLinearGradientComponent
 
+export interface ColorMaskTrackKeyframe {
+  time: number
+  translateX: number
+  translateY: number
+  scale: number
+  rotation: number
+  confidence: number
+  corrected?: boolean
+}
+
+export interface ColorMaskTrack {
+  version: 1
+  anchorTime: number
+  startTime: number
+  endTime: number
+  keyframes: ColorMaskTrackKeyframe[]
+}
+
 export interface ColorMaskRef {
   path: string
   width: number
@@ -63,4 +81,5 @@ export interface ColorMaskLayer extends ColorMaskRef {
   color: EditPipeline['color']
   componentSchemaVersion?: 1
   components?: ColorMaskComponent[]
+  track?: ColorMaskTrack
 }

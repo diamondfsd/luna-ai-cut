@@ -61,6 +61,7 @@ struct LayerParams {
     lut_intensity: f32,
     sampling_quality: f32,
     mask_params: vec4<f32>,
+    mask_transform: vec4<f32>,
     procedural: vec4<f32>,
     pixel_stretch: vec4<f32>,
     pixel_stretch_extra: vec4<f32>,

@@ -79,6 +79,28 @@ pub struct CompositionReveal {
 
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
+pub struct MaskTrackKeyframe {
+    pub time: f64,
+    pub translate_x: f64,
+    pub translate_y: f64,
+    pub scale: f64,
+    pub rotation: f64,
+    pub confidence: f64,
+    pub corrected: Option<bool>,
+}
+
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
+pub struct MaskTrack {
+    pub version: u32,
+    pub anchor_time: f64,
+    pub start_time: f64,
+    pub end_time: f64,
+    pub keyframes: Vec<MaskTrackKeyframe>,
+}
+
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionLayer {
     pub id: Option<String>,
     pub layer_type: Option<String>,
@@ -96,6 +118,7 @@ pub struct CompositionLayer {
     pub mask_opacity: Option<f64>,
     pub mask_inverted: Option<bool>,
     pub mask_feather: Option<f64>,
+    pub mask_track: Option<MaskTrack>,
     #[serde(rename = "pixelStretch", alias = "pixel_stretch")]
     pub pixel_stretch: Option<crate::RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,

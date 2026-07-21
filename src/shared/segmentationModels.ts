@@ -240,7 +240,7 @@ export const AUTOMATIC_SEGMENTATION_TARGETS = [
   { id: 'building', classId: 1, label: '建筑', modelId: 'segformer-b5-ade20k' },
   { id: 'vehicle', classId: 20, label: '车辆', modelId: 'segformer-b5-ade20k' },
   { id: 'mountain', classId: 16, label: '山体', modelId: 'segformer-b5-ade20k' },
-  { id: 'subject', classId: -1, label: '主体', modelId: 'birefnet-general-lite' },
+  { id: 'subject', classId: -1, label: '主体', modelId: 'rmbg-1.4' },
   ...ADE20K_REMAINING_SEGMENTATION_TARGETS,
 ] satisfies ReadonlyArray<{
   id: string
