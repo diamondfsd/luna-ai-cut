@@ -1,5 +1,7 @@
 import type { ColorMaskTrack, ColorMaskTrackKeyframe } from '../shared/colorMaskTypes'
 
+export const MASK_TRACK_ALGORITHM_VERSION = 2
+
 const IDENTITY_TRACK_KEYFRAME: ColorMaskTrackKeyframe = {
   time: 0,
   translateX: 0,
@@ -25,6 +27,7 @@ export function normalizeMaskTrack(input: ColorMaskTrack | null | undefined): Co
   if (keyframes.length === 0) return undefined
   return {
     version: 1,
+    algorithmVersion: input.algorithmVersion === MASK_TRACK_ALGORITHM_VERSION ? MASK_TRACK_ALGORITHM_VERSION : undefined,
     anchorTime: Math.max(0, Number(input.anchorTime) || 0),
     startTime: keyframes[0].time,
     endTime: keyframes[keyframes.length - 1].time,
@@ -63,6 +66,7 @@ export function mergeMaskTrackSegment(
     : keyframe.time > anchorTime + 0.000_001) ?? []
   return normalizeMaskTrack({
     version: 1,
+    algorithmVersion: MASK_TRACK_ALGORITHM_VERSION,
     anchorTime: normalized?.anchorTime ?? anchorTime,
     startTime: 0,
     endTime: 0,

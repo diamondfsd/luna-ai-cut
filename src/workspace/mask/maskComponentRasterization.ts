@@ -59,8 +59,9 @@ function applyVectorComponent(
   let startY = 0
   let endY = height
   if (!component.inverted && operation !== 'intersect') {
-    const boundX = Math.abs(cosine) * radiusX + Math.abs(sine) * radiusY
-    const boundY = Math.abs(sine) * radiusX + Math.abs(cosine) * radiusY
+    const outerScale = 1 + component.feather
+    const boundX = (Math.abs(cosine) * radiusX + Math.abs(sine) * radiusY) * outerScale
+    const boundY = (Math.abs(sine) * radiusX + Math.abs(cosine) * radiusY) * outerScale
     startX = Math.max(0, Math.floor((component.centerX - boundX) * width))
     endX = Math.min(width, Math.ceil((component.centerX + boundX) * width))
     startY = Math.max(0, Math.floor((component.centerY - boundY) * height))
@@ -75,13 +76,10 @@ function applyVectorComponent(
       const localY = (-dx * sine + dy * cosine) / radiusY
       const distance = component.type === 'rectangle' ? Math.max(Math.abs(localX), Math.abs(localY)) : Math.hypot(localX, localY)
       let amount: number
-      if (component.type === 'radial-gradient') {
-        const inner = Math.max(0, 1 - component.feather)
-        amount = distance <= inner ? 1 : component.feather <= 0 ? Number(distance <= 1) : Math.max(0, Math.min(1, (1 - distance) / component.feather))
-      } else if (component.feather <= 0) {
+      if (component.feather <= 0) {
         amount = Number(distance <= 1)
       } else {
-        amount = Math.max(0, Math.min(1, (1 - distance) / component.feather))
+        amount = distance <= 1 ? 1 : Math.max(0, Math.min(1, (1 + component.feather - distance) / component.feather))
       }
       const index = y * width + x
       const incoming = componentValue(amount, component.inverted)

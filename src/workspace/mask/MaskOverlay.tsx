@@ -142,7 +142,22 @@ export function MaskOverlay() {
     const component = componentDraftRef.current ?? mask.activeComponent
     if (!component || component.type === 'raster' || !shouldShowComponentControls(mask.manualTool, Boolean(componentDraftRef.current))) return
     const outline = componentOutline(component).map((point) => sourceToDisplay(point.x, point.y, controlSize))
+    const featherOutline = component.type === 'linear-gradient' || component.feather <= 0
+      ? null
+      : componentOutline(component, 1 + component.feather).map((point) => sourceToDisplay(point.x, point.y, controlSize))
     context.save()
+    if (featherOutline) {
+      context.strokeStyle = 'rgba(0, 0, 0, 0.82)'
+      context.lineWidth = 2 * controlPixelRatio
+      context.setLineDash([5 * controlPixelRatio, 4 * controlPixelRatio])
+      context.beginPath()
+      featherOutline.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y))
+      context.stroke()
+      context.strokeStyle = '#4da3ff'
+      context.lineWidth = 1.1 * controlPixelRatio
+      context.stroke()
+      context.setLineDash([])
+    }
     context.strokeStyle = 'rgba(0, 0, 0, 0.82)'
     context.lineWidth = 2 * controlPixelRatio
     context.beginPath()
@@ -155,7 +170,7 @@ export function MaskOverlay() {
       const point = sourceToDisplay(handle.x, handle.y, controlSize)
       context.beginPath()
       context.arc(point.x, point.y, (handle.kind === 'move' ? 4 : 5) * controlPixelRatio, 0, Math.PI * 2)
-      context.fillStyle = handle.kind === 'rotate' ? '#0066cc' : '#ffffff'
+      context.fillStyle = handle.kind === 'rotate' ? '#0066cc' : handle.kind === 'feather' ? '#4da3ff' : '#ffffff'
       context.fill()
       context.strokeStyle = '#111111'
       context.lineWidth = controlPixelRatio
@@ -337,7 +352,7 @@ export function MaskOverlay() {
           width: (bounds.right - bounds.left) / mask.maskSize.width,
           height: (bounds.bottom - bounds.top) / mask.maskSize.height,
           rotation: 0,
-          feather: kind === 'radial-gradient' ? 1 : 0,
+          feather: 0.25,
         }
     componentDraftRef.current = component
     const incoming = rasterizeVectorComponent(mask.maskSize.width, mask.maskSize.height, component)

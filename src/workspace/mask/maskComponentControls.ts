@@ -1,6 +1,6 @@
 import type { ColorMaskComponent } from '../shared/editPipeline'
 
-export type MaskComponentDragKind = 'move' | 'resize' | 'rotate' | 'start' | 'end'
+export type MaskComponentDragKind = 'move' | 'resize' | 'rotate' | 'feather' | 'start' | 'end'
 
 export interface MaskControlHandle {
   kind: MaskComponentDragKind
@@ -28,10 +28,12 @@ export function componentControlHandles(component: ColorMaskComponent): MaskCont
   const radians = component.rotation * Math.PI / 180
   const resize = rotatePoint(component.width / 2, component.height / 2, radians)
   const rotate = rotatePoint(0, -component.height / 2 - 0.06, radians)
+  const feather = rotatePoint(component.width / 2 * (1 + component.feather), 0, radians)
   return [
     { kind: 'move', x: component.centerX, y: component.centerY },
     { kind: 'resize', x: component.centerX + resize.x, y: component.centerY + resize.y },
     { kind: 'rotate', x: component.centerX + rotate.x, y: component.centerY + rotate.y },
+    { kind: 'feather', x: component.centerX + feather.x, y: component.centerY + feather.y },
   ]
 }
 
@@ -74,10 +76,13 @@ export function updateComponentFromDrag(
   }
   const radians = -component.rotation * Math.PI / 180
   const local = rotatePoint(current.x - component.centerX, current.y - component.centerY, radians)
+  if (kind === 'feather') {
+    return { ...component, feather: Math.max(0, Math.min(3, Math.abs(local.x) / Math.max(0.0001, component.width / 2) - 1)) }
+  }
   return { ...component, width: Math.max(0.001, Math.abs(local.x) * 2), height: Math.max(0.001, Math.abs(local.y) * 2) }
 }
 
-export function componentOutline(component: Exclude<ColorMaskComponent, { type: 'raster' }>): Array<{ x: number; y: number }> {
+export function componentOutline(component: Exclude<ColorMaskComponent, { type: 'raster' }>, scale = 1): Array<{ x: number; y: number }> {
   if (component.type === 'linear-gradient') return [{ x: component.startX, y: component.startY }, { x: component.endX, y: component.endY }]
   const radians = component.rotation * Math.PI / 180
   const count = component.type === 'rectangle' ? 4 : 48
@@ -93,7 +98,7 @@ export function componentOutline(component: Exclude<ColorMaskComponent, { type: 
       localX = Math.cos(ratio * Math.PI * 2)
       localY = Math.sin(ratio * Math.PI * 2)
     }
-    const rotated = rotatePoint(localX * component.width / 2, localY * component.height / 2, radians)
+    const rotated = rotatePoint(localX * component.width / 2 * scale, localY * component.height / 2 * scale, radians)
     points.push({ x: component.centerX + rotated.x, y: component.centerY + rotated.y })
   }
   return points
