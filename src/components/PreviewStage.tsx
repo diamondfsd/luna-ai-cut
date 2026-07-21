@@ -7,6 +7,7 @@ import { LivePhotoBadge, VideoControls } from '../ui'
 import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import './PreviewStage.css'
 
 export interface PreviewStageHandle {
@@ -31,6 +32,8 @@ interface PreviewStageProps {
   onViewScaleChange?: (scale: 'fit' | number) => void
   onFitScaleChange?: (scale: number) => void
   previewMaxSide?: number
+  /** 临时旁路效果时保持合成视频渲染器，避免对比过程中卸载画布和解码器。 */
+  keepCompositionVideoRenderer?: boolean
   /** 播放/暂停/当前时间变更回调 */
   onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
 }
@@ -100,7 +103,7 @@ function projectCanvasFor(resolution: MediaResolution | null, maxSide: number): 
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, onPlayStateChange }: PreviewStageProps,
+    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -302,8 +305,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   )
 
   useEffect(() => {
-    if (previewCanvas) setLoading(true)
-  }, [previewCanvas])
+    if (previewCanvas?.width && previewCanvas.height) setLoading(true)
+  }, [previewCanvas?.width, previewCanvas?.height])
 
   const restoreLutFilePath = pipeline?.logRestore?.activeId ?? undefined
   const lutFilePath = pipeline?.lutFilter?.activeId ?? undefined
@@ -353,6 +356,11 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     if (pending || !resolution) return []
     return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
+  const useCompositionVideoRenderer = requiresCompositionVideoRenderer(
+    isDisplayVideo,
+    layers,
+    keepCompositionVideoRenderer,
+  )
 
   const syncCanvasMetrics = useCallback(() => {
     const stage = stageRef.current
@@ -448,7 +456,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     >
       {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          {isDisplayVideo ? (
+          {isDisplayVideo && !useCompositionVideoRenderer ? (
             <MultipleLayerVideoPreviewLrcRender
               layers={layers}
               canvasWidth={previewCanvas?.width}

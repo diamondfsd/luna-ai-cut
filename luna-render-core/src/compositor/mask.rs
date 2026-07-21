@@ -1,5 +1,82 @@
 use crate::RenderLayer;
 
+const MASK_DISTANCE_RANGE: f32 = 40.0;
+const DIAGONAL_DISTANCE: f32 = std::f32::consts::SQRT_2;
+
+fn distance_to_selection(selected: &[bool], width: usize, height: usize) -> Vec<f32> {
+    let mut distances = selected
+        .iter()
+        .map(|is_selected| {
+            if *is_selected {
+                0.0
+            } else {
+                MASK_DISTANCE_RANGE + DIAGONAL_DISTANCE
+            }
+        })
+        .collect::<Vec<_>>();
+
+    for y in 0..height {
+        for x in 0..width {
+            let index = y * width + x;
+            if x > 0 {
+                distances[index] = distances[index].min(distances[index - 1] + 1.0);
+            }
+            if y > 0 {
+                distances[index] = distances[index].min(distances[index - width] + 1.0);
+                if x > 0 {
+                    distances[index] =
+                        distances[index].min(distances[index - width - 1] + DIAGONAL_DISTANCE);
+                }
+                if x + 1 < width {
+                    distances[index] =
+                        distances[index].min(distances[index - width + 1] + DIAGONAL_DISTANCE);
+                }
+            }
+        }
+    }
+    for y in (0..height).rev() {
+        for x in (0..width).rev() {
+            let index = y * width + x;
+            if x + 1 < width {
+                distances[index] = distances[index].min(distances[index + 1] + 1.0);
+            }
+            if y + 1 < height {
+                distances[index] = distances[index].min(distances[index + width] + 1.0);
+                if x > 0 {
+                    distances[index] =
+                        distances[index].min(distances[index + width - 1] + DIAGONAL_DISTANCE);
+                }
+                if x + 1 < width {
+                    distances[index] =
+                        distances[index].min(distances[index + width + 1] + DIAGONAL_DISTANCE);
+                }
+            }
+        }
+    }
+    distances
+}
+
+pub(super) fn encode_mask_distance_channels(data: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let pixel_count = width as usize * height as usize;
+    let selected = (0..pixel_count)
+        .map(|index| data[index * 4] >= 128)
+        .collect::<Vec<_>>();
+    let normal_distances = distance_to_selection(&selected, width as usize, height as usize);
+    let inverted = selected.iter().map(|value| !value).collect::<Vec<_>>();
+    let inverted_distances = distance_to_selection(&inverted, width as usize, height as usize);
+    let mut encoded = data.to_vec();
+    for index in 0..pixel_count {
+        encoded[index * 4 + 1] = (normal_distances[index].min(MASK_DISTANCE_RANGE)
+            / MASK_DISTANCE_RANGE
+            * 255.0)
+            .round() as u8;
+        encoded[index * 4 + 2] =
+            (inverted_distances[index].min(MASK_DISTANCE_RANGE) / MASK_DISTANCE_RANGE * 255.0)
+                .round() as u8;
+    }
+    encoded
+}
+
 pub(super) fn mask_params(layer: &RenderLayer) -> [f32; 4] {
     let has_mask = layer.mask_texture_id.is_some();
     [
@@ -107,5 +184,27 @@ mod tests {
         assert_eq!(descriptor.address_mode_v, wgpu::AddressMode::ClampToEdge);
         assert_eq!(descriptor.mag_filter, wgpu::FilterMode::Linear);
         assert_eq!(descriptor.min_filter, wgpu::FilterMode::Linear);
+    }
+
+    #[test]
+    fn encodes_monotonic_distance_for_normal_and_inverted_masks() {
+        let values = [255_u8, 255, 0, 0, 0];
+        let rgba = values
+            .iter()
+            .flat_map(|value| [*value, *value, *value, 255])
+            .collect::<Vec<_>>();
+        let encoded = encode_mask_distance_channels(&rgba, 5, 1);
+        let normal = (0..5)
+            .map(|index| encoded[index * 4 + 1])
+            .collect::<Vec<_>>();
+        let inverted = (0..5)
+            .map(|index| encoded[index * 4 + 2])
+            .collect::<Vec<_>>();
+
+        assert_eq!(normal[0], 0);
+        assert_eq!(normal[1], 0);
+        assert!(normal[2] > 0 && normal[2] < normal[3] && normal[3] < normal[4]);
+        assert!(inverted[0] > inverted[1] && inverted[1] > 0);
+        assert_eq!(&inverted[2..], &[0, 0, 0]);
     }
 }

@@ -236,6 +236,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       },
     })
   }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft])
+  const keepCompositionVideoRenderer = edit.previewPipeline.colorMasks.some(
+    (layer) => layer.enabled && !layer.loadError,
+  )
 
   const finalCanvasSize = useMemo(() => {
     if (!watermarkMediaSize) return null
@@ -693,6 +696,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             onViewScaleChange={setViewScale}
             onFitScaleChange={setFitScalePercent}
             previewMaxSide={workspacePreviewMaxSide(previewQuality)}
+            keepCompositionVideoRenderer={keepCompositionVideoRenderer}
             onPlayStateChange={handlePlayStateChange}
           />
 

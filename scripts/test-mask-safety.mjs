@@ -102,6 +102,19 @@ try {
   assert.equal(featheredImpulse[4], 255, 'outward feather must preserve the original selection')
   assert.ok(featheredImpulse[3] > 0, 'outward feather must add a soft transition beyond the original edge')
   assert.ok(featheredImpulse.reduce((sum, value) => sum + value, 0) > 255, 'outward feather must expand the effective selection')
+  const featheredEdge = previewSampling.featherMaskPreview(
+    new Float32Array([255, 255, 0, 0, 0]),
+    5,
+    1,
+    3,
+    1,
+    1,
+  )
+  assert.equal(featheredEdge[1], 255, 'outward feather must keep the inside of a hard edge opaque')
+  assert.ok(
+    featheredEdge[1] > featheredEdge[2] && featheredEdge[2] > featheredEdge[3] && featheredEdge[3] > featheredEdge[4],
+    'outward feather must decay monotonically without repeated offset contours',
+  )
   close(
     previewSampling.sampleMaskBilinear(new Uint8Array([0, 255]), 2, 1, 0.5, 0.5),
     127.5,
