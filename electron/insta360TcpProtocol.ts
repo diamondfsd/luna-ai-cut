@@ -17,6 +17,8 @@ const CODE_GET_FILE_LIST = 13
 const CODE_GET_CURRENT_CAPTURE_STATUS = 15
 const STATUS_OK = 200
 const PACKET_CHECKSUM_POLY = 0x04c11db7
+const FILE_LIST_PAGE_SIZE = 50
+const FILE_LIST_MAX_OFFSET = 5000
 
 interface ExactCommand {
   label: string
@@ -217,7 +219,7 @@ function parsePathList(body: Buffer): string[] {
   return [...paths]
 }
 
-function fileListBody(storageSelector: number, offset: number, limit = 100): Buffer {
+function fileListBody(storageSelector: number, offset: number, limit = FILE_LIST_PAGE_SIZE): Buffer {
   const parts = [wireFieldVarint(1, storageSelector)]
   if (offset > 0) parts.push(wireFieldVarint(2, offset))
   parts.push(wireFieldVarint(3, limit), wireFieldVarint(4, 2))
@@ -268,18 +270,18 @@ const EXACT_FILE_LIST_INTERNAL: ExactCommand[] = [
     fileListBody(2, 0),
   ),
   builtCommand(
-    'GET_FILE_LIST internal offset=100',
+    'GET_FILE_LIST internal offset=50',
     0x2d,
     CODE_GET_FILE_LIST,
     9,
-    fileListBody(2, 100),
+    fileListBody(2, 50),
   ),
   builtCommand(
-    'GET_FILE_LIST internal offset=200',
+    'GET_FILE_LIST internal offset=100',
     0x2e,
     CODE_GET_FILE_LIST,
     10,
-    fileListBody(2, 200),
+    fileListBody(2, 100),
   ),
 ]
 
@@ -399,9 +401,9 @@ export class Insta360TcpSession {
         if (response.code !== STATUS_OK) throw new Error(`TCP 文件列表命令返回 ${response.code}`)
         const pagePaths = parsePathList(response.body)
         for (const path of pagePaths) paths.add(path)
-        nextOffset = (index + 1) * 100
+        nextOffset = (index + 1) * FILE_LIST_PAGE_SIZE
         logMainDebug('[Insta360TCP] exact 文件列表分页', { selector, requestId: command.requestId, count: pagePaths.length })
-        if (pagePaths.length < 100) return [...paths]
+        if (pagePaths.length < FILE_LIST_PAGE_SIZE) return [...paths]
         await delay(20)
       }
     } catch (error) {
@@ -412,13 +414,13 @@ export class Insta360TcpSession {
       })
     }
 
-    for (let offset = nextOffset; offset <= 2000; offset += 100) {
+    for (let offset = nextOffset; offset <= FILE_LIST_MAX_OFFSET; offset += FILE_LIST_PAGE_SIZE) {
       const response = await this.sendCommand(CODE_GET_FILE_LIST, fileListBody(selector, offset), 6000)
       if (response.code !== STATUS_OK) throw new Error(`TCP 文件列表命令返回 ${response.code}`)
       const pagePaths = parsePathList(response.body)
       for (const path of pagePaths) paths.add(path)
       logMainDebug('[Insta360TCP] 文件列表分页', { selector, offset, count: pagePaths.length })
-      if (pagePaths.length < 100) break
+      if (pagePaths.length < FILE_LIST_PAGE_SIZE) break
       await delay(20)
     }
     return [...paths]

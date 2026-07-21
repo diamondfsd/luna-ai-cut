@@ -7,6 +7,7 @@ import type { CameraDeleteResult, ConnectionStatus, DeviceStorageOption, LunaFil
 
 export const DEFAULT_HOST = DEFAULT_DEVICE.defaultHost
 export const CAMERA_PATH = DEFAULT_DEVICE.storages.find((storage) => storage.default)?.path ?? DEFAULT_DEVICE.storages[0]?.path ?? '/'
+const ENABLE_HTTP_FILE_LIST_FALLBACK = false
 
 function wireVarint(value: number): Buffer {
   const out: number[] = []
@@ -277,20 +278,33 @@ export class LunaClient {
   private async listFilesUnlocked(cameraPath: string): Promise<LunaFile[]> {
     let lastStatus: number | null = null
     let lastError: unknown = null
+    let tcpError: unknown = null
     const url = cameraUrl(this.host, cameraPath)
     logMainInfo(`[文件读取] 发起文件列表请求`, { url, host: this.host, cameraPath })
     const t0 = performance.now()
 
-    const tBeforeConnect = performance.now()
     try {
-      await this.connectUnlocked()
-      logMainInfo(`[文件读取] 控制会话建立完成`, { host: this.host, elapsedMs: Math.round(performance.now() - tBeforeConnect) })
+      const files = await this.listFilesViaTcp(cameraPath, '优先读取')
+      if (files.length > 0) return files
+      if (!ENABLE_HTTP_FILE_LIST_FALLBACK) {
+        logMainWarn(`[文件读取] TCP 未返回媒体文件，HTTP 兜底已禁用`, { host: this.host, cameraPath })
+        return []
+      }
+      logMainWarn(`[文件读取] TCP 未返回媒体文件，改用 HTTP 目录列表`, { host: this.host, cameraPath })
     } catch (error) {
-      logMainWarn(`[文件读取] 控制会话不可用，继续使用 HTTP 目录列表`, {
+      tcpError = error
+      if (!ENABLE_HTTP_FILE_LIST_FALLBACK) {
+        logMainError(`[文件读取] TCP 文件列表读取失败，HTTP 兜底已禁用`, {
+          host: this.host,
+          cameraPath,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
+      logMainWarn(`[文件读取] TCP 文件列表读取失败，改用 HTTP 目录列表`, {
         host: this.host,
         error: error instanceof Error ? error.message : String(error),
       })
-      this.resetControlSession()
     }
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -352,15 +366,13 @@ export class LunaClient {
             const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
             const allFiles = results.flat()
             logMainInfo(`[HTTP读取] 文件列表读取完成（多子目录）`, { fileCount: allFiles.length, cameraDirs: cameraDirs.length, elapsedSec: elapsed })
-            if (allFiles.length > 0) return allFiles
-            return await this.listFilesViaTcp(cameraPath, 'HTTP 子目录未返回媒体文件')
+            return allFiles
           }
 
           const files = parseLunaIndex(html, baseUrl)
           const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
           logMainInfo(`[HTTP读取] 文件列表读取完成`, { fileCount: files.length, elapsedSec: elapsed })
-          if (files.length > 0) return files
-          return await this.listFilesViaTcp(cameraPath, 'HTTP 目录未返回媒体文件')
+          return files
         }
 
         let errorBody = ''
@@ -380,23 +392,19 @@ export class LunaClient {
     const httpError = lastError && lastStatus === null
       ? (lastError instanceof Error ? lastError : new Error(String(lastError)))
       : new Error(`读取文件列表失败：HTTP ${lastStatus ?? '未知'}`)
-    try {
-      return await this.listFilesViaTcp(cameraPath, httpError.message)
-    } catch (tcpError) {
-      logMainError(`[文件读取] HTTP 与 TCP 文件列表均失败`, {
-        url,
-        path: cameraPath,
-        status: lastStatus,
-        elapsedSec: failedAt,
-        httpError: httpError.message,
-        tcpError: tcpError instanceof Error ? tcpError.message : String(tcpError),
-      })
-      throw new Error(`${httpError.message}；TCP 兜底失败：${tcpError instanceof Error ? tcpError.message : String(tcpError)}`)
-    }
+    logMainError(`[文件读取] TCP 与 HTTP 文件列表均失败`, {
+      url,
+      path: cameraPath,
+      status: lastStatus,
+      elapsedSec: failedAt,
+      tcpError: tcpError instanceof Error ? tcpError.message : tcpError ? String(tcpError) : null,
+      httpError: httpError.message,
+    })
+    throw new Error(`TCP 文件列表读取失败：${tcpError instanceof Error ? tcpError.message : tcpError ? String(tcpError) : '未返回媒体文件'}；${httpError.message}`)
   }
 
   private async listFilesViaTcp(cameraPath: string, reason: string): Promise<LunaFile[]> {
-    logMainWarn('[文件读取] 切换到 TCP 文件列表', { host: this.host, cameraPath, reason })
+    logMainInfo('[文件读取] 使用 TCP 文件列表', { host: this.host, cameraPath, reason })
     await this.connectUnlocked()
     const session = this.controlSession
     if (!session) throw new Error('相机控制连接未建立')

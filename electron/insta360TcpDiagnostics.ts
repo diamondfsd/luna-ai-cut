@@ -252,7 +252,10 @@ function buildMsgNotify(seq: number, code: number, body = Buffer.alloc(0)): Buff
   return buildUcd2(UCD2_MSG, seq, buildMessageEnvelope(code, body, 0))
 }
 
-function fileListBody(storageSelector: number, offset: number, limit = 100): Buffer {
+const FILE_LIST_PAGE_SIZE = 50
+const FILE_LIST_MAX_OFFSET = 5000
+
+function fileListBody(storageSelector: number, offset: number, limit = FILE_LIST_PAGE_SIZE): Buffer {
   const parts = [wireFieldVarint(1, storageSelector)]
   if (offset > 0) parts.push(wireFieldVarint(2, offset))
   parts.push(wireFieldVarint(3, limit), wireFieldVarint(4, 2))
@@ -644,14 +647,14 @@ async function runTcp(
 
     if (!options.authOnly) {
       for (const selector of [2, 3]) {
-        for (let offset = 0; offset <= 2000; offset += 100) {
+        for (let offset = 0; offset <= FILE_LIST_MAX_OFFSET; offset += FILE_LIST_PAGE_SIZE) {
           const label = `GET_FILE_LIST selector=${selector} offset=${offset}`
           try {
             const response = await conn.sendFile(label, CODE_GET_FILE_LIST, fileListBody(selector, offset), 8000)
             tcp.push(commandResult(label, response))
             const paths = parsePathList(response.body)
             for (const path of paths) files.set(path, pathToFile(host, path))
-            if (paths.length < 100) break
+            if (paths.length < FILE_LIST_PAGE_SIZE) break
           } catch (error) {
             tcp.push({ label, ok: false, error: error instanceof Error ? error.message : String(error) })
             break
