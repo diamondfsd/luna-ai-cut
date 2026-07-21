@@ -107,11 +107,13 @@ export class LunaUltraProtocol implements DeviceProtocol {
     logMainInfo(`[设备协议] 开始读取文件列表`, { host, storageId })
     const client = this.clientFor(host, this.controlPortForHost(host))
     const storages = storageId === 'all'
-      ? this.definition.storages
+      ? [...this.definition.storages].sort((a, b) => storageReadPriority(a) - storageReadPriority(b))
       : this.definition.storages.filter((storage) => storage.id === storageId)
     logMainInfo(`[设备协议] 读取 ${storages.length} 个存储的文件`, { storages: storages.map(s => s.id) })
     const t0 = performance.now()
-    const files = await listStorageFiles(client, storages.length > 0 ? storages : this.definition.storages)
+    const fallbackStorages = [...this.definition.storages]
+      .sort((a, b) => storageReadPriority(a) - storageReadPriority(b))
+    const files = await listStorageFiles(client, storages.length > 0 ? storages : fallbackStorages)
     const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
     logMainInfo(`[设备协议] 文件列表读取完成`, { host, storageId, fileCount: files.length, elapsedSec: elapsed })
     client.startKeepAlive()
@@ -272,32 +274,32 @@ export function protocolForDevice(
 // ============================================================
 
 async function listStorageFiles(client: LunaClient, storages: DeviceStorageOption[]): Promise<LunaFile[]> {
-  const results = await Promise.allSettled(storages.map(async (storage) => {
-    logMainInfo(`[存储读取] 开始读取存储`, { storageId: storage.id, label: storage.label })
-    const files = await client.listFiles(storage.id)
-    logMainInfo(`[存储读取] 存储读取完成`, { storageId: storage.id, label: storage.label, fileCount: files.length })
-    return files.map((file) => ({
-      ...file,
-      id: `${storage.id}:${file.id}`,
-      storageId: storage.id,
-      storageLabel: storage.label,
-    }))
-  }))
-
   const groups: LunaFile[][] = []
   const failures: string[] = []
-  for (const [index, result] of results.entries()) {
-    if (result.status === 'fulfilled') {
-      groups.push(result.value)
-    } else {
-      const storageId = storages[index]?.id ?? 'unknown'
-      const reason = result.reason instanceof Error ? result.reason.message : String(result.reason)
-      failures.push(`${storages[index]?.label ?? storageId}：${reason}`)
-      logMainWarn(`[存储读取] 存储不可用`, { storageId, reason })
+
+  for (const storage of storages) {
+    logMainInfo(`[存储读取] 开始读取存储`, { storageId: storage.id, label: storage.label })
+    try {
+      const files = await client.listFiles(storage.id)
+      logMainInfo(`[存储读取] 存储读取完成`, { storageId: storage.id, label: storage.label, fileCount: files.length })
+      groups.push(files.map((file) => ({
+        ...file,
+        id: `${storage.id}:${file.id}`,
+        storageId: storage.id,
+        storageLabel: storage.label,
+      })))
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      failures.push(`${storage.label}：${reason}`)
+      logMainWarn(`[存储读取] 存储不可用`, { storageId: storage.id, reason })
     }
   }
 
-  const files = groups.flat()
+  const filesByPath = new Map<string, LunaFile>()
+  for (const file of groups.flat()) {
+    if (!filesByPath.has(file.href)) filesByPath.set(file.href, file)
+  }
+  const files = [...filesByPath.values()]
   if (failures.length > 0 && files.length === 0) {
     throw new Error(`无法读取相机素材。${failures.join('；')}`)
   }
@@ -307,4 +309,10 @@ async function listStorageFiles(client: LunaClient, storages: DeviceStorageOptio
     const bTime = b.capturedAt ? Date.parse(b.capturedAt) : 0
     return bTime - aTime || a.name.localeCompare(b.name)
   })
+}
+
+function storageReadPriority(storage: DeviceStorageOption): number {
+  if (storage.id === 'sdcard') return 0
+  if (storage.id === 'storage_internal') return 1
+  return 2
 }

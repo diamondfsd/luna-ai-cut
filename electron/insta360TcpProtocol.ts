@@ -5,35 +5,40 @@ import { logMainDebug, logMainInfo, logMainWarn } from './loggerService'
 import { deleteCameraPaths } from './insta360CameraDelete'
 import { parseDeviceInfo } from './insta360DeviceInfo'
 import type { Insta360TcpDeviceInfo } from './insta360DeviceInfo'
+import {
+  buildFileCommand,
+  buildStreamHello,
+  inspectFrameChecksum,
+  parseRawResponse,
+  UCD2_FILE,
+  UCD2_MAGIC,
+  UCD2_STREAM,
+  wireFieldVarint,
+} from './insta360TcpCodec'
+import type { Insta360RawResponse } from './insta360TcpCodec'
+import {
+  FILE_LIST_MAX_OFFSET,
+  FILE_LIST_PAGE_SIZE,
+  fileListBody,
+  parseInsta360FilePaths,
+} from './insta360TcpFileList'
 
-const UCD2_MAGIC = Buffer.from('UCD2')
-const UCD2_VERSION = 0x01
-const UCD2_FLAGS = 0x0c
-const UCD2_FILE = 0x04
-const UCD2_STREAM = 0x05
+export { insta360PacketChecksum } from './insta360TcpCodec'
+export type { Insta360RawResponse } from './insta360TcpCodec'
 
 const CODE_GET_OPTIONS = 8
 const CODE_GET_FILE_LIST = 13
 const CODE_GET_CURRENT_CAPTURE_STATUS = 15
 const STATUS_OK = 200
-const PACKET_CHECKSUM_POLY = 0x04c11db7
-const FILE_LIST_PAGE_SIZE = 50
-const FILE_LIST_MAX_OFFSET = 5000
+const MEDIA_TYPE_ALL = 2
+const CARD_LOCATION_INTERNAL = 2
+const CARD_LOCATION_SD = 3
 
 interface ExactCommand {
   label: string
   code: number
   requestId: number
   packet: Buffer
-}
-
-export interface Insta360RawResponse {
-  code: number
-  kind: number
-  requestId: number
-  flags: number
-  body: Buffer
-  trailer: Buffer
 }
 
 function delay(ms: number): Promise<void> {
@@ -76,8 +81,9 @@ function resolveLocalAddress(targetHost: string): string | null {
 
 export function connectSocket(host: string, port: number, timeoutMs: number, localAddress?: string): Promise<net.Socket> {
   return new Promise((resolve, reject) => {
+    const startedAt = Date.now()
     const addr = localAddress ?? resolveLocalAddress(host)
-    logMainDebug('[Insta360TCP] resolveLocalAddress', { host, port, localAddress, resolvedAddr: addr })
+    logMainDebug('[Insta360TCP] 开始建立 socket', { host, port, timeoutMs, requestedLocalAddress: localAddress, resolvedLocalAddress: addr })
     const socket = net.createConnection(addr ? { host, port, localAddress: addr } : { host, port })
     let settled = false
 
@@ -87,9 +93,19 @@ export function connectSocket(host: string, port: number, timeoutMs: number, loc
       clearTimeout(connTimer)
       clearTimeout(fallbackTimer)
       if (err) {
+        logMainWarn('[Insta360TCP] socket 建立失败', { host, port, elapsedMs: Date.now() - startedAt, error: err.message })
         socket.destroy()
         reject(err)
       } else {
+        logMainInfo('[Insta360TCP] socket 已连接', {
+          host,
+          port,
+          elapsedMs: Date.now() - startedAt,
+          localAddress: socket.localAddress,
+          localPort: socket.localPort,
+          remoteAddress: socket.remoteAddress,
+          remotePort: socket.remotePort,
+        })
         resolve(socket)
       }
     }
@@ -105,86 +121,6 @@ export function connectSocket(host: string, port: number, timeoutMs: number, loc
   })
 }
 
-function wireVarint(value: number): Buffer {
-  const out: number[] = []
-  let v = value >>> 0
-  while (v > 0x7f) {
-    out.push((v & 0x7f) | 0x80)
-    v >>>= 7
-  }
-  out.push(v & 0x7f)
-  return Buffer.from(out)
-}
-
-function wireFieldVarint(field: number, value: number): Buffer {
-  return Buffer.concat([wireVarint(field << 3), wireVarint(value)])
-}
-
-function buildPacketChecksumTable(): number[] {
-  const table: number[] = []
-  for (let i = 0; i < 256; i += 1) {
-    let value = (i << 24) | 0
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = (value & 0x80000000) !== 0
-        ? ((value << 1) ^ PACKET_CHECKSUM_POLY) | 0
-        : (value << 1) | 0
-    }
-    table.push(value >>> 0)
-  }
-  return table
-}
-
-const PACKET_CHECKSUM_TABLE = buildPacketChecksumTable()
-
-export function insta360PacketChecksum(frameWithoutTrailer: Buffer): number {
-  let checksum = 0xffffffff | 0
-  for (const byte of frameWithoutTrailer) {
-    checksum = (checksum ^ byte) | 0
-    for (let i = 0; i < 4; i += 1) {
-      checksum = ((checksum << 8) ^ PACKET_CHECKSUM_TABLE[(checksum >>> 24) & 0xff]) | 0
-    }
-  }
-  return checksum >>> 0
-}
-
-function checksumTrailer(frameWithoutTrailer: Buffer): Buffer {
-  const trailer = Buffer.alloc(4)
-  trailer.writeUInt32LE(insta360PacketChecksum(frameWithoutTrailer), 0)
-  return trailer
-}
-
-function buildUcd2(type: number, seq: number, payload: Buffer): Buffer {
-  const header = Buffer.alloc(8)
-  UCD2_MAGIC.copy(header, 0)
-  header[4] = UCD2_VERSION
-  header[5] = UCD2_FLAGS
-  header[6] = type
-  header[7] = seq & 0xff
-  return Buffer.concat([header, payload])
-}
-
-function buildRawCommand(code: number, requestId: number, body: Buffer): Buffer {
-  const raw = Buffer.alloc(9 + body.length)
-  raw.writeUInt16LE(code, 0)
-  raw[2] = 0x02
-  raw.writeUInt16LE(requestId, 3)
-  raw.writeUInt32LE(0x8000, 5)
-  body.copy(raw, 9)
-  return raw
-}
-
-function buildFileCommand(seq: number, code: number, requestId: number, body: Buffer): Buffer {
-  const raw = buildRawCommand(code, requestId, body)
-  const length = Buffer.alloc(4)
-  length.writeUInt32LE(raw.length, 0)
-  const frameWithoutTrailer = buildUcd2(UCD2_FILE, seq, Buffer.concat([length, raw]))
-  return Buffer.concat([frameWithoutTrailer, checksumTrailer(frameWithoutTrailer)])
-}
-
-function buildStreamHello(seq: number): Buffer {
-  return buildUcd2(UCD2_STREAM, seq, Buffer.concat([Buffer.alloc(4), Buffer.from('f6cc4f09', 'hex')]))
-}
-
 function builtCommand(label: string, seq: number, code: number, requestId: number, body: Buffer): ExactCommand {
   return {
     label,
@@ -192,38 +128,6 @@ function builtCommand(label: string, seq: number, code: number, requestId: numbe
     requestId,
     packet: buildFileCommand(seq, code, requestId, body),
   }
-}
-
-function parseRawResponse(payload: Buffer): Insta360RawResponse | null {
-  if (payload.length < 17) return null
-  const rawLen = payload.readUInt32LE(0)
-  if (payload.length < 4 + rawLen + 4) return null
-  const raw = payload.subarray(4, 4 + rawLen)
-  return {
-    code: raw.readUInt16LE(0),
-    kind: raw[2],
-    requestId: raw.readUInt16LE(3),
-    flags: raw.readUInt32LE(5),
-    body: raw.subarray(9),
-    trailer: payload.subarray(4 + rawLen, 4 + rawLen + 4),
-  }
-}
-
-function parsePathList(body: Buffer): string[] {
-  const text = body.toString('utf8')
-  const paths = new Set<string>()
-  // eslint-disable-next-line no-control-regex
-  for (const match of text.matchAll(/\/(?:storage_internal|sdcard|DCIM)[^\x00\n\r"'<>\s]+?\.(?:mp4|mov|lrv|jpg|jpeg|dng|insp|png|webp)/gi)) {
-    paths.add(match[0])
-  }
-  return [...paths]
-}
-
-function fileListBody(storageSelector: number, offset: number, limit = FILE_LIST_PAGE_SIZE): Buffer {
-  const parts = [wireFieldVarint(1, storageSelector)]
-  if (offset > 0) parts.push(wireFieldVarint(2, offset))
-  parts.push(wireFieldVarint(3, limit), wireFieldVarint(4, 2))
-  return Buffer.concat(parts)
 }
 
 const EXACT_INFO_COMMANDS: ExactCommand[] = [
@@ -267,21 +171,21 @@ const EXACT_FILE_LIST_INTERNAL: ExactCommand[] = [
     0x2c,
     CODE_GET_FILE_LIST,
     8,
-    fileListBody(2, 0),
+    fileListBody(MEDIA_TYPE_ALL, 0, FILE_LIST_PAGE_SIZE, CARD_LOCATION_INTERNAL),
   ),
   builtCommand(
     'GET_FILE_LIST internal offset=50',
     0x2d,
     CODE_GET_FILE_LIST,
     9,
-    fileListBody(2, 50),
+    fileListBody(MEDIA_TYPE_ALL, 50, FILE_LIST_PAGE_SIZE, CARD_LOCATION_INTERNAL),
   ),
   builtCommand(
     'GET_FILE_LIST internal offset=100',
     0x2e,
     CODE_GET_FILE_LIST,
     10,
-    fileListBody(2, 100),
+    fileListBody(MEDIA_TYPE_ALL, 100, FILE_LIST_PAGE_SIZE, CARD_LOCATION_INTERNAL),
   ),
 ]
 
@@ -291,7 +195,7 @@ const EXACT_FILE_LIST_SDCARD: ExactCommand[] = [
     0x2f,
     CODE_GET_FILE_LIST,
     11,
-    fileListBody(3, 0),
+    fileListBody(MEDIA_TYPE_ALL, 0, FILE_LIST_PAGE_SIZE, CARD_LOCATION_SD),
   ),
 ]
 
@@ -304,6 +208,9 @@ export class Insta360TcpSession {
     resolve: (response: Insta360RawResponse) => void
     reject: (error: Error) => void
     timer: ReturnType<typeof setTimeout>
+    code: number
+    label?: string
+    startedAt: number
   }>()
   private deviceInfo: Insta360TcpDeviceInfo | null = null
 
@@ -322,6 +229,8 @@ export class Insta360TcpSession {
 
   async open(): Promise<void> {
     if (this.isOpen) return
+    const startedAt = Date.now()
+    logMainInfo('[Insta360TCP] 开始建立控制会话', { host: this.host, port: this.port })
     const socket = await connectSocket(tcpHost(this.host), this.port, 1500)
     this.socket = socket
     this.buffer = Buffer.alloc(0)
@@ -335,14 +244,43 @@ export class Insta360TcpSession {
       this.rejectAll()
     })
 
-    socket.write(buildStreamHello(this.nextSeq()))
+    const helloSeq = this.nextSeq()
+    socket.write(buildStreamHello(helloSeq))
+    logMainInfo('[Insta360TCP] STREAM 握手已发送', { host: this.host, port: this.port, seq: helloSeq })
     const infoResponses = await Promise.allSettled(EXACT_INFO_COMMANDS.map((command) => this.sendExactCommand(command, 4000)))
+    for (const [index, result] of infoResponses.entries()) {
+      const command = EXACT_INFO_COMMANDS[index]
+      if (result.status === 'fulfilled') {
+        logMainDebug('[Insta360TCP] 设备信息命令完成', {
+          label: command.label,
+          requestId: command.requestId,
+          responseCode: result.value.code,
+          bodyBytes: result.value.body.length,
+        })
+      } else {
+        logMainWarn('[Insta360TCP] 设备信息命令失败', {
+          label: command.label,
+          requestId: command.requestId,
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        })
+      }
+    }
     const fulfilled = infoResponses
       .filter((result): result is PromiseFulfilledResult<Insta360RawResponse> => result.status === 'fulfilled')
       .map((result) => result.value)
     this.deviceInfo = parseDeviceInfo(fulfilled)
     this.requestId = Math.max(this.requestId, 12)
-    logMainInfo('[Insta360TCP] 控制会话已建立', { host: this.host, port: this.port, deviceInfo: this.deviceInfo })
+    logMainInfo('[Insta360TCP] 控制会话已建立', {
+      host: this.host,
+      port: this.port,
+      elapsedMs: Date.now() - startedAt,
+      infoCommandsSucceeded: fulfilled.length,
+      infoCommandsFailed: infoResponses.length - fulfilled.length,
+      deviceInfo: this.deviceInfo ? {
+        deviceName: this.deviceInfo.deviceName,
+        firmware: this.deviceInfo.firmware,
+      } : null,
+    })
   }
 
   close(): void {
@@ -356,7 +294,9 @@ export class Insta360TcpSession {
       await this.open()
       return
     }
-    this.socket?.write(buildStreamHello(this.nextSeq()))
+    const seq = this.nextSeq()
+    this.socket?.write(buildStreamHello(seq))
+    logMainDebug('[Insta360TCP] STREAM 保活已发送', { seq })
   }
 
   async sendCommand(code: number, body = Buffer.alloc(0), timeoutMs = 5000): Promise<Insta360RawResponse> {
@@ -380,49 +320,75 @@ export class Insta360TcpSession {
   ): Promise<Insta360RawResponse> {
     if (!this.socket || this.socket.destroyed) throw new Error('控制会话未打开')
     return new Promise((resolve, reject) => {
+      const startedAt = Date.now()
       const timer = setTimeout(() => {
         this.pending.delete(requestId)
+        logMainWarn('[Insta360TCP] 命令响应超时', { code, requestId, label, bodyBytes, packetBytes: packet.length, timeoutMs })
         reject(new Error(`TCP 命令 ${code} 请求 ${requestId} 超时`))
       }, timeoutMs)
-      this.pending.set(requestId, { resolve, reject, timer })
+      this.pending.set(requestId, { resolve, reject, timer, code, label, startedAt })
       this.socket?.write(packet)
-      logMainDebug('[Insta360TCP] 发送命令', { code, requestId, bodyBytes, label })
+      logMainDebug('[Insta360TCP] 发送命令', { code, requestId, bodyBytes, packetBytes: packet.length, timeoutMs, label, startedAt })
     })
   }
 
   async listFilePaths(storagePath: string): Promise<string[]> {
-    const selector = storagePath.includes('sdcard') || storagePath === '/DCIM/' ? 3 : 2
+    const cardLocation = storagePath.includes('sdcard') || storagePath === '/DCIM/'
+      ? CARD_LOCATION_SD
+      : CARD_LOCATION_INTERNAL
     const paths = new Set<string>()
-    const exactCommands = selector === 3 ? EXACT_FILE_LIST_SDCARD : EXACT_FILE_LIST_INTERNAL
+    const exactCommands = cardLocation === CARD_LOCATION_SD ? EXACT_FILE_LIST_SDCARD : EXACT_FILE_LIST_INTERNAL
     let nextOffset = 0
+    logMainInfo('[Insta360TCP] 开始读取文件列表', {
+      storagePath,
+      mediaType: MEDIA_TYPE_ALL,
+      cardLocation,
+      pageSize: FILE_LIST_PAGE_SIZE,
+      maxOffset: FILE_LIST_MAX_OFFSET,
+      initialCommandCount: exactCommands.length,
+    })
     try {
       for (const [index, command] of exactCommands.entries()) {
         const response = await this.sendExactCommand(command, 8000)
         if (response.code !== STATUS_OK) throw new Error(`TCP 文件列表命令返回 ${response.code}`)
-        const pagePaths = parsePathList(response.body)
+        const pagePaths = parseInsta360FilePaths(response.body)
         for (const path of pagePaths) paths.add(path)
         nextOffset = (index + 1) * FILE_LIST_PAGE_SIZE
-        logMainDebug('[Insta360TCP] exact 文件列表分页', { selector, requestId: command.requestId, count: pagePaths.length })
-        if (pagePaths.length < FILE_LIST_PAGE_SIZE) return [...paths]
+        logMainDebug('[Insta360TCP] exact 文件列表分页', { cardLocation, requestId: command.requestId, count: pagePaths.length })
+        if (pagePaths.length < FILE_LIST_PAGE_SIZE) {
+          logMainInfo('[Insta360TCP] 文件列表读取结束', { cardLocation, reason: 'short-exact-page', offset: index * FILE_LIST_PAGE_SIZE, pageCount: pagePaths.length, totalCount: paths.size })
+          return [...paths]
+        }
         await delay(20)
       }
     } catch (error) {
       logMainWarn('[Insta360TCP] 固定文件列表命令失败，改用动态分页', {
-        selector,
+        cardLocation,
         nextOffset,
         error: error instanceof Error ? error.message : String(error),
       })
     }
 
+    let lastOffset = nextOffset
+    let endedWithFullPage = false
     for (let offset = nextOffset; offset <= FILE_LIST_MAX_OFFSET; offset += FILE_LIST_PAGE_SIZE) {
-      const response = await this.sendCommand(CODE_GET_FILE_LIST, fileListBody(selector, offset), 6000)
+      lastOffset = offset
+      const response = await this.sendCommand(
+        CODE_GET_FILE_LIST,
+        fileListBody(MEDIA_TYPE_ALL, offset, FILE_LIST_PAGE_SIZE, cardLocation),
+        6000,
+      )
       if (response.code !== STATUS_OK) throw new Error(`TCP 文件列表命令返回 ${response.code}`)
-      const pagePaths = parsePathList(response.body)
+      const pagePaths = parseInsta360FilePaths(response.body)
       for (const path of pagePaths) paths.add(path)
-      logMainDebug('[Insta360TCP] 文件列表分页', { selector, offset, count: pagePaths.length })
-      if (pagePaths.length < FILE_LIST_PAGE_SIZE) break
+      logMainDebug('[Insta360TCP] 文件列表分页', { cardLocation, offset, count: pagePaths.length })
+      endedWithFullPage = pagePaths.length >= FILE_LIST_PAGE_SIZE
+      if (!endedWithFullPage) break
       await delay(20)
     }
+    const reason = endedWithFullPage && lastOffset === FILE_LIST_MAX_OFFSET ? 'max-offset' : 'short-dynamic-page'
+    const log = reason === 'max-offset' ? logMainWarn : logMainInfo
+    log('[Insta360TCP] 文件列表读取结束', { cardLocation, reason, offset: lastOffset, totalCount: paths.size })
     return [...paths]
   }
 
@@ -435,14 +401,19 @@ export class Insta360TcpSession {
   }
 
   private onData(data: Buffer): void {
+    logMainDebug('[Insta360TCP] 收到 socket 数据', { chunkBytes: data.length, bufferedBefore: this.buffer.length })
     this.buffer = Buffer.concat([this.buffer, data])
     while (this.buffer.length >= 8) {
       const start = this.buffer.indexOf(UCD2_MAGIC)
       if (start < 0) {
+        logMainWarn('[Insta360TCP] 未找到 UCD2 帧头，丢弃数据', { discardedBytes: this.buffer.length })
         this.buffer = Buffer.alloc(0)
         return
       }
-      if (start > 0) this.buffer = this.buffer.subarray(start)
+      if (start > 0) {
+        logMainWarn('[Insta360TCP] 丢弃 UCD2 帧前数据', { discardedBytes: start })
+        this.buffer = this.buffer.subarray(start)
+      }
       if (this.buffer.length < 8) return
 
       const type = this.buffer[6]
@@ -452,24 +423,57 @@ export class Insta360TcpSession {
           ? 12 + this.buffer.readUInt32LE(8) + 4
           : 0
       if (frameLen === 0) {
+        logMainWarn('[Insta360TCP] 收到未知帧类型', {
+          version: this.buffer[4],
+          flags: this.buffer[5],
+          type,
+          seq: this.buffer[7],
+          bufferedBytes: this.buffer.length,
+        })
         this.buffer = this.buffer.subarray(8)
         continue
       }
-      if (this.buffer.length < frameLen) return
+      if (this.buffer.length < frameLen) {
+        logMainDebug('[Insta360TCP] 等待完整帧', { type, expectedBytes: frameLen, bufferedBytes: this.buffer.length })
+        return
+      }
 
       const frame = this.buffer.subarray(0, frameLen)
       this.buffer = this.buffer.subarray(frameLen)
-      if (type !== UCD2_FILE) continue
+      if (type !== UCD2_FILE) {
+        logMainDebug('[Insta360TCP] 收到 STREAM 帧', { seq: frame[7], frameBytes: frame.length })
+        continue
+      }
+
+      const checksum = inspectFrameChecksum(frame)
+      if (checksum && !checksum.ok) {
+        logMainWarn('[Insta360TCP] 响应帧校验不一致', { seq: frame[7], frameBytes: frame.length, received: checksum.received, calculated: checksum.calculated })
+      }
 
       const response = parseRawResponse(frame.subarray(8))
-      if (!response) continue
+      if (!response) {
+        logMainWarn('[Insta360TCP] 响应帧结构无法解析', { seq: frame[7], frameBytes: frame.length })
+        continue
+      }
       const pending = this.pending.get(response.requestId)
       if (pending) {
         this.pending.delete(response.requestId)
         clearTimeout(pending.timer)
+        logMainDebug('[Insta360TCP] 收到命令响应', {
+          code: pending.code,
+          responseCode: response.code,
+          requestId: response.requestId,
+          label: pending.label,
+          kind: response.kind,
+          flags: response.flags,
+          bodyBytes: response.body.length,
+          frameBytes: frame.length,
+          checksumOk: checksum?.ok ?? null,
+          elapsedMs: Date.now() - pending.startedAt,
+        })
         pending.resolve(response)
-      } else if (response.code !== STATUS_OK) {
-        logMainDebug('[Insta360TCP] 未匹配响应/通知', { code: response.code, requestId: response.requestId, bodyBytes: response.body.length })
+      } else {
+        logMainDebug('[Insta360TCP] 未匹配响应/通知', { code: response.code, requestId: response.requestId, kind: response.kind, flags: response.flags, bodyBytes: response.body.length, frameBytes: frame.length, checksumOk: checksum?.ok ?? null })
       }
     }
   }
