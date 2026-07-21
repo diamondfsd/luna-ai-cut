@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, FileUp, ImagePlus, Minimize2, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, FileUp, ImagePlus, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 
 import { Button, IconButton, Select, Tooltip, toast } from '../../ui'
 import type { WorkspacePreviewQuality } from '../../shared/types/settings'
@@ -20,6 +20,7 @@ interface WorkspacePreviewToolbarProps {
   onExport: () => void
   viewScale: WorkspaceViewScale
   onViewScaleChange: (scale: WorkspaceViewScale) => void
+  fitScalePercent: number
   previewQuality: WorkspacePreviewQuality
   onPreviewQualityChange: (quality: WorkspacePreviewQuality) => void
 }
@@ -34,6 +35,7 @@ export function WorkspacePreviewToolbar({
   onExport,
   viewScale,
   onViewScaleChange,
+  fitScalePercent,
   previewQuality,
   onPreviewQualityChange,
 }: WorkspacePreviewToolbarProps) {
@@ -41,10 +43,10 @@ export function WorkspacePreviewToolbar({
   const media = useWorkspaceMedia()
   const mask = useWorkspaceMask()
   const scalePercent = viewScale === 'fit' ? null : viewScale
+  const currentScalePercent = scalePercent ?? fitScalePercent
 
   function changeScale(delta: number): void {
-    const current = scalePercent ?? 100
-    onViewScaleChange(Math.max(25, Math.min(200, current + delta)))
+    onViewScaleChange(Math.max(5, Math.min(200, currentScalePercent + delta)))
   }
 
   function resetAdjustments(): void {
@@ -112,7 +114,7 @@ export function WorkspacePreviewToolbar({
           </>
         )}
       </div>
-      <div className="workspace-toolbar-center">
+      <div className="workspace-toolbar-group workspace-toolbar-actions">
         <Select
           className="workspace-preview-quality"
           variant="compact"
@@ -126,17 +128,26 @@ export function WorkspacePreviewToolbar({
           ]}
           onValueChange={(value) => onPreviewQualityChange(value as WorkspacePreviewQuality)}
         />
-        <div className="workspace-zoom-control" aria-label="预览缩放">
-          <IconButton variant="ghost" size="mini" icon={<Minus size={14} />} onClick={() => changeScale(-10)} aria-label="缩小预览" />
-          <span>{scalePercent === null ? '适应' : `${scalePercent}%`}</span>
-          <IconButton variant="ghost" size="mini" icon={<Plus size={14} />} onClick={() => changeScale(10)} aria-label="放大预览" />
-          <div className="workspace-toolbar-divider" />
-          <Tooltip content="适应窗口">
-            <IconButton variant="ghost" size="mini" icon={<Minimize2 size={14} />} onClick={() => onViewScaleChange('fit')} />
+        <div className="workspace-zoom-control" aria-label={`预览缩放，当前 ${currentScalePercent}%`}>
+          <Tooltip content={`缩小（当前 ${currentScalePercent}%）`}>
+            <IconButton variant="ghost" size="mini" icon={<Minus size={14} />} onClick={() => changeScale(-10)} aria-label="缩小预览" />
+          </Tooltip>
+          <Tooltip content={`恢复适应窗口（${fitScalePercent}%）`}>
+            <Button
+              className="workspace-zoom-value"
+              variant="toolbar"
+              size="mini"
+              onClick={() => onViewScaleChange('fit')}
+              aria-label={`当前缩放 ${currentScalePercent}%，点击恢复适应窗口`}
+            >
+              {currentScalePercent}%
+            </Button>
+          </Tooltip>
+          <Tooltip content={`放大（当前 ${currentScalePercent}%）`}>
+            <IconButton variant="ghost" size="mini" icon={<Plus size={14} />} onClick={() => changeScale(10)} aria-label="放大预览" />
           </Tooltip>
         </div>
-      </div>
-      <div className="workspace-toolbar-group workspace-toolbar-actions">
+        <div className="workspace-toolbar-divider" />
         <Button
           variant={edit.compareOriginal ? 'toolbar-primary' : 'toolbar'}
           size="compact"

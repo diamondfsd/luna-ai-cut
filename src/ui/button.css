@@ -32,6 +32,13 @@
   opacity: 0.45;
 }
 
+.ui-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
 /* primary — 蓝色实心圆角 */
 .ui-btn-primary {
   min-height: 36px;
