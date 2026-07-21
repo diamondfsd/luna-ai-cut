@@ -155,7 +155,7 @@ fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
         return original;
     }
     let encoded_distance = select(mask_sample.g, mask_sample.b, inverted);
-    let distance_px = encoded_distance * 40.0;
+    let distance_px = encoded_distance * 100.0;
     let outward_transition = 1.0 - smoothstep(0.0, feather_px, distance_px);
     return max(original, outward_transition);
 }

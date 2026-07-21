@@ -50,9 +50,7 @@ export interface WorkspaceMaskValue {
   maskTrackingProgress: WorkspaceMaskTrackingProgress | null
   maskTrackingError: string | null
   maskTrackingStoppedReason: string | null
-  startMaskTracking: (direction: 'forward' | 'backward') => Promise<void>
-  cancelMaskTracking: () => void
-  clearMaskTrack: () => void
+  prepareVideoMasksForExport: () => Promise<ColorMaskLayer[]>
   activeLayerId: string | null
   activeMask: ColorMaskLayer | null
   activeComponentId: string | null

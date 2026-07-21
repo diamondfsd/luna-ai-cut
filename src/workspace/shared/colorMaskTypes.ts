@@ -13,11 +13,27 @@ interface ColorMaskComponentBase {
   targetComponentId?: string
 }
 
+export interface ColorMaskSegmentationSource {
+  kind: 'segmentation'
+  /** 实际执行推理的模型；用于在其他视频帧重新生成该组件。 */
+  modelId: string
+  /** 视频取帧时间；图片蒙版不保存。 */
+  frameTime?: number
+  targetId?: string
+  classId?: number
+  className?: string
+  /** SAM 等点提示模型使用的归一化素材坐标。 */
+  point?: { x: number; y: number }
+}
+
+export type ColorMaskDynamicSource = ColorMaskSegmentationSource
+
 export interface ColorMaskRasterComponent extends ColorMaskComponentBase {
   type: 'raster'
   path: string
   width: number
   height: number
+  dynamicSource?: ColorMaskDynamicSource
 }
 
 export interface ColorMaskShapeComponent extends ColorMaskComponentBase {
@@ -27,6 +43,7 @@ export interface ColorMaskShapeComponent extends ColorMaskComponentBase {
   width: number
   height: number
   rotation: number
+  /** 外圈相对核心形状的扩张比例；核心内为 100%，外圈外为 0%。 */
   feather: number
 }
 
@@ -52,6 +69,7 @@ export interface ColorMaskTrackKeyframe {
 
 export interface ColorMaskTrack {
   version: 1
+  algorithmVersion?: 2
   anchorTime: number
   startTime: number
   endTime: number

@@ -4,7 +4,7 @@ import type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskLayer, ColorMaskR
 import { normalizeColorMaskComponent } from './colorMaskComponentNormalization'
 import { normalizeMaskTrack } from '../mask/maskTrack'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
-export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskLayer, ColorMaskRef, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
+export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskDynamicSource, ColorMaskLayer, ColorMaskRef, ColorMaskSegmentationSource, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
 export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
 export type ToneCurveChannel = 'rgb' | 'luminance' | 'red' | 'green' | 'blue'
@@ -453,7 +453,7 @@ function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef
     height: Math.max(1, Math.round(Number(mask.height) || 1)),
     opacity: clampNumber(Number(mask.opacity ?? 1), { min: 0, max: 1 }),
     inverted: Boolean(mask.inverted),
-    feather: clampNumber(Number(mask.feather ?? 2), { min: 0, max: 40 }),
+    feather: clampNumber(Number(mask.feather ?? 2), { min: 0, max: 100 }),
     kind: mask.kind === 'semantic' ? 'semantic' : 'brush',
     classId: Number.isInteger(mask.classId) ? mask.classId : undefined,
     className: typeof mask.className === 'string' ? mask.className : undefined,

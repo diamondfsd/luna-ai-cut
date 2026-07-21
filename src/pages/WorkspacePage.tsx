@@ -466,10 +466,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       const activePipeline = edit.transformDraft
         ? mergePipeline(edit.pipeline, { transform: edit.transformDraft })
         : edit.pipeline
+      const trackedActiveMasks = isVideoPath(media.activeMedia.path)
+        ? await mask.prepareVideoMasksForExport()
+        : activePipeline.colorMasks
       const sources: BatchExportSource[] = await Promise.all(exportIndices.map(async (index) => {
         const asset = media.media[index]
         const pipeline = index === media.activeIndex
-          ? activePipeline
+          ? mergePipeline(activePipeline, { colorMasks: trackedActiveMasks })
           : normalizePipeline((asset as { pipeline?: unknown }).pipeline)
         const resolution = await window.luna.workspace.getMediaResolution(asset.path)
         const sourceDuration = isVideoPath(asset.path)

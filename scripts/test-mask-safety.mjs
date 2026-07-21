@@ -211,7 +211,8 @@ try {
   const rotatedMask = componentRasterization.rasterizeVectorComponent(5, 5, rotatedRectangle)
   assert.ok(rotatedMask[2] > rotatedMask[10], 'shape rotation must affect rasterized geometry')
   const featheredShape = componentRasterization.rasterizeVectorComponent(9, 9, { ...rotatedRectangle, type: 'ellipse', width: 0.8, height: 0.8, rotation: 0, feather: 0.5 })
-  assert.ok(featheredShape[40] > featheredShape[13] && featheredShape[13] > 0, 'component feather must produce a soft edge')
+  assert.equal(featheredShape[13], 255, 'the inner power-window outline must remain a fully selected core')
+  assert.ok(featheredShape[40] > featheredShape[4] && featheredShape[4] > 0, 'the outer power-window outline must produce an outward soft transition')
   const invertedGradient = componentRasterization.rasterizeVectorComponent(4, 1, { ...linearGradient, inverted: true })
   assert.deepEqual([...invertedGradient], [223, 159, 96, 32], 'component inversion must invert soft weights')
   const composed = componentRasterization.composeMaskComponents(2, 1, [
@@ -238,6 +239,12 @@ try {
   assert.equal(componentControls.shouldShowComponentControls('radial-gradient', true), true, 'a radial draft must show its adjustment controls while drawing')
   assert.equal(componentControls.shouldShowComponentControls('move', false), true, 'a committed component must keep its selection frame in adjustment mode')
   assert.equal(componentControls.shouldShowComponentControls('brush', false), false, 'unrelated tools must not show stale component controls')
+  const featheredWindow = { ...rotatedRectangle, rotation: 0, feather: 0.25 }
+  const featherHandle = componentControls.componentControlHandles(featheredWindow).find((handle) => handle.kind === 'feather')
+  close(featherHandle.x, 1, 'the feather handle must sit on the outer power-window outline')
+  const expandedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, { x: 1.3, y: 0.5 })
+  close(expandedWindow.feather, 1, 'dragging the outer handle must adjust feather without resizing the core')
+  close(expandedWindow.width, featheredWindow.width, 'dragging feather must preserve the core width')
   const hardBrush = new Uint8Array(25)
   const softBrush = new Uint8Array(25)
   manualRasterization.drawMaskBrush(hardBrush, 5, 5, 2, 2, 2, 0)
@@ -251,7 +258,7 @@ try {
       height: 12.6,
       opacity: 2,
       inverted: true,
-      feather: 99,
+      feather: 999,
       kind: 'semantic',
     },
   })
@@ -259,7 +266,7 @@ try {
   assert.equal(legacy.colorMasks.length, 1, 'legacy mask must migrate to one layer')
   assert.deepEqual(
     { width: legacy.colorMasks[0].width, height: legacy.colorMasks[0].height, opacity: legacy.colorMasks[0].opacity, feather: legacy.colorMasks[0].feather },
-    { width: 1, height: 13, opacity: 1, feather: 40 },
+    { width: 1, height: 13, opacity: 1, feather: 100 },
     'legacy mask dimensions and effect ranges must normalize',
   )
 
@@ -284,7 +291,37 @@ try {
   assert.equal(normalizedComponents[0].width, 5)
   assert.equal(normalizedComponents[0].height, 0.0001)
   assert.equal(normalizedComponents[0].rotation, 270)
-  assert.equal(normalizedComponents[0].feather, 1)
+  assert.equal(normalizedComponents[0].feather, 2)
+
+  const mixedModelComponents = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    components: [
+      {
+        id: 'subject', type: 'raster', operation: 'replace', enabled: true, inverted: false,
+        path: '/subject.pgm', width: 512, height: 512,
+        dynamicSource: { kind: 'segmentation', modelId: 'rmbg-1.4', frameTime: 5.85, targetId: 'subject', classId: -1, className: '主体' },
+      },
+      {
+        id: 'point', type: 'raster', operation: 'add', enabled: true, inverted: false,
+        path: '/point.pgm', width: 512, height: 512,
+        dynamicSource: { kind: 'segmentation', modelId: 'future-sam-model', frameTime: -1, point: { x: 1.2, y: -0.2 } },
+      },
+      {
+        id: 'legacy-raster', type: 'raster', operation: 'subtract', enabled: true, inverted: false,
+        path: '/manual.pgm', width: 512, height: 512,
+      },
+    ],
+  }] }).colorMasks[0].components
+  const reopenedMixedModelComponents = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline({
+    ...createDefaultPipeline(),
+    colorMasks: [{ ...legacy.colorMasks[0], componentSchemaVersion: 1, components: mixedModelComponents }],
+  })).colorMasks[0].components
+  assert.equal(reopenedMixedModelComponents[0].dynamicSource.modelId, 'rmbg-1.4', 'RMBG source metadata must survive project reopen')
+  assert.equal(reopenedMixedModelComponents[0].dynamicSource.frameTime, 5.85, 'the exact semantic source frame must survive project reopen')
+  assert.equal(reopenedMixedModelComponents[1].dynamicSource.modelId, 'future-sam-model', 'future model IDs must remain forward-compatible')
+  assert.deepEqual(reopenedMixedModelComponents[1].dynamicSource.point, { x: 1, y: 0 }, 'point prompts must normalize to media coordinates')
+  assert.equal(reopenedMixedModelComponents[1].dynamicSource.frameTime, 0, 'invalid negative frame times must clamp to the video start')
+  assert.equal(reopenedMixedModelComponents[2].dynamicSource, undefined, 'legacy and manual raster components must remain valid without a dynamic source')
 
   const fiftyComponents = Array.from({ length: 50 }, (_, index) => ({
     ...rotatedRectangle,
@@ -352,9 +389,9 @@ try {
   assert.equal(damagedComponent.loadError, 'missing-or-damaged')
 
   const featherLimit = mergePipeline(createDefaultPipeline(), {
-    colorMasks: [{ ...legacy.colorMasks[0], feather: 40 }],
+    colorMasks: [{ ...legacy.colorMasks[0], feather: 100 }],
   })
-  assert.equal(featherLimit.colorMasks[0].feather, 40, 'the UI and persisted feather limit must both accept 40')
+  assert.equal(featherLimit.colorMasks[0].feather, 100, 'the UI, persisted pipeline, and renderer must all accept 100 px feathering')
 
   const unavailable = mergePipeline(createDefaultPipeline(), {
     colorMasks: [{ ...legacy.colorMasks[0], enabled: true, loadError: 'missing-or-damaged' }],

@@ -338,7 +338,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 mask_texture_id: None,
                 mask_opacity: layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
                 mask_inverted: layer.mask_inverted.unwrap_or(false),
-                mask_feather: layer.mask_feather.unwrap_or(2.0).clamp(0.0, 40.0),
+                mask_feather: layer.mask_feather.unwrap_or(2.0).clamp(0.0, 100.0),
                 mask_transform: mask_track_transform(layer.mask_track.as_ref(), video_time),
                 pixel_stretch: layer.pixel_stretch.clone(),
                 transform: layer.transform.clone().unwrap_or_default(),

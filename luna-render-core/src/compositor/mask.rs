@@ -1,6 +1,6 @@
 use crate::RenderLayer;
 
-const MASK_DISTANCE_RANGE: f32 = 40.0;
+const MASK_DISTANCE_RANGE: f32 = 100.0;
 const DIAGONAL_DISTANCE: f32 = std::f32::consts::SQRT_2;
 
 fn distance_to_selection(selected: &[bool], width: usize, height: usize) -> Vec<f32> {
@@ -91,7 +91,7 @@ pub(super) fn mask_params(layer: &RenderLayer) -> [f32; 4] {
             0.0
         },
         if has_mask {
-            layer.mask_feather.unwrap_or(2.0).clamp(0.0, 40.0) as f32
+            layer.mask_feather.unwrap_or(2.0).clamp(0.0, 100.0) as f32
         } else {
             0.0
         },
@@ -155,7 +155,7 @@ mod tests {
             mask_texture_id: Some(2),
             mask_opacity: Some(1.5),
             mask_inverted: Some(true),
-            mask_feather: Some(80.0),
+            mask_feather: Some(180.0),
             mask_transform: None,
             pixel_stretch: None,
             transform: None,
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn clamps_local_mask_parameters() {
-        assert_eq!(mask_params(&layer()), [1.0, 1.0, 40.0, 1.0]);
+        assert_eq!(mask_params(&layer()), [1.0, 1.0, 100.0, 1.0]);
     }
 
     #[test]
