@@ -7,6 +7,7 @@ const source = await readFile(new URL('../src/workspace/transform/cropGeometry.t
 const pixelStretchSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchLayers.ts', import.meta.url), 'utf8')
 const pixelStretchStateSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchState.ts', import.meta.url), 'utf8')
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
+const previewQualitySource = await readFile(new URL('../src/workspace/shared/workspacePreviewQuality.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compilerOptions = {
   module: ts.ModuleKind.ES2020,
@@ -17,11 +18,13 @@ const compiled = ts.transpileModule(source, { compilerOptions }).outputText
 const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pixelStretchSource.replace(/import \{ buildPixelStretchFlowPath, flattenPixelStretchPath \} from '.\/pixelStretchPath'\n/, '')}`, { compilerOptions }).outputText
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
+const previewQualityCompiled = ts.transpileModule(previewQualitySource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
 const pixelStretch = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchCompiled).toString('base64')}`)
 const pixelStretchState = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchStateCompiled).toString('base64')}`)
 const pixelStretchPath = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchPathCompiled).toString('base64')}`)
+const previewQuality = await import(`data:text/javascript;base64,${Buffer.from(previewQualityCompiled).toString('base64')}`)
 
 function close(actual, expected, message, epsilon = 0.0001) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${message}: expected ${expected}, got ${actual}`)
@@ -35,6 +38,12 @@ function cropClose(actual, expected, message) {
 }
 
 const sourceAspect = 16 / 9
+
+assert.equal(previewQuality.workspacePreviewMaxSide('smooth'), 960, 'smooth preview is capped at 960px')
+assert.equal(previewQuality.workspacePreviewMaxSide('balanced'), 1440, 'balanced preview is capped at 1440px')
+assert.equal(previewQuality.workspacePreviewMaxSide('high'), 2160, 'high preview is capped at 2160px')
+assert.equal(previewQuality.workspacePreviewMaxSide('original'), 3840, 'original preview never exceeds 4K')
+assert.equal(previewQuality.normalizeWorkspacePreviewQuality('unexpected'), 'balanced', 'invalid preview quality falls back to balanced')
 
 assert.equal(geometry.shouldSwapOrientation(0), false)
 assert.equal(geometry.shouldSwapOrientation(90), true)

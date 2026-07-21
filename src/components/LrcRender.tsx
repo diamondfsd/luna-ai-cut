@@ -400,7 +400,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     }
 
     void renderPreviewFrame()
-  }, [layers, ready])
+  }, [canvasHeight, canvasWidth, layers, maxSide, ready])
 
   useEffect(() => {
     if (!ready || !layers.some((layer) => layer.isVideo)) return
