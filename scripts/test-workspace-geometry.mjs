@@ -145,6 +145,7 @@ assert.deepEqual(
   'one-pixel erosion contracts every mask edge by one pixel',
 )
 assert.equal(pixelStretch.erodeMaskOnePixel(solidMask, 4, 5).length, 0, 'erosion rejects mismatched mask dimensions')
+assert.deepEqual(Array.from(pixelStretch.invertMask(new Uint8Array([0, 32, 255]))), [255, 223, 0], 'background selection inverts the subject mask')
 assert.equal(pixelStretch.suggestPixelStretchPreset({ x: 0.1, y: 0.35, w: 0.25, h: 0.3 }, 1), 'right', 'pixel stretch uses the largest open side')
 assert.equal(pixelStretch.suggestPixelStretchPreset({ x: 0.4, y: 0.7, w: 0.2, h: 0.15 }, 1), 'top', 'pixel stretch can prefer vertical open space')
 

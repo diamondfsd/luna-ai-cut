@@ -100,8 +100,8 @@ export function ColorMaskPanel() {
   const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
   const media = useWorkspaceMedia()
-  const selectedColor = mask.activeMask?.color ?? edit.pipeline.color
   const isVideo = media.activeMedia?.kind === 'video'
+  const selectedColor = isVideo ? edit.pipeline.color : mask.activeMask?.color ?? edit.pipeline.color
   const createMaskHint = isVideo
     ? '当前版本仅支持图片'
     : mask.available ? '新建蒙版' : '请先在项目中打开一张图片'
@@ -130,6 +130,20 @@ export function ColorMaskPanel() {
     const next = reorderColorMaskLayers(edit.pipeline.colorMasks, draggedLayerId, targetId, position)
     if (next !== edit.pipeline.colorMasks) edit.commitPatch({ colorMasks: next })
     clearDragState()
+  }
+
+  if (isVideo) {
+    return (
+      <div className="workspace-color-mask-panel">
+        <div className="workspace-color-mask-content">
+          <ColorPanel
+            value={edit.pipeline.color}
+            onChange={(color) => edit.updateWorkspacePanel({ color })}
+            onActivatePipette={() => edit.setPipetteActive(true)}
+          />
+        </div>
+      </div>
+    )
   }
 
   return (
