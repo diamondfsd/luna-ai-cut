@@ -111,6 +111,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const [exportDialogDir, setExportDialogDir] = useState('')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
+  const [fitScalePercent, setFitScalePercent] = useState(100)
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   const allowWatermark = useLunaUltraWatermark(media.activeMedia)
 
@@ -669,6 +670,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             onExport={() => void handleWorkspaceExport()}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
+            fitScalePercent={fitScalePercent}
             previewQuality={previewQuality}
             onPreviewQualityChange={changePreviewQuality}
           />
@@ -687,6 +689,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             renderOverlay={() => (edit.cropActive ? <CropOverlay /> : mask.editing ? <MaskOverlay /> : null)}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
+            onFitScaleChange={setFitScalePercent}
             previewMaxSide={workspacePreviewMaxSide(previewQuality)}
             onPlayStateChange={handlePlayStateChange}
           />

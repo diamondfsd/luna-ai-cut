@@ -5,6 +5,7 @@
 .workspace-layout > .workspace-toolbar {
   grid-column: 1;
   grid-row: 1;
+  grid-template-columns: minmax(0, 1fr) auto;
   border-top: 0;
   border-bottom: 1px solid var(--hairline);
 }
@@ -18,16 +19,24 @@
   justify-content: flex-end;
 }
 
-.workspace-toolbar-center { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
-
 .workspace-preview-quality { width: 76px; min-width: 76px; }
 
 .workspace-toolbar-left,
 .workspace-toolbar-actions {
+  align-self: center;
   min-width: 0;
 }
 
-.workspace-toolbar > .workspace-toolbar-group > .ui-btn {
+.workspace-toolbar-left {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.workspace-toolbar-left::-webkit-scrollbar { display: none; }
+
+.workspace-toolbar > .workspace-toolbar-group > .ui-btn,
+.workspace-toolbar > .workspace-toolbar-group > .ui-icon-btn {
   flex-shrink: 0;
 }
 
@@ -35,18 +44,27 @@
   display: flex;
   align-items: center;
   justify-self: center;
-  height: 34px;
-  padding: 0 5px;
+  height: 32px;
+  padding: 0 2px;
   border: 1px solid #383838;
   border-radius: 8px;
   background: #242424;
   color: #ddd;
 }
 
-.workspace-zoom-control > span {
-  min-width: 48px;
+.workspace-zoom-control > .workspace-zoom-value {
+  width: 44px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   color: #ddd;
-  font-size: 12px;
-  text-align: center;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+.workspace-zoom-control > .workspace-zoom-value:hover {
+  background: #303030;
 }
