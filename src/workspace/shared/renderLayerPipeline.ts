@@ -92,7 +92,8 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     maskOpacity: layer.opacity,
     maskInverted: layer.inverted,
     maskFeather: layer.feather,
-    maskTrack: layer.track,
+    // v1.6.0 video masks are intentionally static; keep saved tracks in project data only.
+    maskTrack: undefined,
   }))
 }
 
