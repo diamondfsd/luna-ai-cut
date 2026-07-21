@@ -4,7 +4,7 @@ import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import type { ColorMaskComponent, ColorMaskComponentOperation } from '../shared/editPipeline'
-import { componentControlHandles, componentOutline, hitTestComponentControl, shouldShowComponentControls, updateComponentFromDrag, type MaskComponentDragKind } from './maskComponentControls'
+import { componentControlHandles, componentFeatherOutline, componentOutline, hitTestComponentControl, shouldShowComponentControls, updateComponentFromDrag, type MaskComponentDragKind } from './maskComponentControls'
 import { applyComponentDraft, drawMaskBrush } from './maskManualRasterization'
 import { composeBaseSelectionComponents, composeMaskComponents, editableMaskComponents, gradientTargetComponent, rasterizeVectorComponent } from './maskComponentRasterization'
 import { MaskBrushCursor } from './MaskBrushCursor'
@@ -144,7 +144,7 @@ export function MaskOverlay() {
     const outline = componentOutline(component).map((point) => sourceToDisplay(point.x, point.y, controlSize))
     const featherOutline = component.type === 'linear-gradient' || component.feather <= 0
       ? null
-      : componentOutline(component, 1 + component.feather).map((point) => sourceToDisplay(point.x, point.y, controlSize))
+      : componentFeatherOutline(component).map((point) => sourceToDisplay(point.x, point.y, controlSize))
     context.save()
     if (featherOutline) {
       context.strokeStyle = 'rgba(0, 0, 0, 0.82)'
@@ -254,8 +254,12 @@ export function MaskOverlay() {
     }
   }
   function normalizedPointForEvent(event: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } {
-    const point = pointForEvent(event)
-    return { x: point.x / mask.maskSize!.width, y: point.y / mask.maskSize!.height }
+    const rect = event.currentTarget.getBoundingClientRect()
+    return displayToSource((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height)
+  }
+  function unboundedPointForEvent(event: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } {
+    const point = normalizedPointForEvent(event)
+    return { x: point.x * mask.maskSize!.width, y: point.y * mask.maskSize!.height }
   }
   function composeComponentDraft(component: Exclude<ColorMaskComponent, { type: 'raster' }>): Uint8Array | null {
     const components = maskComponents
@@ -311,7 +315,7 @@ export function MaskOverlay() {
     const start = shapeStartRef.current
     const base = shapeBaseRef.current
     if (!start || !base || !mask.maskSize) return false
-    const current = pointForEvent(event)
+    const current = unboundedPointForEvent(event)
     const bounds = shapeBoundsFromDrag(start, current, {
       centered: event.altKey,
       constrained: event.shiftKey,

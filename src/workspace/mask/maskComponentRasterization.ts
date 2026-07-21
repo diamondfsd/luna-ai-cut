@@ -59,9 +59,11 @@ function applyVectorComponent(
   let startY = 0
   let endY = height
   if (!component.inverted && operation !== 'intersect') {
-    const outerScale = 1 + component.feather
-    const boundX = (Math.abs(cosine) * radiusX + Math.abs(sine) * radiusY) * outerScale
-    const boundY = (Math.abs(sine) * radiusX + Math.abs(cosine) * radiusY) * outerScale
+    const featherDistance = component.feather * Math.min(radiusX, radiusY)
+    const outerRadiusX = radiusX + featherDistance
+    const outerRadiusY = radiusY + featherDistance
+    const boundX = Math.abs(cosine) * outerRadiusX + Math.abs(sine) * outerRadiusY
+    const boundY = Math.abs(sine) * outerRadiusX + Math.abs(cosine) * outerRadiusY
     startX = Math.max(0, Math.floor((component.centerX - boundX) * width))
     endX = Math.min(width, Math.ceil((component.centerX + boundX) * width))
     startY = Math.max(0, Math.floor((component.centerY - boundY) * height))
@@ -72,14 +74,27 @@ function applyVectorComponent(
     for (let x = startX; x < endX; x += 1) {
       const dx = (x + 0.5) / width - component.centerX
       const dy = (y + 0.5) / height - component.centerY
-      const localX = (dx * cosine + dy * sine) / radiusX
-      const localY = (-dx * sine + dy * cosine) / radiusY
+      const rotatedX = dx * cosine + dy * sine
+      const rotatedY = -dx * sine + dy * cosine
+      const localX = rotatedX / radiusX
+      const localY = rotatedY / radiusY
       const distance = component.type === 'rectangle' ? Math.max(Math.abs(localX), Math.abs(localY)) : Math.hypot(localX, localY)
       let amount: number
-      if (component.feather <= 0) {
+      if (distance <= 1) {
+        amount = 1
+      } else if (component.feather <= 0) {
         amount = Number(distance <= 1)
       } else {
-        amount = distance <= 1 ? 1 : Math.max(0, Math.min(1, (1 + component.feather - distance) / component.feather))
+        const featherDistance = component.feather * Math.min(radiusX, radiusY)
+        const radialDistance = Math.hypot(rotatedX, rotatedY)
+        const rayX = Math.abs(rotatedX) / Math.max(radialDistance, 1e-8)
+        const rayY = Math.abs(rotatedY) / Math.max(radialDistance, 1e-8)
+        const boundaryRadius = (xRadius: number, yRadius: number): number => component.type === 'rectangle'
+          ? Math.min(xRadius / Math.max(rayX, 1e-8), yRadius / Math.max(rayY, 1e-8))
+          : 1 / Math.sqrt(rayX * rayX / (xRadius * xRadius) + rayY * rayY / (yRadius * yRadius))
+        const innerBoundary = boundaryRadius(radiusX, radiusY)
+        const outerBoundary = boundaryRadius(radiusX + featherDistance, radiusY + featherDistance)
+        amount = Math.max(0, Math.min(1, (outerBoundary - radialDistance) / Math.max(outerBoundary - innerBoundary, 1e-8)))
       }
       const index = y * width + x
       const incoming = componentValue(amount, component.inverted)

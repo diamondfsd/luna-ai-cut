@@ -28,7 +28,8 @@ export function componentControlHandles(component: ColorMaskComponent): MaskCont
   const radians = component.rotation * Math.PI / 180
   const resize = rotatePoint(component.width / 2, component.height / 2, radians)
   const rotate = rotatePoint(0, -component.height / 2 - 0.06, radians)
-  const feather = rotatePoint(component.width / 2 * (1 + component.feather), 0, radians)
+  const featherDistance = component.feather * Math.min(component.width, component.height) / 2
+  const feather = rotatePoint(component.width / 2 + featherDistance, 0, radians)
   return [
     { kind: 'move', x: component.centerX, y: component.centerY },
     { kind: 'resize', x: component.centerX + resize.x, y: component.centerY + resize.y },
@@ -77,7 +78,8 @@ export function updateComponentFromDrag(
   const radians = -component.rotation * Math.PI / 180
   const local = rotatePoint(current.x - component.centerX, current.y - component.centerY, radians)
   if (kind === 'feather') {
-    return { ...component, feather: Math.max(0, Math.min(3, Math.abs(local.x) / Math.max(0.0001, component.width / 2) - 1)) }
+    const featherUnit = Math.max(0.0001, Math.min(component.width, component.height) / 2)
+    return { ...component, feather: Math.max(0, (Math.abs(local.x) - component.width / 2) / featherUnit) }
   }
   return { ...component, width: Math.max(0.001, Math.abs(local.x) * 2), height: Math.max(0.001, Math.abs(local.y) * 2) }
 }
@@ -102,4 +104,14 @@ export function componentOutline(component: Exclude<ColorMaskComponent, { type: 
     points.push({ x: component.centerX + rotated.x, y: component.centerY + rotated.y })
   }
   return points
+}
+
+export function componentFeatherOutline(component: Exclude<ColorMaskComponent, { type: 'raster' }>): Array<{ x: number; y: number }> {
+  if (component.type === 'linear-gradient') return componentOutline(component)
+  const expansion = component.feather * Math.min(component.width, component.height)
+  return componentOutline({
+    ...component,
+    width: component.width + expansion,
+    height: component.height + expansion,
+  })
 }
