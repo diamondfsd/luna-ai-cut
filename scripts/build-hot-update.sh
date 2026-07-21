@@ -303,14 +303,14 @@ else
   warn "发布说明文件不存在: ${NOTES_NAME}（跳过）"
 fi
 
-# ── 打 Git tag ──
+# ── 创建本地 Git tag（不推送）──
 TAG_NAME="hot/v${FULL_VERSION}"
 if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-  ok "Git tag 已存在: ${TAG_NAME}"
+  ok "本地 Git tag 已存在: ${TAG_NAME}"
 else
-  info "创建 Git tag: ${TAG_NAME}..."
+  info "创建本地 Git tag: ${TAG_NAME}..."
   git tag "$TAG_NAME"
-  git push origin "$TAG_NAME" 2>/dev/null && ok "Git tag 已推送: ${TAG_NAME}" || warn "Git tag 推送失败（需手动推送: git push origin ${TAG_NAME}）"
+  ok "本地 Git tag 已创建: ${TAG_NAME}（未推送）"
 fi
 
 echo ""
