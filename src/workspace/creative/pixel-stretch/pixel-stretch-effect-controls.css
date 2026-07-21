@@ -2,5 +2,6 @@
 .pixel-stretch-flow-presets button { min-width: 0; height: 30px; padding: 0 6px; border: 1px solid #3b3b3b; border-radius: 4px; background: #303030; color: #aaa; font-size: 12px; cursor: pointer; }
 .pixel-stretch-flow-presets button:hover { border-color: #555; color: #ddd; }
 .pixel-stretch-flow-presets button.active { border-color: var(--blue); background: var(--blue); color: #fff; }
-.pixel-stretch-advanced { border-top: 1px solid #333; }
-.pixel-stretch-advanced-body { display: grid; gap: 13px; padding-top: 4px; }
+.pixel-stretch-detail-section { display: grid; gap: 13px; padding-top: 14px; border-top: 1px solid #3a3a3a; }
+.pixel-stretch-section-label { color: #a9a9ad; font-size: 12px; font-weight: 600; }
+.pixel-stretch-advanced-body { display: grid; gap: 13px; }

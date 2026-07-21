@@ -19,22 +19,3 @@ export async function runSpecializedWorkerAttempt(
   if (bytes.byteLength !== expectedBytes) throw new Error('专用分割返回尺寸无效')
   return { result, bytes }
 }
-
-export async function runSpecializedWorkerWithFallback(
-  primary: () => Promise<SpecializedWorkerAttempt>,
-  fallback: () => Promise<SpecializedWorkerAttempt>,
-  signal?: AbortSignal,
-): Promise<{
-  attempt: SpecializedWorkerAttempt
-  fallbackReason?: string
-}> {
-  try {
-    return { attempt: await primary() }
-  } catch (error) {
-    if (signal?.aborted) throw error
-    return {
-      attempt: await fallback(),
-      fallbackReason: error instanceof Error ? error.message : 'MPS 自动选择失败',
-    }
-  }
-}

@@ -1,7 +1,7 @@
 import { PenTool } from 'lucide-react'
 
 import type { PixelStretchPresetId } from '../../../shared/types/workspace'
-import { Accordion, Button, SegmentedControl } from '../../../ui'
+import { Button, SegmentedControl } from '../../../ui'
 import { ParamSlider } from '../../components/ParamSlider'
 import './pixel-stretch-effect-controls.css'
 
@@ -30,12 +30,13 @@ export function PixelStretchEffectControls(props: PixelStretchEffectControlsProp
     <div className="pixel-stretch-edit-row">
       <Button variant={props.sampleEditing ? 'primary' : 'secondary'} size="compact" icon={<PenTool size={14} />} onClick={props.onToggleSampleEditing}>{props.sampleEditing ? '完成取色' : '调整取色'}</Button>
     </div>
-    <Accordion className="pixel-stretch-advanced" title="细节调整">
+    <div className="pixel-stretch-detail-section">
+      <span className="pixel-stretch-section-label">细节调整</span>
       <div className="pixel-stretch-advanced-body">
         <ParamSlider label={`取色${props.horizontal ? '横' : '纵'}向位置`} value={props.sampleCoordinate} min={props.sampleCoordinateHalfSpan} max={100 - props.sampleCoordinateHalfSpan} step={1} onChange={props.onSampleCoordinateChange} formatValue={(value) => `${Math.round(value)}%`} />
         <ParamSlider label="色带角度" value={props.angle} min={-180} max={180} step={1} onChange={props.onAngleChange} formatValue={(value) => `${value}°`} />
         <Button variant="ghost" size="compact" onClick={props.onResetSample}>还原取色位置</Button>
       </div>
-    </Accordion>
+    </div>
   </fieldset>
 }

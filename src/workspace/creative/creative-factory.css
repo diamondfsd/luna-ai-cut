@@ -92,14 +92,13 @@
 }
 
 .workspace-creative-preview--pixel-stretch {
-  background: #2b313a;
+  padding: 12px;
+  background: #171b1e;
 }
 
 .workspace-creative-preview--color::before,
 .workspace-creative-preview--triple::before,
-.workspace-creative-preview--triple::after,
-.workspace-creative-preview--pixel-stretch::before,
-.workspace-creative-preview--pixel-stretch::after {
+.workspace-creative-preview--triple::after {
   content: '';
   position: absolute;
   left: 0;
@@ -125,30 +124,21 @@
   background: #735849;
 }
 
-.workspace-creative-preview--pixel-stretch::before {
-  inset: 30% auto 0 19%;
-  width: 24%;
-  border-radius: 48% 48% 10% 10%;
-  background: #d98b68;
-  box-shadow:
-    0 -30px 0 -12px #edc38f,
-    0 0 0 1px rgba(255, 255, 255, 0.16);
-}
-
-.workspace-creative-preview--pixel-stretch::after {
-  left: 37%;
-  right: 7%;
-  top: 34%;
-  height: 7px;
-  background: #d98b68;
-  box-shadow:
-    0 12px 0 #e2b866,
-    0 24px 0 #7189a8,
-    0 36px 0 #426b83,
-    0 48px 0 #b66f67;
-}
-
 .workspace-creative-preview--pixel-stretch > svg { display: none; }
+
+.pixel-stretch-cover-scene { position: relative; width: 100%; height: 100%; overflow: hidden; border: 1px solid #3b464b; border-radius: 5px; background: #8fa9b5; }
+.pixel-stretch-cover-sky { position: absolute; inset: 0 0 42%; background: #8fa9b5; }
+.pixel-stretch-cover-ridge { position: absolute; left: 0; right: 0; bottom: 31%; height: 42%; background: #536d70; clip-path: polygon(0 64%, 15% 35%, 30% 58%, 48% 18%, 67% 61%, 83% 38%, 100% 66%, 100% 100%, 0 100%); }
+.pixel-stretch-cover-ground { position: absolute; inset: 62% 0 0; background: #294943; }
+.pixel-stretch-cover-flow { position: absolute; left: 45%; right: 5%; top: 42%; display: grid; gap: 3px; transform: skewY(-4deg); }
+.pixel-stretch-cover-flow i { display: block; height: 8px; border-radius: 0 3px 3px 0; background: #d7684f; }
+.pixel-stretch-cover-flow i:nth-child(2) { width: 92%; background: #e5b952; }
+.pixel-stretch-cover-flow i:nth-child(3) { width: 100%; background: #dfe0d6; }
+.pixel-stretch-cover-flow i:nth-child(4) { width: 84%; background: #4e8b8f; }
+.pixel-stretch-cover-flow i:nth-child(5) { width: 70%; background: #365f78; }
+.pixel-stretch-cover-subject { position: absolute; left: 29%; bottom: 10%; width: 23%; height: 57%; border-radius: 48% 48% 9% 9%; background: #d7684f; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2); }
+.pixel-stretch-cover-subject::before { content: ''; position: absolute; left: 28%; top: -24%; width: 45%; aspect-ratio: 1; border-radius: 50%; background: #efc59e; }
+.pixel-stretch-cover-subject i { position: absolute; left: 18%; right: 18%; top: 20%; height: 2px; background: rgba(255, 255, 255, 0.45); }
 
 .workspace-creative-preview > svg {
   position: relative;

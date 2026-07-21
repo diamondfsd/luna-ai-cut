@@ -123,7 +123,7 @@ try {
   const sevenZipArchive = await readFile(sevenZipArchivePath)
   const sevenZipDefinition = {
     id: 'sevenzip-pack',
-    kind: 'sidecar',
+    kind: 'model',
     version: '1.0.0',
     fileName: 'runtime.7z',
     url: 'https://fixture.invalid/runtime.7z',

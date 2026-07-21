@@ -1,4 +1,4 @@
-export type RuntimeResourceKind = 'font' | 'lut' | 'sidecar' | 'model'
+export type RuntimeResourceKind = 'font' | 'lut' | 'model'
 
 export interface RuntimeResourceDefinition {
   id: string

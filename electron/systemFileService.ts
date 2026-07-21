@@ -5,18 +5,24 @@ import * as path from 'node:path'
 import { cacheDir, previewCacheDir } from './settingsService'
 import type { CacheStats } from '../src/shared/types'
 
+async function openLocalPath(targetPath: string): Promise<void> {
+  const error = await shell.openPath(targetPath)
+  if (error) throw new Error(error)
+}
+
 export async function revealFile(filePath: string): Promise<void> {
+  const resolvedPath = path.resolve(filePath)
   try {
-    await fs.access(filePath)
-    shell.showItemInFolder(filePath)
+    const stats = await fs.stat(resolvedPath)
+    await openLocalPath(stats.isDirectory() ? resolvedPath : path.dirname(resolvedPath))
   } catch {
-    await shell.openPath(path.dirname(filePath))
+    await openLocalPath(path.dirname(resolvedPath))
   }
 }
 
 export async function openPhotosApp(): Promise<void> {
   if (process.platform !== 'darwin') return
-  await shell.openPath('/System/Applications/Photos.app')
+  await openLocalPath('/System/Applications/Photos.app')
 }
 
 export async function openPath(targetPath: string): Promise<void> {
@@ -34,12 +40,12 @@ export async function openPath(targetPath: string): Promise<void> {
       return
     }
     // 是目录 → 直接打开
-    await shell.openPath(targetPath)
+    await openLocalPath(targetPath)
     return
   } catch {
     // 目标不存在 → 创建目录后打开
     await fs.mkdir(targetPath, { recursive: true })
-    await shell.openPath(targetPath)
+    await openLocalPath(targetPath)
   }
 }
 
