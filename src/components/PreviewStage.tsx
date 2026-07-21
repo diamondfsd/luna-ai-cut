@@ -29,6 +29,7 @@ interface PreviewStageProps {
   renderOverlay?: () => ReactNode
   viewScale?: 'fit' | number
   onViewScaleChange?: (scale: 'fit' | number) => void
+  onFitScaleChange?: (scale: number) => void
   previewMaxSide?: number
   /** 播放/暂停/当前时间变更回调 */
   onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
@@ -99,7 +100,7 @@ function projectCanvasFor(resolution: MediaResolution | null, maxSide: number): 
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, previewMaxSide = 1440, onPlayStateChange }: PreviewStageProps,
+    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -360,6 +361,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     if (!stage || !canvas || !resolution) return
     const stageRect = stage.getBoundingClientRect()
     const canvasRect = canvas.getBoundingClientRect()
+    if (canvas.width > 0 && canvas.height > 0) {
+      const fitScale = Math.min(canvas.clientWidth / canvas.width, canvas.clientHeight / canvas.height)
+      if (Number.isFinite(fitScale) && fitScale > 0) onFitScaleChange?.(Math.round(fitScale * 100))
+    }
     onMetricsChange?.({
       sourceAspect: resolution.width / resolution.height,
       imageRect: {
@@ -369,7 +374,15 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         height: canvasRect.height,
       },
     })
-  }, [onMetricsChange, resolution])
+  }, [onFitScaleChange, onMetricsChange, resolution])
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    const observer = new ResizeObserver(syncCanvasMetrics)
+    observer.observe(wrapper)
+    return () => observer.disconnect()
+  }, [syncCanvasMetrics])
 
   // 通过 IPC 获取媒体文件实际分辨率
   useEffect(() => {
