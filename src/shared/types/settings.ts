@@ -1,5 +1,7 @@
 import type { WatermarkSettings } from './watermark'
 
+export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
+
 export interface AppSettings {
   downloadDir: string
   localResourcesDir?: string
@@ -20,6 +22,8 @@ export interface AppSettings {
   workspaceImportDir?: string
   /** 扩展 LUT 滤镜目录路径（.cube 文件目录树，按文件夹分组） */
   lutDir?: string
+  /** 工作台预览清晰度；原图档仍限制为最大 4K。 */
+  workspacePreviewQuality?: WorkspacePreviewQuality
 }
 
 export interface CacheStats {

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
+import type { WorkspacePreviewQuality } from '../shared/types/settings'
+import { useApp } from '../context/AppContext'
 import { ErrorBoundary, toast } from '../ui'
 import { exportBatchFiles, type BatchExportSource } from '../components/previewStageExport'
 import { ExportSettingsDialog } from '../components/ExportSettingsDialog'
@@ -35,6 +37,7 @@ import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
+import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
@@ -95,6 +98,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
   const mask = useWorkspaceMask()
+  const { settings, setSettings } = useApp()
   const previewRef = useRef<PreviewStageHandle>(null)
   const trimStateRef = useRef<{ trimActive: boolean; trimEnd: number | null }>({ trimActive: false, trimEnd: null })
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -107,7 +111,23 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const [exportDialogDir, setExportDialogDir] = useState('')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
+  const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   const allowWatermark = useLunaUltraWatermark(media.activeMedia)
+
+  useEffect(() => {
+    setPreviewQuality(normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
+  }, [settings?.workspacePreviewQuality])
+
+  function changePreviewQuality(quality: WorkspacePreviewQuality): void {
+    const previous = previewQuality
+    setPreviewQuality(quality)
+    void window.luna.saveSettings({ workspacePreviewQuality: quality })
+      .then(setSettings)
+      .catch(() => {
+        setPreviewQuality(previous)
+        toast.error('无法保存预览清晰度')
+      })
+  }
 
   // ── 截取（Trim）状态 ──
   const [trimCurrentTime, setTrimCurrentTime] = useState(0)
@@ -649,6 +669,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             onExport={() => void handleWorkspaceExport()}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
+            previewQuality={previewQuality}
+            onPreviewQualityChange={changePreviewQuality}
           />
 
           {/* ── Rust/wgpu 预览组件 ── */}
@@ -665,6 +687,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             renderOverlay={() => (edit.cropActive ? <CropOverlay /> : mask.editing ? <MaskOverlay /> : null)}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
+            previewMaxSide={workspacePreviewMaxSide(previewQuality)}
             onPlayStateChange={handlePlayStateChange}
           />
 
