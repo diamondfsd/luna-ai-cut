@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 
 import { LrcRender } from '../../../components/LrcRender'
 import type { MediaMetadata, PixelStretchFlowShape, PixelStretchPathPoint, PreviewLayer, WorkspacePixelStretchState } from '../../../shared/types'
-import { Button, IconButton, SegmentedControl, toast } from '../../../ui'
+import { Button, IconButton, LoadingIndicator, SegmentedControl, toast } from '../../../ui'
 import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
@@ -17,7 +17,7 @@ import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
 import { PixelStretchSampleEditor, type PixelStretchSampleEditorValue } from './PixelStretchSampleEditor'
 import { PixelStretchEffectControls } from './PixelStretchEffectControls'
-import { buildPixelStretchLayers, erodeMaskOnePixel, subjectBoundsFromMask, suggestPixelStretchPreset, type SubjectBounds } from './pixelStretchLayers'
+import { buildPixelStretchLayers, erodeMaskOnePixel, invertMask, subjectBoundsFromMask, suggestPixelStretchPreset, type SubjectBounds } from './pixelStretchLayers'
 import { PIXEL_STRETCH_MASK_LAYER_ID, pixelStretchMaskLayer } from './pixelStretchMask'
 import { exportPixelStretchImage } from './exportPixelStretchImage'
 import {
@@ -292,12 +292,12 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     setSubjectModel(value)
   }
 
-  const segmentSubject = useCallback(async (point?: { x: number; y: number }) => {
+  const segmentSubject = useCallback(async (point?: { x: number; y: number }, selection: 'subject' | 'background' = 'subject') => {
     if (!activeAsset || !media.currentProject || activeAsset.kind !== 'image' || segmenting) return
     const requestId = crypto.randomUUID()
     requestRef.current = requestId
     setSegmenting(true)
-    setProgress(point ? '正在识别点选区域' : '正在识别主体')
+    setProgress(point ? '正在识别点选区域' : selection === 'background' ? '正在识别背景' : '正在识别主体')
     const unsubscribe = window.luna.onWorkspaceSegmentationProgress((event) => {
       if (event.requestId === requestId) setProgress(event.label)
     })
@@ -307,19 +307,20 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
         : { requestId, filePath: activeAsset.path, modelId: subjectModel === 'precise' ? 'birefnet-general-lite' : 'rmbg-1.4' })
       if (requestRef.current !== requestId) return
       const insetMask = erodeMaskOnePixel(new Uint8Array(result.bytes), result.width, result.height)
-      const bounds = subjectBoundsFromMask(insetMask, result.width, result.height)
-      if (!bounds) throw new Error(point ? '点选区域没有有效主体' : '未识别到主体，可使用点选')
+      const selectedMask = selection === 'background' ? invertMask(insetMask) : insetMask
+      const bounds = subjectBoundsFromMask(selectedMask, result.width, result.height)
+      if (!bounds) throw new Error(point ? '点选区域没有有效主体' : selection === 'background' ? '未识别到有效背景' : '未识别到主体，可使用点选')
       const savedMask = await window.luna.workspace.saveColorMask(
         media.currentProject.id,
         activeAsset.id,
         result.width,
         result.height,
-        insetMask,
+        selectedMask,
         1,
       )
       if (requestRef.current !== requestId) return
       setSubjectBounds(bounds)
-      setMaskData({ data: insetMask, width: result.width, height: result.height })
+      setMaskData({ data: selectedMask, width: result.width, height: result.height })
       setMaskOwnerId(activeAsset.id)
       setMaskPath(savedMask.path)
       if (!activeMaskPath && sourceSize) setPreset(suggestPixelStretchPreset(bounds, sourceSize.width / sourceSize.height))
@@ -332,11 +333,11 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
         })
       }
       setPointPicking(false)
-      toast.success(point ? '已更新选中主体' : '主体已识别，可调整拉伸方式')
+      toast.success(point ? '已更新点选区域' : selection === 'background' ? '背景已识别，可调整拉伸方式' : '主体已识别，可调整拉伸方式')
     } catch (error) {
       if (requestRef.current === requestId) {
         setPointPicking(false)
-        toast.error(error instanceof Error ? error.message : point ? '点选识别失败，请重试' : '未识别到主体，可使用点选')
+        toast.error(error instanceof Error ? error.message : point ? '点选识别失败，请重试' : selection === 'background' ? '背景识别失败，请重试' : '未识别到主体，可使用点选')
       }
     } finally {
       unsubscribe()
@@ -471,8 +472,9 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     </div>
     <aside className="pixel-stretch-panel"><div className="pixel-stretch-panel-head"><strong>效果设置</strong><span>从主体中心像素延展连续色带</span></div>
       {maskEditing ? <div className="pixel-stretch-full-mask-editor"><Button variant="primary" size="compact" onClick={closeMaskEditor}>完成蒙版调整</Button><MaskPanel /></div>
-        : <div className="pixel-stretch-options"><span>主体识别</span><fieldset className="pixel-stretch-model-select"><SegmentedControl className="pixel-stretch-presets pixel-stretch-models" ariaLabel="主体识别质量" value={subjectModel} options={[{ value: 'fast', label: '快速' }, { value: 'precise', label: '精准' }]} onChange={changeSubjectModel} /></fieldset><div className="pixel-stretch-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>主体</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={startPointPicking}>点选</Button></div>
-          {(segmenting || pointPicking) && <span className="pixel-stretch-detect-status">{segmenting ? progress || '正在识别' : '在预览图中点击需要保留的主体'}</span>}
+        : <div className="pixel-stretch-options"><span>智能选择</span><fieldset className="pixel-stretch-model-select"><SegmentedControl className="pixel-stretch-presets pixel-stretch-models" ariaLabel="智能选择质量" value={subjectModel} options={[{ value: 'fast', label: '快速' }, { value: 'precise', label: '精准' }]} onChange={changeSubjectModel} /></fieldset><div className="pixel-stretch-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>主体</Button><Button variant="secondary" size="compact" disabled={!isImage || segmenting} onClick={() => void segmentSubject(undefined, 'background')}>背景</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={startPointPicking}>点选</Button></div>
+          {segmenting && <div className="pixel-stretch-loading" role="status"><LoadingIndicator /><div className="pixel-stretch-loading-copy"><strong>{progress || '正在识别'}</strong><span>{subjectModel === 'precise' ? '精准识别' : '快速识别'}处理中</span></div></div>}
+          {pointPicking && !segmenting && <span className="pixel-stretch-detect-status">在预览图中点击需要保留的区域</span>}
           <Button variant="secondary" size="compact" icon={<Brush size={14} />} disabled={!maskData || segmenting} onClick={openMaskEditor}>调整蒙版</Button>
           <PixelStretchEffectControls disabled={!activeMaskPath || segmenting} preset={preset} sampleEditing={sampleEditing} sampleCoordinate={sampleCoordinate} sampleCoordinateHalfSpan={sampleCoordinateHalfSpan} angle={angle} horizontal={isHorizontalPreset} onPresetChange={changePreset} onToggleSampleEditing={() => { setPointPicking(false); setSampleEditing((editing) => !editing) }} onResetSample={resetSampleEditor} onSampleCoordinateChange={moveSampleCoordinate} onAngleChange={setAngle} />
         </div>}

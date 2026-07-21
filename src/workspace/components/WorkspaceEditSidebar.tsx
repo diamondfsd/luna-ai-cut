@@ -107,6 +107,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
   const mask = useWorkspaceMask()
+  const isVideo = mediaCtx.activeMedia?.kind === 'video'
 
   const refH = mediaSize?.h ?? 2160
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
@@ -117,10 +118,13 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
   const [resetColorDialogOpen, setResetColorDialogOpen] = useState(false)
   const setActiveTool = edit.setActiveTool
   const setMaskEditing = mask.setEditing
+  const setMaskActiveLayerId = mask.setActiveLayerId
+  const setMaskSemanticPicking = mask.setSemanticPicking
   const activeTool = edit.activeTool === 'watermark' && !allowWatermark ? 'color' : edit.activeTool
   const visibleToolItems = useMemo(
-    () => allowWatermark ? TOOL_ITEMS : TOOL_ITEMS.filter((item) => item.value !== 'watermark'),
-    [allowWatermark],
+    () => (allowWatermark ? TOOL_ITEMS : TOOL_ITEMS.filter((item) => item.value !== 'watermark'))
+      .map((item) => isVideo && item.value === 'color' ? { ...item, label: '调色' } : item),
+    [allowWatermark, isVideo],
   )
 
   useEffect(() => {
@@ -130,16 +134,23 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
     }
   }, [allowWatermark, edit.activeTool, setActiveTool, setMaskEditing])
 
+  useEffect(() => {
+    if (!isVideo) return
+    setMaskActiveLayerId(null)
+    setMaskSemanticPicking(false)
+    setMaskEditing(false)
+  }, [isVideo, setMaskActiveLayerId, setMaskEditing, setMaskSemanticPicking])
+
   // 各面板是否有未保存的修改
   const toolModified = useMemo(() => ({
     filter: isFilterModified(edit.pipeline.lutFilter),
-    color: isColorModified(edit.pipeline.color) || edit.pipeline.colorMasks.some((layer) => isColorModified(layer.color)),
+    color: isColorModified(edit.pipeline.color) || (!isVideo && edit.pipeline.colorMasks.some((layer) => isColorModified(layer.color))),
     crop: isCropModified(edit.pipeline.transform),
     trim: isTrimModified(edit.pipeline.trim),
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
     mask: edit.pipeline.colorMasks.length > 0,
-  }), [edit.pipeline])
+  }), [edit.pipeline, isVideo])
 
   // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
   const handleWatermarkChange = useMemo(
@@ -172,6 +183,10 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
   }
 
   const requestResetAllColor = () => {
+    if (isVideo) {
+      edit.commitPatch({ color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects })
+      return
+    }
     if (edit.pipeline.colorMasks.length > 0) {
       setResetColorDialogOpen(true)
       return
@@ -212,7 +227,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
               <h2>{mask.activeMask ? `编辑蒙版 · ${mask.activeMask.name}` : '新建蒙版'}</h2>
             </>
           ) : (
-            <h2>{titleForTool(activeTool)}</h2>
+            <h2>{activeTool === 'color' && isVideo ? '调色' : titleForTool(activeTool)}</h2>
           )}
           {activeTool === 'color' && (
             <span className="workspace-tool-panel-actions">
@@ -221,13 +236,13 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
               ) : (
                 <>
                   {toolModified.color && <span className="ui-accordion-modified-dot" />}
-                  <Tooltip content="重置全部调色与蒙版">
+                  <Tooltip content={isVideo ? '重置全部调色' : '重置全部调色与蒙版'}>
                     <IconButton
                       variant="ghost"
                       size="compact"
                       icon={<RotateCcw size={14} />}
                       onClick={requestResetAllColor}
-                      aria-label="重置全部调色与蒙版"
+                      aria-label={isVideo ? '重置全部调色' : '重置全部调色与蒙版'}
                     />
                   </Tooltip>
                 </>

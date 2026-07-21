@@ -92,6 +92,10 @@ export function erodeMaskOnePixel(data: Uint8Array, width: number, height: numbe
   return output
 }
 
+export function invertMask(data: Uint8Array): Uint8Array {
+  return data.map((value) => 255 - value)
+}
+
 /** 优先把色带伸向主体周围留白最多的方向。 */
 export function suggestPixelStretchPreset(bounds: SubjectBounds, sourceAspect = 1): PixelStretchPresetId {
   const aspect = Math.max(0.0001, sourceAspect)

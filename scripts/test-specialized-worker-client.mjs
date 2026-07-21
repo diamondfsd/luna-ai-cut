@@ -54,10 +54,7 @@ for await (const line of lines) {
 `)
 
   const { SpecializedWorkerClient } = await import(pathToFileURL(path.join(temporaryRoot, 'electron/specializedWorkerClient.js')))
-  const {
-    runSpecializedWorkerAttempt,
-    runSpecializedWorkerWithFallback,
-  } = await import(pathToFileURL(path.join(temporaryRoot, 'electron/specializedSegmentationAttempt.js')))
+  const { runSpecializedWorkerAttempt } = await import(pathToFileURL(path.join(temporaryRoot, 'electron/specializedSegmentationAttempt.js')))
   const client = new SpecializedWorkerClient(() => ({ executable: process.execPath, args: [fakeWorkerPath] }), 2_000)
 
   const first = await client.segment({ mode: 'success' })
@@ -86,25 +83,6 @@ for await (const line of lines) {
   )
   await assert.rejects(attempt('missing'), /ENOENT/)
   await assert.rejects(attempt('success', 1), /尺寸无效/)
-  const fallback = await runSpecializedWorkerWithFallback(
-    () => attempt('success', 1),
-    () => attempt('success', 2),
-  )
-  assert.match(fallback.fallbackReason, /尺寸无效/)
-  assert.equal(fallback.attempt.bytes.byteLength, 2)
-
-  let fallbackCalls = 0
-  const cancelledController = new AbortController()
-  cancelledController.abort(new Error('cancel without fallback'))
-  await assert.rejects(runSpecializedWorkerWithFallback(
-    async () => { throw cancelledController.signal.reason },
-    async () => {
-      fallbackCalls += 1
-      return await attempt('success', 2)
-    },
-    cancelledController.signal,
-  ), /cancel without fallback/)
-  assert.equal(fallbackCalls, 0, 'a cancelled MPS request must not start ONNX fallback')
 
   client.shutdown()
   console.log('specialized worker client tests passed')

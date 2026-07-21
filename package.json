@@ -26,8 +26,6 @@
     "publish:hot": "node scripts/publish-hot-update.mjs",
     "publish:resources": "node scripts/publish-runtime-resources.mjs --upload",
     "build:resources": "node scripts/publish-runtime-resources.mjs",
-    "build:birefnet-mps-resources": "node scripts/build-birefnet-mps-resources.mjs",
-    "publish:birefnet-mps-resources": "node scripts/publish-birefnet-mps-resources.mjs",
     "test:workspace": "node scripts/test-workspace-geometry.mjs",
     "test:media-preview": "node scripts/test-media-preview.mjs",
     "test:mask": "node scripts/test-mask-safety.mjs && node scripts/test-segmentation-task-registry.mjs && node scripts/test-specialized-worker-client.mjs",

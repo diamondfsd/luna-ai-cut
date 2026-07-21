@@ -374,8 +374,7 @@ export function register(): void {
         sessionLoadMs: number
         sessionReused: boolean
         workerInferenceMs: number
-        executionBackend: 'onnx-cpu' | 'pytorch-mps'
-        fallbackReason?: string
+        executionBackend: 'onnx-cpu'
       }
       : null
     const sessionLoadMs = specializedMetrics?.sessionLoadMs ?? 0
@@ -387,7 +386,6 @@ export function register(): void {
         sessionLoadMs,
         workerInferenceMs: specializedMetrics.workerInferenceMs,
         executionBackend: specializedMetrics.executionBackend,
-        fallbackReason: specializedMetrics.fallbackReason,
       })
     }
     if (isSam) logMainInfo('[SAM] 原生识别完成', { inferenceMs: Math.round(inferenceMs) })
