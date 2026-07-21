@@ -483,6 +483,11 @@ try {
   assert.deepEqual(layers.map((layer) => layer.maskPath), ['/bottom.pgm', '/top.pgm'], 'the visual top layer must render last')
   assert.deepEqual(layers.map((layer) => layer.blendMode), ['multiply', 'screen'])
   assert.ok(layers.every((layer) => layer.layerType === 'local-color'))
+  assert.equal(
+    renderModule.buildLocalColorLayers(baseLayer, stressPipeline)[0].maskTrack,
+    undefined,
+    'saved legacy trajectories must not move v1.6.0 static video masks in preview or export',
+  )
   assert.deepEqual(
     renderModule.buildLocalColorLayers(baseLayer, unavailable),
     [],
