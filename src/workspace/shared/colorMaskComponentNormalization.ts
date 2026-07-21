@@ -7,6 +7,11 @@ function normalizeBoundedString(value: unknown, maxLength: number): string | und
   return normalized ? normalized.slice(0, maxLength) : undefined
 }
 
+function normalizeFiniteNumber(value: unknown, fallback: number): number {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
+}
+
 function normalizeDynamicSource(value: unknown): ColorMaskDynamicSource | undefined {
   if (!value || typeof value !== 'object') return undefined
   const input = value as Record<string, unknown>
@@ -63,21 +68,21 @@ export function normalizeColorMaskComponent(input: ColorMaskComponent): ColorMas
     return {
       ...common,
       type: input.type,
-      startX: clampNumber(Number(input.startX), { min: -2, max: 3 }),
-      startY: clampNumber(Number(input.startY), { min: -2, max: 3 }),
-      endX: clampNumber(Number(input.endX), { min: -2, max: 3 }),
-      endY: clampNumber(Number(input.endY), { min: -2, max: 3 }),
+      startX: normalizeFiniteNumber(input.startX, 0),
+      startY: normalizeFiniteNumber(input.startY, 0),
+      endX: normalizeFiniteNumber(input.endX, 1),
+      endY: normalizeFiniteNumber(input.endY, 1),
     }
   }
   if (input.type !== 'rectangle' && input.type !== 'ellipse' && input.type !== 'radial-gradient') return null
   return {
     ...common,
     type: input.type,
-    centerX: clampNumber(Number(input.centerX), { min: -2, max: 3 }),
-    centerY: clampNumber(Number(input.centerY), { min: -2, max: 3 }),
-    width: clampNumber(Number(input.width), { min: 0.0001, max: 5 }),
-    height: clampNumber(Number(input.height), { min: 0.0001, max: 5 }),
+    centerX: normalizeFiniteNumber(input.centerX, 0.5),
+    centerY: normalizeFiniteNumber(input.centerY, 0.5),
+    width: Math.max(0.0001, normalizeFiniteNumber(input.width, 0.0001)),
+    height: Math.max(0.0001, normalizeFiniteNumber(input.height, 0.0001)),
     rotation: ((Number(input.rotation) || 0) % 360 + 360) % 360,
-    feather: clampNumber(Number(input.feather), { min: 0, max: 3 }),
+    feather: Math.max(0, normalizeFiniteNumber(input.feather, 0)),
   }
 }

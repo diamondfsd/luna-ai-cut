@@ -241,10 +241,15 @@ try {
   assert.equal(componentControls.shouldShowComponentControls('brush', false), false, 'unrelated tools must not show stale component controls')
   const featheredWindow = { ...rotatedRectangle, rotation: 0, feather: 0.25 }
   const featherHandle = componentControls.componentControlHandles(featheredWindow).find((handle) => handle.kind === 'feather')
-  close(featherHandle.x, 1, 'the feather handle must sit on the outer power-window outline')
-  const expandedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, { x: 1.3, y: 0.5 })
+  close(featherHandle.x, 0.925, 'the feather handle must use an even outward offset from a non-square core')
+  const featherOutline = componentControls.componentFeatherOutline(featheredWindow)
+  close(Math.max(...featherOutline.map((point) => point.x)) - (featheredWindow.centerX + featheredWindow.width / 2), 0.025, 'horizontal feather spacing must match the short-axis spacing')
+  close(Math.max(...featherOutline.map((point) => point.y)) - (featheredWindow.centerY + featheredWindow.height / 2), 0.025, 'vertical feather spacing must match the long-axis spacing')
+  const expandedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, { x: 1, y: 0.5 })
   close(expandedWindow.feather, 1, 'dragging the outer handle must adjust feather without resizing the core')
   close(expandedWindow.width, featheredWindow.width, 'dragging feather must preserve the core width')
+  const unboundedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, { x: 10.5, y: 0.5 })
+  assert.ok(unboundedWindow.feather > 20, 'the power-window feather range must not have an artificial size cap')
   const hardBrush = new Uint8Array(25)
   const softBrush = new Uint8Array(25)
   manualRasterization.drawMaskBrush(hardBrush, 5, 5, 2, 2, 2, 0)
@@ -288,7 +293,7 @@ try {
     ...legacy.colorMasks[0],
     components: [{ ...rotatedRectangle, width: 99, height: -1, rotation: -90, feather: 2 }],
   }] }).colorMasks[0].components
-  assert.equal(normalizedComponents[0].width, 5)
+  assert.equal(normalizedComponents[0].width, 99)
   assert.equal(normalizedComponents[0].height, 0.0001)
   assert.equal(normalizedComponents[0].rotation, 270)
   assert.equal(normalizedComponents[0].feather, 2)
