@@ -26,6 +26,8 @@ import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segm
 export interface WorkspaceSegmentationRequest {
   requestId: string
   filePath: string
+  /** 视频素材取帧时间；图片素材忽略。 */
+  frameTime?: number
   point?: { x: number; y: number }
   modelId?: SegmentationModelId
   targetId?: AutomaticSegmentationTargetId

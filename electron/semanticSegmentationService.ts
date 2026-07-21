@@ -38,6 +38,7 @@ function workerPath(): string {
 export async function prepareSemanticRefinementGuide(
   filePath: string,
   sourceSize: { width: number; height: number },
+  frameTime?: number,
   signal?: AbortSignal,
 ): Promise<SemanticRefinementGuide> {
   const scale = Math.min(1, GUIDE_MAX_EDGE / Math.max(sourceSize.width, sourceSize.height))
@@ -45,6 +46,7 @@ export async function prepareSemanticRefinementGuide(
   const height = Math.max(1, Math.round(sourceSize.height * scale))
   const { stdout } = await execFileAsync(getFfmpegPath(), [
     '-v', 'error',
+    ...(frameTime !== undefined ? ['-ss', String(frameTime)] : []),
     '-i', filePath,
     '-vf', `scale=${width}:${height}:flags=lanczos`,
     '-frames:v', '1',
