@@ -262,7 +262,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             mask_texture_id: None,
             mask_opacity: l.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
             mask_inverted: l.mask_inverted.unwrap_or(false),
-            mask_feather: l.mask_feather.unwrap_or(2.0).clamp(0.0, 40.0),
+            mask_feather: l.mask_feather.unwrap_or(2.0).clamp(0.0, 100.0),
             mask_transform: l
                 .mask_transform
                 .clone()
@@ -344,7 +344,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     mask_texture_id: None,
                     mask_opacity: item.layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
                     mask_inverted: item.layer.mask_inverted.unwrap_or(false),
-                    mask_feather: item.layer.mask_feather.unwrap_or(2.0).clamp(0.0, 40.0),
+                    mask_feather: item.layer.mask_feather.unwrap_or(2.0).clamp(0.0, 100.0),
                     mask_transform: item.layer.mask_transform.clone().unwrap_or(
                         crate::RenderMaskTransform {
                             scale: 1.0,

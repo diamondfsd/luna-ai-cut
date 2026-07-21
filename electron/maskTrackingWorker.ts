@@ -159,6 +159,55 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)]
 }
 
+function fitSimilarityTransform(
+  from: number[],
+  to: number[],
+  inlierIndexes: number[],
+): { transform: SimilarityTransform; residuals: number[] } | null {
+  if (inlierIndexes.length < 2) return null
+  let fromCenterX = 0
+  let fromCenterY = 0
+  let toCenterX = 0
+  let toCenterY = 0
+  for (const index of inlierIndexes) {
+    fromCenterX += from[index * 2]
+    fromCenterY += from[index * 2 + 1]
+    toCenterX += to[index * 2]
+    toCenterY += to[index * 2 + 1]
+  }
+  fromCenterX /= inlierIndexes.length
+  fromCenterY /= inlierIndexes.length
+  toCenterX /= inlierIndexes.length
+  toCenterY /= inlierIndexes.length
+
+  let denominator = 0
+  let realNumerator = 0
+  let imaginaryNumerator = 0
+  for (const index of inlierIndexes) {
+    const fromX = from[index * 2] - fromCenterX
+    const fromY = from[index * 2 + 1] - fromCenterY
+    const toX = to[index * 2] - toCenterX
+    const toY = to[index * 2 + 1] - toCenterY
+    denominator += fromX * fromX + fromY * fromY
+    realNumerator += fromX * toX + fromY * toY
+    imaginaryNumerator += fromX * toY - fromY * toX
+  }
+  if (!Number.isFinite(denominator) || denominator < 0.0001) return null
+  const a = realNumerator / denominator
+  const b = imaginaryNumerator / denominator
+  const tx = toCenterX - (a * fromCenterX - b * fromCenterY)
+  const ty = toCenterY - (b * fromCenterX + a * fromCenterY)
+  const transform = { a, b, tx, ty }
+  const residuals = inlierIndexes.map((index) => {
+    const sourceX = from[index * 2]
+    const sourceY = from[index * 2 + 1]
+    const predictedX = a * sourceX - b * sourceY + tx
+    const predictedY = b * sourceX + a * sourceY + ty
+    return Math.hypot(predictedX - to[index * 2], predictedY - to[index * 2 + 1])
+  })
+  return { transform, residuals }
+}
+
 async function run(): Promise<void> {
   const cv = await Promise.resolve(cvModule as unknown as PromiseLike<any>)
   const { width, height } = processingSize()
@@ -319,28 +368,28 @@ function estimateStep(
       affine = cv.estimateAffine2D(fromMat, toMat, inliers, cv.RANSAC, 2.5, 1500, 0.98, 10)
       if (!affine || affine.empty()) return { ok: false, reason: '无法估计目标运动，已停止追踪' }
       let inlierCount = 0
+      const inlierIndexes: number[] = []
       const nextPoints: Array<{ x: number; y: number }> = []
       for (let index = 0; index < count; index += 1) {
         if (!inliers.data[index]) continue
         inlierCount += 1
+        inlierIndexes.push(index)
         nextPoints.push({ x: to[index * 2], y: to[index * 2 + 1] })
       }
       const inlierRatio = inlierCount / count
       const retainedRatio = count / inputPoints.length
       const fbQuality = Math.exp(-median(fbErrors) / 1.5)
-      const confidence = Math.max(0, Math.min(1, inlierRatio * 0.55 + retainedRatio * 0.25 + fbQuality * 0.2))
+      const similarity = fitSimilarityTransform(from, to, inlierIndexes)
+      if (!similarity) return { ok: false, reason: '无法估计目标运动，已停止追踪' }
+      const modelError = median(similarity.residuals)
+      const modelQuality = Math.exp(-modelError / 1.5)
+      const confidence = Math.max(0, Math.min(1, inlierRatio * 0.4 + retainedRatio * 0.2 + fbQuality * 0.2 + modelQuality * 0.2))
       if (inlierCount < MIN_POINTS || inlierRatio < 0.42 || confidence < 0.48) {
         return { ok: false, reason: '追踪置信度过低，已停止以避免蒙版漂移' }
       }
-      const m00 = affine.data64F[0]
-      const m01 = affine.data64F[1]
-      const m10 = affine.data64F[3]
-      const m11 = affine.data64F[4]
-      const scale = (Math.hypot(m00, m10) + Math.hypot(m01, m11)) / 2
-      const angle = Math.atan2(m10 - m01, m00 + m11)
       return {
         ok: true,
-        transform: { a: Math.cos(angle) * scale, b: Math.sin(angle) * scale, tx: affine.data64F[2], ty: affine.data64F[5] },
+        transform: similarity.transform,
         confidence,
         points: nextPoints,
       }
