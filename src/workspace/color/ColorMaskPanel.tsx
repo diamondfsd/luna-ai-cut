@@ -99,12 +99,8 @@ function MaskThumbnail({ path, inverted, feather }: { path: string; inverted: bo
 export function ColorMaskPanel() {
   const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
-  const media = useWorkspaceMedia()
-  const isVideo = media.activeMedia?.kind === 'video'
-  const selectedColor = isVideo ? edit.pipeline.color : mask.activeMask?.color ?? edit.pipeline.color
-  const createMaskHint = isVideo
-    ? '当前版本仅支持图片'
-    : mask.available ? '新建蒙版' : '请先在项目中打开一张图片'
+  const selectedColor = mask.activeMask?.color ?? edit.pipeline.color
+  const createMaskHint = mask.available ? '新建蒙版' : '请先在项目中打开图片或视频'
   const [renameState, setRenameState] = useState<{ id: string; originalName: string; value: string } | null>(null)
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; position: ColorMaskDropPosition } | null>(null)
@@ -132,20 +128,6 @@ export function ColorMaskPanel() {
     clearDragState()
   }
 
-  if (isVideo) {
-    return (
-      <div className="workspace-color-mask-panel">
-        <div className="workspace-color-mask-content">
-          <ColorPanel
-            value={edit.pipeline.color}
-            onChange={(color) => edit.updateWorkspacePanel({ color })}
-            onActivatePipette={() => edit.setPipetteActive(true)}
-          />
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className={`workspace-color-mask-panel${mask.editing ? ' is-editing' : ''}`}>
       <div className="workspace-color-mask-content">
@@ -166,7 +148,6 @@ export function ColorMaskPanel() {
         <div className="workspace-color-mask-layers-header">
           <strong>蒙版图层</strong>
           <span className="workspace-color-mask-layers-header-actions">
-            {isVideo && <small>当前版本仅支持图片</small>}
             <Tooltip content={createMaskHint}>
               <span className="workspace-color-mask-create-trigger">
                 <IconButton variant="ghost" size="mini" icon={<Plus size={18} />} aria-label={createMaskHint} disabled={!mask.available} onClick={mask.createMask} />

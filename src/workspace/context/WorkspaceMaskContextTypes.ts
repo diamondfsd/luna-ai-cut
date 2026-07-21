@@ -21,6 +21,7 @@ export interface SegmentationPerformance {
 
 export interface WorkspaceMaskValue {
   available: boolean
+  setVideoFrameTime: (value: number) => void
   editing: boolean
   setEditing: (value: boolean) => void
   selectionOperation: MaskSelectionOperation
