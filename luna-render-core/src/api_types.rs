@@ -139,6 +139,15 @@ pub struct RenderLayerTransform {
     pub translate_y: Option<f64>,
 }
 
+#[napi(object)]
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct RenderMaskTransform {
+    pub translate_x: f64,
+    pub translate_y: f64,
+    pub scale: f64,
+    pub rotation: f64,
+}
+
 /// 层相对定位：Rust 根据画布比例自动计算 dst，保证纹理比例不变形
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
@@ -227,6 +236,7 @@ pub struct RenderLayer {
     pub mask_opacity: Option<f64>,
     pub mask_inverted: Option<bool>,
     pub mask_feather: Option<f64>,
+    pub mask_transform: Option<RenderMaskTransform>,
     pub pixel_stretch: Option<RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
@@ -259,6 +269,7 @@ pub struct PreviewLayer {
     pub mask_opacity: Option<f64>,
     pub mask_inverted: Option<bool>,
     pub mask_feather: Option<f64>,
+    pub mask_transform: Option<RenderMaskTransform>,
     pub pixel_stretch: Option<RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,

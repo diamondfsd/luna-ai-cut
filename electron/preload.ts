@@ -14,6 +14,7 @@ import type {
   WorkspaceMediaAsset,
   WorkspaceProject,
   WorkspaceSegmentationRequest,
+  WorkspaceMaskTrackingRequest,
   UpdateInfo,
   VideoExportSettings,
   WatermarkSettings,
@@ -131,6 +132,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     prepareSegmentationModels: (modelIds: import('../src/shared/segmentationModels').SegmentationModelId[]) => ipcRenderer.invoke('workspace:prepareSegmentationModels', modelIds),
     segmentImage: (request: WorkspaceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentImage', request),
     cancelSegmentation: (requestId: string) => ipcRenderer.invoke('workspace:cancelSegmentation', requestId),
+    trackMask: (request: WorkspaceMaskTrackingRequest) => ipcRenderer.invoke('workspace:trackMask', request),
+    cancelMaskTracking: (requestId: string) => ipcRenderer.invoke('workspace:cancelMaskTracking', requestId),
     listProjects: () => ipcRenderer.invoke('workspace:listProjects'),
     createProject: (name: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:createProject', name, assets),
     addAssetsToProject: (projectId: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:addAssetsToProject', projectId, assets),
@@ -159,6 +162,11 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceSegmentationProgress): void => callback(progress)
     ipcRenderer.on('workspace:segmentation-progress', listener)
     return () => ipcRenderer.off('workspace:segmentation-progress', listener)
+  },
+  onWorkspaceMaskTrackingProgress: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceMaskTrackingProgress): void => callback(progress)
+    ipcRenderer.on('workspace:mask-tracking-progress', listener)
+    return () => ipcRenderer.off('workspace:mask-tracking-progress', listener)
   },
   onConnectionLost: (callback: () => void) => {
     const listener = (): void => callback()

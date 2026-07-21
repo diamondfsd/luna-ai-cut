@@ -30,6 +30,7 @@
     "test:media-preview": "node scripts/test-media-preview.mjs",
     "test:mask": "node scripts/test-mask-safety.mjs && node scripts/test-segmentation-task-registry.mjs && node scripts/test-specialized-worker-client.mjs",
     "test:mask:render": "node scripts/build-native.mjs && node scripts/test-mask-render-consistency.mjs",
+    "test:mask:tracking": "pnpm run build:app && node scripts/test-mask-tracking-worker.mjs",
     "test:pixel-stretch:render": "node scripts/build-native.mjs && node scripts/test-pixel-stretch-render.mjs",
     "test:semantic-worker": "node scripts/test-semantic-worker-protocol.mjs",
     "test:mask:e2e": "node scripts/test-mask-e2e.mjs",
@@ -53,6 +54,7 @@
     "pack:debug:mac:x64": "node scripts/build-native.mjs && npm run build:debug && env -u CSC_NAME -u CSC_LINK -u CSC_KEY_PASSWORD CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --config electron-builder-debug.json5 --mac dmg --x64 --publish never"
   },
   "dependencies": {
+    "@techstark/opencv-js": "5.0.0-release.1",
     "adm-zip": "^0.5.17",
     "exifr": "^7.1.3",
     "lucide-react": "^1.21.0",

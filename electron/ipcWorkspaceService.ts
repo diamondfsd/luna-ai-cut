@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceMediaAsset, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
+import type { WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from './fileService'
@@ -37,6 +37,7 @@ import { segmentSpecializedInWorker } from './specializedSegmentationService'
 import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
 import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 import { beginForegroundSegmentation } from './segmentationModelPrefetchService'
+import { trackMaskInWorker } from './maskTrackingService'
 
 const MASKFORMER_COMMON_CLASS_IDS: Record<number, number> = {
   1: 1,
@@ -143,11 +144,15 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
 
 export function register(): void {
   const segmentationTasks = new SegmentationTaskRegistry()
+  const trackingTasks = new SegmentationTaskRegistry()
   const watchedSenders = new Set<number>()
   const watchSender = (sender: Electron.WebContents): void => {
     if (watchedSenders.has(sender.id)) return
     watchedSenders.add(sender.id)
-    const cancelSenderTasks = (): void => { segmentationTasks.cancelOwner(sender.id) }
+    const cancelSenderTasks = (): void => {
+      segmentationTasks.cancelOwner(sender.id)
+      trackingTasks.cancelOwner(sender.id)
+    }
     sender.on('render-process-gone', cancelSenderTasks)
     sender.on('did-start-navigation', (_event, _url, isSameDocument, isMainFrame) => {
       if (isMainFrame && !isSameDocument) cancelSenderTasks()
@@ -211,6 +216,55 @@ export function register(): void {
     const duration = Number(stdout.trim())
     if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长')
     return duration
+  })
+
+  ipcMain.handle('workspace:cancelMaskTracking', (event, requestId: string) => {
+    if (typeof requestId !== 'string' || requestId.length === 0) return false
+    return trackingTasks.cancel(event.sender.id, requestId)
+  })
+
+  ipcMain.handle('workspace:trackMask', async (event, request: WorkspaceMaskTrackingRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('蒙版追踪任务标识无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0 || !VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('蒙版追踪仅支持视频素材')
+    if (request.direction !== 'forward' && request.direction !== 'backward') throw new Error('蒙版追踪方向无效')
+    const anchorTime = Number(request.anchorTime)
+    const maskWidth = Math.round(Number(request.maskWidth))
+    const maskHeight = Math.round(Number(request.maskHeight))
+    const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
+    if (!Number.isFinite(anchorTime) || anchorTime < 0) throw new Error('蒙版追踪起始时间无效')
+    if (maskWidth <= 0 || maskHeight <= 0 || maskWidth * maskHeight > 16_777_216 || maskBytes.byteLength !== maskWidth * maskHeight) throw new Error('蒙版追踪数据无效')
+    let selectedPixels = 0
+    for (const value of maskBytes) if (value >= 16) selectedPixels += 1
+    if (selectedPixels < 16) throw new Error('请先创建有效蒙版再开始追踪')
+
+    const task = trackingTasks.begin(event.sender.id, request.requestId)
+    watchSender(event.sender)
+    try {
+      const [duration, resolution] = await Promise.all([
+        (async () => {
+          const { stdout } = await execFileAsync(getFfprobePath(), ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', request.filePath], { encoding: 'utf-8' })
+          return Number(stdout.trim())
+        })(),
+        probeDisplayResolution(request.filePath),
+      ])
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长')
+      const result = await trackMaskInWorker({
+        ...request,
+        anchorTime: Math.min(anchorTime, duration),
+        maskWidth,
+        maskHeight,
+        maskBytes,
+        duration,
+        sourceWidth: resolution.width,
+        sourceHeight: resolution.height,
+      }, getFfmpegPath(), task.controller.signal, (progress) => {
+        if (!trackingTasks.isActive(task) || event.sender.isDestroyed()) return
+        event.sender.send('workspace:mask-tracking-progress', { requestId: request.requestId, direction: request.direction, ...progress })
+      })
+      return result
+    } finally {
+      trackingTasks.finish(task)
+    }
   })
 
   ipcMain.handle('workspace:isLivePhoto', async (_event, filePath: string) => {

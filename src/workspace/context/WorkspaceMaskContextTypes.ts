@@ -1,5 +1,5 @@
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../../shared/segmentationModels'
-import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
+import type { WorkspaceMaskTrackingProgress, WorkspaceSegmentationProgress } from '../../shared/types/api'
 import type { ColorMaskComponent, ColorMaskLayer } from '../shared/editPipeline'
 import type { MaskSelectionOperation } from '../mask/maskSelectionOperations'
 import type { MaskShapeKind } from '../mask/maskShapeRasterization'
@@ -46,6 +46,13 @@ export interface WorkspaceMaskValue {
   segmentationError: string | null
   clearSegmentationError: () => void
   cancelSegmentation: () => void
+  maskTrackingBusy: boolean
+  maskTrackingProgress: WorkspaceMaskTrackingProgress | null
+  maskTrackingError: string | null
+  maskTrackingStoppedReason: string | null
+  startMaskTracking: (direction: 'forward' | 'backward') => Promise<void>
+  cancelMaskTracking: () => void
+  clearMaskTrack: () => void
   activeLayerId: string | null
   activeMask: ColorMaskLayer | null
   activeComponentId: string | null
