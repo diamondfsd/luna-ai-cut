@@ -6,7 +6,6 @@
 .workspace-mask-auto-section,
 .workspace-mask-brush-section,
 .workspace-mask-edge-section,
-.workspace-mask-tracking-section,
 .workspace-mask-editor-section {
   display: grid;
   gap: 12px;
@@ -24,61 +23,6 @@
 .workspace-mask-brush-section {
   padding: 14px 0;
   border-top: 1px solid var(--hairline);
-}
-
-.workspace-mask-tracking-section {
-  padding: 14px 0;
-  border-top: 1px solid var(--hairline);
-}
-
-.workspace-mask-tracking-progress {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.workspace-mask-tracking-progress {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.workspace-mask-tracking-progress > span {
-  flex: 1 1 auto;
-  height: 4px;
-  overflow: hidden;
-  border-radius: 2px;
-  background: var(--hairline);
-}
-
-.workspace-mask-tracking-progress i {
-  display: block;
-  height: 100%;
-  background: var(--blue);
-  transition: width 160ms ease;
-}
-
-.workspace-mask-tracking-progress strong,
-.workspace-mask-tracking-progress small {
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-style: normal;
-  font-variant-numeric: tabular-nums;
-}
-
-.workspace-mask-tracking-notice,
-.workspace-mask-tracking-error {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.workspace-mask-tracking-notice {
-  color: var(--muted);
-}
-
-.workspace-mask-tracking-error {
-  color: var(--danger, #b42318);
 }
 
 .workspace-mask-section-heading {

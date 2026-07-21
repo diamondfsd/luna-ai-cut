@@ -309,21 +309,6 @@ export function MaskPanel() {
         )}
       </section>}
 
-      {isVideo && (mask.maskTrackingBusy || mask.maskTrackingError || mask.maskTrackingStoppedReason) && (
-        <section className="workspace-mask-tracking-section">
-          <h3 className="workspace-mask-section-heading">正在优化视频蒙版</h3>
-          {mask.maskTrackingProgress && (
-            <div className="workspace-mask-tracking-progress" role="status">
-              <span><i style={{ width: `${mask.maskTrackingProgress.percent}%` }} /></span>
-              <strong>{mask.maskTrackingProgress.percent}%</strong>
-              <small>置信度 {Math.round(mask.maskTrackingProgress.confidence * 100)}%</small>
-            </div>
-          )}
-          {mask.maskTrackingStoppedReason && <p className="workspace-mask-tracking-notice" role="status">{mask.maskTrackingStoppedReason}</p>}
-          {mask.maskTrackingError && <p className="workspace-mask-tracking-error" role="alert">{mask.maskTrackingError}</p>}
-        </section>
-      )}
-
       <section className="workspace-mask-brush-section">
         <h3 className="workspace-mask-section-heading">选区工具</h3>
         <div className="workspace-mask-editor-section">
