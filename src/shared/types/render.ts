@@ -86,6 +86,24 @@ export interface RenderLayerTransform {
   translateY?: number
 }
 
+export interface RenderMaskTrackKeyframe {
+  time: number
+  translateX: number
+  translateY: number
+  scale: number
+  rotation: number
+  confidence: number
+  corrected?: boolean
+}
+
+export interface RenderMaskTrack {
+  version: 1
+  anchorTime: number
+  startTime: number
+  endTime: number
+  keyframes: RenderMaskTrackKeyframe[]
+}
+
 export interface PreviewLayer {
   layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
   filePath: string
@@ -111,6 +129,7 @@ export interface PreviewLayer {
   maskOpacity?: number
   maskInverted?: boolean
   maskFeather?: number
+  maskTrack?: RenderMaskTrack
   pixelStretch?: RenderPixelStretch
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
@@ -206,6 +225,7 @@ export interface CompositionLayer {
   maskOpacity?: number
   maskInverted?: boolean
   maskFeather?: number
+  maskTrack?: RenderMaskTrack
   pixelStretch?: RenderPixelStretch
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }

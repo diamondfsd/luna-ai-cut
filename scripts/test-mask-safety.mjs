@@ -61,6 +61,7 @@ try {
     'src/workspace/mask/maskOperationIdentity.ts',
     'src/workspace/mask/maskModelMode.ts',
     'src/workspace/mask/maskPreviewSampling.ts',
+    'src/workspace/mask/maskTrack.ts',
     'src/workspace/mask/maskSelectionOperations.ts',
     'src/workspace/mask/maskShapeRasterization.ts',
     'src/workspace/mask/maskComponentRasterization.ts',
@@ -81,6 +82,7 @@ try {
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
   const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
   const previewSampling = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskPreviewSampling.js')))
+  const maskTrack = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskTrack.js')))
   const selectionOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskSelectionOperations.js')))
   const shapeRasterization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskShapeRasterization.js')))
   const componentRasterization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskComponentRasterization.js')))
@@ -90,6 +92,40 @@ try {
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
   const { createDefaultPipeline, mergePipeline } = pipelineModule
+
+  const normalizedTrack = maskTrack.normalizeMaskTrack({
+    version: 1,
+    anchorTime: 2,
+    startTime: 99,
+    endTime: 0,
+    keyframes: [
+      { time: 4, translateX: 0.2, translateY: -0.1, scale: 1.2, rotation: 0.4, confidence: 0.6 },
+      { time: 2, translateX: 0, translateY: 0, scale: 1, rotation: 0, confidence: 1, corrected: true },
+    ],
+  })
+  assert.equal(normalizedTrack.startTime, 2, 'track range must be derived from sorted keyframes')
+  assert.equal(normalizedTrack.endTime, 4)
+  assert.deepEqual(normalizedTrack.keyframes.map((keyframe) => keyframe.time), [2, 4])
+  const interpolatedTrack = maskTrack.maskTrackTransformAt(normalizedTrack, 3)
+  close(interpolatedTrack.translateX, 0.1, 'track translation must interpolate at preview time')
+  close(interpolatedTrack.translateY, -0.05, 'track translation Y must interpolate at preview time')
+  close(interpolatedTrack.scale, 1.1, 'track scale must interpolate at preview time')
+  close(interpolatedTrack.rotation, 0.2, 'track rotation must interpolate at preview time')
+  assert.deepEqual(
+    maskTrack.maskTrackTransformAt(undefined, 5),
+    { time: 5, translateX: 0, translateY: 0, scale: 1, rotation: 0, confidence: 1 },
+    'projects without tracking data must keep the identity mask transform',
+  )
+  const mergedForwardTrack = maskTrack.mergeMaskTrackSegment(normalizedTrack, 3, 'forward', [
+    { time: 3, translateX: 0.1, translateY: 0, scale: 1, rotation: 0, confidence: 1 },
+    { time: 5, translateX: 0.4, translateY: 0, scale: 1, rotation: 0, confidence: 0.8 },
+  ])
+  assert.deepEqual(mergedForwardTrack.keyframes.map((keyframe) => keyframe.time), [2, 3, 5], 'forward tracking must preserve only earlier trajectory samples')
+  const mergedBackwardTrack = maskTrack.mergeMaskTrackSegment(mergedForwardTrack, 3, 'backward', [
+    { time: 1, translateX: -0.2, translateY: 0, scale: 1, rotation: 0, confidence: 0.7 },
+    { time: 3, translateX: 0.1, translateY: 0, scale: 1, rotation: 0, confidence: 1 },
+  ])
+  assert.deepEqual(mergedBackwardTrack.keyframes.map((keyframe) => keyframe.time), [1, 3, 5], 'backward tracking must preserve only later trajectory samples')
 
   const impulse = new Float32Array(9)
   impulse[4] = 255
@@ -260,11 +296,12 @@ try {
     height: 0.12,
   }))
   const stressPipeline = mergePipeline(createDefaultPipeline(), {
-    colorMasks: [{ ...legacy.colorMasks[0], components: fiftyComponents }],
+    colorMasks: [{ ...legacy.colorMasks[0], components: fiftyComponents, track: normalizedTrack }],
   })
   const reopenedPipeline = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline(stressPipeline))
   assert.equal(reopenedPipeline.colorMasks[0].componentSchemaVersion, 1, 'advanced masks must persist an explicit component schema version')
   assert.equal(reopenedPipeline.colorMasks[0].components.length, 50, 'reopening a project must retain all 50 editable components')
+  assert.deepEqual(reopenedPipeline.colorMasks[0].track, normalizedTrack, 'reopening a project must retain the video mask trajectory')
   const dualLutPipeline = mergePipeline(createDefaultPipeline(), {
     logRestore: { activeId: '/luts/LunaUltra/Luna_I-Log_to_Rec709_BT1886_s65_v2.cube' },
     lutFilter: { activeId: '/luts/film-look.cube', intensity: 42 },
@@ -436,8 +473,8 @@ try {
   assert.equal(modelMode.modelForAutomaticSelection('sam-vit-b'), 'segformer-b2-ade20k')
   assert.equal(modelMode.modelForAutomaticSelection('segformer-b3-ade20k'), 'segformer-b3-ade20k')
 
-  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'birefnet-general-lite')
-  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'birefnet-general-lite')
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'rmbg-1.4'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'birefnet-general-lite'), 'birefnet-general-lite')
   assert.equal(segmentationModels.automaticSegmentationTarget('person'), undefined)

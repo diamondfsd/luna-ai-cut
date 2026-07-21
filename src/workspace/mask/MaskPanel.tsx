@@ -1,4 +1,4 @@
-import { ArrowUpRight, Brush, Building2, CarFront, Check, Circle, CircleDot, Cloud, Crosshair, Hand, Minus, MoreHorizontal, Mountain, MousePointer2, Plus, ScanSearch, Sprout, Square, TreePine, Waves, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ArrowUpRight, Brush, Building2, CarFront, Check, Circle, CircleDot, Cloud, Crosshair, Hand, Minus, MoreHorizontal, Mountain, MousePointer2, Plus, RotateCcw, ScanSearch, Sprout, Square, TreePine, Waves, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
@@ -196,7 +196,7 @@ export function MaskPanel() {
     <div className="workspace-mask-panel">
       <section className="workspace-mask-auto-section">
         <h3 className="workspace-mask-section-heading">自动选择</h3>
-        {isVideo && <p className="workspace-mask-video-hint">根据当前帧识别，蒙版会应用到整段视频，不会跟随主体移动。</p>}
+        {isVideo && <p className="workspace-mask-video-hint">根据当前帧创建蒙版，完成后可继续追踪画面中的大致位置。</p>}
         <div className="workspace-mask-auto-targets" aria-label="自动选择类型">
           {CATEGORY_TARGETS.map(renderTargetButton)}
           <Popover open={moreOpen} onOpenChange={(open) => { setMoreOpen(open); if (!open) setMoreSearch('') }}>
@@ -307,6 +307,46 @@ export function MaskPanel() {
           </div>
         )}
       </section>
+
+      {isVideo && (
+        <section className="workspace-mask-tracking-section">
+          <div className="workspace-mask-tracking-heading">
+            <h3 className="workspace-mask-section-heading">位置追踪</h3>
+            {settings?.track && !mask.maskTrackingBusy && (
+              <Button size="mini" variant="ghost" icon={<RotateCcw size={13} />} onClick={mask.clearMaskTrack}>清除</Button>
+            )}
+          </div>
+          <div className="workspace-mask-tracking-actions">
+            <Button
+              variant="secondary"
+              size="compact"
+              icon={mask.maskTrackingBusy && mask.maskTrackingProgress?.direction === 'backward' ? <X size={15} /> : <ArrowLeft size={15} />}
+              disabled={!settings || mask.busy || (mask.maskTrackingBusy && mask.maskTrackingProgress?.direction !== 'backward')}
+              onClick={() => mask.maskTrackingBusy ? mask.cancelMaskTracking() : void mask.startMaskTracking('backward')}
+            >
+              {mask.maskTrackingBusy && mask.maskTrackingProgress?.direction === 'backward' ? '取消追踪' : '向后追踪'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="compact"
+              icon={mask.maskTrackingBusy && mask.maskTrackingProgress?.direction === 'forward' ? <X size={15} /> : <ArrowRight size={15} />}
+              disabled={!settings || mask.busy || (mask.maskTrackingBusy && mask.maskTrackingProgress?.direction !== 'forward')}
+              onClick={() => mask.maskTrackingBusy ? mask.cancelMaskTracking() : void mask.startMaskTracking('forward')}
+            >
+              {mask.maskTrackingBusy && mask.maskTrackingProgress?.direction === 'forward' ? '取消追踪' : '向前追踪'}
+            </Button>
+          </div>
+          {mask.maskTrackingProgress && (
+            <div className="workspace-mask-tracking-progress" role="status">
+              <span><i style={{ width: `${mask.maskTrackingProgress.percent}%` }} /></span>
+              <strong>{mask.maskTrackingProgress.percent}%</strong>
+              <small>置信度 {Math.round(mask.maskTrackingProgress.confidence * 100)}%</small>
+            </div>
+          )}
+          {mask.maskTrackingStoppedReason && <p className="workspace-mask-tracking-notice" role="status">{mask.maskTrackingStoppedReason}，可在停止位置重新追踪。</p>}
+          {mask.maskTrackingError && <p className="workspace-mask-tracking-error" role="alert">{mask.maskTrackingError}</p>}
+        </section>
+      )}
 
       <section className="workspace-mask-brush-section">
         <h3 className="workspace-mask-section-heading">选区工具</h3>

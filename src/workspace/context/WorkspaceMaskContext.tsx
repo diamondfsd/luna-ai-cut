@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { toast } from '../../ui'
 import { logger } from '../../lib/rendererLogger'
 import { automaticSegmentationTarget, SEGMENTATION_MODELS, SAM_MODELS, type AutomaticSegmentationTargetId, type SegmentationModelId } from '../../shared/segmentationModels'
-import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
+import type { WorkspaceMaskTrackingProgress, WorkspaceSegmentationProgress } from '../../shared/types/api'
 import { useWorkspaceEdit } from './WorkspaceEditContext'
 import { useWorkspaceMedia } from './WorkspaceMediaContext'
 import { createDefaultPipeline, type ColorMaskLayer } from '../shared/editPipeline'
@@ -13,6 +13,7 @@ import { applyMaskSelectionOperation, hasUsableMask, resampleMask, type MaskSele
 import type { MaskManualTool, SegmentationPerformance, WorkspaceMaskValue } from './WorkspaceMaskContextTypes'
 import { rebuildMaskCache, useMaskComponentPersistence } from './useMaskComponentPersistence'
 import { useMaskShortcuts } from './useMaskShortcuts'
+import { maskTrackTransformAt, mergeMaskTrackSegment } from '../mask/maskTrack'
 export type { SegmentationModelId } from '../../shared/segmentationModels'
 const WorkspaceMaskContext = createContext<WorkspaceMaskValue | null>(null)
 // eslint-disable-next-line react-refresh/only-export-components
@@ -48,6 +49,10 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const [lastSegmentationPerformance, setLastSegmentationPerformance] = useState<SegmentationPerformance | null>(null)
   const [segmentationProgress, setSegmentationProgress] = useState<WorkspaceSegmentationProgress | null>(null)
   const [segmentationError, setSegmentationError] = useState<string | null>(null)
+  const [maskTrackingBusy, setMaskTrackingBusy] = useState(false)
+  const [maskTrackingProgress, setMaskTrackingProgress] = useState<WorkspaceMaskTrackingProgress | null>(null)
+  const [maskTrackingError, setMaskTrackingError] = useState<string | null>(null)
+  const [maskTrackingStoppedReason, setMaskTrackingStoppedReason] = useState<string | null>(null)
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
   const [segmentationModel, setSegmentationModelState] = useState<SegmentationModelId>(() => {
     const saved = localStorage.getItem('workspace_segmentation_model')
@@ -62,6 +67,10 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const projectId = media.currentProject?.id
   const operationGenerationRef = useRef(0)
   const activeOperationRef = useRef<MaskOperation | null>(null)
+  const trackingRequestRef = useRef<string | null>(null)
+  const autoTrackingGenerationRef = useRef(0)
+  const pendingAutoTrackingRef = useRef<{ layerId: string; assetId: string; anchorTime: number; generation: number } | null>(null)
+  const [pendingAutoTrackingVersion, setPendingAutoTrackingVersion] = useState(0)
   const colorMasksRef = useRef(edit.pipeline.colorMasks)
   colorMasksRef.current = edit.pipeline.colorMasks
   const applySystemUpdate = edit.applySystemUpdate
@@ -108,6 +117,15 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const cancelSegmentation = useCallback((): void => {
     if (activeOperationRef.current?.kind === 'segmentation') invalidateActiveOperation()
   }, [invalidateActiveOperation])
+  const cancelMaskTracking = useCallback((): void => {
+    autoTrackingGenerationRef.current += 1
+    pendingAutoTrackingRef.current = null
+    const requestId = trackingRequestRef.current
+    trackingRequestRef.current = null
+    setMaskTrackingBusy(false)
+    setMaskTrackingProgress(null)
+    if (requestId) void window.luna.workspace.cancelMaskTracking(requestId).catch(() => undefined)
+  }, [])
   const setVideoFrameTime = useCallback((value: number): void => { videoFrameTimeRef.current = Number.isFinite(value) ? Math.max(0, value) : 0 }, [])
   const clearSegmentationError = useCallback(() => setSegmentationError(null), [])
   const commitLayers = useCallback((layers: ColorMaskLayer[]) => edit.commitPatch({ colorMasks: layers }), [edit])
@@ -130,6 +148,9 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     const operation = activeOperationRef.current
     activeOperationRef.current = null
     cancelRequest(operation)
+    const trackingRequestId = trackingRequestRef.current
+    trackingRequestRef.current = null
+    if (trackingRequestId) void window.luna.workspace.cancelMaskTracking(trackingRequestId).catch(() => undefined)
   }, [cancelRequest])
 
   useEffect(() => {
@@ -148,8 +169,11 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setBusy(false)
     setSegmentationProgress(null)
     setSegmentationError(null)
+    cancelMaskTracking()
+    setMaskTrackingError(null)
+    setMaskTrackingStoppedReason(null)
     videoFrameTimeRef.current = 0
-  }, [active, activeMediaId, invalidateActiveOperation, projectId, setActiveComponentId])
+  }, [active, activeMediaId, cancelMaskTracking, invalidateActiveOperation, projectId, setActiveComponentId])
 
   useEffect(() => {
     if (!editing) setManualTool('move')
@@ -161,6 +185,10 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       setSegmentationProgress(progress)
     }
   }), [isCurrentOperation])
+
+  useEffect(() => window.luna.onWorkspaceMaskTrackingProgress((progress) => {
+    if (trackingRequestRef.current === progress.requestId) setMaskTrackingProgress(progress)
+  }), [])
 
   useEffect(() => {
     if (!editing) return
@@ -425,6 +453,12 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       edit.commitPatch({ colorMasks: nextLayers })
       setActiveLayerId(layerId)
       setActiveComponentId(component.id)
+      if (media.activeMedia.kind === 'video') {
+        const generation = autoTrackingGenerationRef.current + 1
+        autoTrackingGenerationRef.current = generation
+        pendingAutoTrackingRef.current = { layerId, assetId: operationAssetId, anchorTime: frameTime ?? 0, generation }
+        setPendingAutoTrackingVersion((value) => value + 1)
+      }
       logger.info('[Mask] 自动选择结果已应用', { requestId, targetId, modelId: result.modelId, layerId, performance: result.performance })
     } catch (error) {
       const message = error instanceof Error ? error.message : '自动选择失败，请重试'
@@ -443,6 +477,81 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setSegmentationModelState(model)
     localStorage.setItem('workspace_segmentation_model', model)
   }, [])
+
+  const startMaskTracking = useCallback(async (direction: 'forward' | 'backward', anchorOverride?: number): Promise<void> => {
+    if (maskTrackingBusy || busy || !activeMask || !maskData || !maskSize || media.activeMedia?.kind !== 'video' || !projectId || !activeMediaId) return
+    const requestId = crypto.randomUUID()
+    const operationLayerId = activeMask.id
+    const operationAssetId = activeMediaId
+    const anchorTime = anchorOverride ?? videoFrameTimeRef.current
+    const initial = maskTrackTransformAt(activeMask.track, anchorTime)
+    const bytes = maskData.buffer.slice(maskData.byteOffset, maskData.byteOffset + maskData.byteLength)
+    trackingRequestRef.current = requestId
+    setMaskTrackingBusy(true)
+    setMaskTrackingError(null)
+    setMaskTrackingStoppedReason(null)
+    setMaskTrackingProgress({ requestId, direction, percent: 0, time: anchorTime, confidence: 1 })
+    logger.info('[MaskTrack] 用户开始追踪', { requestId, direction, anchorTime, layerId: operationLayerId, assetId: operationAssetId })
+    try {
+      const result = await window.luna.workspace.trackMask({
+        requestId,
+        filePath: media.activeMedia.path,
+        direction,
+        anchorTime,
+        maskWidth: maskSize.width,
+        maskHeight: maskSize.height,
+        maskBytes: bytes,
+        initialTransform: {
+          translateX: initial.translateX,
+          translateY: initial.translateY,
+          scale: initial.scale,
+          rotation: initial.rotation,
+        },
+      })
+      if (trackingRequestRef.current !== requestId || currentIdentityRef.current.assetId !== operationAssetId) return
+      const currentLayer = colorMasksRef.current.find((layer) => layer.id === operationLayerId)
+      if (!currentLayer) return
+      const track = mergeMaskTrackSegment(currentLayer.track, result.anchorTime, result.direction, result.keyframes)
+      if (!track) throw new Error('追踪结果为空')
+      edit.commitPatch({
+        colorMasks: colorMasksRef.current.map((layer) => layer.id === operationLayerId ? { ...layer, track } : layer),
+      })
+      setMaskTrackingStoppedReason(result.stoppedReason ?? null)
+      logger.info('[MaskTrack] 追踪结果已应用', { requestId, direction, keyframes: result.keyframes.length, completed: result.completed, stoppedReason: result.stoppedReason })
+    } catch (error) {
+      if (trackingRequestRef.current !== requestId) return
+      const message = error instanceof Error ? error.message : '蒙版追踪失败，请重试'
+      setMaskTrackingError(message)
+      logger.error('[MaskTrack] 追踪失败', { requestId, direction, message })
+    } finally {
+      if (trackingRequestRef.current === requestId) {
+        trackingRequestRef.current = null
+        setMaskTrackingBusy(false)
+        setMaskTrackingProgress(null)
+      }
+    }
+  }, [activeMask, activeMediaId, busy, edit, maskData, maskSize, maskTrackingBusy, media.activeMedia, projectId])
+
+  useEffect(() => {
+    const pending = pendingAutoTrackingRef.current
+    if (!pending || busy || maskTrackingBusy || !activeMask || activeMask.id !== pending.layerId || activeMediaId !== pending.assetId || !maskData || !maskSize) return
+    pendingAutoTrackingRef.current = null
+    void (async () => {
+      await startMaskTracking('forward', pending.anchorTime)
+      if (autoTrackingGenerationRef.current !== pending.generation) return
+      await startMaskTracking('backward', pending.anchorTime)
+    })()
+  }, [activeMask, activeMediaId, busy, maskData, maskSize, maskTrackingBusy, pendingAutoTrackingVersion, startMaskTracking])
+
+  const clearMaskTrack = useCallback((): void => {
+    if (!activeMask?.track) return
+    cancelMaskTracking()
+    edit.commitPatch({
+      colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === activeMask.id ? { ...layer, track: undefined } : layer),
+    })
+    setMaskTrackingError(null)
+    setMaskTrackingStoppedReason(null)
+  }, [activeMask, cancelMaskTracking, edit])
 
   const value = useMemo<WorkspaceMaskValue>(() => ({
     available,
@@ -471,6 +580,13 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     segmentationError,
     clearSegmentationError,
     cancelSegmentation,
+    maskTrackingBusy,
+    maskTrackingProgress,
+    maskTrackingError,
+    maskTrackingStoppedReason,
+    startMaskTracking,
+    cancelMaskTracking,
+    clearMaskTrack,
     activeLayerId,
     activeMask,
     setActiveLayerId,
@@ -493,7 +609,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelMaskTracking, cancelSegmentation, clearMaskTrack, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, maskTrackingBusy, maskTrackingError, maskTrackingProgress, maskTrackingStoppedReason, moveActiveLayer, moveLayer, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, setVideoFrameTime, showOverlay, startMaskTracking, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }
