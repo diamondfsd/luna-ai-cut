@@ -134,29 +134,17 @@ fn valid_pixel_stretch_seed(seed: vec2<f32>) -> bool {
 }
 
 fn sample_color_mask(tex_coord: vec2<f32>) -> f32 {
-    let original = sample_effective_color_mask(tex_coord);
+    let mask_sample = textureSample(mask_texture, src_sampler, tex_coord);
+    let inverted = params.mask_params.y > 0.5;
+    let original = select(mask_sample.r, 1.0 - mask_sample.r, inverted);
     let feather_px = params.mask_params.z;
     if (feather_px < 0.5) {
         return original;
     }
-    let dimensions = vec2<f32>(textureDimensions(mask_texture));
-    let step = vec2<f32>(feather_px * 0.5) / max(dimensions, vec2<f32>(1.0));
-    var value = 0.0;
-    var total_weight = 0.0;
-    for (var y = -2; y <= 2; y = y + 1) {
-        let ay = abs(y);
-        let wy = select(select(6.0, 4.0, ay == 1), 1.0, ay == 2);
-        for (var x = -2; x <= 2; x = x + 1) {
-            let ax = abs(x);
-            let wx = select(select(6.0, 4.0, ax == 1), 1.0, ax == 2);
-            let weight = wx * wy;
-            let sample_offset = vec2<f32>(f32(x), f32(y)) * step;
-            value += sample_effective_color_mask(tex_coord + sample_offset) * weight;
-            total_weight += weight;
-        }
-    }
-    let softened = min(1.0, value / total_weight * 2.0);
-    return max(original, softened);
+    let encoded_distance = select(mask_sample.g, mask_sample.b, inverted);
+    let distance_px = encoded_distance * 40.0;
+    let outward_transition = 1.0 - smoothstep(0.0, feather_px, distance_px);
+    return max(original, outward_transition);
 }
 
 @fragment

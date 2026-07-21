@@ -44,6 +44,13 @@ function writePpmPixels() {
   return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
 }
 
+function writeUniformPpmPixels(value = 72) {
+  return Buffer.concat([
+    Buffer.from(`P6\n${width} ${height}\n255\n`),
+    Buffer.alloc(width * height * 3, value),
+  ])
+}
+
 function maskPixels(kind) {
   const pixels = Buffer.alloc(width * height)
   for (let y = 0; y < height; y += 1) {
@@ -96,6 +103,13 @@ function pixelDifference(first, second) {
   return { total, changed, max }
 }
 
+function pixelDeltaAt(first, second, x, y) {
+  const index = (y * width + x) * 4
+  return Math.abs(first[index] - second[index])
+    + Math.abs(first[index + 1] - second[index + 1])
+    + Math.abs(first[index + 2] - second[index + 2])
+}
+
 async function decodeRgba(filePath) {
   const { stdout } = await execFileAsync(ffmpegPath, [
     '-v', 'error', '-i', filePath, '-f', 'rawvideo', '-pix_fmt', 'rgba', '-frames:v', '1', 'pipe:1',
@@ -122,11 +136,13 @@ async function renderAndMatchExport(name, input) {
 
 try {
   const sourcePath = path.join(temporaryRoot, 'asymmetric.ppm')
+  const uniformSourcePath = path.join(temporaryRoot, 'uniform.ppm')
   const rectMaskPath = path.join(temporaryRoot, 'rect.pgm')
   const leftMaskPath = path.join(temporaryRoot, 'left.pgm')
   const fullMaskPath = path.join(temporaryRoot, 'full.pgm')
   await Promise.all([
     writeFile(sourcePath, writePpmPixels()),
+    writeFile(uniformSourcePath, writeUniformPpmPixels()),
     writeFile(rectMaskPath, maskPixels('rect')),
     writeFile(leftMaskPath, maskPixels('left')),
     writeFile(fullMaskPath, maskPixels('full')),
@@ -162,6 +178,24 @@ try {
     mediaLayer(sourcePath), localLayer(sourcePath, leftMaskPath, { feather: 8 }),
   ]))
   assert.ok(pixelDifference(left, feathered).changed > height * 4, 'feathering must soften pixels around the mask boundary')
+
+  const uniformBase = await renderAndMatchExport('uniform-base', composition([mediaLayer(uniformSourcePath)]))
+  const highExposureFeather = await renderAndMatchExport('high-exposure-feather', composition([
+    mediaLayer(uniformSourcePath),
+    localLayer(uniformSourcePath, leftMaskPath, { feather: 8, color: { exposure: 2 } }),
+  ]))
+  const outwardDeltas = Array.from(
+    { length: 9 },
+    (_, offset) => pixelDeltaAt(uniformBase, highExposureFeather, width / 2 - 1 + offset, height / 2),
+  )
+  assert.ok(outwardDeltas[0] > outwardDeltas[1], 'feather must begin fading immediately outside the hard edge')
+  for (let index = 1; index < outwardDeltas.length; index += 1) {
+    assert.ok(
+      outwardDeltas[index] <= outwardDeltas[index - 1],
+      `high-exposure feather must decay monotonically, got ${outwardDeltas.join(', ')}`,
+    )
+  }
+  assert.equal(outwardDeltas.at(-1), 0, 'feather must reach zero at the configured outer radius')
 
   const blendOutputs = new Map()
   for (const blendMode of ['normal', 'multiply', 'screen', 'add']) {
