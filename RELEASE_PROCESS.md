@@ -119,6 +119,8 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 
 当只需要推送增量修复（不涉及版本号变更、Electron 升级或原生模块变更）时：
 
+> **热更新代码只提交到当前本地分支，不推送到任何远端代码分支。** 整个流程不得执行 `git push origin main` 或其他分支推送命令。
+
 ### 1. 创建热更新发布说明
 
 创建 `RELEASE_NOTES_v<版本号>-hot.<build号>.md`，按以下分类整理变更：
@@ -143,10 +145,18 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 - **xxx**：xxx
 ```
 
-### 2. 提交代码
+### 2. 提交代码和发布说明到本地分支
 
 ```bash
-git add -A && git commit -m "fix: xxx"
+git add -A
+git commit -m "fix: xxx"
+```
+
+该提交只保留在当前本地分支，不推送到远端。提交前确认发布说明文件已包含在本次提交中：
+
+```bash
+git status --short
+git show --stat --oneline HEAD
 ```
 
 ### 3. 构建并上传热更新包
@@ -158,23 +168,22 @@ git add -A && git commit -m "fix: xxx"
 
 首次运行需确保 `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件。
 
-### 4. 打 Git tag
+脚本会自动执行以下操作：
+
+- 取下一个 build 号并执行构建检查
+- 将热更新包、版本信息和发布说明上传到 GitCode Release
+- 创建并推送 `hot/v<版本号>-hot.<build号>` 发布 tag
+
+> `hot/*` tag 仅用于标记热更新版本；不要再手动重复创建或推送 tag。
+
+### 4. 确认本地提交未推送
 
 ```bash
-# 提交发布说明
-git add RELEASE_NOTES_v<版本号>-hot.<build号>.md
-git commit -m "docs: <版本号>-hot.<build号> 热更新发布说明"
-
-# 打 tag（以 hot/ 前缀区分正式版 tag）
-git tag hot/v<版本号>-hot.<build号>
+git status --short
+git log --oneline @{u}..HEAD
 ```
 
-### 5. 推送到 main
-
-```bash
-git push origin main
-git push origin hot/v<版本号>-hot.<build号>
-```
+第二条命令应列出本次热更新的本地提交，表示这些提交仍只存在于当前本地分支。**到此发布结束，不执行任何分支 push。**
 
 > 客户端每次启动会自动检查热更新（2 秒后），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效。
 
