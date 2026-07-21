@@ -6,6 +6,7 @@ import { Button, ButtonGroup, Popover, PopoverContent, PopoverTrigger, SearchFie
 import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTarget, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
+import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import type { MaskManualTool } from '../context/WorkspaceMaskContextTypes'
 import type { MaskSelectionOperation } from './maskSelectionOperations'
 import './MaskPanel.css'
@@ -50,6 +51,8 @@ function formatModelSize(sizeBytes: number): string {
 
 export function MaskPanel() {
   const mask = useWorkspaceMask()
+  const media = useWorkspaceMedia()
+  const isVideo = media.activeMedia?.kind === 'video'
   const settings = mask.activeMask
   const initialTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === settings?.targetId || target.classId === settings?.classId)?.id ?? 'sky'
   const [targetId, setTargetId] = useState<AutomaticSegmentationTargetId>(initialTarget)
@@ -193,6 +196,7 @@ export function MaskPanel() {
     <div className="workspace-mask-panel">
       <section className="workspace-mask-auto-section">
         <h3 className="workspace-mask-section-heading">自动选择</h3>
+        {isVideo && <p className="workspace-mask-video-hint">根据当前帧识别，蒙版会应用到整段视频，不会跟随主体移动。</p>}
         <div className="workspace-mask-auto-targets" aria-label="自动选择类型">
           {CATEGORY_TARGETS.map(renderTargetButton)}
           <Popover open={moreOpen} onOpenChange={(open) => { setMoreOpen(open); if (!open) setMoreSearch('') }}>

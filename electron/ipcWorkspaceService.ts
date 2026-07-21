@@ -236,8 +236,11 @@ export function register(): void {
     if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) {
       throw new Error('自动选择任务标识无效')
     }
-    if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('图片路径无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('素材路径无效')
     const { requestId, filePath, point } = request
+    const isVideoInput = VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase())
+    const frameTime = isVideoInput && request.frameTime !== undefined ? Number(request.frameTime) : undefined
+    if (frameTime !== undefined && (!Number.isFinite(frameTime) || frameTime < 0)) throw new Error('视频帧时间无效')
     const target = request.targetId ? automaticSegmentationTarget(request.targetId) : undefined
     if (request.targetId && !target) throw new Error('自动选择类型无效')
     const targetClassId = target?.classId ?? request.targetClassId
@@ -270,6 +273,7 @@ export function register(): void {
       targetId: target?.id,
       modelId,
       fileName: path.basename(filePath),
+      frameTime,
     })
     if (isSam) logMainInfo('[SAM] 智能选择开始')
     reportProgress('model', '正在准备模型', null)
@@ -290,7 +294,7 @@ export function register(): void {
     signal.throwIfAborted()
     const modelFileLoadMs = performance.now() - modelStartedAt
     if (isSam) logMainInfo('[SAM] 模型准备完成', { modelLoadMs: Math.round(modelFileLoadMs) })
-    reportProgress('preparing', '正在准备图片', null)
+    reportProgress('preparing', '正在准备画面', null)
     const decodeStartedAt = performance.now()
     const semanticDefinition = isSam || specializedDefinition ? null : SEGMENTATION_MODELS.find((item) => item.id === modelId)
     const semanticInputSize = semanticDefinition?.inputSize ?? 512
@@ -313,11 +317,12 @@ export function register(): void {
           ? `scale=${specializedDefinition.inputSize}:${specializedDefinition.inputSize}:flags=bilinear`
           : `scale=${semanticInputSize}:${semanticInputSize}:flags=bilinear`
     const semanticGuidePromise = semanticDefinition
-      ? prepareSemanticRefinementGuide(filePath, sourceSize, signal)
+      ? prepareSemanticRefinementGuide(filePath, sourceSize, frameTime, signal)
       : Promise.resolve(null)
     const [{ stdout }, semanticGuide] = await Promise.all([
       execFileAsync(getFfmpegPath(), [
         '-v', 'error',
+        ...(frameTime !== undefined ? ['-ss', String(frameTime)] : []),
         '-i', filePath,
         '-vf', filter,
         '-frames:v', '1',

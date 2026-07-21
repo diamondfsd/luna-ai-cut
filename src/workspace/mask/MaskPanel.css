@@ -32,6 +32,13 @@
   font-weight: 700;
 }
 
+.workspace-mask-video-hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .workspace-mask-auto-targets {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

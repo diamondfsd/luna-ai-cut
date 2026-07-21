@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from '../../ui'
-import { isImagePath } from '../../lib/fileUtils'
 import { logger } from '../../lib/rendererLogger'
 import { automaticSegmentationTarget, SEGMENTATION_MODELS, SAM_MODELS, type AutomaticSegmentationTargetId, type SegmentationModelId } from '../../shared/segmentationModels'
 import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
@@ -35,6 +34,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const { canUndo, canRedo, undo, redo } = edit
+  const videoFrameTimeRef = useRef(0)
   const [editing, setEditing] = useState(false)
   const [selectionOperation, setSelectionOperation] = useState<MaskSelectionOperation>('replace')
   const [manualTool, setManualTool] = useState<MaskManualTool>('move')
@@ -54,7 +54,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     const model = [...SEGMENTATION_MODELS, ...SAM_MODELS].find((item) => item.id === saved)
     return model?.id ?? 'segformer-b0-ade20k'
   })
-  const available = active && Boolean(media.currentProject && media.activeMedia?.path && isImagePath(media.activeMedia.path))
+  const available = active && Boolean(media.currentProject && media.activeMedia?.path)
   const activeMask = edit.pipeline.colorMasks.find((layer) => layer.id === activeLayerId) ?? null
   const activeMaskPath = activeMask?.path
   const activeMediaId = media.activeMedia?.id
@@ -108,6 +108,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const cancelSegmentation = useCallback((): void => {
     if (activeOperationRef.current?.kind === 'segmentation') invalidateActiveOperation()
   }, [invalidateActiveOperation])
+  const setVideoFrameTime = useCallback((value: number): void => { videoFrameTimeRef.current = Number.isFinite(value) ? Math.max(0, value) : 0 }, [])
   const clearSegmentationError = useCallback(() => setSegmentationError(null), [])
   const commitLayers = useCallback((layers: ColorMaskLayer[]) => edit.commitPatch({ colorMasks: layers }), [edit])
   const componentPersistence = useMaskComponentPersistence({
@@ -147,6 +148,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setBusy(false)
     setSegmentationProgress(null)
     setSegmentationError(null)
+    videoFrameTimeRef.current = 0
   }, [active, activeMediaId, invalidateActiveOperation, projectId, setActiveComponentId])
 
   useEffect(() => {
@@ -343,7 +345,8 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     try {
       const target = targetId ? automaticSegmentationTarget(targetId) : undefined
       const modelId = requestedModelId ?? target?.modelId ?? modelForAutomaticSelection(segmentationModel)
-      const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, point, modelId, targetId, targetClassId: target?.classId })
+      const frameTime = media.activeMedia.kind === 'video' ? videoFrameTimeRef.current : undefined
+      const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, frameTime, point, modelId, targetId, targetClassId: target?.classId })
       if (result.requestId !== requestId || !isCurrentOperation(operation)) return
       setLastSegmentationPerformance(result.performance)
       const generatedData = new Uint8Array(result.bytes)
@@ -443,6 +446,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
 
   const value = useMemo<WorkspaceMaskValue>(() => ({
     available,
+    setVideoFrameTime,
     editing,
     setEditing,
     selectionOperation,
@@ -489,7 +493,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }

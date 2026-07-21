@@ -100,6 +100,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const mask = useWorkspaceMask()
   const { settings, setSettings } = useApp()
   const previewRef = useRef<PreviewStageHandle>(null)
+  const setVideoFrameTime = mask.setVideoFrameTime
   const trimStateRef = useRef<{ trimActive: boolean; trimEnd: number | null }>({ trimActive: false, trimEnd: null })
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
@@ -173,6 +174,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   const handlePlayStateChange = useCallback((state: { playing: boolean; currentTime: number; duration: number }) => {
     setTrimPlaying(state.playing)
+    setVideoFrameTime(state.currentTime)
     if (state.duration > 0) {
       setTrimDuration(state.duration)
       setTrimDurationSourcePath(activeVideoPathRef.current)
@@ -191,7 +193,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       if (!previewRef.current?.isPlaying()) return
       previewRef.current?.togglePlay()
     }
-  }, [])
+  }, [setVideoFrameTime])
 
 
   // ── 截取控制 ──
