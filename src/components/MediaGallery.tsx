@@ -1,4 +1,4 @@
-import { FileQuestion } from 'lucide-react'
+import { AlertTriangle, FileQuestion, RefreshCcw } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { MediaCard } from './MediaCard'
@@ -95,6 +95,23 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
           <LoadingIndicator size="large" label={isLocal ? '正在读取已下载文件' : '正在读取 Luna 媒体'} />
         </section>
       )}
+      {!ctrl.isCurrentLoading && !isLocal && ctrl.cameraLoadError && (
+        <section className="library-load-error" role="alert">
+          <AlertTriangle size={22} aria-hidden="true" />
+          <div className="library-load-error-copy">
+            <strong>无法读取相机素材</strong>
+            <span>{ctrl.cameraLoadError}</span>
+          </div>
+          <Button
+            variant="secondary"
+            size="compact"
+            icon={<RefreshCcw size={14} />}
+            onClick={() => void ctrl.loadCameraLibrary()}
+          >
+            重新读取
+          </Button>
+        </section>
+      )}
       {ctrl.groups.map(([group, items]) => (
         <section
           className="media-section"
@@ -134,7 +151,7 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
           </div>
         </section>
       ))}
-      {!ctrl.isCurrentLoading && ctrl.filteredFiles.length === 0 && (
+      {!ctrl.isCurrentLoading && !ctrl.cameraLoadError && ctrl.filteredFiles.length === 0 && (
         <section className="empty-gallery">
           <FileQuestion size={42} />
           <span>{isLocal ? '暂无已下载' : '暂无媒体'}</span>

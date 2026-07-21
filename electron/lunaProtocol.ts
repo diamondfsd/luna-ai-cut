@@ -2,7 +2,7 @@ import { DEFAULT_DEVICE } from './deviceDefaults'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
 import { connectSocket, Insta360TcpSession } from './insta360TcpProtocol'
 import { directHttpFetch } from './directHttp'
-import { extractCameraSubdirs, parseLunaIndex } from './lunaMediaIndex'
+import { extractCameraSubdirs, parseLunaFilePaths, parseLunaIndex } from './lunaMediaIndex'
 import type { CameraDeleteResult, ConnectionStatus, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export const DEFAULT_HOST = DEFAULT_DEVICE.defaultHost
@@ -352,13 +352,15 @@ export class LunaClient {
             const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
             const allFiles = results.flat()
             logMainInfo(`[HTTP读取] 文件列表读取完成（多子目录）`, { fileCount: allFiles.length, cameraDirs: cameraDirs.length, elapsedSec: elapsed })
-            return allFiles
+            if (allFiles.length > 0) return allFiles
+            return await this.listFilesViaTcp(cameraPath, 'HTTP 子目录未返回媒体文件')
           }
 
           const files = parseLunaIndex(html, baseUrl)
           const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
           logMainInfo(`[HTTP读取] 文件列表读取完成`, { fileCount: files.length, elapsedSec: elapsed })
-          return files
+          if (files.length > 0) return files
+          return await this.listFilesViaTcp(cameraPath, 'HTTP 目录未返回媒体文件')
         }
 
         let errorBody = ''
@@ -375,11 +377,37 @@ export class LunaClient {
     }
 
     const failedAt = ((performance.now() - t0) / 1000).toFixed(2)
-    if (lastError && lastStatus === null) {
-      logMainError(`[HTTP读取] 最终失败（无响应）`, { url, path: cameraPath, elapsedSec: failedAt, error: lastError instanceof Error ? lastError.message : String(lastError) })
-      throw lastError instanceof Error ? lastError : new Error(String(lastError))
+    const httpError = lastError && lastStatus === null
+      ? (lastError instanceof Error ? lastError : new Error(String(lastError)))
+      : new Error(`读取文件列表失败：HTTP ${lastStatus ?? '未知'}`)
+    try {
+      return await this.listFilesViaTcp(cameraPath, httpError.message)
+    } catch (tcpError) {
+      logMainError(`[文件读取] HTTP 与 TCP 文件列表均失败`, {
+        url,
+        path: cameraPath,
+        status: lastStatus,
+        elapsedSec: failedAt,
+        httpError: httpError.message,
+        tcpError: tcpError instanceof Error ? tcpError.message : String(tcpError),
+      })
+      throw new Error(`${httpError.message}；TCP 兜底失败：${tcpError instanceof Error ? tcpError.message : String(tcpError)}`)
     }
-    logMainError(`[HTTP读取] 最终失败`, { url, path: cameraPath, status: lastStatus, elapsedSec: failedAt })
-    throw new Error(`读取文件列表失败：HTTP ${lastStatus ?? '未知'}`)
+  }
+
+  private async listFilesViaTcp(cameraPath: string, reason: string): Promise<LunaFile[]> {
+    logMainWarn('[文件读取] 切换到 TCP 文件列表', { host: this.host, cameraPath, reason })
+    await this.connectUnlocked()
+    const session = this.controlSession
+    if (!session) throw new Error('相机控制连接未建立')
+    const cameraPaths = await session.listFilePaths(cameraPath)
+    const files = parseLunaFilePaths(cameraPaths, `http://${this.host}/`)
+    logMainInfo('[TCP读取] 文件列表读取完成', {
+      host: this.host,
+      cameraPath,
+      pathCount: cameraPaths.length,
+      fileCount: files.length,
+    })
+    return files
   }
 }

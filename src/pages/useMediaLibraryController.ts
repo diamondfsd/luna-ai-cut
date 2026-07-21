@@ -64,6 +64,7 @@ export function useMediaLibraryController(pageType: PageType) {
   // ── 加载状态（含防重 ref） ──
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [loadingDownloads, setLoadingDownloads] = useState(false)
+  const [cameraLoadError, setCameraLoadError] = useState<string | null>(null)
   const loadingCameraRef = useRef(false)
   const loadingDownloadsRef = useRef(false)
 
@@ -309,6 +310,7 @@ export function useMediaLibraryController(pageType: PageType) {
     if (!settings || loadingCameraRef.current) return
     loadingCameraRef.current = true
     setLoadingFiles(true)
+    setCameraLoadError(null)
     const t0 = performance.now()
     try {
       const host = settings.cameraHost
@@ -322,12 +324,15 @@ export function useMediaLibraryController(pageType: PageType) {
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
       logger.info('[媒体库] 设备文件加载完成', { host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })
       setFiles(lunaFiles)
+      setCameraLoadError(null)
       setSelected(new Set())
       setCacheFailedIds(new Set())
       requestedThumbnailIdsRef.current.clear()
       requestedFrameRateIdsRef.current.clear()
     } catch (error) {
-      logger.error('[媒体库] 设备文件加载失败', { error: error instanceof Error ? error.message : String(error), storageFilter })
+      const message = error instanceof Error ? error.message : String(error)
+      setCameraLoadError(message)
+      logger.error('[媒体库] 设备文件加载失败', { error: message, storageFilter })
     } finally {
       loadingCameraRef.current = false
       setLoadingFiles(false)
@@ -527,6 +532,7 @@ export function useMediaLibraryController(pageType: PageType) {
     setActiveDownloadFileNames,
     cacheFailedIds,
     canDeleteCameraFiles: activeDeviceId === 'luna-ultra',
+    cameraLoadError,
     loadCameraLibrary,
     ...cameraDelete,
 

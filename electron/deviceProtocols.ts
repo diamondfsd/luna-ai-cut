@@ -285,16 +285,24 @@ async function listStorageFiles(client: LunaClient, storages: DeviceStorageOptio
   }))
 
   const groups: LunaFile[][] = []
+  const failures: string[] = []
   for (const [index, result] of results.entries()) {
     if (result.status === 'fulfilled') {
       groups.push(result.value)
     } else {
       const storageId = storages[index]?.id ?? 'unknown'
-      logMainWarn(`[存储读取] 存储不可用`, { storageId, reason: result.reason instanceof Error ? result.reason.message : String(result.reason) })
+      const reason = result.reason instanceof Error ? result.reason.message : String(result.reason)
+      failures.push(`${storages[index]?.label ?? storageId}：${reason}`)
+      logMainWarn(`[存储读取] 存储不可用`, { storageId, reason })
     }
   }
 
-  return groups.flat().sort((a, b) => {
+  const files = groups.flat()
+  if (failures.length > 0 && files.length === 0) {
+    throw new Error(`无法读取相机素材。${failures.join('；')}`)
+  }
+
+  return files.sort((a, b) => {
     const aTime = a.capturedAt ? Date.parse(a.capturedAt) : 0
     const bTime = b.capturedAt ? Date.parse(b.capturedAt) : 0
     return bTime - aTime || a.name.localeCompare(b.name)
