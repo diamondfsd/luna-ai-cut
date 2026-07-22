@@ -139,7 +139,6 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
               <div className="border-edit-section-title">主图阴影</div>
               <ParamSlider label="阴影强度" value={value.shadowStrength} min={0} max={100} step={1} onChange={(shadowStrength) => onChange({ shadowStrength })} formatValue={(number) => `${number}%`} />
               <ParamSlider label="柔和范围" value={value.shadowBlur} min={0} max={100} step={1} onChange={(shadowBlur) => onChange({ shadowBlur })} formatValue={(number) => `${number}%`} />
-              <ParamSlider label="上下偏移" value={value.shadowOffsetY} min={-30} max={30} step={1} onChange={(shadowOffsetY) => onChange({ shadowOffsetY })} formatValue={(number) => `${number}`} />
             </div>}
 
             <div className="border-switches">

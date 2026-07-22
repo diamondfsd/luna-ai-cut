@@ -211,11 +211,9 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
       const spreadPixels = minCanvasSide * (0.01 + border.shadowBlur / 100 * 0.06)
       const spreadX = spreadPixels / Math.max(1, canvasWidth)
       const spreadY = spreadPixels / Math.max(1, canvasHeight)
-      const offsetPixels = border.shadowOffsetY / 30 * minCanvasSide * 0.035
-      const offsetY = offsetPixels / Math.max(1, canvasHeight)
       layerRect = {
         x: scaledPhotoRect.x - spreadX,
-        y: scaledPhotoRect.y - spreadY + offsetY,
+        y: scaledPhotoRect.y - spreadY,
         w: scaledPhotoRect.w + spreadX * 2,
         h: scaledPhotoRect.h + spreadY * 2,
       }
