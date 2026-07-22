@@ -2,11 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 
 import { buildBorderLayer, FRAME_PRESETS } from './buildBorderLayer'
 import type { CompositionInput } from '../../shared/types'
+import { DEFAULT_PIPELINE } from '../shared/editPipeline'
+import { pipelineColorToRenderColor } from '../shared/renderLayerPipeline'
 
 const THUMB_CACHE = new Map<string, string>()
 
-function getLrc(): any {
-  return (window as unknown as { lunaRenderCore?: any }).lunaRenderCore ?? null
+interface BorderThumbnailRenderCore {
+  renderCompositionFrame: (
+    composition: CompositionInput,
+    time: number,
+    maxSide?: number,
+  ) => Promise<{ width: number; height: number; data: Uint8Array | ArrayBuffer }>
+}
+
+function getLrc(): BorderThumbnailRenderCore | null {
+  return (window as unknown as { lunaRenderCore?: BorderThumbnailRenderCore }).lunaRenderCore ?? null
 }
 
 async function renderBorderThumb(
@@ -42,9 +52,13 @@ async function renderBorderThumb(
       mediaScale: 100,
       mediaOffsetX: 0,
       mediaOffsetY: 0,
+      shadowStrength: 100,
+      shadowBlur: 55,
+      shadowOffsetY: 0,
     },
     metadata: null,
     mediaPath: sourcePath,
+    mediaLayerStyle: { color: pipelineColorToRenderColor(DEFAULT_PIPELINE.color) },
   })
 
   const composition: CompositionInput = {
@@ -64,6 +78,8 @@ async function renderBorderThumb(
         fit: l.fit ?? 'cover',
         opacity: l.opacity,
         zIndex: l.zIndex,
+        color: l.color,
+        transform: l.transform,
         positioning: l.positioning,
         shape: l.shape,
         fillColor: l.fillColor,
