@@ -76,7 +76,8 @@ pub fn segment_sam(
 pub use color_source::{resolve_render_source, ColorInfo, ResolvedRenderSource};
 pub use composition::*;
 use compositor::Compositor;
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{AsyncTask, Buffer};
+use napi::{Env, Task};
 use napi_derive::napi;
 
 // ── 跨模块日志宏 ──
@@ -158,6 +159,10 @@ pub(crate) fn reset_export_compositor() -> napi::Result<()> {
 /// - `log_path`: 日志文件路径（可选，默认 luna-rc.log）
 #[napi]
 pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
+    init_compositors(log_path)
+}
+
+fn init_compositors(log_path: Option<String>) -> napi::Result<()> {
     if let Ok(mut guard) = COMPOSITOR_LOG_PATH.lock() {
         *guard = log_path.clone();
     }
@@ -165,6 +170,28 @@ pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
     init_one_compositor(&COMPOSITOR_PREVIEW, path, "preview")?;
     init_one_compositor(&COMPOSITOR_EXPORT, path, "export")?;
     Ok(())
+}
+
+pub struct InitCompositorTask {
+    log_path: Option<String>,
+}
+
+impl Task for InitCompositorTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        init_compositors(self.log_path.clone())
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(())
+    }
+}
+
+#[napi]
+pub fn init_compositor_async(log_path: Option<String>) -> AsyncTask<InitCompositorTask> {
+    AsyncTask::new(InitCompositorTask { log_path })
 }
 
 fn init_one_compositor(

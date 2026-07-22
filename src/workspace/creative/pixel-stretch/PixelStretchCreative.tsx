@@ -290,6 +290,12 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     }
     setPointPicking(false)
     setSubjectModel(value)
+    if (value === 'precise') {
+      toast.show('正在准备精准识别，完成后即可使用')
+      void window.luna.workspace.prepareSegmentationModels(['birefnet-general-lite'])
+        .then(() => toast.success('精准识别已准备好'))
+        .catch((error) => toast.error(error instanceof Error ? error.message : '精准识别准备失败，请稍后重试'))
+    }
   }
 
   const segmentSubject = useCallback(async (point?: { x: number; y: number }, selection: 'subject' | 'background' = 'subject') => {

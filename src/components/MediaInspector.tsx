@@ -287,8 +287,6 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
   const [metadataLoading, setMetadataLoading] = useState(false)
   const [mediaDetails, setMediaDetails] = useState<MediaDetails>(() => emptyDetails())
 
-  const isDownloaded = true
-
   const metaMap = useMemo(() => buildMetadataMap(mediaMetadata), [mediaMetadata])
 
   // 获取媒体分辨率（延迟 100ms 避免与渲染 IPC 竞争主进程）
@@ -374,7 +372,19 @@ export function MediaInspector({ filePath, proxyPreview = false, onToggleCollaps
             <dt>拍摄时间</dt>
             <dd>{formatCapturedAt(metaMap.get('DateTimeOriginal') ?? metaMap.get('ModifyDate') ?? null)}</dd>
           </div>
-          {!proxyPreview && (kind !== 'video' || isDownloaded) && (
+          {kind === 'video' && (metaMap.get('Make') || metaMap.get('Model')) && (
+            <div>
+              <dt>拍摄设备</dt>
+              <dd>{[metaMap.get('Make'), metaMap.get('Model')].filter(Boolean).join(' ')}</dd>
+            </div>
+          )}
+          {kind === 'video' && metaMap.get('FirmwareVersion') && (
+            <div>
+              <dt>设备版本</dt>
+              <dd>{metaMap.get('FirmwareVersion')}</dd>
+            </div>
+          )}
+          {!proxyPreview && kind !== 'video' && (
             <div>
               <dt>分辨率</dt>
               <dd>{mediaDetails.width && mediaDetails.height

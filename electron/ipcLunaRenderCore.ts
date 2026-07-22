@@ -7,7 +7,7 @@ import { appendFileSync, existsSync, statSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join, extname, basename, isAbsolute } from 'node:path'
 import {
-  ensureInit,
+  warmupRenderCore,
   renderCompositionFrame as lrcRenderCompositionFrame,
   renderCompositionFrameAsync as lrcRenderCompositionFrameAsync,
   resolveRenderSource as lrcResolveRenderSource,
@@ -22,9 +22,10 @@ import {
 import { getNative, cleanNativeInput } from './lunaRenderCore'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import * as exportTaskService from './exportTaskService'
-import { logMainError, logMainInfo } from './loggerService'
+import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { RUNTIME_RESOURCE_DEFINITIONS } from './runtimeResourceDefinitions'
 import { loadRuntimeResource } from './runtimeResourceService'
+import { embedVideoSourceMetadata } from './exportSourceMetadata'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
@@ -120,7 +121,7 @@ export function register(ctx: RegisterContext): void {
   })
 
   ipcMain.handle('lrc:init', safe('init', async (_event: IpcMainInvokeEvent, logPath?: string) => {
-    ensureInit(logPath)
+    await warmupRenderCore(logPath)
     rcLog('lrc:init OK')
   }))
 
@@ -278,6 +279,14 @@ export function register(ctx: RegisterContext): void {
           hardware,
           taskId: renderTaskId,
           qualityPreset,
+        })
+        const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
+          ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
+        await embedVideoSourceMetadata(ffmpegPath, outputPath, sourcePath).catch((error) => {
+          logMainWarn('[导出] 无法写入来源设备信息', {
+            outputPath,
+            error: error instanceof Error ? error.message : String(error),
+          })
         })
         if (exportTaskId && exportItemId) {
           await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
