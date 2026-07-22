@@ -91,7 +91,7 @@ pub(super) fn mask_params(layer: &RenderLayer) -> [f32; 4] {
             0.0
         },
         if has_mask {
-            layer.mask_feather.unwrap_or(2.0).clamp(0.0, 100.0) as f32
+            layer.mask_feather.unwrap_or(0.0).clamp(0.0, 100.0) as f32
         } else {
             0.0
         },
