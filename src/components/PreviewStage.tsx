@@ -20,6 +20,8 @@ export interface PreviewStageHandle {
 
 interface PreviewStageProps {
   url: string | null
+  /** 已知的 Live Photo 状态；传入后不再单独扫描文件，保证与素材列表一致。 */
+  isLivePhoto?: boolean
   pending?: boolean
   extraLayers?: PreviewLayer[]
   pipeline?: EditPipeline
@@ -103,7 +105,7 @@ function projectCanvasFor(resolution: MediaResolution | null, maxSide: number): 
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
+    { url, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -120,7 +122,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const isLivePhoto = useIsLivePhoto(url)
+  const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
+  const isLivePhoto = isLivePhotoOverride ?? detectedLivePhoto
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
