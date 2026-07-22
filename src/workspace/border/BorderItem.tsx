@@ -40,7 +40,7 @@ async function renderBorderThumb(
     border: {
       enabled: true,
       presetId,
-      frameSize: presetId === 'blurred-photo-card' ? 70 : 100,
+      frameSize: presetId === 'blurred-photo-card' ? 104 : 100,
       backgroundColor: colors.backgroundColor,
       textColor: colors.textColor,
       opacity: 100,
@@ -52,7 +52,7 @@ async function renderBorderThumb(
       mediaScale: 100,
       mediaOffsetX: 0,
       mediaOffsetY: 0,
-      shadowStrength: 50,
+      shadowStrength: presetId === 'blurred-photo-card' ? 70 : 50,
       shadowBlur: 50,
       shadowOffsetY: 0,
     },
