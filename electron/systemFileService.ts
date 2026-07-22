@@ -14,7 +14,11 @@ export async function revealFile(filePath: string): Promise<void> {
   const resolvedPath = path.resolve(filePath)
   try {
     const stats = await fs.stat(resolvedPath)
-    await openLocalPath(stats.isDirectory() ? resolvedPath : path.dirname(resolvedPath))
+    if (stats.isDirectory()) {
+      await openLocalPath(resolvedPath)
+      return
+    }
+    shell.showItemInFolder(resolvedPath)
   } catch {
     await openLocalPath(path.dirname(resolvedPath))
   }
