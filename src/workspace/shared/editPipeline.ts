@@ -236,7 +236,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     mediaScale: 100,
     mediaOffsetX: 0,
     mediaOffsetY: 0,
-    shadowStrength: 100,
+    shadowStrength: 50,
     shadowBlur: 55,
     shadowOffsetY: 0,
   },
@@ -475,16 +475,11 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
   const value = input as (Partial<BorderSettings> & { bottomColor?: unknown }) | undefined
   const legacyColor = typeof value?.bottomColor === 'string' ? value.bottomColor : undefined
   const shadowStrength = value?.presetId === 'blurred-photo-card'
-    && (Number(value.shadowStrength) === 46 || Number(value.shadowStrength) === 92)
+    && (Number(value.shadowStrength) === 46 || Number(value.shadowStrength) === 92 || Number(value.shadowStrength) === 100)
     && Number(value.shadowBlur ?? 55) === 55
-    ? 100
-    : Number(value?.shadowStrength ?? 100)
-  const shadowOffsetY = value?.presetId === 'blurred-photo-card'
-    && Number(value.shadowOffsetY) === 8
-    && (Number(value.shadowStrength ?? 46) === 46 || Number(value.shadowStrength) === 92 || Number(value.shadowStrength) === 100)
-    && Number(value.shadowBlur ?? 55) === 55
-    ? 0
-    : Number(value?.shadowOffsetY ?? 0)
+    ? 50
+    : Number(value?.shadowStrength ?? 50)
+  const shadowOffsetY = value?.presetId === 'blurred-photo-card' ? 0 : Number(value?.shadowOffsetY ?? 0)
   return {
     ...DEFAULT_PIPELINE.border,
     ...value,
