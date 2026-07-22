@@ -1,7 +1,7 @@
-import { MonitorCog } from 'lucide-react'
+import { MonitorCog, Unplug } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
-import type { ConnectionStatus, DeviceDefinition } from '../shared/types'
+import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { useExportProgress } from '../context/ExportProgressContext'
 import { ExportProgressModal } from './ExportProgressModal'
 import { HelpDialog } from './HelpDialog'
@@ -11,21 +11,22 @@ import '../styles/nav.css'
 interface AppNavProps {
   activeDevice?: DeviceDefinition
   connection: ConnectionStatus | null
-  sourceMode: 'demo' | 'camera'
+  sourceMode: CameraConnectionMode
   showWorkspaceMode?: boolean
   workspaceMode?: WorkspaceMode
   creativeModeId?: CreativeModeId | null
   onModeChange?: (mode: WorkspaceMode) => void
   onCreativeModeChange?: (modeId: CreativeModeId | null) => void
+  onChangeConnection?: () => Promise<void>
 }
 
-export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode, workspaceMode, creativeModeId, onModeChange, onCreativeModeChange }: AppNavProps) {
+export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode, workspaceMode, creativeModeId, onModeChange, onCreativeModeChange, onChangeConnection }: AppNavProps) {
   const { exportProgress } = useExportProgress()
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
-    ? `已连接 ${deviceName}`
-    : connection?.message ?? (sourceMode === 'demo' ? `已连接 ${deviceName}（模拟）` : `${deviceName} 未连接`)
+    ? `已${sourceMode === 'wired' ? '有线' : '无线'}连接 ${deviceName}`
+    : connection?.message ?? `${deviceName} 未连接`
 
   return (
     <nav className="global-nav">
@@ -68,9 +69,16 @@ export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode
         <div className="nav-status">
           <span className={connected ? 'status-dot ok' : 'status-dot'} />
           <span>{statusText}</span>
-          <button className="nav-icon-button" onClick={() => window.luna.openWifiSettings()} title="打开 Wi-Fi 设置">
-            <MonitorCog size={15} />
-          </button>
+          {sourceMode === 'wireless' && (
+            <button className="nav-icon-button" onClick={() => window.luna.openWifiSettings()} title="打开 Wi-Fi 设置">
+              <MonitorCog size={15} />
+            </button>
+          )}
+          {connected && onChangeConnection && (
+            <button className="nav-icon-button" onClick={() => void onChangeConnection()} title="更换连接方式">
+              <Unplug size={15} />
+            </button>
+          )}
           <ExportProgressModal
             exportProgress={exportProgress}
             onRevealFile={(path) => void window.luna.revealFile(path)}

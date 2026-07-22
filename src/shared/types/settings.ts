@@ -1,4 +1,5 @@
 import type { WatermarkSettings } from './watermark'
+import type { CameraConnectionMode } from './cameraMediaSource'
 
 export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
 
@@ -8,6 +9,8 @@ export interface AppSettings {
   exportDir?: string
   cacheDir: string
   cameraHost: string
+  cameraConnectionMode?: CameraConnectionMode
+  mountedCameraRoot?: string
   activeDeviceId?: string
   deviceStorage?: Record<string, string>
   deviceWatermark?: Record<string, WatermarkSettings>

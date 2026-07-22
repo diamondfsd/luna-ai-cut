@@ -128,7 +128,7 @@ export function CameraMediaPage() {
         open={controller.showCameraDeleteDialog}
         onOpenChange={controller.setShowCameraDeleteDialog}
         title="删除相机素材"
-        description={`将从 Luna 相机中永久删除已选的 ${controller.selectedFiles.length} 个素材。`}
+        description={`将从当前${controller.sourceMode === 'wired' ? '相机磁盘' : '相机'}中永久删除已选的 ${controller.selectedFiles.length} 个素材。`}
         confirmText="确认删除"
         confirmVariant="danger"
         confirmDisabled={controller.deletingCameraFiles}
@@ -136,7 +136,7 @@ export function CameraMediaPage() {
         onConfirm={() => void controller.deleteSelectedCameraFiles()}
       >
         <p className="delete-dialog-copy">
-          此操作无法撤销。已经下载到电脑的文件不会受到影响。
+          此操作无法撤销。关联的低清预览或 Live Photo 动态文件也会一并删除，已经下载到电脑的文件不会受到影响。
         </p>
       </Modal>
     </MediaLibraryCtx.Provider>
