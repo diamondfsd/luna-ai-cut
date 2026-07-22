@@ -56,7 +56,8 @@ function applyVectorComponent(
   const radians = component.rotation * Math.PI / 180
   const cosine = Math.cos(radians)
   const sine = Math.sin(radians)
-  const radiusX = Math.max(0.00005, component.width / 2)
+  const sourceAspect = Math.max(0.0001, component.sourceAspect ?? width / height)
+  const radiusX = Math.max(0.00005, component.width * sourceAspect / 2)
   const radiusY = Math.max(0.00005, component.height / 2)
   const softness = componentSoftness(component)
   const rasterOuterScale = 1 + softness * RASTER_SOFTNESS_EXTENT
@@ -69,15 +70,15 @@ function applyVectorComponent(
     const outerRadiusY = radiusY * rasterOuterScale
     const boundX = Math.abs(cosine) * outerRadiusX + Math.abs(sine) * outerRadiusY
     const boundY = Math.abs(sine) * outerRadiusX + Math.abs(cosine) * outerRadiusY
-    startX = Math.max(0, Math.floor((component.centerX - boundX) * width))
-    endX = Math.min(width, Math.ceil((component.centerX + boundX) * width))
+    startX = Math.max(0, Math.floor((component.centerX - boundX / sourceAspect) * width))
+    endX = Math.min(width, Math.ceil((component.centerX + boundX / sourceAspect) * width))
     startY = Math.max(0, Math.floor((component.centerY - boundY) * height))
     endY = Math.min(height, Math.ceil((component.centerY + boundY) * height))
     if (operation === 'replace') result.fill(0)
   }
   for (let y = startY; y < endY; y += 1) {
     for (let x = startX; x < endX; x += 1) {
-      const dx = (x + 0.5) / width - component.centerX
+      const dx = ((x + 0.5) / width - component.centerX) * sourceAspect
       const dy = (y + 0.5) / height - component.centerY
       const rotatedX = dx * cosine + dy * sine
       const rotatedY = -dx * sine + dy * cosine

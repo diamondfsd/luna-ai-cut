@@ -69,7 +69,6 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
   const viewport = useHtmlPreviewViewport({ containerRef: viewportRef, contentRef, mediaSize, sourceKey })
   const positioning = watermarkLayer && mediaSize ? resolveWatermarkPositioning(watermarkLayer, mediaSize) : null
   const watermarkUrl = watermarkLayer ? filePathToPreviewUrl(watermarkLayer.filePath) : null
-
   function rememberMediaSize(width: number, height: number): void {
     if (sourceKey && width > 0 && height > 0) {
       setMediaMetrics((current) => current?.key === sourceKey ? current : { key: sourceKey, size: { width, height } })

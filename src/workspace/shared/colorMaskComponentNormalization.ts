@@ -87,6 +87,9 @@ export function normalizeColorMaskComponent(input: ColorMaskComponent): ColorMas
   return {
     ...common,
     type: input.type,
+    sourceAspect: input.sourceAspect === undefined
+      ? undefined
+      : Math.max(0.0001, normalizeFiniteNumber(input.sourceAspect, 1)),
     centerX: normalizeFiniteNumber(input.centerX, 0.5),
     centerY: normalizeFiniteNumber(input.centerY, 0.5),
     width,

@@ -38,6 +38,8 @@ export interface ColorMaskRasterComponent extends ColorMaskComponentBase {
 
 export interface ColorMaskShapeComponent extends ColorMaskComponentBase {
   type: 'rectangle' | 'ellipse' | 'radial-gradient'
+  /** 素材像素宽高比；不能使用可能为方形的模型/蒙版缓存尺寸代替。 */
+  sourceAspect?: number
   centerX: number
   centerY: number
   width: number

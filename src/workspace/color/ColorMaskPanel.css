@@ -135,8 +135,7 @@
   border-color: color-mix(in srgb, #d93025 45%, var(--hairline));
 }
 
-.workspace-color-mask-layer-eye,
-.workspace-color-mask-global-icon {
+.workspace-color-mask-layer-eye {
   flex: 0 0 auto;
   color: var(--ink);
 }
@@ -160,11 +159,6 @@
   cursor: grabbing;
 }
 
-.workspace-color-mask-global-icon {
-  margin: 0 2px;
-  color: var(--muted);
-}
-
 .workspace-color-mask-layer-select.ui-btn {
   display: flex;
   min-width: 0;
@@ -182,15 +176,22 @@
 
 .workspace-color-mask-thumbnail,
 .workspace-color-mask-global-thumbnail {
-  width: 68px;
-  height: 42px;
   flex: 0 0 auto;
   border: 1px solid color-mix(in srgb, var(--ink) 35%, var(--hairline));
   border-radius: 2px;
+  background: #000;
+}
+
+.workspace-color-mask-global-thumbnail {
+  display: inline-block;
+  max-width: 68px;
+  max-height: 42px;
   background: #fff;
 }
 
 .workspace-color-mask-thumbnail {
+  max-width: 68px;
+  max-height: 42px;
   image-rendering: auto;
 }
 

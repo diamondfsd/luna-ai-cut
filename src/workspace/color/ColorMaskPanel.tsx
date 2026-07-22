@@ -1,8 +1,9 @@
-import { AlertTriangle, ArrowDown, ArrowUp, Copy, Eye, EyeOff, Globe2, GripVertical, MoreHorizontal, Pencil, Plus, RefreshCcw, RotateCcw, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, Copy, Eye, EyeOff, GripVertical, MoreHorizontal, Pencil, Plus, RefreshCcw, RotateCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button, Dialog, IconButton, Input, Popover, PopoverClose, PopoverContent, PopoverTrigger, Select, Tooltip } from '../../ui'
 import { createDefaultPipeline, type ColorMaskBlendMode, type ColorMaskLayer } from '../shared/editPipeline'
+import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
@@ -27,11 +28,27 @@ const BLEND_MODE_DESCRIPTIONS: Record<ColorMaskBlendMode, string> = {
   add: '更强地提亮选中的区域',
 }
 
-function MaskThumbnail({ path, inverted, feather }: { path: string; inverted: boolean; feather: number }) {
+function fitThumbnailSize(width: number, height: number): { width: number; height: number } {
+  if (width <= 0 || height <= 0) return { width: THUMBNAIL_WIDTH, height: THUMBNAIL_HEIGHT }
+  const scale = Math.min(THUMBNAIL_WIDTH / width, THUMBNAIL_HEIGHT / height)
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
+}
+
+function MaskThumbnail({ path, width, height, inverted, feather }: {
+  path: string
+  width: number
+  height: number
+  inverted: boolean
+  feather: number
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const media = useWorkspaceMedia()
   const projectId = media.currentProject?.id
   const [sourceMask, setSourceMask] = useState<{ width: number; height: number; data: Uint8Array } | null>(null)
+  const thumbnailSize = fitThumbnailSize(sourceMask?.width ?? width, sourceMask?.height ?? height)
 
   useEffect(() => {
     setSourceMask(null)
@@ -49,15 +66,15 @@ function MaskThumbnail({ path, inverted, feather }: { path: string; inverted: bo
     if (!canvas) return
     const context = canvas.getContext('2d')
     if (!context) return
-    context.fillStyle = '#fff'
-    context.fillRect(0, 0, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
+    context.fillStyle = '#000'
+    context.fillRect(0, 0, thumbnailSize.width, thumbnailSize.height)
     if (!sourceMask) return
 
-    const scale = Math.min(THUMBNAIL_WIDTH / sourceMask.width, THUMBNAIL_HEIGHT / sourceMask.height)
+    const scale = Math.min(thumbnailSize.width / sourceMask.width, thumbnailSize.height / sourceMask.height)
     const width = Math.max(1, Math.round(sourceMask.width * scale))
     const height = Math.max(1, Math.round(sourceMask.height * scale))
-    const offsetX = Math.floor((THUMBNAIL_WIDTH - width) / 2)
-    const offsetY = Math.floor((THUMBNAIL_HEIGHT - height) / 2)
+    const offsetX = Math.floor((thumbnailSize.width - width) / 2)
+    const offsetY = Math.floor((thumbnailSize.height - height) / 2)
     const pixels = new Uint8ClampedArray(width * height * 4)
     const previewMask = new Float32Array(width * height)
     for (let y = 0; y < height; y += 1) {
@@ -82,7 +99,7 @@ function MaskThumbnail({ path, inverted, feather }: { path: string; inverted: bo
     )
     for (let y = 0; y < height; y += 1) {
       for (let x = 0; x < width; x += 1) {
-        const value = 255 - feathered[y * width + x]
+        const value = feathered[y * width + x]
         const offset = (y * width + x) * 4
         pixels[offset] = value
         pixels[offset + 1] = value
@@ -91,14 +108,16 @@ function MaskThumbnail({ path, inverted, feather }: { path: string; inverted: bo
       }
     }
     context.putImageData(new ImageData(pixels, width, height), offsetX, offsetY)
-  }, [feather, inverted, sourceMask])
+  }, [feather, inverted, sourceMask, thumbnailSize.height, thumbnailSize.width])
 
-  return <canvas ref={canvasRef} className="workspace-color-mask-thumbnail" width={THUMBNAIL_WIDTH} height={THUMBNAIL_HEIGHT} aria-label="蒙版缩略图" />
+  return <canvas ref={canvasRef} className="workspace-color-mask-thumbnail" width={thumbnailSize.width} height={thumbnailSize.height} aria-label="蒙版缩略图" />
 }
 
 export function ColorMaskPanel() {
+  const canvas = useWorkspaceCanvas()
   const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
+  const globalThumbnailSize = fitThumbnailSize(canvas.sourceAspect, 1)
   const selectedColor = mask.activeMask?.color ?? edit.pipeline.color
   const createMaskHint = mask.available ? '新建蒙版' : '请先在项目中打开图片或视频'
   const [renameState, setRenameState] = useState<{ id: string; originalName: string; value: string } | null>(null)
@@ -158,14 +177,16 @@ export function ColorMaskPanel() {
         <div className="workspace-color-mask-layer-list">
           <div className={`workspace-color-mask-layer workspace-color-mask-global-layer${!mask.activeMask ? ' is-active' : ''}`}>
             <Eye className="workspace-color-mask-layer-eye" size={17} aria-hidden="true" />
-            <Globe2 className="workspace-color-mask-global-icon" size={18} aria-hidden="true" />
             <Button
               variant="ghost"
               size="compact"
               className="workspace-color-mask-layer-select"
               onClick={() => { mask.setActiveLayerId(null); mask.setEditing(false) }}
             >
-              <span className="workspace-color-mask-global-thumbnail" />
+              <span
+                className="workspace-color-mask-global-thumbnail"
+                style={{ width: globalThumbnailSize.width, height: globalThumbnailSize.height }}
+              />
               <span className="workspace-color-mask-layer-label"><strong>全局调色</strong></span>
             </Button>
             <Tooltip content="重置全局调色">
@@ -227,7 +248,13 @@ export function ColorMaskPanel() {
                   />
                 </Tooltip>
                 <Button variant="ghost" size="compact" className="workspace-color-mask-layer-select" onClick={() => mask.setActiveLayerId(layer.id)}>
-                  <MaskThumbnail path={layer.path} inverted={layer.inverted} feather={layer.components?.some((component) => component.type !== 'raster') ? 0 : layer.feather} />
+                  <MaskThumbnail
+                    path={layer.path}
+                    width={layer.width}
+                    height={layer.height}
+                    inverted={layer.inverted}
+                    feather={layer.components?.some((component) => component.type !== 'raster') ? 0 : layer.feather}
+                  />
                   <span className="workspace-color-mask-layer-label">
                     <strong onDoubleClick={(event) => { event.stopPropagation(); openRename(layer) }}>{layer.name}</strong>
                     {layer.loadError && <small className="workspace-color-mask-layer-status"><AlertTriangle size={12} />文件不可用，可重新编辑</small>}

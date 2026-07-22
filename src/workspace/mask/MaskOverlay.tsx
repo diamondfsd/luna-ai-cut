@@ -147,6 +147,7 @@ export function MaskOverlay() {
       component,
       (point) => sourceToDisplay(point.x, point.y, controlSize),
       controlPixelRatio,
+      canvas.sourceAspect,
     )
   }
   function render(data: Uint8Array): void {
@@ -249,7 +250,13 @@ export function MaskOverlay() {
   function updateActiveComponentDrag(event: React.PointerEvent<HTMLCanvasElement>): boolean {
     const drag = componentDragRef.current
     if (!drag) return false
-    const component = updateComponentFromDrag(drag.original, drag.kind, drag.start, normalizedPointForEvent(event))
+    const component = updateComponentFromDrag(
+      drag.original,
+      drag.kind,
+      drag.start,
+      normalizedPointForEvent(event),
+      canvas.sourceAspect,
+    )
     const data = composeComponentDraft(component)
     if (!data) return false
     componentDraftRef.current = component
@@ -323,6 +330,7 @@ export function MaskOverlay() {
       : {
           ...common,
           type: kind,
+          sourceAspect: canvas.sourceAspect,
           centerX: (bounds.left + bounds.right) / 2 / mask.maskSize.width,
           centerY: (bounds.top + bounds.bottom) / 2 / mask.maskSize.height,
           width: (bounds.right - bounds.left) / mask.maskSize.width,
@@ -376,7 +384,12 @@ export function MaskOverlay() {
           }
           if (mask.manualTool === 'move' && activeVectorComponent) {
             const point = normalizedPointForEvent(event)
-            const kind = hitTestComponentControl(activeVectorComponent, point, 14 / Math.max(1, Math.min(imageRect.width, imageRect.height)))
+            const kind = hitTestComponentControl(
+              activeVectorComponent,
+              point,
+              14 / Math.max(1, imageRect.height),
+              canvas.sourceAspect,
+            )
             if (!kind) return
             event.currentTarget.setPointerCapture(event.pointerId)
             componentDragRef.current = { kind, start: point, original: structuredClone(activeVectorComponent) }
