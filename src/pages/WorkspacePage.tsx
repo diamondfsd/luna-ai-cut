@@ -687,6 +687,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           <PreviewStage
             ref={previewRef}
             url={media.activeMedia?.path ?? null}
+            isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
             extraLayers={combinedExtraLayers}
