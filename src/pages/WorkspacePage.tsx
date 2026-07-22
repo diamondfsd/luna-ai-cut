@@ -38,12 +38,13 @@ import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportL
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
+import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
 import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
-function normalizePipeline(value: unknown): EditPipeline {
-  if (!value || typeof value !== 'object') return createDefaultPipeline()
+function normalizePipeline(value: unknown, defaultPipeline: EditPipeline = createDefaultPipeline()): EditPipeline {
+  if (!value || typeof value !== 'object') return structuredClone(defaultPipeline)
   return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
 }
 
@@ -99,6 +100,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const canvas = useWorkspaceCanvas()
   const mask = useWorkspaceMask()
   const { settings, setSettings } = useApp()
+  const defaultPipelineRef = useRef(createWorkspaceDefaultPipeline(settings))
+  defaultPipelineRef.current = createWorkspaceDefaultPipeline(settings)
+  const settingsReady = settings !== null
   const previewRef = useRef<PreviewStageHandle>(null)
   const setVideoFrameTime = mask.setVideoFrameTime
   const trimStateRef = useRef<{ trimActive: boolean; trimEnd: number | null }>({ trimActive: false, trimEnd: null })
@@ -286,11 +290,12 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   // ── Initialize pipeline / reset crop/trim when active asset changes ──
   useLayoutEffect(() => {
+    if (!settingsReady) return
     const asset = media.currentProject?.assets[media.activeIndex]
     edit.setCropActive(false)
     edit.setTransformDraft(null)
     edit.setCropPreset('original')
-    edit.initializePipeline(normalizePipeline(asset?.pipeline))
+    edit.initializePipeline(normalizePipeline(asset?.pipeline, defaultPipelineRef.current))
     if (media.activeMedia && !isVideoPath(media.activeMedia.path)) {
       // 图片不显示截取，退出截取模式
       if (edit.trimActive) {
@@ -298,7 +303,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         if (edit.activeTool === 'trim') edit.setActiveTool('filter')
       }
     }
-  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, settingsReady])
 
   useEffect(() => {
     setMediaSize(null)
@@ -366,6 +371,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   useEffect(() => () => flushProjectSave(), [flushProjectSave])
 
   useEffect(() => {
+    if (!settingsReady) return
     if (workspaceMode !== 'edit') {
       flushProjectSave()
       return
@@ -378,7 +384,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
     pendingProjectSaveRef.current = nextProject
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(flushProjectSave, 500)
-  }, [edit.pipeline, flushProjectSave, media.activeIndex, media.activeMedia?.path, media.currentProject?.id, setCurrentProject, workspaceMode])
+  }, [edit.pipeline, flushProjectSave, media.activeIndex, media.activeMedia?.path, media.currentProject?.id, setCurrentProject, settingsReady, workspaceMode])
 
   function handlePastePipeline(): void {
     const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
@@ -404,7 +410,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
     if (media.currentProject) {
       const nextAssets = media.currentProject.assets.map((asset, i) => {
         if (!indices.has(i)) return asset
-        const nextPipeline = mergePipeline(normalizePipeline(asset.pipeline), patch)
+        const nextPipeline = mergePipeline(normalizePipeline(asset.pipeline, defaultPipelineRef.current), patch)
         return { ...asset, pipeline: nextPipeline }
       })
       const nextProject = { ...media.currentProject, assets: nextAssets, updatedAt: new Date().toISOString() }
@@ -413,7 +419,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
     } else {
       media.setTransientMedia((current) => current.map((asset, i) => {
         if (!indices.has(i)) return asset
-        const nextPipeline = mergePipeline(normalizePipeline((asset as { pipeline?: unknown }).pipeline), patch)
+        const nextPipeline = mergePipeline(normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current), patch)
         return { ...asset, pipeline: nextPipeline }
       }))
     }
@@ -430,7 +436,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       if (selectedIndex !== media.activeIndex) {
         const asset = media.media[selectedIndex]
         if (!asset) return
-        const pipe = normalizePipeline((asset as { pipeline?: unknown }).pipeline)
+        const pipe = normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current)
         writeWorkspacePipelineClipboard({
           color: structuredClone(pipe.color),
           effects: structuredClone(pipe.effects),
@@ -473,7 +479,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         const asset = media.media[index]
         const pipeline = index === media.activeIndex
           ? mergePipeline(activePipeline, { colorMasks: trackedActiveMasks })
-          : normalizePipeline((asset as { pipeline?: unknown }).pipeline)
+          : normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current)
         const resolution = await window.luna.workspace.getMediaResolution(asset.path)
         const sourceDuration = isVideoPath(asset.path)
           ? await window.luna.workspace.getVideoDuration(asset.path).catch(() => 0)

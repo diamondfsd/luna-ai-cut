@@ -48,6 +48,8 @@ function defaultSettings(): AppSettings {
     deviceStorage: { [DEFAULT_DEVICE.id]: 'all' },
     developerMode: false,
     exportAppleLivePhoto: false,
+    defaultWatermarkEnabled: true,
+    defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
@@ -66,11 +68,24 @@ async function readSettingsFile(): Promise<Partial<AppSettings> | null> {
 }
 
 function mergeSettings(saved: Partial<AppSettings> | null): AppSettings {
+  const defaults = defaultSettings()
   const merged = {
-    ...defaultSettings(),
+    ...defaults,
     ...(saved ?? {}),
     cacheDir: cacheDir(),
   }
+  merged.defaultWatermarkEnabled = typeof saved?.defaultWatermarkEnabled === 'boolean'
+    ? saved.defaultWatermarkEnabled
+    : defaults.defaultWatermarkEnabled
+  merged.defaultWatermarkPosition = [
+    'top-left',
+    'top-right',
+    'bottom-left',
+    'bottom-center',
+    'bottom-right',
+  ].includes(String(saved?.defaultWatermarkPosition))
+    ? saved?.defaultWatermarkPosition
+    : defaults.defaultWatermarkPosition
   if (!merged.localResourcesDir) {
     merged.localResourcesDir = getLocalResourcesDir(merged)
   }
