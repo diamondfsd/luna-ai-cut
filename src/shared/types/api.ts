@@ -22,6 +22,7 @@ import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } fr
 import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
+import type { CameraMediaSourceApi } from './cameraMediaSource'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -109,6 +110,7 @@ export interface LunaApi {
   openDevTools(): Promise<void>
   scanBluetoothDevices(timeoutMs?: number): Promise<BluetoothDeviceCandidate[]>
   cancelBluetoothScan(): Promise<void>
+  cameraSource: CameraMediaSourceApi
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   checkConnection(host?: string): Promise<ConnectionStatus>
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>

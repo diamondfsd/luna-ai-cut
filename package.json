@@ -28,6 +28,7 @@
     "build:resources": "node scripts/publish-runtime-resources.mjs",
     "test:workspace": "node scripts/test-workspace-geometry.mjs",
     "test:media-preview": "node scripts/test-media-preview.mjs",
+    "test:wired-camera": "node scripts/test-mounted-camera-source.mjs",
     "test:mask": "node scripts/test-mask-safety.mjs && node scripts/test-segmentation-task-registry.mjs && node scripts/test-specialized-worker-client.mjs",
     "test:mask:render": "node scripts/build-native.mjs && node scripts/test-mask-render-consistency.mjs",
     "test:mask:tracking": "pnpm run build:app && node scripts/test-mask-tracking-worker.mjs",
