@@ -837,8 +837,14 @@ try {
   await writeFile(outsideMaskPath, Buffer.concat([Buffer.from('P5\n2 2\n255\n', 'ascii'), Buffer.from(maskBytes)]))
   await assert.rejects(maskService.loadColorMask(projectDataRoot, project.id, outsideMaskPath), /不属于当前项目/)
   await assert.rejects(maskService.deleteColorMask(projectDataRoot, project.id, outsideMaskPath), /不属于当前项目/)
-  const symlinkMaskPath = path.join(masksDirectory, 'outside-link.pgm')
-  await symlink(outsideMaskPath, symlinkMaskPath)
+  const symlinkMaskPath = process.platform === 'win32'
+    ? path.join(masksDirectory, 'outside-link', 'outside.pgm')
+    : path.join(masksDirectory, 'outside-link.pgm')
+  if (process.platform === 'win32') {
+    await symlink(outsideDirectory, path.dirname(symlinkMaskPath), 'junction')
+  } else {
+    await symlink(outsideMaskPath, symlinkMaskPath)
+  }
   await assert.rejects(maskService.loadColorMask(projectDataRoot, project.id, symlinkMaskPath), /不属于当前项目/)
 
   const damagedMaskPath = path.join(masksDirectory, 'damaged.pgm')

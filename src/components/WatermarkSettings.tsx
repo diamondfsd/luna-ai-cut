@@ -3,6 +3,7 @@ import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
 import { WM_SRC, watermarkStyleOptionsForDevice, getCachedWatermarkPath } from '../shared/watermarkAssets'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
+import { isVideoPath } from '../lib/fileUtils'
 import type { PreviewLayer, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
 
@@ -59,6 +60,7 @@ interface WatermarkSettingsProps {
   showToggle?: boolean
   /** 传文件路径即可自动按设备过滤水印样式 */
   filePath?: string
+  mediaKind?: 'image' | 'video'
 }
 
 function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPositionChange }: {
@@ -114,7 +116,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   )
 }
 
-export function WatermarkSettings({ settings, onChange, compact, showToggle = true, filePath }: WatermarkSettingsProps) {
+export function WatermarkSettings({ settings, onChange, compact, showToggle = true, filePath, mediaKind }: WatermarkSettingsProps) {
   const [internalSettings, setInternalSettings] = useState<WatermarkSettingsType>({
     enabled: true,
     style: 'luna_ultra_cn',
@@ -125,6 +127,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   const effectiveMediaWidth = resolvedMediaSize?.w
   const effectiveMediaHeight = resolvedMediaSize?.h
   const waitingForMediaSize = Boolean(filePath) && (!effectiveMediaWidth || !effectiveMediaHeight)
+  const watermarkKind = mediaKind ?? (filePath && isVideoPath(filePath) ? 'video' : 'image')
 
   // 从文件路径自动检测设备 → 水印样式选项
   const [deviceId, setDeviceId] = useState<string | null>(null)
@@ -134,7 +137,8 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
     resolveDeviceId(
       { sourceDeviceId: null, cameraType: null, sourceDeviceName: null, cameraSerial: null, watermarkProfileId: null },
       { filePath, readExif: window.luna.readExifModel.bind(window.luna) },
-    ).then((id) => { if (!cancelled) setDeviceId(id) }).catch(() => {})
+    ).then((id) => { if (!cancelled) setDeviceId(id) })
+      .catch(() => { if (!cancelled) setDeviceId(null) })
     return () => { cancelled = true }
   }, [filePath])
 
@@ -161,13 +165,13 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   const stylePills = useMemo(() => {
     const opts = deviceId ? watermarkStyleOptionsForDevice(deviceId) : []
     return opts.map((opt) => {
-      const thumbSrc = WM_SRC[opt.value]?.image
+      const thumbSrc = WM_SRC[opt.value]?.[watermarkKind]
       return {
         value: opt.value,
         label: thumbSrc ? <img src={thumbSrc} alt={opt.label} className="wm-style-thumb" /> : opt.label,
       }
     })
-  }, [deviceId])
+  }, [deviceId, watermarkKind])
 
   // 媒体宽高比变化时重新计算水印层（如图片从横图切到竖图）
   const initRef = useRef(true)
@@ -197,7 +201,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       }
       return
     }
-    const info = await window.luna.getWatermarkPath(next.style, 'image').catch(() => null)
+    const info = await window.luna.getWatermarkPath(next.style, watermarkKind).catch(() => null)
     if (seq !== enrichSeqRef.current) return
     const isLandscape = (effectiveMediaWidth ?? 16) >= (effectiveMediaHeight ?? 9)
     const enriched: WatermarkSettingsType = {
@@ -209,7 +213,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       : undefined
     setInternalSettings(enriched)
     onChange(enriched, layer ?? undefined)
-  }, [currentSettings, onChange, filePath, effectiveMediaWidth, effectiveMediaHeight])
+  }, [currentSettings, onChange, filePath, effectiveMediaWidth, effectiveMediaHeight, watermarkKind])
 
   const handleToggle = useCallback(
     (enabled: boolean) => enrichAndChange({ enabled }),
