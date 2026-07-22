@@ -1,0 +1,7 @@
+{"id":"blurred-photo-card","name":"柔焦相框","category":"blur","description":"柔焦原图背景、悬浮照片与两行拍摄信息","defaultTitle":"Insta360 Luna Ultra","swatch":"#393939","layers":[
+  {"id":"blurred-background","type":"media","rect":{"x":0,"y":0,"w":1,"h":1},"source":{"path":"{{media}}","sourceType":"image"},"fit":"cover","blurRadius":30,"zIndex":10},
+  {"id":"photo-shadow","type":"shape","shape":"rounded-rectangle","rect":{"x":0.042,"y":0.04,"w":0.916,"h":0.89},"fill":{"type":"solid","color":"#000000"},"opacity":1,"cornerRadius":0.055,"feather":0.055,"zIndex":12},
+  {"id":"photo","type":"media","rect":{"x":0.09,"y":0.06,"w":0.82,"h":0.82},"source":{"path":"{{media}}","sourceType":"image"},"fit":"cover","cornerRadius":0.04,"zIndex":13},
+  {"id":"title","type":"text","rect":{"x":0.075,"y":0.902,"w":0.85,"h":0.038},"content":"{{title}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Medium.otf","fontSize":22,"fontWeight":500,"color":"#FFFFFF","align":"center","verticalAlign":"middle"},"overflow":"shrink","zIndex":14},
+  {"id":"meta","type":"text","rect":{"x":0.075,"y":0.946,"w":0.85,"h":0.028},"content":"{{shutter}}  ·  {{aperture}}  ·  ISO {{iso}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Regular.otf","fontSize":13,"fontWeight":400,"color":"#FFFFFF","align":"center","verticalAlign":"middle"},"overflow":"shrink","opacity":0.8,"zIndex":14}
+]}

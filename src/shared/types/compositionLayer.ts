@@ -17,6 +17,8 @@ export interface ShapeLayer extends BaseCompositionLayer {
   shape: 'rectangle' | 'rounded-rectangle' | 'line' | 'circle'
   fill?: { type: 'solid'; color: string }
   cornerRadius?: number
+  /** 从形状外缘向内连续过渡到设定透明度，使用归一化局部坐标。 */
+  feather?: number
   stroke?: { width: number; color: string; opacity?: number }
 }
 
@@ -50,6 +52,9 @@ export interface MediaCompositionLayer extends BaseCompositionLayer {
   source: { path: string; sourceType?: 'auto' | 'image' | 'video' }
   crop?: LayerRect
   fit?: 'contain' | 'cover' | 'stretch' | 'cover-scale'
+  /** 仅用于创意版式背景，单位为源纹理像素。 */
+  blurRadius?: number
+  cornerRadius?: number
 }
 
 export interface DecorationLayer extends BaseCompositionLayer {
@@ -71,6 +76,7 @@ export interface FramePreset {
   name: string
   category: 'minimal' | 'film' | 'blur' | 'gallery' | 'polaroid' | 'magazine'
   description?: string
+  defaultTitle?: string
   swatch: string
   layers: DeclarativeCompositionLayer[]
 }

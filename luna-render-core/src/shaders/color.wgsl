@@ -1,6 +1,11 @@
 fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32> {
     let raw = apply_restore_lut(input);
-    let blurred = apply_restore_lut(blur3(tex_coord));
+    var blurred = raw;
+    if (params.denoise > 100.0) {
+        blurred = apply_restore_lut(aperture_blur(tex_coord, (params.denoise - 100.0) / 100.0));
+    } else if (params.denoise > 0.0) {
+        blurred = apply_restore_lut(blur3(tex_coord));
+    }
     let detail = raw - blurred;
     var c = raw;
     c = mix(raw, blurred, sat1(params.denoise / 100.0));

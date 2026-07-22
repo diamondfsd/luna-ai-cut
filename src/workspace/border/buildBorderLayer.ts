@@ -76,6 +76,17 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+function scaleRectFromCenter(rect: { x: number; y: number; w: number; h: number }, scale: number) {
+  const w = rect.w * scale
+  const h = rect.h * scale
+  return {
+    x: rect.x + (rect.w - w) / 2,
+    y: rect.y + (rect.h - h) / 2,
+    w,
+    h,
+  }
+}
+
 /**
  * 全画布纸张预设不再用“背景 + 重复素材层”盖住主素材。
  * 将背景拆成开口四周的四块实体边框，让底下唯一的素材层直接露出。
@@ -172,6 +183,13 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
   const usesCutoutLayout = mediaLayout?.type === 'media' && cutoutBackground?.type === 'shape'
   const scale = hasMediaLayout ? 1 : border.frameSize / 100
   const isVideoMedia = mediaPath ? isVideoPath(mediaPath) : false
+  const isBlurredPhotoCard = preset.id === 'blurred-photo-card'
+  const photoLayer = isBlurredPhotoCard
+    ? preset.layers.find((layer) => layer.id === 'photo')
+    : undefined
+  const scaledPhotoRect = photoLayer
+    ? scaleRectFromCenter(photoLayer.rect, clamp(border.frameSize / 100, 0.75, 1.04))
+    : undefined
 
   return preset.layers.flatMap((layer: DeclarativeCompositionLayer): PreviewLayer[] => {
     if (layer.visible === false || layer.type === 'group' || layer.type === 'decoration') return []
@@ -182,20 +200,59 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
     if (usesCutoutLayout && layer === cutoutBackground) {
       return buildCutoutBackground(cutoutBackground, mediaLayout, border)
     }
-    const h = Math.min(1, layer.rect.h * scale)
+    let layerRect = isBlurredPhotoCard && layer.id === 'photo' && scaledPhotoRect
+      ? scaledPhotoRect
+      : layer.rect
+    let layerOpacity = layer.opacity ?? 1
+    let layerCornerRadius = 'cornerRadius' in layer ? layer.cornerRadius : undefined
+    let layerFeather = layer.type === 'shape' ? layer.feather : undefined
+    if (isBlurredPhotoCard && layer.id === 'photo-shadow' && scaledPhotoRect) {
+      const minCanvasSide = Math.max(1, Math.min(canvasWidth, canvasHeight))
+      const spreadPixels = minCanvasSide * (0.01 + border.shadowBlur / 100 * 0.06)
+      const spreadX = spreadPixels / Math.max(1, canvasWidth)
+      const spreadY = spreadPixels / Math.max(1, canvasHeight)
+      const offsetPixels = border.shadowOffsetY / 30 * minCanvasSide * 0.035
+      const offsetY = offsetPixels / Math.max(1, canvasHeight)
+      layerRect = {
+        x: scaledPhotoRect.x - spreadX,
+        y: scaledPhotoRect.y - spreadY + offsetY,
+        w: scaledPhotoRect.w + spreadX * 2,
+        h: scaledPhotoRect.h + spreadY * 2,
+      }
+      layerOpacity = border.shadowStrength / 100
+      const photoRadius = photoLayer && 'cornerRadius' in photoLayer ? photoLayer.cornerRadius ?? 0 : 0
+      const photoMinSide = Math.min(scaledPhotoRect.w * canvasWidth, scaledPhotoRect.h * canvasHeight)
+      const shadowMinSide = Math.min(layerRect.w * canvasWidth, layerRect.h * canvasHeight)
+      layerCornerRadius = (photoRadius * photoMinSide + spreadPixels) / Math.max(1, shadowMinSide)
+      layerFeather = spreadPixels / Math.max(1, shadowMinSide)
+    }
+    const h = Math.min(1, layerRect.h * scale)
     const common = {
-      filePath: '', dstX: layer.rect.x, dstY: Math.max(0, 1 - (1 - layer.rect.y) * scale), dstW: layer.rect.w, dstH: h,
-      srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: (layer.opacity ?? 1) * border.opacity / 100, zIndex: layer.zIndex,
+      filePath: '', dstX: layerRect.x, dstY: Math.max(0, 1 - (1 - layerRect.y) * scale), dstW: layerRect.w, dstH: h,
+      srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: layerOpacity * border.opacity / 100, zIndex: layer.zIndex,
     }
     if (layer.type === 'media') {
       if (!mediaPath) return []
       const baseTransform = mediaLayerStyle?.transform
+      const color = layer.blurRadius && layer.blurRadius > 0 && mediaLayerStyle?.color
+        ? {
+            ...mediaLayerStyle.color,
+            // 渲染核心将 100 以上的内部降噪值解释为版式背景模糊半径；
+            // 普通调色面板仍保持 0-100 的原有语义。
+            denoise: 100 + layer.blurRadius * 100,
+            clarity: 0,
+            texture: 0,
+            sharpen: 0,
+          }
+        : mediaLayerStyle?.color
       return [{
         ...common,
         ...mediaLayerStyle,
+        color,
         layerType: 'media',
         filePath: mediaPath,
         fit: layer.fit === 'cover-scale' ? 'cover-scale' : 'cover',
+        cornerRadius: layerCornerRadius,
         srcX: layer.crop?.x ?? 0,
         srcY: layer.crop?.y ?? 0,
         srcW: layer.crop?.w ?? 1,
@@ -212,7 +269,16 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
         },
       }]
     }
-    if (layer.type === 'shape') return [{ ...common, layerType: 'shape', shape: layer.shape, fillColor: layer.id === 'background' ? border.backgroundColor : layer.fill?.color, cornerRadius: layer.cornerRadius, strokeColor: layer.stroke?.color, strokeWidth: layer.stroke?.width }]
+    if (layer.type === 'shape') return [{
+      ...common,
+      layerType: 'shape',
+      shape: layer.shape,
+      fillColor: layer.id === 'background' ? border.backgroundColor : layer.fill?.color,
+      cornerRadius: layerCornerRadius,
+      strokeColor: layer.stroke?.color,
+      // 正值仍是描边像素；负值作为内部标记，表示连续软边的归一化宽度。
+      strokeWidth: layerFeather ? -layerFeather : layer.stroke?.width,
+    }]
     if (layer.type === 'logo' && layer.source?.path) {
       const logo = getBorderLogo(layer.source.path)
       if (!logo) return []

@@ -51,6 +51,20 @@ fn sample_media_texture(tex_coord: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(straight_rgb, averaged_alpha);
 }
 
+// 基于目标矩形的实际像素计算等半径圆角，避免宽高比将圆弧拉成椭圆。
+fn rounded_rect_distance(local: vec2<f32>, radius_normalized: f32) -> f32 {
+    let size = vec2<f32>(max(params.dst_w, 1.0), max(params.dst_h, 1.0));
+    let radius_px = clamp(radius_normalized * min(size.x, size.y), 0.0, min(size.x, size.y) * 0.5);
+    let q = abs(local - vec2<f32>(0.5)) * size - (size * 0.5 - vec2<f32>(radius_px));
+    return length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - radius_px;
+}
+
+fn rounded_box_distance(position: vec2<f32>, size: vec2<f32>, radius: f32) -> f32 {
+    let safe_radius = clamp(radius, 0.0, min(size.x, size.y) * 0.5);
+    let q = abs(position) - (size * 0.5 - vec2<f32>(safe_radius));
+    return length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - safe_radius;
+}
+
 fn sample_effective_color_mask(tex_coord: vec2<f32>) -> f32 {
     let value = textureSample(mask_texture, src_sampler, tex_coord).r;
     return select(value, 1.0 - value, params.mask_params.y > 0.5);
@@ -177,6 +191,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let local_x = (pixel_x - params.dst_x) / params.dst_w;
     let local_y = (pixel_y - params.dst_y) / params.dst_h;
 
+    var corner_coverage = 1.0;
+    if (params.procedural.x < 0.5 && params.procedural.z > 0.0) {
+        let p = vec2<f32>(local_x, local_y);
+        let corner_distance = rounded_rect_distance(p, params.procedural.z);
+        let corner_aa = max(fwidth(corner_distance) * 1.5, 1.5);
+        if (corner_distance > corner_aa) {
+            discard;
+        }
+        corner_coverage = 1.0 - smoothstep(-corner_aa, corner_aa, corner_distance);
+    }
+
     if (params.procedural.x < 0.5 && local_x > params.text_meta.w) {
         discard;
     }
@@ -186,12 +211,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let shape_kind = params.procedural.y;
         let radius = max(params.procedural.z, 0.0);
         var inside = true;
+        var signed_distance = -1.0;
         if (shape_kind > 2.5) {
             let d = (p - vec2<f32>(0.5)) / vec2<f32>(0.5);
-            inside = dot(d, d) <= 1.0;
+            signed_distance = length(d) - 1.0;
+            inside = signed_distance <= 0.0;
         } else if (shape_kind > 0.5 && radius > 0.0) {
-            let q = abs(p - vec2<f32>(0.5)) - (vec2<f32>(0.5) - vec2<f32>(radius));
-            inside = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) <= radius;
+            signed_distance = rounded_rect_distance(p, radius);
+            inside = signed_distance <= 0.0;
         }
         if (!inside) { discard; }
         let stroke_px = params.procedural.w;
@@ -202,7 +229,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 return vec4<f32>(params.stroke_rgba.rgb * stroke_alpha, stroke_alpha);
             }
         }
-        let fill_alpha = params.fill_rgba.a * params.opacity;
+        let feather = max(-params.procedural.w, 0.0) * min(params.dst_w, params.dst_h);
+        var feather_alpha = 1.0;
+        if (feather > 0.0) {
+            let outer_size = vec2<f32>(params.dst_w, params.dst_h);
+            let inner_size = max(outer_size - vec2<f32>(feather * 2.0), vec2<f32>(1.0));
+            let outer_radius = radius * min(outer_size.x, outer_size.y);
+            let inner_radius = max(outer_radius - feather, 0.0);
+            let position = (p - vec2<f32>(0.5)) * outer_size;
+            let distance_from_card = max(rounded_box_distance(position, inner_size, inner_radius), 0.0);
+            let normalized_distance = distance_from_card / max(feather, 0.0001);
+            feather_alpha = min(1.0, 1.1 * exp(-4.5 * normalized_distance * normalized_distance));
+        }
+        let fill_alpha = params.fill_rgba.a * params.opacity * feather_alpha;
         return vec4<f32>(params.fill_rgba.rgb * fill_alpha, fill_alpha);
     }
 
@@ -496,13 +535,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let adjusted = apply_color(color.rgb, tex_coord, local_x);
     let mask_value = clamp(sample_color_mask(tex_coord) * params.mask_params.x, 0.0, 1.0);
     if (params.mask_params.w > 0.5) {
-        let layer_alpha = color.a * params.opacity * mask_value;
+        let layer_alpha = color.a * params.opacity * mask_value * corner_coverage;
         return vec4<f32>(adjusted * layer_alpha, layer_alpha);
     }
     color = vec4<f32>(mix(color.rgb, adjusted, mask_value), color.a);
-    color.a = color.a * params.opacity;
-    if (params.sampling_quality > 0.5) {
-        color = vec4<f32>(color.rgb * color.a, color.a);
-    }
+    color.a = color.a * params.opacity * corner_coverage;
+    color = vec4<f32>(color.rgb * color.a, color.a);
     return color;
 }
