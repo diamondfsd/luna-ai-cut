@@ -11,6 +11,7 @@ interface ButtonGroupProps<T extends string> {
   value: T
   onChange: (value: T) => void
   className?: string
+  ariaLabel?: string
 }
 
 /**
@@ -22,12 +23,14 @@ export function ButtonGroup<T extends string>({
   value,
   onChange,
   className,
+  ariaLabel,
 }: ButtonGroupProps<T>) {
   return (
-    <div className={cx('ui-btn-group', className)}>
+    <div className={cx('ui-btn-group', className)} role="group" aria-label={ariaLabel}>
       {options.map((option) => (
         <button
           key={option.value}
+          aria-pressed={value === option.value}
           className={cx('ui-btn-group-btn', value === option.value && 'active')}
           onClick={() => onChange(option.value)}
           type="button"
