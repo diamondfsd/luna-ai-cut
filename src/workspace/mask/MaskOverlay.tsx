@@ -4,7 +4,8 @@ import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import type { ColorMaskComponent, ColorMaskComponentOperation } from '../shared/editPipeline'
-import { componentControlHandles, componentFeatherOutline, componentOutline, hitTestComponentControl, shouldShowComponentControls, updateComponentFromDrag, type MaskComponentDragKind } from './maskComponentControls'
+import { drawMaskComponentControls } from './maskComponentControlDrawing'
+import { hitTestComponentControl, shouldShowComponentControls, updateComponentFromDrag, type MaskComponentDragKind } from './maskComponentControls'
 import { applyComponentDraft, drawMaskBrush } from './maskManualRasterization'
 import { composeBaseSelectionComponents, composeMaskComponents, editableMaskComponents, gradientTargetComponent, rasterizeVectorComponent } from './maskComponentRasterization'
 import { MaskBrushCursor } from './MaskBrushCursor'
@@ -141,49 +142,20 @@ export function MaskOverlay() {
     context.clearRect(0, 0, controlSize.width, controlSize.height)
     const component = componentDraftRef.current ?? mask.activeComponent
     if (!component || component.type === 'raster' || !shouldShowComponentControls(mask.manualTool, Boolean(componentDraftRef.current))) return
-    const outline = componentOutline(component).map((point) => sourceToDisplay(point.x, point.y, controlSize))
-    const featherOutline = component.type === 'linear-gradient' || component.feather <= 0
-      ? null
-      : componentFeatherOutline(component).map((point) => sourceToDisplay(point.x, point.y, controlSize))
-    context.save()
-    if (featherOutline) {
-      context.strokeStyle = 'rgba(0, 0, 0, 0.82)'
-      context.lineWidth = 2 * controlPixelRatio
-      context.setLineDash([5 * controlPixelRatio, 4 * controlPixelRatio])
-      context.beginPath()
-      featherOutline.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y))
-      context.stroke()
-      context.strokeStyle = '#4da3ff'
-      context.lineWidth = 1.1 * controlPixelRatio
-      context.stroke()
-      context.setLineDash([])
-    }
-    context.strokeStyle = 'rgba(0, 0, 0, 0.82)'
-    context.lineWidth = 2 * controlPixelRatio
-    context.beginPath()
-    outline.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y))
-    context.stroke()
-    context.strokeStyle = '#ffffff'
-    context.lineWidth = 0.85 * controlPixelRatio
-    context.stroke()
-    for (const handle of componentControlHandles(component)) {
-      const point = sourceToDisplay(handle.x, handle.y, controlSize)
-      context.beginPath()
-      context.arc(point.x, point.y, (handle.kind === 'move' ? 4 : 5) * controlPixelRatio, 0, Math.PI * 2)
-      context.fillStyle = handle.kind === 'rotate' ? '#0066cc' : handle.kind === 'feather' ? '#4da3ff' : '#ffffff'
-      context.fill()
-      context.strokeStyle = '#111111'
-      context.lineWidth = controlPixelRatio
-      context.stroke()
-    }
-    context.restore()
+    drawMaskComponentControls(
+      context,
+      component,
+      (point) => sourceToDisplay(point.x, point.y, controlSize),
+      controlPixelRatio,
+    )
   }
   function render(data: Uint8Array): void {
     const element = canvasRef.current
     if (!element || !mask.maskSize) return
     const context = element.getContext('2d')
     if (!context) return
-    const feathered = buildMaskOverlayPreview(data, mask.maskSize, displaySize, displayToSource, Boolean(mask.activeMask?.inverted), mask.activeMask?.feather ?? 0)
+    const layerFeather = maskComponents.some((component) => component.type !== 'raster') ? 0 : mask.activeMask?.feather ?? 0
+    const feathered = buildMaskOverlayPreview(data, mask.maskSize, displaySize, displayToSource, Boolean(mask.activeMask?.inverted), layerFeather)
     const image = context.createImageData(displaySize.width, displaySize.height)
     for (let y = 0; y < displaySize.height; y++) {
       for (let x = 0; x < displaySize.width; x++) {
@@ -211,7 +183,7 @@ export function MaskOverlay() {
         boundaryData = applyMaskSelectionOperation(boundaryData, strokeDataRef.current, strokeOperationRef.current)
       }
     }
-    const boundaryPreview = boundaryData === data ? feathered : buildMaskOverlayPreview(boundaryData, mask.maskSize, displaySize, displayToSource, Boolean(mask.activeMask?.inverted), mask.activeMask?.feather ?? 0)
+    const boundaryPreview = boundaryData === data ? feathered : buildMaskOverlayPreview(boundaryData, mask.maskSize, displaySize, displayToSource, Boolean(mask.activeMask?.inverted), layerFeather)
     selectionBoundaryRef.current?.show(boundaryPreview)
     drawActiveComponentControls()
   }
@@ -356,7 +328,8 @@ export function MaskOverlay() {
           width: (bounds.right - bounds.left) / mask.maskSize.width,
           height: (bounds.bottom - bounds.top) / mask.maskSize.height,
           rotation: 0,
-          feather: 0.25,
+          feather: 0,
+          softness: 0.15,
         }
     componentDraftRef.current = component
     const incoming = rasterizeVectorComponent(mask.maskSize.width, mask.maskSize.height, component)

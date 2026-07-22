@@ -418,6 +418,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
 function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { blendMode?: ColorMaskBlendMode }): ColorMaskLayer | null {
   const mask = normalizeColorMask(input)
   if (!mask) return null
+  const hasVectorComponents = input.components?.some((component) => component.type !== 'raster') ?? false
   const colorInput = input.color ?? DEFAULT_PIPELINE.color
   const color = normalizePipeline({
     ...createDefaultPipeline(),
@@ -427,6 +428,7 @@ function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { bl
   }).color
   return {
     ...mask,
+    feather: hasVectorComponents ? 0 : mask.feather,
     id: typeof input.id === 'string' && input.id ? input.id : `mask-${Date.now()}`,
     name: typeof input.name === 'string' && input.name.trim() ? input.name.trim().slice(0, 40) : '局部蒙版',
     enabled: input.loadError ? false : input.enabled !== false,
@@ -453,7 +455,7 @@ function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef
     height: Math.max(1, Math.round(Number(mask.height) || 1)),
     opacity: clampNumber(Number(mask.opacity ?? 1), { min: 0, max: 1 }),
     inverted: Boolean(mask.inverted),
-    feather: clampNumber(Number(mask.feather ?? 2), { min: 0, max: 100 }),
+    feather: clampNumber(Number(mask.feather ?? (Array.isArray((mask as ColorMaskLayer).components) ? 0 : 2)), { min: 0, max: 100 }),
     kind: mask.kind === 'semantic' ? 'semantic' : 'brush',
     classId: Number.isInteger(mask.classId) ? mask.classId : undefined,
     className: typeof mask.className === 'string' ? mask.className : undefined,

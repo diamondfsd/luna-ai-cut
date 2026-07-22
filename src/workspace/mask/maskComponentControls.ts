@@ -16,6 +16,18 @@ function rotatePoint(x: number, y: number, radians: number): { x: number; y: num
   return { x: x * Math.cos(radians) - y * Math.sin(radians), y: x * Math.sin(radians) + y * Math.cos(radians) }
 }
 
+export function componentSoftness(component: Exclude<ColorMaskComponent, { type: 'raster' | 'linear-gradient' }>): number {
+  if (component.softness !== undefined) return Math.max(0, component.softness)
+  if (component.featherX !== undefined || component.featherY !== undefined) {
+    const x = Math.max(0, component.featherX ?? 0) / Math.max(component.width / 2, 0.00005)
+    const y = Math.max(0, component.featherY ?? 0) / Math.max(component.height / 2, 0.00005)
+    return (x + y) / 2
+  }
+  const legacyDistance = Math.max(0, component.feather) * Math.min(component.width, component.height) / 2
+  return (legacyDistance / Math.max(component.width / 2, 0.00005)
+    + legacyDistance / Math.max(component.height / 2, 0.00005)) / 2
+}
+
 export function componentControlHandles(component: ColorMaskComponent): MaskControlHandle[] {
   if (component.type === 'raster') return []
   if (component.type === 'linear-gradient') {
@@ -26,16 +38,21 @@ export function componentControlHandles(component: ColorMaskComponent): MaskCont
     ]
   }
   const radians = component.rotation * Math.PI / 180
-  const resize = rotatePoint(component.width / 2, component.height / 2, radians)
   const rotate = rotatePoint(0, -component.height / 2 - 0.06, radians)
-  const featherDistance = component.feather * Math.min(component.width, component.height) / 2
-  const feather = rotatePoint(component.width / 2 + featherDistance, 0, radians)
-  return [
-    { kind: 'move', x: component.centerX, y: component.centerY },
-    { kind: 'resize', x: component.centerX + resize.x, y: component.centerY + resize.y },
+  const softnessScale = 1 + componentSoftness(component)
+  const handles: MaskControlHandle[] = [
     { kind: 'rotate', x: component.centerX + rotate.x, y: component.centerY + rotate.y },
-    { kind: 'feather', x: component.centerX + feather.x, y: component.centerY + feather.y },
   ]
+  const resizeUnit = component.type === 'rectangle' ? 1 : 1 / Math.SQRT2
+  for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const point = rotatePoint(x * component.width / 2 * resizeUnit, y * component.height / 2 * resizeUnit, radians)
+    handles.push({ kind: 'resize', x: component.centerX + point.x, y: component.centerY + point.y })
+  }
+  for (const [x, y] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+    const point = rotatePoint(x * component.width / 2 * softnessScale, y * component.height / 2 * softnessScale, radians)
+    handles.push({ kind: 'feather', x: component.centerX + point.x, y: component.centerY + point.y })
+  }
+  return handles
 }
 
 export function hitTestComponentControl(component: ColorMaskComponent, point: { x: number; y: number }, tolerance: number): MaskComponentDragKind | null {
@@ -78,10 +95,30 @@ export function updateComponentFromDrag(
   const radians = -component.rotation * Math.PI / 180
   const local = rotatePoint(current.x - component.centerX, current.y - component.centerY, radians)
   if (kind === 'feather') {
-    const featherUnit = Math.max(0.0001, Math.min(component.width, component.height) / 2)
-    return { ...component, feather: Math.max(0, (Math.abs(local.x) - component.width / 2) / featherUnit) }
+    const normalizedDistance = component.type === 'rectangle'
+      ? Math.max(Math.abs(local.x) / Math.max(component.width / 2, 0.00005), Math.abs(local.y) / Math.max(component.height / 2, 0.00005))
+      : Math.hypot(local.x / Math.max(component.width / 2, 0.00005), local.y / Math.max(component.height / 2, 0.00005))
+    return {
+      ...component,
+      softness: Math.max(0, normalizedDistance - 1),
+      featherX: undefined,
+      featherY: undefined,
+    }
   }
-  return { ...component, width: Math.max(0.001, Math.abs(local.x) * 2), height: Math.max(0.001, Math.abs(local.y) * 2) }
+  const normalizedX = Math.abs(local.x) / Math.max(component.width / 2, 0.00005)
+  const normalizedY = Math.abs(local.y) / Math.max(component.height / 2, 0.00005)
+  const scale = Math.max(component.type === 'rectangle'
+    ? Math.max(normalizedX, normalizedY)
+    : Math.hypot(normalizedX, normalizedY), 0.001)
+  const softness = componentSoftness(component)
+  return {
+    ...component,
+    width: Math.max(0.001, component.width * scale),
+    height: Math.max(0.001, component.height * scale),
+    softness: softness > 0 ? Math.max(0, (1 + softness) / scale - 1) : 0,
+    featherX: undefined,
+    featherY: undefined,
+  }
 }
 
 export function componentOutline(component: Exclude<ColorMaskComponent, { type: 'raster' }>, scale = 1): Array<{ x: number; y: number }> {
@@ -106,12 +143,17 @@ export function componentOutline(component: Exclude<ColorMaskComponent, { type: 
   return points
 }
 
-export function componentFeatherOutline(component: Exclude<ColorMaskComponent, { type: 'raster' }>): Array<{ x: number; y: number }> {
-  if (component.type === 'linear-gradient') return componentOutline(component)
-  const expansion = component.feather * Math.min(component.width, component.height)
-  return componentOutline({
-    ...component,
-    width: component.width + expansion,
-    height: component.height + expansion,
-  })
+export function componentSoftnessOutlines(component: Exclude<ColorMaskComponent, { type: 'raster' }>): {
+  inner: Array<{ x: number; y: number }>
+  outer: Array<{ x: number; y: number }>
+} {
+  if (component.type === 'linear-gradient') {
+    const outline = componentOutline(component)
+    return { inner: outline, outer: outline }
+  }
+  const softness = componentSoftness(component)
+  return {
+    inner: componentOutline(component, Math.max(0, 1 - softness)),
+    outer: componentOutline(component, 1 + softness),
+  }
 }

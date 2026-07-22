@@ -1,7 +1,11 @@
 import type { ColorMaskComponent, ColorMaskComponentOperation, ColorMaskLayer } from '../shared/editPipeline'
+import { componentSoftness } from './maskComponentControls'
 import { resampleMask } from './maskSelectionOperations'
 
 export type MaskRasterSource = (component: Extract<ColorMaskComponent, { type: 'raster' }>) => Uint8Array | null
+
+const SOFTNESS_LOG_ODDS = Math.log(99)
+const RASTER_SOFTNESS_EXTENT = Math.log(1023) / SOFTNESS_LOG_ODDS
 
 export function editableMaskComponents(mask: ColorMaskLayer | null): ColorMaskComponent[] {
   if (mask?.components) return mask.components
@@ -54,14 +58,15 @@ function applyVectorComponent(
   const sine = Math.sin(radians)
   const radiusX = Math.max(0.00005, component.width / 2)
   const radiusY = Math.max(0.00005, component.height / 2)
+  const softness = componentSoftness(component)
+  const rasterOuterScale = 1 + softness * RASTER_SOFTNESS_EXTENT
   let startX = 0
   let endX = width
   let startY = 0
   let endY = height
   if (!component.inverted && operation !== 'intersect') {
-    const featherDistance = component.feather * Math.min(radiusX, radiusY)
-    const outerRadiusX = radiusX + featherDistance
-    const outerRadiusY = radiusY + featherDistance
+    const outerRadiusX = radiusX * rasterOuterScale
+    const outerRadiusY = radiusY * rasterOuterScale
     const boundX = Math.abs(cosine) * outerRadiusX + Math.abs(sine) * outerRadiusY
     const boundY = Math.abs(sine) * outerRadiusX + Math.abs(cosine) * outerRadiusY
     startX = Math.max(0, Math.floor((component.centerX - boundX) * width))
@@ -80,21 +85,11 @@ function applyVectorComponent(
       const localY = rotatedY / radiusY
       const distance = component.type === 'rectangle' ? Math.max(Math.abs(localX), Math.abs(localY)) : Math.hypot(localX, localY)
       let amount: number
-      if (distance <= 1) {
-        amount = 1
-      } else if (component.feather <= 0) {
+      if (softness <= 0) {
         amount = Number(distance <= 1)
       } else {
-        const featherDistance = component.feather * Math.min(radiusX, radiusY)
-        const radialDistance = Math.hypot(rotatedX, rotatedY)
-        const rayX = Math.abs(rotatedX) / Math.max(radialDistance, 1e-8)
-        const rayY = Math.abs(rotatedY) / Math.max(radialDistance, 1e-8)
-        const boundaryRadius = (xRadius: number, yRadius: number): number => component.type === 'rectangle'
-          ? Math.min(xRadius / Math.max(rayX, 1e-8), yRadius / Math.max(rayY, 1e-8))
-          : 1 / Math.sqrt(rayX * rayX / (xRadius * xRadius) + rayY * rayY / (yRadius * yRadius))
-        const innerBoundary = boundaryRadius(radiusX, radiusY)
-        const outerBoundary = boundaryRadius(radiusX + featherDistance, radiusY + featherDistance)
-        amount = Math.max(0, Math.min(1, (outerBoundary - radialDistance) / Math.max(outerBoundary - innerBoundary, 1e-8)))
+        const exponent = Math.max(-60, Math.min(60, SOFTNESS_LOG_ODDS * (distance - 1) / softness))
+        amount = 1 / (1 + Math.exp(exponent))
       }
       const index = y * width + x
       const incoming = componentValue(amount, component.inverted)

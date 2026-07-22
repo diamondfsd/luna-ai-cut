@@ -227,7 +227,7 @@ export function ColorMaskPanel() {
                   />
                 </Tooltip>
                 <Button variant="ghost" size="compact" className="workspace-color-mask-layer-select" onClick={() => mask.setActiveLayerId(layer.id)}>
-                  <MaskThumbnail path={layer.path} inverted={layer.inverted} feather={layer.feather} />
+                  <MaskThumbnail path={layer.path} inverted={layer.inverted} feather={layer.components?.some((component) => component.type !== 'raster') ? 0 : layer.feather} />
                   <span className="workspace-color-mask-layer-label">
                     <strong onDoubleClick={(event) => { event.stopPropagation(); openRename(layer) }}>{layer.name}</strong>
                     {layer.loadError && <small className="workspace-color-mask-layer-status"><AlertTriangle size={12} />文件不可用，可重新编辑</small>}

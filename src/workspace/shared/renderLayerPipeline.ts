@@ -91,7 +91,7 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     maskPath: layer.path,
     maskOpacity: layer.opacity,
     maskInverted: layer.inverted,
-    maskFeather: layer.feather,
+    maskFeather: layer.components?.some((component) => component.type !== 'raster') ? 0 : layer.feather,
     // v1.6.0 video masks are intentionally static; keep saved tracks in project data only.
     maskTrack: undefined,
   }))
