@@ -205,6 +205,8 @@ impl Compositor {
                 texture,
                 width,
                 height,
+                #[cfg(target_os = "windows")]
+                external: false,
             },
         );
         Ok(id)

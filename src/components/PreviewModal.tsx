@@ -198,6 +198,7 @@ export function PreviewModal({
                   <WatermarkSettings
                     onChange={handleWatermarkChange}
                     filePath={stageSource ?? undefined}
+                    mediaKind={isVideoPath(currentFilePath) ? 'video' : 'image'}
                   />
                 ) : undefined}
               />

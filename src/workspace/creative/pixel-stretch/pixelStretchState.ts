@@ -2,7 +2,7 @@ import type { WorkspacePixelStretchState, WorkspaceProject } from '../../../shar
 import type { PixelStretchFlowShape, PixelStretchPathPoint } from '../../../shared/types/workspace'
 
 export const DEFAULT_PIXEL_STRETCH_PRESET = 'right' as const
-export const DEFAULT_PIXEL_STRETCH_SUBJECT_MODEL = 'precise' as const
+export const DEFAULT_PIXEL_STRETCH_SUBJECT_MODEL = 'fast' as const
 export const DEFAULT_PIXEL_STRETCH_ANGLE = 0
 export const DEFAULT_PIXEL_STRETCH_SAMPLE_POSITION = 50
 export const DEFAULT_PIXEL_STRETCH_RANGE_START = 28
@@ -21,7 +21,7 @@ export function normalizePixelStretchPreset(value: unknown): WorkspacePixelStret
 }
 
 export function normalizePixelStretchSubjectModel(value: unknown): NonNullable<WorkspacePixelStretchState['subjectModel']> {
-  return value === 'fast' ? 'fast' : DEFAULT_PIXEL_STRETCH_SUBJECT_MODEL
+  return value === 'fast' || value === 'precise' ? value : DEFAULT_PIXEL_STRETCH_SUBJECT_MODEL
 }
 
 export function normalizePixelStretchPercent(value: unknown, fallback: number): number {

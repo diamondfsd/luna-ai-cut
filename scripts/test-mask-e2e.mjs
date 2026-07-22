@@ -26,6 +26,10 @@ const projectDir = path.join(downloadDir, 'workspace-projects', projectId)
 const projectPath = path.join(projectDir, 'project.json')
 const appLogPath = path.join(artifactDir, 'app.log')
 const keepArtifacts = process.env.LUNA_E2E_KEEP_ARTIFACTS === '1'
+const isWindows = process.platform === 'win32'
+const agentBrowserExecutable = isWindows
+  ? path.join(process.env.APPDATA ?? '', 'npm', 'node_modules', 'agent-browser', 'bin', 'agent-browser-win32-x64.exe')
+  : 'agent-browser'
 
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
@@ -63,6 +67,7 @@ function run(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: projectRoot,
       env: process.env,
+      windowsHide: true,
       ...spawnOptions,
     })
     let stdout = ''
@@ -92,7 +97,7 @@ function run(command, args, options = {}) {
 }
 
 async function agentBrowser(port, session, ...args) {
-  return run('agent-browser', ['--session', session, '--cdp', String(port), ...args], { timeoutMs: 20_000 })
+  return run(agentBrowserExecutable, ['--session', session, '--cdp', String(port), ...args], { timeoutMs: 20_000 })
 }
 
 class CdpClient {
@@ -221,14 +226,15 @@ async function createFixture() {
 
 function startApp(port) {
   const log = createWriteStream(appLogPath, { flags: 'a' })
-  const child = spawn('pnpm', ['dev:e2e'], {
+  const child = spawn(process.execPath, [path.join(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js'), '--mode', 'e2e'], {
     cwd: projectRoot,
     env: {
       ...process.env,
       LUNA_E2E_CDP_PORT: String(port),
       LUNA_E2E_USER_DATA_DIR: userDataDir,
     },
-    detached: true,
+    detached: !isWindows,
+    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   child.stdout.pipe(log)
@@ -239,6 +245,17 @@ function startApp(port) {
 
 async function stopApp(child) {
   if (!child || child.exitCode !== null) return
+  if (isWindows) {
+    spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    await Promise.race([
+      new Promise((resolve) => child.once('exit', resolve)),
+      delay(5_000),
+    ])
+    return
+  }
   const exited = new Promise((resolve) => child.once('exit', resolve))
   try { process.kill(-child.pid, 'SIGINT') } catch { return }
   await Promise.race([exited, delay(5_000)])
@@ -395,7 +412,10 @@ async function runRestartPass(port) {
 
 let succeeded = false
 try {
-  const browserCheck = spawnSync('agent-browser', ['--version'], { encoding: 'utf8' })
+  const browserCheck = spawnSync(agentBrowserExecutable, ['--version'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  })
   assert.equal(browserCheck.status, 0, '需要先安装 agent-browser')
   await createFixture()
   const port = await unusedPort()

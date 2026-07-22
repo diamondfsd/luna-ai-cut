@@ -330,6 +330,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
                 settings={edit.pipeline.watermark}
                 onChange={handleWatermarkChange}
                 filePath={mediaCtx.activeMedia?.path}
+                mediaKind={mediaCtx.activeMedia?.kind}
               />
             </Accordion>
           )}
