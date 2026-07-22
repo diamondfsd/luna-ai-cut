@@ -61,8 +61,8 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
       mediaScale: 100,
       mediaOffsetX: 0,
       mediaOffsetY: 0,
-      shadowStrength: presetId === 'blurred-photo-card' ? 70 : DEFAULT_PIPELINE.border.shadowStrength,
-      shadowBlur: presetId === 'blurred-photo-card' ? 50 : DEFAULT_PIPELINE.border.shadowBlur,
+      shadowStrength: DEFAULT_PIPELINE.border.shadowStrength,
+      shadowBlur: presetId === 'blurred-photo-card' ? 20 : DEFAULT_PIPELINE.border.shadowBlur,
       shadowOffsetY: DEFAULT_PIPELINE.border.shadowOffsetY,
       showDate: true,
     })
@@ -75,7 +75,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
     presetId: value.presetId,
     ...presetColors(value.presetId),
     ...(activePreset?.defaultTitle ? { title: activePreset.defaultTitle } : {}),
-    ...(activePreset?.id === 'blurred-photo-card' ? { frameSize: 104, shadowStrength: 70, shadowBlur: 50 } : {}),
+    ...(activePreset?.id === 'blurred-photo-card' ? { frameSize: 104, shadowStrength: 50, shadowBlur: 20 } : {}),
   })
 
   if (view === 'edit' && activePreset) {

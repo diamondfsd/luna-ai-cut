@@ -478,10 +478,8 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
   const frameSize = isBlurredPhotoCard && (Number(value?.frameSize ?? 100) === 70 || Number(value?.frameSize ?? 100) === 100)
     ? 104
     : Number(value?.frameSize ?? 100)
-  const shadowBlur = isBlurredPhotoCard && Number(value?.shadowBlur ?? 55) === 55
-    ? 50
-    : Number(value?.shadowBlur ?? 50)
-  const shadowStrength = Number(value?.shadowStrength ?? (isBlurredPhotoCard ? 70 : 50))
+  const shadowBlur = Number(value?.shadowBlur ?? (isBlurredPhotoCard ? 20 : 50))
+  const shadowStrength = Number(value?.shadowStrength ?? 50)
   const shadowOffsetY = value?.presetId === 'blurred-photo-card' ? 0 : Number(value?.shadowOffsetY ?? 0)
   return {
     ...DEFAULT_PIPELINE.border,
