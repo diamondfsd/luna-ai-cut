@@ -71,12 +71,32 @@ export interface GroupLayer extends BaseCompositionLayer {
 
 export type DeclarativeCompositionLayer = ShapeLayer | TextLayer | LogoLayer | MediaCompositionLayer | DecorationLayer | GroupLayer
 
+export interface FramePresetDefaultSettings {
+  frameSize?: number
+  backgroundColor?: string
+  textColor?: string
+  opacity?: number
+  showLogo?: boolean
+  showTitle?: boolean
+  showCameraInfo?: boolean
+  showDate?: boolean
+  title?: string
+  mediaScale?: number
+  mediaOffsetX?: number
+  mediaOffsetY?: number
+  shadowStrength?: number
+  shadowBlur?: number
+  shadowOffsetY?: number
+}
+
 export interface FramePreset {
   id: string
   name: string
   category: 'minimal' | 'film' | 'blur' | 'gallery' | 'polaroid' | 'magazine'
   description?: string
+  /** 兼容旧预设；新预设应使用 defaultSettings.title。 */
   defaultTitle?: string
+  defaultSettings?: FramePresetDefaultSettings
   swatch: string
   layers: DeclarativeCompositionLayer[]
 }

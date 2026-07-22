@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { buildBorderLayer, FRAME_PRESETS } from './buildBorderLayer'
+import { buildBorderLayer } from './buildBorderLayer'
+import { findFramePreset, framePresetDefaultSettings, FRAME_PRESETS } from './borderPresets'
 import type { CompositionInput } from '../../shared/types'
 import { DEFAULT_PIPELINE } from '../shared/editPipeline'
 import { pipelineColorToRenderColor } from '../shared/renderLayerPipeline'
@@ -30,7 +31,7 @@ async function renderBorderThumb(
   const lrc = getLrc()
   if (!lrc) throw new Error('渲染引擎未初始化')
 
-  const preset = FRAME_PRESETS.find((p) => p.id === presetId)
+  const preset = findFramePreset(presetId)
   if (!preset) throw new Error(`预设 ${presetId} 未找到`)
 
   const colors = fallbackPresetColors(presetId)
@@ -38,23 +39,13 @@ async function renderBorderThumb(
     canvasWidth: 220,
     canvasHeight: 138,
     border: {
+      ...DEFAULT_PIPELINE.border,
       enabled: true,
       presetId,
-      frameSize: presetId === 'blurred-photo-card' ? 104 : 100,
       backgroundColor: colors.backgroundColor,
       textColor: colors.textColor,
-      opacity: 100,
-      showLogo: true,
-      showTitle: true,
-      showCameraInfo: true,
-      showDate: true,
+      ...framePresetDefaultSettings(presetId),
       title: '',
-      mediaScale: 100,
-      mediaOffsetX: 0,
-      mediaOffsetY: 0,
-      shadowStrength: 50,
-      shadowBlur: presetId === 'blurred-photo-card' ? 20 : 50,
-      shadowOffsetY: 0,
     },
     metadata: null,
     mediaPath: sourcePath,
