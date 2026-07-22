@@ -475,23 +475,19 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
   const value = input as (Partial<BorderSettings> & { bottomColor?: unknown }) | undefined
   const legacyColor = typeof value?.bottomColor === 'string' ? value.bottomColor : undefined
   const isBlurredPhotoCard = value?.presetId === 'blurred-photo-card'
-  const frameSize = isBlurredPhotoCard && Number(value?.frameSize ?? 100) === 100
-    ? 70
+  const frameSize = isBlurredPhotoCard && (Number(value?.frameSize ?? 100) === 70 || Number(value?.frameSize ?? 100) === 100)
+    ? 104
     : Number(value?.frameSize ?? 100)
   const shadowBlur = isBlurredPhotoCard && Number(value?.shadowBlur ?? 55) === 55
     ? 50
     : Number(value?.shadowBlur ?? 50)
-  const shadowStrength = value?.presetId === 'blurred-photo-card'
-    && (Number(value.shadowStrength) === 46 || Number(value.shadowStrength) === 92 || Number(value.shadowStrength) === 100)
-    && (Number(value.shadowBlur ?? 55) === 55 || shadowBlur === 50)
-    ? 50
-    : Number(value?.shadowStrength ?? 50)
+  const shadowStrength = Number(value?.shadowStrength ?? (isBlurredPhotoCard ? 70 : 50))
   const shadowOffsetY = value?.presetId === 'blurred-photo-card' ? 0 : Number(value?.shadowOffsetY ?? 0)
   return {
     ...DEFAULT_PIPELINE.border,
     ...value,
     presetId: typeof value?.presetId === 'string' ? value.presetId : DEFAULT_PIPELINE.border.presetId,
-    frameSize: clampNumber(frameSize, { min: 70, max: 135 }),
+    frameSize: clampNumber(frameSize, { min: 70, max: isBlurredPhotoCard ? 110 : 135 }),
     backgroundColor: typeof value?.backgroundColor === 'string' ? value.backgroundColor : legacyColor ?? DEFAULT_PIPELINE.border.backgroundColor,
     textColor: typeof value?.textColor === 'string' ? value.textColor : DEFAULT_PIPELINE.border.textColor,
     opacity: clampNumber(Number(value?.opacity ?? 100), { min: 0, max: 100 }),

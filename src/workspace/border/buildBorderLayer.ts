@@ -188,7 +188,7 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
     ? preset.layers.find((layer) => layer.id === 'photo')
     : undefined
   const scaledPhotoRect = photoLayer
-    ? scaleRectFromCenter(photoLayer.rect, clamp(border.frameSize / 100, 0.75, 1.04))
+    ? scaleRectFromCenter(photoLayer.rect, clamp(border.frameSize / 100, 0.7, 1.1))
     : undefined
 
   return preset.layers.flatMap((layer: DeclarativeCompositionLayer): PreviewLayer[] => {

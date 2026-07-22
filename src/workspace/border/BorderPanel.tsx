@@ -57,12 +57,12 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
       presetId,
       ...presetColors(presetId),
       ...(preset?.defaultTitle ? { title: preset.defaultTitle } : {}),
-      ...(presetId === 'blurred-photo-card' ? { frameSize: 70, shadowBlur: 50 } : {}),
+      ...(presetId === 'blurred-photo-card' ? { frameSize: 104 } : {}),
       mediaScale: 100,
       mediaOffsetX: 0,
       mediaOffsetY: 0,
-      shadowStrength: DEFAULT_PIPELINE.border.shadowStrength,
-      shadowBlur: DEFAULT_PIPELINE.border.shadowBlur,
+      shadowStrength: presetId === 'blurred-photo-card' ? 70 : DEFAULT_PIPELINE.border.shadowStrength,
+      shadowBlur: presetId === 'blurred-photo-card' ? 50 : DEFAULT_PIPELINE.border.shadowBlur,
       shadowOffsetY: DEFAULT_PIPELINE.border.shadowOffsetY,
       showDate: true,
     })
@@ -75,7 +75,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
     presetId: value.presetId,
     ...presetColors(value.presetId),
     ...(activePreset?.defaultTitle ? { title: activePreset.defaultTitle } : {}),
-    ...(activePreset?.id === 'blurred-photo-card' ? { frameSize: 70, shadowBlur: 50 } : {}),
+    ...(activePreset?.id === 'blurred-photo-card' ? { frameSize: 104, shadowStrength: 70, shadowBlur: 50 } : {}),
   })
 
   if (view === 'edit' && activePreset) {
@@ -126,7 +126,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
                 <span>{value.textColor.toUpperCase()}</span>
               </label>
             </div>
-            <ParamSlider label="边框尺寸" value={value.frameSize} min={isBlurredPhotoCard ? 75 : 70} max={isBlurredPhotoCard ? 104 : 135} step={1} onChange={(frameSize) => onChange({ frameSize })} formatValue={(number) => `${number}%`} />
+            <ParamSlider label="边框尺寸" value={value.frameSize} min={70} max={isBlurredPhotoCard ? 110 : 135} step={1} onChange={(frameSize) => onChange({ frameSize })} formatValue={(number) => `${number}%`} />
             <ParamSlider label="不透明度" value={value.opacity} min={20} max={100} step={1} onChange={(opacity) => onChange({ opacity })} formatValue={(number) => `${number}%`} />
 
             {!isBlurredPhotoCard && <div className="border-media-controls">
