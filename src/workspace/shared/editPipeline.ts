@@ -41,6 +41,10 @@ export interface BorderSettings {
   mediaScale: number
   mediaOffsetX: number
   mediaOffsetY: number
+  /** 柔焦相框专用软阴影参数。 */
+  shadowStrength: number
+  shadowBlur: number
+  shadowOffsetY: number
 }
 
 export interface EditPipeline {
@@ -232,6 +236,9 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     mediaScale: 100,
     mediaOffsetX: 0,
     mediaOffsetY: 0,
+    shadowStrength: 100,
+    shadowBlur: 55,
+    shadowOffsetY: 0,
   },
 }
 
@@ -467,6 +474,17 @@ function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef
 function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSettings {
   const value = input as (Partial<BorderSettings> & { bottomColor?: unknown }) | undefined
   const legacyColor = typeof value?.bottomColor === 'string' ? value.bottomColor : undefined
+  const shadowStrength = value?.presetId === 'blurred-photo-card'
+    && (Number(value.shadowStrength) === 46 || Number(value.shadowStrength) === 92)
+    && Number(value.shadowBlur ?? 55) === 55
+    ? 100
+    : Number(value?.shadowStrength ?? 100)
+  const shadowOffsetY = value?.presetId === 'blurred-photo-card'
+    && Number(value.shadowOffsetY) === 8
+    && (Number(value.shadowStrength ?? 46) === 46 || Number(value.shadowStrength) === 92 || Number(value.shadowStrength) === 100)
+    && Number(value.shadowBlur ?? 55) === 55
+    ? 0
+    : Number(value?.shadowOffsetY ?? 0)
   return {
     ...DEFAULT_PIPELINE.border,
     ...value,
@@ -478,6 +496,9 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
     mediaScale: clampNumber(Number(value?.mediaScale ?? 100), { min: 70, max: 160 }),
     mediaOffsetX: clampNumber(Number(value?.mediaOffsetX ?? 0), { min: -50, max: 50 }),
     mediaOffsetY: clampNumber(Number(value?.mediaOffsetY ?? 0), { min: -50, max: 50 }),
+    shadowStrength: clampNumber(shadowStrength, { min: 0, max: 100 }),
+    shadowBlur: clampNumber(Number(value?.shadowBlur ?? 55), { min: 0, max: 100 }),
+    shadowOffsetY: clampNumber(shadowOffsetY, { min: -30, max: 30 }),
   }
 }
 
