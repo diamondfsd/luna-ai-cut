@@ -217,7 +217,7 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
         w: scaledPhotoRect.w + spreadX * 2,
         h: scaledPhotoRect.h + spreadY * 2,
       }
-      layerOpacity = clamp(border.shadowStrength / 100 * 1.5, 0, 1)
+      layerOpacity = clamp(border.shadowStrength / 100 * 2, 0, 1)
       const photoRadius = photoLayer && 'cornerRadius' in photoLayer ? photoLayer.cornerRadius ?? 0 : 0
       const photoMinSide = Math.min(scaledPhotoRect.w * canvasWidth, scaledPhotoRect.h * canvasHeight)
       const shadowMinSide = Math.min(layerRect.w * canvasWidth, layerRect.h * canvasHeight)

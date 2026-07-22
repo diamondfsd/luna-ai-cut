@@ -239,7 +239,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let position = (p - vec2<f32>(0.5)) * outer_size;
             let distance_from_card = max(rounded_box_distance(position, inner_size, inner_radius), 0.0);
             let normalized_distance = distance_from_card / max(feather, 0.0001);
-            feather_alpha = min(1.0, 1.1 * exp(-4.5 * normalized_distance * normalized_distance));
+            // 使用连续的 logistic 曲线向外衰减，并将边缘归一化到满密度；
+            // 阴影强度滑块可以真正达到黑色，外侧仍保持柔和过渡。
+            feather_alpha = min(1.0, 2.0 / (1.0 + exp(4.5 * normalized_distance)));
         }
         let fill_alpha = params.fill_rgba.a * params.opacity * feather_alpha;
         return vec4<f32>(params.fill_rgba.rgb * fill_alpha, fill_alpha);
