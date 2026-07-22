@@ -210,6 +210,33 @@ try {
   }
   const rotatedMask = componentRasterization.rasterizeVectorComponent(5, 5, rotatedRectangle)
   assert.ok(rotatedMask[2] > rotatedMask[10], 'shape rotation must affect rasterized geometry')
+  const landscapeEllipse = {
+    ...rotatedRectangle,
+    type: 'ellipse',
+    width: 0.4,
+    height: 0.2,
+    rotation: 0,
+  }
+  const occupiedSize = (data, width, height) => {
+    const points = []
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (data[y * width + x] > 0) points.push({ x, y })
+      }
+    }
+    return {
+      width: Math.max(...points.map((point) => point.x)) - Math.min(...points.map((point) => point.x)) + 1,
+      height: Math.max(...points.map((point) => point.y)) - Math.min(...points.map((point) => point.y)) + 1,
+    }
+  }
+  const landscapeHorizontalSize = occupiedSize(componentRasterization.rasterizeVectorComponent(200, 100, landscapeEllipse), 200, 100)
+  const landscapeVerticalSize = occupiedSize(componentRasterization.rasterizeVectorComponent(200, 100, { ...landscapeEllipse, rotation: 90 }), 200, 100)
+  assert.ok(Math.abs(landscapeHorizontalSize.width - landscapeVerticalSize.height) <= 1, 'rotating an ellipse must preserve its physical long-axis length')
+  assert.ok(Math.abs(landscapeHorizontalSize.height - landscapeVerticalSize.width) <= 1, 'rotating an ellipse must preserve its physical short-axis length')
+  const squareCacheHorizontalSize = occupiedSize(componentRasterization.rasterizeVectorComponent(100, 100, { ...landscapeEllipse, sourceAspect: 2 }), 100, 100)
+  const squareCacheVerticalSize = occupiedSize(componentRasterization.rasterizeVectorComponent(100, 100, { ...landscapeEllipse, sourceAspect: 2, rotation: 90 }), 100, 100)
+  assert.ok(Math.abs(squareCacheHorizontalSize.width * 2 - squareCacheVerticalSize.height) <= 2, 'a square mask cache must preserve the long axis for a landscape source')
+  assert.ok(Math.abs(squareCacheHorizontalSize.height - squareCacheVerticalSize.width * 2) <= 2, 'a square mask cache must preserve the short axis for a landscape source')
   const powerWindow = { ...rotatedRectangle, type: 'ellipse', width: 0.4, height: 0.4, rotation: 0, feather: 0, softness: 0.5 }
   const featheredShape = componentRasterization.rasterizeVectorComponent(101, 101, powerWindow)
   const centerRow = 50 * 101
@@ -250,6 +277,18 @@ try {
   assert.equal(componentControls.shouldShowComponentControls('brush', false), false, 'unrelated tools must not show stale component controls')
   const featheredWindow = { ...rotatedRectangle, type: 'ellipse', rotation: 0, feather: 0, softness: 0.25 }
   const controlHandles = componentControls.componentControlHandles(featheredWindow)
+  const rotateHandles = controlHandles.filter((handle) => handle.kind === 'rotate')
+  assert.equal(rotateHandles.length, 2, 'a power window must expose opposite rotation handles so one remains visible near an edge')
+  close(
+    (rotateHandles[0].x + rotateHandles[1].x) / 2,
+    featheredWindow.centerX,
+    'opposite rotation handles must remain centered horizontally',
+  )
+  close(
+    (rotateHandles[0].y + rotateHandles[1].y) / 2,
+    featheredWindow.centerY,
+    'opposite rotation handles must remain centered vertically',
+  )
   const featherHandles = controlHandles.filter((handle) => handle.kind === 'feather')
   assert.equal(featherHandles.length, 4, 'a power window must expose softness handles on all four sides')
   const resizeHandles = controlHandles.filter((handle) => handle.kind === 'resize')
@@ -280,9 +319,28 @@ try {
     x: expandedWindow.centerX + expandedWindow.width / 2 / Math.SQRT2 * 0.5,
     y: expandedWindow.centerY + expandedWindow.height / 2 / Math.SQRT2 * 0.5,
   })
-  close(resizedWindow.width, expandedWindow.width * 0.5, 'corner resizing must preserve the center window aspect ratio')
+  close(resizedWindow.width, expandedWindow.width * 0.5, 'dragging a resize handle equally must preserve the center window aspect ratio')
   close(resizedWindow.softness, 2, 'shrinking the center window must widen softness instead of pulling the outer outline inward')
   close(resizedWindow.width * (1 + resizedWindow.softness), expandedWindow.width * (1 + expandedWindow.softness), 'shrinking the center window must preserve the absolute outer outline')
+  const reshapedWindow = componentControls.updateComponentFromDrag(expandedWindow, 'resize', { x: 0, y: 0 }, {
+    x: expandedWindow.centerX + expandedWindow.width / 2 / Math.SQRT2 * 0.75,
+    y: expandedWindow.centerY + expandedWindow.height / 2 / Math.SQRT2 * 0.25,
+  }, 2)
+  close(reshapedWindow.width, expandedWindow.width * 0.75, 'horizontal resize movement must update the ellipse width independently')
+  close(reshapedWindow.height, expandedWindow.height * 0.25, 'vertical resize movement must update the ellipse height independently')
+  const rotatedOutline = componentControls.componentOutline({ ...landscapeEllipse, rotation: 90 }, 1, 2)
+  close(
+    (Math.max(...rotatedOutline.map((point) => point.x)) - Math.min(...rotatedOutline.map((point) => point.x))) * 200,
+    20,
+    'rotated controls must preserve the ellipse short axis in source pixels',
+    0.1,
+  )
+  close(
+    (Math.max(...rotatedOutline.map((point) => point.y)) - Math.min(...rotatedOutline.map((point) => point.y))) * 100,
+    80,
+    'rotated controls must preserve the ellipse long axis in source pixels',
+    0.1,
+  )
   const unboundedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, { x: 10.5, y: 10.5 })
   assert.ok(unboundedWindow.softness > 10, 'the outer softness range must not have an artificial size cap')
   const hardBrush = new Uint8Array(25)

@@ -8,11 +8,12 @@ export function drawMaskComponentControls(
   component: VectorMaskComponent,
   toDisplay: (point: { x: number; y: number }) => { x: number; y: number },
   pixelRatio: number,
+  sourceAspect: number,
 ): void {
-  const outline = componentOutline(component).map(toDisplay)
+  const outline = componentOutline(component, 1, sourceAspect).map(toDisplay)
   const softness = component.type === 'linear-gradient' ? 0 : componentSoftness(component)
   const softnessOutlines = component.type !== 'linear-gradient' && softness > 0
-    ? componentSoftnessOutlines(component)
+    ? componentSoftnessOutlines(component, sourceAspect)
     : null
 
   context.save()
@@ -41,7 +42,12 @@ export function drawMaskComponentControls(
   context.lineWidth = 0.85 * pixelRatio
   context.stroke()
 
-  for (const handle of componentControlHandles(component)) {
+  const handles = componentControlHandles(component, sourceAspect)
+  const orderedHandles = [
+    ...handles.filter((handle) => handle.kind !== 'rotate'),
+    ...handles.filter((handle) => handle.kind === 'rotate'),
+  ]
+  for (const handle of orderedHandles) {
     const point = toDisplay(handle)
     context.beginPath()
     context.arc(point.x, point.y, (handle.kind === 'move' ? 4 : 5) * pixelRatio, 0, Math.PI * 2)
