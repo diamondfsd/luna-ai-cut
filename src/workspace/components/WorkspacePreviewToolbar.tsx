@@ -5,7 +5,8 @@ import type { WorkspacePreviewQuality } from '../../shared/types/settings'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
-import { createDefaultPipeline } from '../shared/editPipeline'
+import { createWorkspaceDefaultPipeline } from '../shared/workspaceDefaultPipeline'
+import { useApp } from '../../context/AppContext'
 import './WorkspacePreviewToolbar.css'
 
 export type WorkspaceViewScale = 'fit' | number
@@ -42,6 +43,7 @@ export function WorkspacePreviewToolbar({
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const mask = useWorkspaceMask()
+  const { settings } = useApp()
   const scalePercent = viewScale === 'fit' ? null : viewScale
   const currentScalePercent = scalePercent ?? fitScalePercent
 
@@ -51,17 +53,17 @@ export function WorkspacePreviewToolbar({
 
   function resetAdjustments(): void {
     const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
+    const defaultPipeline = createWorkspaceDefaultPipeline(settings)
     if (indices.size === 1 && indices.has(media.activeIndex)) {
-      edit.resetPipeline()
+      edit.resetPipeline(defaultPipeline)
       toast.success('已重置当前素材')
       return
     }
-    const defaultPipeline = createDefaultPipeline()
     if (!media.currentProject) {
       media.setTransientMedia((current) => current.map((asset, index) => (
         indices.has(index) ? { ...asset, pipeline: defaultPipeline } : asset
       )))
-      if (indices.has(media.activeIndex)) edit.resetPipeline()
+      if (indices.has(media.activeIndex)) edit.resetPipeline(defaultPipeline)
       toast.success(`已重置 ${indices.size} 个素材`)
       return
     }
@@ -74,7 +76,7 @@ export function WorkspacePreviewToolbar({
     }
     media.setCurrentProject(project)
     void window.luna.workspace.saveProject(project)
-    if (indices.has(media.activeIndex)) edit.resetPipeline()
+    if (indices.has(media.activeIndex)) edit.resetPipeline(defaultPipeline)
     toast.success(`已重置 ${indices.size} 个素材`)
   }
 

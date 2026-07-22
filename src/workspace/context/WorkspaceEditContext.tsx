@@ -43,7 +43,7 @@ interface WorkspaceEditValue {
   commitPatch: (patch: PipelinePatch, group?: HistoryGroup) => void
   applySystemUpdate: (update: (pipeline: EditPipeline) => EditPipeline) => void
   retainedMaskPaths: string[]
-  resetPipeline: () => void
+  resetPipeline: (pipeline?: EditPipeline) => void
   initializePipeline: (pipe: EditPipeline) => void
 
   // Active Tool

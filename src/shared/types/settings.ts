@@ -1,4 +1,4 @@
-import type { WatermarkSettings } from './watermark'
+import type { WatermarkPosition, WatermarkSettings } from './watermark'
 import type { CameraConnectionMode } from './cameraMediaSource'
 
 export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
@@ -21,6 +21,10 @@ export interface AppSettings {
   mockTcpPort?: number
   mockRateMbps?: number
   exportAppleLivePhoto?: boolean
+  /** 新素材与重置素材使用的默认水印开关。 */
+  defaultWatermarkEnabled?: boolean
+  /** 新素材与重置素材使用的默认水印位置。 */
+  defaultWatermarkPosition?: WatermarkPosition
   /** 工作台最近一次导入本地文件时使用的目录 */
   workspaceImportDir?: string
   /** 扩展 LUT 滤镜目录路径（.cube 文件目录树，按文件夹分组） */
