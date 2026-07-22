@@ -52,7 +52,7 @@ async function renderBorderThumb(
       mediaScale: 100,
       mediaOffsetX: 0,
       mediaOffsetY: 0,
-      shadowStrength: 100,
+      shadowStrength: 50,
       shadowBlur: 55,
       shadowOffsetY: 0,
     },
