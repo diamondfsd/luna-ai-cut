@@ -210,9 +210,18 @@ try {
   }
   const rotatedMask = componentRasterization.rasterizeVectorComponent(5, 5, rotatedRectangle)
   assert.ok(rotatedMask[2] > rotatedMask[10], 'shape rotation must affect rasterized geometry')
-  const featheredShape = componentRasterization.rasterizeVectorComponent(9, 9, { ...rotatedRectangle, type: 'ellipse', width: 0.8, height: 0.8, rotation: 0, feather: 0.5 })
-  assert.equal(featheredShape[13], 255, 'the inner power-window outline must remain a fully selected core')
-  assert.ok(featheredShape[40] > featheredShape[4] && featheredShape[4] > 0, 'the outer power-window outline must produce an outward soft transition')
+  const powerWindow = { ...rotatedRectangle, type: 'ellipse', width: 0.4, height: 0.4, rotation: 0, feather: 0, softness: 0.5 }
+  const featheredShape = componentRasterization.rasterizeVectorComponent(101, 101, powerWindow)
+  const centerRow = 50 * 101
+  assert.ok(featheredShape[centerRow + 50] >= 254, 'the region inside the inner softness outline must remain effectively fully selected')
+  assert.ok(featheredShape[centerRow + 70] >= 120 && featheredShape[centerRow + 70] <= 136, 'the center power-window outline must represent approximately 50% mask weight')
+  assert.ok(featheredShape[centerRow + 80] > featheredShape[centerRow + 81] && featheredShape[centerRow + 81] > 0, 'the practical outer outline must not introduce a hard zero boundary')
+  assert.equal(featheredShape[centerRow + 84], 0, 'the continuous softness tail must eventually fall below the stored mask precision')
+  assert.ok(
+    featheredShape[centerRow + 60] > featheredShape[centerRow + 70]
+      && featheredShape[centerRow + 70] > featheredShape[centerRow + 80],
+    'power-window softness must decay smoothly on both sides of the center outline',
+  )
   const invertedGradient = componentRasterization.rasterizeVectorComponent(4, 1, { ...linearGradient, inverted: true })
   assert.deepEqual([...invertedGradient], [223, 159, 96, 32], 'component inversion must invert soft weights')
   const composed = componentRasterization.composeMaskComponents(2, 1, [
@@ -239,17 +248,43 @@ try {
   assert.equal(componentControls.shouldShowComponentControls('radial-gradient', true), true, 'a radial draft must show its adjustment controls while drawing')
   assert.equal(componentControls.shouldShowComponentControls('move', false), true, 'a committed component must keep its selection frame in adjustment mode')
   assert.equal(componentControls.shouldShowComponentControls('brush', false), false, 'unrelated tools must not show stale component controls')
-  const featheredWindow = { ...rotatedRectangle, rotation: 0, feather: 0.25 }
-  const featherHandle = componentControls.componentControlHandles(featheredWindow).find((handle) => handle.kind === 'feather')
-  close(featherHandle.x, 0.925, 'the feather handle must use an even outward offset from a non-square core')
-  const featherOutline = componentControls.componentFeatherOutline(featheredWindow)
-  close(Math.max(...featherOutline.map((point) => point.x)) - (featheredWindow.centerX + featheredWindow.width / 2), 0.025, 'horizontal feather spacing must match the short-axis spacing')
-  close(Math.max(...featherOutline.map((point) => point.y)) - (featheredWindow.centerY + featheredWindow.height / 2), 0.025, 'vertical feather spacing must match the long-axis spacing')
-  const expandedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, { x: 1, y: 0.5 })
-  close(expandedWindow.feather, 1, 'dragging the outer handle must adjust feather without resizing the core')
-  close(expandedWindow.width, featheredWindow.width, 'dragging feather must preserve the core width')
-  const unboundedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, { x: 10.5, y: 0.5 })
-  assert.ok(unboundedWindow.feather > 20, 'the power-window feather range must not have an artificial size cap')
+  const featheredWindow = { ...rotatedRectangle, type: 'ellipse', rotation: 0, feather: 0, softness: 0.25 }
+  const controlHandles = componentControls.componentControlHandles(featheredWindow)
+  const featherHandles = controlHandles.filter((handle) => handle.kind === 'feather')
+  assert.equal(featherHandles.length, 4, 'a power window must expose softness handles on all four sides')
+  const resizeHandles = controlHandles.filter((handle) => handle.kind === 'resize')
+  assert.equal(resizeHandles.length, 4, 'a power window must expose four resize handles')
+  for (const handle of resizeHandles) {
+    close(
+      Math.hypot(
+        (handle.x - featheredWindow.centerX) / (featheredWindow.width / 2),
+        (handle.y - featheredWindow.centerY) / (featheredWindow.height / 2),
+      ),
+      1,
+      'ellipse resize handles must sit directly on the center outline',
+    )
+  }
+  assert.equal(controlHandles.some((handle) => handle.kind === 'move'), false, 'shape movement must not add an ambiguous center handle')
+  const softnessOutlines = componentControls.componentSoftnessOutlines(featheredWindow)
+  close(Math.max(...softnessOutlines.inner.map((point) => point.x)), featheredWindow.centerX + featheredWindow.width / 2 * 0.75, 'the inner outline must shrink from the center boundary by Soft 1')
+  close(Math.max(...softnessOutlines.outer.map((point) => point.x)), featheredWindow.centerX + featheredWindow.width / 2 * 1.25, 'the outer outline must expand from the center boundary by Soft 1')
+  close(Math.max(...softnessOutlines.outer.map((point) => point.y)), featheredWindow.centerY + featheredWindow.height / 2 * 1.25, 'softness outlines must preserve the ellipse aspect ratio')
+  const featherHandle = featherHandles[0]
+  const expandedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, {
+    x: featheredWindow.centerX,
+    y: featheredWindow.centerY - featheredWindow.height / 2 * 1.5,
+  })
+  close(expandedWindow.softness, 0.5, 'dragging any outer handle must update one uniform Soft 1 value')
+  close(expandedWindow.width, featheredWindow.width, 'dragging softness must preserve the center window width')
+  const resizedWindow = componentControls.updateComponentFromDrag(expandedWindow, 'resize', { x: 0, y: 0 }, {
+    x: expandedWindow.centerX + expandedWindow.width / 2 / Math.SQRT2 * 0.5,
+    y: expandedWindow.centerY + expandedWindow.height / 2 / Math.SQRT2 * 0.5,
+  })
+  close(resizedWindow.width, expandedWindow.width * 0.5, 'corner resizing must preserve the center window aspect ratio')
+  close(resizedWindow.softness, 2, 'shrinking the center window must widen softness instead of pulling the outer outline inward')
+  close(resizedWindow.width * (1 + resizedWindow.softness), expandedWindow.width * (1 + expandedWindow.softness), 'shrinking the center window must preserve the absolute outer outline')
+  const unboundedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, { x: 10.5, y: 10.5 })
+  assert.ok(unboundedWindow.softness > 10, 'the outer softness range must not have an artificial size cap')
   const hardBrush = new Uint8Array(25)
   const softBrush = new Uint8Array(25)
   manualRasterization.drawMaskBrush(hardBrush, 5, 5, 2, 2, 2, 0)
@@ -297,6 +332,35 @@ try {
   assert.equal(normalizedComponents[0].height, 0.0001)
   assert.equal(normalizedComponents[0].rotation, 270)
   assert.equal(normalizedComponents[0].feather, 2)
+
+  const migratedLegacySoftness = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    components: [{ ...rotatedRectangle, width: 0.8, height: 0.2, feather: 0.25 }],
+  }] }).colorMasks[0].components[0]
+  close(migratedLegacySoftness.softness, 0.15625, 'legacy short-axis feather distances must retain their approximate ellipse coverage')
+
+  const migratedDirectionalSoftness = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    components: [{ ...rotatedRectangle, width: 0.8, height: 0.2, feather: 0, featherX: 0.2, featherY: 0.05 }],
+  }] }).colorMasks[0].components[0]
+  close(migratedDirectionalSoftness.softness, 0.5, 'legacy directional feather distances must migrate to one uniform Soft 1 value')
+  assert.equal(migratedDirectionalSoftness.featherX, undefined, 'normalized projects must stop persisting obsolete directional softness')
+  const reopenedSoftness = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline(mergePipeline(createDefaultPipeline(), {
+    colorMasks: [{ ...legacy.colorMasks[0], components: [{ ...rotatedRectangle, softness: 0.75 }] }],
+  }))).colorMasks[0].components[0]
+  close(reopenedSoftness.softness, 0.75, 'Power Window softness must remain editable after reopening a project')
+  const migratedDefaultLayerFeather = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    feather: 2,
+    components: [{ ...rotatedRectangle, softness: 0.5 }],
+  }] }).colorMasks[0]
+  assert.equal(migratedDefaultLayerFeather.feather, 0, 'vector component masks must not retain a second layer-level feather pass')
+  const normalizedExplicitVectorFeather = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    feather: 27,
+    components: [{ ...rotatedRectangle, softness: 0.5 }],
+  }] }).colorMasks[0]
+  assert.equal(normalizedExplicitVectorFeather.feather, 0, 'vector component masks must use only their continuous component softness')
 
   const mixedModelComponents = mergePipeline(createDefaultPipeline(), { colorMasks: [{
     ...legacy.colorMasks[0],

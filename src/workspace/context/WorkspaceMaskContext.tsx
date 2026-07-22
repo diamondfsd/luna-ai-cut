@@ -373,7 +373,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
         result.width,
         result.height,
         data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
-        operationMask?.feather ?? 2,
+        operationMask?.feather ?? 0,
       )
       if (!isCurrentOperation(operation)) return
       setMaskSize({ width: result.width, height: result.height })
@@ -409,13 +409,14 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
         height: operationMask.height,
       }] : []
       const existingComponents = operationMask?.components ?? legacyComponents
+      const layerComponents = component.operation === 'replace' ? [component] : [...existingComponents, component]
       const layer: ColorMaskLayer = {
           path: saved.path,
           width: saved.width,
           height: saved.height,
           opacity: operationMask?.opacity ?? 1,
           inverted: operationMask?.inverted ?? false,
-          feather: operationMask?.feather ?? 2,
+          feather: layerComponents.some((item) => item.type !== 'raster') ? 0 : operationMask?.feather ?? 0,
           kind: 'semantic',
           classId: result.classId,
           className: result.className,
@@ -427,7 +428,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
           loadError: undefined,
           blendMode: operationMask?.blendMode ?? 'normal',
           color: operationMask?.color ?? createDefaultPipeline().color,
-          components: component.operation === 'replace' ? [component] : [...existingComponents, component],
+          components: layerComponents,
       }
       const nextLayers = mergeCompletedColorMaskLayer(colorMasksRef.current, operationMask?.id ?? null, layer)
       if (nextLayers === colorMasksRef.current) return

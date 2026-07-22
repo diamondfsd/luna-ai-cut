@@ -43,8 +43,13 @@ export interface ColorMaskShapeComponent extends ColorMaskComponentBase {
   width: number
   height: number
   rotation: number
-  /** 外圈相对核心形状的扩张比例；核心内为 100%，外圈外为 0%。 */
+  /** 旧项目的统一外扩比例。 */
   feather: number
+  /** Power Window 柔化比例；以中间轮廓为 50%，同时向内、向外扩展。 */
+  softness?: number
+  /** 旧版外圈横向、纵向扩展，仅用于项目迁移。 */
+  featherX?: number
+  featherY?: number
 }
 
 export interface ColorMaskLinearGradientComponent extends ColorMaskComponentBase {

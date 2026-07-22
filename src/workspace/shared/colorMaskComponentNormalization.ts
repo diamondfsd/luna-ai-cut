@@ -75,14 +75,26 @@ export function normalizeColorMaskComponent(input: ColorMaskComponent): ColorMas
     }
   }
   if (input.type !== 'rectangle' && input.type !== 'ellipse' && input.type !== 'radial-gradient') return null
+  const width = Math.max(0.0001, normalizeFiniteNumber(input.width, 0.0001))
+  const height = Math.max(0.0001, normalizeFiniteNumber(input.height, 0.0001))
+  const legacySoftness = input.featherX !== undefined || input.featherY !== undefined
+    ? ((Math.max(0, normalizeFiniteNumber(input.featherX, 0)) / (width / 2))
+      + (Math.max(0, normalizeFiniteNumber(input.featherY, 0)) / (height / 2))) / 2
+    : (() => {
+        const distance = Math.max(0, normalizeFiniteNumber(input.feather, 0)) * Math.min(width, height) / 2
+        return (distance / (width / 2) + distance / (height / 2)) / 2
+      })()
   return {
     ...common,
     type: input.type,
     centerX: normalizeFiniteNumber(input.centerX, 0.5),
     centerY: normalizeFiniteNumber(input.centerY, 0.5),
-    width: Math.max(0.0001, normalizeFiniteNumber(input.width, 0.0001)),
-    height: Math.max(0.0001, normalizeFiniteNumber(input.height, 0.0001)),
+    width,
+    height,
     rotation: ((Number(input.rotation) || 0) % 360 + 360) % 360,
     feather: Math.max(0, normalizeFiniteNumber(input.feather, 0)),
+    softness: input.softness === undefined
+      ? legacySoftness
+      : Math.max(0, normalizeFiniteNumber(input.softness, legacySoftness)),
   }
 }

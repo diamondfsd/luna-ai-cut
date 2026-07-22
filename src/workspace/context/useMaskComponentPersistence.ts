@@ -100,6 +100,7 @@ export function useMaskComponentPersistence(options: Options) {
   const saveFinalMask = useCallback(async (data: Uint8Array, components: ColorMaskComponent[] | undefined, nextActiveComponentId: string | null) => {
     if (!projectId || !assetId || !maskSize) throw new Error('请先在项目中打开一张图片')
     const operationMask = activeMask
+    const feather = components?.some((component) => component.type !== 'raster') ? 0 : operationMask?.feather ?? 0
     const operation = beginOperation('save', projectId, assetId)
     try {
       const saved = await window.luna.workspace.saveColorMask(
@@ -108,7 +109,7 @@ export function useMaskComponentPersistence(options: Options) {
         maskSize.width,
         maskSize.height,
         data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
-        operationMask?.feather ?? 2,
+        feather,
       )
       if (!isCurrentOperation(operation)) return
       setMaskData(new Uint8Array(data))
@@ -119,7 +120,7 @@ export function useMaskComponentPersistence(options: Options) {
         height: saved.height,
         opacity: operationMask?.opacity ?? 1,
         inverted: operationMask?.inverted ?? false,
-        feather: operationMask?.feather ?? 2,
+        feather,
         kind: operationMask?.kind ?? 'brush',
         classId: operationMask?.classId,
         className: operationMask?.className,

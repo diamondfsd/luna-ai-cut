@@ -54,6 +54,7 @@ export function MaskPanel() {
   const media = useWorkspaceMedia()
   const isVideo = media.activeMedia?.kind === 'video'
   const settings = mask.activeMask
+  const hasVectorComponents = settings?.components?.some((component) => component.type !== 'raster') ?? false
   const initialTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === settings?.targetId || target.classId === settings?.classId)?.id ?? 'sky'
   const [targetId, setTargetId] = useState<AutomaticSegmentationTargetId>(initialTarget)
   const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
@@ -370,15 +371,17 @@ export function MaskPanel() {
       <section className="workspace-mask-edge-section">
         <h3 className="workspace-mask-section-heading">边缘</h3>
         <div className="workspace-mask-editor-section">
-          <ParamSlider
-            label="羽化"
-            value={settings?.feather ?? 2}
-            min={0}
-            max={100}
-            onChange={(feather) => mask.updateGroupedMaskSettings({ feather }, 'feather')}
-            onCommit={(feather) => mask.updateGroupedMaskSettings({ feather }, 'feather', true)}
-            formatValue={(value) => `${Math.round(value)}`}
-          />
+          {!hasVectorComponents && (
+            <ParamSlider
+              label="整体柔化"
+              value={settings?.feather ?? 0}
+              min={0}
+              max={100}
+              onChange={(feather) => mask.updateGroupedMaskSettings({ feather }, 'feather')}
+              onCommit={(feather) => mask.updateGroupedMaskSettings({ feather }, 'feather', true)}
+              formatValue={(value) => `${Math.round(value)}`}
+            />
+          )}
           <ParamSlider
             label="不透明度"
             value={Math.round((settings?.opacity ?? 1) * 100)}
