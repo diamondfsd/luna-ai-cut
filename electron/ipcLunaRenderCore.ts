@@ -25,7 +25,7 @@ import * as exportTaskService from './exportTaskService'
 import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { RUNTIME_RESOURCE_DEFINITIONS } from './runtimeResourceDefinitions'
 import { loadRuntimeResource } from './runtimeResourceService'
-import { embedVideoSourceMetadata } from './exportSourceMetadata'
+import { embedJpegSourceMetadata, embedVideoSourceMetadata } from './exportSourceMetadata'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
@@ -193,6 +193,14 @@ export function register(ctx: RegisterContext): void {
       }
 
       await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition: await resolveRuntimePaths(composition), format, quality })
+      const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
+        ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
+      await embedJpegSourceMetadata(outputPath, sourcePath).catch((error) => {
+        logMainWarn('[导出] 无法写入图片来源信息', {
+          outputPath,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
 
       if (exportTaskId && exportItemId) {
         _event.sender?.send('export:progress', {
