@@ -208,7 +208,7 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
     let layerFeather = layer.type === 'shape' ? layer.feather : undefined
     if (isBlurredPhotoCard && layer.id === 'photo-shadow' && scaledPhotoRect) {
       const minCanvasSide = Math.max(1, Math.min(canvasWidth, canvasHeight))
-      const spreadPixels = minCanvasSide * (0.01 + border.shadowBlur / 100 * 0.06)
+      const spreadPixels = minCanvasSide * (0.01 + border.shadowBlur / 100 * 0.06) * 2
       const spreadX = spreadPixels / Math.max(1, canvasWidth)
       const spreadY = spreadPixels / Math.max(1, canvasHeight)
       layerRect = {
@@ -217,16 +217,18 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
         w: scaledPhotoRect.w + spreadX * 2,
         h: scaledPhotoRect.h + spreadY * 2,
       }
-      layerOpacity = border.shadowStrength / 100
+      layerOpacity = clamp(border.shadowStrength / 100 * 1.5, 0, 1)
       const photoRadius = photoLayer && 'cornerRadius' in photoLayer ? photoLayer.cornerRadius ?? 0 : 0
       const photoMinSide = Math.min(scaledPhotoRect.w * canvasWidth, scaledPhotoRect.h * canvasHeight)
       const shadowMinSide = Math.min(layerRect.w * canvasWidth, layerRect.h * canvasHeight)
       layerCornerRadius = (photoRadius * photoMinSide + spreadPixels) / Math.max(1, shadowMinSide)
       layerFeather = spreadPixels / Math.max(1, shadowMinSide)
     }
-    const h = Math.min(1, layerRect.h * scale)
+    const isBlurredPhotoShadow = isBlurredPhotoCard && layer.id === 'photo-shadow'
+    const h = isBlurredPhotoShadow ? layerRect.h * scale : Math.min(1, layerRect.h * scale)
+    const dstY = 1 - (1 - layerRect.y) * scale
     const common = {
-      filePath: '', dstX: layerRect.x, dstY: Math.max(0, 1 - (1 - layerRect.y) * scale), dstW: layerRect.w, dstH: h,
+      filePath: '', dstX: layerRect.x, dstY: isBlurredPhotoShadow ? dstY : Math.max(0, dstY), dstW: layerRect.w, dstH: h,
       srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: layerOpacity * border.opacity / 100, zIndex: layer.zIndex,
     }
     if (layer.type === 'media') {
