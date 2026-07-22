@@ -6,7 +6,7 @@ import { IconButton, Input, SearchField, Switch } from '../../ui'
 import { ParamSlider } from '../components/ParamSlider'
 import { DEFAULT_PIPELINE, type EditPipeline } from '../shared/editPipeline'
 import { BorderItem } from './BorderItem'
-import { FRAME_PRESETS } from './buildBorderLayer'
+import { findFramePreset, framePresetDefaultSettings, FRAME_PRESETS } from './borderPresets'
 import '../../styles/workspace-border.css'
 
 interface BorderPanelProps {
@@ -51,20 +51,13 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
   }, [mediaPath, value.enabled, value.presetId])
 
   const selectPreset = (presetId: string) => {
-    const preset = FRAME_PRESETS.find((item) => item.id === presetId)
+    const preset = findFramePreset(presetId)
     onChange({
+      ...DEFAULT_PIPELINE.border,
       enabled: true,
       presetId,
       ...presetColors(presetId),
-      ...(preset?.defaultTitle ? { title: preset.defaultTitle } : {}),
-      ...(presetId === 'blurred-photo-card' ? { frameSize: 104 } : {}),
-      mediaScale: 100,
-      mediaOffsetX: 0,
-      mediaOffsetY: 0,
-      shadowStrength: DEFAULT_PIPELINE.border.shadowStrength,
-      shadowBlur: presetId === 'blurred-photo-card' ? 20 : DEFAULT_PIPELINE.border.shadowBlur,
-      shadowOffsetY: DEFAULT_PIPELINE.border.shadowOffsetY,
-      showDate: true,
+      ...framePresetDefaultSettings(preset?.id),
     })
     setView('edit')
   }
@@ -74,8 +67,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
     enabled: true,
     presetId: value.presetId,
     ...presetColors(value.presetId),
-    ...(activePreset?.defaultTitle ? { title: activePreset.defaultTitle } : {}),
-    ...(activePreset?.id === 'blurred-photo-card' ? { frameSize: 104, shadowStrength: 50, shadowBlur: 20 } : {}),
+    ...framePresetDefaultSettings(activePreset?.id),
   })
 
   if (view === 'edit' && activePreset) {

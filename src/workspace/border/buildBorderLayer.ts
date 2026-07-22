@@ -1,31 +1,10 @@
-import type { DeclarativeCompositionLayer, FramePreset, MediaMetadata, PreviewLayer } from '../../shared/types'
+import type { DeclarativeCompositionLayer, MediaMetadata, PreviewLayer } from '../../shared/types'
 import { isVideoPath } from '../../lib/fileUtils'
 import type { BorderSettings } from '../shared/editPipeline'
 import { getBorderLogo } from './logoAssets'
+import { FRAME_PRESETS } from './borderPresets'
 
-type PresetModuleValue = FramePreset | PresetModuleValue[] | { default?: PresetModuleValue }
-
-const presetModules = import.meta.glob<PresetModuleValue>('./presets/*.json', {
-  eager: true,
-  import: 'default',
-})
-
-function normalizePresets(value: PresetModuleValue | undefined): FramePreset[] {
-  if (!value) return []
-  if (Array.isArray(value)) return value.flatMap(normalizePresets)
-  if ('default' in value && value.default) return normalizePresets(value.default)
-  const candidate = value as Partial<FramePreset>
-  if (typeof candidate.id === 'string' && typeof candidate.name === 'string' && Array.isArray(candidate.layers)) {
-    return [candidate as FramePreset]
-  }
-  console.warn('[FramePreset] 已忽略格式不正确的预设', value)
-  return []
-}
-
-/** 支持单对象、数组及嵌套数组。文件按名称排序，数组保持文件内顺序。 */
-export const FRAME_PRESETS = Object.entries(presetModules)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .flatMap(([, preset]) => normalizePresets(preset))
+export { FRAME_PRESETS } from './borderPresets'
 
 function metadataVariables(metadata: MediaMetadata | null, title: string): Record<string, string> {
   const values = new Map<string, string>()

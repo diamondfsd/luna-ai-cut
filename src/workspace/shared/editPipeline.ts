@@ -3,6 +3,7 @@ import { EDIT_PARAMETER_RANGES, clampNumber } from './editParameterRanges'
 import type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
 import { normalizeColorMaskComponent } from './colorMaskComponentNormalization'
 import { normalizeMaskTrack } from '../mask/maskTrack'
+import { framePresetDefaultSettings } from '../border/borderPresets'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskDynamicSource, ColorMaskLayer, ColorMaskRef, ColorMaskSegmentationSource, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
 export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
@@ -475,23 +476,24 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
   const value = input as (Partial<BorderSettings> & { bottomColor?: unknown }) | undefined
   const legacyColor = typeof value?.bottomColor === 'string' ? value.bottomColor : undefined
   const isBlurredPhotoCard = value?.presetId === 'blurred-photo-card'
-  const frameSize = isBlurredPhotoCard && (Number(value?.frameSize ?? 100) === 70 || Number(value?.frameSize ?? 100) === 100)
-    ? 104
-    : Number(value?.frameSize ?? 100)
-  const shadowBlur = Number(value?.shadowBlur ?? (isBlurredPhotoCard ? 20 : 50))
-  const shadowStrength = Number(value?.shadowStrength ?? 50)
+  const presetDefaults = framePresetDefaultSettings(value?.presetId)
+  const frameSize = Number(value?.frameSize ?? presetDefaults.frameSize ?? 100)
+  const shadowBlur = Number(value?.shadowBlur ?? presetDefaults.shadowBlur ?? 50)
+  const shadowStrength = Number(value?.shadowStrength ?? presetDefaults.shadowStrength ?? 50)
   const shadowOffsetY = value?.presetId === 'blurred-photo-card' ? 0 : Number(value?.shadowOffsetY ?? 0)
   return {
     ...DEFAULT_PIPELINE.border,
+    ...presetDefaults,
     ...value,
     presetId: typeof value?.presetId === 'string' ? value.presetId : DEFAULT_PIPELINE.border.presetId,
     frameSize: clampNumber(frameSize, { min: 70, max: isBlurredPhotoCard ? 110 : 135 }),
-    backgroundColor: typeof value?.backgroundColor === 'string' ? value.backgroundColor : legacyColor ?? DEFAULT_PIPELINE.border.backgroundColor,
-    textColor: typeof value?.textColor === 'string' ? value.textColor : DEFAULT_PIPELINE.border.textColor,
-    opacity: clampNumber(Number(value?.opacity ?? 100), { min: 0, max: 100 }),
-    mediaScale: clampNumber(Number(value?.mediaScale ?? 100), { min: 70, max: 160 }),
-    mediaOffsetX: clampNumber(Number(value?.mediaOffsetX ?? 0), { min: -50, max: 50 }),
-    mediaOffsetY: clampNumber(Number(value?.mediaOffsetY ?? 0), { min: -50, max: 50 }),
+    backgroundColor: typeof value?.backgroundColor === 'string' ? value.backgroundColor : legacyColor ?? presetDefaults.backgroundColor ?? DEFAULT_PIPELINE.border.backgroundColor,
+    textColor: typeof value?.textColor === 'string' ? value.textColor : presetDefaults.textColor ?? DEFAULT_PIPELINE.border.textColor,
+    opacity: clampNumber(Number(value?.opacity ?? presetDefaults.opacity ?? 100), { min: 0, max: 100 }),
+    title: typeof value?.title === 'string' ? value.title : presetDefaults.title ?? DEFAULT_PIPELINE.border.title,
+    mediaScale: clampNumber(Number(value?.mediaScale ?? presetDefaults.mediaScale ?? 100), { min: 70, max: 160 }),
+    mediaOffsetX: clampNumber(Number(value?.mediaOffsetX ?? presetDefaults.mediaOffsetX ?? 0), { min: -50, max: 50 }),
+    mediaOffsetY: clampNumber(Number(value?.mediaOffsetY ?? presetDefaults.mediaOffsetY ?? 0), { min: -50, max: 50 }),
     shadowStrength: clampNumber(shadowStrength, { min: 0, max: 100 }),
     shadowBlur: clampNumber(shadowBlur, { min: 0, max: 100 }),
     shadowOffsetY: clampNumber(shadowOffsetY, { min: -30, max: 30 }),
