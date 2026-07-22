@@ -57,7 +57,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
       presetId,
       ...presetColors(presetId),
       ...(preset?.defaultTitle ? { title: preset.defaultTitle } : {}),
-      ...(presetId === 'blurred-photo-card' ? { frameSize: 100 } : {}),
+      ...(presetId === 'blurred-photo-card' ? { frameSize: 70, shadowBlur: 50 } : {}),
       mediaScale: 100,
       mediaOffsetX: 0,
       mediaOffsetY: 0,
@@ -75,6 +75,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
     presetId: value.presetId,
     ...presetColors(value.presetId),
     ...(activePreset?.defaultTitle ? { title: activePreset.defaultTitle } : {}),
+    ...(activePreset?.id === 'blurred-photo-card' ? { frameSize: 70, shadowBlur: 50 } : {}),
   })
 
   if (view === 'edit' && activePreset) {

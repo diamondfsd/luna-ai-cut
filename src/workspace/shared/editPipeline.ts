@@ -237,7 +237,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     mediaOffsetX: 0,
     mediaOffsetY: 0,
     shadowStrength: 50,
-    shadowBlur: 55,
+    shadowBlur: 50,
     shadowOffsetY: 0,
   },
 }
@@ -474,9 +474,16 @@ function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef
 function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSettings {
   const value = input as (Partial<BorderSettings> & { bottomColor?: unknown }) | undefined
   const legacyColor = typeof value?.bottomColor === 'string' ? value.bottomColor : undefined
+  const isBlurredPhotoCard = value?.presetId === 'blurred-photo-card'
+  const frameSize = isBlurredPhotoCard && Number(value?.frameSize ?? 100) === 100
+    ? 70
+    : Number(value?.frameSize ?? 100)
+  const shadowBlur = isBlurredPhotoCard && Number(value?.shadowBlur ?? 55) === 55
+    ? 50
+    : Number(value?.shadowBlur ?? 50)
   const shadowStrength = value?.presetId === 'blurred-photo-card'
     && (Number(value.shadowStrength) === 46 || Number(value.shadowStrength) === 92 || Number(value.shadowStrength) === 100)
-    && Number(value.shadowBlur ?? 55) === 55
+    && (Number(value.shadowBlur ?? 55) === 55 || shadowBlur === 50)
     ? 50
     : Number(value?.shadowStrength ?? 50)
   const shadowOffsetY = value?.presetId === 'blurred-photo-card' ? 0 : Number(value?.shadowOffsetY ?? 0)
@@ -484,7 +491,7 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
     ...DEFAULT_PIPELINE.border,
     ...value,
     presetId: typeof value?.presetId === 'string' ? value.presetId : DEFAULT_PIPELINE.border.presetId,
-    frameSize: clampNumber(Number(value?.frameSize ?? 100), { min: 70, max: 135 }),
+    frameSize: clampNumber(frameSize, { min: 70, max: 135 }),
     backgroundColor: typeof value?.backgroundColor === 'string' ? value.backgroundColor : legacyColor ?? DEFAULT_PIPELINE.border.backgroundColor,
     textColor: typeof value?.textColor === 'string' ? value.textColor : DEFAULT_PIPELINE.border.textColor,
     opacity: clampNumber(Number(value?.opacity ?? 100), { min: 0, max: 100 }),
@@ -492,7 +499,7 @@ function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSett
     mediaOffsetX: clampNumber(Number(value?.mediaOffsetX ?? 0), { min: -50, max: 50 }),
     mediaOffsetY: clampNumber(Number(value?.mediaOffsetY ?? 0), { min: -50, max: 50 }),
     shadowStrength: clampNumber(shadowStrength, { min: 0, max: 100 }),
-    shadowBlur: clampNumber(Number(value?.shadowBlur ?? 55), { min: 0, max: 100 }),
+    shadowBlur: clampNumber(shadowBlur, { min: 0, max: 100 }),
     shadowOffsetY: clampNumber(shadowOffsetY, { min: -30, max: 30 }),
   }
 }
