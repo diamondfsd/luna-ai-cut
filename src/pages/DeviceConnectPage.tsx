@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Check, CheckCircle2, Copy, HelpCircle, MonitorCog, PlugZap, RefreshCw } from 'lucide-react'
+import { Cable, Check, CheckCircle2, Copy, FolderOpen, HelpCircle, MonitorCog, PlugZap, RefreshCw, Wifi } from 'lucide-react'
 
-import type { AppSettings, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition } from '../shared/types'
-import { Alert, Button } from '../ui'
+import type { AppSettings, CameraConnectionMode, ConnectionStatus, DeviceConnectionPhase, DeviceDefinition } from '../shared/types'
+import { Alert, Button, SegmentedControl } from '../ui'
 import { HelpDialog } from '../components/HelpDialog'
 import '../styles/wifi.css'
 import lunaIcon from '../../public/luna-icon.png'
@@ -13,6 +13,9 @@ interface DeviceConnectPageProps {
   phase: DeviceConnectionPhase
   settings: AppSettings | null
   onConnect: () => Promise<void>
+  connectionMode: CameraConnectionMode
+  onConnectionModeChange: (mode: CameraConnectionMode) => Promise<void>
+  onChooseWiredCamera: () => Promise<void>
 }
 
 export function DeviceConnectPage({
@@ -21,6 +24,9 @@ export function DeviceConnectPage({
   phase,
   settings,
   onConnect,
+  connectionMode,
+  onConnectionModeChange,
+  onChooseWiredCamera,
 }: DeviceConnectPageProps) {
   const [connecting, setConnecting] = useState(false)
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false)
@@ -30,6 +36,7 @@ export function DeviceConnectPage({
   const isChecking = phase === 'checking'
   const isError = phase === 'error'
   const deviceName = activeDevice?.name ?? '设备'
+  const isWired = connectionMode === 'wired'
   const deviceInfo = connection?.deviceInfo
   const infoRows = [
     ['设备', deviceInfo?.deviceName],
@@ -110,22 +117,33 @@ export function DeviceConnectPage({
           <img src={lunaIcon} alt="Luna" className="device-connect-logo" />
         </div>
 
-        <h1>{isChecking ? `正在连接 ${deviceName}` : isError ? `未连接 ${deviceName}` : `连接 ${deviceName}`}</h1>
+        <SegmentedControl
+          className="device-connect-mode"
+          ariaLabel="相机连接方式"
+          value={connectionMode}
+          options={[
+            { value: 'wireless', label: <><Wifi size={14} />无线</> },
+            { value: 'wired', label: <><Cable size={14} />有线</> },
+          ]}
+          onChange={(mode) => void onConnectionModeChange(mode as CameraConnectionMode)}
+        />
+
+        <h1>{isChecking ? `正在${isWired ? '检测' : '连接'} ${deviceName}` : isError ? `未连接 ${deviceName}` : `${isWired ? '有线连接' : '无线连接'} ${deviceName}`}</h1>
 
         {isError && connection?.message ? (
           <Alert variant="error" message={connection.message} />
         ) : (
           <p className="device-connect-desc">
             {isChecking
-              ? '正在 检测 Wi-Fi 服务并建立控制会话'
-              : connection?.message ?? ''}
+              ? isWired ? '正在检测相机磁盘和素材目录' : '正在检测 Wi-Fi 服务并建立控制会话'
+              : connection?.message ?? (isWired ? '连接相机数据线后，检测已挂载的相机磁盘' : '')}
           </p>
         )}
 
         <div className="device-connect-meta">
           <span>
             <PlugZap size={14} />
-            {settings?.cameraHost ?? activeDevice?.defaultHost ?? '未配置'}
+            {isWired ? settings?.mountedCameraRoot || '等待检测相机磁盘' : settings?.cameraHost ?? activeDevice?.defaultHost ?? '未配置'}
           </span>
           {connection?.httpOk && connection.controlOk && (
             <span>
@@ -135,7 +153,7 @@ export function DeviceConnectPage({
           )}
         </div>
 
-        {infoRows.length > 0 && (
+        {!isWired && infoRows.length > 0 && (
           <dl className="device-info-grid">
             {infoRows.map(([label, value]) => (
               <div key={label} className="device-info-row">
@@ -146,7 +164,7 @@ export function DeviceConnectPage({
           </dl>
         )}
 
-        {isError && (
+        {isError && !isWired && (
           <div className="device-connect-diagnostics">
             <div className="device-connect-diagnostics-header">
               <p className="device-connect-section-title">连接诊断</p>
@@ -186,16 +204,24 @@ export function DeviceConnectPage({
             variant="primary"
             onClick={handleConnect}
             disabled={connecting || isChecking}
-            icon={connecting || isChecking ? <RefreshCw className="spin" size={16} /> : <RefreshCw size={16} />}
+            icon={connecting || isChecking ? <RefreshCw className="spin" size={16} /> : isWired ? <Cable size={16} /> : <RefreshCw size={16} />}
           >
-            {isError ? '重新连接' : '开始连接'}
+            {isWired ? '检测并连接' : isError ? '重新连接' : '开始连接'}
           </Button>
-          <Button variant="secondary" onClick={() => window.luna.openWifiSettings()} icon={<MonitorCog size={16} />}>
-            打开 Wi-Fi 设置
-          </Button>
+          {isWired ? (
+            <Button variant="secondary" onClick={() => void onChooseWiredCamera()} icon={<FolderOpen size={16} />}>
+              选择相机磁盘
+            </Button>
+          ) : (
+            <Button variant="secondary" onClick={() => window.luna.openWifiSettings()} icon={<MonitorCog size={16} />}>
+              打开 Wi-Fi 设置
+            </Button>
+          )}
         </div>
         <p className="device-connect-tip">
-          设备 Wi-Fi 可能无互联网；下载完成后建议切回自己的网络
+          {isWired
+            ? '请在相机上选择磁盘或 U 盘模式；删除相机素材前会再次确认'
+            : '设备 Wi-Fi 可能无互联网；下载完成后建议切回自己的网络'}
         </p>
         <div className="device-connect-help">
           <HelpDialog>

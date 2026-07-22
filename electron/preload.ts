@@ -75,6 +75,15 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   openDevTools: () => ipcRenderer.invoke('devtools:open'),
   scanBluetoothDevices: (timeoutMs?: number) => ipcRenderer.invoke('bluetooth:scanNative', timeoutMs),
   cancelBluetoothScan: () => ipcRenderer.invoke('bluetooth:cancelScan'),
+  cameraSource: {
+    detectMounted: () => ipcRenderer.invoke('camera-source:detect-mounted'),
+    chooseMounted: () => ipcRenderer.invoke('camera-source:choose-mounted'),
+    connect: (options) => ipcRenderer.invoke('camera-source:connect', options),
+    check: (options) => ipcRenderer.invoke('camera-source:check', options),
+    listFiles: (options) => ipcRenderer.invoke('camera-source:list-files', options),
+    deleteFiles: (files, options) => ipcRenderer.invoke('camera-source:delete-files', files, options),
+    disconnect: (options) => ipcRenderer.invoke('camera-source:disconnect', options),
+  },
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),
   listFiles: (host?: string, storageId?: string) => ipcRenderer.invoke('luna:listFiles', host, storageId),
@@ -277,7 +286,7 @@ const lunaRenderCoreApi = {
     ipcRenderer.invoke('lrc:loadTexture', data, width, height),
   updateTexture: (textureId: number, data: Buffer) =>
     ipcRenderer.invoke('lrc:updateTexture', textureId, data),
-  renderFrame: (canvasWidth: number, canvasHeight: number, layers: any[]) =>
+  renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[]) =>
     ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
   releaseTexture: (textureId: number) =>
     ipcRenderer.invoke('lrc:releaseTexture', textureId),

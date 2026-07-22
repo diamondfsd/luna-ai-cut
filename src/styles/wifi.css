@@ -15,6 +15,34 @@
   text-align: center;
 }
 
+.device-connect-mode {
+  display: grid;
+  grid-template-columns: repeat(2, 112px);
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--canvas);
+}
+
+.device-connect-mode button {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.device-connect-mode button.active {
+  background: var(--ink);
+  color: var(--canvas);
+}
+
 .device-connect-icon {
   display: grid;
   width: 96px;

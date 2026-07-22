@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 
-import type { AppSettings, LunaFile } from '../shared/types'
+import type { AppSettings, CameraConnectionMode, LunaFile } from '../shared/types'
 import { toast } from '../ui'
 
 interface CameraMediaDeleteProps {
   selectedFiles: LunaFile[]
   settings: AppSettings | null
+  sourceMode: CameraConnectionMode
   setSelected: Dispatch<SetStateAction<Set<string>>>
   reload: () => Promise<void>
 }
 
-export function useCameraMediaDelete({ selectedFiles, settings, setSelected, reload }: CameraMediaDeleteProps) {
+export function useCameraMediaDelete({ selectedFiles, settings, sourceMode, setSelected, reload }: CameraMediaDeleteProps) {
   const [showCameraDeleteDialog, setShowCameraDeleteDialog] = useState(false)
   const [deletingCameraFiles, setDeletingCameraFiles] = useState(false)
   const [cameraDeleteError, setCameraDeleteError] = useState<string | null>(null)
@@ -21,14 +22,19 @@ export function useCameraMediaDelete({ selectedFiles, settings, setSelected, rel
     setDeletingCameraFiles(true)
     setCameraDeleteError(null)
     try {
-      const result = await window.luna.deleteCameraFiles(selectedFiles, settings.cameraHost)
+      const result = await window.luna.cameraSource.deleteFiles(selectedFiles, {
+        mode: sourceMode,
+        deviceId: settings.activeDeviceId,
+        host: settings.cameraHost,
+        rootPath: settings.mountedCameraRoot,
+      })
       if (result.failed.length > 0) {
-        setCameraDeleteError(`${result.failed.length} 个相机文件未能删除，请刷新后重试`)
+        setCameraDeleteError(`${result.failed.length} 个关联文件未能删除，请刷新后重试`)
       }
       setSelected(new Set())
       setShowCameraDeleteDialog(false)
       await reload()
-      toast.success(`删除完成：${selectedFiles.length} 个素材`)
+      if (result.deleted.length > 0) toast.success(`已删除 ${result.deleted.length} 个相机文件`)
     } catch (error) {
       setCameraDeleteError(error instanceof Error ? error.message : String(error))
       setSelected(new Set())

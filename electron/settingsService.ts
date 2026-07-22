@@ -42,6 +42,8 @@ function defaultSettings(): AppSettings {
     exportDir: defaultExportDir(),
     cacheDir: cacheDir(),
     cameraHost: DEFAULT_DEVICE.defaultHost,
+    cameraConnectionMode: 'wireless',
+    mountedCameraRoot: '',
     activeDeviceId: DEFAULT_DEVICE.id,
     deviceStorage: { [DEFAULT_DEVICE.id]: 'all' },
     developerMode: false,
