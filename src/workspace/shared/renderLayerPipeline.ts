@@ -114,9 +114,74 @@ export function applyLocalColorToSourceMediaLayers(
   sourcePath: string,
   pipeline: EditPipeline,
 ): PreviewLayer[] {
+  const sourceLayers = layers.filter((layer) => (
+    layer.layerType === 'media' && layer.filePath === sourcePath
+  ))
+  const hasBlurredBackground = sourceLayers.some((layer) => layer.layoutRole === 'background')
+  if (hasBlurredBackground) {
+    const contentLayer = sourceLayers.find((layer) => layer.layoutRole === 'content')
+      ?? sourceLayers.find((layer) => layer.layoutRole !== 'background')
+    if (!contentLayer) return layers
+
+    const precomposeGroup = 'framed-source-color'
+    const inputBase: PreviewLayer = {
+      ...contentLayer,
+      layoutRole: undefined,
+      precomposeGroup,
+      precomposeRole: 'input',
+      fit: 'stretch',
+      dstX: 0,
+      dstY: 0,
+      dstW: 1,
+      dstH: 1,
+      srcX: 0,
+      srcY: 0,
+      srcW: 1,
+      srcH: 1,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: 0,
+      reveal: undefined,
+      pixelStretch: undefined,
+      cornerRadius: undefined,
+      transform: {
+        crop: null,
+        orientation: 0,
+        rotate: 0,
+        flipH: false,
+        flipV: false,
+        scale: 1,
+        translateX: 0,
+        translateY: 0,
+      },
+      positioning: undefined,
+    }
+    const inputs = [
+      inputBase,
+      ...buildLocalColorLayers(inputBase, pipeline).map((layer, index) => ({
+        ...layer,
+        precomposeGroup,
+        precomposeRole: 'input' as const,
+        zIndex: index + 1,
+      })),
+    ]
+    const outputs = layers.map((layer) => {
+      if (layer.layerType !== 'media' || layer.filePath !== sourcePath) return layer
+      return {
+        ...layer,
+        precomposeGroup,
+        precomposeRole: 'output' as const,
+        color: layer.layoutRole === 'background' ? layer.color : undefined,
+        restoreLutId: undefined,
+        lutId: undefined,
+        lutIntensity: undefined,
+      }
+    })
+    return [...inputs, ...outputs]
+  }
+
   return layers.flatMap((layer) => (
     layer.layerType === 'media'
-      && layer.layoutRole !== 'background'
       && layer.filePath === sourcePath
       ? [layer, ...buildLocalColorLayers(layer, pipeline)]
       : [layer]

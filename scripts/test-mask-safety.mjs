@@ -63,6 +63,7 @@ try {
     'src/workspace/shared/editPipelineSerialization.ts',
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
+    'src/components/renderComposition.ts',
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
     'src/workspace/mask/maskModelMode.ts',
@@ -84,6 +85,7 @@ try {
   const pipelineSerialization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipelineSerialization.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
+  const renderComposition = await import(pathToFileURL(path.join(temporaryRoot, 'src/components/renderComposition.js')))
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
   const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
@@ -654,13 +656,49 @@ try {
     framedLayers.slice(1, 3).every((layer) => layer.color.denoise === 130),
     'frame local color layers must retain layout-specific media adjustments',
   )
-  const framedBackground = renderModule.applyLocalColorToSourceMediaLayers(
-    [{ ...framedSource, layoutRole: 'background' }],
+  const blurredBackground = {
+    ...framedSource,
+    layoutRole: 'background',
+    color: {
+      ...framedSource.color,
+      exposure: 0,
+      denoise: 3100,
+    },
+  }
+  const framedPrecomposition = renderModule.applyLocalColorToSourceMediaLayers(
+    [blurredBackground, { ...framedSource, layoutRole: 'content', zIndex: 13 }],
     '/image.jpg',
     ordered,
   )
-  assert.equal(framedBackground.length, 1, 'blurred frame backgrounds must not receive local mask layers')
-  assert.equal(framedBackground[0].maskPath, undefined)
+  const precomposeInputs = framedPrecomposition.filter((layer) => layer.precomposeRole === 'input')
+  const precomposeOutputs = framedPrecomposition.filter((layer) => layer.precomposeRole === 'output')
+  assert.equal(precomposeInputs.length, 3, 'global color and both masks must flatten into one source texture')
+  assert.equal(precomposeOutputs.length, 2, 'blurred background and clear foreground must share the flattened texture')
+  assert.ok(
+    framedPrecomposition.every((layer) => layer.precomposeGroup === 'framed-source-color'),
+    'all framed source layers must use the same precomposition group',
+  )
+  assert.deepEqual(
+    precomposeInputs.slice(1).map((layer) => layer.maskPath),
+    ['/bottom.pgm', '/top.pgm'],
+    'mask color layers must render before the frame consumes the flattened texture',
+  )
+  assert.equal(precomposeInputs[0].color.exposure, framedSource.color.exposure)
+  assert.equal(precomposeInputs[0].color.denoise, framedSource.color.denoise)
+  assert.equal(precomposeInputs[0].cornerRadius, undefined, 'frame geometry must not be baked into the source texture')
+  assert.equal(precomposeOutputs[0].color.exposure, 0)
+  assert.equal(precomposeOutputs[0].color.denoise, 3100, 'blur must run after mask color is flattened')
+  assert.equal(precomposeOutputs[1].color, undefined, 'foreground must not apply global color a second time')
+  const framedComposition = renderComposition.buildCompositionFromPreviewLayers(
+    framedPrecomposition,
+    1440,
+    1080,
+  )
+  assert.deepEqual(
+    framedComposition.layers.map((layer) => [layer.precomposeGroup, layer.precomposeRole]).sort(),
+    framedPrecomposition.map((layer) => [layer.precomposeGroup, layer.precomposeRole]).sort(),
+    'preview and export composition must preserve identical precomposition groups',
+  )
 
   const registeredModelModes = {
     'segformer-b0-ade20k': 'fast',

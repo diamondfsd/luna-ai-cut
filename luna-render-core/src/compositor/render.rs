@@ -4,10 +4,125 @@ use crate::{log, log_error};
 impl Compositor {
     pub(super) fn render_impl(
         &mut self,
+        canvas_width: u32,
+        canvas_height: u32,
+        layers: &[RenderLayer],
+        readback: bool,
+    ) -> Result<Vec<u8>, String> {
+        let (prepared_layers, temporary_texture_ids) = self.prepare_precompositions(layers)?;
+        let result = self.render_flat_impl(
+            canvas_width,
+            canvas_height,
+            &prepared_layers,
+            readback,
+            !readback,
+        );
+        for texture_id in temporary_texture_ids {
+            self.textures.remove(&texture_id);
+        }
+        result
+    }
+
+    fn prepare_precompositions(
+        &mut self,
+        layers: &[RenderLayer],
+    ) -> Result<(Vec<RenderLayer>, Vec<u32>), String> {
+        let mut groups = std::collections::BTreeMap::<String, Vec<RenderLayer>>::new();
+        for layer in layers {
+            if layer.precompose_role.as_deref() != Some("input") {
+                continue;
+            }
+            let group = layer
+                .precompose_group
+                .as_ref()
+                .ok_or_else(|| "precompose input is missing a group".to_string())?;
+            let mut input = layer.clone();
+            input.precompose_group = None;
+            input.precompose_role = None;
+            groups.entry(group.clone()).or_default().push(input);
+        }
+
+        if groups.is_empty() {
+            return Ok((layers.to_vec(), Vec::new()));
+        }
+
+        let mut group_textures = std::collections::BTreeMap::<String, u32>::new();
+        let mut temporary_texture_ids = Vec::with_capacity(groups.len());
+        for (group, inputs) in groups {
+            let first = inputs
+                .first()
+                .ok_or_else(|| format!("precompose group {group} has no inputs"))?;
+            let source = self
+                .textures
+                .get(&first.texture_id)
+                .ok_or_else(|| format!("precompose source texture {} not found", first.texture_id))?;
+            let width = source.width.max(1);
+            let height = source.height.max(1);
+            let texture = create_rgba_texture(
+                &self.device,
+                "precomposed layer group",
+                width,
+                height,
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                1,
+                true,
+            );
+            let previous_output = self.output_texture.replace((texture, width, height));
+            let render_result = self.render_flat_impl(width, height, &inputs, false, false);
+            let rendered = self.output_texture.take();
+            self.output_texture = previous_output;
+            render_result?;
+            let (texture, _, _) = rendered
+                .ok_or_else(|| format!("precompose group {group} produced no texture"))?;
+
+            let texture_id = self.next_texture_id;
+            self.next_texture_id += 1;
+            self.textures.insert(
+                texture_id,
+                TextureEntry {
+                    texture,
+                    width,
+                    height,
+                    #[cfg(target_os = "windows")]
+                    external: false,
+                },
+            );
+            group_textures.insert(group, texture_id);
+            temporary_texture_ids.push(texture_id);
+        }
+
+        let mut prepared = Vec::with_capacity(layers.len());
+        for layer in layers {
+            match layer.precompose_role.as_deref() {
+                Some("input") => {}
+                Some("output") => {
+                    let group = layer
+                        .precompose_group
+                        .as_ref()
+                        .ok_or_else(|| "precompose output is missing a group".to_string())?;
+                    let texture_id = group_textures
+                        .get(group)
+                        .copied()
+                        .ok_or_else(|| format!("precompose group {group} has no inputs"))?;
+                    let mut output = layer.clone();
+                    output.texture_id = texture_id;
+                    output.precompose_group = None;
+                    output.precompose_role = None;
+                    prepared.push(output);
+                }
+                _ => prepared.push(layer.clone()),
+            }
+        }
+        Ok((prepared, temporary_texture_ids))
+    }
+
+    fn render_flat_impl(
+        &mut self,
         mut canvas_width: u32,
         mut canvas_height: u32,
         layers: &[RenderLayer],
         readback: bool,
+        _present_output: bool,
     ) -> Result<Vec<u8>, String> {
         // 限制画布尺寸不超过 GPU 上限，保持宽高比
         let max_dim = canvas_width.max(canvas_height);
@@ -551,6 +666,7 @@ impl Compositor {
 
         if !readback {
             #[cfg(target_os = "windows")]
+            if _present_output
             {
                 let mut seen = std::collections::HashSet::new();
                 let mut transitions = sorted

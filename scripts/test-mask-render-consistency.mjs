@@ -188,6 +188,31 @@ try {
     mediaLayer(sourcePath), localLayer(sourcePath, rectMaskPath),
   ]))
   assert.ok(pixelDifference(base, normal).changed > 150, 'normal mask must change the selected region')
+  const precomposeGroup = 'mask-color-source'
+  const precomposedClear = await renderAndMatchExport('precomposed-clear', composition([
+    { ...mediaLayer(sourcePath), precomposeGroup, precomposeRole: 'input' },
+    { ...localLayer(sourcePath, rectMaskPath), precomposeGroup, precomposeRole: 'input' },
+    { ...mediaLayer(sourcePath), precomposeGroup, precomposeRole: 'output' },
+  ]))
+  const precomposedDifference = pixelDifference(normal, precomposedClear)
+  assert.ok(
+    precomposedDifference.max <= 3,
+    `clear precomposition must preserve the flattened mask color, max delta ${precomposedDifference.max}`,
+  )
+  const precomposedBlur = await renderAndMatchExport('precomposed-blur', composition([
+    { ...mediaLayer(sourcePath), precomposeGroup, precomposeRole: 'input' },
+    { ...localLayer(sourcePath, rectMaskPath), precomposeGroup, precomposeRole: 'input' },
+    {
+      ...mediaLayer(sourcePath),
+      precomposeGroup,
+      precomposeRole: 'output',
+      color: renderColor({ denoise: 3100 }),
+    },
+  ]))
+  assert.ok(
+    pixelDifference(precomposedClear, precomposedBlur).changed > width * height * 0.5,
+    'blur must run on the fully flattened mask color texture',
+  )
 
   const translated = await renderAndMatchExport('tracked-translation', composition([
     mediaLayer(sourcePath),

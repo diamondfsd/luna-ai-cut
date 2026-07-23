@@ -106,8 +106,11 @@ export interface RenderMaskTrack {
 
 export interface PreviewLayer {
   layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
-  /** 相框版式中的背景素材不继承前景的局部调色。 */
+  /** 相框版式中的素材用途，仅用于构建渲染层。 */
   layoutRole?: 'background' | 'content'
+  /** 同组 input 层会先在 GPU 中合成为一张纹理，再供 output 层使用。 */
+  precomposeGroup?: string
+  precomposeRole?: 'input' | 'output'
   filePath: string
   isVideo?: boolean
   /** 显式相同的 key 会复用同一份视频解码纹理。 */
@@ -203,6 +206,8 @@ export interface CompositionReveal {
 export interface CompositionLayer {
   layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
   id?: string
+  precomposeGroup?: string
+  precomposeRole?: 'input' | 'output'
   source: {
     path: string
     sourceType?: 'auto' | 'image' | 'video' | string

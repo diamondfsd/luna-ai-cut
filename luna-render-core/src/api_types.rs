@@ -204,6 +204,8 @@ impl Default for RenderLayerTransform {
 pub struct RenderLayer {
     pub texture_id: u32,
     pub layer_type: Option<String>,
+    pub precompose_group: Option<String>,
+    pub precompose_role: Option<String>,
     pub shape: Option<String>,
     pub fill_color: Option<String>,
     pub corner_radius: Option<f64>,
@@ -250,6 +252,8 @@ pub struct RenderLayer {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PreviewLayer {
     pub layer_type: Option<String>,
+    pub precompose_group: Option<String>,
+    pub precompose_role: Option<String>,
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,

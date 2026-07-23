@@ -5,6 +5,8 @@ use crate::media::fit_output_size;
 #[derive(Clone)]
 pub struct PreviewLayerInput {
     pub layer_type: Option<String>,
+    pub precompose_group: Option<String>,
+    pub precompose_role: Option<String>,
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
@@ -300,6 +302,8 @@ impl super::Compositor {
                 crate::RenderLayer {
                     texture_id: texture.texture_id,
                     layer_type: layer.layer_type.clone(),
+                    precompose_group: layer.precompose_group.clone(),
+                    precompose_role: layer.precompose_role.clone(),
                     shape: layer.shape.clone(),
                     fill_color: layer.fill_color.clone(),
                     corner_radius: layer.corner_radius,

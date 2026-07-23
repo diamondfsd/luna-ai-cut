@@ -104,6 +104,10 @@ pub struct MaskTrack {
 pub struct CompositionLayer {
     pub id: Option<String>,
     pub layer_type: Option<String>,
+    #[serde(rename = "precomposeGroup", alias = "precompose_group")]
+    pub precompose_group: Option<String>,
+    #[serde(rename = "precomposeRole", alias = "precompose_role")]
+    pub precompose_role: Option<String>,
     pub source: CompositionSource,
     pub rect: CompositionRect,
     #[serde(rename = "sourceRect", alias = "source_rect")]
