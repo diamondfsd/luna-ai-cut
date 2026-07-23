@@ -90,6 +90,20 @@ jobs:
           CROSS_TARGET: x86_64-apple-darwin
         run: pnpm run init:rust
 
+      - name: Prepare ONNX Runtime for macOS x64
+        shell: bash
+        run: |
+          archive="$RUNNER_TEMP/onnxruntime-osx-x86_64-1.23.2.tgz"
+          runtime_root="$RUNNER_TEMP/onnxruntime-osx-x86_64-1.23.2"
+          curl --fail --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-osx-x86_64-1.23.2.tgz"
+          echo "d10359e16347b57d9959f7e80a225a5b4a66ed7d7e007274a15cae86836485a6  $archive" | shasum -a 256 --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          cp "$runtime_root"/lib/*.dylib luna-render-core/
+          echo "ORT_LIB_LOCATION=$runtime_root/lib" >> "$GITHUB_ENV"
+          echo "ORT_PREFER_DYNAMIC_LINK=1" >> "$GITHUB_ENV"
+
       - name: Build macOS x64 DMG
         env:
           ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
