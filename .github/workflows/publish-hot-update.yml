@@ -1,0 +1,112 @@
+name: Publish Hot Update
+
+on:
+  push:
+    tags:
+      - 'hot/v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Hot update version, e.g. 1.5.1-hot.4'
+        required: true
+      include_native:
+        description: 'Build and include the native render module'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.config.outputs.version }}
+      include_native: ${{ steps.config.outputs.include_native }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: config
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "include_native=${{ inputs.include_native }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#hot/v}"
+          previous="$(git tag --list 'hot/v*' --sort=-creatordate | grep -vx "$GITHUB_REF_NAME" | head -1 || true)"
+          include_native=true
+          if [ -n "$previous" ] && git diff --quiet "$previous" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs electron/lunaRenderCore.ts; then
+            include_native=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "include_native=$include_native" >> "$GITHUB_OUTPUT"
+
+  native:
+    needs: detect
+    if: needs.detect.outputs.include_native == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin-arm64
+            cross_target: ''
+          - os: macos-latest
+            platform: darwin-x64
+            cross_target: x86_64-apple-darwin
+          - os: windows-latest
+            platform: win32-x64
+            cross_target: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run init:rust
+        env:
+          CROSS_TARGET: ${{ matrix.cross_target }}
+      - name: Build native module
+        shell: bash
+        env:
+          CROSS_TARGET: ${{ matrix.cross_target }}
+        run: node scripts/build-native.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: luna-render-core/luna-render-core.node
+          if-no-files-found: error
+
+  publish:
+    needs: [detect, native]
+    if: always() && needs.detect.result == 'success' && (needs.native.result == 'success' || needs.native.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:app
+      - uses: actions/download-artifact@v4
+        if: needs.detect.outputs.include_native == 'true'
+        with:
+          path: .hot-native
+      - name: Publish platform archives to GitCode
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+        run: |
+          args=(--version "${{ needs.detect.outputs.version }}" --upload)
+          if [ "${{ needs.detect.outputs.include_native }}" = "true" ]; then
+            args+=(--include-native --native-dir .hot-native)
+          fi
+          node scripts/publish-hot-update.mjs "${args[@]}"

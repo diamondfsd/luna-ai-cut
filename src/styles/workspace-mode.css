@@ -1,0 +1,211 @@
+/* 模式切换顶栏 */
+
+.workspace-mode-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 22px;
+  background: #fff;
+  border-bottom: 1px solid var(--hairline);
+  position: relative;
+}
+
+.workspace-mode-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--parchment);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.workspace-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.workspace-mode-btn:hover {
+  color: var(--ink);
+}
+
+.workspace-mode-btn.active {
+  background: #fff;
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.workspace-mode-btn-creative {
+  gap: 2px;
+}
+
+.workspace-mode-chevron {
+  opacity: 0.5;
+  transition: transform 0.2s ease;
+}
+
+.workspace-mode-btn-creative.active .workspace-mode-chevron {
+  transform: rotate(180deg);
+}
+
+.workspace-mode-subtitle {
+  position: absolute;
+  right: 22px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 创意模式下拉菜单 */
+
+.workspace-creative-menu {
+  min-width: 260px;
+  padding: 6px;
+}
+
+.workspace-creative-menu-header {
+  padding: 6px 10px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.workspace-creative-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+
+.workspace-creative-option:hover {
+  background: var(--parchment);
+}
+
+.workspace-creative-option.selected {
+  background: rgba(0, 102, 204, 0.08);
+  outline: 1px solid rgba(0, 102, 204, 0.2);
+}
+
+.workspace-creative-option.coming-soon {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.workspace-creative-option-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--parchment);
+  color: var(--blue);
+}
+
+.workspace-creative-option.selected .workspace-creative-option-icon {
+  background: var(--blue);
+  color: #fff;
+}
+
+.workspace-creative-option-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.workspace-creative-option-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.workspace-creative-option-desc {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.workspace-creative-option-badge {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--parchment);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 创意模式画布占位 */
+
+.workspace-creative-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  padding: 40px;
+  text-align: center;
+}
+
+.workspace-creative-placeholder-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--parchment);
+  display: grid;
+  place-items: center;
+  color: var(--blue);
+}
+
+.workspace-creative-placeholder h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.workspace-creative-placeholder p {
+  margin: 0;
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.workspace-creative-placeholder-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--parchment);
+  color: var(--muted);
+  font-size: 12px;
+}

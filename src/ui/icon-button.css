@@ -1,0 +1,74 @@
+/* ==========================================
+   Luna AI Cut — 通用 UI 组件样式
+   所有 Input / Button / IconButton 等公共组件样式集中于此
+   ========================================== */
+
+/* ---------- IconButton 组件 ---------- */
+.ui-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  border: 0;
+  font-family: inherit;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.ui-icon-btn:active {
+  transform: scale(0.95);
+}
+
+.ui-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* circle — 默认圆形按钮 */
+.ui-icon-btn-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(210, 210, 215, 0.64);
+  color: var(--ink);
+}
+
+/* circle.light — 深色背景上的圆形按钮 */
+.ui-icon-btn-light {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* outline — 带边框圆形图标按钮 */
+.ui-icon-btn-outline {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--blue);
+  background: transparent;
+  color: var(--blue);
+}
+
+/* ghost — 透明圆形图标按钮 */
+.ui-icon-btn-ghost {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+}
+
+/* 尺寸 */
+.ui-icon-btn-compact {
+  width: 32px;
+  height: 32px;
+}
+
+.ui-icon-btn-mini {
+  width: 28px;
+  height: 28px;
+}

@@ -1,0 +1,37 @@
+.workspace-border-panel { height: 100%; min-height: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; color: #f5f7fb; }
+.border-list-heading, .border-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.border-list-heading > div, .border-panel-header > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.border-list-heading strong, .border-panel-header strong { font-size: 14px; font-weight: 600; }
+.border-list-heading span, .border-panel-header span { color: #7e8795; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.border-panel-header > div { flex: 1; }
+.border-panel-header > .border-panel-actions { flex: 0 0 auto; flex-direction: row; align-items: center; gap: 2px; }
+.border-list-view > .ui-input-wrap { flex: 0 0 auto; }
+.border-editor-scroll, .border-grid-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 1px 4px 20px 0; scrollbar-color: rgba(255,255,255,.18) transparent; }
+.border-editor-scroll { display: flex; flex-direction: column; gap: 18px; }
+.border-editor-scroll::-webkit-scrollbar, .border-grid-wrap::-webkit-scrollbar { width: 6px; }
+.border-editor-scroll::-webkit-scrollbar-thumb, .border-grid-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 999px; }
+.border-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px 10px; }
+.border-card { position: relative; display: flex; min-width: 0; flex-direction: column; gap: 7px; cursor: pointer; transition: transform .16s ease; }
+.border-card:hover { transform: translateY(-2px); }
+.border-card .thumb { position: relative; aspect-ratio: 16/10; overflow: hidden; border: 2px solid transparent; border-radius: 6px; background: #202630; transition: border-color .16s ease, box-shadow .16s ease; }
+.border-card.selected .thumb { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(0,102,204,.28); }
+.border-card .thumb-img, .border-card .thumb-loading, .border-card .thumb-placeholder { display: block; width: 100%; height: 100%; }
+.border-card .thumb-img { object-fit: cover; }
+.border-card .thumb-loading { background: linear-gradient(110deg,#1b2027 25%,#2b323c 45%,#1b2027 65%); background-size: 220% 100%; animation: border-shimmer 1.4s linear infinite; }
+.border-card .thumb-placeholder { background: linear-gradient(135deg,#1a1f26,#252c35); }
+.border-card .name { padding: 0 2px; color: #c7cdd7; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.border-card .check { position: absolute; top: 7px; right: 7px; width: 18px; height: 18px; border-radius: 50%; background: var(--blue); color: white; font-size: 11px; line-height: 18px; text-align: center; }
+.border-edit-controls { display: flex; flex-direction: column; gap: 12px; padding-top: 2px; }
+.border-edit-section-title { padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,.08); color: #aab1bc; font-size: 12px; font-weight: 600; }
+.border-color-row { display: flex; align-items: center; justify-content: space-between; color: #929aa6; font-size: 12px; }
+.border-color-picker { position: relative; display: flex; align-items: center; gap: 7px; color: #d7dbe2; cursor: pointer; font-size: 11px; }
+.border-color-picker input[type=color] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.border-color-swatch { width: 25px; height: 25px; border: 1px solid rgba(255,255,255,.18); border-radius: 5px; }
+.border-title-row { display: flex; align-items: center; gap: 10px; }
+.border-title-label { flex: 0 0 34px; color: #929aa6; font-size: 12px; }
+.border-title-row .ui-input-wrap { flex: 1; }
+.border-switches { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+.border-media-controls { display: flex; flex-direction: column; gap: 12px; padding-top: 6px; }
+.border-switches label { display: flex; align-items: center; justify-content: space-between; color: #c7cdd7; font-size: 12px; }
+.border-empty { padding: 48px 0; color: #737c88; font-size: 12px; text-align: center; }
+@keyframes border-shimmer { to { background-position: -220% 0; } }

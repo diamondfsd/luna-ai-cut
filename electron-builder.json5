@@ -1,0 +1,119 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.diamondfsd.lunaaicut",
+  "asar": true,
+  "asarUnpack": [],
+  "afterPack": "scripts/after-pack-adhoc.mjs",
+  "productName": "Luna AI Cut",
+  "directories": {
+    "output": "release/${version}",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist",
+    "dist-electron"
+  ],
+  "extraResources": [
+    {
+      "from": "public/fonts",
+      "to": "fonts",
+      "filter": ["**/*.otf", "**/*.ttf"]
+    },
+    {
+      "from": "build/icon.png",
+      "to": "icon.png"
+    },
+    {
+      "from": "luna_mock_server",
+      "to": "luna_mock_server",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources/ffmpeg",
+      "to": "ffmpeg",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "luna-render-core/luna-render-core.node",
+      "to": "luna-render-core/luna-render-core.node"
+    },
+    {
+      "from": "vendor/luna-protocol",
+      "to": "luna-protocol",
+      "filter": ["luna-protocol.cjs", "luna-protocol.sha256"]
+    },
+    {
+      "from": "public/luts",
+      "to": "luts",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "src/assets/watermark",
+      "to": "watermark",
+      "filter": ["**/*.png"]
+    },
+    {
+      "from": "src/assets/logos",
+      "to": "logos",
+      "filter": ["**/*.png"]
+    },
+    {
+      "from": ".",
+      "to": ".",
+      "filter": ["RELEASE_NOTES_*.md"]
+    },
+    {
+      "from": "old-release-log",
+      "to": "old-release-log",
+      "filter": ["RELEASE_NOTES_*.md"]
+    },
+    {
+      "from": "electron",
+      "to": "swift",
+      "filter": ["*.swift"]
+    }
+  ],
+  "mac": {
+    "icon": "build/icon.icns",
+    "identity": "-",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["arm64", "x64"]
+      }
+    ],
+    "artifactName": "LunaAICut-Mac-${version}-Installer-${arch}.${ext}",
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "hardenedRuntime": true,
+    "extendInfo": {
+      "NSLocalNetworkUsageDescription": "Luna AI Cut 需要访问本地网络来连接 Insta360 相机（Luna / Go Ultra）"
+    }
+  },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "LunaAICut-Windows-${version}-Setup-${arch}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "linux": {
+    "icon": "build/icon.png",
+    "target": [
+      "AppImage"
+    ],
+    "artifactName": "LunaAICut-Linux-${version}.${ext}"
+  }
+}

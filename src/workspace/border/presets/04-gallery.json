@@ -1,0 +1,6 @@
+{"id":"gallery","name":"摄影展览","category":"gallery","description":"纸张色调与展览式标题","swatch":"#f1ede4","layers":[
+  {"id":"background","type":"shape","shape":"rectangle","rect":{"x":0,"y":0.82,"w":1,"h":0.18},"fill":{"type":"solid","color":"#F1EDE4"},"zIndex":20},
+  {"id":"brand","type":"logo","rect":{"x":0.04,"y":0.855,"w":0.18,"h":0.06},"source":{"path":"logo_cn_black","format":"png"},"fit":"contain","zIndex":21},
+  {"id":"title","type":"text","rect":{"x":0.25,"y":0.84,"w":0.5,"h":0.07},"content":"{{title}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Bold.otf","fontSize":30,"fontWeight":600,"color":"#23211D","align":"center","verticalAlign":"middle"},"overflow":"shrink","zIndex":21},
+  {"id":"meta","type":"text","rect":{"x":0.22,"y":0.91,"w":0.56,"h":0.04},"content":"{{camera}} · {{focalLength}} · {{aperture}} · {{shutter}} · ISO {{iso}} · {{date}}","template":true,"style":{"fontFamily":"Source Han Sans SC","fontFile":"fonts/SourceHanSansSC-Medium.otf","fontSize":14,"fontWeight":400,"color":"#39362F","align":"center","verticalAlign":"middle"},"overflow":"shrink","zIndex":21}
+]}

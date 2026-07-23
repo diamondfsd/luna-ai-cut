@@ -1,0 +1,278 @@
+import type { Dispatch, SetStateAction } from 'react'
+
+import type { AppSettings, DownloadProgress, LunaFile } from '../shared/types'
+import type { ViewMode } from './useMediaLibraryController'
+
+interface TransferActionProps {
+  files: LunaFile[]
+  selectedFiles: LunaFile[]
+  settings: AppSettings | null
+  setActiveDownloadFileNames: (value: Set<string>) => void
+  setDeleteError: (value: string | null) => void
+  setDeletingLocalFiles: (value: boolean) => void
+  setDownloadProgress: Dispatch<SetStateAction<Map<string, DownloadProgress>>>
+  setDownloadQueue: Dispatch<SetStateAction<LunaFile[]>>
+  setDownloadedFiles: Dispatch<SetStateAction<LunaFile[]>>
+  setExportedFiles: Dispatch<SetStateAction<LunaFile[]>>
+  setFiles: Dispatch<SetStateAction<LunaFile[]>>
+  setPreviewFile: Dispatch<SetStateAction<LunaFile | null>>
+  setPreviewFiles: Dispatch<SetStateAction<LunaFile[]>>
+  setSelected: Dispatch<SetStateAction<Set<string>>>
+  setShowDeleteDialog: (value: boolean) => void
+  viewMode: ViewMode
+  loadDownloadedLibrary: () => Promise<void>
+  loadExportLibrary: () => Promise<void>
+}
+
+function markDownloaded(file: LunaFile, path: string): LunaFile {
+  return { ...file, localPath: path, downloadFilePath: path }
+}
+
+function markNotDownloaded(file: LunaFile): LunaFile {
+  return { ...file, localPath: undefined, downloadFilePath: null }
+}
+
+export function useMediaLibraryTransferActions({
+  files,
+  selectedFiles,
+  settings,
+  setActiveDownloadFileNames,
+  setDeleteError,
+  setDeletingLocalFiles,
+  setDownloadProgress,
+  setDownloadQueue,
+  setDownloadedFiles,
+  setExportedFiles,
+  setFiles,
+  setPreviewFile,
+  setPreviewFiles,
+  setSelected,
+  setShowDeleteDialog,
+  viewMode,
+  loadDownloadedLibrary,
+  loadExportLibrary,
+}: TransferActionProps) {
+  function markFileDownloaded(fileName: string, path: string): void {
+    setFiles((current) => current.map((file) => (
+      file.name === fileName ? markDownloaded(file, path) : file
+    )))
+    setPreviewFiles((current) => current.map((file) => (
+      file.name === fileName ? markDownloaded(file, path) : file
+    )))
+    setPreviewFile((current) => (
+      current?.name === fileName ? markDownloaded(current, path) : current
+    ))
+  }
+
+  function markFileNotDownloaded(fileName: string): void {
+    setFiles((current) => current.map((file) => (
+      file.name === fileName ? markNotDownloaded(file) : file
+    )))
+    setPreviewFiles((current) => current.map((file) => (
+      file.name === fileName ? markNotDownloaded(file) : file
+    )))
+    setPreviewFile((current) => (
+      current?.name === fileName ? markNotDownloaded(current) : current
+    ))
+  }
+
+  async function restoreDownloadedRecords(nextFiles = files, downloadDir = settings?.downloadDir): Promise<void> {
+    if (!downloadDir || nextFiles.length === 0) return
+    try {
+      const records = await window.luna.getDownloadedRecords(nextFiles, downloadDir)
+      const recordByName = new Map(records.map((record) => [record.fileName, record]))
+      const fileNames = new Set(nextFiles.map((file) => file.name))
+      const syncFile = (file: LunaFile): LunaFile => {
+        if (!fileNames.has(file.name)) return file
+        const record = recordByName.get(file.name)
+        return record ? markDownloaded(file, record.path) : markNotDownloaded(file)
+      }
+      setFiles((current) => current.map(syncFile))
+      setPreviewFiles((current) => current.map(syncFile))
+      setPreviewFile((current) => (current ? syncFile(current) : current))
+      setDownloadProgress((current) => {
+        const next = new Map(current)
+        for (const file of nextFiles) {
+          const progress = next.get(file.name)
+          if (!recordByName.has(file.name) && (progress?.status === 'done' || progress?.status === 'exists')) {
+            next.delete(file.name)
+          }
+        }
+        for (const record of records) {
+          const file = nextFiles.find((item) => item.name === record.fileName)
+          next.set(record.fileName, {
+            fileName: record.fileName,
+            index: 0,
+            totalFiles: records.length,
+            downloaded: record.bytes ?? file?.bytes ?? 0,
+            total: record.bytes ?? file?.bytes ?? null,
+            percent: 100,
+            speedBps: 0,
+            status: 'exists',
+            destinationPath: record.path,
+          })
+        }
+        return next
+      })
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  async function startDownload(): Promise<void> {
+    if (!settings || selectedFiles.length === 0) return
+
+    let toDownload = selectedFiles
+    if (settings.downloadDir) {
+      const records = await window.luna.getDownloadedRecords(selectedFiles, settings.downloadDir)
+      const recordByName = new Map(records.map((record) => [record.fileName, record]))
+      if (records.length > 0) {
+        for (const record of records) {
+          markFileDownloaded(record.fileName, record.path)
+        }
+        setDownloadProgress((current) => {
+          const next = new Map(current)
+          for (const [index, record] of records.entries()) {
+            const file = selectedFiles.find((item) => item.name === record.fileName)
+            next.set(record.fileName, {
+              fileName: record.fileName,
+              index,
+              totalFiles: selectedFiles.length,
+              downloaded: record.bytes ?? file?.bytes ?? 0,
+              total: record.bytes ?? file?.bytes ?? null,
+              percent: 100,
+              speedBps: 0,
+              status: 'exists',
+              destinationPath: record.path,
+            })
+          }
+          return next
+        })
+      }
+      toDownload = selectedFiles.filter((file) => !recordByName.has(file.name))
+      for (const file of toDownload) markFileNotDownloaded(file.name)
+    }
+
+    setSelected(new Set())
+    const activeNames = new Set(toDownload.map((file) => file.name))
+    setActiveDownloadFileNames(activeNames)
+    if (toDownload.length === 0) return
+    setDownloadProgress((current) => {
+      const next = new Map(current)
+      for (const [index, file] of toDownload.entries()) {
+        const existing = next.get(file.name)
+        if (existing?.status === 'queued' || existing?.status === 'downloading') continue
+        next.set(file.name, {
+          fileName: file.name,
+          index,
+          totalFiles: toDownload.length,
+          downloaded: 0,
+          total: file.bytes,
+          percent: 0,
+          speedBps: 0,
+          status: 'queued',
+        })
+      }
+      return next
+    })
+    setDownloadQueue((current) => {
+      const currentActive = current.filter((file) => activeNames.has(file.name))
+      const queued = new Set(currentActive.map((file) => file.name))
+      return [...currentActive, ...toDownload.filter((file) => !queued.has(file.name))]
+    })
+  }
+
+  async function downloadOne(file: LunaFile): Promise<void> {
+    if (!settings) return
+    if (settings.downloadDir) {
+      const records = await window.luna.getDownloadedRecords([file], settings.downloadDir)
+      const existing = records[0]
+      if (existing) {
+        markFileDownloaded(file.name, existing.path)
+        setDownloadProgress((current) => {
+          const next = new Map(current)
+          next.set(file.name, {
+            fileName: file.name,
+            index: 0,
+            totalFiles: 1,
+            downloaded: existing.bytes ?? file.bytes ?? 0,
+            total: existing.bytes ?? file.bytes ?? null,
+            percent: 100,
+            speedBps: 0,
+            status: 'exists',
+            destinationPath: existing.path,
+          })
+          return next
+        })
+        return
+      }
+      markFileNotDownloaded(file.name)
+    }
+    setActiveDownloadFileNames(new Set([file.name]))
+    setDownloadProgress((current) => {
+      const next = new Map(current)
+      const existing = next.get(file.name)
+      if (existing?.status !== 'queued' && existing?.status !== 'downloading') {
+        next.set(file.name, {
+          fileName: file.name,
+          index: 0,
+          totalFiles: 1,
+          downloaded: 0,
+          total: file.bytes,
+          percent: 0,
+          speedBps: 0,
+          status: 'queued',
+        })
+      }
+      return next
+    })
+    setDownloadQueue((current) => (current.some((item) => item.name === file.name) ? current : [...current, file]))
+  }
+
+  async function deleteSelectedLocalFiles(): Promise<void> {
+    const filesToDelete = selectedFiles
+    if (filesToDelete.length === 0) return
+    const filePaths = filesToDelete
+      .map((file) => file.downloadFilePath ?? file.localPath)
+      .filter((filePath): filePath is string => Boolean(filePath))
+    if (filePaths.length === 0) {
+      setDeleteError('没有可删除的本地文件')
+      return
+    }
+
+    setDeletingLocalFiles(true)
+    setDeleteError(null)
+    try {
+      const result = await window.luna.deleteLocalFiles(filePaths)
+      if (result.failed.length > 0) {
+        setDeleteError(`${result.failed.length} 个文件删除失败`)
+      }
+      const deletedPaths = new Set(result.deleted)
+      const isDeleted = (file: LunaFile): boolean => deletedPaths.has(file.downloadFilePath ?? file.localPath ?? '')
+      if (viewMode === 'export') {
+        setExportedFiles((current) => current.filter((file) => !isDeleted(file)))
+      } else {
+        setDownloadedFiles((current) => current.filter((file) => !isDeleted(file)))
+      }
+      setPreviewFiles((current) => current.filter((file) => !isDeleted(file)))
+      setPreviewFile((current) => (current && isDeleted(current) ? null : current))
+      setSelected(new Set())
+      setShowDeleteDialog(false)
+      if (viewMode === 'export') void loadExportLibrary()
+      else void loadDownloadedLibrary()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setDeleteError(`删除失败: ${message}`)
+    } finally {
+      setDeletingLocalFiles(false)
+    }
+  }
+
+  return {
+    deleteSelectedLocalFiles,
+    downloadOne,
+    markFileDownloaded,
+    restoreDownloadedRecords,
+    startDownload,
+  }
+}

@@ -1,0 +1,62 @@
+import { useRef, useState } from 'react'
+import { Check, Clock, X } from 'lucide-react'
+
+import type { ExportProgress } from '../shared/types'
+import { Dialog, Tooltip } from '../ui'
+import { ExportTaskTable } from './ExportTaskTable'
+import '../styles/download-progress.css'
+
+interface ExportProgressModalProps {
+  exportProgress: Map<string, ExportProgress>
+  onRevealFile: (path: string) => void
+}
+
+export function ExportProgressModal({
+  exportProgress,
+  onRevealFile,
+}: ExportProgressModalProps) {
+  const [open, setOpen] = useState(false)
+  const [seenCount, setSeenCount] = useState(0)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  const entries = [...exportProgress.values()]
+  const completedCount = entries.filter((progress) => progress.status === 'done').length
+  const failedCount = entries.filter((progress) => progress.status === 'failed').length
+  const canceledCount = entries.filter((progress) => progress.status === 'canceled').length
+  const activeCount = entries.filter((progress) => progress.status === 'queued' || progress.status === 'exporting').length
+
+  const icon =
+    entries.length === 0 ? <Clock size={15} /> :
+    activeCount > 0 ? <Clock size={15} /> :
+    failedCount > 0 || canceledCount > 0 ? <X size={14} /> :
+    <Check size={14} />
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
+      <Tooltip content="导出记录">
+        <button className="nav-icon-button" onClick={() => {
+          setSeenCount(completedCount)
+          setOpen(true)
+        }}>
+          {icon}
+          {activeCount > 0 && <span className="export-breathing-dot" />}
+        </button>
+      </Tooltip>
+      {completedCount > seenCount && (
+        <span className="download-badge-corner">{completedCount - seenCount}</span>
+      )}
+
+      <Dialog
+        open={open}
+        onOpenChange={(value) => {
+          setOpen(value)
+          if (value) setSeenCount(completedCount)
+        }}
+        title="导出记录"
+        className="et-main-dialog"
+      >
+        <ExportTaskTable onRevealFile={onRevealFile} />
+      </Dialog>
+    </div>
+  )
+}

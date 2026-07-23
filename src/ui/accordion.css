@@ -1,0 +1,89 @@
+/* ==========================================
+   Accordion 手风琴折叠面板（基于 Radix Collapsible）
+   ========================================== */
+
+.ui-accordion {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ui-accordion:first-child {
+  border-top: none;
+}
+
+/* 标题栏行容器 — 相对定位以容纳 actions 的绝对定位 */
+.ui-accordion-header-row {
+  position: relative;
+}
+
+/* 可点击标题栏 */
+.ui-accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.ui-accordion-header:hover {
+  opacity: 0.85;
+}
+
+.ui-accordion-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-dark);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* chevron 动画 */
+.ui-accordion-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 180ms ease;
+}
+
+/* 标题右侧操作按钮（如重置）— 绝对定位于标题栏右侧，避免 <button> 嵌套 */
+.ui-accordion-actions {
+  position: absolute;
+  right: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ui-accordion[data-state="open"] .ui-accordion-chevron {
+  transform: rotate(180deg);
+}
+
+/* 内容区 — Radix Collapsible.Content 自带隐藏/显示 */
+.ui-accordion-body {
+  padding-bottom: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+/* 在导出面板内时，第一个 Accordion 去掉顶部 padding */
+.export-options-body .ui-accordion:first-child .ui-accordion-header {
+  padding-top: 0;
+}
+
+/* 已修改标记圆点 */
+.ui-accordion-modified-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--blue);
+}

@@ -1,0 +1,61 @@
+/* ==========================================
+   Luna AI Cut — Panel 弹出面板组件
+   ========================================== */
+
+.ui-panel {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--glass-surface-strong);
+  color: var(--ink);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.ui-panel-dark {
+  --ink: #fff;
+  --muted: rgba(255, 255, 255, 0.58);
+  --muted-dark: rgba(255, 255, 255, 0.38);
+  --hairline: rgba(255, 255, 255, 0.12);
+  background: rgba(39, 39, 41, 0.72);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.ui-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.ui-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 16px;
+}
+
+.ui-panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 16px 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.ui-panel-dark .ui-panel-header {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.ui-panel-dark .ui-panel-footer {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}

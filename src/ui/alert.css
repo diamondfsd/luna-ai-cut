@@ -1,0 +1,43 @@
+/* ====== Alert / 提示条 ====== */
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.alert-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+
+.alert-text {
+  flex: 1;
+}
+
+/* ——— variants ——— */
+.alert-info {
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  color: var(--ink);
+}
+
+.alert-error {
+  background: color-mix(in srgb, #dc2626 8%, transparent);
+  color: #b91c1c;
+}
+
+.alert-warning {
+  background: color-mix(in srgb, #d97706 8%, transparent);
+  color: #92400e;
+}
+
+.alert-success {
+  background: color-mix(in srgb, #16a34a 8%, transparent);
+  color: #166534;
+}

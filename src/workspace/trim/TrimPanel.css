@@ -1,0 +1,37 @@
+.workspace-trim-panel {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.workspace-trim-panel .workspace-param-group {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.workspace-trim-panel .workspace-param-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.workspace-trim-panel .workspace-trim-time-input {
+  min-width: 0;
+  text-align: right;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.workspace-trim-duration-display {
+  min-width: 0;
+  padding-right: 10px;
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-align: right;
+}

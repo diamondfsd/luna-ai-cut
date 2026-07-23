@@ -1,0 +1,136 @@
+/* ==========================================
+   Select 下拉选择器（基于 @radix-ui/react-select）
+   ========================================== */
+
+/* ---------- Trigger（触发按钮） ---------- */
+.ui-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--hairline);
+  color: var(--ink);
+  background: var(--parchment);
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: 0;
+  outline: 0;
+  transition: border-color 140ms ease;
+  text-align: left;
+}
+
+.ui-select-trigger:focus-visible {
+  border-color: var(--blue);
+}
+
+.ui-select-trigger[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* pill — 标准 44px 圆角 */
+.ui-select-pill {
+  width: min(320px, 32vw);
+  height: 44px;
+  border-radius: 999px;
+  padding: 0 16px;
+  font-size: 17px;
+}
+
+/* compact — 紧凑 32px 圆角 */
+.ui-select-compact {
+  width: auto;
+  height: 32px;
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+/* ghost — 无边框透明 */
+.ui-select-ghost {
+  width: auto;
+  height: 40px;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 13px;
+  background: var(--parchment);
+}
+
+/* fullWidth */
+.ui-select-full {
+  width: 100%;
+}
+
+/* Value 文本 */
+.ui-select-trigger .ui-select-value {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 占位符 */
+.ui-select-trigger .ui-select-value[data-placeholder] {
+  color: var(--muted);
+}
+
+/* 前置图标 + chevron */
+.ui-select-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.ui-select-chevron {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 180ms ease;
+}
+
+.ui-select-trigger[data-state="open"] .ui-select-chevron {
+  transform: rotate(180deg);
+}
+
+/* ---------- Dropdown Content ---------- */
+.ui-select-content {
+  background: var(--canvas, #fff);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.ui-select-viewport {
+  padding: 4px;
+}
+
+/* ---------- Item ---------- */
+.ui-select-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: default;
+  user-select: none;
+  position: relative;
+}
+
+.ui-select-item[data-highlighted] {
+  background: var(--parchment, #f5f5f7);
+  outline: 0;
+}
+
+.ui-select-item[data-disabled] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.ui-select-item-indicator {
+  display: inline-flex;
+  align-items: center;
+  color: var(--blue);
+}

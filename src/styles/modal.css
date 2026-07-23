@@ -1,0 +1,473 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  overscroll-behavior: contain;
+}
+
+.preview-modal {
+  --preview-thumbnail-strip-height: 72px;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0;
+  background: var(--tile-dark);
+  color: #fff;
+  outline: 0;
+}
+
+.preview-modal header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 18px 20px;
+}
+
+.preview-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.preview-download-state {
+  position: static;
+}
+
+.preview-modal h2 {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 4px;
+  background: rgba(255, 200, 50, 0.16);
+  color: #ffc832;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: normal;
+  white-space: nowrap;
+}
+
+.preview-body {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.preview-sidebar {
+  flex: 0 0 320px;
+  width: 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.preview-sidebar > .media-inspector {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.preview-stage-col {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.preview-stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: #000;
+  touch-action: none;
+}
+
+.preview-stage-col > .preview-stage {
+  flex: 1 1 0;
+  height: auto;
+}
+
+.preview-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.preview-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: lrc-spin 0.7s linear infinite;
+}
+
+@keyframes lrc-spin {
+  to { transform: rotate(360deg); }
+}
+
+.preview-media-wrapper {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* 图片/视频缩放容器 */
+.preview-media-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+  transition: transform 120ms ease;
+}
+
+/* 缩放拖拽时取消过渡动画 */
+.preview-media-inner.dragging {
+  transition: none;
+}
+
+.preview-stage img,
+.preview-stage video {
+  max-width: 100%;
+  max-height: 100%;
+  filter: drop-shadow(3px 5px 30px rgba(0, 0, 0, 0.22));
+}
+
+.preview-stage img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: default;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.preview-stage .zoomed {
+  cursor: grab;
+}
+
+.preview-stage .zoomed img {
+  cursor: grab;
+}
+
+/* 水印叠加层 — 像素定位，不参与事件 */
+.preview-stage .watermark-overlay {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.85;
+}
+
+.preview-stage .dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.preview-stage .dragging img {
+  cursor: grabbing;
+}
+
+.preview-stage video {
+  width: 100%;
+  height: 100%;
+}
+
+.preview-nav {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.preview-nav:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.preview-nav.previous {
+  left: 18px;
+}
+
+.preview-nav.next {
+  right: 18px;
+}
+
+.live-photo-player-host,
+.live-photo-player-photo,
+.live-photo-player-video {
+  width: 100%;
+  height: 100%;
+}
+
+.live-photo-player-host {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.live-photo-player-photo,
+.live-photo-player-video {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  object-fit: contain;
+}
+
+.live-photo-player-video {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.live-photo-player-video.is-visible {
+  opacity: 1;
+}
+
+.live-photo-error {
+  position: absolute;
+  right: 18px;
+  bottom: 68px;
+  z-index: 3;
+  max-width: min(420px, calc(100% - 36px));
+  border-radius: 999px;
+  background: rgba(255, 59, 48, 0.88);
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+/* ====== 缩略图条 ====== */
+.preview-thumbnails {
+  box-sizing: border-box;
+  flex: 0 0 var(--preview-thumbnail-strip-height);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: var(--preview-thumbnail-strip-height);
+  min-height: var(--preview-thumbnail-strip-height);
+  max-height: var(--preview-thumbnail-strip-height);
+  padding: 8px 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1a1a1c;
+  scrollbar-width: none;
+}
+
+.preview-thumbnails::-webkit-scrollbar {
+  display: none;
+}
+
+.preview-thumb-item {
+  flex: 0 0 auto;
+  position: relative;
+  width: 72px;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.55;
+  outline: 2px solid transparent;
+  outline-offset: -1px;
+  background: rgba(255, 255, 255, 0.06);
+  transition: opacity 150ms ease, outline-color 150ms ease;
+  -webkit-appearance: none;
+}
+
+.preview-thumb-item:hover {
+  opacity: 0.8;
+}
+
+.preview-thumb-item.active {
+  opacity: 1;
+  outline-color: var(--blue);
+}
+
+.preview-thumb-item img,
+.preview-thumb-item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.preview-thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-dark);
+}
+
+.preview-thumb-modified-dot {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--blue);
+  z-index: 1;
+}
+
+.preview-thumb-item.modified {
+  border-color: rgba(0, 102, 204, 0.32);
+  background: rgba(0, 102, 204, 0.08);
+}
+
+.preview-thumb-live {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.55));
+}
+
+.preview-thumb-live span {
+  inset: 3.5px;
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.preview-thumb-live span:nth-child(2) {
+  inset: 5.5px;
+}
+.preview-thumb-live span:nth-child(3) {
+  inset: 7px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.preview-body.inspector-collapsed {
+  display: flex;
+}
+
+/* ── 批量导出侧栏 ── */
+
+.batch-export-sidebar {
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.batch-export-sidebar .media-inspector {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.batch-export-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.batch-export-file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.batch-export-file-info .batch-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.batch-export-file-info .batch-file-resolution {
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+}
+
+.batch-export-file-info .batch-file-kind {
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.batch-export-file-info .batch-file-kind.video {
+  color: #5ac8fa;
+}
+
+.batch-export-file-info .batch-file-kind.image {
+  color: #ffd60a;
+}

@@ -1,0 +1,473 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  color: #1d2329;
+  background: #f4f2ee;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ==================== ErrorBoundary fallback ==================== */
+
+.error-boundary-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: 40px;
+  text-align: center;
+  gap: 12px;
+}
+
+.error-boundary-fallback h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.error-boundary-fallback p {
+  margin: 0;
+  color: #888;
+  font-size: 14px;
+  max-width: 480px;
+}
+
+.error-boundary-fallback button {
+  padding: 8px 20px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.error-boundary-fallback button:hover {
+  background: #f0f0f0;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input {
+  letter-spacing: 0;
+}
+
+.route-panel[hidden] {
+  display: none;
+}
+
+.route-stack {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.route-panel {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+
+/* ====== 全局滚动条样式（薄、暗色、不刺眼） ====== */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ====== 帮助与反馈弹窗 ====== */
+.help-dialog-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0 0;
+}
+
+/* ── 标签 ── */
+.help-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+/* ── 版本信息 ── */
+.help-version-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.help-version {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.2;
+}
+
+.help-hot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--blue);
+  background: rgba(0, 102, 204, 0.08);
+  padding: 2px 8px 2px 6px;
+  border-radius: 10px;
+  line-height: 1;
+}
+
+.help-hot-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: background 120ms, color 120ms;
+}
+
+.help-hot-delete:hover {
+  background: rgba(200, 0, 0, 0.1);
+  color: var(--red, #d32f2f);
+}
+
+.help-version-status {
+  font-size: 13px;
+  color: var(--blue);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.help-version-status.muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.help-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex-shrink: 0;
+}
+
+.help-update-btn {
+  margin-top: 4px;
+}
+
+/* ── 热更新提示 ── */
+.help-hot-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(0, 102, 204, 0.06);
+  border: 1px solid rgba(0, 102, 204, 0.18);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.help-hot-section.error {
+  background: rgba(200, 0, 0, 0.05);
+  border-color: rgba(200, 0, 0, 0.15);
+  color: var(--red, #d32f2f);
+}
+
+.help-hot-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.help-hot-text strong {
+  font-weight: 700;
+}
+
+.help-hot-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.help-hot-downloading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── 更新说明 ── */
+.help-notes-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.help-notes-desc {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+/* ── 分隔线 ── */
+.help-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--hairline);
+}
+
+/* ── 关注抖音 ── */
+.help-douyin-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.help-douyin-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.help-qr-code {
+  width: 120px;
+  height: 120px;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.help-douyin-id {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+/* ── 底部操作区 ── */
+.help-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding-bottom: 8px;
+}
+
+.help-footer-btn {
+  flex: 1;
+}
+
+/* ====== 更新说明弹窗 ====== */
+.release-notes-dialog-content.ui-dialog-content {
+  width: min(720px, 92vw);
+}
+
+.release-notes-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 0 4px;
+}
+
+.release-notes-body .ui-accordion-header {
+  padding: 10px 0;
+}
+
+.release-notes-body .ui-accordion-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.release-notes-body .ui-accordion-body {
+  padding-bottom: 16px;
+}
+
+.release-notes-body .markdown-viewer h2 {
+  font-size: 14px;
+  margin-top: 0;
+}
+
+.release-notes-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 32px 0;
+  font-size: 14px;
+}
+
+/* ====== 更新提示横幅 ====== */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 8px 18px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+
+.update-banner-text {
+  font-weight: 400;
+}
+
+.update-banner-text strong {
+  font-weight: 600;
+}
+
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-banner-close {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 12px;
+  border: none;
+  cursor: pointer;
+  transition: background 120ms;
+}
+
+/* 蓝色横幅上的按钮使用白色系样式，避免与背景融为一体 */
+.update-banner-actions .ui-btn-secondary,
+.update-banner-actions .ui-btn-primary {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.update-banner-actions .ui-btn-secondary:hover,
+.update-banner-actions .ui-btn-primary:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.update-banner-close:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* ====== 更新内容弹窗 ====== */
+.update-notes-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+}
+
+.update-notes-dialog {
+  background: #fff;
+  border-radius: 12px;
+  width: min(520px, 90vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+.update-notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.update-notes-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.update-notes-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.update-notes-body p {
+  margin: 4px 0;
+}
+
+.update-notes-body .notes-heading {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0 6px;
+  color: #111;
+}
+
+.update-notes-body .notes-heading:first-child {
+  margin-top: 0;
+}
+
+.update-notes-body .notes-item {
+  padding-left: 12px;
+  color: #444;
+}

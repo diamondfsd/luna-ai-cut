@@ -1,0 +1,42 @@
+/* ==========================================
+   Luna AI Cut — 通用 UI 组件样式
+   所有 Input / Button / IconButton 等公共组件样式集中于此
+   ========================================== */
+
+/* ==========================================
+   Popover 弹出面板组件
+   ========================================== */
+
+.ui-popover-content {
+  z-index: 50;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: 380px;
+  max-height: 420px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--glass-surface-strong);
+  color: var(--ink);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  animation: ui-fade-in 140ms ease;
+  transform-origin: var(--radix-popover-content-transform-origin);
+}
+
+.ui-popover-arrow {
+  fill: rgba(246, 246, 248, 0.9);
+  stroke: rgba(255, 255, 255, 0.58);
+  stroke-width: 1px;
+}
+
+/* Popover header (通过子元素加 data-popover-header 启用) */
+.ui-popover-content [data-popover-header] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}

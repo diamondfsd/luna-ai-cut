@@ -1,0 +1,162 @@
+name: Package Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - test
+
+permissions:
+  contents: write
+
+jobs:
+  # ─── macOS 构建 ───────────────────────────────────
+  package-mac:
+    name: Build macOS (ARM64 DMG)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust toolchain
+        run: pnpm run init:rust
+
+      - name: Build macOS DMG
+        env:
+          ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
+        run: pnpm run pack:mac:arm64
+
+      - name: Verify macOS Ad Hoc signature
+        shell: bash
+        run: |
+          app_path="$(find release -type d -name '*.app' -print -quit)"
+          test -n "$app_path" || { echo "未找到 macOS App"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          codesign --display --verbose=4 "$app_path" 2>&1 | grep -q 'Signature=adhoc' || {
+            echo "macOS App 不是 Ad Hoc 签名: $app_path"
+            exit 1
+          }
+          echo "Ad Hoc 签名校验通过: $app_path"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luna-ai-cut-macos-arm64-dmg
+          path: release/**/*.dmg
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/**/*.dmg
+
+  # ─── macOS x64 (Intel) 构建 ────────────────────────
+  package-mac-x64:
+    name: Build macOS (Intel x64 DMG)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust toolchain (with x64 cross-compile target)
+        env:
+          CROSS_TARGET: x86_64-apple-darwin
+        run: pnpm run init:rust
+
+      - name: Build macOS x64 DMG
+        env:
+          ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
+        run: pnpm run pack:mac:x64
+
+      - name: Verify macOS x64 Ad Hoc signature
+        shell: bash
+        run: |
+          app_path="$(find release -type d -name '*.app' -print -quit)"
+          test -n "$app_path" || { echo "未找到 macOS App"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          codesign --display --verbose=4 "$app_path" 2>&1 | grep -q 'Signature=adhoc' || {
+            echo "macOS x64 App 不是 Ad Hoc 签名: $app_path"
+            exit 1
+          }
+          echo "Ad Hoc 签名校验通过: $app_path"
+
+      - name: Upload macOS x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luna-ai-cut-macos-x64-dmg
+          path: release/**/*.dmg
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/**/*.dmg
+
+  # ─── Windows 构建 ─────────────────────────────────
+  package-win:
+    name: Build Windows (x64 NSIS)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust toolchain
+        run: pnpm run init:rust
+
+      - name: Build Windows NSIS
+        env:
+          ELECTRON_BUILDER_ALLOW_HARD_LINKS: "false"
+        run: pnpm run pack:win:x64
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luna-ai-cut-windows-x64-nsis
+          path: release/**/*Setup*.exe
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/**/*Setup*.exe

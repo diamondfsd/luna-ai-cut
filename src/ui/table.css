@@ -1,0 +1,78 @@
+.ui-table-wrap {
+  overflow-x: auto;
+  max-height: 420px;
+  min-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ui-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ui-table th {
+  padding: 9px 12px;
+  background: var(--parchment);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ui-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink);
+  vertical-align: middle;
+}
+
+.ui-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ui-table tbody tr:hover td {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.ui-table-empty {
+  text-align: center !important;
+  padding: 64px 12px !important;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* 展开按钮 */
+.ui-table-expand-btn {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.ui-table-expand-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink);
+}
+
+/* 展开行 */
+.ui-table-expanded-row td {
+  padding: 0 12px 12px;
+  background: rgba(0, 0, 0, 0.015);
+}

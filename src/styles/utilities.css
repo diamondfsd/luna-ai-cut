@@ -1,0 +1,164 @@
+/* 共享 UI 基础样式 */
+.text-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--blue);
+  font-size: 14px;
+}
+
+.text-action:active,
+.pill:active,
+.circle-button:active,
+.utility-button:active {
+  transform: scale(0.95);
+}
+
+.pill {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 999px;
+  padding: 8px 17px;
+  cursor: pointer;
+  font-size: 14px;
+  letter-spacing: -0.224px;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.pill.primary {
+  background: var(--blue);
+  color: #fff;
+}
+
+.pill.primary:hover {
+  background: var(--blue-dark);
+}
+
+.pill.secondary {
+  border: 1px solid var(--blue);
+  background: transparent;
+  color: var(--blue);
+}
+
+.pill.compact {
+  min-height: 32px;
+  padding: 7px 14px;
+}
+
+.pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.icon-pill {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--blue);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.media-section[data-tone='dark'] .icon-pill {
+  border-color: var(--blue-on-dark);
+  color: var(--blue-on-dark);
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.media-section[data-tone='dark'] .eyebrow,
+.preview-modal .eyebrow {
+  color: var(--muted-dark);
+}
+
+.utility-button {
+  display: inline-flex;
+  height: 44px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #fff;
+  cursor: pointer;
+  padding: 0 15px;
+  font-size: 14px;
+}
+
+.circle-button {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(210, 210, 215, 0.64);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.circle-button.light {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.loading-indicator {
+  display: inline-grid;
+  place-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.loading-indicator svg {
+  color: var(--blue);
+}
+
+.loading-indicator.large {
+  font-size: 15px;
+}
+
+.loading-indicator.media {
+  width: 100%;
+  height: 100%;
+  min-height: 92px;
+  background: transparent;
+}
+
+.host-field {
+  width: min(280px, 32vw);
+  height: 44px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--parchment);
+  padding: 0 16px;
+  font-size: 17px;
+}
+
+.ui-tooltip {
+  z-index: 100;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(29, 29, 31, 0.92);
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.ui-tooltip-arrow {
+  fill: rgba(29, 29, 31, 0.92);
+}

@@ -1,0 +1,50 @@
+/* Live Photo 标识徽章 — 仿 iOS Live Photo 环形点阵 */
+.live-photo-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55));
+  flex-shrink: 0;
+}
+
+.live-photo-badge-symbol {
+  position: relative;
+  display: block;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 2%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 70% 6%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 86% 17%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 97% 33%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 98% 52%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 91% 72%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 76% 89%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 58% 98%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 38% 98%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 20% 89%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 7% 72%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 2% 52%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 4% 33%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 14% 17%, currentColor 0.85px, transparent 1.1px),
+    radial-gradient(circle at 30% 6%, currentColor 0.85px, transparent 1.1px);
+}
+
+.live-photo-badge-symbol span {
+  position: absolute;
+  inset: 5.5px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+  display: block;
+}
+
+.live-photo-badge-symbol span:nth-child(2) {
+  inset: 8.5px;
+}
+
+.live-photo-badge-symbol span:nth-child(3) {
+  inset: 14px;
+}

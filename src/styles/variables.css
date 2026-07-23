@@ -1,0 +1,47 @@
+:root {
+  --blue: #0066cc;
+  --blue-dark: #004f9f;
+  --blue-on-dark: #2997ff;
+  --canvas: #ffffff;
+  --parchment: #f5f5f7;
+  --tile-dark: #272729;
+  --tile-dark-2: #2a2a2c;
+  --black: #000000;
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --muted-dark: #cccccc;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --glass-surface: rgba(246, 246, 248, 0.86);
+  --glass-surface-strong: rgba(246, 246, 248, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.62);
+  --glass-backdrop: rgba(0, 0, 0, 0.42);
+  --glass-blur: blur(28px) saturate(180%);
+  --product-shadow: rgba(0, 0, 0, 0.22) 3px 5px 30px 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

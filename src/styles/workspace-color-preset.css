@@ -1,0 +1,229 @@
+/* ═══════════════════════════════════════════════
+   调色预设
+   ═══════════════════════════════════════════════ */
+
+.workspace-color-presets {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* ── 操作行 ── */
+
+.workspace-color-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── 触发按钮（模拟 Select） ── */
+
+.workspace-color-preset-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.workspace-color-preset-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.workspace-color-preset-trigger-icon {
+  flex-shrink: 0;
+  color: var(--blue);
+}
+
+.workspace-color-preset-trigger-text {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.workspace-color-preset-trigger-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* ── 操作按钮（覆盖 / 新增 / 重置） ── */
+
+.workspace-color-preset-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.workspace-color-preset-action-btn:hover:not(.disabled) {
+  background: rgba(0, 102, 204, 0.08);
+  border-color: rgba(0, 102, 204, 0.3);
+  color: var(--blue);
+}
+
+.workspace-color-preset-action-btn.disabled,
+.workspace-color-preset-action-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ── 下拉面板 ── */
+
+.workspace-color-preset-dropdown {
+  width: 220px !important;
+  padding: 0 !important;
+  background: #2a2a2a !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+  overflow: hidden;
+  color: #e0e0e0 !important;
+}
+
+/* ── 搜索框 ── */
+
+.workspace-color-preset-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #999;
+}
+
+.workspace-color-preset-search input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e0e0e0;
+  font-size: 13px;
+}
+
+.workspace-color-preset-search input::placeholder {
+  color: #666;
+}
+
+/* ── 滚动列表 ── */
+
+.workspace-color-preset-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.workspace-color-preset-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.workspace-color-preset-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+
+/* ── 空状态 ── */
+
+.workspace-color-preset-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: #888;
+  font-size: 12px;
+}
+
+/* ── 选项行 ── */
+
+.workspace-color-preset-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: #e0e0e0;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.workspace-color-preset-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.workspace-color-preset-option.active {
+  background: rgba(0, 102, 204, 0.12);
+  color: #2997ff;
+}
+
+.workspace-color-preset-opt-icon {
+  flex-shrink: 0;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.workspace-color-preset-opt-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 选项行（含删除按钮） ── */
+
+.workspace-color-preset-option-row {
+  display: flex;
+  align-items: center;
+}
+
+.workspace-color-preset-option-row .workspace-color-preset-option {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-color-preset-opt-del {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin-right: 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+
+.workspace-color-preset-option-row:hover .workspace-color-preset-opt-del {
+  opacity: 1;
+}
+
+.workspace-color-preset-opt-del:hover {
+  color: #ff453a;
+  background: rgba(255, 69, 58, 0.12);
+}

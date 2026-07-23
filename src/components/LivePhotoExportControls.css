@@ -1,0 +1,65 @@
+.live-photo-export-controls,
+.live-photo-export-formats {
+  display: flex;
+  flex-direction: column;
+}
+
+.live-photo-export-controls {
+  gap: 12px;
+}
+
+.live-photo-export-heading {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.live-photo-export-formats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.live-photo-export-format {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 9px 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  background: rgba(8, 10, 15, 0.52);
+  gap: 8px;
+}
+
+.live-photo-export-format-name {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.live-photo-export-format-description,
+.live-photo-export-message {
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-photo-export-format-description {
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.live-photo-export-message {
+  padding: 18px 0;
+  color: #ffb35c;
+  text-align: center;
+}
+
+@media (max-width: 680px) {
+  .live-photo-export-format-description {
+    white-space: normal;
+  }
+}

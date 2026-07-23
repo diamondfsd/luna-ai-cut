@@ -1,0 +1,89 @@
+/* ==========================================
+   Luna AI Cut — 通用 UI 组件样式
+   所有 Input / Button / IconButton 等公共组件样式集中于此
+   ========================================== */
+
+/* ---------- Input 组件 ---------- */
+.ui-input {
+  font: inherit;
+  letter-spacing: 0;
+  outline: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--hairline);
+  color: var(--ink);
+  background: var(--parchment);
+  transition: border-color 140ms ease;
+}
+
+.ui-input:focus {
+  border-color: var(--blue);
+}
+
+/* pill — 标准 44px 圆角输入框（原 host-field） */
+.ui-input-pill {
+  width: min(320px, 32vw);
+  height: 44px;
+  border-radius: 999px;
+  padding: 0 16px;
+  font-size: 17px;
+}
+
+/* compact — 小型 32px 圆角输入框，用于内联编辑 */
+.ui-input-compact {
+  width: auto;
+  height: 32px;
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 12px;
+  flex: 1;
+}
+
+/* ghost — 无边框透明输入框 */
+.ui-input-ghost {
+  width: auto;
+  height: 40px;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 13px;
+  background: var(--parchment);
+}
+
+/* fullWidth 修饰 */
+.ui-input-full {
+  width: 100%;
+}
+
+/* 带图标的输入框 wrapper */
+.ui-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--canvas);
+  padding: 0 16px;
+  color: var(--muted);
+  transition: border-color 140ms ease;
+}
+
+.ui-input-wrap:focus-within {
+  border-color: var(--blue);
+}
+
+.ui-input-wrap .ui-input {
+  border: 0;
+  background: transparent;
+  min-width: 0;
+  width: 100%;
+  flex: 1;
+}
+
+.ui-input-wrap.ui-input-full {
+  width: 100%;
+}
+
+.ui-input-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
