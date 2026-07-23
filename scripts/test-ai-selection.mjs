@@ -245,6 +245,14 @@ assert.equal(faceGroups.length, 2)
 assert.deepEqual(faceGroups[0].itemIds, ['face-a', 'face-a-again', 'face-a-and-b'])
 assert.deepEqual(faceGroups[1].itemIds, ['face-b', 'face-a-and-b'])
 
+const poseVector = (first, second, third) => [first, second, third, ...Array(125).fill(0)]
+const poseGroups = buildFaceGroups([
+  item('pose-front', '2026-07-18T03:10:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(127, 0, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('pose-middle', '2026-07-18T03:11:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(60, 105, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('pose-profile', '2026-07-18T03:12:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(0, 80, 100), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+])
+assert.equal(poseGroups.length, 1, '同一人物的正脸、过渡角度和侧脸应通过组内相似样本归为一组')
+
 const sceneSession = {
   preset: 'balanced',
   purpose: 'general',
