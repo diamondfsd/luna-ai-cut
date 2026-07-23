@@ -1,8 +1,7 @@
 import { DEFAULT_DEVICE } from './deviceDefaults'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
 import { buildKeepAliveOptionsBody, connectSocket, Insta360TcpSession } from './insta360TcpProtocol'
-import { directHttpFetch } from './directHttp'
-import { extractCameraSubdirs, parseLunaIndex } from './lunaMediaIndex'
+import { parseLunaFilePaths } from './lunaMediaIndex'
 import type { CameraDeleteResult, ConnectionStatus, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export const DEFAULT_HOST = DEFAULT_DEVICE.defaultHost
@@ -260,111 +259,22 @@ export class LunaClient {
   }
 
   private async listFilesUnlocked(cameraPath: string): Promise<LunaFile[]> {
-    let lastStatus: number | null = null
-    let lastError: unknown = null
-    const url = cameraUrl(this.host, cameraPath)
-    logMainInfo(`[文件读取] 发起文件列表请求`, { url, host: this.host, cameraPath })
+    logMainInfo(`[文件读取] 发起 TCP 文件列表请求`, { host: this.host, cameraPath })
     const t0 = performance.now()
 
-    const tBeforeConnect = performance.now()
-    try {
-      await this.connectUnlocked()
-      logMainInfo(`[文件读取] 控制会话建立完成`, { host: this.host, elapsedMs: Math.round(performance.now() - tBeforeConnect) })
-    } catch (error) {
-      logMainWarn(`[文件读取] 控制会话不可用，继续使用 HTTP 目录列表`, {
-        host: this.host,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      this.resetControlSession()
-    }
+    await this.connectUnlocked()
+    const session = this.controlSession
+    if (!session) throw new Error('相机控制连接未建立')
 
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      try {
-        if (attempt > 0) {
-          logMainWarn(`[HTTP读取] 第 ${attempt + 1}/4 次重试`, { url })
-          const retryDelay = lastStatus === 401 || lastStatus === 403 ? 1200 : 300 + attempt * 250
-          await new Promise((resolve) => setTimeout(resolve, retryDelay))
-        }
-
-        const tFetch = performance.now()
-        logMainInfo(`[HTTP读取] 发起 HTTP GET`, { url, attempt: attempt + 1, sinceStartMs: Math.round(tFetch - t0) })
-        const response = await directHttpFetch(url, {
-          headers: {
-            'User-Agent': 'LunaAI-Cut/0.1',
-            'Accept-Encoding': 'identity',
-            'Cache-Control': 'no-cache',
-          },
-        })
-
-        logMainInfo(`[HTTP读取] HTTP 响应收到`, { url, status: response.status, attempt: attempt + 1, fetchElapsedMs: Math.round(performance.now() - tFetch) })
-
-        lastStatus = response.status
-        logMainDebug(`[HTTP读取] 响应状态`, { url, status: response.status, attempt: attempt + 1 })
-
-        if (response.ok) {
-          const html = await response.text()
-          const baseUrl = url
-
-          const cameraDirs = extractCameraSubdirs(html)
-          logMainDebug(`[HTTP读取] 发现 Camera 子目录`, { url, cameraDirs: cameraDirs.length > 0 ? cameraDirs : '无' })
-
-          if (cameraDirs.length > 0) {
-            const results = await Promise.all(
-              cameraDirs.map(async (dir) => {
-                const dirUrl = cameraUrl(this.host, `${cameraPath}${dir}/`)
-                try {
-                  logMainDebug(`[HTTP读取] 读取子目录`, { url: dirUrl })
-                  const dirResponse = await directHttpFetch(dirUrl, {
-                    headers: {
-                      'User-Agent': 'LunaAI-Cut/0.1',
-                      'Accept-Encoding': 'identity',
-                      'Cache-Control': 'no-cache',
-                    },
-                  })
-                  if (!dirResponse.ok) {
-                    logMainWarn(`[HTTP读取] 子目录请求失败`, { url: dirUrl, status: dirResponse.status })
-                    return []
-                  }
-                  const dirFiles = parseLunaIndex(await dirResponse.text(), dirUrl)
-                  logMainDebug(`[HTTP读取] 子目录文件数`, { dir, fileCount: dirFiles.length })
-                  return dirFiles
-                } catch (error) {
-                  logMainWarn(`[HTTP读取] 子目录读取异常`, { dir, error: error instanceof Error ? error.message : String(error) })
-                  return []
-                }
-              }),
-            )
-            const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-            const allFiles = results.flat()
-            logMainInfo(`[HTTP读取] 文件列表读取完成（多子目录）`, { fileCount: allFiles.length, cameraDirs: cameraDirs.length, elapsedSec: elapsed })
-            return allFiles
-          }
-
-          const files = parseLunaIndex(html, baseUrl)
-          const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-          logMainInfo(`[HTTP读取] 文件列表读取完成`, { fileCount: files.length, elapsedSec: elapsed })
-          return files
-        }
-
-        let errorBody = ''
-        try {
-          errorBody = (await response.text()).slice(0, 500)
-        } catch { /* 忽略读取错误体异常 */ }
-        logMainWarn(`[HTTP读取] HTTP ${response.status}, 尝试 ${attempt + 1}/4`, { url, path: cameraPath, responsePreview: errorBody })
-        if (response.status !== 401 && response.status !== 403) break
-      } catch (error) {
-        lastError = error
-        this.resetControlSession()
-        logMainWarn(`[HTTP读取] 请求失败，尝试 ${attempt + 1}/4`, { url, path: cameraPath, error: error instanceof Error ? error.message : String(error) })
-      }
-    }
-
-    const failedAt = ((performance.now() - t0) / 1000).toFixed(2)
-    if (lastError && lastStatus === null) {
-      logMainError(`[HTTP读取] 最终失败（无响应）`, { url, path: cameraPath, elapsedSec: failedAt, error: lastError instanceof Error ? lastError.message : String(lastError) })
-      throw lastError instanceof Error ? lastError : new Error(String(lastError))
-    }
-    logMainError(`[HTTP读取] 最终失败`, { url, path: cameraPath, status: lastStatus, elapsedSec: failedAt })
-    throw new Error(`读取文件列表失败：HTTP ${lastStatus ?? '未知'}`)
+    const cameraPaths = await session.listFilePaths(cameraPath)
+    const files = parseLunaFilePaths(cameraPaths, `http://${this.host}/`)
+    logMainInfo(`[TCP读取] 文件列表读取完成`, {
+      host: this.host,
+      cameraPath,
+      pathCount: cameraPaths.length,
+      fileCount: files.length,
+      elapsedMs: Math.round(performance.now() - t0),
+    })
+    return files
   }
 }
