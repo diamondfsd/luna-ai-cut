@@ -124,6 +124,8 @@ mod tests {
         RenderLayer {
             texture_id: 1,
             layer_type: Some("local-color".to_string()),
+            precompose_group: None,
+            precompose_role: None,
             shape: None,
             fill_color: None,
             corner_radius: None,
