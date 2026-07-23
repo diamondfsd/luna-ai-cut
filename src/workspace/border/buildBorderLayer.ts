@@ -1,4 +1,4 @@
-import type { DeclarativeCompositionLayer, MediaMetadata, PreviewLayer } from '../../shared/types'
+import type { DeclarativeCompositionLayer, MediaMetadata, PreviewLayer, RenderColorAdjustments } from '../../shared/types'
 import { isVideoPath } from '../../lib/fileUtils'
 import type { BorderSettings } from '../shared/editPipeline'
 import { getBorderLogo } from './logoAssets'
@@ -53,6 +53,50 @@ function videoTemplate(content: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+function originalBlurColor(
+  color: RenderColorAdjustments | undefined,
+  blurRadius: number,
+): RenderColorAdjustments | undefined {
+  if (!color) return undefined
+  return {
+    ...color,
+    exposure: 0,
+    black: 0,
+    brightness: 0,
+    contrast: 0,
+    saturation: 0,
+    vibrance: 0,
+    temperature: 0,
+    tint: 0,
+    highlights: 0,
+    shadows: 0,
+    whites: 0,
+    blacks: 0,
+    clarity: 0,
+    texture: 0,
+    sharpen: 0,
+    denoise: 100 + blurRadius * 100,
+    gradeShadowsHue: 0,
+    gradeShadowsAmount: 0,
+    gradeMidHue: 0,
+    gradeMidAmount: 0,
+    gradeHighlightsHue: 0,
+    gradeHighlightsAmount: 0,
+    curveLift: 0,
+    curveContrast: 0,
+    curve: { rgb: [], luminance: [], red: [], green: [], blue: [] },
+    levelsBlack: 0,
+    levelsGray: 0.5,
+    levelsWhite: 1,
+    hslChannels: color.hslChannels.map((channel) => ({
+      ...channel,
+      hueShift: 0,
+      saturation: 0,
+      luminance: 0,
+    })),
+  }
 }
 
 function scaleRectFromCenter(rect: { x: number; y: number; w: number; h: number }, scale: number) {
@@ -213,23 +257,20 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
     if (layer.type === 'media') {
       if (!mediaPath) return []
       const baseTransform = mediaLayerStyle?.transform
-      const color = layer.blurRadius && layer.blurRadius > 0 && mediaLayerStyle?.color
-        ? {
-            ...mediaLayerStyle.color,
-            // 渲染核心将 100 以上的内部降噪值解释为版式背景模糊半径；
-            // 普通调色面板仍保持 0-100 的原有语义。
-            denoise: 100 + layer.blurRadius * 100,
-            clarity: 0,
-            texture: 0,
-            sharpen: 0,
-          }
+      const isBlurBackground = Boolean(layer.blurRadius && layer.blurRadius > 0)
+      const color = isBlurBackground
+        ? originalBlurColor(mediaLayerStyle?.color, layer.blurRadius ?? 0)
         : mediaLayerStyle?.color
       return [{
         ...common,
         ...mediaLayerStyle,
         color,
         layerType: 'media',
+        layoutRole: isBlurBackground ? 'background' : 'content',
         filePath: mediaPath,
+        restoreLutId: isBlurBackground ? undefined : mediaLayerStyle?.restoreLutId,
+        lutId: isBlurBackground ? undefined : mediaLayerStyle?.lutId,
+        lutIntensity: isBlurBackground ? undefined : mediaLayerStyle?.lutIntensity,
         fit: layer.fit === 'cover-scale' ? 'cover-scale' : 'cover',
         cornerRadius: layerCornerRadius,
         srcX: layer.crop?.x ?? 0,

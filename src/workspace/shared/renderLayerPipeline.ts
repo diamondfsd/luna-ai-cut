@@ -115,7 +115,9 @@ export function applyLocalColorToSourceMediaLayers(
   pipeline: EditPipeline,
 ): PreviewLayer[] {
   return layers.flatMap((layer) => (
-    layer.layerType === 'media' && layer.filePath === sourcePath
+    layer.layerType === 'media'
+      && layer.layoutRole !== 'background'
+      && layer.filePath === sourcePath
       ? [layer, ...buildLocalColorLayers(layer, pipeline)]
       : [layer]
   ))

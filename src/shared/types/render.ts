@@ -106,6 +106,8 @@ export interface RenderMaskTrack {
 
 export interface PreviewLayer {
   layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
+  /** 相框版式中的背景素材不继承前景的局部调色。 */
+  layoutRole?: 'background' | 'content'
   filePath: string
   isVideo?: boolean
   /** 显式相同的 key 会复用同一份视频解码纹理。 */
