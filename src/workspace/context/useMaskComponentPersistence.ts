@@ -100,7 +100,7 @@ export function useMaskComponentPersistence(options: Options) {
   const saveFinalMask = useCallback(async (data: Uint8Array, components: ColorMaskComponent[] | undefined, nextActiveComponentId: string | null) => {
     if (!projectId || !assetId || !maskSize) throw new Error('请先在项目中打开一张图片')
     const operationMask = activeMask
-    const feather = components?.some((component) => component.type !== 'raster') ? 0 : operationMask?.feather ?? 2
+    const feather = components?.some((component) => component.type !== 'raster') ? 0 : operationMask?.feather ?? 0
     const operation = beginOperation('save', projectId, assetId)
     try {
       const saved = await window.luna.workspace.saveColorMask(
