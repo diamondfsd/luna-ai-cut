@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Code2, ExternalLink, FileText, HelpCircle, Loader2, RefreshCw, Trash2, Zap, X as XIcon } from 'lucide-react'
+import { Code2, ExternalLink, FileText, GitFork, HelpCircle, Loader2, RefreshCw, Trash2, Zap, X as XIcon } from 'lucide-react'
 
 import type { HotUpdateCheckResult, UpdateInfo } from '../shared/types'
 import { Button, Dialog } from '../ui'
@@ -208,6 +208,10 @@ export function HelpDialog({ children }: HelpDialogProps) {
             <Button variant="secondary" size="compact" className="help-footer-btn" onClick={() => void window.luna.openPath('https://luna.diamondfsd.com/')}>
               <ExternalLink size={14} />
               官方网站
+            </Button>
+            <Button variant="secondary" size="compact" className="help-footer-btn" onClick={() => void window.luna.openPath('https://github.com/diamondfsd/luna-ai-cut')}>
+              <GitFork size={14} />
+              项目源码
             </Button>
             <Button variant="secondary" size="compact" className="help-footer-btn" onClick={() => void window.luna.openDevTools()}>
               <Code2 size={14} />
