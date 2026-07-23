@@ -654,6 +654,13 @@ try {
     framedLayers.slice(1, 3).every((layer) => layer.color.denoise === 130),
     'frame local color layers must retain layout-specific media adjustments',
   )
+  const framedBackground = renderModule.applyLocalColorToSourceMediaLayers(
+    [{ ...framedSource, layoutRole: 'background' }],
+    '/image.jpg',
+    ordered,
+  )
+  assert.equal(framedBackground.length, 1, 'blurred frame backgrounds must not receive local mask layers')
+  assert.equal(framedBackground[0].maskPath, undefined)
 
   const registeredModelModes = {
     'segformer-b0-ade20k': 'fast',
