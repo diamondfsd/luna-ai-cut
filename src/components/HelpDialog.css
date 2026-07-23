@@ -1,5 +1,5 @@
 .help-dialog-content.ui-dialog-content {
-  width: min(620px, 92vw);
+  width: min(660px, 92vw);
 }
 
 .help-dialog-body {
@@ -9,7 +9,7 @@
 
 .help-dialog-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 176px;
+  grid-template-columns: minmax(0, 1fr) 208px;
   min-height: 280px;
 }
 
@@ -198,8 +198,8 @@
 }
 
 .help-qr-code {
-  width: 124px;
-  height: 124px;
+  width: 152px;
+  height: 152px;
   object-fit: cover;
   border-radius: 8px;
 }

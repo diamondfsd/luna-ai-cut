@@ -32,7 +32,7 @@ import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
-import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
@@ -311,12 +311,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   // ── 边框预览层（JSON 预设解析为多个独立合成层） ──
   const borderLayer = useMemo(() => {
     if (!finalCanvasSize) return []
-    return buildBorderLayer({
+    const sourcePath = media.activeMedia?.path
+    const layers = buildBorderLayer({
       canvasWidth: finalCanvasSize.width,
       canvasHeight: finalCanvasSize.height,
       border: edit.pipeline.border,
       metadata: borderMetadata,
-      mediaPath: media.activeMedia?.path,
+      mediaPath: sourcePath,
       mediaLayerStyle: {
         color: pipelineColorToRenderColor(stagePipeline.color),
         transform: pipelineTransformToRenderTransform(stagePipeline.transform),
@@ -326,6 +327,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         isVideo: media.activeMedia?.path ? isVideoPath(media.activeMedia.path) : false,
       },
     })
+    return sourcePath
+      ? applyLocalColorToSourceMediaLayers(layers, sourcePath, stagePipeline)
+      : layers
   }, [edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
 
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
