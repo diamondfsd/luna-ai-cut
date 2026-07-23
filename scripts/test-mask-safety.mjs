@@ -39,12 +39,18 @@ async function compileModules(entryPaths) {
   const javascriptFiles = (await walkFiles(temporaryRoot)).filter((filePath) => filePath.endsWith('.js'))
   for (const filePath of javascriptFiles) {
     const source = await readFile(filePath, 'utf8')
-    const rewritten = source.replace(/(from\s+|import\s*)(['"])(\.[^'"]+)\2/g, (match, prefix, quote, specifier) => {
+    let rewritten = source.replace(/(from\s+|import\s*)(['"])(\.[^'"]+)\2/g, (match, prefix, quote, specifier) => {
       const resolved = path.resolve(path.dirname(filePath), specifier)
       if (existsSync(`${resolved}.js`)) return `${prefix}${quote}${specifier}.js${quote}`
       if (existsSync(path.join(resolved, 'index.js'))) return `${prefix}${quote}${specifier}/index.js${quote}`
       return match
     })
+    if (filePath.endsWith(`${path.sep}borderPresets.js`)) {
+      rewritten = rewritten.replace(
+        /const presetModules = import\.meta\.glob\([\s\S]*?\n\}\);/,
+        'const presetModules = {};',
+      )
+    }
     if (rewritten !== source) await writeFile(filePath, rewritten, 'utf8')
   }
 }
@@ -619,6 +625,34 @@ try {
     renderModule.buildLocalColorLayers(baseLayer, unavailable),
     [],
     'unavailable masks must never enter preview or export layers',
+  )
+  const framedSource = {
+    ...baseLayer,
+    layerType: 'media',
+    color: {
+      ...renderModule.pipelineColorToRenderColor(ordered.color),
+      denoise: 130,
+    },
+  }
+  const framedLogo = { ...baseLayer, layerType: 'media', filePath: '/logo.png' }
+  const framedLayers = renderModule.applyLocalColorToSourceMediaLayers(
+    [framedSource, framedLogo],
+    '/image.jpg',
+    ordered,
+  )
+  assert.deepEqual(
+    framedLayers.map((layer) => layer.filePath),
+    ['/image.jpg', '/image.jpg', '/image.jpg', '/logo.png'],
+    'frame media layers must receive local color copies without affecting other media',
+  )
+  assert.deepEqual(
+    framedLayers.slice(1, 3).map((layer) => layer.maskPath),
+    ['/bottom.pgm', '/top.pgm'],
+    'frame media layers must preserve local mask ordering',
+  )
+  assert.ok(
+    framedLayers.slice(1, 3).every((layer) => layer.color.denoise === 130),
+    'frame local color layers must retain layout-specific media adjustments',
   )
 
   const registeredModelModes = {
