@@ -67,6 +67,8 @@ interface WorkspacePageProps {
 }
 
 type WorkspaceRuntimeResource = 'fonts' | 'luts'
+const RUNTIME_RESOURCE_RETRY_DELAY_MS = 5_000
+const RUNTIME_RESOURCE_MAX_ATTEMPTS = 100
 
 function prepareWorkspaceRuntimeResource(kind: WorkspaceRuntimeResource): Promise<void> {
   const renderCore = (window as unknown as {
@@ -132,18 +134,36 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   useEffect(() => {
     if (!pageActive) return
-    const prepare = (kind: WorkspaceRuntimeResource) => {
+    let disposed = false
+    const retryTimers: number[] = []
+
+    const prepare = async (kind: WorkspaceRuntimeResource, attempt = 1): Promise<void> => {
       setRuntimeResourceLoading((current) => ({ ...current, [kind]: true }))
-      void prepareWorkspaceRuntimeResource(kind)
-        .catch((error: unknown) => {
-          console.warn(`[Workspace] ${kind === 'fonts' ? '字体' : 'LUT'} 资源预下载失败，将在实际使用时重试:`, error)
-        })
-        .finally(() => {
+      try {
+        await prepareWorkspaceRuntimeResource(kind)
+        if (!disposed) setRuntimeResourceLoading((current) => ({ ...current, [kind]: false }))
+      } catch (error: unknown) {
+        if (disposed) return
+        const label = kind === 'fonts' ? '字体' : 'LUT'
+        if (attempt >= RUNTIME_RESOURCE_MAX_ATTEMPTS) {
+          console.warn(`[Workspace] ${label}资源下载连续失败 ${attempt} 次，已停止自动重试:`, error)
           setRuntimeResourceLoading((current) => ({ ...current, [kind]: false }))
-        })
+          return
+        }
+        console.warn(`[Workspace] ${label}资源第 ${attempt} 次下载失败，5 秒后重试:`, error)
+        retryTimers.push(window.setTimeout(() => {
+          void prepare(kind, attempt + 1)
+        }, RUNTIME_RESOURCE_RETRY_DELAY_MS))
+      }
     }
-    prepare('fonts')
-    prepare('luts')
+    void prepare('fonts')
+    void prepare('luts')
+
+    return () => {
+      disposed = true
+      retryTimers.forEach((timer) => window.clearTimeout(timer))
+      setRuntimeResourceLoading({ fonts: false, luts: false })
+    }
   }, [pageActive])
 
   useEffect(() => {
