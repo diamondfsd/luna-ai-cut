@@ -296,6 +296,36 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
     const rawContent = layer.type === 'logo' ? layer.fallbackText ?? '' : layer.content
     const content = template(isVideoMedia && layer.type === 'text' ? videoTemplate(rawContent) : rawContent, variables)
     const style = layer.type === 'text' ? layer.style : { fontFamily: 'Source Han Sans SC', fontFile: 'fonts/SourceHanSansSC-Bold.otf', fontSize: 18, fontWeight: 700, color: layer.tint?.color ?? border.textColor, align: 'left' as const }
-    return [{ ...common, layerType: layer.type, content, fontSize: style.fontSize, fontFamily: style.fontFamily, fontFile: style.fontFile ?? 'fonts/SourceHanSansSC-Regular.otf', fontWeight: style.fontWeight, textColor: layer.type === 'logo' ? style.color : border.textColor, textAlign: style.align, verticalAlign: ('verticalAlign' in style ? style.verticalAlign : undefined) }]
+    const textLayer: PreviewLayer = { ...common, layerType: layer.type, content, fontSize: style.fontSize, fontFamily: style.fontFamily, fontFile: style.fontFile ?? 'fonts/SourceHanSansSC-Regular.otf', fontWeight: style.fontWeight, textColor: layer.type === 'logo' ? style.color : border.textColor, textAlign: style.align, verticalAlign: ('verticalAlign' in style ? style.verticalAlign : undefined) }
+    const shadow = layer.type === 'text' ? layer.style.shadow : undefined
+    if (!shadow) return [textLayer]
+
+    const blurRadius = Math.max(0, shadow.blur ?? 0)
+    const radius = blurRadius / 2
+    const samples = blurRadius > 0
+      ? [
+          { x: 0, y: 0, weight: 0.4 },
+          { x: -radius, y: 0, weight: 0.1 },
+          { x: radius, y: 0, weight: 0.1 },
+          { x: 0, y: -radius, weight: 0.1 },
+          { x: 0, y: radius, weight: 0.1 },
+          { x: -radius, y: -radius, weight: 0.05 },
+          { x: radius, y: -radius, weight: 0.05 },
+          { x: -radius, y: radius, weight: 0.05 },
+          { x: radius, y: radius, weight: 0.05 },
+        ]
+      : [{ x: 0, y: 0, weight: 1 }]
+    const shadowOpacity = clamp(shadow.opacity ?? 0.5, 0, 1)
+    const offsetX = shadow.offsetX ?? 0
+    const offsetY = shadow.offsetY ?? 0
+    const shadowLayers = samples.map(({ x, y, weight }): PreviewLayer => ({
+      ...textLayer,
+      dstX: textLayer.dstX + (offsetX + x) / Math.max(1, canvasWidth),
+      dstY: textLayer.dstY + (offsetY + y) / Math.max(1, canvasHeight),
+      opacity: textLayer.opacity * shadowOpacity * weight,
+      zIndex: textLayer.zIndex - 0.01,
+      textColor: shadow.color,
+    }))
+    return [...shadowLayers, textLayer]
   })
 }

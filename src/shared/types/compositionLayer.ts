@@ -35,6 +35,14 @@ export interface TextLayer extends BaseCompositionLayer {
     align?: 'left' | 'center' | 'right'
     verticalAlign?: 'top' | 'middle' | 'bottom'
     letterSpacing?: number
+    /** 文字阴影参数，偏移与模糊半径单位均为输出像素。 */
+    shadow?: {
+      color: string
+      opacity?: number
+      offsetX?: number
+      offsetY?: number
+      blur?: number
+    }
   }
   overflow?: 'clip' | 'ellipsis' | 'shrink'
 }
