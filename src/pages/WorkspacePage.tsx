@@ -66,6 +66,15 @@ interface WorkspacePageProps {
   onEditingChange?: (editing: boolean) => void
 }
 
+type WorkspaceRuntimeResource = 'fonts' | 'luts'
+
+function prepareWorkspaceRuntimeResource(kind: WorkspaceRuntimeResource): Promise<void> {
+  const renderCore = (window as unknown as {
+    lunaRenderCore?: { prepareRuntimeResource?: (kind: WorkspaceRuntimeResource) => Promise<void> }
+  }).lunaRenderCore
+  return renderCore?.prepareRuntimeResource?.(kind) ?? Promise.resolve()
+}
+
 export function WorkspacePage({ workspaceMode, creativeModeId, onCreativeModeChange, pageActive, onEditingChange }: WorkspacePageProps) {
   // 非活跃时不渲染：AppRoute 的 preserve 只隐藏不卸载，不跳过会导致 context 消费者持续响应全局 state 变化
   const location = useLocation()
@@ -118,7 +127,24 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
   const [fitScalePercent, setFitScalePercent] = useState(100)
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
+  const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
   const allowWatermark = useLunaUltraWatermark(media.activeMedia)
+
+  useEffect(() => {
+    if (!pageActive) return
+    const prepare = (kind: WorkspaceRuntimeResource) => {
+      setRuntimeResourceLoading((current) => ({ ...current, [kind]: true }))
+      void prepareWorkspaceRuntimeResource(kind)
+        .catch((error: unknown) => {
+          console.warn(`[Workspace] ${kind === 'fonts' ? '字体' : 'LUT'} 资源预下载失败，将在实际使用时重试:`, error)
+        })
+        .finally(() => {
+          setRuntimeResourceLoading((current) => ({ ...current, [kind]: false }))
+        })
+    }
+    prepare('fonts')
+    prepare('luts')
+  }, [pageActive])
 
   useEffect(() => {
     setPreviewQuality(normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
@@ -714,6 +740,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             mediaSize={mediaSize}
             duration={activeTrimDuration}
             allowWatermark={allowWatermark}
+            runtimeResourceLoading={runtimeResourceLoading}
           />
 
           {edit.trimActive ? (

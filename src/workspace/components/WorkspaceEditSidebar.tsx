@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
+import { ArrowLeft, Check, Crop, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Accordion, Button, Dialog, IconButton, Tooltip } from '../../ui'
@@ -100,9 +100,10 @@ interface WorkspaceEditSidebarProps {
   mediaSize?: { w: number; h: number } | null
   duration: number
   allowWatermark: boolean
+  runtimeResourceLoading?: { fonts: boolean; luts: boolean }
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark, runtimeResourceLoading }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -338,15 +339,19 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
       </section>
       <nav className="workspace-tool-rail" aria-label="工作台工具">
         <div className="workspace-tool-rail-main">
-          {visibleToolItems.map((item) => (
+          {visibleToolItems.map((item) => {
+            const resourceLoading = item.value === 'filter'
+              ? runtimeResourceLoading?.luts === true
+              : item.value === 'border' && runtimeResourceLoading?.fonts === true
+            return (
             <div key={item.value} className="workspace-tool-rail-item">
-              <Tooltip content={item.label}>
+              <Tooltip content={resourceLoading ? `${item.label}资源加载中` : item.label}>
                 <IconButton
                   variant={activeTool === item.value ? 'outline' : 'ghost'}
                   size="compact"
-                  icon={item.icon}
+                  icon={resourceLoading ? <Loader2 className="spin" size={20} /> : item.icon}
                   aria-label={item.label}
-                  disabled={item.value === 'mask' && !mask.available}
+                  disabled={resourceLoading || (item.value === 'mask' && !mask.available)}
                   onClick={() => {
                     mask.setEditing(item.value === 'mask')
                     edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)
@@ -355,7 +360,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark }: Wo
               </Tooltip>
               {toolModified[item.value] && <span className="workspace-tool-rail-dot" />}
             </div>
-          ))}
+            )
+          })}
         </div>
       </nav>
       <Dialog
