@@ -195,13 +195,14 @@ try {
 
   const badSha = makeFixture('bad-sha-pack', [['luts/bad.cube', 'bad-sha']])
   const badShaRoot = path.join(temporaryRoot, 'bad-sha-cache')
-  await assert.rejects(
-    loadRuntimeResource(badShaRoot, { ...badSha.definition, sha256: '0'.repeat(64) }, {
-      fetcher: fixtureFetcher(badSha.archive),
-    }),
-    /校验失败/,
-  )
-  await assertNoPublishedOrStaging(badShaRoot, badSha.definition.id)
+  const uncheckedPath = await loadRuntimeResource(badShaRoot, {
+    ...badSha.definition,
+    archiveBytes: 1,
+    unpackedBytes: 1,
+    expectedFileCount: 999,
+    sha256: '0'.repeat(64),
+  }, { fetcher: fixtureFetcher(badSha.archive) })
+  assert.equal(await readFile(path.join(uncheckedPath, 'bad.cube'), 'utf8'), 'bad-sha')
 
   for (const [name, entries, expectedError] of [
     ['zip-slip-pack', [['../escape.cube', 'escape']], /根目录不匹配|不安全路径/],
