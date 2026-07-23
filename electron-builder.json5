@@ -16,11 +16,6 @@
   ],
   "extraResources": [
     {
-      "from": "public/fonts",
-      "to": "fonts",
-      "filter": ["**/*.otf", "**/*.ttf"]
-    },
-    {
       "from": "build/icon.png",
       "to": "icon.png"
     },
@@ -35,18 +30,14 @@
       "filter": ["**/*"]
     },
     {
-      "from": "luna-render-core/luna-render-core.node",
-      "to": "luna-render-core/luna-render-core.node"
+      "from": "luna-render-core",
+      "to": "luna-render-core",
+      "filter": ["luna-render-core.node", "sam-segmentation-worker", "sam-segmentation-worker.exe", "semantic-segmentation-worker", "semantic-segmentation-worker.exe", "specialized-segmentation-worker", "specialized-segmentation-worker.exe", "*.dylib", "*.dll", "*.so*"]
     },
     {
       "from": "vendor/luna-protocol",
       "to": "luna-protocol",
       "filter": ["luna-protocol.cjs", "luna-protocol.sha256"]
-    },
-    {
-      "from": "public/luts",
-      "to": "luts",
-      "filter": ["**/*"]
     },
     {
       "from": "src/assets/watermark",
@@ -76,7 +67,8 @@
   ],
   "mac": {
     "icon": "build/icon.icns",
-    "identity": "-",
+    // electron-builder 不签名；afterPack 统一执行 Ad Hoc 签名。
+    "identity": null,
     "target": [
       {
         "target": "dmg",
@@ -87,12 +79,24 @@
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
     "hardenedRuntime": true,
+    "extraResources": [
+      {
+        "from": "node_modules/7zip-bin/mac/${arch}/7za",
+        "to": "tools/7za"
+      }
+    ],
     "extendInfo": {
       "NSLocalNetworkUsageDescription": "Luna AI Cut 需要访问本地网络来连接 Insta360 相机（Luna / Go Ultra）"
     }
   },
   "win": {
     "icon": "build/icon.ico",
+    "extraResources": [
+      {
+        "from": "node_modules/7zip-bin/win/x64/7za.exe",
+        "to": "tools/7za.exe"
+      }
+    ],
     "target": [
       {
         "target": "nsis",

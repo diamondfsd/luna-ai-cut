@@ -8,6 +8,7 @@ import { useOptionalDownloadProgress } from '../context/DownloadProgressContext'
 import { useExportProgress } from '../context/ExportProgressContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { logger } from '../lib/rendererLogger'
+import { subscribeThumbnailReady } from '../lib/thumbnailReady'
 
 type MediaFilter = 'all' | 'image' | 'video'
 type DownloadStatusFilter = 'all' | 'downloaded' | 'not-downloaded'
@@ -41,7 +42,7 @@ export function useMediaLibraryController(pageType: PageType) {
   const [fallbackDownloadProgress, setFallbackDownloadProgress] = useState<Map<string, DownloadProgress>>(new Map())
   const downloadProgress = downloadProgressContext?.downloadProgress ?? fallbackDownloadProgress
   const setDownloadProgress = downloadProgressContext?.setDownloadProgress ?? setFallbackDownloadProgress
-  const { activeDevice } = useDeviceConnection()
+  const { activeDevice, sourceCapabilities, sourceMode } = useDeviceConnection()
   const isCamera = pageType === 'camera'
   const isLocal = pageType === 'local'
 
@@ -97,14 +98,14 @@ export function useMediaLibraryController(pageType: PageType) {
   const activeDeviceId = activeDevice?.id ?? settings?.activeDeviceId ?? ''
 
   const storageOptions = useMemo(() => {
-    if (isCamera) {
+    if (isCamera && sourceMode === 'wireless') {
       return [
         { value: 'all', label: '全部' },
         ...(activeDevice?.storages?.map((s) => ({ value: s.id, label: s.label })) ?? []),
       ]
     }
     return [{ value: 'all', label: '全部' }]
-  }, [activeDevice?.storages, isCamera])
+  }, [activeDevice?.storages, isCamera, sourceMode])
 
   // 当前数据源：各 pageType 管理自己的文件列表，消除 isDownloadsPage 分支
   const currentFiles = useMemo(
@@ -156,9 +157,9 @@ export function useMediaLibraryController(pageType: PageType) {
   // 从设置中初始化存储筛选
   useEffect(() => {
     if (isCamera) {
-      setStorageFilter(settings?.deviceStorage?.[activeDeviceId] ?? 'all')
+      setStorageFilter(sourceMode === 'wired' ? 'all' : settings?.deviceStorage?.[activeDeviceId] ?? 'all')
     }
-  }, [activeDeviceId, settings?.deviceStorage, isCamera])
+  }, [activeDeviceId, settings?.deviceStorage, isCamera, sourceMode])
 
   // 自动加载文件
   useEffect(() => {
@@ -168,13 +169,15 @@ export function useMediaLibraryController(pageType: PageType) {
       void loadCameraLibrary()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDevice?.id, pageType, settings?.downloadDir, storageFilter])
+  }, [activeDevice?.id, pageType, settings?.downloadDir, settings?.mountedCameraRoot, sourceMode, storageFilter])
 
   // 本地导出视图自动加载
   useEffect(() => {
     if (isLocal && viewMode === 'export') {
       void loadExportLibrary()
     }
+    // loadExportLibrary is declared in this controller and intentionally runs only when the view inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLocal, viewMode, settings?.exportDir])
 
   // 本地页：下载完成后自动刷新
@@ -215,7 +218,7 @@ export function useMediaLibraryController(pageType: PageType) {
 
   // 监听缓存缩略图完成
   useEffect(() => {
-    return window.luna.onThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
+    return subscribeThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
       const matches = (file: LunaFile): boolean =>
         file.id === fileId || file.name === fileName || file.downloadName === downloadName
       setCacheFailedIds((current) => {
@@ -312,15 +315,23 @@ export function useMediaLibraryController(pageType: PageType) {
     const t0 = performance.now()
     try {
       const host = settings.cameraHost
-      logger.info('[媒体库] 开始从设备加载文件', { host, storageFilter })
+      const sourceOptions = {
+        mode: sourceMode,
+        deviceId: activeDeviceId,
+        host,
+        rootPath: settings.mountedCameraRoot,
+        storageId: storageFilter,
+      } as const
+      logger.info('[媒体库] 开始从设备加载文件', { mode: sourceMode, host, rootPath: settings.mountedCameraRoot, storageFilter })
       const tCheck = performance.now()
-      await window.luna.checkConnection(host)
-      logger.info('[媒体库] checkConnection 完成', { host, elapsedMs: Math.round(performance.now() - tCheck) })
+      const status = await window.luna.cameraSource.check(sourceOptions)
+      if (!status.connected) throw new Error(status.message)
+      logger.info('[媒体库] 媒体源检查完成', { mode: sourceMode, elapsedMs: Math.round(performance.now() - tCheck) })
       const tList = performance.now()
-      const lunaFiles = await window.luna.listFiles(host, storageFilter)
-      logger.info('[媒体库] listFiles 完成', { host, fileCount: lunaFiles.length, elapsedMs: Math.round(performance.now() - tList) })
+      const lunaFiles = await window.luna.cameraSource.listFiles(sourceOptions)
+      logger.info('[媒体库] listFiles 完成', { mode: sourceMode, fileCount: lunaFiles.length, elapsedMs: Math.round(performance.now() - tList) })
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-      logger.info('[媒体库] 设备文件加载完成', { host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })
+      logger.info('[媒体库] 设备文件加载完成', { mode: sourceMode, host, fileCount: lunaFiles.length, elapsedSec: elapsed, storageFilter })
       setFiles(lunaFiles)
       setSelected(new Set())
       setCacheFailedIds(new Set())
@@ -472,6 +483,7 @@ export function useMediaLibraryController(pageType: PageType) {
   const cameraDelete = useCameraMediaDelete({
     selectedFiles,
     settings,
+    sourceMode,
     setSelected,
     reload: loadCameraLibrary,
   })
@@ -516,6 +528,7 @@ export function useMediaLibraryController(pageType: PageType) {
     activeGroup,
 
     // 相机页面专用
+    sourceMode,
     downloadStatusFilter,
     setDownloadStatusFilter,
     storageFilter,
@@ -526,7 +539,7 @@ export function useMediaLibraryController(pageType: PageType) {
     activeDownloadFileNames,
     setActiveDownloadFileNames,
     cacheFailedIds,
-    canDeleteCameraFiles: activeDeviceId === 'luna-ultra',
+    canDeleteCameraFiles: sourceCapabilities.delete,
     loadCameraLibrary,
     ...cameraDelete,
 

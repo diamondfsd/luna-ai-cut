@@ -5,6 +5,7 @@ import { buildLayers } from './PreviewStage'
 import { buildCompositionFromPreviewLayers } from './renderComposition'
 import { buildResolvedWatermarkStaticLayer } from './WatermarkSettings'
 import { getIsLivePhoto } from '../shared/livePhoto'
+import { snapshotPreviewLayers } from '../workspace/shared/exportLayerSnapshot'
 
 const IMAGE_EXPORT_CONCURRENCY = 2
 const VIDEO_EXPORT_CONCURRENCY = 1
@@ -695,7 +696,7 @@ export async function exportBatchFiles(
       id: `batch_${baseName}_${stamp}_${Math.random().toString(36).slice(2, 6)}`,
       sourcePath: fp,
       outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_${stamp}${ext}`,
-      layers: source.layers,
+      layers: snapshotPreviewLayers(source.layers),
       outputSize: source.outputSize,
       index,
       kind: isVid ? 'video' : 'image',
@@ -723,10 +724,7 @@ export async function exportBatchFiles(
     })
   })
 
-  const queuedEntries = entries.map((entry) => ({
-    ...entry,
-    layers: entry.layers,
-  }))
+  const queuedEntries = entries.map((entry) => ({ ...entry }))
   window.setTimeout(() => {
     void runBatchExportQueue(task.id, taskName, exportDir, queuedEntries, exportConfig)
   }, 0)

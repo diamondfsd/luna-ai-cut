@@ -1,6 +1,7 @@
 import {
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   forwardRef,
@@ -47,12 +48,20 @@ export interface LrcRenderProps {
   /** 受控查看比例：null 表示适应窗口，1 表示画布像素与屏幕像素 1:1。 */
   imageScale?: number | null
   onImageScaleChange?: (scale: number | null) => void
+  /** 画布缩放或平移后通知外部覆盖层同步位置。 */
+  onViewportChange?: () => void
 }
 
 interface RenderPreviewOutput {
   width: number
   height: number
   data: Uint8Array | ArrayBuffer | { data?: number[] }
+}
+
+interface CachedPreviewFrame {
+  width: number
+  height: number
+  pixels: Uint8ClampedArray
 }
 
 interface LunaRenderCore {
@@ -123,6 +132,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     maxImageScale = 2,
     imageScale,
     onImageScaleChange,
+    onViewportChange,
   },
   ref,
 ) {
@@ -146,12 +156,17 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const firstRenderTraceRef = useRef(true)
   const lastVideoFrameAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
+  const staticFrameCacheRef = useRef(new Map<string, CachedPreviewFrame>())
   const isSeekingRef = useRef(false) // 标记是否正在 seek
   const seekStartTimeRef = useRef<number | null>(null) // 记录 seek 开始时间
   const [ready, setReady] = useState(false)
   const [fatalError, setFatalError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
   layersRef.current = layers
+
+  useLayoutEffect(() => {
+    onViewportChange?.()
+  }, [imageInteraction.style, onViewportChange])
 
   async function initializeRenderer(lrc: LunaRenderCore): Promise<void> {
     logger.info('[预览诊断] 渲染引擎初始化开始')
@@ -220,6 +235,30 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     })
   }
 
+  function staticFrameKey(renderLayers: PreviewLayer[], effectiveMaxSide: number): string | null {
+    if (renderLayers.some((layer) => layer.isVideo)) return null
+    return JSON.stringify({ canvasWidth, canvasHeight, maxSide: effectiveMaxSide, layers: renderLayers })
+  }
+
+  function paintFrame(frame: CachedPreviewFrame): void {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const sizeChanged = canvas.width !== frame.width || canvas.height !== frame.height
+    if (sizeChanged) {
+      canvas.width = frame.width
+      canvas.height = frame.height
+    }
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('画布不可用')
+    context.putImageData(new ImageData(frame.pixels, frame.width, frame.height), 0, 0)
+    if (sizeChanged) imageInteraction.syncControlledScale()
+    if (frame.width !== lastMediaSizeRef.current[0] || frame.height !== lastMediaSizeRef.current[1]) {
+      lastMediaSizeRef.current = [frame.width, frame.height]
+      onMediaSize?.(frame.width, frame.height)
+    }
+    onRender?.()
+  }
+
   async function renderPreviewFrame() {
     const lrc = getLRC()
     const canvas = canvasRef.current
@@ -232,12 +271,19 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     const renderLayers = layersWithVideoTime()
     if (renderLayers.length === 0) return
 
+    const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
+    const cacheKey = staticFrameKey(renderLayers, effectiveMaxSide)
+    const cachedFrame = cacheKey ? staticFrameCacheRef.current.get(cacheKey) : undefined
+    if (cachedFrame) {
+      paintFrame(cachedFrame)
+      return
+    }
+
     renderingRef.current = true
     renderQueuedRef.current = false
     const traceFirstRender = firstRenderTraceRef.current
     firstRenderTraceRef.current = false
     try {
-      const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
       const composition = buildCompositionFromPreviewLayers(renderLayers, canvasWidth, canvasHeight)
       if (traceFirstRender) {
         logger.info('[预览诊断] 首次画面渲染开始', {
@@ -259,18 +305,26 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
         })
       }
 
-      if (result.width !== lastMediaSizeRef.current[0] || result.height !== lastMediaSizeRef.current[1]) {
-        lastMediaSizeRef.current = [result.width, result.height]
-        onMediaSize?.(result.width, result.height)
-      }
-
-      canvas.width = result.width
-      canvas.height = result.height
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('画布不可用')
       const pixelData = bytesFromRenderData(result.data)
-      context.putImageData(new ImageData(pixelData as unknown as Uint8ClampedArray, result.width, result.height), 0, 0)
-      imageInteraction.syncControlledScale()
+      const frame = { width: result.width, height: result.height, pixels: pixelData }
+      if (cacheKey) {
+        staticFrameCacheRef.current.set(cacheKey, frame)
+        while (staticFrameCacheRef.current.size > 2) {
+          const oldestKey = staticFrameCacheRef.current.keys().next().value
+          if (oldestKey === undefined) break
+          staticFrameCacheRef.current.delete(oldestKey)
+        }
+        const currentKey = staticFrameKey(layersWithVideoTime(), effectiveMaxSide)
+        if (currentKey !== cacheKey) {
+          const currentFrame = currentKey ? staticFrameCacheRef.current.get(currentKey) : undefined
+          if (currentFrame) {
+            renderQueuedRef.current = false
+            paintFrame(currentFrame)
+            return
+          }
+        }
+      }
+      paintFrame(frame)
 
       // 计算 seek 到渲染完成的耗时
       if (seekStartTimeRef.current !== null) {
@@ -279,7 +333,6 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
         seekStartTimeRef.current = null
       }
 
-      onRender?.()
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       if (traceFirstRender) logger.error('[预览诊断] 首次画面渲染失败', { error: msg })
@@ -347,7 +400,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     }
 
     void renderPreviewFrame()
-  }, [layers, ready])
+  }, [canvasHeight, canvasWidth, layers, maxSide, ready])
 
   useEffect(() => {
     if (!ready || !layers.some((layer) => layer.isVideo)) return
@@ -441,6 +494,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     prevProps.maxImageScale === nextProps.maxImageScale &&
     prevProps.imageScale === nextProps.imageScale &&
     prevProps.onImageScaleChange === nextProps.onImageScaleChange &&
+    prevProps.onViewportChange === nextProps.onViewportChange &&
     JSON.stringify(prevProps.interactiveImageLayerIndexes) === JSON.stringify(nextProps.interactiveImageLayerIndexes) &&
     layersEqual(prevProps.layers, nextProps.layers)
   )

@@ -5,7 +5,13 @@ import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { COMPOSITION_RENDER_FPS } from './renderComposition'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 
-const PREVIEW_MAX_SIDE = 1280
+const DEFAULT_PREVIEW_MAX_SIDE = 1280
+const PREVIEW_HARD_MAX_SIDE = 3840
+
+function normalizedPreviewMaxSide(maxSide: number | undefined): number {
+  const requested = typeof maxSide === 'number' && Number.isFinite(maxSide) ? maxSide : DEFAULT_PREVIEW_MAX_SIDE
+  return Math.min(PREVIEW_HARD_MAX_SIDE, Math.max(1, Math.round(requested)))
+}
 
 const perfLog = (msg: string) => console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] ${msg}`)
 
@@ -25,22 +31,23 @@ function computeLayerDecodeMaxSide(
   canvasW: number | undefined,
   canvasH: number | undefined,
   quality: number,
+  outputMaxSide: number,
 ): number {
-  if (quality <= 0 || !canvasW || !canvasH) return PREVIEW_MAX_SIDE
-  const [pw, ph] = calcOutputSize(canvasW, canvasH)
+  if (quality <= 0 || !canvasW || !canvasH) return outputMaxSide
+  const [pw, ph] = calcOutputSize(canvasW, canvasH, outputMaxSide)
   const displayW = pw * (layer.dstW || 1)
   const displayH = ph * (layer.dstH || 1)
   const maxDisplay = Math.max(displayW, displayH, 1)
-  return Math.min(Math.round(maxDisplay * quality), PREVIEW_MAX_SIDE)
+  return Math.min(Math.round(maxDisplay * quality), outputMaxSide)
 }
 
 /**
- * 将画布尺寸等比缩放到 PREVIEW_MAX_SIDE 以内
+ * 将画布尺寸等比缩放到指定最长边以内
  */
-function calcOutputSize(cw: number, ch: number): [number, number] {
+function calcOutputSize(cw: number, ch: number, maxSide: number): [number, number] {
   const maxEdge = Math.max(cw, ch)
-  if (maxEdge <= PREVIEW_MAX_SIDE) return [cw, ch]
-  const scale = PREVIEW_MAX_SIDE / maxEdge
+  if (maxEdge <= maxSide) return [cw, ch]
+  const scale = maxSide / maxEdge
   return [Math.round(cw * scale), Math.round(ch * scale)]
 }
 
@@ -84,6 +91,8 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
   canvasWidth?: number
   /** 输出画布高度（不传则自动计算） */
   canvasHeight?: number
+  /** 预览输出最长边；始终限制在 4K 以内。 */
+  maxSide?: number
   /** 是否正在播放（true=视频播放中，false=暂停） */
   playing?: boolean
   /** 静态图层动画使用的合成时间。 */
@@ -92,7 +101,7 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
    * 视频解码质量系数。
    * 每个视频层的解码分辨率 = 该层在预览画布上的显示尺寸 × decodeQuality。
    * 1.0 = 匹配显示尺寸，1.5 = 1.5× 余量，2.0 = 2×。
-   * 设为 0 使用全局 PREVIEW_MAX_SIDE。
+   * 设为 0 使用当前预览档位的最长边。
    */
   decodeQuality?: number
   onError?: (error: string) => void
@@ -121,7 +130,7 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
 export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
-      { layers, className, canvasWidth, canvasHeight, playing = false, compositionTime, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes },
+      { layers, className, canvasWidth, canvasHeight, maxSide, playing = false, compositionTime, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes },
       ref,
     ) {
       const outputCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -156,6 +165,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       canvasWidthRef.current = canvasWidth
       const canvasHeightRef = useRef(canvasHeight)
       canvasHeightRef.current = canvasHeight
+      const maxSideRef = useRef(normalizedPreviewMaxSide(maxSide))
+      maxSideRef.current = normalizedPreviewMaxSide(maxSide)
       const decodeQualityRef = useRef(decodeQuality)
       decodeQualityRef.current = decodeQuality
       const onVideoElementRef = useRef(onVideoElement)
@@ -290,6 +301,31 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
 
           if (existing) {
             existing.video.muted = !previewAudioEnabled
+            if (existing.ready) {
+              const layerMaxSide = computeLayerDecodeMaxSide(
+                layer,
+                canvasWidth,
+                canvasHeight,
+                decodeQuality,
+                normalizedPreviewMaxSide(maxSide),
+              )
+              const [renderW, renderH] = calcRenderSize(
+                existing.video.videoWidth || 1280,
+                existing.video.videoHeight || 720,
+                layerMaxSide,
+              )
+              if (renderW !== existing.renderW || renderH !== existing.renderH) {
+                if (existing.textureId > 0) {
+                  const textureId = existing.textureId
+                  existing.textureId = 0
+                  lrc.releaseTexture(textureId).catch(() => {})
+                  textureVersionRef.current++
+                }
+                existing.offscreen = new OffscreenCanvas(renderW, renderH)
+                existing.renderW = renderW
+                existing.renderH = renderH
+              }
+            }
             const vt = layer.videoTime ?? 0
             if (Math.abs(existing.prevVideoTime - vt) > 0.01) {
               existing.video.currentTime = vt
@@ -328,6 +364,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               canvasWidthRef.current,
               canvasHeightRef.current,
               decodeQualityRef.current,
+              maxSideRef.current,
             )
             const srcMax = Math.max(video.videoWidth || 1280, video.videoHeight || 720)
             const effectiveMaxSide = Math.min(srcMax, layerMaxSide)
@@ -371,7 +408,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         syncPrimaryVideo()
         const tEnd = performance.now()
         perfLog(`video management effect done in ${(tEnd - t0).toFixed(0)}ms, ${videoStatesRef.current.size} videos managed`)
-      }, [layers, ready])
+      }, [canvasHeight, canvasWidth, decodeQuality, layers, maxSide, ready])
 
       // ── 播放/暂停控制 ──
       useEffect(() => {
@@ -549,11 +586,13 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               srcW: layer.srcW ?? 1,
               srcH: layer.srcH ?? 1,
               opacity: layer.opacity ?? 1,
+              blendMode: layer.blendMode,
               revealProgress,
               zIndex: layer.zIndex ?? 0,
               color: layer.color,
               transform: layer.transform,
               positioning,
+              restoreLutId: layer.restoreLutId,
               lutId: layer.lutId,
               lutIntensity: layer.lutIntensity,
               layerType: layer.layerType ?? 'media',
@@ -588,15 +627,15 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             (a: any, b: any) => (a.zIndex ?? 0) - (b.zIndex ?? 0),
           )
 
-          // 计算输出尺寸（等比缩放到 PREVIEW_MAX_SIDE）
+          // 计算输出尺寸（等比缩放到当前预览档位，并保持 4K 硬上限）
           // 渲染循环在组件初始化时创建，必须从 ref 读取最新画布尺寸。
           // 直接读取闭包里的 props 会让视频在裁剪后继续沿用旧比例。
           const latestCanvasWidth = canvasWidthRef.current
           const latestCanvasHeight = canvasHeightRef.current
           const [outW, outH] =
             latestCanvasWidth && latestCanvasHeight
-              ? calcOutputSize(latestCanvasWidth, latestCanvasHeight)
-              : [PREVIEW_MAX_SIDE, Math.round(PREVIEW_MAX_SIDE * 0.75)]
+              ? calcOutputSize(latestCanvasWidth, latestCanvasHeight, maxSideRef.current)
+              : [maxSideRef.current, Math.round(maxSideRef.current * 0.75)]
 
           // 发送最终 renderFrame IPC 前检查组件是否尚未销毁
           if (destroyRef.current) return
@@ -742,6 +781,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       prevProps.decodeQuality === nextProps.decodeQuality &&
       prevProps.canvasWidth === nextProps.canvasWidth &&
       prevProps.canvasHeight === nextProps.canvasHeight &&
+      prevProps.maxSide === nextProps.maxSide &&
       prevProps.className === nextProps.className &&
       prevProps.imageScale === nextProps.imageScale &&
       prevProps.maxImageScale === nextProps.maxImageScale &&

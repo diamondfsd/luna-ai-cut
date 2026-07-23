@@ -1,15 +1,22 @@
+mod cache;
 mod external;
 mod gpu;
+mod layer_kind;
 mod lut;
+mod mask;
 mod playback;
 mod preview;
 mod render;
+#[cfg(test)]
+mod tests;
 mod texture;
 
 use gpu::{
-    align_to, create_compositor_pipeline, create_identity_lut, create_lut_3d_texture,
+    align_to, create_compositor_pipelines, create_identity_lut, create_lut_3d_texture,
     create_rgba_texture, layer_bind_group_layout, parse_cube_lut, upload_rgba,
 };
+pub(crate) use layer_kind::is_procedural_layer_type;
+use mask::{linear_clamp_sampler_descriptor, mask_params};
 use preview::{plan_cover_scale, plan_cover_transform, resolve_positioning};
 pub(crate) use preview::{PreviewLayerInput, PreviewTextureInfo};
 
@@ -111,10 +118,19 @@ struct GpuLayerParams {
     scale: f32,
     translate_x: f32,
     translate_y: f32,
+    restore_lut_size: f32,
     lut_size: f32,
     lut_intensity: f32,
     sampling_quality: f32,
+    lut_padding: [f32; 3],
+    mask_params: [f32; 4],
+    mask_transform: [f32; 4],
     procedural: [f32; 4],
+    pixel_stretch: [f32; 4],
+    pixel_stretch_extra: [f32; 4],
+    pixel_stretch_center: [f32; 4],
+    pixel_stretch_path_meta: [f32; 4],
+    pixel_stretch_path_data: [[f32; 4]; 4],
     fill_rgba: [f32; 4],
     stroke_rgba: [f32; 4],
     text_meta: [f32; 4],
@@ -213,10 +229,10 @@ fn pack_hsl_channels(channels: &[crate::RenderHslChannelAdjust]) -> [[f32; 4]; 1
 pub struct Compositor {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipeline: wgpu::RenderPipeline,
+    pipelines: gpu::BlendPipelines,
     /// BGRA sRGB 格式渲染管线（macOS Metal External）
     #[cfg(target_os = "macos")]
-    pipeline_bgra: wgpu::RenderPipeline,
+    pipelines_bgra: gpu::BlendPipelines,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
 
@@ -229,6 +245,8 @@ pub struct Compositor {
     // ── render_preview 内部状态 ──
     /// 静态图路径→纹理ID LRU 缓存
     texture_cache: HashMap<String, u32>,
+    /// 灰度蒙版使用线性 RGBA 纹理，不能与 sRGB 媒体纹理共用缓存。
+    mask_texture_cache: HashMap<String, u32>,
     /// LRU 顺序（前=最旧，后=最新）
     cache_order: VecDeque<String>,
     /// 已探测过的静态图片显示尺寸（已应用 EXIF 旋转）
@@ -329,16 +347,7 @@ impl Compositor {
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(SHADER)),
         });
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("linear clamp"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        });
+        let sampler = device.create_sampler(&linear_clamp_sampler_descriptor());
 
         let bgl = layer_bind_group_layout(&device);
 
@@ -348,7 +357,7 @@ impl Compositor {
             immediate_size: 0,
         });
 
-        let pipeline = create_compositor_pipeline(
+        let pipelines = create_compositor_pipelines(
             &device,
             &pipeline_layout,
             &shader,
@@ -356,7 +365,7 @@ impl Compositor {
             "compositor pipeline",
         );
         #[cfg(target_os = "macos")]
-        let pipeline_bgra = create_compositor_pipeline(
+        let pipelines_bgra = create_compositor_pipelines(
             &device,
             &pipeline_layout,
             &shader,
@@ -406,9 +415,9 @@ impl Compositor {
         Ok(Self {
             device,
             queue,
-            pipeline,
+            pipelines,
             #[cfg(target_os = "macos")]
-            pipeline_bgra,
+            pipelines_bgra,
             sampler,
             bind_group_layout: bgl,
             textures: initial_textures,
@@ -416,6 +425,7 @@ impl Compositor {
             max_texture_size,
             output_texture: None,
             texture_cache: HashMap::new(),
+            mask_texture_cache: HashMap::new(),
             cache_order: VecDeque::new(),
             static_image_probed: HashMap::new(),
             video_probed: HashMap::new(),
@@ -478,19 +488,4 @@ fn calc_optimal_decode_max_edge(
 
 fn cached_texture_is_sufficient(width: u32, height: u32, required_max_edge: u32) -> bool {
     width.max(height) >= required_max_edge
-}
-
-#[cfg(test)]
-mod tests {
-    use super::cached_texture_is_sufficient;
-
-    #[test]
-    fn rejects_thumbnail_texture_for_workspace_preview() {
-        assert!(!cached_texture_is_sufficient(124, 220, 2560));
-    }
-
-    #[test]
-    fn reuses_larger_texture_for_smaller_preview() {
-        assert!(cached_texture_is_sufficient(1440, 2560, 220));
-    }
 }

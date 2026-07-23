@@ -1,8 +1,13 @@
 fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32> {
-    let raw = input;
-    let blurred = blur3(tex_coord);
+    let raw = apply_restore_lut(input);
+    var blurred = raw;
+    if (params.denoise > 100.0) {
+        blurred = apply_restore_lut(aperture_blur(tex_coord, (params.denoise - 100.0) / 100.0));
+    } else if (params.denoise > 0.0) {
+        blurred = apply_restore_lut(blur3(tex_coord));
+    }
     let detail = raw - blurred;
-    var c = input;
+    var c = raw;
     c = mix(raw, blurred, sat1(params.denoise / 100.0));
 
     c = (c - params.black) * exp2(params.exposure);
@@ -112,11 +117,40 @@ fn apply_lut(color: vec3<f32>) -> vec3<f32> {
     if (params.lut_size <= 0.0) {
         return color;
     }
+    let encoded_color = linear_to_srgb(sat3(color));
     let lut_size = params.lut_size;
     let scale = (lut_size - 1.0) / lut_size;
     let offset = 0.5 / lut_size;
-    let uvw = sat3(color) * scale + offset;
+    let uvw = encoded_color * scale + offset;
     let lut_color = textureSampleLevel(lut_texture, lut_sampler, uvw, 0.0).rgb;
     let intensity = sat1(params.lut_intensity / 100.0);
-    return mix(color, lut_color, intensity);
+    return srgb_to_linear(mix(encoded_color, lut_color, intensity));
+}
+
+fn apply_restore_lut(color: vec3<f32>) -> vec3<f32> {
+    if (params.restore_lut_size <= 0.0) {
+        return color;
+    }
+    let encoded_color = linear_to_srgb(sat3(color));
+    let scale = (params.restore_lut_size - 1.0) / params.restore_lut_size;
+    let offset = 0.5 / params.restore_lut_size;
+    let lut_color = textureSampleLevel(
+        restore_lut_texture,
+        lut_sampler,
+        encoded_color * scale + offset,
+        0.0,
+    ).rgb;
+    return srgb_to_linear(lut_color);
+}
+
+fn linear_to_srgb(color: vec3<f32>) -> vec3<f32> {
+    let low = color * 12.92;
+    let high = 1.055 * pow(color, vec3<f32>(1.0 / 2.4)) - 0.055;
+    return select(high, low, color <= vec3<f32>(0.0031308));
+}
+
+fn srgb_to_linear(color: vec3<f32>) -> vec3<f32> {
+    let low = color / 12.92;
+    let high = pow((color + 0.055) / 1.055, vec3<f32>(2.4));
+    return select(high, low, color <= vec3<f32>(0.04045));
 }

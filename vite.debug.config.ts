@@ -14,6 +14,7 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 //   路径冲突。打包时 electron-builder-debug.json5 同时引用两个目录。）
 //
 export default defineConfig({
+  publicDir: false,
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __DEBUG_STANDALONE__: JSON.stringify(true),

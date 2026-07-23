@@ -42,10 +42,15 @@ function defaultSettings(): AppSettings {
     exportDir: defaultExportDir(),
     cacheDir: cacheDir(),
     cameraHost: DEFAULT_DEVICE.defaultHost,
+    cameraConnectionMode: 'wireless',
+    mountedCameraRoot: '',
     activeDeviceId: DEFAULT_DEVICE.id,
     deviceStorage: { [DEFAULT_DEVICE.id]: 'all' },
     developerMode: false,
     exportAppleLivePhoto: false,
+    defaultWatermarkEnabled: true,
+    defaultWatermarkPosition: 'bottom-center',
+    workspacePreviewQuality: 'balanced',
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
     mockHttpPort: DEFAULT_DEVICE.mock.httpPort,
@@ -63,11 +68,24 @@ async function readSettingsFile(): Promise<Partial<AppSettings> | null> {
 }
 
 function mergeSettings(saved: Partial<AppSettings> | null): AppSettings {
+  const defaults = defaultSettings()
   const merged = {
-    ...defaultSettings(),
+    ...defaults,
     ...(saved ?? {}),
     cacheDir: cacheDir(),
   }
+  merged.defaultWatermarkEnabled = typeof saved?.defaultWatermarkEnabled === 'boolean'
+    ? saved.defaultWatermarkEnabled
+    : defaults.defaultWatermarkEnabled
+  merged.defaultWatermarkPosition = [
+    'top-left',
+    'top-right',
+    'bottom-left',
+    'bottom-center',
+    'bottom-right',
+  ].includes(String(saved?.defaultWatermarkPosition))
+    ? saved?.defaultWatermarkPosition
+    : defaults.defaultWatermarkPosition
   if (!merged.localResourcesDir) {
     merged.localResourcesDir = getLocalResourcesDir(merged)
   }
@@ -164,4 +182,27 @@ export async function chooseMockMediaDir(): Promise<string | null> {
 
   await saveSettings({ mockMediaDir: result.filePaths[0] })
   return result.filePaths[0]
+}
+
+export async function chooseWorkspaceMediaFiles(): Promise<string[]> {
+  const settings = await getSettings()
+  const result = await dialog.showOpenDialog({
+    defaultPath: settings.workspaceImportDir || app.getPath('downloads'),
+    properties: ['openFile', 'multiSelections'],
+    title: '选择要导入工作台的图片或视频',
+    filters: [
+      {
+        name: '图片和视频',
+        extensions: [
+          'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'tiff', 'heic', 'heif',
+          'mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'mts', 'insv', 'm4v', 'lrv', 'ogg',
+        ],
+      },
+    ],
+  })
+
+  if (result.canceled || result.filePaths.length === 0) return []
+
+  await saveSettings({ workspaceImportDir: path.dirname(result.filePaths[0]) })
+  return result.filePaths
 }

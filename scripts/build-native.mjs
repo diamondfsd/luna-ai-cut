@@ -11,9 +11,10 @@
  * 要求：目标需通过 rustup 安装，如 rustup target add x86_64-pc-windows-msvc
  */
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 
 const root = join(import.meta.dirname, '..')
 const rcDir = join(root, 'luna-render-core')
@@ -67,4 +68,30 @@ const src = target
 
 const dest = join(rcDir, 'luna-render-core.node')
 copyFileSync(src, dest)
+if (isMac && process.platform === 'darwin') {
+  const sign = spawnSync('codesign', ['--force', '--sign', '-', dest], { stdio: 'inherit' })
+  if (sign.status !== 0) {
+    console.error('[build-native] ❌ codesign failed')
+    process.exit(1)
+  }
+}
 console.log('[build-native] ✅', dest)
+
+for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker']) {
+  const workerName = isWin ? `${baseName}.exe` : baseName
+  const workerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), workerName)
+  const workerDest = join(rcDir, workerName)
+  copyFileSync(workerSrc, workerDest)
+  if (!isWin) chmodSync(workerDest, 0o755)
+  console.log('[build-native] ✅', workerDest)
+}
+
+// ONNX Runtime 使用动态库。ort 的 copy-dylibs 会将目标平台运行库放到
+// target/release，统一复制到 .node 同目录供开发与打包加载。
+const artifactDir = target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release')
+for (const fileName of readdirSync(artifactDir)) {
+  if (!/^onnxruntime.*\.dll$/i.test(fileName) && !/^libonnxruntime.*\.(dylib|so)/i.test(fileName)) continue
+  const runtimeDest = join(rcDir, fileName)
+  copyFileSync(join(artifactDir, fileName), runtimeDest)
+  console.log('[build-native] ✅', runtimeDest)
+}

@@ -106,7 +106,6 @@ function buildSlotLogoLayer(slotIndex: number, imagePath: string): PreviewLayer 
 function buildTripleStitchComposition(
   slots: TripleStitchSource[],
   edits: SlotEdit[],
-  lutPaths: (string | undefined)[],
   watermarkInfo: { imagePath: string } | null,
 ): CompositionInput | null {
   if (slots.length !== 3 || slots.some(({ sourceReady }) => !sourceReady)) return null
@@ -134,7 +133,8 @@ function buildTripleStitchComposition(
       translateX: edits[index]?.translateX ?? 0,
       translateY: edits[index]?.translateY ?? 0,
     },
-    lutId: lutPaths[index],
+    restoreLutId: pipeline.logRestore.activeId ?? undefined,
+    lutId: pipeline.lutFilter.activeId ?? undefined,
     lutIntensity: pipeline.lutFilter.intensity,
   }))
 
@@ -284,8 +284,7 @@ export function TripleStitchCreative({ onBack }: { onBack: () => void }) {
     const version = ++compositionVersionRef.current
     let cancelled = false
     ;(async () => {
-      const lutPaths = slotSources.map((s) => s.pipeline.lutFilter.activeId ?? undefined)
-      const result = buildTripleStitchComposition(slotSources, slotEdits, lutPaths, watermarkInfo)
+      const result = buildTripleStitchComposition(slotSources, slotEdits, watermarkInfo)
       if (!cancelled && version === compositionVersionRef.current) {
         setComposition(result)
       }
@@ -315,6 +314,7 @@ export function TripleStitchCreative({ onBack }: { onBack: () => void }) {
         translateX: slotEdits[index]?.translateX ?? 0,
         translateY: slotEdits[index]?.translateY ?? 0,
       },
+      restoreLutId: pipeline.logRestore.activeId ?? undefined,
       lutId: pipeline.lutFilter.activeId ?? undefined,
       lutIntensity: pipeline.lutFilter.intensity,
     }))
