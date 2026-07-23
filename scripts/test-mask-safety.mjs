@@ -66,7 +66,6 @@ try {
     'src/components/renderComposition.ts',
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
-    'src/workspace/mask/maskModelMode.ts',
     'src/workspace/mask/maskPreviewSampling.ts',
     'src/workspace/mask/maskTrack.ts',
     'src/workspace/mask/maskSelectionOperations.ts',
@@ -88,7 +87,6 @@ try {
   const renderComposition = await import(pathToFileURL(path.join(temporaryRoot, 'src/components/renderComposition.js')))
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
-  const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
   const previewSampling = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskPreviewSampling.js')))
   const maskTrack = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskTrack.js')))
   const selectionOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskSelectionOperations.js')))
@@ -700,34 +698,13 @@ try {
     'preview and export composition must preserve identical precomposition groups',
   )
 
-  const registeredModelModes = {
-    'segformer-b0-ade20k': 'fast',
-    'segformer-b1-ade20k': 'fast',
-    'segformer-b2-ade20k': 'fine',
-    'segformer-b3-ade20k': 'fine',
-    'segformer-b5-ade20k': 'fine',
-    'maskformer-r101-ade20k-full': 'fine',
-    'slimsam-77-uniform': 'fast',
-    'slimsam-50-uniform': 'fast',
-    'sam-vit-b': 'fine',
-  }
-  for (const [modelId, expectedMode] of Object.entries(registeredModelModes)) {
-    assert.equal(modelMode.productModeForModel(modelId), expectedMode, `${modelId} must map to ${expectedMode}`)
-  }
-  assert.equal(modelMode.modelForProductMode('fast'), 'segformer-b0-ade20k', 'normal-mode fast must run B0')
-  assert.equal(modelMode.modelForProductMode('fine'), 'segformer-b2-ade20k', 'normal-mode fine must run B2')
-  assert.equal(modelMode.modelForAutomaticSelection('slimsam-77-uniform'), 'segformer-b0-ade20k')
-  assert.equal(modelMode.modelForAutomaticSelection('slimsam-50-uniform'), 'segformer-b0-ade20k')
-  assert.equal(modelMode.modelForAutomaticSelection('sam-vit-b'), 'segformer-b2-ade20k')
-  assert.equal(modelMode.modelForAutomaticSelection('segformer-b3-ade20k'), 'segformer-b3-ade20k')
-
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
-  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'rmbg-1.4')
+  assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b5-ade20k'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'rmbg-1.4'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'birefnet-general-lite'), 'birefnet-general-lite')
   assert.equal(segmentationModels.automaticSegmentationTarget('person'), undefined)
   assert.equal(segmentationModels.modelForSegmentationRequest('ade20k-12', 'rmbg-1.4'), 'segformer-b5-ade20k')
-  assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'segformer-b3-ade20k'), 'segformer-b3-ade20k')
+  assert.equal(segmentationModels.modelForSegmentationRequest(undefined, undefined), 'segformer-b5-ade20k')
 
   assert.equal(layerOperations.normalizeColorMaskName('  天空细节  ', '原名称'), '天空细节')
   assert.equal(layerOperations.normalizeColorMaskName('   ', '原名称'), '原名称', 'blank names must keep the original')
