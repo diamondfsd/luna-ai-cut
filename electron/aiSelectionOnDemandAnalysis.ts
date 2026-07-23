@@ -2,6 +2,7 @@ import * as path from 'node:path'
 
 import type { AiSelectionItem, AiSelectionSession } from '../src/shared/types'
 import { analyzePersonEvidence } from './aiSelectionPerson'
+import { FACE_EMBEDDING_VERSION } from './aiSelectionFaceGroups'
 import { analyzeContentTags, CONTENT_TAG_VERSION } from './aiSelectionSemantic'
 import { refreshBasicSemanticTags } from './aiSelectionTags'
 import { analyzeVideoStory } from './aiSelectionVideo'
@@ -45,7 +46,11 @@ export async function analyzePeopleOnDemand(context: AiSelectionAnalysisContext,
   const controller = new AbortController()
   try {
     for (const item of targets) {
-      await analyzePersonItem(context, item, controller.signal)
+      try {
+        await analyzePersonItem(context, item, controller.signal)
+      } catch {
+        item.semanticTags = [...new Set([...item.semanticTags, '人物分析未完成'])]
+      }
       await context.update(item.name)
     }
   } finally {
@@ -99,7 +104,9 @@ export async function analyzeRecommendationEvidence(context: AiSelectionAnalysis
       }
     }
 
-    const peopleTargets = photos.filter((item) => !item.personEvidence
+    const peopleTargets = photos.filter((item) => !item.personEvidence?.faces?.some((face) => (
+      face.embedding && face.embeddingVersion === FACE_EMBEDDING_VERSION
+    ))
       && (context.session.purpose === 'people' || item.contentTags.includes('人物')))
     if (peopleTargets.length > 0) {
       context.session.phase = 'people'

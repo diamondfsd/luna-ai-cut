@@ -16,6 +16,7 @@ import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
+import { buildFaceGroups } from './aiSelectionFaceGroups'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
@@ -80,7 +81,7 @@ function publicSession(session: StoredSession): AiSelectionSession {
   const { undoStack, redoStack, ...value } = session
   return structuredClone({
     ...value,
-    items: value.items.map((item) => ({ ...item, imageEmbedding: null })),
+    items: value.items.map((item) => ({ ...item, imageEmbedding: null, personEvidence: item.personEvidence ? { ...item.personEvidence, faces: item.personEvidence.faces?.map((face) => ({ ...face, embedding: null })) } : null })),
     canUndo: undoStack.length > 0, canRedo: redoStack.length > 0,
   })
 }
@@ -115,6 +116,7 @@ async function ensureLoaded(): Promise<void> {
       if (parsed.schemaVersion !== 1 || parsed.analysisVersion !== ANALYSIS_VERSION || !parsed.id) continue
       parsed.undoStack ??= []
       parsed.redoStack ??= []
+      parsed.faceGroups = buildFaceGroups(parsed.items)
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
       refreshAiSelectionCounts(parsed)
       sessions.set(parsed.id, parsed)
@@ -169,6 +171,7 @@ function rebuildSelectionResult(session: StoredSession): void {
     ...modifiedGroups,
     ...generatedGroups.filter((group) => !group.itemIds.some((id) => modifiedItemIds.has(id))),
   ]
+  session.faceGroups = buildFaceGroups(session.items)
   applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
   for (const scene of session.scenes) {
     scene.recommendedCount = scene.itemIds.filter((id) => session.items.find((item) => item.id === id)?.state === 'recommended').length
@@ -316,6 +319,7 @@ export async function startAiSelection(request: AiSelectionStartRequest): Promis
     items: [],
     scenes: [],
     groups: [],
+    faceGroups: [],
     preferenceProfile: {
       sampleCount: 0,
       weights: { quality: 0.4, people: 0.2, composition: 0.1, relevance: 0.2, diversity: 0.1 },

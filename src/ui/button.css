@@ -39,6 +39,13 @@
   line-height: 0;
 }
 
+.ui-btn-secondary > .ui-btn-icon,
+.ui-btn-secondary > .ui-btn-icon > svg,
+.ui-btn-ghost > .ui-btn-icon,
+.ui-btn-ghost > .ui-btn-icon > svg {
+  color: var(--blue);
+}
+
 /* primary — 蓝色实心圆角 */
 .ui-btn-primary {
   min-height: 36px;

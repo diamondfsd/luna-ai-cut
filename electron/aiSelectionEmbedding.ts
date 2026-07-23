@@ -1,31 +1,16 @@
 import { execFile } from 'node:child_process'
-import { app } from 'electron'
-import { mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
 
 import { getFfmpegPath } from './ffmpeg/pipeline'
-import { loadVerifiedModelFile } from './modelFileService'
+import { loadModel } from './modelLoader'
 import { extractImageEmbeddingInWorker } from './specializedSegmentationService'
 
 export const IMAGE_EMBEDDING_VERSION = 'dinov2-small-onnx-int8-v1'
-
-const EMBEDDING_MODEL = {
-  fileName: 'model.onnx',
-  sizeBytes: 24_451_943,
-  url: 'https://modelscope.cn/models/Xenova/dinov2-small/resolve/master/onnx/model_quantized.onnx',
-  mirrors: ['https://huggingface.co/Xenova/dinov2-small/resolve/main/onnx/model_quantized.onnx'],
-  sha256: '3afdc8bc63b50558d6e5770f5b799bb82455c2311183a2de43803f343a29d917',
-} as const
 
 let pendingModel: Promise<string> | null = null
 
 function loadImageEmbeddingModel(signal?: AbortSignal): Promise<string> {
   if (!pendingModel) {
-    pendingModel = (async () => {
-      const directory = join(app.getPath('userData'), 'models', 'dinov2-small')
-      await mkdir(directory, { recursive: true })
-      return loadVerifiedModelFile(directory, EMBEDDING_MODEL, { signal })
-    })().catch((error) => {
+    pendingModel = loadModel('dinov2-small', undefined, signal).then((model) => model.path).catch((error) => {
       pendingModel = null
       throw error
     })

@@ -1,9 +1,9 @@
-import type { SegmentationModelId } from '../src/shared/segmentationModels.js'
+import type { SegmentationModelId, SingleFileSegmentationModelId } from '../src/shared/segmentationModels.js'
 import { logMainInfo, logMainWarn } from './loggerService.js'
-import { loadModel, type ModelId } from './modelLoader.js'
+import { loadModel } from './modelLoader.js'
 
 interface PrefetchItem {
-  modelId: ModelId
+  modelId: SingleFileSegmentationModelId
   label: string
   load: (signal: AbortSignal) => Promise<unknown>
 }
@@ -23,7 +23,7 @@ const PREFETCH_ITEMS: PrefetchItem[] = [
 
 const foregroundCounts = new Map<SegmentationModelId, number>()
 const foregroundWaiters = new Set<() => void>()
-let activePrefetch: { modelId: ModelId; controller: AbortController } | null = null
+let activePrefetch: { modelId: SingleFileSegmentationModelId; controller: AbortController } | null = null
 let started = false
 let stopped = false
 
@@ -32,7 +32,7 @@ function wakeForegroundWaiters(): void {
   foregroundWaiters.clear()
 }
 
-async function waitForPriority(modelId: ModelId): Promise<void> {
+async function waitForPriority(modelId: SingleFileSegmentationModelId): Promise<void> {
   while (!stopped && foregroundCounts.size > 0 && !foregroundCounts.has(modelId)) {
     await new Promise<void>((resolve) => foregroundWaiters.add(resolve))
   }

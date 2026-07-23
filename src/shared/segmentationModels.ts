@@ -68,6 +68,71 @@ export const SPECIALIZED_SEGMENTATION_MODELS = [
   },
 ] as const
 
+export const AI_SELECTION_MODELS = [
+  {
+    id: 'dinov2-small',
+    name: 'DINOv2 Small',
+    description: 'AI 选片视觉特征',
+    inputSize: 224,
+    sizeBytes: 24_451_943,
+    url: 'https://modelscope.cn/models/Xenova/dinov2-small/resolve/master/onnx/model_quantized.onnx',
+    mirrors: [
+      'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/dinov2-small.onnx',
+      'https://huggingface.co/Xenova/dinov2-small/resolve/main/onnx/model_quantized.onnx',
+    ],
+    sha256: '3afdc8bc63b50558d6e5770f5b799bb82455c2311183a2de43803f343a29d917',
+    version: 'master-quantized',
+    license: 'Apache-2.0',
+    source: 'https://modelscope.cn/models/Xenova/dinov2-small',
+    licenseUrl: 'https://github.com/facebookresearch/dinov2/blob/main/LICENSE',
+  },
+  {
+    id: 'ultraface-rfb-320',
+    name: 'UltraFace RFB 320',
+    description: 'AI 选片人脸检测',
+    inputSize: 320,
+    sizeBytes: 1_270_727,
+    url: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/ultraface-rfb-320.onnx',
+    mirrors: [
+      'https://media.githubusercontent.com/media/onnx/models/main/validated/vision/body_analysis/ultraface/models/version-RFB-320.onnx',
+      'https://github.com/onnx/models/raw/main/validated/vision/body_analysis/ultraface/models/version-RFB-320.onnx',
+    ],
+    sha256: '34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017',
+    version: 'version-RFB-320',
+    license: 'MIT',
+    source: 'https://github.com/onnx/models/tree/main/validated/vision/body_analysis/ultraface',
+    licenseUrl: 'https://github.com/onnx/models/blob/main/validated/vision/body_analysis/ultraface/README.md#license',
+  },
+  {
+    id: 'open-closed-eye-0001',
+    name: 'Open Closed Eye 0001',
+    description: 'AI 选片闭眼检测',
+    inputSize: 32,
+    sizeBytes: 46_164,
+    url: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/open-closed-eye-0001.onnx',
+    mirrors: ['https://storage.openvinotoolkit.org/repositories/open_model_zoo/public/2022.1/open-closed-eye-0001/open_closed_eye.onnx'],
+    sha256: '4daa100034482525a26c9afb9297c16580a531189e66e3d2b2ac7d32becfd593',
+    version: 'open-model-zoo-2022.1',
+    license: 'Apache-2.0',
+    source: 'https://github.com/openvinotoolkit/open_model_zoo/tree/master/models/public/open-closed-eye-0001',
+    licenseUrl: 'https://github.com/openvinotoolkit/open_model_zoo/blob/master/LICENSE',
+  },
+  {
+    id: 'sface-2021dec-int8',
+    name: 'SFace 2021 December INT8',
+    description: 'AI 选片人脸身份特征',
+    inputSize: 112,
+    sizeBytes: 9_896_933,
+    url: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/sface-2021dec-int8.onnx',
+    mirrors: ['https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_recognition_sface/face_recognition_sface_2021dec_int8.onnx'],
+    sha256: '2b0e941e6f16cc048c20aee0c8e31f569118f65d702914540f7bfdc14048d78a',
+    version: '2021dec-int8',
+    license: 'Apache-2.0',
+    source: 'https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface',
+    licenseUrl: 'https://github.com/opencv/opencv_zoo/blob/main/models/face_recognition_sface/LICENSE',
+  },
+] as const
+
 const SAM_DECODER = {
   fileName: 'prompt_encoder_mask_decoder_quantized.onnx',
   sizeBytes: 4_903_810,
@@ -104,6 +169,7 @@ export const SAM_MODELS = [
 
 export type SemanticSegmentationModelId = typeof SEGMENTATION_MODELS[number]['id']
 export type SpecializedSegmentationModelId = typeof SPECIALIZED_SEGMENTATION_MODELS[number]['id']
+export type AiSelectionModelId = typeof AI_SELECTION_MODELS[number]['id']
 export type SamSegmentationModelId = typeof SAM_MODELS[number]['id']
 export type SingleFileSegmentationModelId = SemanticSegmentationModelId | SpecializedSegmentationModelId
 export type SegmentationModelId = SingleFileSegmentationModelId | SamSegmentationModelId

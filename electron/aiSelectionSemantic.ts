@@ -86,13 +86,13 @@ export async function analyzeContentTags(item: AiSelectionItem, signal?: AbortSi
   if (item.kind !== 'image' || item.analysisState !== 'ready') return []
   const [yoloModel, sceneModel] = await Promise.all([
     loadModel('yolo26s-seg', undefined, signal),
-    loadModel('segformer-b0-ade20k', undefined, signal),
+    loadModel('segformer-b5-ade20k', undefined, signal),
   ])
   const yoloInput = await decodeSquare(item.path, 640, true, signal)
   const yolo = await segmentSpecializedInWorker({
     backend: 'yolo26-labels', modelPath: yoloModel.path, ...yoloInput, outputSize: 128,
   }, signal)
-  const sceneInput = await decodeSquare(item.path, 512, false, signal)
+  const sceneInput = await decodeSquare(item.path, 640, false, signal)
   const scene = await segmentSpecializedInWorker({
     backend: 'segformer-labels', modelPath: sceneModel.path, ...sceneInput, outputSize: 128,
   }, signal)

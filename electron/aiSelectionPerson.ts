@@ -1,35 +1,16 @@
 import { execFile } from 'node:child_process'
-import { app } from 'electron'
-import { mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
 
+import type { AiSelectionModelId } from '../src/shared/segmentationModels'
 import type { AiPersonEvidence, AiSelectionItem } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { loadModel } from './modelLoader'
-import { loadVerifiedModelFile } from './modelFileService'
-import { segmentSpecializedInWorker } from './specializedSegmentationService'
-
-const FACE_MODEL = {
-  fileName: 'model.onnx',
-  url: 'https://media.githubusercontent.com/media/onnx/models/main/validated/vision/body_analysis/ultraface/models/version-RFB-320.onnx',
-  mirrors: ['https://github.com/onnx/models/raw/main/validated/vision/body_analysis/ultraface/models/version-RFB-320.onnx'],
-  sha256: '34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017',
-  sizeBytes: 1_270_727,
-} as const
-
-const EYE_MODEL = {
-  fileName: 'model.onnx',
-  url: 'https://storage.openvinotoolkit.org/repositories/open_model_zoo/public/2022.1/open-closed-eye-0001/open_closed_eye.onnx',
-  sha256: '4daa100034482525a26c9afb9297c16580a531189e66e3d2b2ac7d32becfd593',
-  sizeBytes: 46_164,
-} as const
+import { FACE_EMBEDDING_VERSION } from './aiSelectionFaceGroups'
+import { extractFaceEmbeddingInWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
 
 type Bounds = NonNullable<AiPersonEvidence['bounds']>
 
-async function loadSelectionModel(id: string, definition: typeof FACE_MODEL | typeof EYE_MODEL, signal?: AbortSignal): Promise<string> {
-  const directory = join(app.getPath('userData'), 'models', id)
-  await mkdir(directory, { recursive: true })
-  return loadVerifiedModelFile(directory, definition, { signal })
+async function loadSelectionModel(id: AiSelectionModelId, signal?: AbortSignal): Promise<string> {
+  return (await loadModel(id, undefined, signal)).path
 }
 
 function decodePersonInput(item: AiSelectionItem, signal?: AbortSignal): Promise<Buffer> {
@@ -131,19 +112,54 @@ function cropEye(rgb: Buffer, face: Bounds, side: 'left' | 'right', layout: { sc
   return output
 }
 
-async function analyzeFaces(rgb: Buffer, layout: { scaledWidth: number; scaledHeight: number; padX: number; padY: number }, signal?: AbortSignal): Promise<Pick<AiPersonEvidence, 'faceCount' | 'primaryFaceBounds' | 'faceVisibility' | 'eyeState' | 'closedEyeConfidence'>> {
-  const faceModel = await loadSelectionModel('ultraface-rfb-320', FACE_MODEL, signal)
+function cropFace(rgb: Buffer, face: Bounds, layout: { scaledWidth: number; scaledHeight: number; padX: number; padY: number }): Buffer {
+  const outputSize = 112
+  const centerX = layout.padX + (face.x + face.width / 2) * layout.scaledWidth
+  const centerY = layout.padY + (face.y + face.height / 2) * layout.scaledHeight
+  const side = Math.max(face.width * layout.scaledWidth, face.height * layout.scaledHeight) * 1.35
+  const output = Buffer.alloc(outputSize * outputSize * 3)
+  for (let y = 0; y < outputSize; y += 1) {
+    for (let x = 0; x < outputSize; x += 1) {
+      const sourceX = Math.max(0, Math.min(639, Math.round(centerX + (x / (outputSize - 1) - 0.5) * side)))
+      const sourceY = Math.max(0, Math.min(639, Math.round(centerY + (y / (outputSize - 1) - 0.5) * side)))
+      rgb.copy(output, (y * outputSize + x) * 3, (sourceY * 640 + sourceX) * 3, (sourceY * 640 + sourceX) * 3 + 3)
+    }
+  }
+  return output
+}
+
+async function buildFaceDescriptors(rgb: Buffer, faces: Bounds[], layout: { scaledWidth: number; scaledHeight: number; padX: number; padY: number }, signal?: AbortSignal): Promise<NonNullable<AiPersonEvidence['faces']>> {
+  const modelPath = await loadSelectionModel('sface-2021dec-int8', signal)
+  const descriptors: NonNullable<AiPersonEvidence['faces']> = []
+  for (const bounds of faces.slice(0, 8)) {
+    if (bounds.width < 0.075 || bounds.height < 0.075) {
+      descriptors.push({ bounds, embedding: null, embeddingVersion: null })
+      continue
+    }
+    const values = await extractFaceEmbeddingInWorker(modelPath, cropFace(rgb, bounds, layout), signal)
+    descriptors.push({
+      bounds,
+      embedding: values.map((value) => Math.max(-127, Math.min(127, Math.round(value * 127)))),
+      embeddingVersion: FACE_EMBEDDING_VERSION,
+    })
+  }
+  return descriptors
+}
+
+async function analyzeFaces(rgb: Buffer, layout: { scaledWidth: number; scaledHeight: number; padX: number; padY: number }, signal?: AbortSignal): Promise<Pick<AiPersonEvidence, 'faceCount' | 'primaryFaceBounds' | 'faceVisibility' | 'eyeState' | 'closedEyeConfidence' | 'faces'>> {
+  const faceModel = await loadSelectionModel('ultraface-rfb-320', signal)
   const result = await segmentSpecializedInWorker({ backend: 'ultraface', modelPath: faceModel, rgb, ...layout, outputSize: 256 }, signal)
   const faces = maskComponents(result.bytes, result.width)
   const primary = faces[0] ?? null
-  if (!primary) return { faceCount: 0, primaryFaceBounds: null, faceVisibility: 'occluded', eyeState: 'unknown', closedEyeConfidence: null }
-  if (primary.width < 0.085 || primary.height < 0.085) return { faceCount: faces.length, primaryFaceBounds: primary, faceVisibility: 'small', eyeState: 'unknown', closedEyeConfidence: null }
+  if (!primary) return { faceCount: 0, primaryFaceBounds: null, faceVisibility: 'occluded', eyeState: 'unknown', closedEyeConfidence: null, faces: [] }
+  const descriptors = await buildFaceDescriptors(rgb, faces, layout, signal)
+  if (primary.width < 0.085 || primary.height < 0.085) return { faceCount: faces.length, primaryFaceBounds: primary, faceVisibility: 'small', eyeState: 'unknown', closedEyeConfidence: null, faces: descriptors }
   const eyeCrops = (['left', 'right'] as const).map((side) => cropEye(rgb, primary, side, layout))
   const meanLuminance = eyeCrops.reduce((total, crop) => total + crop.reduce((sum, value) => sum + value, 0) / crop.length, 0) / eyeCrops.length
   if (meanLuminance < 52 || meanLuminance > 225) {
-    return { faceCount: faces.length, primaryFaceBounds: primary, faceVisibility: 'clear', eyeState: 'unknown', closedEyeConfidence: null }
+    return { faceCount: faces.length, primaryFaceBounds: primary, faceVisibility: 'clear', eyeState: 'unknown', closedEyeConfidence: null, faces: descriptors }
   }
-  const eyeModel = await loadSelectionModel('open-closed-eye-0001', EYE_MODEL, signal)
+  const eyeModel = await loadSelectionModel('open-closed-eye-0001', signal)
   const probabilities = await Promise.all(eyeCrops.map(async (crop) => {
     const result = await segmentSpecializedInWorker({ backend: 'eye-state', modelPath: eyeModel, rgb: crop, scaledWidth: 32, scaledHeight: 32, padX: 0, padY: 0, outputSize: 1 }, signal)
     return result.bytes[0] / 255
@@ -158,6 +174,7 @@ async function analyzeFaces(rgb: Buffer, layout: { scaledWidth: number; scaledHe
     faceVisibility: 'clear',
     eyeState: bothClosed ? 'closed' : bothOpen ? 'open' : mixed ? 'mixed' : 'unknown',
     closedEyeConfidence: Number(((left + right) / 2).toFixed(3)),
+    faces: descriptors,
   }
 }
 
@@ -201,10 +218,10 @@ export async function analyzePersonEvidence(item: AiSelectionItem, signal?: Abor
   }, signal)
   const evidence = maskBounds(result.bytes, result.width)
   if (!evidence.bounds || evidence.coverage < 0.002) {
-    return { detected: false, coverage: 0, confidence: 0.8, subjectEdgeScore: null, bounds: null, faceCount: 0, primaryFaceBounds: null, faceVisibility: 'none', eyeState: 'unknown', closedEyeConfidence: null, reason: '没有识别到清晰的人物' }
+    return { detected: false, coverage: 0, confidence: 0.8, subjectEdgeScore: null, bounds: null, faceCount: 0, primaryFaceBounds: null, faceVisibility: 'none', eyeState: 'unknown', closedEyeConfidence: null, faces: [], reason: '没有识别到清晰的人物' }
   }
   const coverage = Number(evidence.coverage.toFixed(4))
-  let faces: Awaited<ReturnType<typeof analyzeFaces>> = { faceCount: 0, primaryFaceBounds: null, faceVisibility: 'unknown', eyeState: 'unknown', closedEyeConfidence: null }
+  let faces: Awaited<ReturnType<typeof analyzeFaces>> = { faceCount: 0, primaryFaceBounds: null, faceVisibility: 'unknown', eyeState: 'unknown', closedEyeConfidence: null, faces: [] }
   try { faces = await analyzeFaces(rgb, layout, signal) } catch (error) { if (signal?.aborted) throw error }
   const faceReason = faces.eyeState === 'closed' ? '，检测到高可信闭眼' : faces.eyeState === 'mixed' ? '，双眼状态不一致，建议复查' : faces.faceVisibility === 'occluded' ? '，面部可能背向或被遮挡' : faces.faceVisibility === 'unknown' ? '，人脸细节暂不可用' : ''
   return {
