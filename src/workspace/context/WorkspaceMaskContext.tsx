@@ -1,13 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from '../../ui'
 import { logger } from '../../lib/rendererLogger'
-import { automaticSegmentationTarget, SEGMENTATION_MODELS, SAM_MODELS, type AutomaticSegmentationTargetId, type SegmentationModelId } from '../../shared/segmentationModels'
+import { automaticSegmentationTarget, type AutomaticSegmentationTargetId, type SegmentationModelId } from '../../shared/segmentationModels'
 import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
 import { useWorkspaceEdit } from './WorkspaceEditContext'
 import { useWorkspaceMedia } from './WorkspaceMediaContext'
 import { createDefaultPipeline, type ColorMaskLayer } from '../shared/editPipeline'
 import { createMaskOperation, isMatchingMaskOperation, isMatchingSegmentationRequest, type MaskOperation } from '../mask/maskOperationIdentity'
-import { modelForAutomaticSelection } from '../mask/maskModelMode'
 import { mergeCompletedColorMaskLayer, moveColorMaskLayer } from '../color/colorMaskLayerOperations'
 import { applyMaskSelectionOperation, hasUsableMask, resampleMask, type MaskSelectionOperation } from '../mask/maskSelectionOperations'
 import type { MaskManualTool, SegmentationPerformance, WorkspaceMaskValue } from './WorkspaceMaskContextTypes'
@@ -49,11 +48,6 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const [segmentationProgress, setSegmentationProgress] = useState<WorkspaceSegmentationProgress | null>(null)
   const [segmentationError, setSegmentationError] = useState<string | null>(null)
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
-  const [segmentationModel, setSegmentationModelState] = useState<SegmentationModelId>(() => {
-    const saved = localStorage.getItem('workspace_segmentation_model')
-    const model = [...SEGMENTATION_MODELS, ...SAM_MODELS].find((item) => item.id === saved)
-    return model?.id ?? 'rmbg-1.4'
-  })
   const available = active && Boolean(media.currentProject && media.activeMedia?.path)
   const activeMask = edit.pipeline.colorMasks.find((layer) => layer.id === activeLayerId) ?? null
   const activeMaskPath = activeMask?.path
@@ -344,7 +338,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setSegmentationProgress({ requestId, phase: 'model', label: '正在准备模型', percent: null })
     try {
       const target = targetId ? automaticSegmentationTarget(targetId) : undefined
-      const modelId = requestedModelId ?? target?.modelId ?? modelForAutomaticSelection(segmentationModel)
+      const modelId = requestedModelId ?? target?.modelId ?? 'segformer-b5-ade20k'
       const frameTime = undefined
       const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, frameTime, point, modelId, targetId, targetClassId: target?.classId })
       if (result.requestId !== requestId || !isCurrentOperation(operation)) return
@@ -447,12 +441,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     } finally {
       finishOperation(operation)
     }
-  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskData, maskSize, media.activeMedia, media.currentProject, segmentationModel, selectionOperation, setActiveComponentId])
-
-  const setSegmentationModel = useCallback((model: SegmentationModelId) => {
-    setSegmentationModelState(model)
-    localStorage.setItem('workspace_segmentation_model', model)
-  }, [])
+  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskData, maskSize, media.activeMedia, media.currentProject, selectionOperation, setActiveComponentId])
 
   const prepareVideoMasksForExport = useCallback(async (): Promise<ColorMaskLayer[]> => colorMasksRef.current, [])
 
@@ -476,8 +465,6 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     busy,
     semanticPicking,
     setSemanticPicking,
-    segmentationModel,
-    setSegmentationModel,
     lastSegmentationPerformance,
     segmentationProgress,
     segmentationError,
@@ -506,7 +493,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, prepareVideoMasksForExport, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, prepareVideoMasksForExport, projectId, removeLayer, removeMask, segmentationError, segmentationProgress, selectionOperation, semanticPicking, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }

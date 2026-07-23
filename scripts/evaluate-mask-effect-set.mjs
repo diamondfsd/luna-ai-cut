@@ -22,20 +22,20 @@ const specializedWorkerPath = path.join(repositoryRoot, 'luna-render-core', 'spe
 
 const modelSpecs = {
   sky: {
-    id: 'segformer-b0-ade20k',
-    file: 'segformer-b0-ade20k.onnx',
-    sha256: '3e5c18a4be395f16646438d54c42377ddc202edfa33d5eced0c9506de75c44c2',
+    id: 'segformer-b5-ade20k',
+    file: 'segformer-b5-ade20k.onnx',
+    sha256: '7b20b28f213e6d1128cb850c3fa273a061f0aa87a49224316791fdab49515a51',
     backend: 'semantic',
     classId: 2,
-    inputSize: 512,
+    inputSize: 640,
   },
   water: {
-    id: 'segformer-b0-ade20k',
-    file: 'segformer-b0-ade20k.onnx',
-    sha256: '3e5c18a4be395f16646438d54c42377ddc202edfa33d5eced0c9506de75c44c2',
+    id: 'segformer-b5-ade20k',
+    file: 'segformer-b5-ade20k.onnx',
+    sha256: '7b20b28f213e6d1128cb850c3fa273a061f0aa87a49224316791fdab49515a51',
     backend: 'semantic',
     classId: 21,
-    inputSize: 512,
+    inputSize: 640,
   },
   person: {
     id: 'yolo26s-seg',
@@ -52,12 +52,12 @@ const modelSpecs = {
     inputSize: 1024,
   },
   tree: {
-    id: 'segformer-b0-ade20k',
-    file: 'segformer-b0-ade20k.onnx',
-    sha256: '3e5c18a4be395f16646438d54c42377ddc202edfa33d5eced0c9506de75c44c2',
+    id: 'segformer-b5-ade20k',
+    file: 'segformer-b5-ade20k.onnx',
+    sha256: '7b20b28f213e6d1128cb850c3fa273a061f0aa87a49224316791fdab49515a51',
     backend: 'semantic',
     classId: 4,
-    inputSize: 512,
+    inputSize: 640,
   },
 }
 

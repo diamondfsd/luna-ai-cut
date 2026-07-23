@@ -39,8 +39,6 @@ export interface WorkspaceMaskValue {
   busy: boolean
   semanticPicking: boolean
   setSemanticPicking: (value: boolean) => void
-  segmentationModel: SegmentationModelId
-  setSegmentationModel: (value: SegmentationModelId) => void
   lastSegmentationPerformance: SegmentationPerformance | null
   segmentationProgress: WorkspaceSegmentationProgress | null
   segmentationError: string | null
