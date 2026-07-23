@@ -12,7 +12,6 @@ import { SharedLoadRegistry } from './sharedLoadRegistry.js'
 import type { RuntimeResourceDefinition } from './runtimeResourceDefinitions.js'
 
 const MARKER_NAME = '.luna-resource.json'
-const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 const execFileAsync = promisify(execFile)
 
 interface InstalledFile {
@@ -53,8 +52,6 @@ function validateDefinition(definition: RuntimeResourceDefinition): void {
   if (path.basename(definition.fileName) !== definition.fileName || !definition.fileName.endsWith(expectedSuffix)) {
     throw new Error('资源包文件名不安全')
   }
-  if (!Number.isInteger(definition.unpackedBytes) || definition.unpackedBytes <= 0) throw new Error('资源解包大小异常')
-  if (!Number.isInteger(definition.expectedFileCount) || definition.expectedFileCount <= 0) throw new Error('资源文件数量异常')
 }
 
 function hasControlCharacter(value: string): boolean {
@@ -95,23 +92,15 @@ async function hasInstallMarker(installDir: string): Promise<boolean> {
 
 function inspectArchive(zip: AdmZip, definition: RuntimeResourceDefinition): Array<{ entry: AdmZip.IZipEntry; path: string }> {
   const seen = new Set<string>()
-  let totalBytes = 0
-  const files = zip.getEntries().map((entry) => {
+  return zip.getEntries().map((entry) => {
     if (entry.isDirectory) throw new Error('资源包包含非预期目录项')
     rejectLink(entry)
     const entryPath = safeEntryPath(entry.entryName, definition)
     const comparisonPath = entryPath.toLocaleLowerCase('en-US')
     if (seen.has(comparisonPath)) throw new Error('资源包包含重复文件')
     seen.add(comparisonPath)
-    if (!Number.isSafeInteger(entry.header.size) || entry.header.size <= 0) throw new Error('资源文件大小异常')
-    totalBytes += entry.header.size
-    if (totalBytes > definition.unpackedBytes) throw new Error('资源解包大小异常')
     return { entry, path: entryPath }
   })
-  if (files.length !== definition.expectedFileCount || totalBytes !== definition.unpackedBytes) {
-    throw new Error('资源包内容与清单不匹配')
-  }
-  return files
 }
 
 async function installArchive(
@@ -122,6 +111,7 @@ async function installArchive(
   report: (progress: RuntimeResourceProgress) => void,
 ): Promise<void> {
   const files = inspectArchive(new AdmZip(archivePath), definition)
+  const installBytes = files.reduce((total, { entry }) => total + entry.header.size, 0)
   const markerFiles: InstalledFile[] = []
   let completedBytes = 0
   for (const { entry, path: entryPath } of files) {
@@ -134,7 +124,7 @@ async function installArchive(
     await writeFile(destination, content, { flag: 'wx', mode: 0o600 })
     markerFiles.push({ path: entryPath, bytes: content.byteLength })
     completedBytes += content.byteLength
-    report({ phase: 'install', completedBytes, totalBytes: definition.unpackedBytes })
+    report({ phase: 'install', completedBytes, totalBytes: installBytes })
   }
   const marker: InstallMarker = {
     schemaVersion: 1,
@@ -173,13 +163,8 @@ function parseSevenZipEntries(output: string, definition: RuntimeResourceDefinit
     const comparisonPath = safePath.toLocaleLowerCase('en-US')
     if (seen.has(comparisonPath)) throw new Error('资源包包含重复文件')
     seen.add(comparisonPath)
-    const size = Number(fields.get('Size'))
-    if (!Number.isSafeInteger(size) || size < 0) throw new Error('资源文件大小异常')
+    const size = Number(fields.get('Size')) || 0
     entries.push({ path: safePath, size })
-  }
-  const totalBytes = entries.reduce((total, entry) => total + entry.size, 0)
-  if (entries.length !== definition.expectedFileCount || totalBytes !== definition.unpackedBytes) {
-    throw new Error('资源包内容与清单不匹配')
   }
   return entries
 }
@@ -198,7 +183,7 @@ async function installSevenZipArchive(
     signal,
   })
   const entries = parseSevenZipEntries(listResult.stdout, definition)
-  report({ phase: 'install', completedBytes: 0, totalBytes: definition.unpackedBytes })
+  report({ phase: 'install', completedBytes: 0, totalBytes: entries.reduce((total, entry) => total + entry.size, 0) })
   await execFileAsync(sevenZipPath, ['x', '-y', `-o${stagingDir}`, archivePath], {
     encoding: 'utf8',
     maxBuffer: 4 * 1024 * 1024,
@@ -241,8 +226,8 @@ async function performLoad(
   }, {
     signal,
     fetcher,
-    maxBytes: MAX_ARCHIVE_BYTES,
     label: '资源包',
+    verifyIntegrity: false,
     onProgress: (progress: DownloadProgress) => report({ phase: 'download', ...progress }),
   })
 

@@ -125,6 +125,13 @@ export function register(ctx: RegisterContext): void {
     rcLog('lrc:init OK')
   }))
 
+  ipcMain.handle('lrc:prepareRuntimeResource', safe('prepareRuntimeResource',
+    async (_event: IpcMainInvokeEvent, kind: 'fonts' | 'luts') => {
+      if (kind !== 'fonts' && kind !== 'luts') throw new Error('未知运行时资源类型')
+      await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS[kind])
+    },
+  ))
+
   // 纹理管理方法
   ipcMain.handle('lrc:loadTexture', safe('loadTexture',
     async (_event: IpcMainInvokeEvent, data: Buffer, width: number, height: number) => {
