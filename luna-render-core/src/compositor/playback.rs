@@ -296,12 +296,6 @@ impl Compositor {
             })
         {
             if (layer.video_time - current_time).abs() < 0.001 {
-                log!(
-                    "read_video_frame [{}] reuse paused frame at {:.3}s tex={}",
-                    layer.file_path,
-                    current_time,
-                    texture_id,
-                );
                 return Ok(Some(texture_id));
             }
             match self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time, fps)? {

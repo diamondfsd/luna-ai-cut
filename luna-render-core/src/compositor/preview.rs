@@ -5,6 +5,8 @@ use crate::media::fit_output_size;
 #[derive(Clone)]
 pub struct PreviewLayerInput {
     pub layer_type: Option<String>,
+    pub precompose_group: Option<String>,
+    pub precompose_role: Option<String>,
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
@@ -27,9 +29,11 @@ pub struct PreviewLayerInput {
     pub mask_opacity: f64,
     pub mask_inverted: bool,
     pub mask_feather: f64,
+    pub mask_transform: crate::RenderMaskTransform,
     pub pixel_stretch: Option<crate::RenderPixelStretch>,
     pub transform: crate::RenderLayerTransform,
     pub positioning: Option<crate::LayerPositioning>,
+    pub restore_lut_id: Option<String>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
     pub shape: Option<String>,
@@ -298,6 +302,8 @@ impl super::Compositor {
                 crate::RenderLayer {
                     texture_id: texture.texture_id,
                     layer_type: layer.layer_type.clone(),
+                    precompose_group: layer.precompose_group.clone(),
+                    precompose_role: layer.precompose_role.clone(),
                     shape: layer.shape.clone(),
                     fill_color: layer.fill_color.clone(),
                     corner_radius: layer.corner_radius,
@@ -330,9 +336,11 @@ impl super::Compositor {
                     mask_opacity: Some(layer.mask_opacity),
                     mask_inverted: Some(layer.mask_inverted),
                     mask_feather: Some(layer.mask_feather),
+                    mask_transform: Some(layer.mask_transform.clone()),
                     pixel_stretch: layer.pixel_stretch.clone(),
                     transform: Some(transform),
                     positioning: layer.positioning.clone(),
+                    restore_lut_id: layer.restore_lut_id.clone(),
                     lut_id: layer.lut_id.clone(),
                     lut_intensity: layer.lut_intensity,
                 }

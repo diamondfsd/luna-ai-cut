@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import { ButtonGroup } from './ButtonGroup'
+
 interface SegmentedOption<T extends string> {
   value: T
   label: ReactNode
@@ -23,17 +25,12 @@ export function SegmentedControl<T extends string>({
   variant = 'pill',
 }: SegmentedControlProps<T>) {
   return (
-    <div className={className ?? (variant === 'size' ? 'size-switch' : 'segmented-pill')} aria-label={ariaLabel}>
-      {options.map((option) => (
-        <button
-          className={value === option.value ? 'active' : ''}
-          key={option.value}
-          onClick={() => onChange(option.value)}
-          type="button"
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <ButtonGroup
+      ariaLabel={ariaLabel}
+      className={className ?? (variant === 'size' ? 'size-switch' : 'segmented-pill')}
+      options={options}
+      value={value}
+      onChange={onChange}
+    />
   )
 }

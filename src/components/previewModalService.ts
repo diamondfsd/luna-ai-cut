@@ -7,10 +7,13 @@ export interface PreviewState {
   batchExportMode?: boolean
   /** 预览内切换素材时同步外部选中项。 */
   onFilePathChange?: (filePath: string) => void
+  /** 本地资源使用原生媒体元素和 CSS 水印，不启动后端预览渲染器。 */
+  lightweightPreview?: boolean
 }
 
 interface PreviewModalOptions {
   onFilePathChange?: (filePath: string) => void
+  lightweightPreview?: boolean
 }
 
 type SetStateFn = (state: PreviewState | null) => void
@@ -42,5 +45,5 @@ export function showBatchExportModal(
   filePath: string,
   fileList: string[],
 ): void {
-  setPreviewState?.({ filePath, fileList, batchExportMode: true })
+  setPreviewState?.({ filePath, fileList, batchExportMode: true, lightweightPreview: true })
 }

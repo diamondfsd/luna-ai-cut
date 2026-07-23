@@ -2,8 +2,10 @@ import type { WatermarkSettings } from '../../shared/types'
 import { EDIT_PARAMETER_RANGES, clampNumber } from './editParameterRanges'
 import type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
 import { normalizeColorMaskComponent } from './colorMaskComponentNormalization'
+import { normalizeMaskTrack } from '../mask/maskTrack'
+import { framePresetDefaultSettings } from '../border/borderPresets'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
-export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
+export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskDynamicSource, ColorMaskLayer, ColorMaskRef, ColorMaskSegmentationSource, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
 export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
 export type ToneCurveChannel = 'rgb' | 'luminance' | 'red' | 'green' | 'blue'
@@ -40,6 +42,10 @@ export interface BorderSettings {
   mediaScale: number
   mediaOffsetX: number
   mediaOffsetY: number
+  /** 柔焦相框专用软阴影参数。 */
+  shadowStrength: number
+  shadowBlur: number
+  shadowOffsetY: number
 }
 
 export interface EditPipeline {
@@ -106,10 +112,8 @@ export interface EditPipeline {
     sharpen: number
     denoise: number
   }
-  effects: {
-    sharpen: number
-    denoise: number
-  }
+  effects: { sharpen: number; denoise: number }
+  logRestore: { activeId: string | null }
   lutFilter: {
     activeId: string | null
     /** 滤镜强度 1-100，默认 100 */
@@ -126,6 +130,7 @@ export type PipelinePatch = {
   transform?: Partial<EditPipeline['transform']>
   color?: Partial<EditPipeline['color']>
   effects?: Partial<EditPipeline['effects']>
+  logRestore?: Partial<EditPipeline['logRestore']>
   lutFilter?: Partial<EditPipeline['lutFilter']>
   watermark?: Partial<EditPipeline['watermark']>
   border?: Partial<EditPipeline['border']>
@@ -206,10 +211,8 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     sharpen: 0,
     denoise: 0,
   },
-  effects: {
-    sharpen: 0,
-    denoise: 0,
-  },
+  effects: { sharpen: 0, denoise: 0 },
+  logRestore: { activeId: null },
   lutFilter: {
     activeId: null,
     intensity: 30,
@@ -234,6 +237,9 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     mediaScale: 100,
     mediaOffsetX: 0,
     mediaOffsetY: 0,
+    shadowStrength: 50,
+    shadowBlur: 50,
+    shadowOffsetY: 0,
   },
 }
 
@@ -420,6 +426,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
 function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { blendMode?: ColorMaskBlendMode }): ColorMaskLayer | null {
   const mask = normalizeColorMask(input)
   if (!mask) return null
+  const hasVectorComponents = input.components?.some((component) => component.type !== 'raster') ?? false
   const colorInput = input.color ?? DEFAULT_PIPELINE.color
   const color = normalizePipeline({
     ...createDefaultPipeline(),
@@ -429,15 +436,18 @@ function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { bl
   }).color
   return {
     ...mask,
+    feather: hasVectorComponents ? 0 : mask.feather,
     id: typeof input.id === 'string' && input.id ? input.id : `mask-${Date.now()}`,
     name: typeof input.name === 'string' && input.name.trim() ? input.name.trim().slice(0, 40) : '局部蒙版',
     enabled: input.loadError ? false : input.enabled !== false,
     loadError: input.loadError === 'missing-or-damaged' ? input.loadError : undefined,
     blendMode: normalizeColorMaskBlendMode(input.blendMode),
     color,
+    componentSchemaVersion: Array.isArray(input.components) ? 1 : undefined,
     components: Array.isArray(input.components)
       ? input.components.map(normalizeColorMaskComponent).filter((component): component is ColorMaskComponent => component !== null)
       : undefined,
+    track: normalizeMaskTrack(input.track),
   }
 }
 
@@ -453,7 +463,7 @@ function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef
     height: Math.max(1, Math.round(Number(mask.height) || 1)),
     opacity: clampNumber(Number(mask.opacity ?? 1), { min: 0, max: 1 }),
     inverted: Boolean(mask.inverted),
-    feather: clampNumber(Number(mask.feather ?? 2), { min: 0, max: 40 }),
+    feather: clampNumber(Number(mask.feather ?? 0), { min: 0, max: 100 }),
     kind: mask.kind === 'semantic' ? 'semantic' : 'brush',
     classId: Number.isInteger(mask.classId) ? mask.classId : undefined,
     className: typeof mask.className === 'string' ? mask.className : undefined,
@@ -465,21 +475,34 @@ function normalizeColorMask(mask: ColorMaskRef | null | undefined): ColorMaskRef
 function normalizeBorder(input: Partial<BorderSettings> | undefined): BorderSettings {
   const value = input as (Partial<BorderSettings> & { bottomColor?: unknown }) | undefined
   const legacyColor = typeof value?.bottomColor === 'string' ? value.bottomColor : undefined
+  const isBlurredPhotoCard = value?.presetId === 'blurred-photo-card'
+  const presetDefaults = framePresetDefaultSettings(value?.presetId)
+  const frameSize = Number(value?.frameSize ?? presetDefaults.frameSize ?? 100)
+  const shadowBlur = Number(value?.shadowBlur ?? presetDefaults.shadowBlur ?? 50)
+  const shadowStrength = Number(value?.shadowStrength ?? presetDefaults.shadowStrength ?? 50)
+  const shadowOffsetY = value?.presetId === 'blurred-photo-card' ? 0 : Number(value?.shadowOffsetY ?? 0)
   return {
     ...DEFAULT_PIPELINE.border,
+    ...presetDefaults,
     ...value,
     presetId: typeof value?.presetId === 'string' ? value.presetId : DEFAULT_PIPELINE.border.presetId,
-    frameSize: clampNumber(Number(value?.frameSize ?? 100), { min: 70, max: 135 }),
-    backgroundColor: typeof value?.backgroundColor === 'string' ? value.backgroundColor : legacyColor ?? DEFAULT_PIPELINE.border.backgroundColor,
-    textColor: typeof value?.textColor === 'string' ? value.textColor : DEFAULT_PIPELINE.border.textColor,
-    opacity: clampNumber(Number(value?.opacity ?? 100), { min: 0, max: 100 }),
-    mediaScale: clampNumber(Number(value?.mediaScale ?? 100), { min: 70, max: 160 }),
-    mediaOffsetX: clampNumber(Number(value?.mediaOffsetX ?? 0), { min: -50, max: 50 }),
-    mediaOffsetY: clampNumber(Number(value?.mediaOffsetY ?? 0), { min: -50, max: 50 }),
+    frameSize: clampNumber(frameSize, { min: 70, max: isBlurredPhotoCard ? 110 : 135 }),
+    backgroundColor: typeof value?.backgroundColor === 'string' ? value.backgroundColor : legacyColor ?? presetDefaults.backgroundColor ?? DEFAULT_PIPELINE.border.backgroundColor,
+    textColor: typeof value?.textColor === 'string' ? value.textColor : presetDefaults.textColor ?? DEFAULT_PIPELINE.border.textColor,
+    opacity: clampNumber(Number(value?.opacity ?? presetDefaults.opacity ?? 100), { min: 0, max: 100 }),
+    title: typeof value?.title === 'string' ? value.title : presetDefaults.title ?? DEFAULT_PIPELINE.border.title,
+    mediaScale: clampNumber(Number(value?.mediaScale ?? presetDefaults.mediaScale ?? 100), { min: 70, max: 160 }),
+    mediaOffsetX: clampNumber(Number(value?.mediaOffsetX ?? presetDefaults.mediaOffsetX ?? 0), { min: -50, max: 50 }),
+    mediaOffsetY: clampNumber(Number(value?.mediaOffsetY ?? presetDefaults.mediaOffsetY ?? 0), { min: -50, max: 50 }),
+    shadowStrength: clampNumber(shadowStrength, { min: 0, max: 100 }),
+    shadowBlur: clampNumber(shadowBlur, { min: 0, max: 100 }),
+    shadowOffsetY: clampNumber(shadowOffsetY, { min: -30, max: 30 }),
   }
 }
 
 export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): EditPipeline {
+  const legacyRestoreId = patch.logRestore === undefined && typeof patch.lutFilter?.activeId === 'string' &&
+    /Luna_I-Log_to_Rec709_BT1886_s65_v2\.cube$/i.test(patch.lutFilter.activeId.replace(/\\/g, '/')) ? patch.lutFilter.activeId : null
   return normalizePipeline({
     trim: patch.trim !== undefined ? patch.trim : pipeline.trim,
     colorMask: patch.colorMask !== undefined ? patch.colorMask : pipeline.colorMask,
@@ -491,10 +514,10 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
       curve: mergeCurve(pipeline.color.curve, patch.color?.curve),
     },
     effects: { ...pipeline.effects, ...patch.effects },
-    lutFilter: { ...pipeline.lutFilter, ...patch.lutFilter },
+    logRestore: { ...pipeline.logRestore, ...patch.logRestore, ...(legacyRestoreId ? { activeId: legacyRestoreId } : {}) },
+    lutFilter: { ...pipeline.lutFilter, ...patch.lutFilter, ...(legacyRestoreId ? { activeId: null } : {}) },
     watermark: { ...pipeline.watermark, ...patch.watermark },
     border: { ...pipeline.border, ...patch.border },
   })
 }
-
 export { deserializePipeline, serializePipeline } from './editPipelineSerialization'

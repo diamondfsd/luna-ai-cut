@@ -10,7 +10,15 @@ import {
   runSpecializedWorkerAttempt,
 } from './specializedSegmentationAttempt.js'
 
-export type SpecializedSegmentationBackend = 'yolo26-seg' | 'yolo26-labels' | 'segformer-labels' | 'rmbg-1.4' | 'ultraface' | 'eye-state' | 'dinov2-small'
+export type SpecializedSegmentationBackend =
+  | 'yolo26-seg'
+  | 'yolo26-labels'
+  | 'segformer-labels'
+  | 'rmbg-1.4'
+  | 'birefnet-general-lite'
+  | 'ultraface'
+  | 'eye-state'
+  | 'dinov2-small'
 
 interface SpecializedSegmentationInput {
   backend: SpecializedSegmentationBackend

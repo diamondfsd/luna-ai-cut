@@ -8,16 +8,15 @@ export function isLunaUltraExifModel(exifModel?: string | null): boolean {
   return deviceProfileForText(exifModel)?.id === 'luna-ultra'
 }
 
-export function canUseLunaUltraWatermark(filePath: string, kind: 'image' | 'video'): Promise<boolean> {
-  if (kind === 'video') return Promise.resolve(true)
-
-  const cached = eligibilityCache.get(filePath)
+export function canUseLunaUltraWatermark(filePath: string, kind?: 'image' | 'video'): Promise<boolean> {
+  const cacheKey = `${kind ?? 'media'}:${filePath}`
+  const cached = eligibilityCache.get(cacheKey)
   if (cached) return cached
 
   const pending = window.luna.readExifModel(filePath)
     .then(isLunaUltraExifModel)
     .catch(() => false)
-  eligibilityCache.set(filePath, pending)
+  eligibilityCache.set(cacheKey, pending)
   return pending
 }
 
@@ -33,11 +32,6 @@ export function useLunaUltraWatermark(
       setResolved(null)
       return
     }
-    if (mediaKind === 'video') {
-      setResolved({ path: mediaPath, allowed: true })
-      return
-    }
-
     let cancelled = false
     void canUseLunaUltraWatermark(mediaPath, mediaKind).then((allowed) => {
       if (!cancelled) setResolved({ path: mediaPath, allowed })

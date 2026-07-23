@@ -21,6 +21,7 @@ export interface SegmentationPerformance {
 
 export interface WorkspaceMaskValue {
   available: boolean
+  setVideoFrameTime: (value: number) => void
   editing: boolean
   setEditing: (value: boolean) => void
   selectionOperation: MaskSelectionOperation
@@ -45,6 +46,7 @@ export interface WorkspaceMaskValue {
   segmentationError: string | null
   clearSegmentationError: () => void
   cancelSegmentation: () => void
+  prepareVideoMasksForExport: () => Promise<ColorMaskLayer[]>
   activeLayerId: string | null
   activeMask: ColorMaskLayer | null
   activeComponentId: string | null

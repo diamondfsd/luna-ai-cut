@@ -1,7 +1,7 @@
 import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer, MediaMetadata } from '../../shared/types'
-import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
+import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
 
@@ -21,6 +21,7 @@ export function buildWorkspaceExportLayers(
       ...main[0],
       color: pipelineColorToRenderColor(pipeline.color),
       transform: pipelineTransformToRenderTransform(pipeline.transform),
+      restoreLutId: pipeline.logRestore.activeId ?? undefined,
       lutId: pipeline.lutFilter.activeId ?? undefined,
       lutIntensity: pipeline.lutFilter.intensity,
       // 截取：设置视频起始时间和有效时长
@@ -44,11 +45,12 @@ export function buildWorkspaceExportLayers(
       mediaLayerStyle: {
         color: pipelineColorToRenderColor(pipeline.color),
         transform: pipelineTransformToRenderTransform(pipeline.transform),
+        restoreLutId: pipeline.logRestore.activeId ?? undefined,
         lutId: pipeline.lutFilter.activeId ?? undefined,
         lutIntensity: pipeline.lutFilter.intensity,
       },
     })
-    result.push(...borderLayers)
+    result.push(...applyLocalColorToSourceMediaLayers(borderLayers, sourcePath, pipeline))
   }
 
   return result

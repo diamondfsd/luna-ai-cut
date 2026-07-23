@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from '../../ui'
-import { isImagePath } from '../../lib/fileUtils'
 import { logger } from '../../lib/rendererLogger'
 import { automaticSegmentationTarget, SEGMENTATION_MODELS, SAM_MODELS, type AutomaticSegmentationTargetId, type SegmentationModelId } from '../../shared/segmentationModels'
 import type { WorkspaceSegmentationProgress } from '../../shared/types/api'
@@ -35,6 +34,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const { canUndo, canRedo, undo, redo } = edit
+  const videoFrameTimeRef = useRef(0)
   const [editing, setEditing] = useState(false)
   const [selectionOperation, setSelectionOperation] = useState<MaskSelectionOperation>('replace')
   const [manualTool, setManualTool] = useState<MaskManualTool>('move')
@@ -52,9 +52,9 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const [segmentationModel, setSegmentationModelState] = useState<SegmentationModelId>(() => {
     const saved = localStorage.getItem('workspace_segmentation_model')
     const model = [...SEGMENTATION_MODELS, ...SAM_MODELS].find((item) => item.id === saved)
-    return model?.id ?? 'segformer-b0-ade20k'
+    return model?.id ?? 'rmbg-1.4'
   })
-  const available = active && Boolean(media.currentProject && media.activeMedia?.path && isImagePath(media.activeMedia.path))
+  const available = active && Boolean(media.currentProject && media.activeMedia?.path)
   const activeMask = edit.pipeline.colorMasks.find((layer) => layer.id === activeLayerId) ?? null
   const activeMaskPath = activeMask?.path
   const activeMediaId = media.activeMedia?.id
@@ -108,6 +108,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const cancelSegmentation = useCallback((): void => {
     if (activeOperationRef.current?.kind === 'segmentation') invalidateActiveOperation()
   }, [invalidateActiveOperation])
+  const setVideoFrameTime = useCallback((value: number): void => { videoFrameTimeRef.current = Number.isFinite(value) ? Math.max(0, value) : 0 }, [])
   const clearSegmentationError = useCallback(() => setSegmentationError(null), [])
   const commitLayers = useCallback((layers: ColorMaskLayer[]) => edit.commitPatch({ colorMasks: layers }), [edit])
   const componentPersistence = useMaskComponentPersistence({
@@ -147,6 +148,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setBusy(false)
     setSegmentationProgress(null)
     setSegmentationError(null)
+    videoFrameTimeRef.current = 0
   }, [active, activeMediaId, invalidateActiveOperation, projectId, setActiveComponentId])
 
   useEffect(() => {
@@ -180,9 +182,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
 
   useMaskShortcuts({
     editing, busy, semanticPicking,
-    hasActiveComponent: Boolean(componentPersistence.activeComponent),
     cancelSegmentation,
-    removeActiveComponent: componentPersistence.removeActiveComponent,
     setSemanticPicking, setManualTool, setShowOverlay, setBrushSize, setBrushFeather,
   })
 
@@ -227,7 +227,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
           applySystemUpdate((pipeline) => ({
             ...pipeline,
             colorMasks: pipeline.colorMasks.map((layer) => layer.id === operationMaskId
-              ? { ...layer, path: rebuilt.path, width: rebuilt.width, height: rebuilt.height, enabled: true, loadError: undefined }
+              ? { ...layer, path: rebuilt.path, width: rebuilt.width, height: rebuilt.height, enabled: true, loadError: undefined, components: rebuilt.components }
               : layer),
           }))
           return
@@ -327,7 +327,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   }, [activeMask, edit, maskSize])
 
   const generateSemanticMask = useCallback(async (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId, requestedModelId?: SegmentationModelId) => {
-    if (!media.activeMedia || !media.currentProject || !maskSize) return
+    if (!media.activeMedia || media.activeMedia.kind === 'video' || !media.currentProject || !maskSize) return
     const operationProjectId = media.currentProject.id
     const operationAssetId = media.activeMedia.id
     const operationMediaPath = media.activeMedia.path
@@ -345,7 +345,8 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     try {
       const target = targetId ? automaticSegmentationTarget(targetId) : undefined
       const modelId = requestedModelId ?? target?.modelId ?? modelForAutomaticSelection(segmentationModel)
-      const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, point, modelId, targetId, targetClassId: target?.classId })
+      const frameTime = undefined
+      const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, frameTime, point, modelId, targetId, targetClassId: target?.classId })
       if (result.requestId !== requestId || !isCurrentOperation(operation)) return
       setLastSegmentationPerformance(result.performance)
       const generatedData = new Uint8Array(result.bytes)
@@ -372,7 +373,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
         result.width,
         result.height,
         data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
-        operationMask?.feather ?? 2,
+        operationMask?.feather ?? 0,
       )
       if (!isCurrentOperation(operation)) return
       setMaskSize({ width: result.width, height: result.height })
@@ -387,6 +388,15 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
         path: componentSaved.path,
         width: componentSaved.width,
         height: componentSaved.height,
+        dynamicSource: {
+          kind: 'segmentation' as const,
+          modelId: result.modelId,
+          frameTime,
+          targetId: result.targetId,
+          classId: result.classId,
+          className: result.className,
+          point,
+        },
       }
       const legacyComponents = operationMask?.path ? [{
         id: `component-base-${operationMask.id}`,
@@ -399,13 +409,14 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
         height: operationMask.height,
       }] : []
       const existingComponents = operationMask?.components ?? legacyComponents
+      const layerComponents = component.operation === 'replace' ? [component] : [...existingComponents, component]
       const layer: ColorMaskLayer = {
           path: saved.path,
           width: saved.width,
           height: saved.height,
           opacity: operationMask?.opacity ?? 1,
           inverted: operationMask?.inverted ?? false,
-          feather: operationMask?.feather ?? 2,
+          feather: layerComponents.some((item) => item.type !== 'raster') ? 0 : operationMask?.feather ?? 0,
           kind: 'semantic',
           classId: result.classId,
           className: result.className,
@@ -417,7 +428,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
           loadError: undefined,
           blendMode: operationMask?.blendMode ?? 'normal',
           color: operationMask?.color ?? createDefaultPipeline().color,
-          components: component.operation === 'replace' ? [component] : [...existingComponents, component],
+          components: layerComponents,
       }
       const nextLayers = mergeCompletedColorMaskLayer(colorMasksRef.current, operationMask?.id ?? null, layer)
       if (nextLayers === colorMasksRef.current) return
@@ -443,8 +454,11 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     localStorage.setItem('workspace_segmentation_model', model)
   }, [])
 
+  const prepareVideoMasksForExport = useCallback(async (): Promise<ColorMaskLayer[]> => colorMasksRef.current, [])
+
   const value = useMemo<WorkspaceMaskValue>(() => ({
     available,
+    setVideoFrameTime,
     editing,
     setEditing,
     selectionOperation,
@@ -469,6 +483,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     segmentationError,
     clearSegmentationError,
     cancelSegmentation,
+    prepareVideoMasksForExport,
     activeLayerId,
     activeMask,
     setActiveLayerId,
@@ -491,7 +506,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, prepareVideoMasksForExport, projectId, removeLayer, removeMask, segmentationError, segmentationModel, segmentationProgress, selectionOperation, semanticPicking, setSegmentationModel, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }

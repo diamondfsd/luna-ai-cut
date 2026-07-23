@@ -1,27 +1,12 @@
 import { DEFAULT_DEVICE } from './deviceDefaults'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from './loggerService'
-import { connectSocket, Insta360TcpSession } from './insta360TcpProtocol'
+import { buildKeepAliveOptionsBody, connectSocket, Insta360TcpSession } from './insta360TcpProtocol'
 import { directHttpFetch } from './directHttp'
 import { extractCameraSubdirs, parseLunaIndex } from './lunaMediaIndex'
 import type { CameraDeleteResult, ConnectionStatus, DeviceStorageOption, LunaFile } from '../src/shared/types'
 
 export const DEFAULT_HOST = DEFAULT_DEVICE.defaultHost
 export const CAMERA_PATH = DEFAULT_DEVICE.storages.find((storage) => storage.default)?.path ?? DEFAULT_DEVICE.storages[0]?.path ?? '/'
-
-function wireVarint(value: number): Buffer {
-  const out: number[] = []
-  let v = value >>> 0
-  while (v > 0x7f) {
-    out.push((v & 0x7f) | 0x80)
-    v >>>= 7
-  }
-  out.push(v & 0x7f)
-  return Buffer.from(out)
-}
-
-function wireFieldVarint(field: number, value: number): Buffer {
-  return Buffer.concat([wireVarint(field << 3), wireVarint(value)])
-}
 
 function cameraUrl(host: string, cameraPath = CAMERA_PATH): string {
   return `http://${host}${cameraPath}`
@@ -166,7 +151,7 @@ export class LunaClient {
         await session.sendCommand(15, Buffer.alloc(0), 2000)
 
         // CODE_GET_OPTIONS (8) — 追加一个轻量 options 查询，模拟真实操作流量，降低相机休眠/断链概率。
-        const optionsBody = Buffer.concat([wireFieldVarint(1, 48), wireFieldVarint(1, 15), wireFieldVarint(1, 11)])
+        const optionsBody = buildKeepAliveOptionsBody()
         await session.sendCommand(8, optionsBody, 2000)
       } catch (error) {
         logMainWarn(`[保活] TCP 控制会话心跳失败，重置后重连`, {

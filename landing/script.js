@@ -229,8 +229,8 @@ const PAGE_RENDERERS = {
             <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="#2997ff" stroke="none"/>
           </svg>
         </div>
-        <p class="mockup-connect-hint">连上Luna的Wifi后，单击「开始连接」按钮<br/>（当前仅演示操作，无实际效果）</p>
-        <span class="mockup-connect-btn" role="button" tabindex="0">开始连接</span>
+        <p class="mockup-connect-hint">通过 Wi-Fi 或数据线访问 Luna 素材<br/>连接后进入统一媒体库</p>
+        <span class="mockup-connect-btn" role="button" tabindex="0">选择连接方式</span>
       </div>
     </div>
   `,
@@ -310,7 +310,7 @@ const PAGE_RENDERERS = {
         </div>
         <div class="mockup-ws-right">
           <div class="mockup-ws-panel">
-            <div class="mockup-ws-panel-title">调色</div>
+            <div class="mockup-ws-panel-title">局部调色 · 人物蒙版</div>
             <div class="mockup-ws-row"><label>曝光</label><div class="mockup-s-track"><div class="mockup-s-fill" style="width:55%"></div><div class="mockup-s-thumb" style="left:55%"></div></div><span class="mockup-s-val">+0.5</span></div>
             <div class="mockup-ws-row"><label>对比度</label><div class="mockup-s-track"><div class="mockup-s-fill" style="width:40%"></div><div class="mockup-s-thumb" style="left:40%"></div></div><span class="mockup-s-val">-0.3</span></div>
             <div class="mockup-ws-row"><label>饱和度</label><div class="mockup-s-track"><div class="mockup-s-fill" style="width:70%"></div><div class="mockup-s-thumb" style="left:70%"></div></div><span class="mockup-s-val">+0.8</span></div>
