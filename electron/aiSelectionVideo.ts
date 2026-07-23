@@ -34,7 +34,7 @@ function segmentBounds(times: number[], duration: number, index: number): [numbe
 }
 
 function storyId(media: IndexedMedia, times: number[]): string {
-  return createHash('sha1').update(`v2\0${media.id}\0${media.mtimeMs}\0${times.join(',')}`).digest('hex').slice(0, 16)
+  return createHash('sha1').update(`v3\0${media.id}\0${media.mtimeMs}\0${times.join(',')}`).digest('hex').slice(0, 16)
 }
 
 function cosineDistance(a: number[], b: number[]): number {
@@ -87,7 +87,7 @@ export async function analyzeVideoStory(
   for (const time of times) args.push('-ss', time.toFixed(3), '-i', media.path)
   for (let index = 0; index < times.length; index += 1) {
     args.push('-map', `${index}:v:0`, '-frames:v', '1', '-vf', 'scale=64:64', '-pix_fmt', 'rgb24', '-f', 'rawvideo', rawPaths[index])
-    args.push('-map', `${index}:v:0`, '-frames:v', '1', '-vf', 'scale=320:-2', '-q:v', '5', imagePaths[index])
+    args.push('-map', `${index}:v:0`, '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '5', imagePaths[index])
   }
   await run(getFfmpegPath(), args, signal)
 
