@@ -461,10 +461,23 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       watermark: data.watermark,
       border: data.border,
     }
+    const targetIndices = new Set([...indices].filter((index) => {
+      const asset = media.media[index]
+      if (!asset) return false
+      if (!data.sourceAssetId || asset.id !== data.sourceAssetId) return true
+      return (data.sourceProjectId ?? null) !== (media.currentProject?.id ?? null)
+    }))
+    if (targetIndices.size === 0) {
+      toast.error('没有其他可粘贴的素材')
+      return
+    }
 
     if (media.currentProject) {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+      pendingProjectSaveRef.current = null
       const nextAssets = media.currentProject.assets.map((asset, i) => {
-        if (!indices.has(i)) return asset
+        if (!targetIndices.has(i)) return asset
         const nextPipeline = mergePipeline(normalizePipeline(asset.pipeline, defaultPipelineRef.current), patch)
         return { ...asset, pipeline: nextPipeline }
       })
@@ -473,16 +486,16 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       window.luna.workspace.saveProject(nextProject).catch(() => undefined)
     } else {
       media.setTransientMedia((current) => current.map((asset, i) => {
-        if (!indices.has(i)) return asset
+        if (!targetIndices.has(i)) return asset
         const nextPipeline = mergePipeline(normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current), patch)
         return { ...asset, pipeline: nextPipeline }
       }))
     }
 
-    if (indices.has(media.activeIndex)) {
+    if (targetIndices.has(media.activeIndex)) {
       edit.commitPatch(patch)
     }
-    toast.success(`已粘贴到 ${indices.size} 个素材`)
+    toast.success(`已粘贴到 ${targetIndices.size} 个素材`)
   }
 
   function handleCopyPipeline(): void {
@@ -493,6 +506,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         if (!asset) return
         const pipe = normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current)
         writeWorkspacePipelineClipboard({
+          sourceAssetId: asset.id,
+          sourceProjectId: media.currentProject?.id ?? null,
           color: structuredClone(pipe.color),
           effects: structuredClone(pipe.effects),
           logRestore: structuredClone(pipe.logRestore),
@@ -504,7 +519,11 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         return
       }
     }
-    edit.copyPipeline()
+    const activeAsset = media.activeMedia
+    edit.copyPipeline(activeAsset ? {
+      assetId: activeAsset.id,
+      projectId: media.currentProject?.id ?? null,
+    } : undefined)
   }
 
   async function handleWorkspaceExport(): Promise<void> {
@@ -737,6 +756,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             onImport={() => setImportDialogOpen(true)}
             onImportLocal={() => void handleImportLocalFiles()}
             onExport={() => void handleWorkspaceExport()}
+            onCopy={handleCopyPipeline}
+            onPaste={handlePastePipeline}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
             fitScalePercent={fitScalePercent}
