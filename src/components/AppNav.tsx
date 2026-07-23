@@ -43,11 +43,12 @@ export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>
-          {/* {(import.meta.env.DEV || hiddenDevMode) && (
+          {(import.meta.env.DEV) && (
             <NavLink to="/ble-debug" className={({ isActive }) => (isActive ? 'active' : '')}>
               调试
             </NavLink>
           )}
+          {/* 
           {(import.meta.env.DEV || hiddenDevMode) && (
             <NavLink to="/device-debug" className={({ isActive }) => (isActive ? 'active' : '')}>
               设备调试
