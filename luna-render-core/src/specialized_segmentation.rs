@@ -6,6 +6,8 @@ const SEGFORMER_CLASSES: usize = 150;
 const SUBJECT_SIZE: usize = 1024;
 const ULTRAFACE_WIDTH: usize = 320;
 const ULTRAFACE_HEIGHT: usize = 240;
+const ULTRAFACE_MAX_FACES: usize = 16;
+const ULTRAFACE_BOX_VALUES: usize = ULTRAFACE_MAX_FACES * 4;
 const EYE_SIZE: usize = 32;
 const DINOV2_SIZE: usize = 224;
 const DINOV2_DIMENSION: usize = 384;
@@ -319,6 +321,7 @@ pub enum SpecializedSession {
     SegformerLabels(Session),
     Rmbg14(Session),
     UltraFace(Session),
+    UltraFaceBoxes(Session),
     EyeState(Session),
     Dinov2Small(Session),
     SFace(Session),
@@ -333,6 +336,7 @@ impl SpecializedSession {
             "segformer-labels" => Ok(Self::SegformerLabels(session(model_path)?)),
             "rmbg-1.4" => Ok(Self::Rmbg14(session(model_path)?)),
             "ultraface" => Ok(Self::UltraFace(session(model_path)?)),
+            "ultraface-boxes" => Ok(Self::UltraFaceBoxes(session(model_path)?)),
             "eye-state" => Ok(Self::EyeState(session(model_path)?)),
             "dinov2-small" => Ok(Self::Dinov2Small(session(model_path)?)),
             "sface" => Ok(Self::SFace(session(model_path)?)),
@@ -374,6 +378,15 @@ impl SpecializedSession {
             }
             Self::Rmbg14(session) => segment_rmbg_with_session(session, rgb, output_size),
             Self::UltraFace(session) => segment_ultraface_with_session(
+                session,
+                rgb,
+                scaled_width,
+                scaled_height,
+                pad_x,
+                pad_y,
+                output_size,
+            ),
+            Self::UltraFaceBoxes(session) => extract_ultraface_boxes_with_session(
                 session,
                 rgb,
                 scaled_width,
@@ -476,16 +489,15 @@ fn intersection_over_union(a: FaceBox, b: FaceBox) -> f32 {
     intersection / (area_a + area_b - intersection).max(f32::EPSILON)
 }
 
-fn ultraface_mask(
+fn ultraface_faces(
     boxes: &[f32],
     scores: &[f32],
     scaled_width: usize,
     scaled_height: usize,
     pad_x: usize,
     pad_y: usize,
-    output_size: usize,
-) -> Result<Vec<u8>, String> {
-    if boxes.len() % 4 != 0 || scores.len() != boxes.len() / 2 || output_size == 0 {
+) -> Result<Vec<FaceBox>, String> {
+    if boxes.len() % 4 != 0 || scores.len() != boxes.len() / 2 {
         return Err("UltraFace 输出尺寸不兼容".to_string());
     }
     let mut candidates: Vec<FaceBox> = boxes
@@ -511,26 +523,55 @@ fn ultraface_mask(
         {
             kept.push(candidate);
         }
-        if kept.len() >= 16 {
+        if kept.len() >= ULTRAFACE_MAX_FACES {
             break;
         }
     }
-    let mut mask = vec![0u8; output_size * output_size];
     let scaled_width = scaled_width.max(1) as f32;
     let scaled_height = scaled_height.max(1) as f32;
-    for face in kept {
-        let x1 = (((face.x1 * YOLO_SIZE as f32 - pad_x as f32) / scaled_width) * output_size as f32)
+    Ok(kept
+        .into_iter()
+        .filter_map(|face| {
+            let x1 = ((face.x1 * YOLO_SIZE as f32 - pad_x as f32) / scaled_width).clamp(0.0, 1.0);
+            let y1 = ((face.y1 * YOLO_SIZE as f32 - pad_y as f32) / scaled_height).clamp(0.0, 1.0);
+            let x2 = ((face.x2 * YOLO_SIZE as f32 - pad_x as f32) / scaled_width).clamp(0.0, 1.0);
+            let y2 = ((face.y2 * YOLO_SIZE as f32 - pad_y as f32) / scaled_height).clamp(0.0, 1.0);
+            (x2 > x1 && y2 > y1).then_some(FaceBox {
+                x1,
+                y1,
+                x2,
+                y2,
+                score: face.score,
+            })
+        })
+        .collect())
+}
+
+fn ultraface_mask(
+    boxes: &[f32],
+    scores: &[f32],
+    scaled_width: usize,
+    scaled_height: usize,
+    pad_x: usize,
+    pad_y: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    if output_size == 0 {
+        return Err("UltraFace 输出尺寸不兼容".to_string());
+    }
+    let faces = ultraface_faces(boxes, scores, scaled_width, scaled_height, pad_x, pad_y)?;
+    let mut mask = vec![0u8; output_size * output_size];
+    for face in faces {
+        let x1 = (face.x1 * output_size as f32)
             .floor()
             .clamp(0.0, output_size as f32) as usize;
-        let y1 = (((face.y1 * YOLO_SIZE as f32 - pad_y as f32) / scaled_height)
-            * output_size as f32)
+        let y1 = (face.y1 * output_size as f32)
             .floor()
             .clamp(0.0, output_size as f32) as usize;
-        let x2 = (((face.x2 * YOLO_SIZE as f32 - pad_x as f32) / scaled_width) * output_size as f32)
+        let x2 = (face.x2 * output_size as f32)
             .ceil()
             .clamp(0.0, output_size as f32) as usize;
-        let y2 = (((face.y2 * YOLO_SIZE as f32 - pad_y as f32) / scaled_height)
-            * output_size as f32)
+        let y2 = (face.y2 * output_size as f32)
             .ceil()
             .clamp(0.0, output_size as f32) as usize;
         for y in y1..y2 {
@@ -542,15 +583,7 @@ fn ultraface_mask(
     Ok(mask)
 }
 
-fn segment_ultraface_with_session(
-    session: &mut Session,
-    rgb: &[u8],
-    scaled_width: usize,
-    scaled_height: usize,
-    pad_x: usize,
-    pad_y: usize,
-    output_size: usize,
-) -> Result<Vec<u8>, String> {
+fn run_ultraface(session: &mut Session, rgb: &[u8]) -> Result<(Vec<f32>, Vec<f32>), String> {
     let input = preprocess_ultraface(rgb)?;
     let tensor = Tensor::from_array(([1usize, 3, ULTRAFACE_HEIGHT, ULTRAFACE_WIDTH], input))
         .map_err(|error| format!("创建 UltraFace 输入失败: {error}"))?;
@@ -570,15 +603,59 @@ fn segment_ultraface_with_session(
             scores = Some(values.to_vec());
         }
     }
+    Ok((
+        boxes.ok_or_else(|| "UltraFace 缺少人脸框输出".to_string())?,
+        scores.ok_or_else(|| "UltraFace 缺少置信度输出".to_string())?,
+    ))
+}
+
+fn segment_ultraface_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    scaled_width: usize,
+    scaled_height: usize,
+    pad_x: usize,
+    pad_y: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let (boxes, scores) = run_ultraface(session, rgb)?;
     ultraface_mask(
-        &boxes.ok_or_else(|| "UltraFace 缺少人脸框输出".to_string())?,
-        &scores.ok_or_else(|| "UltraFace 缺少置信度输出".to_string())?,
+        &boxes,
+        &scores,
         scaled_width,
         scaled_height,
         pad_x,
         pad_y,
         output_size,
     )
+}
+
+fn extract_ultraface_boxes_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    scaled_width: usize,
+    scaled_height: usize,
+    pad_x: usize,
+    pad_y: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    if output_size != ULTRAFACE_BOX_VALUES {
+        return Err(format!("UltraFace 人脸框输出维度不兼容: {output_size}"));
+    }
+    let (boxes, scores) = run_ultraface(session, rgb)?;
+    let faces = ultraface_faces(&boxes, &scores, scaled_width, scaled_height, pad_x, pad_y)?;
+    let mut values = vec![-1.0f32; ULTRAFACE_BOX_VALUES];
+    for (index, face) in faces.into_iter().enumerate() {
+        let offset = index * 4;
+        values[offset] = face.x1;
+        values[offset + 1] = face.y1;
+        values[offset + 2] = face.x2 - face.x1;
+        values[offset + 3] = face.y2 - face.y1;
+    }
+    Ok(values
+        .into_iter()
+        .flat_map(f32::to_le_bytes)
+        .collect::<Vec<u8>>())
 }
 
 fn classify_eye_with_session(
@@ -872,6 +949,15 @@ mod tests {
         let mask = ultraface_mask(&boxes, &scores, 640, 640, 0, 0, 20).unwrap();
         assert!(mask.iter().any(|value| *value == 255));
         assert_eq!(mask[15 * 20 + 15], 0);
+    }
+
+    #[test]
+    fn ultraface_keeps_touching_faces_as_independent_boxes() {
+        let boxes = [0.1, 0.1, 0.3, 0.4, 0.25, 0.1, 0.45, 0.4];
+        let scores = [0.1, 0.95, 0.1, 0.94];
+        let faces = ultraface_faces(&boxes, &scores, 640, 640, 0, 0).unwrap();
+        assert_eq!(faces.len(), 2);
+        assert!(faces[0].x2 > faces[1].x1);
     }
 
     #[test]

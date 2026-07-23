@@ -21,7 +21,6 @@ async function analyzePersonItem(context: AiSelectionAnalysisContext, item: AiSe
   const evidenceTags = item.personEvidence.detected ? ['人物', '人像', '主体'] : ['无人像']
   if (item.personEvidence.faceCount > 0) evidenceTags.push('人脸')
   if (item.personEvidence.eyeState === 'closed') evidenceTags.push('闭眼', '建议复查')
-  if (item.personEvidence.eyeState === 'mixed') evidenceTags.push('眨眼', '建议复查')
   if (item.personEvidence.faceVisibility === 'occluded') evidenceTags.push('面部遮挡', '建议复查')
   item.semanticTags = [...new Set([...item.semanticTags, ...evidenceTags])]
   refreshBasicSemanticTags(item)

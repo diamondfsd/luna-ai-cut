@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { subscribeThumbnailReady } from '../lib/thumbnailReady'
+import { latestThumbnailReady, subscribeThumbnailReady } from '../lib/thumbnailReady'
 
 interface FileCache {
   /** 缩略图 URL（本地 file:// 路径或 null） */
@@ -51,16 +51,11 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
       setCacheFilePath(sourceUrl)
     }
 
-    // 触发缓存（HTTP 下载 + 缩略图生成，或 file:// 缩略图生成）
-    setIsLoading(isHttp)
-    window.luna
-      .cacheFile({ sourceUrl })
-      .catch(() => {
-        setHasError(true)
-        setIsLoading(false)
-      })
-
-    const unsubscribe = subscribeThumbnailReady(({ fileId, cacheFilePath: cachedPath, thumbnailUrl: thumbUrl }) => {
+    const applyReady = ({ fileId, cacheFilePath: cachedPath, thumbnailUrl: thumbUrl }: {
+      fileId: string
+      cacheFilePath: string
+      thumbnailUrl: string
+    }): void => {
       if (fileId !== sourceUrl) return
       if (cachedPath) setCacheFilePath(cachedPath)
       if (thumbUrl) setThumbnailUrl(thumbUrl)
@@ -72,6 +67,16 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
         setHasError(true)
         setIsLoading(false)
       }
+    }
+    const unsubscribe = subscribeThumbnailReady(applyReady)
+    const latest = latestThumbnailReady(sourceUrl)
+    if (latest) applyReady(latest)
+
+    // 先订阅就绪事件，再触发缓存，避免快速命中磁盘缓存时错过通知。
+    setIsLoading(isHttp && !latest)
+    window.luna.cacheFile({ sourceUrl }).catch(() => {
+      setHasError(true)
+      setIsLoading(false)
     })
 
     cleanupRef.current = unsubscribe
