@@ -2,62 +2,6 @@ import { ADE20K_REMAINING_SEGMENTATION_TARGETS } from './ade20kSegmentationTarge
 
 export const SEGMENTATION_MODELS = [
   {
-    id: 'segformer-b0-ade20k',
-    name: 'SegFormer B0',
-    description: '速度优先',
-    inputSize: 512,
-    sizeBytes: 15_335_446,
-    url: 'https://modelscope.cn/models/Xenova/segformer-b0-finetuned-ade-512-512/resolve/master/onnx/model.onnx',
-    mirrors: ['https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/segformer-b0-ade20k.onnx'],
-    sha256: '3e5c18a4be395f16646438d54c42377ddc202edfa33d5eced0c9506de75c44c2',
-    version: 'master',
-    license: 'NVIDIA SegFormer License (open-source non-commercial use only)',
-    source: 'https://modelscope.cn/models/Xenova/segformer-b0-finetuned-ade-512-512',
-    licenseUrl: 'https://github.com/NVlabs/SegFormer/blob/master/LICENSE',
-  },
-  {
-    id: 'segformer-b1-ade20k',
-    name: 'SegFormer B1',
-    description: '均衡',
-    inputSize: 512,
-    sizeBytes: 55_187_948,
-    url: 'https://modelscope.cn/models/Xenova/segformer-b1-finetuned-ade-512-512/resolve/master/onnx/model.onnx',
-    mirrors: ['https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/segformer-b1-ade20k.onnx'],
-    sha256: '2cd97ac49e7420088cfd75fe028437af021342611ffffa3a33465720692900c6',
-    version: 'master',
-    license: 'NVIDIA SegFormer License (open-source non-commercial use only)',
-    source: 'https://modelscope.cn/models/Xenova/segformer-b1-finetuned-ade-512-512',
-    licenseUrl: 'https://github.com/NVlabs/SegFormer/blob/master/LICENSE',
-  },
-  {
-    id: 'segformer-b2-ade20k',
-    name: 'SegFormer B2',
-    description: '细节优先',
-    inputSize: 512,
-    sizeBytes: 110_445_327,
-    url: 'https://modelscope.cn/models/Xenova/segformer-b2-finetuned-ade-512-512/resolve/master/onnx/model.onnx',
-    mirrors: ['https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/segformer-b2-ade20k.onnx'],
-    sha256: '819c15e6af8c4de3359c1de7ab0a17d0dde495df1d16f8908a7163f8038e0fa0',
-    version: 'master',
-    license: 'NVIDIA SegFormer License (open-source non-commercial use only)',
-    source: 'https://modelscope.cn/models/Xenova/segformer-b2-finetuned-ade-512-512',
-    licenseUrl: 'https://github.com/NVlabs/SegFormer/blob/master/LICENSE',
-  },
-  {
-    id: 'segformer-b3-ade20k',
-    name: 'SegFormer B3',
-    description: '高精度',
-    inputSize: 512,
-    sizeBytes: 190_376_626,
-    url: 'https://modelscope.cn/models/Xenova/segformer-b3-finetuned-ade-512-512/resolve/master/onnx/model.onnx',
-    mirrors: ['https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/segformer-b3-ade20k.onnx'],
-    sha256: 'dfa5e8f62b7c1683de1edcea22c8c7a0d7f8e6768b5ae93f7c62e683f0b98708',
-    version: 'master',
-    license: 'NVIDIA SegFormer License (open-source non-commercial use only)',
-    source: 'https://modelscope.cn/models/Xenova/segformer-b3-finetuned-ade-512-512',
-    licenseUrl: 'https://github.com/NVlabs/SegFormer/blob/master/LICENSE',
-  },
-  {
     id: 'segformer-b5-ade20k',
     name: 'SegFormer B5',
     description: '640px 最高精度',
@@ -70,20 +14,6 @@ export const SEGMENTATION_MODELS = [
     license: 'NVIDIA SegFormer License (open-source non-commercial use only)',
     source: 'https://modelscope.cn/models/Xenova/segformer-b5-finetuned-ade-640-640',
     licenseUrl: 'https://github.com/NVlabs/SegFormer/blob/master/LICENSE',
-  },
-  {
-    id: 'maskformer-r101-ade20k-full',
-    name: 'MaskFormer R101',
-    description: '天空 / 海洋增强',
-    inputSize: 512,
-    sizeBytes: 61_959_497,
-    url: 'https://modelscope.cn/models/onnx-community/maskformer-resnet101-ade20k-full/resolve/master/onnx/model_quantized.onnx',
-    mirrors: ['https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/maskformer-r101-ade20k-full.onnx'],
-    sha256: 'a3ceb38f2e3552c2d92715d34da2e15c6a11e7149d967783ad4a8dda45494ed9',
-    version: '2a990c891d551b16993ca99c70386888d36f30f4',
-    license: 'CC BY-NC 4.0',
-    source: 'https://modelscope.cn/models/onnx-community/maskformer-resnet101-ade20k-full',
-    licenseUrl: 'https://github.com/facebookresearch/MaskFormer/blob/main/LICENSE',
   },
 ] as const
 
@@ -170,60 +100,7 @@ export const SAM_MODELS = [
       },
     },
   },
-  {
-    id: 'slimsam-50-uniform',
-    name: 'SlimSAM 50',
-    description: '速度优先',
-    inputSize: 1024,
-    sizeBytes: 34_972_695,
-    version: 'main',
-    license: 'Apache-2.0',
-    source: 'https://modelscope.cn/models/Xenova/slimsam-50-uniform',
-    licenseUrl: 'https://modelscope.cn/models/Xenova/slimsam-50-uniform',
-    files: {
-      visionEncoder: {
-        fileName: 'vision_encoder_quantized.onnx',
-        sizeBytes: 30_068_885,
-        url: 'https://modelscope.cn/models/Xenova/slimsam-50-uniform/resolve/master/onnx/vision_encoder_quantized.onnx',
-        mirrors: ['https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/slimsam-50-uniform-vision-encoder.onnx'],
-        sha256: '84934ceb504b07a757c63f56440699c9c593933b41bea3e11c261eb27a35baab',
-      },
-      promptDecoder: {
-        ...SAM_DECODER,
-        url: 'https://modelscope.cn/models/Xenova/slimsam-50-uniform/resolve/master/onnx/prompt_encoder_mask_decoder_quantized.onnx',
-        mirrors: ['https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/sam-prompt-decoder-quantized.onnx'],
-      },
-    },
-  },
-  {
-    id: 'sam-vit-b',
-    name: 'SAM ViT-B',
-    description: '细节优先',
-    inputSize: 1024,
-    sizeBytes: 105_992_279,
-    version: 'main',
-    license: 'Apache-2.0',
-    source: 'https://modelscope.cn/models/Xenova/sam-vit-base',
-    licenseUrl: 'https://modelscope.cn/models/Xenova/sam-vit-base',
-    files: {
-      visionEncoder: {
-        fileName: 'vision_encoder_quantized.onnx',
-        sizeBytes: 101_088_469,
-        url: 'https://modelscope.cn/models/Xenova/sam-vit-base/resolve/master/onnx/vision_encoder_quantized.onnx',
-        mirrors: ['https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/sam-vit-b-vision-encoder.onnx'],
-        sha256: 'd9d7bca3b256ab71b3b7cdc35839983bc8ebaf68ea9022f15805ac43955cd247',
-      },
-      promptDecoder: {
-        ...SAM_DECODER,
-        url: 'https://modelscope.cn/models/Xenova/sam-vit-base/resolve/master/onnx/prompt_encoder_mask_decoder_quantized.onnx',
-        mirrors: ['https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/sam-prompt-decoder-quantized.onnx'],
-      },
-    },
-  },
 ] as const
-
-/** 兼容旧调用；新代码应使用 SAM_MODELS。 */
-export const SAM_MODEL = SAM_MODELS[2]
 
 export type SemanticSegmentationModelId = typeof SEGMENTATION_MODELS[number]['id']
 export type SpecializedSegmentationModelId = typeof SPECIALIZED_SEGMENTATION_MODELS[number]['id']
@@ -235,7 +112,7 @@ export function modelForSegmentationRequest(
   requestedModelId: SegmentationModelId | undefined,
 ): SegmentationModelId {
   const target = targetId ? automaticSegmentationTarget(targetId) : undefined
-  return target?.modelId ?? requestedModelId ?? 'segformer-b0-ade20k'
+  return target?.modelId ?? requestedModelId ?? 'segformer-b5-ade20k'
 }
 
 export const DEFAULT_POINT_SEGMENTATION_MODEL_ID: SamSegmentationModelId = 'slimsam-77-uniform'

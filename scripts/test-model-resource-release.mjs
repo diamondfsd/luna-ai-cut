@@ -10,10 +10,11 @@ const artifacts = buildModelArtifacts(registry)
 const allModels = [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.SAM_MODELS]
 const gitCodePrefix = `https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/${MODEL_RELEASE_TAG}/`
 
-assert.equal(artifacts.length, 13, '当前注册表应映射为 13 个去重后的 ONNX 文件')
+assert.equal(allModels.length, 5, '当前注册表只保留 5 个生产模型')
+assert.equal(artifacts.length, 6, '当前注册表应映射为 6 个 ONNX 文件')
 assert.equal(new Set(artifacts.map((artifact) => artifact.fileName)).size, artifacts.length, 'Release 文件名不得重复')
 assert.equal(new Set(artifacts.map((artifact) => artifact.sha256)).size, artifacts.length, '相同权重必须复用一个 Release 附件')
-assert.equal(artifacts.reduce((total, artifact) => total + artifact.models.length, 0), 15, '每个模型文件角色都必须被覆盖')
+assert.equal(artifacts.reduce((total, artifact) => total + artifact.models.length, 0), 6, '每个模型文件角色都必须被覆盖')
 
 for (const artifact of artifacts) {
   assert.match(artifact.fileName, /^[a-zA-Z0-9._-]+\.onnx$/)
