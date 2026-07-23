@@ -1,7 +1,8 @@
 import type { AiFaceDescriptor, AiFaceGroup, AiSelectionItem } from '../src/shared/types'
 
 export const FACE_EMBEDDING_VERSION = 'sface-2021dec-int8-box-crop-v1'
-const FACE_MATCH_THRESHOLD = 0.42
+const FACE_MEMBER_MATCH_THRESHOLD = 0.34
+const FACE_CENTROID_SIMILARITY_FLOOR = 0.2
 const FACE_EMBEDDING_DIMENSION = 128
 
 interface FaceObservation {
@@ -37,6 +38,13 @@ function updateCentroid(group: WorkingGroup): void {
   ))
 }
 
+function groupSimilarity(group: WorkingGroup, observation: FaceObservation): { member: number; centroid: number } {
+  return {
+    member: Math.max(...group.observations.map((entry) => cosineSimilarity(entry.embedding, observation.embedding))),
+    centroid: cosineSimilarity(group.centroid, observation.embedding),
+  }
+}
+
 export function buildFaceGroups(items: AiSelectionItem[]): AiFaceGroup[] {
   const itemOrder = new Map(items.map((item, index) => [item.id, index]))
   const observations: FaceObservation[] = items.flatMap((item) => (
@@ -54,9 +62,14 @@ export function buildFaceGroups(items: AiSelectionItem[]): AiFaceGroup[] {
   for (const observation of observations) {
     const candidate = groups
       .filter((group) => !group.observations.some((entry) => entry.itemId === observation.itemId))
-      .map((group) => ({ group, similarity: cosineSimilarity(group.centroid, observation.embedding) }))
-      .filter((entry) => entry.similarity >= FACE_MATCH_THRESHOLD)
-      .sort((left, right) => right.similarity - left.similarity)[0]?.group
+      .map((group) => ({ group, ...groupSimilarity(group, observation) }))
+      .filter((entry) => (
+        entry.member >= FACE_MEMBER_MATCH_THRESHOLD
+        && entry.centroid >= FACE_CENTROID_SIMILARITY_FLOOR
+      ))
+      .sort((left, right) => (
+        right.member - left.member || right.centroid - left.centroid
+      ))[0]?.group
     if (candidate) {
       candidate.observations.push(observation)
       updateCentroid(candidate)
