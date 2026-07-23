@@ -9,6 +9,8 @@ const ULTRAFACE_HEIGHT: usize = 240;
 const EYE_SIZE: usize = 32;
 const DINOV2_SIZE: usize = 224;
 const DINOV2_DIMENSION: usize = 384;
+const SFACE_SIZE: usize = 112;
+const SFACE_DIMENSION: usize = 128;
 
 pub fn preprocess_yolo(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(rgb, YOLO_SIZE, None)
@@ -40,6 +42,20 @@ fn preprocess_dinov2(rgb: &[u8]) -> Result<Vec<f32>, String> {
         DINOV2_SIZE,
         Some(([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])),
     )
+}
+
+fn preprocess_sface(rgb: &[u8]) -> Result<Vec<f32>, String> {
+    if rgb.len() != SFACE_SIZE * SFACE_SIZE * 3 {
+        return Err(format!("人脸特征图片数据尺寸无效: {}", rgb.len()));
+    }
+    let plane = SFACE_SIZE * SFACE_SIZE;
+    let mut output = vec![0.0; plane * 3];
+    for pixel in 0..plane {
+        for channel in 0..3 {
+            output[channel * plane + pixel] = rgb[pixel * 3 + channel] as f32;
+        }
+    }
+    Ok(output)
 }
 
 fn preprocess_ultraface(rgb: &[u8]) -> Result<Vec<f32>, String> {
@@ -305,6 +321,7 @@ pub enum SpecializedSession {
     UltraFace(Session),
     EyeState(Session),
     Dinov2Small(Session),
+    SFace(Session),
     BirefNet(Session),
 }
 
@@ -318,6 +335,7 @@ impl SpecializedSession {
             "ultraface" => Ok(Self::UltraFace(session(model_path)?)),
             "eye-state" => Ok(Self::EyeState(session(model_path)?)),
             "dinov2-small" => Ok(Self::Dinov2Small(session(model_path)?)),
+            "sface" => Ok(Self::SFace(session(model_path)?)),
             "birefnet-general-lite" => Ok(Self::BirefNet(session(model_path)?)),
             _ => Err("不支持的专用分割模型".to_string()),
         }
@@ -366,9 +384,42 @@ impl SpecializedSession {
             ),
             Self::EyeState(session) => classify_eye_with_session(session, rgb, output_size),
             Self::Dinov2Small(session) => extract_dinov2_with_session(session, rgb, output_size),
+            Self::SFace(session) => extract_sface_with_session(session, rgb, output_size),
             Self::BirefNet(session) => segment_birefnet_with_session(session, rgb, output_size),
         }
     }
+}
+
+fn extract_sface_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    if output_size != SFACE_DIMENSION {
+        return Err(format!("SFace 特征维度不兼容: {output_size}"));
+    }
+    let input = preprocess_sface(rgb)?;
+    let tensor = Tensor::from_array(([1usize, 3, SFACE_SIZE, SFACE_SIZE], input))
+        .map_err(|error| format!("创建 SFace 输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("人脸特征分析失败: {error}"))?;
+    let values = outputs
+        .iter()
+        .find_map(|(_, output)| {
+            let (_, values) = output.try_extract_tensor::<f32>().ok()?;
+            (values.len() == SFACE_DIMENSION).then(|| values.to_vec())
+        })
+        .ok_or_else(|| "SFace 缺少人脸特征输出".to_string())?;
+    let length = values.iter().map(|value| value * value).sum::<f32>().sqrt();
+    if !length.is_finite() || length <= f32::EPSILON {
+        return Err("SFace 返回了无效人脸特征".to_string());
+    }
+    let mut bytes = Vec::with_capacity(SFACE_DIMENSION * std::mem::size_of::<f32>());
+    for value in values {
+        bytes.extend_from_slice(&(value / length).to_le_bytes());
+    }
+    Ok(bytes)
 }
 
 fn extract_dinov2_with_session(
@@ -829,6 +880,14 @@ mod tests {
         let input = preprocess_dinov2(&rgb).unwrap();
         assert_eq!(input.len(), 3 * DINOV2_SIZE * DINOV2_SIZE);
         assert!(input.iter().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn sface_preprocessing_preserves_rgb_byte_range() {
+        let rgb = vec![127u8; SFACE_SIZE * SFACE_SIZE * 3];
+        let input = preprocess_sface(&rgb).unwrap();
+        assert_eq!(input.len(), 3 * SFACE_SIZE * SFACE_SIZE);
+        assert!(input.iter().all(|value| *value == 127.0));
     }
 
     #[test]

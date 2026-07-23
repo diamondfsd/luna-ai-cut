@@ -10,6 +10,7 @@ import {
 } from '../electron/aiSelectionAlgorithms.ts'
 import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
 import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
+import { buildFaceGroups, FACE_EMBEDDING_VERSION } from '../electron/aiSelectionFaceGroups.ts'
 import {
   countSimilarityGroups,
   matchesResultFilter,
@@ -228,6 +229,21 @@ assert.equal(comparedPeople.length, 1, 'AI 推荐不能混入相似组备选素�
 assert.equal(countSimilarityGroups(comparedPeople), 1, '相似筛选应单独统计组数')
 assert.equal(viewItems.filter((entry) => matchesResultFilter(entry, 'recommended')).length, 1)
 assert.equal(viewItems.filter((entry) => matchesSelectionSearch(entry, '晚上')).length, 1)
+
+const faceVector = (first, second) => [first, second, ...Array(126).fill(0)]
+const faceItems = [
+  item('face-a', '2026-07-18T03:00:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('face-a-again', '2026-07-18T03:01:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.3, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(125, 8), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('face-b', '2026-07-18T03:02:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.4, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(0, 127), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('face-a-and-b', '2026-07-18T03:03:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [
+    { bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(126, 4), embeddingVersion: FACE_EMBEDDING_VERSION },
+    { bounds: { x: 0.6, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(3, 126), embeddingVersion: FACE_EMBEDDING_VERSION },
+  ] } }),
+]
+const faceGroups = buildFaceGroups(faceItems)
+assert.equal(faceGroups.length, 2)
+assert.deepEqual(faceGroups[0].itemIds, ['face-a', 'face-a-again', 'face-a-and-b'])
+assert.deepEqual(faceGroups[1].itemIds, ['face-b', 'face-a-and-b'])
 
 const sceneSession = {
   preset: 'balanced',

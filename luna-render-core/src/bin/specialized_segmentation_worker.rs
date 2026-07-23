@@ -75,7 +75,7 @@ fn write_response<W: Write>(writer: &mut W, response: &WorkerResponse) -> Result
 }
 
 fn expected_output_bytes(backend: &str, output_size: usize) -> usize {
-    if backend == "dinov2-small" {
+    if backend == "dinov2-small" || backend == "sface" {
         output_size * std::mem::size_of::<f32>()
     } else {
         output_size * output_size
@@ -182,7 +182,7 @@ fn run() -> Result<(), String> {
             session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
         }
         "rmbg-1.4" => specialized_segmentation::segment_rmbg(&args[2], &rgb, output_size)?,
-        "ultraface" | "eye-state" | "dinov2-small" => {
+        "ultraface" | "eye-state" | "dinov2-small" | "sface" => {
             let mut session =
                 specialized_segmentation::SpecializedSession::load(&args[1], &args[2])?;
             session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
