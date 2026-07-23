@@ -276,16 +276,21 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
   const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
   const stagePipeline = useMemo(() => {
-    if (edit.compareOriginal) return edit.comparePipeline
-    if (!edit.cropActive) return displayPipeline
-    const activeTransform = edit.transformDraft ?? edit.pipeline.transform
-    return mergePipeline(edit.pipeline, {
-      transform: {
-        ...activeTransform,
-        crop: null,
-      },
+    const visiblePipeline = edit.compareOriginal
+      ? edit.comparePipeline
+      : edit.cropActive
+        ? mergePipeline(edit.pipeline, {
+            transform: {
+              ...(edit.transformDraft ?? edit.pipeline.transform),
+              crop: null,
+            },
+          })
+        : displayPipeline
+    if (!mask.editing || !visiblePipeline.border.enabled) return visiblePipeline
+    return mergePipeline(visiblePipeline, {
+      border: { ...visiblePipeline.border, enabled: false },
     })
-  }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft])
+  }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft, mask.editing])
   const keepCompositionVideoRenderer = edit.previewPipeline.colorMasks.some(
     (layer) => layer.enabled && !layer.loadError,
   )
@@ -334,8 +339,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
-    () => edit.cropActive ? [] : [...watermarkLayer, ...borderLayer],
-    [edit.cropActive, watermarkLayer, borderLayer],
+    () => edit.cropActive || mask.editing ? [] : [...watermarkLayer, ...borderLayer],
+    [edit.cropActive, mask.editing, watermarkLayer, borderLayer],
   )
 
   // ── Initialize pipeline / reset crop/trim when active asset changes ──
@@ -445,7 +450,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
     const data = readWorkspacePipelineClipboard()
     if (!data) {
-      toast.error('没有可粘贴的调色设置')
+      toast.error('没有可粘贴的效果')
       return
     }
     const patch: PipelinePatch = {
@@ -495,7 +500,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           watermark: structuredClone(pipe.watermark),
           border: structuredClone(pipe.border),
         })
-        toast.success('已复制调色、滤镜和水印设置')
+        toast.success('已复制调色、滤镜、水印和边框设置')
         return
       }
     }
