@@ -1,0 +1,246 @@
+.help-dialog-content.ui-dialog-content {
+  width: min(620px, 92vw);
+}
+
+.help-dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.help-dialog-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 176px;
+  min-height: 280px;
+}
+
+.help-dialog-summary {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.help-section-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.help-version-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.help-version-row {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.help-version {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.help-hot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: rgba(0, 102, 204, 0.08);
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.help-hot-delete {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.help-hot-delete:hover {
+  background: rgba(200, 0, 0, 0.1);
+  color: var(--red, #d32f2f);
+}
+
+.help-version-status {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.help-version-status.muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.help-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.help-version-actions,
+.help-hot-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-hot-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 102, 204, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 102, 204, 0.06);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.help-hot-section.error {
+  border-color: rgba(200, 0, 0, 0.15);
+  background: rgba(200, 0, 0, 0.05);
+  color: var(--red, #d32f2f);
+}
+
+.help-hot-text,
+.help-hot-downloading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.help-hot-text {
+  font-weight: 500;
+}
+
+.help-hot-downloading {
+  color: var(--muted);
+}
+
+.help-notes-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+
+.help-notes-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+}
+
+.help-notes-copy > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.help-notes-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.help-notes-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.help-douyin-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-left: 1px solid var(--hairline);
+  padding: 20px 18px;
+  text-align: center;
+}
+
+.help-qr-code {
+  width: 124px;
+  height: 124px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.help-douyin-desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.help-douyin-id {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.help-footer-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid var(--hairline);
+  padding: 14px 20px 16px;
+}
+
+.help-footer-btn {
+  width: 100%;
+}
+
+@media (max-width: 620px) {
+  .help-dialog-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .help-douyin-section {
+    border-top: 1px solid var(--hairline);
+    border-left: 0;
+  }
+
+  .help-version-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
