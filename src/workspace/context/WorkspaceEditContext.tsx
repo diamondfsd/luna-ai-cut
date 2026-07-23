@@ -160,7 +160,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   const pasteToCurrent = useCallback(() => {
     const data = pipelineClipboardRef.current ?? (() => {
       const stored = readWorkspacePipelineClipboard()
-      if (!stored) toast.error('没有可粘贴的调色设置')
+      if (!stored) toast.error('没有可粘贴的效果')
       return stored
     })()
     if (!data) return

@@ -342,7 +342,7 @@ export function MaskPanel() {
           {!hasVectorComponents && (
             <ParamSlider
               label="羽化"
-              value={settings?.feather ?? 2}
+              value={settings?.feather ?? 0}
               min={0}
               max={100}
               onChange={(feather) => mask.updateGroupedMaskSettings({ feather }, 'feather')}
