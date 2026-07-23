@@ -39,19 +39,17 @@ import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 import { beginForegroundSegmentation } from './segmentationModelPrefetchService'
 import { trackMaskInWorker } from './maskTrackingService'
 
-const MASKFORMER_COMMON_CLASS_IDS: Record<number, number> = {
-  1: 1,
-  2: 2,
-  4: 3,
-  9: 12,
-  12: 11,
-  17: 16,
-  20: 14,
-  21: 24,
-}
-
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
+
+interface FfprobeVideoEntry {
+  media_type?: unknown
+  codec_type?: unknown
+  width?: unknown
+  height?: unknown
+  side_data_list?: Array<{ rotation?: unknown }>
+  tags?: Record<string, unknown>
+}
 
 function normalizeRotation(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
@@ -60,8 +58,8 @@ function normalizeRotation(value: unknown): number | null {
   return rotation === 90 || rotation === 270 ? rotation : null
 }
 
-function rotationFromSideData(value: any): number | null {
-  const sideData = Array.isArray(value?.side_data_list) ? value.side_data_list : []
+function rotationFromSideData(value: FfprobeVideoEntry | null | undefined): number | null {
+  const sideData = value?.side_data_list ?? []
   for (const item of sideData) {
     const rotation = normalizeRotation(item?.rotation)
     if (rotation) return rotation
@@ -69,14 +67,14 @@ function rotationFromSideData(value: any): number | null {
   return null
 }
 
-function rotationFromTags(value: any): number | null {
+function rotationFromTags(value: FfprobeVideoEntry | null | undefined): number | null {
   const orientation = String(value?.tags?.Orientation ?? value?.tags?.orientation ?? '').trim()
   if (orientation === '6') return 90
   if (orientation === '8') return 270
   return normalizeRotation(value?.tags?.rotate ?? value?.tags?.Rotate)
 }
 
-function displayRotation(frame: any, stream: any): number {
+function displayRotation(frame: FfprobeVideoEntry | undefined, stream: FfprobeVideoEntry | undefined): number {
   return rotationFromSideData(frame)
     ?? rotationFromSideData(stream)
     ?? rotationFromTags(frame)
@@ -100,9 +98,9 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
       '-read_intervals', '%+#1',
       filePath,
     ])
-    const parsed = JSON.parse(stdout)
-    const frame = parsed.frames?.find((f: any) => f.media_type === 'video')
-    const stream = parsed.streams?.find((s: any) => s.codec_type === 'video')
+    const parsed = JSON.parse(stdout) as { frames?: FfprobeVideoEntry[]; streams?: FfprobeVideoEntry[] }
+    const frame = parsed.frames?.find((item) => item.media_type === 'video')
+    const stream = parsed.streams?.find((item) => item.codec_type === 'video')
     const encodedWidth = Number(frame?.width ?? stream?.width ?? 0)
     const encodedHeight = Number(frame?.height ?? stream?.height ?? 0)
     if (Number.isFinite(encodedWidth) && Number.isFinite(encodedHeight) && encodedWidth > 0 && encodedHeight > 0) {
@@ -396,9 +394,6 @@ export function register(): void {
     signal.throwIfAborted()
     const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
     if (isSam) logMainInfo('[SAM] 开始原生识别', { width: samWidth, height: samHeight, bytes: rgb.byteLength })
-    const nativeTargetClassId = modelId === 'maskformer-r101-ade20k-full' && targetClassId !== undefined
-      ? MASKFORMER_COMMON_CLASS_IDS[targetClassId] ?? targetClassId
-      : targetClassId
     const result = specializedDefinition && 'path' in model
       ? await segmentSpecializedInWorker({
         backend: specializedDefinition.backend,
@@ -425,7 +420,7 @@ export function register(): void {
         rgb,
         pointX: point?.x ?? 0.5,
         pointY: point?.y ?? 0.5,
-        targetClassId: nativeTargetClassId,
+        targetClassId,
         inputSize: semanticInputSize,
         guide: semanticGuide ?? undefined,
       }, signal)
@@ -469,24 +464,10 @@ export function register(): void {
       109: '泳池',
       128: '湖面',
     }
-    const maskFormerClassNames: Record<number, string> = {
-      1: '建筑',
-      2: '天空',
-      3: '树木',
-      11: '人物',
-      12: '草地',
-      14: '车辆',
-      16: '植物',
-      22: '海洋',
-      24: '水面',
-      71: '瀑布',
-    }
     const reportedClassId = targetClassId ?? classId
     const className = target?.label ?? (targetClassId !== undefined
       ? classNames[targetClassId] ?? '选中区域'
-      : modelId === 'maskformer-r101-ade20k-full'
-        ? maskFormerClassNames[classId] ?? '选中区域'
-        : classNames[classId] ?? '选中区域')
+      : classNames[classId] ?? '选中区域')
     const response = {
       requestId,
       width: result.width,
