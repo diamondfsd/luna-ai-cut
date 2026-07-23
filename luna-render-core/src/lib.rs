@@ -268,6 +268,8 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
         .iter()
         .map(|l| compositor::PreviewLayerInput {
             layer_type: l.layer_type.clone(),
+            precompose_group: l.precompose_group.clone(),
+            precompose_role: l.precompose_role.clone(),
             file_path: l.file_path.clone(),
             is_video: l.is_video,
             video_time: l.video_time,
@@ -350,6 +352,8 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
             (
                 compositor::PreviewLayerInput {
                     layer_type: item.layer.layer_type.clone(),
+                    precompose_group: item.layer.precompose_group.clone(),
+                    precompose_role: item.layer.precompose_role.clone(),
                     file_path: item.layer.file_path.clone(),
                     is_video: item.layer.is_video,
                     video_time: item.layer.video_time,

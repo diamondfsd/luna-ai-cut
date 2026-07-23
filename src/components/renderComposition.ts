@@ -43,6 +43,8 @@ export function buildCompositionFromPreviewLayers(
     layers: sortedLayers(layers).map((layer, index) => ({
       id: `layer-${index}`,
       layerType: layer.layerType ?? 'media',
+      precomposeGroup: layer.precomposeGroup,
+      precomposeRole: layer.precomposeRole,
       source: {
         path: toLocalPath(layer.filePath),
         sourceType: layerSourceType(layer),

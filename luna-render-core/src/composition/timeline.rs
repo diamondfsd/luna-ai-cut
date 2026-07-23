@@ -317,6 +317,8 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
             let video_time = layer_time(&layer.source, time);
             PreviewLayerInput {
                 layer_type: layer.layer_type.clone(),
+                precompose_group: layer.precompose_group.clone(),
+                precompose_role: layer.precompose_role.clone(),
                 file_path: layer.source.path.clone(),
                 is_video: is_video_source(&layer.source),
                 video_time,
