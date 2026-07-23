@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { EditPipeline, PipelinePatch } from '../shared/editPipeline'
 import { DEFAULT_PIPELINE, mergePipeline } from '../shared/editPipeline'
@@ -13,8 +13,11 @@ import { useTrimMachine } from '../trim/useTrimMachine'
 const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
 
 export interface WorkspacePipelineClipboardData {
+  sourceAssetId?: string
+  sourceProjectId?: string | null
   color: EditPipeline['color']
   effects: EditPipeline['effects']
+  logRestore: EditPipeline['logRestore']
   lutFilter: EditPipeline['lutFilter']
   watermark: EditPipeline['watermark']
   border: EditPipeline['border']
@@ -42,7 +45,7 @@ interface WorkspaceEditValue {
   commitPatch: (patch: PipelinePatch, group?: HistoryGroup) => void
   applySystemUpdate: (update: (pipeline: EditPipeline) => EditPipeline) => void
   retainedMaskPaths: string[]
-  resetPipeline: () => void
+  resetPipeline: (pipeline?: EditPipeline) => void
   initializePipeline: (pipe: EditPipeline) => void
 
   // Active Tool
@@ -82,7 +85,7 @@ interface WorkspaceEditValue {
   updateWorkspacePanel: (patch: PipelinePatch) => void
 
   // Clipboard
-  copyPipeline: () => void
+  copyPipeline: (source?: { assetId: string; projectId: string | null }) => void
   pasteToCurrent: () => void
 
   // Trim
@@ -132,6 +135,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     () => mergePipeline(previewPipeline, {
       color: DEFAULT_PIPELINE.color,
       effects: DEFAULT_PIPELINE.effects,
+      logRestore: DEFAULT_PIPELINE.logRestore,
       lutFilter: DEFAULT_PIPELINE.lutFilter,
       colorMasks: [],
       border: { ...DEFAULT_PIPELINE.border, enabled: previewPipeline.border.enabled },
@@ -140,28 +144,26 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   )
 
   // Clipboard
-  const pipelineClipboardRef = useRef<WorkspacePipelineClipboardData | null>(null)
-
-  const copyPipeline = useCallback(() => {
-    pipelineClipboardRef.current = {
+  const copyPipeline = useCallback((source?: { assetId: string; projectId: string | null }) => {
+    const data: WorkspacePipelineClipboardData = {
+      sourceAssetId: source?.assetId,
+      sourceProjectId: source?.projectId,
       color: structuredClone(pipeline.color),
       effects: structuredClone(pipeline.effects),
+      logRestore: structuredClone(pipeline.logRestore),
       lutFilter: structuredClone(pipeline.lutFilter),
       watermark: structuredClone(pipeline.watermark),
       border: structuredClone(pipeline.border),
     }
-    writeWorkspacePipelineClipboard(pipelineClipboardRef.current)
+    writeWorkspacePipelineClipboard(data)
     toast.success('已复制调色、滤镜、水印和边框设置')
   }, [pipeline])
 
   const pasteToCurrent = useCallback(() => {
-    const data = pipelineClipboardRef.current ?? (() => {
-      const stored = readWorkspacePipelineClipboard()
-      if (!stored) toast.error('没有可粘贴的调色设置')
-      return stored
-    })()
+    const data = readWorkspacePipelineClipboard()
+    if (!data) toast.error('没有可粘贴的效果')
     if (!data) return
-    commitPatch({ color: data.color, effects: data.effects, lutFilter: data.lutFilter, watermark: data.watermark, border: data.border })
+    commitPatch({ color: data.color, effects: data.effects, logRestore: data.logRestore, lutFilter: data.lutFilter, watermark: data.watermark, border: data.border })
     toast.success('已粘贴调色、滤镜、水印和边框设置')
   }, [commitPatch])
 

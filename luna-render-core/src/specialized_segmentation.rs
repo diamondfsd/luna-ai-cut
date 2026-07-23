@@ -26,6 +26,14 @@ fn preprocess_segformer(rgb: &[u8]) -> Result<Vec<f32>, String> {
     )
 }
 
+pub fn preprocess_birefnet(rgb: &[u8]) -> Result<Vec<f32>, String> {
+    preprocess(
+        rgb,
+        SUBJECT_SIZE,
+        Some(([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])),
+    )
+}
+
 fn preprocess_dinov2(rgb: &[u8]) -> Result<Vec<f32>, String> {
     preprocess(
         rgb,
@@ -268,6 +276,15 @@ fn normalized_subject_mask(
     })
 }
 
+pub fn birefnet_mask(
+    logits: &[f32],
+    width: usize,
+    height: usize,
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    probability_mask(logits, width, height, output_size, sigmoid)
+}
+
 fn session(model_path: &str) -> Result<Session, String> {
     let threads = std::thread::available_parallelism()
         .map(|count| count.get().saturating_sub(1).clamp(1, 4))
@@ -288,6 +305,7 @@ pub enum SpecializedSession {
     UltraFace(Session),
     EyeState(Session),
     Dinov2Small(Session),
+    BirefNet(Session),
 }
 
 impl SpecializedSession {
@@ -300,6 +318,7 @@ impl SpecializedSession {
             "ultraface" => Ok(Self::UltraFace(session(model_path)?)),
             "eye-state" => Ok(Self::EyeState(session(model_path)?)),
             "dinov2-small" => Ok(Self::Dinov2Small(session(model_path)?)),
+            "birefnet-general-lite" => Ok(Self::BirefNet(session(model_path)?)),
             _ => Err("不支持的专用分割模型".to_string()),
         }
     }
@@ -347,6 +366,7 @@ impl SpecializedSession {
             ),
             Self::EyeState(session) => classify_eye_with_session(session, rgb, output_size),
             Self::Dinov2Small(session) => extract_dinov2_with_session(session, rgb, output_size),
+            Self::BirefNet(session) => segment_birefnet_with_session(session, rgb, output_size),
         }
     }
 }
@@ -706,6 +726,38 @@ pub fn segment_rmbg(model_path: &str, rgb: &[u8], output_size: usize) -> Result<
     segment_rmbg_with_session(&mut session, rgb, output_size)
 }
 
+pub fn segment_birefnet(
+    model_path: &str,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let mut session = session(model_path)?;
+    segment_birefnet_with_session(&mut session, rgb, output_size)
+}
+
+fn segment_birefnet_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    let input = preprocess_birefnet(rgb)?;
+    let tensor = Tensor::from_array(([1usize, 3, SUBJECT_SIZE, SUBJECT_SIZE], input))
+        .map_err(|error| format!("创建 BiRefNet 输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("BiRefNet 主体识别失败: {error}"))?;
+    if outputs.len() != 1 {
+        return Err("BiRefNet 输出数量不兼容".to_string());
+    }
+    let (shape, logits) = outputs[0]
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("读取 BiRefNet 输出失败: {error}"))?;
+    if shape.len() != 4 || shape[0] != 1 || shape[1] != 1 {
+        return Err(format!("BiRefNet 输出尺寸不兼容: {shape:?}"));
+    }
+    birefnet_mask(logits, shape[3] as usize, shape[2] as usize, output_size)
+}
+
 fn segment_rmbg_with_session(
     session: &mut Session,
     rgb: &[u8],
@@ -777,5 +829,12 @@ mod tests {
         let input = preprocess_dinov2(&rgb).unwrap();
         assert_eq!(input.len(), 3 * DINOV2_SIZE * DINOV2_SIZE);
         assert!(input.iter().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn birefnet_applies_sigmoid_to_logits() {
+        let mask = birefnet_mask(&[-8.0, 8.0, -8.0, 8.0], 2, 2, 2).unwrap();
+        assert!(mask[0] < 2);
+        assert!(mask[1] > 200);
     }
 }

@@ -6,9 +6,7 @@ interface Options {
   editing: boolean
   busy: boolean
   semanticPicking: boolean
-  hasActiveComponent: boolean
   cancelSegmentation: () => void
-  removeActiveComponent: () => Promise<void>
   setSemanticPicking: (value: boolean) => void
   setManualTool: (tool: MaskManualTool) => void
   setShowOverlay: (update: (visible: boolean) => boolean) => void
@@ -18,8 +16,8 @@ interface Options {
 
 export function useMaskShortcuts(options: Options): void {
   const {
-    editing, busy, semanticPicking, hasActiveComponent, cancelSegmentation,
-    removeActiveComponent, setSemanticPicking, setManualTool, setShowOverlay, setBrushSize, setBrushFeather,
+    editing, busy, semanticPicking, cancelSegmentation,
+    setSemanticPicking, setManualTool, setShowOverlay, setBrushSize, setBrushFeather,
   } = options
   useEffect(() => {
     if (!editing) return
@@ -39,11 +37,6 @@ export function useMaskShortcuts(options: Options): void {
         return
       }
       if (busy) return
-      if ((event.code === 'Delete' || event.code === 'Backspace') && hasActiveComponent) {
-        event.preventDefault()
-        void removeActiveComponent()
-        return
-      }
       if (event.code === 'KeyK') setManualTool('brush')
       else if (event.code === 'KeyM') setManualTool(event.shiftKey ? 'radial-gradient' : 'linear-gradient')
       else if (event.code === 'Enter') setManualTool('move')
@@ -57,5 +50,5 @@ export function useMaskShortcuts(options: Options): void {
     }
     window.addEventListener('keydown', handleKeyDown, { capture: true })
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
-  }, [busy, cancelSegmentation, editing, hasActiveComponent, removeActiveComponent, semanticPicking, setBrushFeather, setBrushSize, setManualTool, setSemanticPicking, setShowOverlay])
+  }, [busy, cancelSegmentation, editing, semanticPicking, setBrushFeather, setBrushSize, setManualTool, setSemanticPicking, setShowOverlay])
 }

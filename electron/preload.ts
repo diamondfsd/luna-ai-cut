@@ -14,6 +14,7 @@ import type {
   WorkspaceMediaAsset,
   WorkspaceProject,
   WorkspaceSegmentationRequest,
+  WorkspaceMaskTrackingRequest,
   UpdateInfo,
   VideoExportSettings,
   WatermarkSettings,
@@ -74,6 +75,15 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   openDevTools: () => ipcRenderer.invoke('devtools:open'),
   scanBluetoothDevices: (timeoutMs?: number) => ipcRenderer.invoke('bluetooth:scanNative', timeoutMs),
   cancelBluetoothScan: () => ipcRenderer.invoke('bluetooth:cancelScan'),
+  cameraSource: {
+    detectMounted: () => ipcRenderer.invoke('camera-source:detect-mounted'),
+    chooseMounted: () => ipcRenderer.invoke('camera-source:choose-mounted'),
+    connect: (options) => ipcRenderer.invoke('camera-source:connect', options),
+    check: (options) => ipcRenderer.invoke('camera-source:check', options),
+    listFiles: (options) => ipcRenderer.invoke('camera-source:list-files', options),
+    deleteFiles: (files, options) => ipcRenderer.invoke('camera-source:delete-files', files, options),
+    disconnect: (options) => ipcRenderer.invoke('camera-source:disconnect', options),
+  },
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),
   listFiles: (host?: string, storageId?: string) => ipcRenderer.invoke('luna:listFiles', host, storageId),
@@ -131,6 +141,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     prepareSegmentationModels: (modelIds: import('../src/shared/segmentationModels').SegmentationModelId[]) => ipcRenderer.invoke('workspace:prepareSegmentationModels', modelIds),
     segmentImage: (request: WorkspaceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentImage', request),
     cancelSegmentation: (requestId: string) => ipcRenderer.invoke('workspace:cancelSegmentation', requestId),
+    trackMask: (request: WorkspaceMaskTrackingRequest) => ipcRenderer.invoke('workspace:trackMask', request),
+    cancelMaskTracking: (requestId: string) => ipcRenderer.invoke('workspace:cancelMaskTracking', requestId),
     listProjects: () => ipcRenderer.invoke('workspace:listProjects'),
     createProject: (name: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:createProject', name, assets),
     addAssetsToProject: (projectId: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:addAssetsToProject', projectId, assets),
@@ -159,6 +171,11 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceSegmentationProgress): void => callback(progress)
     ipcRenderer.on('workspace:segmentation-progress', listener)
     return () => ipcRenderer.off('workspace:segmentation-progress', listener)
+  },
+  onWorkspaceMaskTrackingProgress: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceMaskTrackingProgress): void => callback(progress)
+    ipcRenderer.on('workspace:mask-tracking-progress', listener)
+    return () => ipcRenderer.off('workspace:mask-tracking-progress', listener)
   },
   onConnectionLost: (callback: () => void) => {
     const listener = (): void => callback()
@@ -292,6 +309,7 @@ interface CompositionInput {
 
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
+  prepareRuntimeResource: (kind: 'fonts' | 'luts') => ipcRenderer.invoke('lrc:prepareRuntimeResource', kind),
   resetCompatibilityBlock: () => ipcRenderer.invoke('lrc:resetCompatibilityBlock'),
   loadTexture: (data: Buffer, width: number, height: number) =>
     ipcRenderer.invoke('lrc:loadTexture', data, width, height),

@@ -12,6 +12,7 @@ import { downloadToFile } from './fileDownloadService'
 import { safeName } from './filePathUtils'
 import { previewCacheDir } from './settingsService'
 import type { LunaFile, MediaMetadata, MetadataEntry } from '../src/shared/types'
+import { readMediaDeviceInfo } from './exifReader'
 
 const _require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
@@ -21,9 +22,12 @@ const execFileAsync = promisify(execFile)
 // 同时记录源文件 mtime，源文件变更时自动失效
 
 interface MetadataCacheEntry {
+  version?: number
   mtime: number | null
   data: MediaMetadata
 }
+
+const METADATA_CACHE_VERSION = 3
 
 function metadataCacheDir(): string {
   return path.join(app.getPath('userData'), 'cache_metadata')
@@ -38,6 +42,7 @@ async function readMetadataCache(file: LunaFile, sourcePath: string | null): Pro
   try {
     const raw = await fs.readFile(cachePath, 'utf-8')
     const entry = JSON.parse(raw) as MetadataCacheEntry
+    if (entry.version !== METADATA_CACHE_VERSION) return null
 
     // 源文件存在时校验 mtime，文件已修改则失效
     if (sourcePath !== null && entry.mtime !== null) {
@@ -72,7 +77,7 @@ async function writeMetadataCache(file: LunaFile, sourcePath: string | null, dat
   }
 
   const cachePath = path.join(dir, `${cacheKeyFor(file)}.json`)
-  const entry: MetadataCacheEntry = { mtime, data }
+  const entry: MetadataCacheEntry = { version: METADATA_CACHE_VERSION, mtime, data }
   try {
     await fs.writeFile(cachePath, JSON.stringify(entry), 'utf-8')
   } catch { /* ignore */ }
@@ -270,6 +275,10 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
       if (!videoStream) return cacheReturn(file, sourcePath, { groups: [] })
 
       const entries: MetadataEntry[] = []
+      const deviceInfo = await readMediaDeviceInfo(sourcePath)
+      if (deviceInfo?.make) entries.push({ key: 'Make', value: deviceInfo.make })
+      if (deviceInfo?.model) entries.push({ key: 'Model', value: deviceInfo.model })
+      if (deviceInfo?.firmware) entries.push({ key: 'FirmwareVersion', value: deviceInfo.firmware })
 
       if (videoStream.width && videoStream.height) {
         entries.push({ key: '分辨率', value: `${videoStream.width} x ${videoStream.height}` })

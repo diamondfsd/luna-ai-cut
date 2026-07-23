@@ -65,6 +65,10 @@ export interface CompositionInput {
       controlEnd?: number
       centerX?: number
       centerY?: number
+      pathPoints?: number[]
+      pathStartWidth?: number
+      pathEndWidth?: number
+      fillSampleGaps?: boolean
     }
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }
@@ -97,20 +101,21 @@ export interface RenderPreviewOutput {
 
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
+  initCompositorAsync(logPath?: string): Promise<void>
   loadTexture(data: Buffer, width: number, height: number): number
   updateTexture(textureId: number, data: Buffer): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: unknown[]): Buffer
   releaseTexture(textureId: number): void
-  renderCompositionFrame(input: any): RenderPreviewOutput
-  renderCompositionFrameAsync(input: any): Promise<RenderPreviewOutput>
-  exportCompositionVideoAsync(input: any): Promise<void>
+  renderCompositionFrame(input: unknown): RenderPreviewOutput
+  renderCompositionFrameAsync(input: unknown): Promise<RenderPreviewOutput>
+  exportCompositionVideoAsync(input: unknown): Promise<void>
   resolveRenderSource(
     ffmpegPath: string,
     ffprobePath: string,
     originalPath: string,
     cacheDir: string,
   ): { renderPath: string; normalized: boolean; width: number; height: number }
-  exportCompositionImageAsync(input: any): Promise<void>
+  exportCompositionImageAsync(input: unknown): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
   segmentImage(modelPath: string, rgb: Buffer, pointX: number, pointY: number, targetClassId?: number, inputSize?: number): {
@@ -193,6 +198,7 @@ export function ensureInit(logPath?: string): void {
   if (initializing) {
     throw new Error('Luna Render Core is already initializing')
   }
+  if (!app.isPackaged && existsSync(initGuardPath())) clearInitGuard()
   if (existsSync(initGuardPath())) {
     throw new Error(`${LRC_COMPATIBILITY_BLOCKED}: previous native initialization did not complete`)
   }
@@ -217,19 +223,26 @@ export function ensureInit(logPath?: string): void {
 export function warmupRenderCore(logPath?: string): Promise<void> {
   if (initialized) return Promise.resolve()
   if (warmupTask) return warmupTask
+  if (!app.isPackaged && existsSync(initGuardPath())) clearInitGuard()
+  if (existsSync(initGuardPath())) {
+    return Promise.reject(new Error(`${LRC_COMPATIBILITY_BLOCKED}: previous native initialization did not complete`))
+  }
 
-  warmupTask = new Promise<void>((resolve, reject) => {
-    setImmediate(() => {
-      try {
-        ensureInit(logPath)
-        resolve()
-      } catch (error) {
-        reject(error)
-      } finally {
-        warmupTask = null
-      }
+  initializing = true
+  writeInitGuard()
+  warmupTask = getNative().initCompositorAsync(logPath ?? undefined)
+    .then(() => {
+      initialized = true
+      clearInitGuard()
     })
-  })
+    .catch((error) => {
+      clearInitGuard()
+      throw error
+    })
+    .finally(() => {
+      initializing = false
+      warmupTask = null
+    })
   return warmupTask
 }
 
@@ -254,18 +267,18 @@ export function renderCompositionFrame(
   return getNative().renderCompositionFrame(cleanNativeInput({ ffmpegPath, ffprobePath, composition, time, maxSide }))
 }
 
-export function renderCompositionFrameAsync(
+export async function renderCompositionFrameAsync(
   ffmpegPath: string,
   ffprobePath: string,
   composition: CompositionInput,
   time: number,
   maxSide?: number,
 ): Promise<RenderPreviewOutput> {
-  ensureInit()
+  await warmupRenderCore()
   return getNative().renderCompositionFrameAsync(cleanNativeInput({ ffmpegPath, ffprobePath, composition, time, maxSide }))
 }
 
-export function exportCompositionVideoAsync(input: {
+export async function exportCompositionVideoAsync(input: {
   ffmpegPath: string
   ffprobePath: string
   outputPath: string
@@ -276,7 +289,7 @@ export function exportCompositionVideoAsync(input: {
   taskId?: string
   qualityPreset?: string
 }): Promise<void> {
-  ensureInit()
+  await warmupRenderCore()
   return getNative().exportCompositionVideoAsync(cleanNativeInput({
     ffmpegPath: input.ffmpegPath,
     ffprobePath: input.ffprobePath,
@@ -294,7 +307,7 @@ export function cancelExportTask(taskId: string): void {
   getNative().cancelExportTask(taskId)
 }
 
-export function exportCompositionImageAsync(input: {
+export async function exportCompositionImageAsync(input: {
   ffmpegPath: string
   ffprobePath: string
   outputPath: string
@@ -302,7 +315,7 @@ export function exportCompositionImageAsync(input: {
   format: string
   quality: number
 }): Promise<void> {
-  ensureInit()
+  await warmupRenderCore()
   return getNative().exportCompositionImageAsync(cleanNativeInput({
     ffmpegPath: input.ffmpegPath,
     ffprobePath: input.ffprobePath,

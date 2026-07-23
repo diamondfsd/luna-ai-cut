@@ -112,6 +112,21 @@ export const SPECIALIZED_SEGMENTATION_MODELS = [
     source: 'https://modelscope.cn/models/briaai/RMBG-1.4',
     licenseUrl: 'https://huggingface.co/briaai/RMBG-1.4/blob/main/README.md',
   },
+  {
+    id: 'birefnet-general-lite',
+    backend: 'birefnet-general-lite',
+    name: 'BiRefNet General Lite',
+    description: '主体识别',
+    inputSize: 1024,
+    sizeBytes: 224_005_088,
+    url: 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/runtime-resources-v1.1.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx',
+    mirrors: ['https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx'],
+    sha256: '5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333',
+    version: 'v1-epoch-232',
+    license: 'MIT',
+    source: 'https://github.com/ZhengPeng7/BiRefNet/releases/tag/v1',
+    licenseUrl: 'https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE',
+  },
 ] as const
 
 const SAM_DECODER = {

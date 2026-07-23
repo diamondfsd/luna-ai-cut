@@ -39,12 +39,18 @@ async function compileModules(entryPaths) {
   const javascriptFiles = (await walkFiles(temporaryRoot)).filter((filePath) => filePath.endsWith('.js'))
   for (const filePath of javascriptFiles) {
     const source = await readFile(filePath, 'utf8')
-    const rewritten = source.replace(/(from\s+|import\s*)(['"])(\.[^'"]+)\2/g, (match, prefix, quote, specifier) => {
+    let rewritten = source.replace(/(from\s+|import\s*)(['"])(\.[^'"]+)\2/g, (match, prefix, quote, specifier) => {
       const resolved = path.resolve(path.dirname(filePath), specifier)
       if (existsSync(`${resolved}.js`)) return `${prefix}${quote}${specifier}.js${quote}`
       if (existsSync(path.join(resolved, 'index.js'))) return `${prefix}${quote}${specifier}/index.js${quote}`
       return match
     })
+    if (filePath.endsWith(`${path.sep}borderPresets.js`)) {
+      rewritten = rewritten.replace(
+        /const presetModules = import\.meta\.glob\([\s\S]*?\n\}\);/,
+        'const presetModules = {};',
+      )
+    }
     if (rewritten !== source) await writeFile(filePath, rewritten, 'utf8')
   }
 }
@@ -54,12 +60,15 @@ try {
     'electron/workspaceProjectService.ts',
     'electron/colorMaskService.ts',
     'src/workspace/shared/editPipeline.ts',
+    'src/workspace/shared/editPipelineSerialization.ts',
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
+    'src/components/renderComposition.ts',
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
     'src/workspace/mask/maskModelMode.ts',
     'src/workspace/mask/maskPreviewSampling.ts',
+    'src/workspace/mask/maskTrack.ts',
     'src/workspace/mask/maskSelectionOperations.ts',
     'src/workspace/mask/maskShapeRasterization.ts',
     'src/workspace/mask/maskComponentRasterization.ts',
@@ -73,12 +82,15 @@ try {
   const projectService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/workspaceProjectService.js')))
   const maskService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/colorMaskService.js')))
   const pipelineModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipeline.js')))
+  const pipelineSerialization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipelineSerialization.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
+  const renderComposition = await import(pathToFileURL(path.join(temporaryRoot, 'src/components/renderComposition.js')))
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
   const modelMode = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskModelMode.js')))
   const previewSampling = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskPreviewSampling.js')))
+  const maskTrack = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskTrack.js')))
   const selectionOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskSelectionOperations.js')))
   const shapeRasterization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskShapeRasterization.js')))
   const componentRasterization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskComponentRasterization.js')))
@@ -88,6 +100,40 @@ try {
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
   const { createDefaultPipeline, mergePipeline } = pipelineModule
+
+  const normalizedTrack = maskTrack.normalizeMaskTrack({
+    version: 1,
+    anchorTime: 2,
+    startTime: 99,
+    endTime: 0,
+    keyframes: [
+      { time: 4, translateX: 0.2, translateY: -0.1, scale: 1.2, rotation: 0.4, confidence: 0.6 },
+      { time: 2, translateX: 0, translateY: 0, scale: 1, rotation: 0, confidence: 1, corrected: true },
+    ],
+  })
+  assert.equal(normalizedTrack.startTime, 2, 'track range must be derived from sorted keyframes')
+  assert.equal(normalizedTrack.endTime, 4)
+  assert.deepEqual(normalizedTrack.keyframes.map((keyframe) => keyframe.time), [2, 4])
+  const interpolatedTrack = maskTrack.maskTrackTransformAt(normalizedTrack, 3)
+  close(interpolatedTrack.translateX, 0.1, 'track translation must interpolate at preview time')
+  close(interpolatedTrack.translateY, -0.05, 'track translation Y must interpolate at preview time')
+  close(interpolatedTrack.scale, 1.1, 'track scale must interpolate at preview time')
+  close(interpolatedTrack.rotation, 0.2, 'track rotation must interpolate at preview time')
+  assert.deepEqual(
+    maskTrack.maskTrackTransformAt(undefined, 5),
+    { time: 5, translateX: 0, translateY: 0, scale: 1, rotation: 0, confidence: 1 },
+    'projects without tracking data must keep the identity mask transform',
+  )
+  const mergedForwardTrack = maskTrack.mergeMaskTrackSegment(normalizedTrack, 3, 'forward', [
+    { time: 3, translateX: 0.1, translateY: 0, scale: 1, rotation: 0, confidence: 1 },
+    { time: 5, translateX: 0.4, translateY: 0, scale: 1, rotation: 0, confidence: 0.8 },
+  ])
+  assert.deepEqual(mergedForwardTrack.keyframes.map((keyframe) => keyframe.time), [2, 3, 5], 'forward tracking must preserve only earlier trajectory samples')
+  const mergedBackwardTrack = maskTrack.mergeMaskTrackSegment(mergedForwardTrack, 3, 'backward', [
+    { time: 1, translateX: -0.2, translateY: 0, scale: 1, rotation: 0, confidence: 0.7 },
+    { time: 3, translateX: 0.1, translateY: 0, scale: 1, rotation: 0, confidence: 1 },
+  ])
+  assert.deepEqual(mergedBackwardTrack.keyframes.map((keyframe) => keyframe.time), [1, 3, 5], 'backward tracking must preserve only later trajectory samples')
 
   const impulse = new Float32Array(9)
   impulse[4] = 255
@@ -100,6 +146,19 @@ try {
   assert.equal(featheredImpulse[4], 255, 'outward feather must preserve the original selection')
   assert.ok(featheredImpulse[3] > 0, 'outward feather must add a soft transition beyond the original edge')
   assert.ok(featheredImpulse.reduce((sum, value) => sum + value, 0) > 255, 'outward feather must expand the effective selection')
+  const featheredEdge = previewSampling.featherMaskPreview(
+    new Float32Array([255, 255, 0, 0, 0]),
+    5,
+    1,
+    3,
+    1,
+    1,
+  )
+  assert.equal(featheredEdge[1], 255, 'outward feather must keep the inside of a hard edge opaque')
+  assert.ok(
+    featheredEdge[1] > featheredEdge[2] && featheredEdge[2] > featheredEdge[3] && featheredEdge[3] > featheredEdge[4],
+    'outward feather must decay monotonically without repeated offset contours',
+  )
   close(
     previewSampling.sampleMaskBilinear(new Uint8Array([0, 255]), 2, 1, 0.5, 0.5),
     127.5,
@@ -159,8 +218,45 @@ try {
   }
   const rotatedMask = componentRasterization.rasterizeVectorComponent(5, 5, rotatedRectangle)
   assert.ok(rotatedMask[2] > rotatedMask[10], 'shape rotation must affect rasterized geometry')
-  const featheredShape = componentRasterization.rasterizeVectorComponent(9, 9, { ...rotatedRectangle, type: 'ellipse', width: 0.8, height: 0.8, rotation: 0, feather: 0.5 })
-  assert.ok(featheredShape[40] > featheredShape[13] && featheredShape[13] > 0, 'component feather must produce a soft edge')
+  const landscapeEllipse = {
+    ...rotatedRectangle,
+    type: 'ellipse',
+    width: 0.4,
+    height: 0.2,
+    rotation: 0,
+  }
+  const occupiedSize = (data, width, height) => {
+    const points = []
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (data[y * width + x] > 0) points.push({ x, y })
+      }
+    }
+    return {
+      width: Math.max(...points.map((point) => point.x)) - Math.min(...points.map((point) => point.x)) + 1,
+      height: Math.max(...points.map((point) => point.y)) - Math.min(...points.map((point) => point.y)) + 1,
+    }
+  }
+  const landscapeHorizontalSize = occupiedSize(componentRasterization.rasterizeVectorComponent(200, 100, landscapeEllipse), 200, 100)
+  const landscapeVerticalSize = occupiedSize(componentRasterization.rasterizeVectorComponent(200, 100, { ...landscapeEllipse, rotation: 90 }), 200, 100)
+  assert.ok(Math.abs(landscapeHorizontalSize.width - landscapeVerticalSize.height) <= 1, 'rotating an ellipse must preserve its physical long-axis length')
+  assert.ok(Math.abs(landscapeHorizontalSize.height - landscapeVerticalSize.width) <= 1, 'rotating an ellipse must preserve its physical short-axis length')
+  const squareCacheHorizontalSize = occupiedSize(componentRasterization.rasterizeVectorComponent(100, 100, { ...landscapeEllipse, sourceAspect: 2 }), 100, 100)
+  const squareCacheVerticalSize = occupiedSize(componentRasterization.rasterizeVectorComponent(100, 100, { ...landscapeEllipse, sourceAspect: 2, rotation: 90 }), 100, 100)
+  assert.ok(Math.abs(squareCacheHorizontalSize.width * 2 - squareCacheVerticalSize.height) <= 2, 'a square mask cache must preserve the long axis for a landscape source')
+  assert.ok(Math.abs(squareCacheHorizontalSize.height - squareCacheVerticalSize.width * 2) <= 2, 'a square mask cache must preserve the short axis for a landscape source')
+  const powerWindow = { ...rotatedRectangle, type: 'ellipse', width: 0.4, height: 0.4, rotation: 0, feather: 0, softness: 0.5 }
+  const featheredShape = componentRasterization.rasterizeVectorComponent(101, 101, powerWindow)
+  const centerRow = 50 * 101
+  assert.ok(featheredShape[centerRow + 50] >= 254, 'the region inside the inner softness outline must remain effectively fully selected')
+  assert.ok(featheredShape[centerRow + 70] >= 120 && featheredShape[centerRow + 70] <= 136, 'the center power-window outline must represent approximately 50% mask weight')
+  assert.ok(featheredShape[centerRow + 80] > featheredShape[centerRow + 81] && featheredShape[centerRow + 81] > 0, 'the practical outer outline must not introduce a hard zero boundary')
+  assert.equal(featheredShape[centerRow + 84], 0, 'the continuous softness tail must eventually fall below the stored mask precision')
+  assert.ok(
+    featheredShape[centerRow + 60] > featheredShape[centerRow + 70]
+      && featheredShape[centerRow + 70] > featheredShape[centerRow + 80],
+    'power-window softness must decay smoothly on both sides of the center outline',
+  )
   const invertedGradient = componentRasterization.rasterizeVectorComponent(4, 1, { ...linearGradient, inverted: true })
   assert.deepEqual([...invertedGradient], [223, 159, 96, 32], 'component inversion must invert soft weights')
   const composed = componentRasterization.composeMaskComponents(2, 1, [
@@ -174,9 +270,87 @@ try {
     { ...linearGradient, targetComponentId: 'target', operation: 'intersect' },
   ], (component) => component.id === 'target' ? new Uint8Array([255, 255]) : new Uint8Array([0, 255]))
   assert.deepEqual([...scopedGradient], [64, 255], 'a gradient modifier must affect only its target selection component')
+  const baseSelection = componentRasterization.composeBaseSelectionComponents(2, 1, [
+    { id: 'target', type: 'raster', operation: 'replace', enabled: true, inverted: false, path: '/target.pgm', width: 2, height: 1 },
+    { id: 'other', type: 'raster', operation: 'add', enabled: true, inverted: false, path: '/other.pgm', width: 2, height: 1 },
+    { ...linearGradient, targetComponentId: 'target', operation: 'intersect' },
+  ], (component) => component.id === 'target' ? new Uint8Array([255, 255]) : new Uint8Array([0, 255]))
+  assert.deepEqual([...baseSelection], [255, 255], 'selection ants must follow the base AI/brush/shape selection and ignore gradient modifiers')
   const movedGradient = componentControls.updateComponentFromDrag(linearGradient, 'move', { x: 0.5, y: 0.5 }, { x: 0.6, y: 0.4 })
   close(movedGradient.startX, 0.1, 'moving a gradient must translate its start handle')
   close(movedGradient.endY, 0.4, 'moving a gradient must translate its end handle')
+  assert.equal(componentControls.shouldShowComponentControls('linear-gradient', true), true, 'a gradient draft must show its adjustment controls while drawing')
+  assert.equal(componentControls.shouldShowComponentControls('radial-gradient', true), true, 'a radial draft must show its adjustment controls while drawing')
+  assert.equal(componentControls.shouldShowComponentControls('move', false), true, 'a committed component must keep its selection frame in adjustment mode')
+  assert.equal(componentControls.shouldShowComponentControls('brush', false), false, 'unrelated tools must not show stale component controls')
+  const featheredWindow = { ...rotatedRectangle, type: 'ellipse', rotation: 0, feather: 0, softness: 0.25 }
+  const controlHandles = componentControls.componentControlHandles(featheredWindow)
+  const rotateHandles = controlHandles.filter((handle) => handle.kind === 'rotate')
+  assert.equal(rotateHandles.length, 2, 'a power window must expose opposite rotation handles so one remains visible near an edge')
+  close(
+    (rotateHandles[0].x + rotateHandles[1].x) / 2,
+    featheredWindow.centerX,
+    'opposite rotation handles must remain centered horizontally',
+  )
+  close(
+    (rotateHandles[0].y + rotateHandles[1].y) / 2,
+    featheredWindow.centerY,
+    'opposite rotation handles must remain centered vertically',
+  )
+  const featherHandles = controlHandles.filter((handle) => handle.kind === 'feather')
+  assert.equal(featherHandles.length, 4, 'a power window must expose softness handles on all four sides')
+  const resizeHandles = controlHandles.filter((handle) => handle.kind === 'resize')
+  assert.equal(resizeHandles.length, 4, 'a power window must expose four resize handles')
+  for (const handle of resizeHandles) {
+    close(
+      Math.hypot(
+        (handle.x - featheredWindow.centerX) / (featheredWindow.width / 2),
+        (handle.y - featheredWindow.centerY) / (featheredWindow.height / 2),
+      ),
+      1,
+      'ellipse resize handles must sit directly on the center outline',
+    )
+  }
+  assert.equal(controlHandles.some((handle) => handle.kind === 'move'), false, 'shape movement must not add an ambiguous center handle')
+  const softnessOutlines = componentControls.componentSoftnessOutlines(featheredWindow)
+  close(Math.max(...softnessOutlines.inner.map((point) => point.x)), featheredWindow.centerX + featheredWindow.width / 2 * 0.75, 'the inner outline must shrink from the center boundary by Soft 1')
+  close(Math.max(...softnessOutlines.outer.map((point) => point.x)), featheredWindow.centerX + featheredWindow.width / 2 * 1.25, 'the outer outline must expand from the center boundary by Soft 1')
+  close(Math.max(...softnessOutlines.outer.map((point) => point.y)), featheredWindow.centerY + featheredWindow.height / 2 * 1.25, 'softness outlines must preserve the ellipse aspect ratio')
+  const featherHandle = featherHandles[0]
+  const expandedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, {
+    x: featheredWindow.centerX,
+    y: featheredWindow.centerY - featheredWindow.height / 2 * 1.5,
+  })
+  close(expandedWindow.softness, 0.5, 'dragging any outer handle must update one uniform Soft 1 value')
+  close(expandedWindow.width, featheredWindow.width, 'dragging softness must preserve the center window width')
+  const resizedWindow = componentControls.updateComponentFromDrag(expandedWindow, 'resize', { x: 0, y: 0 }, {
+    x: expandedWindow.centerX + expandedWindow.width / 2 / Math.SQRT2 * 0.5,
+    y: expandedWindow.centerY + expandedWindow.height / 2 / Math.SQRT2 * 0.5,
+  })
+  close(resizedWindow.width, expandedWindow.width * 0.5, 'dragging a resize handle equally must preserve the center window aspect ratio')
+  close(resizedWindow.softness, 2, 'shrinking the center window must widen softness instead of pulling the outer outline inward')
+  close(resizedWindow.width * (1 + resizedWindow.softness), expandedWindow.width * (1 + expandedWindow.softness), 'shrinking the center window must preserve the absolute outer outline')
+  const reshapedWindow = componentControls.updateComponentFromDrag(expandedWindow, 'resize', { x: 0, y: 0 }, {
+    x: expandedWindow.centerX + expandedWindow.width / 2 / Math.SQRT2 * 0.75,
+    y: expandedWindow.centerY + expandedWindow.height / 2 / Math.SQRT2 * 0.25,
+  }, 2)
+  close(reshapedWindow.width, expandedWindow.width * 0.75, 'horizontal resize movement must update the ellipse width independently')
+  close(reshapedWindow.height, expandedWindow.height * 0.25, 'vertical resize movement must update the ellipse height independently')
+  const rotatedOutline = componentControls.componentOutline({ ...landscapeEllipse, rotation: 90 }, 1, 2)
+  close(
+    (Math.max(...rotatedOutline.map((point) => point.x)) - Math.min(...rotatedOutline.map((point) => point.x))) * 200,
+    20,
+    'rotated controls must preserve the ellipse short axis in source pixels',
+    0.1,
+  )
+  close(
+    (Math.max(...rotatedOutline.map((point) => point.y)) - Math.min(...rotatedOutline.map((point) => point.y))) * 100,
+    80,
+    'rotated controls must preserve the ellipse long axis in source pixels',
+    0.1,
+  )
+  const unboundedWindow = componentControls.updateComponentFromDrag(featheredWindow, 'feather', featherHandle, { x: 10.5, y: 10.5 })
+  assert.ok(unboundedWindow.softness > 10, 'the outer softness range must not have an artificial size cap')
   const hardBrush = new Uint8Array(25)
   const softBrush = new Uint8Array(25)
   manualRasterization.drawMaskBrush(hardBrush, 5, 5, 2, 2, 2, 0)
@@ -190,7 +364,7 @@ try {
       height: 12.6,
       opacity: 2,
       inverted: true,
-      feather: 99,
+      feather: 999,
       kind: 'semantic',
     },
   })
@@ -198,7 +372,7 @@ try {
   assert.equal(legacy.colorMasks.length, 1, 'legacy mask must migrate to one layer')
   assert.deepEqual(
     { width: legacy.colorMasks[0].width, height: legacy.colorMasks[0].height, opacity: legacy.colorMasks[0].opacity, feather: legacy.colorMasks[0].feather },
-    { width: 1, height: 13, opacity: 1, feather: 40 },
+    { width: 1, height: 13, opacity: 1, feather: 100 },
     'legacy mask dimensions and effect ranges must normalize',
   )
 
@@ -220,15 +394,139 @@ try {
     ...legacy.colorMasks[0],
     components: [{ ...rotatedRectangle, width: 99, height: -1, rotation: -90, feather: 2 }],
   }] }).colorMasks[0].components
-  assert.equal(normalizedComponents[0].width, 5)
+  assert.equal(normalizedComponents[0].width, 99)
   assert.equal(normalizedComponents[0].height, 0.0001)
   assert.equal(normalizedComponents[0].rotation, 270)
-  assert.equal(normalizedComponents[0].feather, 1)
+  assert.equal(normalizedComponents[0].feather, 2)
+
+  const migratedLegacySoftness = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    components: [{ ...rotatedRectangle, width: 0.8, height: 0.2, feather: 0.25 }],
+  }] }).colorMasks[0].components[0]
+  close(migratedLegacySoftness.softness, 0.15625, 'legacy short-axis feather distances must retain their approximate ellipse coverage')
+
+  const migratedDirectionalSoftness = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    components: [{ ...rotatedRectangle, width: 0.8, height: 0.2, feather: 0, featherX: 0.2, featherY: 0.05 }],
+  }] }).colorMasks[0].components[0]
+  close(migratedDirectionalSoftness.softness, 0.5, 'legacy directional feather distances must migrate to one uniform Soft 1 value')
+  assert.equal(migratedDirectionalSoftness.featherX, undefined, 'normalized projects must stop persisting obsolete directional softness')
+  const reopenedSoftness = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline(mergePipeline(createDefaultPipeline(), {
+    colorMasks: [{ ...legacy.colorMasks[0], components: [{ ...rotatedRectangle, softness: 0.75 }] }],
+  }))).colorMasks[0].components[0]
+  close(reopenedSoftness.softness, 0.75, 'Power Window softness must remain editable after reopening a project')
+  const migratedDefaultLayerFeather = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    feather: 2,
+    components: [{ ...rotatedRectangle, softness: 0.5 }],
+  }] }).colorMasks[0]
+  assert.equal(migratedDefaultLayerFeather.feather, 0, 'vector component masks must not retain a second layer-level feather pass')
+  const normalizedExplicitVectorFeather = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    feather: 27,
+    components: [{ ...rotatedRectangle, softness: 0.5 }],
+  }] }).colorMasks[0]
+  assert.equal(normalizedExplicitVectorFeather.feather, 0, 'vector component masks must use only their continuous component softness')
+
+  const mixedModelComponents = mergePipeline(createDefaultPipeline(), { colorMasks: [{
+    ...legacy.colorMasks[0],
+    components: [
+      {
+        id: 'subject', type: 'raster', operation: 'replace', enabled: true, inverted: false,
+        path: '/subject.pgm', width: 512, height: 512,
+        dynamicSource: { kind: 'segmentation', modelId: 'rmbg-1.4', frameTime: 5.85, targetId: 'subject', classId: -1, className: '主体' },
+      },
+      {
+        id: 'point', type: 'raster', operation: 'add', enabled: true, inverted: false,
+        path: '/point.pgm', width: 512, height: 512,
+        dynamicSource: { kind: 'segmentation', modelId: 'future-sam-model', frameTime: -1, point: { x: 1.2, y: -0.2 } },
+      },
+      {
+        id: 'legacy-raster', type: 'raster', operation: 'subtract', enabled: true, inverted: false,
+        path: '/manual.pgm', width: 512, height: 512,
+      },
+    ],
+  }] }).colorMasks[0].components
+  const reopenedMixedModelComponents = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline({
+    ...createDefaultPipeline(),
+    colorMasks: [{ ...legacy.colorMasks[0], componentSchemaVersion: 1, components: mixedModelComponents }],
+  })).colorMasks[0].components
+  assert.equal(reopenedMixedModelComponents[0].dynamicSource.modelId, 'rmbg-1.4', 'RMBG source metadata must survive project reopen')
+  assert.equal(reopenedMixedModelComponents[0].dynamicSource.frameTime, 5.85, 'the exact semantic source frame must survive project reopen')
+  assert.equal(reopenedMixedModelComponents[1].dynamicSource.modelId, 'future-sam-model', 'future model IDs must remain forward-compatible')
+  assert.deepEqual(reopenedMixedModelComponents[1].dynamicSource.point, { x: 1, y: 0 }, 'point prompts must normalize to media coordinates')
+  assert.equal(reopenedMixedModelComponents[1].dynamicSource.frameTime, 0, 'invalid negative frame times must clamp to the video start')
+  assert.equal(reopenedMixedModelComponents[2].dynamicSource, undefined, 'legacy and manual raster components must remain valid without a dynamic source')
+
+  const fiftyComponents = Array.from({ length: 50 }, (_, index) => ({
+    ...rotatedRectangle,
+    id: `shape-${index}`,
+    operation: index === 0 ? 'replace' : index % 3 === 0 ? 'subtract' : 'add',
+    centerX: (index % 10 + 0.5) / 10,
+    centerY: (Math.floor(index / 10) + 0.5) / 5,
+    width: 0.08,
+    height: 0.12,
+  }))
+  const stressPipeline = mergePipeline(createDefaultPipeline(), {
+    colorMasks: [{ ...legacy.colorMasks[0], components: fiftyComponents, track: normalizedTrack }],
+  })
+  const reopenedPipeline = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline(stressPipeline))
+  assert.equal(reopenedPipeline.colorMasks[0].componentSchemaVersion, 1, 'advanced masks must persist an explicit component schema version')
+  assert.equal(reopenedPipeline.colorMasks[0].components.length, 50, 'reopening a project must retain all 50 editable components')
+  assert.deepEqual(reopenedPipeline.colorMasks[0].track, normalizedTrack, 'reopening a project must retain the video mask trajectory')
+  const dualLutPipeline = mergePipeline(createDefaultPipeline(), {
+    logRestore: { activeId: '/luts/LunaUltra/Luna_I-Log_to_Rec709_BT1886_s65_v2.cube' },
+    lutFilter: { activeId: '/luts/film-look.cube', intensity: 42 },
+  })
+  const reopenedDualLut = pipelineSerialization.deserializePipeline(pipelineSerialization.serializePipeline(dualLutPipeline))
+  assert.equal(reopenedDualLut.logRestore.activeId, dualLutPipeline.logRestore.activeId, 'log restoration LUT must persist independently')
+  assert.equal(reopenedDualLut.lutFilter.activeId, dualLutPipeline.lutFilter.activeId, 'creative LUT must persist independently')
+  const migratedLegacyLut = pipelineSerialization.deserializePipeline(JSON.stringify({
+    lutFilter: { activeId: 'C:\\luts\\Luna_I-Log_to_Rec709_BT1886_s65_v2.cube', intensity: 100 },
+  }))
+  assert.match(migratedLegacyLut.logRestore.activeId, /Luna_I-Log_to_Rec709_BT1886_s65_v2\.cube$/)
+  assert.equal(migratedLegacyLut.lutFilter.activeId, null, 'legacy restoration LUT must leave the creative filter slot')
+  assert.deepEqual(
+    componentRasterization.composeMaskComponents(80, 40, reopenedPipeline.colorMasks[0].components, () => null),
+    componentRasterization.composeMaskComponents(80, 40, stressPipeline.colorMasks[0].components, () => null),
+    'component order and output must remain stable after serialization',
+  )
+  const fiftyComponentStart = performance.now()
+  const fiftyComponentPreview = componentRasterization.composeMaskComponents(1024, 683, reopenedPipeline.colorMasks[0].components, () => null)
+  const fiftyComponentDuration = performance.now() - fiftyComponentStart
+  assert.equal(fiftyComponentPreview.length, 1024 * 683)
+  assert.ok(fiftyComponentDuration < 2000, `50-component preview recomposition took ${fiftyComponentDuration.toFixed(1)} ms`)
+
+  const largeImageStart = performance.now()
+  const largeImageMask = componentRasterization.rasterizeVectorComponent(6000, 4000, {
+    ...rotatedRectangle,
+    id: 'large-image-gradient',
+    type: 'linear-gradient',
+    startX: 0.1,
+    startY: 0.2,
+    endX: 0.9,
+    endY: 0.8,
+  })
+  const largeImageDuration = performance.now() - largeImageStart
+  assert.equal(largeImageMask.length, 24_000_000)
+  assert.ok(largeImageMask[0] < largeImageMask.at(-1), '24 MP gradient must retain its direction')
+  assert.ok(largeImageDuration < 2000, `24 MP component rasterization took ${largeImageDuration.toFixed(1)} ms`)
+  console.log(`mask component performance: 50 components ${fiftyComponentDuration.toFixed(1)} ms; 24 MP ${largeImageDuration.toFixed(1)} ms`)
+  const withUnknownComponent = pipelineSerialization.deserializePipeline(JSON.stringify({
+    ...stressPipeline,
+    colorMasks: [{ ...stressPipeline.colorMasks[0], components: [...fiftyComponents, { id: 'future', type: 'future-tool' }] }],
+  }))
+  assert.equal(withUnknownComponent.colorMasks[0].components.length, 50, 'unknown future components must be ignored without disabling the mask')
+  const damagedComponent = mergePipeline(createDefaultPipeline(), {
+    colorMasks: [{ ...legacy.colorMasks[0], components: [{ ...rotatedRectangle, loadError: 'missing-or-damaged', enabled: true }] }],
+  }).colorMasks[0].components[0]
+  assert.equal(damagedComponent.enabled, false, 'a damaged component must be isolated without disabling its whole mask layer')
+  assert.equal(damagedComponent.loadError, 'missing-or-damaged')
 
   const featherLimit = mergePipeline(createDefaultPipeline(), {
-    colorMasks: [{ ...legacy.colorMasks[0], feather: 40 }],
+    colorMasks: [{ ...legacy.colorMasks[0], feather: 100 }],
   })
-  assert.equal(featherLimit.colorMasks[0].feather, 40, 'the UI and persisted feather limit must both accept 40')
+  assert.equal(featherLimit.colorMasks[0].feather, 100, 'the UI, persisted pipeline, and renderer must all accept 100 px feathering')
 
   const unavailable = mergePipeline(createDefaultPipeline(), {
     colorMasks: [{ ...legacy.colorMasks[0], enabled: true, loadError: 'missing-or-damaged' }],
@@ -320,10 +618,86 @@ try {
   assert.deepEqual(layers.map((layer) => layer.maskPath), ['/bottom.pgm', '/top.pgm'], 'the visual top layer must render last')
   assert.deepEqual(layers.map((layer) => layer.blendMode), ['multiply', 'screen'])
   assert.ok(layers.every((layer) => layer.layerType === 'local-color'))
+  assert.equal(
+    renderModule.buildLocalColorLayers(baseLayer, stressPipeline)[0].maskTrack,
+    undefined,
+    'saved legacy trajectories must not move v1.6.0 static video masks in preview or export',
+  )
   assert.deepEqual(
     renderModule.buildLocalColorLayers(baseLayer, unavailable),
     [],
     'unavailable masks must never enter preview or export layers',
+  )
+  const framedSource = {
+    ...baseLayer,
+    layerType: 'media',
+    color: {
+      ...renderModule.pipelineColorToRenderColor(ordered.color),
+      denoise: 130,
+    },
+  }
+  const framedLogo = { ...baseLayer, layerType: 'media', filePath: '/logo.png' }
+  const framedLayers = renderModule.applyLocalColorToSourceMediaLayers(
+    [framedSource, framedLogo],
+    '/image.jpg',
+    ordered,
+  )
+  assert.deepEqual(
+    framedLayers.map((layer) => layer.filePath),
+    ['/image.jpg', '/image.jpg', '/image.jpg', '/logo.png'],
+    'frame media layers must receive local color copies without affecting other media',
+  )
+  assert.deepEqual(
+    framedLayers.slice(1, 3).map((layer) => layer.maskPath),
+    ['/bottom.pgm', '/top.pgm'],
+    'frame media layers must preserve local mask ordering',
+  )
+  assert.ok(
+    framedLayers.slice(1, 3).every((layer) => layer.color.denoise === 130),
+    'frame local color layers must retain layout-specific media adjustments',
+  )
+  const blurredBackground = {
+    ...framedSource,
+    layoutRole: 'background',
+    color: {
+      ...framedSource.color,
+      exposure: 0,
+      denoise: 3100,
+    },
+  }
+  const framedPrecomposition = renderModule.applyLocalColorToSourceMediaLayers(
+    [blurredBackground, { ...framedSource, layoutRole: 'content', zIndex: 13 }],
+    '/image.jpg',
+    ordered,
+  )
+  const precomposeInputs = framedPrecomposition.filter((layer) => layer.precomposeRole === 'input')
+  const precomposeOutputs = framedPrecomposition.filter((layer) => layer.precomposeRole === 'output')
+  assert.equal(precomposeInputs.length, 3, 'global color and both masks must flatten into one source texture')
+  assert.equal(precomposeOutputs.length, 2, 'blurred background and clear foreground must share the flattened texture')
+  assert.ok(
+    framedPrecomposition.every((layer) => layer.precomposeGroup === 'framed-source-color'),
+    'all framed source layers must use the same precomposition group',
+  )
+  assert.deepEqual(
+    precomposeInputs.slice(1).map((layer) => layer.maskPath),
+    ['/bottom.pgm', '/top.pgm'],
+    'mask color layers must render before the frame consumes the flattened texture',
+  )
+  assert.equal(precomposeInputs[0].color.exposure, framedSource.color.exposure)
+  assert.equal(precomposeInputs[0].color.denoise, framedSource.color.denoise)
+  assert.equal(precomposeInputs[0].cornerRadius, undefined, 'frame geometry must not be baked into the source texture')
+  assert.equal(precomposeOutputs[0].color.exposure, 0)
+  assert.equal(precomposeOutputs[0].color.denoise, 3100, 'blur must run after mask color is flattened')
+  assert.equal(precomposeOutputs[1].color, undefined, 'foreground must not apply global color a second time')
+  const framedComposition = renderComposition.buildCompositionFromPreviewLayers(
+    framedPrecomposition,
+    1440,
+    1080,
+  )
+  assert.deepEqual(
+    framedComposition.layers.map((layer) => [layer.precomposeGroup, layer.precomposeRole]).sort(),
+    framedPrecomposition.map((layer) => [layer.precomposeGroup, layer.precomposeRole]).sort(),
+    'preview and export composition must preserve identical precomposition groups',
   )
 
   const registeredModelModes = {
@@ -349,6 +723,8 @@ try {
 
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b3-ade20k'), 'rmbg-1.4')
+  assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'rmbg-1.4'), 'rmbg-1.4')
+  assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'birefnet-general-lite'), 'birefnet-general-lite')
   assert.equal(segmentationModels.automaticSegmentationTarget('person'), undefined)
   assert.equal(segmentationModels.modelForSegmentationRequest('ade20k-12', 'rmbg-1.4'), 'segformer-b5-ade20k')
   assert.equal(segmentationModels.modelForSegmentationRequest(undefined, 'segformer-b3-ade20k'), 'segformer-b3-ade20k')
@@ -540,8 +916,14 @@ try {
   await writeFile(outsideMaskPath, Buffer.concat([Buffer.from('P5\n2 2\n255\n', 'ascii'), Buffer.from(maskBytes)]))
   await assert.rejects(maskService.loadColorMask(projectDataRoot, project.id, outsideMaskPath), /不属于当前项目/)
   await assert.rejects(maskService.deleteColorMask(projectDataRoot, project.id, outsideMaskPath), /不属于当前项目/)
-  const symlinkMaskPath = path.join(masksDirectory, 'outside-link.pgm')
-  await symlink(outsideMaskPath, symlinkMaskPath)
+  const symlinkMaskPath = process.platform === 'win32'
+    ? path.join(masksDirectory, 'outside-link', 'outside.pgm')
+    : path.join(masksDirectory, 'outside-link.pgm')
+  if (process.platform === 'win32') {
+    await symlink(outsideDirectory, path.dirname(symlinkMaskPath), 'junction')
+  } else {
+    await symlink(outsideMaskPath, symlinkMaskPath)
+  }
   await assert.rejects(maskService.loadColorMask(projectDataRoot, project.id, symlinkMaskPath), /不属于当前项目/)
 
   const damagedMaskPath = path.join(masksDirectory, 'damaged.pgm')

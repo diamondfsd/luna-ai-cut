@@ -246,11 +246,18 @@ src/
 ├── components/      # 功能组件
 ├── pages/           # 页面组件
 ├── context/         # React Context
-├── styles/          # 全局样式
+├── hooks/           # 共享 React Hooks
 ├── lib/             # 工具函数
+├── routes/          # 路由定义
 ├── shared/          # 共享类型定义
-├── styles/          # 全局样式
-└── .github/workflows/  # CI 打包配置
+├── styles/          # 全局样式与设计令牌
+└── workspace/       # 编辑工作区及各功能模块
+electron/             # Electron 主进程、Preload 与本地服务
+luna-render-core/     # Rust 本地渲染核心
+luna_mock_server/     # Luna 相机模拟服务
+scripts/              # 构建、打包、发布与非 UI 测试脚本
+.github/workflows/    # CI 打包、热更新与 Pages 部署
+```
 
 ## 项目基础信息
 
@@ -268,6 +275,8 @@ src/
 | `pnpm pack:win:x64` | 打包 Windows x64 NSIS |
 | `pnpm lint` | ESLint 检查 |
 | `pnpm mock:luna` | 启动模拟 Luna 相机服务器 |
+| `pnpm test:workspace` | 执行工作区几何逻辑测试 |
+| `pnpm test:diagnostics` | 执行崩溃诊断逻辑测试 |
 
 ### Electron 配置
 - 主进程入口：`electron/main.ts`
@@ -281,4 +290,3 @@ src/
 - 工作流文件：`.github/workflows/package-artifacts.yml`
 - macOS: macos-latest runner，生成 DMG
 - Windows: windows-latest runner，生成 NSIS 安装包
-```

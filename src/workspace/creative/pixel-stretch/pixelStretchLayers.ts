@@ -1,5 +1,6 @@
 import type { PreviewLayer } from '../../../shared/types'
-import type { PixelStretchPresetId } from '../../../shared/types/workspace'
+import type { PixelStretchFlowShape, PixelStretchPathPoint, PixelStretchPresetId } from '../../../shared/types/workspace'
+import { buildPixelStretchFlowPath, flattenPixelStretchPath } from './pixelStretchPath'
 
 export interface SubjectBounds {
   x: number
@@ -22,6 +23,13 @@ interface PixelStretchLayerOptions {
   maskInverted?: boolean
   maskFeather?: number
   subjectBounds: SubjectBounds
+  sourceAspect?: number
+  flowShape?: PixelStretchFlowShape
+  flowLength?: number
+  flowCurve?: number
+  flowWidth?: number
+  flowEndWidth?: number
+  flowPoints?: PixelStretchPathPoint[]
 }
 
 const RENDER_MODE_BY_PRESET = {
@@ -84,6 +92,22 @@ export function erodeMaskOnePixel(data: Uint8Array, width: number, height: numbe
   return output
 }
 
+export function invertMask(data: Uint8Array): Uint8Array {
+  return data.map((value) => 255 - value)
+}
+
+/** 优先把色带伸向主体周围留白最多的方向。 */
+export function suggestPixelStretchPreset(bounds: SubjectBounds, sourceAspect = 1): PixelStretchPresetId {
+  const aspect = Math.max(0.0001, sourceAspect)
+  const spaces: Array<[PixelStretchPresetId, number]> = [
+    ['left', bounds.x * aspect],
+    ['right', (1 - bounds.x - bounds.w) * aspect],
+    ['top', bounds.y],
+    ['bottom', 1 - bounds.y - bounds.h],
+  ]
+  return spaces.reduce((best, current) => current[1] > best[1] ? current : best)[0]
+}
+
 /** 图层顺序：原图背景 -> 中心 1px 延展的纸带 -> 清晰主体。 */
 export function buildPixelStretchLayers(options: PixelStretchLayerOptions): PreviewLayer[] {
   const main = options.layers[0]
@@ -100,8 +124,31 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
   const sampleEnd = horizontal
     ? bounds.y + bounds.h * rangeEnd
     : bounds.x + bounds.w * rangeEnd
+  const sourceAspect = Math.max(0.0001, options.sourceAspect ?? 1)
+  const sampledWidth = Math.abs(sampleEnd - sampleStart) * (horizontal ? 1 : sourceAspect)
+  const pathStartWidth = sampledWidth * (options.flowWidth ?? 100) / 100
   const controlStart = Math.max(0, Math.min(1, sample + (sampleEndPosition - sample) / 3 + options.sampleControlStartOffset / 100))
   const controlEnd = Math.max(0, Math.min(1, sample + (sampleEndPosition - sample) * 2 / 3 + options.sampleControlEndOffset / 100))
+  const lineEnd = horizontal
+    ? bounds.x + bounds.w * sampleEndPosition
+    : bounds.y + bounds.h * sampleEndPosition
+  const centerX = horizontal
+    ? (bounds.x + bounds.w * sample + lineEnd) / 2
+    : (sampleStart + sampleEnd) / 2
+  const centerY = horizontal
+    ? (sampleStart + sampleEnd) / 2
+    : (bounds.y + bounds.h * sample + lineEnd) / 2
+  const flowPath = buildPixelStretchFlowPath({
+    shape: options.flowShape ?? 'straight',
+    preset: options.preset,
+    length: options.flowLength ?? 70,
+    curve: options.flowCurve ?? 60,
+    aspect: sourceAspect,
+    bounds,
+    start: { x: centerX, y: centerY },
+    startInset: pathStartWidth / 2,
+    customPoints: options.flowPoints,
+  })
   const background: PreviewLayer = { ...main, zIndex: 0 }
   const stretch: PreviewLayer = {
     ...main,
@@ -119,17 +166,19 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
       ribbonSize: Math.round(Math.abs(rangeEnd - rangeStart) * 100),
       sampleStart,
       sampleEnd,
-      lineEnd: horizontal
-        ? bounds.x + bounds.w * sampleEndPosition
-        : bounds.y + bounds.h * sampleEndPosition,
+      lineEnd,
       controlStart: horizontal
         ? bounds.x + bounds.w * controlStart
         : bounds.y + bounds.h * controlStart,
       controlEnd: horizontal
         ? bounds.x + bounds.w * controlEnd
         : bounds.y + bounds.h * controlEnd,
-      centerX: bounds.x + bounds.w / 2,
-      centerY: bounds.y + bounds.h / 2,
+      centerX,
+      centerY,
+      pathPoints: flattenPixelStretchPath(flowPath),
+      pathStartWidth,
+      pathEndWidth: sampledWidth * (options.flowEndWidth ?? 55) / 100,
+      fillSampleGaps: true,
     },
     zIndex: 1,
   }

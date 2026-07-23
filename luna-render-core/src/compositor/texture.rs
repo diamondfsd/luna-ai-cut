@@ -1,3 +1,4 @@
+use super::mask::encode_mask_distance_channels;
 use super::*;
 use crate::media::command;
 use crate::{log, log_error};
@@ -196,7 +197,8 @@ impl Compositor {
             1,
             false,
         );
-        upload_rgba(&self.queue, &texture, &data[..expected], width, height);
+        let distance_encoded = encode_mask_distance_channels(&data[..expected], width, height);
+        upload_rgba(&self.queue, &texture, &distance_encoded, width, height);
         self.textures.insert(
             id,
             TextureEntry {

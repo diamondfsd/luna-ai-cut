@@ -76,7 +76,8 @@ pub fn segment_sam(
 pub use color_source::{resolve_render_source, ColorInfo, ResolvedRenderSource};
 pub use composition::*;
 use compositor::Compositor;
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{AsyncTask, Buffer};
+use napi::{Env, Task};
 use napi_derive::napi;
 
 // ── 跨模块日志宏 ──
@@ -158,6 +159,10 @@ pub(crate) fn reset_export_compositor() -> napi::Result<()> {
 /// - `log_path`: 日志文件路径（可选，默认 luna-rc.log）
 #[napi]
 pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
+    init_compositors(log_path)
+}
+
+fn init_compositors(log_path: Option<String>) -> napi::Result<()> {
     if let Ok(mut guard) = COMPOSITOR_LOG_PATH.lock() {
         *guard = log_path.clone();
     }
@@ -165,6 +170,28 @@ pub fn init_compositor(log_path: Option<String>) -> napi::Result<()> {
     init_one_compositor(&COMPOSITOR_PREVIEW, path, "preview")?;
     init_one_compositor(&COMPOSITOR_EXPORT, path, "export")?;
     Ok(())
+}
+
+pub struct InitCompositorTask {
+    log_path: Option<String>,
+}
+
+impl Task for InitCompositorTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        init_compositors(self.log_path.clone())
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(())
+    }
+}
+
+#[napi]
+pub fn init_compositor_async(log_path: Option<String>) -> AsyncTask<InitCompositorTask> {
+    AsyncTask::new(InitCompositorTask { log_path })
 }
 
 fn init_one_compositor(
@@ -241,6 +268,8 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
         .iter()
         .map(|l| compositor::PreviewLayerInput {
             layer_type: l.layer_type.clone(),
+            precompose_group: l.precompose_group.clone(),
+            precompose_role: l.precompose_role.clone(),
             file_path: l.file_path.clone(),
             is_video: l.is_video,
             video_time: l.video_time,
@@ -262,10 +291,18 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
             mask_texture_id: None,
             mask_opacity: l.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
             mask_inverted: l.mask_inverted.unwrap_or(false),
-            mask_feather: l.mask_feather.unwrap_or(2.0).clamp(0.0, 40.0),
+            mask_feather: l.mask_feather.unwrap_or(0.0).clamp(0.0, 100.0),
+            mask_transform: l
+                .mask_transform
+                .clone()
+                .unwrap_or(crate::RenderMaskTransform {
+                    scale: 1.0,
+                    ..Default::default()
+                }),
             pixel_stretch: l.pixel_stretch.clone(),
             transform: l.transform.clone().unwrap_or_default(),
             positioning: l.positioning.clone(),
+            restore_lut_id: l.restore_lut_id.clone(),
             lut_id: l.lut_id.clone(),
             lut_intensity: l.lut_intensity,
             shape: l.shape.clone(),
@@ -315,6 +352,8 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
             (
                 compositor::PreviewLayerInput {
                     layer_type: item.layer.layer_type.clone(),
+                    precompose_group: item.layer.precompose_group.clone(),
+                    precompose_role: item.layer.precompose_role.clone(),
                     file_path: item.layer.file_path.clone(),
                     is_video: item.layer.is_video,
                     video_time: item.layer.video_time,
@@ -336,10 +375,17 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                     mask_texture_id: None,
                     mask_opacity: item.layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
                     mask_inverted: item.layer.mask_inverted.unwrap_or(false),
-                    mask_feather: item.layer.mask_feather.unwrap_or(2.0).clamp(0.0, 40.0),
+                    mask_feather: item.layer.mask_feather.unwrap_or(0.0).clamp(0.0, 100.0),
+                    mask_transform: item.layer.mask_transform.clone().unwrap_or(
+                        crate::RenderMaskTransform {
+                            scale: 1.0,
+                            ..Default::default()
+                        },
+                    ),
                     pixel_stretch: item.layer.pixel_stretch.clone(),
                     transform: item.layer.transform.clone().unwrap_or_default(),
                     positioning: item.layer.positioning.clone(),
+                    restore_lut_id: item.layer.restore_lut_id.clone(),
                     lut_id: item.layer.lut_id.clone(),
                     lut_intensity: item.layer.lut_intensity,
                     shape: item.layer.shape.clone(),

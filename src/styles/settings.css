@@ -7,25 +7,30 @@
 }
 
 .settings-list {
-  display: flex;
+  display: grid;
   max-width: 980px;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: 18px;
-  background: var(--canvas);
+  gap: 24px;
   margin: 0 auto;
 }
 
-/* 组标题 */
+.settings-group {
+  display: grid;
+  gap: 10px;
+}
+
 .settings-group-title {
   margin: 0;
-  padding: 18px 22px 8px;
-  font-size: 13px;
+  padding: 0 4px;
+  color: var(--text);
+  font-size: 14px;
   font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+}
+
+.settings-card {
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--canvas);
 }
 
 /* 设置行：标签区 | 操作区 */
@@ -50,8 +55,8 @@
 }
 
 .settings-row-copy span {
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--text);
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -68,9 +73,10 @@
 }
 
 .settings-row-copy strong {
-  font-size: 17px;
+  color: var(--muted);
+  font-size: 12px;
   font-style: normal;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .settings-row-copy em {
@@ -87,41 +93,22 @@
   gap: 10px;
 }
 
-/* Mock Server 配置字段网格 */
-.mock-settings-fields {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
-  gap: 10px;
+.settings-default-watermark-row {
+  align-items: start;
 }
 
-.mock-settings-fields label {
-  display: grid;
-  gap: 6px;
+.settings-default-watermark-control {
+  width: min(420px, 42vw);
 }
 
-.mock-settings-fields label span {
-  color: var(--muted);
-  font-size: 12px;
+.settings-secret-trigger {
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-secret-trigger small {
+  margin-left: 6px;
+  color: #248a3d;
+  font-size: 11px;
   font-weight: 600;
-}
-
-/* ====== 设置页 WiFi 编辑（未使用但保留兼容） ====== */
-.wifi-settings-edit {
-  display: grid;
-  grid-column: 1 / -1;
-  gap: 12px;
-  border-top: 1px solid var(--hairline);
-  margin-top: 12px;
-  padding-top: 12px;
-}
-
-.wifi-settings-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.wifi-settings-fields .host-field {
-  flex: 1;
-  min-width: 180px;
 }

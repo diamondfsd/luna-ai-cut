@@ -28,8 +28,8 @@ export function useEditPipeline() {
     setHistory((current) => mapHistoryPipelines(current, update))
   }, [])
 
-  const resetPipeline = useCallback(() => {
-    setHistory((current) => resetHistory(current, createDefaultPipeline()))
+  const resetPipeline = useCallback((nextPipeline?: EditPipeline) => {
+    setHistory((current) => resetHistory(current, nextPipeline ?? createDefaultPipeline()))
   }, [])
 
   const initializePipeline = useCallback((initial: EditPipeline) => {

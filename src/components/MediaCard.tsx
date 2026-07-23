@@ -79,14 +79,14 @@ export function MediaCard({
       }
     })
     return () => { unsub() }
-  }, [cacheEnabled, file.id, file.kind, file.duration, file.downloadFilePath, file.localPath, file.sourceUrl])
+  }, [cacheEnabled, file])
 
   const effectiveDuration = file.duration ?? videoDuration
 
   const progressValue = progress?.status === 'done' || progress?.status === 'exists' ? 100 : progress?.percent ?? 0
   const progressStyle = { '--progress': `${progressValue * 3.6}deg` } as CSSProperties
   const localPath = file.downloadFilePath ?? file.localPath
-  const downloadedPath = !selected ? localPath : undefined
+  const downloadedPath = localPath
   const liveDetectSource = file.downloadFilePath ?? file.localPath ?? file.sourceUrl ?? file.url ?? file.href
   const showProgress = Boolean(
     progress && ['queued', 'downloading', 'failed'].includes(progress.status) && !downloadedPath,

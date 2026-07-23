@@ -51,8 +51,16 @@ export function pipelineColorWithLocalAdjustments(
   globalColor: EditPipeline['color'],
   localColor: EditPipeline['color'],
 ): RenderColorAdjustments {
-  const global = pipelineColorToRenderColor(globalColor)
-  const local = pipelineColorToRenderColor(localColor)
+  return renderColorWithLocalAdjustments(
+    pipelineColorToRenderColor(globalColor),
+    pipelineColorToRenderColor(localColor),
+  )
+}
+
+function renderColorWithLocalAdjustments(
+  global: RenderColorAdjustments,
+  local: RenderColorAdjustments,
+): RenderColorAdjustments {
   const combined = { ...global }
   const additive = [
     'exposure', 'brightness', 'contrast', 'saturation', 'vibrance', 'temperature', 'tint',
@@ -87,12 +95,98 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     ...base,
     layerType: 'local-color' as const,
     blendMode: layer.blendMode,
-    color: pipelineColorWithLocalAdjustments(pipeline.color, layer.color),
+    color: renderColorWithLocalAdjustments(
+      base.color ?? pipelineColorToRenderColor(pipeline.color),
+      pipelineColorToRenderColor(layer.color),
+    ),
     maskPath: layer.path,
     maskOpacity: layer.opacity,
     maskInverted: layer.inverted,
-    maskFeather: layer.feather,
+    maskFeather: layer.components?.some((component) => component.type !== 'raster') ? 0 : layer.feather,
+    // v1.6.0 video masks are intentionally static; keep saved tracks in project data only.
+    maskTrack: undefined,
   }))
+}
+
+/** 为相框中重复引用当前素材的媒体层补齐局部调色，Logo 等其他媒体不受影响。 */
+export function applyLocalColorToSourceMediaLayers(
+  layers: PreviewLayer[],
+  sourcePath: string,
+  pipeline: EditPipeline,
+): PreviewLayer[] {
+  const sourceLayers = layers.filter((layer) => (
+    layer.layerType === 'media' && layer.filePath === sourcePath
+  ))
+  const hasBlurredBackground = sourceLayers.some((layer) => layer.layoutRole === 'background')
+  const hasLocalColor = pipeline.colorMasks.some((layer) => layer.enabled && !layer.loadError)
+  if (hasBlurredBackground && hasLocalColor) {
+    const contentLayer = sourceLayers.find((layer) => layer.layoutRole === 'content')
+      ?? sourceLayers.find((layer) => layer.layoutRole !== 'background')
+    if (!contentLayer) return layers
+
+    const precomposeGroup = 'framed-source-color'
+    const inputBase: PreviewLayer = {
+      ...contentLayer,
+      layoutRole: undefined,
+      precomposeGroup,
+      precomposeRole: 'input',
+      fit: 'stretch',
+      dstX: 0,
+      dstY: 0,
+      dstW: 1,
+      dstH: 1,
+      srcX: 0,
+      srcY: 0,
+      srcW: 1,
+      srcH: 1,
+      opacity: 1,
+      blendMode: 'normal',
+      zIndex: 0,
+      reveal: undefined,
+      pixelStretch: undefined,
+      cornerRadius: undefined,
+      transform: {
+        crop: null,
+        orientation: 0,
+        rotate: 0,
+        flipH: false,
+        flipV: false,
+        scale: 1,
+        translateX: 0,
+        translateY: 0,
+      },
+      positioning: undefined,
+    }
+    const inputs = [
+      inputBase,
+      ...buildLocalColorLayers(inputBase, pipeline).map((layer, index) => ({
+        ...layer,
+        precomposeGroup,
+        precomposeRole: 'input' as const,
+        zIndex: index + 1,
+      })),
+    ]
+    const outputs = layers.map((layer) => {
+      if (layer.layerType !== 'media' || layer.filePath !== sourcePath) return layer
+      return {
+        ...layer,
+        precomposeGroup,
+        precomposeRole: 'output' as const,
+        color: layer.layoutRole === 'background' ? layer.color : undefined,
+        restoreLutId: undefined,
+        lutId: undefined,
+        lutIntensity: undefined,
+      }
+    })
+    return [...inputs, ...outputs]
+  }
+
+  return layers.flatMap((layer) => (
+    layer.layerType === 'media'
+      && layer.filePath === sourcePath
+      ? [layer, ...buildLocalColorLayers(layer, pipeline)]
+      : [layer]
+  ))
 }
 
 export function pipelineTransformToRenderTransform(transform: EditPipeline['transform']): RenderLayerTransform {
