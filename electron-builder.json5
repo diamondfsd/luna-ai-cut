@@ -39,6 +39,11 @@
       "to": "luna-render-core/luna-render-core.node"
     },
     {
+      "from": "vendor/luna-protocol",
+      "to": "luna-protocol",
+      "filter": ["luna-protocol.cjs", "luna-protocol.sha256"]
+    },
+    {
       "from": "public/luts",
       "to": "luts",
       "filter": ["**/*"]
