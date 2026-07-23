@@ -17,6 +17,7 @@ export type SpecializedSegmentationBackend =
   | 'rmbg-1.4'
   | 'birefnet-general-lite'
   | 'ultraface'
+  | 'ultraface-boxes'
   | 'eye-state'
   | 'dinov2-small'
   | 'sface'
@@ -104,7 +105,14 @@ export async function extractImageEmbeddingInWorker(
   rgb: Buffer,
   signal?: AbortSignal,
 ): Promise<number[]> {
-  return extractFloatEmbeddingInWorker('dinov2-small', modelPath, rgb, 384, signal)
+  return extractFloatOutputInWorker(
+    'dinov2-small',
+    modelPath,
+    rgb,
+    { scaledWidth: 224, scaledHeight: 224, padX: 0, padY: 0 },
+    384,
+    signal,
+  )
 }
 
 export async function extractFaceEmbeddingInWorker(
@@ -112,13 +120,40 @@ export async function extractFaceEmbeddingInWorker(
   rgb: Buffer,
   signal?: AbortSignal,
 ): Promise<number[]> {
-  return extractFloatEmbeddingInWorker('sface', modelPath, rgb, 128, signal)
+  return extractFloatOutputInWorker(
+    'sface',
+    modelPath,
+    rgb,
+    { scaledWidth: 112, scaledHeight: 112, padX: 0, padY: 0 },
+    128,
+    signal,
+  )
 }
 
-async function extractFloatEmbeddingInWorker(
-  backend: 'dinov2-small' | 'sface',
+export async function extractFaceBoxesInWorker(
   modelPath: string,
   rgb: Buffer,
+  layout: Pick<SpecializedSegmentationInput, 'scaledWidth' | 'scaledHeight' | 'padX' | 'padY'>,
+  signal?: AbortSignal,
+): Promise<Array<{ x: number; y: number; width: number; height: number }>> {
+  const values = await extractFloatOutputInWorker(
+    'ultraface-boxes',
+    modelPath,
+    rgb,
+    layout,
+    64,
+    signal,
+  )
+  return Array.from({ length: 16 }, (_, index) => values.slice(index * 4, index * 4 + 4))
+    .filter(([x, y, width, height]) => x >= 0 && y >= 0 && width > 0 && height > 0)
+    .map(([x, y, width, height]) => ({ x, y, width, height }))
+}
+
+async function extractFloatOutputInWorker(
+  backend: 'dinov2-small' | 'sface' | 'ultraface-boxes',
+  modelPath: string,
+  rgb: Buffer,
+  layout: Pick<SpecializedSegmentationInput, 'scaledWidth' | 'scaledHeight' | 'padX' | 'padY'>,
   dimension: number,
   signal?: AbortSignal,
 ): Promise<number[]> {
@@ -135,10 +170,7 @@ async function extractFloatEmbeddingInWorker(
         modelPath,
         inputPath,
         outputPath,
-        scaledWidth: backend === 'sface' ? 112 : 224,
-        scaledHeight: backend === 'sface' ? 112 : 224,
-        padX: 0,
-        padY: 0,
+        ...layout,
         outputSize: dimension,
       },
       outputPath,

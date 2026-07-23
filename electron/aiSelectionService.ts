@@ -21,7 +21,7 @@ import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
 
-const ANALYSIS_VERSION = 'selection-evidence-v3'
+const ANALYSIS_VERSION = 'selection-evidence-v5'
 const ROOT_DIR = 'ai-selection'
 
 interface StoredSession extends AiSelectionSession {
@@ -117,6 +117,7 @@ async function ensureLoaded(): Promise<void> {
       parsed.undoStack ??= []
       parsed.redoStack ??= []
       parsed.faceGroups = buildFaceGroups(parsed.items)
+      applySelectionPlan(parsed.items, parsed.groups, parsed.preset, parsed.purpose, parsed.target, parsed.preferenceProfile)
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
       refreshAiSelectionCounts(parsed)
       sessions.set(parsed.id, parsed)

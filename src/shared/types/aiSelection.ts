@@ -1,5 +1,5 @@
 export type AiSelectionPreset = 'quick' | 'balanced' | 'deep'
-export const AI_SELECTION_CONTENT_TAG_VERSION = 'yolo26s-seg+coco80_segformer-b0+ade20k_v2'
+export const AI_SELECTION_CONTENT_TAG_VERSION = 'yolo26s-seg+coco80_segformer-b5+ade20k_v3'
 export type AiSelectionPurpose = 'general' | 'people' | 'travel' | 'editing'
 export type AiSelectionStatus = 'queued' | 'indexing' | 'analyzing' | 'paused' | 'interrupted' | 'ready' | 'completed' | 'failed' | 'canceled'
 export type AiSelectionPhase = 'indexing' | 'metadata' | 'photos' | 'content' | 'people' | 'grouping' | 'ranking' | 'videos' | 'done'
@@ -41,7 +41,7 @@ export interface AiPersonEvidence {
   faceCount: number
   primaryFaceBounds: { x: number; y: number; width: number; height: number } | null
   faceVisibility: 'clear' | 'small' | 'occluded' | 'none' | 'unknown'
-  eyeState: 'open' | 'closed' | 'mixed' | 'unknown'
+  eyeState: 'open' | 'closed' | 'unknown'
   closedEyeConfidence: number | null
   faces?: AiFaceDescriptor[]
   reason: string

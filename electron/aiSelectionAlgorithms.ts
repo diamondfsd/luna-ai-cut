@@ -323,7 +323,7 @@ function compareRepresentative(a: AiSelectionItem, b: AiSelectionItem): number {
   const bEdge = b.quality?.edgeScore ?? 0
   const aSubjectEdge = a.personEvidence?.subjectEdgeScore ?? 0
   const bSubjectEdge = b.personEvidence?.subjectEdgeScore ?? 0
-  const eyeScore = (item: AiSelectionItem): number => item.personEvidence?.eyeState === 'open' ? 4 : item.personEvidence?.eyeState === 'closed' ? -10 : item.personEvidence?.eyeState === 'mixed' ? -5 : 0
+  const eyeScore = (item: AiSelectionItem): number => item.personEvidence?.eyeState === 'open' ? 4 : item.personEvidence?.eyeState === 'closed' ? -10 : 0
   if (eyeScore(a) !== eyeScore(b)) return eyeScore(b) - eyeScore(a)
   if (a.recommendationScore !== b.recommendationScore) return b.recommendationScore - a.recommendationScore
   if (aSubjectEdge !== bSubjectEdge) return bSubjectEdge - aSubjectEdge
@@ -335,7 +335,7 @@ function personScore(item: AiSelectionItem, purpose: AiSelectionPurpose): { raw:
   const evidence = item.personEvidence
   if (!evidence) return { raw: null, normalized: 0.5 }
   if (!evidence.detected) return { raw: 0, normalized: purpose === 'people' ? 0 : 0.4 }
-  const eye = evidence.eyeState === 'open' ? 1 : evidence.eyeState === 'closed' ? 0 : evidence.eyeState === 'mixed' ? 0.2 : 0.55
+  const eye = evidence.eyeState === 'open' ? 1 : evidence.eyeState === 'closed' ? 0 : 0.55
   const visibility = evidence.faceVisibility === 'clear' ? 1 : evidence.faceVisibility === 'small' ? 0.65 : evidence.faceVisibility === 'occluded' ? 0.25 : 0.5
   const sharpness = Math.min(1, Math.max(0, (evidence.subjectEdgeScore ?? 8) / 18))
   return {
@@ -404,7 +404,13 @@ function refreshScores(item: AiSelectionItem, grouped: boolean, purpose: AiSelec
       item.scores[key].weight = preference.weights[key]
     }
   }
-  const dimensions = Object.values(item.scores).filter((value): value is { normalized: number; weight: number } => typeof value === 'object')
+  const dimensions = [
+    item.quality ? item.scores.quality : null,
+    item.personEvidence?.detected === true || purpose === 'people' ? item.scores.people : null,
+    item.personEvidence?.bounds ? item.scores.composition : null,
+    relevance.raw !== null ? item.scores.relevance : null,
+    diversity.raw !== null ? item.scores.diversity : null,
+  ].filter((value): value is AiSelectionItem['scores']['quality'] => value !== null)
   const weight = dimensions.reduce((sum, dimension) => sum + dimension.weight, 0) || 1
   item.scores.total = Math.round(dimensions.reduce((sum, dimension) => sum + dimension.normalized * dimension.weight, 0) / weight * 100)
   item.recommendationScore = item.scores.total
@@ -431,7 +437,7 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
     item.recommendationReason = null
     item.flags.duplicate = grouped.get(item.id)?.kind === 'duplicate'
     item.flags.lowQuality = item.quality?.grade === 'review'
-    item.flags.closedEyes = item.personEvidence?.eyeState === 'closed' || item.personEvidence?.eyeState === 'mixed'
+    item.flags.closedEyes = item.personEvidence?.eyeState === 'closed'
     item.flags.analysisFailed = Boolean(item.error)
     refreshScores(item, Boolean(grouped.get(item.id)), purpose, tagFrequency, preference)
     if (item.decisionSource === 'ai') item.state = 'undecided'
@@ -471,7 +477,7 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
     if (item.quality?.grade === 'review' || item.error || item.flags.closedEyes) {
       item.state = 'undecided'
       item.recommendationReason = item.flags.closedEyes
-        ? item.personEvidence?.eyeState === 'mixed' ? '双眼状态不一致，需要确认' : '检测到闭眼，需要确认'
+        ? '检测到闭眼，需要确认'
         : item.quality?.reasons[0] ?? (item.error ? '素材分析失败' : '需要人工确认')
     } else if (chosen.has(item.id)) {
       item.state = 'recommended'

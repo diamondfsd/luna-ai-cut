@@ -1,8 +1,8 @@
 import type { AiFaceDescriptor, AiFaceGroup, AiSelectionItem } from '../src/shared/types'
 
-export const FACE_EMBEDDING_VERSION = 'sface-2021dec-int8-box-crop-v1'
-const FACE_MEMBER_MATCH_THRESHOLD = 0.34
-const FACE_CENTROID_SIMILARITY_FLOOR = 0.2
+export const FACE_EMBEDDING_VERSION = 'sface-2021dec-int8-independent-box-v2'
+const FACE_MEMBER_MATCH_THRESHOLD = 0.36
+const FACE_CENTROID_SIMILARITY_FLOOR = 0.24
 const FACE_EMBEDDING_DIMENSION = 128
 
 interface FaceObservation {

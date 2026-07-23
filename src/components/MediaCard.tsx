@@ -18,11 +18,13 @@ interface MediaCardProps {
   selectionOnly?: boolean
   overlay?: ReactNode
   className?: string
+  previewTitle?: string
 }
 
 function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
+  const totalSeconds = Math.max(0, Math.floor(seconds))
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
@@ -39,6 +41,7 @@ export function MediaCard({
   selectionOnly = false,
   overlay,
   className,
+  previewTitle = '预览',
 }: MediaCardProps) {
   const cardRef = useRef<HTMLElement>(null)
   const fileRef = useRef(file)
@@ -135,7 +138,7 @@ export function MediaCard({
         }}
         role="button"
         tabIndex={0}
-        title="预览"
+        title={previewTitle}
       >
         <ThumbImage src={file.previewUrl || file.sourceUrl} alt={file.name} loading="lazy" />
         {file.kind === 'video' && effectiveDuration != null ? (

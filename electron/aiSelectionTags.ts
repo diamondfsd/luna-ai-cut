@@ -21,7 +21,6 @@ export function deriveBasicSemanticTags(item: TaggableItem): string[] {
     if (item.personEvidence.faceCount > 1) tags.push('多人')
     else if (item.personEvidence.faceCount === 1) tags.push('单人')
     if (item.personEvidence.eyeState === 'closed') tags.push('闭眼')
-    if (item.personEvidence.eyeState === 'mixed') tags.push('眨眼')
     if (item.personEvidence.faceVisibility === 'occluded') tags.push('面部遮挡')
   }
   return [...new Set(tags)]
