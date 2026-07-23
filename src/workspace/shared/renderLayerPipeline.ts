@@ -118,7 +118,8 @@ export function applyLocalColorToSourceMediaLayers(
     layer.layerType === 'media' && layer.filePath === sourcePath
   ))
   const hasBlurredBackground = sourceLayers.some((layer) => layer.layoutRole === 'background')
-  if (hasBlurredBackground) {
+  const hasLocalColor = pipeline.colorMasks.some((layer) => layer.enabled && !layer.loadError)
+  if (hasBlurredBackground && hasLocalColor) {
     const contentLayer = sourceLayers.find((layer) => layer.layoutRole === 'content')
       ?? sourceLayers.find((layer) => layer.layoutRole !== 'background')
     if (!contentLayer) return layers
