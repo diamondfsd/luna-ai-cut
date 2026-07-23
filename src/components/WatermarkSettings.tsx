@@ -3,6 +3,7 @@ import { ImagePlus, Settings2 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
 import { WM_SRC, watermarkStyleOptionsForDevice, getCachedWatermarkPath } from '../shared/watermarkAssets'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
+import { isVideoPath } from '../lib/fileUtils'
 import type { PreviewLayer, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import '../styles/watermark-settings.css'
 
@@ -57,8 +58,12 @@ interface WatermarkSettingsProps {
   onChange: WatermarkChangeHandler
   compact?: boolean
   showToggle?: boolean
+  /** 设置页只编辑默认开关与位置，不解析设备或展示水印样式。 */
+  preferencesOnly?: boolean
+  title?: string
   /** 传文件路径即可自动按设备过滤水印样式 */
   filePath?: string
+  mediaKind?: 'image' | 'video'
 }
 
 function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPositionChange }: {
@@ -83,7 +88,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
       <div className="wm-position-grid">
         <div className="wm-position-row">
           <button key={POSITIONS[0].value}
-              className={`wm-pos-cell ${settings.position === POSITIONS[0].value ? 'active' : ''}`}
+            className={`wm-pos-cell ${settings.position === POSITIONS[0].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[0].value)} title={POSITIONS[0].label}>
             <svg viewBox="0 0 160 90" className="wm-pos-frame">
               <rect x={POSITIONS[0].cx - 10} y={POSITIONS[0].cy - 7} width={20} height={14} rx={3} />
@@ -91,7 +96,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
           </button>
           <div className="wm-pos-cell wm-pos-placeholder" />
           <button key={POSITIONS[1].value}
-              className={`wm-pos-cell ${settings.position === POSITIONS[1].value ? 'active' : ''}`}
+            className={`wm-pos-cell ${settings.position === POSITIONS[1].value ? 'active' : ''}`}
             onClick={() => onPositionChange(POSITIONS[1].value)} title={POSITIONS[1].label}>
             <svg viewBox="0 0 160 90" className="wm-pos-frame">
               <rect x={POSITIONS[1].cx - 10} y={POSITIONS[1].cy - 7} width={20} height={14} rx={3} />
@@ -114,7 +119,7 @@ function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPosit
   )
 }
 
-export function WatermarkSettings({ settings, onChange, compact, showToggle = true, filePath }: WatermarkSettingsProps) {
+export function WatermarkSettings({ settings, onChange, compact, showToggle = true, preferencesOnly = false, title = '水印设置', filePath, mediaKind }: WatermarkSettingsProps) {
   const [internalSettings, setInternalSettings] = useState<WatermarkSettingsType>({
     enabled: true,
     style: 'luna_ultra_cn',
@@ -125,18 +130,20 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   const effectiveMediaWidth = resolvedMediaSize?.w
   const effectiveMediaHeight = resolvedMediaSize?.h
   const waitingForMediaSize = Boolean(filePath) && (!effectiveMediaWidth || !effectiveMediaHeight)
+  const watermarkKind = mediaKind ?? (filePath && isVideoPath(filePath) ? 'video' : 'image')
 
   // 从文件路径自动检测设备 → 水印样式选项
   const [deviceId, setDeviceId] = useState<string | null>(null)
   useEffect(() => {
-    if (!filePath) return
+    if (preferencesOnly || !filePath) return
     let cancelled = false
     resolveDeviceId(
       { sourceDeviceId: null, cameraType: null, sourceDeviceName: null, cameraSerial: null, watermarkProfileId: null },
       { filePath, readExif: window.luna.readExifModel.bind(window.luna) },
-    ).then((id) => { if (!cancelled) setDeviceId(id) }).catch(() => {})
+    ).then((id) => { if (!cancelled) setDeviceId(id) })
+      .catch(() => { if (!cancelled) setDeviceId(null) })
     return () => { cancelled = true }
-  }, [filePath])
+  }, [filePath, preferencesOnly])
 
   useEffect(() => {
     if (!filePath) {
@@ -159,15 +166,16 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   }, [filePath])
 
   const stylePills = useMemo(() => {
+    if (preferencesOnly) return []
     const opts = deviceId ? watermarkStyleOptionsForDevice(deviceId) : []
     return opts.map((opt) => {
-      const thumbSrc = WM_SRC[opt.value]?.image
+      const thumbSrc = WM_SRC[opt.value]?.[watermarkKind]
       return {
         value: opt.value,
         label: thumbSrc ? <img src={thumbSrc} alt={opt.label} className="wm-style-thumb" /> : opt.label,
       }
     })
-  }, [deviceId])
+  }, [deviceId, preferencesOnly, watermarkKind])
 
   // 媒体宽高比变化时重新计算水印层（如图片从横图切到竖图）
   const initRef = useRef(true)
@@ -185,6 +193,11 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   const enrichAndChange = useCallback(async (patch: Partial<WatermarkSettingsType>) => {
     const seq = ++enrichSeqRef.current
     const next = { ...currentSettings, ...patch }
+    if (preferencesOnly) {
+      setInternalSettings(next)
+      onChange(next)
+      return
+    }
     if (filePath && (!effectiveMediaWidth || !effectiveMediaHeight)) {
       setInternalSettings(next)
       onChange(next)
@@ -197,7 +210,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       }
       return
     }
-    const info = await window.luna.getWatermarkPath(next.style, 'image').catch(() => null)
+    const info = await window.luna.getWatermarkPath(next.style, watermarkKind).catch(() => null)
     if (seq !== enrichSeqRef.current) return
     const isLandscape = (effectiveMediaWidth ?? 16) >= (effectiveMediaHeight ?? 9)
     const enriched: WatermarkSettingsType = {
@@ -209,7 +222,7 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       : undefined
     setInternalSettings(enriched)
     onChange(enriched, layer ?? undefined)
-  }, [currentSettings, onChange, filePath, effectiveMediaWidth, effectiveMediaHeight])
+  }, [currentSettings, onChange, filePath, effectiveMediaWidth, effectiveMediaHeight, preferencesOnly, watermarkKind])
 
   const handleToggle = useCallback(
     (enabled: boolean) => enrichAndChange({ enabled }),
@@ -265,12 +278,12 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       {showToggle && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            水印设置
+            {title}
           </span>
           <Switch checked={currentSettings.enabled} onCheckedChange={handleToggle} ariaLabel="启用水印" />
         </div>
       )}
-      {(!showToggle || currentSettings.enabled) && content}
+      {(!showToggle || currentSettings.enabled || preferencesOnly) && content}
     </div>
   )
 }

@@ -187,6 +187,9 @@ fn run() -> Result<(), String> {
                 specialized_segmentation::SpecializedSession::load(&args[1], &args[2])?;
             session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
         }
+        "birefnet-general-lite" => {
+            specialized_segmentation::segment_birefnet(&args[2], &rgb, output_size)?
+        }
         _ => return Err("不支持的专用分割模型".to_string()),
     };
     if mask.len() != expected_output_bytes(&args[1], output_size) {

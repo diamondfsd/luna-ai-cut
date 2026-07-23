@@ -41,9 +41,17 @@ export interface WorkspaceColorRevealState {
 }
 
 export type PixelStretchPresetId = 'left' | 'right' | 'top' | 'bottom' | 'horizontal' | 'vertical'
+export type PixelStretchSubjectModel = 'fast' | 'precise'
+export type PixelStretchFlowShape = 'straight' | 'arc' | 'cape' | 's-curve' | 'custom'
+
+export interface PixelStretchPathPoint {
+  x: number
+  y: number
+}
 
 export interface WorkspacePixelStretchState {
   preset: PixelStretchPresetId
+  subjectModel?: PixelStretchSubjectModel
   intensity: number
   angle: number
   samplePosition: number
@@ -54,6 +62,12 @@ export interface WorkspacePixelStretchState {
   sampleRangeEnd?: number
   sampleControlStartOffset?: number
   sampleControlEndOffset?: number
+  flowShape?: PixelStretchFlowShape
+  flowLength?: number
+  flowCurve?: number
+  flowWidth?: number
+  flowEndWidth?: number
+  flowPoints?: PixelStretchPathPoint[]
   maskPath?: string
   maskAssetId?: string
 }
@@ -69,5 +83,6 @@ export interface WorkspaceProject {
     tripleStitch?: WorkspaceTripleStitchState
     colorReveal?: WorkspaceColorRevealState
     pixelStretch?: WorkspacePixelStretchState
+    pixelStretchByAssetId?: Record<string, WorkspacePixelStretchState>
   }
 }

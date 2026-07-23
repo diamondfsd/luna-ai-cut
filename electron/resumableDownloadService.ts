@@ -24,6 +24,8 @@ export interface DownloadOptions {
   fetcher?: typeof fetch
   maxBytes?: number
   label?: string
+  /** 关闭后仅以网络响应完整结束作为下载完成，不校验声明大小或 SHA256。 */
+  verifyIntegrity?: boolean
 }
 
 interface WritableFile {
@@ -60,10 +62,11 @@ export async function fileSha256(filePath: string, signal?: AbortSignal): Promis
   }
 }
 
-function validateDefinition(definition: DownloadDefinition, maxBytes: number, label: string): void {
+function validateDefinition(definition: DownloadDefinition, maxBytes: number, label: string, verifyIntegrity: boolean): void {
   if (path.basename(definition.fileName) !== definition.fileName || !definition.fileName) {
     throw new Error(`${label}文件名不安全`)
   }
+  if (!verifyIntegrity) return
   if (!Number.isInteger(definition.sizeBytes) || definition.sizeBytes <= 0 || definition.sizeBytes > maxBytes) {
     throw new Error(`${label}文件大小异常`)
   }
@@ -79,13 +82,16 @@ async function fileSize(filePath: string): Promise<number> {
   }
 }
 
-function rangeStartsAt(response: Response, offset: number, expectedBytes: number): boolean {
+function rangeStartsAt(response: Response, offset: number, expectedBytes?: number): boolean {
   if (response.status !== 206) return false
   const contentRange = response.headers.get('content-range') ?? ''
-  const match = /^bytes (\d+)-(\d+)\/(\d+)$/i.exec(contentRange)
+  const match = /^bytes (\d+)-(\d+)\/(\d+|\*)$/i.exec(contentRange)
   if (!match) return false
-  const [, start, end, total] = match.map(Number)
-  return start === offset && end >= start && end < expectedBytes && total === expectedBytes
+  const start = Number(match[1])
+  const end = Number(match[2])
+  if (start !== offset || end < start) return false
+  if (expectedBytes === undefined) return true
+  return end < expectedBytes && Number(match[3]) === expectedBytes
 }
 
 async function downloadVerifiedFileFromSource(
@@ -99,27 +105,35 @@ async function downloadVerifiedFileFromSource(
     fetcher = fetch,
     maxBytes = DEFAULT_MAX_BYTES,
     label = '资源',
+    verifyIntegrity = true,
   } = options
-  validateDefinition(definition, maxBytes, label)
+  validateDefinition(definition, maxBytes, label, verifyIntegrity)
   signal?.throwIfAborted()
   await mkdir(destinationDir, { recursive: true })
 
   const finalPath = path.join(destinationDir, definition.fileName)
-  if (await fileSha256(finalPath, signal) === definition.sha256) {
+  if (!verifyIntegrity && await fileSize(finalPath) >= 0) {
+    const completedBytes = await fileSize(finalPath)
+    onProgress?.({ completedBytes, totalBytes: completedBytes, resumedBytes: completedBytes })
+    return finalPath
+  }
+  if (verifyIntegrity && await fileSha256(finalPath, signal) === definition.sha256) {
     onProgress?.({ completedBytes: definition.sizeBytes, totalBytes: definition.sizeBytes, resumedBytes: definition.sizeBytes })
     return finalPath
   }
   await rm(finalPath, { recursive: true, force: true })
 
-  const temporaryPath = path.join(destinationDir, `${definition.fileName}.${definition.sha256.slice(0, 16)}.download`)
+  const temporaryPath = path.join(destinationDir, verifyIntegrity
+    ? `${definition.fileName}.${definition.sha256.slice(0, 16)}.download`
+    : `${definition.fileName}.download`)
   let resumedBytes = await fileSize(temporaryPath)
   if (resumedBytes < 0) resumedBytes = 0
-  if (resumedBytes > definition.sizeBytes) {
+  if (verifyIntegrity && resumedBytes > definition.sizeBytes) {
     await rm(temporaryPath, { force: true })
     resumedBytes = 0
   }
 
-  if (resumedBytes === definition.sizeBytes) {
+  if (verifyIntegrity && resumedBytes === definition.sizeBytes) {
     if (await fileSha256(temporaryPath, signal) === definition.sha256) {
       signal?.throwIfAborted()
       await rename(temporaryPath, finalPath)
@@ -134,7 +148,7 @@ async function downloadVerifiedFileFromSource(
   const response = await fetcher(definition.url, { redirect: 'follow', signal, headers: requestHeaders })
   if (!response.ok) throw new Error(`${label}下载失败 (${response.status})`)
 
-  const append = resumedBytes > 0 && rangeStartsAt(response, resumedBytes, definition.sizeBytes)
+  const append = resumedBytes > 0 && rangeStartsAt(response, resumedBytes, verifyIntegrity ? definition.sizeBytes : undefined)
   if (resumedBytes > 0 && response.status === 206 && !append) {
     throw new Error(`${label}断点响应异常，请重试`)
   }
@@ -153,7 +167,7 @@ async function downloadVerifiedFileFromSource(
       if (done) break
       if (!value) continue
       completedBytes += value.byteLength
-      if (completedBytes > definition.sizeBytes || completedBytes > maxBytes) {
+      if (verifyIntegrity && (completedBytes > definition.sizeBytes || completedBytes > maxBytes)) {
         await handle.close()
         handle = null
         await rm(temporaryPath, { force: true })
@@ -164,8 +178,8 @@ async function downloadVerifiedFileFromSource(
     }
     await handle.close()
     handle = null
-    if (completedBytes !== definition.sizeBytes) throw new Error(`${label}文件大小异常`)
-    if (await fileSha256(temporaryPath, signal) !== definition.sha256) {
+    if (verifyIntegrity && completedBytes !== definition.sizeBytes) throw new Error(`${label}文件大小异常`)
+    if (verifyIntegrity && await fileSha256(temporaryPath, signal) !== definition.sha256) {
       await rm(temporaryPath, { force: true })
       throw new Error(`${label}文件校验失败，请重试`)
     }

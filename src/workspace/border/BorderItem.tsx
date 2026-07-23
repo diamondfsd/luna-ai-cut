@@ -1,12 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { buildBorderLayer, FRAME_PRESETS } from './buildBorderLayer'
+import { buildBorderLayer } from './buildBorderLayer'
+import { findFramePreset, framePresetDefaultSettings, FRAME_PRESETS } from './borderPresets'
 import type { CompositionInput } from '../../shared/types'
+import { DEFAULT_PIPELINE } from '../shared/editPipeline'
+import { pipelineColorToRenderColor } from '../shared/renderLayerPipeline'
 
 const THUMB_CACHE = new Map<string, string>()
 
-function getLrc(): any {
-  return (window as unknown as { lunaRenderCore?: any }).lunaRenderCore ?? null
+interface BorderThumbnailRenderCore {
+  renderCompositionFrame: (
+    composition: CompositionInput,
+    time: number,
+    maxSide?: number,
+  ) => Promise<{ width: number; height: number; data: Uint8Array | ArrayBuffer }>
+}
+
+function getLrc(): BorderThumbnailRenderCore | null {
+  return (window as unknown as { lunaRenderCore?: BorderThumbnailRenderCore }).lunaRenderCore ?? null
 }
 
 async function renderBorderThumb(
@@ -20,7 +31,7 @@ async function renderBorderThumb(
   const lrc = getLrc()
   if (!lrc) throw new Error('渲染引擎未初始化')
 
-  const preset = FRAME_PRESETS.find((p) => p.id === presetId)
+  const preset = findFramePreset(presetId)
   if (!preset) throw new Error(`预设 ${presetId} 未找到`)
 
   const colors = fallbackPresetColors(presetId)
@@ -28,23 +39,17 @@ async function renderBorderThumb(
     canvasWidth: 220,
     canvasHeight: 138,
     border: {
+      ...DEFAULT_PIPELINE.border,
       enabled: true,
       presetId,
-      frameSize: 100,
       backgroundColor: colors.backgroundColor,
       textColor: colors.textColor,
-      opacity: 100,
-      showLogo: true,
-      showTitle: true,
-      showCameraInfo: true,
-      showDate: true,
+      ...framePresetDefaultSettings(presetId),
       title: '',
-      mediaScale: 100,
-      mediaOffsetX: 0,
-      mediaOffsetY: 0,
     },
     metadata: null,
     mediaPath: sourcePath,
+    mediaLayerStyle: { color: pipelineColorToRenderColor(DEFAULT_PIPELINE.color) },
   })
 
   const composition: CompositionInput = {
@@ -64,6 +69,8 @@ async function renderBorderThumb(
         fit: l.fit ?? 'cover',
         opacity: l.opacity,
         zIndex: l.zIndex,
+        color: l.color,
+        transform: l.transform,
         positioning: l.positioning,
         shape: l.shape,
         fillColor: l.fillColor,

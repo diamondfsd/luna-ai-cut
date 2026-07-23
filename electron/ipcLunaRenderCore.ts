@@ -7,7 +7,7 @@ import { appendFileSync, existsSync, statSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join, extname, basename, isAbsolute } from 'node:path'
 import {
-  ensureInit,
+  warmupRenderCore,
   renderCompositionFrame as lrcRenderCompositionFrame,
   renderCompositionFrameAsync as lrcRenderCompositionFrameAsync,
   resolveRenderSource as lrcResolveRenderSource,
@@ -22,9 +22,10 @@ import {
 import { getNative, cleanNativeInput } from './lunaRenderCore'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import * as exportTaskService from './exportTaskService'
-import { logMainError, logMainInfo } from './loggerService'
+import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { RUNTIME_RESOURCE_DEFINITIONS } from './runtimeResourceDefinitions'
 import { loadRuntimeResource } from './runtimeResourceService'
+import { embedJpegSourceMetadata, embedVideoSourceMetadata } from './exportSourceMetadata'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
@@ -68,7 +69,7 @@ async function resolveRuntimePaths<T>(value: T): Promise<T> {
         const root = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.fonts)
         output[key] = joinPackPath(root, relative)
       } else output[key] = item
-    } else if (key === 'lutId' && typeof item === 'string') {
+    } else if ((key === 'lutId' || key === 'restoreLutId') && typeof item === 'string') {
       const relative = relativePackPath(item, 'luts')
       if (existsSync(item) || !relative) output[key] = item
       else {
@@ -120,9 +121,16 @@ export function register(ctx: RegisterContext): void {
   })
 
   ipcMain.handle('lrc:init', safe('init', async (_event: IpcMainInvokeEvent, logPath?: string) => {
-    ensureInit(logPath)
+    await warmupRenderCore(logPath)
     rcLog('lrc:init OK')
   }))
+
+  ipcMain.handle('lrc:prepareRuntimeResource', safe('prepareRuntimeResource',
+    async (_event: IpcMainInvokeEvent, kind: 'fonts' | 'luts') => {
+      if (kind !== 'fonts' && kind !== 'luts') throw new Error('未知运行时资源类型')
+      await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS[kind])
+    },
+  ))
 
   // 纹理管理方法
   ipcMain.handle('lrc:loadTexture', safe('loadTexture',
@@ -192,6 +200,14 @@ export function register(ctx: RegisterContext): void {
       }
 
       await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition: await resolveRuntimePaths(composition), format, quality })
+      const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
+        ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
+      await embedJpegSourceMetadata(outputPath, sourcePath).catch((error) => {
+        logMainWarn('[导出] 无法写入图片来源信息', {
+          outputPath,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
 
       if (exportTaskId && exportItemId) {
         _event.sender?.send('export:progress', {
@@ -278,6 +294,14 @@ export function register(ctx: RegisterContext): void {
           hardware,
           taskId: renderTaskId,
           qualityPreset,
+        })
+        const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
+          ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
+        await embedVideoSourceMetadata(ffmpegPath, outputPath, sourcePath).catch((error) => {
+          logMainWarn('[导出] 无法写入来源设备信息', {
+            outputPath,
+            error: error instanceof Error ? error.message : String(error),
+          })
         })
         if (exportTaskId && exportItemId) {
           await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})

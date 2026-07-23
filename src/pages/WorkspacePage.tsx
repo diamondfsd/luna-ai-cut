@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation } from 'react-router-dom'
 
 import type { WorkspaceProject } from '../shared/types'
+import type { WorkspacePreviewQuality } from '../shared/types/settings'
+import { useApp } from '../context/AppContext'
 import { ErrorBoundary, toast } from '../ui'
 import { exportBatchFiles, type BatchExportSource } from '../components/previewStageExport'
 import { ExportSettingsDialog } from '../components/ExportSettingsDialog'
@@ -30,17 +32,19 @@ import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
-import { outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
+import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
+import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
 import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
-function normalizePipeline(value: unknown): EditPipeline {
-  if (!value || typeof value !== 'object') return createDefaultPipeline()
+function normalizePipeline(value: unknown, defaultPipeline: EditPipeline = createDefaultPipeline()): EditPipeline {
+  if (!value || typeof value !== 'object') return structuredClone(defaultPipeline)
   return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
 }
 
@@ -60,6 +64,17 @@ interface WorkspacePageProps {
   onCreativeModeChange: (modeId: CreativeModeId | null) => void
   pageActive: boolean
   onEditingChange?: (editing: boolean) => void
+}
+
+type WorkspaceRuntimeResource = 'fonts' | 'luts'
+const RUNTIME_RESOURCE_RETRY_DELAY_MS = 5_000
+const RUNTIME_RESOURCE_MAX_ATTEMPTS = 100
+
+function prepareWorkspaceRuntimeResource(kind: WorkspaceRuntimeResource): Promise<void> {
+  const renderCore = (window as unknown as {
+    lunaRenderCore?: { prepareRuntimeResource?: (kind: WorkspaceRuntimeResource) => Promise<void> }
+  }).lunaRenderCore
+  return renderCore?.prepareRuntimeResource?.(kind) ?? Promise.resolve()
 }
 
 export function WorkspacePage({ workspaceMode, creativeModeId, onCreativeModeChange, pageActive, onEditingChange }: WorkspacePageProps) {
@@ -95,7 +110,12 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
   const mask = useWorkspaceMask()
+  const { settings, setSettings } = useApp()
+  const defaultPipelineRef = useRef(createWorkspaceDefaultPipeline(settings))
+  defaultPipelineRef.current = createWorkspaceDefaultPipeline(settings)
+  const settingsReady = settings !== null
   const previewRef = useRef<PreviewStageHandle>(null)
+  const setVideoFrameTime = mask.setVideoFrameTime
   const trimStateRef = useRef<{ trimActive: boolean; trimEnd: number | null }>({ trimActive: false, trimEnd: null })
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [mediaSize, setMediaSize] = useState<{ w: number; h: number } | null>(null)
@@ -107,7 +127,59 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const [exportDialogDir, setExportDialogDir] = useState('')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
+  const [fitScalePercent, setFitScalePercent] = useState(100)
+  const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
+  const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
   const allowWatermark = useLunaUltraWatermark(media.activeMedia)
+
+  useEffect(() => {
+    if (!pageActive) return
+    let disposed = false
+    const retryTimers: number[] = []
+
+    const prepare = async (kind: WorkspaceRuntimeResource, attempt = 1): Promise<void> => {
+      setRuntimeResourceLoading((current) => ({ ...current, [kind]: true }))
+      try {
+        await prepareWorkspaceRuntimeResource(kind)
+        if (!disposed) setRuntimeResourceLoading((current) => ({ ...current, [kind]: false }))
+      } catch (error: unknown) {
+        if (disposed) return
+        const label = kind === 'fonts' ? '字体' : 'LUT'
+        if (attempt >= RUNTIME_RESOURCE_MAX_ATTEMPTS) {
+          console.warn(`[Workspace] ${label}资源下载连续失败 ${attempt} 次，已停止自动重试:`, error)
+          setRuntimeResourceLoading((current) => ({ ...current, [kind]: false }))
+          return
+        }
+        console.warn(`[Workspace] ${label}资源第 ${attempt} 次下载失败，5 秒后重试:`, error)
+        retryTimers.push(window.setTimeout(() => {
+          void prepare(kind, attempt + 1)
+        }, RUNTIME_RESOURCE_RETRY_DELAY_MS))
+      }
+    }
+    void prepare('fonts')
+    void prepare('luts')
+
+    return () => {
+      disposed = true
+      retryTimers.forEach((timer) => window.clearTimeout(timer))
+      setRuntimeResourceLoading({ fonts: false, luts: false })
+    }
+  }, [pageActive])
+
+  useEffect(() => {
+    setPreviewQuality(normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
+  }, [settings?.workspacePreviewQuality])
+
+  function changePreviewQuality(quality: WorkspacePreviewQuality): void {
+    const previous = previewQuality
+    setPreviewQuality(quality)
+    void window.luna.saveSettings({ workspacePreviewQuality: quality })
+      .then(setSettings)
+      .catch(() => {
+        setPreviewQuality(previous)
+        toast.error('无法保存预览清晰度')
+      })
+  }
 
   // ── 截取（Trim）状态 ──
   const [trimCurrentTime, setTrimCurrentTime] = useState(0)
@@ -152,6 +224,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   const handlePlayStateChange = useCallback((state: { playing: boolean; currentTime: number; duration: number }) => {
     setTrimPlaying(state.playing)
+    setVideoFrameTime(state.currentTime)
     if (state.duration > 0) {
       setTrimDuration(state.duration)
       setTrimDurationSourcePath(activeVideoPathRef.current)
@@ -170,7 +243,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       if (!previewRef.current?.isPlaying()) return
       previewRef.current?.togglePlay()
     }
-  }, [])
+  }, [setVideoFrameTime])
 
 
   // ── 截取控制 ──
@@ -203,16 +276,24 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
   const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
   const stagePipeline = useMemo(() => {
-    if (edit.compareOriginal) return edit.comparePipeline
-    if (!edit.cropActive) return displayPipeline
-    const activeTransform = edit.transformDraft ?? edit.pipeline.transform
-    return mergePipeline(edit.pipeline, {
-      transform: {
-        ...activeTransform,
-        crop: null,
-      },
+    const visiblePipeline = edit.compareOriginal
+      ? edit.comparePipeline
+      : edit.cropActive
+        ? mergePipeline(edit.pipeline, {
+            transform: {
+              ...(edit.transformDraft ?? edit.pipeline.transform),
+              crop: null,
+            },
+          })
+        : displayPipeline
+    if (!mask.editing || !visiblePipeline.border.enabled) return visiblePipeline
+    return mergePipeline(visiblePipeline, {
+      border: { ...visiblePipeline.border, enabled: false },
     })
-  }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft])
+  }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft, mask.editing])
+  const keepCompositionVideoRenderer = edit.previewPipeline.colorMasks.some(
+    (layer) => layer.enabled && !layer.loadError,
+  )
 
   const finalCanvasSize = useMemo(() => {
     if (!watermarkMediaSize) return null
@@ -235,35 +316,41 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   // ── 边框预览层（JSON 预设解析为多个独立合成层） ──
   const borderLayer = useMemo(() => {
     if (!finalCanvasSize) return []
-    return buildBorderLayer({
+    const sourcePath = media.activeMedia?.path
+    const layers = buildBorderLayer({
       canvasWidth: finalCanvasSize.width,
       canvasHeight: finalCanvasSize.height,
       border: edit.pipeline.border,
       metadata: borderMetadata,
-      mediaPath: media.activeMedia?.path,
+      mediaPath: sourcePath,
       mediaLayerStyle: {
         color: pipelineColorToRenderColor(stagePipeline.color),
         transform: pipelineTransformToRenderTransform(stagePipeline.transform),
+        restoreLutId: stagePipeline.logRestore.activeId ?? undefined,
         lutId: stagePipeline.lutFilter.activeId ?? undefined,
         lutIntensity: stagePipeline.lutFilter.intensity,
         isVideo: media.activeMedia?.path ? isVideoPath(media.activeMedia.path) : false,
       },
     })
+    return sourcePath
+      ? applyLocalColorToSourceMediaLayers(layers, sourcePath, stagePipeline)
+      : layers
   }, [edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
 
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
-    () => edit.cropActive ? [] : [...watermarkLayer, ...borderLayer],
-    [edit.cropActive, watermarkLayer, borderLayer],
+    () => edit.cropActive || mask.editing ? [] : [...watermarkLayer, ...borderLayer],
+    [edit.cropActive, mask.editing, watermarkLayer, borderLayer],
   )
 
   // ── Initialize pipeline / reset crop/trim when active asset changes ──
   useLayoutEffect(() => {
+    if (!settingsReady) return
     const asset = media.currentProject?.assets[media.activeIndex]
     edit.setCropActive(false)
     edit.setTransformDraft(null)
     edit.setCropPreset('original')
-    edit.initializePipeline(normalizePipeline(asset?.pipeline))
+    edit.initializePipeline(normalizePipeline(asset?.pipeline, defaultPipelineRef.current))
     if (media.activeMedia && !isVideoPath(media.activeMedia.path)) {
       // 图片不显示截取，退出截取模式
       if (edit.trimActive) {
@@ -271,7 +358,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         if (edit.activeTool === 'trim') edit.setActiveTool('filter')
       }
     }
-  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id])
+  }, [media.activeIndex, media.activeMedia?.path, media.currentProject?.id, settingsReady])
 
   useEffect(() => {
     setMediaSize(null)
@@ -339,6 +426,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   useEffect(() => () => flushProjectSave(), [flushProjectSave])
 
   useEffect(() => {
+    if (!settingsReady) return
     if (workspaceMode !== 'edit') {
       flushProjectSave()
       return
@@ -351,7 +439,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
     pendingProjectSaveRef.current = nextProject
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(flushProjectSave, 500)
-  }, [edit.pipeline, flushProjectSave, media.activeIndex, media.activeMedia?.path, media.currentProject?.id, setCurrentProject, workspaceMode])
+  }, [edit.pipeline, flushProjectSave, media.activeIndex, media.activeMedia?.path, media.currentProject?.id, setCurrentProject, settingsReady, workspaceMode])
 
   function handlePastePipeline(): void {
     const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
@@ -362,21 +450,35 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
     const data = readWorkspacePipelineClipboard()
     if (!data) {
-      toast.error('没有可粘贴的调色设置')
+      toast.error('没有可粘贴的效果')
       return
     }
     const patch: PipelinePatch = {
       color: data.color,
       effects: data.effects,
+      logRestore: data.logRestore,
       lutFilter: data.lutFilter,
       watermark: data.watermark,
       border: data.border,
     }
+    const targetIndices = new Set([...indices].filter((index) => {
+      const asset = media.media[index]
+      if (!asset) return false
+      if (!data.sourceAssetId || asset.id !== data.sourceAssetId) return true
+      return (data.sourceProjectId ?? null) !== (media.currentProject?.id ?? null)
+    }))
+    if (targetIndices.size === 0) {
+      toast.error('没有其他可粘贴的素材')
+      return
+    }
 
     if (media.currentProject) {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+      pendingProjectSaveRef.current = null
       const nextAssets = media.currentProject.assets.map((asset, i) => {
-        if (!indices.has(i)) return asset
-        const nextPipeline = mergePipeline(normalizePipeline(asset.pipeline), patch)
+        if (!targetIndices.has(i)) return asset
+        const nextPipeline = mergePipeline(normalizePipeline(asset.pipeline, defaultPipelineRef.current), patch)
         return { ...asset, pipeline: nextPipeline }
       })
       const nextProject = { ...media.currentProject, assets: nextAssets, updatedAt: new Date().toISOString() }
@@ -384,16 +486,16 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       window.luna.workspace.saveProject(nextProject).catch(() => undefined)
     } else {
       media.setTransientMedia((current) => current.map((asset, i) => {
-        if (!indices.has(i)) return asset
-        const nextPipeline = mergePipeline(normalizePipeline((asset as { pipeline?: unknown }).pipeline), patch)
+        if (!targetIndices.has(i)) return asset
+        const nextPipeline = mergePipeline(normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current), patch)
         return { ...asset, pipeline: nextPipeline }
       }))
     }
 
-    if (indices.has(media.activeIndex)) {
+    if (targetIndices.has(media.activeIndex)) {
       edit.commitPatch(patch)
     }
-    toast.success(`已粘贴到 ${indices.size} 个素材`)
+    toast.success(`已粘贴到 ${targetIndices.size} 个素材`)
   }
 
   function handleCopyPipeline(): void {
@@ -402,19 +504,26 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       if (selectedIndex !== media.activeIndex) {
         const asset = media.media[selectedIndex]
         if (!asset) return
-        const pipe = normalizePipeline((asset as { pipeline?: unknown }).pipeline)
+        const pipe = normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current)
         writeWorkspacePipelineClipboard({
+          sourceAssetId: asset.id,
+          sourceProjectId: media.currentProject?.id ?? null,
           color: structuredClone(pipe.color),
           effects: structuredClone(pipe.effects),
+          logRestore: structuredClone(pipe.logRestore),
           lutFilter: structuredClone(pipe.lutFilter),
           watermark: structuredClone(pipe.watermark),
           border: structuredClone(pipe.border),
         })
-        toast.success('已复制调色、滤镜和水印设置')
+        toast.success('已复制调色、滤镜、水印和边框设置')
         return
       }
     }
-    edit.copyPipeline()
+    const activeAsset = media.activeMedia
+    edit.copyPipeline(activeAsset ? {
+      assetId: activeAsset.id,
+      projectId: media.currentProject?.id ?? null,
+    } : undefined)
   }
 
   async function handleWorkspaceExport(): Promise<void> {
@@ -437,11 +546,14 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       const activePipeline = edit.transformDraft
         ? mergePipeline(edit.pipeline, { transform: edit.transformDraft })
         : edit.pipeline
+      const trackedActiveMasks = isVideoPath(media.activeMedia.path)
+        ? await mask.prepareVideoMasksForExport()
+        : activePipeline.colorMasks
       const sources: BatchExportSource[] = await Promise.all(exportIndices.map(async (index) => {
         const asset = media.media[index]
         const pipeline = index === media.activeIndex
-          ? activePipeline
-          : normalizePipeline((asset as { pipeline?: unknown }).pipeline)
+          ? mergePipeline(activePipeline, { colorMasks: trackedActiveMasks })
+          : normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current)
         const resolution = await window.luna.workspace.getMediaResolution(asset.path)
         const sourceDuration = isVideoPath(asset.path)
           ? await window.luna.workspace.getVideoDuration(asset.path).catch(() => 0)
@@ -644,14 +756,20 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             onImport={() => setImportDialogOpen(true)}
             onImportLocal={() => void handleImportLocalFiles()}
             onExport={() => void handleWorkspaceExport()}
+            onCopy={handleCopyPipeline}
+            onPaste={handlePastePipeline}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
+            fitScalePercent={fitScalePercent}
+            previewQuality={previewQuality}
+            onPreviewQualityChange={changePreviewQuality}
           />
 
           {/* ── Rust/wgpu 预览组件 ── */}
           <PreviewStage
             ref={previewRef}
             url={media.activeMedia?.path ?? null}
+            isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
             extraLayers={combinedExtraLayers}
@@ -662,6 +780,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             renderOverlay={() => (edit.cropActive ? <CropOverlay /> : mask.editing ? <MaskOverlay /> : null)}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
+            onFitScaleChange={setFitScalePercent}
+            previewMaxSide={workspacePreviewMaxSide(previewQuality)}
+            keepCompositionVideoRenderer={keepCompositionVideoRenderer}
             onPlayStateChange={handlePlayStateChange}
           />
 
@@ -669,6 +790,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             mediaSize={mediaSize}
             duration={activeTrimDuration}
             allowWatermark={allowWatermark}
+            runtimeResourceLoading={runtimeResourceLoading}
           />
 
           {edit.trimActive ? (

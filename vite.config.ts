@@ -22,6 +22,16 @@ export default defineConfig(({ mode }) => ({
           ? ({ startup }) => startup(['.', '--no-sandbox', `--remote-debugging-port=${e2eCdpPort}`])
           : undefined,
         vite: {
+          base: './',
+          worker: {
+            format: 'es',
+            rollupOptions: {
+              external: [/^node:/, 'fs', 'crypto'],
+              output: {
+                banner: "import { fileURLToPath as __lunaFileURLToPath } from 'node:url'; import { dirname as __lunaDirname } from 'node:path'; const __dirname = __lunaDirname(__lunaFileURLToPath(import.meta.url));",
+              },
+            },
+          },
           build: {
             rollupOptions: {
               output: {

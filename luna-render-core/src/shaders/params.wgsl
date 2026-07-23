@@ -56,14 +56,18 @@ struct LayerParams {
     scale: f32,
     translate_x: f32,
     translate_y: f32,
+    restore_lut_size: f32,
     lut_size: f32,
     lut_intensity: f32,
     sampling_quality: f32,
     mask_params: vec4<f32>,
+    mask_transform: vec4<f32>,
     procedural: vec4<f32>,
     pixel_stretch: vec4<f32>,
     pixel_stretch_extra: vec4<f32>,
     pixel_stretch_center: vec4<f32>,
+    pixel_stretch_path_meta: vec4<f32>,
+    pixel_stretch_path_data: array<vec4<f32>, 4>,
     fill_rgba: vec4<f32>,
     stroke_rgba: vec4<f32>,
     text_meta: vec4<f32>,
@@ -78,3 +82,4 @@ struct LayerParams {
 @group(0) @binding(3) var lut_texture: texture_3d<f32>;
 @group(0) @binding(4) var lut_sampler: sampler;
 @group(0) @binding(5) var mask_texture: texture_2d<f32>;
+@group(0) @binding(6) var restore_lut_texture: texture_3d<f32>;

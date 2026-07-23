@@ -43,6 +43,8 @@ export function buildCompositionFromPreviewLayers(
     layers: sortedLayers(layers).map((layer, index) => ({
       id: `layer-${index}`,
       layerType: layer.layerType ?? 'media',
+      precomposeGroup: layer.precomposeGroup,
+      precomposeRole: layer.precomposeRole,
       source: {
         path: toLocalPath(layer.filePath),
         sourceType: layerSourceType(layer),
@@ -77,9 +79,11 @@ export function buildCompositionFromPreviewLayers(
       maskOpacity: layer.maskOpacity,
       maskInverted: layer.maskInverted,
       maskFeather: layer.maskFeather,
+      maskTrack: layer.maskTrack,
       pixelStretch: layer.pixelStretch,
       transform: layer.transform,
       positioning: layer.positioning,
+      restoreLutId: layer.restoreLutId,
       lutId: layer.lutId,
       lutIntensity: layer.lutIntensity,
       shape: layer.shape,

@@ -4,10 +4,13 @@ import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import type { ColorMaskComponent, ColorMaskComponentOperation } from '../shared/editPipeline'
-import { componentControlHandles, componentOutline, hitTestComponentControl, updateComponentFromDrag, type MaskComponentDragKind } from './maskComponentControls'
+import { drawMaskComponentControls } from './maskComponentControlDrawing'
+import { hitTestComponentControl, shouldShowComponentControls, updateComponentFromDrag, type MaskComponentDragKind } from './maskComponentControls'
 import { applyComponentDraft, drawMaskBrush } from './maskManualRasterization'
-import { composeMaskComponents, editableMaskComponents, gradientTargetComponent, rasterizeVectorComponent } from './maskComponentRasterization'
-import { featherMaskPreview, sampleMaskBilinear } from './maskPreviewSampling'
+import { composeBaseSelectionComponents, composeMaskComponents, editableMaskComponents, gradientTargetComponent, rasterizeVectorComponent } from './maskComponentRasterization'
+import { MaskBrushCursor } from './MaskBrushCursor'
+import { MaskSelectionBoundaryCanvas, type MaskSelectionBoundaryHandle } from './MaskSelectionBoundaryCanvas'
+import { buildMaskOverlayPreview } from './maskOverlayPreview'
 import { applyMaskSelectionOperation, type MaskSelectionOperation } from './maskSelectionOperations'
 import { shapeBoundsFromDrag } from './maskShapeRasterization'
 import './MaskOverlay.css'
@@ -16,6 +19,8 @@ export function MaskOverlay() {
   const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const controlsCanvasRef = useRef<HTMLCanvasElement>(null)
+  const selectionBoundaryRef = useRef<MaskSelectionBoundaryHandle>(null)
   const draftRef = useRef<Uint8Array | null>(null)
   const lastPointRef = useRef<{ x: number; y: number } | null>(null)
   const replacePendingRef = useRef(true)
@@ -33,6 +38,12 @@ export function MaskOverlay() {
   const [temporarySubtract, setTemporarySubtract] = useState(false)
   const [componentRasterData, setComponentRasterData] = useState<Map<string, Uint8Array>>(new Map())
   const maskComponents = useMemo(() => editableMaskComponents(mask.activeMask), [mask.activeMask])
+  const imageRect = canvas.imageRect
+  const controlPixelRatio = Math.min(2, window.devicePixelRatio || 1)
+  const controlSize = {
+    width: Math.max(1, Math.round(imageRect.width * controlPixelRatio)),
+    height: Math.max(1, Math.round(imageRect.height * controlPixelRatio)),
+  }
   useEffect(() => {
     draftRef.current = mask.maskData ? new Uint8Array(mask.maskData) : null
   }, [mask.maskData])
@@ -67,13 +78,13 @@ export function MaskOverlay() {
       setComponentRasterData(new Map())
       return
     }
-    Promise.all(rasterComponents.map(async (component) => {
+    Promise.allSettled(rasterComponents.map(async (component) => {
       const loaded = await window.luna.workspace.loadColorMask(mask.projectId!, component.path)
       return [component.id, new Uint8Array(loaded.bytes)] as const
-    })).then((entries) => {
-      if (!canceled) setComponentRasterData(new Map(entries))
-    }).catch(() => {
-      if (!canceled) setComponentRasterData(new Map())
+    })).then((results) => {
+      if (canceled) return
+      const entries = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
+      setComponentRasterData(new Map(entries))
     })
     return () => { canceled = true }
   }, [mask.projectId, maskComponents])
@@ -106,7 +117,7 @@ export function MaskOverlay() {
       y: sourceY + 0.5,
     }
   }
-  function sourceToDisplay(x: number, y: number): { x: number; y: number } {
+  function sourceToDisplay(x: number, y: number, outputSize = displaySize): { x: number; y: number } {
     const transform = edit.pipeline.transform
     const crop = transform.crop ?? { x: 0, y: 0, w: 1, h: 1 }
     const orientation = ((transform.orientation % 180) + 180) % 180
@@ -121,75 +132,31 @@ export function MaskOverlay() {
     const centeredX = (sourceX * Math.cos(radians) - sourceY * Math.sin(radians)) * transform.scale
     const centeredY = (sourceX * Math.sin(radians) + sourceY * Math.cos(radians)) * transform.scale
     return {
-      x: ((centeredX / frameWidth + 0.5 - crop.x) / crop.w) * displaySize.width,
-      y: ((centeredY / frameHeight + 0.5 - crop.y) / crop.h) * displaySize.height,
+      x: ((centeredX / frameWidth + 0.5 - crop.x) / crop.w) * outputSize.width,
+      y: ((centeredY / frameHeight + 0.5 - crop.y) / crop.h) * outputSize.height,
     }
   }
-  function drawActiveComponentControls(context: CanvasRenderingContext2D): void {
+  function drawActiveComponentControls(): void {
+    const context = controlsCanvasRef.current?.getContext('2d')
+    if (!context) return
+    context.clearRect(0, 0, controlSize.width, controlSize.height)
     const component = componentDraftRef.current ?? mask.activeComponent
-    if (!component || component.type === 'raster' || mask.manualTool !== 'move') return
-    const outline = componentOutline(component).map((point) => sourceToDisplay(point.x, point.y))
-    context.save()
-    context.strokeStyle = '#ffffff'
-    context.lineWidth = 1.5
-    context.setLineDash([5, 4])
-    context.shadowColor = 'rgba(0, 0, 0, 0.9)'
-    context.shadowBlur = 2
-    context.beginPath()
-    outline.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y))
-    context.stroke()
-    context.setLineDash([])
-    for (const handle of componentControlHandles(component)) {
-      const point = sourceToDisplay(handle.x, handle.y)
-      context.beginPath()
-      context.arc(point.x, point.y, handle.kind === 'move' ? 4 : 5, 0, Math.PI * 2)
-      context.fillStyle = handle.kind === 'rotate' ? '#0066cc' : '#ffffff'
-      context.fill()
-      context.strokeStyle = '#111111'
-      context.stroke()
-    }
-    context.restore()
+    if (!component || component.type === 'raster' || !shouldShowComponentControls(mask.manualTool, Boolean(componentDraftRef.current))) return
+    drawMaskComponentControls(
+      context,
+      component,
+      (point) => sourceToDisplay(point.x, point.y, controlSize),
+      controlPixelRatio,
+      canvas.sourceAspect,
+    )
   }
   function render(data: Uint8Array): void {
     const element = canvasRef.current
     if (!element || !mask.maskSize) return
     const context = element.getContext('2d')
     if (!context) return
-    const previewMask = new Float32Array(displaySize.width * displaySize.height)
-    const center = displayToSource(0.5, 0.5)
-    const stepX = displayToSource(0.5 + 1 / displaySize.width, 0.5)
-    const stepY = displayToSource(0.5, 0.5 + 1 / displaySize.height)
-    const sourcePixelsPerPreviewPixelX = Math.max(0.0001, Math.hypot(
-      (stepX.x - center.x) * mask.maskSize.width,
-      (stepX.y - center.y) * mask.maskSize.height,
-    ))
-    const sourcePixelsPerPreviewPixelY = Math.max(0.0001, Math.hypot(
-      (stepY.x - center.x) * mask.maskSize.width,
-      (stepY.y - center.y) * mask.maskSize.height,
-    ))
-    for (let y = 0; y < displaySize.height; y++) {
-      for (let x = 0; x < displaySize.width; x++) {
-        const source = displayToSource((x + 0.5) / displaySize.width, (y + 0.5) / displaySize.height)
-        if (source.x >= 0 && source.x <= 1 && source.y >= 0 && source.y <= 1) {
-          const selected = sampleMaskBilinear(
-            data,
-            mask.maskSize.width,
-            mask.maskSize.height,
-            source.x,
-            source.y,
-          )
-          previewMask[y * displaySize.width + x] = mask.activeMask?.inverted ? 255 - selected : selected
-        }
-      }
-    }
-    const feathered = featherMaskPreview(
-      previewMask,
-      displaySize.width,
-      displaySize.height,
-      mask.activeMask?.feather ?? 0,
-      sourcePixelsPerPreviewPixelX,
-      sourcePixelsPerPreviewPixelY,
-    )
+    const layerFeather = maskComponents.some((component) => component.type !== 'raster') ? 0 : mask.activeMask?.feather ?? 0
+    const feathered = buildMaskOverlayPreview(data, mask.maskSize, displaySize, displayToSource, Boolean(mask.activeMask?.inverted), layerFeather)
     const image = context.createImageData(displaySize.width, displaySize.height)
     for (let y = 0; y < displaySize.height; y++) {
       for (let x = 0; x < displaySize.width; x++) {
@@ -202,15 +169,31 @@ export function MaskOverlay() {
       }
     }
     context.putImageData(image, 0, 0)
-    drawActiveComponentControls(context)
+    const vectorDraft = componentDraftRef.current
+    const replacedId = componentDragRef.current?.original.id
+    const boundaryComponents = vectorDraft && vectorDraft.type !== 'linear-gradient' && vectorDraft.type !== 'radial-gradient'
+      ? replacedId
+        ? maskComponents.map((component) => component.id === replacedId ? vectorDraft : component)
+        : vectorDraft.operation === 'replace' ? [vectorDraft] : [...maskComponents, vectorDraft]
+      : maskComponents
+    const missingRaster = boundaryComponents.some((component) => component.enabled && component.type === 'raster' && !componentRasterData.has(component.id))
+    let boundaryData = data
+    if (!missingRaster) {
+      boundaryData = composeBaseSelectionComponents(mask.maskSize.width, mask.maskSize.height, boundaryComponents, (component) => componentRasterData.get(component.id) ?? null)
+      if (strokeDataRef.current) {
+        boundaryData = applyMaskSelectionOperation(boundaryData, strokeDataRef.current, strokeOperationRef.current)
+      }
+    }
+    const boundaryPreview = boundaryData === data ? feathered : buildMaskOverlayPreview(boundaryData, mask.maskSize, displaySize, displayToSource, Boolean(mask.activeMask?.inverted), layerFeather)
+    selectionBoundaryRef.current?.show(boundaryPreview)
+    drawActiveComponentControls()
   }
   useEffect(() => {
     if (mask.maskData) render(mask.maskData)
     // render depends on the same visual inputs listed here and is intentionally local to this component.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas.sourceAspect, displaySize.height, displaySize.width, edit.pipeline.transform, mask.activeComponent, mask.activeMask?.feather, mask.activeMask?.inverted, mask.manualTool, mask.maskData, mask.maskSize, mask.showOverlay])
+  }, [canvas.sourceAspect, componentRasterData, controlSize.height, controlSize.width, displaySize.height, displaySize.width, edit.pipeline.transform, mask.activeComponent, mask.activeMask?.feather, mask.activeMask?.inverted, mask.manualTool, mask.maskData, mask.maskSize, mask.showOverlay])
   if (!mask.editing || !mask.maskSize) return null
-  const imageRect = canvas.imageRect
   const vectorTool = mask.manualTool === 'rectangle' || mask.manualTool === 'ellipse' || mask.manualTool === 'linear-gradient' || mask.manualTool === 'radial-gradient'
     ? mask.manualTool
     : null
@@ -244,8 +227,12 @@ export function MaskOverlay() {
     }
   }
   function normalizedPointForEvent(event: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } {
-    const point = pointForEvent(event)
-    return { x: point.x / mask.maskSize!.width, y: point.y / mask.maskSize!.height }
+    const rect = event.currentTarget.getBoundingClientRect()
+    return displayToSource((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height)
+  }
+  function unboundedPointForEvent(event: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } {
+    const point = normalizedPointForEvent(event)
+    return { x: point.x * mask.maskSize!.width, y: point.y * mask.maskSize!.height }
   }
   function composeComponentDraft(component: Exclude<ColorMaskComponent, { type: 'raster' }>): Uint8Array | null {
     const components = maskComponents
@@ -263,7 +250,13 @@ export function MaskOverlay() {
   function updateActiveComponentDrag(event: React.PointerEvent<HTMLCanvasElement>): boolean {
     const drag = componentDragRef.current
     if (!drag) return false
-    const component = updateComponentFromDrag(drag.original, drag.kind, drag.start, normalizedPointForEvent(event))
+    const component = updateComponentFromDrag(
+      drag.original,
+      drag.kind,
+      drag.start,
+      normalizedPointForEvent(event),
+      canvas.sourceAspect,
+    )
     const data = composeComponentDraft(component)
     if (!data) return false
     componentDraftRef.current = component
@@ -301,7 +294,7 @@ export function MaskOverlay() {
     const start = shapeStartRef.current
     const base = shapeBaseRef.current
     if (!start || !base || !mask.maskSize) return false
-    const current = pointForEvent(event)
+    const current = unboundedPointForEvent(event)
     const bounds = shapeBoundsFromDrag(start, current, {
       centered: event.altKey,
       constrained: event.shiftKey,
@@ -337,12 +330,14 @@ export function MaskOverlay() {
       : {
           ...common,
           type: kind,
+          sourceAspect: canvas.sourceAspect,
           centerX: (bounds.left + bounds.right) / 2 / mask.maskSize.width,
           centerY: (bounds.top + bounds.bottom) / 2 / mask.maskSize.height,
           width: (bounds.right - bounds.left) / mask.maskSize.width,
           height: (bounds.bottom - bounds.top) / mask.maskSize.height,
           rotation: 0,
-          feather: kind === 'radial-gradient' ? 1 : 0,
+          feather: 0,
+          softness: 0.15,
         }
     componentDraftRef.current = component
     const incoming = rasterizeVectorComponent(mask.maskSize.width, mask.maskSize.height, component)
@@ -352,7 +347,6 @@ export function MaskOverlay() {
     render(data)
     return true
   }
-
   function restoreCommittedMask(): void {
     draftRef.current = mask.maskData ? new Uint8Array(mask.maskData) : null
     if (draftRef.current) {
@@ -390,7 +384,12 @@ export function MaskOverlay() {
           }
           if (mask.manualTool === 'move' && activeVectorComponent) {
             const point = normalizedPointForEvent(event)
-            const kind = hitTestComponentControl(activeVectorComponent, point, 14 / Math.max(1, Math.min(imageRect.width, imageRect.height)))
+            const kind = hitTestComponentControl(
+              activeVectorComponent,
+              point,
+              14 / Math.max(1, imageRect.height),
+              canvas.sourceAspect,
+            )
             if (!kind) return
             event.currentTarget.setPointerCapture(event.pointerId)
             componentDragRef.current = { kind, start: point, original: structuredClone(activeVectorComponent) }
@@ -453,7 +452,7 @@ export function MaskOverlay() {
               void mask.commitMask(new Uint8Array(draftRef.current), {
                 component: completedComponent,
                 replaceComponentId: replacedComponentId,
-              })
+              }).then(() => mask.setManualTool('move'))
             } else if (completedStroke) {
               void mask.commitMask(new Uint8Array(draftRef.current), {
                 component: {
@@ -484,16 +483,16 @@ export function MaskOverlay() {
           restoreCommittedMask()
         }}
       />
+      <MaskSelectionBoundaryCanvas ref={selectionBoundaryRef} width={displaySize.width} height={displaySize.height} />
+      <canvas
+        ref={controlsCanvasRef}
+        className="workspace-mask-component-controls"
+        width={controlSize.width}
+        height={controlSize.height}
+        aria-hidden="true"
+      />
       {!mask.busy && mask.manualTool === 'brush' && !mask.semanticPicking && cursorPoint && (
-        <span
-          className={`workspace-mask-brush-cursor${mask.selectionOperation === 'subtract' || temporarySubtract ? ' is-subtract' : ''}`}
-          style={{
-            left: cursorPoint.x,
-            top: cursorPoint.y,
-            width: brushCursorDiameter,
-            height: brushCursorDiameter,
-          }}
-        />
+        <MaskBrushCursor x={cursorPoint.x} y={cursorPoint.y} diameter={brushCursorDiameter} subtract={mask.selectionOperation === 'subtract' || temporarySubtract} />
       )}
     </div>
   )

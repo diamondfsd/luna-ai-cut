@@ -31,6 +31,12 @@ fi
 PKG_VER="$(node -p "require('./package.json').version")"
 DEFAULT_TAG="v${PKG_VER}"
 TAG="${1:-$DEFAULT_TAG}"
+RELEASE_NOTES="${SCRIPT_DIR}/../RELEASE_NOTES_${TAG}.md"
+
+if [ ! -f "$RELEASE_NOTES" ]; then
+  echo "发布说明文件不存在: ${RELEASE_NOTES}" >&2
+  exit 1
+fi
 
 : "${GITCODE_TOKEN:?请先设置环境变量 GITCODE_TOKEN，或创建 deploy-release.conf}"
 
@@ -302,6 +308,8 @@ info "════════════════════════�
 echo ""
 
 SCRIPT_JS="${SCRIPT_DIR}/../landing/script.js"
+CHANGELOG_GENERATOR="${SCRIPT_DIR}/../landing/generate-changelog.cjs"
+CHANGELOG_DATA="${SCRIPT_DIR}/../landing/changelog-data.js"
 GITCODE_BASE="https://gitcode.com/${GITCODE_OWNER}/${GITCODE_REPO}/releases/download"
 
 # 从下载到的文件构建下载 URL
@@ -344,13 +352,17 @@ if [ -f "$SCRIPT_JS" ]; then
   fi
   ok "landing/script.js 已更新"
 
+  info "生成 Landing 页面更新日志..."
+  node "$CHANGELOG_GENERATOR"
+  ok "landing/changelog-data.js 已更新"
+
   # 提交并推送 landing 页面改动
   info "提交 Landing 页面更新..."
-  git add "$SCRIPT_JS" 2>/dev/null || true
+  git add "$SCRIPT_JS" "$CHANGELOG_DATA" 2>/dev/null || true
   if git diff --cached --quiet 2>/dev/null; then
     warn "无变更，跳过提交"
   else
-    git commit -m "chore: update landing download links for ${TAG}" || true
+    git commit -m "chore: update landing release for ${TAG}" || true
     git push origin main 2>/dev/null || warn "推送失败，请手动推送"
     ok "Landing 页面已更新并推送"
   fi

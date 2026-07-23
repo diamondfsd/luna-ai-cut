@@ -26,11 +26,15 @@ export function AppRoutes() {
   const {
     activeDevice,
     cameraLibraryMounted,
+    chooseWiredCamera,
     connectDevice,
+    connectionMode,
+    disconnectDevice,
     devicePhase,
     mockServerStatus,
     showDeviceConnect,
     sourceMode,
+    setConnectionMode,
     chooseMockMediaDir,
     startMockServer,
     stopMockServer,
@@ -116,6 +120,7 @@ export function AppRoutes() {
         creativeModeId={creativeModeId}
         onModeChange={setWorkspaceMode}
         onCreativeModeChange={setCreativeModeId}
+        onChangeConnection={disconnectDevice}
       />
       <UpdateBanner />
       <HotUpdateBanner />
@@ -130,6 +135,9 @@ export function AppRoutes() {
               phase={devicePhase}
               settings={settings}
               onConnect={connectDevice}
+              connectionMode={connectionMode}
+              onConnectionModeChange={setConnectionMode}
+              onChooseWiredCamera={chooseWiredCamera}
             />
           )}
           {(cameraLibraryMounted || !showDeviceConnect) && (

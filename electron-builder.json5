@@ -35,6 +35,11 @@
       "filter": ["luna-render-core.node", "sam-segmentation-worker", "sam-segmentation-worker.exe", "semantic-segmentation-worker", "semantic-segmentation-worker.exe", "specialized-segmentation-worker", "specialized-segmentation-worker.exe", "*.dylib", "*.dll", "*.so*"]
     },
     {
+      "from": "vendor/luna-protocol",
+      "to": "luna-protocol",
+      "filter": ["luna-protocol.cjs", "luna-protocol.sha256"]
+    },
+    {
       "from": "src/assets/watermark",
       "to": "watermark",
       "filter": ["**/*.png"]
