@@ -9,6 +9,13 @@ interface IncomingSelectionState {
   label?: string
 }
 
+interface PeopleAnalysisState {
+  running: boolean
+  completed: number
+  total: number
+  currentLabel: string | null
+}
+
 export function useAiSelection() {
   const location = useLocation()
   const incoming = location.state as IncomingSelectionState | null
@@ -20,6 +27,8 @@ export function useAiSelection() {
   const [target, setTarget] = useState<AiSelectionTarget>({ mode: 'preset', value: null })
   const [busy, setBusy] = useState(false)
   const [loadingSessions, setLoadingSessions] = useState(true)
+  const [peopleAnalysis, setPeopleAnalysis] = useState<PeopleAnalysisState>({ running: false, completed: 0, total: 0, currentLabel: null })
+  const peopleAnalysisRef = useRef<{ sessionId: string; completed: number; total: number } | null>(null)
 
   const upsert = useCallback((next: AiSelectionSession) => {
     setSessions((current) => [next, ...current.filter((item) => item.id !== next.id)].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)))
@@ -32,7 +41,13 @@ export function useAiSelection() {
     }).catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
       .finally(() => setLoadingSessions(false))
     const offSession = window.luna.aiSelection.onSessionUpdated(upsert)
-    return offSession
+    const offProgress = window.luna.aiSelection.onProgress((progress) => {
+      const active = peopleAnalysisRef.current
+      if (!active || active.sessionId !== progress.sessionId || !progress.currentLabel) return
+      active.completed = Math.min(active.total, active.completed + 1)
+      setPeopleAnalysis({ running: true, completed: active.completed, total: active.total, currentLabel: progress.currentLabel })
+    })
+    return () => { offSession(); offProgress() }
   }, [upsert])
 
   useEffect(() => {
@@ -104,6 +119,24 @@ export function useAiSelection() {
     finally { setBusy(false) }
   }
 
+  async function analyzePeople(itemIds: string[]): Promise<void> {
+    if (!session || busy || itemIds.length === 0) return
+    const analysis = { sessionId: session.id, completed: 0, total: itemIds.length }
+    peopleAnalysisRef.current = analysis
+    setPeopleAnalysis({ running: true, completed: 0, total: itemIds.length, currentLabel: null })
+    setBusy(true)
+    try {
+      upsert(await window.luna.aiSelection.analyzePeople(session.id, itemIds))
+      setPeopleAnalysis({ running: false, completed: itemIds.length, total: itemIds.length, currentLabel: null })
+    } catch (error) {
+      setPeopleAnalysis((current) => ({ ...current, running: false }))
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      peopleAnalysisRef.current = null
+      setBusy(false)
+    }
+  }
+
   const controls = useMemo(() => ({
     pause: () => run(() => window.luna.aiSelection.pause(session!.id)),
     resume: () => run(() => window.luna.aiSelection.resume(session!.id)),
@@ -111,7 +144,7 @@ export function useAiSelection() {
     undo: () => run(() => window.luna.aiSelection.undo(session!.id)),
     redo: () => run(() => window.luna.aiSelection.redo(session!.id)),
     apply: (operation: AiSelectionUserOperation) => run(() => window.luna.aiSelection.applyOperation(session!.id, session!.revision, operation)),
-    analyzePeople: (itemIds: string[]) => run(() => window.luna.aiSelection.analyzePeople(session!.id, itemIds)),
+    analyzePeople,
     analyzeContentTags: (itemIds: string[] = []) => run(() => window.luna.aiSelection.analyzeContentTags(session!.id, itemIds)),
     analyzeVideos: (itemIds: string[]) => run(() => window.luna.aiSelection.analyzeVideos(session!.id, itemIds)),
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -127,6 +160,7 @@ export function useAiSelection() {
     target,
     setTarget,
     busy,
+    peopleAnalysis,
     loadingSessions,
     selectSession,
     closeSession,

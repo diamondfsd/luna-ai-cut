@@ -43,7 +43,14 @@ export interface AiPersonEvidence {
   faceVisibility: 'clear' | 'small' | 'occluded' | 'none' | 'unknown'
   eyeState: 'open' | 'closed' | 'mixed' | 'unknown'
   closedEyeConfidence: number | null
+  faces?: AiFaceDescriptor[]
   reason: string
+}
+
+export interface AiFaceDescriptor {
+  bounds: { x: number; y: number; width: number; height: number }
+  embedding: number[] | null
+  embeddingVersion?: string | null
 }
 
 export interface AiVideoKeyframe {
@@ -158,6 +165,14 @@ export interface AiSelectionGroup {
   userModified: boolean
 }
 
+export interface AiFaceGroup {
+  id: string
+  name: string
+  itemIds: string[]
+  coverItemId: string
+  coverBounds: { x: number; y: number; width: number; height: number }
+}
+
 export interface AiSelectionCounts {
   total: number
   completed: number
@@ -193,6 +208,7 @@ export interface AiSelectionSession {
   items: AiSelectionItem[]
   scenes: AiSelectionScene[]
   groups: AiSelectionGroup[]
+  faceGroups: AiFaceGroup[]
   preferenceProfile: AiSelectionPreferenceProfile
   workspaceCreation: AiSelectionWorkspaceCreation
   error: string | null

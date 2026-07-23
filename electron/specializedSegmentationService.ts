@@ -19,6 +19,7 @@ export type SpecializedSegmentationBackend =
   | 'ultraface'
   | 'eye-state'
   | 'dinov2-small'
+  | 'sface'
 
 interface SpecializedSegmentationInput {
   backend: SpecializedSegmentationBackend
@@ -103,7 +104,24 @@ export async function extractImageEmbeddingInWorker(
   rgb: Buffer,
   signal?: AbortSignal,
 ): Promise<number[]> {
-  const dimension = 384
+  return extractFloatEmbeddingInWorker('dinov2-small', modelPath, rgb, 384, signal)
+}
+
+export async function extractFaceEmbeddingInWorker(
+  modelPath: string,
+  rgb: Buffer,
+  signal?: AbortSignal,
+): Promise<number[]> {
+  return extractFloatEmbeddingInWorker('sface', modelPath, rgb, 128, signal)
+}
+
+async function extractFloatEmbeddingInWorker(
+  backend: 'dinov2-small' | 'sface',
+  modelPath: string,
+  rgb: Buffer,
+  dimension: number,
+  signal?: AbortSignal,
+): Promise<number[]> {
   const directory = await mkdtemp(join(tmpdir(), 'luna-embedding-'))
   const inputPath = join(directory, 'input.rgb')
   const outputPath = join(directory, 'output.embedding')
@@ -113,12 +131,12 @@ export async function extractImageEmbeddingInWorker(
     const attempt = await runSpecializedWorkerAttempt(
       onnxWorker,
       {
-        backend: 'dinov2-small',
+        backend,
         modelPath,
         inputPath,
         outputPath,
-        scaledWidth: 224,
-        scaledHeight: 224,
+        scaledWidth: backend === 'sface' ? 112 : 224,
+        scaledHeight: backend === 'sface' ? 112 : 224,
         padX: 0,
         padY: 0,
         outputSize: dimension,
