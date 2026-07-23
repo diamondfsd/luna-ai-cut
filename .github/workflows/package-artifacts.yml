@@ -2,6 +2,17 @@ name: Package Artifacts
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Build target
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - windows-x64
+          - macos-arm64
+          - macos-x64
   push:
     tags:
       - "v*"
@@ -15,6 +26,7 @@ jobs:
   # ─── macOS 构建 ───────────────────────────────────
   package-mac:
     name: Build macOS (ARM64 DMG)
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'macos-arm64'
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -68,6 +80,7 @@ jobs:
   # ─── macOS x64 (Intel) 构建 ────────────────────────
   package-mac-x64:
     name: Build macOS (Intel x64 DMG)
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'macos-x64'
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -137,6 +150,7 @@ jobs:
   # ─── Windows 构建 ─────────────────────────────────
   package-win:
     name: Build Windows (x64 NSIS)
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'windows-x64'
     runs-on: windows-latest
     steps:
       - name: Checkout
