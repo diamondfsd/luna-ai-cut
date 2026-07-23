@@ -360,7 +360,7 @@ function registerIpc(): void {
     const normalizedHost = host || settings.cameraHost
     const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
     const nextStorageId = storageId ?? settings.deviceStorage?.[deviceId] ?? 'all'
-    logMainInfo(`[HTTP读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId, deviceId })
+    logMainInfo(`[文件读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId, deviceId })
     const t0 = performance.now()
     try {
       let files: LunaFile[]
@@ -377,7 +377,7 @@ function registerIpc(): void {
       }
       files = attachSourceDevice(files, deviceId)
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-      logMainInfo(`[HTTP读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed })
+      logMainInfo(`[文件读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed })
       await saveSettings({
         cameraHost: normalizedHost,
         deviceStorage: {
@@ -390,7 +390,7 @@ function registerIpc(): void {
       await resolveLocalThumbnails(files, getLocalResourcesDir(nextSettings))
       return files
     } catch (error) {
-      logMainError(`[HTTP读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, error: error instanceof Error ? error.message : String(error) })
+      logMainError(`[文件读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, error: error instanceof Error ? error.message : String(error) })
       throw error
     }
   })
