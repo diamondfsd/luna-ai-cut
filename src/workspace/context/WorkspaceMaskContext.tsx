@@ -373,7 +373,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
         result.width,
         result.height,
         data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
-        operationMask?.feather ?? 0,
+        operationMask?.feather ?? 2,
       )
       if (!isCurrentOperation(operation)) return
       setMaskSize({ width: result.width, height: result.height })
@@ -416,7 +416,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
           height: saved.height,
           opacity: operationMask?.opacity ?? 1,
           inverted: operationMask?.inverted ?? false,
-          feather: layerComponents.some((item) => item.type !== 'raster') ? 0 : operationMask?.feather ?? 0,
+          feather: layerComponents.some((item) => item.type !== 'raster') ? 0 : operationMask?.feather ?? 2,
           kind: 'semantic',
           classId: result.classId,
           className: result.className,

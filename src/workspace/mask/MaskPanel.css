@@ -212,14 +212,6 @@
   color: var(--ink);
 }
 
-.workspace-mask-model-field {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-}
-
-.workspace-mask-model-field > strong,
 .workspace-mask-tool-row > strong,
 .workspace-mask-setting-row strong {
   color: var(--ink);
