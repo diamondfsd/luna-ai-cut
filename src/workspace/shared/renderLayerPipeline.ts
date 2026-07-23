@@ -51,8 +51,16 @@ export function pipelineColorWithLocalAdjustments(
   globalColor: EditPipeline['color'],
   localColor: EditPipeline['color'],
 ): RenderColorAdjustments {
-  const global = pipelineColorToRenderColor(globalColor)
-  const local = pipelineColorToRenderColor(localColor)
+  return renderColorWithLocalAdjustments(
+    pipelineColorToRenderColor(globalColor),
+    pipelineColorToRenderColor(localColor),
+  )
+}
+
+function renderColorWithLocalAdjustments(
+  global: RenderColorAdjustments,
+  local: RenderColorAdjustments,
+): RenderColorAdjustments {
   const combined = { ...global }
   const additive = [
     'exposure', 'brightness', 'contrast', 'saturation', 'vibrance', 'temperature', 'tint',
@@ -87,7 +95,10 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     ...base,
     layerType: 'local-color' as const,
     blendMode: layer.blendMode,
-    color: pipelineColorWithLocalAdjustments(pipeline.color, layer.color),
+    color: renderColorWithLocalAdjustments(
+      base.color ?? pipelineColorToRenderColor(pipeline.color),
+      pipelineColorToRenderColor(layer.color),
+    ),
     maskPath: layer.path,
     maskOpacity: layer.opacity,
     maskInverted: layer.inverted,
@@ -95,6 +106,19 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     // v1.6.0 video masks are intentionally static; keep saved tracks in project data only.
     maskTrack: undefined,
   }))
+}
+
+/** 为相框中重复引用当前素材的媒体层补齐局部调色，Logo 等其他媒体不受影响。 */
+export function applyLocalColorToSourceMediaLayers(
+  layers: PreviewLayer[],
+  sourcePath: string,
+  pipeline: EditPipeline,
+): PreviewLayer[] {
+  return layers.flatMap((layer) => (
+    layer.layerType === 'media' && layer.filePath === sourcePath
+      ? [layer, ...buildLocalColorLayers(layer, pipeline)]
+      : [layer]
+  ))
 }
 
 export function pipelineTransformToRenderTransform(transform: EditPipeline['transform']): RenderLayerTransform {

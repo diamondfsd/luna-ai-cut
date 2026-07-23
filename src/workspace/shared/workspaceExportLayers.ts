@@ -1,7 +1,7 @@
 import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer, MediaMetadata } from '../../shared/types'
-import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
+import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
 
@@ -50,7 +50,7 @@ export function buildWorkspaceExportLayers(
         lutIntensity: pipeline.lutFilter.intensity,
       },
     })
-    result.push(...borderLayers)
+    result.push(...applyLocalColorToSourceMediaLayers(borderLayers, sourcePath, pipeline))
   }
 
   return result
