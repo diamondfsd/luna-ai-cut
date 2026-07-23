@@ -3,7 +3,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { Button, ButtonGroup, Popover, PopoverContent, PopoverTrigger, SearchField, Switch, toast } from '../../ui'
-import { AUTOMATIC_SEGMENTATION_TARGETS, DEFAULT_POINT_SEGMENTATION_MODEL_ID, isSamSegmentationModel, SAM_MODELS, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type AutomaticSegmentationTarget, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
+import { AUTOMATIC_SEGMENTATION_TARGETS, isSamSegmentationModel, type AutomaticSegmentationTarget, type AutomaticSegmentationTargetId } from '../../shared/segmentationModels'
 import { ParamSlider } from '../components/ParamSlider'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
@@ -45,10 +45,6 @@ const SUBJECT_TARGET = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id
 const MORE_TARGETS = AUTOMATIC_SEGMENTATION_TARGETS.filter(
   (target) => target.id !== 'subject' && !PRIMARY_TARGET_IDS.some((id) => id === target.id),
 )
-function formatModelSize(sizeBytes: number): string {
-  return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
-}
-
 export function MaskPanel() {
   const mask = useWorkspaceMask()
   const media = useWorkspaceMedia()
@@ -57,7 +53,6 @@ export function MaskPanel() {
   const hasVectorComponents = settings?.components?.some((component) => component.type !== 'raster') ?? false
   const initialTarget = AUTOMATIC_SEGMENTATION_TARGETS.find((target) => target.id === settings?.targetId || target.classId === settings?.classId)?.id ?? 'sky'
   const [targetId, setTargetId] = useState<AutomaticSegmentationTargetId>(initialTarget)
-  const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
   const [runningTargetId, setRunningTargetId] = useState<AutomaticSegmentationTargetId | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const [moreSearch, setMoreSearch] = useState('')
@@ -73,27 +68,6 @@ export function MaskPanel() {
     }
   }, [mask.activeMask?.classId, mask.activeMask?.modelId, mask.activeMask?.targetId])
 
-  useEffect(() => {
-    let active = true
-    window.luna.getSettings()
-      .then((appSettings) => {
-        if (active) setDeveloperMode(Boolean(appSettings.developerMode))
-      })
-      .catch(() => {
-        if (active) setDeveloperMode(false)
-      })
-    return () => { active = false }
-  }, [])
-
-  const target = useMemo(
-    () => AUTOMATIC_SEGMENTATION_TARGETS.find((item) => item.id === targetId) ?? AUTOMATIC_SEGMENTATION_TARGETS[0],
-    [targetId],
-  )
-  const automaticSelectionModel = [...SEGMENTATION_MODELS, ...SPECIALIZED_SEGMENTATION_MODELS, ...SAM_MODELS].find(
-    (model) => model.id === (automaticMode === 'point'
-      ? DEFAULT_POINT_SEGMENTATION_MODEL_ID
-      : target.modelId),
-  )
   const pointSelectionRunning = automaticMode === 'point' && runningTargetId === null && mask.busy && mask.segmentationProgress !== null
   const pointProgress = pointSelectionRunning ? mask.segmentationProgress : null
   const pointProgressIndeterminate = !pointProgress || pointProgress.percent === null
@@ -293,12 +267,6 @@ export function MaskPanel() {
             {mask.segmentationProgress.percent !== null && <strong>{mask.segmentationProgress.percent}%</strong>}
           </div>
         )}
-        {developerMode && automaticSelectionModel && (
-          <div className="workspace-mask-model-field">
-            <strong>模型</strong>
-            <span>{automaticSelectionModel.name} · {formatModelSize(automaticSelectionModel.sizeBytes)}</span>
-          </div>
-        )}
         {automaticSelectionError && !mask.segmentationProgress && (
           <div className="workspace-mask-auto-error" role="alert">
             <p>{automaticSelectionError}</p>
@@ -373,8 +341,8 @@ export function MaskPanel() {
         <div className="workspace-mask-editor-section">
           {!hasVectorComponents && (
             <ParamSlider
-              label="整体柔化"
-              value={settings?.feather ?? 0}
+              label="羽化"
+              value={settings?.feather ?? 2}
               min={0}
               max={100}
               onChange={(feather) => mask.updateGroupedMaskSettings({ feather }, 'feather')}
