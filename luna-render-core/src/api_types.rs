@@ -139,6 +139,15 @@ pub struct RenderLayerTransform {
     pub translate_y: Option<f64>,
 }
 
+#[napi(object)]
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct RenderMaskTransform {
+    pub translate_x: f64,
+    pub translate_y: f64,
+    pub scale: f64,
+    pub rotation: f64,
+}
+
 /// 层相对定位：Rust 根据画布比例自动计算 dst，保证纹理比例不变形
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
@@ -147,6 +156,29 @@ pub struct LayerPositioning {
     pub target_width: f64,
     pub margin_x: f64,
     pub margin_y: f64,
+}
+
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderPixelStretch {
+    pub mode: String,
+    pub intensity: f64,
+    pub origin_x: f64,
+    pub origin_y: f64,
+    pub angle: Option<f64>,
+    pub ribbon_size: Option<f64>,
+    pub sample_start: Option<f64>,
+    pub sample_end: Option<f64>,
+    pub line_end: Option<f64>,
+    pub control_start: Option<f64>,
+    pub control_end: Option<f64>,
+    pub center_x: Option<f64>,
+    pub center_y: Option<f64>,
+    pub path_points: Option<Vec<f64>>,
+    pub path_start_width: Option<f64>,
+    pub path_end_width: Option<f64>,
+    pub fill_sample_gaps: Option<bool>,
 }
 
 impl Default for RenderLayerTransform {
@@ -172,6 +204,8 @@ impl Default for RenderLayerTransform {
 pub struct RenderLayer {
     pub texture_id: u32,
     pub layer_type: Option<String>,
+    pub precompose_group: Option<String>,
+    pub precompose_role: Option<String>,
     pub shape: Option<String>,
     pub fill_color: Option<String>,
     pub corner_radius: Option<f64>,
@@ -195,11 +229,20 @@ pub struct RenderLayer {
     pub src_w: f64,
     pub src_h: f64,
     pub opacity: f64,
+    pub blend_mode: Option<String>,
     pub reveal_progress: Option<f64>,
     pub z_index: i32,
     pub color: Option<RenderColorAdjustments>,
+    pub mask_path: Option<String>,
+    pub mask_texture_id: Option<u32>,
+    pub mask_opacity: Option<f64>,
+    pub mask_inverted: Option<bool>,
+    pub mask_feather: Option<f64>,
+    pub mask_transform: Option<RenderMaskTransform>,
+    pub pixel_stretch: Option<RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
+    pub restore_lut_id: Option<String>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
 }
@@ -209,6 +252,8 @@ pub struct RenderLayer {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PreviewLayer {
     pub layer_type: Option<String>,
+    pub precompose_group: Option<String>,
+    pub precompose_role: Option<String>,
     pub file_path: String,
     pub is_video: bool,
     pub video_time: f64,
@@ -221,10 +266,18 @@ pub struct PreviewLayer {
     pub src_w: f64,
     pub src_h: f64,
     pub opacity: f64,
+    pub blend_mode: Option<String>,
     pub z_index: i32,
     pub color: Option<RenderColorAdjustments>,
+    pub mask_path: Option<String>,
+    pub mask_opacity: Option<f64>,
+    pub mask_inverted: Option<bool>,
+    pub mask_feather: Option<f64>,
+    pub mask_transform: Option<RenderMaskTransform>,
+    pub pixel_stretch: Option<RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
+    pub restore_lut_id: Option<String>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
     pub shape: Option<String>,

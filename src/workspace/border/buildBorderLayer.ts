@@ -1,31 +1,10 @@
-import type { DeclarativeCompositionLayer, FramePreset, MediaMetadata, PreviewLayer } from '../../shared/types'
+import type { DeclarativeCompositionLayer, MediaMetadata, PreviewLayer, RenderColorAdjustments } from '../../shared/types'
 import { isVideoPath } from '../../lib/fileUtils'
 import type { BorderSettings } from '../shared/editPipeline'
 import { getBorderLogo } from './logoAssets'
+import { FRAME_PRESETS } from './borderPresets'
 
-type PresetModuleValue = FramePreset | PresetModuleValue[] | { default?: PresetModuleValue }
-
-const presetModules = import.meta.glob<PresetModuleValue>('./presets/*.json', {
-  eager: true,
-  import: 'default',
-})
-
-function normalizePresets(value: PresetModuleValue | undefined): FramePreset[] {
-  if (!value) return []
-  if (Array.isArray(value)) return value.flatMap(normalizePresets)
-  if ('default' in value && value.default) return normalizePresets(value.default)
-  const candidate = value as Partial<FramePreset>
-  if (typeof candidate.id === 'string' && typeof candidate.name === 'string' && Array.isArray(candidate.layers)) {
-    return [candidate as FramePreset]
-  }
-  console.warn('[FramePreset] 已忽略格式不正确的预设', value)
-  return []
-}
-
-/** 支持单对象、数组及嵌套数组。文件按名称排序，数组保持文件内顺序。 */
-export const FRAME_PRESETS = Object.entries(presetModules)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .flatMap(([, preset]) => normalizePresets(preset))
+export { FRAME_PRESETS } from './borderPresets'
 
 function metadataVariables(metadata: MediaMetadata | null, title: string): Record<string, string> {
   const values = new Map<string, string>()
@@ -74,6 +53,61 @@ function videoTemplate(content: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+function originalBlurColor(
+  color: RenderColorAdjustments | undefined,
+  blurRadius: number,
+): RenderColorAdjustments | undefined {
+  if (!color) return undefined
+  return {
+    ...color,
+    exposure: 0,
+    black: 0,
+    brightness: 0,
+    contrast: 0,
+    saturation: 0,
+    vibrance: 0,
+    temperature: 0,
+    tint: 0,
+    highlights: 0,
+    shadows: 0,
+    whites: 0,
+    blacks: 0,
+    clarity: 0,
+    texture: 0,
+    sharpen: 0,
+    denoise: 100 + blurRadius * 100,
+    gradeShadowsHue: 0,
+    gradeShadowsAmount: 0,
+    gradeMidHue: 0,
+    gradeMidAmount: 0,
+    gradeHighlightsHue: 0,
+    gradeHighlightsAmount: 0,
+    curveLift: 0,
+    curveContrast: 0,
+    curve: { rgb: [], luminance: [], red: [], green: [], blue: [] },
+    levelsBlack: 0,
+    levelsGray: 0.5,
+    levelsWhite: 1,
+    hslChannels: color.hslChannels.map((channel) => ({
+      ...channel,
+      hueShift: 0,
+      saturation: 0,
+      luminance: 0,
+    })),
+  }
+}
+
+function scaleRectFromCenter(rect: { x: number; y: number; w: number; h: number }, scale: number) {
+  const w = rect.w * scale
+  const h = rect.h * scale
+  return {
+    x: rect.x + (rect.w - w) / 2,
+    y: rect.y + (rect.h - h) / 2,
+    w,
+    h,
+  }
 }
 
 /**
@@ -147,7 +181,7 @@ export interface BuildBorderLayerOptions {
   metadata: MediaMetadata | null
   /** 当前素材。带 media 层的预设可借此重新安排照片在画布中的位置。 */
   mediaPath?: string | null
-  mediaLayerStyle?: Pick<PreviewLayer, 'color' | 'transform' | 'lutId' | 'lutIntensity' | 'isVideo'>
+  mediaLayerStyle?: Pick<PreviewLayer, 'color' | 'transform' | 'restoreLutId' | 'lutId' | 'lutIntensity' | 'isVideo' | 'maskPath' | 'maskOpacity' | 'maskInverted' | 'maskFeather'>
 }
 
 /** JSON 预设直接转换为 wgpu 原生层，不在浏览器中进行任何栅格化。 */
@@ -172,6 +206,13 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
   const usesCutoutLayout = mediaLayout?.type === 'media' && cutoutBackground?.type === 'shape'
   const scale = hasMediaLayout ? 1 : border.frameSize / 100
   const isVideoMedia = mediaPath ? isVideoPath(mediaPath) : false
+  const isBlurredPhotoCard = preset.id === 'blurred-photo-card'
+  const photoLayer = isBlurredPhotoCard
+    ? preset.layers.find((layer) => layer.id === 'photo')
+    : undefined
+  const scaledPhotoRect = photoLayer
+    ? scaleRectFromCenter(photoLayer.rect, clamp(border.frameSize / 100, 0.7, 1.1))
+    : undefined
 
   return preset.layers.flatMap((layer: DeclarativeCompositionLayer): PreviewLayer[] => {
     if (layer.visible === false || layer.type === 'group' || layer.type === 'decoration') return []
@@ -182,20 +223,56 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
     if (usesCutoutLayout && layer === cutoutBackground) {
       return buildCutoutBackground(cutoutBackground, mediaLayout, border)
     }
-    const h = Math.min(1, layer.rect.h * scale)
+    let layerRect = isBlurredPhotoCard && layer.id === 'photo' && scaledPhotoRect
+      ? scaledPhotoRect
+      : layer.rect
+    let layerOpacity = layer.opacity ?? 1
+    let layerCornerRadius = 'cornerRadius' in layer ? layer.cornerRadius : undefined
+    let layerFeather = layer.type === 'shape' ? layer.feather : undefined
+    if (isBlurredPhotoCard && layer.id === 'photo-shadow' && scaledPhotoRect) {
+      const minCanvasSide = Math.max(1, Math.min(canvasWidth, canvasHeight))
+      const spreadPixels = minCanvasSide * (0.01 + border.shadowBlur / 100 * 0.06) * 2
+      const spreadX = spreadPixels / Math.max(1, canvasWidth)
+      const spreadY = spreadPixels / Math.max(1, canvasHeight)
+      layerRect = {
+        x: scaledPhotoRect.x - spreadX,
+        y: scaledPhotoRect.y - spreadY,
+        w: scaledPhotoRect.w + spreadX * 2,
+        h: scaledPhotoRect.h + spreadY * 2,
+      }
+      layerOpacity = clamp(border.shadowStrength / 100 * 2, 0, 1)
+      const photoRadius = photoLayer && 'cornerRadius' in photoLayer ? photoLayer.cornerRadius ?? 0 : 0
+      const photoMinSide = Math.min(scaledPhotoRect.w * canvasWidth, scaledPhotoRect.h * canvasHeight)
+      const shadowMinSide = Math.min(layerRect.w * canvasWidth, layerRect.h * canvasHeight)
+      layerCornerRadius = (photoRadius * photoMinSide + spreadPixels) / Math.max(1, shadowMinSide)
+      layerFeather = spreadPixels / Math.max(1, shadowMinSide)
+    }
+    const isBlurredPhotoShadow = isBlurredPhotoCard && layer.id === 'photo-shadow'
+    const h = isBlurredPhotoShadow ? layerRect.h * scale : Math.min(1, layerRect.h * scale)
+    const dstY = 1 - (1 - layerRect.y) * scale
     const common = {
-      filePath: '', dstX: layer.rect.x, dstY: Math.max(0, 1 - (1 - layer.rect.y) * scale), dstW: layer.rect.w, dstH: h,
-      srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: (layer.opacity ?? 1) * border.opacity / 100, zIndex: layer.zIndex,
+      filePath: '', dstX: layerRect.x, dstY: isBlurredPhotoShadow ? dstY : Math.max(0, dstY), dstW: layerRect.w, dstH: h,
+      srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: layerOpacity * border.opacity / 100, zIndex: layer.zIndex,
     }
     if (layer.type === 'media') {
       if (!mediaPath) return []
       const baseTransform = mediaLayerStyle?.transform
+      const isBlurBackground = Boolean(layer.blurRadius && layer.blurRadius > 0)
+      const color = isBlurBackground
+        ? originalBlurColor(mediaLayerStyle?.color, layer.blurRadius ?? 0)
+        : mediaLayerStyle?.color
       return [{
         ...common,
         ...mediaLayerStyle,
+        color,
         layerType: 'media',
+        layoutRole: isBlurBackground ? 'background' : 'content',
         filePath: mediaPath,
+        restoreLutId: isBlurBackground ? undefined : mediaLayerStyle?.restoreLutId,
+        lutId: isBlurBackground ? undefined : mediaLayerStyle?.lutId,
+        lutIntensity: isBlurBackground ? undefined : mediaLayerStyle?.lutIntensity,
         fit: layer.fit === 'cover-scale' ? 'cover-scale' : 'cover',
+        cornerRadius: layerCornerRadius,
         srcX: layer.crop?.x ?? 0,
         srcY: layer.crop?.y ?? 0,
         srcW: layer.crop?.w ?? 1,
@@ -212,7 +289,16 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
         },
       }]
     }
-    if (layer.type === 'shape') return [{ ...common, layerType: 'shape', shape: layer.shape, fillColor: layer.id === 'background' ? border.backgroundColor : layer.fill?.color, cornerRadius: layer.cornerRadius, strokeColor: layer.stroke?.color, strokeWidth: layer.stroke?.width }]
+    if (layer.type === 'shape') return [{
+      ...common,
+      layerType: 'shape',
+      shape: layer.shape,
+      fillColor: layer.id === 'background' ? border.backgroundColor : layer.fill?.color,
+      cornerRadius: layerCornerRadius,
+      strokeColor: layer.stroke?.color,
+      // 正值仍是描边像素；负值作为内部标记，表示连续软边的归一化宽度。
+      strokeWidth: layerFeather ? -layerFeather : layer.stroke?.width,
+    }]
     if (layer.type === 'logo' && layer.source?.path) {
       const logo = getBorderLogo(layer.source.path)
       if (!logo) return []
@@ -251,6 +337,36 @@ export function buildBorderLayer({ canvasWidth, canvasHeight, border, metadata, 
     const rawContent = layer.type === 'logo' ? layer.fallbackText ?? '' : layer.content
     const content = template(isVideoMedia && layer.type === 'text' ? videoTemplate(rawContent) : rawContent, variables)
     const style = layer.type === 'text' ? layer.style : { fontFamily: 'Source Han Sans SC', fontFile: 'fonts/SourceHanSansSC-Bold.otf', fontSize: 18, fontWeight: 700, color: layer.tint?.color ?? border.textColor, align: 'left' as const }
-    return [{ ...common, layerType: layer.type, content, fontSize: style.fontSize, fontFamily: style.fontFamily, fontFile: style.fontFile ?? 'fonts/SourceHanSansSC-Regular.otf', fontWeight: style.fontWeight, textColor: layer.type === 'logo' ? style.color : border.textColor, textAlign: style.align, verticalAlign: ('verticalAlign' in style ? style.verticalAlign : undefined) }]
+    const textLayer: PreviewLayer = { ...common, layerType: layer.type, content, fontSize: style.fontSize, fontFamily: style.fontFamily, fontFile: style.fontFile ?? 'fonts/SourceHanSansSC-Regular.otf', fontWeight: style.fontWeight, textColor: layer.type === 'logo' ? style.color : border.textColor, textAlign: style.align, verticalAlign: ('verticalAlign' in style ? style.verticalAlign : undefined) }
+    const shadow = layer.type === 'text' ? layer.style.shadow : undefined
+    if (!shadow) return [textLayer]
+
+    const blurRadius = Math.max(0, shadow.blur ?? 0)
+    const radius = blurRadius / 2
+    const samples = blurRadius > 0
+      ? [
+          { x: 0, y: 0, weight: 0.4 },
+          { x: -radius, y: 0, weight: 0.1 },
+          { x: radius, y: 0, weight: 0.1 },
+          { x: 0, y: -radius, weight: 0.1 },
+          { x: 0, y: radius, weight: 0.1 },
+          { x: -radius, y: -radius, weight: 0.05 },
+          { x: radius, y: -radius, weight: 0.05 },
+          { x: -radius, y: radius, weight: 0.05 },
+          { x: radius, y: radius, weight: 0.05 },
+        ]
+      : [{ x: 0, y: 0, weight: 1 }]
+    const shadowOpacity = clamp(shadow.opacity ?? 0.5, 0, 1)
+    const offsetX = shadow.offsetX ?? 0
+    const offsetY = shadow.offsetY ?? 0
+    const shadowLayers = samples.map(({ x, y, weight }): PreviewLayer => ({
+      ...textLayer,
+      dstX: textLayer.dstX + (offsetX + x) / Math.max(1, canvasWidth),
+      dstY: textLayer.dstY + (offsetY + y) / Math.max(1, canvasHeight),
+      opacity: textLayer.opacity * shadowOpacity * weight,
+      zIndex: textLayer.zIndex - 0.01,
+      textColor: shadow.color,
+    }))
+    return [...shadowLayers, textLayer]
   })
 }

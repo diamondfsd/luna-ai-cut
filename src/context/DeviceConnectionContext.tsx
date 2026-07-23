@@ -4,6 +4,9 @@ import { useApp } from './AppContext'
 import { logger } from '../lib/rendererLogger'
 import type {
   AppSettings,
+  CameraConnectionMode,
+  CameraMediaSourceCapabilities,
+  CameraMediaSourceStatus,
   ConnectionStatus,
   DeviceConnectionPhase,
   DeviceDefinition,
@@ -13,14 +16,19 @@ import type {
 interface DeviceConnectionContextValue {
   activeDevice: DeviceDefinition | undefined
   cameraLibraryMounted: boolean
-  connectDevice: () => Promise<void>
+  connectDevice: (rootPath?: string) => Promise<void>
+  chooseWiredCamera: () => Promise<void>
+  connectionMode: CameraConnectionMode
+  disconnectDevice: () => Promise<void>
+  setConnectionMode: (mode: CameraConnectionMode) => Promise<void>
   devices: DeviceDefinition[]
   devicePhase: DeviceConnectionPhase
   isConnected: boolean
   mockServerStatus: MockServerStatus | null
   chooseMockMediaDir: () => Promise<void>
   showDeviceConnect: boolean
-  sourceMode: 'camera'
+  sourceMode: CameraConnectionMode
+  sourceCapabilities: CameraMediaSourceCapabilities
   startMockServer: (settings?: Partial<AppSettings>) => Promise<void>
   stopMockServer: () => Promise<void>
 }
@@ -35,9 +43,16 @@ function activeDeviceFor(settings: AppSettings | null, devices: DeviceDefinition
   return devices.find((device) => device.id === settings?.activeDeviceId) ?? firstDevice(devices)
 }
 
-function connectionTimeoutStatus(host: string): Promise<ConnectionStatus> {
+const EMPTY_CAPABILITIES: CameraMediaSourceCapabilities = {
+  list: false, preview: false, copyToLocal: false, create: false, update: false, delete: false, watch: false,
+}
+
+function connectionTimeoutStatus(mode: CameraConnectionMode, host: string): Promise<CameraMediaSourceStatus> {
   return new Promise((resolve) => {
-    setTimeout(() => resolve({ host, httpOk: false, controlOk: false, message: '连接超时' }), 4000)
+    setTimeout(() => resolve({
+      mode, connected: false, sourceId: mode, capabilities: EMPTY_CAPABILITIES,
+      host, httpOk: false, controlOk: false, message: '连接超时',
+    }), mode === 'wired' ? 12000 : 4000)
   })
 }
 
@@ -94,10 +109,12 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   const [devicePhase, setDevicePhase] = useState<DeviceConnectionPhase>('idle')
   const [mockServerStatus, setMockServerStatus] = useState<MockServerStatus | null>(null)
   const [cameraLibraryMounted, setCameraLibraryMounted] = useState(false)
+  const [connectionMode, setConnectionModeState] = useState<CameraConnectionMode>('wireless')
 
   const activeDevice = useMemo(() => activeDeviceFor(settings, devices), [devices, settings])
   const isConnected = devicePhase === 'connected' && Boolean(connection?.httpOk && connection.controlOk)
   const showDeviceConnect = !isConnected
+  const sourceCapabilities = (connection as CameraMediaSourceStatus | null)?.capabilities ?? EMPTY_CAPABILITIES
 
   useEffect(() => {
     const initialize = async (): Promise<void> => {
@@ -110,6 +127,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         logger.info('[设备连接] 初始化完成', { devices: nextDevices.map(d => ({ id: d.id, name: d.name })), activeDeviceId: nextSettings.activeDeviceId })
         setDevices(nextDevices)
         setSettings(nextSettings)
+        setConnectionModeState(nextSettings.cameraConnectionMode ?? 'wireless')
         setConnection(null)
         setDevicePhase('idle')
         void window.luna.getMockServerStatus().then(setMockServerStatus).catch(() => undefined)
@@ -123,6 +141,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     return window.luna.onConnectionLost(() => {
+      if (connectionMode !== 'wireless') return
       const host = settings?.cameraHost || activeDevice?.defaultHost || ''
       logger.warn('[设备连接] 连接丢失', { host })
       setConnection({ host, httpOk: false, controlOk: false, message: '设备连接已断开' })
@@ -130,18 +149,47 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       void window.luna.disconnect()
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDevice?.defaultHost, settings?.cameraHost])
+  }, [activeDevice?.defaultHost, connectionMode, settings?.cameraHost])
+
+  useEffect(() => {
+    if (connectionMode !== 'wired' || !isConnected) return
+    const timer = window.setInterval(() => {
+      void window.luna.cameraSource.check({
+        mode: 'wired',
+        deviceId: settings?.activeDeviceId,
+        rootPath: settings?.mountedCameraRoot,
+      }).then((status) => {
+        if (status.connected) return
+        setConnection(status)
+        setDevicePhase('error')
+      }).catch(() => {
+        const disconnectedStatus: CameraMediaSourceStatus = {
+          mode: 'wired',
+          connected: false,
+          sourceId: settings?.mountedCameraRoot || 'mounted-camera',
+          capabilities: EMPTY_CAPABILITIES,
+          host: '',
+          httpOk: false,
+          controlOk: false,
+          message: '相机磁盘已断开',
+        }
+        setConnection(disconnectedStatus)
+        setDevicePhase('error')
+      })
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [connectionMode, isConnected, setConnection, settings?.activeDeviceId, settings?.mountedCameraRoot])
 
   useEffect(() => {
     if (!showDeviceConnect) setCameraLibraryMounted(true)
   }, [showDeviceConnect])
 
-  async function connectDevice(): Promise<void> {
+  async function connectDevice(rootPath?: string): Promise<void> {
     try {
       const deviceId = settings?.activeDeviceId ?? activeDevice?.id
       const host = settings?.cameraHost ?? activeDevice?.defaultHost
-      logger.info('[设备连接] 发起连接', { deviceId, host })
-      if (!deviceId || !host) {
+      logger.info('[设备连接] 发起连接', { mode: connectionMode, deviceId, host, rootPath })
+      if (!deviceId || (connectionMode === 'wireless' && !host)) {
         const errMsg = '未配置设备连接地址'
         logger.warn('[设备连接] 无法连接', { deviceId, host, error: errMsg })
         setConnection({ host: host ?? '', httpOk: false, controlOk: false, message: errMsg })
@@ -152,13 +200,20 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       setDevicePhase('checking')
       const t0 = performance.now()
       const status = await Promise.race([
-        window.luna.connectDevice({ deviceId, host }),
-        connectionTimeoutStatus(host),
+        window.luna.cameraSource.connect({
+          mode: connectionMode,
+          deviceId,
+          host,
+          rootPath: rootPath || settings?.mountedCameraRoot,
+        }),
+        connectionTimeoutStatus(connectionMode, host ?? ''),
       ])
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-      const enrichedStatus = status.httpOk && status.controlOk ? status : await enrichConnectionStatus(status)
+      const enrichedStatus = status.connected || connectionMode === 'wired' ? status : await enrichConnectionStatus(status)
       setConnection(enrichedStatus)
-      if (enrichedStatus.httpOk && enrichedStatus.controlOk) {
+      if (status.connected) {
+        const updated = await window.luna.getSettings()
+        setSettings(updated)
         setDevicePhase('connected')
         setCameraLibraryMounted(false)
         logger.info('[设备连接] 连接成功', { deviceId, host, elapsedSec: elapsed })
@@ -181,6 +236,49 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       setConnection({ host, httpOk: false, controlOk: false, message: errMsg })
       setDevicePhase('error')
     }
+  }
+
+  async function chooseWiredCamera(): Promise<void> {
+    try {
+      const volume = await window.luna.cameraSource.chooseMounted()
+      if (!volume) return
+      const updated = await window.luna.getSettings()
+      setSettings(updated)
+      await connectDevice(volume.rootPath)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setConnection({ host: '', httpOk: false, controlOk: false, message })
+      setDevicePhase('error')
+    }
+  }
+
+  async function setConnectionMode(mode: CameraConnectionMode): Promise<void> {
+    if (mode === connectionMode) return
+    if (isConnected) {
+      await window.luna.cameraSource.disconnect({
+        mode: connectionMode,
+        deviceId: settings?.activeDeviceId,
+        host: settings?.cameraHost,
+        rootPath: settings?.mountedCameraRoot,
+      }).catch(() => undefined)
+    }
+    setConnectionModeState(mode)
+    setConnection(null)
+    setDevicePhase('idle')
+    setCameraLibraryMounted(false)
+    setSettings(await window.luna.saveSettings({ cameraConnectionMode: mode }))
+  }
+
+  async function disconnectDevice(): Promise<void> {
+    await window.luna.cameraSource.disconnect({
+      mode: connectionMode,
+      deviceId: settings?.activeDeviceId,
+      host: settings?.cameraHost,
+      rootPath: settings?.mountedCameraRoot,
+    }).catch(() => undefined)
+    setConnection(null)
+    setDevicePhase('idle')
+    setCameraLibraryMounted(false)
   }
 
   async function chooseMockMediaDir(): Promise<void> {
@@ -214,14 +312,19 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
       value={{
         activeDevice,
         cameraLibraryMounted,
+        chooseWiredCamera,
         connectDevice,
+        connectionMode,
+        disconnectDevice,
         devices,
         devicePhase,
         isConnected,
         mockServerStatus,
         chooseMockMediaDir,
         showDeviceConnect,
-        sourceMode: 'camera',
+        sourceMode: connectionMode,
+        sourceCapabilities,
+        setConnectionMode,
         startMockServer,
         stopMockServer,
       }}

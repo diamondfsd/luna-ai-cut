@@ -24,6 +24,7 @@ export {
   getLocalResourcesDir,
   chooseLutDir,
   chooseMockMediaDir,
+  chooseWorkspaceMediaFiles,
   getSettings,
   previewCacheDir,
   saveSettings,

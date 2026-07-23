@@ -37,6 +37,7 @@ class LutManagerClass {
       }
     } catch (error) {
       console.warn('[LutManager] 扫描 LUT 目录失败:', error)
+      throw error
     }
 
     this.allLutsCache = results

@@ -79,18 +79,55 @@ pub struct CompositionReveal {
 
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
+pub struct MaskTrackKeyframe {
+    pub time: f64,
+    pub translate_x: f64,
+    pub translate_y: f64,
+    pub scale: f64,
+    pub rotation: f64,
+    pub confidence: f64,
+    pub corrected: Option<bool>,
+}
+
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
+pub struct MaskTrack {
+    pub version: u32,
+    pub anchor_time: f64,
+    pub start_time: f64,
+    pub end_time: f64,
+    pub keyframes: Vec<MaskTrackKeyframe>,
+}
+
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionLayer {
     pub id: Option<String>,
     pub layer_type: Option<String>,
+    #[serde(rename = "precomposeGroup", alias = "precompose_group")]
+    pub precompose_group: Option<String>,
+    #[serde(rename = "precomposeRole", alias = "precompose_role")]
+    pub precompose_role: Option<String>,
     pub source: CompositionSource,
     pub rect: CompositionRect,
+    #[serde(rename = "sourceRect", alias = "source_rect")]
+    pub source_rect: Option<CompositionRect>,
     pub fit: Option<String>,
     pub opacity: Option<f64>,
+    pub blend_mode: Option<String>,
     pub z_index: Option<i32>,
     pub reveal: Option<CompositionReveal>,
     pub color: Option<RenderColorAdjustments>,
+    pub mask_path: Option<String>,
+    pub mask_opacity: Option<f64>,
+    pub mask_inverted: Option<bool>,
+    pub mask_feather: Option<f64>,
+    pub mask_track: Option<MaskTrack>,
+    #[serde(rename = "pixelStretch", alias = "pixel_stretch")]
+    pub pixel_stretch: Option<crate::RenderPixelStretch>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
+    pub restore_lut_id: Option<String>,
     pub lut_id: Option<String>,
     pub lut_intensity: Option<f64>,
     pub shape: Option<String>,

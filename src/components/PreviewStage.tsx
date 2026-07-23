@@ -6,7 +6,8 @@ import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls } from '../ui'
 import { isImagePath, isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
-import { applyBorderMediaLayout, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import './PreviewStage.css'
 
 export interface PreviewStageHandle {
@@ -19,6 +20,8 @@ export interface PreviewStageHandle {
 
 interface PreviewStageProps {
   url: string | null
+  /** 已知的 Live Photo 状态；传入后不再单独扫描文件，保证与素材列表一致。 */
+  isLivePhoto?: boolean
   pending?: boolean
   extraLayers?: PreviewLayer[]
   pipeline?: EditPipeline
@@ -29,6 +32,10 @@ interface PreviewStageProps {
   renderOverlay?: () => ReactNode
   viewScale?: 'fit' | number
   onViewScaleChange?: (scale: 'fit' | number) => void
+  onFitScaleChange?: (scale: number) => void
+  previewMaxSide?: number
+  /** 临时旁路效果时保持合成视频渲染器，避免对比过程中卸载画布和解码器。 */
+  keepCompositionVideoRenderer?: boolean
   /** 播放/暂停/当前时间变更回调 */
   onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
 }
@@ -85,13 +92,9 @@ export function calcAspectRatio(width: number, height: number): number {
   return Math.round((width / height) * 100) / 100
 }
 
-const VIDEO_PREVIEW_MAX_SIDE = 1440
-const GPU_CANVAS_MAX_SIDE = 8192
-
-function projectCanvasFor(resolution: MediaResolution | null, fullResolution = false): StageSize | null {
+function projectCanvasFor(resolution: MediaResolution | null, maxSide: number): StageSize | null {
   if (!resolution) return null
   const sourceMaxSide = Math.max(resolution.width, resolution.height)
-  const maxSide = fullResolution ? GPU_CANVAS_MAX_SIDE : VIDEO_PREVIEW_MAX_SIDE
   if (sourceMaxSide <= maxSide) return { width: resolution.width, height: resolution.height }
   const scale = maxSide / sourceMaxSide
   return {
@@ -102,7 +105,7 @@ function projectCanvasFor(resolution: MediaResolution | null, fullResolution = f
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onPlayStateChange }: PreviewStageProps,
+    { url, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const stageRef = useRef<HTMLDivElement | null>(null)
@@ -119,7 +122,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const isLivePhoto = useIsLivePhoto(url)
+  const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
+  const isLivePhoto = isLivePhotoOverride ?? detectedLivePhoto
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
   const [liveVideoLoading, setLiveVideoLoading] = useState(false)
   const [livePlaying, setLivePlaying] = useState(false)
@@ -242,9 +246,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     } else {
       wasPlayingBeforeSeekRef.current = false
     }
-    // 重置恢复播放标志
     shouldResumePlaybackRef.current = false
-    // 显示 loading 状态
     setLoading(true)
   }
 
@@ -300,12 +302,16 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const previewCanvas = useMemo(
     () => projectCanvasFor(
       resolution && pipeline ? outputSizeForTransform(resolution, pipeline.transform) : resolution,
-      !isDisplayVideo,
+      Math.min(3840, Math.max(1, previewMaxSide)),
     ),
-    [isDisplayVideo, pipeline, resolution],
+    [pipeline, previewMaxSide, resolution],
   )
 
-  // ── LUT 滤镜：直接传文件路径给 Rust ──
+  useEffect(() => {
+    if (previewCanvas?.width && previewCanvas.height) setLoading(true)
+  }, [previewCanvas?.width, previewCanvas?.height])
+
+  const restoreLutFilePath = pipeline?.logRestore?.activeId ?? undefined
   const lutFilePath = pipeline?.lutFilter?.activeId ?? undefined
 
   const buildAdjustedLayers = useCallback((sourceUrl: string | null): PreviewLayer[] => {
@@ -317,12 +323,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         ...canvasFrame,
         color: pipelineColorToRenderColor(pipeline.color),
         transform: pipelineTransformToRenderTransform(pipeline.transform),
+        restoreLutId: restoreLutFilePath,
         lutId: lutFilePath,
         lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
       }
       main[0] = cropActive
         ? styledMain
         : applyBorderMediaLayout(styledMain, pipeline.border)
+      main.splice(1, 0, ...buildLocalColorLayers(main[0], pipeline))
     }
     const m = main[0]
     if (!m) {
@@ -345,12 +353,17 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       dstH: l.dstH * cH,
     }))
     return [...main, ...adjusted]
-  }, [cropActive, extraLayers, pipeline, lutFilePath])
+  }, [cropActive, extraLayers, pipeline, restoreLutFilePath, lutFilePath])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []
     return buildAdjustedLayers(displayUrl)
   }, [buildAdjustedLayers, displayUrl, resolution, livePlaying, pending])
+  const useCompositionVideoRenderer = requiresCompositionVideoRenderer(
+    isDisplayVideo,
+    layers,
+    keepCompositionVideoRenderer,
+  )
 
   const syncCanvasMetrics = useCallback(() => {
     const stage = stageRef.current
@@ -359,6 +372,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     if (!stage || !canvas || !resolution) return
     const stageRect = stage.getBoundingClientRect()
     const canvasRect = canvas.getBoundingClientRect()
+    if (canvas.width > 0 && canvas.height > 0) {
+      const fitScale = Math.min(canvas.clientWidth / canvas.width, canvas.clientHeight / canvas.height)
+      if (Number.isFinite(fitScale) && fitScale > 0) onFitScaleChange?.(Math.round(fitScale * 100))
+    }
     onMetricsChange?.({
       sourceAspect: resolution.width / resolution.height,
       imageRect: {
@@ -368,7 +385,15 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         height: canvasRect.height,
       },
     })
-  }, [onMetricsChange, resolution])
+  }, [onFitScaleChange, onMetricsChange, resolution])
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    const observer = new ResizeObserver(syncCanvasMetrics)
+    observer.observe(wrapper)
+    return () => observer.disconnect()
+  }, [syncCanvasMetrics])
 
   // 通过 IPC 获取媒体文件实际分辨率
   useEffect(() => {
@@ -434,11 +459,12 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     >
       {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          {isDisplayVideo ? (
+          {isDisplayVideo && !useCompositionVideoRenderer ? (
             <MultipleLayerVideoPreviewLrcRender
               layers={layers}
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
+              maxSide={Math.min(3840, Math.max(1, previewMaxSide))}
               playing={playing}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
@@ -452,9 +478,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
               maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}
-              interactiveImageLayerIndexes={cropActive ? [] : undefined}
+              interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
               onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
+              onViewportChange={syncCanvasMetrics}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
             />

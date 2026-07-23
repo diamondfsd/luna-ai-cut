@@ -3,11 +3,11 @@
  */
 import { app, ipcMain } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
-import { appendFileSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, statSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join, extname, basename, isAbsolute } from 'node:path'
 import {
-  ensureInit,
+  warmupRenderCore,
   renderCompositionFrame as lrcRenderCompositionFrame,
   renderCompositionFrameAsync as lrcRenderCompositionFrameAsync,
   resolveRenderSource as lrcResolveRenderSource,
@@ -22,26 +22,62 @@ import {
 import { getNative, cleanNativeInput } from './lunaRenderCore'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import * as exportTaskService from './exportTaskService'
-import { logMainError, logMainInfo } from './loggerService'
+import { logMainError, logMainInfo, logMainWarn } from './loggerService'
+import { RUNTIME_RESOURCE_DEFINITIONS } from './runtimeResourceDefinitions'
+import { loadRuntimeResource } from './runtimeResourceService'
+import { embedJpegSourceMetadata, embedVideoSourceMetadata } from './exportSourceMetadata'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
   activeNativeExportTasks: Set<string>
 }
 
-function resolveFontPaths<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(resolveFontPaths) as T
+function runtimeResourceCacheRoot(): string {
+  return join(app.getPath('userData'), 'resource-packs')
+}
+
+function relativePackPath(value: string, root: 'fonts' | 'luts'): string | null {
+  const normalized = value.replace(/\\/g, '/')
+  const prefix = `${root}/`
+  if (!isAbsolute(value)) return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : null
+  const index = normalized.toLowerCase().lastIndexOf(`/${prefix}`)
+  return index >= 0 ? normalized.slice(index + prefix.length + 1) : null
+}
+
+function joinPackPath(root: string, relative: string): string {
+  if (!relative || relative.split('/').some((part) => !part || part === '.' || part === '..')) {
+    throw new Error('资源文件路径不安全')
+  }
+  return join(root, ...relative.split('/'))
+}
+
+async function resolveRuntimePaths<T>(value: T): Promise<T> {
+  if (Array.isArray(value)) return await Promise.all(value.map(resolveRuntimePaths)) as T
   if (!value || typeof value !== 'object') return value
   const record = value as Record<string, unknown>
   const output: Record<string, unknown> = {}
   for (const [key, item] of Object.entries(record)) {
-    if (key === 'fontFile' && typeof item === 'string' && !isAbsolute(item)) {
-      const relative = item.replace(/^fonts[\\/]/, '')
-      output[key] = app.isPackaged
+    if (key === 'fontFile' && typeof item === 'string') {
+      const relative = relativePackPath(item, 'fonts')
+      const localPath = relative && !isAbsolute(item)
+        ? (app.isPackaged
         ? join(process.resourcesPath, 'fonts', relative)
-        : join(process.env.APP_ROOT ?? join(import.meta.dirname, '..'), 'public', 'fonts', relative)
+        : join(process.env.APP_ROOT ?? join(import.meta.dirname, '..'), 'public', 'fonts', relative))
+        : item
+      if (existsSync(localPath)) output[key] = localPath
+      else if (relative) {
+        const root = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.fonts)
+        output[key] = joinPackPath(root, relative)
+      } else output[key] = item
+    } else if ((key === 'lutId' || key === 'restoreLutId') && typeof item === 'string') {
+      const relative = relativePackPath(item, 'luts')
+      if (existsSync(item) || !relative) output[key] = item
+      else {
+        const root = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts)
+        output[key] = joinPackPath(root, relative)
+      }
     } else {
-      output[key] = resolveFontPaths(item)
+      output[key] = await resolveRuntimePaths(item)
     }
   }
   return output as T
@@ -85,9 +121,16 @@ export function register(ctx: RegisterContext): void {
   })
 
   ipcMain.handle('lrc:init', safe('init', async (_event: IpcMainInvokeEvent, logPath?: string) => {
-    ensureInit(logPath)
+    await warmupRenderCore(logPath)
     rcLog('lrc:init OK')
   }))
+
+  ipcMain.handle('lrc:prepareRuntimeResource', safe('prepareRuntimeResource',
+    async (_event: IpcMainInvokeEvent, kind: 'fonts' | 'luts') => {
+      if (kind !== 'fonts' && kind !== 'luts') throw new Error('未知运行时资源类型')
+      await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS[kind])
+    },
+  ))
 
   // 纹理管理方法
   ipcMain.handle('lrc:loadTexture', safe('loadTexture',
@@ -104,7 +147,7 @@ export function register(ctx: RegisterContext): void {
 
   ipcMain.handle('lrc:renderFrame', safe('renderFrame',
     async (_event: IpcMainInvokeEvent, canvasWidth: number, canvasHeight: number, layers: any[]) => {
-      return getNative().renderFrame(canvasWidth, canvasHeight, cleanNativeInput(resolveFontPaths(layers)))
+      return getNative().renderFrame(canvasWidth, canvasHeight, cleanNativeInput(await resolveRuntimePaths(layers)))
     },
   ))
 
@@ -118,7 +161,7 @@ export function register(ctx: RegisterContext): void {
     async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
-      return lrcRenderCompositionFrame(ffmpegPath, ffprobePath, resolveFontPaths(composition), time, maxSide)
+      return lrcRenderCompositionFrame(ffmpegPath, ffprobePath, await resolveRuntimePaths(composition), time, maxSide)
     },
   ))
 
@@ -126,7 +169,7 @@ export function register(ctx: RegisterContext): void {
     async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
       const ffmpegPath = getFfmpegPath()
       const ffprobePath = getFfprobePath()
-      return lrcRenderCompositionFrameAsync(ffmpegPath, ffprobePath, resolveFontPaths(composition), time, maxSide)
+      return lrcRenderCompositionFrameAsync(ffmpegPath, ffprobePath, await resolveRuntimePaths(composition), time, maxSide)
     },
   ))
 
@@ -156,7 +199,15 @@ export function register(ctx: RegisterContext): void {
         })
       }
 
-      await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition: resolveFontPaths(composition), format, quality })
+      await lrcExportCompositionImageAsync({ ffmpegPath, ffprobePath, outputPath, composition: await resolveRuntimePaths(composition), format, quality })
+      const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
+        ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
+      await embedJpegSourceMetadata(outputPath, sourcePath).catch((error) => {
+        logMainWarn('[导出] 无法写入图片来源信息', {
+          outputPath,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
 
       if (exportTaskId && exportItemId) {
         _event.sender?.send('export:progress', {
@@ -237,12 +288,20 @@ export function register(ctx: RegisterContext): void {
           ffmpegPath,
           ffprobePath,
           outputPath,
-          composition: resolveFontPaths(composition),
+          composition: await resolveRuntimePaths(composition),
           fps,
           duration,
           hardware,
           taskId: renderTaskId,
           qualityPreset,
+        })
+        const sourcePath = composition?.layers?.find((layer: any) => layer?.layerType === 'media')?.source?.path
+          ?? composition?.layers?.find((layer: any) => layer?.source?.path)?.source?.path
+        await embedVideoSourceMetadata(ffmpegPath, outputPath, sourcePath).catch((error) => {
+          logMainWarn('[导出] 无法写入来源设备信息', {
+            outputPath,
+            error: error instanceof Error ? error.message : String(error),
+          })
         })
         if (exportTaskId && exportItemId) {
           await exportTaskService.updateItem(exportTaskId, exportItemId, { status: 'done', progress: 100, destinationPath: outputPath }).catch(() => {})
@@ -299,10 +358,13 @@ export function register(ctx: RegisterContext): void {
       // 内置 LUT 目录：遍历候选路径，取第一个存在的
       //   打包后：process.resourcesPath/luts（extraResources 复制到 resources/luts/）
       //   开发时：VITE_PUBLIC/luts 或 APP_ROOT/public/luts
-      const builtinDir = [
+      let builtinDir = [
         join(process.resourcesPath || '', 'luts'),
         join(process.env.VITE_PUBLIC || join(process.env.APP_ROOT || join(import.meta.dirname, '..'), 'public'), 'luts'),
       ].find((p) => { try { return statSync(p).isDirectory() } catch { return false } }) || ''
+      if (!builtinDir) {
+        builtinDir = await loadRuntimeResource(runtimeResourceCacheRoot(), RUNTIME_RESOURCE_DEFINITIONS.luts)
+      }
 
       async function scanDir(dir: string, baseDir: string): Promise<void> {
         let entries: string[]
