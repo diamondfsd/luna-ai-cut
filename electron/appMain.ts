@@ -26,6 +26,8 @@ import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { cancelExportTask, warmupRenderCore } from './lunaRenderCore'
+import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
+import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -33,6 +35,9 @@ import type {
 } from '../src/shared/types'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+const e2eUserDataDir = process.env.LUNA_E2E_USER_DATA_DIR
+if (!app.isPackaged && e2eUserDataDir) app.setPath('userData', path.resolve(e2eUserDataDir))
 
 installCrashDiagnostics()
 
@@ -213,6 +218,7 @@ function createWindow(): void {
         }),
       )
     }, 200)
+    setTimeout(() => startSegmentationModelPrefetch(), 1_000)
   })
 }
 
@@ -243,6 +249,8 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   abortAllExports()
+  stopSegmentationModelPrefetch()
+  shutdownSpecializedSegmentationWorker()
   stopAllKeepAlive()
   cleanupDeviceDebug()
   void stopMockServer()

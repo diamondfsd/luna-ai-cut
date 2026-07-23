@@ -8,6 +8,7 @@ interface ParamSliderProps {
   max: number
   step?: number
   onChange: (value: number) => void
+  onCommit?: (value: number) => void
   formatValue?: (value: number) => string
 }
 
@@ -28,8 +29,10 @@ export function ParamSlider({
   max,
   step = 1,
   onChange,
+  onCommit,
   formatValue = formatSigned,
 }: ParamSliderProps) {
+  const accessibleLabel = typeof label === 'string' ? label : '参数'
   const zeroRatio = max - min > 0 ? (0 - min) / (max - min) : 0.5
   const valueRatio = max - min > 0 ? (value - min) / (max - min) : 0.5
   const fillLeft = Math.min(zeroRatio, valueRatio) * 100
@@ -37,6 +40,7 @@ export function ParamSlider({
 
   const [editValue, setEditValue] = useState(() => formatValue(value))
   const [editing, setEditing] = useState(false)
+  const [sliderValue, setSliderValue] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
   const rafRef = useRef<number | null>(null)
   const pendingValueRef = useRef<number | null>(null)
@@ -46,14 +50,16 @@ export function ParamSlider({
     if (!editing) {
       setEditValue(displayValue)
     }
-  }, [displayValue, editing])
+    if (onCommit) setSliderValue(value)
+  }, [displayValue, editing, onCommit, value])
 
   function commit() {
     const parsed = Number(editValue)
     if (!Number.isFinite(parsed)) {
       setEditValue(formatValue(value))
     } else {
-      onChange(Math.min(max, Math.max(min, parsed)))
+      const next = Math.min(max, Math.max(min, parsed))
+      ;(onCommit ?? onChange)(next)
     }
     setEditing(false)
   }
@@ -75,7 +81,9 @@ export function ParamSlider({
       cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-    onChange(next)
+    setSliderValue(next)
+    const commitChange = onCommit ?? onChange
+    commitChange(next)
   }
 
   useEffect(() => {
@@ -91,6 +99,7 @@ export function ParamSlider({
         <input
           ref={inputRef}
           type="number"
+          aria-label={`${accessibleLabel}数值`}
           className="workspace-param-value-input"
           min={min}
           max={max}
@@ -105,11 +114,11 @@ export function ParamSlider({
       <div className="workspace-range-wrap">
         <RadixSlider.Root
           className="workspace-slider-root"
-          value={[value]}
+          value={[onCommit ? sliderValue : value]}
           min={min}
           max={max}
           step={step}
-          onValueChange={([v]) => scheduleSliderChange(v)}
+          onValueChange={([v]) => { if (onCommit) setSliderValue(v); else scheduleSliderChange(v) }}
           onValueCommit={([v]) => flushSliderChange(v)}
         >
           <RadixSlider.Track className="workspace-slider-track">
@@ -124,6 +133,7 @@ export function ParamSlider({
           </RadixSlider.Track>
           <RadixSlider.Thumb
             className="workspace-slider-thumb"
+            aria-label={`${accessibleLabel}滑块`}
             onDoubleClick={() => onChange(min <= 0 && max >= 0 ? 0 : min)}
           />
         </RadixSlider.Root>

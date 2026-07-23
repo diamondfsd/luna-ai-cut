@@ -36,7 +36,7 @@
 }
 
 .workspace-import-dialog .ui-dialog-footer {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   padding: 14px 26px 18px;
 }
 

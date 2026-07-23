@@ -86,8 +86,31 @@ export interface RenderLayerTransform {
   translateY?: number
 }
 
+export interface RenderMaskTrackKeyframe {
+  time: number
+  translateX: number
+  translateY: number
+  scale: number
+  rotation: number
+  confidence: number
+  corrected?: boolean
+}
+
+export interface RenderMaskTrack {
+  version: 1
+  anchorTime: number
+  startTime: number
+  endTime: number
+  keyframes: RenderMaskTrackKeyframe[]
+}
+
 export interface PreviewLayer {
-  layerType?: 'media' | 'shape' | 'text' | 'logo' | 'decoration'
+  layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
+  /** 相框版式中的素材用途，仅用于构建渲染层。 */
+  layoutRole?: 'background' | 'content'
+  /** 同组 input 层会先在 GPU 中合成为一张纹理，再供 output 层使用。 */
+  precomposeGroup?: string
+  precomposeRole?: 'input' | 'output'
   filePath: string
   isVideo?: boolean
   /** 显式相同的 key 会复用同一份视频解码纹理。 */
@@ -98,18 +121,27 @@ export interface PreviewLayer {
   /** 截取后的有效时长（秒）。不设则用源视频完整时长。 */
   videoDuration?: number
   /** 纹理在目标区域内的适配方式；cover-scale 保留完整纹理并用基础缩放填满区域 */
-  fit?: 'cover' | 'cover-scale'
+  fit?: 'cover' | 'cover-scale' | 'stretch'
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX: number; srcY: number; srcW: number; srcH: number
   opacity: number
+  blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
   zIndex: number
   /** 仅导出合成使用；实时预览由调用方按播放进度更新裁剪。 */
   reveal?: CompositionReveal
   color?: RenderColorAdjustments
+  maskPath?: string
+  maskOpacity?: number
+  maskInverted?: boolean
+  maskFeather?: number
+  maskTrack?: RenderMaskTrack
+  pixelStretch?: RenderPixelStretch
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** 3D LUT 文件路径（传给 Rust 自行加载解析） */
+  /** i-Log 技术还原 LUT 文件路径 */
+  restoreLutId?: string
+  /** 创意 3D LUT 文件路径（传给 Rust 自行加载解析） */
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
@@ -126,6 +158,27 @@ export interface PreviewLayer {
   textColor?: string
   textAlign?: 'left' | 'center' | 'right'
   verticalAlign?: 'top' | 'middle' | 'bottom'
+}
+
+export interface RenderPixelStretch {
+  mode: 'left' | 'right' | 'up' | 'down' | 'horizontal' | 'vertical' | 'swirl' | 'swirl-front'
+  intensity: number
+  originX: number
+  originY: number
+  angle?: number
+  ribbonSize?: number
+  sampleStart?: number
+  sampleEnd?: number
+  lineEnd?: number
+  controlStart?: number
+  controlEnd?: number
+  centerX?: number
+  centerY?: number
+  pathPoints?: number[]
+  pathStartWidth?: number
+  pathEndWidth?: number
+  /** 用邻近的主体颜色补齐取样线中的空隙，生成连续色带。 */
+  fillSampleGaps?: boolean
 }
 
 export interface CompositionInput {
@@ -151,8 +204,10 @@ export interface CompositionReveal {
 }
 
 export interface CompositionLayer {
-  layerType?: 'media' | 'shape' | 'text' | 'logo' | 'decoration'
+  layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
   id?: string
+  precomposeGroup?: string
+  precomposeRole?: 'input' | 'output'
   source: {
     path: string
     sourceType?: 'auto' | 'image' | 'video' | string
@@ -164,15 +219,26 @@ export interface CompositionLayer {
     }
   }
   rect: { x: number; y: number; w: number; h: number }
-  fit?: 'cover' | 'contain' | string
+  /** 从源纹理采样的归一化区域；省略时使用完整源图。 */
+  sourceRect?: { x: number; y: number; w: number; h: number }
+  fit?: 'cover' | 'contain' | 'stretch' | string
   opacity?: number
+  blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
   zIndex?: number
   /** 按合成时间从左向右展开当前图层。 */
   reveal?: CompositionReveal
   color?: RenderColorAdjustments
+  maskPath?: string
+  maskOpacity?: number
+  maskInverted?: boolean
+  maskFeather?: number
+  maskTrack?: RenderMaskTrack
+  pixelStretch?: RenderPixelStretch
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** 3D LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径 */
+  restoreLutId?: string
+  /** 创意 3D LUT 文件路径 */
   lutId?: string
   /** LUT 强度 0-100 */
   lutIntensity?: number
@@ -197,10 +263,17 @@ export interface RenderLayer {
   dstX: number; dstY: number; dstW: number; dstH: number
   srcX?: number; srcY?: number; srcW?: number; srcH?: number
   opacity?: number; zIndex?: number
+  blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
   color?: RenderColorAdjustments
+  maskPath?: string
+  maskOpacity?: number
+  maskInverted?: boolean
+  maskFeather?: number
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
-  /** 3D LUT 文件路径 */
+  /** i-Log 技术还原 LUT 文件路径 */
+  restoreLutId?: string
+  /** 创意 3D LUT 文件路径 */
   lutId?: string
   lutIntensity?: number
 }

@@ -296,12 +296,6 @@ impl Compositor {
             })
         {
             if (layer.video_time - current_time).abs() < 0.001 {
-                log!(
-                    "read_video_frame [{}] reuse paused frame at {:.3}s tex={}",
-                    layer.file_path,
-                    current_time,
-                    texture_id,
-                );
                 return Ok(Some(texture_id));
             }
             match self.read_video_frame(ffmpeg, ffprobe, &layer.file_path, layer.video_time, fps)? {
@@ -377,6 +371,7 @@ impl Compositor {
         for path in inactive_video_paths {
             self.remove_video_decoder(&path);
         }
+        self.retain_active_mask_textures(layers)?;
 
         let mut source_layers = Vec::with_capacity(layers.len());
         // 解码最大边长：export 时传入了有效 max_side（如 8192），
@@ -384,7 +379,7 @@ impl Compositor {
         let decode_max_side = max_side.unwrap_or(PREVIEW_MAX_SIZE).max(1);
 
         for layer in layers {
-            let procedural = layer.layer_type.as_deref().unwrap_or("media") != "media";
+            let procedural = super::is_procedural_layer_type(layer.layer_type.as_deref());
             let tex_id = if procedural {
                 0
             } else if layer.is_video {
@@ -425,16 +420,56 @@ impl Compositor {
                 }
             };
 
-            let entry = self
+            let (texture_width, texture_height) = self
                 .textures
                 .get(&tex_id)
+                .map(|entry| (entry.width, entry.height))
                 .ok_or_else(|| format!("texture {} not found", tex_id))?;
+            let mut prepared_layer = (*layer).clone();
+            if let Some(mask_path) = layer.mask_path.as_deref() {
+                let mask_id = if let Some(tid) = self.mask_texture_cache.get(mask_path).copied() {
+                    tid
+                } else {
+                    let (rgba, w, h) = match decode_static_image_scaled(
+                        ffmpeg,
+                        ffprobe,
+                        mask_path,
+                        decode_max_side,
+                    ) {
+                        Ok(decoded) => decoded,
+                        Err(error) => {
+                            log!(
+                                "skip source {} because mask {} is unavailable: {}",
+                                layer.file_path,
+                                mask_path,
+                                error
+                            );
+                            continue;
+                        }
+                    };
+                    let tid = match self.load_mask_texture(&rgba, w, h) {
+                        Ok(tid) => tid,
+                        Err(error) => {
+                            log!(
+                                "skip source {} because mask {} cannot be uploaded: {}",
+                                layer.file_path,
+                                mask_path,
+                                error
+                            );
+                            continue;
+                        }
+                    };
+                    self.mask_texture_cache.insert(mask_path.to_string(), tid);
+                    tid
+                };
+                prepared_layer.mask_texture_id = Some(mask_id);
+            }
             source_layers.push((
-                (*layer).clone(),
+                prepared_layer,
                 PreviewTextureInfo {
                     texture_id: tex_id,
-                    width: entry.width,
-                    height: entry.height,
+                    width: texture_width,
+                    height: texture_height,
                 },
             ));
         }

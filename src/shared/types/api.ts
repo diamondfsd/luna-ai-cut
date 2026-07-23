@@ -1,4 +1,4 @@
-import type { AppSettings, CacheStats, AiConfig } from './settings'
+import type { AppSettings, CacheStats } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
 import type { CameraDeleteResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
@@ -21,6 +21,72 @@ import type { UpdateInfo, HotUpdateCheckResult, ReleaseNoteItem } from './update
 import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } from './workspace'
 import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
+import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
+import type { CameraMediaSourceApi } from './cameraMediaSource'
+
+export interface WorkspaceSegmentationRequest {
+  requestId: string
+  filePath: string
+  /** 视频素材取帧时间；图片素材忽略。 */
+  frameTime?: number
+  point?: { x: number; y: number }
+  modelId?: SegmentationModelId
+  targetId?: AutomaticSegmentationTargetId
+  targetClassId?: number
+}
+
+export interface WorkspaceSegmentationProgress {
+  requestId: string
+  phase: 'model' | 'preparing' | 'recognizing'
+  label: string
+  percent: number | null
+}
+
+export interface WorkspaceMaskTrackingRequest {
+  requestId: string
+  filePath: string
+  direction: 'forward' | 'backward'
+  anchorTime: number
+  maskWidth: number
+  maskHeight: number
+  maskBytes: ArrayBuffer | Uint8Array
+  initialTransform?: {
+    translateX: number
+    translateY: number
+    scale: number
+    rotation: number
+  }
+}
+
+export interface WorkspaceMaskTrackingProgress {
+  requestId: string
+  direction: 'forward' | 'backward'
+  percent: number
+  time: number
+  confidence: number
+}
+
+export interface WorkspaceMaskTrackingResult {
+  requestId: string
+  direction: 'forward' | 'backward'
+  anchorTime: number
+  keyframes: Array<{
+    time: number
+    translateX: number
+    translateY: number
+    scale: number
+    rotation: number
+    confidence: number
+  }>
+  completed: boolean
+  stoppedReason?: string
+}
+
+export interface WorkspaceSegmentationModelStatus {
+  modelId: SegmentationModelId
+  cached: boolean
+  sizeBytes: number
+}
 
 export interface LunaApi {
   log: (level: string, message: string, meta?: unknown) => void
@@ -44,6 +110,7 @@ export interface LunaApi {
   openDevTools(): Promise<void>
   scanBluetoothDevices(timeoutMs?: number): Promise<BluetoothDeviceCandidate[]>
   cancelBluetoothScan(): Promise<void>
+  cameraSource: CameraMediaSourceApi
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   checkConnection(host?: string): Promise<ConnectionStatus>
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>
@@ -72,7 +139,6 @@ export interface LunaApi {
   openPath(targetPath: string): Promise<void>
   openPhotosApp(): Promise<void>
   deleteLocalFiles(filePaths: string[]): Promise<{ deleted: string[]; failed: Array<{ path: string; error: string }> }>
-  aiChat(config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>): Promise<string>
   readExifModel(localPath: string): Promise<string | null>
   getWatermarkPath(style: string, kind: 'image' | 'video'): Promise<{ filePath: string; width: number; height: number }>
   getBorderLogoPath(logoId: string): Promise<string>
@@ -94,14 +160,40 @@ export interface LunaApi {
     clear(): Promise<void>
   }
   workspace: {
+    chooseMediaFiles(): Promise<string[]>
     loadTrimThumbnailCache(videoPath: string, duration: number): Promise<ArrayBuffer | null>
     saveTrimThumbnailCache(videoPath: string, duration: number, bytes: ArrayBuffer): Promise<void>
+    saveColorMask(projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number): Promise<{ path: string; width: number; height: number }>
+    loadColorMask(projectId: string, filePath: string): Promise<{ width: number; height: number; bytes: ArrayBuffer }>
+    deleteColorMask(projectId: string, filePath: string): Promise<void>
+    cleanupColorMasks(projectId: string, retainedPaths: string[]): Promise<{ deleted: number; retained: number }>
     loadPreview(filePath: string): Promise<{ buffer: ArrayBuffer; mimeType: string }>
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>
     getVideoDuration(filePath: string): Promise<number>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
+    getSegmentationModelStatus(modelId: SegmentationModelId): Promise<WorkspaceSegmentationModelStatus>
+    prepareSegmentationModels(modelIds: SegmentationModelId[]): Promise<void>
+    segmentImage(request: WorkspaceSegmentationRequest): Promise<{
+      requestId: string
+      width: number
+      height: number
+      classId: number
+      className: string
+      targetId?: AutomaticSegmentationTargetId
+      modelId: string
+      performance: {
+        modelLoadMs: number
+        imagePrepareMs: number
+        inferenceMs: number
+        totalMs: number
+      }
+      bytes: ArrayBuffer
+    }>
+    cancelSegmentation(requestId: string): Promise<boolean>
+    trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>
+    cancelMaskTracking(requestId: string): Promise<boolean>
     listProjects(): Promise<WorkspaceProject[]>
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
@@ -118,6 +210,8 @@ export interface LunaApi {
   }
   onDownloadProgress(callback: (progress: DownloadProgress) => void): () => void
   onExportProgress(callback: (progress: ExportProgress) => void): () => void
+  onWorkspaceSegmentationProgress(callback: (progress: WorkspaceSegmentationProgress) => void): () => void
+  onWorkspaceMaskTrackingProgress(callback: (progress: WorkspaceMaskTrackingProgress) => void): () => void
   onConnectionLost(callback: () => void): () => void
   onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string; thumbnailUrl: string }) => void): () => void
   onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null }) => void): () => void

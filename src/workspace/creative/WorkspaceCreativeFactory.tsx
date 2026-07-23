@@ -5,6 +5,7 @@ import { Button } from '../../ui'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { CREATIVE_CATALOG, type CreativeModeId } from './creativeCatalog'
 import { ColorRevealCreative } from './color-reveal/ColorRevealCreative'
+import { PixelStretchCreative } from './pixel-stretch/PixelStretchCreative'
 import { TripleStitchCreative } from './triple-stitch/TripleStitchCreative'
 import './creative-factory.css'
 
@@ -15,6 +16,7 @@ interface WorkspaceCreativeFactoryProps {
 
 const CREATIVE_RENDERERS: Record<CreativeModeId, (onBack: () => void) => ReactNode> = {
   'color-reveal': (onBack) => <ColorRevealCreative onBack={onBack} />,
+  'pixel-stretch': (onBack) => <PixelStretchCreative onBack={onBack} />,
   'triple-stitch': (onBack) => <TripleStitchCreative onBack={onBack} />,
 }
 
@@ -47,7 +49,13 @@ export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange 
               onClick={() => onCreativeModeChange(item.id)}
             >
               <span className={`workspace-creative-preview ${item.previewClassName}`} aria-hidden="true">
-                <ItemIcon size={24} />
+                {item.id === 'pixel-stretch' ? <span className="pixel-stretch-cover-scene">
+                  <span className="pixel-stretch-cover-sky" />
+                  <span className="pixel-stretch-cover-ridge" />
+                  <span className="pixel-stretch-cover-ground" />
+                  <span className="pixel-stretch-cover-flow"><i /><i /><i /><i /><i /></span>
+                  <span className="pixel-stretch-cover-subject"><i /></span>
+                </span> : <ItemIcon size={24} />}
               </span>
               <span className="workspace-creative-card-copy">
                 <strong>{item.name}</strong>

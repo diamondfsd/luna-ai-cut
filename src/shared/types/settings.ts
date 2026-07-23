@@ -1,10 +1,7 @@
-import type { WatermarkSettings } from './watermark'
+import type { WatermarkPosition, WatermarkSettings } from './watermark'
+import type { CameraConnectionMode } from './cameraMediaSource'
 
-export interface AiConfig {
-  baseUrl: string
-  apiKey: string
-  model: string
-}
+export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
 
 export interface AppSettings {
   downloadDir: string
@@ -12,6 +9,8 @@ export interface AppSettings {
   exportDir?: string
   cacheDir: string
   cameraHost: string
+  cameraConnectionMode?: CameraConnectionMode
+  mountedCameraRoot?: string
   activeDeviceId?: string
   deviceStorage?: Record<string, string>
   deviceWatermark?: Record<string, WatermarkSettings>
@@ -22,9 +21,16 @@ export interface AppSettings {
   mockTcpPort?: number
   mockRateMbps?: number
   exportAppleLivePhoto?: boolean
-  aiConfig?: AiConfig
+  /** 新素材与重置素材使用的默认水印开关。 */
+  defaultWatermarkEnabled?: boolean
+  /** 新素材与重置素材使用的默认水印位置。 */
+  defaultWatermarkPosition?: WatermarkPosition
+  /** 工作台最近一次导入本地文件时使用的目录 */
+  workspaceImportDir?: string
   /** 扩展 LUT 滤镜目录路径（.cube 文件目录树，按文件夹分组） */
   lutDir?: string
+  /** 工作台预览清晰度；原图档仍限制为最大 4K。 */
+  workspacePreviewQuality?: WorkspacePreviewQuality
 }
 
 export interface CacheStats {

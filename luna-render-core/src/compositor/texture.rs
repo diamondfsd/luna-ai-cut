@@ -1,3 +1,4 @@
+use super::mask::encode_mask_distance_channels;
 use super::*;
 use crate::media::command;
 use crate::{log, log_error};
@@ -155,6 +156,49 @@ impl Compositor {
         );
         upload_rgba(&self.queue, &texture, &data[..expected], width, height);
 
+        self.textures.insert(
+            id,
+            TextureEntry {
+                texture,
+                width,
+                height,
+                #[cfg(target_os = "windows")]
+                external: false,
+            },
+        );
+        Ok(id)
+    }
+
+    pub(super) fn load_mask_texture(
+        &mut self,
+        data: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<u32, String> {
+        let expected = width
+            .checked_mul(height)
+            .and_then(|value| value.checked_mul(4))
+            .ok_or_else(|| format!("mask texture size overflow: {}x{}", width, height))?
+            as usize;
+        if width == 0 || height == 0 || data.len() < expected {
+            return Err(format!(
+                "invalid mask texture data for {}x{}",
+                width, height
+            ));
+        }
+        let id = self.next_texture_id;
+        self.next_texture_id += 1;
+        let texture = create_rgba_texture(
+            &self.device,
+            "color-mask",
+            width,
+            height,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            1,
+            false,
+        );
+        let distance_encoded = encode_mask_distance_channels(&data[..expected], width, height);
+        upload_rgba(&self.queue, &texture, &distance_encoded, width, height);
         self.textures.insert(
             id,
             TextureEntry {
@@ -475,24 +519,6 @@ impl Compositor {
             entry.width,
             entry.height,
         );
-        Ok(())
-    }
-
-    pub fn release_texture(&mut self, texture_id: u32) -> Result<(), String> {
-        self.textures
-            .remove(&texture_id)
-            .ok_or_else(|| format!("texture {} not found", texture_id))?;
-        // 同步清理缓存中的条目
-        if let Some(path) = self
-            .texture_cache
-            .iter()
-            .find(|(_, &tid)| tid == texture_id)
-            .map(|(p, _)| p.clone())
-        {
-            self.texture_cache.remove(&path);
-            self.cache_order.retain(|k| k != &path);
-        }
-        log!("release_texture id={}", texture_id);
         Ok(())
     }
 }

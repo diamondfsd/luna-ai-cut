@@ -1,12 +1,12 @@
-import { Check, Crop, Image, ImagePlus, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { ArrowLeft, Check, Crop, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { Accordion, Button, IconButton, Tooltip } from '../../ui'
+import { Accordion, Button, Dialog, IconButton, Tooltip } from '../../ui'
 import { createDefaultPipeline, DEFAULT_PIPELINE, HSL_CHANNELS } from '../shared/editPipeline'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
-import { ColorPanel } from '../color/ColorPanel'
+import { ColorMaskPanel } from '../color/ColorMaskPanel'
 import { FilterPanel } from '../lut/FilterPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
@@ -14,8 +14,9 @@ import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/ty
 import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel } from '../trim/TrimPanel'
+import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 
-export type WorkspaceTool = 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter'
+export type WorkspaceTool = 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -78,8 +79,8 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
 }
 
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
+  { value: 'color', label: '调色与蒙版', icon: <SlidersHorizontal size={22} /> },
   { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
-  { value: 'color', label: '色彩调节', icon: <SlidersHorizontal size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
@@ -92,34 +93,52 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'watermark') return '水印'
   if (tool === 'border') return '边框'
   if (tool === 'filter') return '滤镜'
-  return '色彩调节'
+  return '调色与蒙版'
 }
 
 interface WorkspaceEditSidebarProps {
   mediaSize?: { w: number; h: number } | null
   duration: number
+  allowWatermark: boolean
+  runtimeResourceLoading?: { fonts: boolean; luts: boolean }
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark, runtimeResourceLoading }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
-
+  const mask = useWorkspaceMask()
   const refH = mediaSize?.h ?? 2160
   const cropWidth = edit.cropSize.width || Math.round(canvas.sourceAspect * refH)
   const cropHeight = edit.cropSize.height || refH
 
   // 滤镜搜索关键字
   const [filterSearchKey, setFilterSearchKey] = useState('')
+  const [resetColorDialogOpen, setResetColorDialogOpen] = useState(false)
+  const setActiveTool = edit.setActiveTool
+  const setMaskEditing = mask.setEditing
+  const activeTool = edit.activeTool === 'watermark' && !allowWatermark ? 'color' : edit.activeTool
+  const visibleToolItems = useMemo(
+    () => allowWatermark ? TOOL_ITEMS : TOOL_ITEMS.filter((item) => item.value !== 'watermark'),
+    [allowWatermark],
+  )
+
+  useEffect(() => {
+    if (!allowWatermark && edit.activeTool === 'watermark') {
+      setMaskEditing(false)
+      setActiveTool('color')
+    }
+  }, [allowWatermark, edit.activeTool, setActiveTool, setMaskEditing])
 
   // 各面板是否有未保存的修改
   const toolModified = useMemo(() => ({
     filter: isFilterModified(edit.pipeline.lutFilter),
-    color: isColorModified(edit.pipeline.color),
+    color: isColorModified(edit.pipeline.color) || edit.pipeline.colorMasks.some((layer) => isColorModified(layer.color)),
     crop: isCropModified(edit.pipeline.transform),
     trim: isTrimModified(edit.pipeline.trim),
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
+    mask: edit.pipeline.colorMasks.length > 0,
   }), [edit.pipeline])
 
   // 保存水印设置到 pipeline（同时产生预览层和撤销记录）
@@ -140,19 +159,37 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
     [edit.handleCropSizeChange, canvas.sourceAspect, mediaSize],
   )
 
-  // 水印检测由 WatermarkSettings 内部根据 filePath 自动完成
+  const resetAllColor = () => {
+    edit.commitPatch({
+      color: DEFAULT_PIPELINE.color,
+      effects: DEFAULT_PIPELINE.effects,
+      colorMasks: [],
+    })
+    mask.setActiveLayerId(null)
+    mask.setEditing(false)
+    mask.setSemanticPicking(false)
+    setResetColorDialogOpen(false)
+  }
+
+  const requestResetAllColor = () => {
+    if (edit.pipeline.colorMasks.length > 0) {
+      setResetColorDialogOpen(true)
+      return
+    }
+    resetAllColor()
+  }
 
   return (
     <aside className="workspace-edit-sidebar">
       <section className="workspace-tool-panel">
         <header className="workspace-tool-panel-header">
-          {edit.activeTool === 'filter' ? (
+          {activeTool === 'filter' ? (
             <>
               <h2 className="filter-panel-title">滤镜</h2>
               <label className="filter-search-header">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6Z" stroke="currentColor" stroke-width="2"/>
-                  <path d="m16.2 16.2 4.3 4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6Z" stroke="currentColor" strokeWidth="2" />
+                  <path d="m16.2 16.2 4.3 4.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
                 <input
                   type="search"
@@ -162,24 +199,42 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 />
               </label>
             </>
+          ) : activeTool === 'color' && mask.editing ? (
+            <>
+              <IconButton
+                variant="ghost"
+                size="mini"
+                className="workspace-mask-editor-back"
+                icon={<ArrowLeft size={20} />}
+                aria-label="退出蒙版编辑"
+                onClick={() => { mask.setEditing(false); mask.setSemanticPicking(false) }}
+              />
+              <h2>{mask.activeMask ? `编辑蒙版 · ${mask.activeMask.name}` : '新建蒙版'}</h2>
+            </>
           ) : (
-            <h2>{titleForTool(edit.activeTool)}</h2>
+            <h2>{titleForTool(activeTool)}</h2>
           )}
-          {edit.activeTool === 'color' && (
+          {activeTool === 'color' && (
             <span className="workspace-tool-panel-actions">
-              {isColorModified(edit.pipeline.color) && <span className="ui-accordion-modified-dot" />}
-              <Tooltip content="重置全部调色">
-                <IconButton
-                  variant="ghost"
-                  size="compact"
-                  icon={<RotateCcw size={14} />}
-                  onClick={() => edit.updateWorkspacePanel({ color: DEFAULT_PIPELINE.color, effects: DEFAULT_PIPELINE.effects })}
-                  aria-label="重置全部调色"
-                />
-              </Tooltip>
+              {mask.editing ? (
+                <Button className="workspace-mask-editor-done" variant="ghost" size="mini" onClick={() => { mask.setEditing(false); mask.setSemanticPicking(false) }}>完成</Button>
+              ) : (
+                <>
+                  {toolModified.color && <span className="ui-accordion-modified-dot" />}
+                  <Tooltip content="重置全部调色与蒙版">
+                    <IconButton
+                      variant="ghost"
+                      size="compact"
+                      icon={<RotateCcw size={14} />}
+                      onClick={requestResetAllColor}
+                      aria-label="重置全部调色与蒙版"
+                    />
+                  </Tooltip>
+                </>
+              )}
             </span>
           )}
-          {edit.activeTool === 'trim' && (
+          {activeTool === 'trim' && (
             <span className="workspace-tool-panel-actions">
               {isTrimModified(edit.pipeline.trim) && <span className="ui-accordion-modified-dot" />}
               <Tooltip content="重置截取">
@@ -194,23 +249,24 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
             </span>
           )}
         </header>
-        <div className="workspace-tool-panel-body">
-          {edit.activeTool === 'filter' ? (
+        <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}`}>
+          {activeTool === 'filter' ? (
             <FilterPanel
+              restoreLutId={edit.pipeline.logRestore.activeId}
+              onRestoreChange={(activeId) => edit.updateWorkspacePanel({ logRestore: { activeId } })}
               activeLutId={edit.pipeline.lutFilter.activeId}
-              onChange={(lutId) => edit.updateWorkspacePanel({ lutFilter: { activeId: lutId } })}
+              onChange={(lutId, intensity) => edit.updateWorkspacePanel({ lutFilter: {
+                activeId: lutId,
+                ...(intensity === undefined ? {} : { intensity }),
+              } })}
               intensity={edit.pipeline.lutFilter.intensity}
               onIntensityChange={(intensity) => edit.updateWorkspacePanel({ lutFilter: { intensity } })}
               mediaPath={mediaCtx.activeMedia?.path}
               searchKey={filterSearchKey}
             />
-          ) : edit.activeTool === 'color' ? (
-            <ColorPanel
-              value={edit.pipeline.color}
-              onChange={(color) => edit.updateWorkspacePanel({ color })}
-              onActivatePipette={() => edit.setPipetteActive(true)}
-            />
-          ) : edit.activeTool === 'crop' ? (
+          ) : activeTool === 'color' ? (
+            <ColorMaskPanel />
+          ) : activeTool === 'crop' ? (
             <>
               <Accordion
                 title="裁剪"
@@ -246,7 +302,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 </Button>
               </div>
             </>
-          ) : edit.activeTool === 'trim' ? (
+          ) : activeTool === 'trim' ? (
             <TrimPanel
               startTime={edit.pipeline.trim?.startTime ?? 0}
               endTime={edit.pipeline.trim?.endTime ?? 0}
@@ -260,7 +316,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 edit.commitPatch({ trim: { startTime: curStart, endTime: time } })
               }}
             />
-          ) : edit.activeTool === 'border' ? (
+          ) : activeTool === 'border' ? (
             <BorderPanel
               value={edit.pipeline.border}
               onChange={(border) => edit.updateWorkspacePanel({ border })}
@@ -275,6 +331,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
                 settings={edit.pipeline.watermark}
                 onChange={handleWatermarkChange}
                 filePath={mediaCtx.activeMedia?.path}
+                mediaKind={mediaCtx.activeMedia?.kind}
               />
             </Accordion>
           )}
@@ -282,22 +339,44 @@ export function WorkspaceEditSidebar({ mediaSize, duration }: WorkspaceEditSideb
       </section>
       <nav className="workspace-tool-rail" aria-label="工作台工具">
         <div className="workspace-tool-rail-main">
-          {TOOL_ITEMS.map((item) => (
+          {visibleToolItems.map((item) => {
+            const resourceLoading = item.value === 'filter'
+              ? runtimeResourceLoading?.luts === true
+              : item.value === 'border' && runtimeResourceLoading?.fonts === true
+            return (
             <div key={item.value} className="workspace-tool-rail-item">
-              <Tooltip content={item.label}>
+              <Tooltip content={resourceLoading ? `${item.label}资源加载中` : item.label}>
                 <IconButton
-                  variant={edit.activeTool === item.value ? 'outline' : 'ghost'}
+                  variant={activeTool === item.value ? 'outline' : 'ghost'}
                   size="compact"
-                  icon={item.icon}
+                  icon={resourceLoading ? <Loader2 className="spin" size={20} /> : item.icon}
                   aria-label={item.label}
-                  onClick={() => edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)}
+                  disabled={resourceLoading || (item.value === 'mask' && !mask.available)}
+                  onClick={() => {
+                    mask.setEditing(item.value === 'mask')
+                    edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)
+                  }}
                 />
               </Tooltip>
               {toolModified[item.value] && <span className="workspace-tool-rail-dot" />}
             </div>
-          ))}
+            )
+          })}
         </div>
       </nav>
+      <Dialog
+        open={resetColorDialogOpen}
+        onOpenChange={setResetColorDialogOpen}
+        title="重置全部调色？"
+        description="所有全局调色设置和蒙版都会被清除，此操作可以撤销。"
+        tone="dark"
+        footer={(
+          <>
+            <Button variant="secondary" size="compact" onClick={() => setResetColorDialogOpen(false)}>取消</Button>
+            <Button variant="danger" size="compact" icon={<RotateCcw size={14} />} onClick={resetAllColor}>全部重置</Button>
+          </>
+        )}
+      />
     </aside>
   )
 }

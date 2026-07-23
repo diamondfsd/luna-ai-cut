@@ -33,6 +33,40 @@ fn layer_time(source: &CompositionSource, composition_time: f64) -> f64 {
     t.max(start.max(0.0))
 }
 
+fn mask_track_transform(track: Option<&MaskTrack>, time: f64) -> crate::RenderMaskTransform {
+    let Some(track) = track.filter(|track| track.version == 1 && !track.keyframes.is_empty())
+    else {
+        return crate::RenderMaskTransform {
+            scale: 1.0,
+            ..Default::default()
+        };
+    };
+    let next_index = track
+        .keyframes
+        .iter()
+        .position(|keyframe| keyframe.time >= time);
+    let (previous, next, amount) = match next_index {
+        Some(0) => (&track.keyframes[0], &track.keyframes[0], 0.0),
+        Some(index) => {
+            let previous = &track.keyframes[index - 1];
+            let next = &track.keyframes[index];
+            let amount = ((time - previous.time) / (next.time - previous.time).max(0.000_001))
+                .clamp(0.0, 1.0);
+            (previous, next, amount)
+        }
+        None => {
+            let last = &track.keyframes[track.keyframes.len() - 1];
+            (last, last, 0.0)
+        }
+    };
+    crate::RenderMaskTransform {
+        translate_x: previous.translate_x + (next.translate_x - previous.translate_x) * amount,
+        translate_y: previous.translate_y + (next.translate_y - previous.translate_y) * amount,
+        scale: (previous.scale + (next.scale - previous.scale) * amount).clamp(0.1, 10.0),
+        rotation: previous.rotation + (next.rotation - previous.rotation) * amount,
+    }
+}
+
 fn ease_in_out_cubic(value: f64) -> f64 {
     let progress = value.clamp(0.0, 1.0);
     if progress < 0.5 {
@@ -265,6 +299,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
         .layers
         .iter()
         .map(|layer| {
+            let source_rect = layer.source_rect.as_ref();
             let reveal_progress = layer
                 .reveal
                 .as_ref()
@@ -279,26 +314,38 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
             } else {
                 1.0
             };
+            let video_time = layer_time(&layer.source, time);
             PreviewLayerInput {
                 layer_type: layer.layer_type.clone(),
+                precompose_group: layer.precompose_group.clone(),
+                precompose_role: layer.precompose_role.clone(),
                 file_path: layer.source.path.clone(),
                 is_video: is_video_source(&layer.source),
-                video_time: layer_time(&layer.source, time),
+                video_time,
                 fit: layer.fit.clone().unwrap_or_else(|| "cover".to_string()),
                 dst_x: layer.rect.x,
                 dst_y: layer.rect.y,
                 dst_w: layer.rect.w,
                 dst_h: layer.rect.h,
-                src_x: 0.0,
-                src_y: 0.0,
-                src_w: 1.0,
-                src_h: 1.0,
+                src_x: source_rect.map(|rect| rect.x).unwrap_or(0.0),
+                src_y: source_rect.map(|rect| rect.y).unwrap_or(0.0),
+                src_w: source_rect.map(|rect| rect.w).unwrap_or(1.0),
+                src_h: source_rect.map(|rect| rect.h).unwrap_or(1.0),
                 opacity: layer.opacity.unwrap_or(1.0),
+                blend_mode: layer.blend_mode.clone(),
                 reveal_progress: reveal_width,
                 z_index: layer.z_index.unwrap_or(0),
                 color: layer.color.clone().unwrap_or_default(),
+                mask_path: layer.mask_path.clone(),
+                mask_texture_id: None,
+                mask_opacity: layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
+                mask_inverted: layer.mask_inverted.unwrap_or(false),
+                mask_feather: layer.mask_feather.unwrap_or(0.0).clamp(0.0, 100.0),
+                mask_transform: mask_track_transform(layer.mask_track.as_ref(), video_time),
+                pixel_stretch: layer.pixel_stretch.clone(),
                 transform: layer.transform.clone().unwrap_or_default(),
                 positioning: layer.positioning.clone(),
+                restore_lut_id: layer.restore_lut_id.clone(),
                 lut_id: layer.lut_id.clone(),
                 lut_intensity: layer.lut_intensity,
                 shape: layer.shape.clone(),
@@ -322,8 +369,65 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
 #[cfg(test)]
 mod tests {
     use super::{
-        layer_time, reveal_progress, CompositionReveal, CompositionSource, CompositionSourceTime,
+        composition_layers, layer_time, mask_track_transform, reveal_progress, CompositionInput,
+        CompositionReveal, CompositionSource, CompositionSourceTime, MaskTrack, MaskTrackKeyframe,
     };
+
+    fn sample_mask_track() -> MaskTrack {
+        MaskTrack {
+            version: 1,
+            anchor_time: 2.0,
+            start_time: 2.0,
+            end_time: 4.0,
+            keyframes: vec![
+                MaskTrackKeyframe {
+                    time: 2.0,
+                    translate_x: 0.1,
+                    translate_y: -0.2,
+                    scale: 1.0,
+                    rotation: 0.0,
+                    confidence: 1.0,
+                    corrected: None,
+                },
+                MaskTrackKeyframe {
+                    time: 4.0,
+                    translate_x: 0.3,
+                    translate_y: 0.2,
+                    scale: 1.4,
+                    rotation: 0.4,
+                    confidence: 0.8,
+                    corrected: None,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn mask_track_uses_identity_for_legacy_layers() {
+        let transform = mask_track_transform(None, 3.0);
+        assert_eq!(transform.translate_x, 0.0);
+        assert_eq!(transform.translate_y, 0.0);
+        assert_eq!(transform.scale, 1.0);
+        assert_eq!(transform.rotation, 0.0);
+    }
+
+    #[test]
+    fn mask_track_clamps_outside_and_interpolates_inside_range() {
+        let track = sample_mask_track();
+        let before = mask_track_transform(Some(&track), 1.0);
+        assert_eq!(before.translate_x, 0.1);
+        assert_eq!(before.scale, 1.0);
+
+        let middle = mask_track_transform(Some(&track), 3.0);
+        assert!((middle.translate_x - 0.2).abs() < 0.000_001);
+        assert!((middle.translate_y - 0.0).abs() < 0.000_001);
+        assert!((middle.scale - 1.2).abs() < 0.000_001);
+        assert!((middle.rotation - 0.2).abs() < 0.000_001);
+
+        let after = mask_track_transform(Some(&track), 5.0);
+        assert_eq!(after.translate_x, 0.3);
+        assert_eq!(after.scale, 1.4);
+    }
 
     fn staged_reveal() -> CompositionReveal {
         CompositionReveal {
@@ -377,5 +481,31 @@ mod tests {
         assert_eq!(layer_time(&source, 0.0), 5.0);
         assert_eq!(layer_time(&source, 0.8), 5.0);
         assert_eq!(layer_time(&source, 1.5), 5.5);
+    }
+
+    #[test]
+    fn composition_preserves_source_sampling_rect_and_defaults_to_full_source() {
+        let input: CompositionInput = serde_json::from_str(
+            r#"{
+                "canvas":{"width":100,"height":100},
+                "layers":[
+                    {
+                        "source":{"path":"sample.png"},
+                        "rect":{"x":0,"y":0,"w":1,"h":1},
+                        "sourceRect":{"x":0.42,"y":0.2,"w":0.001,"h":0.6}
+                    },
+                    {
+                        "source":{"path":"legacy.png"},
+                        "rect":{"x":0,"y":0,"w":1,"h":1}
+                    }
+                ]
+            }"#,
+        )
+        .expect("composition JSON should deserialize");
+        let layers = composition_layers(&input, 0.0);
+        assert_eq!((layers[0].src_x, layers[0].src_y), (0.42, 0.2));
+        assert_eq!((layers[0].src_w, layers[0].src_h), (0.001, 0.6));
+        assert_eq!((layers[1].src_x, layers[1].src_y), (0.0, 0.0));
+        assert_eq!((layers[1].src_w, layers[1].src_h), (1.0, 1.0));
     }
 }

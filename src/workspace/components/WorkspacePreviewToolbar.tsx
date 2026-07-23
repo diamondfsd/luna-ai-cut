@@ -1,9 +1,12 @@
-import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, ImagePlus, Minimize2, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, FileUp, ImagePlus, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 
-import { Button, IconButton, Tooltip, toast } from '../../ui'
+import { Button, IconButton, Select, Tooltip, toast } from '../../ui'
+import type { WorkspacePreviewQuality } from '../../shared/types/settings'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
-import { createDefaultPipeline } from '../shared/editPipeline'
+import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
+import { createWorkspaceDefaultPipeline } from '../shared/workspaceDefaultPipeline'
+import { useApp } from '../../context/AppContext'
 import './WorkspacePreviewToolbar.css'
 
 export type WorkspaceViewScale = 'fit' | number
@@ -14,9 +17,15 @@ interface WorkspacePreviewToolbarProps {
   exportableSelectionCount: number
   exportButtonText: string
   onImport: () => void
+  onImportLocal: () => void
   onExport: () => void
+  onCopy: () => void
+  onPaste: () => void
   viewScale: WorkspaceViewScale
   onViewScaleChange: (scale: WorkspaceViewScale) => void
+  fitScalePercent: number
+  previewQuality: WorkspacePreviewQuality
+  onPreviewQualityChange: (quality: WorkspacePreviewQuality) => void
 }
 
 export function WorkspacePreviewToolbar({
@@ -25,32 +34,40 @@ export function WorkspacePreviewToolbar({
   exportableSelectionCount,
   exportButtonText,
   onImport,
+  onImportLocal,
   onExport,
+  onCopy,
+  onPaste,
   viewScale,
   onViewScaleChange,
+  fitScalePercent,
+  previewQuality,
+  onPreviewQualityChange,
 }: WorkspacePreviewToolbarProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
+  const mask = useWorkspaceMask()
+  const { settings } = useApp()
   const scalePercent = viewScale === 'fit' ? null : viewScale
+  const currentScalePercent = scalePercent ?? fitScalePercent
 
   function changeScale(delta: number): void {
-    const current = scalePercent ?? 100
-    onViewScaleChange(Math.max(25, Math.min(200, current + delta)))
+    onViewScaleChange(Math.max(5, Math.min(200, currentScalePercent + delta)))
   }
 
   function resetAdjustments(): void {
     const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
+    const defaultPipeline = createWorkspaceDefaultPipeline(settings)
     if (indices.size === 1 && indices.has(media.activeIndex)) {
-      edit.resetPipeline()
+      edit.resetPipeline(defaultPipeline)
       toast.success('已重置当前素材')
       return
     }
-    const defaultPipeline = createDefaultPipeline()
     if (!media.currentProject) {
       media.setTransientMedia((current) => current.map((asset, index) => (
         indices.has(index) ? { ...asset, pipeline: defaultPipeline } : asset
       )))
-      if (indices.has(media.activeIndex)) edit.resetPipeline()
+      if (indices.has(media.activeIndex)) edit.resetPipeline(defaultPipeline)
       toast.success(`已重置 ${indices.size} 个素材`)
       return
     }
@@ -63,7 +80,7 @@ export function WorkspacePreviewToolbar({
     }
     media.setCurrentProject(project)
     void window.luna.workspace.saveProject(project)
-    if (indices.has(media.activeIndex)) edit.resetPipeline()
+    if (indices.has(media.activeIndex)) edit.resetPipeline(defaultPipeline)
     toast.success(`已重置 ${indices.size} 个素材`)
   }
 
@@ -74,22 +91,25 @@ export function WorkspacePreviewToolbar({
         <Button variant="toolbar" size="compact" icon={<ImagePlus size={14} />} onClick={onImport}>
           添加素材
         </Button>
+        <Button variant="toolbar" size="compact" icon={<FileUp size={14} />} onClick={onImportLocal}>
+          导入
+        </Button>
         <Tooltip content="重置">
           <IconButton variant="ghost" size="compact" icon={<RotateCcw size={16} />} disabled={!hasActiveMedia} onClick={resetAdjustments} />
         </Tooltip>
         <div className="workspace-toolbar-divider" />
         <Tooltip content="撤销">
-          <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} disabled={!edit.canUndo} onClick={edit.undo} />
+          <IconButton variant="ghost" size="compact" icon={<Undo2 size={16} />} aria-label="撤销" disabled={!edit.canUndo || mask.busy} onClick={edit.undo} />
         </Tooltip>
         <Tooltip content="重做">
-          <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} disabled={!edit.canRedo} onClick={edit.redo} />
+          <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} aria-label="重做" disabled={!edit.canRedo || mask.busy} onClick={edit.redo} />
         </Tooltip>
         <div className="workspace-toolbar-divider" />
-        <Tooltip content="复制调色参数">
-          <IconButton variant="ghost" size="compact" icon={<Copy size={16} />} disabled={!hasActiveMedia} onClick={edit.copyPipeline} />
+        <Tooltip content="复制效果（含边框）">
+          <IconButton variant="ghost" size="compact" icon={<Copy size={16} />} disabled={!hasActiveMedia} onClick={onCopy} />
         </Tooltip>
-        <Tooltip content="粘贴调色参数">
-          <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={16} />} onClick={() => { edit.pasteToCurrent() }} />
+        <Tooltip content="粘贴效果（含边框）">
+          <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={16} />} onClick={onPaste} />
         </Tooltip>
         {media.brokenPaths.size > 0 && (
           <>
@@ -100,16 +120,40 @@ export function WorkspacePreviewToolbar({
           </>
         )}
       </div>
-      <div className="workspace-zoom-control" aria-label="预览缩放">
-        <IconButton variant="ghost" size="mini" icon={<Minus size={14} />} onClick={() => changeScale(-10)} aria-label="缩小预览" />
-        <span>{scalePercent === null ? '适应' : `${scalePercent}%`}</span>
-        <IconButton variant="ghost" size="mini" icon={<Plus size={14} />} onClick={() => changeScale(10)} aria-label="放大预览" />
-        <div className="workspace-toolbar-divider" />
-        <Tooltip content="适应窗口">
-          <IconButton variant="ghost" size="mini" icon={<Minimize2 size={14} />} onClick={() => onViewScaleChange('fit')} />
-        </Tooltip>
-      </div>
       <div className="workspace-toolbar-group workspace-toolbar-actions">
+        <Select
+          className="workspace-preview-quality"
+          variant="compact"
+          placeholder="预览清晰度，原图最高 4K"
+          value={previewQuality}
+          options={[
+            { value: 'smooth', label: '流畅' },
+            { value: 'balanced', label: '平衡' },
+            { value: 'high', label: '高清' },
+            { value: 'original', label: '原图' },
+          ]}
+          onValueChange={(value) => onPreviewQualityChange(value as WorkspacePreviewQuality)}
+        />
+        <div className="workspace-zoom-control" aria-label={`预览缩放，当前 ${currentScalePercent}%`}>
+          <Tooltip content={`缩小（当前 ${currentScalePercent}%）`}>
+            <IconButton variant="ghost" size="mini" icon={<Minus size={14} />} onClick={() => changeScale(-10)} aria-label="缩小预览" />
+          </Tooltip>
+          <Tooltip content={`恢复适应窗口（${fitScalePercent}%）`}>
+            <Button
+              className="workspace-zoom-value"
+              variant="toolbar"
+              size="mini"
+              onClick={() => onViewScaleChange('fit')}
+              aria-label={`当前缩放 ${currentScalePercent}%，点击恢复适应窗口`}
+            >
+              {currentScalePercent}%
+            </Button>
+          </Tooltip>
+          <Tooltip content={`放大（当前 ${currentScalePercent}%）`}>
+            <IconButton variant="ghost" size="mini" icon={<Plus size={14} />} onClick={() => changeScale(10)} aria-label="放大预览" />
+          </Tooltip>
+        </div>
+        <div className="workspace-toolbar-divider" />
         <Button
           variant={edit.compareOriginal ? 'toolbar-primary' : 'toolbar'}
           size="compact"

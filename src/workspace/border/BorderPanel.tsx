@@ -6,7 +6,7 @@ import { IconButton, Input, SearchField, Switch } from '../../ui'
 import { ParamSlider } from '../components/ParamSlider'
 import { DEFAULT_PIPELINE, type EditPipeline } from '../shared/editPipeline'
 import { BorderItem } from './BorderItem'
-import { FRAME_PRESETS } from './buildBorderLayer'
+import { findFramePreset, framePresetDefaultSettings, FRAME_PRESETS } from './borderPresets'
 import '../../styles/workspace-border.css'
 
 interface BorderPanelProps {
@@ -43,6 +43,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
   const hasLogo = activePreset?.layers.some((layer) => layer.type === 'logo') ?? false
   const hasDate = activePreset?.layers.some((layer) => layer.type === 'text' && layer.content.includes('{{date}}')) ?? false
   const isVideoMedia = mediaPath ? isVideoPath(mediaPath) : false
+  const isBlurredPhotoCard = activePreset?.id === 'blurred-photo-card'
 
   // 素材切换及其 pipeline 初始化完成后，按该素材是否已有边框决定入口。
   useEffect(() => {
@@ -50,14 +51,13 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
   }, [mediaPath, value.enabled, value.presetId])
 
   const selectPreset = (presetId: string) => {
+    const preset = findFramePreset(presetId)
     onChange({
+      ...DEFAULT_PIPELINE.border,
       enabled: true,
       presetId,
       ...presetColors(presetId),
-      mediaScale: 100,
-      mediaOffsetX: 0,
-      mediaOffsetY: 0,
-      showDate: true,
+      ...framePresetDefaultSettings(preset?.id),
     })
     setView('edit')
   }
@@ -67,6 +67,7 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
     enabled: true,
     presetId: value.presetId,
     ...presetColors(value.presetId),
+    ...framePresetDefaultSettings(activePreset?.id),
   })
 
   if (view === 'edit' && activePreset) {
@@ -93,6 +94,13 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
 
         <div className="border-editor-scroll">
           <section className="border-edit-controls">
+            {hasTitle && (
+              <div className="border-title-row">
+                <span className="border-title-label">标题</span>
+                <Input variant="compact" fullWidth value={value.title} onChange={(event) => onChange({ title: event.currentTarget.value })} placeholder="输入作品标题" aria-label="作品标题" />
+              </div>
+            )}
+
             <div className="border-edit-section-title">外观</div>
             <div className="border-color-row">
               <span>边框颜色</span>
@@ -110,22 +118,21 @@ export function BorderPanel({ value, onChange, mediaPath }: BorderPanelProps) {
                 <span>{value.textColor.toUpperCase()}</span>
               </label>
             </div>
-            <ParamSlider label="边框尺寸" value={value.frameSize} min={70} max={135} step={1} onChange={(frameSize) => onChange({ frameSize })} formatValue={(number) => `${number}%`} />
+            <ParamSlider label="边框尺寸" value={value.frameSize} min={70} max={isBlurredPhotoCard ? 110 : 135} step={1} onChange={(frameSize) => onChange({ frameSize })} formatValue={(number) => `${number}%`} />
             <ParamSlider label="不透明度" value={value.opacity} min={20} max={100} step={1} onChange={(opacity) => onChange({ opacity })} formatValue={(number) => `${number}%`} />
 
-            <div className="border-media-controls">
+            {!isBlurredPhotoCard && <div className="border-media-controls">
               <div className="border-edit-section-title">素材布局</div>
               <ParamSlider label="素材尺寸" value={value.mediaScale} min={70} max={160} step={1} onChange={(mediaScale) => onChange({ mediaScale })} formatValue={(number) => `${number}%`} />
               <ParamSlider label="水平位置" value={value.mediaOffsetX} min={-50} max={50} step={1} onChange={(mediaOffsetX) => onChange({ mediaOffsetX })} formatValue={(number) => `${number}`} />
               <ParamSlider label="垂直位置" value={value.mediaOffsetY} min={-50} max={50} step={1} onChange={(mediaOffsetY) => onChange({ mediaOffsetY })} formatValue={(number) => `${number}`} />
-            </div>
+            </div>}
 
-            {hasTitle && (
-              <div className="border-title-row">
-                <span className="border-title-label">标题</span>
-                <Input variant="compact" fullWidth value={value.title} onChange={(event) => onChange({ title: event.currentTarget.value })} placeholder="输入作品标题" aria-label="作品标题" />
-              </div>
-            )}
+            {isBlurredPhotoCard && <div className="border-media-controls">
+              <div className="border-edit-section-title">主图阴影</div>
+              <ParamSlider label="阴影强度" value={value.shadowStrength} min={0} max={100} step={1} onChange={(shadowStrength) => onChange({ shadowStrength })} formatValue={(number) => `${number}%`} />
+              <ParamSlider label="柔和范围" value={value.shadowBlur} min={0} max={100} step={1} onChange={(shadowBlur) => onChange({ shadowBlur })} formatValue={(number) => `${number}%`} />
+            </div>}
 
             <div className="border-switches">
               {hasLogo && <label><span>显示标志</span><Switch checked={value.showLogo} onCheckedChange={(showLogo) => onChange({ showLogo })} ariaLabel="显示标志" /></label>}

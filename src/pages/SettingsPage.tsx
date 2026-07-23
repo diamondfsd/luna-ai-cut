@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FolderOpen, Image, Palette, Trash2 } from 'lucide-react'
+import { FolderOpen, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
+import { WatermarkSettings } from '../components/WatermarkSettings'
 import { Button, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
@@ -18,6 +19,32 @@ interface SettingsPageProps {
   openDirectory: (targetPath: string | null | undefined) => void
   settings: AppSettings | null
   setSettings: (updater: AppSettings | ((current: AppSettings | null) => AppSettings | null)) => void
+}
+
+interface DirectorySettingRowProps {
+  label: string
+  path: string
+  onOpen: () => void
+  onChange: () => void | Promise<void>
+}
+
+function DirectorySettingRow({ label, path, onOpen, onChange }: DirectorySettingRowProps) {
+  return (
+    <article className="settings-row">
+      <div className="settings-row-copy">
+        <span>{label}</span>
+        <strong>{path || '未设置'}</strong>
+      </div>
+      <div className="settings-row-actions">
+        <Button variant="secondary" size="compact" onClick={onOpen} icon={<FolderOpen size={15} />}>
+          打开
+        </Button>
+        <Button variant="primary" size="compact" onClick={() => void onChange()} icon={<FolderOpen size={15} />}>
+          更改
+        </Button>
+      </div>
+    </article>
+  )
 }
 
 export function SettingsPage({
@@ -86,193 +113,183 @@ export function SettingsPage({
     if (stats) setFreshCacheStats(stats)
   }
 
+  function handleDefaultWatermarkChange(watermark: { enabled: boolean; position: NonNullable<AppSettings['defaultWatermarkPosition']> }): void {
+    if (!settings) return
+    if (
+      settings.defaultWatermarkEnabled === watermark.enabled
+      && settings.defaultWatermarkPosition === watermark.position
+    ) return
+    const patch = {
+      defaultWatermarkEnabled: watermark.enabled,
+      defaultWatermarkPosition: watermark.position,
+    }
+    setSettings((current) => (current ? { ...current, ...patch } : current))
+    void window.luna.saveSettings(patch).then(setSettings)
+  }
+
   return (
     <section className="settings-surface">
-      {/* ===== 通用设置 ===== */}
       <div className="settings-list">
-        <h3 className="settings-group-title">通用</h3>
-
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span>基础目录</span>
-            <strong>{settings?.downloadDir}</strong>
-            <em>缓存、预览等通用文件存放位置</em>
-          </div>
-          <div className="settings-row-actions">
-            <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.downloadDir)} icon={<FolderOpen size={15} />}>
-              打开
-            </Button>
-            <Button variant="primary" size="compact" onClick={chooseBaseDir} icon={<FolderOpen size={15} />}>
-              更换目录
-            </Button>
-          </div>
-        </article>
-
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span>本地资源目录</span>
-            <strong>{settings?.localResourcesDir ?? (settings?.downloadDir ? settings.downloadDir + '/localResources' : '')}</strong>
-            <em>从相机下载的素材存放位置</em>
-          </div>
-          <div className="settings-row-actions">
-            <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.localResourcesDir)} icon={<FolderOpen size={15} />}>
-              打开
-            </Button>
-            <Button variant="primary" size="compact" onClick={chooseLocalResourcesDir} icon={<FolderOpen size={15} />}>
-              更换目录
-            </Button>
-          </div>
-        </article>
-
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span>导出目录</span>
-            <strong>{settings?.exportDir}</strong>
-            <em>水印合成后的文件将导出到此目录</em>
-          </div>
-          <div className="settings-row-actions">
-            <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.exportDir)} icon={<FolderOpen size={15} />}>
-              打开
-            </Button>
-            <Button variant="primary" size="compact" onClick={chooseExportDir} icon={<FolderOpen size={15} />}>
-              更换目录
-            </Button>
-          </div>
-        </article>
-
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span>日志</span>
-            <strong>{logDir || '正在读取日志目录'}</strong>
-          </div>
-          <div className="settings-row-actions">
-            <Button variant="secondary" size="compact" onClick={() => {
-              if (logDir) openDirectory(logDir)
-              else void window.luna.getLogDir().then(dir => {
-                setLogDir(dir)
-                openDirectory(dir)
-              })
-            }} icon={<FolderOpen size={15} />}>
-              打开
-            </Button>
-            <Button variant="secondary" size="compact" onClick={async () => {
-              await window.luna.clearLogs()
-              toast.success('日志已清空')
-            }} icon={<Trash2 size={15} />}>
-              清空日志
-            </Button>
-          </div>
-        </article>
-
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span>缓存</span>
-            <strong>{formatBytes(displayCacheStats?.bytes)}</strong>
-            <em>
-              {displayCacheStats?.files ?? 0} 个文件 · {displayCacheStats?.dir}
-            </em>
-          </div>
-          <div className="settings-row-actions">
-            <Button
-              variant="secondary"
-              size="compact"
-              onClick={() => openDirectory(displayCacheStats?.dir ?? settings?.cacheDir)}
-              icon={<FolderOpen size={15} />}
-            >
-              打开
-            </Button>
-            <Button variant="secondary" size="compact" onClick={handleClearCache} icon={<Trash2 size={15} />}>
-              清理缓存
-            </Button>
-          </div>
-        </article>
-
-        {/* ===== 滤镜 LUT ===== */}
-        <h3 className="settings-group-title"><Palette size={14} /> 滤镜</h3>
-
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span>扩展 LUT 目录</span>
-            <strong>{settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : '未配置')}</strong>
-            <em>导入 .cube 滤镜文件目录树，子文件夹自动成为滤镜分组名</em>
-          </div>
-          <div className="settings-row-actions">
-            {(() => {
-              const lutPath = settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : null)
-              return lutPath ? (
-                <Button variant="secondary" size="compact" onClick={() => openDirectory(lutPath)} icon={<FolderOpen size={15} />}>
+        <section className="settings-group">
+          <h2 className="settings-group-title">文件与存储</h2>
+          <div className="settings-card">
+            <DirectorySettingRow
+              label="基础目录"
+              path={settings?.downloadDir ?? ''}
+              onOpen={() => openDirectory(settings?.downloadDir)}
+              onChange={chooseBaseDir}
+            />
+            <DirectorySettingRow
+              label="下载目录"
+              path={settings?.localResourcesDir ?? (settings?.downloadDir ? `${settings.downloadDir}/localResources` : '')}
+              onOpen={() => openDirectory(settings?.localResourcesDir)}
+              onChange={chooseLocalResourcesDir}
+            />
+            <DirectorySettingRow
+              label="导出目录"
+              path={settings?.exportDir ?? ''}
+              onOpen={() => openDirectory(settings?.exportDir)}
+              onChange={chooseExportDir}
+            />
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span>LUT 目录</span>
+                <strong>{settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : '未设置')}</strong>
+              </div>
+              <div className="settings-row-actions">
+                <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : null))} icon={<FolderOpen size={15} />}>
                   打开
                 </Button>
-              ) : null
-            })()}
-            <Button variant="primary" size="compact"
-              icon={<FolderOpen size={15} />}
-              onClick={async () => {
-                try {
-                  const result = await window.luna.chooseLutDir()
-                  if (result) {
-                    const next = { ...settings, lutDir: result } as AppSettings
-                    setSettings(next)
-                    await window.luna.saveSettings({ lutDir: result }).then(setSettings)
-                    toast.success('LUT 目录已更新')
-                  }
-                } catch { /* 用户取消 */ }
-              }}
-            >
-              切换目录
-            </Button>
-            {settings?.lutDir && (
-              <Button variant="danger" size="compact"
-                onClick={async () => {
-                  const next = { ...settings, lutDir: undefined } as AppSettings
-                  setSettings(next)
-                  await window.luna.saveSettings({ lutDir: undefined })
-                  toast.success('LUT 目录已移除')
-                }}
-              >
-                移除
-              </Button>
-            )}
+                <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={async () => {
+                  const result = await window.luna.chooseLutDir().catch(() => null)
+                  if (!result) return
+                  await window.luna.saveSettings({ lutDir: result }).then(setSettings)
+                  toast.success('LUT 目录已更新')
+                }}>
+                  更改
+                </Button>
+                {settings?.lutDir && (
+                  <Button variant="secondary" size="compact" onClick={async () => {
+                    setSettings((current) => (current ? { ...current, lutDir: undefined } : current))
+                    await window.luna.saveSettings({ lutDir: undefined }).then(setSettings)
+                    toast.success('已恢复默认 LUT 目录')
+                  }}>
+                    恢复默认
+                  </Button>
+                )}
+              </div>
+            </article>
           </div>
-        </article>
+        </section>
+
+        <section className="settings-group">
+          <h2 className="settings-group-title">编辑默认值</h2>
+          <div className="settings-card">
+            <article className="settings-row settings-default-watermark-row">
+              <div className="settings-row-copy">
+                <span>水印</span>
+                <em>用于新导入或重置的素材</em>
+              </div>
+              <div className="settings-default-watermark-control">
+                <WatermarkSettings
+                  preferencesOnly
+                  title="默认开启"
+                  settings={{
+                    enabled: settings?.defaultWatermarkEnabled ?? true,
+                    style: 'luna_ultra_cn',
+                    position: settings?.defaultWatermarkPosition === 'top-center'
+                      ? 'bottom-center'
+                      : settings?.defaultWatermarkPosition ?? 'bottom-center',
+                  }}
+                  onChange={handleDefaultWatermarkChange}
+                />
+              </div>
+            </article>
+          </div>
+        </section>
 
         {window.navigator.platform.includes('Mac') && (
-          <article className="settings-row">
-            <div className="settings-row-copy">
-              <span><Image size={15} /> 保存到系统相册</span>
-              <em>导出 Live Photo 时自动保存到「照片」应用，可在 iPhone 上通过 iCloud 查看和分享</em>
+          <section className="settings-group">
+            <h2 className="settings-group-title">导出</h2>
+            <div className="settings-card">
+              <article className="settings-row">
+                <div className="settings-row-copy">
+                  <span>保存 Live Photo 到系统相册</span>
+                </div>
+                <Switch
+                  checked={!!settings?.exportAppleLivePhoto}
+                  onCheckedChange={(checked) => {
+                    setSettings((current) => (current ? { ...current, exportAppleLivePhoto: checked } : current))
+                    void window.luna.saveSettings({ exportAppleLivePhoto: checked }).then(setSettings)
+                  }}
+                  ariaLabel="保存 Live Photo 到系统相册"
+                />
+              </article>
             </div>
-            <Switch
-              checked={!!settings?.exportAppleLivePhoto}
-              onCheckedChange={(checked) => {
-                setSettings((current) => (current ? { ...current, exportAppleLivePhoto: checked } : current))
-                window.luna.saveSettings({ exportAppleLivePhoto: checked }).then(setSettings)
-              }}
-              ariaLabel="保存到系统相册"
-            />
-          </article>
+          </section>
         )}
 
-        <article className="settings-row">
-          <div className="settings-row-copy">
-            <span
-              style={{ cursor: 'pointer', userSelect: 'none' }}
-              onClick={handleCameraTitleClick}
-              title={hiddenDevMode ? '隐藏开发模式已激活' : '连点 5 次激活隐藏开发模式'}
-            >
-              相机地址 {hiddenDevMode && <span style={{ color: '#34c759', fontSize: 11, fontWeight: 600 }}>🔓 开发</span>}
-            </span>
-            <em>{connection?.message ?? `${activeDevice?.name ?? '设备'} 默认地址：${activeDevice?.defaultHost || '未配置'}`}</em>
+        <section className="settings-group">
+          <h2 className="settings-group-title">连接与维护</h2>
+          <div className="settings-card">
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span
+                  className="settings-secret-trigger"
+                  onClick={handleCameraTitleClick}
+                  title={hiddenDevMode ? '隐藏开发模式已激活' : '相机地址'}
+                >
+                  相机地址 {hiddenDevMode && <small>开发模式</small>}
+                </span>
+                <em>{connection?.message ?? `${activeDevice?.name ?? '设备'}：${activeDevice?.defaultHost || '未配置'}`}</em>
+              </div>
+              <Input
+                variant="compact"
+                value={settings?.cameraHost ?? ''}
+                onChange={(event) => setSettings((current) => (current ? { ...current, cameraHost: event.target.value } : current))}
+                onBlur={(event) => window.luna.saveSettings({ cameraHost: (event.target as HTMLInputElement).value }).then(setSettings)}
+              />
+            </article>
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span>缓存</span>
+                <strong>{formatBytes(displayCacheStats?.bytes)} · {displayCacheStats?.files ?? 0} 个文件</strong>
+              </div>
+              <div className="settings-row-actions">
+                <Button variant="secondary" size="compact" onClick={() => openDirectory(displayCacheStats?.dir ?? settings?.cacheDir)} icon={<FolderOpen size={15} />}>
+                  打开
+                </Button>
+                <Button variant="secondary" size="compact" onClick={handleClearCache} icon={<Trash2 size={15} />}>
+                  清理
+                </Button>
+              </div>
+            </article>
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span>日志</span>
+                <strong>{logDir || '正在读取'}</strong>
+              </div>
+              <div className="settings-row-actions">
+                <Button variant="secondary" size="compact" onClick={() => {
+                  if (logDir) openDirectory(logDir)
+                  else void window.luna.getLogDir().then(dir => {
+                    setLogDir(dir)
+                    openDirectory(dir)
+                  })
+                }} icon={<FolderOpen size={15} />}>
+                  打开
+                </Button>
+                <Button variant="secondary" size="compact" onClick={async () => {
+                  await window.luna.clearLogs()
+                  toast.success('日志已清空')
+                }} icon={<Trash2 size={15} />}>
+                  清空
+                </Button>
+              </div>
+            </article>
           </div>
-          <Input
-            variant="pill"
-            value={settings?.cameraHost ?? ''}
-            onChange={(event) => setSettings((current) => (current ? { ...current, cameraHost: event.target.value } : current))}
-            onBlur={(event) => window.luna.saveSettings({ cameraHost: (event.target as HTMLInputElement).value }).then(setSettings)}
-          />
-        </article>
-
-        </div>
+        </section>
+      </div>
     </section>
   )
 }

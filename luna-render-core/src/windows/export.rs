@@ -12,10 +12,6 @@ use super::decoder::VideoDecoder;
 use super::device::InteropDevice;
 use super::encoder::VideoEncoder;
 
-fn is_procedural_layer(layer_type: Option<&str>) -> bool {
-    layer_type.unwrap_or("media") != "media"
-}
-
 fn temporary_output_path(output: &str) -> PathBuf {
     let path = Path::new(output);
     let file_name = path
@@ -149,7 +145,8 @@ fn export_frames(
             let render_result = (|| -> Result<(), String> {
                 for (layer_index, mut layer) in layer_inputs.into_iter().enumerate() {
                     let (texture_id, width, height) =
-                        if is_procedural_layer(layer.layer_type.as_deref()) {
+                        if crate::compositor::is_procedural_layer_type(layer.layer_type.as_deref())
+                        {
                             (0, 1, 1)
                         } else if layer.is_video {
                             let key = format!("{}@slot{}", layer.file_path, layer_index);

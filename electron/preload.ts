@@ -1,6 +1,5 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import type {
-  AiConfig,
   AppSettings,
   DeviceDebugApi,
   DeviceDebugEvent,
@@ -14,6 +13,8 @@ import type {
   NetworkDiagnosticsResult,
   WorkspaceMediaAsset,
   WorkspaceProject,
+  WorkspaceSegmentationRequest,
+  WorkspaceMaskTrackingRequest,
   UpdateInfo,
   VideoExportSettings,
   WatermarkSettings,
@@ -74,6 +75,15 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   openDevTools: () => ipcRenderer.invoke('devtools:open'),
   scanBluetoothDevices: (timeoutMs?: number) => ipcRenderer.invoke('bluetooth:scanNative', timeoutMs),
   cancelBluetoothScan: () => ipcRenderer.invoke('bluetooth:cancelScan'),
+  cameraSource: {
+    detectMounted: () => ipcRenderer.invoke('camera-source:detect-mounted'),
+    chooseMounted: () => ipcRenderer.invoke('camera-source:choose-mounted'),
+    connect: (options) => ipcRenderer.invoke('camera-source:connect', options),
+    check: (options) => ipcRenderer.invoke('camera-source:check', options),
+    listFiles: (options) => ipcRenderer.invoke('camera-source:list-files', options),
+    deleteFiles: (files, options) => ipcRenderer.invoke('camera-source:delete-files', files, options),
+    disconnect: (options) => ipcRenderer.invoke('camera-source:disconnect', options),
+  },
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),
   listFiles: (host?: string, storageId?: string) => ipcRenderer.invoke('luna:listFiles', host, storageId),
@@ -104,8 +114,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   openPath: (targetPath: string) => ipcRenderer.invoke('files:openPath', targetPath),
   openPhotosApp: () => ipcRenderer.invoke('files:openPhotosApp'),
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
-  aiChat: (config: AiConfig, systemPrompt: string, messages: Array<{ role: string; content: string }>) =>
-    ipcRenderer.invoke('ai:chat', config, systemPrompt, messages),
   readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),
   getWatermarkPath: (style: string, kind: 'image' | 'video') => ipcRenderer.invoke('luna:getWatermarkPath', style, kind) as Promise<{ filePath: string; width: number; height: number }>,
   getBorderLogoPath: (logoId: string) => ipcRenderer.invoke('luna:getBorderLogoPath', logoId) as Promise<string>,
@@ -117,13 +125,24 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   disconnectWifi: () => ipcRenderer.invoke('wifiDebug:disconnect'),
   cacheFile: (params: { sourceUrl: string; previewUrl?: string | null }) => ipcRenderer.invoke('luna:cacheFile', params),
   workspace: {
+    chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
     loadTrimThumbnailCache: (videoPath: string, duration: number) => ipcRenderer.invoke('workspace:loadTrimThumbnailCache', videoPath, duration),
     saveTrimThumbnailCache: (videoPath: string, duration: number, bytes: ArrayBuffer) => ipcRenderer.invoke('workspace:saveTrimThumbnailCache', videoPath, duration, bytes),
+    saveColorMask: (projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number) => ipcRenderer.invoke('workspace:saveColorMask', projectId, assetId, width, height, bytes, feather),
+    loadColorMask: (projectId: string, filePath: string) => ipcRenderer.invoke('workspace:loadColorMask', projectId, filePath),
+    deleteColorMask: (projectId: string, filePath: string) => ipcRenderer.invoke('workspace:deleteColorMask', projectId, filePath),
+    cleanupColorMasks: (projectId: string, retainedPaths: string[]) => ipcRenderer.invoke('workspace:cleanupColorMasks', projectId, retainedPaths),
     loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
     getMediaResolution: (filePath: string) => ipcRenderer.invoke('workspace:getMediaResolution', filePath),
     getVideoDuration: (filePath: string) => ipcRenderer.invoke('workspace:getVideoDuration', filePath),
     isLivePhoto: (filePath: string) => ipcRenderer.invoke('workspace:isLivePhoto', filePath),
     readColorMetadata: (filePath: string) => ipcRenderer.invoke('workspace:readColorMetadata', filePath),
+    getSegmentationModelStatus: (modelId: import('../src/shared/segmentationModels').SegmentationModelId) => ipcRenderer.invoke('workspace:getSegmentationModelStatus', modelId),
+    prepareSegmentationModels: (modelIds: import('../src/shared/segmentationModels').SegmentationModelId[]) => ipcRenderer.invoke('workspace:prepareSegmentationModels', modelIds),
+    segmentImage: (request: WorkspaceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentImage', request),
+    cancelSegmentation: (requestId: string) => ipcRenderer.invoke('workspace:cancelSegmentation', requestId),
+    trackMask: (request: WorkspaceMaskTrackingRequest) => ipcRenderer.invoke('workspace:trackMask', request),
+    cancelMaskTracking: (requestId: string) => ipcRenderer.invoke('workspace:cancelMaskTracking', requestId),
     listProjects: () => ipcRenderer.invoke('workspace:listProjects'),
     createProject: (name: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:createProject', name, assets),
     addAssetsToProject: (projectId: string, assets: WorkspaceMediaAsset[]) => ipcRenderer.invoke('workspace:addAssetsToProject', projectId, assets),
@@ -147,6 +166,16 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     const listener = (_event: Electron.IpcRendererEvent, progress: ExportProgress): void => callback(progress)
     ipcRenderer.on('export:progress', listener)
     return () => ipcRenderer.off('export:progress', listener)
+  },
+  onWorkspaceSegmentationProgress: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceSegmentationProgress): void => callback(progress)
+    ipcRenderer.on('workspace:segmentation-progress', listener)
+    return () => ipcRenderer.off('workspace:segmentation-progress', listener)
+  },
+  onWorkspaceMaskTrackingProgress: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceMaskTrackingProgress): void => callback(progress)
+    ipcRenderer.on('workspace:mask-tracking-progress', listener)
+    return () => ipcRenderer.off('workspace:mask-tracking-progress', listener)
   },
   onConnectionLost: (callback: () => void) => {
     const listener = (): void => callback()
@@ -252,12 +281,13 @@ interface CompositionInput {
 
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
+  prepareRuntimeResource: (kind: 'fonts' | 'luts') => ipcRenderer.invoke('lrc:prepareRuntimeResource', kind),
   resetCompatibilityBlock: () => ipcRenderer.invoke('lrc:resetCompatibilityBlock'),
   loadTexture: (data: Buffer, width: number, height: number) =>
     ipcRenderer.invoke('lrc:loadTexture', data, width, height),
   updateTexture: (textureId: number, data: Buffer) =>
     ipcRenderer.invoke('lrc:updateTexture', textureId, data),
-  renderFrame: (canvasWidth: number, canvasHeight: number, layers: any[]) =>
+  renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[]) =>
     ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
   releaseTexture: (textureId: number) =>
     ipcRenderer.invoke('lrc:releaseTexture', textureId),

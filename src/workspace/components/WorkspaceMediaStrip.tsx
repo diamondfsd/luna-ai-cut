@@ -2,22 +2,26 @@ import { FolderOpen, ImageOff } from 'lucide-react'
 import { type MouseEvent, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset } from '../../shared/types'
-import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../shared/editPipeline'
+import { mergePipeline, type EditPipeline } from '../shared/editPipeline'
 import type { PipelinePatch } from '../shared/editPipeline'
+import { createWorkspaceDefaultPipeline } from '../shared/workspaceDefaultPipeline'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
+import { useApp } from '../../context/AppContext'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, LivePhotoBadge, VideoPlayBadge, toast } from '../../ui'
 import { ThumbImage } from '../../components/ThumbImage'
 
 /** 检查素材的 pipeline 是否有非默认的修改 */
-function isAssetModified(item: WorkspaceMediaAsset): boolean {
+function isAssetModified(item: WorkspaceMediaAsset, defaultPipeline: EditPipeline): boolean {
   const raw = (item as unknown as { pipeline?: unknown }).pipeline
   if (!raw || typeof raw !== 'object') return false
-  const normalized = mergePipeline(createDefaultPipeline(), raw as PipelinePatch)
-  return JSON.stringify(normalized) !== JSON.stringify(DEFAULT_PIPELINE)
+  const normalized = mergePipeline(structuredClone(defaultPipeline), raw as PipelinePatch)
+  return JSON.stringify(normalized) !== JSON.stringify(defaultPipeline)
 }
 
 export function WorkspaceMediaStrip() {
   const { media: mediaList, brokenPaths, selectedIndices, setSelectedIndices, activeIndex, setActiveIndex, handleSelectionChange } = useWorkspaceMedia()
+  const { settings } = useApp()
+  const defaultPipeline = createWorkspaceDefaultPipeline(settings)
   const containerRef = useRef<HTMLDivElement>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
@@ -122,7 +126,7 @@ export function WorkspaceMediaStrip() {
         const isActive = index === activeIndex
         const isSelected = selectedIndices.has(index)
         const isDragHighlighted = dragHighlighted.has(index)
-        const isModified = !isBroken && isAssetModified(item)
+        const isModified = !isBroken && isAssetModified(item, defaultPipeline)
         return (
           <ContextMenu key={item.id}>
             <ContextMenuTrigger asChild>

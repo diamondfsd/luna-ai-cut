@@ -1,0 +1,263 @@
+.workspace-tool-panel-body.is-color-panel {
+  overflow: hidden;
+  padding: 0;
+}
+
+.workspace-color-mask-panel {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.workspace-color-mask-content {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 18px;
+}
+
+.workspace-mask-inline-editor {
+  display: grid;
+}
+
+.workspace-mask-editor-back {
+  margin-right: 6px;
+}
+
+.workspace-mask-editor-done.ui-btn {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.workspace-color-mask-layers {
+  display: grid;
+  gap: 10px;
+  padding: 14px 14px 16px;
+  border-top: 1px solid var(--hairline);
+  background: var(--canvas);
+}
+
+.workspace-color-mask-panel.is-editing .workspace-color-mask-layers {
+  background: color-mix(in srgb, var(--canvas) 94%, #000);
+}
+
+.workspace-color-mask-layers-header {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workspace-color-mask-layers-header strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.workspace-color-mask-layers-header .ui-icon-btn {
+  color: var(--ink);
+}
+
+.workspace-color-mask-layers-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.workspace-color-mask-layers-header-actions small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.workspace-color-mask-create-trigger {
+  display: inline-flex;
+}
+
+.workspace-color-mask-layer-list {
+  display: grid;
+  max-height: min(270px, 38vh);
+  overflow-y: auto;
+  gap: 4px;
+}
+
+.workspace-color-mask-layer {
+  position: relative;
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--parchment) 42%, transparent);
+}
+
+.workspace-color-mask-layer.is-dragging {
+  opacity: 0.45;
+}
+
+.workspace-color-mask-layer.is-drop-before::before,
+.workspace-color-mask-layer.is-drop-after::after {
+  position: absolute;
+  z-index: 2;
+  right: 2px;
+  left: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--blue);
+  content: '';
+  pointer-events: none;
+}
+
+.workspace-color-mask-layer.is-drop-before::before {
+  top: -3px;
+}
+
+.workspace-color-mask-layer.is-drop-after::after {
+  bottom: -3px;
+}
+
+.workspace-color-mask-layer.is-active {
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue);
+  background: color-mix(in srgb, var(--blue) 6%, var(--canvas));
+}
+
+.workspace-color-mask-layer.is-unavailable {
+  border-color: color-mix(in srgb, #d93025 45%, var(--hairline));
+}
+
+.workspace-color-mask-layer-eye {
+  flex: 0 0 auto;
+  color: var(--ink);
+}
+
+.workspace-color-mask-layer-eye {
+  margin-left: 4px;
+}
+
+.workspace-color-mask-layer-eye-button.ui-icon-btn {
+  flex: 0 0 28px;
+  color: var(--ink);
+}
+
+.workspace-color-mask-drag-handle.ui-icon-btn {
+  flex: 0 0 24px;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.workspace-color-mask-drag-handle.ui-icon-btn:active {
+  cursor: grabbing;
+}
+
+.workspace-color-mask-layer-select.ui-btn {
+  display: flex;
+  min-width: 0;
+  height: auto;
+  min-height: 46px;
+  flex: 1;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.workspace-color-mask-thumbnail,
+.workspace-color-mask-global-thumbnail {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--ink) 35%, var(--hairline));
+  border-radius: 2px;
+  background: #000;
+}
+
+.workspace-color-mask-global-thumbnail {
+  display: inline-block;
+  max-width: 68px;
+  max-height: 42px;
+  background: #fff;
+}
+
+.workspace-color-mask-thumbnail {
+  max-width: 68px;
+  max-height: 42px;
+  image-rendering: auto;
+}
+
+.workspace-color-mask-layer-label {
+  display: grid;
+  min-width: 0;
+}
+
+.workspace-color-mask-layer-label strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-color-mask-layer-status {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #d93025;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.workspace-color-mask-layer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.workspace-color-mask-layer-menu {
+  display: grid;
+  width: 174px;
+  gap: 4px;
+  padding: 6px;
+}
+
+.workspace-color-mask-blend-field {
+  display: grid;
+  gap: 5px;
+  padding: 4px 4px 7px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.workspace-color-mask-blend-description {
+  padding: 0 4px 6px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.workspace-color-mask-layer-menu .ui-btn {
+  width: 100%;
+  justify-content: flex-start;
+  border: 0;
+}
+
+.workspace-color-mask-rename-dialog {
+  width: min(360px, calc(100vw - 32px));
+}
+
+.workspace-color-mask-rename-form {
+  display: grid;
+  padding: 4px 0;
+}

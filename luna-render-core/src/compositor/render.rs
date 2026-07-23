@@ -4,10 +4,125 @@ use crate::{log, log_error};
 impl Compositor {
     pub(super) fn render_impl(
         &mut self,
+        canvas_width: u32,
+        canvas_height: u32,
+        layers: &[RenderLayer],
+        readback: bool,
+    ) -> Result<Vec<u8>, String> {
+        let (prepared_layers, temporary_texture_ids) = self.prepare_precompositions(layers)?;
+        let result = self.render_flat_impl(
+            canvas_width,
+            canvas_height,
+            &prepared_layers,
+            readback,
+            !readback,
+        );
+        for texture_id in temporary_texture_ids {
+            self.textures.remove(&texture_id);
+        }
+        result
+    }
+
+    fn prepare_precompositions(
+        &mut self,
+        layers: &[RenderLayer],
+    ) -> Result<(Vec<RenderLayer>, Vec<u32>), String> {
+        let mut groups = std::collections::BTreeMap::<String, Vec<RenderLayer>>::new();
+        for layer in layers {
+            if layer.precompose_role.as_deref() != Some("input") {
+                continue;
+            }
+            let group = layer
+                .precompose_group
+                .as_ref()
+                .ok_or_else(|| "precompose input is missing a group".to_string())?;
+            let mut input = layer.clone();
+            input.precompose_group = None;
+            input.precompose_role = None;
+            groups.entry(group.clone()).or_default().push(input);
+        }
+
+        if groups.is_empty() {
+            return Ok((layers.to_vec(), Vec::new()));
+        }
+
+        let mut group_textures = std::collections::BTreeMap::<String, u32>::new();
+        let mut temporary_texture_ids = Vec::with_capacity(groups.len());
+        for (group, inputs) in groups {
+            let first = inputs
+                .first()
+                .ok_or_else(|| format!("precompose group {group} has no inputs"))?;
+            let source = self
+                .textures
+                .get(&first.texture_id)
+                .ok_or_else(|| format!("precompose source texture {} not found", first.texture_id))?;
+            let width = source.width.max(1);
+            let height = source.height.max(1);
+            let texture = create_rgba_texture(
+                &self.device,
+                "precomposed layer group",
+                width,
+                height,
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                1,
+                true,
+            );
+            let previous_output = self.output_texture.replace((texture, width, height));
+            let render_result = self.render_flat_impl(width, height, &inputs, false, false);
+            let rendered = self.output_texture.take();
+            self.output_texture = previous_output;
+            render_result?;
+            let (texture, _, _) = rendered
+                .ok_or_else(|| format!("precompose group {group} produced no texture"))?;
+
+            let texture_id = self.next_texture_id;
+            self.next_texture_id += 1;
+            self.textures.insert(
+                texture_id,
+                TextureEntry {
+                    texture,
+                    width,
+                    height,
+                    #[cfg(target_os = "windows")]
+                    external: false,
+                },
+            );
+            group_textures.insert(group, texture_id);
+            temporary_texture_ids.push(texture_id);
+        }
+
+        let mut prepared = Vec::with_capacity(layers.len());
+        for layer in layers {
+            match layer.precompose_role.as_deref() {
+                Some("input") => {}
+                Some("output") => {
+                    let group = layer
+                        .precompose_group
+                        .as_ref()
+                        .ok_or_else(|| "precompose output is missing a group".to_string())?;
+                    let texture_id = group_textures
+                        .get(group)
+                        .copied()
+                        .ok_or_else(|| format!("precompose group {group} has no inputs"))?;
+                    let mut output = layer.clone();
+                    output.texture_id = texture_id;
+                    output.precompose_group = None;
+                    output.precompose_role = None;
+                    prepared.push(output);
+                }
+                _ => prepared.push(layer.clone()),
+            }
+        }
+        Ok((prepared, temporary_texture_ids))
+    }
+
+    fn render_flat_impl(
+        &mut self,
         mut canvas_width: u32,
         mut canvas_height: u32,
         layers: &[RenderLayer],
         readback: bool,
+        _present_output: bool,
     ) -> Result<Vec<u8>, String> {
         // 限制画布尺寸不超过 GPU 上限，保持宽高比
         let max_dim = canvas_width.max(canvas_height);
@@ -38,6 +153,11 @@ impl Compositor {
 
         // 预加载所有层需要的 LUT（在借用 self.output_texture 之前）
         for layer in &sorted {
+            if let Some(path) = &layer.restore_lut_id {
+                if let Err(e) = self.ensure_lut_loaded(path) {
+                    log!("还原 LUT 加载失败 {}: {}", path, e);
+                }
+            }
             if let Some(path) = &layer.lut_id {
                 if let Err(e) = self.ensure_lut_loaded(path) {
                     log!("LUT 加载失败 {}: {}", path, e);
@@ -92,17 +212,17 @@ impl Compositor {
                 multiview_mask: None,
             });
 
-            #[cfg(target_os = "macos")]
-            let render_pipeline = if output_tex.format() == wgpu::TextureFormat::Bgra8UnormSrgb {
-                &self.pipeline_bgra
-            } else {
-                &self.pipeline
-            };
-            #[cfg(not(target_os = "macos"))]
-            let render_pipeline = &self.pipeline;
-            rpass.set_pipeline(render_pipeline);
-
             for layer in &sorted {
+                #[cfg(target_os = "macos")]
+                let pipelines = if output_tex.format() == wgpu::TextureFormat::Bgra8UnormSrgb {
+                    &self.pipelines_bgra
+                } else {
+                    &self.pipelines
+                };
+                #[cfg(not(target_os = "macos"))]
+                let pipelines = &self.pipelines;
+                rpass.set_pipeline(pipelines.get(layer.blend_mode.as_deref()));
+
                 let tex_entry = self.textures.get(&layer.texture_id).ok_or_else(|| {
                     log_error!("render: texture {} not found", layer.texture_id);
                     format!("texture {} not found", layer.texture_id)
@@ -166,6 +286,100 @@ impl Compositor {
                     "text-raster" => 3.0,
                     _ => 0.0,
                 };
+                let pixel_stretch = layer.pixel_stretch.as_ref().map_or([0.0; 4], |effect| {
+                    let mode = match effect.mode.as_str() {
+                        "right" => 1.0,
+                        "down" => 2.0,
+                        "swirl" => 3.0,
+                        "swirl-front" => 4.0,
+                        "left" => 5.0,
+                        "up" => 6.0,
+                        "horizontal" => 7.0,
+                        "vertical" => 8.0,
+                        _ => 0.0,
+                    };
+                    [
+                        mode,
+                        effect.intensity.clamp(0.0, 100.0) as f32,
+                        effect.origin_x.clamp(0.0, 1.0) as f32,
+                        effect.origin_y.clamp(0.0, 1.0) as f32,
+                    ]
+                });
+                let pixel_stretch_extra = layer.pixel_stretch.as_ref().map_or([0.0; 4], |effect| {
+                    let horizontal =
+                        matches!(effect.mode.as_str(), "left" | "right" | "horizontal");
+                    [
+                        effect.angle.unwrap_or(0.0).clamp(-180.0, 180.0) as f32,
+                        effect
+                            .line_end
+                            .unwrap_or(if horizontal {
+                                effect.origin_x
+                            } else {
+                                effect.origin_y
+                            })
+                            .clamp(0.0, 1.0) as f32,
+                        effect.sample_start.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
+                        effect.sample_end.unwrap_or(1.0).clamp(0.0, 1.0) as f32,
+                    ]
+                });
+                let pixel_stretch_center =
+                    layer
+                        .pixel_stretch
+                        .as_ref()
+                        .map_or([0.5, 0.5, 0.0, 0.0], |effect| {
+                            let horizontal =
+                                matches!(effect.mode.as_str(), "left" | "right" | "horizontal");
+                            [
+                                effect.center_x.unwrap_or(0.5).clamp(0.0, 1.0) as f32,
+                                effect.center_y.unwrap_or(0.5).clamp(0.0, 1.0) as f32,
+                                effect
+                                    .control_start
+                                    .unwrap_or(if horizontal {
+                                        effect.origin_x
+                                    } else {
+                                        effect.origin_y
+                                    })
+                                    .clamp(0.0, 1.0) as f32,
+                                effect
+                                    .control_end
+                                    .unwrap_or(effect.line_end.unwrap_or(if horizontal {
+                                        effect.origin_x
+                                    } else {
+                                        effect.origin_y
+                                    }))
+                                    .clamp(0.0, 1.0) as f32,
+                            ]
+                        });
+                let pixel_stretch_path_meta =
+                    layer.pixel_stretch.as_ref().map_or([0.0; 4], |effect| {
+                        let enabled = effect
+                            .path_points
+                            .as_ref()
+                            .is_some_and(|points| points.len() == 14);
+                        [
+                            if enabled { 1.0 } else { 0.0 },
+                            effect.path_start_width.unwrap_or(0.2).clamp(0.001, 2.0) as f32,
+                            effect.path_end_width.unwrap_or(0.1).clamp(0.001, 2.0) as f32,
+                            if effect.fill_sample_gaps.unwrap_or(false) {
+                                1.0
+                            } else {
+                                0.0
+                            },
+                        ]
+                    });
+                let mut pixel_stretch_path_data = [[0.0; 4]; 4];
+                if let Some(points) = layer
+                    .pixel_stretch
+                    .as_ref()
+                    .and_then(|effect| effect.path_points.as_ref())
+                {
+                    if points.len() == 14 {
+                        for (index, value) in points.iter().enumerate() {
+                            pixel_stretch_path_data[index / 4][index % 4] =
+                                value.clamp(-2.0, 3.0) as f32;
+                        }
+                    }
+                }
                 let shape_kind = match layer.shape.as_deref() {
                     Some("rounded-rectangle") => 1.0,
                     Some("line") => 2.0,
@@ -213,7 +427,14 @@ impl Compositor {
                     tex_entry.height as f64,
                 );
 
-                // ── 确定当前层的 LUT（已在 render loop 前预加载） ──
+                let (restore_lut_texture, restore_lut_size) = match &layer.restore_lut_id {
+                    Some(path) => self.luts.get(path.as_str()).map_or_else(
+                        || (&self.identity_lut, 0.0),
+                        |entry| (&entry.texture, entry.size as f32),
+                    ),
+                    None => (&self.identity_lut, 0.0),
+                };
+                // ── 确定当前层的创意 LUT（已在 render loop 前预加载） ──
                 let (lut_texture, lut_size) = match &layer.lut_id {
                     Some(path) => self.luts.get(path.as_str()).map_or_else(
                         || (&self.identity_lut, 0.0),
@@ -326,6 +547,7 @@ impl Compositor {
                         .as_ref()
                         .and_then(|t| t.translate_y)
                         .unwrap_or(0.0) as f32,
+                    restore_lut_size,
                     lut_size,
                     lut_intensity: layer.lut_intensity.unwrap_or(100.0) as f32,
                     sampling_quality: if layer.positioning.is_some() {
@@ -333,6 +555,20 @@ impl Compositor {
                     } else {
                         0.0
                     },
+                    lut_padding: [0.0; 3],
+                    mask_params: mask_params(layer),
+                    mask_transform: layer
+                        .mask_transform
+                        .as_ref()
+                        .map(|transform| {
+                            [
+                                transform.translate_x as f32,
+                                transform.translate_y as f32,
+                                transform.scale.clamp(0.1, 10.0) as f32,
+                                transform.rotation as f32,
+                            ]
+                        })
+                        .unwrap_or([0.0, 0.0, 1.0, 0.0]),
                     procedural: [
                         procedural_kind,
                         if procedural_kind > 1.5 {
@@ -343,6 +579,11 @@ impl Compositor {
                         layer.corner_radius.unwrap_or(0.0) as f32,
                         layer.stroke_width.unwrap_or(0.0) as f32,
                     ],
+                    pixel_stretch,
+                    pixel_stretch_extra,
+                    pixel_stretch_center,
+                    pixel_stretch_path_meta,
+                    pixel_stretch_path_data,
                     fill_rgba,
                     stroke_rgba,
                     text_meta: [
@@ -370,6 +611,16 @@ impl Compositor {
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
                 let lut_view = lut_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let restore_lut_view =
+                    restore_lut_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let mask_entry = layer
+                    .mask_texture_id
+                    .and_then(|id| self.textures.get(&id))
+                    .or_else(|| self.textures.get(&0))
+                    .ok_or_else(|| "identity mask texture not found".to_string())?;
+                let mask_view = mask_entry
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
 
                 let bg_entries = [
                     wgpu::BindGroupEntry {
@@ -392,6 +643,14 @@ impl Compositor {
                         binding: 4,
                         resource: wgpu::BindingResource::Sampler(&self.sampler),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(&mask_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::TextureView(&restore_lut_view),
+                    },
                 ];
 
                 let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -407,6 +666,7 @@ impl Compositor {
 
         if !readback {
             #[cfg(target_os = "windows")]
+            if _present_output
             {
                 let mut seen = std::collections::HashSet::new();
                 let mut transitions = sorted

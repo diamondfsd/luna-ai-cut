@@ -55,17 +55,128 @@ pub(super) fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupL
                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             },
+            // binding 5: layer color mask (white identity fallback)
+            wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            // binding 6: technical log restoration LUT (identity fallback when disabled)
+            wgpu::BindGroupLayoutEntry {
+                binding: 6,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D3,
+                    multisampled: false,
+                },
+                count: None,
+            },
         ],
     })
 }
 
-pub(super) fn create_compositor_pipeline(
+pub(super) struct BlendPipelines {
+    normal: wgpu::RenderPipeline,
+    multiply: wgpu::RenderPipeline,
+    screen: wgpu::RenderPipeline,
+    add: wgpu::RenderPipeline,
+}
+
+impl BlendPipelines {
+    pub(super) fn get(&self, blend_mode: Option<&str>) -> &wgpu::RenderPipeline {
+        match blend_mode {
+            Some("multiply") => &self.multiply,
+            Some("screen") => &self.screen,
+            Some("add") => &self.add,
+            _ => &self.normal,
+        }
+    }
+}
+
+pub(super) fn create_compositor_pipelines(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
     shader: &wgpu::ShaderModule,
     format: wgpu::TextureFormat,
     label: &str,
+) -> BlendPipelines {
+    BlendPipelines {
+        normal: create_compositor_pipeline(
+            device,
+            layout,
+            shader,
+            format,
+            &format!("{label} normal"),
+            "normal",
+        ),
+        multiply: create_compositor_pipeline(
+            device,
+            layout,
+            shader,
+            format,
+            &format!("{label} multiply"),
+            "multiply",
+        ),
+        screen: create_compositor_pipeline(
+            device,
+            layout,
+            shader,
+            format,
+            &format!("{label} screen"),
+            "screen",
+        ),
+        add: create_compositor_pipeline(
+            device,
+            layout,
+            shader,
+            format,
+            &format!("{label} add"),
+            "add",
+        ),
+    }
+}
+
+fn create_compositor_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    format: wgpu::TextureFormat,
+    label: &str,
+    blend_mode: &str,
 ) -> wgpu::RenderPipeline {
+    let alpha = wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::One,
+        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+        operation: wgpu::BlendOperation::Add,
+    };
+    let color = match blend_mode {
+        "multiply" => wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::Dst,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        },
+        "screen" => wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::OneMinusSrc,
+            operation: wgpu::BlendOperation::Add,
+        },
+        "add" => wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        },
+        _ => wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        },
+    };
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(label),
         layout: Some(layout),
@@ -81,7 +192,7 @@ pub(super) fn create_compositor_pipeline(
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                blend: Some(wgpu::BlendState { color, alpha }),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -228,27 +339,7 @@ pub(super) fn create_lut_3d_texture(
     size: u32,
     cube_values: &[f32],
 ) -> wgpu::Texture {
-    let n = size as usize;
-    let mut rgba = vec![0u8; n * n * n * 4];
-
-    // .cube 文件实际格式：col1=B_out, col2=G_out, col3=R_out（多数 LUT 生成器用 BGR 顺序）
-    // wgpu 3D texture 布局：x=R fast, y=G mid, z=B slow → offset = (b*n*n + g*n + r) * 4
-    // 重排：.cube col3(R_out) → R, col2(G_out) → G, col1(B_out) → B
-    for r in 0..n {
-        for g in 0..n {
-            for b in 0..n {
-                let cube_idx = (r * n * n + g * n + b) * 3;
-                let wgpu_offset = (b * n * n + g * n + r) * 4;
-                rgba[wgpu_offset] =
-                    (cube_values[cube_idx + 2].clamp(0.0, 1.0) * 255.0).round() as u8;
-                rgba[wgpu_offset + 1] =
-                    (cube_values[cube_idx + 1].clamp(0.0, 1.0) * 255.0).round() as u8;
-                rgba[wgpu_offset + 2] =
-                    (cube_values[cube_idx].clamp(0.0, 1.0) * 255.0).round() as u8;
-                rgba[wgpu_offset + 3] = 255;
-            }
-        }
-    }
+    let rgba = pack_lut_rgba(size, cube_values);
 
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("lut_3d"),
@@ -286,6 +377,41 @@ pub(super) fn create_lut_3d_texture(
     );
 
     texture
+}
+
+fn pack_lut_rgba(size: u32, cube_values: &[f32]) -> Vec<u8> {
+    let n = size as usize;
+    let mut rgba = Vec::with_capacity(n * n * n * 4);
+
+    // .cube and wgpu both store the red input axis fastest, followed by green and blue.
+    // Each .cube row is already RGB output, so no axis or channel reordering is needed.
+    for rgb in cube_values.chunks_exact(3) {
+        rgba.push((rgb[0].clamp(0.0, 1.0) * 255.0).round() as u8);
+        rgba.push((rgb[1].clamp(0.0, 1.0) * 255.0).round() as u8);
+        rgba.push((rgb[2].clamp(0.0, 1.0) * 255.0).round() as u8);
+        rgba.push(255);
+    }
+
+    rgba
+}
+
+#[cfg(test)]
+mod lut_tests {
+    use super::pack_lut_rgba;
+
+    #[test]
+    fn preserves_cube_rgb_channels_and_entry_order() {
+        let values = [
+            0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 0.0, 0.25, 0.0, 1.0, 0.5, 0.25, 0.5,
+            1.0, 0.6, 0.4, 0.2, 0.3, 0.1, 0.7,
+        ];
+
+        let packed = pack_lut_rgba(2, &values);
+
+        assert_eq!(&packed[0..4], &[26, 51, 77, 255]);
+        assert_eq!(&packed[4..8], &[102, 128, 153, 255]);
+        assert_eq!(&packed[28..32], &[77, 26, 179, 255]);
+    }
 }
 
 /// 解析 .cube 格式 LUT 文件内容

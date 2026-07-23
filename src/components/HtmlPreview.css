@@ -1,0 +1,119 @@
+.html-preview-viewport {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000;
+  touch-action: none;
+  user-select: none;
+}
+
+.html-preview-viewport.is-zoomed {
+  cursor: grab;
+}
+
+.html-preview-viewport.is-dragging {
+  cursor: grabbing;
+}
+
+.html-preview-content {
+  position: relative;
+  flex: 0 0 auto;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.html-preview-content > img:not(.html-preview-watermark),
+.html-preview-content > video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  filter: drop-shadow(3px 5px 30px rgba(0, 0, 0, 0.22));
+}
+
+.html-preview-content > img:not(.html-preview-watermark) {
+  pointer-events: none;
+}
+
+.html-preview-content > img.html-preview-watermark {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  max-width: none;
+  max-height: none;
+  height: auto;
+  object-fit: fill;
+  filter: none;
+  cursor: default;
+  pointer-events: none;
+}
+
+.html-preview-tools {
+  position: absolute;
+  z-index: 4;
+  top: 14px;
+  left: 50%;
+  display: flex;
+  gap: 6px;
+  transform: translateX(-50%);
+}
+
+.html-preview-quality-notice {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 58px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(560px, calc(100% - 36px));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  padding: 8px 11px;
+  background: rgba(20, 20, 22, 0.84);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  line-height: 1.35;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+
+.html-preview-quality-notice svg {
+  flex: 0 0 auto;
+}
+
+.html-preview-live-control {
+  position: absolute;
+  z-index: 4;
+  left: 18px;
+  bottom: 18px;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.html-preview-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #888;
+}
+
+.html-preview-error {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  max-width: min(420px, calc(100% - 40px));
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}

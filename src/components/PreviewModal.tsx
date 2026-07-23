@@ -8,6 +8,7 @@ import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { useFileCache } from '../hooks/useFileCache'
+import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
 import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
@@ -19,6 +20,8 @@ interface PreviewModalProps {
   filePath: string
   filePathList?: string[]
   previewOnly?: boolean
+  lightweightPreview?: boolean
+  proxyPreviewPaths?: string[]
   batchExportMode?: boolean
   onClose: () => void
 }
@@ -41,6 +44,8 @@ export function PreviewModal({
   filePath,
   filePathList,
   previewOnly,
+  lightweightPreview,
+  proxyPreviewPaths,
   batchExportMode,
   onClose,
 }: PreviewModalProps) {
@@ -66,6 +71,11 @@ export function PreviewModal({
   const activeSourcePath = isRemoteSource ? resolvedPath : currentFilePath
   const displaySource = activeSourcePath ? (filePathToPreviewUrl(activeSourcePath) ?? activeSourcePath) : null
   const stageSource = toLocalPath(activeSourcePath)
+  const proxyPreview = proxyPreviewPaths?.includes(currentFilePath) ?? false
+  const allowWatermark = useLunaUltraWatermark(stageSource ? {
+    path: stageSource,
+    kind: isVideoPath(stageSource) ? 'video' : 'image',
+  } : null)
 
   useEffect(() => {
     logger.info('[预览诊断] 预览窗口打开', {
@@ -93,6 +103,10 @@ export function PreviewModal({
     setWatermarkLayers([])
   }, [currentFilePath, displaySource, resolvedPath, stageSource])
 
+  useEffect(() => {
+    if (!allowWatermark) setWatermarkLayers([])
+  }, [allowWatermark])
+
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
     setWatermarkSettings(settings)
@@ -111,9 +125,13 @@ export function PreviewModal({
       const exportList = batchExportMode ? (filePathList ?? []) : [currentFilePath]
       const sources: BatchExportSource[] = await Promise.all(exportList.map(async (sourcePath) => {
         const resolution = await window.luna.workspace.getMediaResolution(sourcePath)
+        const canUseWatermark = await canUseLunaUltraWatermark(
+          sourcePath,
+          isVideoPath(sourcePath) ? 'video' : 'image',
+        )
         return {
           sourcePath,
-          layers: buildExportLayers(sourcePath, resolution, watermarkSettings),
+          layers: buildExportLayers(sourcePath, resolution, canUseWatermark ? watermarkSettings : null),
         }
       }))
 
@@ -124,7 +142,7 @@ export function PreviewModal({
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, filePathList, currentFilePath, watermarkSettings, exportConfig])
+  }, [batchEnqueuing, batchExportMode, exportConfig, filePathList, currentFilePath, hasVideoInBatch, watermarkSettings])
 
   // Escape 关闭
   useEffect(() => {
@@ -147,9 +165,14 @@ export function PreviewModal({
 
         <div className={`preview-body${inspectorOpen ? '' : ' inspector-collapsed'}`}>
           <div className="preview-stage-col">
-            {previewOnly ? (
+            {previewOnly || lightweightPreview ? (
               <div className="preview-stage">
-                <HtmlPreview url={displaySource} />
+                <HtmlPreview
+                  url={displaySource}
+                  mediaPath={stageSource}
+                  proxyPreview={proxyPreview}
+                  watermarkLayer={lightweightPreview ? watermarkLayers[0] : undefined}
+                />
               </div>
             ) : (
               <PreviewStage
@@ -169,11 +192,13 @@ export function PreviewModal({
             <div className={`preview-sidebar${batchExportMode ? ' batch-export-sidebar' : ''}`}>
               <MediaInspector
                 filePath={currentFilePath}
+                proxyPreview={proxyPreview}
                 onToggleCollapse={() => setInspectorOpen(false)}
-                header={!previewOnly ? (
+                header={!previewOnly && allowWatermark ? (
                   <WatermarkSettings
                     onChange={handleWatermarkChange}
-                    filePath={currentFilePath}
+                    filePath={stageSource ?? undefined}
+                    mediaKind={isVideoPath(currentFilePath) ? 'video' : 'image'}
                   />
                 ) : undefined}
               />

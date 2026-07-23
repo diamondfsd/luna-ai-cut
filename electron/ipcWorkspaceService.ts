@@ -4,13 +4,13 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceMediaAsset, WorkspaceProject } from '../src/shared/types'
+import type { WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from './fileService'
 import { safeName } from './filePathUtils'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
-import { logMainError } from './loggerService'
+import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { combineLivePhoto, isGoogleMotionPhoto } from './livePhotoService'
 import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
 import {
@@ -29,6 +29,26 @@ import {
 } from './colorPresetsService'
 import { loadWorkspacePreview } from './workspacePreviewService'
 import { loadTrimThumbnailCache, saveTrimThumbnailCache } from './trimThumbnailCacheService'
+import { getModelCacheStatus, loadModel, loadSamModel, type ModelId } from './modelLoader'
+import { automaticSegmentationTarget, isSamSegmentationModel, modelForSegmentationRequest, SEGMENTATION_MODELS, SPECIALIZED_SEGMENTATION_MODELS, type SegmentationModelId } from '../src/shared/segmentationModels'
+import { segmentSamInWorker } from './samSegmentationService'
+import { prepareSemanticRefinementGuide, segmentSemanticInWorker } from './semanticSegmentationService'
+import { segmentSpecializedInWorker } from './specializedSegmentationService'
+import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColorMask } from './colorMaskService'
+import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
+import { beginForegroundSegmentation } from './segmentationModelPrefetchService'
+import { trackMaskInWorker } from './maskTrackingService'
+
+const MASKFORMER_COMMON_CLASS_IDS: Record<number, number> = {
+  1: 1,
+  2: 2,
+  4: 3,
+  9: 12,
+  12: 11,
+  17: 16,
+  20: 14,
+  21: 24,
+}
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
@@ -123,12 +143,51 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
 }
 
 export function register(): void {
+  const segmentationTasks = new SegmentationTaskRegistry()
+  const trackingTasks = new SegmentationTaskRegistry()
+  const watchedSenders = new Set<number>()
+  const watchSender = (sender: Electron.WebContents): void => {
+    if (watchedSenders.has(sender.id)) return
+    watchedSenders.add(sender.id)
+    const cancelSenderTasks = (): void => {
+      segmentationTasks.cancelOwner(sender.id)
+      trackingTasks.cancelOwner(sender.id)
+    }
+    sender.on('render-process-gone', cancelSenderTasks)
+    sender.on('did-start-navigation', (_event, _url, isSameDocument, isMainFrame) => {
+      if (isMainFrame && !isSameDocument) cancelSenderTasks()
+    })
+    sender.once('destroyed', () => {
+      cancelSenderTasks()
+      watchedSenders.delete(sender.id)
+    })
+  }
   ipcMain.handle('workspace:loadTrimThumbnailCache', async (_event, videoPath: string, duration: number) => {
     return loadTrimThumbnailCache(videoPath, duration)
   })
 
   ipcMain.handle('workspace:saveTrimThumbnailCache', async (_event, videoPath: string, duration: number, bytes: ArrayBuffer) => {
     await saveTrimThumbnailCache(videoPath, duration, bytes)
+  })
+
+  ipcMain.handle('workspace:saveColorMask', async (_event, projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number) => {
+    const settings = await getSettings()
+    return saveColorMask(settings.downloadDir, projectId, assetId, width, height, bytes, feather)
+  })
+
+  ipcMain.handle('workspace:loadColorMask', async (_event, projectId: string, filePath: string) => {
+    const settings = await getSettings()
+    return loadColorMask(settings.downloadDir, projectId, filePath)
+  })
+
+  ipcMain.handle('workspace:deleteColorMask', async (_event, projectId: string, filePath: string) => {
+    const settings = await getSettings()
+    await deleteColorMask(settings.downloadDir, projectId, filePath)
+  })
+
+  ipcMain.handle('workspace:cleanupColorMasks', async (_event, projectId: string, retainedPaths: string[]) => {
+    const settings = await getSettings()
+    return cleanupUnreferencedColorMasks(settings.downloadDir, projectId, retainedPaths)
   })
 
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
@@ -159,24 +218,317 @@ export function register(): void {
     return duration
   })
 
+  ipcMain.handle('workspace:cancelMaskTracking', (event, requestId: string) => {
+    if (typeof requestId !== 'string' || requestId.length === 0) return false
+    return trackingTasks.cancel(event.sender.id, requestId)
+  })
+
+  ipcMain.handle('workspace:trackMask', async (event, request: WorkspaceMaskTrackingRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('蒙版追踪任务标识无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0 || !VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('蒙版追踪仅支持视频素材')
+    if (request.direction !== 'forward' && request.direction !== 'backward') throw new Error('蒙版追踪方向无效')
+    const anchorTime = Number(request.anchorTime)
+    const maskWidth = Math.round(Number(request.maskWidth))
+    const maskHeight = Math.round(Number(request.maskHeight))
+    const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
+    if (!Number.isFinite(anchorTime) || anchorTime < 0) throw new Error('蒙版追踪起始时间无效')
+    if (maskWidth <= 0 || maskHeight <= 0 || maskWidth * maskHeight > 16_777_216 || maskBytes.byteLength !== maskWidth * maskHeight) throw new Error('蒙版追踪数据无效')
+    let selectedPixels = 0
+    for (const value of maskBytes) if (value >= 16) selectedPixels += 1
+    if (selectedPixels < 16) throw new Error('请先创建有效蒙版再开始追踪')
+
+    const task = trackingTasks.begin(event.sender.id, request.requestId)
+    watchSender(event.sender)
+    try {
+      const [duration, resolution] = await Promise.all([
+        (async () => {
+          const { stdout } = await execFileAsync(getFfprobePath(), ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', request.filePath], { encoding: 'utf-8' })
+          return Number(stdout.trim())
+        })(),
+        probeDisplayResolution(request.filePath),
+      ])
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长')
+      const result = await trackMaskInWorker({
+        ...request,
+        anchorTime: Math.min(anchorTime, duration),
+        maskWidth,
+        maskHeight,
+        maskBytes,
+        duration,
+        sourceWidth: resolution.width,
+        sourceHeight: resolution.height,
+      }, getFfmpegPath(), task.controller.signal, (progress) => {
+        if (!trackingTasks.isActive(task) || event.sender.isDestroyed()) return
+        event.sender.send('workspace:mask-tracking-progress', { requestId: request.requestId, direction: request.direction, ...progress })
+      })
+      return result
+    } finally {
+      trackingTasks.finish(task)
+    }
+  })
+
   ipcMain.handle('workspace:isLivePhoto', async (_event, filePath: string) => {
     return isGoogleMotionPhoto(filePath)
   })
-
   ipcMain.handle('workspace:readColorMetadata', async (_event, filePath: string) => {
     return readWorkspaceColorMetadata(filePath)
   })
-
+  ipcMain.handle('workspace:getSegmentationModelStatus', async (_event, modelId: SegmentationModelId) => {
+    return getModelCacheStatus(modelId)
+  })
+  ipcMain.handle('workspace:prepareSegmentationModels', async (_event, modelIds: SegmentationModelId[]) => {
+    if (!Array.isArray(modelIds)) throw new Error('自动选择模型列表无效')
+    const availableModelIds = new Set<SegmentationModelId>([
+      ...SEGMENTATION_MODELS.map((model) => model.id),
+      ...SPECIALIZED_SEGMENTATION_MODELS.map((model) => model.id),
+    ])
+    const uniqueModelIds = [...new Set(modelIds)].filter((modelId) => availableModelIds.has(modelId))
+    for (const modelId of uniqueModelIds) await loadModel(modelId as ModelId)
+  })
+  ipcMain.handle('workspace:cancelSegmentation', (event, requestId: string) => {
+    if (typeof requestId !== 'string' || requestId.length === 0) return false
+    return segmentationTasks.cancel(event.sender.id, requestId)
+  })
+  ipcMain.handle('workspace:segmentImage', async (event, request: WorkspaceSegmentationRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) {
+      throw new Error('自动选择任务标识无效')
+    }
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('素材路径无效')
+    const { requestId, filePath, point } = request
+    const isVideoInput = VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase())
+    const frameTime = isVideoInput && request.frameTime !== undefined ? Number(request.frameTime) : undefined
+    if (frameTime !== undefined && (!Number.isFinite(frameTime) || frameTime < 0)) throw new Error('视频帧时间无效')
+    const target = request.targetId ? automaticSegmentationTarget(request.targetId) : undefined
+    if (request.targetId && !target) throw new Error('自动选择类型无效')
+    const targetClassId = target?.classId ?? request.targetClassId
+    const modelId = modelForSegmentationRequest(target?.id, request.modelId)
+    const finishForegroundSegmentation = beginForegroundSegmentation(modelId)
+    const task = segmentationTasks.begin(event.sender.id, requestId)
+    const { signal } = task.controller
+    watchSender(event.sender)
+    let lastProgressLogKey = ''
+    const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
+      if (!segmentationTasks.isActive(task) || event.sender.isDestroyed()) return
+      const progressLogKey = `${phase}:${label}:${percent === null ? 'pending' : Math.floor(percent / 10)}`
+      if (progressLogKey !== lastProgressLogKey) {
+        lastProgressLogKey = progressLogKey
+        logMainInfo('[Mask] 自动选择进度', { requestId, targetId: target?.id, modelId, phase, label, percent })
+      }
+      try {
+        event.sender.send('workspace:segmentation-progress', { requestId, phase, label, percent })
+      } catch {
+        segmentationTasks.cancel(event.sender.id, requestId)
+      }
+    }
+    try {
+    const totalStartedAt = performance.now()
+    const modelStartedAt = performance.now()
+    const isSam = isSamSegmentationModel(modelId)
+    const specializedDefinition = SPECIALIZED_SEGMENTATION_MODELS.find((item) => item.id === modelId)
+    logMainInfo('[Mask] 自动选择开始', {
+      requestId,
+      targetId: target?.id,
+      modelId,
+      fileName: path.basename(filePath),
+      frameTime,
+    })
+    if (isSam) logMainInfo('[SAM] 智能选择开始')
+    reportProgress('model', '正在准备模型', null)
+    const model = isSam
+      ? await loadSamModel(modelId, (progress) => reportProgress(
+        'model',
+        progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
+        Math.round(progress.completedBytes / progress.totalBytes * 100),
+      ), signal)
+      : await loadModel(modelId as ModelId, (progress) => {
+        const ratio = progress.totalBytes > 0 ? progress.completedBytes / progress.totalBytes : 0
+        reportProgress(
+          'model',
+          progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
+          Math.round(ratio * 100),
+        )
+      }, signal)
+    signal.throwIfAborted()
+    const modelFileLoadMs = performance.now() - modelStartedAt
+    if (isSam) logMainInfo('[SAM] 模型准备完成', { modelLoadMs: Math.round(modelFileLoadMs) })
+    reportProgress('preparing', '正在准备画面', null)
+    const decodeStartedAt = performance.now()
+    const semanticDefinition = isSam || specializedDefinition ? null : SEGMENTATION_MODELS.find((item) => item.id === modelId)
+    const semanticInputSize = semanticDefinition?.inputSize ?? 512
+    const sourceSize = await probeDisplayResolution(filePath)
+    const samScale = sourceSize ? Math.min(1, 1024 / Math.max(sourceSize.width, sourceSize.height)) : 1
+    const samWidth = sourceSize ? Math.max(1, Math.round(sourceSize.width * samScale)) : 512
+    const samHeight = sourceSize ? Math.max(1, Math.round(sourceSize.height * samScale)) : 512
+    const yoloScale = specializedDefinition?.backend === 'yolo26-seg' && sourceSize
+      ? Math.min(640 / sourceSize.width, 640 / sourceSize.height)
+      : 1
+    const yoloWidth = Math.max(1, Math.round((sourceSize?.width ?? 640) * yoloScale))
+    const yoloHeight = Math.max(1, Math.round((sourceSize?.height ?? 640) * yoloScale))
+    const yoloPadX = Math.floor((640 - yoloWidth) / 2)
+    const yoloPadY = Math.floor((640 - yoloHeight) / 2)
+    const filter = isSam
+      ? `scale=${samWidth}:${samHeight}:flags=bilinear,pad=1024:1024:0:0:color=black`
+      : specializedDefinition?.backend === 'yolo26-seg'
+        ? `scale=${yoloWidth}:${yoloHeight}:flags=bilinear,pad=640:640:${yoloPadX}:${yoloPadY}:color=0x727272`
+        : specializedDefinition
+          ? `scale=${specializedDefinition.inputSize}:${specializedDefinition.inputSize}:flags=bilinear`
+          : `scale=${semanticInputSize}:${semanticInputSize}:flags=bilinear`
+    const semanticGuidePromise = semanticDefinition
+      ? prepareSemanticRefinementGuide(filePath, sourceSize, frameTime, signal)
+      : Promise.resolve(null)
+    const [{ stdout }, semanticGuide] = await Promise.all([
+      execFileAsync(getFfmpegPath(), [
+        '-v', 'error',
+        ...(frameTime !== undefined ? ['-ss', String(frameTime)] : []),
+        '-i', filePath,
+        '-vf', filter,
+        '-frames:v', '1',
+        '-f', 'rawvideo',
+        '-pix_fmt', 'rgb24',
+        'pipe:1',
+      ], { encoding: 'buffer', maxBuffer: 1024 * 1024 * 3 + 1024, signal }),
+      semanticGuidePromise,
+    ])
+    signal.throwIfAborted()
+    const imagePrepareMs = performance.now() - decodeStartedAt
+    const inferenceStartedAt = performance.now()
+    reportProgress('recognizing', '正在识别', null)
+    signal.throwIfAborted()
+    const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
+    if (isSam) logMainInfo('[SAM] 开始原生识别', { width: samWidth, height: samHeight, bytes: rgb.byteLength })
+    const nativeTargetClassId = modelId === 'maskformer-r101-ade20k-full' && targetClassId !== undefined
+      ? MASKFORMER_COMMON_CLASS_IDS[targetClassId] ?? targetClassId
+      : targetClassId
+    const result = specializedDefinition && 'path' in model
+      ? await segmentSpecializedInWorker({
+        backend: specializedDefinition.backend,
+        modelPath: model.path,
+        rgb,
+        scaledWidth: specializedDefinition.backend === 'yolo26-seg' ? yoloWidth : specializedDefinition.inputSize,
+        scaledHeight: specializedDefinition.backend === 'yolo26-seg' ? yoloHeight : specializedDefinition.inputSize,
+        padX: specializedDefinition.backend === 'yolo26-seg' ? yoloPadX : 0,
+        padY: specializedDefinition.backend === 'yolo26-seg' ? yoloPadY : 0,
+        outputSize: 512,
+      }, signal)
+      : 'visionEncoderPath' in model
+      ? await segmentSamInWorker({
+        visionEncoderPath: model.visionEncoderPath,
+        promptDecoderPath: model.promptDecoderPath,
+        rgb,
+        sourceWidth: samWidth,
+        sourceHeight: samHeight,
+        pointX: point?.x ?? 0.5,
+        pointY: point?.y ?? 0.5,
+      }, signal)
+      : await segmentSemanticInWorker({
+        modelPath: model.path,
+        rgb,
+        pointX: point?.x ?? 0.5,
+        pointY: point?.y ?? 0.5,
+        targetClassId: nativeTargetClassId,
+        inputSize: semanticInputSize,
+        guide: semanticGuide ?? undefined,
+      }, signal)
+    signal.throwIfAborted()
+    const inferenceMs = performance.now() - inferenceStartedAt
+    const specializedMetrics = specializedDefinition && 'sessionLoadMs' in result
+      ? result as typeof result & {
+        sessionLoadMs: number
+        sessionReused: boolean
+        workerInferenceMs: number
+        executionBackend: 'onnx-cpu'
+      }
+      : null
+    const sessionLoadMs = specializedMetrics?.sessionLoadMs ?? 0
+    const modelLoadMs = modelFileLoadMs + sessionLoadMs
+    if (specializedDefinition && specializedMetrics) {
+      logMainInfo('[Mask] 专用模型识别完成', {
+        backend: specializedDefinition.backend,
+        sessionReused: specializedMetrics.sessionReused,
+        sessionLoadMs,
+        workerInferenceMs: specializedMetrics.workerInferenceMs,
+        executionBackend: specializedMetrics.executionBackend,
+      })
+    }
+    if (isSam) logMainInfo('[SAM] 原生识别完成', { inferenceMs: Math.round(inferenceMs) })
+    const classId = 'classId' in result && typeof result.classId === 'number' ? result.classId : -1
+    const classNames: Record<number, string> = {
+      2: '天空',
+      1: '建筑',
+      4: '树木',
+      9: '草地',
+      12: '人物',
+      16: '山体',
+      17: '植物',
+      20: '车辆',
+      21: '水面',
+      22: '海洋',
+      24: '水面',
+      26: '海面',
+      60: '河流',
+      109: '泳池',
+      128: '湖面',
+    }
+    const maskFormerClassNames: Record<number, string> = {
+      1: '建筑',
+      2: '天空',
+      3: '树木',
+      11: '人物',
+      12: '草地',
+      14: '车辆',
+      16: '植物',
+      22: '海洋',
+      24: '水面',
+      71: '瀑布',
+    }
+    const reportedClassId = targetClassId ?? classId
+    const className = target?.label ?? (targetClassId !== undefined
+      ? classNames[targetClassId] ?? '选中区域'
+      : modelId === 'maskformer-r101-ade20k-full'
+        ? maskFormerClassNames[classId] ?? '选中区域'
+        : classNames[classId] ?? '选中区域')
+    const response = {
+      requestId,
+      width: result.width,
+      height: result.height,
+      classId: reportedClassId,
+      className: isSam ? '已选对象' : className,
+      targetId: target?.id,
+      modelId: model.id,
+      performance: {
+        modelLoadMs: Math.round(modelLoadMs),
+        imagePrepareMs: Math.round(imagePrepareMs),
+        inferenceMs: Math.round(inferenceMs),
+        totalMs: Math.round(performance.now() - totalStartedAt),
+      },
+      bytes: result.bytes.buffer.slice(result.bytes.byteOffset, result.bytes.byteOffset + result.bytes.byteLength),
+    }
+    logMainInfo('[Mask] 自动选择成功', {
+      requestId,
+      targetId: target?.id,
+      modelId: model.id,
+      totalMs: response.performance.totalMs,
+      selectedBytes: result.bytes.byteLength,
+    })
+    return response
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      if (signal.aborted) logMainWarn('[Mask] 自动选择已取消', { requestId, targetId: target?.id, modelId, reason })
+      else logMainError('[Mask] 自动选择失败', { requestId, targetId: target?.id, modelId, reason })
+      throw error
+    } finally {
+      segmentationTasks.finish(task)
+      finishForegroundSegmentation()
+    }
+  })
   ipcMain.handle('workspace:listProjects', async () => {
     const settings = await getSettings()
     return listWorkspaceProjects(settings.downloadDir)
   })
-
   ipcMain.handle('workspace:createProject', async (_event, name: string, assets: WorkspaceMediaAsset[]) => {
     const settings = await getSettings()
     return createWorkspaceProject(settings.downloadDir, name, assets)
   })
-
   ipcMain.handle('workspace:addAssetsToProject', async (_event, projectId: string, assets: WorkspaceMediaAsset[]) => {
     const settings = await getSettings()
     return addAssetsToWorkspaceProject(settings.downloadDir, projectId, assets)
@@ -305,5 +657,4 @@ export function register(): void {
     const settings = await getSettings()
     return renameColorPreset(settings.downloadDir, id, newName)
   })
-
 }
