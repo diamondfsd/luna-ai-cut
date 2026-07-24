@@ -32,6 +32,8 @@ release
 # Build artifacts
 resources/ffmpeg/
 .ffmpeg-cache/
+resources/dolby-vision/
+.dolby-tools-cache/
 docs/
 
 # Local deploy config

@@ -16,6 +16,11 @@
   ],
   "extraResources": [
     {
+      "from": "resources/dolby-vision",
+      "to": "dolby-vision",
+      "filter": ["dovi_tool", "dovi_tool.exe", "mp4mux", "mp4mux.exe"]
+    },
+    {
       "from": "luna-render-core/luna-render-core.node",
       "to": "luna-render-core/luna-render-core.node"
     },
