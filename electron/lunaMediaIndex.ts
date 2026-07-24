@@ -49,6 +49,23 @@ function groupLabels(date: Date | null): Pick<LunaFile, 'capturedAt' | 'groupDay
   }
 }
 
+function decodedFileName(cameraPath: string): string {
+  const rawName = cameraPath.split('/').filter(Boolean).pop() ?? cameraPath
+  try {
+    return decodeURIComponent(rawName)
+  } catch {
+    return rawName
+  }
+}
+
+function textLabels(date: Date | null): Pick<LunaFile, 'dateText' | 'timeText'> {
+  if (!date || Number.isNaN(date.getTime())) return { dateText: '', timeText: '' }
+  return {
+    dateText: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    timeText: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  }
+}
+
 export function extractCameraSubdirs(html: string): string[] {
   const dirs: string[] = []
   for (const match of html.matchAll(INDEX_RE)) {
@@ -87,6 +104,38 @@ export function parseLunaIndex(html: string, baseUrl: string): LunaFile[] {
       canPreview: kind === 'image' || kind === 'video' || kind === 'lrv',
     })
   }
+  return lunaMediaAdapter.attachRelatedFiles(files).map((file) => ({
+    ...file,
+    thumbnailUrl: null,
+    livePhotoCacheFilePath: null,
+  }))
+}
+
+export function parseLunaFilePaths(cameraPaths: string[], baseUrl: string): LunaFile[] {
+  const files: LunaFile[] = []
+  for (const cameraPath of new Set(cameraPaths)) {
+    const name = decodedFileName(cameraPath)
+    const kind = lunaMediaAdapter.mediaKind(name)
+    if (kind === 'unknown') continue
+
+    const timestamp = lunaMediaAdapter.capturedAt(name)
+    const labels = groupLabels(timestamp)
+    const text = textLabels(timestamp)
+    const videoKey = lunaMediaAdapter.videoKey(name)
+    const livePhotoKey = lunaMediaAdapter.livePhotoKey(name)
+    const url = new URL(cameraPath, baseUrl).toString()
+    files.push({
+      id: cameraPath, name, href: cameraPath, sourceUrl: url, url,
+      dateText: text.dateText, timeText: text.timeText, sizeText: '', bytes: null,
+      kind, extension: lunaMediaAdapter.extensionOf(name), videoKey,
+      capturedAt: labels.capturedAt, groupDay: labels.groupDay, groupHour: labels.groupHour,
+      previewName: null, previewUrl: null, cacheFilePath: null, downloadFilePath: null, thumbnailUrl: null,
+      isLivePhoto: Boolean(livePhotoKey), livePhotoVideoName: null, livePhotoVideoUrl: null,
+      livePhotoCacheFilePath: null, downloadName: lunaMediaAdapter.downloadName(name),
+      canPreview: kind === 'image' || kind === 'video' || kind === 'lrv',
+    })
+  }
+
   return lunaMediaAdapter.attachRelatedFiles(files).map((file) => ({
     ...file,
     thumbnailUrl: null,

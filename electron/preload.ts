@@ -49,6 +49,7 @@ interface LunaExportTaskApi {
 }
 
 const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
+  startupReady: () => ipcRenderer.send('luna:startup-ready'),
   // 日志
   log: (level: string, message: string, meta?: unknown) => {
     ipcRenderer.send('log:renderer', level, message, meta)

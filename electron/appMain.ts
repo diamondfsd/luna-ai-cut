@@ -21,11 +21,16 @@ import { GoUltraClient } from './goUltraProtocol'
 import { LunaUltraProtocol, GoUltraProtocol } from './deviceProtocols'
 import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './deviceDefaults'
 import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
+import {
+  LRC_INIT_GUARD_FILE,
+  LRC_INIT_RECOVERY_FILE,
+  shouldRecoverLrcInitGuard,
+} from '../src/shared/lrcInitGuardRecovery'
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
-import { cancelExportTask, warmupRenderCore } from './lunaRenderCore'
+import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
 import type {
@@ -82,6 +87,32 @@ function stopAllKeepAlive(): void {
     client.close()
   }
   goUltraClients.clear()
+}
+
+function recoverLegacyRenderInitGuardOnce(): void {
+  const userData = app.getPath('userData')
+  const guardPath = join(userData, LRC_INIT_GUARD_FILE)
+  const recoveryPath = join(userData, LRC_INIT_RECOVERY_FILE)
+  if (!shouldRecoverLrcInitGuard({
+    packaged: app.isPackaged,
+    guardExists: existsSync(guardPath),
+    recoveryAttempted: existsSync(recoveryPath),
+  })) return
+
+  try {
+    mkdirSync(userData, { recursive: true })
+    writeFileSync(recoveryPath, JSON.stringify({ attemptedAt: new Date().toISOString() }), 'utf8')
+    resetRenderCompatibilityBlock()
+    if (existsSync(guardPath)) {
+      logMainWarn('[LRC] 旧初始化保护自动恢复失败，继续保持兼容保护')
+      return
+    }
+    logMainInfo('[LRC] 已自动清理旧初始化保护，本次启动重新检测显卡')
+  } catch (error) {
+    logMainWarn('[LRC] 无法记录初始化保护恢复状态，继续保持兼容保护', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 function clientKey(host: string, controlPort: number): string {
@@ -248,6 +279,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  resetRenderCompatibilityBlock()
   abortAllExports()
   stopSegmentationModelPrefetch()
   shutdownSpecializedSegmentationWorker()
@@ -360,7 +392,7 @@ function registerIpc(): void {
     const normalizedHost = host || settings.cameraHost
     const deviceId = settings.activeDeviceId ?? DEFAULT_DEVICE.id
     const nextStorageId = storageId ?? settings.deviceStorage?.[deviceId] ?? 'all'
-    logMainInfo(`[HTTP读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId, deviceId })
+    logMainInfo(`[文件读取] 开始读取文件列表`, { host: normalizedHost, storageId: nextStorageId, deviceId })
     const t0 = performance.now()
     try {
       let files: LunaFile[]
@@ -377,7 +409,7 @@ function registerIpc(): void {
       }
       files = attachSourceDevice(files, deviceId)
       const elapsed = ((performance.now() - t0) / 1000).toFixed(2)
-      logMainInfo(`[HTTP读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed })
+      logMainInfo(`[文件读取] 文件列表读取完成`, { host: normalizedHost, storageId: nextStorageId, fileCount: files.length, elapsedSec: elapsed })
       await saveSettings({
         cameraHost: normalizedHost,
         deviceStorage: {
@@ -390,7 +422,7 @@ function registerIpc(): void {
       await resolveLocalThumbnails(files, getLocalResourcesDir(nextSettings))
       return files
     } catch (error) {
-      logMainError(`[HTTP读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, error: error instanceof Error ? error.message : String(error) })
+      logMainError(`[文件读取] 文件列表读取失败`, { host: normalizedHost, storageId: nextStorageId, error: error instanceof Error ? error.message : String(error) })
       throw error
     }
   })
@@ -511,6 +543,7 @@ function createAppMenu(): void {
 app.whenReady().then(() => {
   initLogger()
   logMainInfo('应用启动')
+  recoverLegacyRenderInitGuardOnce()
   // 打印系统信息
   logMainInfo('[系统信息]', {
     platform: process.platform,
