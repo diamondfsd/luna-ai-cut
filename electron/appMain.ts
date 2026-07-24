@@ -21,11 +21,16 @@ import { GoUltraClient } from './goUltraProtocol'
 import { LunaUltraProtocol, GoUltraProtocol } from './deviceProtocols'
 import { DEFAULT_DEVICE, GO_ULTRA_DEVICE, deviceDefinitionFor } from './deviceDefaults'
 import { deviceProfileForId } from '../src/shared/insta360DeviceProfiles'
+import {
+  LRC_INIT_GUARD_FILE,
+  LRC_INIT_RECOVERY_FILE,
+  shouldRecoverLrcInitGuard,
+} from '../src/shared/lrcInitGuardRecovery'
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow } from './windowService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
-import { cancelExportTask, warmupRenderCore } from './lunaRenderCore'
+import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
 import type {
@@ -82,6 +87,32 @@ function stopAllKeepAlive(): void {
     client.close()
   }
   goUltraClients.clear()
+}
+
+function recoverLegacyRenderInitGuardOnce(): void {
+  const userData = app.getPath('userData')
+  const guardPath = join(userData, LRC_INIT_GUARD_FILE)
+  const recoveryPath = join(userData, LRC_INIT_RECOVERY_FILE)
+  if (!shouldRecoverLrcInitGuard({
+    packaged: app.isPackaged,
+    guardExists: existsSync(guardPath),
+    recoveryAttempted: existsSync(recoveryPath),
+  })) return
+
+  try {
+    mkdirSync(userData, { recursive: true })
+    writeFileSync(recoveryPath, JSON.stringify({ attemptedAt: new Date().toISOString() }), 'utf8')
+    resetRenderCompatibilityBlock()
+    if (existsSync(guardPath)) {
+      logMainWarn('[LRC] 旧初始化保护自动恢复失败，继续保持兼容保护')
+      return
+    }
+    logMainInfo('[LRC] 已自动清理旧初始化保护，本次启动重新检测显卡')
+  } catch (error) {
+    logMainWarn('[LRC] 无法记录初始化保护恢复状态，继续保持兼容保护', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 function clientKey(host: string, controlPort: number): string {
@@ -248,6 +279,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  resetRenderCompatibilityBlock()
   abortAllExports()
   stopSegmentationModelPrefetch()
   shutdownSpecializedSegmentationWorker()
@@ -511,6 +543,7 @@ function createAppMenu(): void {
 app.whenReady().then(() => {
   initLogger()
   logMainInfo('应用启动')
+  recoverLegacyRenderInitGuardOnce()
   // 打印系统信息
   logMainInfo('[系统信息]', {
     platform: process.platform,
