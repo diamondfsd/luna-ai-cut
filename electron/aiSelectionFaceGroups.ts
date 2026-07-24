@@ -1,4 +1,5 @@
 import type { AiFaceDescriptor, AiFaceGroup, AiSelectionItem } from '../src/shared/types'
+import type { AiPersonIdentity } from './aiSelectionPeopleStore'
 
 export const FACE_EMBEDDING_VERSION = 'sface-2021dec-int8-independent-box-v2'
 const FACE_MEMBER_MATCH_THRESHOLD = 0.36
@@ -16,7 +17,7 @@ interface WorkingGroup {
   centroid: number[]
 }
 
-function cosineSimilarity(left: number[], right: number[]): number {
+export function cosineSimilarity(left: number[], right: number[]): number {
   if (left.length === 0 || left.length !== right.length) return -1
   let dot = 0
   let leftLength = 0
@@ -45,14 +46,39 @@ function groupSimilarity(group: WorkingGroup, observation: FaceObservation): { m
   }
 }
 
-export function buildFaceGroups(items: AiSelectionItem[]): AiFaceGroup[] {
+function faceBelongsToPerson(item: AiSelectionItem, face: AiFaceDescriptor): boolean {
+  const person = item.personEvidence?.bounds
+  if (!person) return false
+  const margin = 0.04
+  const centerX = face.bounds.x + face.bounds.width / 2
+  const centerY = face.bounds.y + face.bounds.height / 2
+  return centerX >= person.x - margin
+    && centerX <= person.x + person.width + margin
+    && centerY >= person.y - margin
+    && centerY <= person.y + person.height + margin
+}
+
+function identityFace(item: AiSelectionItem, face: AiFaceDescriptor): face is AiFaceDescriptor & { embedding: number[] } {
+  return Boolean(face.embedding
+    && face.embedding.length === FACE_EMBEDDING_DIMENSION
+    && face.embedding.every(Number.isFinite)
+    && face.embeddingVersion === FACE_EMBEDDING_VERSION
+    && faceBelongsToPerson(item, face))
+}
+
+function matchingIdentity(embeddings: number[][], identities: AiPersonIdentity[]): AiPersonIdentity | null {
+  return identities.map((identity) => ({
+    identity,
+    similarity: Math.max(-1, ...identity.samples.flatMap((sample) => embeddings.map((embedding) => cosineSimilarity(sample, embedding)))),
+  })).filter((entry) => entry.similarity >= FACE_MEMBER_MATCH_THRESHOLD)
+    .sort((left, right) => right.similarity - left.similarity)[0]?.identity ?? null
+}
+
+export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonIdentity[] = []): AiFaceGroup[] {
   const itemOrder = new Map(items.map((item, index) => [item.id, index]))
   const observations: FaceObservation[] = items.flatMap((item) => (
     item.personEvidence?.faces?.flatMap((face) => (
-      face.embedding
-        && face.embedding.length === FACE_EMBEDDING_DIMENSION
-        && face.embedding.every(Number.isFinite)
-        && face.embeddingVersion === FACE_EMBEDDING_VERSION
+      identityFace(item, face)
         ? [{ itemId: item.id, bounds: face.bounds, embedding: face.embedding }]
         : []
     )) ?? []
@@ -78,19 +104,47 @@ export function buildFaceGroups(items: AiSelectionItem[]): AiFaceGroup[] {
     }
   }
 
-  return groups
+  const generated = groups
     .map((group) => {
       const ordered = [...group.observations].sort((left, right) => (
         (itemOrder.get(left.itemId) ?? 0) - (itemOrder.get(right.itemId) ?? 0)
       ))
       const itemIds = [...new Set(ordered.map((observation) => observation.itemId))]
       const cover = ordered[0]
-      return { itemIds, coverItemId: cover.itemId, coverBounds: cover.bounds }
+      return { itemIds, coverItemId: cover.itemId, coverBounds: cover.bounds, embeddings: group.observations.map((observation) => observation.embedding) }
     })
     .sort((left, right) => right.itemIds.length - left.itemIds.length || left.coverItemId.localeCompare(right.coverItemId))
-    .map((group, index) => ({
-      id: `face_${group.coverItemId}_${Math.round(group.coverBounds.x * 1000)}_${Math.round(group.coverBounds.y * 1000)}`,
-      name: `人物 ${index + 1}`,
-      ...group,
-    }))
+    .map((group, index) => {
+      const identity = matchingIdentity(group.embeddings, identities)
+      return {
+        id: `face_${group.coverItemId}_${Math.round(group.coverBounds.x * 1000)}_${Math.round(group.coverBounds.y * 1000)}`,
+        identityId: identity?.id ?? null,
+        name: identity?.name ?? `人物 ${index + 1}`,
+        itemIds: group.itemIds,
+        coverItemId: group.coverItemId,
+        coverBounds: group.coverBounds,
+      }
+    })
+
+  const resolved = new Map<string, AiFaceGroup>()
+  for (const group of generated) {
+    const key = group.identityId ?? group.id
+    const current = resolved.get(key)
+    if (!current) {
+      resolved.set(key, group.identityId ? { ...group, id: `face_${group.identityId}` } : group)
+      continue
+    }
+    current.itemIds = [...new Set([...current.itemIds, ...group.itemIds])]
+  }
+  return [...resolved.values()].sort((left, right) => right.itemIds.length - left.itemIds.length || left.name.localeCompare(right.name))
+}
+
+export function faceEmbeddingForGroup(items: AiSelectionItem[], group: AiFaceGroup): number[] | null {
+  const item = items.find((candidate) => candidate.id === group.coverItemId)
+  const face = item?.personEvidence?.faces?.find((candidate) => (
+    identityFace(item, candidate)
+    && Math.abs(candidate.bounds.x - group.coverBounds.x) < 0.0001
+    && Math.abs(candidate.bounds.y - group.coverBounds.y) < 0.0001
+  ))
+  return face?.embedding ? [...face.embedding] : null
 }

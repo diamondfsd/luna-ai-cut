@@ -33,6 +33,7 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
   const cleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
+    let active = true
     cleanupRef.current?.()
     cleanupRef.current = null
     setThumbnailUrl(null)
@@ -53,10 +54,10 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
 
     const applyReady = ({ fileId, cacheFilePath: cachedPath, thumbnailUrl: thumbUrl }: {
       fileId: string
-      cacheFilePath: string
-      thumbnailUrl: string
+      cacheFilePath: string | null
+      thumbnailUrl: string | null
     }): void => {
-      if (fileId !== sourceUrl) return
+      if (!active || fileId !== sourceUrl) return
       if (cachedPath) setCacheFilePath(cachedPath)
       if (thumbUrl) setThumbnailUrl(thumbUrl)
       if (cachedPath || thumbUrl) {
@@ -73,8 +74,13 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
     if (latest) applyReady(latest)
 
     // 先订阅就绪事件，再触发缓存，避免快速命中磁盘缓存时错过通知。
-    setIsLoading(isHttp && !latest)
-    window.luna.cacheFile({ sourceUrl }).catch(() => {
+    setIsLoading(!latest)
+    window.luna.cacheFile({ sourceUrl }).then((success) => {
+      if (!active || success) return
+      setHasError(true)
+      setIsLoading(false)
+    }).catch(() => {
+      if (!active) return
       setHasError(true)
       setIsLoading(false)
     })
@@ -82,6 +88,7 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
     cleanupRef.current = unsubscribe
 
     return () => {
+      active = false
       unsubscribe()
       cleanupRef.current = null
     }

@@ -167,6 +167,7 @@ export interface AiSelectionGroup {
 
 export interface AiFaceGroup {
   id: string
+  identityId: string | null
   name: string
   itemIds: string[]
   coverItemId: string

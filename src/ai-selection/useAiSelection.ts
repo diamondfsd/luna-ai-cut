@@ -111,11 +111,16 @@ export function useAiSelection() {
     }
   }
 
-  async function run(action: () => Promise<AiSelectionSession>): Promise<void> {
-    if (!session || busy) return
+  async function run(action: () => Promise<AiSelectionSession>): Promise<boolean> {
+    if (!session || busy) return false
     setBusy(true)
-    try { upsert(await action()) }
-    catch (error) { toast.error(error instanceof Error ? error.message : String(error)) }
+    try {
+      upsert(await action())
+      return true
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+      return false
+    }
     finally { setBusy(false) }
   }
 
@@ -145,6 +150,8 @@ export function useAiSelection() {
     redo: () => run(() => window.luna.aiSelection.redo(session!.id)),
     apply: (operation: AiSelectionUserOperation) => run(() => window.luna.aiSelection.applyOperation(session!.id, session!.revision, operation)),
     analyzePeople,
+    renamePerson: (groupId: string, name: string) => run(() => window.luna.aiSelection.renamePerson(session!.id, groupId, name)),
+    mergePeople: (targetGroupId: string, sourceGroupId: string) => run(() => window.luna.aiSelection.mergePeople(session!.id, targetGroupId, sourceGroupId)),
     analyzeContentTags: (itemIds: string[] = []) => run(() => window.luna.aiSelection.analyzeContentTags(session!.id, itemIds)),
     analyzeVideos: (itemIds: string[]) => run(() => window.luna.aiSelection.analyzeVideos(session!.id, itemIds)),
   // eslint-disable-next-line react-hooks/exhaustive-deps

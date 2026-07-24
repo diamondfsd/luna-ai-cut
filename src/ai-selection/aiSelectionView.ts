@@ -20,16 +20,6 @@ export function matchesResultFilter(item: AiSelectionItem, filter: AiSelectionRe
   return true
 }
 
-export function matchesSelectionSearch(item: AiSelectionItem, search: string): boolean {
-  const terms = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
-  if (terms.length === 0) return true
-  const haystack = `${item.name} ${item.semanticTags.join(' ')} ${item.recommendationReason ?? ''} ${item.quality?.reasons.join(' ') ?? ''}`.toLocaleLowerCase()
-  return terms.every((term) => haystack.includes(term)
-    || (['人', '人物', '人像', 'portrait'].some((word) => term.includes(word)) && item.semanticTags.includes('人物'))
-    || (['夜', '晚上', '暗光', 'night'].some((word) => term.includes(word)) && item.semanticTags.includes('夜景'))
-    || (['闭眼', '眨眼'].some((word) => term.includes(word)) && item.flags.closedEyes))
-}
-
 export function stateLabel(state: AiSelectionState): string {
   return ({ recommended: '推荐', alternative: '备选', kept: '保留', rejected: '排除', undecided: '待确认' } as const)[state]
 }
