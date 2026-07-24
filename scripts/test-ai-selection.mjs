@@ -13,7 +13,7 @@ import {
 } from '../electron/aiSelectionAlgorithms.ts'
 import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
 import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
-import { buildFaceGroups, FACE_EMBEDDING_VERSION } from '../electron/aiSelectionFaceGroups.ts'
+import { buildFaceGroups, FACE_EMBEDDING_VERSION, hasSufficientFacePixels } from '../electron/aiSelectionFaceGroups.ts'
 import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/aiSelectionPeopleStore.ts'
 import {
   countSimilarityGroups,
@@ -277,6 +277,11 @@ const falseFaceGroup = buildFaceGroups([item('building-false-face', '2026-07-18T
   },
 })])
 assert.equal(falseFaceGroup.length, 0, '不在人物区域内的误检人脸不能进入人物分组')
+
+assert.equal(hasSufficientFacePixels(
+  { width: 0.07239413261413574, height: 0.15105456113815308 },
+  { scaledWidth: 640, scaledHeight: 360 },
+), true, '宽画幅中的清晰人脸不应被固定比例门槛排除')
 
 const smallFaceGroups = buildFaceGroups([
   item('small-face-a', '2026-07-18T03:06:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.08, height: 0.08 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
