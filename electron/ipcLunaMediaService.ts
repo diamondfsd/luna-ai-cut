@@ -204,12 +204,14 @@ export function register(ctx: IpcContext): void {
 
     const task = ctx.enqueuePreviewTask(async () => {
       const result = await getVideoFrameRate(file, sourcePath)
-      if (result.frameRate !== null || result.duration !== null) {
+      if (result.frameRate !== null || result.duration !== null || result.dolbyVision !== null) {
         ctx.win?.webContents.send('luna:video-frame-rate-ready', {
           fileId: file.id,
           fileName: file.name,
           frameRate: result.frameRate,
           duration: result.duration,
+          dolbyVision: result.dolbyVision,
+          dolbyVisionProfile: result.dolbyVisionProfile,
         })
       }
       return result.frameRate
