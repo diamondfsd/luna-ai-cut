@@ -38,7 +38,7 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
     const observer = new ResizeObserver(update)
     observer.observe(viewport)
     return () => observer.disconnect()
-  }, [])
+  }, [url])
 
   useEffect(() => {
     let canceled = false
