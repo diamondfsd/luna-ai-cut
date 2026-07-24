@@ -10,7 +10,8 @@
  *   node scripts/copy-ffmpeg.mjs --target win32          # 为 Windows x64 准备
  *   node scripts/copy-ffmpeg.mjs --target darwin --arch arm64  # 为 macOS arm64 准备
  */
-import { copyFileSync, existsSync, mkdirSync, chmodSync, createWriteStream, statSync, rmSync, renameSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, existsSync, mkdirSync, chmodSync, createWriteStream, statSync, rmSync, renameSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import https from 'node:https'
@@ -44,6 +45,8 @@ const targetArch = archIndex !== -1 ? process.argv[archIndex + 1] : process.arch
 const ext = targetPlatform === 'win32' ? '.exe' : ''
 const destDir = join(process.cwd(), 'resources', 'ffmpeg')
 const cacheDir = join(process.cwd(), '.ffmpeg-cache')
+const staticReleaseTag = 'b6.1.1'
+const darwinArm64FfprobeSha256 = 'bb2db6f5d8cef919da12fbf592119a987202a8c060a886f3cab091f9cab90b64'
 
 console.log(`[copy-ffmpeg] target: ${targetPlatform}-${targetArch}, build: ${process.platform}-${process.arch}`)
 
@@ -80,10 +83,34 @@ async function downloadFile(url, dest, maxRedirects = 5) {
 
 // ─── 从 GitHub Releases 下载 ffmpeg（交叉编译时使用） ───
 
-async function downloadFfmpeg(releaseTag, platform, arch, dest) {
-  const url = `https://github.com/eugeneware/ffmpeg-static/releases/download/${releaseTag}/ffmpeg-${platform}-${arch}.gz`
-  console.log(`[copy-ffmpeg] Downloading ffmpeg from ${url} ...`)
+async function downloadStaticBinary(name, releaseTag, platform, arch, dest) {
+  const url = `https://github.com/eugeneware/ffmpeg-static/releases/download/${releaseTag}/${name}-${platform}-${arch}.gz`
+  console.log(`[copy-ffmpeg] Downloading ${name} from ${url} ...`)
   await downloadFile(url, dest)
+}
+
+function verifySha256(path, expected, label) {
+  const actual = createHash('sha256').update(readFileSync(path)).digest('hex')
+  if (actual !== expected) {
+    throw new Error(`${label} SHA256 校验失败: expected ${expected}, got ${actual}`)
+  }
+}
+
+function verifyTargetArchitecture(path, label) {
+  if (targetPlatform !== 'darwin') return
+
+  const header = readFileSync(path).subarray(0, 8)
+  if (header.length < 8 || header.readUInt32LE(0) !== 0xfeedfacf) {
+    throw new Error(`${label} 不是受支持的 64 位 Mach-O 文件`)
+  }
+
+  const cpuType = header.readUInt32LE(4)
+  const expectedCpuType = targetArch === 'arm64' ? 0x0100000c : 0x01000007
+  if (cpuType !== expectedCpuType) {
+    const actualArch = cpuType === 0x0100000c ? 'arm64' : cpuType === 0x01000007 ? 'x64' : `cpuType=0x${cpuType.toString(16)}`
+    throw new Error(`${label} 架构不匹配: expected ${targetArch}, got ${actualArch}`)
+  }
+  console.log(`[copy-ffmpeg] ✓ ${label} 架构校验通过: ${targetArch}`)
 }
 
 // ─── ffmpeg ────────────────────────────────────
@@ -100,6 +127,7 @@ async function copyFfmpeg() {
       if (src && typeof src === 'string') {
         copyFileSync(src, dest)
         if (targetPlatform !== 'win32') chmodSync(dest, 0o755)
+        verifyTargetArchitecture(dest, 'ffmpeg')
         console.log(`[copy-ffmpeg] ✓ ffmpeg → ${dest}`)
         return
       }
@@ -113,19 +141,18 @@ async function copyFfmpeg() {
   const cachePath = join(cacheDir, cacheKey)
 
   if (!existsSync(cachePath)) {
-    const releaseTag = 'b6.1.1' // 对应 ffmpeg-static@5.3.0 的 binary-release-tag
     const tmpPath = cachePath + '.tmp'
     try {
       // 先清空可能残留的临时文件，下载到 .tmp，完成后再改名，避免断下载导致缓存不全
       try { rmSync(tmpPath, { force: true }) } catch { /* ignore */ }
-      await downloadFfmpeg(releaseTag, targetPlatform, targetArch, tmpPath)
+      await downloadStaticBinary('ffmpeg', staticReleaseTag, targetPlatform, targetArch, tmpPath)
       renameSync(tmpPath, cachePath)
       if (targetPlatform !== 'win32') chmodSync(cachePath, 0o755)
       console.log(`[copy-ffmpeg] ✓ ffmpeg 已下载到缓存 → ${cachePath}`)
     } catch (err) {
       try { rmSync(tmpPath, { force: true }) } catch { /* ignore */ }
       console.error(`[copy-ffmpeg] ✗ 下载 ffmpeg 失败: ${err.message}`)
-      console.error(`  尝试手动下载: https://github.com/eugeneware/ffmpeg-static/releases/tag/${releaseTag}`)
+      console.error(`  尝试手动下载: https://github.com/eugeneware/ffmpeg-static/releases/tag/${staticReleaseTag}`)
       process.exit(1)
     }
   } else {
@@ -136,38 +163,50 @@ async function copyFfmpeg() {
   // 从缓存复制到构建目录
   copyFileSync(cachePath, dest)
   if (targetPlatform !== 'win32') chmodSync(dest, 0o755)
+  verifyTargetArchitecture(dest, 'ffmpeg')
   console.log(`[copy-ffmpeg] ✓ ffmpeg → ${dest}`)
 }
 
-// ─── ffprobe（ffprobe-static 已内置多平台二进制） ─────
+// ─── ffprobe ─────
 
-function copyFfprobe() {
+async function copyFfprobe() {
   try {
     const pkgDir = dirname(require.resolve('ffprobe-static/package.json'))
-    const src = join(pkgDir, 'bin', targetPlatform, targetArch, `ffprobe${ext}`)
-    if (existsSync(src)) {
-      const dest = join(destDir, `ffprobe${ext}`)
-      copyFileSync(src, dest)
-      if (targetPlatform !== 'win32') chmodSync(dest, 0o755)
-      console.log(`[copy-ffmpeg] ✓ ffprobe → ${dest}`)
-    } else {
-      // 降级：使用当前平台的 ffprobe
-      const fallbackSrc = join(pkgDir, 'bin', process.platform, process.arch, `ffprobe${process.platform === 'win32' ? '.exe' : ''}`)
-      if (existsSync(fallbackSrc)) {
-        const dest = join(destDir, `ffprobe${ext}`)
-        copyFileSync(fallbackSrc, dest)
-        if (targetPlatform !== 'win32') chmodSync(dest, 0o755)
-        console.warn(`[copy-ffmpeg] ⚠ ffprobe 无 ${targetPlatform}-${targetArch} 版本，使用 ${process.platform}-${process.arch} 代替 → ${dest}`)
-      } else {
-        console.warn(`[copy-ffmpeg] ✗ ffprobe not found at ${src} (fallback also missing)`)
+    let src = join(pkgDir, 'bin', targetPlatform, targetArch, `ffprobe${ext}`)
+
+    // ffprobe-static@3.1.0 的 darwin/arm64 文件实际是 x86_64，改用同一固定
+    // ffmpeg-static release 中经过校验的原生二进制。
+    if (targetPlatform === 'darwin' && targetArch === 'arm64') {
+      src = join(cacheDir, 'ffprobe-darwin-arm64')
+      if (!existsSync(src)) {
+        const tmpPath = src + '.tmp'
+        try {
+          rmSync(tmpPath, { force: true })
+          await downloadStaticBinary('ffprobe', staticReleaseTag, targetPlatform, targetArch, tmpPath)
+          verifySha256(tmpPath, darwinArm64FfprobeSha256, 'ffprobe')
+          renameSync(tmpPath, src)
+        } catch (err) {
+          rmSync(tmpPath, { force: true })
+          throw err
+        }
       }
+      verifySha256(src, darwinArm64FfprobeSha256, 'ffprobe')
     }
-  } catch {
-    console.warn('[copy-ffmpeg] ffprobe-static not found, skipping ffprobe')
+
+    if (!existsSync(src)) throw new Error(`ffprobe not found at ${src}`)
+
+    const dest = join(destDir, `ffprobe${ext}`)
+    copyFileSync(src, dest)
+    if (targetPlatform !== 'win32') chmodSync(dest, 0o755)
+    verifyTargetArchitecture(dest, 'ffprobe')
+    console.log(`[copy-ffmpeg] ✓ ffprobe → ${dest}`)
+  } catch (err) {
+    console.error('[copy-ffmpeg] ✗ ffprobe 准备失败', err)
+    process.exit(1)
   }
 }
 
 // ─── 执行 ──────────────────────────────────────
 
-copyFfprobe()
+await copyFfprobe()
 await copyFfmpeg()
