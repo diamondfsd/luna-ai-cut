@@ -29,12 +29,20 @@ function formatTime(seconds: number): string {
 function shootingPeriodParts(startAt: string, endAt: string): { date: string; time: string; label: string } {
   const start = new Date(startAt)
   const end = new Date(endAt)
-  const startDate = `${start.getMonth() + 1}月${start.getDate()}日`
-  const endDate = `${end.getMonth() + 1}月${end.getDate()}日`
+  const dateKey = (value: Date): string => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+  const dateLabel = (value: Date): string => `${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日`
   const clock = (value: Date): string => `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
-  const date = start.toDateString() === end.toDateString() ? startDate : `${startDate} - ${endDate}`
-  const time = clock(start) === clock(end) ? clock(start) : `${clock(start)} - ${clock(end)}`
+  const sameDate = dateKey(start) === dateKey(end)
+  const date = dateLabel(start)
+  const time = clock(start) === clock(end) && sameDate
+    ? clock(start)
+    : `${clock(start)} - ${sameDate ? '' : `${dateLabel(end)} `}${clock(end)}`
   return { date, time, label: `${date} ${time}` }
+}
+
+function shootingDateKey(value: string): string {
+  const date = new Date(value)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 function mediaFileForSelection(item: AiSelectionItem): LunaFile {
@@ -108,6 +116,16 @@ export function AiSelectionPage() {
   const faceCandidateIds = useMemo(() => items.filter((item) => item.kind === 'image' && item.analysisState === 'ready').map((item) => item.id), [items])
   const groupsByItem = useMemo(() => new Map(session?.groups.flatMap((group) => group.itemIds.map((id) => [id, group] as const)) ?? []), [session?.groups])
   const sortedScenes = useMemo(() => [...(session?.scenes ?? [])].sort((a, b) => Date.parse(b.startAt) - Date.parse(a.startAt)), [session?.scenes])
+  const sceneDateGroups = useMemo(() => {
+    const groups = new Map<string, { date: string; scenes: typeof sortedScenes }>()
+    for (const scene of sortedScenes) {
+      const key = shootingDateKey(scene.startAt)
+      const existing = groups.get(key)
+      if (existing) existing.scenes.push(scene)
+      else groups.set(key, { date: shootingPeriodParts(scene.startAt, scene.endAt).date, scenes: [scene] })
+    }
+    return [...groups.values()]
+  }, [sortedScenes])
   const activeScene = sortedScenes.find((scene) => scene.id === sceneId) ?? sortedScenes.find((scene) => scene.confirmation !== 'confirmed') ?? sortedScenes[0] ?? null
   const pendingGroups = useMemo(() => session?.groups.filter((group) => group.confirmation !== 'confirmed' && group.itemIds.length > 1) ?? [], [session?.groups])
   const activeGroup = session?.groups.find((group) => group.id === groupId) ?? pendingGroups[0] ?? null
@@ -243,10 +261,13 @@ export function AiSelectionPage() {
       {hasFilterRail && <aside className="ai-selection-filter-rail">
         <strong className="ai-selection-filter-title">{stage === 'scenes' ? '拍摄时段' : stage === 'compare' ? '相似组' : stage === 'people' ? '人物' : '复核范围'}</strong>
         <div className={`ai-selection-filter-list${stage === 'compare' ? ' compare-covers' : ''}`}>
-          {stage === 'scenes' && sortedScenes.map((scene) => {
-            const period = shootingPeriodParts(scene.startAt, scene.endAt)
-            return <Button key={scene.id} variant="ghost" size="compact" className={`ai-selection-period-filter${activeScene?.id === scene.id ? ' active' : ''}`} title={period.label} onClick={() => { setSceneId(scene.id); setFocusedId('') }}><span><small>{period.date}</small><span>{period.time}</span></span><strong>{countSceneStacks(scene.itemIds)}</strong></Button>
-          })}
+          {stage === 'scenes' && <div className="ai-selection-date-groups">{sceneDateGroups.map((dateGroup) => <section className="ai-selection-date-group" key={dateGroup.date}>
+            <strong className="ai-selection-date-heading">{dateGroup.date}</strong>
+            <div className="ai-selection-period-list">{dateGroup.scenes.map((scene) => {
+              const period = shootingPeriodParts(scene.startAt, scene.endAt)
+              return <Button key={scene.id} variant="ghost" size="compact" className={`ai-selection-period-filter${activeScene?.id === scene.id ? ' active' : ''}`} title={period.label} onClick={() => { setSceneId(scene.id); setFocusedId('') }}><span>{period.time}</span><strong>{countSceneStacks(scene.itemIds)}</strong></Button>
+            })}</div>
+          </section>)}</div>}
           {stage === 'compare' && pendingGroups.map((group, index) => {
             const cover = itemsById.get(group.representativeId) ?? itemsById.get(group.itemIds[0])
             return <button key={group.id} type="button" className={`ai-selection-compare-filter${activeGroup?.id === group.id ? ' active' : ''}`} aria-label={`查看相似组 ${index + 1}，${group.itemIds.length} 项素材`} onClick={() => { setGroupId(group.id); setFocusedId('') }}>

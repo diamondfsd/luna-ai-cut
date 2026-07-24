@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { X, CircleAlert, FolderOpen } from 'lucide-react'
+import { Check, X, CircleAlert, FolderOpen } from 'lucide-react'
 
 import { IconButton } from '../ui'
 import { extensionFromPath, fileNameFromPath, mediaKindFromPath } from '../lib/fileUtils'
@@ -7,8 +7,10 @@ import { extensionFromPath, fileNameFromPath, mediaKindFromPath } from '../lib/f
 interface PreviewModalHeaderProps {
   filePath: string
   inspectorOpen?: boolean
+  selected?: boolean
   onClose: () => void
   onSetInspectorOpen?: (open: boolean) => void
+  onToggleSelected?: () => void
 }
 
 function mediaLabel(filePath: string): string {
@@ -21,8 +23,10 @@ function mediaLabel(filePath: string): string {
 export function PreviewModalHeader({
   filePath,
   inspectorOpen,
+  selected,
   onClose,
   onSetInspectorOpen,
+  onToggleSelected,
 }: PreviewModalHeaderProps) {
   const revealPath = useMemo(
     () => filePath.startsWith('file://') ? decodeURIComponent(new URL(filePath).pathname) : filePath,
@@ -40,6 +44,17 @@ export function PreviewModalHeader({
         <h2>{fileNameFromPath(filePath)}</h2>
       </div>
       <div className="preview-actions">
+        {onToggleSelected && selected !== undefined && (
+          <IconButton
+            variant="light"
+            className="preview-select-toggle"
+            icon={<Check size={18} />}
+            onClick={onToggleSelected}
+            aria-label={selected ? '取消选择当前素材' : '选择当前素材'}
+            aria-pressed={selected}
+            title={selected ? '取消选择' : '选择'}
+          />
+        )}
         {!inspectorOpen && (
           <IconButton
             variant="light"
