@@ -2,6 +2,30 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.6.3",
+    "title": "v1.6.3 - 发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 Apple 芯片 Mac 的视频解析失败</strong>：ARM64 安装包改用原生 ffprobe，解决部分用户预览或导出时出现的架构不兼容问题，无需安装 Rosetta。</li>\n<li><strong>修复热更新版本选择</strong>：先选择最新热更新版本，同版本同时存在通用包和平台包时再优先选择平台包。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>增加 macOS 打包架构校验</strong>：打包时自动检查 ffmpeg 和 ffprobe 的目标架构，防止不兼容的工具进入安装包。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.6.2-hot.3",
+    "title": "v1.6.2-hot.3 - 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>自动恢复渲染初始化保护</strong>：旧版本异常遗留渲染保护时自动重新检测一次，用户无需手动删除配置文件；如果显卡初始化仍然崩溃，应用会继续保持兼容保护，避免循环崩溃。</li>\n<li><strong>避免正常退出遗留保护状态</strong>：应用关闭时主动清理正在初始化的临时标记，减少下次启动误判显卡不兼容的问题。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.6.2-hot.2",
+    "title": "v1.6.2-hot.2 - 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复相机素材预览黑屏</strong>：相机素材缓存完成后会重新读取预览区域尺寸，修复缩略图正常但打开照片或视频预览时显示黑屏的问题。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.6.2-hot.1",
+    "title": "v1.6.2-hot.1 - 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>恢复 Luna 相机文件列表读取</strong>：连接相机后重新通过 TCP 协议读取媒体列表，修复协议迁移后错误使用 HTTP 目录列表的问题。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>加强协议构建检查</strong>：发布前验证文件列表调用链和私有协议组件能力，避免后续迁移再次遗漏 TCP 接入。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.6.2",
     "title": "v1.6.2 - 发布说明",
     "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 Windows 无法启动</strong>：修复 Windows 安装包中相机连接组件无法正常加载、应用只有后台进程但不显示主界面的问题</li>\n<li><strong>增加启动反馈</strong>：应用打开后立即显示加载状态，主界面准备完成后自动进入应用</li>\n<li><strong>改善启动失败提示</strong>：启动异常时显示明确提示并保留诊断记录，方便快速定位问题</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>加强三平台安装包发布检查，避免不完整的相机连接组件进入正式版本</li>\n</ul>",
