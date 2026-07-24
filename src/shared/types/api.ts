@@ -3,7 +3,7 @@ import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, Bluetoot
 import type { CameraDeleteResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
 import type { WatermarkSettings } from './watermark'
-import type { VideoExportSettings } from './video'
+import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest, VideoExportSettings } from './video'
 import type { DownloadProgress, DownloadRecord, DownloadSummary } from './download'
 import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord } from './export'
 import type { MockServerStatus } from './mock'
@@ -200,6 +200,8 @@ export interface LunaApi {
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>
     getVideoDuration(filePath: string): Promise<number>
+    probeDolbyVision(filePath: string): Promise<DolbyVisionProbeResult>
+    exportDolbyVisionWatermark(request: DolbyVisionWatermarkExportRequest): Promise<{ path: string }>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     getSegmentationModelStatus(modelId: SegmentationModelId): Promise<WorkspaceSegmentationModelStatus>

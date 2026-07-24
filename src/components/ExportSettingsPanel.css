@@ -36,6 +36,17 @@
   min-width: 42px;
 }
 
+.export-settings-dolby-row {
+  min-height: 30px;
+  padding-bottom: 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.export-settings-dolby-row .export-settings-label {
+  color: rgba(255, 255, 255, 0.92);
+}
+
 .export-settings-row .ui-select-trigger.ui-select-compact {
   flex: 1;
   min-width: 0;

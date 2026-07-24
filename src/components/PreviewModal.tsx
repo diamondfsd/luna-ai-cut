@@ -12,7 +12,7 @@ import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLun
 import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
-import type { PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import type { DolbyVisionProbeResult, PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Button, Dialog, toast } from '../ui'
 import '../styles/modal.css'
 
@@ -75,6 +75,8 @@ export function PreviewModal({
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType | null>(null)
   const [batchEnqueuing, setBatchEnqueuing] = useState(false)
   const [exportConfig, setExportConfig] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
+  const [dolbyVisionProbe, setDolbyVisionProbe] = useState<DolbyVisionProbeResult | null>(null)
+  const [dolbyVisionChecking, setDolbyVisionChecking] = useState(false)
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
   const { cacheFilePath: resolvedPath } = useFileCache(currentFilePath)
@@ -113,6 +115,35 @@ export function PreviewModal({
     : isVideoPath(currentFilePath)
 
   useEffect(() => {
+    const canProbe = Boolean(lightweightPreview && !batchExportMode && stageSource && isVideoPath(stageSource))
+    if (!canProbe) {
+      setDolbyVisionProbe(null)
+      setDolbyVisionChecking(false)
+      setExportConfig((current) => current.dolbyVision ? { ...current, dolbyVision: false } : current)
+      return
+    }
+    let cancelled = false
+    setDolbyVisionChecking(true)
+    setDolbyVisionProbe(null)
+    window.luna.workspace.probeDolbyVision(stageSource!)
+      .then((result) => {
+        if (cancelled) return
+        setDolbyVisionProbe(result)
+        if (!result.eligible) {
+          setExportConfig((current) => current.dolbyVision ? { ...current, dolbyVision: false } : current)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDolbyVisionProbe(null)
+          setExportConfig((current) => current.dolbyVision ? { ...current, dolbyVision: false } : current)
+        }
+      })
+      .finally(() => { if (!cancelled) setDolbyVisionChecking(false) })
+    return () => { cancelled = true }
+  }, [batchExportMode, lightweightPreview, stageSource])
+
+  useEffect(() => {
     setWatermarkLayers([])
   }, [currentFilePath, displaySource, resolvedPath, stageSource])
 
@@ -134,6 +165,10 @@ export function PreviewModal({
     try {
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) { toast.error('导出目录未配置'); return }
+      if (exportConfig.dolbyVision && watermarkLayers.length !== 1) {
+        toast.error('Dolby Vision 导出需要先开启水印')
+        return
+      }
 
       const exportList = batchExportMode ? (filePathList ?? []) : [currentFilePath]
       const sources: BatchExportSource[] = await Promise.all(exportList.map(async (sourcePath) => {
@@ -155,7 +190,7 @@ export function PreviewModal({
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, batchExportMode, exportConfig, filePathList, currentFilePath, hasVideoInBatch, watermarkSettings])
+  }, [batchEnqueuing, batchExportMode, exportConfig, filePathList, currentFilePath, hasVideoInBatch, watermarkLayers.length, watermarkSettings])
 
   // Escape 关闭
   useEffect(() => {
@@ -224,7 +259,12 @@ export function PreviewModal({
               {!previewOnly && (
                 <>
                   {hasVideoInBatch && (
-                    <ExportSettingsPanel value={exportConfig} onChange={setExportConfig} />
+                    <ExportSettingsPanel
+                      value={exportConfig}
+                      onChange={setExportConfig}
+                      dolbyVisionAvailable={dolbyVisionProbe?.eligible}
+                      dolbyVisionChecking={dolbyVisionChecking}
+                    />
                   )}
                   <div className="batch-export-actions">
                     <Button
