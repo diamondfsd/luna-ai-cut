@@ -4,7 +4,7 @@ import type { AiSelectionModelId } from '../src/shared/segmentationModels'
 import type { AiPersonEvidence, AiSelectionItem } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { loadModel } from './modelLoader'
-import { FACE_EMBEDDING_VERSION } from './aiSelectionFaceGroups'
+import { FACE_EMBEDDING_VERSION, hasSufficientFacePixels } from './aiSelectionFaceGroups'
 import { extractFaceBoxesInWorker, extractFaceEmbeddingInWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
 
 type Bounds = NonNullable<AiPersonEvidence['bounds']>
@@ -104,7 +104,7 @@ async function buildFaceDescriptors(rgb: Buffer, faces: Bounds[], layout: { scal
   const modelPath = await loadSelectionModel('sface-2021dec-int8', signal)
   const descriptors: NonNullable<AiPersonEvidence['faces']> = []
   for (const bounds of faces.slice(0, 8)) {
-    if (bounds.width < 0.075 || bounds.height < 0.075) {
+    if (!hasSufficientFacePixels(bounds, layout)) {
       descriptors.push({ bounds, embedding: null, embeddingVersion: null })
       continue
     }

@@ -49,11 +49,19 @@ export function ThumbImage({ src, onError, onLoad, ...imgProps }: ThumbImageProp
     return () => window.clearTimeout(timer)
   }, [hasError, retryOnce, visible])
 
-  // IntersectionObserver 懒加载：进入视口才触发 useFileCache
+  // IntersectionObserver 懒加载：进入视口附近才触发 useFileCache。
   useEffect(() => {
     if (visible) return
     const el = imgRef.current
     if (!el) return
+    const margin = 400
+    const rect = el.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0
+      && rect.bottom >= -margin && rect.top <= window.innerHeight + margin
+      && rect.right >= -margin && rect.left <= window.innerWidth + margin) {
+      setVisible(true)
+      return
+    }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -61,7 +69,7 @@ export function ThumbImage({ src, onError, onLoad, ...imgProps }: ThumbImageProp
           observer.disconnect()
         }
       },
-      { rootMargin: '200px' },
+      { rootMargin: `${margin}px 0px` },
     )
     observer.observe(el)
     return () => observer.disconnect()
