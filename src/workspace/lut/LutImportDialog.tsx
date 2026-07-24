@@ -317,7 +317,6 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
       open={open}
       onOpenChange={onOpenChange}
       title="批量导入 LUT"
-      description="拖拽或选择 .cube 文件，编辑名称后导入"
       className="lut-import-dialog-content"
       footer={
         <div className="lut-import-footer">
