@@ -2,6 +2,12 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.6.2",
+    "title": "v1.6.2 - 发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 Windows 无法启动</strong>：修复 Windows 安装包中相机连接组件无法正常加载、应用只有后台进程但不显示主界面的问题</li>\n<li><strong>增加启动反馈</strong>：应用打开后立即显示加载状态，主界面准备完成后自动进入应用</li>\n<li><strong>改善启动失败提示</strong>：启动异常时显示明确提示并保留诊断记录，方便快速定位问题</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li>加强三平台安装包发布检查，避免不完整的相机连接组件进入正式版本</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
     "version": "1.6.0",
     "title": "v1.6.0 - 发布说明",
     "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>智能蒙版编辑</strong>：支持识别人像、天空、树木、水面等画面区域，并可通过画笔、形状和选区继续精修蒙版</li>\n<li><strong>视频蒙版跟踪</strong>：视频中的蒙版可跟随目标移动，减少逐帧调整的工作量</li>\n<li><strong>调色蒙版</strong>：可针对画面局部单独调整颜色，并支持叠加、反选、羽化和强度控制</li>\n<li><strong>像素拉伸创意</strong>：新增可编辑路径、取样范围和效果参数的像素拉伸创意，并支持一致的预览与导出</li>\n<li><strong>虚化照片相框</strong>：新增可调节的虚化照片相框，支持边框、阴影和画面布局调整</li>\n<li><strong>有线相机素材访问</strong>：连接 Luna Ultra 后可直接浏览相机存储中的素材，扩展无线连接之外的导入方式</li>\n<li><strong>资源按需下载</strong>：首次使用智能蒙版等能力时自动下载所需资源，支持中断后继续下载和多下载源切换</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>提升预览与导出一致性</strong>：修复蒙版、边框、像素拉伸及多图层效果在预览和导出中表现不一致的问题</li>\n<li><strong>修复蒙版编辑稳定性</strong>：修复选区边界、画笔预览、重置、撤销恢复和项目重新打开后的多项异常</li>\n<li><strong>修复视频处理过期结果</strong>：快速切换素材或重复操作时，不再应用已经失效的识别和跟踪结果</li>\n<li><strong>保留照片信息</strong>：导出照片时恢复并保留拍摄信息，修复部分导出文件信息缺失的问题</li>\n<li><strong>恢复 Luna Ultra 水印</strong>：修复特定导出流程中相机水印未正确显示的问题</li>\n<li><strong>改善大素材预览</strong>：优化轻量预览和缩略图就绪判断，减少打开大尺寸素材时的等待和空白状态</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li><strong>重新设计相机连接页</strong>：连接状态和可用方式更加清晰，新增 Luna 品牌视觉并优化操作反馈</li>\n<li><strong>重整工作区蒙版面板</strong>：智能选择、手动编辑、局部调色和跟踪操作集中到更清晰的工作流中</li>\n<li><strong>优化工作区工具栏与帮助</strong>：调整预览工具、导入入口、创意工厂和帮助内容，减少常用操作的查找成本</li>\n<li><strong>改进设置页</strong>：资源状态、下载进度和相关设置集中展示，便于查看当前可用能力</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li><strong>恢复 Luna Ultra 色彩</strong>：新增相机素材的色彩恢复选项，可在后续调色前还原更自然的基础画面</li>\n<li><strong>增强资源可靠性</strong>：资源按版本管理并自动检查完整性，下载失败时可切换备用来源</li>\n<li><strong>完善关键流程检查</strong>：补充蒙版、跟踪、资源下载、相机访问、预览和导出等核心流程的自动检查</li>\n</ul>",

@@ -66,6 +66,7 @@ for (const platform of platforms) {
 }
 
 const manifestPath = join(releaseDir, `renderer-${version}.json`)
+const notesPath = `RELEASE_NOTES_v${version}.md`
 writeFileSync(manifestPath, JSON.stringify({ version, minAppVersion: packageVersion, packages }, null, 2))
 
 if (!upload) process.exit(0)
@@ -96,3 +97,4 @@ async function uploadAsset(path) {
 
 for (const entry of Object.values(packages)) await uploadAsset(join(releaseDir, entry.zipName))
 await uploadAsset(manifestPath)
+if (existsSync(notesPath)) await uploadAsset(notesPath)

@@ -4,12 +4,15 @@ import { Buffer } from 'node:buffer'
 import ts from 'typescript'
 
 let source = null
+let lrcRecoverySource = null
 try {
   source = await readFile(new URL('../src/shared/crashDiagnosticUtils.ts', import.meta.url), 'utf8')
+  lrcRecoverySource = await readFile(new URL('../src/shared/lrcInitGuardRecovery.ts', import.meta.url), 'utf8')
 } catch {
   // The first run is expected to fail until the diagnostic module exists.
 }
 assert.ok(source, 'crash diagnostic utilities must exist')
+assert.ok(lrcRecoverySource, 'LRC init guard recovery utilities must exist')
 
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
@@ -18,6 +21,13 @@ const compiled = ts.transpileModule(source, {
   },
 }).outputText
 const diagnostics = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
+const lrcRecoveryCompiled = ts.transpileModule(lrcRecoverySource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+  },
+}).outputText
+const lrcRecovery = await import(`data:text/javascript;base64,${Buffer.from(lrcRecoveryCompiled).toString('base64')}`)
 
 const root = new Error('render failed')
 const error = new Error('native call failed', { cause: root })
@@ -47,6 +57,24 @@ const dumpEntries = Array.from({ length: 12 }, (_, index) => ({
 assert.deepEqual(
   diagnostics.selectCrashDumpFilesToPrune(dumpEntries, 10),
   ['dump-1.dmp', 'dump-0.dmp'],
+)
+
+assert.equal(lrcRecovery.LRC_INIT_GUARD_FILE, '.lrc-init-running.json')
+assert.equal(lrcRecovery.LRC_INIT_RECOVERY_FILE, '.lrc-init-recovery-v1.json')
+assert.equal(
+  lrcRecovery.shouldRecoverLrcInitGuard({ packaged: true, guardExists: true, recoveryAttempted: false }),
+  true,
+  'a packaged app retries one legacy incomplete initialization',
+)
+assert.equal(
+  lrcRecovery.shouldRecoverLrcInitGuard({ packaged: true, guardExists: true, recoveryAttempted: true }),
+  false,
+  'the recovery marker prevents an initialization crash loop',
+)
+assert.equal(
+  lrcRecovery.shouldRecoverLrcInitGuard({ packaged: false, guardExists: true, recoveryAttempted: false }),
+  false,
+  'development does not persist compatibility recovery state',
 )
 
 console.log('crash diagnostic tests passed')

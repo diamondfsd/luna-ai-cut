@@ -11,6 +11,7 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { failStartup, installStartupExperience } from './startupWindowService'
 
 async function boot(): Promise<void> {
   // 开发模式跳过热更新，避免本地代码被热更新覆盖
@@ -105,4 +106,7 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-app.whenReady().then(boot)
+app.whenReady().then(async () => {
+  installStartupExperience()
+  await boot()
+}).catch(failStartup)
