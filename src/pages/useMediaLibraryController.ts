@@ -219,6 +219,7 @@ export function useMediaLibraryController(pageType: PageType) {
   // 监听缓存缩略图完成
   useEffect(() => {
     return subscribeThumbnailReady(({ fileId, fileName, downloadName, cacheFilePath, thumbnailUrl }) => {
+      if (!cacheFilePath && !thumbnailUrl) return
       const matches = (file: LunaFile): boolean =>
         file.id === fileId || file.name === fileName || file.downloadName === downloadName
       setCacheFailedIds((current) => {

@@ -183,10 +183,10 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     ipcRenderer.on('luna:connection-lost', listener)
     return () => ipcRenderer.off('luna:connection-lost', listener)
   },
-  onThumbnailReady: (callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string; thumbnailUrl: string }) => void) => {
+  onThumbnailReady: (callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null }) => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,
-      data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string; thumbnailUrl: string },
+      data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null },
     ): void => callback(data)
     ipcRenderer.on('luna:thumbnail-ready', listener)
     return () => ipcRenderer.off('luna:thumbnail-ready', listener)
@@ -228,6 +228,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     cancel: (sessionId) => ipcRenderer.invoke('ai-selection:cancel', sessionId),
     applyOperation: (sessionId, revision, operation) => ipcRenderer.invoke('ai-selection:apply-operation', sessionId, revision, operation),
     analyzePeople: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-people', sessionId, itemIds),
+    renamePerson: (sessionId, groupId, name) => ipcRenderer.invoke('ai-selection:rename-person', sessionId, groupId, name),
+    mergePeople: (sessionId, targetGroupId, sourceGroupId) => ipcRenderer.invoke('ai-selection:merge-people', sessionId, targetGroupId, sourceGroupId),
     analyzeContentTags: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-content-tags', sessionId, itemIds),
     analyzeVideos: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-videos', sessionId, itemIds),
     undo: (sessionId) => ipcRenderer.invoke('ai-selection:undo', sessionId),
