@@ -5,6 +5,7 @@ export const FACE_EMBEDDING_VERSION = 'sface-2021dec-int8-independent-box-v2'
 const FACE_MEMBER_MATCH_THRESHOLD = 0.36
 const FACE_CENTROID_SIMILARITY_FLOOR = 0.24
 const FACE_EMBEDDING_DIMENSION = 128
+const MIN_FACE_FEATURE_PIXELS = 40
 
 interface FaceObservation {
   itemId: string
@@ -15,6 +16,14 @@ interface FaceObservation {
 interface WorkingGroup {
   observations: FaceObservation[]
   centroid: number[]
+}
+
+export function hasSufficientFacePixels(
+  bounds: Pick<AiFaceDescriptor['bounds'], 'width' | 'height'>,
+  layout: { scaledWidth: number; scaledHeight: number },
+): boolean {
+  return bounds.width * layout.scaledWidth >= MIN_FACE_FEATURE_PIXELS
+    && bounds.height * layout.scaledHeight >= MIN_FACE_FEATURE_PIXELS
 }
 
 export function cosineSimilarity(left: number[], right: number[]): number {

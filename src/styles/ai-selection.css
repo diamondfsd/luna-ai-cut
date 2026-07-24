@@ -173,6 +173,7 @@
 .ai-selection-survey-actions > span { margin-left: auto; display: flex; align-items: center; gap: 3px; color: var(--blue, #06c); font-size: 10px; }
 .ai-selection-media-card.pending { opacity: .72; }
 .ai-selection-media-card.rejected { opacity: .55; }
+.ai-selection-media-card { content-visibility: visible; }
 .ai-selection-media-card.focused .media-frame { outline: 2px solid var(--blue, #06c); outline-offset: 2px; }
 .ai-selection-card-badges { position: absolute; top: 10px; left: 10px; z-index: 3; display: flex; align-items: center; gap: 5px; pointer-events: none; }
 .ai-selection-card-badges > span { min-height: 24px; padding: 0 7px; border-radius: 5px; background: rgba(255,255,255,.94); display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 650; }
