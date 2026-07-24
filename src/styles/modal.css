@@ -43,6 +43,11 @@
   white-space: nowrap;
 }
 
+.preview-select-toggle[aria-pressed='true'] {
+  background: var(--blue);
+  color: #fff;
+}
+
 .preview-download-state {
   position: static;
 }
