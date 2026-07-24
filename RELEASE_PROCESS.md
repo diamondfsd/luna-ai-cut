@@ -117,7 +117,7 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 
 ## 日常热更新发布
 
-当只需要推送增量修复（不涉及版本号变更、Electron 升级或原生模块变更）时：
+当只需要推送增量修复（不涉及版本号变更、Electron 升级或原生模块变更）时，使用本地脚本生成一份平台无关的通用热更新包。`dist/`、`luna-appMain.js` 和 `preload.mjs` 均为平台无关的 JS，无需让 GitHub Actions 重复构建三份。
 
 ### 1. 创建热更新发布说明
 
@@ -143,10 +143,11 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 - **xxx**：xxx
 ```
 
-### 2. 提交代码
+### 2. 提交代码和发布说明
 
 ```bash
-git add -A && git commit -m "fix: xxx"
+git add -A
+git commit -m "fix: xxx"
 ```
 
 ### 3. 构建并上传热更新包
@@ -158,25 +159,36 @@ git add -A && git commit -m "fix: xxx"
 
 首次运行需确保 `GITCODE_TOKEN` 环境变量已设置，或已创建 `scripts/deploy-release.conf` 配置文件。
 
-### 4. 打 Git tag
+脚本会完成以下操作：
 
-```bash
-# 提交发布说明
-git add RELEASE_NOTES_v<版本号>-hot.<build号>.md
-git commit -m "docs: <版本号>-hot.<build号> 热更新发布说明"
+- 运行 `pnpm run build:app`。
+- 生成并校验通用热更新 ZIP。
+- 上传 ZIP 和发布说明到 GitCode Release。
+- 创建并推送 `hot/v<版本号>-hot.<build号>` tag。
 
-# 打 tag（以 hot/ 前缀区分正式版 tag）
-git tag hot/v<版本号>-hot.<build号>
-```
-
-### 5. 推送到 main
+### 4. 推送 main
 
 ```bash
 git push origin main
+```
+
+推送热更新 tag 后，GitHub Actions 会比较上一个热更新 tag。没有修改 `luna-render-core/`、`Cargo.lock`、`scripts/build-native.mjs` 或 `electron/lunaRenderCore.ts` 时，只执行变更检测，不再构建或上传平台包。
+
+> 客户端每次启动会自动检查热更新（2 秒后），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效。
+
+## 原生模块热更新
+
+修改 Rust 渲染核心、原生模块构建脚本或 Electron 原生桥接时，不能使用本地通用 ZIP 作为最终产物。推送 `hot/v*` tag 后，GitHub Actions 会构建 macOS ARM64、macOS x64 和 Windows x64 三个平台的原生模块与热更新包，并上传到 GitCode。
+
+原生热更新不要运行 `build-hot-update.sh`，避免三平台包就绪前先发布不含原生模块的通用 ZIP。确定下一个 build 号并提交代码与发布说明后，直接推送 `main` 和 tag：
+
+```bash
+git push origin main
+git tag hot/v<版本号>-hot.<build号>
 git push origin hot/v<版本号>-hot.<build号>
 ```
 
-> 客户端每次启动会自动检查热更新（2 秒后），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效。
+手动触发 `Publish Hot Update` workflow 也始终按原生热更新处理。原生热更新必须等待该 workflow 的三平台任务全部成功，并确认 GitCode 已包含三个带平台后缀的 ZIP、清单和发布说明后，再通知用户更新。
 
 ## 旧版发布说明归档
 
