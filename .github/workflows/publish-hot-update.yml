@@ -9,11 +9,6 @@ on:
       version:
         description: 'Hot update version, e.g. 1.5.1-hot.4'
         required: true
-      include_native:
-        description: 'Build and include the native render module'
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -33,7 +28,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-            echo "include_native=${{ inputs.include_native }}" >> "$GITHUB_OUTPUT"
+            echo "include_native=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           version="${GITHUB_REF_NAME#hot/v}"
@@ -44,6 +39,9 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "include_native=$include_native" >> "$GITHUB_OUTPUT"
+          if [ "$include_native" = "false" ]; then
+            echo "No native changes detected. The local universal hot-update package is sufficient." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   native:
     needs: detect
@@ -86,7 +84,7 @@ jobs:
 
   publish:
     needs: [detect, native]
-    if: always() && needs.detect.result == 'success' && (needs.native.result == 'success' || needs.native.result == 'skipped')
+    if: always() && needs.detect.result == 'success' && needs.detect.outputs.include_native == 'true' && needs.native.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -98,15 +96,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build:app
       - uses: actions/download-artifact@v4
-        if: needs.detect.outputs.include_native == 'true'
         with:
           path: .hot-native
       - name: Publish platform archives to GitCode
         env:
           GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
         run: |
-          args=(--version "${{ needs.detect.outputs.version }}" --upload)
-          if [ "${{ needs.detect.outputs.include_native }}" = "true" ]; then
-            args+=(--include-native --native-dir .hot-native)
-          fi
-          node scripts/publish-hot-update.mjs "${args[@]}"
+          node scripts/publish-hot-update.mjs \
+            --version "${{ needs.detect.outputs.version }}" \
+            --upload \
+            --include-native \
+            --native-dir .hot-native
