@@ -55,5 +55,7 @@ luna-render-core/semantic-segmentation-worker
 luna-render-core/semantic-segmentation-worker.exe
 luna-render-core/specialized-segmentation-worker
 luna-render-core/specialized-segmentation-worker.exe
+luna-render-core/luna-inpaint-worker
+luna-render-core/luna-inpaint-worker.exe
 worktrees/
 *com*.jpg

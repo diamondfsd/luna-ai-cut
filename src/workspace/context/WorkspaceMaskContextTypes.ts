@@ -37,6 +37,8 @@ export interface WorkspaceMaskValue {
   maskData: Uint8Array | null
   maskSize: { width: number; height: number } | null
   busy: boolean
+  reconstructing: boolean
+  setReconstructing: (value: boolean) => void
   semanticPicking: boolean
   setSemanticPicking: (value: boolean) => void
   lastSegmentationPerformance: SegmentationPerformance | null

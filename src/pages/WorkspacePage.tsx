@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import type { WorkspaceProject } from '../shared/types'
+import type { WorkspaceProject, WorkspaceProjectAsset } from '../shared/types'
 import type { WorkspacePreviewQuality } from '../shared/types/settings'
 import { useApp } from '../context/AppContext'
 import { ErrorBoundary, toast } from '../ui'
@@ -46,6 +46,11 @@ import '../styles/workspace-trim.css'
 function normalizePipeline(value: unknown, defaultPipeline: EditPipeline = createDefaultPipeline()): EditPipeline {
   if (!value || typeof value !== 'object') return structuredClone(defaultPipeline)
   return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
+}
+
+function removalSourcePath(asset: WorkspaceProjectAsset | undefined, compareOriginal = false): string | undefined {
+  if (!asset || compareOriginal) return asset?.path
+  return [...(asset.removal?.operations ?? [])].reverse().find((operation) => operation.enabled)?.resultPath ?? asset.path
 }
 
 /** 从 MediaMetadata 中按 key 提取第一个匹配的 EXIF 值 */
@@ -131,6 +136,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
   const allowWatermark = useLunaUltraWatermark(media.activeMedia)
+  const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
+  const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
 
   useEffect(() => {
     if (!pageActive) return
@@ -316,7 +323,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   // ── 边框预览层（JSON 预设解析为多个独立合成层） ──
   const borderLayer = useMemo(() => {
     if (!finalCanvasSize) return []
-    const sourcePath = media.activeMedia?.path
+    const sourcePath = activeSourcePath
     const layers = buildBorderLayer({
       canvasWidth: finalCanvasSize.width,
       canvasHeight: finalCanvasSize.height,
@@ -335,7 +342,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
     return sourcePath
       ? applyLocalColorToSourceMediaLayers(layers, sourcePath, stagePipeline)
       : layers
-  }, [edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
+  }, [activeSourcePath, edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
 
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
@@ -551,10 +558,11 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         : activePipeline.colorMasks
       const sources: BatchExportSource[] = await Promise.all(exportIndices.map(async (index) => {
         const asset = media.media[index]
+        const sourcePath = removalSourcePath(media.currentProject?.assets[index]) ?? asset.path
         const pipeline = index === media.activeIndex
           ? mergePipeline(activePipeline, { colorMasks: trackedActiveMasks })
           : normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current)
-        const resolution = await window.luna.workspace.getMediaResolution(asset.path)
+        const resolution = await window.luna.workspace.getMediaResolution(sourcePath)
         const sourceDuration = isVideoPath(asset.path)
           ? await window.luna.workspace.getVideoDuration(asset.path).catch(() => 0)
           : 0
@@ -566,9 +574,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           : null
         const allowAssetWatermark = await canUseLunaUltraWatermark(asset.path, asset.kind)
         return {
-          sourcePath: asset.path,
+          sourcePath,
           outputBaseName: asset.name.replace(/\.[^.]+$/, '') || 'export',
-          layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline, borderMeta, allowAssetWatermark),
+          layers: buildWorkspaceExportLayers(sourcePath, resolution, pipeline, borderMeta, allowAssetWatermark),
           outputSize: outputSizeForTransform(resolution, pipeline.transform),
           mediaDuration: isVideoPath(asset.path)
             ? Math.max(0, Math.min(sourceDuration, trimEnd) - trimStart)
@@ -768,7 +776,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           {/* ── Rust/wgpu 预览组件 ── */}
           <PreviewStage
             ref={previewRef}
-            url={media.activeMedia?.path ?? null}
+            url={activeSourcePath ?? null}
             isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
             pending={!media.activeMedia}
             pipeline={stagePipeline}

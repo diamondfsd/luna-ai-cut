@@ -19,6 +19,10 @@ path = "src/bin/semantic_segmentation_worker.rs"
 name = "specialized-segmentation-worker"
 path = "src/bin/specialized_segmentation_worker.rs"
 
+[[bin]]
+name = "luna-inpaint-worker"
+path = "src/bin/luna_inpaint_worker.rs"
+
 [dependencies]
 napi = { version = "2", features = ["full"] }
 napi-derive = "2"

@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
+import type { WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from './fileService'
@@ -38,6 +38,7 @@ import { cleanupUnreferencedColorMasks, deleteColorMask, loadColorMask, saveColo
 import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 import { beginForegroundSegmentation } from './segmentationModelPrefetchService'
 import { trackMaskInWorker } from './maskTrackingService'
+import { removeObject } from './inpaintService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
@@ -143,6 +144,7 @@ async function probeDisplayResolution(filePath: string): Promise<{ width: number
 export function register(): void {
   const segmentationTasks = new SegmentationTaskRegistry()
   const trackingTasks = new SegmentationTaskRegistry()
+  const removalTasks = new SegmentationTaskRegistry()
   const watchedSenders = new Set<number>()
   const watchSender = (sender: Electron.WebContents): void => {
     if (watchedSenders.has(sender.id)) return
@@ -150,6 +152,7 @@ export function register(): void {
     const cancelSenderTasks = (): void => {
       segmentationTasks.cancelOwner(sender.id)
       trackingTasks.cancelOwner(sender.id)
+      removalTasks.cancelOwner(sender.id)
     }
     sender.on('render-process-gone', cancelSenderTasks)
     sender.on('did-start-navigation', (_event, _url, isSameDocument, isMainFrame) => {
@@ -219,6 +222,29 @@ export function register(): void {
   ipcMain.handle('workspace:cancelMaskTracking', (event, requestId: string) => {
     if (typeof requestId !== 'string' || requestId.length === 0) return false
     return trackingTasks.cancel(event.sender.id, requestId)
+  })
+
+  ipcMain.handle('workspace:cancelObjectRemoval', (event, requestId: string) => {
+    if (typeof requestId !== 'string' || requestId.length === 0) return false
+    return removalTasks.cancel(event.sender.id, requestId)
+  })
+
+  ipcMain.handle('workspace:removeObject', async (event, request: WorkspaceObjectRemovalRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('消除任务标识无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0 || VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('对象消除当前仅支持图片')
+    const maskWidth = Math.round(Number(request.maskWidth))
+    const maskHeight = Math.round(Number(request.maskHeight))
+    if (maskWidth <= 0 || maskHeight <= 0 || maskWidth * maskHeight > 1_048_576) throw new Error('消除选区尺寸无效')
+    request.edgeExpansion = Math.max(0, Math.min(32, Math.round(Number(request.edgeExpansion))))
+    request.feather = Math.max(0, Math.min(24, Math.round(Number(request.feather))))
+    const task = removalTasks.begin(event.sender.id, request.requestId)
+    watchSender(event.sender)
+    try {
+      const [settings, resolution] = await Promise.all([getSettings(), probeDisplayResolution(request.filePath)])
+      return await removeObject(request, settings.downloadDir, resolution.width, resolution.height, task.controller.signal)
+    } finally {
+      removalTasks.finish(task)
+    }
   })
 
   ipcMain.handle('workspace:trackMask', async (event, request: WorkspaceMaskTrackingRequest) => {

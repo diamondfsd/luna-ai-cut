@@ -150,7 +150,7 @@ export function MaskOverlay() {
       canvas.sourceAspect,
     )
   }
-  function render(data: Uint8Array): void {
+  function render(data: Uint8Array, shimmerOffset = 0): void {
     const element = canvasRef.current
     if (!element || !mask.maskSize) return
     const context = element.getContext('2d')
@@ -163,12 +163,27 @@ export function MaskOverlay() {
         const outputIndex = y * displaySize.width + x
         const alpha = mask.showOverlay ? Math.round(feathered[outputIndex] * 0.55) : 0
         image.data[outputIndex * 4] = 255
-        image.data[outputIndex * 4 + 1] = 52
-        image.data[outputIndex * 4 + 2] = 76
+        image.data[outputIndex * 4 + 1] = mask.reconstructing ? 255 : 52
+        image.data[outputIndex * 4 + 2] = mask.reconstructing ? 255 : 76
         image.data[outputIndex * 4 + 3] = alpha
       }
     }
     context.putImageData(image, 0, 0)
+    if (mask.reconstructing && mask.showOverlay) {
+      context.save()
+      context.globalCompositeOperation = 'source-in'
+      const cycle = Math.max(displaySize.width * 1.8, 1)
+      const offset = shimmerOffset % cycle
+      const gradient = context.createLinearGradient(offset - cycle, displaySize.height, offset, 0)
+      gradient.addColorStop(0, '#22d3ee')
+      gradient.addColorStop(0.28, '#3b82f6')
+      gradient.addColorStop(0.55, '#ec4899')
+      gradient.addColorStop(0.78, '#facc15')
+      gradient.addColorStop(1, '#22d3ee')
+      context.fillStyle = gradient
+      context.fillRect(0, 0, displaySize.width, displaySize.height)
+      context.restore()
+    }
     const vectorDraft = componentDraftRef.current
     const replacedId = componentDragRef.current?.original.id
     const boundaryComponents = vectorDraft && vectorDraft.type !== 'linear-gradient' && vectorDraft.type !== 'radial-gradient'
@@ -192,13 +207,29 @@ export function MaskOverlay() {
     if (mask.maskData) render(mask.maskData)
     // render depends on the same visual inputs listed here and is intentionally local to this component.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas.sourceAspect, componentRasterData, controlSize.height, controlSize.width, displaySize.height, displaySize.width, edit.pipeline.transform, mask.activeComponent, mask.activeMask?.feather, mask.activeMask?.inverted, mask.manualTool, mask.maskData, mask.maskSize, mask.showOverlay])
+  }, [canvas.sourceAspect, componentRasterData, controlSize.height, controlSize.width, displaySize.height, displaySize.width, edit.pipeline.transform, mask.activeComponent, mask.activeMask?.feather, mask.activeMask?.inverted, mask.manualTool, mask.maskData, mask.maskSize, mask.reconstructing, mask.showOverlay])
+  useEffect(() => {
+    if (!mask.reconstructing || !mask.maskData) return
+    let frame = 0
+    let previous = 0
+    const animate = (time: number): void => {
+      if (time - previous >= 32) {
+        previous = time
+        render(mask.maskData!, time * 0.12)
+      }
+      frame = requestAnimationFrame(animate)
+    }
+    frame = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(frame)
+    // render is local and follows the same visual dependencies as the static overlay effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mask.maskData, mask.reconstructing])
   if (!mask.editing || !mask.maskSize) return null
   const vectorTool = mask.manualTool === 'rectangle' || mask.manualTool === 'ellipse' || mask.manualTool === 'linear-gradient' || mask.manualTool === 'radial-gradient'
     ? mask.manualTool
     : null
   const activeVectorComponent = mask.activeComponent?.type !== 'raster' ? mask.activeComponent : null
-  const interactive = mask.manualTool !== 'move' || mask.semanticPicking || Boolean(activeVectorComponent)
+  const interactive = !mask.reconstructing && (mask.manualTool !== 'move' || mask.semanticPicking || Boolean(activeVectorComponent))
   const effectiveBrushSize = mask.brushSize * Math.max(mask.maskSize.width, mask.maskSize.height) / 512
   const brushCursorDiameter = (() => {
     if (!cursorPoint) return mask.brushSize
@@ -368,12 +399,12 @@ export function MaskOverlay() {
         width={displaySize.width}
         height={displaySize.height}
         style={{
-          cursor: mask.busy ? 'wait' : mask.semanticPicking || vectorTool ? 'crosshair' : mask.manualTool === 'brush' ? 'none' : mask.manualTool === 'move' && activeVectorComponent ? 'move' : undefined,
+          cursor: mask.busy || mask.reconstructing ? 'wait' : mask.semanticPicking || vectorTool ? 'crosshair' : mask.manualTool === 'brush' ? 'none' : mask.manualTool === 'move' && activeVectorComponent ? 'move' : undefined,
         }}
         onPointerEnter={(event) => setCursorPoint({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY })}
         onPointerLeave={() => setCursorPoint(null)}
         onPointerDown={(event) => {
-          if (mask.busy) return
+          if (mask.busy || mask.reconstructing) return
           if (mask.semanticPicking) {
             const point = pointForEvent(event)
             void mask.generateSemanticMask({
@@ -419,7 +450,7 @@ export function MaskOverlay() {
         }}
         onPointerMove={(event) => {
           setCursorPoint({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY })
-          if (!mask.busy && event.currentTarget.hasPointerCapture(event.pointerId)) {
+          if (!mask.busy && !mask.reconstructing && event.currentTarget.hasPointerCapture(event.pointerId)) {
             if (componentDragRef.current) updateActiveComponentDrag(event)
             else if (vectorTool) updateVectorDraft(event, vectorTool)
             else paint(event)
@@ -439,7 +470,7 @@ export function MaskOverlay() {
           componentDraftRef.current = null
           componentDragRef.current = null
           strokeDataRef.current = null
-          if (mask.busy) {
+          if (mask.busy || mask.reconstructing) {
             restoreCommittedMask()
             return
           }
@@ -491,7 +522,7 @@ export function MaskOverlay() {
         height={controlSize.height}
         aria-hidden="true"
       />
-      {!mask.busy && mask.manualTool === 'brush' && !mask.semanticPicking && cursorPoint && (
+      {!mask.busy && !mask.reconstructing && mask.manualTool === 'brush' && !mask.semanticPicking && cursorPoint && (
         <MaskBrushCursor x={cursorPoint.x} y={cursorPoint.y} diameter={brushCursorDiameter} subtract={mask.selectionOperation === 'subtract' || temporarySubtract} />
       )}
     </div>
