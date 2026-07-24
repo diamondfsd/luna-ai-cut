@@ -606,6 +606,26 @@ async function runBatchExportQueue(
       }
 
       if (entry.kind === 'video') {
+        if (exportConfig?.dolbyVision) {
+          if (exportLayers.length !== 2) throw new Error('Dolby Vision 导出仅支持原视频加一个静态水印')
+          const [sourceLayer, watermarkLayer] = exportLayers
+          if (!sourceLayer.isVideo || sourceLayer.filePath !== entry.sourcePath || watermarkLayer.isVideo || !watermarkLayer.positioning) {
+            throw new Error('Dolby Vision 导出内容不符合要求')
+          }
+          const positioning = 'anchor' in watermarkLayer.positioning
+            ? watermarkLayer.positioning
+            : (outputSize.width >= outputSize.height ? watermarkLayer.positioning.landscape : watermarkLayer.positioning.portrait)
+          if (!positioning) throw new Error('Dolby Vision 水印位置无效')
+          await window.luna.workspace.exportDolbyVisionWatermark({
+            sourcePath: entry.sourcePath,
+            outputPath: entry.outputPath,
+            watermarkPath: watermarkLayer.filePath,
+            positioning,
+            exportTaskId: taskId,
+            exportItemId: entry.id,
+          })
+          return
+        }
         const resolved = resolveExportConfig(exportConfig, outputSize.width, outputSize.height)
         await exportPreviewVideo({
           exportDir,
