@@ -70,8 +70,10 @@ export function MediaCard({
 
   // 视频时长：优先用 file.duration，没有则异步探测
   const [videoDuration, setVideoDuration] = useState<number | null>(null)
+  const [detectedDolbyVision, setDetectedDolbyVision] = useState<boolean | null>(null)
+  const [detectedDolbyVisionProfile, setDetectedDolbyVisionProfile] = useState<number | null>(null)
   useEffect(() => {
-    if (!cacheEnabled || file.kind !== 'video' || file.duration != null) return
+    if (!cacheEnabled || file.kind !== 'video' || (file.duration != null && file.dolbyVision != null)) return
     const filePath = file.downloadFilePath ?? file.localPath ?? file.sourceUrl
     if (!filePath) return
 
@@ -80,11 +82,17 @@ export function MediaCard({
       if (data.fileId === file.id && data.duration != null) {
         setVideoDuration(data.duration)
       }
+      if (data.fileId === file.id && data.dolbyVision != null) {
+        setDetectedDolbyVision(data.dolbyVision)
+        setDetectedDolbyVisionProfile(data.dolbyVisionProfile ?? null)
+      }
     })
     return () => { unsub() }
   }, [cacheEnabled, file])
 
   const effectiveDuration = file.duration ?? videoDuration
+  const isDolbyVision = file.dolbyVision ?? detectedDolbyVision ?? false
+  const dolbyVisionProfile = file.dolbyVisionProfile ?? detectedDolbyVisionProfile
 
   const progressValue = progress?.status === 'done' || progress?.status === 'exists' ? 100 : progress?.percent ?? 0
   const progressStyle = { '--progress': `${progressValue * 3.6}deg` } as CSSProperties
@@ -146,6 +154,7 @@ export function MediaCard({
         ) : isLive ? (
           <LivePhotoBadge size={28} className="card-live-chip" />
         ) : null}
+        {isDolbyVision && <span className="dolby-vision-badge" title={dolbyVisionProfile ? `杜比视界 Profile ${dolbyVisionProfile}` : '杜比视界'}>Dolby Vision</span>}
         {file.kind === 'video' && <VideoPlayBadge size={26} />}
         {overlay}
       </div>
