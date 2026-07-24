@@ -15,6 +15,26 @@ export interface WorkspaceColorMetadata {
 
 export interface WorkspaceProjectAsset extends WorkspaceMediaAsset {
   pipeline?: unknown
+  removal?: WorkspaceRemovalPipeline
+}
+
+export interface WorkspaceRemovalOperation {
+  id: string
+  enabled: boolean
+  maskPath: string
+  maskWidth: number
+  maskHeight: number
+  resultPath: string
+  inputRevision: string
+  edgeExpansion: number
+  feather: number
+  model: { id: 'big-lama-fp32'; version: 'carve-c3c0c9e'; sha256: string }
+  createdAt: string
+}
+
+export interface WorkspaceRemovalPipeline {
+  schemaVersion: 1
+  operations: WorkspaceRemovalOperation[]
 }
 
 export interface WorkspaceTripleStitchState {

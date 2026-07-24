@@ -1,0 +1,10 @@
+.workspace-removal-panel { min-height: 100%; display: flex; flex-direction: column; gap: 18px; padding: 16px; }
+.workspace-removal-panel section { display: grid; gap: 12px; }
+.workspace-removal-panel h3 { margin: 0; color: var(--ink); font-size: 13px; letter-spacing: 0; }
+.workspace-removal-panel .ui-button-group { width: 100%; }
+.workspace-removal-panel .ui-button-group > * { min-width: 0; flex: 1; }
+.workspace-removal-switch { display: flex; align-items: center; justify-content: space-between; color: var(--ink); font-size: 13px; }
+.workspace-removal-result { padding-top: 16px; border-top: 1px solid var(--hairline); }
+.workspace-removal-actions { margin-top: auto; padding-top: 12px; }
+.workspace-removal-full-button { width: 100%; }
+.workspace-removal-empty { padding: 18px; color: var(--muted); font-size: 13px; line-height: 1.6; }

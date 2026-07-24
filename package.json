@@ -29,6 +29,7 @@
     "publish:models": "node scripts/publish-model-resources.mjs --upload",
     "build:models": "node scripts/publish-model-resources.mjs",
     "test:workspace": "node scripts/test-workspace-geometry.mjs",
+    "test:inpaint": "node --experimental-strip-types scripts/test-inpaint-mask.mjs",
     "test:media-preview": "node scripts/test-media-preview.mjs",
     "test:wired-camera": "node scripts/test-mounted-camera-source.mjs",
     "test:mask": "node scripts/test-mask-safety.mjs && node scripts/test-segmentation-task-registry.mjs && node scripts/test-specialized-worker-client.mjs",
