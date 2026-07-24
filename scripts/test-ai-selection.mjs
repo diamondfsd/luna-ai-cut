@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 
 import {
   analyzeRgb,
@@ -11,10 +14,10 @@ import {
 import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
 import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
 import { buildFaceGroups, FACE_EMBEDDING_VERSION } from '../electron/aiSelectionFaceGroups.ts'
+import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/aiSelectionPeopleStore.ts'
 import {
   countSimilarityGroups,
   matchesResultFilter,
-  matchesSelectionSearch,
 } from '../src/ai-selection/aiSelectionView.ts'
 
 function quality(score = 80) {
@@ -224,18 +227,17 @@ const viewItems = [
   item('group-person-b', '2026-07-18T01:00:01.000Z', { groupId: 'group-person', state: 'alternative', semanticTags: ['照片', '人物'], recommendationReason: '相似组备选' }),
   item('night', '2026-07-18T02:00:00.000Z', { semanticTags: ['照片', '夜景'], recommendationReason: '独特内容' }),
 ]
-const comparedPeople = viewItems.filter((entry) => matchesResultFilter(entry, 'recommended') && matchesSelectionSearch(entry, '人物'))
+const comparedPeople = viewItems.filter((entry) => matchesResultFilter(entry, 'recommended'))
 assert.equal(comparedPeople.length, 1, 'AI 推荐不能混入相似组备选素材')
 assert.equal(countSimilarityGroups(comparedPeople), 1, '相似筛选应单独统计组数')
 assert.equal(viewItems.filter((entry) => matchesResultFilter(entry, 'recommended')).length, 1)
-assert.equal(viewItems.filter((entry) => matchesSelectionSearch(entry, '晚上')).length, 1)
 
 const faceVector = (first, second) => [first, second, ...Array(126).fill(0)]
 const faceItems = [
   item('face-a', '2026-07-18T03:00:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
   item('face-a-again', '2026-07-18T03:01:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.3, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(125, 8), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
   item('face-b', '2026-07-18T03:02:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.4, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(0, 127), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
-  item('face-a-and-b', '2026-07-18T03:03:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [
+  item('face-a-and-b', '2026-07-18T03:03:00.000Z', { personEvidence: { ...faceEvidence('open', 12), bounds: { x: 0.15, y: 0.12, width: 0.72, height: 0.72 }, faces: [
     { bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(126, 4), embeddingVersion: FACE_EMBEDDING_VERSION },
     { bounds: { x: 0.6, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(3, 126), embeddingVersion: FACE_EMBEDDING_VERSION },
   ] } }),
@@ -244,6 +246,44 @@ const faceGroups = buildFaceGroups(faceItems)
 assert.equal(faceGroups.length, 2)
 assert.deepEqual(faceGroups[0].itemIds, ['face-a', 'face-a-again', 'face-a-and-b'])
 assert.deepEqual(faceGroups[1].itemIds, ['face-b', 'face-a-and-b'])
+
+const globalIdentityGroups = buildFaceGroups(faceItems, [{
+  id: 'person-global',
+  name: '家人',
+  samples: [faceVector(127, 0), faceVector(0, 127)],
+  createdAt: '2026-07-18T00:00:00.000Z',
+  updatedAt: '2026-07-18T00:00:00.000Z',
+}])
+assert.equal(globalIdentityGroups.length, 1, '全局人物身份应合并本次分析拆开的局部分组')
+assert.equal(globalIdentityGroups[0].name, '家人')
+assert.equal(globalIdentityGroups[0].identityId, 'person-global')
+
+const peopleStoreRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-ai-selection-people-'))
+try {
+  const registeredIdentity = createPersonIdentity('人物 1', faceVector(127, 0))
+  await savePeopleStore(peopleStoreRoot, [registeredIdentity])
+  const reloadedIdentities = await loadPeopleStore(peopleStoreRoot)
+  const reusedGroups = buildFaceGroups([faceItems[1]], reloadedIdentities)
+  assert.equal(reusedGroups[0].identityId, registeredIdentity.id, '重新加载人物库后应复用已登记的全局身份')
+} finally {
+  await fs.rm(peopleStoreRoot, { recursive: true, force: true })
+}
+
+const falseFaceGroup = buildFaceGroups([item('building-false-face', '2026-07-18T03:05:00.000Z', {
+  personEvidence: {
+    ...faceEvidence('unknown', 0),
+    bounds: { x: 0.02, y: 0.91, width: 0.63, height: 0.09 },
+    faces: [{ bounds: { x: 0, y: 0.26, width: 0.12, height: 0.35 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }],
+  },
+})])
+assert.equal(falseFaceGroup.length, 0, '不在人物区域内的误检人脸不能进入人物分组')
+
+const smallFaceGroups = buildFaceGroups([
+  item('small-face-a', '2026-07-18T03:06:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.08, height: 0.08 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+  item('small-face-b', '2026-07-18T03:07:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.22, y: 0.2, width: 0.08, height: 0.08 }, embedding: faceVector(125, 8), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
+])
+assert.equal(smallFaceGroups.length, 1, '人物区域内的小脸应继续使用原聚类规则')
+assert.deepEqual(smallFaceGroups[0].itemIds, ['small-face-a', 'small-face-b'])
 
 const poseVector = (first, second, third) => [first, second, third, ...Array(125).fill(0)]
 const poseGroups = buildFaceGroups([

@@ -16,10 +16,11 @@ import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
-import { buildFaceGroups } from './aiSelectionFaceGroups'
+import { buildGlobalFaceGroups, loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson } from './aiSelectionPeopleManager'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
+import { workspaceAssetsFromSelection } from './aiSelectionWorkspaceAssets'
 
 const ANALYSIS_VERSION = 'selection-evidence-v5'
 const ROOT_DIR = 'ai-selection'
@@ -43,6 +44,10 @@ export function setAiSelectionNotifier(next: Notify): void {
 
 function rootDir(): string {
   return path.join(app.getPath('userData'), '.luna-cache', ROOT_DIR)
+}
+
+function peopleStoreDir(): string {
+  return path.join(app.getPath('userData'), 'people')
 }
 
 function sessionPath(id: string): string {
@@ -107,6 +112,7 @@ async function persist(session: StoredSession): Promise<void> {
 async function ensureLoaded(): Promise<void> {
   if (loaded) return
   loaded = true
+  await loadGlobalPeople(peopleStoreDir())
   const directory = path.join(rootDir(), 'sessions')
   const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => [])
   for (const entry of entries) {
@@ -116,7 +122,7 @@ async function ensureLoaded(): Promise<void> {
       if (parsed.schemaVersion !== 1 || parsed.analysisVersion !== ANALYSIS_VERSION || !parsed.id) continue
       parsed.undoStack ??= []
       parsed.redoStack ??= []
-      parsed.faceGroups = buildFaceGroups(parsed.items)
+      parsed.faceGroups = await registerGlobalPeople(peopleStoreDir(), parsed.items)
       applySelectionPlan(parsed.items, parsed.groups, parsed.preset, parsed.purpose, parsed.target, parsed.preferenceProfile)
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
       refreshAiSelectionCounts(parsed)
@@ -172,7 +178,7 @@ function rebuildSelectionResult(session: StoredSession): void {
     ...modifiedGroups,
     ...generatedGroups.filter((group) => !group.itemIds.some((id) => modifiedItemIds.has(id))),
   ]
-  session.faceGroups = buildFaceGroups(session.items)
+  session.faceGroups = buildGlobalFaceGroups(session.items)
   applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
   for (const scene of session.scenes) {
     scene.recommendedCount = scene.itemIds.filter((id) => session.items.find((item) => item.id === id)?.state === 'recommended').length
@@ -232,6 +238,7 @@ async function runSession(session: StoredSession): Promise<void> {
     }
 
     await analyzeRecommendationEvidence(analysisContext(session), photos.map((item) => item.id), controller.signal)
+    session.faceGroups = await registerGlobalPeople(peopleStoreDir(), session.items)
 
     controller.signal.throwIfAborted()
     session.phase = 'grouping'
@@ -426,6 +433,31 @@ export async function analyzeAiSelectionPeople(id: string, itemIds: string[]): P
   await ensureLoaded()
   const session = requireSession(id)
   await analyzePeopleOnDemand(analysisContext(session), itemIds)
+  session.faceGroups = await registerGlobalPeople(peopleStoreDir(), session.items)
+  await updateAndPersist(session)
+  return publicSession(session)
+}
+
+async function persistPeopleAndRefreshSessions(): Promise<void> {
+  for (const session of sessions.values()) {
+    rebuildSelectionResult(session)
+    await updateAndPersist(session)
+  }
+}
+
+export async function renameAiSelectionPerson(id: string, groupId: string, name: string): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  await renameGlobalPerson(peopleStoreDir(), session, groupId, name)
+  await persistPeopleAndRefreshSessions()
+  return publicSession(session)
+}
+
+export async function mergeAiSelectionPeople(id: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  await mergeGlobalPeople(peopleStoreDir(), session, targetGroupId, sourceGroupId)
+  await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }
 
@@ -458,24 +490,7 @@ export async function createProjectFromAiSelection(id: string, name: string): Pr
   const session = requireSession(id)
   if (session.workspaceCreation.status === 'creating') throw new Error('工作台项目正在创建')
   if (session.workspaceCreation.status === 'created') throw new Error('这个任务已经创建过工作台项目')
-  const assets = session.items.filter((item) => item.state === 'kept' && !item.error).flatMap((item) => {
-    const segments = item.videoSegments.filter((candidate) => candidate.state === 'kept')
-    if (item.kind === 'video' && segments.length > 0) return segments.map((segment, index) => ({
-      id: `${item.id}_${segment.id}`,
-      name: segments.length > 1 ? `${item.name} 片段 ${index + 1}` : item.name,
-      path: item.path,
-      kind: item.kind,
-      thumbnailUrl: item.videoKeyframes.find((frame) => frame.time >= segment.startTime)?.thumbnailUrl ?? item.thumbnailUrl,
-      pipeline: { trim: { startTime: segment.startTime, endTime: segment.endTime } },
-    }))
-    return [{
-      id: item.id,
-      name: item.name,
-      path: item.path,
-      kind: item.kind,
-      thumbnailUrl: item.thumbnailUrl,
-    }]
-  })
+  const assets = workspaceAssetsFromSelection(session.items)
   if (assets.length === 0) throw new Error('请先选择至少一个可用素材')
   session.workspaceCreation = { status: 'creating', projectId: null, error: null }
   await updateAndPersist(session)

@@ -118,9 +118,17 @@ async function buildFaceDescriptors(rgb: Buffer, faces: Bounds[], layout: { scal
   return descriptors
 }
 
-async function analyzeFaces(rgb: Buffer, layout: { scaledWidth: number; scaledHeight: number; padX: number; padY: number }, signal?: AbortSignal): Promise<Pick<AiPersonEvidence, 'faceCount' | 'primaryFaceBounds' | 'faceVisibility' | 'eyeState' | 'closedEyeConfidence' | 'faces'>> {
+async function analyzeFaces(rgb: Buffer, layout: { scaledWidth: number; scaledHeight: number; padX: number; padY: number }, personBounds: Bounds, signal?: AbortSignal): Promise<Pick<AiPersonEvidence, 'faceCount' | 'primaryFaceBounds' | 'faceVisibility' | 'eyeState' | 'closedEyeConfidence' | 'faces'>> {
   const faceModel = await loadSelectionModel('ultraface-rfb-320', signal)
-  const faces = await extractFaceBoxesInWorker(faceModel, rgb, layout, signal)
+  const margin = 0.04
+  const faces = (await extractFaceBoxesInWorker(faceModel, rgb, layout, signal)).filter((face) => {
+    const centerX = face.x + face.width / 2
+    const centerY = face.y + face.height / 2
+    return centerX >= personBounds.x - margin
+      && centerX <= personBounds.x + personBounds.width + margin
+      && centerY >= personBounds.y - margin
+      && centerY <= personBounds.y + personBounds.height + margin
+  })
   const primary = faces[0] ?? null
   if (!primary) return { faceCount: 0, primaryFaceBounds: null, faceVisibility: 'occluded', eyeState: 'unknown', closedEyeConfidence: null, faces: [] }
   const descriptors = await buildFaceDescriptors(rgb, faces, layout, signal)
@@ -192,7 +200,7 @@ export async function analyzePersonEvidence(item: AiSelectionItem, signal?: Abor
   }
   const coverage = Number(evidence.coverage.toFixed(4))
   let faces: Awaited<ReturnType<typeof analyzeFaces>> = { faceCount: 0, primaryFaceBounds: null, faceVisibility: 'unknown', eyeState: 'unknown', closedEyeConfidence: null, faces: [] }
-  try { faces = await analyzeFaces(rgb, layout, signal) } catch (error) { if (signal?.aborted) throw error }
+  try { faces = await analyzeFaces(rgb, layout, evidence.bounds, signal) } catch (error) { if (signal?.aborted) throw error }
   const faceReason = faces.eyeState === 'closed' ? '，检测到高可信闭眼' : faces.faceVisibility === 'occluded' ? '，面部可能背向或被遮挡' : faces.faceVisibility === 'unknown' ? '，人脸细节暂不可用' : ''
   return {
     detected: true,

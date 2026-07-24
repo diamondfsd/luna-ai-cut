@@ -2,8 +2,8 @@ interface ThumbnailReadyEvent {
   fileId: string
   fileName?: string
   downloadName?: string
-  cacheFilePath: string
-  thumbnailUrl: string
+  cacheFilePath: string | null
+  thumbnailUrl: string | null
 }
 
 type ThumbnailReadyListener = (event: ThumbnailReadyEvent) => void

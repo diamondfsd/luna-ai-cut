@@ -177,6 +177,8 @@ export interface LunaApi {
     cancel(sessionId: string): Promise<AiSelectionSession>
     applyOperation(sessionId: string, revision: number, operation: AiSelectionUserOperation): Promise<AiSelectionSession>
     analyzePeople(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
+    renamePerson(sessionId: string, groupId: string, name: string): Promise<AiSelectionSession>
+    mergePeople(sessionId: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession>
     analyzeContentTags(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     analyzeVideos(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     undo(sessionId: string): Promise<AiSelectionSession>
@@ -240,7 +242,7 @@ export interface LunaApi {
   onWorkspaceSegmentationProgress(callback: (progress: WorkspaceSegmentationProgress) => void): () => void
   onWorkspaceMaskTrackingProgress(callback: (progress: WorkspaceMaskTrackingProgress) => void): () => void
   onConnectionLost(callback: () => void): () => void
-  onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string; thumbnailUrl: string }) => void): () => void
+  onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null }) => void): () => void
   onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null }) => void): () => void
   checkForUpdates(): Promise<UpdateInfo | null>
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
