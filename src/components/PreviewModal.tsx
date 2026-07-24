@@ -25,7 +25,7 @@ interface PreviewModalProps {
   batchExportMode?: boolean
   onFilePathChange?: (filePath: string) => void
   isFileSelected?: (filePath: string) => boolean
-  onToggleFileSelection?: (filePath: string) => void
+  onSetFileSelected?: (filePath: string, selected: boolean) => void
   onClose: () => void
 }
 
@@ -52,15 +52,17 @@ export function PreviewModal({
   batchExportMode,
   onFilePathChange,
   isFileSelected,
-  onToggleFileSelection,
+  onSetFileSelected,
   onClose,
 }: PreviewModalProps) {
   // ── 当前预览文件路径 ──
   const [currentFilePath, setCurrentFilePath] = useState(filePath)
+  const [selectionOverrides, setSelectionOverrides] = useState<Map<string, boolean>>(new Map())
 
   // 外部 filePath 变化时重置
   useEffect(() => {
     setCurrentFilePath(filePath)
+    setSelectionOverrides(new Map())
   }, [filePath])
 
   useEffect(() => {
@@ -82,6 +84,7 @@ export function PreviewModal({
   const displaySource = activeSourcePath ? (filePathToPreviewUrl(activeSourcePath) ?? activeSourcePath) : null
   const stageSource = toLocalPath(activeSourcePath)
   const proxyPreview = proxyPreviewPaths?.includes(currentFilePath) ?? false
+  const currentSelected = selectionOverrides.get(currentFilePath) ?? isFileSelected?.(currentFilePath)
   const allowWatermark = useLunaUltraWatermark(stageSource ? {
     path: stageSource,
     kind: isVideoPath(stageSource) ? 'video' : 'image',
@@ -170,8 +173,12 @@ export function PreviewModal({
           filePath={currentFilePath}
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
-          selected={isFileSelected?.(currentFilePath)}
-          onToggleSelected={onToggleFileSelection ? () => onToggleFileSelection(currentFilePath) : undefined}
+          selected={currentSelected}
+          onToggleSelected={onSetFileSelected && currentSelected !== undefined ? () => {
+            const nextSelected = !currentSelected
+            setSelectionOverrides((current) => new Map(current).set(currentFilePath, nextSelected))
+            onSetFileSelected(currentFilePath, nextSelected)
+          } : undefined}
           onClose={onClose}
         />
 

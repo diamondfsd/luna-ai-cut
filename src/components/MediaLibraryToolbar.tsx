@@ -194,7 +194,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
               <span className="toolbar-date">{currentDate}</span>
               <div className="library-controls">
                 {isLocal && (
-                  <Button variant="secondary" size="compact" icon={<Sparkles size={14} />} disabled={ctrl.filteredFiles.length === 0} onClick={() => openAiSelection()}>
+                  <Button className="library-ai-selection-btn" variant="primary" size="compact" icon={<Sparkles size={13} />} disabled={ctrl.filteredFiles.length === 0} onClick={() => openAiSelection()}>
                     AI 选片
                   </Button>
                 )}
