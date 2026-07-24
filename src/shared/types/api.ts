@@ -243,7 +243,7 @@ export interface LunaApi {
   onWorkspaceMaskTrackingProgress(callback: (progress: WorkspaceMaskTrackingProgress) => void): () => void
   onConnectionLost(callback: () => void): () => void
   onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null }) => void): () => void
-  onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null }) => void): () => void
+  onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null }) => void): () => void
   checkForUpdates(): Promise<UpdateInfo | null>
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   listReleaseNotes(): Promise<ReleaseNoteItem[]>

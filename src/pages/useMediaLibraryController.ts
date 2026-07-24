@@ -241,7 +241,7 @@ export function useMediaLibraryController(pageType: PageType) {
 
   // 监听视频帧率就绪
   useEffect(() => {
-    return window.luna.onVideoFrameRateReady(({ fileId, fileName, duration, dolbyVision, dolbyVisionProfile }) => {
+    return window.luna.onVideoFrameRateReady(({ fileId, fileName, duration, dolbyVision, dolbyVisionProfile, iLog }) => {
       const applyDuration = (current: LunaFile[]): LunaFile[] =>
         current.map((file) => (
           file.id === fileId || file.name === fileName
@@ -249,6 +249,7 @@ export function useMediaLibraryController(pageType: PageType) {
                 ...file,
                 ...(duration != null ? { duration } : {}),
                 ...(dolbyVision != null ? { dolbyVision, dolbyVisionProfile: dolbyVisionProfile ?? undefined } : {}),
+                ...(iLog != null ? { iLog } : {}),
               }
             : file
         ))
@@ -285,7 +286,7 @@ export function useMediaLibraryController(pageType: PageType) {
 
   function requestFrameRate(file: LunaFile, localPath: string | null | undefined): void {
     const videoPath = localPath ?? file.cacheFilePath
-    if (file.kind !== 'video' || !videoPath || (file.duration != null && file.dolbyVision != null) || requestedFrameRateIdsRef.current.has(file.id)) return
+    if (file.kind !== 'video' || !videoPath || (file.duration != null && file.dolbyVision != null && file.iLog != null) || requestedFrameRateIdsRef.current.has(file.id)) return
     requestedFrameRateIdsRef.current.add(file.id)
     void window.luna.requestVideoFrameRate(file, videoPath).catch(() => {
       requestedFrameRateIdsRef.current.delete(file.id)

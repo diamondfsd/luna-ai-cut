@@ -1,0 +1,38 @@
+.video-format-badge {
+  position: absolute;
+  right: 10px;
+  bottom: 5px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.dolby-vision-badge,
+.i-log-badge {
+  width: 43px;
+  height: 16px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.66);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.media-frame .dolby-vision-badge img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.7;
+}
+
+.i-log-badge {
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.7);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+}

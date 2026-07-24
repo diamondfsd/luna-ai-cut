@@ -39,6 +39,7 @@ export interface LunaFile {
   duration?: number
   dolbyVision?: boolean
   dolbyVisionProfile?: number
+  iLog?: boolean
 }
 
 export interface CameraDeleteFailure {

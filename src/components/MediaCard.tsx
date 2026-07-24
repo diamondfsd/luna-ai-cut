@@ -4,6 +4,8 @@ import type { DownloadProgress, LunaFile } from '../shared/types'
 import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 import { ThumbImage } from './ThumbImage'
+import dolbyVisionLogo from '../assets/logos/dolby-vision-vertical.png'
+import '../styles/media-card-format-badge.css'
 
 interface MediaCardProps {
   file: LunaFile
@@ -72,8 +74,9 @@ export function MediaCard({
   const [videoDuration, setVideoDuration] = useState<number | null>(null)
   const [detectedDolbyVision, setDetectedDolbyVision] = useState<boolean | null>(null)
   const [detectedDolbyVisionProfile, setDetectedDolbyVisionProfile] = useState<number | null>(null)
+  const [detectedILog, setDetectedILog] = useState<boolean | null>(null)
   useEffect(() => {
-    if (!cacheEnabled || file.kind !== 'video' || (file.duration != null && file.dolbyVision != null)) return
+    if (!cacheEnabled || file.kind !== 'video' || (file.duration != null && file.dolbyVision != null && file.iLog != null)) return
     const filePath = file.downloadFilePath ?? file.localPath ?? file.sourceUrl
     if (!filePath) return
 
@@ -86,6 +89,9 @@ export function MediaCard({
         setDetectedDolbyVision(data.dolbyVision)
         setDetectedDolbyVisionProfile(data.dolbyVisionProfile ?? null)
       }
+      if (data.fileId === file.id && data.iLog != null) {
+        setDetectedILog(data.iLog)
+      }
     })
     return () => { unsub() }
   }, [cacheEnabled, file])
@@ -93,6 +99,7 @@ export function MediaCard({
   const effectiveDuration = file.duration ?? videoDuration
   const isDolbyVision = file.dolbyVision ?? detectedDolbyVision ?? false
   const dolbyVisionProfile = file.dolbyVisionProfile ?? detectedDolbyVisionProfile
+  const isILog = file.iLog ?? detectedILog ?? false
 
   const progressValue = progress?.status === 'done' || progress?.status === 'exists' ? 100 : progress?.percent ?? 0
   const progressStyle = { '--progress': `${progressValue * 3.6}deg` } as CSSProperties
@@ -154,8 +161,14 @@ export function MediaCard({
         ) : isLive ? (
           <LivePhotoBadge size={28} className="card-live-chip" />
         ) : null}
-        {isDolbyVision && <span className="dolby-vision-badge" title={dolbyVisionProfile ? `杜比视界 Profile ${dolbyVisionProfile}` : '杜比视界'}>Dolby Vision</span>}
-        {file.kind === 'video' && <VideoPlayBadge size={26} />}
+        {isDolbyVision ? (
+          <span className="video-format-badge dolby-vision-badge" title={dolbyVisionProfile ? `杜比视界 Profile ${dolbyVisionProfile}` : '杜比视界'}>
+            <img src={dolbyVisionLogo} alt="Dolby Vision" />
+          </span>
+        ) : isILog ? (
+          <span className="video-format-badge i-log-badge" title="I-Log">I-LOG</span>
+        ) : null}
+        {file.kind === 'video' && !isDolbyVision && !isILog && <VideoPlayBadge size={26} />}
         {overlay}
       </div>
     </article>

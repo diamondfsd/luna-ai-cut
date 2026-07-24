@@ -191,10 +191,10 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     ipcRenderer.on('luna:thumbnail-ready', listener)
     return () => ipcRenderer.off('luna:thumbnail-ready', listener)
   },
-  onVideoFrameRateReady: (callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null }) => void) => {
+  onVideoFrameRateReady: (callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null }) => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,
-      data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null },
+      data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null },
     ): void => callback(data)
     ipcRenderer.on('luna:video-frame-rate-ready', listener)
     return () => ipcRenderer.off('luna:video-frame-rate-ready', listener)
