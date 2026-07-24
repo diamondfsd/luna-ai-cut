@@ -123,7 +123,7 @@ async function ensureLoaded(): Promise<void> {
       parsed.undoStack ??= []
       parsed.redoStack ??= []
       parsed.faceGroups = await registerGlobalPeople(peopleStoreDir(), parsed.items)
-      applySelectionPlan(parsed.items, parsed.groups, parsed.preset, parsed.purpose, parsed.target, parsed.preferenceProfile)
+      rebuildSelectionResult(parsed)
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
       refreshAiSelectionCounts(parsed)
       sessions.set(parsed.id, parsed)

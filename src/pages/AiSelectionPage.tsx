@@ -171,6 +171,11 @@ export function AiSelectionPage() {
         const next = items.find((candidate) => candidate.path === filePath)
         if (next) setFocusedId(next.id)
       },
+      isFileSelected: (filePath) => items.find((candidate) => candidate.path === filePath)?.state === 'kept',
+      onSetFileSelected: (filePath, selected) => {
+        const next = items.find((candidate) => candidate.path === filePath)
+        if (next) setItemState(next, selected ? 'kept' : 'undecided')
+      },
     })
   }
 

@@ -48,7 +48,7 @@ export function PreviewModalHeader({
           <IconButton
             variant="light"
             className="preview-select-toggle"
-            icon={<Check size={18} />}
+            icon={selected ? <Check size={18} /> : null}
             onClick={onToggleSelected}
             aria-label={selected ? '取消选择当前素材' : '选择当前素材'}
             aria-pressed={selected}

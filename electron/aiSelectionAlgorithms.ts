@@ -34,7 +34,7 @@ function eventName(startAt: string, index: number): string {
 export function buildShootingEvents(items: AiSelectionItem[]): AiSelectionScene[] {
   const buckets = new Map<string, AiSelectionItem[]>()
   for (const item of items) {
-    const key = `${localDay(item.capturedAt)}\0${item.device ?? 'unknown'}`
+    const key = localDay(item.capturedAt)
     buckets.set(key, [...(buckets.get(key) ?? []), item])
   }
 

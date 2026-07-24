@@ -128,6 +128,13 @@ const crossDirectoryEvent = buildShootingEvents([
 ])
 assert.equal(crossDirectoryEvent.length, 1, '同一设备的连续拍摄不能因目录不同被拆开')
 
+const crossDeviceEvent = buildShootingEvents([
+  item('camera-photo', '2026-07-18T05:04:26.000Z', { device: 'Insta360 Luna Ultra' }),
+  item('camera-video', '2026-07-18T05:04:36.000Z', { device: null }),
+])
+assert.equal(crossDeviceEvent.length, 1, '同日连续拍摄不能因设备字段不同被拆开')
+assert.deepEqual(crossDeviceEvent[0].itemIds, ['camera-photo', 'camera-video'])
+
 const exactItems = [
   item('exact-a', '2026-07-18T01:00:00.000Z', { exactHash: 'same', recommendationScore: 70 }),
   item('exact-b', '2026-07-18T01:00:01.000Z', { exactHash: 'same', recommendationScore: 90 }),
