@@ -1,4 +1,4 @@
-import { FolderOpen, ImageOff } from 'lucide-react'
+import { FolderOpen } from 'lucide-react'
 import { type MouseEvent, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset } from '../../shared/types'
@@ -9,6 +9,7 @@ import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { useApp } from '../../context/AppContext'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, LivePhotoBadge, VideoPlayBadge, toast } from '../../ui'
 import { ThumbImage } from '../../components/ThumbImage'
+import { WorkspaceMissingMedia } from './WorkspaceMissingMedia'
 
 /** 检查素材的 pipeline 是否有非默认的修改 */
 function isAssetModified(item: WorkspaceMediaAsset, defaultPipeline: EditPipeline): boolean {
@@ -19,7 +20,7 @@ function isAssetModified(item: WorkspaceMediaAsset, defaultPipeline: EditPipelin
 }
 
 export function WorkspaceMediaStrip() {
-  const { media: mediaList, brokenPaths, selectedIndices, setSelectedIndices, activeIndex, setActiveIndex, handleSelectionChange } = useWorkspaceMedia()
+  const { media: mediaList, brokenPaths, setBrokenPaths, selectedIndices, setSelectedIndices, activeIndex, setActiveIndex, handleSelectionChange } = useWorkspaceMedia()
   const { settings } = useApp()
   const defaultPipeline = createWorkspaceDefaultPipeline(settings)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -136,7 +137,15 @@ export function WorkspaceMediaStrip() {
                 onClick={(e) => handleClick(index, e)}
               >
                 {isModified && <span className="workspace-thumb-modified-dot" />}
-                {isBroken ? <ImageOff size={20} className="workspace-thumb-broken" /> : <ThumbImage src={item.path} alt="" draggable={false} />}
+                {isBroken
+                  ? <WorkspaceMissingMedia />
+                  : <ThumbImage
+                      src={item.path}
+                      alt=""
+                      draggable={false}
+                      unavailableFallback={<WorkspaceMissingMedia />}
+                      onUnavailable={(filePath) => setBrokenPaths((current) => current.has(filePath) ? current : new Set(current).add(filePath))}
+                    />}
                 {item.kind === 'video' && <VideoPlayBadge size={20} />}
                 {item.isLivePhoto && <LivePhotoBadge size={22} className="workspace-thumb-live-chip" />}
               </button>

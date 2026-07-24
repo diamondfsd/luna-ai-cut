@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ImgHTMLAttributes } from 'react'
+import { useCallback, useEffect, useRef, useState, type ImgHTMLAttributes, type ReactNode } from 'react'
 
 import { useFileCache } from '../hooks/useFileCache'
 
@@ -11,6 +11,10 @@ const MAX_AUTO_RETRIES = 2
 interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   /** 本地文件路径，组件内部通过 useFileCache 懒加载并生成缩略图 */
   src: string
+  /** 自动重试后仍无法加载时显示的内容；未提供时继续显示默认占位图 */
+  unavailableFallback?: ReactNode
+  /** 自动重试后仍无法加载时触发 */
+  onUnavailable?: (src: string) => void
 }
 
 /**
@@ -25,14 +29,16 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
  * <ThumbImage src="/path/to/photo.jpg" className="thumb-img" alt="" draggable={false} />
  * ```
  */
-export function ThumbImage({ src, onError, onLoad, ...imgProps }: ThumbImageProps) {
+export function ThumbImage({ src, unavailableFallback, onUnavailable, onError, onLoad, ...imgProps }: ThumbImageProps) {
   const [visible, setVisible] = useState(false)
+  const [unavailable, setUnavailable] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const retryCountRef = useRef(0)
   const { thumbnailUrl, hasError, retry } = useFileCache(src, visible)
 
   useEffect(() => {
     retryCountRef.current = 0
+    setUnavailable(false)
   }, [src])
 
   const retryOnce = useCallback(() => {
@@ -43,11 +49,17 @@ export function ThumbImage({ src, onError, onLoad, ...imgProps }: ThumbImageProp
   }, [retry])
 
   useEffect(() => {
-    if (!visible || !hasError || retryCountRef.current >= MAX_AUTO_RETRIES) return
+    if (!visible || !hasError) return
+    if (unavailable) return
+    if (retryCountRef.current >= MAX_AUTO_RETRIES) {
+      setUnavailable(true)
+      onUnavailable?.(src)
+      return
+    }
     const delay = 350 * (retryCountRef.current + 1)
     const timer = window.setTimeout(retryOnce, delay)
     return () => window.clearTimeout(timer)
-  }, [hasError, retryOnce, visible])
+  }, [hasError, onUnavailable, retryOnce, src, unavailable, visible])
 
   // IntersectionObserver 懒加载：进入视口附近才触发 useFileCache。
   useEffect(() => {
@@ -75,7 +87,7 @@ export function ThumbImage({ src, onError, onLoad, ...imgProps }: ThumbImageProp
     return () => observer.disconnect()
   }, [visible])
 
-  return (
+  return unavailable && unavailableFallback ? unavailableFallback : (
     <img
       ref={imgRef}
       src={thumbnailUrl ?? PLACEHOLDER_DATA_URL}
@@ -85,7 +97,10 @@ export function ThumbImage({ src, onError, onLoad, ...imgProps }: ThumbImageProp
       }}
       onLoad={(event) => {
         onLoad?.(event)
-        if (thumbnailUrl) retryCountRef.current = 0
+        if (thumbnailUrl) {
+          retryCountRef.current = 0
+          setUnavailable(false)
+        }
       }}
       {...imgProps}
     />

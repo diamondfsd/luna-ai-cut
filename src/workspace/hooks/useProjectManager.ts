@@ -52,6 +52,7 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
   }, [])
 
   useEffect(() => {
+    setBrokenPaths(new Set())
     if (routeState?.project) {
       setCurrentProject(routeState.project)
       setActiveIndex(Math.min(routeState.initialIndex ?? 0, routeState.project.assets.length - 1))
@@ -60,6 +61,8 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
       setTransientMedia(fallback)
       setActiveIndex(Math.min(routeState?.initialIndex ?? 0, fallback.length - 1))
     }
+    // routeState is intentionally sampled when navigation creates a new location.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationKey])
 
   // ── 异步检测 Live Photo（走 Google Motion Photo XMP，不走文件名） ──
@@ -120,11 +123,13 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
   )
 
   const openProject = useCallback((project: WorkspaceProject) => {
+    setBrokenPaths(new Set())
     setCurrentProject(project)
     setActiveIndex(0)
   }, [])
 
   const backToProjects = useCallback(() => {
+    setBrokenPaths(new Set())
     setCurrentProject(null)
     window.luna.workspace.listProjects().then(setProjects).catch(() => undefined)
   }, [])

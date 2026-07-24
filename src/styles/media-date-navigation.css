@@ -1,0 +1,128 @@
+.gallery {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+  align-items: start;
+  transition: grid-template-columns 160ms ease;
+}
+
+.gallery.date-nav-collapsed {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.media-gallery-content {
+  min-width: 0;
+}
+
+.media-date-nav {
+  position: sticky;
+  top: 54px;
+  z-index: 12;
+  height: calc(100vh - 112px);
+  min-height: 180px;
+  padding: 12px 9px;
+  overflow: hidden;
+  border-right: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--parchment) 94%, transparent);
+  box-sizing: border-box;
+  align-self: start;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.media-date-nav-header {
+  min-height: 28px;
+  margin-bottom: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.media-date-nav-header > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.date-nav-collapsed .media-date-nav {
+  padding-inline: 7px;
+}
+
+.date-nav-collapsed .media-date-nav-header {
+  justify-content: center;
+}
+
+.media-date-nav-list {
+  height: calc(100% - 37px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.media-date-nav-item.ui-btn {
+  width: 100%;
+  min-width: 0;
+  padding: 0 9px;
+  border: 0;
+  justify-content: flex-start;
+  color: var(--ink);
+}
+
+.media-date-nav-item.ui-btn > span:not(.ui-btn-icon) {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  text-align: left;
+}
+
+.media-date-nav-item.ui-btn > strong {
+  min-width: 22px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: right;
+}
+
+.media-date-nav-item.ui-btn:hover {
+  border: 0;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.media-date-nav-item.ui-btn.active {
+  background: color-mix(in srgb, var(--blue) 13%, transparent);
+  color: var(--blue);
+}
+
+.media-date-nav-item.ui-btn.active > strong {
+  color: var(--blue);
+}
+
+.media-section {
+  scroll-margin-top: 58px;
+}
+
+@media (max-width: 760px) {
+  .gallery {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .media-date-nav {
+    padding-inline: 7px;
+  }
+
+  .media-date-nav-header {
+    justify-content: center;
+  }
+
+  .media-date-nav-header > span,
+  .media-date-nav-list {
+    display: none;
+  }
+}
