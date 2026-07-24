@@ -391,6 +391,7 @@ export function MaskOverlay() {
   return (
     <div
       className="workspace-mask-overlay-shell"
+      data-reconstructing={mask.reconstructing ? 'true' : 'false'}
       style={{ left: imageRect.x, top: imageRect.y, width: imageRect.width, height: imageRect.height, pointerEvents: interactive ? 'auto' : 'none' }}
     >
       <canvas
