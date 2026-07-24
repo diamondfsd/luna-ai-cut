@@ -204,7 +204,7 @@ export function register(ctx: IpcContext): void {
 
     const task = ctx.enqueuePreviewTask(async () => {
       const result = await getVideoFrameRate(file, sourcePath)
-      if (result.frameRate !== null || result.duration !== null || result.dolbyVision !== null) {
+      if (result.frameRate !== null || result.duration !== null || result.dolbyVision !== null || result.iLog !== null) {
         ctx.win?.webContents.send('luna:video-frame-rate-ready', {
           fileId: file.id,
           fileName: file.name,
@@ -212,6 +212,7 @@ export function register(ctx: IpcContext): void {
           duration: result.duration,
           dolbyVision: result.dolbyVision,
           dolbyVisionProfile: result.dolbyVisionProfile,
+          iLog: result.iLog,
         })
       }
       return result.frameRate
