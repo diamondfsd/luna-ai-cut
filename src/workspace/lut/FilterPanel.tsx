@@ -1,7 +1,7 @@
 import { CircleAlert, RotateCcw, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button, ButtonGroup, Popover, PopoverContent, PopoverTrigger, Switch } from '../../ui'
+import { Accordion, Button, Popover, PopoverContent, PopoverTrigger, Switch } from '../../ui'
 import { type LutFileInfo } from './builtinLuts'
 import { FilterItem } from './FilterItem'
 import { LutImportDialog } from './LutImportDialog'
@@ -26,7 +26,7 @@ interface FilterPanelProps {
 export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
   const [categories, setCategories] = useState<string[]>([])
-  const [activeTab, setActiveTab] = useState<string>('全部')
+  const [openCategories, setOpenCategories] = useState<Set<string>>(new Set())
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [lutsLoading, setLutsLoading] = useState(true)
   const [lutsError, setLutsError] = useState(false)
@@ -60,7 +60,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
       const luts = await lutManager.discoverLuts(dir)
       if (loadRequestRef.current !== requestId) return
       setAllLuts(luts)
-      const cats: string[] = ['全部']
+      const cats: string[] = []
       const seen = new Set<string>()
       for (const lut of luts.filter((item) => !isLunaUltraTechnicalLut(item.filePath))) {
         if (!seen.has(lut.category)) {
@@ -69,10 +69,15 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
         }
       }
       setCategories(cats)
+      setOpenCategories((current) => {
+        const retained = new Set([...current].filter((category) => cats.includes(category)))
+        if (retained.size === 0 && cats[0]) retained.add(cats[0])
+        return retained
+      })
     } catch {
       if (loadRequestRef.current !== requestId) return
       setAllLuts([])
-      setCategories(['全部'])
+      setCategories([])
       setLutsError(true)
     } finally {
       if (loadRequestRef.current === requestId) setLutsLoading(false)
@@ -85,16 +90,28 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
     return () => { loadRequestRef.current += 1 }
   }, [refreshLuts])
 
-  // 按 tab + searchKey 过滤
-  const filteredLuts = useMemo(() => {
+  const visibleGroups = useMemo(() => {
     let result = allLuts.filter((lut) => !isLunaUltraTechnicalLut(lut.filePath))
-    if (activeTab !== '全部') result = result.filter((l) => l.category === activeTab)
     if (searchKey) {
       const kw = searchKey.toLowerCase()
       result = result.filter((l) => l.name.toLowerCase().includes(kw))
     }
-    return result
-  }, [allLuts, activeTab, searchKey])
+    return categories
+      .map((category) => ({ category, items: result.filter((lut) => lut.category === category) }))
+      .filter((group) => group.items.length > 0)
+  }, [allLuts, categories, searchKey])
+
+  useEffect(() => {
+    if (!activeLutInfo) return
+    setOpenCategories((current) => current.has(activeLutInfo.category)
+      ? current
+      : new Set([...current, activeLutInfo.category]))
+  }, [activeLutInfo])
+
+  useEffect(() => {
+    if (!searchKey?.trim()) return
+    setOpenCategories(new Set(visibleGroups.map((group) => group.category)))
+  }, [searchKey, visibleGroups])
 
   const handleSelect = useCallback((id: string | null) => {
     if (id === activeLutId) {
@@ -237,36 +254,51 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
           ) : null}
         </section>
 
-        {/* 分类标签 */}
-        <div className="filter-tabs-row">
-          <div className="filter-tabs-scroll">
-            <ButtonGroup
-              options={categories.map((cat) => ({ value: cat, label: cat }))}
-              value={activeTab}
-              onChange={(value) => setActiveTab(value)}
-              className="filter-category-group"
-            />
-          </div>
-          <button className="filter-import-btn" onClick={() => setImportDialogOpen(true)} title="导入 .cube">
-            <Upload size={15} />
-          </button>
+        <div className="filter-groups-toolbar">
+          <span>滤镜分类</span>
+          <Button
+            variant="ghost"
+            size="mini"
+            className="filter-import-btn"
+            onClick={() => setImportDialogOpen(true)}
+            title="添加 LUT"
+          >
+            添加 LUT
+            <Upload size={14} />
+          </Button>
         </div>
 
-        {/* 滤镜网格 */}
         <main className="filter-grid-wrap">
-          <div className="filter-grid">
-            {filteredLuts.map((lut: LutFileInfo) => (
-              <FilterItem
-                key={lut.filePath}
-                filePath={lut.filePath}
-                name={lut.name}
-                active={activeLutId === lut.filePath}
-                onClick={() => handleSelect(lut.filePath)}
-                mediaPath={mediaPath ?? null}
-                intensity={intensity}
-              />
-            ))}
-          </div>
+          {visibleGroups.length > 0 ? visibleGroups.map(({ category, items }) => (
+            <Accordion
+              key={category}
+              className="lut-category-accordion"
+              title={<><span>{category}</span><span className="lut-category-count">{items.length}</span></>}
+              open={openCategories.has(category)}
+              onOpenChange={(open) => setOpenCategories((current) => {
+                const next = new Set(current)
+                if (open) next.add(category)
+                else next.delete(category)
+                return next
+              })}
+            >
+              <div className="filter-grid">
+                {items.map((lut: LutFileInfo) => (
+                  <FilterItem
+                    key={lut.filePath}
+                    filePath={lut.filePath}
+                    name={lut.name}
+                    active={activeLutId === lut.filePath}
+                    onClick={() => handleSelect(lut.filePath)}
+                    mediaPath={mediaPath ?? null}
+                    intensity={intensity}
+                  />
+                ))}
+              </div>
+            </Accordion>
+          )) : (
+            <div className="filter-empty">{searchKey ? '没有匹配的滤镜' : '暂无可用滤镜'}</div>
+          )}
         </main>
       </div>
 
