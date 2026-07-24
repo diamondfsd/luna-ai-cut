@@ -7,12 +7,16 @@ export interface PreviewState {
   batchExportMode?: boolean
   /** 预览内切换素材时同步外部选中项。 */
   onFilePathChange?: (filePath: string) => void
+  isFileSelected?: (filePath: string) => boolean
+  onSetFileSelected?: (filePath: string, selected: boolean) => void
   /** 本地资源使用原生媒体元素和 CSS 水印，不启动后端预览渲染器。 */
   lightweightPreview?: boolean
 }
 
 interface PreviewModalOptions {
   onFilePathChange?: (filePath: string) => void
+  isFileSelected?: (filePath: string) => boolean
+  onSetFileSelected?: (filePath: string, selected: boolean) => void
   lightweightPreview?: boolean
 }
 

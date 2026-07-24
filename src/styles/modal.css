@@ -43,9 +43,17 @@
   white-space: nowrap;
 }
 
-.preview-select-toggle[aria-pressed='true'] {
-  background: var(--blue);
+.preview-select-toggle.ui-icon-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(0, 0, 0, 0.22);
   color: #fff;
+}
+
+.preview-select-toggle.ui-icon-btn[aria-pressed='true'] {
+  border-color: var(--blue);
+  background: var(--blue);
 }
 
 .preview-download-state {

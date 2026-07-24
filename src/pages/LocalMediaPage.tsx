@@ -108,9 +108,9 @@ export function LocalMediaPage() {
             const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
             return Boolean(file && controller.selected.has(file.id))
           }}
-          onToggleFileSelection={(filePath) => {
+          onSetFileSelected={(filePath, selected) => {
             const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
-            if (file) controller.toggleFile(file)
+            if (file && controller.selected.has(file.id) !== selected) controller.toggleFile(file)
           }}
           onClose={() => {
             controller.setPreviewFile(null)
