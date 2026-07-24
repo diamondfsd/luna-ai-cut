@@ -15,6 +15,10 @@ export interface LunaElectronApp {
   temporaryRoot: string
 }
 
+export interface LunaElectronOptions {
+  launchEnv: Record<string, string>
+}
+
 async function waitForMainWindow(app: ElectronApplication): Promise<Page> {
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
@@ -27,8 +31,9 @@ async function waitForMainWindow(app: ElectronApplication): Promise<Page> {
   throw new Error('等待 Luna 主窗口超时')
 }
 
-export const test = base.extend<{ lunaApp: LunaElectronApp }>({
-  lunaApp: async ({ playwright: _playwright }, use, testInfo) => {
+export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions: LunaElectronOptions }>({
+  lunaElectronOptions: [{ launchEnv: {} }, { option: true }],
+  lunaApp: async ({ playwright: _playwright, lunaElectronOptions }, use, testInfo) => {
     void _playwright
     const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-playwright-e2e-'))
     const userDataDir = path.join(temporaryRoot, 'user-data')
@@ -53,6 +58,7 @@ export const test = base.extend<{ lunaApp: LunaElectronApp }>({
         cwd: projectRoot,
         env: {
           ...process.env,
+          ...lunaElectronOptions.launchEnv,
           LUNA_E2E_USER_DATA_DIR: userDataDir,
         },
       })
