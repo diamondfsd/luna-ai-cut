@@ -24,6 +24,8 @@ interface PreviewModalProps {
   proxyPreviewPaths?: string[]
   batchExportMode?: boolean
   onFilePathChange?: (filePath: string) => void
+  isFileSelected?: (filePath: string) => boolean
+  onToggleFileSelection?: (filePath: string) => void
   onClose: () => void
 }
 
@@ -49,6 +51,8 @@ export function PreviewModal({
   proxyPreviewPaths,
   batchExportMode,
   onFilePathChange,
+  isFileSelected,
+  onToggleFileSelection,
   onClose,
 }: PreviewModalProps) {
   // ── 当前预览文件路径 ──
@@ -166,6 +170,8 @@ export function PreviewModal({
           filePath={currentFilePath}
           inspectorOpen={inspectorOpen}
           onSetInspectorOpen={setInspectorOpen}
+          selected={isFileSelected?.(currentFilePath)}
+          onToggleSelected={onToggleFileSelection ? () => onToggleFileSelection(currentFilePath) : undefined}
           onClose={onClose}
         />
 

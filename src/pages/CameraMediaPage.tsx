@@ -117,6 +117,14 @@ export function CameraMediaPage() {
           filePath={previewPath(controller.previewFile)}
           filePathList={controller.filteredFiles.map(previewPath)}
           proxyPreviewPaths={controller.filteredFiles.filter(usesProxyPreview).map(previewPath)}
+          isFileSelected={(filePath) => {
+            const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
+            return Boolean(file && controller.selected.has(file.id))
+          }}
+          onToggleFileSelection={(filePath) => {
+            const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
+            if (file) controller.toggleFile(file)
+          }}
           onClose={() => {
             controller.setPreviewFile(null)
             controller.setPreviewFiles([])
