@@ -37,7 +37,7 @@
     {
       "from": "luna-render-core",
       "to": "luna-render-core",
-      "filter": ["luna-render-core.node", "sam-segmentation-worker", "sam-segmentation-worker.exe", "semantic-segmentation-worker", "semantic-segmentation-worker.exe", "specialized-segmentation-worker", "specialized-segmentation-worker.exe", "*.dylib", "*.dll", "*.so*"]
+      "filter": ["luna-render-core.node", "sam-segmentation-worker", "sam-segmentation-worker.exe", "semantic-segmentation-worker", "semantic-segmentation-worker.exe", "specialized-segmentation-worker", "specialized-segmentation-worker.exe", "luna-inpaint-worker", "luna-inpaint-worker.exe", "*.dylib", "*.dll", "*.so*"]
     },
     {
       "from": "vendor/luna-protocol",

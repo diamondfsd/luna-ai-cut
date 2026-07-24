@@ -88,6 +88,29 @@ export interface WorkspaceMaskTrackingResult {
   stoppedReason?: string
 }
 
+export interface WorkspaceObjectRemovalRequest {
+  requestId: string
+  projectId: string
+  assetId: string
+  filePath: string
+  maskWidth: number
+  maskHeight: number
+  maskBytes: ArrayBuffer | Uint8Array
+  edgeExpansion: number
+  feather: number
+}
+
+export interface WorkspaceObjectRemovalResult {
+  requestId: string
+  resultPath: string
+  maskPath: string
+  width: number
+  height: number
+  modelLoadMs: number
+  inferenceMs: number
+  modelSha256: string
+}
+
 export interface WorkspaceSegmentationModelStatus {
   modelId: SegmentationModelId
   cached: boolean
@@ -225,6 +248,8 @@ export interface LunaApi {
     cancelSegmentation(requestId: string): Promise<boolean>
     trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>
     cancelMaskTracking(requestId: string): Promise<boolean>
+    removeObject(request: WorkspaceObjectRemovalRequest): Promise<WorkspaceObjectRemovalResult>
+    cancelObjectRemoval(requestId: string): Promise<boolean>
     listProjects(): Promise<WorkspaceProject[]>
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>

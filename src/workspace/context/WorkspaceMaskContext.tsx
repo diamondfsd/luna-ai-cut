@@ -43,6 +43,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const [maskData, setMaskData] = useState<Uint8Array | null>(null)
   const [maskSize, setMaskSize] = useState<{ width: number; height: number } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [reconstructing, setReconstructing] = useState(false)
   const [semanticPicking, setSemanticPicking] = useState(false)
   const [lastSegmentationPerformance, setLastSegmentationPerformance] = useState<SegmentationPerformance | null>(null)
   const [segmentationProgress, setSegmentationProgress] = useState<WorkspaceSegmentationProgress | null>(null)
@@ -75,6 +76,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     operationGenerationRef.current += 1
     activeOperationRef.current = null
     setBusy(false)
+    setReconstructing(false)
     setSegmentationProgress(null)
     cancelRequest(operation)
   }, [cancelRequest])
@@ -140,6 +142,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setSelectionOperation('replace')
     setShowOverlay(true)
     setBusy(false)
+    setReconstructing(false)
     setSegmentationProgress(null)
     setSegmentationError(null)
     videoFrameTimeRef.current = 0
@@ -463,6 +466,8 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     maskData,
     maskSize,
     busy,
+    reconstructing,
+    setReconstructing,
     semanticPicking,
     setSemanticPicking,
     lastSegmentationPerformance,
@@ -493,7 +498,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, prepareVideoMasksForExport, projectId, removeLayer, removeMask, segmentationError, segmentationProgress, selectionOperation, semanticPicking, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, prepareVideoMasksForExport, projectId, reconstructing, removeLayer, removeMask, segmentationError, segmentationProgress, selectionOperation, semanticPicking, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }
