@@ -126,30 +126,30 @@ async function fetchLatestHotUpdateViaAPI(releaseTag: string): Promise<HotUpdate
 
     const platform = currentPlatformPackage()
     const platformPattern = new RegExp(
-      `^renderer-\\d+\\.\\d+\\.\\d+-hot\\.\\d+-${platform}\\.zip$`,
+      `^renderer-(\\d+\\.\\d+\\.\\d+-hot\\.\\d+)-${platform}\\.zip$`,
     )
-    const legacyPattern = /^renderer-\d+\.\d+\.\d+-hot\.\d+\.zip$/
-    // 优先使用当前平台的包，保留旧版通用 ZIP 的兼容回退。
-    const hotZips = assets.filter((asset) => platformPattern.test(asset.name))
-    if (hotZips.length === 0) {
-      hotZips.push(...assets.filter((asset) => legacyPattern.test(asset.name)))
-    }
+    const universalPattern = /^renderer-(\d+\.\d+\.\d+-hot\.\d+)\.zip$/
+    const hotZips = assets.flatMap((asset) => {
+      const platformMatch = asset.name.match(platformPattern)
+      if (platformMatch) return [{ ...asset, version: platformMatch[1], platformSpecific: true }]
+
+      const universalMatch = asset.name.match(universalPattern)
+      if (universalMatch) return [{ ...asset, version: universalMatch[1], platformSpecific: false }]
+
+      return []
+    })
 
     if (hotZips.length === 0) return null
 
-    // 按 hot build 号降序排列，取最新的
+    // 先选择最新版本；同一版本同时存在两种包时，再优先当前平台包。
     hotZips.sort((a, b) => {
-      const na = Number(a.name.match(/-hot\.(\d+)\.zip$/)?.[1] ?? 0)
-      const nb = Number(b.name.match(/-hot\.(\d+)\.zip$/)?.[1] ?? 0)
-      return nb - na
+      const versionOrder = compareVersions(b.version, a.version)
+      if (versionOrder !== 0) return versionOrder
+      return Number(b.platformSpecific) - Number(a.platformSpecific)
     })
 
     const latest = hotZips[0]
-    // "renderer-1.3.1-hot.6.zip" → "1.3.1-hot.6"
-    const version = latest.name
-      .replace(/^renderer-/, '')
-      .replace(new RegExp(`-${platform}\\.zip$`), '')
-      .replace(/\.zip$/, '')
+    const version = latest.version
 
     // 查找对应的发布说明文件
     const notesAsset = assets.find(a =>
