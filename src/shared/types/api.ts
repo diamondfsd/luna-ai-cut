@@ -95,6 +95,7 @@ export interface WorkspaceSegmentationModelStatus {
 }
 
 export interface LunaApi {
+  startupReady(): void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
   getLogDir: () => Promise<string>
