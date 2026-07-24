@@ -174,16 +174,15 @@ Radix 基元用于提供行为和可访问性，不施加视觉样式。**不要
 - 日常开发只运行与改动直接相关的测试、类型检查和变更范围 Lint；共享基础设施或公共契约变更运行相邻回归；完整 Electron、视觉、全量模型、三平台和完整套件只在里程碑、RC 或发布前执行。
 - 对重复、脆弱、长期缓慢且不能定位真实故障的测试，应合并、替换或删除，不以测试数量作为质量指标。
 
-用户明确要求 Electron UI 测试时，优先使用 `agent-browser`：
+Electron E2E 必须统一使用 Playwright Test。禁止新增基于 `agent-browser`、手写 CDP 客户端或其他测试执行器的 Electron E2E；临时人工排查不能替代仓库内的 Playwright 用例。
 
-- 使用 `pnpm dev:e2e` 启动应用，默认只在本机开放 CDP 端口 `9332`；并行测试其他 Electron 应用时，通过 `LUNA_E2E_CDP_PORT=<独立端口> pnpm dev:e2e` 隔离。
-- 调色蒙版常规回归使用 `pnpm test:mask`；验证隔离项目、自动保存、损坏降级和重启恢复时使用 `pnpm test:mask:e2e`。后者自动创建并清理临时数据，失败时保留证据目录。
-- 需要隔离设置、缓存和项目数据时，同时设置 `LUNA_E2E_USER_DATA_DIR=<临时目录>`，并在该目录的 `settings.json` 中将 `downloadDir`、`localResourcesDir` 和 `exportDir` 指向测试目录；不得复用用户现有项目制造损坏或只读场景。
-- 每个任务使用独立 `--session`，并在每条命令上显式传入 `--cdp <端口>`；不要让两个 Agent 同时控制同一 Electron 实例。
-- 同一 CDP 目标上的 `snapshot`、交互、截图和控制台检查必须串行。页面变化后重新 `snapshot`，不复用旧 `@eN` 引用。
-- `agent-browser connect` 若连接到空白 target，改用每条命令显式 `--cdp`。拖拽或截图命令被中断后，换一个新的 session 重新连接，避免沿用失效状态。
-- `agent-browser drag` 在 HTML5 手柄上超时时，可在单一 CDP WebSocket 连接内连续发送 `mousePressed`、带 `buttons: 1` 的多段 `mouseMoved` 和 `mouseReleased`；必须同时验证顺序变化与一次撤销恢复。
-- GPU 预览使 CDP 截图超时时，保留可访问性快照和控制台证据，并使用系统窗口捕获补视觉证据；macOS 按精确窗口标题/窗口 ID 定位，避免误截其他 Electron 应用，不得把截图工具超时误报为产品缺陷。
+- 使用 `@playwright/test` 的 `_electron.launch()` 直接启动已构建应用，不通过外部 CDP 端口或全局浏览器自动化 CLI 控制 Electron。
+- 调色蒙版常规回归使用 `pnpm test:mask`；验证隔离项目、自动保存、损坏降级和重启恢复时使用 `pnpm test:mask:e2e`；运行全部 Electron E2E 使用 `pnpm test:e2e`。
+- 需要隔离设置、缓存和项目数据时，为测试创建独立临时目录并设置 `LUNA_E2E_USER_DATA_DIR`，同时将 `downloadDir`、`localResourcesDir` 和 `exportDir` 指向该目录；不得复用用户现有项目制造损坏或只读场景。
+- Electron E2E 默认单 worker 串行运行；每个用例自行启动和关闭应用，涉及重启恢复时复用该用例的隔离数据目录。
+- 优先使用 `getByRole`、`getByLabel` 等用户语义 locator 和 Playwright 自动等待；页面更新后重新查询 locator，不持有 DOM ElementHandle 跨更新使用。
+- 失败证据写入 `test-results/playwright/`，测试临时目录在成功后清理、失败时保留；运行时必须断言 renderer 的 `pageerror` 与 error console 为空。
+- 截图、视频、视觉效果和鼠标手感仍集中在里程碑或 RC 验收；日常 E2E 只验证可重复的行为与状态，不把主观视觉检查写入自动化。
 
 在添加新的可复用控件之前：
 
