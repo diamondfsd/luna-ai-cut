@@ -62,7 +62,7 @@
 .ai-selection-current-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .ai-selection-current-item ul { margin: 0; padding-left: 18px; color: var(--text-secondary, #6e6e73); font-size: 11px; line-height: 1.55; }
 .ai-selection-person-result { color: var(--text-secondary, #6e6e73); font-size: 11px; line-height: 1.45; }
-.ai-selection-sidebar-footer { padding: 12px; border-top: 1px solid var(--border, #d9dce2); background: var(--surface, #fff); }
+.ai-selection-sidebar-footer { padding: 12px; border-top: 1px solid var(--border, #d9dce2); background: var(--surface, #fff); display: grid; gap: 8px; }
 .ai-selection-sidebar-footer .ui-btn { width: 100%; }
 .ai-selection-sidebar .ui-select-trigger { margin-bottom: 18px; }
 .ai-selection-new-task.ui-btn { width: 100%; margin: -10px 0 20px; }
@@ -102,6 +102,9 @@
 .ai-selection-filter-list .ui-btn > span:not(.ui-btn-icon) { flex: 1; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .ai-selection-filter-list .ui-btn strong { min-width: 24px; color: var(--text-secondary, #6e6e73); text-align: right; font-size: 10px; }
 .ai-selection-filter-list .ui-btn.active { background: color-mix(in srgb, var(--blue, #06c) 11%, white); color: var(--blue, #06c); }
+.ai-selection-people-filter-heading { margin: 4px 7px 2px; color: var(--text-secondary, #6e6e73); font-size: 10px; font-weight: 650; }
+.ai-selection-people-filter-heading.co-photos { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border, #d9dce2); }
+.ai-selection-co-photo-cover img { position: static; width: 100%; height: 100%; object-fit: cover; }
 .ai-selection-date-groups { display: flex; flex-direction: column; gap: 10px; }
 .ai-selection-date-group { min-width: 0; }
 .ai-selection-date-group + .ai-selection-date-group { padding-top: 9px; border-top: 1px solid var(--border, #d9dce2); }

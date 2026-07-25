@@ -16,7 +16,7 @@ import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
-import { buildGlobalFaceGroups, loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson, setGlobalPersonAvatar } from './aiSelectionPeopleManager'
+import { buildGlobalFaceGroups, loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
@@ -465,6 +465,14 @@ export async function mergeAiSelectionPeople(id: string, targetGroupId: string, 
   await ensureLoaded()
   const session = requireSession(id)
   await mergeGlobalPeople(peopleStoreDir(), session, targetGroupId, sourceGroupId)
+  await persistPeopleAndRefreshSessions()
+  return publicSession(session)
+}
+
+export async function unmergeAiSelectionPerson(id: string, targetGroupId: string, memberIdentityId: string): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  await unmergeGlobalPerson(peopleStoreDir(), session, targetGroupId, memberIdentityId)
   await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }

@@ -11,7 +11,7 @@ import { useFileCache } from '../hooks/useFileCache'
 import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
 import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
-import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
+import { DEFAULT_VIDEO_EXPORT_SETTINGS, lockDolbyVisionExportSettings } from '../shared/types'
 import type { DolbyVisionProbeResult, PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { Button, Dialog, toast } from '../ui'
 import '../styles/modal.css'
@@ -129,9 +129,9 @@ export function PreviewModal({
       .then((result) => {
         if (cancelled) return
         setDolbyVisionProbe(result)
-        if (!result.eligible) {
-          setExportConfig((current) => current.dolbyVision ? { ...current, dolbyVision: false } : current)
-        }
+        setExportConfig((current) => result.eligible
+          ? lockDolbyVisionExportSettings(current)
+          : current.dolbyVision ? { ...current, dolbyVision: false } : current)
       })
       .catch(() => {
         if (!cancelled) {

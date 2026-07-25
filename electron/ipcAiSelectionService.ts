@@ -22,6 +22,7 @@ import {
   setAiSelectionNotifier,
   startAiSelection,
   undoAiSelection,
+  unmergeAiSelectionPerson,
 } from './aiSelectionService'
 
 export function register(ctx: IpcContext): void {
@@ -64,6 +65,7 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('ai-selection:rename-person', (_event, sessionId: string, groupId: string, name: string) => renameAiSelectionPerson(sessionId, groupId, name))
   ipcMain.handle('ai-selection:set-person-avatar', (_event, sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }) => setAiSelectionPersonAvatar(sessionId, groupId, itemId, bounds))
   ipcMain.handle('ai-selection:merge-people', (_event, sessionId: string, targetGroupId: string, sourceGroupId: string) => mergeAiSelectionPeople(sessionId, targetGroupId, sourceGroupId))
+  ipcMain.handle('ai-selection:unmerge-person', (_event, sessionId: string, targetGroupId: string, memberIdentityId: string) => unmergeAiSelectionPerson(sessionId, targetGroupId, memberIdentityId))
   ipcMain.handle('ai-selection:analyze-content-tags', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionContentTags(sessionId, itemIds))
   ipcMain.handle('ai-selection:analyze-videos', (_event, sessionId: string, itemIds: string[]) => analyzeAiSelectionVideos(sessionId, itemIds))
   ipcMain.handle('ai-selection:undo', (_event, sessionId: string) => undoAiSelection(sessionId))
