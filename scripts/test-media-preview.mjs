@@ -78,6 +78,10 @@ const customSettings = {
 }
 const customLandscape = watermarkGeometry.resolveWatermarkPositioning(customSettings, 1920, 1080)
 const customPortrait = watermarkGeometry.resolveWatermarkPositioning(customSettings, 1080, 1920)
+const defaultWidthCustom = watermarkGeometry.resolveWatermarkPositioning({
+  ...customSettings,
+  sizeOnCanvasWidth: undefined,
+}, 1920, 1080)
 const verticalCustom = watermarkGeometry.resolveWatermarkPositioning({
   ...customSettings,
   customAsset: { filePath: '/tmp/vertical-logo.png', width: 100, height: 400 },
@@ -95,6 +99,7 @@ assert.equal(watermarkGeometry.usesCustomWatermark({
 }), false, 'built-in watermark ignores retained custom geometry fields')
 close(customLandscape.targetWidth, 0.3, 'custom landscape width uses canvas-width percentage')
 close(customPortrait.targetWidth, 0.3, 'custom portrait width uses canvas-width percentage')
+close(defaultWidthCustom.targetWidth, 0.23, 'custom watermark defaults to 23 percent of canvas width')
 close(eightyPercentWide.targetWidth, 0.8, '80 percent size occupies 80 percent of canvas width')
 close(
   verticalCustom.targetWidth,
