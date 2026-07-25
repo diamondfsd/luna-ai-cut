@@ -14,6 +14,7 @@ import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/ty
 import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel } from '../trim/TrimPanel'
+import { buildVideoSegmentsExport } from '../trim/videoSegmentMarkers'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 
 export type WorkspaceTool = 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask'
@@ -318,6 +319,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
                 edit.commitPatch({ trim: { startTime: curStart, endTime: time } })
               }}
               onMarkersChange={(videoMarkers) => edit.commitPatch({ videoMarkers })}
+              jsonValue={buildVideoSegmentsExport(mediaCtx.activeMedia?.path ?? '', edit.pipeline.videoMarkers)}
+              onExportJson={(data) => window.luna.workspace.exportVideoSegmentsJson(data)}
               onSelectMarker={(marker) => {
                 edit.commitPatch({ trim: { startTime: marker.startTime, endTime: marker.endTime } })
                 onTrimSeek(marker.startTime)

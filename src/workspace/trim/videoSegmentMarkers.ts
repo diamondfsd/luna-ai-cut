@@ -1,3 +1,5 @@
+import type { WorkspaceVideoSegmentsExport } from '../../shared/types'
+
 export interface VideoSegmentMarker {
   id: string
   startTime: number
@@ -42,4 +44,15 @@ export function normalizeVideoSegmentMarkers(value: unknown): VideoSegmentMarker
     })
     .filter((marker): marker is VideoSegmentMarker => marker !== null)
     .sort((a, b) => a.startTime - b.startTime || a.endTime - b.endTime)
+}
+
+export function buildVideoSegmentsExport(sourcePath: string, markers: VideoSegmentMarker[]): WorkspaceVideoSegmentsExport {
+  return {
+    sourcePath,
+    segments: normalizeVideoSegmentMarkers(markers).map(({ note, startTime, endTime }) => ({
+      note,
+      startTime,
+      endTime,
+    })),
+  }
 }

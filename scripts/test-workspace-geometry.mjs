@@ -64,6 +64,20 @@ assert.deepEqual(
   ],
   'video markers are validated, deduplicated, trimmed, and sorted',
 )
+assert.deepEqual(
+  videoSegmentMarkers.buildVideoSegmentsExport('/absolute/source.mp4', [
+    { id: 'later', startTime: 8, endTime: 9.5, note: '  closing  ' },
+    { id: 'opening', startTime: 1, endTime: 3, note: 'opening' },
+  ]),
+  {
+    sourcePath: '/absolute/source.mp4',
+    segments: [
+      { note: 'opening', startTime: 1, endTime: 3 },
+      { note: 'closing', startTime: 8, endTime: 9.5 },
+    ],
+  },
+  'video marker export contains only the source path and ordered segment fields',
+)
 
 assert.equal(geometry.shouldSwapOrientation(0), false)
 assert.equal(geometry.shouldSwapOrientation(90), true)

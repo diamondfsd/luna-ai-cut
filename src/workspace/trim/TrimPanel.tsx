@@ -1,7 +1,8 @@
-import { Plus, Trash2 } from 'lucide-react'
+import { Copy, FileBraces, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { Button, IconButton, Input, Tooltip } from '../../ui'
+import { Button, Dialog, IconButton, Input, Tooltip, toast } from '../../ui'
+import type { WorkspaceVideoSegmentsExport } from '../../shared/types'
 import type { VideoSegmentMarker } from './videoSegmentMarkers'
 
 import './TrimPanel.css'
@@ -15,6 +16,8 @@ interface TrimPanelProps {
   onEndTimeChange: (time: number) => void
   onMarkersChange: (markers: VideoSegmentMarker[]) => void
   onSelectMarker: (marker: VideoSegmentMarker) => void
+  jsonValue: WorkspaceVideoSegmentsExport
+  onExportJson: (data: WorkspaceVideoSegmentsExport) => Promise<{ path: string } | null>
 }
 
 /** 秒 → mm:ss.SSS */
@@ -122,10 +125,14 @@ export function TrimPanel({
   onEndTimeChange,
   onMarkersChange,
   onSelectMarker,
+  jsonValue,
+  onExportJson,
 }: TrimPanelProps) {
   const [startText, setStartText] = useState(formatSeconds(startTime))
   const [endText, setEndText] = useState(formatSeconds(endTime))
   const [newMarkerId, setNewMarkerId] = useState<string | null>(null)
+  const [exportingJson, setExportingJson] = useState(false)
+  const [jsonPreviewOpen, setJsonPreviewOpen] = useState(false)
   const isFocusedRef = useRef(false)
 
   // Sync display text when props change externally (e.g. trim strip dragging)
@@ -185,6 +192,28 @@ export function TrimPanel({
 
   const deleteMarker = (id: string) => {
     onMarkersChange(markers.filter((marker) => marker.id !== id))
+  }
+
+  const exportJson = async () => {
+    setExportingJson(true)
+    try {
+      const result = await onExportJson(jsonValue)
+      if (result) toast.success('片段 JSON 已导出')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '片段 JSON 导出失败')
+    } finally {
+      setExportingJson(false)
+    }
+  }
+
+  const copyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(jsonValue, null, 2))
+      toast.success('片段 JSON 已复制')
+      setJsonPreviewOpen(false)
+    } catch {
+      toast.error('无法复制 JSON，请稍后重试')
+    }
   }
 
   return (
@@ -251,11 +280,46 @@ export function TrimPanel({
                 onDelete={() => deleteMarker(marker.id)}
               />
             ))}
+            <div className="workspace-trim-markers-json-actions">
+              <Button
+                variant="secondary"
+                size="compact"
+                icon={<Copy size={15} />}
+                onClick={() => setJsonPreviewOpen(true)}
+              >
+                复制 JSON
+              </Button>
+              <Button
+                variant="secondary"
+                size="compact"
+                icon={<FileBraces size={15} />}
+                disabled={exportingJson}
+                onClick={() => void exportJson()}
+              >
+                {exportingJson ? '正在导出...' : '导出 JSON'}
+              </Button>
+            </div>
           </div>
         ) : (
           <p className="workspace-trim-markers-empty">调整截取范围后，添加为可备注的片段标记。</p>
         )}
       </section>
+      <Dialog
+        open={jsonPreviewOpen}
+        onOpenChange={setJsonPreviewOpen}
+        title="片段 JSON"
+        description="确认内容后可复制到剪贴板。"
+        tone="dark"
+        className="workspace-trim-json-dialog"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setJsonPreviewOpen(false)}>取消</Button>
+            <Button variant="primary" icon={<Copy size={15} />} onClick={() => void copyJson()}>复制</Button>
+          </>
+        )}
+      >
+        <pre className="workspace-trim-json-preview">{JSON.stringify(jsonValue, null, 2)}</pre>
+      </Dialog>
     </div>
   )
 }
