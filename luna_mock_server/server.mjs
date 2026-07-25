@@ -124,7 +124,8 @@ function parseUcd2Frames(buffer) {
   return { frames, rest }
 }
 
-function fileListStoragePath(body) {
+function fileListRequest(body) {
+  const request = { storagePath: CAMERA_PATH, offset: 0, limit: 50 }
   let offset = 0
   while (offset < body.length) {
     const tag = readVarint(body, offset)
@@ -136,7 +137,9 @@ function fileListStoragePath(body) {
       const value = readVarint(body, offset)
       if (!value) break
       offset = value.offset
-      if (field === 4) return value.value === 3 ? '/DCIM/' : CAMERA_PATH
+      if (field === 2) request.offset = value.value
+      if (field === 3) request.limit = value.value
+      if (field === 4) request.storagePath = value.value === 3 ? '/DCIM/' : CAMERA_PATH
       continue
     }
     if (wireType === 2) {
@@ -147,16 +150,18 @@ function fileListStoragePath(body) {
     }
     break
   }
-  return CAMERA_PATH
+  return request
 }
 
-async function fileListResponseBody(storagePath) {
+async function fileListResponseBody({ storagePath, offset, limit }) {
   // 与 HTTP Mock 保持一致：默认存储提供素材，另一存储保持为空。
   if (storagePath !== CAMERA_PATH) return Buffer.alloc(0)
   const files = await walk(rootDir)
   const cameraPaths = files
     .map((filePath) => `${storagePath}${path.relative(rootDir, filePath).split(path.sep).join('/')}`)
     .filter((cameraPath) => !deletedCameraPaths.has(path.posix.normalize(cameraPath)))
+    .sort()
+    .slice(offset, offset + limit)
   return Buffer.from(`${cameraPaths.join('\0')}\0`, 'utf8')
 }
 
@@ -171,7 +176,7 @@ async function responseForUcd2Frame(frame) {
   const code = raw.readUInt16LE(0)
   const requestId = raw.readUInt16LE(3)
   if (code === 13) {
-    const body = await fileListResponseBody(fileListStoragePath(raw.subarray(9)))
+    const body = await fileListResponseBody(fileListRequest(raw.subarray(9)))
     return buildUcd2(UCD2_FILE, seq, buildRawResponse(200, requestId, body))
   }
   if (code === 12) {
