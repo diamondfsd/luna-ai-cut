@@ -5,6 +5,7 @@ import { constants } from 'node:fs'
 import path from 'node:path'
 import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest } from '../src/shared/types'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
+import { hvccMatchesSps, readHevcSpsConfiguration, readHvccConfigurations, repairHvccFromSps } from './dolbyVisionHvcc'
 
 interface DolbyVisionExportCallbacks {
   signal?: AbortSignal
@@ -247,6 +248,12 @@ export async function exportDolbyVisionWatermark(
     if (!encoded) throw lastError instanceof Error ? lastError : new Error('没有可用的 10-bit HEVC 编码器')
     progress(84)
     await run(dovi, ['inject-rpu', '-i', encodedHevc, '-r', rpu, '-o', injectedHevc], callbacks.signal)
+    const encodedSps = await readHevcSpsConfiguration(injectedHevc)
+    if (encodedSps.profileIdc !== 2 || encodedSps.chromaFormat !== 1
+      || encodedSps.lumaBitDepth !== 10 || encodedSps.chromaBitDepth !== 10
+      || encodedSps.numTemporalLayers < 1) {
+      throw new Error('HEVC 编码结果不是受支持的 Main 10 4:2:0 视频')
+    }
     progress(90)
     const videoTrack = `h265:${injectedHevc}#dv_profile=8,dv_bc=4,frame_rate=${fps},format=hvc1`
     const hasAudio = sourceProbe.streams?.some((stream) => stream.codec_type === 'audio')
@@ -254,6 +261,11 @@ export async function exportDolbyVisionWatermark(
     if (hasAudio) muxArgs.push('--track', `mp4:${request.sourcePath}#track=audio`)
     muxArgs.push(partialOutput)
     await run(mp4mux, muxArgs, callbacks.signal)
+    await repairHvccFromSps(partialOutput, encodedSps)
+    const repairedHvcc = await readHvccConfigurations(partialOutput)
+    if (repairedHvcc.length !== 1 || !hvccMatchesSps(repairedHvcc[0], encodedSps)) {
+      throw new Error('Dolby Vision 输出的 hvcC 配置与 HEVC 码流不一致')
+    }
     progress(96)
     const outputProbeJson = await ffprobe(partialOutput)
     const outputProbe = parseDolbyVisionProbe(outputProbeJson)
