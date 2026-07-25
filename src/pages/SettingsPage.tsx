@@ -194,7 +194,7 @@ export function SettingsPage({
             <article className="settings-row">
               <div className="settings-row-copy">
                 <span>水印</span>
-                <em>{settings?.defaultWatermarkEnabled ?? true ? '默认开启' : '默认关闭'} · {settings?.customWatermarkAssets?.length ?? 0} 个自定义水印</em>
+                <em>{settings?.defaultWatermarkEnabled ?? true ? '默认开启' : '默认关闭'}</em>
               </div>
               <Button variant="secondary" size="compact" icon={<Settings2 size={15} />} onClick={() => setWatermarkDialogOpen(true)}>编辑</Button>
             </article>
