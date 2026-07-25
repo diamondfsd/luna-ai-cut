@@ -129,6 +129,26 @@ assert.deepEqual(
   ['second'],
   'removing a watermark only removes the selected library entry',
 )
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('My Logo_(白色) 01.PNG', 'my-logo 白色01'),
+  true,
+  'watermark search ignores case, spaces, punctuation, and symbols',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('Ｃａｆｅ́－品牌.webp', 'cafe 品牌'),
+  true,
+  'watermark search normalizes full-width characters and diacritics',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('Primary Logo.png', 'secondary'),
+  false,
+  'watermark search still rejects unrelated file names',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('Primary Logo.png', ' - ( ) '),
+  true,
+  'a symbols-only query behaves like an empty search',
+)
 
 const videoLayer = { filePath: '/tmp/video.mp4', isVideo: true }
 assert.equal(
