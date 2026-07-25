@@ -5,6 +5,7 @@ import { constants } from 'node:fs'
 import path from 'node:path'
 import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest } from '../src/shared/types'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
+import { resolveDolbyVisionBitrate } from './dolbyVisionBitrate'
 import { hvccMatchesSps, readHevcSpsConfiguration, readHvccConfigurations, repairHvccFromSps } from './dolbyVisionHvcc'
 
 interface DolbyVisionExportCallbacks {
@@ -31,7 +32,7 @@ interface VideoStream {
 
 interface MediaProbeJson {
   streams?: Array<VideoStream & { codec_type?: string }>
-  format?: { duration?: string }
+  format?: { duration?: string; bit_rate?: string }
 }
 
 function toolPath(name: 'dovi_tool' | 'mp4mux'): string {
@@ -196,7 +197,7 @@ export async function exportDolbyVisionWatermark(
   const fps = frameRateNumber(sourceVideo.avg_frame_rate || sourceVideo.r_frame_rate)
   if (!fps || !eligibility.width || !eligibility.height) throw new Error('无法读取原视频规格')
   const duration = Number(sourceVideo.duration ?? sourceProbe.format?.duration) || 0
-  const bitrate = Math.max(10_000_000, Number(sourceVideo.bit_rate) || 40_000_000)
+  const bitrate = resolveDolbyVisionBitrate(sourceVideo.bit_rate, sourceProbe.format?.bit_rate)
   const ffmpeg = getFfmpegPath()
   const dovi = await executable('dovi_tool')
   const mp4mux = await executable('mp4mux')

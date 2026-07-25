@@ -10,6 +10,7 @@ import ts from 'typescript'
 
 const execFileAsync = promisify(execFile)
 const source = await readFile(new URL('../electron/dolbyVisionHvcc.ts', import.meta.url), 'utf8')
+const bitrateSource = await readFile(new URL('../electron/dolbyVisionBitrate.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -18,6 +19,18 @@ const compiled = ts.transpileModule(source, {
   },
 }).outputText
 const hvcc = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
+const bitrateCompiled = ts.transpileModule(bitrateSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2022,
+  },
+}).outputText
+const bitrate = await import(`data:text/javascript;base64,${Buffer.from(bitrateCompiled).toString('base64')}`)
+
+assert.equal(bitrate.resolveDolbyVisionBitrate('120000000', '125000000'), 120_000_000, 'video stream bitrate takes priority')
+assert.equal(bitrate.resolveDolbyVisionBitrate(undefined, '125000000'), 125_000_000, 'container bitrate is used when the video stream omits bitrate')
+assert.equal(bitrate.resolveDolbyVisionBitrate('N/A', '90000000'), 90_000_000, 'invalid stream bitrate falls back to container bitrate')
+assert.equal(bitrate.resolveDolbyVisionBitrate(undefined, undefined), 40_000_000, 'missing bitrate uses the safe default')
 
 const projectRoot = path.resolve(import.meta.dirname, '..')
 const executableExtension = process.platform === 'win32' ? '.exe' : ''
