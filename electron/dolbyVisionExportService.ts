@@ -48,8 +48,7 @@ async function executable(name: 'dovi_tool' | 'mp4mux'): Promise<string> {
     await access(bundled, constants.X_OK)
     return bundled
   } catch {
-    if (!app.isPackaged) return name
-    throw new Error('Dolby Vision 导出组件缺失，请重新安装应用')
+    throw new Error('杜比视界导出组件缺失，请重新准备或安装应用')
   }
 }
 
