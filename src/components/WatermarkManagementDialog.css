@@ -1,0 +1,131 @@
+.watermark-management-dialog.ui-dialog-content {
+  width: min(780px, calc(100vw - 40px));
+  max-height: min(760px, calc(100vh - 48px));
+}
+
+.watermark-management-body {
+  display: grid;
+  gap: 24px;
+  padding: 18px 20px 22px;
+}
+
+.watermark-management-section {
+  display: grid;
+  gap: 12px;
+}
+
+.watermark-management-section:first-child {
+  width: min(320px, 100%);
+}
+
+.watermark-management-section + .watermark-management-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 20px;
+}
+
+.watermark-management-section h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.watermark-management-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.watermark-management-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.watermark-management-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 82px auto;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px;
+  background: #111318;
+}
+
+.watermark-management-card > img {
+  display: block;
+  width: 100%;
+  height: 82px;
+  object-fit: contain;
+}
+
+.watermark-management-card > span {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watermark-management-delete.ui-icon-btn {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.watermark-management-card:hover .watermark-management-delete,
+.watermark-management-card:focus-within .watermark-management-delete {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.watermark-management-empty {
+  margin: 0;
+  padding: 24px 0;
+  color: rgba(255, 255, 255, 0.48);
+  text-align: center;
+  font-size: 12px;
+}
+
+.watermark-management-dialog .wm-pos-cell {
+  min-height: 26px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.watermark-management-dialog .wm-settings-content {
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.watermark-management-dialog .wm-position-grid {
+  gap: 4px;
+}
+
+.watermark-management-dialog .wm-pos-placeholder {
+  min-height: 26px;
+}
+
+.watermark-management-dialog .wm-pos-dot {
+  width: 14px;
+  height: 7px;
+}
+
+.watermark-management-dialog .wm-pos-cell:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.watermark-management-dialog .wm-pos-cell.active {
+  background: rgba(0, 102, 204, 0.3);
+}
+
+@media (max-width: 680px) {
+  .watermark-management-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

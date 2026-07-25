@@ -5,7 +5,7 @@ import { filePathToPreviewUrl, mediaKindFromPath } from '../lib/fileUtils'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import type { PreviewLayer, WatermarkSettings } from '../shared/types'
 import {
-  DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE,
+  DEFAULT_WATERMARK_WIDTH_RATIO,
   freePlacementFromTopLeft,
   resolveWatermarkPositioning as resolveEditableWatermarkPositioning,
   usesCustomWatermark,
@@ -100,7 +100,7 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
       startY: event.clientY,
       centerX: placement.mode === 'free' ? placement.centerX : 0.5,
       centerY: placement.mode === 'free' ? placement.centerY : 0.5,
-      size: watermarkSettings.sizeOnShortEdge ?? DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE,
+      size: watermarkSettings.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO,
     }
   }
 
@@ -115,11 +115,11 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
     if (gesture.type === 'resize') {
       const shortEdge = Math.min(rect.width, rect.height)
       const size = Math.min(0.8, Math.max(0.08, gesture.size + (event.clientX - gesture.startX) / shortEdge))
-      next = { ...watermarkSettings, sizeOnShortEdge: size }
+      next = { ...watermarkSettings, sizeOnCanvasWidth: size }
     } else {
       next = {
         ...watermarkSettings,
-        sizeOnShortEdge: watermarkSettings.sizeOnShortEdge ?? DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE,
+        sizeOnCanvasWidth: watermarkSettings.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO,
         placement: {
           mode: 'free',
           centerX: gesture.centerX + (event.clientX - gesture.startX) / rect.width,
@@ -233,7 +233,7 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
               aria-label="调整水印大小"
               aria-valuemin={8}
               aria-valuemax={80}
-              aria-valuenow={Math.round((watermarkSettings.sizeOnShortEdge ?? DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE) * 100)}
+              aria-valuenow={Math.round((watermarkSettings.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO) * 100)}
               onPointerDown={(event) => startWatermarkGesture(event, 'resize')}
             />
           </div>

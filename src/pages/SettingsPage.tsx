@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FolderOpen, Trash2 } from 'lucide-react'
+import { FolderOpen, Settings2, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
-import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { useApp } from '../context/AppContext'
 import type { AppSettings, CacheStats, ConnectionStatus, CustomWatermarkAsset, DeviceDefinition } from '../shared/types'
 import { removeCustomWatermarkAsset } from '../shared/watermarkLibrary'
-import { WatermarkSettings } from '../components/WatermarkSettings'
+import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { Button, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
@@ -64,6 +63,7 @@ export function SettingsPage({
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
+  const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -153,7 +153,7 @@ export function SettingsPage({
         imagePath: undefined,
         imageWidth: undefined,
         imageHeight: undefined,
-        sizeOnShortEdge: undefined,
+        sizeOnCanvasWidth: undefined,
         placement: undefined,
         opacity: undefined,
       }
@@ -220,55 +220,13 @@ export function SettingsPage({
         <section className="settings-group">
           <h2 className="settings-group-title">编辑默认值</h2>
           <div className="settings-card">
-            <article className="settings-row settings-default-watermark-row">
+            <article className="settings-row">
               <div className="settings-row-copy">
                 <span>水印</span>
-                <em>用于新导入或重置的素材</em>
+                <em>{settings?.defaultWatermarkEnabled ?? true ? '默认开启' : '默认关闭'} · {settings?.customWatermarkAssets?.length ?? 0} 个自定义水印</em>
               </div>
-              <div className="settings-default-watermark-control">
-                <WatermarkSettings
-                  preferencesOnly
-                  title="默认开启"
-                  settings={{
-                    enabled: settings?.defaultWatermarkEnabled ?? true,
-                    style: 'luna_ultra_cn',
-                    position: settings?.defaultWatermarkPosition === 'top-center'
-                      ? 'bottom-center'
-                      : settings?.defaultWatermarkPosition ?? 'bottom-center',
-                  }}
-                  onChange={handleDefaultWatermarkChange}
-                />
-              </div>
+              <Button variant="secondary" size="compact" icon={<Settings2 size={15} />} onClick={() => setWatermarkDialogOpen(true)}>编辑</Button>
             </article>
-          </div>
-        </section>
-
-        <section className="settings-group">
-          <div className="settings-group-heading">
-            <h2 className="settings-group-title">水印管理</h2>
-            <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={() => void handleAddCustomWatermark()}>
-              添加水印
-            </Button>
-          </div>
-          <div className="settings-card">
-            {(settings?.customWatermarkAssets?.length ?? 0) > 0 ? settings?.customWatermarkAssets?.map((asset) => (
-              <article key={asset.id} className="settings-row settings-watermark-row">
-                <img className="settings-watermark-preview" src={filePathToPreviewUrl(asset.filePath) ?? ''} alt="" />
-                <div className="settings-row-copy">
-                  <span>{asset.fileName}</span>
-                  <em>{asset.width} x {asset.height} · {formatBytes(asset.bytes)}</em>
-                </div>
-                <Button variant="danger" size="compact" icon={<Trash2 size={15} />} onClick={() => void handleDeleteCustomWatermark(asset)}>
-                  删除
-                </Button>
-              </article>
-            )) : (
-              <article className="settings-row">
-                <div className="settings-row-copy">
-                  <span>暂无自定义水印</span>
-                </div>
-              </article>
-            )}
           </div>
         </section>
 
@@ -354,6 +312,14 @@ export function SettingsPage({
           </div>
         </section>
       </div>
+      <WatermarkManagementDialog
+        open={watermarkDialogOpen}
+        onOpenChange={setWatermarkDialogOpen}
+        settings={settings}
+        onDefaultChange={handleDefaultWatermarkChange}
+        onAdd={handleAddCustomWatermark}
+        onDelete={handleDeleteCustomWatermark}
+      />
     </section>
   )
 }

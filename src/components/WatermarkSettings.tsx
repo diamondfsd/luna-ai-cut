@@ -6,7 +6,7 @@ import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
 import type { CustomWatermarkAsset, PreviewLayer, WatermarkPosition, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import {
-  DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE,
+  DEFAULT_WATERMARK_WIDTH_RATIO,
   defaultWatermarkPlacement,
   effectiveWatermarkPlacement,
   resolveWatermarkPositioning,
@@ -15,7 +15,7 @@ import {
 } from '../shared/watermarkGeometry'
 import { getCachedWatermarkPath, watermarkStyleOptionsForDevice, WM_SRC } from '../shared/watermarkAssets'
 import { addCustomWatermarkAssets } from '../shared/watermarkLibrary'
-import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, SegmentedControl, Switch, toast } from '../ui'
+import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, SearchField, SegmentedControl, Switch, toast } from '../ui'
 import '../styles/watermark-settings.css'
 
 function legacyPositioning(isLandscape: boolean, anchor: WatermarkPositioning['anchor']): WatermarkPositioning {
@@ -174,6 +174,7 @@ export function WatermarkSettings({
   const [deviceId, setDeviceId] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [customAssets, setCustomAssets] = useState<CustomWatermarkAsset[]>([])
+  const [customSearch, setCustomSearch] = useState('')
   const enrichSeqRef = useRef(0)
   const watermarkKind = mediaKind ?? (filePath && isVideoPath(filePath) ? 'video' : 'image')
 
@@ -278,7 +279,7 @@ export function WatermarkSettings({
         imagePath: asset.filePath,
         imageWidth: asset.width,
         imageHeight: asset.height,
-        sizeOnShortEdge: settingsRef.current.sizeOnShortEdge ?? DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE,
+        sizeOnCanvasWidth: settingsRef.current.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO,
         placement: settingsRef.current.placement ?? defaultWatermarkPlacement(settingsRef.current.position),
         opacity: settingsRef.current.opacity ?? 1,
       })
@@ -307,7 +308,7 @@ export function WatermarkSettings({
       imagePath: asset.filePath,
       imageWidth: asset.width,
       imageHeight: asset.height,
-      sizeOnShortEdge: settingsRef.current.sizeOnShortEdge ?? DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE,
+      sizeOnCanvasWidth: settingsRef.current.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO,
       placement: settingsRef.current.placement ?? defaultWatermarkPlacement(settingsRef.current.position),
       opacity: settingsRef.current.opacity ?? 1,
     })
@@ -326,12 +327,12 @@ export function WatermarkSettings({
       void enrichAndChange({
         position: 'bottom-center',
         placement: defaultWatermarkPlacement('bottom-center'),
-        sizeOnShortEdge: DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE,
+        sizeOnCanvasWidth: DEFAULT_WATERMARK_WIDTH_RATIO,
         opacity: 1,
       })
       return
     }
-    void enrichAndChange({ position: 'bottom-center', placement: undefined, sizeOnShortEdge: undefined, opacity: undefined })
+    void enrichAndChange({ position: 'bottom-center', placement: undefined, sizeOnCanvasWidth: undefined, opacity: undefined })
   }
 
   const selectedSourceKind = allowBuiltin ? currentSettings.sourceKind ?? 'builtin' : 'custom'
@@ -339,28 +340,46 @@ export function WatermarkSettings({
   const sourceOptions: Array<{ value: 'builtin' | 'custom'; label: string }> = allowBuiltin
     ? [{ value: 'builtin', label: '内置' }, { value: 'custom', label: '自定义' }]
     : [{ value: 'custom', label: '自定义' }]
-  const selectableCustomAssets = currentSettings.customAsset && !customAssets.some((asset) => asset.id === currentSettings.customAsset?.id)
-    ? [currentSettings.customAsset, ...customAssets]
-    : customAssets
+  const filteredCustomAssets = useMemo(() => {
+    const selectableCustomAssets = currentSettings.customAsset && !customAssets.some((asset) => asset.id === currentSettings.customAsset?.id)
+      ? [currentSettings.customAsset, ...customAssets]
+      : customAssets
+    const query = customSearch.trim().toLocaleLowerCase()
+    if (!query) return selectableCustomAssets
+    return selectableCustomAssets.filter((asset) => asset.fileName.toLocaleLowerCase().includes(query))
+  }, [currentSettings.customAsset, customAssets, customSearch])
 
   const content = (
     <div className="wm-settings-content">
       {!preferencesOnly && (
-        <SegmentedControl
-          ariaLabel="水印来源"
-          options={sourceOptions}
-          value={selectedSourceKind}
-          onChange={changeSource}
-          variant="size"
-          className="size-switch wm-source-selector"
-        />
+        <div className={`wm-source-row${selectedSourceKind === 'custom' ? ' has-search' : ''}`}>
+          <SegmentedControl
+            ariaLabel="水印来源"
+            options={sourceOptions}
+            value={selectedSourceKind}
+            onChange={changeSource}
+            variant="size"
+            className="size-switch wm-source-selector"
+          />
+          {selectedSourceKind === 'custom' && (
+            <SearchField
+              variant="compact"
+              fullWidth
+              wrapperClassName="wm-custom-search"
+              value={customSearch}
+              onChange={(event) => setCustomSearch(event.currentTarget.value)}
+              placeholder="搜索水印"
+              aria-label="按文件名搜索水印"
+            />
+          )}
+        </div>
       )}
 
       {!preferencesOnly && selectedSourceKind === 'custom' && (
         <div className="wm-custom-library">
-          {selectableCustomAssets.length > 0 && (
+          {filteredCustomAssets.length > 0 && (
             <div className="wm-custom-options" role="listbox" aria-label="自定义水印">
-              {selectableCustomAssets.map((asset) => (
+              {filteredCustomAssets.map((asset) => (
                 <button
                   key={asset.id}
                   type="button"
@@ -371,7 +390,6 @@ export function WatermarkSettings({
                   title={asset.fileName}
                 >
                   <img src={filePathToPreviewUrl(asset.filePath) ?? ''} alt="" />
-                  <span>{asset.fileName}</span>
                 </button>
               ))}
             </div>
@@ -392,7 +410,7 @@ export function WatermarkSettings({
 
       {!preferencesOnly && customSelected && (
         <>
-          <WatermarkSlider label="大小" value={(currentSettings.sizeOnShortEdge ?? DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE) * 100} min={8} max={80} onChange={(value) => void enrichAndChange({ sizeOnShortEdge: value / 100 })} />
+          <WatermarkSlider label="大小" value={(currentSettings.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO) * 100} min={8} max={80} onChange={(value) => void enrichAndChange({ sizeOnCanvasWidth: value / 100 })} />
           <WatermarkSlider label="透明度" value={(currentSettings.opacity ?? 1) * 100} min={0} max={100} onChange={(value) => void enrichAndChange({ opacity: value / 100 })} />
           <Button variant="ghost" size="mini" icon={<RotateCcw size={14} />} onClick={resetGeometry}>重置位置与大小</Button>
         </>

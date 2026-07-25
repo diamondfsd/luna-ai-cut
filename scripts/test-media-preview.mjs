@@ -73,7 +73,7 @@ const customSettings = {
   customAsset: { filePath: '/tmp/logo.png', width: 400, height: 100 },
   imageWidth: 400,
   imageHeight: 100,
-  sizeOnShortEdge: 0.391,
+  sizeOnCanvasWidth: 0.3,
   placement: { mode: 'preset', anchor: 'bottom-center', insetOnShortEdge: 0.059 },
 }
 const customLandscape = watermarkGeometry.resolveWatermarkPositioning(customSettings, 1920, 1080)
@@ -84,17 +84,22 @@ const verticalCustom = watermarkGeometry.resolveWatermarkPositioning({
   imageWidth: 100,
   imageHeight: 400,
 }, 1080, 1920)
+const eightyPercentWide = watermarkGeometry.resolveWatermarkPositioning({
+  ...customSettings,
+  sizeOnCanvasWidth: 0.8,
+}, 1920, 1080)
 assert.equal(watermarkGeometry.usesCustomWatermark(customSettings), true)
 assert.equal(watermarkGeometry.usesCustomWatermark({
   ...customSettings,
   sourceKind: 'builtin',
 }), false, 'built-in watermark ignores retained custom geometry fields')
-close(customLandscape.targetWidth, 0.2199375, 'custom landscape width preserves short-edge size')
-close(customPortrait.targetWidth, 0.391, 'custom portrait width preserves short-edge size')
+close(customLandscape.targetWidth, 0.3, 'custom landscape width uses canvas-width percentage')
+close(customPortrait.targetWidth, 0.3, 'custom portrait width uses canvas-width percentage')
+close(eightyPercentWide.targetWidth, 0.8, '80 percent size occupies 80 percent of canvas width')
 close(
-  verticalCustom.targetWidth * 1080 / 0.25 / 1080,
-  0.391,
-  'vertical custom watermark uses its height as the maximum edge',
+  verticalCustom.targetWidth,
+  0.3,
+  'vertical custom watermark keeps the requested width when it fits the canvas',
 )
 assert.equal(customLandscape.anchor, 'top-left')
 close(customLandscape.marginX, (1 - customLandscape.targetWidth) / 2, 'bottom-center preset centers landscape watermark')
