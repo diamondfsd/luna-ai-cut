@@ -15,6 +15,7 @@
 
     <link rel="icon" type="image/png" href="assets/favicon.png" />
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="download-platform.css" />
   </head>
   <body>
     <!-- ===== Global Nav ===== -->
@@ -100,6 +101,7 @@
               <span class="dl-region-tag" id="dl-mac-region"></span>
             </a>
             <div class="dl-chip-selector">
+              <p class="dl-recommendation" id="dl-mac-recommendation" aria-live="polite" hidden></p>
               <select id="dl-mac-chip">
                 <option value="arm64">Apple Silicon (ARM64)</option>
                 <option value="x64">Intel (x64)</option>
@@ -330,6 +332,6 @@
 
     <script src="changelog-data.js"></script>
     <script src="latest-changelog.js"></script>
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
   </body>
 </html>
