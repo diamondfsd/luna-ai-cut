@@ -3,8 +3,7 @@ import { FolderOpen, Settings2, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
-import type { AppSettings, CacheStats, ConnectionStatus, CustomWatermarkAsset, DeviceDefinition } from '../shared/types'
-import { removeCustomWatermarkAsset } from '../shared/watermarkLibrary'
+import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
 import { Button, Input, Switch, toast } from '../ui'
@@ -129,39 +128,6 @@ export function SettingsPage({
     }
     setSettings((current) => (current ? { ...current, ...patch } : current))
     void window.luna.saveSettings(patch).then(setSettings)
-  }
-
-  async function handleAddCustomWatermark(): Promise<void> {
-    const assets = await window.luna.chooseCustomWatermarks().catch((error) => {
-      toast.error(error instanceof Error ? error.message : '无法导入这张水印图片')
-      return []
-    })
-    if (assets.length === 0) return
-    setSettings(await window.luna.getSettings())
-    toast.success(`已添加 ${assets.length} 个水印`)
-  }
-
-  async function handleDeleteCustomWatermark(asset: CustomWatermarkAsset): Promise<void> {
-    if (!settings) return
-    const patch: Partial<AppSettings> = {
-      customWatermarkAssets: removeCustomWatermarkAsset(settings.customWatermarkAssets ?? [], asset.id),
-    }
-    if (settings.recentWatermarkSettings?.customAsset?.id === asset.id) {
-      patch.recentWatermarkSettings = {
-        ...settings.recentWatermarkSettings,
-        sourceKind: 'builtin',
-        position: settings.recentWatermarkSettings.position === 'top-center' ? 'bottom-center' : settings.recentWatermarkSettings.position,
-        customAsset: undefined,
-        imagePath: undefined,
-        imageWidth: undefined,
-        imageHeight: undefined,
-        sizeOnCanvasWidth: undefined,
-        placement: undefined,
-        opacity: undefined,
-      }
-    }
-    setSettings(await window.luna.saveSettings(patch))
-    toast.success('水印已从列表中删除')
   }
 
   return (
@@ -322,8 +288,6 @@ export function SettingsPage({
         onOpenChange={setWatermarkDialogOpen}
         settings={settings}
         onDefaultChange={handleDefaultWatermarkChange}
-        onAdd={handleAddCustomWatermark}
-        onDelete={handleDeleteCustomWatermark}
       />
       <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
     </section>

@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { FolderOpen, Trash2 } from 'lucide-react'
 
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { AppSettings, CustomWatermarkAsset, WatermarkPosition } from '../shared/types'
-import { Button, Dialog, IconButton } from '../ui'
+import { addCustomWatermarkAssets } from '../shared/watermarkLibrary'
+import { Button, Dialog, IconButton, toast } from '../ui'
 import { WatermarkSettings } from './WatermarkSettings'
 import './WatermarkManagementDialog.css'
 
@@ -11,8 +13,6 @@ interface WatermarkManagementDialogProps {
   onOpenChange: (open: boolean) => void
   settings: AppSettings | null
   onDefaultChange: (watermark: { enabled: boolean; position: WatermarkPosition }) => void
-  onAdd: () => Promise<void>
-  onDelete: (asset: CustomWatermarkAsset) => Promise<void>
 }
 
 export function WatermarkManagementDialog({
@@ -20,10 +20,41 @@ export function WatermarkManagementDialog({
   onOpenChange,
   settings,
   onDefaultChange,
-  onAdd,
-  onDelete,
 }: WatermarkManagementDialogProps) {
-  const assets = settings?.customWatermarkAssets ?? []
+  const [assets, setAssets] = useState<CustomWatermarkAsset[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoading(true)
+    window.luna.listCustomWatermarks()
+      .then((nextAssets) => { if (!cancelled) setAssets(nextAssets) })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : '无法读取水印列表')
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [open])
+
+  async function handleAdd(): Promise<void> {
+    const additions = await window.luna.chooseCustomWatermarks().catch((error) => {
+      toast.error(error instanceof Error ? error.message : '无法导入这张水印图片')
+      return []
+    })
+    if (additions.length === 0) return
+    setAssets((current) => addCustomWatermarkAssets(current, additions))
+    toast.success(`已添加 ${additions.length} 个水印`)
+  }
+
+  async function handleDelete(asset: CustomWatermarkAsset): Promise<void> {
+    try {
+      setAssets(await window.luna.deleteCustomWatermark(asset.id))
+      toast.success('水印已从列表中删除')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '无法删除这个水印')
+    }
+  }
 
   return (
     <Dialog
@@ -54,11 +85,11 @@ export function WatermarkManagementDialog({
         <section className="watermark-management-section">
           <div className="watermark-management-heading">
             <h3>自定义水印</h3>
-            <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={() => void onAdd()}>
+            <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={() => void handleAdd()}>
               添加水印
             </Button>
           </div>
-          {assets.length > 0 ? (
+          {loading ? <p className="watermark-management-empty">正在读取水印</p> : assets.length > 0 ? (
             <div className="watermark-management-grid">
               {assets.map((asset) => (
                 <article key={asset.id} className="watermark-management-card">
@@ -69,7 +100,7 @@ export function WatermarkManagementDialog({
                     variant="light"
                     size="mini"
                     icon={<Trash2 size={14} />}
-                    onClick={() => void onDelete(asset)}
+                    onClick={() => void handleDelete(asset)}
                     title={`删除 ${asset.fileName}`}
                     aria-label={`删除 ${asset.fileName}`}
                   />

@@ -242,13 +242,20 @@ export function WatermarkSettings({
       publish(next)
       return
     }
-    if (next.sourceKind === 'custom' && next.customAsset) {
-      next = {
-        ...next,
-        imagePath: next.customAsset.filePath,
-        imageWidth: next.customAsset.width,
-        imageHeight: next.customAsset.height,
-      }
+    if (next.sourceKind === 'custom') {
+      next = next.customAsset
+        ? {
+            ...next,
+            imagePath: next.customAsset.filePath,
+            imageWidth: next.customAsset.width,
+            imageHeight: next.customAsset.height,
+          }
+        : {
+            ...next,
+            imagePath: undefined,
+            imageWidth: undefined,
+            imageHeight: undefined,
+          }
     } else if (next.enabled && allowBuiltin) {
       const info = await window.luna.getWatermarkPath(next.style, watermarkKind).catch(() => null)
       if (seq !== enrichSeqRef.current) return
