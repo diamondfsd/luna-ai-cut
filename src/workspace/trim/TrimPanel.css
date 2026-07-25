@@ -81,6 +81,37 @@
   min-width: 0;
 }
 
+.workspace-trim-markers-json-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.workspace-trim-markers-json-actions > button {
+  min-width: 0;
+}
+
+.workspace-trim-json-dialog {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.workspace-trim-json-preview {
+  max-height: min(55vh, 460px);
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .workspace-trim-marker-row {
   display: grid;
   gap: 7px;
