@@ -4,7 +4,7 @@ import { access, copyFile, mkdir, readFile, rename, rm, stat } from 'node:fs/pro
 import path from 'node:path'
 
 import type { CustomWatermarkAsset } from '../src/shared/types'
-import { addCustomWatermarkAssets } from '../src/shared/watermarkLibrary'
+import { addCustomWatermarkAssets, removeCustomWatermarkAsset } from '../src/shared/watermarkLibrary'
 import { getSettings, saveSettings } from './settingsService'
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -89,4 +89,32 @@ export async function chooseCustomWatermarks(): Promise<CustomWatermarkAsset[]> 
     customWatermarkAssets: addCustomWatermarkAssets(settings.customWatermarkAssets ?? [], assets),
   })
   return assets
+}
+
+export async function listCustomWatermarks(): Promise<CustomWatermarkAsset[]> {
+  return (await getSettings()).customWatermarkAssets ?? []
+}
+
+export async function deleteCustomWatermark(assetId: string): Promise<CustomWatermarkAsset[]> {
+  const settings = await getSettings()
+  const customWatermarkAssets = removeCustomWatermarkAsset(settings.customWatermarkAssets ?? [], assetId)
+  const patch: Parameters<typeof saveSettings>[0] = { customWatermarkAssets }
+  if (settings.recentWatermarkSettings?.customAsset?.id === assetId) {
+    patch.recentWatermarkSettings = {
+      ...settings.recentWatermarkSettings,
+      sourceKind: 'builtin',
+      position: settings.recentWatermarkSettings.position === 'top-center'
+        ? 'bottom-center'
+        : settings.recentWatermarkSettings.position,
+      customAsset: undefined,
+      imagePath: undefined,
+      imageWidth: undefined,
+      imageHeight: undefined,
+      sizeOnCanvasWidth: undefined,
+      placement: undefined,
+      opacity: undefined,
+    }
+  }
+  await saveSettings(patch)
+  return customWatermarkAssets
 }
