@@ -2,8 +2,9 @@ import { FolderOpen, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { MediaGallery } from '../../components/MediaGallery'
-import type { WorkspaceMediaAsset } from '../../shared/types'
-import { Button, Dialog, toast } from '../../ui'
+import { PreviewModal } from '../../components/PreviewModal'
+import type { LunaFile, WorkspaceMediaAsset } from '../../shared/types'
+import { Button, Dialog, Input, toast } from '../../ui'
 import { MediaLibraryCtx, useMediaLibraryController } from '../../pages/useMediaLibraryController'
 import { chooseWorkspaceMediaAssets } from '../shared/workspaceLocalMedia'
 import '../../styles/library.css'
@@ -14,6 +15,9 @@ interface WorkspaceImportDialogProps {
   onOpenChange: (open: boolean) => void
   existingPaths: Set<string>
   onImport: (assets: WorkspaceMediaAsset[]) => void | Promise<void>
+  mode?: 'import' | 'create'
+  projectName?: string
+  onProjectNameChange?: (value: string) => void
 }
 
 function groupTitle(group: string): string {
@@ -24,9 +28,22 @@ function groupTitle(group: string): string {
   return `${dateText} ${weekday}`
 }
 
-export function WorkspaceImportDialog({ open, onOpenChange, existingPaths, onImport }: WorkspaceImportDialogProps) {
+function previewPath(file: LunaFile): string {
+  return file.downloadFilePath ?? file.localPath ?? file.sourceUrl ?? file.id
+}
+
+export function WorkspaceImportDialog({
+  open,
+  onOpenChange,
+  existingPaths,
+  onImport,
+  mode = 'import',
+  projectName = '',
+  onProjectNameChange,
+}: WorkspaceImportDialogProps) {
   const controller = useMediaLibraryController('local')
   const [importing, setImporting] = useState(false)
+  const creatingProject = mode === 'create'
 
   useEffect(() => {
     if (!open) return
@@ -60,7 +77,9 @@ export function WorkspaceImportDialog({ open, onOpenChange, existingPaths, onImp
     try {
       await onImport(assets)
       onOpenChange(false)
-      toast.success(`已导入 ${assets.length} 个素材`)
+      toast.success(creatingProject ? `已创建项目，包含 ${assets.length} 个素材` : `已导入 ${assets.length} 个素材`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : (creatingProject ? '创建项目失败' : '导入失败'))
     } finally {
       setImporting(false)
     }
@@ -73,7 +92,7 @@ export function WorkspaceImportDialog({ open, onOpenChange, existingPaths, onImp
       setImporting(true)
       await onImport(assets)
       onOpenChange(false)
-      toast.success(`已导入 ${assets.length} 个本地文件`)
+      toast.success(creatingProject ? `已创建项目，包含 ${assets.length} 个素材` : `已导入 ${assets.length} 个本地文件`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导入失败')
     } finally {
@@ -86,9 +105,10 @@ export function WorkspaceImportDialog({ open, onOpenChange, existingPaths, onImp
       <Dialog
         open={open}
         onOpenChange={onOpenChange}
-        title="导入本地素材"
+        title={creatingProject ? '新建项目' : '导入本地素材'}
+        description={creatingProject ? '选择素材并预览，可填写标题后直接创建项目。' : undefined}
         tone="dark"
-        className="workspace-import-dialog"
+        className={`workspace-import-dialog${creatingProject ? ' workspace-create-project-dialog' : ''}`}
         footer={(
           <>
             <span className="workspace-import-count">已选择 {controller.selectedFiles.length} 个</span>
@@ -97,14 +117,46 @@ export function WorkspaceImportDialog({ open, onOpenChange, existingPaths, onImp
             </Button>
             <Button variant="secondary" size="compact" onClick={() => onOpenChange(false)} disabled={importing}>取消</Button>
             <Button variant="primary" size="compact" icon={<Plus size={14} />} disabled={controller.selectedFiles.length === 0 || importing} onClick={() => void handleImport()}>
-              {importing ? '导入中' : '导入素材'}
+              {importing ? (creatingProject ? '创建中' : '导入中') : (creatingProject ? '创建并编辑' : '导入素材')}
             </Button>
           </>
         )}
       >
         <div className="workspace-import-body">
+          {creatingProject && (
+            <label className="workspace-create-project-title">
+              <span>项目标题</span>
+              <Input
+                fullWidth
+                value={projectName}
+                onChange={(event) => onProjectNameChange?.(event.target.value)}
+                placeholder="选填，不填则按素材数量自动生成"
+                autoFocus
+              />
+            </label>
+          )}
           <MediaGallery mode="local" groupTitle={groupTitle} />
         </div>
+        {controller.previewFile && (
+          <PreviewModal
+            lightweightPreview
+            previewOnly
+            filePath={previewPath(controller.previewFile)}
+            filePathList={controller.filteredFiles.map(previewPath)}
+            isFileSelected={(filePath) => {
+              const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
+              return Boolean(file && controller.selected.has(file.id))
+            }}
+            onSetFileSelected={(filePath, selected) => {
+              const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
+              if (file && controller.selected.has(file.id) !== selected) controller.toggleFile(file)
+            }}
+            onClose={() => {
+              controller.setPreviewFile(null)
+              controller.setPreviewFiles([])
+            }}
+          />
+        )}
       </Dialog>
     </MediaLibraryCtx.Provider>
   )
