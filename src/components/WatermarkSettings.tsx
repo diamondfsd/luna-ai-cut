@@ -136,6 +136,7 @@ function PositionGrid({ settings, custom, onChange }: {
           key={position.value}
           type="button"
           className={`wm-pos-cell${activePosition === position.value ? ' active' : ''}`}
+          data-position={position.value}
           onClick={() => onChange(position.value)}
           title={position.label}
           aria-label={position.label}
