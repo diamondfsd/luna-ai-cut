@@ -73,6 +73,7 @@ export interface DolbyVisionWatermarkExportRequest {
     marginX?: number
     marginY?: number
   }
+  opacity?: number
   exportTaskId: string
   exportItemId: string
 }

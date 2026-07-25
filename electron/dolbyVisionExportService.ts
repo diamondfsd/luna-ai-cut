@@ -182,6 +182,9 @@ function assertRequest(request: DolbyVisionWatermarkExportRequest): void {
   if (!(request.positioning.targetWidth > 0 && request.positioning.targetWidth <= 1)) {
     throw new Error('Dolby Vision 水印尺寸无效')
   }
+  if (request.opacity !== undefined && !(request.opacity >= 0 && request.opacity <= 1)) {
+    throw new Error('Dolby Vision 水印透明度无效')
+  }
 }
 
 export async function exportDolbyVisionWatermark(
@@ -219,7 +222,8 @@ export async function exportDolbyVisionWatermark(
 
     const position = overlayExpression(request.positioning)
     const width = Math.max(2, Math.round(eligibility.width * request.positioning.targetWidth / 2) * 2)
-    const filter = `[0:v]format=p010le,setparams=range=limited:color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc[base];[1:v]scale=${width}:-2:flags=lanczos,format=rgba,colorchannelmixer=rr=0.90:gg=0.90:bb=0.90,format=yuva444p10le[wm];[base][wm]overlay=x=${position.x}:y=${position.y}:format=yuv420p10:shortest=1[out]`
+    const opacity = request.opacity ?? 1
+    const filter = `[0:v]format=p010le,setparams=range=limited:color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc[base];[1:v]scale=${width}:-2:flags=lanczos,format=rgba,colorchannelmixer=rr=0.90:gg=0.90:bb=0.90:aa=${opacity},format=yuva444p10le[wm];[base][wm]overlay=x=${position.x}:y=${position.y}:format=yuv420p10:shortest=1[out]`
     let encoded = false
     let lastError: unknown
     for (const candidate of encoderCandidates()) {
