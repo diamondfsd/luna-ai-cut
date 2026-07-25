@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { latestThumbnailReady, subscribeThumbnailReady } from '../lib/thumbnailReady'
+import {
+  invalidateThumbnailReady,
+  latestThumbnailReady,
+  subscribeThumbnailReady,
+} from '../lib/thumbnailReady'
 
 interface FileCache {
   /** 缩略图 URL（本地 file:// 路径或 null） */
@@ -95,8 +99,9 @@ export function useFileCache(sourceUrl: string | null, enabled = true): FileCach
   }, [sourceUrl, enabled, retryKey])
 
   const retry = useCallback(() => {
+    if (sourceUrl) invalidateThumbnailReady(sourceUrl)
     setRetryKey((k) => k + 1)
-  }, [])
+  }, [sourceUrl])
 
   return { thumbnailUrl, cacheFilePath, isLoading, hasError, retry }
 }
