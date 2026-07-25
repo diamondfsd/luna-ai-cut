@@ -11,6 +11,8 @@ const MAX_AUTO_RETRIES = 2
 interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   /** 本地文件路径，组件内部通过 useFileCache 懒加载并生成缩略图 */
   src: string
+  /** 距离最近滚动容器可视区域多远时开始加载，默认 300px */
+  preloadMargin?: number
   /** 自动重试后仍无法加载时显示的内容；未提供时继续显示默认占位图 */
   unavailableFallback?: ReactNode
   /** 自动重试后仍无法加载时触发 */
@@ -29,7 +31,7 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
  * <ThumbImage src="/path/to/photo.jpg" className="thumb-img" alt="" draggable={false} />
  * ```
  */
-export function ThumbImage({ src, unavailableFallback, onUnavailable, onError, onLoad, ...imgProps }: ThumbImageProps) {
+export function ThumbImage({ src, preloadMargin = 300, unavailableFallback, onUnavailable, onError, onLoad, ...imgProps }: ThumbImageProps) {
   const [visible, setVisible] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
@@ -61,16 +63,29 @@ export function ThumbImage({ src, unavailableFallback, onUnavailable, onError, o
     return () => window.clearTimeout(timer)
   }, [hasError, onUnavailable, retryOnce, src, unavailable, visible])
 
-  // IntersectionObserver 懒加载：进入视口附近才触发 useFileCache。
+  // 以内层滚动区域为观察根，确保嵌套页面也能在进入可视区前预取。
   useEffect(() => {
     if (visible) return
     const el = imgRef.current
     if (!el) return
-    const margin = 400
+    let scrollRoot = el.parentElement
+    while (scrollRoot && scrollRoot !== document.body) {
+      const style = window.getComputedStyle(scrollRoot)
+      if (/(auto|scroll)/.test(`${style.overflowX} ${style.overflowY}`)) break
+      scrollRoot = scrollRoot.parentElement
+    }
+    if (scrollRoot === document.body) scrollRoot = null
+
+    const rootRect = scrollRoot?.getBoundingClientRect() ?? {
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+      left: 0,
+    }
     const rect = el.getBoundingClientRect()
     if (rect.width > 0 && rect.height > 0
-      && rect.bottom >= -margin && rect.top <= window.innerHeight + margin
-      && rect.right >= -margin && rect.left <= window.innerWidth + margin) {
+      && rect.bottom >= rootRect.top - preloadMargin && rect.top <= rootRect.bottom + preloadMargin
+      && rect.right >= rootRect.left - preloadMargin && rect.left <= rootRect.right + preloadMargin) {
       setVisible(true)
       return
     }
@@ -81,11 +96,11 @@ export function ThumbImage({ src, unavailableFallback, onUnavailable, onError, o
           observer.disconnect()
         }
       },
-      { rootMargin: `${margin}px 0px` },
+      { root: scrollRoot, rootMargin: `${preloadMargin}px` },
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [visible])
+  }, [preloadMargin, visible])
 
   return unavailable && unavailableFallback ? unavailableFallback : (
     <img
