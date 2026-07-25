@@ -29,6 +29,7 @@
     "build:models": "node scripts/publish-model-resources.mjs",
     "test:workspace": "node scripts/test-workspace-geometry.mjs",
     "test:media-preview": "node scripts/test-media-preview.mjs",
+    "test:dolby-vision": "node scripts/test-dolby-vision-hvcc.mjs",
     "test:wired-camera": "node scripts/test-mounted-camera-source.mjs",
     "test:mask": "node scripts/test-mask-safety.mjs && node scripts/test-segmentation-task-registry.mjs && node scripts/test-specialized-worker-client.mjs",
     "test:mask:render": "node scripts/build-native.mjs && node scripts/test-mask-render-consistency.mjs",
