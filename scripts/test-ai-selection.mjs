@@ -15,10 +15,12 @@ import { deriveBasicSemanticTags } from '../electron/aiSelectionTags.ts'
 import { applyAiSelectionUserOperation } from '../electron/aiSelectionOperations.ts'
 import { buildFaceGroups, FACE_EMBEDDING_VERSION, hasSufficientFacePixels } from '../electron/aiSelectionFaceGroups.ts'
 import { createPersonIdentity, loadPeopleStore, savePeopleStore } from '../electron/aiSelectionPeopleStore.ts'
+import { buildGlobalFaceGroups, loadGlobalPeople, mergeGlobalPeople, unmergeGlobalPerson } from '../electron/aiSelectionPeopleManager.ts'
 import {
   countSimilarityGroups,
   matchesResultFilter,
 } from '../src/ai-selection/aiSelectionView.ts'
+import { buildCoPhotoGroups } from '../src/ai-selection/aiCoPhotoGroups.ts'
 
 function quality(score = 80) {
   return {
@@ -269,13 +271,33 @@ assert.equal(globalIdentityGroups[0].identityId, 'person-global')
 const peopleStoreRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-ai-selection-people-'))
 try {
   const registeredIdentity = createPersonIdentity('人物 1', faceVector(127, 0))
+  const secondIdentity = createPersonIdentity('人物 2', faceVector(0, 127))
   registeredIdentity.avatarDataUrl = `data:image/jpeg;base64,${Buffer.from('avatar').toString('base64')}`
-  await savePeopleStore(peopleStoreRoot, [registeredIdentity])
+  await savePeopleStore(peopleStoreRoot, [registeredIdentity, secondIdentity])
   const reloadedIdentities = await loadPeopleStore(peopleStoreRoot)
   assert.equal(reloadedIdentities[0].avatarDataUrl, registeredIdentity.avatarDataUrl, '人物头像 Base64 应随人物库持久化')
   const reusedGroups = buildFaceGroups([faceItems[1]], reloadedIdentities)
   assert.equal(reusedGroups[0].identityId, registeredIdentity.id, '重新加载人物库后应复用已登记的全局身份')
   assert.equal(reusedGroups[0].coverUrl, registeredIdentity.avatarDataUrl, '重新分组后应继续使用持久化头像')
+
+  await loadGlobalPeople(peopleStoreRoot)
+  const groupsBeforeMerge = buildGlobalFaceGroups(faceItems)
+  const targetGroup = groupsBeforeMerge.find((group) => group.identityId === registeredIdentity.id)
+  const sourceGroup = groupsBeforeMerge.find((group) => group.identityId === secondIdentity.id)
+  assert.ok(targetGroup && sourceGroup, '合并前应存在两个独立人物')
+  const peopleSession = { items: faceItems, faceGroups: groupsBeforeMerge }
+  await mergeGlobalPeople(peopleStoreRoot, peopleSession, targetGroup.id, sourceGroup.id)
+  const groupsAfterMerge = buildGlobalFaceGroups(faceItems)
+  assert.equal(groupsAfterMerge.length, 1, '合并后应作为一个人物参与分组')
+  assert.deepEqual(groupsAfterMerge[0].mergedMembers?.map((member) => member.id), [secondIdentity.id], '合并弹窗应能展示来源身份')
+  await unmergeGlobalPerson(peopleStoreRoot, { ...peopleSession, faceGroups: groupsAfterMerge }, groupsAfterMerge[0].id, secondIdentity.id)
+  assert.equal(buildGlobalFaceGroups(faceItems).length, 2, '移除合并成员后应恢复两个独立人物')
+
+  const legacyStoreRoot = path.join(peopleStoreRoot, 'legacy')
+  await fs.mkdir(legacyStoreRoot)
+  const { mergedIntoId: _ignored, ...legacyIdentity } = registeredIdentity
+  await fs.writeFile(path.join(legacyStoreRoot, 'people.json'), JSON.stringify({ schemaVersion: 1, identities: [legacyIdentity] }))
+  assert.equal((await loadPeopleStore(legacyStoreRoot))[0].mergedIntoId, null, '旧人物库应无损迁移为未合并身份')
 } finally {
   await fs.rm(peopleStoreRoot, { recursive: true, force: true })
 }
@@ -308,6 +330,17 @@ const poseGroups = buildFaceGroups([
   item('pose-profile', '2026-07-18T03:12:00.000Z', { personEvidence: { ...faceEvidence('open', 12), faces: [{ bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: poseVector(0, 80, 100), embeddingVersion: FACE_EMBEDDING_VERSION }] } }),
 ])
 assert.equal(poseGroups.length, 1, '同一人物的正脸、过渡角度和侧脸应通过组内相似样本归为一组')
+
+const coPhotoGroups = buildCoPhotoGroups([
+  { id: 'face-a', name: '安安', itemIds: ['photo-ab-1', 'photo-ab-2', 'photo-abc'], coverItemId: 'photo-ab-1', identityId: 'a', coverUrl: null, coverBounds: { x: 0, y: 0, width: 1, height: 1 }, memberFaces: [] },
+  { id: 'face-b', name: '贝贝', itemIds: ['photo-ab-1', 'photo-ab-2', 'photo-abc'], coverItemId: 'photo-ab-1', identityId: 'b', coverUrl: null, coverBounds: { x: 0, y: 0, width: 1, height: 1 }, memberFaces: [] },
+  { id: 'face-c', name: '晨晨', itemIds: ['photo-c', 'photo-abc'], coverItemId: 'photo-c', identityId: 'c', coverUrl: null, coverBounds: { x: 0, y: 0, width: 1, height: 1 }, memberFaces: [] },
+])
+assert.equal(coPhotoGroups.length, 2, '不同人物名称集合应形成独立合照分组')
+assert.deepEqual(coPhotoGroups[0].itemIds, ['photo-ab-1', 'photo-ab-2'])
+assert.equal(coPhotoGroups[0].name, '安安和贝贝的合照')
+assert.equal(coPhotoGroups[1].name, '安安、贝贝和晨晨的合照')
+assert.deepEqual(coPhotoGroups[1].itemIds, ['photo-abc'], '三人合照不能混入二人合照分组')
 
 const sceneSession = {
   preset: 'balanced',

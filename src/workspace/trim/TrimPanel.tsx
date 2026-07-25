@@ -1,6 +1,8 @@
+import { Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { Input } from '../../ui'
+import { Button, IconButton, Input, Tooltip } from '../../ui'
+import type { VideoSegmentMarker } from './videoSegmentMarkers'
 
 import './TrimPanel.css'
 
@@ -8,8 +10,11 @@ interface TrimPanelProps {
   startTime: number
   endTime: number
   duration: number
+  markers: VideoSegmentMarker[]
   onStartTimeChange: (time: number) => void
   onEndTimeChange: (time: number) => void
+  onMarkersChange: (markers: VideoSegmentMarker[]) => void
+  onSelectMarker: (marker: VideoSegmentMarker) => void
 }
 
 /** 秒 → mm:ss.SSS */
@@ -51,15 +56,76 @@ function parseTimeInput(text: string): number {
   return total / 1000
 }
 
+interface MarkerRowProps {
+  marker: VideoSegmentMarker
+  autoFocus: boolean
+  onSelect: () => void
+  onNoteCommit: (note: string) => void
+  onDelete: () => void
+}
+
+function MarkerRow({ marker, autoFocus, onSelect, onNoteCommit, onDelete }: MarkerRowProps) {
+  const [note, setNote] = useState(marker.note)
+
+  useEffect(() => setNote(marker.note), [marker.note])
+
+  const commitNote = () => {
+    const nextNote = note.trim().slice(0, 200)
+    setNote(nextNote)
+    if (nextNote !== marker.note) onNoteCommit(nextNote)
+  }
+
+  return (
+    <div className="workspace-trim-marker-row">
+      <button className="workspace-trim-marker-range" type="button" onClick={onSelect}>
+        <span>{formatSeconds(marker.startTime)}</span>
+        <span className="workspace-trim-marker-separator">至</span>
+        <span>{formatSeconds(marker.endTime)}</span>
+      </button>
+      <div className="workspace-trim-marker-note-row">
+        <Input
+          className="workspace-trim-marker-note"
+          variant="compact"
+          fullWidth
+          type="text"
+          value={note}
+          maxLength={200}
+          placeholder="填写剪辑备注"
+          autoFocus={autoFocus}
+          onChange={(event) => setNote(event.target.value)}
+          onBlur={commitNote}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+          }}
+        />
+        <Tooltip content="删除片段标记">
+          <IconButton
+            className="workspace-trim-marker-delete"
+            variant="ghost"
+            size="mini"
+            icon={<Trash2 size={14} />}
+            aria-label="删除片段标记"
+            onClick={onDelete}
+          />
+        </Tooltip>
+      </div>
+    </div>
+  )
+}
+
 export function TrimPanel({
   startTime,
   endTime,
   duration,
+  markers,
   onStartTimeChange,
   onEndTimeChange,
+  onMarkersChange,
+  onSelectMarker,
 }: TrimPanelProps) {
   const [startText, setStartText] = useState(formatSeconds(startTime))
   const [endText, setEndText] = useState(formatSeconds(endTime))
+  const [newMarkerId, setNewMarkerId] = useState<string | null>(null)
   const isFocusedRef = useRef(false)
 
   // Sync display text when props change externally (e.g. trim strip dragging)
@@ -101,6 +167,26 @@ export function TrimPanel({
 
   const trimDuration = Math.max(0, endTime - startTime)
 
+  const addCurrentRange = () => {
+    if (endTime <= startTime) return
+    const marker: VideoSegmentMarker = {
+      id: crypto.randomUUID(),
+      startTime,
+      endTime,
+      note: '',
+    }
+    setNewMarkerId(marker.id)
+    onMarkersChange([...markers, marker])
+  }
+
+  const updateMarkerNote = (id: string, note: string) => {
+    onMarkersChange(markers.map((marker) => marker.id === id ? { ...marker, note } : marker))
+  }
+
+  const deleteMarker = (id: string) => {
+    onMarkersChange(markers.filter((marker) => marker.id !== id))
+  }
+
   return (
     <div className="workspace-trim-panel">
       <div className="workspace-param-group">
@@ -137,6 +223,39 @@ export function TrimPanel({
           <span className="workspace-trim-duration-display">{formatSeconds(trimDuration)}</span>
         </div>
       </div>
+      <section className="workspace-trim-markers" aria-label="片段标记">
+        <div className="workspace-trim-markers-header">
+          <div>
+            <h3>片段标记</h3>
+            <span>{markers.length} 段</span>
+          </div>
+          <Button
+            variant="secondary"
+            size="mini"
+            icon={<Plus size={14} />}
+            disabled={endTime <= startTime}
+            onClick={addCurrentRange}
+          >
+            添加当前片段
+          </Button>
+        </div>
+        {markers.length > 0 ? (
+          <div className="workspace-trim-marker-list">
+            {markers.map((marker) => (
+              <MarkerRow
+                key={marker.id}
+                marker={marker}
+                autoFocus={marker.id === newMarkerId}
+                onSelect={() => onSelectMarker(marker)}
+                onNoteCommit={(note) => updateMarkerNote(marker.id, note)}
+                onDelete={() => deleteMarker(marker.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="workspace-trim-markers-empty">调整截取范围后，添加为可备注的片段标记。</p>
+        )}
+      </section>
     </div>
   )
 }

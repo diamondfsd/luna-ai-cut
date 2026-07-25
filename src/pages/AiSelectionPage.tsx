@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, CheckCircle2, CircleAlert, GitMerge, Grid2X2, Image as ImageIcon, Images, Layers3, ListChecks, Pause, Pencil, Play, RefreshCw, Settings2, Sparkles, Square, Users } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, CircleAlert, Download, FolderPlus, GitMerge, Grid2X2, Image as ImageIcon, Images, Layers3, ListChecks, Pause, Pencil, Play, RefreshCw, Settings2, Sparkles, Square, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { AiSelectionTaskPicker } from '../ai-selection/AiSelectionTaskPicker'
 import { AiPersonAvatarDialog } from '../ai-selection/AiPersonAvatarDialog'
+import { AiPersonMergeDialog } from '../ai-selection/AiPersonMergeDialog'
+import { AiCoPhotoGroupCover, AiFaceGroupCover } from '../ai-selection/AiPeopleGroupCover'
 import { AiSelectionSettingsDialog } from '../ai-selection/AiSelectionSettingsDialog'
+import { buildCoPhotoGroups } from '../ai-selection/aiCoPhotoGroups'
 import { isAiRecommended, isReviewItem, matchesResultFilter, type AiSelectionResultFilter } from '../ai-selection/aiSelectionView'
 import { useAiSelection } from '../ai-selection/useAiSelection'
 import { MediaCard } from '../components/MediaCard'
 import { ThumbImage } from '../components/ThumbImage'
-import { showPreviewModal } from '../components/previewModalService'
-import type { AiFaceGroup, AiSelectionItem, AiSelectionState, LunaFile } from '../shared/types'
+import { showBatchExportModal, showPreviewModal } from '../components/previewModalService'
+import type { AiSelectionItem, AiSelectionState, LunaFile } from '../shared/types'
 import { Button, Dialog, Input, LoadingIndicator, toast } from '../ui'
 import '../styles/ai-selection.css'
 
@@ -82,22 +85,6 @@ function mediaFileForSelection(item: AiSelectionItem): LunaFile {
   }
 }
 
-function FaceGroupCover({ group, item }: { group: AiFaceGroup; item: AiSelectionItem | undefined }) {
-  const source = group.coverUrl ?? item?.thumbnailUrl ?? item?.path
-  if (!source) return <span className="ai-selection-face-group-cover" />
-  const bounds = group.coverBounds
-  return <span className="ai-selection-face-group-cover"><ThumbImage
-    src={source}
-    alt=""
-    style={{
-      width: `${100 / bounds.width}%`,
-      height: `${100 / bounds.height}%`,
-      left: `${-bounds.x / bounds.width * 100}%`,
-      top: `${-bounds.y / bounds.height * 100}%`,
-    }}
-  /></span>
-}
-
 export function AiSelectionPage() {
   const selection = useAiSelection()
   const { sessions, session, busy, peopleAnalysis, loadingSessions, selectSession, closeSession, startTask, removeSession, controls } = selection
@@ -105,14 +92,13 @@ export function AiSelectionPage() {
   const [focusedId, setFocusedId] = useState('')
   const [sceneId, setSceneId] = useState('')
   const [groupId, setGroupId] = useState('')
-  const [faceGroupId, setFaceGroupId] = useState('')
+  const [peopleGroupKey, setPeopleGroupKey] = useState('')
   const [filter, setFilter] = useState<AiSelectionResultFilter>('attention')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [mergeOpen, setMergeOpen] = useState(false)
-  const [mergeSourceId, setMergeSourceId] = useState('')
   const resultsContentRef = useRef<HTMLDivElement>(null)
   const filterRailRef = useRef<HTMLElement>(null)
   const sceneScrollFrameRef = useRef(0)
@@ -121,9 +107,11 @@ export function AiSelectionPage() {
   const navigate = useNavigate()
 
   const items = useMemo(() => session?.items ?? [], [session?.items])
+  const selectedItems = useMemo(() => items.filter((item) => item.state === 'kept'), [items])
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
   const faceCandidateIds = useMemo(() => items.filter((item) => item.kind === 'image' && item.analysisState === 'ready').map((item) => item.id), [items])
   const groupsByItem = useMemo(() => new Map(session?.groups.flatMap((group) => group.itemIds.map((id) => [id, group] as const)) ?? []), [session?.groups])
+  const coPhotoGroups = useMemo(() => buildCoPhotoGroups(session?.faceGroups ?? []), [session?.faceGroups])
   const sortedScenes = useMemo(() => [...(session?.scenes ?? [])].sort((a, b) => Date.parse(b.startAt) - Date.parse(a.startAt)), [session?.scenes])
   const sceneDateGroups = useMemo(() => {
     const groups = new Map<string, { date: string; scenes: typeof sortedScenes }>()
@@ -142,7 +130,13 @@ export function AiSelectionPage() {
   const activeScene = sortedScenes.find((scene) => scene.id === sceneId) ?? sortedScenes.find((scene) => scene.confirmation !== 'confirmed') ?? sortedScenes[0] ?? null
   const pendingGroups = useMemo(() => session?.groups.filter((group) => group.confirmation !== 'confirmed' && group.itemIds.length > 1) ?? [], [session?.groups])
   const activeGroup = session?.groups.find((group) => group.id === groupId) ?? pendingGroups[0] ?? null
-  const activeFaceGroup = session?.faceGroups.find((group) => group.id === faceGroupId) ?? session?.faceGroups[0] ?? null
+  const activeCoPhotoGroup = peopleGroupKey.startsWith('co-photo:')
+    ? coPhotoGroups.find((group) => group.id === peopleGroupKey) ?? null
+    : null
+  const activeFaceGroup = peopleGroupKey.startsWith('co-photo:')
+    ? null
+    : session?.faceGroups.find((group) => `person:${group.id}` === peopleGroupKey) ?? session?.faceGroups[0] ?? null
+  const activePeopleItemIds = activeCoPhotoGroup?.itemIds ?? activeFaceGroup?.itemIds
   const visibleItems = useMemo(() => {
     if (stage === 'recommended') return items.filter(isAiRecommended)
     if (stage === 'scenes') {
@@ -154,10 +148,10 @@ export function AiSelectionPage() {
       })
     }
     if (stage === 'compare') return items.filter((item) => activeGroup?.itemIds.includes(item.id))
-    if (stage === 'people') return items.filter((item) => activeFaceGroup?.itemIds.includes(item.id))
+    if (stage === 'people') return items.filter((item) => activePeopleItemIds?.includes(item.id))
     if (stage === 'review') return items.filter((item) => matchesResultFilter(item, filter))
     return items
-  }, [activeFaceGroup?.itemIds, activeGroup?.itemIds, filter, items, sceneSections, stage])
+  }, [activeGroup?.itemIds, activePeopleItemIds, filter, items, sceneSections, stage])
   const focused = itemsById.get(focusedId) ?? null
   const running = session?.status === 'indexing' || session?.status === 'analyzing' || session?.status === 'queued'
   const navigationLocked = running || peopleAnalysis.running
@@ -171,13 +165,19 @@ export function AiSelectionPage() {
     } catch (error) { toast.error(error instanceof Error ? error.message : String(error)) }
   }
 
+  function exportSelectedItems(): void {
+    const paths = selectedItems.map((item) => item.path)
+    if (paths.length > 0) showBatchExportModal(paths[0], paths)
+  }
+
   function setItemState(item: AiSelectionItem, state: AiSelectionState): void {
     void controls.apply({ type: 'set-state', itemId: item.id, state })
   }
 
   function openPreview(item: AiSelectionItem): void {
     const paths = visibleItems.map((candidate) => candidate.path)
-    showPreviewModal(item.path, paths.length ? paths : [item.path], true, {
+    showPreviewModal(item.path, paths.length ? paths : [item.path], false, {
+      lightweightPreview: true,
       onFilePathChange: (filePath) => {
         const next = items.find((candidate) => candidate.path === filePath)
         if (next) setFocusedId(next.id)
@@ -195,7 +195,7 @@ export function AiSelectionPage() {
     setFocusedId('')
     if (next === 'scenes' && activeScene) setSceneId(activeScene.id)
     if (next === 'compare' && activeGroup) setGroupId(activeGroup.id)
-    if (next === 'people' && activeFaceGroup) setFaceGroupId(activeFaceGroup.id)
+    if (next === 'people' && !peopleGroupKey && activeFaceGroup) setPeopleGroupKey(`person:${activeFaceGroup.id}`)
   }
 
   function confirmCurrentScene(): void {
@@ -218,8 +218,13 @@ export function AiSelectionPage() {
   }
 
   useEffect(() => {
-    setStage('overview'); setFocusedId(''); setSceneId(''); setGroupId(''); setFaceGroupId('')
+    setStage('overview'); setFocusedId(''); setSceneId(''); setGroupId(''); setPeopleGroupKey('')
   }, [session?.id])
+
+  useEffect(() => {
+    if (peopleGroupKey.startsWith('co-photo:') && !coPhotoGroups.some((group) => group.id === peopleGroupKey)) setPeopleGroupKey('')
+    else if (peopleGroupKey.startsWith('person:') && !session?.faceGroups.some((group) => `person:${group.id}` === peopleGroupKey)) setPeopleGroupKey('')
+  }, [coPhotoGroups, peopleGroupKey, session?.faceGroups])
 
   useEffect(() => {
     const content = resultsContentRef.current
@@ -289,7 +294,7 @@ export function AiSelectionPage() {
     { id: 'recommended', label: 'AI 推荐', icon: Sparkles, count: items.filter(isAiRecommended).length },
     { id: 'scenes', label: '拍摄时段', icon: Images, count: session.scenes.filter((scene) => scene.confirmation !== 'confirmed').length },
     { id: 'compare', label: '精准比较', icon: Layers3, count: pendingGroups.length },
-    { id: 'people', label: '人物分组', icon: Users, count: session.faceGroups.length },
+    { id: 'people', label: '人物分组', icon: Users, count: session.faceGroups.length + coPhotoGroups.length },
     { id: 'review', label: '全局复核', icon: CheckCircle2, count: session.counts.attention },
   ]
   const filters: Array<{ id: AiSelectionResultFilter; label: string; count: number }> = [
@@ -408,11 +413,12 @@ export function AiSelectionPage() {
           <strong className="ai-selection-current-name" title={focused.name}>{focused.name}</strong>
           {focused.videoSegments.length > 0 && <div className="ai-selection-keyframes"><strong>可选片段</strong>{focused.videoSegments.map((segment, index) => <button key={segment.id} className={segment.state === 'kept' ? 'selected' : ''} onClick={() => void controls.apply({ type: 'set-video-segment-state', itemId: focused.id, segmentId: segment.id, state: segment.state === 'kept' ? 'rejected' : 'kept' })}><img src={focused.videoKeyframes[index]?.thumbnailUrl} alt="" /><span>{formatTime(segment.startTime)} - {formatTime(segment.endTime)}</span>{segment.state === 'kept' && <Check size={13} />}</button>)}</div>}
         </section>}
+        {stage === 'scenes' && activeScene && <section className="ai-selection-sidebar-section"><Button variant="secondary" icon={<Check size={14} />} onClick={confirmCurrentScene}>{activeScene.confirmation === 'confirmed' ? '已确认时段' : '接受当前建议'}</Button></section>}
+        {stage === 'compare' && activeGroup && <section className="ai-selection-sidebar-section"><Button variant="secondary" icon={<Check size={14} />} onClick={confirmCurrentGroup}>接受本组推荐</Button></section>}
       </div>
       <div className="ai-selection-sidebar-footer">
-        {stage === 'scenes' && activeScene && <Button variant="primary" icon={<Check size={14} />} onClick={confirmCurrentScene}>{activeScene.confirmation === 'confirmed' ? '已确认时段' : '接受当前建议'}</Button>}
-        {stage === 'compare' && activeGroup && <Button variant="primary" icon={<Check size={14} />} onClick={confirmCurrentGroup}>接受本组推荐</Button>}
-        {(stage === 'overview' || stage === 'recommended' || stage === 'review') && <Button variant="primary" icon={<Check size={14} />} disabled={!session.counts.kept || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建工作台项目 ({session.counts.kept})</Button>}
+        <Button variant="primary" icon={<FolderPlus size={14} />} disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目 ({selectedItems.length})</Button>
+        <Button variant="secondary" icon={<Download size={14} />} disabled={!selectedItems.length} onClick={exportSelectedItems}>导出 ({selectedItems.length})</Button>
       </div>
     </aside>
 
@@ -434,7 +440,12 @@ export function AiSelectionPage() {
               <strong>{group.itemIds.length}</strong>
             </button>
           })}
-          {stage === 'people' && session.faceGroups.map((group) => <Button key={group.id} variant="ghost" size="compact" className={activeFaceGroup?.id === group.id ? 'active' : ''} icon={<FaceGroupCover group={group} item={itemsById.get(group.coverItemId)} />} onClick={() => { setFaceGroupId(group.id); setFocusedId('') }}><span>{group.name}</span><strong>{group.itemIds.length}</strong></Button>)}
+          {stage === 'people' && <>
+            {session.faceGroups.length > 0 && <strong className="ai-selection-people-filter-heading">人物</strong>}
+            {session.faceGroups.map((group) => <Button key={group.id} variant="ghost" size="compact" className={activeFaceGroup?.id === group.id ? 'active' : ''} icon={<AiFaceGroupCover group={group} item={itemsById.get(group.coverItemId)} />} onClick={() => { setPeopleGroupKey(`person:${group.id}`); setFocusedId('') }}><span>{group.name}</span><strong>{group.itemIds.length}</strong></Button>)}
+            {coPhotoGroups.length > 0 && <strong className="ai-selection-people-filter-heading co-photos">合照</strong>}
+            {coPhotoGroups.map((group) => <Button key={group.id} variant="ghost" size="compact" className={activeCoPhotoGroup?.id === group.id ? 'active' : ''} icon={<AiCoPhotoGroupCover item={itemsById.get(group.coverItemId)} />} onClick={() => { setPeopleGroupKey(group.id); setFocusedId('') }}><span>{group.name}</span><strong>{group.itemIds.length}</strong></Button>)}
+          </>}
           {stage === 'review' && filters.map((entry) => <Button key={entry.id} variant="ghost" size="compact" className={filter === entry.id ? 'active' : ''} onClick={() => { setFilter(entry.id); setFocusedId('') }}><span>{entry.label}</span><strong>{entry.count}</strong></Button>)}
           {stage === 'compare' && pendingGroups.length === 0 && <span className="ai-selection-filter-empty">没有待比较的相似组</span>}
           {stage === 'people' && session.faceGroups.length === 0 && <span className="ai-selection-filter-empty">分析后会显示人物分组</span>}
@@ -445,10 +456,10 @@ export function AiSelectionPage() {
       {stage === 'recommended' && <header className="ai-selection-view-heading"><div><h2>AI 推荐</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'scenes' && <header className="ai-selection-view-heading"><div><h2>全部素材</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'compare' && activeGroup && <header className="ai-selection-view-heading"><div><h2>相似素材比较</h2><span>{activeGroup.itemIds.length} 项</span></div>{selectAllAction}</header>}
-      {stage === 'people' && <header className="ai-selection-view-heading"><div><h2>{activeFaceGroup?.name ?? '人物分组'}</h2><span>{activeFaceGroup ? `${visibleItems.length} 项` : '尚未分析'}</span></div><div className="ai-selection-view-actions">
+      {stage === 'people' && <header className="ai-selection-view-heading"><div><h2>{activeCoPhotoGroup?.name ?? activeFaceGroup?.name ?? '人物分组'}</h2><span>{activeCoPhotoGroup || activeFaceGroup ? `${visibleItems.length} 项` : '尚未分析'}</span></div><div className="ai-selection-view-actions">
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<Pencil size={14} />} disabled={busy} onClick={() => { setRenameValue(activeFaceGroup.name); setRenameOpen(true) }}>改名</Button>}
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<ImageIcon size={14} />} disabled={busy} onClick={() => setAvatarOpen(true)}>换头像</Button>}
-        {activeFaceGroup && <Button variant="secondary" size="compact" icon={<GitMerge size={14} />} disabled={busy || session.faceGroups.length < 2} onClick={() => { setMergeSourceId(''); setMergeOpen(true) }}>合并</Button>}
+        {activeFaceGroup && <Button variant="secondary" size="compact" icon={<GitMerge size={14} />} disabled={busy || (session.faceGroups.length < 2 && !activeFaceGroup.mergedMembers?.length)} onClick={() => setMergeOpen(true)}>合并</Button>}
         <Button variant="secondary" size="compact" icon={<RefreshCw size={14} />} disabled={busy || faceCandidateIds.length === 0} onClick={() => void controls.analyzePeople(faceCandidateIds)}>{session.faceGroups.length ? '重新分组' : '开始分析'}</Button>
       </div></header>}
       {stage === 'review' && <header className="ai-selection-view-heading"><div><h2>{filters.find((entry) => entry.id === filter)?.label}</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
@@ -479,10 +490,6 @@ export function AiSelectionPage() {
   <Dialog open={renameOpen} onOpenChange={setRenameOpen} title="人物名称" footer={<><Button variant="secondary" onClick={() => setRenameOpen(false)}>取消</Button><Button variant="primary" disabled={busy || !renameValue.trim()} onClick={async () => { if (!activeFaceGroup) return; if (await controls.renamePerson(activeFaceGroup.id, renameValue)) setRenameOpen(false) }}>保存</Button></>}>
     <div className="ai-selection-person-dialog"><Input variant="compact" fullWidth value={renameValue} maxLength={40} autoFocus onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && renameValue.trim() && activeFaceGroup) { void controls.renamePerson(activeFaceGroup.id, renameValue).then((saved) => { if (saved) setRenameOpen(false) }) } }} /></div>
   </Dialog>
-  <Dialog open={mergeOpen} onOpenChange={setMergeOpen} title={activeFaceGroup ? `将「${activeFaceGroup.name}」与谁合并？` : '合并人物'} footer={<><Button variant="secondary" onClick={() => setMergeOpen(false)}>取消</Button><Button variant="primary" disabled={busy || !mergeSourceId} onClick={async () => { if (!activeFaceGroup || !mergeSourceId) return; if (await controls.mergePeople(activeFaceGroup.id, mergeSourceId)) setMergeOpen(false) }}>合并</Button></>}>
-    <div className="ai-selection-person-merge-list">{session.faceGroups.filter((group) => group.id !== activeFaceGroup?.id).map((group) => <button key={group.id} type="button" className={mergeSourceId === group.id ? 'selected' : ''} onClick={() => setMergeSourceId(group.id)}>
-      <FaceGroupCover group={group} item={itemsById.get(group.coverItemId)} /><span>{group.name}</span><strong>{group.itemIds.length}</strong>
-    </button>)}</div>
-  </Dialog>
+  <AiPersonMergeDialog open={mergeOpen} onOpenChange={setMergeOpen} group={activeFaceGroup} groups={session.faceGroups} items={items} busy={busy} onMerge={(sourceGroupId) => activeFaceGroup ? controls.mergePeople(activeFaceGroup.id, sourceGroupId) : Promise.resolve(false)} onUnmerge={(memberIdentityId) => activeFaceGroup ? controls.unmergePerson(activeFaceGroup.id, memberIdentityId) : Promise.resolve(false)} />
   </section>
 }
