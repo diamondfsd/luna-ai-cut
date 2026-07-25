@@ -41,6 +41,7 @@ import {
   pixelStretchStateForAsset,
 } from './pixelStretchState'
 import './pixel-stretch.css'
+import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 
 const DEFAULT_INTENSITY = 100
 export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
@@ -272,7 +273,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   const outputSize = useMemo(() => sourceSize ? outputSizeForTransform(sourceSize, edit.pipeline.transform) : null, [edit.pipeline.transform, sourceSize])
   const baseLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
-    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark)
+    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, edit.pipeline, metadata, allowWatermark || usesCustomWatermark(edit.pipeline.watermark))
   }, [activeAsset, allowWatermark, edit.pipeline, metadata, sourceSize])
   const effectLayers = useMemo(() => activeMaskPath && subjectBounds && sourceSize
     ? buildPixelStretchLayers({ layers: baseLayers, maskPath: activeMaskPath, preset, angle, samplePosition, sampleEndPosition, sampleRangeStart, sampleRangeEnd, sampleControlStartOffset, sampleControlEndOffset, maskInverted: activeCreativeMaskLayer?.inverted, maskFeather: activeCreativeMaskLayer?.feather, subjectBounds, sourceAspect: sourceSize.width / sourceSize.height, flowShape, flowLength, flowCurve, flowWidth, flowEndWidth, flowPoints })

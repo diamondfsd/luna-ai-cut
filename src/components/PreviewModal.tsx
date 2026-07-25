@@ -13,6 +13,7 @@ import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS, lockDolbyVisionExportSettings } from '../shared/types'
 import type { DolbyVisionProbeResult, PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import { usesCustomWatermark } from '../shared/watermarkGeometry'
 import { Button, Dialog, toast } from '../ui'
 import '../styles/modal.css'
 
@@ -87,7 +88,7 @@ export function PreviewModal({
   const stageSource = toLocalPath(activeSourcePath)
   const proxyPreview = proxyPreviewPaths?.includes(currentFilePath) ?? false
   const currentSelected = selectionOverrides.get(currentFilePath) ?? isFileSelected?.(currentFilePath)
-  const allowWatermark = useLunaUltraWatermark(stageSource ? {
+  const allowBuiltinWatermark = useLunaUltraWatermark(stageSource ? {
     path: stageSource,
     kind: isVideoPath(stageSource) ? 'video' : 'image',
   } : null)
@@ -148,8 +149,16 @@ export function PreviewModal({
   }, [currentFilePath, displaySource, resolvedPath, stageSource])
 
   useEffect(() => {
-    if (!allowWatermark) setWatermarkLayers([])
-  }, [allowWatermark])
+    if (!allowBuiltinWatermark && !usesCustomWatermark(watermarkSettings)) setWatermarkLayers([])
+  }, [allowBuiltinWatermark, watermarkSettings])
+
+  useEffect(() => {
+    if (!watermarkSettings) return
+    const timer = window.setTimeout(() => {
+      void window.luna.saveSettings({ recentWatermarkSettings: watermarkSettings }).catch(() => {})
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [watermarkSettings])
 
   // WatermarkSettings onChange 回调
   function handleWatermarkChange(settings: WatermarkSettingsType, layer?: PreviewLayer) {
@@ -173,13 +182,13 @@ export function PreviewModal({
       const exportList = batchExportMode ? (filePathList ?? []) : [currentFilePath]
       const sources: BatchExportSource[] = await Promise.all(exportList.map(async (sourcePath) => {
         const resolution = await window.luna.workspace.getMediaResolution(sourcePath)
-        const canUseWatermark = await canUseLunaUltraWatermark(
+        const canUseBuiltinWatermark = await canUseLunaUltraWatermark(
           sourcePath,
           isVideoPath(sourcePath) ? 'video' : 'image',
         )
         return {
           sourcePath,
-          layers: buildExportLayers(sourcePath, resolution, canUseWatermark ? watermarkSettings : null),
+          layers: buildExportLayers(sourcePath, resolution, usesCustomWatermark(watermarkSettings) || canUseBuiltinWatermark ? watermarkSettings : null),
         }
       }))
 
@@ -226,6 +235,9 @@ export function PreviewModal({
                   mediaPath={stageSource}
                   proxyPreview={proxyPreview}
                   watermarkLayer={lightweightPreview ? watermarkLayers[0] : undefined}
+                  watermarkSettings={lightweightPreview ? watermarkSettings : undefined}
+                  watermarkEditable={Boolean(lightweightPreview && !previewOnly && watermarkSettings?.enabled && watermarkSettings.sourceKind === 'custom')}
+                  onWatermarkChange={lightweightPreview ? handleWatermarkChange : undefined}
                 />
               </div>
             ) : (
@@ -248,11 +260,13 @@ export function PreviewModal({
                 filePath={currentFilePath}
                 proxyPreview={proxyPreview}
                 onToggleCollapse={() => setInspectorOpen(false)}
-                header={!previewOnly && allowWatermark ? (
+                header={!previewOnly && stageSource ? (
                   <WatermarkSettings
+                    settings={watermarkSettings ?? undefined}
                     onChange={handleWatermarkChange}
                     filePath={stageSource ?? undefined}
                     mediaKind={isVideoPath(currentFilePath) ? 'video' : 'image'}
+                    allowBuiltin={allowBuiltinWatermark}
                   />
                 ) : undefined}
               />

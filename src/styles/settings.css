@@ -33,6 +33,31 @@
   background: var(--canvas);
 }
 
+.settings-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-group-heading .settings-group-title {
+  margin: 0;
+}
+
+.settings-row.settings-watermark-row {
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+}
+
+.settings-watermark-preview {
+  display: block;
+  width: 64px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  object-fit: contain;
+  background: repeating-conic-gradient(#dedee3 0 25%, #f7f7f8 0 50%) 50% / 10px 10px;
+}
+
 /* 设置行：标签区 | 操作区 */
 .settings-row {
   display: grid;

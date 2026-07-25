@@ -28,6 +28,7 @@ import {
 import { buildColorRevealLayers } from './colorRevealLayers'
 import { queueColorRevealBatchExport } from './colorRevealBatchExport'
 import './color-reveal.css'
+import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 
 type ColorRevealStageMode = 'two' | 'three'
 
@@ -178,7 +179,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
     : null, [pipeline.transform, sourceSize])
   const editedLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
-    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, pipeline, borderMetadata, allowWatermark)
+    return buildWorkspaceExportLayers(activeAsset.path, sourceSize, pipeline, borderMetadata, allowWatermark || usesCustomWatermark(pipeline.watermark))
   }, [activeAsset, allowWatermark, borderMetadata, pipeline, sourceSize])
 
   const buildEffectLayers = useCallback((forExport: boolean): PreviewLayer[] => {
