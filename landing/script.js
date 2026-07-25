@@ -41,6 +41,7 @@ const winCard = document.getElementById('dl-win')
 const macRegion = document.getElementById('dl-mac-region')
 const winRegion = document.getElementById('dl-win-region')
 const macChipSelect = document.getElementById('dl-mac-chip')
+const macChipSelector = document.getElementById('dl-mac-chip-selector')
 const macSubtitle = document.getElementById('dl-mac-subtitle')
 const macBadge = document.getElementById('dl-mac-badge')
 const macRecommendation = document.getElementById('dl-mac-recommendation')
@@ -70,6 +71,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     detectedChip = platform.chip
     chipDetectionConfidence = platform.confidence
     if (macRecommendation) macRecommendation.hidden = false
+    if (macChipSelector) {
+      macChipSelector.classList.toggle(
+        'is-auto-arm',
+        platform.chip === 'arm64' && platform.confidence === 'high',
+      )
+    }
   }
   updateChipUI()
 
