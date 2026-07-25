@@ -42,6 +42,7 @@
     "test:resource-packs": "node scripts/test-runtime-resource-packs.mjs",
     "test:resources": "node scripts/test-runtime-resource-service.mjs",
     "test:diagnostics": "node scripts/test-crash-diagnostics.mjs",
+    "test:landing": "node scripts/test-landing-platform.mjs",
     "test:protocol": "node scripts/verify-luna-protocol.mjs",
     "mock:luna": "node luna_mock_server/server.mjs",
     "pack:mac:arm64": "node scripts/build-native.mjs && pnpm run build:app && node scripts/copy-ffmpeg.mjs --target darwin --arch arm64 && env -u CSC_NAME -u CSC_LINK -u CSC_KEY_PASSWORD CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_ALLOW_HARD_LINKS=false electron-builder --mac dmg --arm64 --publish never",

@@ -1,3 +1,5 @@
+import { detectDownloadPlatform } from './download-platform.js'
+
 // Luna AI Cut — Landing Page Script
 //
 // 每次本地发版后，deploy-release.sh 会自动更新下方
@@ -30,46 +32,8 @@ function isSetupExe(name) {
   return /Setup.*\.exe$/i.test(name) || /LunaAICut.*\.exe$/i.test(name)
 }
 
-// ── Mac 芯片类型检测 ──────────────────────────────────
-// 优先使用 User-Agent Client Hints（高熵 API），否则回退
-let detectedChip = 'arm64' // 默认
-
-async function detectMacChip() {
-  try {
-    // 只在 Mac 上检测
-    if (!/macintosh|mac os x/i.test(navigator.userAgent)) return
-
-    // 方案 1：User-Agent Client Hints 高熵 API（Chrome 90+/Edge 90+）
-    if (navigator.userAgentData && typeof navigator.userAgentData.getHighEntropyValues === 'function') {
-      const hints = await navigator.userAgentData.getHighEntropyValues(['architecture'])
-      if (hints.architecture === 'arm') {
-        detectedChip = 'arm64'
-        return
-      }
-    }
-
-    // 方案 2：检测 Rosetta 2 翻译层（Intel 芯片跑 ARM 编译的浏览器）
-    // 如果 navigator.userAgent 包含 "Intel" 则大概率是 Intel
-    if (/intel/i.test(navigator.userAgent) || /x86_64|i686|amd64/i.test(navigator.userAgent)) {
-      detectedChip = 'x64'
-      return
-    }
-
-    // 方案 3：platform 检测
-    if (navigator.platform && (
-      navigator.platform.indexOf('Win') === 0 ||
-      navigator.platform.indexOf('Mac') === -1
-    )) {
-      detectedChip = 'x64'
-      return
-    }
-
-    // M 系列 Mac 的 platform 通常为 "MacIntel"（兼容模式），无法区分
-    // 保持默认 arm64
-  } catch {
-    // 检测失败，保持默认 arm64
-  }
-}
+let detectedChip = 'arm64'
+let chipDetectionConfidence = 'recommended'
 
 // ── DOM 引用 ──────────────────────────────────────────
 const macCard = document.getElementById('dl-mac')
@@ -79,6 +43,7 @@ const winRegion = document.getElementById('dl-win-region')
 const macChipSelect = document.getElementById('dl-mac-chip')
 const macSubtitle = document.getElementById('dl-mac-subtitle')
 const macBadge = document.getElementById('dl-mac-badge')
+const macRecommendation = document.getElementById('dl-mac-recommendation')
 
 document.addEventListener('DOMContentLoaded', async () => {
   // ── 平滑滚动 ──
@@ -100,13 +65,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ── 检测芯片类型 ──
-  await detectMacChip()
+  const platform = await detectDownloadPlatform()
+  if (platform.platform === 'mac') {
+    detectedChip = platform.chip
+    chipDetectionConfidence = platform.confidence
+    if (macRecommendation) macRecommendation.hidden = false
+  }
   updateChipUI()
 
   // ── 芯片选择切换 ──
   if (macChipSelect) {
     macChipSelect.addEventListener('change', () => {
       macChipSelect.dataset.userChanged = 'true'
+      chipDetectionConfidence = 'manual'
       updateChipUI()
       setDownloadLinks()
     })
@@ -131,6 +102,16 @@ function updateChipUI() {
   }
   if (macBadge) {
     macBadge.textContent = chip === 'arm64' ? '.dmg · ARM64 · 免费' : '.dmg · x64 · 免费'
+  }
+  if (macRecommendation) {
+    const chipName = chip === 'arm64' ? 'Apple 芯片版' : 'Intel 版'
+    if (chipDetectionConfidence === 'manual') {
+      macRecommendation.textContent = `已选择 ${chipName}`
+    } else if (chipDetectionConfidence === 'high') {
+      macRecommendation.textContent = `已识别此 Mac，为你推荐 ${chipName}`
+    } else {
+      macRecommendation.textContent = `浏览器未提供芯片型号，优先推荐 ${chipName}`
+    }
   }
 }
 

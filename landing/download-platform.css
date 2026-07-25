@@ -1,0 +1,7 @@
+.dl-recommendation {
+  min-height: 20px;
+  margin: 0 0 6px;
+  color: var(--blue-on-dark);
+  font-size: 12px;
+  line-height: 1.5;
+}
