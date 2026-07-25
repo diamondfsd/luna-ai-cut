@@ -1,9 +1,9 @@
 import type { WatermarkPlacement, WatermarkPosition, WatermarkPositioning, WatermarkSettings } from './types'
 
-export const DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE = 0.391
+export const DEFAULT_WATERMARK_WIDTH_RATIO = 0.3
 export const DEFAULT_WATERMARK_INSET_ON_SHORT_EDGE = 0.059
-export const MIN_WATERMARK_SIZE_ON_SHORT_EDGE = 0.08
-export const MAX_WATERMARK_SIZE_ON_SHORT_EDGE = 0.8
+export const MIN_WATERMARK_WIDTH_RATIO = 0.08
+export const MAX_WATERMARK_WIDTH_RATIO = 0.8
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -67,17 +67,13 @@ export function resolveWatermarkPositioning(
   const imageWidth = Math.max(1, finiteOr(settings.imageWidth ?? settings.customAsset?.width, 4))
   const imageHeight = Math.max(1, finiteOr(settings.imageHeight ?? settings.customAsset?.height, 1))
   const imageAspect = imageWidth / imageHeight
-  const requestedSize = clamp(
-    finiteOr(settings.sizeOnShortEdge, DEFAULT_WATERMARK_SIZE_ON_SHORT_EDGE),
-    MIN_WATERMARK_SIZE_ON_SHORT_EDGE,
-    MAX_WATERMARK_SIZE_ON_SHORT_EDGE,
+  const requestedWidth = clamp(
+    finiteOr(settings.sizeOnCanvasWidth, DEFAULT_WATERMARK_WIDTH_RATIO),
+    MIN_WATERMARK_WIDTH_RATIO,
+    MAX_WATERMARK_WIDTH_RATIO,
   )
-  const maxEdgeWidthFactor = imageAspect >= 1 ? 1 : imageAspect
-  const maxEdgeHeightFactor = imageAspect >= 1 ? 1 / imageAspect : 1
-  const maxSizeForWidth = 0.96 * safeCanvasWidth / (shortEdge * maxEdgeWidthFactor)
-  const maxSizeForHeight = 0.96 * safeCanvasHeight / (shortEdge * maxEdgeHeightFactor)
-  const resolvedSize = Math.min(requestedSize, maxSizeForWidth, maxSizeForHeight)
-  const targetWidth = resolvedSize * shortEdge * maxEdgeWidthFactor / safeCanvasWidth
+  const maxWidthForHeight = 0.96 * safeCanvasHeight * imageAspect / safeCanvasWidth
+  const targetWidth = Math.min(requestedWidth, 0.96, maxWidthForHeight)
   const targetHeight = targetWidth * safeCanvasWidth / safeCanvasHeight / imageAspect
   const placement = effectiveWatermarkPlacement(settings)
 

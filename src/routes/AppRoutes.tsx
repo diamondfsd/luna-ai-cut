@@ -96,6 +96,7 @@ export function AppRoutes() {
   const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
 
   // ── 特殊处理 ──
+  if (location.pathname === '/') return <Navigate to="/library" replace />
   if (isActive('/downloads')) return <Navigate to="/local-resources" replace />
   if (!isKnownRoute) return <Navigate to={developerMode ? '/developer' : '/library'} replace />
 
