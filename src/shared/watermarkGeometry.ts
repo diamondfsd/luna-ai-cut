@@ -1,6 +1,6 @@
 import type { WatermarkPlacement, WatermarkPosition, WatermarkPositioning, WatermarkSettings } from './types'
 
-export const DEFAULT_WATERMARK_WIDTH_RATIO = 0.3
+export const DEFAULT_WATERMARK_WIDTH_RATIO = 0.23
 export const DEFAULT_WATERMARK_INSET_ON_SHORT_EDGE = 0.059
 export const MIN_WATERMARK_WIDTH_RATIO = 0.08
 export const MAX_WATERMARK_WIDTH_RATIO = 0.8
