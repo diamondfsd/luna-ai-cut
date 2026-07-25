@@ -13,6 +13,8 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
   src: string
   /** 距离最近滚动容器可视区域多远时开始加载，默认 300px */
   preloadMargin?: number
+  /** 仅向滚动方向下方提前加载；设置后覆盖 preloadMargin 的全方向边距 */
+  preloadBottom?: number
   /** 自动重试后仍无法加载时显示的内容；未提供时继续显示默认占位图 */
   unavailableFallback?: ReactNode
   /** 自动重试后仍无法加载时触发 */
@@ -31,7 +33,7 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
  * <ThumbImage src="/path/to/photo.jpg" className="thumb-img" alt="" draggable={false} />
  * ```
  */
-export function ThumbImage({ src, preloadMargin = 300, unavailableFallback, onUnavailable, onError, onLoad, ...imgProps }: ThumbImageProps) {
+export function ThumbImage({ src, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onError, onLoad, ...imgProps }: ThumbImageProps) {
   const embeddedImage = src.startsWith('data:image/')
   const [visible, setVisible] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
@@ -84,9 +86,13 @@ export function ThumbImage({ src, preloadMargin = 300, unavailableFallback, onUn
       left: 0,
     }
     const rect = el.getBoundingClientRect()
+    const topMargin = preloadBottom == null ? preloadMargin : 0
+    const rightMargin = preloadBottom == null ? preloadMargin : 0
+    const bottomMargin = preloadBottom ?? preloadMargin
+    const leftMargin = preloadBottom == null ? preloadMargin : 0
     if (rect.width > 0 && rect.height > 0
-      && rect.bottom >= rootRect.top - preloadMargin && rect.top <= rootRect.bottom + preloadMargin
-      && rect.right >= rootRect.left - preloadMargin && rect.left <= rootRect.right + preloadMargin) {
+      && rect.bottom >= rootRect.top - topMargin && rect.top <= rootRect.bottom + bottomMargin
+      && rect.right >= rootRect.left - leftMargin && rect.left <= rootRect.right + rightMargin) {
       setVisible(true)
       return
     }
@@ -97,11 +103,11 @@ export function ThumbImage({ src, preloadMargin = 300, unavailableFallback, onUn
           observer.disconnect()
         }
       },
-      { root: scrollRoot, rootMargin: `${preloadMargin}px` },
+      { root: scrollRoot, rootMargin: `${topMargin}px ${rightMargin}px ${bottomMargin}px ${leftMargin}px` },
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [preloadMargin, visible])
+  }, [preloadBottom, preloadMargin, visible])
 
   return unavailable && unavailableFallback ? unavailableFallback : (
     <img
