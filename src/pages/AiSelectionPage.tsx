@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, CheckCircle2, CircleAlert, GitMerge, Grid2X2, Images, Layers3, ListChecks, Pause, Pencil, Play, RefreshCw, Settings2, Sparkles, Square, Users } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, CircleAlert, GitMerge, Grid2X2, Image as ImageIcon, Images, Layers3, ListChecks, Pause, Pencil, Play, RefreshCw, Settings2, Sparkles, Square, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { AiSelectionTaskPicker } from '../ai-selection/AiSelectionTaskPicker'
+import { AiPersonAvatarDialog } from '../ai-selection/AiPersonAvatarDialog'
+import { AiSelectionSettingsDialog } from '../ai-selection/AiSelectionSettingsDialog'
 import { isAiRecommended, isReviewItem, matchesResultFilter, type AiSelectionResultFilter } from '../ai-selection/aiSelectionView'
 import { useAiSelection } from '../ai-selection/useAiSelection'
 import { MediaCard } from '../components/MediaCard'
 import { ThumbImage } from '../components/ThumbImage'
 import { showPreviewModal } from '../components/previewModalService'
-import type { AiFaceGroup, AiSelectionItem, AiSelectionPurpose, AiSelectionState, AiSelectionTarget, LunaFile } from '../shared/types'
-import { Button, ButtonGroup, Dialog, Input, LoadingIndicator, Select, toast } from '../ui'
+import type { AiFaceGroup, AiSelectionItem, AiSelectionState, LunaFile } from '../shared/types'
+import { Button, Dialog, Input, LoadingIndicator, toast } from '../ui'
 import '../styles/ai-selection.css'
 
 type SelectionStage = 'overview' | 'recommended' | 'scenes' | 'compare' | 'people' | 'review'
@@ -81,10 +83,11 @@ function mediaFileForSelection(item: AiSelectionItem): LunaFile {
 }
 
 function FaceGroupCover({ group, item }: { group: AiFaceGroup; item: AiSelectionItem | undefined }) {
-  if (!item) return <span className="ai-selection-face-group-cover" />
+  const source = group.coverUrl ?? item?.thumbnailUrl ?? item?.path
+  if (!source) return <span className="ai-selection-face-group-cover" />
   const bounds = group.coverBounds
   return <span className="ai-selection-face-group-cover"><ThumbImage
-    src={item.thumbnailUrl ?? item.path}
+    src={source}
     alt=""
     style={{
       width: `${100 / bounds.width}%`,
@@ -106,12 +109,14 @@ export function AiSelectionPage() {
   const [filter, setFilter] = useState<AiSelectionResultFilter>('attention')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
+  const [avatarOpen, setAvatarOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [mergeOpen, setMergeOpen] = useState(false)
   const [mergeSourceId, setMergeSourceId] = useState('')
   const resultsContentRef = useRef<HTMLDivElement>(null)
   const filterRailRef = useRef<HTMLElement>(null)
   const sceneScrollFrameRef = useRef(0)
+  const filterRailScrollFrameRef = useRef(0)
   const sceneNavigationTargetRef = useRef<string | null>(null)
   const navigate = useNavigate()
 
@@ -255,17 +260,26 @@ export function AiSelectionPage() {
       .find((candidate) => candidate.dataset.sceneNavId === activeScene.id)
     if (!rail || !activeItem) return
 
-    const frame = window.requestAnimationFrame(() => {
-      const railRect = rail.getBoundingClientRect()
-      const itemRect = activeItem.getBoundingClientRect()
-      const centeredTop = rail.scrollTop + itemRect.top - railRect.top - (rail.clientHeight - itemRect.height) / 2
-      const maxScrollTop = Math.max(0, rail.scrollHeight - rail.clientHeight)
-      rail.scrollTo({
-        top: Math.min(maxScrollTop, Math.max(0, centeredTop)),
-        behavior: 'smooth',
-      })
-    })
-    return () => window.cancelAnimationFrame(frame)
+    window.cancelAnimationFrame(filterRailScrollFrameRef.current)
+    const startTop = rail.scrollTop
+    const railRect = rail.getBoundingClientRect()
+    const itemRect = activeItem.getBoundingClientRect()
+    const centeredTop = startTop + itemRect.top - railRect.top - (rail.clientHeight - itemRect.height) / 2
+    const maxScrollTop = Math.max(0, rail.scrollHeight - rail.clientHeight)
+    const targetTop = Math.min(maxScrollTop, Math.max(0, centeredTop))
+    const distance = targetTop - startTop
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 80
+    const startTime = performance.now()
+    const animate = (now: number) => {
+      const progress = duration === 0 ? 1 : Math.min(1, (now - startTime) / duration)
+      const eased = 1 - (1 - progress) ** 3
+      rail.scrollTop = startTop + distance * eased
+      if (progress < 1) filterRailScrollFrameRef.current = window.requestAnimationFrame(animate)
+    }
+    filterRailScrollFrameRef.current = window.requestAnimationFrame(animate)
+    return () => {
+      window.cancelAnimationFrame(filterRailScrollFrameRef.current)
+    }
   }, [activeScene, stage])
 
   if (!session) return <section className="ai-selection-page"><AiSelectionTaskPicker sessions={sessions} loading={loadingSessions} busy={busy} onOpenTask={(id) => void selectSession(id)} onCreateTask={startTask} onRemoveTask={removeSession} /></section>
@@ -295,25 +309,34 @@ export function AiSelectionPage() {
     setSceneId(nextSceneId)
     setFocusedId('')
     if (!content || !section) return
-    const contentRect = content.getBoundingClientRect()
-    const sectionRect = section.getBoundingClientRect()
-    const targetTop = content.scrollTop + sectionRect.top - contentRect.top - 14
-    const clampedTarget = Math.min(content.scrollHeight - content.clientHeight, Math.max(0, targetTop))
     const startTop = content.scrollTop
-    const distance = clampedTarget - startTop
+    const resolveTargetTop = () => {
+      const contentRect = content.getBoundingClientRect()
+      const sectionRect = section.getBoundingClientRect()
+      const targetTop = content.scrollTop + sectionRect.top - contentRect.top - 14
+      return Math.min(content.scrollHeight - content.clientHeight, Math.max(0, targetTop))
+    }
     const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180
     const startTime = performance.now()
 
     window.cancelAnimationFrame(sceneScrollFrameRef.current)
     sceneNavigationTargetRef.current = nextSceneId
+    const settleAtLatestPosition = (framesRemaining: number) => {
+      content.scrollTop = resolveTargetTop()
+      if (framesRemaining > 0) {
+        sceneScrollFrameRef.current = window.requestAnimationFrame(() => settleAtLatestPosition(framesRemaining - 1))
+      } else {
+        sceneNavigationTargetRef.current = null
+      }
+    }
     const animate = (now: number) => {
       const progress = duration === 0 ? 1 : Math.min(1, (now - startTime) / duration)
       const eased = 1 - (1 - progress) ** 3
-      content.scrollTop = startTop + distance * eased
+      content.scrollTop = startTop + (resolveTargetTop() - startTop) * eased
       if (progress < 1) {
         sceneScrollFrameRef.current = window.requestAnimationFrame(animate)
       } else {
-        sceneNavigationTargetRef.current = null
+        settleAtLatestPosition(2)
       }
     }
     sceneScrollFrameRef.current = window.requestAnimationFrame(animate)
@@ -424,6 +447,7 @@ export function AiSelectionPage() {
       {stage === 'compare' && activeGroup && <header className="ai-selection-view-heading"><div><h2>相似素材比较</h2><span>{activeGroup.itemIds.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'people' && <header className="ai-selection-view-heading"><div><h2>{activeFaceGroup?.name ?? '人物分组'}</h2><span>{activeFaceGroup ? `${visibleItems.length} 项` : '尚未分析'}</span></div><div className="ai-selection-view-actions">
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<Pencil size={14} />} disabled={busy} onClick={() => { setRenameValue(activeFaceGroup.name); setRenameOpen(true) }}>改名</Button>}
+        {activeFaceGroup && <Button variant="secondary" size="compact" icon={<ImageIcon size={14} />} disabled={busy} onClick={() => setAvatarOpen(true)}>换头像</Button>}
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<GitMerge size={14} />} disabled={busy || session.faceGroups.length < 2} onClick={() => { setMergeSourceId(''); setMergeOpen(true) }}>合并</Button>}
         <Button variant="secondary" size="compact" icon={<RefreshCw size={14} />} disabled={busy || faceCandidateIds.length === 0} onClick={() => void controls.analyzePeople(faceCandidateIds)}>{session.faceGroups.length ? '重新分组' : '开始分析'}</Button>
       </div></header>}
@@ -450,7 +474,8 @@ export function AiSelectionPage() {
       </div>
     </main>
   </div>
-  <SelectionSettings open={settingsOpen} onOpenChange={setSettingsOpen} selection={selection} />
+  <AiSelectionSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} selection={selection} />
+  <AiPersonAvatarDialog open={avatarOpen} onOpenChange={setAvatarOpen} group={activeFaceGroup} items={items} busy={busy} onSave={(itemId, bounds) => activeFaceGroup ? controls.setPersonAvatar(activeFaceGroup.id, itemId, bounds) : Promise.resolve(false)} />
   <Dialog open={renameOpen} onOpenChange={setRenameOpen} title="人物名称" footer={<><Button variant="secondary" onClick={() => setRenameOpen(false)}>取消</Button><Button variant="primary" disabled={busy || !renameValue.trim()} onClick={async () => { if (!activeFaceGroup) return; if (await controls.renamePerson(activeFaceGroup.id, renameValue)) setRenameOpen(false) }}>保存</Button></>}>
     <div className="ai-selection-person-dialog"><Input variant="compact" fullWidth value={renameValue} maxLength={40} autoFocus onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && renameValue.trim() && activeFaceGroup) { void controls.renamePerson(activeFaceGroup.id, renameValue).then((saved) => { if (saved) setRenameOpen(false) }) } }} /></div>
   </Dialog>
@@ -460,21 +485,4 @@ export function AiSelectionPage() {
     </button>)}</div>
   </Dialog>
   </section>
-}
-
-function SelectionSettings({ open, onOpenChange, selection }: { open: boolean; onOpenChange: (open: boolean) => void; selection: ReturnType<typeof useAiSelection> }) {
-  const { session, preset, setPreset, purpose, setPurpose, target, setTarget, controls } = selection
-  const [targetValue, setTargetValue] = useState(String(target.value ? target.mode === 'ratio' ? target.value * 100 : target.value : ''))
-  if (!session) return null
-  function updateTarget(mode: AiSelectionTarget['mode'], raw = targetValue): void {
-    const value = mode === 'preset' ? null : mode === 'ratio' ? Number(raw || 0) / 100 : Number(raw || 0)
-    const next = { mode, value } as AiSelectionTarget
-    setTarget(next); void controls.apply({ type: 'set-target', target: next })
-  }
-  return <Dialog open={open} onOpenChange={onOpenChange} title="选片设置" className="ai-selection-settings-dialog" footer={<Button variant="primary" onClick={() => onOpenChange(false)}>完成</Button>}><div className="ai-selection-settings-body">
-    <label><span>选片重点</span><Select variant="compact" fullWidth value={session.purpose ?? purpose} options={[{ value: 'general', label: '快速精选' }, { value: 'people', label: '人物照片' }, { value: 'travel', label: '旅行记录' }, { value: 'editing', label: '剪辑素材' }]} onValueChange={(value) => { const next = value as AiSelectionPurpose; setPurpose(next); void controls.apply({ type: 'set-purpose', purpose: next }) }} /></label>
-    <label><span>建议数量</span><ButtonGroup options={[{ value: 'quick', label: '少' }, { value: 'balanced', label: '适中' }, { value: 'deep', label: '多' }]} value={session.preset ?? preset} onChange={(value) => { const next = value as typeof preset; setPreset(next); void controls.apply({ type: 'set-preset', preset: next }) }} /></label>
-    <label><span>选片目标</span><ButtonGroup options={[{ value: 'preset', label: '自动' }, { value: 'count', label: '数量' }, { value: 'ratio', label: '比例' }]} value={session.target.mode} onChange={(value) => updateTarget(value as AiSelectionTarget['mode'])} /></label>
-    {session.target.mode !== 'preset' && <label><span>{session.target.mode === 'count' ? '目标数量' : '目标比例'}</span><Input variant="compact" value={targetValue} onChange={(event) => setTargetValue(event.target.value.replace(/\D/g, ''))} onBlur={() => updateTarget(session.target.mode)} placeholder={session.target.mode === 'count' ? '张/段' : '%'} /></label>}
-  </div></Dialog>
 }

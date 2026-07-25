@@ -1,0 +1,17 @@
+.ai-person-avatar-dialog.ui-dialog-content { width: min(820px, 92vw); }
+.ai-person-avatar-body { min-height: 430px; padding: 16px; display: grid; grid-template-columns: 156px minmax(0, 1fr); gap: 16px; }
+.ai-person-avatar-candidates { min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.ai-person-avatar-candidates > strong { font-size: 12px; }
+.ai-person-avatar-candidates > div { min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 6px; }
+.ai-person-avatar-candidates button { padding: 2px; aspect-ratio: 1; overflow: hidden; border: 2px solid transparent; border-radius: 6px; background: #e5e7ea; cursor: pointer; }
+.ai-person-avatar-candidates button.selected { border-color: var(--blue, #06c); }
+.ai-person-avatar-candidates img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ai-person-avatar-editor { min-width: 0; min-height: 0; border-left: 1px solid var(--border, #d9dce2); padding-left: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ai-person-avatar-tools { width: 100%; display: flex; justify-content: flex-end; gap: 4px; }
+.ai-person-avatar-image { position: relative; width: min(100%, 560px); max-height: 360px; overflow: hidden; background: #171719; touch-action: none; }
+.ai-person-avatar-image > img { width: 100%; height: 100%; object-fit: fill; display: block; user-select: none; }
+.ai-person-avatar-crop { position: absolute; border: 2px solid white; border-radius: 4px; box-shadow: 0 0 0 999px rgba(0, 0, 0, .52); box-sizing: border-box; cursor: move; touch-action: none; }
+.ai-person-avatar-crop::before, .ai-person-avatar-crop::after { content: ''; position: absolute; background: rgba(255, 255, 255, .55); pointer-events: none; }
+.ai-person-avatar-crop::before { top: 33.333%; bottom: 33.333%; left: 0; right: 0; border-top: 1px solid rgba(255,255,255,.55); border-bottom: 1px solid rgba(255,255,255,.55); background: transparent; }
+.ai-person-avatar-crop::after { left: 33.333%; right: 33.333%; top: 0; bottom: 0; border-left: 1px solid rgba(255,255,255,.55); border-right: 1px solid rgba(255,255,255,.55); background: transparent; }
+@media (max-width: 680px) { .ai-person-avatar-body { grid-template-columns: 1fr; } .ai-person-avatar-candidates > div { grid-template-columns: repeat(5, minmax(0, 1fr)); } .ai-person-avatar-editor { border-left: 0; border-top: 1px solid var(--border, #d9dce2); padding: 12px 0 0; } }

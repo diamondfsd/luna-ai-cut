@@ -258,6 +258,7 @@ const globalIdentityGroups = buildFaceGroups(faceItems, [{
   id: 'person-global',
   name: '家人',
   samples: [faceVector(127, 0), faceVector(0, 127)],
+  avatarDataUrl: null,
   createdAt: '2026-07-18T00:00:00.000Z',
   updatedAt: '2026-07-18T00:00:00.000Z',
 }])
@@ -268,10 +269,13 @@ assert.equal(globalIdentityGroups[0].identityId, 'person-global')
 const peopleStoreRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'luna-ai-selection-people-'))
 try {
   const registeredIdentity = createPersonIdentity('人物 1', faceVector(127, 0))
+  registeredIdentity.avatarDataUrl = `data:image/jpeg;base64,${Buffer.from('avatar').toString('base64')}`
   await savePeopleStore(peopleStoreRoot, [registeredIdentity])
   const reloadedIdentities = await loadPeopleStore(peopleStoreRoot)
+  assert.equal(reloadedIdentities[0].avatarDataUrl, registeredIdentity.avatarDataUrl, '人物头像 Base64 应随人物库持久化')
   const reusedGroups = buildFaceGroups([faceItems[1]], reloadedIdentities)
   assert.equal(reusedGroups[0].identityId, registeredIdentity.id, '重新加载人物库后应复用已登记的全局身份')
+  assert.equal(reusedGroups[0].coverUrl, registeredIdentity.avatarDataUrl, '重新分组后应继续使用持久化头像')
 } finally {
   await fs.rm(peopleStoreRoot, { recursive: true, force: true })
 }
