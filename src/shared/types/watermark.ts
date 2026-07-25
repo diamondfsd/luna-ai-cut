@@ -35,7 +35,7 @@ export interface WatermarkSettings {
   /** 缺省表示旧版内置水印，保证历史项目继续使用原几何。 */
   sourceKind?: 'builtin' | 'custom'
   customAsset?: CustomWatermarkAsset
-  /** 水印宽度占可见画面短边的比例。 */
+  /** 水印显示最大边占可见画面短边的比例。 */
   sizeOnShortEdge?: number
   /** 自定义几何；缺省时继续使用旧 position。 */
   placement?: WatermarkPlacement

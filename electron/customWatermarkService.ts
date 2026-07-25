@@ -4,7 +4,7 @@ import { access, copyFile, mkdir, readFile, rename, rm, stat } from 'node:fs/pro
 import path from 'node:path'
 
 import type { CustomWatermarkAsset } from '../src/shared/types'
-import { addCustomWatermarkAsset } from '../src/shared/watermarkLibrary'
+import { addCustomWatermarkAssets } from '../src/shared/watermarkLibrary'
 import { getSettings, saveSettings } from './settingsService'
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -76,17 +76,17 @@ export async function importCustomWatermark(sourcePath: string): Promise<CustomW
   }
 }
 
-export async function chooseCustomWatermark(): Promise<CustomWatermarkAsset | null> {
+export async function chooseCustomWatermarks(): Promise<CustomWatermarkAsset[]> {
   const result = await dialog.showOpenDialog({
-    properties: ['openFile'],
-    title: '选择自定义水印',
+    properties: ['openFile', 'multiSelections'],
+    title: '选择自定义水印图片',
     filters: [{ name: '水印图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
   })
-  if (result.canceled || result.filePaths.length === 0) return null
-  const asset = await importCustomWatermark(result.filePaths[0])
+  if (result.canceled || result.filePaths.length === 0) return []
+  const assets = await Promise.all(result.filePaths.map(importCustomWatermark))
   const settings = await getSettings()
   await saveSettings({
-    customWatermarkAssets: addCustomWatermarkAsset(settings.customWatermarkAssets ?? [], asset),
+    customWatermarkAssets: addCustomWatermarkAssets(settings.customWatermarkAssets ?? [], assets),
   })
-  return asset
+  return assets
 }

@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 
-import { chooseCustomWatermark } from './customWatermarkService'
+import { chooseCustomWatermarks } from './customWatermarkService'
 
 export function register(): void {
-  ipcMain.handle('watermark:chooseCustom', () => chooseCustomWatermark())
+  ipcMain.handle('watermark:chooseCustom', () => chooseCustomWatermarks())
 }
