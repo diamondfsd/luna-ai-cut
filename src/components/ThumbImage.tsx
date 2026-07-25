@@ -32,11 +32,12 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
  * ```
  */
 export function ThumbImage({ src, preloadMargin = 300, unavailableFallback, onUnavailable, onError, onLoad, ...imgProps }: ThumbImageProps) {
+  const embeddedImage = src.startsWith('data:image/')
   const [visible, setVisible] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const retryCountRef = useRef(0)
-  const { thumbnailUrl, hasError, retry } = useFileCache(src, visible)
+  const { thumbnailUrl, hasError, retry } = useFileCache(src, visible && !embeddedImage)
 
   useEffect(() => {
     retryCountRef.current = 0
@@ -105,7 +106,7 @@ export function ThumbImage({ src, preloadMargin = 300, unavailableFallback, onUn
   return unavailable && unavailableFallback ? unavailableFallback : (
     <img
       ref={imgRef}
-      src={thumbnailUrl ?? PLACEHOLDER_DATA_URL}
+      src={embeddedImage ? src : thumbnailUrl ?? PLACEHOLDER_DATA_URL}
       onError={(event) => {
         onError?.(event)
         if (thumbnailUrl) retryOnce()

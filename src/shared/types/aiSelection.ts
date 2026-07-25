@@ -171,7 +171,9 @@ export interface AiFaceGroup {
   name: string
   itemIds: string[]
   coverItemId: string
+  coverUrl: string | null
   coverBounds: { x: number; y: number; width: number; height: number }
+  memberFaces: Array<{ itemId: string; bounds: { x: number; y: number; width: number; height: number } }>
 }
 
 export interface AiSelectionCounts {
