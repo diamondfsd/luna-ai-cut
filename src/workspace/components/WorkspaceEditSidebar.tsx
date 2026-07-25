@@ -102,10 +102,11 @@ interface WorkspaceEditSidebarProps {
   duration: number
   onTrimSeek: (time: number) => void
   allowWatermark: boolean
+  allowBuiltinWatermark: boolean
   runtimeResourceLoading?: { fonts: boolean; luts: boolean }
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWatermark, runtimeResourceLoading }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWatermark, allowBuiltinWatermark, runtimeResourceLoading }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -342,6 +343,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
                 onChange={handleWatermarkChange}
                 filePath={mediaCtx.activeMedia?.path}
                 mediaKind={mediaCtx.activeMedia?.kind}
+                allowBuiltin={allowBuiltinWatermark}
               />
             </Accordion>
           )}

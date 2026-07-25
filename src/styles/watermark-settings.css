@@ -1,54 +1,199 @@
-.wm-position-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.wm-position-row {
-  display: flex;
-  gap: 6px;
-}
-.wm-position-row .wm-pos-cell {
-  flex: 1;
-}
-.wm-pos-cell {
+.wm-settings-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: var(--parchment);
-  border: 1.5px solid transparent;
-  cursor: pointer;
-  padding: 2px;
-  min-height: 36px;
-  transition: background 0.12s, border-color 0.12s;
+  justify-content: space-between;
 }
-.wm-pos-cell:hover {
-  background: #e8e8ed;
+
+.wm-settings-content {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
 }
-.wm-pos-cell.active {
-  background: #e0e7ff;
-  border-color: var(--blue);
-}
-.wm-pos-placeholder {
-  pointer-events: none;
-  background: transparent !important;
-  border-color: transparent !important;
-}
-.wm-pos-frame {
+
+.wm-source-selector,
+.wm-style-selector {
   width: 100%;
+}
+
+.wm-source-row {
+  min-width: 0;
+}
+
+.wm-source-row.has-search {
+  display: grid;
+  grid-template-columns: minmax(132px, 0.9fr) minmax(120px, 1.1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.wm-custom-search {
+  min-width: 0;
+}
+
+.wm-style-thumb {
+  display: block;
+  width: 72px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.wm-custom-library {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wm-custom-options {
+  display: grid;
+  max-height: 164px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding-right: 2px;
+  overflow-y: auto;
+}
+
+.wm-custom-option {
+  display: flex;
+  min-width: 0;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.wm-custom-option:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.wm-custom-option.active {
+  border-color: var(--blue);
+  background: #e7f1fb;
+}
+
+.wm-custom-option:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.wm-custom-option img {
+  display: block;
+  width: 100%;
+  height: 42px;
+  border-radius: 3px;
+  object-fit: contain;
+  background: transparent;
+}
+
+.wm-position-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  aspect-ratio: 16 / 7;
+}
+
+.wm-pos-cell {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 0;
+  background: #ededf0;
+  cursor: pointer;
+}
+
+.wm-pos-placeholder {
+  min-height: 32px;
+}
+
+.wm-pos-cell:hover {
+  background: #e1e1e5;
+}
+
+.wm-pos-cell.active {
+  border-color: var(--blue);
+  background: #e7f1fb;
+}
+
+.wm-pos-cell:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.wm-pos-dot {
+  width: 18px;
+  height: 9px;
+  border-radius: 2px;
+  background: #9a9aa1;
+}
+
+.wm-pos-cell.active .wm-pos-dot {
+  background: var(--blue);
+}
+
+.wm-slider-field {
+  display: grid;
+  gap: 6px;
+}
+
+.wm-slider-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wm-slider-root {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 20px;
+  align-items: center;
+  touch-action: none;
+  user-select: none;
+}
+
+.wm-slider-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #d8d8dc;
+}
+
+.wm-slider-range {
+  position: absolute;
   height: 100%;
-  color: var(--text);
+  border-radius: inherit;
+  background: var(--blue);
 }
-.wm-pos-frame rect {
-  fill: #c4c4c6;
-  opacity: 0.6;
-  transition: fill 0.12s, opacity 0.12s;
+
+.wm-slider-thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  outline: none;
+  background: var(--blue);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  cursor: grab;
 }
-.wm-pos-cell:hover .wm-pos-frame rect {
-  fill: #8e8e93;
-  opacity: 0.8;
+
+.wm-slider-thumb:active {
+  cursor: grabbing;
 }
-.wm-pos-cell.active .wm-pos-frame rect {
-  fill: var(--blue);
-  opacity: 1;
+
+.wm-slider-thumb:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
 }
