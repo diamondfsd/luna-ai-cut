@@ -16,7 +16,7 @@ import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
 import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
-import { buildGlobalFaceGroups, loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson } from './aiSelectionPeopleManager'
+import { buildGlobalFaceGroups, loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson, setGlobalPersonAvatar } from './aiSelectionPeopleManager'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
@@ -449,6 +449,14 @@ export async function renameAiSelectionPerson(id: string, groupId: string, name:
   await ensureLoaded()
   const session = requireSession(id)
   await renameGlobalPerson(peopleStoreDir(), session, groupId, name)
+  await persistPeopleAndRefreshSessions()
+  return publicSession(session)
+}
+
+export async function setAiSelectionPersonAvatar(id: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }): Promise<AiSelectionSession> {
+  await ensureLoaded()
+  const session = requireSession(id)
+  await setGlobalPersonAvatar(peopleStoreDir(), session, groupId, itemId, bounds)
   await persistPeopleAndRefreshSessions()
   return publicSession(session)
 }

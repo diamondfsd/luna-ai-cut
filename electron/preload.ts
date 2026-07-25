@@ -232,6 +232,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     applyOperation: (sessionId, revision, operation) => ipcRenderer.invoke('ai-selection:apply-operation', sessionId, revision, operation),
     analyzePeople: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-people', sessionId, itemIds),
     renamePerson: (sessionId, groupId, name) => ipcRenderer.invoke('ai-selection:rename-person', sessionId, groupId, name),
+    setPersonAvatar: (sessionId, groupId, itemId, bounds) => ipcRenderer.invoke('ai-selection:set-person-avatar', sessionId, groupId, itemId, bounds),
     mergePeople: (sessionId, targetGroupId, sourceGroupId) => ipcRenderer.invoke('ai-selection:merge-people', sessionId, targetGroupId, sourceGroupId),
     analyzeContentTags: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-content-tags', sessionId, itemIds),
     analyzeVideos: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-videos', sessionId, itemIds),

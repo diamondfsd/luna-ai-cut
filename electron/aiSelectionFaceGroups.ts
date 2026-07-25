@@ -120,7 +120,13 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
       ))
       const itemIds = [...new Set(ordered.map((observation) => observation.itemId))]
       const cover = ordered[0]
-      return { itemIds, coverItemId: cover.itemId, coverBounds: cover.bounds, embeddings: group.observations.map((observation) => observation.embedding) }
+      return {
+        itemIds,
+        coverItemId: cover.itemId,
+        coverBounds: cover.bounds,
+        memberFaces: ordered.map((observation) => ({ itemId: observation.itemId, bounds: observation.bounds })),
+        embeddings: group.observations.map((observation) => observation.embedding),
+      }
     })
     .sort((left, right) => right.itemIds.length - left.itemIds.length || left.coverItemId.localeCompare(right.coverItemId))
     .map((group, index) => {
@@ -131,7 +137,9 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
         name: identity?.name ?? `人物 ${index + 1}`,
         itemIds: group.itemIds,
         coverItemId: group.coverItemId,
-        coverBounds: group.coverBounds,
+        coverUrl: identity?.avatarDataUrl ?? items.find((item) => item.id === group.coverItemId)?.path ?? null,
+        coverBounds: identity?.avatarDataUrl ? { x: 0, y: 0, width: 1, height: 1 } : group.coverBounds,
+        memberFaces: group.memberFaces,
       }
     })
 
@@ -144,6 +152,7 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
       continue
     }
     current.itemIds = [...new Set([...current.itemIds, ...group.itemIds])]
+    current.memberFaces = [...current.memberFaces, ...group.memberFaces]
   }
   return [...resolved.values()].sort((left, right) => right.itemIds.length - left.itemIds.length || left.name.localeCompare(right.name))
 }

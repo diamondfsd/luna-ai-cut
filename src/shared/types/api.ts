@@ -178,6 +178,7 @@ export interface LunaApi {
     applyOperation(sessionId: string, revision: number, operation: AiSelectionUserOperation): Promise<AiSelectionSession>
     analyzePeople(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     renamePerson(sessionId: string, groupId: string, name: string): Promise<AiSelectionSession>
+    setPersonAvatar(sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }): Promise<AiSelectionSession>
     mergePeople(sessionId: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession>
     analyzeContentTags(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
     analyzeVideos(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>

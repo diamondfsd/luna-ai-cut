@@ -6,6 +6,7 @@ export interface AiPersonIdentity {
   id: string
   name: string
   samples: number[][]
+  avatarDataUrl: string | null
   createdAt: string
   updatedAt: string
 }
@@ -22,7 +23,12 @@ export async function loadPeopleStore(rootDir: string): Promise<AiPersonIdentity
   try {
     const parsed = JSON.parse(await fs.readFile(path.join(rootDir, STORE_FILE), 'utf8')) as AiPeopleStore
     if (parsed.schemaVersion !== 1 || !Array.isArray(parsed.identities)) return []
-    return parsed.identities.filter((identity) => identity.id && identity.name && Array.isArray(identity.samples))
+    return parsed.identities.filter((identity) => identity.id && identity.name && Array.isArray(identity.samples)).map((identity) => ({
+      ...identity,
+      avatarDataUrl: typeof identity.avatarDataUrl === 'string' && identity.avatarDataUrl.startsWith('data:image/')
+        ? identity.avatarDataUrl
+        : null,
+    }))
   } catch {
     return []
   }
@@ -50,7 +56,7 @@ export async function savePeopleStore(rootDir: string, identities: AiPersonIdent
 
 export function createPersonIdentity(name: string, sample: number[]): AiPersonIdentity {
   const now = new Date().toISOString()
-  return { id: `person_${randomUUID()}`, name, samples: [[...sample]], createdAt: now, updatedAt: now }
+  return { id: `person_${randomUUID()}`, name, samples: [[...sample]], avatarDataUrl: null, createdAt: now, updatedAt: now }
 }
 
 export function mergeIdentitySamples(target: AiPersonIdentity, samples: number[][]): void {
