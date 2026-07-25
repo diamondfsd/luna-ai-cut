@@ -138,7 +138,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: var(--ink);
+  color: #fff;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }

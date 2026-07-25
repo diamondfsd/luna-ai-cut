@@ -130,13 +130,13 @@ export function SettingsPage({
   }
 
   async function handleAddCustomWatermark(): Promise<void> {
-    const asset = await window.luna.chooseCustomWatermark().catch((error) => {
+    const assets = await window.luna.chooseCustomWatermarks().catch((error) => {
       toast.error(error instanceof Error ? error.message : '无法导入这张水印图片')
-      return null
+      return []
     })
-    if (!asset) return
+    if (assets.length === 0) return
     setSettings(await window.luna.getSettings())
-    toast.success('水印已添加')
+    toast.success(`已添加 ${assets.length} 个水印`)
   }
 
   async function handleDeleteCustomWatermark(asset: CustomWatermarkAsset): Promise<void> {
