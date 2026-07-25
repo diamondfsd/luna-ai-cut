@@ -789,6 +789,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
             duration={activeTrimDuration}
+            onTrimSeek={handleTrimSeek}
             allowWatermark={allowWatermark}
             runtimeResourceLoading={runtimeResourceLoading}
           />

@@ -99,11 +99,12 @@ function titleForTool(tool: WorkspaceTool): string {
 interface WorkspaceEditSidebarProps {
   mediaSize?: { w: number; h: number } | null
   duration: number
+  onTrimSeek: (time: number) => void
   allowWatermark: boolean
   runtimeResourceLoading?: { fonts: boolean; luts: boolean }
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark, runtimeResourceLoading }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWatermark, runtimeResourceLoading }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -135,7 +136,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark, runt
     filter: isFilterModified(edit.pipeline.lutFilter),
     color: isColorModified(edit.pipeline.color) || edit.pipeline.colorMasks.some((layer) => isColorModified(layer.color)),
     crop: isCropModified(edit.pipeline.transform),
-    trim: isTrimModified(edit.pipeline.trim),
+    trim: isTrimModified(edit.pipeline.trim) || edit.pipeline.videoMarkers.length > 0,
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
     mask: edit.pipeline.colorMasks.length > 0,
@@ -236,14 +237,14 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark, runt
           )}
           {activeTool === 'trim' && (
             <span className="workspace-tool-panel-actions">
-              {isTrimModified(edit.pipeline.trim) && <span className="ui-accordion-modified-dot" />}
-              <Tooltip content="重置截取">
+              {toolModified.trim && <span className="ui-accordion-modified-dot" />}
+              <Tooltip content="重置截取范围">
                 <IconButton
                   variant="ghost"
                   size="compact"
                   icon={<RotateCcw size={14} />}
                   onClick={() => edit.commitPatch({ trim: null })}
-                  aria-label="重置截取"
+                  aria-label="重置截取范围"
                 />
               </Tooltip>
             </span>
@@ -305,8 +306,9 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark, runt
           ) : activeTool === 'trim' ? (
             <TrimPanel
               startTime={edit.pipeline.trim?.startTime ?? 0}
-              endTime={edit.pipeline.trim?.endTime ?? 0}
+              endTime={edit.pipeline.trim?.endTime ?? duration}
               duration={duration}
+              markers={edit.pipeline.videoMarkers}
               onStartTimeChange={(time) => {
                 const end = edit.pipeline.trim?.endTime ?? duration
                 edit.commitPatch({ trim: { startTime: time, endTime: Math.max(time + 0.1, end) } })
@@ -314,6 +316,11 @@ export function WorkspaceEditSidebar({ mediaSize, duration, allowWatermark, runt
               onEndTimeChange={(time) => {
                 const curStart = edit.pipeline.trim?.startTime ?? 0
                 edit.commitPatch({ trim: { startTime: curStart, endTime: time } })
+              }}
+              onMarkersChange={(videoMarkers) => edit.commitPatch({ videoMarkers })}
+              onSelectMarker={(marker) => {
+                edit.commitPatch({ trim: { startTime: marker.startTime, endTime: marker.endTime } })
+                onTrimSeek(marker.startTime)
               }}
             />
           ) : activeTool === 'border' ? (
