@@ -3,6 +3,12 @@ import type { CameraConnectionMode } from './cameraMediaSource'
 
 export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
 
+export interface CustomLutFile {
+  filePath: string
+  fileName: string
+  relativeDirectory: string
+}
+
 export interface AppSettings {
   downloadDir: string
   localResourcesDir?: string
