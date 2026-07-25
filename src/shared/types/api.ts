@@ -2,7 +2,7 @@ import type { AppSettings, CacheStats } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
 import type { CameraDeleteResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
-import type { WatermarkSettings } from './watermark'
+import type { CustomWatermarkAsset, WatermarkSettings } from './watermark'
 import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest, VideoExportSettings } from './video'
 import type { DownloadProgress, DownloadRecord, DownloadSummary } from './download'
 import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord } from './export'
@@ -108,6 +108,7 @@ export interface LunaApi {
   chooseExportDir(): Promise<string | null>
   chooseLutDir(): Promise<string | null>
   chooseMockMediaDir(): Promise<string | null>
+  chooseCustomWatermarks(): Promise<CustomWatermarkAsset[]>
   startMockServer(settings?: Partial<AppSettings>): Promise<MockServerStatus>
   stopMockServer(): Promise<MockServerStatus>
   getMockServerStatus(): Promise<MockServerStatus>

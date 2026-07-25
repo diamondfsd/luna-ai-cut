@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FolderOpen, Trash2 } from 'lucide-react'
+import { FolderOpen, Settings2, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
-import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
-import { WatermarkSettings } from '../components/WatermarkSettings'
+import type { AppSettings, CacheStats, ConnectionStatus, CustomWatermarkAsset, DeviceDefinition } from '../shared/types'
+import { removeCustomWatermarkAsset } from '../shared/watermarkLibrary'
+import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { Button, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
@@ -62,6 +63,7 @@ export function SettingsPage({
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
+  const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -127,6 +129,39 @@ export function SettingsPage({
     void window.luna.saveSettings(patch).then(setSettings)
   }
 
+  async function handleAddCustomWatermark(): Promise<void> {
+    const assets = await window.luna.chooseCustomWatermarks().catch((error) => {
+      toast.error(error instanceof Error ? error.message : '无法导入这张水印图片')
+      return []
+    })
+    if (assets.length === 0) return
+    setSettings(await window.luna.getSettings())
+    toast.success(`已添加 ${assets.length} 个水印`)
+  }
+
+  async function handleDeleteCustomWatermark(asset: CustomWatermarkAsset): Promise<void> {
+    if (!settings) return
+    const patch: Partial<AppSettings> = {
+      customWatermarkAssets: removeCustomWatermarkAsset(settings.customWatermarkAssets ?? [], asset.id),
+    }
+    if (settings.recentWatermarkSettings?.customAsset?.id === asset.id) {
+      patch.recentWatermarkSettings = {
+        ...settings.recentWatermarkSettings,
+        sourceKind: 'builtin',
+        position: settings.recentWatermarkSettings.position === 'top-center' ? 'bottom-center' : settings.recentWatermarkSettings.position,
+        customAsset: undefined,
+        imagePath: undefined,
+        imageWidth: undefined,
+        imageHeight: undefined,
+        sizeOnCanvasWidth: undefined,
+        placement: undefined,
+        opacity: undefined,
+      }
+    }
+    setSettings(await window.luna.saveSettings(patch))
+    toast.success('水印已从列表中删除')
+  }
+
   return (
     <section className="settings-surface">
       <div className="settings-list">
@@ -185,25 +220,12 @@ export function SettingsPage({
         <section className="settings-group">
           <h2 className="settings-group-title">编辑默认值</h2>
           <div className="settings-card">
-            <article className="settings-row settings-default-watermark-row">
+            <article className="settings-row">
               <div className="settings-row-copy">
                 <span>水印</span>
-                <em>用于新导入或重置的素材</em>
+                <em>{settings?.defaultWatermarkEnabled ?? true ? '默认开启' : '默认关闭'} · {settings?.customWatermarkAssets?.length ?? 0} 个自定义水印</em>
               </div>
-              <div className="settings-default-watermark-control">
-                <WatermarkSettings
-                  preferencesOnly
-                  title="默认开启"
-                  settings={{
-                    enabled: settings?.defaultWatermarkEnabled ?? true,
-                    style: 'luna_ultra_cn',
-                    position: settings?.defaultWatermarkPosition === 'top-center'
-                      ? 'bottom-center'
-                      : settings?.defaultWatermarkPosition ?? 'bottom-center',
-                  }}
-                  onChange={handleDefaultWatermarkChange}
-                />
-              </div>
+              <Button variant="secondary" size="compact" icon={<Settings2 size={15} />} onClick={() => setWatermarkDialogOpen(true)}>编辑</Button>
             </article>
           </div>
         </section>
@@ -290,6 +312,14 @@ export function SettingsPage({
           </div>
         </section>
       </div>
+      <WatermarkManagementDialog
+        open={watermarkDialogOpen}
+        onOpenChange={setWatermarkDialogOpen}
+        settings={settings}
+        onDefaultChange={handleDefaultWatermarkChange}
+        onAdd={handleAddCustomWatermark}
+        onDelete={handleDeleteCustomWatermark}
+      />
     </section>
   )
 }
