@@ -14,7 +14,7 @@ import {
   watermarkImagePath,
 } from '../shared/watermarkGeometry'
 import { getCachedWatermarkPath, watermarkStyleOptionsForDevice, WM_SRC } from '../shared/watermarkAssets'
-import { addCustomWatermarkAssets } from '../shared/watermarkLibrary'
+import { addCustomWatermarkAssets, matchesWatermarkFileName } from '../shared/watermarkLibrary'
 import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, SearchField, SegmentedControl, Switch, toast } from '../ui'
 import '../styles/watermark-settings.css'
 
@@ -344,9 +344,7 @@ export function WatermarkSettings({
     const selectableCustomAssets = currentSettings.customAsset && !customAssets.some((asset) => asset.id === currentSettings.customAsset?.id)
       ? [currentSettings.customAsset, ...customAssets]
       : customAssets
-    const query = customSearch.trim().toLocaleLowerCase()
-    if (!query) return selectableCustomAssets
-    return selectableCustomAssets.filter((asset) => asset.fileName.toLocaleLowerCase().includes(query))
+    return selectableCustomAssets.filter((asset) => matchesWatermarkFileName(asset.fileName, customSearch))
   }, [currentSettings.customAsset, customAssets, customSearch])
 
   const content = (
@@ -368,7 +366,7 @@ export function WatermarkSettings({
               wrapperClassName="wm-custom-search"
               value={customSearch}
               onChange={(event) => setCustomSearch(event.currentTarget.value)}
-              placeholder="搜索水印"
+              placeholder="搜索"
               aria-label="按文件名搜索水印"
             />
           )}
