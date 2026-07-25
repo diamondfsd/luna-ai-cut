@@ -14,7 +14,7 @@ import {
   watermarkImagePath,
 } from '../shared/watermarkGeometry'
 import { getCachedWatermarkPath, watermarkStyleOptionsForDevice, WM_SRC } from '../shared/watermarkAssets'
-import { addCustomWatermarkAsset } from '../shared/watermarkLibrary'
+import { addCustomWatermarkAssets } from '../shared/watermarkLibrary'
 import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, SegmentedControl, Switch, toast } from '../ui'
 import '../styles/watermark-settings.css'
 
@@ -268,9 +268,10 @@ export function WatermarkSettings({
     if (importing) return
     setImporting(true)
     try {
-      const asset = await window.luna.chooseCustomWatermark()
-      if (!asset) return
-      setCustomAssets((current) => addCustomWatermarkAsset(current, asset))
+      const assets = await window.luna.chooseCustomWatermarks()
+      if (assets.length === 0) return
+      const asset = assets[0]
+      setCustomAssets((current) => addCustomWatermarkAssets(current, assets))
       await enrichAndChange({
         sourceKind: 'custom',
         customAsset: asset,

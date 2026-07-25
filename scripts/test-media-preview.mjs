@@ -78,6 +78,12 @@ const customSettings = {
 }
 const customLandscape = watermarkGeometry.resolveWatermarkPositioning(customSettings, 1920, 1080)
 const customPortrait = watermarkGeometry.resolveWatermarkPositioning(customSettings, 1080, 1920)
+const verticalCustom = watermarkGeometry.resolveWatermarkPositioning({
+  ...customSettings,
+  customAsset: { filePath: '/tmp/vertical-logo.png', width: 100, height: 400 },
+  imageWidth: 100,
+  imageHeight: 400,
+}, 1080, 1920)
 assert.equal(watermarkGeometry.usesCustomWatermark(customSettings), true)
 assert.equal(watermarkGeometry.usesCustomWatermark({
   ...customSettings,
@@ -85,6 +91,11 @@ assert.equal(watermarkGeometry.usesCustomWatermark({
 }), false, 'built-in watermark ignores retained custom geometry fields')
 close(customLandscape.targetWidth, 0.2199375, 'custom landscape width preserves short-edge size')
 close(customPortrait.targetWidth, 0.391, 'custom portrait width preserves short-edge size')
+close(
+  verticalCustom.targetWidth * 1080 / 0.25 / 1080,
+  0.391,
+  'vertical custom watermark uses its height as the maximum edge',
+)
 assert.equal(customLandscape.anchor, 'top-left')
 close(customLandscape.marginX, (1 - customLandscape.targetWidth) / 2, 'bottom-center preset centers landscape watermark')
 assert.ok(customLandscape.marginY > 0.8, 'bottom-center preset remains near the bottom')
@@ -102,6 +113,11 @@ assert.deepEqual(
   watermarkLibrary.addCustomWatermarkAsset([firstAsset, secondAsset], secondAsset).map((asset) => asset.id),
   ['second', 'first'],
   'reimporting a watermark keeps one library entry and moves it to the front',
+)
+assert.deepEqual(
+  watermarkLibrary.addCustomWatermarkAssets([firstAsset], [secondAsset, firstAsset]).map((asset) => asset.id),
+  ['second', 'first'],
+  'batch importing watermarks preserves selection order and removes duplicates',
 )
 assert.deepEqual(
   watermarkLibrary.removeCustomWatermarkAsset([firstAsset, secondAsset], 'first').map((asset) => asset.id),

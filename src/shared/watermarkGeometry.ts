@@ -72,10 +72,12 @@ export function resolveWatermarkPositioning(
     MIN_WATERMARK_SIZE_ON_SHORT_EDGE,
     MAX_WATERMARK_SIZE_ON_SHORT_EDGE,
   )
-  const maxSizeForWidth = 0.96 * safeCanvasWidth / shortEdge
-  const maxSizeForHeight = 0.96 * safeCanvasHeight * imageAspect / shortEdge
+  const maxEdgeWidthFactor = imageAspect >= 1 ? 1 : imageAspect
+  const maxEdgeHeightFactor = imageAspect >= 1 ? 1 / imageAspect : 1
+  const maxSizeForWidth = 0.96 * safeCanvasWidth / (shortEdge * maxEdgeWidthFactor)
+  const maxSizeForHeight = 0.96 * safeCanvasHeight / (shortEdge * maxEdgeHeightFactor)
   const resolvedSize = Math.min(requestedSize, maxSizeForWidth, maxSizeForHeight)
-  const targetWidth = resolvedSize * shortEdge / safeCanvasWidth
+  const targetWidth = resolvedSize * shortEdge * maxEdgeWidthFactor / safeCanvasWidth
   const targetHeight = targetWidth * safeCanvasWidth / safeCanvasHeight / imageAspect
   const placement = effectiveWatermarkPlacement(settings)
 

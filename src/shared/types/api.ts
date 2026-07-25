@@ -108,7 +108,7 @@ export interface LunaApi {
   chooseExportDir(): Promise<string | null>
   chooseLutDir(): Promise<string | null>
   chooseMockMediaDir(): Promise<string | null>
-  chooseCustomWatermark(): Promise<CustomWatermarkAsset | null>
+  chooseCustomWatermarks(): Promise<CustomWatermarkAsset[]>
   startMockServer(settings?: Partial<AppSettings>): Promise<MockServerStatus>
   stopMockServer(): Promise<MockServerStatus>
   getMockServerStatus(): Promise<MockServerStatus>
