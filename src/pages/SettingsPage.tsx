@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FolderOpen, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
+import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { useApp } from '../context/AppContext'
-import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
+import type { AppSettings, CacheStats, ConnectionStatus, CustomWatermarkAsset, DeviceDefinition } from '../shared/types'
+import { removeCustomWatermarkAsset } from '../shared/watermarkLibrary'
 import { WatermarkSettings } from '../components/WatermarkSettings'
 import { Button, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
@@ -127,6 +129,39 @@ export function SettingsPage({
     void window.luna.saveSettings(patch).then(setSettings)
   }
 
+  async function handleAddCustomWatermark(): Promise<void> {
+    const asset = await window.luna.chooseCustomWatermark().catch((error) => {
+      toast.error(error instanceof Error ? error.message : '无法导入这张水印图片')
+      return null
+    })
+    if (!asset) return
+    setSettings(await window.luna.getSettings())
+    toast.success('水印已添加')
+  }
+
+  async function handleDeleteCustomWatermark(asset: CustomWatermarkAsset): Promise<void> {
+    if (!settings) return
+    const patch: Partial<AppSettings> = {
+      customWatermarkAssets: removeCustomWatermarkAsset(settings.customWatermarkAssets ?? [], asset.id),
+    }
+    if (settings.recentWatermarkSettings?.customAsset?.id === asset.id) {
+      patch.recentWatermarkSettings = {
+        ...settings.recentWatermarkSettings,
+        sourceKind: 'builtin',
+        position: settings.recentWatermarkSettings.position === 'top-center' ? 'bottom-center' : settings.recentWatermarkSettings.position,
+        customAsset: undefined,
+        imagePath: undefined,
+        imageWidth: undefined,
+        imageHeight: undefined,
+        sizeOnShortEdge: undefined,
+        placement: undefined,
+        opacity: undefined,
+      }
+    }
+    setSettings(await window.luna.saveSettings(patch))
+    toast.success('水印已从列表中删除')
+  }
+
   return (
     <section className="settings-surface">
       <div className="settings-list">
@@ -205,6 +240,35 @@ export function SettingsPage({
                 />
               </div>
             </article>
+          </div>
+        </section>
+
+        <section className="settings-group">
+          <div className="settings-group-heading">
+            <h2 className="settings-group-title">水印管理</h2>
+            <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={() => void handleAddCustomWatermark()}>
+              添加水印
+            </Button>
+          </div>
+          <div className="settings-card">
+            {(settings?.customWatermarkAssets?.length ?? 0) > 0 ? settings?.customWatermarkAssets?.map((asset) => (
+              <article key={asset.id} className="settings-row settings-watermark-row">
+                <img className="settings-watermark-preview" src={filePathToPreviewUrl(asset.filePath) ?? ''} alt="" />
+                <div className="settings-row-copy">
+                  <span>{asset.fileName}</span>
+                  <em>{asset.width} x {asset.height} · {formatBytes(asset.bytes)}</em>
+                </div>
+                <Button variant="danger" size="compact" icon={<Trash2 size={15} />} onClick={() => void handleDeleteCustomWatermark(asset)}>
+                  删除
+                </Button>
+              </article>
+            )) : (
+              <article className="settings-row">
+                <div className="settings-row-copy">
+                  <span>暂无自定义水印</span>
+                </div>
+              </article>
+            )}
           </div>
         </section>
 

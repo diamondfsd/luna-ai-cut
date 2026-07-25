@@ -621,6 +621,7 @@ async function runBatchExportQueue(
             outputPath: entry.outputPath,
             watermarkPath: watermarkLayer.filePath,
             positioning,
+            opacity: watermarkLayer.opacity ?? 1,
             exportTaskId: taskId,
             exportItemId: entry.id,
           })
