@@ -32,7 +32,7 @@ interface VideoStream {
 
 interface MediaProbeJson {
   streams?: Array<VideoStream & { codec_type?: string }>
-  format?: { duration?: string; bit_rate?: string }
+  format?: { duration?: string; bit_rate?: string; tags?: Record<string, string> }
 }
 
 function toolPath(name: 'dovi_tool' | 'mp4mux'): string {
@@ -48,8 +48,9 @@ async function executable(name: 'dovi_tool' | 'mp4mux'): Promise<string> {
     await access(bundled, constants.X_OK)
     return bundled
   } catch {
-    if (!app.isPackaged) return name
-    throw new Error('Dolby Vision 导出组件缺失，请重新安装应用')
+    throw new Error(app.isPackaged
+      ? 'Dolby Vision 导出组件缺失，请重新安装应用'
+      : 'Dolby Vision 导出组件尚未准备好，请重新启动应用')
   }
 }
 
@@ -106,6 +107,8 @@ export function parseDolbyVisionProbe(probe: MediaProbeJson): DolbyVisionProbeRe
   const stream = videoStream(probe)
   if (!stream) return { eligible: false, reason: '未找到视频轨道' }
   const dovi = stream.side_data_list?.find((item) => item.side_data_type === 'DOVI configuration record')
+  const brands = probe.format?.tags?.compatible_brands?.toLowerCase() ?? ''
+  const containerMarkedDolbyVision = brands.includes('dby1')
   const profile = Number(dovi?.dv_profile)
   const compatibilityId = Number(dovi?.dv_bl_signal_compatibility_id)
   const baseValid = stream.codec_name === 'hevc'
@@ -114,7 +117,12 @@ export function parseDolbyVisionProbe(probe: MediaProbeJson): DolbyVisionProbeRe
     && stream.color_primaries === 'bt2020'
     && stream.color_transfer === 'arib-std-b67'
     && stream.color_space === 'bt2020nc'
-  const eligible = baseValid && profile === 8 && compatibilityId === 4 && Number(dovi?.rpu_present_flag) === 1
+  const detailedDolbyVisionMatch = profile === 8
+    && compatibilityId === 4
+    && Number(dovi?.rpu_present_flag) === 1
+  // 与媒体列表保持一致：旧版 ffprobe 可能不返回 DOVI side data，
+  // 此时使用容器的 dby1 兼容品牌标记识别 Dolby Vision。
+  const eligible = baseValid && (detailedDolbyVisionMatch || (!dovi && containerMarkedDolbyVision))
   return {
     eligible,
     profile: Number.isFinite(profile) ? profile : undefined,
