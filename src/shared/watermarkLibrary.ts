@@ -1,5 +1,17 @@
 import type { CustomWatermarkAsset } from './types'
 
+export function normalizeWatermarkSearchText(value: string): string {
+  return value
+    .normalize('NFKD')
+    .toLocaleLowerCase()
+    .replace(/[\p{Mark}\p{Separator}\p{Punctuation}\p{Symbol}]/gu, '')
+}
+
+export function matchesWatermarkFileName(fileName: string, query: string): boolean {
+  const normalizedQuery = normalizeWatermarkSearchText(query)
+  return normalizedQuery.length === 0 || normalizeWatermarkSearchText(fileName).includes(normalizedQuery)
+}
+
 export function addCustomWatermarkAsset(
   assets: CustomWatermarkAsset[],
   asset: CustomWatermarkAsset,
