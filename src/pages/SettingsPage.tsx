@@ -6,6 +6,7 @@ import { useApp } from '../context/AppContext'
 import type { AppSettings, CacheStats, ConnectionStatus, CustomWatermarkAsset, DeviceDefinition } from '../shared/types'
 import { removeCustomWatermarkAsset } from '../shared/watermarkLibrary'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
+import { LutManagementDialog } from '../components/LutManagementDialog'
 import { Button, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
@@ -64,6 +65,7 @@ export function SettingsPage({
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
   const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
+  const [lutManagementOpen, setLutManagementOpen] = useState(false)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -192,6 +194,9 @@ export function SettingsPage({
                 <strong>{settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : '未设置')}</strong>
               </div>
               <div className="settings-row-actions">
+                <Button variant="secondary" size="compact" onClick={() => setLutManagementOpen(true)} icon={<Settings2 size={15} />}>
+                  管理
+                </Button>
                 <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : null))} icon={<FolderOpen size={15} />}>
                   打开
                 </Button>
@@ -320,6 +325,7 @@ export function SettingsPage({
         onAdd={handleAddCustomWatermark}
         onDelete={handleDeleteCustomWatermark}
       />
+      <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
     </section>
   )
 }

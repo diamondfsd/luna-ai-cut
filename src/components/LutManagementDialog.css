@@ -1,0 +1,78 @@
+.lut-management-dialog.ui-dialog-content {
+  width: min(620px, calc(100vw - 40px));
+  max-height: min(700px, calc(100vh - 48px));
+}
+
+.lut-management-body {
+  min-height: 220px;
+  max-height: min(480px, calc(100vh - 230px));
+  overflow-y: auto;
+  padding: 12px 20px 18px;
+}
+
+.lut-management-body > .loading-indicator {
+  min-height: 196px;
+  justify-content: center;
+}
+
+.lut-management-list {
+  display: grid;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.lut-management-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.lut-management-item:last-child {
+  border-bottom: 0;
+}
+
+.lut-management-item > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.lut-management-item strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lut-management-item span,
+.lut-management-state {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.lut-management-state {
+  display: flex;
+  min-height: 196px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .lut-management-dialog.ui-dialog-content {
+    width: calc(100vw - 24px);
+  }
+
+  .lut-management-body {
+    padding-inline: 14px;
+  }
+}
