@@ -7,6 +7,8 @@ import { ThumbImage } from './ThumbImage'
 import dolbyVisionLogo from '../assets/logos/dolby-vision-vertical.png'
 import '../styles/media-card-format-badge.css'
 
+const CARD_PRELOAD_ROOT_MARGIN = '0px 0px 300px 0px'
+
 interface MediaCardProps {
   file: LunaFile
   isDownloadsPage: boolean
@@ -64,7 +66,7 @@ export function MediaCard({
           observer.disconnect()
         }
       },
-      { rootMargin: '300px' },
+      { rootMargin: CARD_PRELOAD_ROOT_MARGIN },
     )
     observer.observe(el)
     return () => observer.disconnect()
@@ -109,7 +111,7 @@ export function MediaCard({
   const showProgress = Boolean(
     progress && ['queued', 'downloading', 'failed'].includes(progress.status) && !downloadedPath,
   )
-  const detectedLive = useLivePhotoWhenVisible(liveDetectSource, cardRef, '300px')
+  const detectedLive = useLivePhotoWhenVisible(liveDetectSource, cardRef, CARD_PRELOAD_ROOT_MARGIN)
   const isLive = file.isLivePhoto || detectedLive
 
   return (
@@ -155,7 +157,7 @@ export function MediaCard({
         tabIndex={0}
         title={previewTitle}
       >
-        <ThumbImage src={file.previewUrl || file.sourceUrl} alt={file.name} />
+        <ThumbImage src={file.previewUrl || file.sourceUrl} preloadBottom={300} alt={file.name} />
         {file.kind === 'video' && effectiveDuration != null ? (
           <span className="duration-badge">{formatDuration(effectiveDuration)}</span>
         ) : isLive ? (
