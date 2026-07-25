@@ -8,11 +8,12 @@ import {
   memo,
 } from 'react'
 import type { CompositionInput, PreviewLayer } from '../shared/types'
+import { describeRenderInitFailure, type RenderInitFailure } from '../shared/lrcErrorDiagnostics'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
-import { Button } from '../ui'
+import { LrcRenderError } from './LrcRenderError'
 import './LrcRender.css'
 
 const PREVIEW_TEXTURE_MAX_SIDE = 3840
@@ -101,7 +102,6 @@ function sortedLayers(layers: PreviewLayer[]): PreviewLayer[] {
 
 function bytesFromRenderData(data: RenderPreviewOutput['data']): Uint8ClampedArray {
   if (data instanceof Uint8Array) {
-    // 直接创建新的 Uint8ClampedArray，避免 SharedArrayBuffer 问题
     const copy = new Uint8ClampedArray(data.byteLength)
     copy.set(data)
     return copy
@@ -157,10 +157,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const lastVideoFrameAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
   const staticFrameCacheRef = useRef(new Map<string, CachedPreviewFrame>())
-  const isSeekingRef = useRef(false) // 标记是否正在 seek
-  const seekStartTimeRef = useRef<number | null>(null) // 记录 seek 开始时间
+  const isSeekingRef = useRef(false)
+  const seekStartTimeRef = useRef<number | null>(null)
   const [ready, setReady] = useState(false)
-  const [fatalError, setFatalError] = useState<string | null>(null)
+  const [fatalError, setFatalError] = useState<RenderInitFailure | null>(null)
   const [retrying, setRetrying] = useState(false)
   layersRef.current = layers
 
@@ -177,9 +177,9 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   useEffect(() => {
     const lrc = getLRC()
     if (!lrc) {
-      const msg = '渲染引擎未加载'
-      setFatalError(msg)
-      onError?.(msg)
+      const failure = describeRenderInitFailure(new Error('渲染引擎未加载'))
+      setFatalError(failure)
+      onError?.(failure.summary)
       return
     }
     destroyRef.current = false
@@ -190,12 +190,12 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
           onReady?.()
         }
       })
-      .catch((error: Error) => {
+      .catch((error: unknown) => {
         if (destroyRef.current) return
-        logger.error('[预览诊断] 渲染引擎初始化失败', { error: error.message })
-        const message = '当前显卡驱动无法打开预览，请更新显卡驱动并重启电脑后再试。'
-        setFatalError(message)
-        onError?.(message)
+        const failure = describeRenderInitFailure(error)
+        logger.error('[预览诊断] 渲染引擎初始化失败', { error: failure.detail })
+        setFatalError(failure)
+        onError?.(failure.summary)
       })
     return () => {
       destroyRef.current = true
@@ -217,11 +217,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       setReady(true)
       onReady?.()
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error)
-      logger.error('[预览诊断] 渲染引擎重新检测失败', { error: detail })
-      const message = '仍然无法打开预览，请确认显卡驱动已更新并重启电脑。'
-      setFatalError(message)
-      onError?.(message)
+      const failure = describeRenderInitFailure(error)
+      logger.error('[预览诊断] 渲染引擎重新检测失败', { error: failure.detail })
+      setFatalError(failure)
+      onError?.(failure.summary)
     } finally {
       setRetrying(false)
     }
@@ -454,12 +453,12 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
   if (fatalError) {
     return (
-      <div className={[className, 'lrc-render-error'].filter(Boolean).join(' ')}>
-        <p>{fatalError}</p>
-        <Button variant="secondary" disabled={retrying} onClick={() => void retryInitialization()}>
-          {retrying ? '正在检测...' : '更新驱动后重新检测'}
-        </Button>
-      </div>
+      <LrcRenderError
+        className={className}
+        failure={fatalError}
+        retrying={retrying}
+        onRetry={() => void retryInitialization()}
+      />
     )
   }
 
