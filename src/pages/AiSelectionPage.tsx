@@ -448,7 +448,7 @@ export function AiSelectionPage() {
           </>}
           {stage === 'review' && filters.map((entry) => <Button key={entry.id} variant="ghost" size="compact" className={filter === entry.id ? 'active' : ''} onClick={() => { setFilter(entry.id); setFocusedId('') }}><span>{entry.label}</span><strong>{entry.count}</strong></Button>)}
           {stage === 'compare' && pendingGroups.length === 0 && <span className="ai-selection-filter-empty">没有待比较的相似组</span>}
-          {stage === 'people' && session.faceGroups.length === 0 && <span className="ai-selection-filter-empty">分析后会显示人物分组</span>}
+          {stage === 'people' && session.faceGroups.length === 0 && <span className="ai-selection-filter-empty">没有识别到可分组的人物</span>}
         </div>
       </aside>}
       <div ref={resultsContentRef} className="ai-selection-results-content">
@@ -460,7 +460,7 @@ export function AiSelectionPage() {
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<Pencil size={14} />} disabled={busy} onClick={() => { setRenameValue(activeFaceGroup.name); setRenameOpen(true) }}>改名</Button>}
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<ImageIcon size={14} />} disabled={busy} onClick={() => setAvatarOpen(true)}>换头像</Button>}
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<GitMerge size={14} />} disabled={busy || (session.faceGroups.length < 2 && !activeFaceGroup.mergedMembers?.length)} onClick={() => setMergeOpen(true)}>合并</Button>}
-        <Button variant="secondary" size="compact" icon={<RefreshCw size={14} />} disabled={busy || faceCandidateIds.length === 0} onClick={() => void controls.analyzePeople(faceCandidateIds)}>{session.faceGroups.length ? '重新分组' : '开始分析'}</Button>
+        <Button variant="secondary" size="compact" icon={<RefreshCw size={14} />} disabled={busy || faceCandidateIds.length === 0} onClick={() => void controls.analyzePeople(faceCandidateIds)}>重新分析</Button>
       </div></header>}
       {stage === 'review' && <header className="ai-selection-view-heading"><div><h2>{filters.find((entry) => entry.id === filter)?.label}</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'people' && peopleAnalysis.running && <section className="ai-selection-people-progress">
@@ -469,7 +469,7 @@ export function AiSelectionPage() {
         <div className="ai-selection-people-progress-track" aria-label={`人物分析进度 ${peopleAnalysis.completed}/${peopleAnalysis.total}`}><span style={{ width: `${peopleAnalysis.total ? peopleAnalysis.completed / peopleAnalysis.total * 100 : 0}%` }} /></div>
       </section>}
       {visibleItems.length === 0
-        ? <div className="ai-selection-no-result">{running ? '正在生成结果…' : stage === 'compare' ? '没有需要比较的相似组' : stage === 'people' ? '分析后会按人物整理照片' : '没有素材'}</div>
+        ? <div className="ai-selection-no-result">{running ? '正在生成结果…' : stage === 'compare' ? '没有需要比较的相似组' : stage === 'people' ? '没有识别到可分组的人物' : '没有素材'}</div>
         : stage === 'scenes'
           ? <div className="ai-selection-scene-sections">{sceneSections.map(({ scene, items: sceneItems }) => {
             const period = shootingPeriodParts(scene.startAt, scene.endAt)

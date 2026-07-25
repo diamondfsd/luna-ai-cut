@@ -103,10 +103,12 @@ export async function analyzeRecommendationEvidence(context: AiSelectionAnalysis
       }
     }
 
-    const peopleTargets = photos.filter((item) => !item.personEvidence?.faces?.some((face) => (
-      face.embedding && face.embeddingVersion === FACE_EMBEDDING_VERSION
-    ))
-      && (context.session.purpose === 'people' || item.contentTags.includes('人物')))
+    const peopleTargets = photos.filter((item) => {
+      if (!item.personEvidence) return true
+      return item.personEvidence.faces?.some((face) => (
+        face.embedding && face.embeddingVersion !== FACE_EMBEDDING_VERSION
+      )) ?? false
+    })
     if (peopleTargets.length > 0) {
       context.session.phase = 'people'
       await context.update()
