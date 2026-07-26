@@ -6,7 +6,7 @@ import { useApp } from '../context/AppContext'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
-import { Button, Input, Switch, toast } from '../ui'
+import { Button, Input, toast } from '../ui'
 import '../styles/settings.css'
 
 interface SettingsPageProps {
@@ -200,27 +200,6 @@ export function SettingsPage({
             </article>
           </div>
         </section>
-
-        {window.navigator.platform.includes('Mac') && (
-          <section className="settings-group">
-            <h2 className="settings-group-title">导出</h2>
-            <div className="settings-card">
-              <article className="settings-row">
-                <div className="settings-row-copy">
-                  <span>保存 Live Photo 到系统相册</span>
-                </div>
-                <Switch
-                  checked={!!settings?.exportAppleLivePhoto}
-                  onCheckedChange={(checked) => {
-                    setSettings((current) => (current ? { ...current, exportAppleLivePhoto: checked } : current))
-                    void window.luna.saveSettings({ exportAppleLivePhoto: checked }).then(setSettings)
-                  }}
-                  ariaLabel="保存 Live Photo 到系统相册"
-                />
-              </article>
-            </div>
-          </section>
-        )}
 
         <section className="settings-group">
           <h2 className="settings-group-title">连接与维护</h2>
