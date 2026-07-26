@@ -56,7 +56,9 @@
   stroke: rgba(255, 255, 255, 0.12);
 }
 
-.wm-asset-select-search {
+.wm-asset-select-search.ui-input-wrap.ui-input-full {
+  box-sizing: border-box;
+  width: auto;
   flex: 0 0 auto;
   margin: 9px 10px 0;
 }
