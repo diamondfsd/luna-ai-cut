@@ -40,6 +40,8 @@ export interface AppSettings {
   lutDir?: string
   /** 工作台预览清晰度；原图档仍限制为最大 4K。 */
   workspacePreviewQuality?: WorkspacePreviewQuality
+  /** 实验性原生 GPU 预览；默认关闭，由用户主动启用。 */
+  experimentalGpuPreview?: boolean
 }
 
 export interface CacheStats {

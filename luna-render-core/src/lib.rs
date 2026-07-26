@@ -7,6 +7,7 @@ mod logging;
 #[cfg(target_os = "macos")]
 mod macos;
 mod media;
+mod native_preview;
 mod sam_core;
 pub mod sam_segmentation;
 mod segmentation;
@@ -79,6 +80,7 @@ use compositor::Compositor;
 use napi::bindgen_prelude::{AsyncTask, Buffer};
 use napi::{Env, Task};
 use napi_derive::napi;
+pub use native_preview::*;
 
 // ── 跨模块日志宏 ──
 macro_rules! log {

@@ -1,6 +1,16 @@
 use super::*;
 
 impl Compositor {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    pub(crate) fn load_external_mask_texture(
+        &mut self,
+        data: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<u32, String> {
+        self.load_mask_texture(data, width, height)
+    }
+
     #[cfg(target_os = "windows")]
     pub(crate) fn dx12_device_and_queue(
         &self,
