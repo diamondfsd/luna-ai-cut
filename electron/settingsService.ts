@@ -50,6 +50,7 @@ function defaultSettings(): AppSettings {
     defaultWatermarkEnabled: true,
     defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
+    experimentalGpuPreview: false,
     mockMediaDir: '',
     mockHost: DEFAULT_DEVICE.mock.host,
     mockHttpPort: DEFAULT_DEVICE.mock.httpPort,
@@ -85,6 +86,9 @@ function mergeSettings(saved: Partial<AppSettings> | null): AppSettings {
   ].includes(String(saved?.defaultWatermarkPosition))
     ? saved?.defaultWatermarkPosition
     : defaults.defaultWatermarkPosition
+  merged.experimentalGpuPreview = typeof saved?.experimentalGpuPreview === 'boolean'
+    ? saved.experimentalGpuPreview
+    : defaults.experimentalGpuPreview
   if (!merged.localResourcesDir) {
     merged.localResourcesDir = getLocalResourcesDir(merged)
   }

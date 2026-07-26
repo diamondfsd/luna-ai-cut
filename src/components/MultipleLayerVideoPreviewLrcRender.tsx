@@ -1,132 +1,28 @@
 import { useEffect, useRef, useState, forwardRef, memo, useImperativeHandle } from 'react'
 import type { PreviewLayer } from '../shared/types'
-import { compositionRevealProgress } from '../lib/revealProgress'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
-import { COMPOSITION_RENDER_FPS } from './renderComposition'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
+import {
+  calcRenderSize,
+  computeLayerDecodeMaxSide,
+  multipleLayerVideoPreviewPropsEqual,
+  normalizedPreviewMaxSide,
+  perfLog,
+  releasePreviewTextures,
+  renderMultipleLayerVideoFrame,
+  videoLayerKey,
+  type LunaRenderCore,
+  type MultipleLayerVideoPreviewLrcRenderProps,
+  type VideoStateEntry,
+} from './multipleLayerVideoFrameRenderer'
 
-const DEFAULT_PREVIEW_MAX_SIDE = 1280
-const PREVIEW_HARD_MAX_SIDE = 3840
-
-function normalizedPreviewMaxSide(maxSide: number | undefined): number {
-  const requested = typeof maxSide === 'number' && Number.isFinite(maxSide) ? maxSide : DEFAULT_PREVIEW_MAX_SIDE
-  return Math.min(PREVIEW_HARD_MAX_SIDE, Math.max(1, Math.round(requested)))
-}
-
-const perfLog = (msg: string) => console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] ${msg}`)
-
-function calcRenderSize(vw: number, vh: number, maxSide: number): [number, number] {
-  const maxEdge = Math.max(vw, vh)
-  if (maxEdge <= maxSide) return [vw, vh]
-  const scale = maxSide / maxEdge
-  return [Math.round(vw * scale), Math.round(vh * scale)]
-}
-
-/**
- * 计算视频层的解码最大边长。
- * 根据该层在预览画布上的实际显示尺寸 × quality 系数。
- */
-function computeLayerDecodeMaxSide(
-  layer: PreviewLayer,
-  canvasW: number | undefined,
-  canvasH: number | undefined,
-  quality: number,
-  outputMaxSide: number,
-): number {
-  if (quality <= 0 || !canvasW || !canvasH) return outputMaxSide
-  const [pw, ph] = calcOutputSize(canvasW, canvasH, outputMaxSide)
-  const displayW = pw * (layer.dstW || 1)
-  const displayH = ph * (layer.dstH || 1)
-  const maxDisplay = Math.max(displayW, displayH, 1)
-  return Math.min(Math.round(maxDisplay * quality), outputMaxSide)
-}
-
-/**
- * 将画布尺寸等比缩放到指定最长边以内
- */
-function calcOutputSize(cw: number, ch: number, maxSide: number): [number, number] {
-  const maxEdge = Math.max(cw, ch)
-  if (maxEdge <= maxSide) return [cw, ch]
-  const scale = maxSide / maxEdge
-  return [Math.round(cw * scale), Math.round(ch * scale)]
-}
-
-// ── 类型 ──
-
-interface LunaRenderCore {
-  init: () => Promise<void>
-  loadTexture: (data: Buffer, width: number, height: number) => Promise<number>
-  updateTexture: (textureId: number, data: Buffer) => Promise<void>
-  renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[]) => Promise<Buffer>
-  releaseTexture: (textureId: number) => Promise<void>
-}
+export type { MultipleLayerVideoPreviewLrcRenderProps } from './multipleLayerVideoFrameRenderer'
 
 function getLRC(): LunaRenderCore | undefined {
   return (window as unknown as { lunaRenderCore?: LunaRenderCore }).lunaRenderCore
 }
 
-/** 视频层稳定标识（同 index + 同文件路径视为同一视频源） */
-function videoLayerKey(layer: PreviewLayer, index: number): string {
-  return layer.videoSourceKey
-    ? `shared_${layer.videoSourceKey}_${layer.filePath}`
-    : `v${index}_${layer.filePath}`
-}
-
-interface VideoStateEntry {
-  key: string
-  video: HTMLVideoElement
-  textureId: number
-  offscreen: OffscreenCanvas | null
-  renderW: number
-  renderH: number
-  prevVideoTime: number
-  ready: boolean
-}
-
-export interface MultipleLayerVideoPreviewLrcRenderProps {
-  /** 所有合成层（视频 + 图片） */
-  layers: PreviewLayer[]
-  className?: string
-  /** 输出画布宽度（不传则自动计算） */
-  canvasWidth?: number
-  /** 输出画布高度（不传则自动计算） */
-  canvasHeight?: number
-  /** 预览输出最长边；始终限制在 4K 以内。 */
-  maxSide?: number
-  /** 是否正在播放（true=视频播放中，false=暂停） */
-  playing?: boolean
-  /** 静态图层动画使用的合成时间。 */
-  compositionTime?: number
-  /**
-   * 视频解码质量系数。
-   * 每个视频层的解码分辨率 = 该层在预览画布上的显示尺寸 × decodeQuality。
-   * 1.0 = 匹配显示尺寸，1.5 = 1.5× 余量，2.0 = 2×。
-   * 设为 0 使用当前预览档位的最长边。
-   */
-  decodeQuality?: number
-  onError?: (error: string) => void
-  onReady?: () => void
-  onRender?: () => void
-  /** 主视频元素回调（取第一个视频层），PreviewStage 用它绑定播放控制 */
-  onVideoElement?: (el: HTMLVideoElement | null) => void
-  /** 受控查看比例：null 表示适应窗口，1 表示画布像素与屏幕像素 1:1 */
-  imageScale?: number | null
-  onImageScaleChange?: (scale: number | null) => void
-  /** 最大查看比例，默认 200% */
-  maxImageScale?: number
-  /** 允许画布查看交互的图层下标；传空数组可关闭交互。默认只包含首个非定位图层。 */
-  interactiveImageLayerIndexes?: readonly number[]
-}
-
-/**
- * MultipleLayerVideoPreviewLrcRender
- *
- * 支持任意数量视频层的前端 `<video>` 解码预览组件。
- * - 每个视频层对应一个独立的 `<video>` 元素
- * - 每帧从所有 `<video>` 捕获当前画面 → 上传 GPU 纹理 → 调用 `renderFrame` 合成
- * - 图片层走纹理缓存
- * - 适合多视频层合成场景（如创意工厂三拼/多拼预览）
- */
+/** 多视频层前端解码、Rust GPU 合成预览组件。 */
 export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
@@ -137,14 +33,12 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       const lrcRef = useRef<LunaRenderCore | null>(null)
       const destroyRef = useRef(false)
       const readyRef = useRef(false)
-      const rafRef = useRef(0)
+      const scheduledRenderRef = useRef(0)
       const renderingRef = useRef(false)
       const renderQueuedRef = useRef(false)
-      const lastFrameAtRef = useRef(0)
       const [ready, setReady] = useState(false)
       const [fatalError, setFatalError] = useState<string | null>(null)
 
-      // ── 画布查看交互（缩放/拖动/双击还原） ──
       const imageInteraction = useCanvasViewportInteraction({
         layers,
         canvasRef: outputCanvasRef,
@@ -154,7 +48,6 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         onImageScaleChange,
       })
 
-      // 用 ref 持 latest props，避免闭包过期
       const layersRef = useRef(layers)
       layersRef.current = layers
       const playingRef = useRef(playing)
@@ -171,14 +64,10 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       decodeQualityRef.current = decodeQuality
       const onVideoElementRef = useRef(onVideoElement)
       onVideoElementRef.current = onVideoElement
-      // 跟踪已通知给父组件的视频元素，避免重复回调
       const notifiedVideoRef = useRef<HTMLVideoElement | null>(null)
 
-      // 视频层状态：key → VideoStateEntry
       const videoStatesRef = useRef<Map<string, VideoStateEntry>>(new Map())
-      // 图片纹理缓存：filePath → textureId
       const imageTextureCacheRef = useRef<Map<string, number>>(new Map())
-      // 纹理版本计数器：每次释放纹理时递增，用于检测 renderFrame 中的竞态
       const textureVersionRef = useRef(0)
 
       // 同步主视频元素（取第一个视频层）到父组件
@@ -191,9 +80,49 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         }
       }
 
+      /**
+       * 合并同一次屏幕刷新周期内的 loaded/seek/video-frame 请求。
+       * 多视频层可能几乎同时产出画面，不应为每个回调分别走一次 RGBA IPC。
+       */
+      function scheduleRender(): void {
+        if (destroyRef.current || scheduledRenderRef.current !== 0) return
+        scheduledRenderRef.current = requestAnimationFrame(() => {
+          scheduledRenderRef.current = 0
+          void renderFrame()
+        })
+      }
+
+      function cancelVideoFrameCallback(entry: VideoStateEntry): void {
+        if (entry.frameCallbackId === null) return
+        entry.video.cancelVideoFrameCallback?.(entry.frameCallbackId)
+        entry.frameCallbackId = null
+      }
+
+      /**
+       * 跟随 Chromium 真正呈现的视频帧驱动合成。
+       * 暂停时回调自然停止；seek 呈现新帧时会触发一次，不需要固定 30fps 空转。
+       */
+      function scheduleVideoFrameCallback(entry: VideoStateEntry): void {
+        if (
+          destroyRef.current
+          || entry.frameCallbackId !== null
+          || typeof entry.video.requestVideoFrameCallback !== 'function'
+        ) return
+        entry.frameCallbackId = entry.video.requestVideoFrameCallback(() => {
+          entry.frameCallbackId = null
+          if (destroyRef.current || videoStatesRef.current.get(entry.key) !== entry) return
+          scheduleRender()
+          scheduleVideoFrameCallback(entry)
+        })
+      }
+
       // ── 初始化 LRC ──
       useEffect(() => {
-        (window as any).__perfStart = (window as any).__perfStart || performance.now()
+        const perfWindow = window as Window & { __perfStart?: number }
+        const videoStates = videoStatesRef.current
+        const imageTextures = imageTextureCacheRef.current
+        const textureVersion = textureVersionRef
+        perfWindow.__perfStart = perfWindow.__perfStart ?? performance.now()
         const t0 = performance.now()
         perfLog(`MultipleLayerVideoPreviewLrcRender mount layers=${layers.length}`)
         const lrc = getLRC()
@@ -213,6 +142,14 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
               setReady(true)
               readyRef.current = true
               onReady?.()
+              void lrc.getNativePreviewCapabilities?.().then((capabilities) => {
+                perfLog(
+                  `native preview decoder=${capabilities.decoder}`
+                  + ` hardware=${capabilities.systemHardwareDecode}`
+                  + ` externalTexture=${capabilities.externalGpuTexture}`
+                  + ` directPresent=${capabilities.directGpuPresentation}`,
+                )
+              }).catch(() => {})
             }
           })
           .catch((error: Error) => {
@@ -223,32 +160,36 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           })
         return () => {
           destroyRef.current = true
-          cancelAnimationFrame(rafRef.current)
+          cancelAnimationFrame(scheduledRenderRef.current)
+          scheduledRenderRef.current = 0
           // 通知父组件视频元素已释放
           notifiedVideoRef.current = null
           onVideoElementRef.current?.(null)
           // 暂停所有视频并清空 src，避免关闭后仍播放声音
-          for (const [, entry] of videoStatesRef.current) {
+          for (const entry of videoStates.values()) {
+            cancelVideoFrameCallback(entry)
             entry.video.pause()
             entry.video.src = ''
             if (entry.textureId > 0) {
               lrc.releaseTexture(entry.textureId).catch(() => {})
             }
           }
-          videoStatesRef.current.clear()
+          videoStates.clear()
           // 释放所有图片纹理
-          for (const [, texId] of imageTextureCacheRef.current) {
+          for (const texId of imageTextures.values()) {
             lrc.releaseTexture(texId).catch(() => {})
           }
-          imageTextureCacheRef.current.clear()
-          textureVersionRef.current++
+          imageTextures.clear()
+          textureVersion.current++
         }
+      // 生命周期初始化只执行一次，内部通过 refs 读取并清理实时资源。
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [])
 
-      // ── 暴露 ref 方法给父组件 ──
       useImperativeHandle(ref, () => ({
-        scheduleRender: () => { if (readyRef.current) void renderFrame() },
+        scheduleRender: () => { if (readyRef.current) scheduleRender() },
         setLayers: (newLayers: PreviewLayer[]) => { layersRef.current = newLayers },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       }), [])
 
       // ── 管理视频元素 ──
@@ -281,6 +222,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         // 移除不再需要的视频状态
         for (const [existingKey, entry] of videoStatesRef.current) {
           if (!requiredKeys.has(existingKey)) {
+            cancelVideoFrameCallback(entry)
             if (entry.textureId > 0) {
               const tid = entry.textureId
               entry.textureId = 0 // 先清除，避免并发 renderFrame 读取到已释放的 ID
@@ -346,6 +288,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           const entry: VideoStateEntry = {
             key,
             video,
+            frameCallbackId: null,
             textureId: 0,
             offscreen: null,
             renderW: 0,
@@ -379,17 +322,22 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
             entry.ready = true
             entry.video.currentTime = layer.videoTime ?? 0
             if (playingRef.current) entry.video.play().catch(() => {})
-            void renderFrame()
+            scheduleVideoFrameCallback(entry)
+            scheduleRender()
           })
 
           video.addEventListener('seeked', () => {
             if (destroyRef.current) return
-            void renderFrame()
+            scheduleRender()
           })
 
           video.addEventListener('timeupdate', () => {
-            if (destroyRef.current || !entry.ready) return
-            void renderFrame()
+            if (
+              destroyRef.current
+              || !entry.ready
+              || typeof video.requestVideoFrameCallback === 'function'
+            ) return
+            scheduleRender()
           })
 
           video.addEventListener('error', () => {
@@ -408,6 +356,8 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         syncPrimaryVideo()
         const tEnd = performance.now()
         perfLog(`video management effect done in ${(tEnd - t0).toFixed(0)}ms, ${videoStatesRef.current.size} videos managed`)
+      // 调度函数通过 refs 访问最新状态，避免视频回调因函数重建而重复注册。
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [canvasHeight, canvasWidth, decodeQuality, layers, maxSide, ready])
 
       // ── 播放/暂停控制 ──
@@ -415,47 +365,17 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         if (!readyRef.current) return
         for (const [, entry] of videoStatesRef.current) {
           if (!entry.ready) continue
+          scheduleVideoFrameCallback(entry)
           if (playing) {
             entry.video.play().catch(() => {})
           } else {
             entry.video.pause()
           }
         }
-        void renderFrame()
+        scheduleRender()
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [ready, playing])
 
-      // ── 加载图片纹理 ──
-      async function loadImageTexture(filePath: string): Promise<number> {
-        const lrc = lrcRef.current
-        if (!lrc) throw new Error('渲染引擎未加载')
-        const cached = imageTextureCacheRef.current.get(filePath)
-        if (cached !== undefined) return cached
-
-        const img = new Image()
-        img.src = filePathToPreviewUrl(filePath) ?? filePath
-        img.crossOrigin = 'anonymous'
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve()
-          img.onerror = () => reject(new Error('图片加载失败: ' + filePath))
-        })
-        const w = img.naturalWidth || img.width
-        const h = img.naturalHeight || img.height
-        const canvas = new OffscreenCanvas(w, h)
-        const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('OffscreenCanvas 2D context 不可用')
-        ctx.drawImage(img, 0, 0)
-        const imageData = ctx.getImageData(0, 0, w, h)
-        const rgbaData = new Uint8Array(
-          imageData.data.buffer,
-          imageData.data.byteOffset,
-          imageData.data.byteLength,
-        )
-        const texId = await lrc.loadTexture(rgbaData as unknown as Buffer, w, h)
-        imageTextureCacheRef.current.set(filePath, texId)
-        return texId
-      }
-
-      // ── 渲染帧 ──
       async function renderFrame() {
         const lrc = lrcRef.current
         const canvas = outputCanvasRef.current
@@ -473,215 +393,38 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         const versionAtStart = textureVersionRef.current
 
         try {
-          const renderLayers: unknown[] = []
-          const usedImageTextures = new Set<string>()
-          const frameVideoTextures = new Map<string, number>()
-
-          for (let i = 0; i < currentLayers.length; i++) {
-            const layer = currentLayers[i]
-            let textureId: number
-
-            const procedural = layer.layerType && layer.layerType !== 'media'
-
-            if (procedural) {
-              textureId = 0
-            } else if (layer.isVideo) {
-              const key = videoLayerKey(layer, i)
-              const entry = videoStatesRef.current.get(key)
-
-              if (!entry || !entry.ready) continue // 视频未就绪，跳过
-
-              const sharedTextureId = frameVideoTextures.get(key)
-              if (sharedTextureId !== undefined) {
-                textureId = sharedTextureId
-              } else {
-                // 时间轴位置变化时同步跳转；普通播放不会改变 layer.videoTime
-                const vt = layer.videoTime ?? 0
-                if (Math.abs(entry.prevVideoTime - vt) > 0.01) {
-                  entry.video.currentTime = vt
-                  entry.prevVideoTime = vt
-                }
-
-                // 捕获当前帧
-                const ctx2d = entry.offscreen?.getContext('2d', { willReadFrequently: true })
-                if (!ctx2d || !entry.offscreen) continue
-
-                ctx2d.clearRect(0, 0, entry.renderW, entry.renderH)
-                ctx2d.drawImage(entry.video, 0, 0, entry.renderW, entry.renderH)
-
-                const imageData = ctx2d.getImageData(0, 0, entry.renderW, entry.renderH)
-                const rgbaData = new Uint8Array(
-                  imageData.data.buffer,
-                  imageData.data.byteOffset,
-                  imageData.data.byteLength,
-                )
-
-                if (entry.textureId === 0) {
-                  entry.textureId = await lrc.loadTexture(
-                    rgbaData as unknown as Buffer,
-                    entry.renderW,
-                    entry.renderH,
-                  )
-                  // 加载完后验证 entry 在 IPC 期间未被清理（切换素材时的竞态）
-                  if (videoStatesRef.current.get(key) !== entry) {
-                    lrc.releaseTexture(entry.textureId).catch(() => {})
-                    entry.textureId = 0
-                    continue
-                  }
-                } else {
-                  await lrc.updateTexture(entry.textureId, rgbaData as unknown as Buffer)
-                  // 更新完后验证 entry 在 IPC 期间未被清理
-                  if (videoStatesRef.current.get(key) !== entry) {
-                    continue
-                  }
-                }
-
-                textureId = entry.textureId
-                frameVideoTextures.set(key, textureId)
-              }
-            } else {
-              // 图片层
-              usedImageTextures.add(layer.filePath)
-              try {
-                textureId = await loadImageTexture(layer.filePath)
-              } catch {
-                console.error(
-                  '[MultipleLayerVideoPreviewLrcRender] failed to load image:',
-                  layer.filePath,
-                )
-                continue
-              }
-            }
-
-            // ── positioning ──
-            let positioning: unknown = undefined
-            if (
-              layer.positioning &&
-              typeof layer.positioning === 'object' &&
-              'anchor' in layer.positioning
-            ) {
-              const p = layer.positioning as unknown as Record<string, unknown>
-              positioning = {
-                anchor: String(p.anchor ?? ''),
-                targetWidth: Number(p.targetWidth) || 0,
-                marginX: p.marginX ?? 0,
-                marginY: p.marginY ?? 0,
-              }
-            }
-
-            const reveal = layer.reveal
-            const revealTime = compositionTimeRef.current ?? (layer.isVideo
-              ? videoStatesRef.current.get(videoLayerKey(layer, i))?.video.currentTime ?? 0
-              : 0)
-            const revealProgress = reveal ? compositionRevealProgress(reveal, revealTime) : 1
-            renderLayers.push({
-              textureId,
-              fit: layer.fit,
-              dstX: layer.dstX ?? 0,
-              dstY: layer.dstY ?? 0,
-              dstW: layer.dstW ?? 1,
-              dstH: layer.dstH ?? 1,
-              srcX: layer.srcX ?? 0,
-              srcY: layer.srcY ?? 0,
-              srcW: layer.srcW ?? 1,
-              srcH: layer.srcH ?? 1,
-              opacity: layer.opacity ?? 1,
-              blendMode: layer.blendMode,
-              revealProgress,
-              zIndex: layer.zIndex ?? 0,
-              color: layer.color,
-              transform: layer.transform,
-              positioning,
-              restoreLutId: layer.restoreLutId,
-              lutId: layer.lutId,
-              lutIntensity: layer.lutIntensity,
-              layerType: layer.layerType ?? 'media',
-              shape: layer.shape,
-              fillColor: layer.fillColor,
-              cornerRadius: layer.cornerRadius,
-              strokeColor: layer.strokeColor,
-              strokeWidth: layer.strokeWidth,
-              content: layer.content,
-              fontSize: layer.fontSize,
-              fontFamily: layer.fontFamily,
-              fontFile: layer.fontFile,
-              fontWeight: layer.fontWeight,
-              textColor: layer.textColor,
-              textAlign: layer.textAlign,
-              verticalAlign: layer.verticalAlign,
-            })
-          }
-
-          // 清理不再引用的图片纹理
-          for (const [filePath, texId] of imageTextureCacheRef.current) {
-            if (!usedImageTextures.has(filePath)) {
-              lrc.releaseTexture(texId).catch(() => {})
-              imageTextureCacheRef.current.delete(filePath)
-            }
-          }
-
-          if (renderLayers.length === 0) return
-
-          // 按 zIndex 排序
-          renderLayers.sort(
-            (a: any, b: any) => (a.zIndex ?? 0) - (b.zIndex ?? 0),
-          )
-
-          // 计算输出尺寸（等比缩放到当前预览档位，并保持 4K 硬上限）
-          // 渲染循环在组件初始化时创建，必须从 ref 读取最新画布尺寸。
-          // 直接读取闭包里的 props 会让视频在裁剪后继续沿用旧比例。
-          const latestCanvasWidth = canvasWidthRef.current
-          const latestCanvasHeight = canvasHeightRef.current
-          const [outW, outH] =
-            latestCanvasWidth && latestCanvasHeight
-              ? calcOutputSize(latestCanvasWidth, latestCanvasHeight, maxSideRef.current)
-              : [maxSideRef.current, Math.round(maxSideRef.current * 0.75)]
-
-          // 发送最终 renderFrame IPC 前检查组件是否尚未销毁
-          if (destroyRef.current) return
-          // 检查纹理版本：若在构建 renderLayers 期间有纹理被释放（如视频管理 effect），
-          // 则 renderLayers 中的纹理 ID 可能已失效，放弃本次渲染，等待下次 renderFrame 重试
-          if (textureVersionRef.current !== versionAtStart) {
+          const result = await renderMultipleLayerVideoFrame({
+            lrc,
+            canvas,
+            layers: currentLayers,
+            videoStates: videoStatesRef.current,
+            imageTextures: imageTextureCacheRef.current,
+            compositionTime: compositionTimeRef.current,
+            canvasWidth: canvasWidthRef.current,
+            canvasHeight: canvasHeightRef.current,
+            maxSide: maxSideRef.current,
+            textureVersion: versionAtStart,
+            getTextureVersion: () => textureVersionRef.current,
+            isDestroyed: () => destroyRef.current,
+          })
+          if (result === 'stale') {
             renderQueuedRef.current = true
             return
           }
-          const result = await lrc.renderFrame(outW, outH, renderLayers)
-          // render 过程中组件可能已被卸载（tab 切换），此时 textures 可能已被清理
-          if (destroyRef.current) return
-
-          canvas.width = outW
-          canvas.height = outH
-          const displayCtx = canvas.getContext('2d')
-          if (displayCtx) {
-            const pixelData = new Uint8ClampedArray(result)
-            displayCtx.putImageData(new ImageData(pixelData, outW, outH), 0, 0)
-          }
-
-          const firstRender = (window as any).__firstRenderDone === undefined
-          if (firstRender) {
-            (window as any).__firstRenderDone = true
-            perfLog(`FIRST RENDER at ${(performance.now() - (window as any).__perfStart || performance.now()).toFixed(0)}ms`)
-          }
-          onRender?.()
+          if (result === 'rendered') onRender?.()
         } catch (error) {
           // 组件已卸载（如 tab 切换）时纹理被清理导致 renderFrame IPC 报错属正常，静默忽略
           if (destroyRef.current) return
 
           const msg = error instanceof Error ? error.message : String(error)
           console.error('[MultipleLayerVideoPreviewLrcRender] render error:', error)
-          // 出错时释放所有纹理，避免泄漏
           const lrcCleanup = lrcRef.current
           if (lrcCleanup) {
-            for (const [, entry] of videoStatesRef.current) {
-              if (entry.textureId > 0) {
-                lrcCleanup.releaseTexture(entry.textureId).catch(() => {})
-                entry.textureId = 0
-              }
-            }
-            for (const [fp, tid] of imageTextureCacheRef.current) {
-              lrcCleanup.releaseTexture(tid).catch(() => {})
-              imageTextureCacheRef.current.delete(fp)
-            }
+            releasePreviewTextures(
+              lrcCleanup,
+              videoStatesRef.current,
+              imageTextureCacheRef.current,
+            )
           }
           textureVersionRef.current++
           onError?.(msg)
@@ -694,30 +437,11 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         }
       }
 
-      // ── 渲染循环（覆盖 renderFrame） ──
-      useEffect(() => {
-        if (!ready) return
-        perfLog(`render loop started at ${(performance.now() - (window as any).__perfStart).toFixed(0)}ms`)
-
-        function loop() {
-          const now = performance.now()
-          if (now - lastFrameAtRef.current >= 1000 / COMPOSITION_RENDER_FPS) {
-            lastFrameAtRef.current = now
-            void renderFrame()
-          }
-          rafRef.current = requestAnimationFrame(loop)
-        }
-
-        rafRef.current = requestAnimationFrame(loop)
-        return () => cancelAnimationFrame(rafRef.current)
-      }, [ready])
-
       // ── layers 变化时触发一次渲染（仅依赖 ready，避免父组件渲染连锁） ──
       // renderFrame 内部通过 layersRef.current 读取最新 layers，不受闭包影响。
-      // 30fps 渲染循环已覆盖持续更新场景，这里仅处理首次就绪后的渲染。
       useEffect(() => {
         if (!ready) return
-        void renderFrame()
+        scheduleRender()
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [ready])
 
@@ -771,23 +495,5 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       )
     },
   ),
-  (
-    prevProps: MultipleLayerVideoPreviewLrcRenderProps,
-    nextProps: MultipleLayerVideoPreviewLrcRenderProps,
-  ) => {
-    return (
-      prevProps.playing === nextProps.playing &&
-      prevProps.compositionTime === nextProps.compositionTime &&
-      prevProps.decodeQuality === nextProps.decodeQuality &&
-      prevProps.canvasWidth === nextProps.canvasWidth &&
-      prevProps.canvasHeight === nextProps.canvasHeight &&
-      prevProps.maxSide === nextProps.maxSide &&
-      prevProps.className === nextProps.className &&
-      prevProps.imageScale === nextProps.imageScale &&
-      prevProps.maxImageScale === nextProps.maxImageScale &&
-      prevProps.onImageScaleChange === nextProps.onImageScaleChange &&
-      JSON.stringify(prevProps.interactiveImageLayerIndexes) === JSON.stringify(nextProps.interactiveImageLayerIndexes) &&
-      JSON.stringify(prevProps.layers) === JSON.stringify(nextProps.layers)
-    )
-  },
+  multipleLayerVideoPreviewPropsEqual,
 )

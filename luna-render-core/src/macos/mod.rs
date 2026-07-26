@@ -3,6 +3,10 @@ use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+mod preview;
+
+pub(crate) use preview::{NativePreviewRuntime, PreviewBounds};
+
 use crate::composition::{composition_layers, mux_primary_audio, CompositionInput};
 use crate::compositor::{Compositor, PreviewTextureInfo};
 use crate::export::TaskState;
