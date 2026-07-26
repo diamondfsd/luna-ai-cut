@@ -13,7 +13,7 @@ async function loadSelectionModel(id: AiSelectionModelId, signal?: AbortSignal):
   return (await loadModel(id, undefined, signal)).path
 }
 
-function decodePersonInput(item: AiSelectionItem, signal?: AbortSignal): Promise<Buffer> {
+function personInputLayout(item: AiSelectionItem): { scaledWidth: number; scaledHeight: number; padX: number; padY: number } {
   const width = item.width ?? 640
   const height = item.height ?? 640
   const scale = Math.min(640 / width, 640 / height)
@@ -21,8 +21,16 @@ function decodePersonInput(item: AiSelectionItem, signal?: AbortSignal): Promise
   const scaledHeight = Math.max(1, Math.round(height * scale))
   const padX = Math.floor((640 - scaledWidth) / 2)
   const padY = Math.floor((640 - scaledHeight) / 2)
+  return { scaledWidth, scaledHeight, padX, padY }
+}
+
+function decodePersonInput(item: AiSelectionItem, signal?: AbortSignal, frameTime?: number): Promise<Buffer> {
+  const { scaledWidth, scaledHeight, padX, padY } = personInputLayout(item)
   const args = ['-v', 'error']
-  if (item.kind === 'video') args.push('-ss', Math.max(0.1, Math.min(2, (item.duration ?? 1) * 0.08)).toFixed(3))
+  if (item.kind === 'video') {
+    const time = frameTime ?? Math.max(0.1, Math.min(2, (item.duration ?? 1) * 0.08))
+    args.push('-ss', time.toFixed(3))
+  }
   args.push('-i', item.path, '-frames:v', '1', '-vf', `scale=${scaledWidth}:${scaledHeight}:flags=bilinear,pad=640:640:${padX}:${padY}:color=0x727272`, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1')
   return new Promise((resolve, reject) => {
     execFile(getFfmpegPath(), args, { encoding: 'buffer', maxBuffer: 640 * 640 * 3 + 1024, signal }, (error, stdout) => {
@@ -181,12 +189,7 @@ export async function analyzePersonEvidence(item: AiSelectionItem, signal?: Abor
   signal?.throwIfAborted()
   const model = await loadModel('yolo26s-seg', undefined, signal)
   const rgb = await decodePersonInput(item, signal)
-  const width = item.width ?? 640
-  const height = item.height ?? 640
-  const scale = Math.min(640 / width, 640 / height)
-  const scaledWidth = Math.max(1, Math.round(width * scale))
-  const scaledHeight = Math.max(1, Math.round(height * scale))
-  const layout = { scaledWidth, scaledHeight, padX: Math.floor((640 - scaledWidth) / 2), padY: Math.floor((640 - scaledHeight) / 2) }
+  const layout = personInputLayout(item)
   const result = await segmentSpecializedInWorker({
     backend: 'yolo26-seg',
     modelPath: model.path,
@@ -210,5 +213,72 @@ export async function analyzePersonEvidence(item: AiSelectionItem, signal?: Abor
     bounds: evidence.bounds,
     ...faces,
     reason: `${coverage > 0.35 ? '人物占据画面主要位置' : coverage > 0.08 ? '找到清晰可比较的人物' : '找到画面中的人物'}${faceReason}`,
+  }
+}
+
+function videoPersonSampleTimes(duration: number): number[] {
+  if (!Number.isFinite(duration) || duration <= 0.2) return [0.1]
+  const end = Math.max(0.05, duration - 0.05)
+  return [...new Set([duration * 0.12, duration * 0.5, duration * 0.88]
+    .map((time) => Number(Math.max(0.05, Math.min(end, time)).toFixed(3))))]
+}
+
+export async function analyzeVideoPeopleEvidence(item: AiSelectionItem, signal?: AbortSignal): Promise<AiPersonEvidence> {
+  if (item.kind !== 'video') return analyzePersonEvidence(item, signal)
+  signal?.throwIfAborted()
+  const layout = personInputLayout(item)
+  const faceModel = await loadSelectionModel('ultraface-rfb-320', signal)
+  const faces: NonNullable<AiPersonEvidence['faces']> = []
+  let maxFacesInFrame = 0
+
+  for (const frameTime of videoPersonSampleTimes(item.duration ?? 0)) {
+    signal?.throwIfAborted()
+    try {
+      const rgb = await decodePersonInput(item, signal, frameTime)
+      const frameFaces = await extractFaceBoxesInWorker(faceModel, rgb, layout, signal)
+      const descriptors = await buildFaceDescriptors(rgb, frameFaces, layout, signal)
+      const usable = descriptors.filter((face) => face.embedding)
+      maxFacesInFrame = Math.max(maxFacesInFrame, usable.length)
+      faces.push(...usable.map((face) => ({ ...face, frameTime })))
+    } catch (error) {
+      signal?.throwIfAborted()
+      // 单帧无法读取或识别时跳过，视频仍可正常进入拍摄时段。
+    }
+  }
+
+  const embeddedFaces = faces.filter((face) => face.embedding)
+  if (embeddedFaces.length === 0) {
+    return {
+      detected: false,
+      coverage: 0,
+      confidence: 0.8,
+      subjectEdgeScore: null,
+      bounds: null,
+      faceCount: 0,
+      primaryFaceBounds: null,
+      faceVisibility: 'none',
+      eyeState: 'unknown',
+      closedEyeConfidence: null,
+      faces: [],
+      reason: '抽取的画面中没有识别到清晰人脸',
+    }
+  }
+
+  const primary = embeddedFaces.sort((left, right) => (
+    right.bounds.width * right.bounds.height - left.bounds.width * left.bounds.height
+  ))[0]
+  return {
+    detected: true,
+    coverage: 0,
+    confidence: 0.8,
+    subjectEdgeScore: null,
+    bounds: { x: 0, y: 0, width: 1, height: 1 },
+    faceCount: maxFacesInFrame,
+    primaryFaceBounds: primary.bounds,
+    faceVisibility: primary.bounds.width < 0.12 || primary.bounds.height < 0.12 ? 'small' : 'clear',
+    eyeState: 'unknown',
+    closedEyeConfidence: null,
+    faces: embeddedFaces,
+    reason: '从视频取样画面中识别到人物',
   }
 }
