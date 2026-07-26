@@ -47,7 +47,6 @@ function defaultSettings(): AppSettings {
     activeDeviceId: DEFAULT_DEVICE.id,
     deviceStorage: { [DEFAULT_DEVICE.id]: 'all' },
     developerMode: false,
-    exportAppleLivePhoto: false,
     defaultWatermarkEnabled: true,
     defaultWatermarkPosition: 'bottom-center',
     workspacePreviewQuality: 'balanced',
