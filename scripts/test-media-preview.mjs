@@ -7,6 +7,7 @@ const source = await readFile(new URL('../src/components/htmlPreviewGeometry.ts'
 const watermarkGeometrySource = await readFile(new URL('../src/shared/watermarkGeometry.ts', import.meta.url), 'utf8')
 const watermarkLibrarySource = await readFile(new URL('../src/shared/watermarkLibrary.ts', import.meta.url), 'utf8')
 const rendererSelectionSource = await readFile(new URL('../src/components/previewRendererSelection.ts', import.meta.url), 'utf8')
+const nativePreviewOcclusionSource = await readFile(new URL('../src/components/nativePreviewOcclusion.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -39,6 +40,14 @@ const rendererSelectionCompiled = ts.transpileModule(rendererSelectionSource, {
   },
 }).outputText
 const rendererSelection = await import(`data:text/javascript;base64,${Buffer.from(rendererSelectionCompiled).toString('base64')}`)
+const nativePreviewOcclusionCompiled = ts.transpileModule(nativePreviewOcclusionSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
+  },
+}).outputText
+const nativePreviewOcclusion = await import(`data:text/javascript;base64,${Buffer.from(nativePreviewOcclusionCompiled).toString('base64')}`)
 
 function close(actual, expected, message) {
   assert.ok(Math.abs(actual - expected) < 0.0001, `${message}: expected ${expected}, got ${actual}`)
@@ -181,6 +190,21 @@ assert.equal(
   ]),
   false,
   'image preview remains on the existing image renderer',
+)
+assert.equal(
+  nativePreviewOcclusion.shouldShowNativePreview(false, true, false),
+  false,
+  'native GPU preview hides when its preserved route becomes inactive',
+)
+assert.equal(
+  nativePreviewOcclusion.shouldShowNativePreview(true, false, false),
+  false,
+  'native GPU preview hides when its canvas has no visible bounds',
+)
+assert.equal(
+  nativePreviewOcclusion.shouldShowNativePreview(true, true, false),
+  true,
+  'native GPU preview returns when the workspace is active and visible',
 )
 
 console.log('media preview geometry tests passed')

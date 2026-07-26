@@ -17,10 +17,8 @@ import {
   type MediaResolution,
 } from './previewStageGeometry'
 import './PreviewStage.css'
-
 export { buildLayers, calcAspectRatio } from './previewStageGeometry'
 export type { MediaResolution } from './previewStageGeometry'
-
 export interface PreviewStageHandle {
   seek: (time: number) => void
   togglePlay: () => void
@@ -28,9 +26,10 @@ export interface PreviewStageHandle {
   getDuration: () => number
   isPlaying: () => boolean
 }
-
 interface PreviewStageProps {
   url: string | null
+  /** 保留页面 DOM 时控制原生 GPU 画面的显隐。 */
+  active?: boolean
   /** 已知的 Live Photo 状态；传入后不再单独扫描文件，保证与素材列表一致。 */
   isLivePhoto?: boolean
   pending?: boolean
@@ -50,10 +49,9 @@ interface PreviewStageProps {
   /** 播放/暂停/当前时间变更回调 */
   onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
 }
-
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
+    { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const { settings } = useApp()
@@ -424,6 +422,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               layers={layers}
               canvasWidth={previewCanvas.width}
               canvasHeight={previewCanvas.height}
+              active={active}
               playing={playing}
               onRender={handleRender}
               onVideoElement={handleVideoElement}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { CompositionInput, PreviewLayer } from '../shared/types'
-import { isNativePreviewOccluded } from './nativePreviewOcclusion'
+import { isNativePreviewOccluded, shouldShowNativePreview } from './nativePreviewOcclusion'
 import { buildCompositionFromPreviewLayers } from './renderComposition'
 import './NativeGpuVideoPreview.css'
 
@@ -43,6 +43,7 @@ interface NativeGpuVideoPreviewProps {
   layers: PreviewLayer[]
   canvasWidth: number
   canvasHeight: number
+  active?: boolean
   playing: boolean
   className?: string
   onVideoElement?: (element: HTMLVideoElement | null) => void
@@ -91,6 +92,7 @@ export function NativeGpuVideoPreview({
   layers,
   canvasWidth,
   canvasHeight,
+  active = true,
   playing,
   className,
   onVideoElement,
@@ -103,6 +105,7 @@ export function NativeGpuVideoPreview({
   const surfaceVisibleRef = useRef<boolean | null>(null)
   const surfaceBoundsRef = useRef<NativePreviewBounds | null>(null)
   const occludedRef = useRef(false)
+  const activeRef = useRef(active)
   const compositionRef = useRef<CompositionInput | null>(null)
   const callbackRef = useRef({ onFallback, onRender, onVideoElement })
   const playbackRef = useRef({ playing, primaryLayer: layers.find((layer) => layer.isVideo) })
@@ -110,6 +113,7 @@ export function NativeGpuVideoPreview({
   const primaryLayer = layers.find((layer) => layer.isVideo)
   callbackRef.current = { onFallback, onRender, onVideoElement }
   playbackRef.current = { playing, primaryLayer }
+  activeRef.current = active
   const primarySource = primaryLayer
     ? filePathToPreviewUrl(primaryLayer.filePath) ?? primaryLayer.filePath
     : null
@@ -127,15 +131,23 @@ export function NativeGpuVideoPreview({
       cancelAnimationFrame(scheduled)
       scheduled = requestAnimationFrame(() => {
         const bounds = boundsFor(canvas)
-        if (!bounds) return
-        const visible = !isNativePreviewOccluded(canvas)
-        occludedRef.current = !visible
         const sessionId = sessionRef.current
+        const api = nativePreviewApi()
+        if (!bounds) {
+          occludedRef.current = true
+          if (sessionId !== null && api && surfaceVisibleRef.current !== false) {
+            surfaceVisibleRef.current = false
+            void api.setNativePreviewVisible(sessionId, false).catch(() => undefined)
+          }
+          return
+        }
+        const occluded = isNativePreviewOccluded(canvas)
+        const visible = shouldShowNativePreview(activeRef.current, true, occluded)
+        occludedRef.current = occluded
         if (sessionId === null) {
           setInitialBounds(bounds)
           return
         }
-        const api = nativePreviewApi()
         if (!api) return
         const previousBounds = surfaceBoundsRef.current
         const boundsChanged = !previousBounds
@@ -205,7 +217,7 @@ export function NativeGpuVideoPreview({
         createdSession = sessionId
         if (cancelled) return api.destroyNativePreviewSession(sessionId)
         sessionRef.current = sessionId
-        const visible = !occludedRef.current
+        const visible = shouldShowNativePreview(activeRef.current, true, occludedRef.current)
         surfaceVisibleRef.current = visible
         surfaceBoundsRef.current = initialBounds
         const video = videoRef.current
@@ -235,11 +247,39 @@ export function NativeGpuVideoPreview({
       sessionRef.current = null
       surfaceVisibleRef.current = null
       surfaceBoundsRef.current = null
-      if (sessionId !== null) void api.destroyNativePreviewSession(sessionId)
+      if (sessionId !== null) {
+        void api.setNativePreviewVisible(sessionId, false)
+          .catch(() => undefined)
+          .then(() => api.destroyNativePreviewSession(sessionId))
+      }
     }
     // Keep the native Surface alive across media and composition changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Boolean(initialBounds)])
+
+  useEffect(() => {
+    const sessionId = sessionRef.current
+    const api = nativePreviewApi()
+    const canvas = canvasRef.current
+    if (sessionId === null || !api || !canvas) return
+    const bounds = boundsFor(canvas)
+    const occluded = !bounds || isNativePreviewOccluded(canvas)
+    const visible = shouldShowNativePreview(active, Boolean(bounds), occluded)
+    occludedRef.current = occluded
+    surfaceVisibleRef.current = visible
+    if (!visible) {
+      void api.setNativePreviewVisible(sessionId, false).catch(() => undefined)
+      return
+    }
+    surfaceBoundsRef.current = bounds
+    void api.setNativePreviewBounds(sessionId, bounds!)
+      .then(() => api.setNativePreviewVisible(sessionId, true))
+      .catch((error: unknown) => {
+        if (sessionRef.current === sessionId) {
+          callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+        }
+      })
+  }, [active])
 
   useEffect(() => {
     const sessionId = sessionRef.current

@@ -189,6 +189,9 @@ export function WatermarkSettings({
   const [customAssets, setCustomAssets] = useState<CustomWatermarkAsset[]>([])
   const enrichSeqRef = useRef(0)
   const watermarkKind = mediaKind ?? (filePath && isVideoPath(filePath) ? 'video' : 'image')
+  const defaultWatermarkWidthRatio = resolvedMediaSize && resolvedMediaSize.height > resolvedMediaSize.width
+    ? 0.35
+    : DEFAULT_WATERMARK_WIDTH_RATIO
 
   useEffect(() => {
     let cancelled = false
@@ -260,6 +263,7 @@ export function WatermarkSettings({
             imagePath: next.customAsset.filePath,
             imageWidth: next.customAsset.width,
             imageHeight: next.customAsset.height,
+            sizeOnCanvasWidth: next.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio,
           }
         : {
             ...next,
@@ -277,7 +281,7 @@ export function WatermarkSettings({
     const size = resolvedMediaSize ?? { width: 16, height: 9 }
     const layer = next.enabled ? buildResolvedWatermarkStaticLayer(next, size.width, size.height) ?? undefined : undefined
     publish(next, layer)
-  }, [allowBuiltin, preferencesOnly, publish, resolvedMediaSize, watermarkKind])
+  }, [allowBuiltin, defaultWatermarkWidthRatio, preferencesOnly, publish, resolvedMediaSize, watermarkKind])
 
   useEffect(() => {
     if (!hydrated || (filePath && !resolvedMediaSize)) return
@@ -298,7 +302,7 @@ export function WatermarkSettings({
         imagePath: asset.filePath,
         imageWidth: asset.width,
         imageHeight: asset.height,
-        sizeOnCanvasWidth: settingsRef.current.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO,
+        sizeOnCanvasWidth: settingsRef.current.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio,
         placement: settingsRef.current.placement ?? defaultWatermarkPlacement(settingsRef.current.position),
         opacity: settingsRef.current.opacity ?? 1,
       })
@@ -327,7 +331,7 @@ export function WatermarkSettings({
       imagePath: asset.filePath,
       imageWidth: asset.width,
       imageHeight: asset.height,
-      sizeOnCanvasWidth: settingsRef.current.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO,
+      sizeOnCanvasWidth: settingsRef.current.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio,
       placement: settingsRef.current.placement ?? defaultWatermarkPlacement(settingsRef.current.position),
       opacity: settingsRef.current.opacity ?? 1,
     })
@@ -346,7 +350,7 @@ export function WatermarkSettings({
       void enrichAndChange({
         position: 'bottom-center',
         placement: defaultWatermarkPlacement('bottom-center'),
-        sizeOnCanvasWidth: DEFAULT_WATERMARK_WIDTH_RATIO,
+        sizeOnCanvasWidth: defaultWatermarkWidthRatio,
         opacity: 1,
       })
       return
@@ -418,7 +422,7 @@ export function WatermarkSettings({
           <PositionGrid settings={currentSettings} custom={customSelected} onChange={changePosition} />
           {!preferencesOnly && customSelected && (
             <div className="wm-appearance-controls">
-              <WatermarkSlider label="大小" value={(currentSettings.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO) * 100} min={8} max={80} onChange={(value) => void enrichAndChange({ sizeOnCanvasWidth: value / 100 })} />
+              <WatermarkSlider label="大小" value={(currentSettings.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio) * 100} min={8} max={80} onChange={(value) => void enrichAndChange({ sizeOnCanvasWidth: value / 100 })} />
               <WatermarkSlider label="透明度" value={(currentSettings.opacity ?? 1) * 100} min={0} max={100} onChange={(value) => void enrichAndChange({ opacity: value / 100 })} />
             </div>
           )}
