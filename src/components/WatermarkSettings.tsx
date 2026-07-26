@@ -362,7 +362,7 @@ export function WatermarkSettings({
   const content = (
     <div className="wm-settings-content">
       {!preferencesOnly && allowBuiltin && (
-        <SettingsSection title="水印来源" className="wm-source-section">
+        <div className="wm-source-control">
           <SegmentedControl
             ariaLabel="水印来源"
             options={sourceOptions}
@@ -371,7 +371,7 @@ export function WatermarkSettings({
             variant="size"
             className="wm-source-selector"
           />
-        </SettingsSection>
+        </div>
       )}
 
       {!preferencesOnly && selectedSourceKind === 'custom' && (
