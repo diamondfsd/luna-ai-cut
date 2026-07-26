@@ -26,7 +26,6 @@ export interface AppSettings {
   mockHttpPort?: number
   mockTcpPort?: number
   mockRateMbps?: number
-  exportAppleLivePhoto?: boolean
   /** 新素材与重置素材使用的默认水印开关。 */
   defaultWatermarkEnabled?: boolean
   /** 新素材与重置素材使用的默认水印位置。 */

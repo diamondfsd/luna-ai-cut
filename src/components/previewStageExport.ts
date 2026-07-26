@@ -478,6 +478,7 @@ async function runBatchExportQueue(
   exportDir: string,
   entries: BatchExportEntry[],
   exportConfig?: VideoExportSettings | null,
+  appleLivePhoto = false,
 ): Promise<void> {
   const exportOne = async (entry: BatchExportEntry): Promise<void> => {
     const task = await window.luna.exportTask.get(taskId)
@@ -532,9 +533,7 @@ async function runBatchExportQueue(
                 i === 0 ? { ...layer, filePath: videoUrl, isVideo: true } : layer,
               )
               const baseName = baseNameFromPath(entry.sourcePath)
-              const appleLiveEnabled = (await window.luna.getSettings().catch(() => ({ exportAppleLivePhoto: false }))).exportAppleLivePhoto ?? false
-
-              if (appleLiveEnabled) {
+              if (appleLivePhoto) {
                 // Apple Live 开启：创建 2 个独立子任务（Live + Apple Live）
                 const liveStamp = Date.now()
 
@@ -701,6 +700,7 @@ export async function exportBatchFiles(
   sources: Array<string | BatchExportSource>,
   exportDir: string,
   exportConfig?: VideoExportSettings | null,
+  options?: { appleLivePhoto?: boolean },
 ): Promise<{ taskId: string; items: Array<{ id: string; outputPath: string }> }> {
   const sourceItems = sources.map((source) => (
     typeof source === 'string' ? { sourcePath: source } : source
@@ -747,7 +747,7 @@ export async function exportBatchFiles(
 
   const queuedEntries = entries.map((entry) => ({ ...entry }))
   window.setTimeout(() => {
-    void runBatchExportQueue(task.id, taskName, exportDir, queuedEntries, exportConfig)
+    void runBatchExportQueue(task.id, taskName, exportDir, queuedEntries, exportConfig, options?.appleLivePhoto)
   }, 0)
 
   return { taskId: task.id, items: entries.map((entry) => ({ id: entry.id, outputPath: entry.outputPath })) }

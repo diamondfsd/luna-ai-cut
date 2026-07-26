@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AppleLivePhotoExportOption } from './AppleLivePhotoExportOption'
 import { buildExportLayers, exportBatchFiles, type BatchExportSource } from './previewStageExport'
 import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsPanel'
 import { HtmlPreview } from './HtmlPreview'
@@ -11,6 +12,7 @@ import { useFileCache } from '../hooks/useFileCache'
 import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
 import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
+import { getIsLivePhoto } from '../shared/livePhoto'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS, lockDolbyVisionExportSettings } from '../shared/types'
 import type { DolbyVisionProbeResult, PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { usesCustomWatermark } from '../shared/watermarkGeometry'
@@ -75,6 +77,8 @@ export function PreviewModal({
   const [watermarkLayers, setWatermarkLayers] = useState<PreviewLayer[]>([])
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType | null>(null)
   const [batchEnqueuing, setBatchEnqueuing] = useState(false)
+  const [exportAppleLivePhoto, setExportAppleLivePhoto] = useState(false)
+  const [livePhotoCount, setLivePhotoCount] = useState(0)
   const [exportConfig, setExportConfig] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
   const [dolbyVisionProbe, setDolbyVisionProbe] = useState<DolbyVisionProbeResult | null>(null)
   const [dolbyVisionChecking, setDolbyVisionChecking] = useState(false)
@@ -92,6 +96,10 @@ export function PreviewModal({
     path: stageSource,
     kind: isVideoPath(stageSource) ? 'video' : 'image',
   } : null)
+  const exportList = useMemo(
+    () => batchExportMode ? (filePathList ?? []) : [currentFilePath],
+    [batchExportMode, currentFilePath, filePathList],
+  )
 
   useEffect(() => {
     logger.info('[预览诊断] 预览窗口打开', {
@@ -114,6 +122,23 @@ export function PreviewModal({
   const hasVideoInBatch = batchExportMode
     ? (filePathList ?? []).some((fp) => isVideoPath(fp))
     : isVideoPath(currentFilePath)
+
+  useEffect(() => {
+    if (previewOnly || !window.navigator.platform.includes('Mac')) {
+      setLivePhotoCount(0)
+      setExportAppleLivePhoto(false)
+      return
+    }
+
+    let cancelled = false
+    void Promise.all(exportList.map((path) => getIsLivePhoto(path))).then((results) => {
+      if (cancelled) return
+      const count = results.filter(Boolean).length
+      setLivePhotoCount(count)
+      if (count === 0) setExportAppleLivePhoto(false)
+    })
+    return () => { cancelled = true }
+  }, [exportList, previewOnly])
 
   useEffect(() => {
     const canProbe = Boolean(lightweightPreview && !batchExportMode && stageSource && isVideoPath(stageSource))
@@ -179,7 +204,6 @@ export function PreviewModal({
         return
       }
 
-      const exportList = batchExportMode ? (filePathList ?? []) : [currentFilePath]
       const sources: BatchExportSource[] = await Promise.all(exportList.map(async (sourcePath) => {
         const resolution = await window.luna.workspace.getMediaResolution(sourcePath)
         const canUseBuiltinWatermark = await canUseLunaUltraWatermark(
@@ -192,14 +216,19 @@ export function PreviewModal({
         }
       }))
 
-      await exportBatchFiles(sources, settings.exportDir, hasVideoInBatch ? exportConfig : null)
+      await exportBatchFiles(
+        sources,
+        settings.exportDir,
+        hasVideoInBatch ? exportConfig : null,
+        { appleLivePhoto: exportAppleLivePhoto },
+      )
       toast.success(`已加入导出队列 (${sources.length} 个文件)`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '导出失败')
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, batchExportMode, exportConfig, filePathList, currentFilePath, hasVideoInBatch, watermarkLayers.length, watermarkSettings])
+  }, [batchEnqueuing, exportAppleLivePhoto, exportConfig, exportList, hasVideoInBatch, watermarkLayers.length, watermarkSettings])
 
   // Escape 关闭
   useEffect(() => {
@@ -281,6 +310,12 @@ export function PreviewModal({
                     />
                   )}
                   <div className="batch-export-actions">
+                    <AppleLivePhotoExportOption
+                      checked={exportAppleLivePhoto}
+                      livePhotoCount={livePhotoCount}
+                      batch={Boolean(batchExportMode)}
+                      onCheckedChange={setExportAppleLivePhoto}
+                    />
                     <Button
                       variant="primary"
                       disabled={batchEnqueuing}
