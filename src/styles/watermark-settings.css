@@ -6,96 +6,104 @@
 
 .wm-settings-content {
   display: grid;
-  gap: 12px;
-  margin-top: 10px;
+  gap: 0;
+  margin-top: 8px;
+}
+
+.wm-settings-section {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 13px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.wm-settings-section:first-child {
+  padding-top: 8px;
+  border-top: 0;
+}
+
+.wm-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wm-section-heading > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wm-source-selector,
 .wm-style-selector {
-  width: 100%;
-}
-
-.wm-source-row {
-  min-width: 0;
-}
-
-.wm-source-row.has-search {
   display: grid;
-  grid-template-columns: minmax(132px, 0.9fr) minmax(120px, 1.1fr);
-  align-items: center;
-  gap: 8px;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
 }
 
-.wm-custom-search {
-  min-width: 0;
+.wm-source-selector .ui-btn-group-btn,
+.wm-style-selector .ui-btn-group-btn {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.wm-source-selector .ui-btn-group-btn:hover,
+.wm-style-selector .ui-btn-group-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wm-source-selector .ui-btn-group-btn.active,
+.wm-style-selector .ui-btn-group-btn.active {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
 }
 
 .wm-style-thumb {
   display: block;
-  width: 72px;
-  height: 28px;
-  object-fit: contain;
-}
-
-.wm-custom-library {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-
-.wm-custom-options {
-  display: grid;
-  max-height: 164px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  padding-right: 2px;
-  overflow-y: auto;
-}
-
-.wm-custom-option {
-  display: flex;
-  min-width: 0;
-  height: 52px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  cursor: pointer;
-}
-
-.wm-custom-option:hover {
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.wm-custom-option.active {
-  border-color: var(--blue);
-  background: #e7f1fb;
-}
-
-.wm-custom-option:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 1px;
-}
-
-.wm-custom-option img {
-  display: block;
   width: 100%;
-  height: 42px;
-  border-radius: 3px;
+  height: 24px;
   object-fit: contain;
-  background: transparent;
+}
+
+.wm-custom-empty {
+  display: grid;
+  min-height: 116px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.48);
+  text-align: center;
+  font-size: 11px;
 }
 
 .wm-position-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
-  aspect-ratio: 16 / 7;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  aspect-ratio: 16 / 6.5;
+  background: rgba(0, 0, 0, 0.12);
 }
 
-.wm-pos-cell {
+.wm-pos-cell.ui-btn {
   display: flex;
   box-sizing: border-box;
   min-width: 0;
@@ -105,8 +113,7 @@
   border: 1px solid transparent;
   border-radius: 5px;
   padding: 5px;
-  background: #ededf0;
-  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .wm-pos-cell[data-position^='top-'] {
@@ -129,16 +136,16 @@
   min-height: 32px;
 }
 
-.wm-pos-cell:hover {
-  background: #e1e1e5;
+.wm-pos-cell.ui-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
-.wm-pos-cell.active {
-  border-color: var(--blue);
-  background: #e7f1fb;
+.wm-pos-cell.ui-btn.active {
+  border-color: var(--blue-on-dark);
+  background: rgba(0, 102, 204, 0.24);
 }
 
-.wm-pos-cell:focus-visible {
+.wm-pos-cell.ui-btn:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 1px;
 }
@@ -147,11 +154,24 @@
   width: 18px;
   height: 9px;
   border-radius: 2px;
-  background: #9a9aa1;
+  background: rgba(255, 255, 255, 0.42);
 }
 
 .wm-pos-cell.active .wm-pos-dot {
-  background: var(--blue);
+  background: var(--blue-on-dark);
+}
+
+.wm-appearance-controls {
+  display: grid;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.wm-drag-hint {
+  margin: -2px 0 0;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .wm-slider-field {
