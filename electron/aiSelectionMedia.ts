@@ -235,15 +235,11 @@ export async function analyzeIndexedMedia(
   const metadata = await probe(media, signal).catch(() => ({ width: null, height: null, duration: null, capturedAt: null, device: null }))
   const exif = media.kind === 'image' ? await imageExif(media) : { capturedAt: null, device: null }
   const capturedAt = exif.capturedAt ?? metadata.capturedAt ?? new Date(media.mtimeMs).toISOString()
-  // The first pass deliberately opens a video only once. Dense keyframes belong to
-  // the background scene pass and must never block the photo selection result.
-  const times = [media.kind === 'video' ? Math.max(0.1, Math.min(metadata.duration ? metadata.duration * 0.08 : 0.1, 2)) : null]
-  const analyses = []
-  for (const time of times) {
-    signal?.throwIfAborted()
-    analyses.push(analyzeRgb(await decodeRgb(media, time, signal), 64, 64))
-  }
-  const quality = averageQuality(analyses.map((analysis) => analysis.quality))
+  // 视频只读取基础信息，用于拍摄时段和人物分组；不做画质、内容或片段分析。
+  const analyses = media.kind === 'image'
+    ? [analyzeRgb(await decodeRgb(media, null, signal), 64, 64)]
+    : []
+  const quality = analyses.length > 0 ? averageQuality(analyses.map((analysis) => analysis.quality)) : null
   let imageEmbedding: number[] | null = null
   let embeddingError = embeddingModel?.error ?? null
   if (media.kind === 'image' && embeddingModel?.path) {
@@ -290,8 +286,8 @@ export async function analyzeIndexedMedia(
     contentTagError: null,
     sceneId: null,
     groupId: null,
-    recommendationScore: quality.score,
-    recommendationReason: media.kind === 'video' ? '视频素材，等待片段分析' : null,
+    recommendationScore: quality?.score ?? 0,
+    recommendationReason: null,
     state: 'undecided',
     decisionSource: 'ai',
     flags: selectionFlags(quality, null),
