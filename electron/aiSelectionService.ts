@@ -11,27 +11,26 @@ import type {
   AiSelectionUserOperation,
   WorkspaceProject,
 } from '../src/shared/types'
-import { applySelectionPlan, buildShootingEvents, buildSimilarityGroups, normalizeSelectionTarget } from './aiSelectionAlgorithms'
+import { normalizeSelectionTarget } from './aiSelectionAlgorithms'
 import { prepareImageEmbeddingModel } from './aiSelectionEmbedding'
+import { readAiSelectionItemCache, writeAiSelectionItemCache } from './aiSelectionItemCache'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot, type AiSelectionSnapshot } from './aiSelectionOperations'
-import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
-import { buildGlobalFaceGroups, loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
+import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideoPeopleOnDemand, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
+import { loadGlobalPeople, mergeGlobalPeople, registerGlobalPeople, renameGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
+import { rebuildSelectionResult } from './aiSelectionResult'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { getSettings } from './settingsService'
 import { createWorkspaceProject } from './workspaceProjectService'
 import { workspaceAssetsFromSelection } from './aiSelectionWorkspaceAssets'
 
-const ANALYSIS_VERSION = 'selection-evidence-v5'
+const ANALYSIS_VERSION = 'selection-evidence-v6'
 const ROOT_DIR = 'ai-selection'
-
 interface StoredSession extends AiSelectionSession {
   undoStack: AiSelectionSnapshot[]
   redoStack: AiSelectionSnapshot[]
 }
-
 type Notify = (event: 'progress' | 'session', payload: AiSelectionProgress | AiSelectionSession) => void
-
 const sessions = new Map<string, StoredSession>()
 let loaded = false
 let activeSessionId: string | null = null
@@ -55,31 +54,12 @@ function sessionPath(id: string): string {
   return path.join(rootDir(), 'sessions', `${id}.json`)
 }
 
-function itemCachePath(id: string, preset: AiSelectionSession['preset']): string {
-  if (!/^media_[a-f0-9]+$/.test(id)) throw new Error('素材缓存标识无效')
-  return path.join(rootDir(), 'items', id, `${ANALYSIS_VERSION}-${preset}.json`)
-}
-
 async function readCachedItem(id: string, preset: AiSelectionSession['preset']): Promise<AiSelectionItem | null> {
-  try {
-    return JSON.parse(await fs.readFile(itemCachePath(id, preset), 'utf8')) as AiSelectionItem
-  } catch {
-    return null
-  }
+  return readAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, id, preset)
 }
 
 async function writeCachedItem(item: AiSelectionItem, preset: AiSelectionSession['preset']): Promise<void> {
-  if (item.error) return
-  const destination = itemCachePath(item.id, preset)
-  await fs.mkdir(path.dirname(destination), { recursive: true })
-  const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`
-  try {
-    await fs.writeFile(temporary, `${JSON.stringify(item)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
-    await fs.rm(destination, { force: true })
-    await fs.rename(temporary, destination)
-  } finally {
-    await fs.rm(temporary, { force: true }).catch(() => undefined)
-  }
+  await writeAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, item, preset)
 }
 
 function publicSession(session: StoredSession): AiSelectionSession {
@@ -159,33 +139,6 @@ function abortLike(error: unknown): boolean {
   return error instanceof Error && (error.name === 'AbortError' || /aborted|已取消/i.test(error.message))
 }
 
-function rebuildSelectionResult(session: StoredSession): void {
-  const generatedScenes = buildShootingEvents(session.items)
-  const existingModifiedScenes = session.scenes.filter((scene) => scene.userModified || scene.confirmation !== 'pending')
-  const claimedSceneItems = new Set(existingModifiedScenes.flatMap((scene) => scene.itemIds))
-  const remainingScenes = generatedScenes.flatMap((scene) => {
-    const itemIds = scene.itemIds.filter((id) => !claimedSceneItems.has(id))
-    if (itemIds.length === 0) return []
-    return [{ ...scene, itemIds, coverItemId: itemIds.includes(scene.coverItemId) ? scene.coverItemId : itemIds[0] }]
-  })
-  session.scenes = [...existingModifiedScenes, ...remainingScenes].sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))
-  const sceneByItem = new Map(session.scenes.flatMap((scene) => scene.itemIds.map((id) => [id, scene.id] as const)))
-  session.items.forEach((item) => { item.sceneId = sceneByItem.get(item.id) ?? null })
-  const generatedGroups = buildSimilarityGroups(session.items, session.scenes)
-  const modifiedGroups = session.groups.filter((group) => group.userModified || group.confirmation !== 'pending')
-  const modifiedItemIds = new Set(modifiedGroups.flatMap((group) => group.itemIds))
-  session.groups = [
-    ...modifiedGroups,
-    ...generatedGroups.filter((group) => !group.itemIds.some((id) => modifiedItemIds.has(id))),
-  ]
-  session.faceGroups = buildGlobalFaceGroups(session.items)
-  applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
-  for (const scene of session.scenes) {
-    scene.recommendedCount = scene.itemIds.filter((id) => session.items.find((item) => item.id === id)?.state === 'recommended').length
-    scene.coverItemId = scene.itemIds.find((id) => session.items.find((item) => item.id === id)?.state === 'recommended') ?? scene.coverItemId
-  }
-}
-
 async function runSession(session: StoredSession): Promise<void> {
   const controller = new AbortController()
   activeSessionId = session.id
@@ -199,6 +152,7 @@ async function runSession(session: StoredSession): Promise<void> {
     session.counts.total = indexed.length
     const previousItems = new Map(session.items.map((item) => [item.id, item]))
     session.items = indexed.map((media) => previousItems.get(media.id) ?? pendingItem(media))
+    rebuildSelectionResult(session)
     await updateAndPersist(session)
     const completed = new Set(session.items.filter((item) => item.analysisState !== 'pending').map((item) => item.id))
     const sizeCounts = new Map<number, number>()
@@ -234,11 +188,9 @@ async function runSession(session: StoredSession): Promise<void> {
         }
       }))
       for (const item of analyzed) session.items.splice(session.items.findIndex((candidate) => candidate.id === item.id), 1, item)
+      rebuildSelectionResult(session)
       await updateAndPersist(session, batch[batch.length - 1]?.name ?? null)
     }
-
-    await analyzeRecommendationEvidence(analysisContext(session), photos.map((item) => item.id), controller.signal)
-    session.faceGroups = await registerGlobalPeople(peopleStoreDir(), session.items)
 
     controller.signal.throwIfAborted()
     session.phase = 'grouping'
@@ -266,6 +218,7 @@ async function runSession(session: StoredSession): Promise<void> {
         }
       }))
       for (const item of analyzed) session.items.splice(session.items.findIndex((candidate) => candidate.id === item.id), 1, item)
+      rebuildSelectionResult(session)
       await updateAndPersist(session, batch[batch.length - 1]?.name ?? null)
     }
 
@@ -274,6 +227,21 @@ async function runSession(session: StoredSession): Promise<void> {
     await updateAndPersist(session)
     session.phase = 'done'
     session.status = 'ready'
+    await updateAndPersist(session)
+
+    // 人物与内容证据属于增量增强：基础结果可用后再继续补充，不阻塞选片。
+    try {
+      await analyzeRecommendationEvidence(analysisContext(session), photos.map((item) => item.id), controller.signal)
+      session.faceGroups = await registerGlobalPeople(peopleStoreDir(), session.items)
+      rebuildSelectionResult(session)
+      await updateAndPersist(session)
+      await analyzeVideoPeopleOnDemand(analysisContext(session), videos.map((item) => item.id), controller.signal)
+      session.faceGroups = await registerGlobalPeople(peopleStoreDir(), session.items)
+      rebuildSelectionResult(session)
+    } catch (error) {
+      if (abortLike(error)) throw error
+    }
+    session.phase = 'done'
     await updateAndPersist(session)
   } catch (error) {
     if (!abortLike(error)) {

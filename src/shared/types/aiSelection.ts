@@ -51,6 +51,8 @@ export interface AiFaceDescriptor {
   bounds: { x: number; y: number; width: number; height: number }
   embedding: number[] | null
   embeddingVersion?: string | null
+  /** 视频人物取样所在时间；照片不设置。 */
+  frameTime?: number
 }
 
 export interface AiVideoKeyframe {
