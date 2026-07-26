@@ -1,0 +1,163 @@
+.wm-asset-select-trigger.ui-btn {
+  display: grid;
+  width: 100%;
+  height: 44px;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  gap: 9px;
+  padding: 5px 10px 5px 5px;
+  text-align: left;
+}
+
+.wm-asset-select-trigger > img {
+  display: block;
+  width: 54px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.wm-asset-select-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wm-asset-select-trigger > svg:last-child {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.wm-asset-select-popover.ui-popover-content {
+  display: flex;
+  width: min(300px, calc(100vw - 32px));
+  max-height: min(420px, calc(100vh - 32px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: #1d1d1f;
+  color: #fff;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.wm-asset-select-popover.ui-popover-content [data-popover-header] {
+  flex: 0 0 auto;
+  padding: 11px 12px;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wm-asset-select-popover .ui-popover-arrow {
+  fill: #1d1d1f;
+  stroke: rgba(255, 255, 255, 0.12);
+}
+
+.wm-asset-select-search {
+  flex: 0 0 auto;
+  margin: 9px 10px 0;
+}
+
+.wm-asset-select-search.ui-input-wrap {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.wm-asset-select-search.ui-input-wrap:focus-within {
+  border-color: var(--blue-on-dark);
+}
+
+.wm-asset-select-search .ui-input {
+  color: #fff;
+}
+
+.wm-asset-select-search .ui-input::placeholder {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.wm-asset-select-options {
+  display: grid;
+  min-height: 0;
+  max-height: 240px;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 9px 4px 9px 10px;
+  padding-right: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  touch-action: pan-y;
+}
+
+.wm-asset-select-options::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wm-asset-select-options::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.wm-asset-select-option.ui-btn {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 58px;
+  min-height: 58px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #fff;
+}
+
+.wm-asset-select-option.ui-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.wm-asset-select-option.ui-btn.active {
+  border-color: var(--blue-on-dark);
+  background: rgba(0, 102, 204, 0.24);
+}
+
+.wm-asset-select-option.ui-btn:focus-visible {
+  outline: 2px solid var(--blue-on-dark);
+  outline-offset: 1px;
+}
+
+.wm-asset-select-option img {
+  display: block;
+  width: 100%;
+  height: 48px;
+  border-radius: 3px;
+  object-fit: contain;
+}
+
+.wm-asset-select-check {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+}
+
+.wm-asset-select-empty {
+  margin: 0;
+  padding: 28px 12px;
+  color: rgba(255, 255, 255, 0.48);
+  text-align: center;
+  font-size: 11px;
+}
