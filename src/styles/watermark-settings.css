@@ -23,6 +23,14 @@
   border-top: 0;
 }
 
+.wm-source-control {
+  padding: 8px 0 4px;
+}
+
+.wm-source-control + .wm-settings-section {
+  margin-top: 4px;
+}
+
 .wm-section-heading {
   display: flex;
   align-items: center;
