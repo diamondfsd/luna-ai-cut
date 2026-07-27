@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { FolderOpen, ImagePlus, RotateCcw, Settings2 } from 'lucide-react'
+import { FolderOpen, ImagePlus, Settings2 } from 'lucide-react'
 import { Slider as RadixSlider } from 'radix-ui'
 
 import { isVideoPath } from '../lib/fileUtils'
@@ -72,7 +72,7 @@ const CUSTOM_POSITIONS: Array<{ value: WatermarkPosition; label: string }> = [
   { value: 'bottom-right', label: '右下' },
 ]
 
-const BUILTIN_POSITIONS: Array<(typeof CUSTOM_POSITIONS)[number] | null> = [
+const PRESET_POSITIONS: Array<(typeof CUSTOM_POSITIONS)[number] | null> = [
   CUSTOM_POSITIONS[0],
   null,
   CUSTOM_POSITIONS[2],
@@ -122,10 +122,9 @@ function PositionGrid({ settings, custom, onChange }: {
 }) {
   const placement = custom ? effectiveWatermarkPlacement(settings) : null
   const activePosition = placement?.mode === 'preset' ? placement.anchor : custom ? null : builtinWatermarkPosition(settings.position)
-  const positions = custom ? CUSTOM_POSITIONS : BUILTIN_POSITIONS
   return (
     <div className="wm-position-grid" role="group" aria-label="水印位置">
-      {positions.map((position, index) => position ? (
+      {PRESET_POSITIONS.map((position, index) => position ? (
         <Button
           key={position.value}
           variant="secondary"
@@ -144,18 +143,12 @@ function PositionGrid({ settings, custom, onChange }: {
 }
 
 interface SettingsSectionProps {
-  title: string
-  action?: ReactNode
   children: ReactNode
   className?: string
 }
-function SettingsSection({ title, action, children, className = '' }: SettingsSectionProps) {
+function SettingsSection({ children, className = '' }: SettingsSectionProps) {
   return (
     <section className={`wm-settings-section ${className}`}>
-      <div className="wm-section-heading">
-        <span>{title}</span>
-        {action}
-      </div>
       {children}
     </section>
   )
@@ -345,19 +338,6 @@ export function WatermarkSettings({
     void enrichAndChange(patch)
   }
 
-  function resetGeometry(): void {
-    if (usesCustomWatermark(settingsRef.current)) {
-      void enrichAndChange({
-        position: 'bottom-center',
-        placement: defaultWatermarkPlacement('bottom-center'),
-        sizeOnCanvasWidth: defaultWatermarkWidthRatio,
-        opacity: 1,
-      })
-      return
-    }
-    void enrichAndChange({ position: 'bottom-center', placement: undefined, sizeOnCanvasWidth: undefined, opacity: undefined })
-  }
-
   const selectedSourceKind = allowBuiltin ? currentSettings.sourceKind ?? 'builtin' : 'custom'
   const customSelected = selectedSourceKind === 'custom' && usesCustomWatermark(currentSettings)
   const sourceOptions: Array<{ value: 'builtin' | 'custom'; label: string }> = allowBuiltin
@@ -379,21 +359,18 @@ export function WatermarkSettings({
       )}
 
       {!preferencesOnly && selectedSourceKind === 'custom' && (
-        <SettingsSection
-          title="自定义水印"
-          className="wm-library-section"
-          action={(
-            <Button variant="ghost" size="mini" icon={<FolderOpen size={14} />} onClick={() => void chooseCustomAsset()} disabled={importing}>
-              {importing ? '正在添加' : '添加'}
-            </Button>
-          )}
-        >
+        <SettingsSection className="wm-library-section">
           {customAssets.length > 0 || currentSettings.customAsset ? (
-            <WatermarkAssetSelect
-              assets={customAssets}
-              value={currentSettings.customAsset}
-              onChange={selectCustomAsset}
-            />
+            <div className="wm-custom-library-row">
+              <WatermarkAssetSelect
+                assets={customAssets}
+                value={currentSettings.customAsset}
+                onChange={selectCustomAsset}
+              />
+              <Button variant="ghost" size="mini" icon={<FolderOpen size={14} />} onClick={() => void chooseCustomAsset()} disabled={importing}>
+                {importing ? '正在添加' : '添加'}
+              </Button>
+            </div>
           ) : (
             <div className="wm-custom-empty">
               <ImagePlus size={22} />
@@ -407,18 +384,13 @@ export function WatermarkSettings({
       )}
 
       {!preferencesOnly && selectedSourceKind === 'builtin' && stylePills.length > 0 && (
-        <SettingsSection title="水印样式">
+        <SettingsSection>
           <SegmentedControl ariaLabel="水印样式" options={stylePills} value={currentSettings.style} onChange={(style) => void enrichAndChange({ style })} variant="size" className="wm-style-selector" />
         </SettingsSection>
       )}
 
       {(selectedSourceKind === 'builtin' || customSelected) && (
-        <SettingsSection
-          title={customSelected ? '调整' : '显示位置'}
-          action={customSelected && !preferencesOnly ? (
-            <Button variant="ghost" size="mini" icon={<RotateCcw size={13} />} onClick={resetGeometry}>恢复默认</Button>
-          ) : undefined}
-        >
+        <SettingsSection>
           <PositionGrid settings={currentSettings} custom={customSelected} onChange={changePosition} />
           {!preferencesOnly && customSelected && (
             <div className="wm-appearance-controls">

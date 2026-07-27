@@ -154,6 +154,16 @@ assert.equal(
   'watermark search normalizes full-width characters and diacritics',
 )
 assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('ic_watermark_iac2_image_cn.png', 'ica2 cn'),
+  true,
+  'watermark search tolerates one adjacent transposition in a multi-term query',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('ic_watermark_iac2_image_en.png', 'ica2 cn'),
+  false,
+  'watermark search still requires short terms such as language codes to match exactly',
+)
+assert.equal(
   watermarkLibrary.matchesWatermarkFileName('Primary Logo.png', 'secondary'),
   false,
   'watermark search still rejects unrelated file names',
