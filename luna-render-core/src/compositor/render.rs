@@ -53,10 +53,9 @@ impl Compositor {
             let first = inputs
                 .first()
                 .ok_or_else(|| format!("precompose group {group} has no inputs"))?;
-            let source = self
-                .textures
-                .get(&first.texture_id)
-                .ok_or_else(|| format!("precompose source texture {} not found", first.texture_id))?;
+            let source = self.textures.get(&first.texture_id).ok_or_else(|| {
+                format!("precompose source texture {} not found", first.texture_id)
+            })?;
             let width = source.width.max(1);
             let height = source.height.max(1);
             let texture = create_rgba_texture(
@@ -73,8 +72,8 @@ impl Compositor {
             let rendered = self.output_texture.take();
             self.output_texture = previous_output;
             render_result?;
-            let (texture, _, _) = rendered
-                .ok_or_else(|| format!("precompose group {group} produced no texture"))?;
+            let (texture, _, _) =
+                rendered.ok_or_else(|| format!("precompose group {group} produced no texture"))?;
 
             let texture_id = self.next_texture_id;
             self.next_texture_id += 1;
@@ -667,8 +666,7 @@ impl Compositor {
 
         if !readback {
             #[cfg(target_os = "windows")]
-            if _present_output
-            {
+            if _present_output {
                 let transitions = [wgpu::wgt::TextureTransition {
                     texture: output_tex,
                     selector: None,
@@ -677,12 +675,20 @@ impl Compositor {
                 encoder.transition_resources(std::iter::empty(), transitions.into_iter());
             }
             self.queue.submit(Some(encoder.finish()));
-            self.device
-                .poll(wgpu::PollType::Wait {
+            let poll_type = if _present_output {
+                // Windows swap-chain presentation and D3D11On12 resource return are already
+                // ordered by the shared command queue and fence. Waiting for the entire wgpu
+                // device here would also block concurrent LUT thumbnail renders every frame.
+                wgpu::PollType::Poll
+            } else {
+                wgpu::PollType::Wait {
                     submission_index: None,
                     timeout: None,
-                })
-                .map_err(|e| format!("GPU render wait: {}", e))?;
+                }
+            };
+            self.device
+                .poll(poll_type)
+                .map_err(|e| format!("GPU render poll: {}", e))?;
             return Ok(Vec::new());
         }
 

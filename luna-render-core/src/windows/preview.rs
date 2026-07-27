@@ -5,7 +5,7 @@ use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
 use crate::composition::{composition_layers, CompositionInput};
 use crate::compositor::{is_procedural_layer_type, Compositor, PreviewTextureInfo};
-use crate::media::decode_static_image_scaled;
+use crate::media::{decode_static_image_scaled, fit_output_size};
 
 use super::converter::{D3d12TextureLease, VideoConverter};
 use super::decoder::VideoDecoder;
@@ -88,7 +88,11 @@ impl NativePreviewRuntime {
     }
 
     pub(crate) fn set_bounds(&mut self, bounds: PreviewBounds) -> Result<(), String> {
+        let previous_max_side = self.surface.width.max(self.surface.height);
         self.surface.set_bounds(&self.compositor, bounds)?;
+        if self.surface.width.max(self.surface.height) != previous_max_side {
+            self.frame_cache.clear();
+        }
         self.surface
             .set_visible(self.desired_visible && self.has_presented);
         Ok(())
@@ -117,12 +121,15 @@ impl NativePreviewRuntime {
         key: &str,
         path: &str,
         time: f64,
+        max_side: u32,
     ) -> Result<Option<(ID3D11Texture2D, u32, u32, u32, bool)>, String> {
         if let Some(frame) = self.frame_cache.get(key).and_then(|frames| {
             frames
                 .iter()
                 .min_by(|left, right| {
-                    (left.time - time).abs().total_cmp(&(right.time - time).abs())
+                    (left.time - time)
+                        .abs()
+                        .total_cmp(&(right.time - time).abs())
                 })
                 .filter(|frame| (frame.time - time).abs() <= 1.0 / 120.0)
         }) {
@@ -141,27 +148,30 @@ impl NativePreviewRuntime {
         }
         let decoder = match self.decoders.entry(key.to_string()) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-            std::collections::hash_map::Entry::Vacant(entry) => entry.insert(
-                VideoDecoder::open(path, &self._interop.device_manager)?,
-            ),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(VideoDecoder::open(path, &self._interop.device_manager)?)
+            }
         };
         let rotation = decoder.info().rotation_degrees;
         let Some(frame) = decoder.read_frame_at_seconds(time)? else {
             return Ok(None);
         };
-        let texture = self.converter.decode_to_bgra(&frame)?;
+        let (width, height) = fit_output_size(frame.width, frame.height, max_side.max(1));
+        let texture = self
+            .converter
+            .decode_to_bgra_scaled(&frame, width, height)?;
         let frame_time = frame.timestamp_100ns as f64 / 10_000_000.0;
         let frames = self.frame_cache.entry(key.to_string()).or_default();
         frames.push_back(CachedVideoFrame {
             time: frame_time,
             texture: texture.clone(),
-            width: frame.width,
-            height: frame.height,
+            width,
+            height,
         });
-        while frames.len() > 8 {
+        while frames.len() > 3 {
             frames.pop_front();
         }
-        Ok(Some((texture, frame.width, frame.height, rotation, false)))
+        Ok(Some((texture, width, height, rotation, false)))
     }
 
     pub(crate) fn render(&mut self, time: f64) -> Result<NativePreviewRenderResult, String> {
@@ -182,8 +192,12 @@ impl NativePreviewRuntime {
                         (0, 1, 1)
                     } else if layer.is_video {
                         let key = format!("{}@slot{}", layer.file_path, index);
-                        let Some((bgra, width, height, rotation, cache_hit)) =
-                            self.video_frame(&key, &layer.file_path, layer.video_time)?
+                        let Some((bgra, width, height, rotation, cache_hit)) = self.video_frame(
+                            &key,
+                            &layer.file_path,
+                            layer.video_time,
+                            output_width.max(output_height),
+                        )?
                         else {
                             continue;
                         };
@@ -205,16 +219,13 @@ impl NativePreviewRuntime {
                                 true,
                             )?
                         };
-                        let id = self.compositor.register_external_texture(
-                            texture,
-                            width,
-                            height,
-                        );
+                        let id = self
+                            .compositor
+                            .register_external_texture(texture, width, height);
                         texture_ids.push(id);
                         leases.push(lease);
                         (id, width, height)
-                    } else if let Some(cached) =
-                        self.static_textures.get(&layer.file_path).copied()
+                    } else if let Some(cached) = self.static_textures.get(&layer.file_path).copied()
                     {
                         cached
                     } else {

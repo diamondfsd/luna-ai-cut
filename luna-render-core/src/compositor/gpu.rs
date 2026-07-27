@@ -1,4 +1,5 @@
 use super::GpuLayerParams;
+use std::sync::OnceLock;
 use wgpu::{TexelCopyBufferLayout, TexelCopyTextureInfo};
 
 pub(super) fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
@@ -84,19 +85,39 @@ pub(super) fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupL
 #[derive(Clone)]
 pub(super) struct BlendPipelines {
     normal: wgpu::RenderPipeline,
-    multiply: wgpu::RenderPipeline,
-    screen: wgpu::RenderPipeline,
-    add: wgpu::RenderPipeline,
+    multiply: OnceLock<wgpu::RenderPipeline>,
+    screen: OnceLock<wgpu::RenderPipeline>,
+    add: OnceLock<wgpu::RenderPipeline>,
+    device: wgpu::Device,
+    layout: wgpu::PipelineLayout,
+    shader: wgpu::ShaderModule,
+    format: wgpu::TextureFormat,
+    label: String,
 }
 
 impl BlendPipelines {
     pub(super) fn get(&self, blend_mode: Option<&str>) -> &wgpu::RenderPipeline {
         match blend_mode {
-            Some("multiply") => &self.multiply,
-            Some("screen") => &self.screen,
-            Some("add") => &self.add,
+            Some("multiply") => self
+                .multiply
+                .get_or_init(|| self.create_blend_pipeline("multiply")),
+            Some("screen") => self
+                .screen
+                .get_or_init(|| self.create_blend_pipeline("screen")),
+            Some("add") => self.add.get_or_init(|| self.create_blend_pipeline("add")),
             _ => &self.normal,
         }
+    }
+
+    fn create_blend_pipeline(&self, blend_mode: &str) -> wgpu::RenderPipeline {
+        create_compositor_pipeline(
+            &self.device,
+            &self.layout,
+            &self.shader,
+            self.format,
+            &format!("{} {}", self.label, blend_mode),
+            blend_mode,
+        )
     }
 }
 
@@ -116,30 +137,14 @@ pub(super) fn create_compositor_pipelines(
             &format!("{label} normal"),
             "normal",
         ),
-        multiply: create_compositor_pipeline(
-            device,
-            layout,
-            shader,
-            format,
-            &format!("{label} multiply"),
-            "multiply",
-        ),
-        screen: create_compositor_pipeline(
-            device,
-            layout,
-            shader,
-            format,
-            &format!("{label} screen"),
-            "screen",
-        ),
-        add: create_compositor_pipeline(
-            device,
-            layout,
-            shader,
-            format,
-            &format!("{label} add"),
-            "add",
-        ),
+        multiply: OnceLock::new(),
+        screen: OnceLock::new(),
+        add: OnceLock::new(),
+        device: device.clone(),
+        layout: layout.clone(),
+        shader: shader.clone(),
+        format,
+        label: label.to_string(),
     }
 }
 
