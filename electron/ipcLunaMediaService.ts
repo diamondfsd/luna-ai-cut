@@ -1,7 +1,7 @@
 import { app, ipcMain } from 'electron'
-import { rm } from 'node:fs/promises'
+import { access, rm } from 'node:fs/promises'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { DownloadProgress, LunaFile } from '../src/shared/types'
 import {
   cacheFile,
@@ -77,6 +77,14 @@ function localFileForPath(filePath: string): LunaFile {
   }
 }
 
+function localSourcePath(sourceUrl: string): string | null {
+  if (sourceUrl.startsWith('file:')) {
+    try { return fileURLToPath(sourceUrl) } catch { return sourceUrl }
+  }
+  if (/^[a-z][a-z\d+.-]*:/i.test(sourceUrl) && !/^[a-z]:[\\/]/i.test(sourceUrl)) return null
+  return sourceUrl
+}
+
 export function register(ctx: IpcContext): void {
   ipcMain.handle('luna:cacheFile', async (_event, params: string | { sourceUrl: string; previewUrl?: string | null }) => {
     // 兼容旧格式（直接传 sourceUrl 字符串）
@@ -104,6 +112,16 @@ export function register(ctx: IpcContext): void {
     ctx.previewCacheTasks.set(key, marker)
 
     try {
+      const sourcePath = localSourcePath(sourceUrl)
+      if (sourcePath) {
+        try {
+          await access(sourcePath)
+        } catch {
+          ctx.previewCacheTasks.delete(key)
+          return false
+        }
+      }
+
       // 快速检查：已有缓存则直接返回，不进入下载队列
       const existingPath = await resolveExistingCache(file)
       if (existingPath) {
@@ -186,12 +204,15 @@ export function register(ctx: IpcContext): void {
 
     const task = ctx.enqueuePreviewTask(async () => {
       const result = await getVideoFrameRate(file, sourcePath)
-      if (result.frameRate !== null || result.duration !== null) {
+      if (result.frameRate !== null || result.duration !== null || result.dolbyVision !== null || result.iLog !== null) {
         ctx.win?.webContents.send('luna:video-frame-rate-ready', {
           fileId: file.id,
           fileName: file.name,
           frameRate: result.frameRate,
           duration: result.duration,
+          dolbyVision: result.dolbyVision,
+          dolbyVisionProfile: result.dolbyVisionProfile,
+          iLog: result.iLog,
         })
       }
       return result.frameRate

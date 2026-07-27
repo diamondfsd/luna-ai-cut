@@ -3,6 +3,7 @@ import { createReadStream, createWriteStream } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
+import process from 'node:process'
 import { pipeline } from 'node:stream/promises'
 import { createRequire } from 'node:module'
 import ts from 'typescript'
@@ -64,7 +65,7 @@ function addArtifact(artifacts, artifact) {
 
 export function buildModelArtifacts(registry) {
   const artifacts = []
-  for (const model of [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS]) {
+  for (const model of [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS]) {
     addArtifact(artifacts, {
       fileName: `${model.id}.onnx`,
       sizeBytes: model.sizeBytes,
@@ -218,10 +219,14 @@ export async function writeModelManifest(artifacts, outputDir, owner = DEFAULT_G
     releaseTag: MODEL_RELEASE_TAG,
     releaseVersion: MODEL_RELEASE_VERSION,
     repository: `${owner}/${repo}`,
-    artifacts: artifacts.map(({ path: _path, ...artifact }) => ({
-      ...artifact,
-      url: `${downloadBase}/${encodeURIComponent(artifact.fileName)}`,
-    })),
+    artifacts: artifacts.map((artifact) => {
+      const manifestArtifact = { ...artifact }
+      delete manifestArtifact.path
+      return {
+        ...manifestArtifact,
+        url: `${downloadBase}/${encodeURIComponent(artifact.fileName)}`,
+      }
+    }),
   }
   const manifestPath = path.join(outputDir, MODEL_MANIFEST_NAME)
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)

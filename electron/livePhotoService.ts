@@ -14,6 +14,7 @@ import { getFfmpegPath } from './ffmpeg/pipeline'
 import { getSwiftScriptPath } from './swiftUtils'
 
 const execFileAsync = promisify(execFile)
+const MOTION_PHOTO_BRANDS = new Set(['isom', 'iso2', 'mp41', 'mp42', 'avc1', 'qt  ', 'MSNV'])
 
 // ═══════════════════════════════════════════════
 //  Google Motion Photo XMP 工具
@@ -233,13 +234,16 @@ export async function isGoogleMotionPhoto(filePath: string): Promise<boolean> {
     const CHUNK_SIZE = 262144       // 256KB/块
     const MAX_SCAN = 5 * 1024 * 1024 // 最大扫描 5MB
 
-    for (let offset = 0; offset < Math.min(stat.size, MAX_SCAN); offset += CHUNK_SIZE) {
-      const chunk = Buffer.alloc(CHUNK_SIZE)
-      const { bytesRead: got } = await fd.read(chunk, 0, CHUNK_SIZE, offset)
-      if (got < 8) break
+    const scanSize = Math.min(stat.size, MAX_SCAN)
+    for (let offset = 0; offset < scanSize; offset += CHUNK_SIZE) {
+      const readOffset = Math.max(0, offset - 12)
+      const readLength = Math.min(CHUNK_SIZE + 12, scanSize - readOffset)
+      const chunk = Buffer.alloc(readLength)
+      const { bytesRead: got } = await fd.read(chunk, 0, readLength, readOffset)
+      if (got < 16) break
 
-      // 在块中查找有效 ftyp 盒子（4字节大小 + "ftyp"）
-      for (let i = 0; i <= got - 8; i++) {
+      // Google Motion Photo 的 MP4 紧跟在完整 JPEG EOI 后，并具有合法的 ftyp 盒子。
+      for (let i = 2; i <= got - 12; i++) {
         if (
           chunk[i + 4] === 0x66 && // f
           chunk[i + 5] === 0x74 && // t
@@ -247,7 +251,15 @@ export async function isGoogleMotionPhoto(filePath: string): Promise<boolean> {
           chunk[i + 7] === 0x70    // p
         ) {
           const boxSize = chunk.readUInt32BE(i)
-          if (boxSize >= 8) return true
+          const boxStart = readOffset + i
+          const brand = chunk.subarray(i + 8, i + 12).toString('ascii')
+          const followsJpegEnd = chunk[i - 2] === 0xFF && chunk[i - 1] === 0xD9
+          if (
+            followsJpegEnd
+            && boxSize >= 16
+            && boxSize <= stat.size - boxStart
+            && MOTION_PHOTO_BRANDS.has(brand)
+          ) return true
         }
       }
       if (got < CHUNK_SIZE) break

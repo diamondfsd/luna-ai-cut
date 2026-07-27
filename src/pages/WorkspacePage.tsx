@@ -28,6 +28,7 @@ import type { CreativeModeId, WorkspaceMode } from '../workspace/components/Work
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
+import { buildVideoSegmentExportRanges } from '../workspace/trim/videoSegmentMarkers'
 import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
@@ -40,6 +41,7 @@ import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMe
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
 import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
+import { usesCustomWatermark } from '../shared/watermarkGeometry'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -130,7 +132,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const [fitScalePercent, setFitScalePercent] = useState(100)
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
-  const allowWatermark = useLunaUltraWatermark(media.activeMedia)
+  const allowBuiltinWatermark = useLunaUltraWatermark(media.activeMedia)
 
   useEffect(() => {
     if (!pageActive) return
@@ -305,13 +307,13 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   // ── 从 pipeline 水印设置自动生成预览层 ──
   const watermarkLayer = useMemo(() => {
-    if (!allowWatermark) return []
     const wm = edit.pipeline.watermark
+    if (!allowBuiltinWatermark && !usesCustomWatermark(wm)) return []
     if (!wm?.enabled) return []
     if (!finalCanvasSize) return []
     const layer = buildResolvedWatermarkStaticLayer(wm, finalCanvasSize.width, finalCanvasSize.height)
     return layer ? [layer] : []
-  }, [allowWatermark, edit.pipeline.watermark, finalCanvasSize])
+  }, [allowBuiltinWatermark, edit.pipeline.watermark, finalCanvasSize])
 
   // ── 边框预览层（JSON 预设解析为多个独立合成层） ──
   const borderLayer = useMemo(() => {
@@ -549,7 +551,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       const trackedActiveMasks = isVideoPath(media.activeMedia.path)
         ? await mask.prepareVideoMasksForExport()
         : activePipeline.colorMasks
-      const sources: BatchExportSource[] = await Promise.all(exportIndices.map(async (index) => {
+      const sourceGroups = await Promise.all(exportIndices.map(async (index): Promise<BatchExportSource[]> => {
         const asset = media.media[index]
         const pipeline = index === media.activeIndex
           ? mergePipeline(activePipeline, { colorMasks: trackedActiveMasks })
@@ -560,22 +562,37 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           : 0
         const trimStart = pipeline.trim?.startTime ?? 0
         const trimEnd = pipeline.trim?.endTime ?? sourceDuration
+        const outputBaseName = asset.name.replace(/\.[^.]+$/, '') || 'export'
         // 加载 EXIF 元数据（边框需要）
         const borderMeta = pipeline.border?.enabled
           ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => null)
           : null
-        const allowAssetWatermark = await canUseLunaUltraWatermark(asset.path, asset.kind)
-        return {
+        const allowAssetWatermark = usesCustomWatermark(pipeline.watermark)
+          || await canUseLunaUltraWatermark(asset.path, asset.kind)
+        const segmentRanges = isVideoPath(asset.path)
+          ? buildVideoSegmentExportRanges(outputBaseName, pipeline.videoMarkers, sourceDuration)
+          : []
+        const variants = segmentRanges.length > 0
+          ? segmentRanges.map((segment) => ({
+              pipeline: mergePipeline(pipeline, { trim: { startTime: segment.startTime, endTime: segment.endTime } }),
+              outputBaseName: segment.outputBaseName,
+              trimStart: segment.startTime,
+              trimEnd: segment.endTime,
+            }))
+          : [{ pipeline, outputBaseName, trimStart, trimEnd }]
+
+        return variants.map((variant) => ({
           sourcePath: asset.path,
-          outputBaseName: asset.name.replace(/\.[^.]+$/, '') || 'export',
-          layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline, borderMeta, allowAssetWatermark),
-          outputSize: outputSizeForTransform(resolution, pipeline.transform),
+          outputBaseName: variant.outputBaseName,
+          layers: buildWorkspaceExportLayers(asset.path, resolution, variant.pipeline, borderMeta, allowAssetWatermark),
+          outputSize: outputSizeForTransform(resolution, variant.pipeline.transform),
           mediaDuration: isVideoPath(asset.path)
-            ? Math.max(0, Math.min(sourceDuration, trimEnd) - trimStart)
+            ? Math.max(0, Math.min(sourceDuration, variant.trimEnd) - variant.trimStart)
             : undefined,
           sourceDuration: isVideoPath(asset.path) ? sourceDuration : undefined,
-        }
+        }))
       }))
+      const sources = sourceGroups.flat()
 
       // 检查是否有视频素材 → 有则弹窗让用户选择导出参数，否则直接导出
       const hasVideo = sources.some((s) => isVideoPath(s.sourcePath))
@@ -769,6 +786,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           <PreviewStage
             ref={previewRef}
             url={media.activeMedia?.path ?? null}
+            active={pageActive}
             isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
@@ -789,7 +807,9 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
             duration={activeTrimDuration}
-            allowWatermark={allowWatermark}
+            onTrimSeek={handleTrimSeek}
+            allowWatermark={Boolean(media.activeMedia)}
+            allowBuiltinWatermark={allowBuiltinWatermark}
             runtimeResourceLoading={runtimeResourceLoading}
           />
 
@@ -836,6 +856,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       <ExportSettingsDialog
         open={exportDialogOpen}
         tone="dark"
+        description={exportDialogSources.length > 1 ? `将分别导出 ${exportDialogSources.length} 个文件。` : undefined}
         onOpenChange={setExportDialogOpen}
         previewSource={exportDialogSources.length === 1
           ? {

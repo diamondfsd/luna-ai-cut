@@ -1,14 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ImagePlus, Settings2 } from 'lucide-react'
-import { Popover, PopoverContent, PopoverTrigger, Switch, SegmentedControl } from '../ui'
-import { WM_SRC, watermarkStyleOptionsForDevice, getCachedWatermarkPath } from '../shared/watermarkAssets'
-import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
-import { isVideoPath } from '../lib/fileUtils'
-import type { PreviewLayer, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
-import '../styles/watermark-settings.css'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { FolderOpen, ImagePlus, Settings2 } from 'lucide-react'
+import { Slider as RadixSlider } from 'radix-ui'
 
-/** 根据方向返回合适的定位参数（横屏 22%、竖屏 39%，参考旧 layout config） */
-function positioningForOrient(isLandscape: boolean, anchor: WatermarkPositioning['anchor']): WatermarkPositioning {
+import { isVideoPath } from '../lib/fileUtils'
+import { resolveDeviceId } from '../shared/insta360DeviceProfiles'
+import type { CustomWatermarkAsset, PreviewLayer, WatermarkPosition, WatermarkPositioning, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
+import {
+  DEFAULT_WATERMARK_WIDTH_RATIO,
+  defaultWatermarkPlacement,
+  effectiveWatermarkPlacement,
+  resolveWatermarkPositioning,
+  usesCustomWatermark,
+  watermarkImagePath,
+} from '../shared/watermarkGeometry'
+import { getCachedWatermarkPath, watermarkStyleOptionsForDevice, WM_SRC } from '../shared/watermarkAssets'
+import { addCustomWatermarkAssets } from '../shared/watermarkLibrary'
+import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, SegmentedControl, Switch, toast } from '../ui'
+import { WatermarkAssetSelect } from './WatermarkAssetSelect'
+import '../styles/watermark-settings.css'
+function legacyPositioning(isLandscape: boolean, anchor: WatermarkPositioning['anchor']): WatermarkPositioning {
   return {
     anchor,
     targetWidth: isLandscape ? 0.22 : 0.391,
@@ -16,20 +26,32 @@ function positioningForOrient(isLandscape: boolean, anchor: WatermarkPositioning
     marginY: isLandscape ? 0.059 : 0.033,
   }
 }
+function usesAdvancedGeometry(settings: WatermarkSettingsType): boolean {
+  return usesCustomWatermark(settings)
+}
 
-/**
- * 构建水印 PreviewLayer
- */
-export function buildWatermarkStaticLayer(settings: WatermarkSettingsType, isLandscape: boolean): PreviewLayer | null {
+function builtinWatermarkPosition(position: WatermarkPosition): Exclude<WatermarkPosition, 'top-center'> {
+  return position === 'top-center' ? 'bottom-center' : position
+}
+export function buildWatermarkStaticLayer(
+  settings: WatermarkSettingsType,
+  isLandscape: boolean,
+  mediaSize?: { width: number; height: number },
+): PreviewLayer | null {
   if (!settings.enabled) return null
-  const filePath = settings.imagePath || getCachedWatermarkPath(settings.style)
+  const filePath = watermarkImagePath(settings) || getCachedWatermarkPath(settings.style)
   if (!filePath) return null
-  const positioning = positioningForOrient(isLandscape, settings.position)
+  const width = mediaSize?.width ?? (isLandscape ? 16 : 9)
+  const height = mediaSize?.height ?? (isLandscape ? 9 : 16)
+  const positioning = usesAdvancedGeometry(settings)
+    ? resolveWatermarkPositioning(settings, width, height)
+    : legacyPositioning(isLandscape, builtinWatermarkPosition(settings.position))
   return {
     filePath,
     dstX: 0, dstY: 0, dstW: 1, dstH: 1,
     srcX: 0, srcY: 0, srcW: 1, srcH: 1,
-    opacity: 1, zIndex: 1,
+    opacity: usesCustomWatermark(settings) ? Math.min(1, Math.max(0, settings.opacity ?? 1)) : 1,
+    zIndex: 1,
     positioning,
   }
 }
@@ -39,101 +61,143 @@ export function buildResolvedWatermarkStaticLayer(
   width: number,
   height: number,
 ): PreviewLayer | null {
-  if (!settings.enabled) return null
-  return buildWatermarkStaticLayer(settings, width >= height)
+  return buildWatermarkStaticLayer(settings, width >= height, { width, height })
 }
-
-const POSITIONS: Array<{ value: string; label: string; cx: number; cy: number }> = [
-  { value: 'top-left', label: '左上', cx: 27, cy: 22.5 },
-  { value: 'top-right', label: '右上', cx: 133, cy: 22.5 },
-  { value: 'bottom-left', label: '左下', cx: 27, cy: 67.5 },
-  { value: 'bottom-center', label: '底中', cx: 80, cy: 67.5 },
-  { value: 'bottom-right', label: '右下', cx: 133, cy: 67.5 },
+const CUSTOM_POSITIONS: Array<{ value: WatermarkPosition; label: string }> = [
+  { value: 'top-left', label: '左上' },
+  { value: 'top-center', label: '顶部居中' },
+  { value: 'top-right', label: '右上' },
+  { value: 'bottom-left', label: '左下' },
+  { value: 'bottom-center', label: '底部居中' },
+  { value: 'bottom-right', label: '右下' },
 ]
 
+const PRESET_POSITIONS: Array<(typeof CUSTOM_POSITIONS)[number] | null> = [
+  CUSTOM_POSITIONS[0],
+  null,
+  CUSTOM_POSITIONS[2],
+  ...CUSTOM_POSITIONS.slice(3),
+]
 export type WatermarkChangeHandler = (settings: WatermarkSettingsType, layer?: PreviewLayer) => void
-
 interface WatermarkSettingsProps {
   settings?: WatermarkSettingsType
   onChange: WatermarkChangeHandler
   compact?: boolean
   showToggle?: boolean
-  /** 设置页只编辑默认开关与位置，不解析设备或展示水印样式。 */
   preferencesOnly?: boolean
   title?: string
-  /** 传文件路径即可自动按设备过滤水印样式 */
   filePath?: string
   mediaKind?: 'image' | 'video'
+  allowBuiltin?: boolean
 }
 
-function WatermarkSettingsContent({ stylePills, settings, onStyleChange, onPositionChange }: {
-  stylePills: Array<{ value: string; label: React.ReactNode }>
-  settings: WatermarkSettingsType
-  onStyleChange: (v: string) => void
-  onPositionChange: (v: string) => void
+function WatermarkSlider({ label, value, min, max, onChange }: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (value: number) => void
 }) {
   return (
-    <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
-      {stylePills.length > 0 && (
-        <SegmentedControl
-          ariaLabel="水印样式"
-          options={stylePills}
-          value={settings.style}
-          onChange={onStyleChange}
-          variant="size"
-          className="size-switch wm-style-selector"
-        />
-      )}
-
-      <div className="wm-position-grid">
-        <div className="wm-position-row">
-          <button key={POSITIONS[0].value}
-            className={`wm-pos-cell ${settings.position === POSITIONS[0].value ? 'active' : ''}`}
-            onClick={() => onPositionChange(POSITIONS[0].value)} title={POSITIONS[0].label}>
-            <svg viewBox="0 0 160 90" className="wm-pos-frame">
-              <rect x={POSITIONS[0].cx - 10} y={POSITIONS[0].cy - 7} width={20} height={14} rx={3} />
-            </svg>
-          </button>
-          <div className="wm-pos-cell wm-pos-placeholder" />
-          <button key={POSITIONS[1].value}
-            className={`wm-pos-cell ${settings.position === POSITIONS[1].value ? 'active' : ''}`}
-            onClick={() => onPositionChange(POSITIONS[1].value)} title={POSITIONS[1].label}>
-            <svg viewBox="0 0 160 90" className="wm-pos-frame">
-              <rect x={POSITIONS[1].cx - 10} y={POSITIONS[1].cy - 7} width={20} height={14} rx={3} />
-            </svg>
-          </button>
-        </div>
-        <div className="wm-position-row">
-          {POSITIONS.slice(2).map(pos => (
-            <button key={pos.value}
-              className={`wm-pos-cell ${settings.position === pos.value ? 'active' : ''}`}
-              onClick={() => onPositionChange(pos.value)} title={pos.label}>
-              <svg viewBox="0 0 160 90" className="wm-pos-frame">
-                <rect x={pos.cx - 10} y={pos.cy - 7} width={20} height={14} rx={3} />
-              </svg>
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="wm-slider-field">
+      <div className="wm-slider-label"><span>{label}</span><span>{Math.round(value)}%</span></div>
+      <RadixSlider.Root
+        className="wm-slider-root"
+        value={[value]}
+        min={min}
+        max={max}
+        step={1}
+        onValueChange={([next]) => onChange(next)}
+      >
+        <RadixSlider.Track className="wm-slider-track"><RadixSlider.Range className="wm-slider-range" /></RadixSlider.Track>
+        <RadixSlider.Thumb className="wm-slider-thumb" aria-label={label} />
+      </RadixSlider.Root>
+    </div>
+  )
+}
+function PositionGrid({ settings, custom, onChange }: {
+  settings: WatermarkSettingsType
+  custom: boolean
+  onChange: (position: WatermarkPosition) => void
+}) {
+  const placement = custom ? effectiveWatermarkPlacement(settings) : null
+  const activePosition = placement?.mode === 'preset' ? placement.anchor : custom ? null : builtinWatermarkPosition(settings.position)
+  return (
+    <div className="wm-position-grid" role="group" aria-label="水印位置">
+      {PRESET_POSITIONS.map((position, index) => position ? (
+        <Button
+          key={position.value}
+          variant="secondary"
+          size="mini"
+          className={`wm-pos-cell${activePosition === position.value ? ' active' : ''}`}
+          data-position={position.value}
+          onClick={() => onChange(position.value)}
+          title={position.label}
+          aria-label={position.label}
+        >
+          <span className="wm-pos-dot" />
+        </Button>
+      ) : <span key={`placeholder-${index}`} className="wm-pos-placeholder" aria-hidden="true" />)}
     </div>
   )
 }
 
-export function WatermarkSettings({ settings, onChange, compact, showToggle = true, preferencesOnly = false, title = '水印设置', filePath, mediaKind }: WatermarkSettingsProps) {
+interface SettingsSectionProps {
+  children: ReactNode
+  className?: string
+}
+function SettingsSection({ children, className = '' }: SettingsSectionProps) {
+  return (
+    <section className={`wm-settings-section ${className}`}>
+      {children}
+    </section>
+  )
+}
+export function WatermarkSettings({
+  settings,
+  onChange,
+  compact,
+  showToggle = true,
+  preferencesOnly = false,
+  title = '水印设置',
+  filePath,
+  mediaKind,
+  allowBuiltin = true,
+}: WatermarkSettingsProps) {
+  const controlled = settings !== undefined
   const [internalSettings, setInternalSettings] = useState<WatermarkSettingsType>({
     enabled: true,
     style: 'luna_ultra_cn',
     position: 'bottom-center',
   })
+  const [hydrated, setHydrated] = useState(controlled)
   const currentSettings = settings ?? internalSettings
-  const [resolvedMediaSize, setResolvedMediaSize] = useState<{ w: number; h: number } | null>(null)
-  const effectiveMediaWidth = resolvedMediaSize?.w
-  const effectiveMediaHeight = resolvedMediaSize?.h
-  const waitingForMediaSize = Boolean(filePath) && (!effectiveMediaWidth || !effectiveMediaHeight)
-  const watermarkKind = mediaKind ?? (filePath && isVideoPath(filePath) ? 'video' : 'image')
-
-  // 从文件路径自动检测设备 → 水印样式选项
+  const settingsRef = useRef(currentSettings)
+  const onChangeRef = useRef(onChange)
+  settingsRef.current = currentSettings
+  onChangeRef.current = onChange
+  const [resolvedMediaSize, setResolvedMediaSize] = useState<{ width: number; height: number } | null>(null)
   const [deviceId, setDeviceId] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [customAssets, setCustomAssets] = useState<CustomWatermarkAsset[]>([])
+  const enrichSeqRef = useRef(0)
+  const watermarkKind = mediaKind ?? (filePath && isVideoPath(filePath) ? 'video' : 'image')
+  const defaultWatermarkWidthRatio = resolvedMediaSize && resolvedMediaSize.height > resolvedMediaSize.width
+    ? 0.35
+    : DEFAULT_WATERMARK_WIDTH_RATIO
+
+  useEffect(() => {
+    let cancelled = false
+    window.luna.getSettings().then((appSettings) => {
+      if (cancelled) return
+      setCustomAssets(appSettings.customWatermarkAssets ?? [])
+      if (!controlled && appSettings.recentWatermarkSettings) {
+        setInternalSettings(appSettings.recentWatermarkSettings)
+      }
+    }).finally(() => { if (!cancelled) setHydrated(true) })
+    return () => { cancelled = true }
+  }, [controlled])
+
   useEffect(() => {
     if (preferencesOnly || !filePath) return
     let cancelled = false
@@ -150,119 +214,206 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
       setResolvedMediaSize(null)
       return
     }
-
     let cancelled = false
     setResolvedMediaSize(null)
     window.luna.workspace.getMediaResolution(filePath)
-      .then((resolution) => {
-        if (!cancelled) {
-          setResolvedMediaSize({ w: resolution.width, h: resolution.height })
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setResolvedMediaSize(null)
-      })
+      .then((resolution) => { if (!cancelled) setResolvedMediaSize(resolution) })
+      .catch(() => { if (!cancelled) setResolvedMediaSize(null) })
     return () => { cancelled = true }
   }, [filePath])
 
   const stylePills = useMemo(() => {
     if (preferencesOnly) return []
-    const opts = deviceId ? watermarkStyleOptionsForDevice(deviceId) : []
-    return opts.map((opt) => {
-      const thumbSrc = WM_SRC[opt.value]?.[watermarkKind]
+    return watermarkStyleOptionsForDevice(deviceId).map((option) => {
+      const thumbSrc = WM_SRC[option.value]?.[watermarkKind]
       return {
-        value: opt.value,
-        label: thumbSrc ? <img src={thumbSrc} alt={opt.label} className="wm-style-thumb" /> : opt.label,
+        value: option.value,
+        label: thumbSrc ? <img src={thumbSrc} alt={option.label} className="wm-style-thumb" /> : option.label,
       }
     })
   }, [deviceId, preferencesOnly, watermarkKind])
 
-  // 媒体宽高比变化时重新计算水印层（如图片从横图切到竖图）
-  const initRef = useRef(true)
-  const enrichSeqRef = useRef(0)
-  useEffect(() => {
-    if (waitingForMediaSize) return
-    if (initRef.current) {
-      initRef.current = false
+  const publish = useCallback((next: WatermarkSettingsType, layer?: PreviewLayer) => {
+    settingsRef.current = next
+    if (!controlled) {
+      setInternalSettings(next)
+      void window.luna.saveSettings({ recentWatermarkSettings: next }).catch(() => {})
     }
-    enrichAndChange({})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveMediaWidth, effectiveMediaHeight, waitingForMediaSize])
+    onChangeRef.current(next, layer)
+  }, [controlled])
 
-  /** 获取水印路径和尺寸，与映射表比例合并后触发 onChange */
   const enrichAndChange = useCallback(async (patch: Partial<WatermarkSettingsType>) => {
     const seq = ++enrichSeqRef.current
-    const next = { ...currentSettings, ...patch }
+    let next = { ...settingsRef.current, ...patch }
     if (preferencesOnly) {
-      setInternalSettings(next)
-      onChange(next)
+      publish(next)
       return
     }
-    if (filePath && (!effectiveMediaWidth || !effectiveMediaHeight)) {
-      setInternalSettings(next)
-      onChange(next)
+    if (next.sourceKind === 'custom') {
+      next = next.customAsset
+        ? {
+            ...next,
+            imagePath: next.customAsset.filePath,
+            imageWidth: next.customAsset.width,
+            imageHeight: next.customAsset.height,
+            sizeOnCanvasWidth: next.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio,
+          }
+        : {
+            ...next,
+            imagePath: undefined,
+            imageWidth: undefined,
+            imageHeight: undefined,
+          }
+    } else if (next.enabled && allowBuiltin) {
+      const info = await window.luna.getWatermarkPath(next.style, watermarkKind).catch(() => null)
+      if (seq !== enrichSeqRef.current) return
+      next = { ...next, sourceKind: 'builtin', imagePath: info?.filePath, imageWidth: info?.width, imageHeight: info?.height }
+    } else if (!allowBuiltin) {
+      next = { ...next, imagePath: undefined, imageWidth: undefined, imageHeight: undefined }
+    }
+    const size = resolvedMediaSize ?? { width: 16, height: 9 }
+    const layer = next.enabled ? buildResolvedWatermarkStaticLayer(next, size.width, size.height) ?? undefined : undefined
+    publish(next, layer)
+  }, [allowBuiltin, defaultWatermarkWidthRatio, preferencesOnly, publish, resolvedMediaSize, watermarkKind])
+
+  useEffect(() => {
+    if (!hydrated || (filePath && !resolvedMediaSize)) return
+    void enrichAndChange({})
+  }, [enrichAndChange, filePath, hydrated, resolvedMediaSize])
+
+  async function chooseCustomAsset(): Promise<void> {
+    if (importing) return
+    setImporting(true)
+    try {
+      const assets = await window.luna.chooseCustomWatermarks()
+      if (assets.length === 0) return
+      const asset = assets[0]
+      setCustomAssets((current) => addCustomWatermarkAssets(current, assets))
+      await enrichAndChange({
+        sourceKind: 'custom',
+        customAsset: asset,
+        imagePath: asset.filePath,
+        imageWidth: asset.width,
+        imageHeight: asset.height,
+        sizeOnCanvasWidth: settingsRef.current.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio,
+        placement: settingsRef.current.placement ?? defaultWatermarkPlacement(settingsRef.current.position),
+        opacity: settingsRef.current.opacity ?? 1,
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '无法导入这张水印图片')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  function changeSource(sourceKind: 'builtin' | 'custom'): void {
+    if (sourceKind === 'custom' && !currentSettings.customAsset && customAssets.length > 0) {
+      selectCustomAsset(customAssets[0])
       return
     }
-    if (!next.enabled) {
-      if (seq === enrichSeqRef.current) {
-        setInternalSettings(next)
-        onChange(next)
-      }
-      return
+    void enrichAndChange({
+      sourceKind,
+      position: sourceKind === 'builtin' ? builtinWatermarkPosition(currentSettings.position) : currentSettings.position,
+    })
+  }
+
+  function selectCustomAsset(asset: CustomWatermarkAsset): void {
+    void enrichAndChange({
+      sourceKind: 'custom',
+      customAsset: asset,
+      imagePath: asset.filePath,
+      imageWidth: asset.width,
+      imageHeight: asset.height,
+      sizeOnCanvasWidth: settingsRef.current.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio,
+      placement: settingsRef.current.placement ?? defaultWatermarkPlacement(settingsRef.current.position),
+      opacity: settingsRef.current.opacity ?? 1,
+    })
+  }
+
+  function changePosition(position: WatermarkPosition): void {
+    const patch: Partial<WatermarkSettingsType> = { position }
+    if (usesCustomWatermark(settingsRef.current)) {
+      patch.placement = defaultWatermarkPlacement(position)
     }
-    const info = await window.luna.getWatermarkPath(next.style, watermarkKind).catch(() => null)
-    if (seq !== enrichSeqRef.current) return
-    const isLandscape = (effectiveMediaWidth ?? 16) >= (effectiveMediaHeight ?? 9)
-    const enriched: WatermarkSettingsType = {
-      ...next,
-      imagePath: info?.filePath,
-    }
-    const layer = enriched.imagePath
-      ? buildWatermarkStaticLayer(enriched, isLandscape)
-      : undefined
-    setInternalSettings(enriched)
-    onChange(enriched, layer ?? undefined)
-  }, [currentSettings, onChange, filePath, effectiveMediaWidth, effectiveMediaHeight, preferencesOnly, watermarkKind])
+    void enrichAndChange(patch)
+  }
 
-  const handleToggle = useCallback(
-    (enabled: boolean) => enrichAndChange({ enabled }),
-    [enrichAndChange],
-  )
-
-  const handleStyleChange = useCallback(
-    (style: string) => enrichAndChange({ style }),
-    [enrichAndChange],
-  )
-
-  const handlePositionChange = useCallback(
-    (position: string) => enrichAndChange({ position: position as WatermarkSettingsType['position'] }),
-    [enrichAndChange],
-  )
-
+  const selectedSourceKind = allowBuiltin ? currentSettings.sourceKind ?? 'builtin' : 'custom'
+  const customSelected = selectedSourceKind === 'custom' && usesCustomWatermark(currentSettings)
+  const sourceOptions: Array<{ value: 'builtin' | 'custom'; label: string }> = allowBuiltin
+    ? [{ value: 'builtin', label: '内置' }, { value: 'custom', label: '自定义' }]
+    : [{ value: 'custom', label: '自定义' }]
   const content = (
-    <WatermarkSettingsContent
-      stylePills={stylePills}
-      settings={currentSettings}
-      onStyleChange={handleStyleChange}
-      onPositionChange={handlePositionChange}
-    />
+    <div className="wm-settings-content">
+      {!preferencesOnly && allowBuiltin && (
+        <div className="wm-source-control">
+          <SegmentedControl
+            ariaLabel="水印来源"
+            options={sourceOptions}
+            value={selectedSourceKind}
+            onChange={changeSource}
+            variant="size"
+            className="wm-source-selector"
+          />
+        </div>
+      )}
+
+      {!preferencesOnly && selectedSourceKind === 'custom' && (
+        <SettingsSection className="wm-library-section">
+          {customAssets.length > 0 || currentSettings.customAsset ? (
+            <div className="wm-custom-library-row">
+              <WatermarkAssetSelect
+                assets={customAssets}
+                value={currentSettings.customAsset}
+                onChange={selectCustomAsset}
+              />
+              <Button variant="ghost" size="mini" icon={<FolderOpen size={14} />} onClick={() => void chooseCustomAsset()} disabled={importing}>
+                {importing ? '正在添加' : '添加'}
+              </Button>
+            </div>
+          ) : (
+            <div className="wm-custom-empty">
+              <ImagePlus size={22} />
+              <span>添加一张图片作为专属水印</span>
+              <Button variant="secondary" size="compact" onClick={() => void chooseCustomAsset()} disabled={importing}>
+                选择图片
+              </Button>
+            </div>
+          )}
+        </SettingsSection>
+      )}
+
+      {!preferencesOnly && selectedSourceKind === 'builtin' && stylePills.length > 0 && (
+        <SettingsSection>
+          <SegmentedControl ariaLabel="水印样式" options={stylePills} value={currentSettings.style} onChange={(style) => void enrichAndChange({ style })} variant="size" className="wm-style-selector" />
+        </SettingsSection>
+      )}
+
+      {(selectedSourceKind === 'builtin' || customSelected) && (
+        <SettingsSection>
+          <PositionGrid settings={currentSettings} custom={customSelected} onChange={changePosition} />
+          {!preferencesOnly && customSelected && (
+            <div className="wm-appearance-controls">
+              <WatermarkSlider label="大小" value={(currentSettings.sizeOnCanvasWidth ?? defaultWatermarkWidthRatio) * 100} min={8} max={80} onChange={(value) => void enrichAndChange({ sizeOnCanvasWidth: value / 100 })} />
+              <WatermarkSlider label="透明度" value={(currentSettings.opacity ?? 1) * 100} min={0} max={100} onChange={(value) => void enrichAndChange({ opacity: value / 100 })} />
+            </div>
+          )}
+        </SettingsSection>
+      )}
+    </div>
   )
 
   if (compact) {
     return (
       <div className="watermark-toolbar">
         <label className="watermark-toolbar-toggle">
-          <Switch checked={currentSettings.enabled} onCheckedChange={handleToggle} ariaLabel="启用水印" />
+          <Switch checked={currentSettings.enabled} onCheckedChange={(enabled) => void enrichAndChange({ enabled })} ariaLabel="启用水印" />
           <ImagePlus size={14} />
           <span>水印</span>
         </label>
         {currentSettings.enabled && (
           <Popover>
-            <PopoverTrigger asChild>
-              <button className="watermark-settings-btn" title="水印参数设置">
-                <Settings2 size={14} />
-              </button>
-            </PopoverTrigger>
+            <PopoverTrigger asChild><IconButton variant="ghost" size="mini" icon={<Settings2 size={14} />} title="水印参数设置" /></PopoverTrigger>
             <PopoverContent className="watermark-popover" align="start" sideOffset={6}>
               <div data-popover-header>水印参数</div>
               {content}
@@ -276,11 +427,9 @@ export function WatermarkSettings({ settings, onChange, compact, showToggle = tr
   return (
     <div>
       {showToggle && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {title}
-          </span>
-          <Switch checked={currentSettings.enabled} onCheckedChange={handleToggle} ariaLabel="启用水印" />
+        <div className="wm-settings-header">
+          <span className="eyebrow">{title}</span>
+          <Switch checked={currentSettings.enabled} onCheckedChange={(enabled) => void enrichAndChange({ enabled })} ariaLabel="启用水印" />
         </div>
       )}
       {(!showToggle || currentSettings.enabled || preferencesOnly) && content}

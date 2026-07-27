@@ -5,8 +5,13 @@ import { MediaGallery } from '../components/MediaGallery'
 import { MediaLibraryToolbar } from '../components/MediaLibraryToolbar'
 import { PreviewModal } from '../components/PreviewModal'
 import { useMediaLibraryController, MediaLibraryCtx } from './useMediaLibraryController'
+import type { LunaFile } from '../shared/types'
 import { Modal } from '../ui'
 import '../styles/library.css'
+
+function previewPath(file: LunaFile): string {
+  return file.downloadFilePath ?? file.localPath ?? file.sourceUrl ?? file.id
+}
 
 /** 格式化日期，年月日和星期之间加空格 */
 function groupTitle(group: string): string {
@@ -97,15 +102,16 @@ export function LocalMediaPage() {
       {pageActive && controller.previewFile && (
         <PreviewModal
           lightweightPreview
-          filePath={
-            controller.previewFile.downloadFilePath
-            ?? controller.previewFile.localPath
-            ?? controller.previewFile.sourceUrl
-            ?? ''
-          }
-          filePathList={controller.filteredFiles.map(
-            (f) => f.downloadFilePath ?? f.localPath ?? f.sourceUrl ?? f.id,
-          )}
+          filePath={previewPath(controller.previewFile)}
+          filePathList={controller.filteredFiles.map(previewPath)}
+          isFileSelected={(filePath) => {
+            const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
+            return Boolean(file && controller.selected.has(file.id))
+          }}
+          onSetFileSelected={(filePath, selected) => {
+            const file = controller.filteredFiles.find((candidate) => previewPath(candidate) === filePath)
+            if (file && controller.selected.has(file.id) !== selected) controller.toggleFile(file)
+          }}
           onClose={() => {
             controller.setPreviewFile(null)
             controller.setPreviewFiles([])

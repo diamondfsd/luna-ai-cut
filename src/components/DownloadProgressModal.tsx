@@ -102,6 +102,7 @@ export function DownloadProgressModal({
   // 监听缩略图就绪，动态更新缩略图
   useEffect(() => {
     return subscribeThumbnailReady(({ fileId, fileName, thumbnailUrl }) => {
+      if (!thumbnailUrl) return
       let updated = false
       for (const file of fileSnapshotsRef.current.values()) {
         if (file.id === fileId || file.name === fileName) {

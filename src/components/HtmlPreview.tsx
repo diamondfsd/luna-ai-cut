@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Info, Maximize2, ZoomIn, ZoomOut } from 'lucide-react'
 
 import { filePathToPreviewUrl, mediaKindFromPath } from '../lib/fileUtils'
 import { useIsLivePhoto } from '../shared/livePhoto'
-import type { PreviewLayer } from '../shared/types'
+import type { PreviewLayer, WatermarkSettings } from '../shared/types'
+import {
+  DEFAULT_WATERMARK_WIDTH_RATIO,
+  freePlacementFromTopLeft,
+  resolveWatermarkPositioning as resolveEditableWatermarkPositioning,
+  usesCustomWatermark,
+} from '../shared/watermarkGeometry'
 import { IconButton, LivePhotoBadge } from '../ui'
 import { containPreviewSize, resolveWatermarkPositioning, watermarkPositionStyle, type PreviewSize } from './htmlPreviewGeometry'
 import { useHtmlPreviewViewport } from './useHtmlPreviewViewport'
@@ -14,14 +20,25 @@ interface HtmlPreviewProps {
   mediaPath?: string | null
   proxyPreview?: boolean
   watermarkLayer?: PreviewLayer
+  watermarkSettings?: WatermarkSettings | null
+  watermarkEditable?: boolean
+  onWatermarkChange?: (settings: WatermarkSettings, layer: PreviewLayer) => void
 }
 
-export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLayer }: HtmlPreviewProps) {
+export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLayer, watermarkSettings, watermarkEditable = false, onWatermarkChange }: HtmlPreviewProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [viewportSize, setViewportSize] = useState<PreviewSize>({ width: 0, height: 0 })
   const sourceKey = mediaPath ?? url
   const [mediaMetrics, setMediaMetrics] = useState<{ key: string; size: PreviewSize } | null>(null)
+  const watermarkGestureRef = useRef<{
+    type: 'move' | 'resize'
+    startX: number
+    startY: number
+    centerX: number
+    centerY: number
+    size: number
+  } | null>(null)
   const [mediaError, setMediaError] = useState(false)
   const [watermarkError, setWatermarkError] = useState(false)
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
@@ -68,6 +85,59 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
   const frameSize = useMemo(() => mediaSize ? containPreviewSize(viewportSize, mediaSize) : viewportSize, [mediaSize, viewportSize])
   const viewport = useHtmlPreviewViewport({ containerRef: viewportRef, contentRef, mediaSize, sourceKey })
   const positioning = watermarkLayer && mediaSize ? resolveWatermarkPositioning(watermarkLayer, mediaSize) : null
+
+  function startWatermarkGesture(event: ReactPointerEvent<HTMLDivElement>, type: 'move' | 'resize'): void {
+    if (!watermarkSettings || !usesCustomWatermark(watermarkSettings) || !watermarkLayer || !positioning || !mediaSize || !contentRef.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const imageWidth = watermarkSettings.imageWidth ?? watermarkSettings.customAsset?.width ?? 4
+    const imageHeight = watermarkSettings.imageHeight ?? watermarkSettings.customAsset?.height ?? 1
+    const placement = freePlacementFromTopLeft(positioning, mediaSize.width, mediaSize.height, imageWidth, imageHeight)
+    watermarkGestureRef.current = {
+      type,
+      startX: event.clientX,
+      startY: event.clientY,
+      centerX: placement.mode === 'free' ? placement.centerX : 0.5,
+      centerY: placement.mode === 'free' ? placement.centerY : 0.5,
+      size: watermarkSettings.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO,
+    }
+  }
+
+  function moveWatermarkGesture(event: ReactPointerEvent<HTMLDivElement>): void {
+    const gesture = watermarkGestureRef.current
+    if (!gesture || !watermarkSettings || !watermarkLayer || !mediaSize || !contentRef.current || !onWatermarkChange) return
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = contentRef.current.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    let next: WatermarkSettings
+    if (gesture.type === 'resize') {
+      const shortEdge = Math.min(rect.width, rect.height)
+      const size = Math.min(0.8, Math.max(0.08, gesture.size + (event.clientX - gesture.startX) / shortEdge))
+      next = { ...watermarkSettings, sizeOnCanvasWidth: size }
+    } else {
+      next = {
+        ...watermarkSettings,
+        sizeOnCanvasWidth: watermarkSettings.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO,
+        placement: {
+          mode: 'free',
+          centerX: gesture.centerX + (event.clientX - gesture.startX) / rect.width,
+          centerY: gesture.centerY + (event.clientY - gesture.startY) / rect.height,
+        },
+      }
+    }
+    const nextPositioning = resolveEditableWatermarkPositioning(next, mediaSize.width, mediaSize.height)
+    onWatermarkChange(next, { ...watermarkLayer, positioning: nextPositioning, opacity: next.opacity ?? 1 })
+  }
+
+  function endWatermarkGesture(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (!watermarkGestureRef.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    watermarkGestureRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
   const watermarkUrl = watermarkLayer ? filePathToPreviewUrl(watermarkLayer.filePath) : null
   function rememberMediaSize(width: number, height: number): void {
     if (sourceKey && width > 0 && height > 0) {
@@ -140,7 +210,34 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
         style={{ width: frameSize.width, height: frameSize.height, ...viewport.style }}
       >
         {!mediaError && media}
-        {!watermarkError && watermarkUrl && positioning && (
+        {!watermarkError && watermarkUrl && positioning && watermarkEditable && watermarkSettings && usesCustomWatermark(watermarkSettings) && onWatermarkChange ? (
+          <div
+            className="html-preview-watermark-editor"
+            style={watermarkPositionStyle(positioning)}
+            onPointerDown={(event) => startWatermarkGesture(event, 'move')}
+            onPointerMove={moveWatermarkGesture}
+            onPointerUp={endWatermarkGesture}
+            onPointerCancel={endWatermarkGesture}
+          >
+            <img
+              className="html-preview-watermark"
+              src={watermarkUrl}
+              alt=""
+              draggable={false}
+              style={{ opacity: watermarkLayer?.opacity ?? 1 }}
+              onError={() => setWatermarkError(true)}
+            />
+            <div
+              className="html-preview-watermark-resize"
+              role="slider"
+              aria-label="调整水印大小"
+              aria-valuemin={8}
+              aria-valuemax={80}
+              aria-valuenow={Math.round((watermarkSettings.sizeOnCanvasWidth ?? DEFAULT_WATERMARK_WIDTH_RATIO) * 100)}
+              onPointerDown={(event) => startWatermarkGesture(event, 'resize')}
+            />
+          </div>
+        ) : !watermarkError && watermarkUrl && positioning ? (
           <img
             className="html-preview-watermark"
             src={watermarkUrl}
@@ -148,7 +245,7 @@ export function HtmlPreview({ url, mediaPath, proxyPreview = false, watermarkLay
             style={{ ...watermarkPositionStyle(positioning), opacity: watermarkLayer?.opacity ?? 1 }}
             onError={() => setWatermarkError(true)}
           />
-        )}
+        ) : null}
       </div>
       {mediaError && (
         <div className="html-preview-error" data-preview-control>

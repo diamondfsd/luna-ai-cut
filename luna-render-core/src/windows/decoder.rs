@@ -22,6 +22,7 @@ use windows::Win32::Media::MediaFoundation::{
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 
 const TICKS_PER_SECOND: f64 = 10_000_000.0;
+const MAX_SEQUENTIAL_DECODE_TICKS: i64 = 5_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SurfaceFormat {
@@ -139,7 +140,11 @@ impl VideoDecoder {
         timestamp_100ns: i64,
     ) -> Result<Option<DecodedFrame>, String> {
         let target = timestamp_100ns.max(0);
-        if self.last_timestamp_100ns.is_some_and(|last| target < last) {
+        let should_seek = self.last_timestamp_100ns.map_or(
+            target > MAX_SEQUENTIAL_DECODE_TICKS,
+            |last| target < last || target - last > MAX_SEQUENTIAL_DECODE_TICKS,
+        );
+        if should_seek {
             self.seek(target)?;
         }
 
