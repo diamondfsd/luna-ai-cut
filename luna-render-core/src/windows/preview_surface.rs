@@ -1,19 +1,18 @@
-use windows::core::{w, Interface, IUnknown};
+use windows::core::{w, IUnknown, Interface};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct3D12::{ID3D12CommandQueue, ID3D12Resource};
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory2, IDXGIFactory2, IDXGISwapChain1, IDXGISwapChain3,
-    DXGI_CREATE_FACTORY_FLAGS, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
-    DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
+    CreateDXGIFactory2, IDXGIFactory2, IDXGISwapChain1, IDXGISwapChain3, DXGI_CREATE_FACTORY_FLAGS,
+    DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_DISCARD,
+    DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DestroyWindow, DispatchMessageW, PeekMessageW, SetWindowPos, ShowWindow,
-    TranslateMessage, HWND_TOP, MSG, PM_REMOVE, SW_HIDE, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_SHOWWINDOW, WINDOW_EX_STYLE, WS_CHILD, WS_CLIPSIBLINGS,
-    WS_DISABLED,
+    TranslateMessage, HWND_TOP, MSG, PM_REMOVE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
+    SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, WINDOW_EX_STYLE, WS_CHILD, WS_CLIPSIBLINGS, WS_DISABLED,
 };
 
 use crate::compositor::Compositor;
@@ -157,11 +156,7 @@ impl PreviewSurface {
                     0,
                     0,
                     0,
-                    SWP_NOMOVE
-                        | SWP_NOSIZE
-                        | SWP_NOACTIVATE
-                        | SWP_NOOWNERZORDER
-                        | SWP_SHOWWINDOW,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW,
                 )
             };
         } else {
@@ -197,13 +192,36 @@ impl Drop for PreviewSurface {
 }
 
 fn pixel_bounds(bounds: PreviewBounds) -> (i32, i32, u32, u32) {
-    // BrowserWindow child coordinates are already DPI-aware. Scaling DOM bounds again lets the
-    // native surface cover most of the application on high-DPI displays.
-    let _ = bounds.scale_factor;
+    // DOM bounds are expressed in CSS pixels (DIPs), while a child HWND owned by a
+    // per-monitor-DPI-aware Electron window is positioned and sized in physical pixels.
+    let scale = if bounds.scale_factor.is_finite() {
+        bounds.scale_factor.clamp(0.5, 8.0)
+    } else {
+        1.0
+    };
     (
-        bounds.x.round() as i32,
-        bounds.y.round() as i32,
-        bounds.width.round().max(1.0) as u32,
-        bounds.height.round().max(1.0) as u32,
+        (bounds.x * scale).round() as i32,
+        (bounds.y * scale).round() as i32,
+        (bounds.width * scale).round().max(1.0) as u32,
+        (bounds.height * scale).round().max(1.0) as u32,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{pixel_bounds, PreviewBounds};
+
+    #[test]
+    fn scales_css_bounds_for_200_percent_windows_dpi() {
+        assert_eq!(
+            pixel_bounds(PreviewBounds {
+                x: 120.0,
+                y: 80.0,
+                width: 640.0,
+                height: 360.0,
+                scale_factor: 2.0,
+            }),
+            (240, 160, 1280, 720),
+        );
+    }
 }
