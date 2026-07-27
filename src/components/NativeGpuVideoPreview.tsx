@@ -125,6 +125,7 @@ export function NativeGpuVideoPreview({
   const primarySource = primaryLayer
     ? filePathToPreviewUrl(primaryLayer.filePath) ?? primaryLayer.filePath
     : null
+  const compositionSourceRef = useRef<string | null>(primarySource)
   const composition = useMemo(
     () => buildCompositionFromPreviewLayers(layers, canvasWidth, canvasHeight),
     [canvasHeight, canvasWidth, layers],
@@ -303,11 +304,17 @@ export function NativeGpuVideoPreview({
     if (sessionId === null) return
     const api = nativePreviewApi()
     if (!api) return
+    const sourceChanged = compositionSourceRef.current !== primarySource
+    compositionSourceRef.current = primarySource
     const isActive = () => sessionRef.current === sessionId
     void (async () => {
       try {
         const before = await api.getNativePreviewSessionStats(sessionId)
         if (!isActive()) return
+        if (sourceChanged) {
+          await api.pauseNativePreview(sessionId, 0)
+          if (!isActive()) return
+        }
         await api.updateNativePreviewComposition(sessionId, composition)
         if (!isActive()) return
         const rendered = occludedRef.current
@@ -319,13 +326,13 @@ export function NativeGpuVideoPreview({
         }
       }
     })()
-  }, [composition])
+  }, [composition, primarySource])
 
   useEffect(() => {
     const sessionId = sessionRef.current
     const video = videoRef.current
     if (sessionId === null || !video) return
-    const time = compositionTimeFor(video, primaryLayer)
+    const time = compositionTimeFor(video, playbackRef.current.primaryLayer)
     const api = nativePreviewApi()
     if (!api) return
     const command = playing
@@ -341,7 +348,7 @@ export function NativeGpuVideoPreview({
     } else {
       video.pause()
     }
-  }, [playing, primaryLayer])
+  }, [playing])
 
   useEffect(() => {
     if (!primarySource) return
@@ -360,15 +367,16 @@ export function NativeGpuVideoPreview({
       const sessionId = sessionRef.current
       const api = nativePreviewApi()
       if (sessionId === null || !api) return
-      const isActive = () => sessionRef.current === sessionId
+      const isActive = () => sessionRef.current === sessionId && videoRef.current === video
       void (async () => {
         try {
           const before = await api.getNativePreviewSessionStats(sessionId)
           if (!isActive()) return
-          await api.seekNativePreview(
-            sessionId,
-            compositionTimeFor(video, playbackRef.current.primaryLayer),
-          )
+          const time = compositionTimeFor(video, playbackRef.current.primaryLayer)
+          const command = playbackRef.current.playing
+            ? api.playNativePreview(sessionId, time)
+            : api.pauseNativePreview(sessionId, time)
+          await command
           if (!isActive()) return
           const rendered = occludedRef.current
             || await waitForRenderedFrame(api, sessionId, before.renderedFrames, isActive)
