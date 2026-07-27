@@ -5,6 +5,7 @@ import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import {
   cleanNativeInput,
   getNative,
+  warmupRenderCore,
   type CompositionInput,
   type NativePreviewBounds,
 } from './lunaRenderCore'
@@ -45,6 +46,7 @@ export function registerNativePreviewIpc(
     ) => {
       const win = ctx.win
       if (!win || win.isDestroyed()) throw new Error('预览窗口不可用')
+      await warmupRenderCore()
       const appRoot = process.resourcesPath || process.env.APP_ROOT || join(import.meta.dirname, '..')
       const resolvedComposition = await resolveRuntimePaths(composition)
       return getNative().createNativePreviewSession({

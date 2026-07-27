@@ -81,6 +81,7 @@ pub(super) fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupL
     })
 }
 
+#[derive(Clone)]
 pub(super) struct BlendPipelines {
     normal: wgpu::RenderPipeline,
     multiply: wgpu::RenderPipeline,
