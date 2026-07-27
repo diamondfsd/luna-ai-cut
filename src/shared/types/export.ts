@@ -50,6 +50,13 @@ export interface ExportItemUpdate {
   destinationPath?: string
 }
 
+export interface OriginalFileExportRequest {
+  sourcePath: string
+  outputPath: string
+  exportTaskId: string
+  exportItemId: string
+}
+
 // ── 旧兼容类型（待清理） ──
 
 /** @deprecated 使用 ExportItemInput */

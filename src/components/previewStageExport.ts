@@ -388,6 +388,8 @@ export interface BatchExportSource {
   layers?: PreviewLayer[]
   outputBaseName?: string
   outputSize?: { width: number; height: number }
+  /** 没有应用任何编辑或水印时，允许保留原格式直接复制。 */
+  passthrough?: boolean
   /** 裁剪后的可用视频时长，Live 图固定从中选择 3 秒。 */
   mediaDuration?: number
   /** 原始视频时长，用于复用统一的胶片缩略图缓存。 */
@@ -400,6 +402,7 @@ interface BatchExportEntry {
   outputPath: string
   layers?: PreviewLayer[]
   outputSize?: { width: number; height: number }
+  passthrough?: boolean
   index: number
   kind: 'image' | 'video'
   isLivePhoto?: boolean
@@ -543,13 +546,22 @@ async function runBatchExportQueue(
                 }).catch(() => {})
 
                 // Step 1: Live 图导出（复用当前 entry）
-                await exportPreviewLivePhoto({
-                  name: baseName, exportDir, width: videoRes.width, height: videoRes.height,
-                  imageLayers: exportLayers, videoLayers,
-                  appleLivePhoto: false,
-                  exportTaskId: taskId, exportItemId: entry.id,
-                  taskName, index: entry.index, totalFiles: entries.length,
-                })
+                if (entry.passthrough) {
+                  await window.luna.workspace.exportOriginalFile({
+                    sourcePath: entry.sourcePath,
+                    outputPath: entry.outputPath,
+                    exportTaskId: taskId,
+                    exportItemId: entry.id,
+                  })
+                } else {
+                  await exportPreviewLivePhoto({
+                    name: baseName, exportDir, width: videoRes.width, height: videoRes.height,
+                    imageLayers: exportLayers, videoLayers,
+                    appleLivePhoto: false,
+                    exportTaskId: taskId, exportItemId: entry.id,
+                    taskName, index: entry.index, totalFiles: entries.length,
+                  })
+                }
 
                 // Step 2: 添加 Apple Live 子任务
                 const appleItemId = `${entry.id}_appleLive`
@@ -582,26 +594,45 @@ async function runBatchExportQueue(
               }
 
               // Apple Live 未开启：单一 Live 图导出
-              await exportPreviewLivePhoto({
-                name: baseName,
-                exportDir,
-                width: videoRes.width,
-                height: videoRes.height,
-                imageLayers: exportLayers,
-                videoLayers,
-                appleLivePhoto: false,
-                exportTaskId: taskId,
-                exportItemId: entry.id,
-                taskName,
-                index: entry.index,
-                totalFiles: entries.length,
-              })
+              if (entry.passthrough) {
+                await window.luna.workspace.exportOriginalFile({
+                  sourcePath: entry.sourcePath,
+                  outputPath: entry.outputPath,
+                  exportTaskId: taskId,
+                  exportItemId: entry.id,
+                })
+              } else {
+                await exportPreviewLivePhoto({
+                  name: baseName,
+                  exportDir,
+                  width: videoRes.width,
+                  height: videoRes.height,
+                  imageLayers: exportLayers,
+                  videoLayers,
+                  appleLivePhoto: false,
+                  exportTaskId: taskId,
+                  exportItemId: entry.id,
+                  taskName,
+                  index: entry.index,
+                  totalFiles: entries.length,
+                })
+              }
               return
             }
           } catch {
             // Live Photo 视频提取失败时降级为图片导出
           }
         }
+      }
+
+      if (entry.passthrough) {
+        await window.luna.workspace.exportOriginalFile({
+          sourcePath: entry.sourcePath,
+          outputPath: entry.outputPath,
+          exportTaskId: taskId,
+          exportItemId: entry.id,
+        })
+        return
       }
 
       if (entry.kind === 'video') {
@@ -712,13 +743,17 @@ export async function exportBatchFiles(
     const fp = source.sourcePath
     const baseName = source.outputBaseName || baseNameFromPath(fp)
     const isVid = isVideoPathCached(fp)
-    const ext = isVid ? '.mp4' : '.jpg'
+    const passthrough = Boolean(source.passthrough)
+      && (!isVid || usesOriginalVideoSettings(exportConfig))
+    const sourceExt = fileNameFromPath(fp).match(/(\.[^.]+)$/)?.[1]
+    const ext = passthrough && sourceExt ? sourceExt : isVid ? '.mp4' : '.jpg'
     return {
       id: `batch_${baseName}_${stamp}_${Math.random().toString(36).slice(2, 6)}`,
       sourcePath: fp,
       outputPath: `${exportDir.replace(/[\\/]$/, '')}/${baseName}_${stamp}${ext}`,
       layers: snapshotPreviewLayers(source.layers),
       outputSize: source.outputSize,
+      passthrough,
       index,
       kind: isVid ? 'video' : 'image',
     }
@@ -751,6 +786,18 @@ export async function exportBatchFiles(
   }, 0)
 
   return { taskId: task.id, items: entries.map((entry) => ({ id: entry.id, outputPath: entry.outputPath })) }
+}
+
+function usesOriginalVideoSettings(settings?: VideoExportSettings | null): boolean {
+  if (!settings) return true
+  return settings.resolution === 'original'
+    && settings.frameRate === 'original'
+    && settings.quality === 'original'
+    && settings.customBitrate === undefined
+    && settings.exportFormats.length === 1
+    && settings.exportFormats[0] === 'video'
+    && settings.trimStartTime === 0
+    && settings.trimEndTime === undefined
 }
 
 /** 内部：根据扩展名判断是否视频 */

@@ -40,7 +40,9 @@ export function register(ctx: IpcContext): void {
 
   // ── 取消任务 ──
   ipcMain.handle('export-task:cancel', async (_event, taskId: string) => {
-    ctx.activeExportControllers.get(taskId)?.abort()
+    for (const [key, controller] of ctx.activeExportControllers) {
+      if (key === taskId || key.startsWith(`${taskId}:`)) controller.abort()
+    }
     await exportTaskService.cancelTask(taskId)
   })
 

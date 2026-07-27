@@ -21,10 +21,10 @@ type SelectionStage = 'overview' | 'recommended' | 'scenes' | 'compare' | 'peopl
 
 function statusLabel(status: string, phase?: string): string {
   if (status === 'analyzing' && phase === 'photos') return '正在整理照片'
-  if (status === 'analyzing' && phase === 'content') return '正在理解画面内容'
-  if (status === 'analyzing' && phase === 'people') return '正在检查人物与闭眼'
-  if (status === 'analyzing' && phase === 'videos') return '视频整理中'
-  return ({ queued: '等待整理', indexing: '正在添加素材', analyzing: '正在整理素材', paused: '已暂停', interrupted: '可以继续', ready: '可以开始选片', completed: '已创建项目', failed: '整理失败', canceled: '已取消' } as Record<string, string>)[status] ?? status
+  if (status === 'analyzing' && phase === 'content') return '正在理解画面'
+  if (status === 'analyzing' && phase === 'people') return '正在识别人物'
+  if (status === 'analyzing' && phase === 'videos') return '正在添加视频'
+  return ({ queued: '等待整理', indexing: '正在添加素材', analyzing: '正在整理', paused: '已暂停', interrupted: '整理可继续', ready: '整理完成', completed: '已创建项目', failed: '整理失败', canceled: '已取消' } as Record<string, string>)[status] ?? status
 }
 
 function formatTime(seconds: number): string {
@@ -107,6 +107,7 @@ export function AiSelectionPage() {
   const navigate = useNavigate()
 
   const items = useMemo(() => session?.items ?? [], [session?.items])
+  const photos = useMemo(() => items.filter((item) => item.kind === 'image'), [items])
   const selectedItems = useMemo(() => items.filter((item) => item.state === 'kept'), [items])
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
   const faceCandidateIds = useMemo(() => items.filter((item) => item.kind === 'image' && item.analysisState === 'ready').map((item) => item.id), [items])
@@ -149,13 +150,14 @@ export function AiSelectionPage() {
     }
     if (stage === 'compare') return items.filter((item) => activeGroup?.itemIds.includes(item.id))
     if (stage === 'people') return items.filter((item) => activePeopleItemIds?.includes(item.id))
-    if (stage === 'review') return items.filter((item) => matchesResultFilter(item, filter))
-    return items
-  }, [activeGroup?.itemIds, activePeopleItemIds, filter, items, sceneSections, stage])
+    if (stage === 'review') return photos.filter((item) => matchesResultFilter(item, filter))
+    return photos
+  }, [activeGroup?.itemIds, activePeopleItemIds, filter, items, photos, sceneSections, stage])
   const focused = itemsById.get(focusedId) ?? null
   const running = session?.status === 'indexing' || session?.status === 'analyzing' || session?.status === 'queued'
-  const navigationLocked = running || peopleAnalysis.running
-  const percent = session?.counts.total ? Math.round(session.counts.completed / session.counts.total * 100) : 0
+  const peopleAnalysisActive = peopleAnalysis.running || (session?.status === 'analyzing' && session.phase === 'people')
+  const completedPercent = session?.counts.total ? Math.round(session.counts.completed / session.counts.total * 100) : 0
+  const percent = running ? Math.min(96, completedPercent) : completedPercent
 
   async function createProject(): Promise<void> {
     if (!session) return
@@ -298,10 +300,10 @@ export function AiSelectionPage() {
     { id: 'review', label: '全局复核', icon: CheckCircle2, count: session.counts.attention },
   ]
   const filters: Array<{ id: AiSelectionResultFilter; label: string; count: number }> = [
-    { id: 'attention', label: '待确认', count: items.filter((item) => matchesResultFilter(item, 'attention')).length },
-    { id: 'kept', label: '已保留', count: session.counts.kept },
-    { id: 'rejected', label: '已排除', count: session.counts.rejected },
-    { id: 'all', label: '全部', count: session.counts.total },
+    { id: 'attention', label: '待确认', count: photos.filter((item) => matchesResultFilter(item, 'attention')).length },
+    { id: 'kept', label: '已保留', count: photos.filter((item) => matchesResultFilter(item, 'kept')).length },
+    { id: 'rejected', label: '已排除', count: photos.filter((item) => matchesResultFilter(item, 'rejected')).length },
+    { id: 'all', label: '全部', count: photos.length },
   ]
   const hasFilterRail = stage === 'scenes' || stage === 'compare' || stage === 'people' || stage === 'review'
   const allVisibleKept = visibleItems.length > 0 && visibleItems.every((item) => item.state === 'kept')
@@ -392,13 +394,13 @@ export function AiSelectionPage() {
   return <section className="ai-selection-page"><div className="ai-selection-layout">
     <aside className="ai-selection-sidebar">
       <div className="ai-selection-sidebar-scroll">
-        <Button variant="ghost" size="compact" icon={<ArrowLeft size={15} />} disabled={navigationLocked} onClick={closeSession}>任务列表</Button>
+        <Button variant="ghost" size="compact" icon={<ArrowLeft size={15} />} onClick={closeSession}>任务列表</Button>
         <div className="ai-selection-sidebar-heading"><Sparkles size={18} /><strong>{session.name}</strong></div>
         <div className="ai-selection-sidebar-status">{statusLabel(session.status, session.phase)} · {session.counts.completed}/{session.counts.total || '—'}</div>
         {running && <div className="ai-selection-progress" aria-label={`整理进度 ${percent}%`}><span style={{ width: `${percent}%` }} /></div>}
         <nav className="ai-selection-stage-nav" aria-label="选片流程">{stages.map((entry) => {
           const Icon = entry.icon
-          return <Button key={entry.id} variant="ghost" size="compact" className={stage === entry.id ? 'active' : ''} icon={<Icon size={15} />} disabled={navigationLocked} onClick={() => selectStage(entry.id)}><span>{entry.label}</span>{entry.count !== undefined && <strong>{entry.count}</strong>}</Button>
+          return <Button key={entry.id} variant="ghost" size="compact" className={stage === entry.id ? 'active' : ''} icon={<Icon size={15} />} onClick={() => selectStage(entry.id)}><span>{entry.label}</span>{entry.count !== undefined && <strong>{entry.count}</strong>}</Button>
         })}</nav>
 
         <section className="ai-selection-sidebar-section">
@@ -417,8 +419,8 @@ export function AiSelectionPage() {
         {stage === 'compare' && activeGroup && <section className="ai-selection-sidebar-section"><Button variant="secondary" icon={<Check size={14} />} onClick={confirmCurrentGroup}>接受本组推荐</Button></section>}
       </div>
       <div className="ai-selection-sidebar-footer">
-        <Button variant="primary" icon={<FolderPlus size={14} />} disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目 ({selectedItems.length})</Button>
         <Button variant="secondary" icon={<Download size={14} />} disabled={!selectedItems.length} onClick={exportSelectedItems}>导出 ({selectedItems.length})</Button>
+        <Button variant="primary" icon={<FolderPlus size={14} />} disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目 ({selectedItems.length})</Button>
       </div>
     </aside>
 
@@ -452,11 +454,11 @@ export function AiSelectionPage() {
         </div>
       </aside>}
       <div ref={resultsContentRef} className="ai-selection-results-content">
-      {stage === 'overview' && <><header className="ai-selection-view-heading"><div><h2>全部素材</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header><div className="ai-selection-summary"><div><strong>{session.scenes.length}</strong><span>拍摄时段</span></div><div><strong>{session.groups.length}</strong><span>相似组</span></div><div><strong>{session.counts.recommended}</strong><span>推荐</span></div><div><strong>{session.counts.attention}</strong><span>需确认</span></div><div className="primary"><strong>{session.counts.kept}</strong><span>已保留</span></div></div></>}
+      {stage === 'overview' && <><header className="ai-selection-view-heading"><div><h2>照片概览</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header><div className="ai-selection-summary"><div><strong>{session.scenes.length}</strong><span>拍摄时段</span></div><div><strong>{session.groups.length}</strong><span>相似组</span></div><div><strong>{session.counts.recommended}</strong><span>推荐</span></div><div><strong>{session.counts.attention}</strong><span>需确认</span></div><div className="primary"><strong>{session.counts.kept}</strong><span>已保留</span></div></div></>}
       {stage === 'recommended' && <header className="ai-selection-view-heading"><div><h2>AI 推荐</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'scenes' && <header className="ai-selection-view-heading"><div><h2>全部素材</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'compare' && activeGroup && <header className="ai-selection-view-heading"><div><h2>相似素材比较</h2><span>{activeGroup.itemIds.length} 项</span></div>{selectAllAction}</header>}
-      {stage === 'people' && <header className="ai-selection-view-heading"><div><h2>{activeCoPhotoGroup?.name ?? activeFaceGroup?.name ?? '人物分组'}</h2><span>{activeCoPhotoGroup || activeFaceGroup ? `${visibleItems.length} 项` : '尚未分析'}</span></div><div className="ai-selection-view-actions">
+      {stage === 'people' && <header className="ai-selection-view-heading"><div><h2>{activeCoPhotoGroup?.name ?? activeFaceGroup?.name ?? '人物分组'}</h2>{peopleAnalysisActive ? <div className="ai-selection-heading-loading"><LoadingIndicator label={peopleAnalysis.running && peopleAnalysis.total > 0 ? `正在分析人物 ${peopleAnalysis.completed}/${peopleAnalysis.total}` : '正在识别人物'} /></div> : <span>{activeCoPhotoGroup || activeFaceGroup ? `${visibleItems.length} 项` : '尚未分析'}</span>}</div><div className="ai-selection-view-actions">
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<Pencil size={14} />} disabled={busy} onClick={() => { setRenameValue(activeFaceGroup.name); setRenameOpen(true) }}>改名</Button>}
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<ImageIcon size={14} />} disabled={busy} onClick={() => setAvatarOpen(true)}>换头像</Button>}
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<GitMerge size={14} />} disabled={busy || (session.faceGroups.length < 2 && !activeFaceGroup.mergedMembers?.length)} onClick={() => setMergeOpen(true)}>合并</Button>}

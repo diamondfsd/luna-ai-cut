@@ -28,6 +28,7 @@ import type { CreativeModeId, WorkspaceMode } from '../workspace/components/Work
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
+import { buildVideoSegmentExportRanges } from '../workspace/trim/videoSegmentMarkers'
 import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
@@ -550,7 +551,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       const trackedActiveMasks = isVideoPath(media.activeMedia.path)
         ? await mask.prepareVideoMasksForExport()
         : activePipeline.colorMasks
-      const sources: BatchExportSource[] = await Promise.all(exportIndices.map(async (index) => {
+      const sourceGroups = await Promise.all(exportIndices.map(async (index): Promise<BatchExportSource[]> => {
         const asset = media.media[index]
         const pipeline = index === media.activeIndex
           ? mergePipeline(activePipeline, { colorMasks: trackedActiveMasks })
@@ -561,23 +562,37 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           : 0
         const trimStart = pipeline.trim?.startTime ?? 0
         const trimEnd = pipeline.trim?.endTime ?? sourceDuration
+        const outputBaseName = asset.name.replace(/\.[^.]+$/, '') || 'export'
         // 加载 EXIF 元数据（边框需要）
         const borderMeta = pipeline.border?.enabled
           ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => null)
           : null
         const allowAssetWatermark = usesCustomWatermark(pipeline.watermark)
           || await canUseLunaUltraWatermark(asset.path, asset.kind)
-        return {
+        const segmentRanges = isVideoPath(asset.path)
+          ? buildVideoSegmentExportRanges(outputBaseName, pipeline.videoMarkers, sourceDuration)
+          : []
+        const variants = segmentRanges.length > 0
+          ? segmentRanges.map((segment) => ({
+              pipeline: mergePipeline(pipeline, { trim: { startTime: segment.startTime, endTime: segment.endTime } }),
+              outputBaseName: segment.outputBaseName,
+              trimStart: segment.startTime,
+              trimEnd: segment.endTime,
+            }))
+          : [{ pipeline, outputBaseName, trimStart, trimEnd }]
+
+        return variants.map((variant) => ({
           sourcePath: asset.path,
-          outputBaseName: asset.name.replace(/\.[^.]+$/, '') || 'export',
-          layers: buildWorkspaceExportLayers(asset.path, resolution, pipeline, borderMeta, allowAssetWatermark),
-          outputSize: outputSizeForTransform(resolution, pipeline.transform),
+          outputBaseName: variant.outputBaseName,
+          layers: buildWorkspaceExportLayers(asset.path, resolution, variant.pipeline, borderMeta, allowAssetWatermark),
+          outputSize: outputSizeForTransform(resolution, variant.pipeline.transform),
           mediaDuration: isVideoPath(asset.path)
-            ? Math.max(0, Math.min(sourceDuration, trimEnd) - trimStart)
+            ? Math.max(0, Math.min(sourceDuration, variant.trimEnd) - variant.trimStart)
             : undefined,
           sourceDuration: isVideoPath(asset.path) ? sourceDuration : undefined,
-        }
+        }))
       }))
+      const sources = sourceGroups.flat()
 
       // 检查是否有视频素材 → 有则弹窗让用户选择导出参数，否则直接导出
       const hasVideo = sources.some((s) => isVideoPath(s.sourcePath))
@@ -771,6 +786,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
           <PreviewStage
             ref={previewRef}
             url={media.activeMedia?.path ?? null}
+            active={pageActive}
             isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
@@ -840,6 +856,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       <ExportSettingsDialog
         open={exportDialogOpen}
         tone="dark"
+        description={exportDialogSources.length > 1 ? `将分别导出 ${exportDialogSources.length} 个文件。` : undefined}
         onOpenChange={setExportDialogOpen}
         previewSource={exportDialogSources.length === 1
           ? {

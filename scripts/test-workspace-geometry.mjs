@@ -9,6 +9,7 @@ const pixelStretchStateSource = await readFile(new URL('../src/workspace/creativ
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
 const previewQualitySource = await readFile(new URL('../src/workspace/shared/workspacePreviewQuality.ts', import.meta.url), 'utf8')
 const videoSegmentMarkersSource = await readFile(new URL('../src/workspace/trim/videoSegmentMarkers.ts', import.meta.url), 'utf8')
+const aiSelectionWorkspaceAssetsSource = await readFile(new URL('../electron/aiSelectionWorkspaceAssets.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compilerOptions = {
   module: ts.ModuleKind.ES2020,
@@ -21,6 +22,7 @@ const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { 
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
 const previewQualityCompiled = ts.transpileModule(previewQualitySource, { compilerOptions }).outputText
 const videoSegmentMarkersCompiled = ts.transpileModule(videoSegmentMarkersSource, { compilerOptions }).outputText
+const aiSelectionWorkspaceAssetsCompiled = ts.transpileModule(aiSelectionWorkspaceAssetsSource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
 const pixelStretch = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchCompiled).toString('base64')}`)
@@ -28,6 +30,7 @@ const pixelStretchState = await import(`data:text/javascript;base64,${Buffer.fro
 const pixelStretchPath = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchPathCompiled).toString('base64')}`)
 const previewQuality = await import(`data:text/javascript;base64,${Buffer.from(previewQualityCompiled).toString('base64')}`)
 const videoSegmentMarkers = await import(`data:text/javascript;base64,${Buffer.from(videoSegmentMarkersCompiled).toString('base64')}`)
+const aiSelectionWorkspaceAssets = await import(`data:text/javascript;base64,${Buffer.from(aiSelectionWorkspaceAssetsCompiled).toString('base64')}`)
 
 function close(actual, expected, message, epsilon = 0.0001) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${message}: expected ${expected}, got ${actual}`)
@@ -77,6 +80,47 @@ assert.deepEqual(
     ],
   },
   'video marker export contains only the source path and ordered segment fields',
+)
+assert.deepEqual(
+  videoSegmentMarkers.buildVideoSegmentExportRanges('夏日/旅行', [
+    { id: 'closing', startTime: 8, endTime: 12, note: '海边:收尾?' },
+    { id: 'opening', startTime: 1, endTime: 3, note: '' },
+  ], 10),
+  [
+    { startTime: 1, endTime: 3, outputBaseName: '夏日-旅行_片段-01' },
+    { startTime: 8, endTime: 10, outputBaseName: '夏日-旅行_片段-02_海边-收尾-' },
+  ],
+  'video marker exports are ordered, named safely, and clamped to the source duration',
+)
+assert.deepEqual(
+  videoSegmentMarkers.buildVideoSegmentExportRanges('video', [
+    { id: 'outside', startTime: 10, endTime: 12, note: '' },
+  ], 10),
+  [],
+  'video marker exports drop ranges outside the source duration',
+)
+assert.deepEqual(
+  aiSelectionWorkspaceAssets.workspaceAssetsFromSelection([{
+    id: 'selected-video',
+    path: '/tmp/selected-video.mp4',
+    name: 'selected-video.mp4',
+    kind: 'video',
+    state: 'kept',
+    error: null,
+    thumbnailUrl: 'thumbnail',
+    videoSegments: [
+      { id: 'segment-a', startTime: 1, endTime: 3, state: 'kept' },
+      { id: 'segment-b', startTime: 5, endTime: 8, state: 'kept' },
+    ],
+  }]),
+  [{
+    id: 'selected-video',
+    name: 'selected-video.mp4',
+    path: '/tmp/selected-video.mp4',
+    kind: 'video',
+    thumbnailUrl: 'thumbnail',
+  }],
+  'AI selection sends the complete selected video to the workspace',
 )
 
 assert.equal(geometry.shouldSwapOrientation(0), false)

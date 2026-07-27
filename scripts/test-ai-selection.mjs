@@ -219,6 +219,18 @@ assert.equal(eyeSelectionItems[0].flags.closedEyes, true)
 assert.equal(eyeSelectionItems[1].state, 'recommended')
 assert.match(eyeSelectionItems[1].recommendationReason, /人物睁眼/)
 
+const metadataOnlyVideo = item('metadata-only-video', '2026-07-18T02:10:00.000Z', {
+  kind: 'video',
+  quality: null,
+  perceptualHash: null,
+  luminanceHistogram: null,
+  visualSignature: null,
+  semanticTags: ['视频'],
+})
+applySelectionPlan([metadataOnlyVideo], [], 'deep', 'editing', { mode: 'count', value: 1 })
+assert.equal(metadataOnlyVideo.state, 'undecided', '视频不能进入画质推荐')
+assert.equal(metadataOnlyVideo.flags.aiRecommended, false, '视频不能带有 AI 推荐标记')
+
 const video = item('video-segments', '2026-07-18T01:00:00.000Z', {
   kind: 'video',
   videoSegments: [
@@ -255,6 +267,21 @@ const faceGroups = buildFaceGroups(faceItems)
 assert.equal(faceGroups.length, 2)
 assert.deepEqual(faceGroups[0].itemIds, ['face-a', 'face-a-again', 'face-a-and-b'])
 assert.deepEqual(faceGroups[1].itemIds, ['face-b', 'face-a-and-b'])
+
+const sampledVideoFace = item('sampled-video-face', '2026-07-18T03:04:00.000Z', {
+  kind: 'video',
+  personEvidence: {
+    ...faceEvidence('unknown', null),
+    bounds: { x: 0, y: 0, width: 1, height: 1 },
+    faces: [
+      { bounds: { x: 0.2, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(127, 0), embeddingVersion: FACE_EMBEDDING_VERSION, frameTime: 1 },
+      { bounds: { x: 0.35, y: 0.2, width: 0.2, height: 0.25 }, embedding: faceVector(125, 8), embeddingVersion: FACE_EMBEDDING_VERSION, frameTime: 5 },
+    ],
+  },
+})
+const sampledVideoGroups = buildFaceGroups([sampledVideoFace])
+assert.equal(sampledVideoGroups.length, 1, '视频不同取样帧中的同一人物应合并')
+assert.deepEqual(sampledVideoGroups[0].itemIds, ['sampled-video-face'])
 
 const globalIdentityGroups = buildFaceGroups(faceItems, [{
   id: 'person-global',
