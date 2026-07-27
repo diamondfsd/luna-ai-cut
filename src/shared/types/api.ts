@@ -5,7 +5,7 @@ import type { PreviewResult, MediaMetadata } from './preview'
 import type { CustomWatermarkAsset, WatermarkSettings } from './watermark'
 import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest, VideoExportSettings } from './video'
 import type { DownloadProgress, DownloadRecord, DownloadSummary } from './download'
-import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord } from './export'
+import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord, OriginalFileExportRequest } from './export'
 import type { MockServerStatus } from './mock'
 import type {
   DeviceDebugTestResult,
@@ -173,7 +173,6 @@ export interface LunaApi {
   }
   aiSelection: {
     chooseDirectory(): Promise<string | null>
-    chooseFiles(): Promise<string[]>
     start(request: AiSelectionStartRequest): Promise<AiSelectionSession>
     listSessions(): Promise<AiSelectionSession[]>
     getSession(sessionId: string): Promise<AiSelectionSession | null>
@@ -241,6 +240,7 @@ export interface LunaApi {
     renameProject(projectId: string, newName: string): Promise<WorkspaceProject>
     extractVideoFrame(videoPath: string, outputPath: string, frameTime: number): Promise<{ path: string; name: string }>
     exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean, recordTask?: boolean, coverTimeSeconds?: number): Promise<{ path: string; name: string }>
+    exportOriginalFile(request: OriginalFileExportRequest): Promise<{ path: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     listColorPresets(): Promise<Array<{ id: string; name: string; createdAt: string; updatedAt: string; colorJson: string }>>
     saveColorPreset(name: string, colorJson: string): Promise<{ id: string; name: string; createdAt: string; updatedAt: string; colorJson: string }>

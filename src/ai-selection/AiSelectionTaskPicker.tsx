@@ -16,17 +16,17 @@ interface AiSelectionTaskPickerProps {
 }
 
 function statusText(session: AiSelectionSession): string {
-  if (session.status === 'analyzing' && session.phase === 'photos') return '正在整理照片'
-  if (session.status === 'analyzing' && session.phase === 'content') return '正在理解画面内容'
-  if (session.status === 'analyzing' && session.phase === 'people') return '正在检查人物与闭眼'
-  if (session.status === 'analyzing' && session.phase === 'videos') return '照片可选，视频整理中'
+  if (session.status === 'analyzing' && session.phase === 'photos') return '正在整理照片，可选片'
+  if (session.status === 'analyzing' && session.phase === 'content') return '正在理解画面，可选片'
+  if (session.status === 'analyzing' && session.phase === 'people') return '正在识别人物，可选片'
+  if (session.status === 'analyzing' && session.phase === 'videos') return '正在添加视频，可选片'
   return ({
     queued: '等待整理',
     indexing: '正在添加素材',
-    analyzing: '正在整理',
+    analyzing: '正在整理，可选片',
     paused: '已暂停',
     interrupted: '可继续',
-    ready: '可以选片',
+    ready: '整理完成',
     completed: '已创建项目',
     failed: '整理失败',
     canceled: '已取消',
