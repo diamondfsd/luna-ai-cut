@@ -220,7 +220,7 @@
 
 .help-footer-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   border-top: 1px solid var(--hairline);
   padding: 14px 20px 16px;
@@ -244,5 +244,9 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+
+  .help-footer-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

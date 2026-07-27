@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Code2, ExternalLink, FileText, GitFork, HelpCircle, Loader2, RefreshCw, Trash2, Zap, X as XIcon } from 'lucide-react'
+import { Code2, ExternalLink, FileText, GitFork, Heart, HelpCircle, Loader2, RefreshCw, Trash2, Zap, X as XIcon } from 'lucide-react'
 
 import type { HotUpdateCheckResult, UpdateInfo } from '../shared/types'
 import { Button, Dialog } from '../ui'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog'
+import { SupportDialog } from './SupportDialog'
 import douyinQrCode from '../../public/my-douyin-qr-code.jpg'
 import './HelpDialog.css'
 
@@ -18,6 +19,7 @@ export function HelpDialog({ children }: HelpDialogProps) {
   const [noUpdate, setNoUpdate] = useState(false)
   const [hotVersion, setHotVersion] = useState<string | null>(null)
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
+  const [supportOpen, setSupportOpen] = useState(false)
 
   // 热更新状态
   const [hotUpdateCheck, setHotUpdateCheck] = useState<HotUpdateCheckResult | null>(null)
@@ -31,7 +33,6 @@ export function HelpDialog({ children }: HelpDialogProps) {
       .then(result => { if (result) setHotUpdateCheck(result) })
       .catch(() => {})
     checkForUpdatesSilently()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function checkForUpdatesSilently(): Promise<void> {
@@ -205,6 +206,9 @@ export function HelpDialog({ children }: HelpDialogProps) {
           </div>
 
           <div className="help-footer-actions">
+            <Button variant="secondary" size="compact" className="help-footer-btn" icon={<Heart size={14} />} onClick={() => setSupportOpen(true)}>
+              赞赏支持
+            </Button>
             <Button variant="secondary" size="compact" className="help-footer-btn" onClick={() => void window.luna.openPath('https://luna.diamondfsd.com/')}>
               <ExternalLink size={14} />
               官方网站
@@ -221,6 +225,7 @@ export function HelpDialog({ children }: HelpDialogProps) {
         </div>
       </Dialog>
       <ReleaseNotesDialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen} />
+      <SupportDialog open={supportOpen} onOpenChange={setSupportOpen} />
 
       {/* 热更新内容详情弹窗 */}
       {showHotNotes && hotUpdateCheck?.notes && (

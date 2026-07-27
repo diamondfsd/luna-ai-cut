@@ -293,6 +293,16 @@
   padding: 2px 2px 16px;
 }
 
+.lut-category-edit.ui-icon-btn {
+  color: #8e97a5;
+}
+
+.lut-category-edit.ui-icon-btn:hover,
+.lut-category-edit.ui-icon-btn.active {
+  background: rgba(0, 102, 204, 0.18);
+  color: #68a9ff;
+}
+
 .lut-category-count {
   display: inline-flex;
   align-items: center;
@@ -338,6 +348,14 @@
   transform: translateY(-2px);
 }
 
+.filter-grid.editing .filter-card {
+  cursor: default;
+}
+
+.filter-grid.editing .filter-card:hover {
+  transform: none;
+}
+
 .filter-card.selected {
   /* 选中态交给 thumb 的边框处理 */
 }
@@ -356,6 +374,26 @@
 .filter-card.selected .thumb {
   border-color: #3478ff;
   box-shadow: 0 0 0 2px rgba(52,120,255,0.72), 0 16px 40px rgba(52,120,255,0.16);
+}
+
+.filter-card-delete.ui-icon-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 4;
+  background: rgba(20, 24, 30, 0.86);
+  color: #ff7474;
+  backdrop-filter: blur(8px);
+}
+
+.filter-card-delete.ui-icon-btn:hover {
+  background: rgba(176, 42, 42, 0.92);
+  color: #fff;
+}
+
+.filter-card-delete.ui-icon-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .thumb-img {
