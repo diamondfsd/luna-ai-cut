@@ -2,6 +2,18 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.6.5",
+    "title": "v1.6.5 - 发布说明",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>AI 选片</strong>：支持从本地资源、多个文件或文件夹创建选片任务，通过场景、相似素材、人物证据和视频关键帧形成推荐结果，并允许用户随时换选、保留或排除素材。</li>\n<li><strong>人物整理</strong>：支持识别和整理人物分组，在不同选片任务之间复用人物名称，并可手动合并被拆分的人物组。</li>\n<li><strong>自定义水印库</strong>：支持批量导入 PNG、JPEG 和 WebP 水印，按文件名搜索并持久化保存；单次选择一个水印后可调整六个预设位置、自由位置、大小和透明度。</li>\n<li><strong>视频片段标记</strong>：工作台可以保存多个视频时间范围和剪辑备注，点击标记即可恢复对应截取范围，并支持复制或导出片段 JSON。</li>\n<li><strong>Dolby Vision 素材支持</strong>：本地资源列表可识别 Dolby Vision 与 I-Log 视频；符合条件的 Dolby Vision 8.4 视频可使用保真水印导出。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>更快形成选片结果</strong>：照片优先完成分析，视频继续在后台处理；视频故事板仅在查看时生成并缓存。</li>\n<li><strong>简化选片工作区</strong>：左侧集中选片阶段、筛选和操作，右侧专注素材预览，减少重复信息和无效步骤。</li>\n<li><strong>完善水印管理</strong>：设置页使用独立的深色水印管理弹窗，可继续添加、查看文件名或删除自定义水印；内置水印继续保持原有五个固定位置和固定大小。</li>\n<li><strong>优化水印搜索</strong>：文件名匹配会忽略大小写、空格、常见标点、特殊符号和全角半角差异。</li>\n<li><strong>优化 LUT 分类浏览</strong>：LUT 分类改为垂直折叠布局，不再依赖横向滚动查找分类。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复设备媒体库导航状态</strong>：从设备连接页进入媒体库后，顶部“设备媒体库”会正确显示为当前页面。</li>\n<li><strong>修复 Dolby Vision 导出信息</strong>：保留源视频检测到的码率，并修正导出视频的 HEVC 配置信息。</li>\n<li><strong>改善人物与缩略图处理</strong>：修复部分选片任务中的人物头像、缩略图和分组状态异常。</li>\n</ul>\n<h3>说明</h3>\n<ul>\n<li>AI 只提供非破坏性推荐，不会自动删除、移动或覆盖原始素材。</li>\n<li>自定义水印大小表示水印宽度占素材画面宽度的比例，默认 <code>23%</code>；导入文件会复制到应用管理目录，删除水印库条目不会删除用户的原始文件。</li>\n<li>视频片段标记用于整理、回看和交换时间范围，不会自动拼接或批量导出多个片段。</li>\n<li>Dolby Vision 保真导出首版仅支持本地资源中的 Profile 8.4 视频和静态水印。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.6.3-hot.1",
+    "title": "v1.6.3-hot.1 - 热更新发布说明",
+    "bodyHtml": "<h3>问题修复</h3>\n<ul>\n<li><strong>改进预览启动失败提示</strong>：根据组件缺失、版本不匹配、系统运行组件缺失或显卡驱动异常，显示更准确的处理建议。</li>\n<li><strong>增加诊断详情</strong>：预览无法启动时可展开诊断详情，便于截图反馈和定位问题。</li>\n<li><strong>修复重新检测状态</strong>：预览组件加载失败时会正确结束初始化流程，避免应用持续停留在异常保护状态。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.6.3",
     "title": "v1.6.3 - 发布说明",
     "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 Apple 芯片 Mac 的视频解析失败</strong>：ARM64 安装包改用原生 ffprobe，解决部分用户预览或导出时出现的架构不兼容问题，无需安装 Rosetta。</li>\n<li><strong>修复热更新版本选择</strong>：先选择最新热更新版本，同版本同时存在通用包和平台包时再优先选择平台包。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>增加 macOS 打包架构校验</strong>：打包时自动检查 ffmpeg 和 ffprobe 的目标架构，防止不兼容的工具进入安装包。</li>\n</ul>",
