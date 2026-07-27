@@ -109,6 +109,21 @@ luna-ai-cut/
 
 MIT © [diamondfsd](https://github.com/diamondfsd)
 
+## 支持项目
+
+Luna AI Cut 目前由个人利用业余时间开发和维护。
+
+如果它为你节省了时间，欢迎自愿支持项目持续更新。
+
+赞助不会影响软件的正常使用，也不代表购买功能或技术服务。
+
+<p align="center">
+  <strong>微信赞赏</strong><br /><br />
+  <img src="./public/wechat-start-code.png" alt="Luna AI Cut 微信赞赏码" width="320" />
+</p>
+
+不方便赞助也没关系。提交 Bug、分享软件、参与测试、给项目点一个 Star，都是对项目很大的帮助。
+
 ---
 
 > 本项目与 Insta360 公司无关联。Insta360 是 Arashi Vision 公司的注册商标。
