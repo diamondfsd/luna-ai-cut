@@ -313,6 +313,7 @@ fn run_native_preview_session(
                 }
                 Err(error) => {
                     stats.render_errors.fetch_add(1, Ordering::Relaxed);
+                    playing = false;
                     if last_error_log.elapsed() >= Duration::from_secs(1) {
                         crate::logging::error(&format!(
                             "[NativePreview] render time={current_time:.3}: {error}"
