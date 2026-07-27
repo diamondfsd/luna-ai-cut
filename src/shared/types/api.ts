@@ -173,7 +173,6 @@ export interface LunaApi {
   }
   aiSelection: {
     chooseDirectory(): Promise<string | null>
-    chooseFiles(): Promise<string[]>
     start(request: AiSelectionStartRequest): Promise<AiSelectionSession>
     listSessions(): Promise<AiSelectionSession[]>
     getSession(sessionId: string): Promise<AiSelectionSession | null>
