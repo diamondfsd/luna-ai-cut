@@ -15,6 +15,7 @@
 
     <link rel="icon" type="image/png" href="assets/favicon.png" />
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="support.css" />
   </head>
   <body>
     <!-- ===== Global Nav ===== -->
@@ -51,6 +52,7 @@
         <p class="hero-lead">Luna 素材从取片到创作，一个流程完成<br/>双连接取片 · AI 局部调色 · i-Log 还原 · 水印导出</p>
         <div class="hero-cta">
           <a href="#download" class="pill primary">免费下载</a>
+          <button type="button" class="pill secondary support-entry" data-support-open>赞赏支持</button>
           <a href="#features" class="pill secondary">了解功能</a>
         </div>
         <div class="hero-preview">
@@ -83,7 +85,10 @@
       <div class="section-inner">
         <div class="section-label accent">下载</div>
         <h2 class="section-title section-title-light">选择你的平台 <span class="version-tag" id="current-version"></span></h2>
-        <p class="section-desc section-desc-light">目前支持 macOS 和 Windows，免费使用</p>
+        <p class="section-desc section-desc-light download-support-copy">
+          <span>目前支持 macOS 和 Windows，免费使用，你也可以支持一下作者：</span>
+          <button type="button" class="download-support-entry" data-support-open>我想支持</button>
+        </p>
 
         <div class="download-grid">
           <div class="download-cell">
@@ -328,8 +333,30 @@
       </div>
     </footer>
 
+    <div class="support-modal" id="support-modal" hidden>
+      <div class="support-modal-panel" role="dialog" aria-modal="true" aria-labelledby="support-modal-title">
+        <button type="button" class="support-modal-close" data-support-close aria-label="关闭赞赏支持弹窗">×</button>
+        <div class="support-modal-copy">
+          <span class="support-modal-label">自愿支持</span>
+          <h2 id="support-modal-title">支持 Luna AI Cut</h2>
+          <p>Luna AI Cut 目前由个人利用业余时间开发和维护。</p>
+          <p>如果它为你节省了时间，欢迎自愿支持项目持续更新。</p>
+          <p class="support-modal-note">赞助不会影响软件的正常使用，<br />也不代表购买功能或技术服务。</p>
+          <div class="support-modal-thanks">
+            <strong>不方便赞助也没关系。</strong>
+            <p>提交 Bug、分享软件、参与测试、<br />给项目点一个 Star，都是对项目很大的帮助。</p>
+          </div>
+        </div>
+        <figure class="support-modal-code">
+          <figcaption>微信赞赏</figcaption>
+          <img src="assets/wechat-start-code.png" alt="Luna AI Cut 微信赞赏码" width="384" height="384" />
+        </figure>
+      </div>
+    </div>
+
     <script src="changelog-data.js"></script>
     <script src="latest-changelog.js"></script>
     <script src="script.js"></script>
+    <script src="support.js"></script>
   </body>
 </html>
