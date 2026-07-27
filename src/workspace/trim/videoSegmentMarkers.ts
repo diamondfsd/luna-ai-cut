@@ -7,6 +7,12 @@ export interface VideoSegmentMarker {
   note: string
 }
 
+export interface VideoSegmentExportRange {
+  startTime: number
+  endTime: number
+  outputBaseName: string
+}
+
 const MIN_SEGMENT_DURATION = 0.1
 const MAX_NOTE_LENGTH = 200
 
@@ -55,4 +61,43 @@ export function buildVideoSegmentsExport(sourcePath: string, markers: VideoSegme
       endTime,
     })),
   }
+}
+
+function safeOutputNamePart(value: string, fallback: string, maxLength = 60): string {
+  const normalized = Array.from(value, (character) => (
+    character.charCodeAt(0) < 32 ? '-' : character
+  )).join('')
+    .replace(/[<>:"/\\|?*]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/g, '')
+  return Array.from(normalized || fallback).slice(0, maxLength).join('')
+}
+
+export function buildVideoSegmentExportRanges(
+  sourceBaseName: string,
+  markers: VideoSegmentMarker[],
+  sourceDuration?: number,
+): VideoSegmentExportRange[] {
+  const baseName = safeOutputNamePart(sourceBaseName, 'video', 120)
+  const maximumEnd = Number.isFinite(sourceDuration) && Number(sourceDuration) > 0
+    ? Number(sourceDuration)
+    : Number.POSITIVE_INFINITY
+
+  return normalizeVideoSegmentMarkers(markers)
+    .map((marker) => ({
+      ...marker,
+      startTime: Math.min(marker.startTime, maximumEnd),
+      endTime: Math.min(marker.endTime, maximumEnd),
+    }))
+    .filter((marker) => marker.endTime >= marker.startTime + MIN_SEGMENT_DURATION)
+    .map((marker, index) => {
+      const sequence = String(index + 1).padStart(2, '0')
+      const note = safeOutputNamePart(marker.note, '', 60)
+      return {
+        startTime: marker.startTime,
+        endTime: marker.endTime,
+        outputBaseName: `${baseName}_片段-${sequence}${note ? `_${note}` : ''}`,
+      }
+    })
 }
