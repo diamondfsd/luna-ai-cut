@@ -13,14 +13,12 @@
 .wm-settings-section {
   display: grid;
   min-width: 0;
-  gap: 10px;
-  padding: 13px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 8px;
+  padding: 8px 0;
 }
 
 .wm-settings-section:first-child {
-  padding-top: 8px;
-  border-top: 0;
+  padding-top: 6px;
 }
 
 .wm-source-control {
@@ -28,24 +26,15 @@
 }
 
 .wm-source-control + .wm-settings-section {
-  margin-top: 4px;
+  margin-top: 0;
 }
 
-.wm-section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.wm-custom-library-row {
+  display: grid;
   min-width: 0;
-  gap: 10px;
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.wm-section-heading > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
 }
 
 .wm-source-selector,
