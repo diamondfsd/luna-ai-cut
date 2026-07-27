@@ -27,7 +27,7 @@ interface WorkspaceMediaValue {
   setActiveIndex: (index: number) => void
   deleteProject: (projectId: string) => Promise<void>
   renameProject: (projectId: string, newName: string) => Promise<void>
-  createProject: (name: string) => Promise<void>
+  createProject: (name: string, assets?: WorkspaceMediaAsset[]) => Promise<void>
 }
 
 const WorkspaceMediaContext = createContext<WorkspaceMediaValue | null>(null)

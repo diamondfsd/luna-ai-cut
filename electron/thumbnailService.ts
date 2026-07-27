@@ -16,10 +16,10 @@ function partialPathFor(destination: string): string {
 }
 
 /** 缩略图最长边（等比缩放，不裁剪） */
-export const THUMBNAIL_MAX = 400
+export const THUMBNAIL_MAX = 800
 
-/** 缩略图文件名后缀 */
-export const THUMB_EXT = '.webp'
+/** 缩略图文件名后缀；版本号用于自动失效旧尺寸缓存 */
+export const THUMB_EXT = '.v2.webp'
 
 /** 缩略图缓存子目录名 */
 export const THUMBNAIL_SUBDIR = 'thumbnails'
@@ -255,7 +255,7 @@ export async function generateVideoThumbnail(
 
   try {
     await waitForStableFile(sourcePath)
-    // 取视频第一帧，等比缩放到最长边 400px
+    // 取视频第一帧，等比缩放到最长边 800px
     const args = [
       '-ss', '0',
       '-i', sourcePath,

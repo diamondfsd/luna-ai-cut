@@ -74,6 +74,14 @@ fn write_response<W: Write>(writer: &mut W, response: &WorkerResponse) -> Result
         .map_err(|error| format!("无法写入工作进程响应: {error}"))
 }
 
+fn expected_output_bytes(backend: &str, output_size: usize) -> usize {
+    if backend == "dinov2-small" || backend == "sface" || backend == "ultraface-boxes" {
+        output_size * std::mem::size_of::<f32>()
+    } else {
+        output_size * output_size
+    }
+}
+
 fn run_server<R: BufRead, W: Write>(reader: R, mut writer: W) -> Result<(), String> {
     let mut sessions = HashMap::<String, specialized_segmentation::SpecializedSession>::new();
     for line in reader.lines() {
@@ -128,16 +136,16 @@ fn run_server<R: BufRead, W: Write>(reader: R, mut writer: W) -> Result<(), Stri
                     }
                     let session_load_ms = load_started.elapsed().as_millis();
                     let inference_started = Instant::now();
-                    let mask = sessions
+                    let output = sessions
                         .get_mut(&cache_key)
                         .ok_or_else(|| "专用分割 Session 不可用".to_string())?
                         .segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?;
-                    if mask.len() != output_size * output_size {
-                        return Err("专用分割蒙版尺寸异常".to_string());
+                    if output.len() != expected_output_bytes(&backend, output_size) {
+                        return Err("视觉模型输出尺寸异常".to_string());
                     }
                     let inference_ms = inference_started.elapsed().as_millis();
-                    fs::write(output_path, mask)
-                        .map_err(|error| format!("无法保存蒙版: {error}"))?;
+                    fs::write(output_path, output)
+                        .map_err(|error| format!("无法保存视觉分析结果: {error}"))?;
                     Ok((session_load_ms, inference_ms, session_reused))
                 })();
                 let response = match result {
@@ -168,23 +176,24 @@ fn run() -> Result<(), String> {
     let pad_y = number(&args[8], "纵向留白")?;
     let output_size = number(&args[9], "输出尺寸")?;
     let mask = match args[1].as_str() {
-        "yolo26-seg" => specialized_segmentation::segment_yolo(
-            &args[2],
-            &rgb,
-            scaled_width,
-            scaled_height,
-            pad_x,
-            pad_y,
-            output_size,
-        )?,
+        "yolo26-seg" | "yolo26-labels" | "segformer-labels" => {
+            let mut session =
+                specialized_segmentation::SpecializedSession::load(&args[1], &args[2])?;
+            session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
+        }
         "rmbg-1.4" => specialized_segmentation::segment_rmbg(&args[2], &rgb, output_size)?,
+        "ultraface" | "ultraface-boxes" | "eye-state" | "dinov2-small" | "sface" => {
+            let mut session =
+                specialized_segmentation::SpecializedSession::load(&args[1], &args[2])?;
+            session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
+        }
         "birefnet-general-lite" => {
             specialized_segmentation::segment_birefnet(&args[2], &rgb, output_size)?
         }
         _ => return Err("不支持的专用分割模型".to_string()),
     };
-    if mask.len() != output_size * output_size {
-        return Err("专用分割蒙版尺寸异常".to_string());
+    if mask.len() != expected_output_bytes(&args[1], output_size) {
+        return Err("视觉模型输出尺寸异常".to_string());
     }
     fs::write(&args[4], mask).map_err(|error| format!("无法保存蒙版: {error}"))
 }

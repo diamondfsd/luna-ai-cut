@@ -37,6 +37,9 @@ export interface LunaFile {
   localPath?: string
   frameRate?: number
   duration?: number
+  dolbyVision?: boolean
+  dolbyVisionProfile?: number
+  iLog?: boolean
 }
 
 export interface CameraDeleteFailure {

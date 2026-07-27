@@ -1,4 +1,4 @@
-import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Trash2, X } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpWideNarrow, Download, Filter, FolderPlus, Loader2, Plus, RefreshCcw, Sparkles, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -57,6 +57,15 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
     })
     .filter((file): file is NonNullable<typeof file> => Boolean(file))
   const canSendToWorkspace = isLocal && workspaceMedia.length > 0
+
+  function openAiSelection(files = ctrl.filteredFiles, selectedScope = false): void {
+    const paths = files
+      .filter((file) => file.kind === 'image' || file.kind === 'video')
+      .map((file) => file.localPath ?? file.downloadFilePath ?? file.cacheFilePath ?? '')
+      .filter(Boolean)
+    if (paths.length === 0) return
+    navigate('/ai-selection', { state: { paths, label: selectedScope ? `已选 ${paths.length} 个素材` : `本地资源 ${paths.length} 个素材` } })
+  }
 
   async function handleCreateProject(): Promise<void> {
     if (!canSendToWorkspace || projectBusy) return
@@ -121,6 +130,9 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                 </Button>
                 {isLocal ? (
                   <>
+                    <Button variant="secondary" size="compact" disabled={!canSendToWorkspace} icon={<Sparkles size={14} />} onClick={() => openAiSelection(ctrl.selectedFiles, true)}>
+                      AI 选片 ({workspaceMedia.length})
+                    </Button>
                     <Button
                       variant="secondary"
                       size="compact"
@@ -181,6 +193,11 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
             <>
               <span className="toolbar-date">{currentDate}</span>
               <div className="library-controls">
+                {isLocal && (
+                  <Button className="library-ai-selection-btn" variant="primary" size="compact" icon={<Sparkles size={13} />} disabled={ctrl.filteredFiles.length === 0} onClick={() => openAiSelection()}>
+                    AI 选片
+                  </Button>
+                )}
                 <ButtonGroup
                   options={[
                     { value: 'all', label: '全部' },

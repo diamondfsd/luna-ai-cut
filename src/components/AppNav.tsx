@@ -38,6 +38,9 @@ export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode
           <NavLink to="/local-resources" className={({ isActive }) => (isActive ? 'active' : '')}>
             本地资源
           </NavLink>
+          <NavLink to="/ai-selection" className={({ isActive }) => (isActive ? 'active' : '')}>
+            AI 选片
+          </NavLink>
           <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>
             工作台
           </NavLink>
@@ -49,7 +52,7 @@ export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode
               调试
             </NavLink>
           )}
-          {/* 
+          {/*
           {(import.meta.env.DEV || hiddenDevMode) && (
             <NavLink to="/device-debug" className={({ isActive }) => (isActive ? 'active' : '')}>
               设备调试

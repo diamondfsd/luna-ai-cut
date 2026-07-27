@@ -1,24 +1,10 @@
 .help-dialog-content.ui-dialog-content {
-  width: min(780px, 92vw);
+  width: min(760px, 92vw);
 }
 
 .help-dialog-body {
   min-height: 0;
   overflow-y: auto;
-}
-
-.help-dialog-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  min-height: 280px;
-}
-
-.help-dialog-summary {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 16px;
-  padding: 20px;
 }
 
 .help-section-label {
@@ -29,15 +15,25 @@
 
 .help-version-section {
   display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+}
+
+.help-version-heading {
+  display: flex;
+  min-width: 0;
+  flex: 1;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
 }
 
 .help-version-row {
   display: flex;
   min-width: 0;
   align-items: baseline;
-  justify-content: space-between;
   gap: 12px;
 }
 
@@ -106,7 +102,14 @@
   background: var(--blue);
 }
 
-.help-version-actions,
+.help-version-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .help-hot-actions {
   display: flex;
   align-items: center;
@@ -118,9 +121,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid rgba(0, 102, 204, 0.18);
-  border-radius: 8px;
+  padding: 10px 20px;
+  border-top: 1px solid rgba(0, 102, 204, 0.18);
   background: rgba(0, 102, 204, 0.06);
   color: var(--ink);
   font-size: 12px;
@@ -148,57 +150,28 @@
   color: var(--muted);
 }
 
-.help-notes-section {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: auto;
-  padding-top: 14px;
+.help-community-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--hairline);
 }
 
-.help-notes-copy {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 9px;
-  color: var(--ink);
-}
-
-.help-notes-copy > span {
+.help-community-section {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 2px;
-}
-
-.help-notes-copy strong {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.help-notes-copy small {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.help-douyin-section {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  border-left: 1px solid var(--hairline);
-  padding: 20px 18px;
+  padding: 18px 20px;
   text-align: center;
 }
 
+.help-community-section + .help-community-section {
+  border-left: 1px solid var(--hairline);
+}
+
 .help-qr-code {
-  width: 300px;
+  width: 210px;
   max-width: 100%;
   height: auto;
   aspect-ratio: 1;
@@ -218,6 +191,42 @@
   font-size: 11px;
 }
 
+.help-support-code {
+  border: 1px solid var(--hairline);
+  object-fit: contain;
+}
+
+.help-support-copy {
+  display: flex;
+  min-width: 0;
+  max-width: 280px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.help-support-copy strong {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.help-support-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.help-support-copy small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .help-footer-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -231,11 +240,23 @@
 }
 
 @media (max-width: 620px) {
-  .help-dialog-main {
+  .help-version-section {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .help-version-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .help-community-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .help-douyin-section {
+  .help-community-section + .help-community-section {
     border-top: 1px solid var(--hairline);
     border-left: 0;
   }
@@ -244,5 +265,9 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+
+  .help-footer-actions {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

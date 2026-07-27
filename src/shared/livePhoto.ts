@@ -86,7 +86,7 @@ export function useLivePhotoWhenVisible(
     )
     obs.observe(el)
     return () => obs.disconnect()
-  }, [fileUrl, ref.current])
+  }, [fileUrl, ref, rootMargin])
 
   return v
 }

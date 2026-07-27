@@ -22,6 +22,8 @@ export interface VideoExportSettings {
   trimEndTime?: number
   /** 自定义码率（kbps），仅 quality 为 'custom' 时生效 */
   customBitrate?: number
+  /** 本地资源中的 Dolby Vision 8.4 视频专用保真导出。 */
+  dolbyVision?: boolean
 }
 
 export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
@@ -32,4 +34,46 @@ export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
   liveStartTime: 0,
   liveCoverTime: 1.5,
   trimStartTime: 0,
+  dolbyVision: false,
+}
+
+export function lockDolbyVisionExportSettings(settings: VideoExportSettings): VideoExportSettings {
+  return {
+    ...settings,
+    resolution: 'original',
+    frameRate: 'original',
+    quality: 'original',
+    exportFormats: ['video'],
+    liveStartTime: 0,
+    trimStartTime: 0,
+    trimEndTime: undefined,
+    customBitrate: undefined,
+    dolbyVision: true,
+  }
+}
+
+export interface DolbyVisionProbeResult {
+  eligible: boolean
+  profile?: number
+  compatibilityId?: number
+  frameCount?: number
+  width?: number
+  height?: number
+  frameRate?: string
+  reason?: string
+}
+
+export interface DolbyVisionWatermarkExportRequest {
+  sourcePath: string
+  outputPath: string
+  watermarkPath: string
+  positioning: {
+    anchor: 'top-left' | 'top-center' | 'top-right' | 'center' | 'bottom-left' | 'bottom-center' | 'bottom-right'
+    targetWidth: number
+    marginX?: number
+    marginY?: number
+  }
+  opacity?: number
+  exportTaskId: string
+  exportItemId: string
 }
