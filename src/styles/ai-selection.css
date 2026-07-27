@@ -63,6 +63,7 @@
 .ai-selection-current-item ul { margin: 0; padding-left: 18px; color: var(--text-secondary, #6e6e73); font-size: 11px; line-height: 1.55; }
 .ai-selection-person-result { color: var(--text-secondary, #6e6e73); font-size: 11px; line-height: 1.45; }
 .ai-selection-sidebar-footer { padding: 12px; border-top: 1px solid var(--border, #d9dce2); background: var(--surface, #fff); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ai-selection-sidebar-footer-title { grid-column: 1 / -1; color: var(--muted); font-size: 11px; font-weight: 500; opacity: .72; }
 .ai-selection-sidebar-footer .ui-btn { width: 100%; }
 .ai-selection-sidebar .ui-select-trigger { margin-bottom: 18px; }
 .ai-selection-new-task.ui-btn { width: 100%; margin: -10px 0 20px; }
