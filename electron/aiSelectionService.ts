@@ -225,11 +225,8 @@ async function runSession(session: StoredSession): Promise<void> {
     rebuildSelectionResult(session)
     session.phase = 'ranking'
     await updateAndPersist(session)
-    session.phase = 'done'
-    session.status = 'ready'
-    await updateAndPersist(session)
 
-    // 人物与内容证据属于增量增强：基础结果可用后再继续补充，不阻塞选片。
+    // 人物与内容证据增量补充结果；保持进度可见，但不限制页面操作。
     try {
       await analyzeRecommendationEvidence(analysisContext(session), photos.map((item) => item.id), controller.signal)
       session.faceGroups = await registerGlobalPeople(peopleStoreDir(), session.items)
@@ -242,6 +239,7 @@ async function runSession(session: StoredSession): Promise<void> {
       if (abortLike(error)) throw error
     }
     session.phase = 'done'
+    session.status = 'ready'
     await updateAndPersist(session)
   } catch (error) {
     if (!abortLike(error)) {
