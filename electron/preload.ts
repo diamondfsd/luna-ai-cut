@@ -26,6 +26,7 @@ import type {
   WifiHttpRequestOptions,
   WifiPortCheckOptions,
   ExportTaskRecord,
+  OriginalFileExportRequest,
 } from '../src/shared/types'
 
 interface ExportItemInput {
@@ -163,6 +164,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     renameProject: (projectId: string, newName: string) => ipcRenderer.invoke('workspace:renameProject', projectId, newName),
     extractVideoFrame: (videoPath: string, outputPath: string, frameTime: number) => ipcRenderer.invoke('workspace:extractVideoFrame', videoPath, outputPath, frameTime),
     exportRenderedLivePhoto: (name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean, recordTask?: boolean, coverTimeSeconds?: number) => ipcRenderer.invoke('workspace:exportRenderedLivePhoto', name, imagePath, videoPath, appleLivePhoto, preserveInputs, recordTask, coverTimeSeconds),
+    exportOriginalFile: (request: OriginalFileExportRequest) => ipcRenderer.invoke('workspace:exportOriginalFile', request),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
     listColorPresets: () => ipcRenderer.invoke('workspace:listColorPresets'),
     saveColorPreset: (name: string, colorJson: string) => ipcRenderer.invoke('workspace:saveColorPreset', name, colorJson),
