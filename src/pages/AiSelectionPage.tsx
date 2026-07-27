@@ -21,10 +21,10 @@ type SelectionStage = 'overview' | 'recommended' | 'scenes' | 'compare' | 'peopl
 
 function statusLabel(status: string, phase?: string): string {
   if (status === 'analyzing' && phase === 'photos') return '正在整理照片'
-  if (status === 'analyzing' && phase === 'content') return '正在理解画面内容'
+  if (status === 'analyzing' && phase === 'content') return '正在理解画面'
   if (status === 'analyzing' && phase === 'people') return '正在识别人物'
   if (status === 'analyzing' && phase === 'videos') return '正在添加视频'
-  return ({ queued: '等待整理', indexing: '正在添加素材', analyzing: '正在整理素材', paused: '已暂停', interrupted: '可以继续', ready: '可以开始选片', completed: '已创建项目', failed: '整理失败', canceled: '已取消' } as Record<string, string>)[status] ?? status
+  return ({ queued: '等待整理', indexing: '正在添加素材', analyzing: '正在整理', paused: '已暂停', interrupted: '整理可继续', ready: '整理完成', completed: '已创建项目', failed: '整理失败', canceled: '已取消' } as Record<string, string>)[status] ?? status
 }
 
 function formatTime(seconds: number): string {
@@ -155,7 +155,8 @@ export function AiSelectionPage() {
   }, [activeGroup?.itemIds, activePeopleItemIds, filter, items, photos, sceneSections, stage])
   const focused = itemsById.get(focusedId) ?? null
   const running = session?.status === 'indexing' || session?.status === 'analyzing' || session?.status === 'queued'
-  const percent = session?.counts.total ? Math.round(session.counts.completed / session.counts.total * 100) : 0
+  const completedPercent = session?.counts.total ? Math.round(session.counts.completed / session.counts.total * 100) : 0
+  const percent = running ? Math.min(96, completedPercent) : completedPercent
 
   async function createProject(): Promise<void> {
     if (!session) return
