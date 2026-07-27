@@ -156,7 +156,26 @@ impl Compositor {
             .output_texture
             .replace((target, canvas_width, canvas_height));
         let result = self
-            .render_impl(canvas_width, canvas_height, layers, false)
+            .render_impl(canvas_width, canvas_height, layers, false, false)
+            .map(|_| ());
+        self.output_texture.take();
+        self.output_texture = previous;
+        result
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn render_into_present_texture(
+        &mut self,
+        target: wgpu::Texture,
+        canvas_width: u32,
+        canvas_height: u32,
+        layers: &[RenderLayer],
+    ) -> Result<(), String> {
+        let previous = self
+            .output_texture
+            .replace((target, canvas_width, canvas_height));
+        let result = self
+            .render_impl(canvas_width, canvas_height, layers, false, true)
             .map(|_| ());
         self.output_texture.take();
         self.output_texture = previous;
@@ -193,7 +212,7 @@ impl Compositor {
     }
 
     /// 等待 GPU 完成所有已提交的工作（用于跨 API 同步）。
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[allow(dead_code)]
     pub(crate) fn wait_for_gpu(&self) -> Result<(), String> {
         self.device

@@ -8,6 +8,7 @@ impl Compositor {
         canvas_height: u32,
         layers: &[RenderLayer],
         readback: bool,
+        present_output: bool,
     ) -> Result<Vec<u8>, String> {
         let (prepared_layers, temporary_texture_ids) = self.prepare_precompositions(layers)?;
         let result = self.render_flat_impl(
@@ -15,7 +16,7 @@ impl Compositor {
             canvas_height,
             &prepared_layers,
             readback,
-            !readback,
+            present_output,
         );
         for texture_id in temporary_texture_ids {
             self.textures.remove(&texture_id);
@@ -213,13 +214,13 @@ impl Compositor {
             });
 
             for layer in &sorted {
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
                 let pipelines = if output_tex.format() == wgpu::TextureFormat::Bgra8UnormSrgb {
                     &self.pipelines_bgra
                 } else {
                     &self.pipelines
                 };
-                #[cfg(not(target_os = "macos"))]
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
                 let pipelines = &self.pipelines;
                 rpass.set_pipeline(pipelines.get(layer.blend_mode.as_deref()));
 
@@ -668,23 +669,11 @@ impl Compositor {
             #[cfg(target_os = "windows")]
             if _present_output
             {
-                let mut seen = std::collections::HashSet::new();
-                let mut transitions = sorted
-                    .iter()
-                    .filter(|layer| seen.insert(layer.texture_id))
-                    .filter_map(|layer| self.textures.get(&layer.texture_id))
-                    .filter(|entry| entry.external)
-                    .map(|entry| wgpu::wgt::TextureTransition {
-                        texture: &entry.texture,
-                        selector: None,
-                        state: wgpu::wgt::TextureUses::PRESENT,
-                    })
-                    .collect::<Vec<_>>();
-                transitions.push(wgpu::wgt::TextureTransition {
+                let transitions = [wgpu::wgt::TextureTransition {
                     texture: output_tex,
                     selector: None,
                     state: wgpu::wgt::TextureUses::PRESENT,
-                });
+                }];
                 encoder.transition_resources(std::iter::empty(), transitions.into_iter());
             }
             self.queue.submit(Some(encoder.finish()));
