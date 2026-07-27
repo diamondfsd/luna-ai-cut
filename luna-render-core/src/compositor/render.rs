@@ -674,12 +674,15 @@ impl Compositor {
                 }];
                 encoder.transition_resources(std::iter::empty(), transitions.into_iter());
             }
-            self.queue.submit(Some(encoder.finish()));
+            let submission_index = self.queue.submit(Some(encoder.finish()));
             let poll_type = if _present_output {
-                // Windows swap-chain presentation and D3D11On12 resource return are already
-                // ordered by the shared command queue and fence. Waiting for the entire wgpu
-                // device here would also block concurrent LUT thumbnail renders every frame.
-                wgpu::PollType::Poll
+                // Bound native-preview work to one submitted frame. Waiting without an index
+                // also includes concurrent LUT thumbnail submissions on the shared device,
+                // while a non-blocking poll lets per-frame resources accumulate until OOM.
+                wgpu::PollType::Wait {
+                    submission_index: Some(submission_index),
+                    timeout: None,
+                }
             } else {
                 wgpu::PollType::Wait {
                     submission_index: None,
