@@ -58,12 +58,14 @@ function nativePreviewApi(): NativePreviewApi | null {
 function boundsFor(element: HTMLElement): NativePreviewBounds | null {
   const rect = element.getBoundingClientRect()
   if (rect.width < 1 || rect.height < 1) return null
+  const scaleFactor = window.devicePixelRatio || 1
+  const alignToDevicePixel = (value: number) => Math.round(value * scaleFactor) / scaleFactor
   return {
-    x: rect.left,
-    y: rect.top,
-    width: rect.width,
-    height: rect.height,
-    scaleFactor: window.devicePixelRatio || 1,
+    x: alignToDevicePixel(rect.left),
+    y: alignToDevicePixel(rect.top),
+    width: alignToDevicePixel(rect.width),
+    height: alignToDevicePixel(rect.height),
+    scaleFactor,
   }
 }
 
@@ -193,9 +195,12 @@ export function NativeGpuVideoPreview({
     })
     window.addEventListener('resize', syncSurface)
     window.addEventListener('scroll', syncSurface, true)
+    // A grid reflow can move the canvas without resizing it, which ResizeObserver does not report.
+    const positionTracker = window.setInterval(syncSurface, 100)
     syncSurface()
     return () => {
       cancelAnimationFrame(scheduled)
+      window.clearInterval(positionTracker)
       resizeObserver.disconnect()
       mutationObserver.disconnect()
       window.removeEventListener('resize', syncSurface)
