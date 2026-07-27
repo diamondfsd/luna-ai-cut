@@ -54,6 +54,23 @@
   gap: 8px;
 }
 
+.library-ai-selection-btn.ui-btn {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 12px;
+  gap: 5px;
+  border: 0;
+  background: var(--blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.library-ai-selection-btn.ui-btn:hover {
+  background: var(--blue-dark);
+  color: #fff;
+}
+
 .library-search-wrap {
   flex: 1 1 320px;
   max-width: 420px;
@@ -209,6 +226,9 @@
   left: 8px;
   bottom: 8px;
   z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
   color: #fff;
   font-size: 14px;
   font-weight: 500;

@@ -4,6 +4,11 @@ mod decoder;
 mod device;
 mod encoder;
 mod export;
+mod preview;
+mod preview_surface;
+
+pub(crate) use preview::NativePreviewRuntime;
+pub(crate) use preview_surface::PreviewBounds;
 
 use crate::composition::{is_video_source, CompositionInput};
 use crate::compositor::Compositor;
@@ -12,10 +17,10 @@ use std::sync::Arc;
 use windows::Win32::Media::MediaFoundation::{MFShutdown, MFStartup, MFSTARTUP_FULL, MF_VERSION};
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 
-struct ComGuard;
+pub(crate) struct ComGuard;
 
 impl ComGuard {
-    fn start() -> Result<Self, String> {
+    pub(crate) fn start() -> Result<Self, String> {
         unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }
             .ok()
             .map_err(|error| format!("无法初始化视频工作线程: {error}"))?;
@@ -29,10 +34,10 @@ impl Drop for ComGuard {
     }
 }
 
-struct MediaFoundationGuard;
+pub(crate) struct MediaFoundationGuard;
 
 impl MediaFoundationGuard {
-    fn start() -> Result<Self, String> {
+    pub(crate) fn start() -> Result<Self, String> {
         unsafe { MFStartup(MF_VERSION, MFSTARTUP_FULL) }
             .map_err(|error| format!("无法启动系统视频服务: {error}"))?;
         Ok(Self)

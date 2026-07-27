@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
-import { Select, Input } from '../ui'
+import { Select, Input, Switch } from '../ui'
 import type { PreviewLayer, VideoResolution, VideoFrameRate, VideoQuality, VideoExportSettings } from '../shared/types'
+import { lockDolbyVisionExportSettings } from '../shared/types'
 import { LivePhotoExportControls } from './LivePhotoExportControls'
 import './ExportSettingsPanel.css'
 
@@ -19,6 +20,8 @@ interface ExportSettingsPanelProps {
     layers: PreviewLayer[]
     outputSize: { width: number; height: number }
   }
+  dolbyVisionAvailable?: boolean
+  dolbyVisionChecking?: boolean
 }
 
 const RESOLUTION_OPTIONS = [
@@ -59,7 +62,8 @@ const QUALITY_OPTIONS = [
  * <ExportSettingsPanel value={config} onChange={setConfig} />
  * ```
  */
-export function ExportSettingsPanel({ value, onChange, livePhotoSource }: ExportSettingsPanelProps) {
+export function ExportSettingsPanel({ value, onChange, livePhotoSource, dolbyVisionAvailable, dolbyVisionChecking }: ExportSettingsPanelProps) {
+  const locked = Boolean(value.dolbyVision)
   const handleResolutionChange = useCallback(
     (v: string) => onChange({ ...value, resolution: v as VideoResolution }),
     [value, onChange],
@@ -94,6 +98,19 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource }: Export
     <div className="export-settings-panel">
       <div className="export-settings-title">导出设置</div>
       <div className="export-settings-grid">
+        {(dolbyVisionAvailable || dolbyVisionChecking) && (
+          <div className="export-settings-row export-settings-dolby-row">
+            <label className="export-settings-label">Dolby Vision 导出</label>
+            <Switch
+              checked={locked}
+              disabled={dolbyVisionChecking}
+              onCheckedChange={(enabled) => onChange(enabled
+                ? lockDolbyVisionExportSettings(value)
+                : { ...value, dolbyVision: false })}
+              ariaLabel="Dolby Vision 导出"
+            />
+          </div>
+        )}
         {livePhotoSource ? (
           <LivePhotoExportControls
             value={value}
@@ -108,6 +125,7 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource }: Export
             options={RESOLUTION_OPTIONS}
             value={value.resolution}
             onValueChange={handleResolutionChange}
+            disabled={locked}
           />
         </div>
         <div className="export-settings-row">
@@ -117,6 +135,7 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource }: Export
             options={QUALITY_OPTIONS}
             value={value.quality}
             onValueChange={handleQualityChange}
+            disabled={locked}
           />
         </div>
         <div className="export-settings-row">
@@ -126,9 +145,10 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource }: Export
             options={FRAMERATE_OPTIONS}
             value={value.frameRate}
             onValueChange={handleFrameRateChange}
+            disabled={locked}
           />
         </div>
-        {value.quality === 'custom' && (
+        {value.quality === 'custom' && !locked && (
           <div className="export-settings-row">
             <label className="export-settings-label">码率</label>
             <Input

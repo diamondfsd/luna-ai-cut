@@ -8,8 +8,9 @@
 import { ipcMain } from 'electron'
 import * as exportTaskService from './exportTaskService'
 import type { ExportItemInput, ExportItemUpdate } from '../src/shared/types/export'
+import type { IpcContext } from './ipcContext'
 
-export function register(): void {
+export function register(ctx: IpcContext): void {
   // 应用启动时加载已有任务记录
   exportTaskService.loadTasks()
 
@@ -39,6 +40,9 @@ export function register(): void {
 
   // ── 取消任务 ──
   ipcMain.handle('export-task:cancel', async (_event, taskId: string) => {
+    for (const [key, controller] of ctx.activeExportControllers) {
+      if (key === taskId || key.startsWith(`${taskId}:`)) controller.abort()
+    }
     await exportTaskService.cancelTask(taskId)
   })
 

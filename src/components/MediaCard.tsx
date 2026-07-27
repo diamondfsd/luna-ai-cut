@@ -1,9 +1,13 @@
-import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Check, FolderOpen, X } from 'lucide-react'
 import type { DownloadProgress, LunaFile } from '../shared/types'
 import { IconButton, LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
 import { ThumbImage } from './ThumbImage'
+import dolbyVisionLogo from '../assets/logos/dolby-vision-vertical.png'
+import '../styles/media-card-format-badge.css'
+
+const CARD_PRELOAD_ROOT_MARGIN = '0px 0px 300px 0px'
 
 interface MediaCardProps {
   file: LunaFile
@@ -15,11 +19,16 @@ interface MediaCardProps {
   onPreview: (file: LunaFile) => void
   onRevealPath: (path: string) => void
   onRevealProgress: (progress: DownloadProgress | undefined) => void
+  selectionOnly?: boolean
+  overlay?: ReactNode
+  className?: string
+  previewTitle?: string
 }
 
 function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
+  const totalSeconds = Math.max(0, Math.floor(seconds))
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
@@ -33,8 +42,14 @@ export function MediaCard({
   onPreview,
   onRevealPath,
   onRevealProgress,
+  selectionOnly = false,
+  overlay,
+  className,
+  previewTitle = '预览',
 }: MediaCardProps) {
   const cardRef = useRef<HTMLElement>(null)
+  const fileRef = useRef(file)
+  fileRef.current = file
   const visibilityFiredRef = useRef(false)
   const [cacheEnabled, setCacheEnabled] = useState(false)
 
@@ -51,7 +66,7 @@ export function MediaCard({
           observer.disconnect()
         }
       },
-      { rootMargin: '300px' },
+      { rootMargin: CARD_PRELOAD_ROOT_MARGIN },
     )
     observer.observe(el)
     return () => observer.disconnect()
@@ -59,21 +74,34 @@ export function MediaCard({
 
   // 视频时长：优先用 file.duration，没有则异步探测
   const [videoDuration, setVideoDuration] = useState<number | null>(null)
+  const [detectedDolbyVision, setDetectedDolbyVision] = useState<boolean | null>(null)
+  const [detectedDolbyVisionProfile, setDetectedDolbyVisionProfile] = useState<number | null>(null)
+  const [detectedILog, setDetectedILog] = useState<boolean | null>(null)
   useEffect(() => {
-    if (!cacheEnabled || file.kind !== 'video' || file.duration != null) return
+    if (!cacheEnabled || file.kind !== 'video' || (file.duration != null && file.dolbyVision != null && file.iLog != null)) return
     const filePath = file.downloadFilePath ?? file.localPath ?? file.sourceUrl
     if (!filePath) return
 
-    window.luna.requestVideoFrameRate(file, filePath).catch(() => {})
+    window.luna.requestVideoFrameRate(fileRef.current, filePath).catch(() => {})
     const unsub = window.luna.onVideoFrameRateReady((data) => {
       if (data.fileId === file.id && data.duration != null) {
         setVideoDuration(data.duration)
+      }
+      if (data.fileId === file.id && data.dolbyVision != null) {
+        setDetectedDolbyVision(data.dolbyVision)
+        setDetectedDolbyVisionProfile(data.dolbyVisionProfile ?? null)
+      }
+      if (data.fileId === file.id && data.iLog != null) {
+        setDetectedILog(data.iLog)
       }
     })
     return () => { unsub() }
   }, [cacheEnabled, file])
 
   const effectiveDuration = file.duration ?? videoDuration
+  const isDolbyVision = file.dolbyVision ?? detectedDolbyVision ?? false
+  const dolbyVisionProfile = file.dolbyVisionProfile ?? detectedDolbyVisionProfile
+  const isILog = file.iLog ?? detectedILog ?? false
 
   const progressValue = progress?.status === 'done' || progress?.status === 'exists' ? 100 : progress?.percent ?? 0
   const progressStyle = { '--progress': `${progressValue * 3.6}deg` } as CSSProperties
@@ -83,11 +111,11 @@ export function MediaCard({
   const showProgress = Boolean(
     progress && ['queued', 'downloading', 'failed'].includes(progress.status) && !downloadedPath,
   )
-  const detectedLive = useLivePhotoWhenVisible(liveDetectSource, cardRef, '300px')
+  const detectedLive = useLivePhotoWhenVisible(liveDetectSource, cardRef, CARD_PRELOAD_ROOT_MARGIN)
   const isLive = file.isLivePhoto || detectedLive
 
   return (
-    <article ref={cardRef} className={selected ? 'media-card selected' : 'media-card'} data-file-id={file.id}>
+    <article ref={cardRef} className={['media-card', selected && 'selected', className].filter(Boolean).join(' ')} data-file-id={file.id}>
       {showProgress && progress && (
         <button
           className={`download-state ${progress.status}`}
@@ -100,11 +128,21 @@ export function MediaCard({
           {progress.status === 'queued' || progress.status === 'downloading' ? <span>{Math.round(progressValue)}%</span> : null}
         </button>
       )}
-      {localPath && (
-        <IconButton variant="light" className="downloaded-folder-btn" onClick={() => onRevealPath(localPath)} title="在文件夹中显示" icon={<FolderOpen size={14} />} />
-      )}
-      {(isDownloadsPage || selectVisible) && (
-        <IconButton variant="ghost" className="select-chip" onClick={() => onToggle(file)} title="选择" icon={selected ? <Check size={15} /> : undefined} />
+      {selectionOnly ? (
+        <IconButton variant="ghost" className="select-chip" onClick={() => onToggle(file)} title="选择" aria-label={selected ? `取消选择 ${file.name}` : `选择 ${file.name}`} icon={selected ? <Check size={15} /> : undefined} />
+      ) : isDownloadsPage ? (
+        <>
+          {localPath && (
+            <IconButton variant="light" className="downloaded-folder-btn" onClick={() => onRevealPath(localPath)} title="在文件夹中显示" icon={<FolderOpen size={14} />} />
+          )}
+          <IconButton variant="ghost" className="select-chip" onClick={() => onToggle(file)} title="选择" icon={selected ? <Check size={15} /> : undefined} />
+        </>
+      ) : downloadedPath ? (
+        <IconButton variant="light" className="downloaded-folder-btn" onClick={() => onRevealPath(downloadedPath)} title="在文件夹中显示" icon={<FolderOpen size={14} />} />
+      ) : (
+        selectVisible && (
+          <IconButton variant="ghost" className="select-chip" onClick={() => onToggle(file)} title="选择" icon={selected ? <Check size={15} /> : undefined} />
+        )
       )}
       <div
         className="media-frame"
@@ -117,15 +155,23 @@ export function MediaCard({
         }}
         role="button"
         tabIndex={0}
-        title="预览"
+        title={previewTitle}
       >
-        <ThumbImage src={file.previewUrl || file.sourceUrl} alt={file.name} loading="lazy" />
+        <ThumbImage src={file.previewUrl || file.sourceUrl} preloadBottom={300} alt={file.name} />
         {file.kind === 'video' && effectiveDuration != null ? (
           <span className="duration-badge">{formatDuration(effectiveDuration)}</span>
         ) : isLive ? (
           <LivePhotoBadge size={28} className="card-live-chip" />
         ) : null}
-        {file.kind === 'video' && <VideoPlayBadge size={26} />}
+        {isDolbyVision ? (
+          <span className="video-format-badge dolby-vision-badge" title={dolbyVisionProfile ? `杜比视界 Profile ${dolbyVisionProfile}` : '杜比视界'}>
+            <img src={dolbyVisionLogo} alt="Dolby Vision" />
+          </span>
+        ) : isILog ? (
+          <span className="video-format-badge i-log-badge" title="I-Log">I-LOG</span>
+        ) : null}
+        {file.kind === 'video' && !isDolbyVision && !isILog && <VideoPlayBadge size={26} />}
+        {overlay}
       </div>
     </article>
   )

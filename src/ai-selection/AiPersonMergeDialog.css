@@ -1,0 +1,11 @@
+.ai-person-merge-dialog.ui-dialog-content { width: min(520px, 92vw); }
+.ai-person-merge-body { max-height: min(620px, 70vh); padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+.ai-person-merge-body > section { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.ai-person-merge-body > section > strong { font-size: 12px; }
+.ai-person-merged-list { display: flex; flex-direction: column; gap: 5px; }
+.ai-person-merged-list > div { min-height: 46px; padding: 5px 7px; border: 1px solid var(--border, #d9dce2); border-radius: 7px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.ai-person-merged-list > div > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.ai-person-merged-avatar { width: 34px; height: 34px; overflow: hidden; border-radius: 50%; background: #e5e7ea; color: var(--text-secondary, #6e6e73); display: grid; place-items: center; }
+.ai-person-merged-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ai-person-merge-empty { padding: 12px 8px; color: var(--text-secondary, #6e6e73); font-size: 11px; }
+.ai-person-merge-body .ai-selection-person-merge-list { max-height: 300px; padding: 0; }

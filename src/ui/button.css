@@ -39,6 +39,13 @@
   line-height: 0;
 }
 
+.ui-btn-secondary > .ui-btn-icon,
+.ui-btn-secondary > .ui-btn-icon > svg,
+.ui-btn-ghost > .ui-btn-icon,
+.ui-btn-ghost > .ui-btn-icon > svg {
+  color: var(--blue);
+}
+
 /* primary — 蓝色实心圆角 */
 .ui-btn-primary {
   min-height: 36px;
@@ -50,6 +57,15 @@
 
 .ui-btn-primary:hover {
   background: var(--blue-dark);
+}
+
+.ui-btn-primary > .ui-btn-icon,
+.ui-btn-primary > .ui-btn-icon > svg,
+.ui-btn-utility > .ui-btn-icon,
+.ui-btn-utility > .ui-btn-icon > svg,
+.ui-btn-toolbar-primary > .ui-btn-icon,
+.ui-btn-toolbar-primary > .ui-btn-icon > svg {
+  color: #fff;
 }
 
 /* secondary — 蓝色边框透明 */

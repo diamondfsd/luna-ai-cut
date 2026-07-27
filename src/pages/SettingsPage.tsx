@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FolderOpen, Trash2 } from 'lucide-react'
+import { FolderOpen, Settings2, Trash2 } from 'lucide-react'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
-import { WatermarkSettings } from '../components/WatermarkSettings'
+import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
+import { LutManagementDialog } from '../components/LutManagementDialog'
 import { Button, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
@@ -62,6 +63,8 @@ export function SettingsPage({
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
+  const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
+  const [lutManagementOpen, setLutManagementOpen] = useState(false)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -157,6 +160,9 @@ export function SettingsPage({
                 <strong>{settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : '未设置')}</strong>
               </div>
               <div className="settings-row-actions">
+                <Button variant="secondary" size="compact" onClick={() => setLutManagementOpen(true)} icon={<Settings2 size={15} />}>
+                  管理
+                </Button>
                 <Button variant="secondary" size="compact" onClick={() => openDirectory(settings?.lutDir || (settings?.downloadDir ? `${settings.downloadDir}/luts` : null))} icon={<FolderOpen size={15} />}>
                   打开
                 </Button>
@@ -185,49 +191,37 @@ export function SettingsPage({
         <section className="settings-group">
           <h2 className="settings-group-title">编辑默认值</h2>
           <div className="settings-card">
-            <article className="settings-row settings-default-watermark-row">
+            <article className="settings-row">
               <div className="settings-row-copy">
                 <span>水印</span>
-                <em>用于新导入或重置的素材</em>
+                <em>{settings?.defaultWatermarkEnabled ?? true ? '默认开启' : '默认关闭'}</em>
               </div>
-              <div className="settings-default-watermark-control">
-                <WatermarkSettings
-                  preferencesOnly
-                  title="默认开启"
-                  settings={{
-                    enabled: settings?.defaultWatermarkEnabled ?? true,
-                    style: 'luna_ultra_cn',
-                    position: settings?.defaultWatermarkPosition === 'top-center'
-                      ? 'bottom-center'
-                      : settings?.defaultWatermarkPosition ?? 'bottom-center',
-                  }}
-                  onChange={handleDefaultWatermarkChange}
-                />
-              </div>
+              <Button variant="secondary" size="compact" icon={<Settings2 size={15} />} onClick={() => setWatermarkDialogOpen(true)}>编辑</Button>
             </article>
           </div>
         </section>
 
-        {window.navigator.platform.includes('Mac') && (
-          <section className="settings-group">
-            <h2 className="settings-group-title">导出</h2>
-            <div className="settings-card">
-              <article className="settings-row">
-                <div className="settings-row-copy">
-                  <span>保存 Live Photo 到系统相册</span>
-                </div>
-                <Switch
-                  checked={!!settings?.exportAppleLivePhoto}
-                  onCheckedChange={(checked) => {
-                    setSettings((current) => (current ? { ...current, exportAppleLivePhoto: checked } : current))
-                    void window.luna.saveSettings({ exportAppleLivePhoto: checked }).then(setSettings)
-                  }}
-                  ariaLabel="保存 Live Photo 到系统相册"
-                />
-              </article>
-            </div>
-          </section>
-        )}
+        <section className="settings-group">
+          <h2 className="settings-group-title">实验性功能</h2>
+          <div className="settings-card">
+            <article className="settings-row">
+              <div className="settings-row-copy">
+                <span>GPU 预览加速</span>
+                <em>减少预览和时间跳转时的等待；部分设备上可能存在显示兼容问题</em>
+              </div>
+              <Switch
+                checked={settings?.experimentalGpuPreview ?? false}
+                disabled={!settings}
+                ariaLabel="GPU 预览加速"
+                onCheckedChange={(enabled) => {
+                  const patch = { experimentalGpuPreview: enabled }
+                  setSettings((current) => (current ? { ...current, ...patch } : current))
+                  void window.luna.saveSettings(patch).then(setSettings)
+                }}
+              />
+            </article>
+          </div>
+        </section>
 
         <section className="settings-group">
           <h2 className="settings-group-title">连接与维护</h2>
@@ -290,6 +284,13 @@ export function SettingsPage({
           </div>
         </section>
       </div>
+      <WatermarkManagementDialog
+        open={watermarkDialogOpen}
+        onOpenChange={setWatermarkDialogOpen}
+        settings={settings}
+        onDefaultChange={handleDefaultWatermarkChange}
+      />
+      <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
     </section>
   )
 }

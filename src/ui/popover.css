@@ -8,7 +8,7 @@
    ========================================== */
 
 .ui-popover-content {
-  z-index: 50;
+  z-index: 1000;
   display: grid;
   grid-template-rows: auto 1fr;
   width: 380px;

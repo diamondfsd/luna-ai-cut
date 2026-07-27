@@ -1,15 +1,24 @@
 import { forwardRef, useImperativeHandle, useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
 import { LrcRender } from './LrcRender'
 import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
+import { NativeGpuVideoPreview } from './NativeGpuVideoPreview'
+import { useApp } from '../context/AppContext'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls } from '../ui'
-import { isImagePath, isVideoPath } from '../lib/fileUtils'
+import { isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
+import {
+  buildLayers,
+  calcAspectRatio,
+  projectCanvasFor,
+  type MediaResolution,
+} from './previewStageGeometry'
 import './PreviewStage.css'
-
+export { buildLayers, calcAspectRatio } from './previewStageGeometry'
+export type { MediaResolution } from './previewStageGeometry'
 export interface PreviewStageHandle {
   seek: (time: number) => void
   togglePlay: () => void
@@ -17,9 +26,10 @@ export interface PreviewStageHandle {
   getDuration: () => number
   isPlaying: () => boolean
 }
-
 interface PreviewStageProps {
   url: string | null
+  /** 保留页面 DOM 时控制原生 GPU 画面的显隐。 */
+  active?: boolean
   /** 已知的 Live Photo 状态；传入后不再单独扫描文件，保证与素材列表一致。 */
   isLivePhoto?: boolean
   pending?: boolean
@@ -39,75 +49,12 @@ interface PreviewStageProps {
   /** 播放/暂停/当前时间变更回调 */
   onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
 }
-
-export interface MediaResolution {
-  width: number
-  height: number
-}
-
-interface StageSize {
-  width: number
-  height: number
-}
-
-function isValidSize(size: MediaResolution | StageSize | null): size is MediaResolution | StageSize {
-  return !!size && Number.isFinite(size.width) && Number.isFinite(size.height) && size.width > 0 && size.height > 0
-}
-
-function containFrame(media: MediaResolution, stage: StageSize): Pick<PreviewLayer, 'dstX' | 'dstY' | 'dstW' | 'dstH'> {
-  const mediaAspect = media.width / media.height
-  const stageAspect = stage.width / stage.height
-
-  if (stageAspect > mediaAspect) {
-    const dstW = mediaAspect / stageAspect
-    return { dstX: (1 - dstW) / 2, dstY: 0, dstW, dstH: 1 }
-  }
-
-  const dstH = stageAspect / mediaAspect
-  return { dstX: 0, dstY: (1 - dstH) / 2, dstW: 1, dstH }
-}
-
-export function buildLayers(
-  url: string,
-  resolution: MediaResolution | null = null,
-  stageSize: StageSize | null = null,
-): PreviewLayer[] {
-  const hasMeasuredFrame = isValidSize(resolution) && isValidSize(stageSize)
-  const frame = hasMeasuredFrame
-    ? containFrame(resolution, stageSize)
-    : { dstX: 0, dstY: 0, dstW: 1, dstH: 1 }
-  const baseLayer = { ...frame, srcX: 0, srcY: 0, srcW: 1, srcH: 1, opacity: 1, zIndex: 0 }
-
-  if (isImagePath(url)) {
-    return [{ ...baseLayer, filePath: url }]
-  }
-  if (isVideoPath(url)) {
-    return [{ ...baseLayer, filePath: url, isVideo: true }]
-  }
-  return []
-}
-
-export function calcAspectRatio(width: number, height: number): number {
-  if (height === 0) return 1
-  return Math.round((width / height) * 100) / 100
-}
-
-function projectCanvasFor(resolution: MediaResolution | null, maxSide: number): StageSize | null {
-  if (!resolution) return null
-  const sourceMaxSide = Math.max(resolution.width, resolution.height)
-  if (sourceMaxSide <= maxSide) return { width: resolution.width, height: resolution.height }
-  const scale = maxSide / sourceMaxSide
-  return {
-    width: Math.max(1, Math.round(resolution.width * scale)),
-    height: Math.max(1, Math.round(resolution.height * scale)),
-  }
-}
-
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
+    { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
+  const { settings } = useApp()
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   // ── 媒体分辨率 ──
@@ -122,6 +69,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [nativePreviewFailed, setNativePreviewFailed] = useState(false)
+  const gpuPreviewEnabled = settings?.experimentalGpuPreview ?? false
   const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
   const isLivePhoto = isLivePhotoOverride ?? detectedLivePhoto
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)
@@ -133,6 +82,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
 
+  useEffect(() => setNativePreviewFailed(false), [gpuPreviewEnabled])
   // 暴露给父组件的视频控制 API
   useImperativeHandle(ref, () => ({
     seek: (time: number) => {
@@ -200,6 +150,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
 
   useEffect(() => {
     let canceled = false
+    setNativePreviewFailed(false)
     setLivePlaying(false)
     setLiveVideoUrl(null)
     if (!isLivePhoto || !url) return
@@ -364,6 +315,13 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     layers,
     keepCompositionVideoRenderer,
   )
+  const useNativeGpuPreview = isDisplayVideo
+    && gpuPreviewEnabled
+    && !livePlaying
+    && !useCompositionVideoRenderer
+    && !cropActive
+    && viewScale === 'fit'
+    && !nativePreviewFailed
 
   const syncCanvasMetrics = useCallback(() => {
     const stage = stageRef.current
@@ -459,7 +417,21 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     >
       {layers.length > 0 && (
         <div ref={wrapperRef} className="preview-canvas-wrapper">
-          {isDisplayVideo && !useCompositionVideoRenderer ? (
+          {useNativeGpuPreview && previewCanvas ? (
+            <NativeGpuVideoPreview
+              layers={layers}
+              canvasWidth={previewCanvas.width}
+              canvasHeight={previewCanvas.height}
+              active={active}
+              playing={playing}
+              onRender={handleRender}
+              onVideoElement={handleVideoElement}
+              onFallback={(reason) => {
+                console.warn('[PreviewStage] native GPU preview fallback', { reason })
+                setNativePreviewFailed(true)
+              }}
+            />
+          ) : isDisplayVideo && !useCompositionVideoRenderer ? (
             <MultipleLayerVideoPreviewLrcRender
               layers={layers}
               canvasWidth={previewCanvas?.width}

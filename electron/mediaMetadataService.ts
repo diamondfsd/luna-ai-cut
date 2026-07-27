@@ -165,8 +165,63 @@ function parseFrameRate(value: string | undefined): number | null {
   return fps > 0 ? Math.round(fps * 100) / 100 : null
 }
 
-export async function getVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<{ frameRate: number | null; duration: number | null }> {
-  if (file.kind !== 'video') return { frameRate: null, duration: null }
+interface VideoProbeStream {
+  codec_type: string
+  r_frame_rate?: string
+  side_data_list?: Array<{
+    side_data_type?: string
+    dv_profile?: number | string
+  }>
+}
+
+interface VideoProbeFormat {
+  duration?: string
+  tags?: Record<string, string>
+}
+
+function dolbyVisionInfo(stream: VideoProbeStream | undefined, format: VideoProbeFormat | undefined): { dolbyVision: boolean; dolbyVisionProfile: number | null } {
+  const configuration = stream?.side_data_list?.find((entry) => entry.side_data_type?.toLowerCase().includes('dovi configuration'))
+  const brands = format?.tags?.compatible_brands?.toLowerCase() ?? ''
+  const profile = Number(configuration?.dv_profile)
+  return {
+    dolbyVision: Boolean(configuration || brands.includes('dby1')),
+    dolbyVisionProfile: Number.isFinite(profile) ? profile : null,
+  }
+}
+
+interface VideoProbeResult {
+  frameRate: number | null
+  duration: number | null
+  dolbyVision: boolean | null
+  dolbyVisionProfile: number | null
+  iLog: boolean | null
+}
+
+const VIDEO_TRAILER_SCAN_BYTES = 4 * 1024 * 1024
+const INSTA360_SIGNATURE = Buffer.from('Insta360', 'ascii')
+const I_LOG_SIGNATURE = Buffer.from('I_Log', 'ascii')
+
+async function detectInsta360ILog(sourcePath: string): Promise<boolean> {
+  let handle: fs.FileHandle | null = null
+  try {
+    const stat = await fs.stat(sourcePath)
+    const scanSize = Math.min(stat.size, VIDEO_TRAILER_SCAN_BYTES)
+    if (scanSize <= 0) return false
+
+    handle = await fs.open(sourcePath, 'r')
+    const buffer = Buffer.alloc(scanSize)
+    const { bytesRead } = await handle.read(buffer, 0, scanSize, stat.size - scanSize)
+    const trailer = buffer.subarray(0, bytesRead)
+    return trailer.includes(INSTA360_SIGNATURE) && trailer.includes(I_LOG_SIGNATURE)
+  } catch {
+    return false
+  } finally {
+    await handle?.close().catch(() => {})
+  }
+}
+
+export async function getVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<VideoProbeResult> {
+  if (file.kind !== 'video') return { frameRate: null, duration: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
 
   let sourcePath: string | null = null
   const candidates = [
@@ -190,23 +245,26 @@ export async function getVideoFrameRate(file: LunaFile, cachedPath?: string | nu
   if (!sourcePath && isFileUrl(sourceUrl)) {
     sourcePath = fileURLToPath(sourceUrl)
   }
-  if (!sourcePath) return { frameRate: null, duration: null }
+  if (!sourcePath) return { frameRate: null, duration: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
 
   try {
-    const { stdout } = await execFileAsync(getFfprobePath(), [
-      '-v', 'quiet',
-      '-print_format', 'json',
-      '-show_streams',
-      '-show_format',
-      sourcePath,
-    ], { encoding: 'utf-8' })
-    const data = JSON.parse(stdout) as { streams?: Array<{ codec_type: string; r_frame_rate?: string }>; format?: { duration?: string } }
+    const [{ stdout }, iLog] = await Promise.all([
+      execFileAsync(getFfprobePath(), [
+        '-v', 'quiet',
+        '-print_format', 'json',
+        '-show_streams',
+        '-show_format',
+        sourcePath,
+      ], { encoding: 'utf-8' }),
+      detectInsta360ILog(sourcePath),
+    ])
+    const data = JSON.parse(stdout) as { streams?: VideoProbeStream[]; format?: VideoProbeFormat }
     const videoStream = data.streams?.find((stream) => stream.codec_type === 'video')
     const frameRate = parseFrameRate(videoStream?.r_frame_rate)
     const duration = data.format?.duration ? Math.round(Number(data.format.duration)) : null
-    return { frameRate, duration }
+    return { frameRate, duration, ...dolbyVisionInfo(videoStream, data.format), iLog }
   } catch {
-    return { frameRate: null, duration: null }
+    return { frameRate: null, duration: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
   }
 }
 

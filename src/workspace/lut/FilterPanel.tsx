@@ -1,7 +1,7 @@
-import { CircleAlert, RotateCcw, Upload } from 'lucide-react'
+import { Check, CircleAlert, Pencil, RotateCcw, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button, ButtonGroup, Popover, PopoverContent, PopoverTrigger, Switch } from '../../ui'
+import { Accordion, Button, IconButton, Popover, PopoverContent, PopoverTrigger, Switch, Tooltip, toast } from '../../ui'
 import { type LutFileInfo } from './builtinLuts'
 import { FilterItem } from './FilterItem'
 import { LutImportDialog } from './LutImportDialog'
@@ -26,7 +26,9 @@ interface FilterPanelProps {
 export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
   const [categories, setCategories] = useState<string[]>([])
-  const [activeTab, setActiveTab] = useState<string>('全部')
+  const [openCategory, setOpenCategory] = useState<string | null>(null)
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
+  const [deletingLutPath, setDeletingLutPath] = useState<string | null>(null)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [lutsLoading, setLutsLoading] = useState(true)
   const [lutsError, setLutsError] = useState(false)
@@ -37,6 +39,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
     () => allLuts.find((l) => l.filePath === activeLutId || l.id === activeLutId) ?? null,
     [allLuts, activeLutId],
   )
+  const activeLutCategory = activeLutInfo?.category
   const restoreLut = useMemo(() => findLunaUltraRestoreLut(allLuts), [allLuts])
   const restoreActive = isLunaUltraRestoreLut(restoreLutId)
 
@@ -60,7 +63,7 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
       const luts = await lutManager.discoverLuts(dir)
       if (loadRequestRef.current !== requestId) return
       setAllLuts(luts)
-      const cats: string[] = ['全部']
+      const cats: string[] = []
       const seen = new Set<string>()
       for (const lut of luts.filter((item) => !isLunaUltraTechnicalLut(item.filePath))) {
         if (!seen.has(lut.category)) {
@@ -69,10 +72,12 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
         }
       }
       setCategories(cats)
+      setOpenCategory((current) => current && cats.includes(current) ? current : cats[0] ?? null)
+      setEditingCategory((current) => current && cats.includes(current) ? current : null)
     } catch {
       if (loadRequestRef.current !== requestId) return
       setAllLuts([])
-      setCategories(['全部'])
+      setCategories([])
       setLutsError(true)
     } finally {
       if (loadRequestRef.current === requestId) setLutsLoading(false)
@@ -85,16 +90,30 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
     return () => { loadRequestRef.current += 1 }
   }, [refreshLuts])
 
-  // 按 tab + searchKey 过滤
-  const filteredLuts = useMemo(() => {
+  const visibleGroups = useMemo(() => {
     let result = allLuts.filter((lut) => !isLunaUltraTechnicalLut(lut.filePath))
-    if (activeTab !== '全部') result = result.filter((l) => l.category === activeTab)
     if (searchKey) {
       const kw = searchKey.toLowerCase()
       result = result.filter((l) => l.name.toLowerCase().includes(kw))
     }
-    return result
-  }, [allLuts, activeTab, searchKey])
+    return categories
+      .map((category) => ({ category, items: result.filter((lut) => lut.category === category) }))
+      .filter((group) => group.items.length > 0)
+  }, [allLuts, categories, searchKey])
+
+  useEffect(() => {
+    if (!activeLutCategory) return
+    setOpenCategory(activeLutCategory)
+  }, [activeLutCategory])
+
+  useEffect(() => {
+    if (!searchKey?.trim()) return
+    setOpenCategory((current) => (
+      current && visibleGroups.some((group) => group.category === current)
+        ? current
+        : visibleGroups[0]?.category ?? null
+    ))
+  }, [searchKey, visibleGroups])
 
   const handleSelect = useCallback((id: string | null) => {
     if (id === activeLutId) {
@@ -118,7 +137,8 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
   // 删除 LUT（仅用户导入的 LUT 可删除）
   const handleDeleteLut = useCallback(async (lut: LutFileInfo) => {
     const lrc = (window as unknown as { lunaRenderCore?: { deleteCubeFile?: (path: string, builtin: boolean) => Promise<void> } }).lunaRenderCore
-    if (!lrc?.deleteCubeFile || lut.isBuiltin) return
+    if (!lrc?.deleteCubeFile || lut.isBuiltin || deletingLutPath) return
+    setDeletingLutPath(lut.filePath)
     try {
       await lrc.deleteCubeFile(lut.filePath, Boolean(lut.isBuiltin))
       lutManager.clearCache()
@@ -127,10 +147,18 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
       if (activeLutId === lut.filePath || activeLutId === lut.id) {
         onChange(null)
       }
+      toast.success('滤镜已删除')
     } catch (err) {
-      console.error('[FilterPanel] 删除 LUT 失败:', err)
+      toast.error(err instanceof Error ? err.message : '无法删除这个滤镜')
+    } finally {
+      setDeletingLutPath(null)
     }
-  }, [refreshLuts, activeLutId, onChange])
+  }, [refreshLuts, activeLutId, deletingLutPath, onChange])
+
+  const toggleCategoryEditing = useCallback((category: string) => {
+    setOpenCategory(category)
+    setEditingCategory((current) => current === category ? null : category)
+  }, [])
 
   return (
     <aside className="filter-sidebar">
@@ -237,36 +265,68 @@ export function FilterPanel({ restoreLutId, onRestoreChange, activeLutId, onChan
           ) : null}
         </section>
 
-        {/* 分类标签 */}
-        <div className="filter-tabs-row">
-          <div className="filter-tabs-scroll">
-            <ButtonGroup
-              options={categories.map((cat) => ({ value: cat, label: cat }))}
-              value={activeTab}
-              onChange={(value) => setActiveTab(value)}
-              className="filter-category-group"
-            />
-          </div>
-          <button className="filter-import-btn" onClick={() => setImportDialogOpen(true)} title="导入 .cube">
-            <Upload size={15} />
-          </button>
+        <div className="filter-groups-toolbar">
+          <span>滤镜分类</span>
+          <Button
+            variant="ghost"
+            size="mini"
+            className="filter-import-btn"
+            onClick={() => setImportDialogOpen(true)}
+            title="添加 LUT"
+          >
+            添加 LUT
+            <Upload size={14} />
+          </Button>
         </div>
 
-        {/* 滤镜网格 */}
         <main className="filter-grid-wrap">
-          <div className="filter-grid">
-            {filteredLuts.map((lut: LutFileInfo) => (
-              <FilterItem
-                key={lut.filePath}
-                filePath={lut.filePath}
-                name={lut.name}
-                active={activeLutId === lut.filePath}
-                onClick={() => handleSelect(lut.filePath)}
-                mediaPath={mediaPath ?? null}
-                intensity={intensity}
-              />
-            ))}
-          </div>
+          {visibleGroups.length > 0 ? visibleGroups.map(({ category, items }) => {
+            const editing = editingCategory === category
+            const editable = items.some((lut) => !lut.isBuiltin)
+            return (
+              <Accordion
+                key={category}
+                className="lut-category-accordion"
+                title={<><span>{category}</span><span className="lut-category-count">{items.length}</span></>}
+                actions={editable ? (
+                  <Tooltip content={editing ? '完成编辑' : '编辑自定义滤镜'}>
+                    <IconButton
+                      variant="ghost"
+                      size="mini"
+                      className={`lut-category-edit${editing ? ' active' : ''}`}
+                      icon={editing ? <Check size={14} /> : <Pencil size={13} />}
+                      aria-label={editing ? `完成编辑${category}` : `编辑${category}`}
+                      onClick={() => toggleCategoryEditing(category)}
+                    />
+                  </Tooltip>
+                ) : undefined}
+                open={openCategory === category}
+                onOpenChange={(open) => {
+                  setOpenCategory(open ? category : null)
+                  if (!open && editing) setEditingCategory(null)
+                }}
+              >
+                <div className={`filter-grid${editing ? ' editing' : ''}`}>
+                  {items.map((lut: LutFileInfo) => (
+                    <FilterItem
+                      key={lut.filePath}
+                      filePath={lut.filePath}
+                      name={lut.name}
+                      active={activeLutId === lut.filePath}
+                      onClick={editing ? undefined : () => handleSelect(lut.filePath)}
+                      editing={editing && !lut.isBuiltin}
+                      deleting={deletingLutPath === lut.filePath}
+                      onDelete={!lut.isBuiltin ? () => void handleDeleteLut(lut) : undefined}
+                      mediaPath={mediaPath ?? null}
+                      intensity={intensity}
+                    />
+                  ))}
+                </div>
+              </Accordion>
+            )
+          }) : (
+            <div className="filter-empty">{searchKey ? '没有匹配的滤镜' : '暂无可用滤镜'}</div>
+          )}
         </main>
       </div>
 

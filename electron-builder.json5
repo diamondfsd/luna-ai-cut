@@ -30,6 +30,11 @@
       "filter": ["**/*"]
     },
     {
+      "from": "resources/dolby-vision",
+      "to": "dolby-vision",
+      "filter": ["dovi_tool", "dovi_tool.exe", "mp4mux", "mp4mux.exe"]
+    },
+    {
       "from": "luna-render-core",
       "to": "luna-render-core",
       "filter": ["luna-render-core.node", "sam-segmentation-worker", "sam-segmentation-worker.exe", "semantic-segmentation-worker", "semantic-segmentation-worker.exe", "specialized-segmentation-worker", "specialized-segmentation-worker.exe", "*.dylib", "*.dll", "*.so*"]

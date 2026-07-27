@@ -1,10 +1,17 @@
 import { useState } from 'react'
-import { Folder, Pencil, Plus, Trash2 } from 'lucide-react'
+import { FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
-import type { WorkspaceProject } from '../../shared/types'
-import { Button, Dialog, Input, toast } from '../../ui'
+import type { WorkspaceMediaAsset, WorkspaceProject } from '../../shared/types'
+import { Button, Dialog, IconButton, Input } from '../../ui'
 import { ThumbImage } from '../../components/ThumbImage'
+import { WorkspaceMissingMedia } from './WorkspaceMissingMedia'
+import { WorkspaceImportDialog } from './WorkspaceImportDialog'
+import '../../styles/workspace-project-picker.css'
+
+function generatedProjectName(count: number): string {
+  return `${count} 个素材项目`
+}
 
 export function WorkspaceProjectPicker() {
   const { projects, projectLoading, openProject, deleteProject, renameProject, createProject } = useWorkspaceMedia()
@@ -44,10 +51,14 @@ export function WorkspaceProjectPicker() {
 
   function handleDeleteClick(): void {
     if (!contextMenu) return
-    setDeleteProjectId(contextMenu.project.id)
-    setDeleteProjectName(contextMenu.project.name)
-    setDeleteConfirmOpen(true)
+    openDeleteDialog(contextMenu.project)
     closeContextMenu()
+  }
+
+  function openDeleteDialog(project: WorkspaceProject): void {
+    setDeleteProjectId(project.id)
+    setDeleteProjectName(project.name)
+    setDeleteConfirmOpen(true)
   }
 
   async function handleDeleteConfirm(): Promise<void> {
@@ -55,15 +66,12 @@ export function WorkspaceProjectPicker() {
     setDeleteConfirmOpen(false)
   }
 
-  async function handleCreateConfirm(): Promise<void> {
-    if (creating || !createName.trim()) return
+  async function handleCreateProject(assets: WorkspaceMediaAsset[]): Promise<void> {
+    if (creating || assets.length === 0) return
     setCreating(true)
     try {
-      await createProject(createName.trim())
-      setCreateOpen(false)
+      await createProject(createName.trim() || generatedProjectName(assets.length), assets)
       setCreateName('')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error))
     } finally {
       setCreating(false)
     }
@@ -72,8 +80,7 @@ export function WorkspaceProjectPicker() {
   return (
     <div className="workspace-project-page" onClick={closeContextMenu}>
       <header className="workspace-project-header">
-        <h2>工作台项目</h2>
-        <span>{projectLoading ? '加载中...' : `${projects.length} 个项目`}</span>
+        <div><h2>工作台项目</h2><span>{projectLoading ? '加载中...' : `${projects.length} 个项目`}</span></div>
         <div className="workspace-project-header-actions">
           <Button variant="primary" size="compact" icon={<Plus color='white' size={14} />} onClick={() => setCreateOpen(true)}>
             新建项目
@@ -82,26 +89,38 @@ export function WorkspaceProjectPicker() {
       </header>
       <div className="workspace-project-grid">
         {projects.map((project) => (
-          <button
-            key={project.id}
-            className="workspace-project-card"
-            type="button"
-            onClick={() => openProject(project)}
-            onContextMenu={(e) => handleContextMenu(e, project)}
-          >
-            <span className="workspace-project-folder">
-              <Folder size={112} strokeWidth={1.2} />
-              <span className="workspace-project-previews">
-                {project.assets.slice(0, 4).map((asset: any) => (
-                  <ThumbImage key={asset.id} src={asset.path} alt="" />
-                ))}
+          <article key={project.id} className="workspace-project-card">
+            <button
+              className="workspace-project-open"
+              type="button"
+              onClick={() => openProject(project)}
+              onContextMenu={(e) => handleContextMenu(e, project)}
+            >
+              <span className="workspace-project-cover">
+                {project.assets.length > 0
+                  ? project.assets.slice(0, 4).map((asset) => <ThumbImage key={asset.id} src={asset.path} alt="" draggable={false} unavailableFallback={<WorkspaceMissingMedia compact />} />)
+                  : <FolderOpen size={34} />}
               </span>
-            </span>
-            <span className="workspace-project-name">{project.name}</span>
-          </button>
+              <strong>{project.name}</strong>
+              <span>{project.assets.length} 个素材</span>
+            </button>
+            <IconButton
+              variant="ghost"
+              size="mini"
+              className="workspace-project-delete"
+              icon={<Trash2 size={14} />}
+              aria-label={`删除 ${project.name}`}
+              title="删除项目"
+              onClick={() => openDeleteDialog(project)}
+            />
+          </article>
         ))}
         {!projectLoading && projects.length === 0 && (
-          <div className="workspace-project-empty">当前还没有项目哦，点击右上角，新建项目，开始你的创作吧～</div>
+          <div className="workspace-project-empty">
+            <FolderOpen size={34} />
+            <h3>还没有工作台项目</h3>
+            <Button variant="primary" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>新建项目</Button>
+          </div>
         )}
       </div>
 
@@ -141,25 +160,19 @@ export function WorkspaceProjectPicker() {
         </div>
       </Dialog>
 
-      {/* 创建项目弹窗 */}
-      <Dialog
-        tone="dark"
+      <WorkspaceImportDialog
         open={createOpen}
-        onOpenChange={setCreateOpen}
-        title="新建项目"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button variant="primary" onClick={() => void handleCreateConfirm()} disabled={!createName.trim() || creating}>
-              {creating ? '创建中...' : '创建'}
-            </Button>
-          </>
-        }
-      >
-        <div className="workspace-dialog-body">
-          <Input fullWidth value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="项目名称" autoFocus />
-        </div>
-      </Dialog>
+        onOpenChange={(open) => {
+          if (creating) return
+          setCreateOpen(open)
+          if (!open) setCreateName('')
+        }}
+        existingPaths={new Set()}
+        mode="create"
+        projectName={createName}
+        onProjectNameChange={setCreateName}
+        onImport={handleCreateProject}
+      />
 
       {/* 删除确认弹窗 */}
       <Dialog

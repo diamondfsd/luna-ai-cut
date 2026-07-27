@@ -1,6 +1,9 @@
+import { Copy, FileBraces, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { Input } from '../../ui'
+import { Button, Dialog, IconButton, Input, Tooltip, toast } from '../../ui'
+import type { WorkspaceVideoSegmentsExport } from '../../shared/types'
+import type { VideoSegmentMarker } from './videoSegmentMarkers'
 
 import './TrimPanel.css'
 
@@ -8,8 +11,13 @@ interface TrimPanelProps {
   startTime: number
   endTime: number
   duration: number
+  markers: VideoSegmentMarker[]
   onStartTimeChange: (time: number) => void
   onEndTimeChange: (time: number) => void
+  onMarkersChange: (markers: VideoSegmentMarker[]) => void
+  onSelectMarker: (marker: VideoSegmentMarker) => void
+  jsonValue: WorkspaceVideoSegmentsExport
+  onExportJson: (data: WorkspaceVideoSegmentsExport) => Promise<{ path: string } | null>
 }
 
 /** 秒 → mm:ss.SSS */
@@ -51,15 +59,80 @@ function parseTimeInput(text: string): number {
   return total / 1000
 }
 
+interface MarkerRowProps {
+  marker: VideoSegmentMarker
+  autoFocus: boolean
+  onSelect: () => void
+  onNoteCommit: (note: string) => void
+  onDelete: () => void
+}
+
+function MarkerRow({ marker, autoFocus, onSelect, onNoteCommit, onDelete }: MarkerRowProps) {
+  const [note, setNote] = useState(marker.note)
+
+  useEffect(() => setNote(marker.note), [marker.note])
+
+  const commitNote = () => {
+    const nextNote = note.trim().slice(0, 200)
+    setNote(nextNote)
+    if (nextNote !== marker.note) onNoteCommit(nextNote)
+  }
+
+  return (
+    <div className="workspace-trim-marker-row">
+      <button className="workspace-trim-marker-range" type="button" onClick={onSelect}>
+        <span>{formatSeconds(marker.startTime)}</span>
+        <span className="workspace-trim-marker-separator">至</span>
+        <span>{formatSeconds(marker.endTime)}</span>
+      </button>
+      <div className="workspace-trim-marker-note-row">
+        <Input
+          className="workspace-trim-marker-note"
+          variant="compact"
+          fullWidth
+          type="text"
+          value={note}
+          maxLength={200}
+          placeholder="填写剪辑备注"
+          autoFocus={autoFocus}
+          onChange={(event) => setNote(event.target.value)}
+          onBlur={commitNote}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+          }}
+        />
+        <Tooltip content="删除片段标记">
+          <IconButton
+            className="workspace-trim-marker-delete"
+            variant="ghost"
+            size="mini"
+            icon={<Trash2 size={14} />}
+            aria-label="删除片段标记"
+            onClick={onDelete}
+          />
+        </Tooltip>
+      </div>
+    </div>
+  )
+}
+
 export function TrimPanel({
   startTime,
   endTime,
   duration,
+  markers,
   onStartTimeChange,
   onEndTimeChange,
+  onMarkersChange,
+  onSelectMarker,
+  jsonValue,
+  onExportJson,
 }: TrimPanelProps) {
   const [startText, setStartText] = useState(formatSeconds(startTime))
   const [endText, setEndText] = useState(formatSeconds(endTime))
+  const [newMarkerId, setNewMarkerId] = useState<string | null>(null)
+  const [exportingJson, setExportingJson] = useState(false)
+  const [jsonPreviewOpen, setJsonPreviewOpen] = useState(false)
   const isFocusedRef = useRef(false)
 
   // Sync display text when props change externally (e.g. trim strip dragging)
@@ -101,6 +174,48 @@ export function TrimPanel({
 
   const trimDuration = Math.max(0, endTime - startTime)
 
+  const addCurrentRange = () => {
+    if (endTime <= startTime) return
+    const marker: VideoSegmentMarker = {
+      id: crypto.randomUUID(),
+      startTime,
+      endTime,
+      note: '',
+    }
+    setNewMarkerId(marker.id)
+    onMarkersChange([...markers, marker])
+  }
+
+  const updateMarkerNote = (id: string, note: string) => {
+    onMarkersChange(markers.map((marker) => marker.id === id ? { ...marker, note } : marker))
+  }
+
+  const deleteMarker = (id: string) => {
+    onMarkersChange(markers.filter((marker) => marker.id !== id))
+  }
+
+  const exportJson = async () => {
+    setExportingJson(true)
+    try {
+      const result = await onExportJson(jsonValue)
+      if (result) toast.success('片段 JSON 已导出')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '片段 JSON 导出失败')
+    } finally {
+      setExportingJson(false)
+    }
+  }
+
+  const copyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(jsonValue, null, 2))
+      toast.success('片段 JSON 已复制')
+      setJsonPreviewOpen(false)
+    } catch {
+      toast.error('无法复制 JSON，请稍后重试')
+    }
+  }
+
   return (
     <div className="workspace-trim-panel">
       <div className="workspace-param-group">
@@ -137,6 +252,74 @@ export function TrimPanel({
           <span className="workspace-trim-duration-display">{formatSeconds(trimDuration)}</span>
         </div>
       </div>
+      <section className="workspace-trim-markers" aria-label="片段标记">
+        <div className="workspace-trim-markers-header">
+          <div>
+            <h3>片段标记</h3>
+            <span>{markers.length} 段</span>
+          </div>
+          <Button
+            variant="secondary"
+            size="mini"
+            icon={<Plus size={14} />}
+            disabled={endTime <= startTime}
+            onClick={addCurrentRange}
+          >
+            添加当前片段
+          </Button>
+        </div>
+        {markers.length > 0 ? (
+          <div className="workspace-trim-marker-list">
+            {markers.map((marker) => (
+              <MarkerRow
+                key={marker.id}
+                marker={marker}
+                autoFocus={marker.id === newMarkerId}
+                onSelect={() => onSelectMarker(marker)}
+                onNoteCommit={(note) => updateMarkerNote(marker.id, note)}
+                onDelete={() => deleteMarker(marker.id)}
+              />
+            ))}
+            <div className="workspace-trim-markers-json-actions">
+              <Button
+                variant="secondary"
+                size="compact"
+                icon={<Copy size={15} />}
+                onClick={() => setJsonPreviewOpen(true)}
+              >
+                复制 JSON
+              </Button>
+              <Button
+                variant="secondary"
+                size="compact"
+                icon={<FileBraces size={15} />}
+                disabled={exportingJson}
+                onClick={() => void exportJson()}
+              >
+                {exportingJson ? '正在导出...' : '导出 JSON'}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="workspace-trim-markers-empty">调整截取范围后，添加为可备注的片段标记。</p>
+        )}
+      </section>
+      <Dialog
+        open={jsonPreviewOpen}
+        onOpenChange={setJsonPreviewOpen}
+        title="片段 JSON"
+        description="确认内容后可复制到剪贴板。"
+        tone="dark"
+        className="workspace-trim-json-dialog"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setJsonPreviewOpen(false)}>取消</Button>
+            <Button variant="primary" icon={<Copy size={15} />} onClick={() => void copyJson()}>复制</Button>
+          </>
+        )}
+      >
+        <pre className="workspace-trim-json-preview">{JSON.stringify(jsonValue, null, 2)}</pre>
+      </Dialog>
     </div>
   )
 }

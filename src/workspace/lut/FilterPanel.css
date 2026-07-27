@@ -248,43 +248,24 @@
   border-color: rgba(255, 104, 104, 0.4);
 }
 
-/* ═══ 分类标签 ═══ */
+/* ═══ 垂直分类 ═══ */
 
-.filter-tabs-row {
+.filter-groups-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  min-height: 28px;
+  color: #aab2bf;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.filter-tabs-scroll {
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+.filter-import-btn.ui-btn {
+  color: #aab2bf;
 }
 
-.filter-tabs-scroll::-webkit-scrollbar { display: none; }
-
-.filter-category-group {
-  flex: 0 0 auto;
-}
-
-.filter-import-btn {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
-  border: none;
-  background: var(--parchment);
-  color: var(--muted);
-  cursor: pointer;
-  transition: background 120ms;
-}
-
-.filter-import-btn:hover {
+.filter-import-btn.ui-btn:hover {
   background: rgba(255,255,255,0.1);
   color: #d4d9e2;
 }
@@ -297,6 +278,50 @@
   overflow-y: auto;
   padding: 1px 4px 20px 0;
   scrollbar-color: rgba(255,255,255,0.18) transparent;
+}
+
+.lut-category-accordion .ui-accordion-header {
+  padding: 10px 2px;
+}
+
+.lut-category-accordion .ui-accordion-title {
+  color: #c7cdd7;
+  font-size: 12px;
+}
+
+.lut-category-accordion .ui-accordion-body {
+  padding: 2px 2px 16px;
+}
+
+.lut-category-edit.ui-icon-btn {
+  color: #8e97a5;
+}
+
+.lut-category-edit.ui-icon-btn:hover,
+.lut-category-edit.ui-icon-btn.active {
+  background: rgba(0, 102, 204, 0.18);
+  color: #68a9ff;
+}
+
+.lut-category-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.08);
+  color: #8e97a5;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.filter-empty {
+  padding: 28px 4px;
+  color: #7e8795;
+  font-size: 12px;
+  text-align: center;
 }
 
 .filter-grid-wrap::-webkit-scrollbar { width: 6px; }
@@ -323,6 +348,14 @@
   transform: translateY(-2px);
 }
 
+.filter-grid.editing .filter-card {
+  cursor: default;
+}
+
+.filter-grid.editing .filter-card:hover {
+  transform: none;
+}
+
 .filter-card.selected {
   /* 选中态交给 thumb 的边框处理 */
 }
@@ -341,6 +374,26 @@
 .filter-card.selected .thumb {
   border-color: #3478ff;
   box-shadow: 0 0 0 2px rgba(52,120,255,0.72), 0 16px 40px rgba(52,120,255,0.16);
+}
+
+.filter-card-delete.ui-icon-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 4;
+  background: rgba(20, 24, 30, 0.86);
+  color: #ff7474;
+  backdrop-filter: blur(8px);
+}
+
+.filter-card-delete.ui-icon-btn:hover {
+  background: rgba(176, 42, 42, 0.92);
+  color: #fff;
+}
+
+.filter-card-delete.ui-icon-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .thumb-img {

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
-import type { WorkspaceMediaAsset, WorkspaceProject } from '../src/shared/types'
+import type { WorkspaceMediaAsset, WorkspaceProject, WorkspaceProjectAsset } from '../src/shared/types'
 
 const PROJECTS_DIR = 'workspace-projects'
 const PROJECT_FILE = 'project.json'
@@ -84,11 +84,16 @@ async function withProjectOperation<T>(
   }
 }
 
-function dedupeAssets(current: WorkspaceProject['assets'], assets: WorkspaceMediaAsset[]): WorkspaceProject['assets'] {
-  const byPath = new Map(current.map((asset) => [asset.path, asset]))
+function dedupeAssets(current: WorkspaceProject['assets'], assets: WorkspaceProjectAsset[]): WorkspaceProject['assets'] {
+  const key = (asset: WorkspaceProjectAsset): string => {
+    const trim = (asset.pipeline as { trim?: { startTime?: number; endTime?: number } } | undefined)?.trim
+    return `${asset.path}\0${trim?.startTime ?? ''}\0${trim?.endTime ?? ''}`
+  }
+  const byPath = new Map(current.map((asset) => [key(asset), asset]))
   for (const asset of assets) {
-    const existing = byPath.get(asset.path)
-    byPath.set(asset.path, existing ? { ...existing, ...asset } : asset)
+    const assetKey = key(asset)
+    const existing = byPath.get(assetKey)
+    byPath.set(assetKey, existing ? { ...existing, ...asset } : asset)
   }
   return [...byPath.values()]
 }
@@ -144,7 +149,7 @@ export async function listWorkspaceProjects(downloadDir: string): Promise<Worksp
 export async function createWorkspaceProject(
   downloadDir: string,
   name: string,
-  assets: WorkspaceMediaAsset[],
+  assets: WorkspaceProjectAsset[],
 ): Promise<WorkspaceProject> {
   const now = new Date().toISOString()
   const id = createId(name)

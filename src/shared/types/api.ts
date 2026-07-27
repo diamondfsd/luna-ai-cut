@@ -1,11 +1,11 @@
-import type { AppSettings, CacheStats } from './settings'
+import type { AppSettings, CacheStats, CustomLutFile } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
 import type { CameraDeleteResult, LunaFile } from './media'
 import type { PreviewResult, MediaMetadata } from './preview'
-import type { WatermarkSettings } from './watermark'
-import type { VideoExportSettings } from './video'
+import type { CustomWatermarkAsset, WatermarkSettings } from './watermark'
+import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest, VideoExportSettings } from './video'
 import type { DownloadProgress, DownloadRecord, DownloadSummary } from './download'
-import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord } from './export'
+import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord, OriginalFileExportRequest } from './export'
 import type { MockServerStatus } from './mock'
 import type {
   DeviceDebugTestResult,
@@ -18,9 +18,15 @@ import type {
   DeviceDebugEvent,
 } from './debug'
 import type { UpdateInfo, HotUpdateCheckResult, ReleaseNoteItem } from './update'
-import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } from './workspace'
+import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset, WorkspaceVideoSegmentsExport } from './workspace'
 import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
+import type {
+  AiSelectionProgress,
+  AiSelectionSession,
+  AiSelectionStartRequest,
+  AiSelectionUserOperation,
+} from './aiSelection'
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 
@@ -102,11 +108,16 @@ export interface LunaApi {
   chooseExportDir(): Promise<string | null>
   chooseLutDir(): Promise<string | null>
   chooseMockMediaDir(): Promise<string | null>
+  chooseCustomWatermarks(): Promise<CustomWatermarkAsset[]>
+  listCustomWatermarks(): Promise<CustomWatermarkAsset[]>
+  deleteCustomWatermark(assetId: string): Promise<CustomWatermarkAsset[]>
   startMockServer(settings?: Partial<AppSettings>): Promise<MockServerStatus>
   stopMockServer(): Promise<MockServerStatus>
   getMockServerStatus(): Promise<MockServerStatus>
   getCacheStats(): Promise<CacheStats>
   clearCache(): Promise<CacheStats>
+  listCustomLuts(): Promise<CustomLutFile[]>
+  deleteCustomLut(filePath: string): Promise<void>
   openWifiSettings(): Promise<void>
   openDevTools(): Promise<void>
   scanBluetoothDevices(timeoutMs?: number): Promise<BluetoothDeviceCandidate[]>
@@ -160,8 +171,32 @@ export interface LunaApi {
     list(): Promise<ExportTaskRecord[]>
     clear(): Promise<void>
   }
+  aiSelection: {
+    chooseDirectory(): Promise<string | null>
+    start(request: AiSelectionStartRequest): Promise<AiSelectionSession>
+    listSessions(): Promise<AiSelectionSession[]>
+    getSession(sessionId: string): Promise<AiSelectionSession | null>
+    pause(sessionId: string): Promise<AiSelectionSession>
+    resume(sessionId: string): Promise<AiSelectionSession>
+    cancel(sessionId: string): Promise<AiSelectionSession>
+    applyOperation(sessionId: string, revision: number, operation: AiSelectionUserOperation): Promise<AiSelectionSession>
+    analyzePeople(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
+    renamePerson(sessionId: string, groupId: string, name: string): Promise<AiSelectionSession>
+    setPersonAvatar(sessionId: string, groupId: string, itemId: string, bounds: { x: number; y: number; width: number; height: number }): Promise<AiSelectionSession>
+    mergePeople(sessionId: string, targetGroupId: string, sourceGroupId: string): Promise<AiSelectionSession>
+    unmergePerson(sessionId: string, targetGroupId: string, memberIdentityId: string): Promise<AiSelectionSession>
+    analyzeContentTags(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
+    analyzeVideos(sessionId: string, itemIds: string[]): Promise<AiSelectionSession>
+    undo(sessionId: string): Promise<AiSelectionSession>
+    redo(sessionId: string): Promise<AiSelectionSession>
+    createWorkspaceProject(sessionId: string, name: string): Promise<WorkspaceProject>
+    removeSession(sessionId: string): Promise<void>
+    onProgress(callback: (progress: AiSelectionProgress) => void): () => void
+    onSessionUpdated(callback: (session: AiSelectionSession) => void): () => void
+  }
   workspace: {
     chooseMediaFiles(): Promise<string[]>
+    exportVideoSegmentsJson(data: WorkspaceVideoSegmentsExport): Promise<{ path: string } | null>
     loadTrimThumbnailCache(videoPath: string, duration: number): Promise<ArrayBuffer | null>
     saveTrimThumbnailCache(videoPath: string, duration: number, bytes: ArrayBuffer): Promise<void>
     saveColorMask(projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number): Promise<{ path: string; width: number; height: number }>
@@ -172,6 +207,8 @@ export interface LunaApi {
     /** 获取媒体文件分辨率（图片/视频统一接口） */
     getMediaResolution(filePath: string): Promise<{ width: number; height: number }>
     getVideoDuration(filePath: string): Promise<number>
+    probeDolbyVision(filePath: string): Promise<DolbyVisionProbeResult>
+    exportDolbyVisionWatermark(request: DolbyVisionWatermarkExportRequest): Promise<{ path: string }>
     isLivePhoto(filePath: string): Promise<boolean>
     readColorMetadata(filePath: string): Promise<WorkspaceColorMetadata>
     getSegmentationModelStatus(modelId: SegmentationModelId): Promise<WorkspaceSegmentationModelStatus>
@@ -203,6 +240,7 @@ export interface LunaApi {
     renameProject(projectId: string, newName: string): Promise<WorkspaceProject>
     extractVideoFrame(videoPath: string, outputPath: string, frameTime: number): Promise<{ path: string; name: string }>
     exportRenderedLivePhoto(name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean, recordTask?: boolean, coverTimeSeconds?: number): Promise<{ path: string; name: string }>
+    exportOriginalFile(request: OriginalFileExportRequest): Promise<{ path: string }>
     copyFile(sourcePath: string): Promise<{ path: string; name: string }>
     listColorPresets(): Promise<Array<{ id: string; name: string; createdAt: string; updatedAt: string; colorJson: string }>>
     saveColorPreset(name: string, colorJson: string): Promise<{ id: string; name: string; createdAt: string; updatedAt: string; colorJson: string }>
@@ -214,8 +252,8 @@ export interface LunaApi {
   onWorkspaceSegmentationProgress(callback: (progress: WorkspaceSegmentationProgress) => void): () => void
   onWorkspaceMaskTrackingProgress(callback: (progress: WorkspaceMaskTrackingProgress) => void): () => void
   onConnectionLost(callback: () => void): () => void
-  onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string; thumbnailUrl: string }) => void): () => void
-  onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null }) => void): () => void
+  onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null }) => void): () => void
+  onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null }) => void): () => void
   checkForUpdates(): Promise<UpdateInfo | null>
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   listReleaseNotes(): Promise<ReleaseNoteItem[]>

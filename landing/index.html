@@ -3,19 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Luna AI Cut — Luna Ultra 素材管理与创作工具</title>
-    <meta name="description" content="Luna AI Cut 是面向 Insta360 Luna Ultra 的桌面素材管理与创作工具，支持 Wi-Fi 与数据线连接、批量取片、AI 局部调色、i-Log LUT 还原、柔化边框和水印导出。" />
-    <meta name="keywords" content="Luna AI Cut, Insta360, Luna Ultra, 素材管理, AI 调色蒙版, i-Log, LUT, 桌面工具" />
+    <title>Luna AI Cut — 开源桌面素材管理与创作工具</title>
+    <meta name="description" content="Luna AI Cut 是开源桌面素材管理与创作工具，将相机取片、本地素材整理、AI 辅助选片、照片与视频编辑和批量导出整合到一个流程中，并持续扩展更多设备支持。" />
+    <meta name="keywords" content="Luna AI Cut, 素材管理, AI 选片, 视频编辑, 照片调色, LUT, 水印导出, 桌面工具" />
 
     <!-- Open Graph -->
-    <meta property="og:title" content="Luna AI Cut — Luna 素材从取片到创作" />
-    <meta property="og:description" content="连接、预览、整理、局部调色与导出，在一个桌面流程中完成" />
+    <meta property="og:title" content="Luna AI Cut — 从素材整理到创作导出" />
+    <meta property="og:description" content="相机取片、本地整理、AI 辅助选片、照片与视频编辑，在一个桌面流程中完成" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://diamondfsd.github.io/luna-ai-cut/" />
 
     <link rel="icon" type="image/png" href="assets/favicon.png" />
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="download-platform.css" />
+    <link rel="stylesheet" href="support.css" />
   </head>
   <body>
     <!-- ===== Global Nav ===== -->
@@ -49,9 +50,10 @@
           <img class="hero-icon" src="assets/icon.png" alt="Luna AI Cut" width="100" height="100" />
           <h1 class="hero-title">Luna AI Cut</h1>
         </div>
-        <p class="hero-lead">Luna 素材从取片到创作，一个流程完成<br/>双连接取片 · AI 局部调色 · i-Log 还原 · 水印导出</p>
+        <p class="hero-lead">从相机取片、本地整理到创作导出，一个流程完成<br/>AI 辅助选片 · 照片与视频编辑 · 局部调色 · 批量导出</p>
         <div class="hero-cta">
           <a href="#download" class="pill primary">免费下载</a>
+          <button type="button" class="pill secondary support-entry" data-support-open>赞赏支持</button>
           <a href="#features" class="pill secondary">了解功能</a>
         </div>
         <div class="hero-preview">
@@ -84,7 +86,10 @@
       <div class="section-inner">
         <div class="section-label accent">下载</div>
         <h2 class="section-title section-title-light">选择你的平台 <span class="version-tag" id="current-version"></span></h2>
-        <p class="section-desc section-desc-light">目前支持 macOS 和 Windows，免费使用</p>
+        <p class="section-desc section-desc-light download-support-copy">
+          <span>目前支持 macOS 和 Windows，免费使用，你也可以支持一下作者：</span>
+          <button type="button" class="download-support-entry" data-support-open>我想支持</button>
+        </p>
 
         <div class="download-grid">
           <div class="download-cell">
@@ -199,8 +204,8 @@
     <section id="features" class="section section-parchment">
       <div class="section-inner">
         <div class="section-label">功能亮点</div>
-        <h2 class="section-title">从相机素材到最终画面</h2>
-        <p class="section-desc">连接、筛选、整理和创作都在同一个桌面流程中完成</p>
+        <h2 class="section-title">从多来源素材到最终画面</h2>
+        <p class="section-desc">导入、筛选、整理、编辑和导出都在同一个桌面流程中完成</p>
 
         <div class="features-grid">
           <article class="feature-card">
@@ -209,8 +214,8 @@
                 <path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>
               </svg>
             </div>
-            <h3 class="feature-title">Wi-Fi 与数据线双连接</h3>
-            <p class="feature-desc">无线取片更轻松，接上数据线也能进入同一个媒体库。按使用场景选择连接方式，无需改变整理流程。</p>
+            <h3 class="feature-title">多来源素材接入</h3>
+            <p class="feature-desc">从当前兼容相机或本地目录获取照片和视频，进入统一的素材流程。更多设备接入能力将随兼容验证持续扩展。</p>
           </article>
 
           <article class="feature-card">
@@ -219,8 +224,8 @@
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/>
               </svg>
             </div>
-            <h3 class="feature-title">浏览、筛选与批量取片</h3>
-            <p class="feature-desc">按日期浏览照片和视频，快速筛选、预览并批量下载。下载完成后可继续整理，也可删除相机中的对应素材释放空间。</p>
+            <h3 class="feature-title">AI 选片与批量整理</h3>
+            <p class="feature-desc">按日期浏览、筛选和预览素材，也可让 AI 分析完整照片与视频，辅助分组和挑选，再批量下载或进入工作台。</p>
           </article>
 
           <article class="feature-card">
@@ -228,8 +233,8 @@
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
             </div>
-            <h3 class="feature-title">AI 调色蒙版</h3>
-            <p class="feature-desc">识别天空、水面、人物和主体等区域，只调整画面中需要改变的部分；也可使用形状、渐变和画笔创建局部选区。</p>
+            <h3 class="feature-title">照片与视频工作台</h3>
+            <p class="feature-desc">完成裁剪、视频分段、基础调色、HSL、曲线和 LUT 处理。一个视频划分为多段后，可按片段分别导出。</p>
           </article>
 
           <article class="feature-card">
@@ -238,8 +243,8 @@
                 <circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/>
               </svg>
             </div>
-            <h3 class="feature-title">Luna i-Log 一键还原</h3>
-            <p class="feature-desc">快速应用 Luna Ultra 官方 i-Log 还原 LUT，恢复自然色彩后还能继续叠加滤镜与调色，形成自己的画面风格。</p>
+            <h3 class="feature-title">智能与手动蒙版</h3>
+            <p class="feature-desc">识别天空、水面、人物和主体等区域，只调整需要改变的部分；也可使用形状、渐变和画笔创建选区，视频支持蒙版跟踪。</p>
           </article>
 
           <article class="feature-card">
@@ -248,8 +253,8 @@
                 <rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 16c2.2-4.5 5.2-7.2 8-8"/><circle cx="15.5" cy="8.5" r="1.5"/>
               </svg>
             </div>
-            <h3 class="feature-title">柔化边框效果</h3>
-            <p class="feature-desc">用画面本身扩展出自然柔和的背景，让横竖比例转换更协调，同时突出照片主体。</p>
+            <h3 class="feature-title">滤镜、边框与水印</h3>
+            <p class="feature-desc">使用内置或自定义 LUT 塑造画面风格，为不同画幅添加创意边框，并按素材信息匹配或自定义水印。</p>
           </article>
 
           <article class="feature-card">
@@ -258,8 +263,8 @@
                 <circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/><path d="M7 4.8 4.8 7"/>
               </svg>
             </div>
-            <h3 class="feature-title">更轻快的素材预览</h3>
-            <p class="feature-desc">本地照片和视频打开更流畅，支持缩放与拖动查看；工作台可按需要调整预览清晰度，兼顾细节和速度。</p>
+            <h3 class="feature-title">批量与多格式导出</h3>
+            <p class="feature-desc">批量输出编辑结果，查看每项任务进度；视频片段可以分别导出，也支持 Live Photo 等素材工作流。</p>
           </article>
         </div>
       </div>
@@ -270,16 +275,16 @@
       <div class="section-inner">
         <div class="section-label">使用指南</div>
         <h2 class="section-title">四步上手，从管理到创作</h2>
-        <p class="section-desc">从连接到导出，每一步都精心设计</p>
+        <p class="section-desc">无论素材来自相机还是本地目录，都能沿用同一套流程</p>
 
         <div class="guide-steps">
           <div class="guide-step">
             <div class="guide-step-number">1</div>
             <div class="guide-step-content">
-              <h3 class="guide-step-title">连接相机</h3>
-              <p class="guide-step-desc">可以让电脑连接 Luna Ultra 的 Wi-Fi 热点，也可以使用数据线访问相机素材。选择来源后，照片和视频会进入统一的媒体库。</p>
+              <h3 class="guide-step-title">选择素材来源</h3>
+              <p class="guide-step-desc">可以连接当前兼容的相机，也可以直接导入电脑中的照片和视频。选择来源后，素材会进入统一的浏览与创作流程。</p>
               <div class="guide-step-tip">
-                <strong>提示：</strong>首次使用可先在设置中选择下载目录；不同连接方式下，后续的预览、下载和整理操作保持一致。
+                <strong>提示：</strong>首次使用可先在设置中选择下载与导出目录；相机支持的连接方式和专属能力会因机型而异。
               </div>
             </div>
           </div>
@@ -287,9 +292,9 @@
           <div class="guide-step">
             <div class="guide-step-number">2</div>
             <div class="guide-step-content">
-              <h3 class="guide-step-title">浏览与选择</h3>
+              <h3 class="guide-step-title">浏览与 AI 选片</h3>
               <p class="guide-step-desc">媒体库按拍摄日期自动分组，可通过顶部标签在「全部」「照片」「视频」间快速筛选。点击缩略图即可查看照片或播放视频，也可以放大、缩小和拖动检查细节。</p>
-              <p class="guide-step-desc">长按或拖动可框选多个文件，选中后可使用下载按钮批量保存到本地。</p>
+              <p class="guide-step-desc">可以手动框选多个文件，也可以把完整照片和视频交给 AI 辅助分析、分组和挑选；确认后再批量保存或送入工作台。</p>
               <div class="guide-step-tip">
                 <strong>提示：</strong>缩略图支持大、中、小三档尺寸，在日期标题栏即可切换。
               </div>
@@ -300,9 +305,9 @@
             <div class="guide-step-number">3</div>
             <div class="guide-step-content">
               <h3 class="guide-step-title">工作台创作</h3>
-              <p class="guide-step-desc">将照片或视频打开到工作台，完成裁剪、调色、LUT、边框与水印处理。图片还可以识别天空、人物、主体等区域进行局部调色；视频可使用手动蒙版控制调整范围。</p>
+              <p class="guide-step-desc">将照片或视频打开到工作台，完成裁剪、视频分段、调色、LUT、边框与水印处理。还可以识别天空、人物、主体等区域进行局部调色，并让视频蒙版跟随目标移动。</p>
               <div class="guide-step-tip">
-                <strong>提示：</strong>i-Log 素材可先进行 LUT 还原，再叠加滤镜或继续调色；编辑时可切换原图、效果和对比预览。
+                <strong>提示：</strong>兼容设备的 Log 素材可先进行色彩还原，再叠加滤镜或继续调色；编辑时可切换原图、效果和对比预览。
               </div>
             </div>
           </div>
@@ -310,11 +315,11 @@
           <div class="guide-step">
             <div class="guide-step-number">4</div>
             <div class="guide-step-content">
-              <h3 class="guide-step-title">下载与导出</h3>
-              <p class="guide-step-desc">选中文件后点击下载按钮，文件会自动保存到设定的下载目录中，并按日期分文件夹存放。已下载的文件会出现蓝色文件夹标识，点击可定位到文件在系统中的位置。</p>
-              <p class="guide-step-desc">在导出时可以选择水印样式、位置和大小，并保留工作台中的调色、蒙版、LUT 与边框效果。支持批量导出，进度实时可查。</p>
+              <h3 class="guide-step-title">导出与继续管理</h3>
+              <p class="guide-step-desc">导出时可以选择水印样式、位置和大小，并保留工作台中的调色、蒙版、LUT 与边框效果。支持批量导出，任务进度实时可查。</p>
+              <p class="guide-step-desc">视频在工作台划分为多段后，可以将各片段分别导出；完整原素材仍保留在素材库中，便于继续整理和再次创作。</p>
               <div class="guide-step-tip">
-                <strong>提示：</strong>已下载的文件在「本地资源」中可以随时浏览和管理，无需重复连接相机。
+                <strong>提示：</strong>已下载或导入的文件可在本地资源中继续浏览和管理，无需保持相机连接。
               </div>
             </div>
           </div>
@@ -342,8 +347,30 @@
       </div>
     </footer>
 
+    <div class="support-modal" id="support-modal" hidden>
+      <div class="support-modal-panel" role="dialog" aria-modal="true" aria-labelledby="support-modal-title">
+        <button type="button" class="support-modal-close" data-support-close aria-label="关闭赞赏支持弹窗">×</button>
+        <div class="support-modal-copy">
+          <span class="support-modal-label">自愿支持</span>
+          <h2 id="support-modal-title">支持 Luna AI Cut</h2>
+          <p>Luna AI Cut 目前由个人利用业余时间开发和维护。</p>
+          <p>如果它为你节省了时间，欢迎自愿支持项目持续更新。</p>
+          <p class="support-modal-note">赞助不会影响软件的正常使用，<br />也不代表购买功能或技术服务。</p>
+          <div class="support-modal-thanks">
+            <strong>不方便赞助也没关系。</strong>
+            <p>提交 Bug、分享软件、参与测试、<br />给项目点一个 Star，都是对项目很大的帮助。</p>
+          </div>
+        </div>
+        <figure class="support-modal-code">
+          <figcaption>微信赞赏</figcaption>
+          <img src="assets/wechat-start-code.png" alt="Luna AI Cut 微信赞赏码" width="384" height="384" />
+        </figure>
+      </div>
+    </div>
+
     <script src="changelog-data.js"></script>
     <script src="latest-changelog.js"></script>
     <script type="module" src="script.js"></script>
+    <script src="support.js"></script>
   </body>
 </html>

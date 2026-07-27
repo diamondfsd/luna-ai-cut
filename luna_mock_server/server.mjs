@@ -124,7 +124,48 @@ function parseUcd2Frames(buffer) {
   return { frames, rest }
 }
 
-function responseForUcd2Frame(frame) {
+function fileListRequest(body) {
+  const request = { storagePath: CAMERA_PATH, offset: 0, limit: 50 }
+  let offset = 0
+  while (offset < body.length) {
+    const tag = readVarint(body, offset)
+    if (!tag) break
+    offset = tag.offset
+    const field = tag.value >> 3
+    const wireType = tag.value & 0x07
+    if (wireType === 0) {
+      const value = readVarint(body, offset)
+      if (!value) break
+      offset = value.offset
+      if (field === 2) request.offset = value.value
+      if (field === 3) request.limit = value.value
+      if (field === 4) request.storagePath = value.value === 3 ? '/DCIM/' : CAMERA_PATH
+      continue
+    }
+    if (wireType === 2) {
+      const length = readVarint(body, offset)
+      if (!length) break
+      offset = length.offset + length.value
+      continue
+    }
+    break
+  }
+  return request
+}
+
+async function fileListResponseBody({ storagePath, offset, limit }) {
+  // 与 HTTP Mock 保持一致：默认存储提供素材，另一存储保持为空。
+  if (storagePath !== CAMERA_PATH) return Buffer.alloc(0)
+  const files = await walk(rootDir)
+  const cameraPaths = files
+    .map((filePath) => `${storagePath}${path.relative(rootDir, filePath).split(path.sep).join('/')}`)
+    .filter((cameraPath) => !deletedCameraPaths.has(path.posix.normalize(cameraPath)))
+    .sort()
+    .slice(offset, offset + limit)
+  return Buffer.from(`${cameraPaths.join('\0')}\0`, 'utf8')
+}
+
+async function responseForUcd2Frame(frame) {
   const type = frame[6]
   const seq = frame[7]
   if (type !== UCD2_FILE || frame.length < 25) return null
@@ -134,6 +175,10 @@ function responseForUcd2Frame(frame) {
   const raw = frame.subarray(rawOffset, rawOffset + rawLen)
   const code = raw.readUInt16LE(0)
   const requestId = raw.readUInt16LE(3)
+  if (code === 13) {
+    const body = await fileListResponseBody(fileListRequest(raw.subarray(9)))
+    return buildUcd2(UCD2_FILE, seq, buildRawResponse(200, requestId, body))
+  }
   if (code === 12) {
     for (const cameraPath of parseDeletePaths(raw.subarray(9))) {
       deletedCameraPaths.add(path.posix.normalize(cameraPath))
@@ -480,7 +525,7 @@ const httpServer = createHttpServer(async (request, response) => {
 const tcpServer = createTcpServer((socket) => {
   let received = Buffer.alloc(0)
   socket.setTimeout(60_000)
-  socket.on('data', (chunk) => {
+  socket.on('data', async (chunk) => {
     received = Buffer.concat([received, chunk])
 
     if (received.length <= EXPECTED_AUTH.length && received.equals(EXPECTED_AUTH.subarray(0, received.length))) {
@@ -497,7 +542,7 @@ const tcpServer = createTcpServer((socket) => {
 
     for (const frame of parsed.frames) {
       if (isStreamHandshake(frame)) authGate.authorize(socket)
-      const response = responseForUcd2Frame(frame)
+      const response = await responseForUcd2Frame(frame)
       if (response) socket.write(response)
     }
   })
@@ -542,8 +587,11 @@ main().catch((error) => {
   process.exitCode = 1
 })
 
-process.on('SIGINT', () => {
+function shutdown() {
   httpServer.close()
   tcpServer.close()
   process.exit(0)
-})
+}
+
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)

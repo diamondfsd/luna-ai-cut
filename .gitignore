@@ -6,7 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
+.pnpm-store/
 # Lock files (using pnpm)
 package-lock.json
 yarn.lock
@@ -32,6 +32,8 @@ release
 # Build artifacts
 resources/ffmpeg/
 .ffmpeg-cache/
+resources/dolby-vision/
+.dolby-tools-cache/
 docs/
 
 # Local deploy config

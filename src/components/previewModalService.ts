@@ -5,7 +5,18 @@ export interface PreviewState {
   previewOnly?: boolean
   /** true 表示批量导出模式，显示"导出全部"按钮 */
   batchExportMode?: boolean
+  /** 预览内切换素材时同步外部选中项。 */
+  onFilePathChange?: (filePath: string) => void
+  isFileSelected?: (filePath: string) => boolean
+  onSetFileSelected?: (filePath: string, selected: boolean) => void
   /** 本地资源使用原生媒体元素和 CSS 水印，不启动后端预览渲染器。 */
+  lightweightPreview?: boolean
+}
+
+interface PreviewModalOptions {
+  onFilePathChange?: (filePath: string) => void
+  isFileSelected?: (filePath: string) => boolean
+  onSetFileSelected?: (filePath: string, selected: boolean) => void
   lightweightPreview?: boolean
 }
 
@@ -22,6 +33,7 @@ export function showPreviewModal(
   filePath: string,
   fileList?: string[],
   previewOnly?: boolean,
+  options?: PreviewModalOptions,
 ): void {
   const candidates = fileList ?? [filePath]
   const visibleFiles = previewOnly
@@ -29,7 +41,7 @@ export function showPreviewModal(
     : candidates
   if (visibleFiles.length === 0) return
   const visibleFilePath = visibleFiles.includes(filePath) ? filePath : visibleFiles[0]
-  setPreviewState?.({ filePath: visibleFilePath, fileList: visibleFiles, previewOnly })
+  setPreviewState?.({ filePath: visibleFilePath, fileList: visibleFiles, previewOnly, ...options })
 }
 
 /** 打开批量导出弹窗 */

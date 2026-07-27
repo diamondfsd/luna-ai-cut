@@ -13,16 +13,20 @@ import type {
   NetworkDiagnosticsResult,
   WorkspaceMediaAsset,
   WorkspaceProject,
+  WorkspaceVideoSegmentsExport,
   WorkspaceSegmentationRequest,
   WorkspaceMaskTrackingRequest,
   UpdateInfo,
   VideoExportSettings,
+  DolbyVisionWatermarkExportRequest,
+  CustomWatermarkAsset,
   WatermarkSettings,
   WifiConnectOptions,
   WifiDebugApi,
   WifiHttpRequestOptions,
   WifiPortCheckOptions,
   ExportTaskRecord,
+  OriginalFileExportRequest,
 } from '../src/shared/types'
 
 interface ExportItemInput {
@@ -67,11 +71,16 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   chooseExportDir: () => ipcRenderer.invoke('settings:chooseExportDir'),
   chooseLutDir: () => ipcRenderer.invoke('settings:chooseLutDir'),
   chooseMockMediaDir: () => ipcRenderer.invoke('settings:chooseMockMediaDir'),
+  chooseCustomWatermarks: (): Promise<CustomWatermarkAsset[]> => ipcRenderer.invoke('watermark:chooseCustom'),
+  listCustomWatermarks: (): Promise<CustomWatermarkAsset[]> => ipcRenderer.invoke('watermark:listCustom'),
+  deleteCustomWatermark: (assetId: string): Promise<CustomWatermarkAsset[]> => ipcRenderer.invoke('watermark:deleteCustom', assetId),
   startMockServer: (settings?: Partial<AppSettings>) => ipcRenderer.invoke('mock:start', settings),
   stopMockServer: () => ipcRenderer.invoke('mock:stop'),
   getMockServerStatus: () => ipcRenderer.invoke('mock:status'),
   getCacheStats: () => ipcRenderer.invoke('cache:stats'),
   clearCache: () => ipcRenderer.invoke('cache:clear'),
+  listCustomLuts: () => ipcRenderer.invoke('settings:listCustomLuts'),
+  deleteCustomLut: (filePath: string) => ipcRenderer.invoke('settings:deleteCustomLut', filePath),
   openWifiSettings: () => ipcRenderer.invoke('wifi:openSettings'),
   openDevTools: () => ipcRenderer.invoke('devtools:open'),
   scanBluetoothDevices: (timeoutMs?: number) => ipcRenderer.invoke('bluetooth:scanNative', timeoutMs),
@@ -127,6 +136,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   cacheFile: (params: { sourceUrl: string; previewUrl?: string | null }) => ipcRenderer.invoke('luna:cacheFile', params),
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
+    exportVideoSegmentsJson: (data: WorkspaceVideoSegmentsExport) => ipcRenderer.invoke('workspace:exportVideoSegmentsJson', data),
     loadTrimThumbnailCache: (videoPath: string, duration: number) => ipcRenderer.invoke('workspace:loadTrimThumbnailCache', videoPath, duration),
     saveTrimThumbnailCache: (videoPath: string, duration: number, bytes: ArrayBuffer) => ipcRenderer.invoke('workspace:saveTrimThumbnailCache', videoPath, duration, bytes),
     saveColorMask: (projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number) => ipcRenderer.invoke('workspace:saveColorMask', projectId, assetId, width, height, bytes, feather),
@@ -136,6 +146,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     loadPreview: (filePath: string) => ipcRenderer.invoke('workspace:loadPreview', filePath),
     getMediaResolution: (filePath: string) => ipcRenderer.invoke('workspace:getMediaResolution', filePath),
     getVideoDuration: (filePath: string) => ipcRenderer.invoke('workspace:getVideoDuration', filePath),
+    probeDolbyVision: (filePath: string) => ipcRenderer.invoke('workspace:probeDolbyVision', filePath),
+    exportDolbyVisionWatermark: (request: DolbyVisionWatermarkExportRequest) => ipcRenderer.invoke('workspace:exportDolbyVisionWatermark', request),
     isLivePhoto: (filePath: string) => ipcRenderer.invoke('workspace:isLivePhoto', filePath),
     readColorMetadata: (filePath: string) => ipcRenderer.invoke('workspace:readColorMetadata', filePath),
     getSegmentationModelStatus: (modelId: import('../src/shared/segmentationModels').SegmentationModelId) => ipcRenderer.invoke('workspace:getSegmentationModelStatus', modelId),
@@ -152,6 +164,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     renameProject: (projectId: string, newName: string) => ipcRenderer.invoke('workspace:renameProject', projectId, newName),
     extractVideoFrame: (videoPath: string, outputPath: string, frameTime: number) => ipcRenderer.invoke('workspace:extractVideoFrame', videoPath, outputPath, frameTime),
     exportRenderedLivePhoto: (name: string, imagePath: string, videoPath: string, appleLivePhoto: boolean, preserveInputs?: boolean, recordTask?: boolean, coverTimeSeconds?: number) => ipcRenderer.invoke('workspace:exportRenderedLivePhoto', name, imagePath, videoPath, appleLivePhoto, preserveInputs, recordTask, coverTimeSeconds),
+    exportOriginalFile: (request: OriginalFileExportRequest) => ipcRenderer.invoke('workspace:exportOriginalFile', request),
     copyFile: (sourcePath: string) => ipcRenderer.invoke('workspace:copyFile', sourcePath),
     listColorPresets: () => ipcRenderer.invoke('workspace:listColorPresets'),
     saveColorPreset: (name: string, colorJson: string) => ipcRenderer.invoke('workspace:saveColorPreset', name, colorJson),
@@ -183,18 +196,18 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     ipcRenderer.on('luna:connection-lost', listener)
     return () => ipcRenderer.off('luna:connection-lost', listener)
   },
-  onThumbnailReady: (callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string; thumbnailUrl: string }) => void) => {
+  onThumbnailReady: (callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null }) => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,
-      data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string; thumbnailUrl: string },
+      data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null },
     ): void => callback(data)
     ipcRenderer.on('luna:thumbnail-ready', listener)
     return () => ipcRenderer.off('luna:thumbnail-ready', listener)
   },
-  onVideoFrameRateReady: (callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null }) => void) => {
+  onVideoFrameRateReady: (callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null }) => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,
-      data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null },
+      data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null },
     ): void => callback(data)
     ipcRenderer.on('luna:video-frame-rate-ready', listener)
     return () => ipcRenderer.off('luna:video-frame-rate-ready', listener)
@@ -216,6 +229,37 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     get: (taskId: string) => ipcRenderer.invoke('export-task:get', taskId),
     list: () => ipcRenderer.invoke('export-task:list'),
     clear: () => ipcRenderer.invoke('export-task:clear'),
+  },
+  aiSelection: {
+    chooseDirectory: () => ipcRenderer.invoke('ai-selection:choose-directory'),
+    start: (request) => ipcRenderer.invoke('ai-selection:start', request),
+    listSessions: () => ipcRenderer.invoke('ai-selection:list'),
+    getSession: (sessionId) => ipcRenderer.invoke('ai-selection:get', sessionId),
+    pause: (sessionId) => ipcRenderer.invoke('ai-selection:pause', sessionId),
+    resume: (sessionId) => ipcRenderer.invoke('ai-selection:resume', sessionId),
+    cancel: (sessionId) => ipcRenderer.invoke('ai-selection:cancel', sessionId),
+    applyOperation: (sessionId, revision, operation) => ipcRenderer.invoke('ai-selection:apply-operation', sessionId, revision, operation),
+    analyzePeople: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-people', sessionId, itemIds),
+    renamePerson: (sessionId, groupId, name) => ipcRenderer.invoke('ai-selection:rename-person', sessionId, groupId, name),
+    setPersonAvatar: (sessionId, groupId, itemId, bounds) => ipcRenderer.invoke('ai-selection:set-person-avatar', sessionId, groupId, itemId, bounds),
+    mergePeople: (sessionId, targetGroupId, sourceGroupId) => ipcRenderer.invoke('ai-selection:merge-people', sessionId, targetGroupId, sourceGroupId),
+    unmergePerson: (sessionId, targetGroupId, memberIdentityId) => ipcRenderer.invoke('ai-selection:unmerge-person', sessionId, targetGroupId, memberIdentityId),
+    analyzeContentTags: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-content-tags', sessionId, itemIds),
+    analyzeVideos: (sessionId, itemIds) => ipcRenderer.invoke('ai-selection:analyze-videos', sessionId, itemIds),
+    undo: (sessionId) => ipcRenderer.invoke('ai-selection:undo', sessionId),
+    redo: (sessionId) => ipcRenderer.invoke('ai-selection:redo', sessionId),
+    createWorkspaceProject: (sessionId, name) => ipcRenderer.invoke('ai-selection:create-project', sessionId, name),
+    removeSession: (sessionId) => ipcRenderer.invoke('ai-selection:remove', sessionId),
+    onProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').AiSelectionProgress): void => callback(progress)
+      ipcRenderer.on('ai-selection:progress', listener)
+      return () => ipcRenderer.off('ai-selection:progress', listener)
+    },
+    onSessionUpdated: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, session: import('../src/shared/types').AiSelectionSession): void => callback(session)
+      ipcRenderer.on('ai-selection:session-updated', listener)
+      return () => ipcRenderer.off('ai-selection:session-updated', listener)
+    },
   },
 
   // ── 热更新 ──
@@ -282,6 +326,25 @@ interface CompositionInput {
 
 const lunaRenderCoreApi = {
   init: () => ipcRenderer.invoke('lrc:init'),
+  getNativePreviewCapabilities: () => ipcRenderer.invoke('lrc:getNativePreviewCapabilities'),
+  createNativePreviewSession: (composition: CompositionInput, bounds: unknown) =>
+    ipcRenderer.invoke('lrc:createNativePreviewSession', composition, bounds),
+  updateNativePreviewComposition: (sessionId: number, composition: CompositionInput) =>
+    ipcRenderer.invoke('lrc:updateNativePreviewComposition', sessionId, composition),
+  setNativePreviewBounds: (sessionId: number, bounds: unknown) =>
+    ipcRenderer.invoke('lrc:setNativePreviewBounds', sessionId, bounds),
+  setNativePreviewVisible: (sessionId: number, visible: boolean) =>
+    ipcRenderer.invoke('lrc:setNativePreviewVisible', sessionId, visible),
+  playNativePreview: (sessionId: number, time: number) =>
+    ipcRenderer.invoke('lrc:playNativePreview', sessionId, time),
+  pauseNativePreview: (sessionId: number, time: number) =>
+    ipcRenderer.invoke('lrc:pauseNativePreview', sessionId, time),
+  seekNativePreview: (sessionId: number, time: number) =>
+    ipcRenderer.invoke('lrc:seekNativePreview', sessionId, time),
+  getNativePreviewSessionStats: (sessionId: number) =>
+    ipcRenderer.invoke('lrc:getNativePreviewSessionStats', sessionId),
+  destroyNativePreviewSession: (sessionId: number) =>
+    ipcRenderer.invoke('lrc:destroyNativePreviewSession', sessionId),
   prepareRuntimeResource: (kind: 'fonts' | 'luts') => ipcRenderer.invoke('lrc:prepareRuntimeResource', kind),
   resetCompatibilityBlock: () => ipcRenderer.invoke('lrc:resetCompatibilityBlock'),
   loadTexture: (data: Buffer, width: number, height: number) =>
