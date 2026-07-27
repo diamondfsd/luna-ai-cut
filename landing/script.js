@@ -229,8 +229,8 @@ const PAGE_RENDERERS = {
             <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="#2997ff" stroke="none"/>
           </svg>
         </div>
-        <p class="mockup-connect-hint">通过 Wi-Fi 或数据线访问 Luna 素材<br/>连接后进入统一媒体库</p>
-        <span class="mockup-connect-btn" role="button" tabindex="0">选择连接方式</span>
+        <p class="mockup-connect-hint">连接兼容相机或导入本地素材<br/>进入统一的整理与创作流程</p>
+        <span class="mockup-connect-btn" role="button" tabindex="0">选择素材来源</span>
       </div>
     </div>
   `,
