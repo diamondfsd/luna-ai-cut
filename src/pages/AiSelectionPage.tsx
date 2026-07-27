@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, CheckCircle2, CircleAlert, Download, FolderPlus, GitMerge, Grid2X2, Image as ImageIcon, Images, Layers3, ListChecks, Pause, Pencil, Play, RefreshCw, Settings2, Sparkles, Square, Users } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, CircleAlert, GitMerge, Grid2X2, Image as ImageIcon, Images, Layers3, ListChecks, Pause, Pencil, Play, RefreshCw, Settings2, Sparkles, Square, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { AiSelectionTaskPicker } from '../ai-selection/AiSelectionTaskPicker'
@@ -419,8 +419,9 @@ export function AiSelectionPage() {
         {stage === 'compare' && activeGroup && <section className="ai-selection-sidebar-section"><Button variant="secondary" icon={<Check size={14} />} onClick={confirmCurrentGroup}>接受本组推荐</Button></section>}
       </div>
       <div className="ai-selection-sidebar-footer">
-        <Button variant="secondary" icon={<Download size={14} />} disabled={!selectedItems.length} onClick={exportSelectedItems}>导出 ({selectedItems.length})</Button>
-        <Button variant="primary" icon={<FolderPlus size={14} />} disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目 ({selectedItems.length})</Button>
+        {selectedItems.length > 0 && <span className="ai-selection-sidebar-footer-title">当前已选中 {selectedItems.length} 个素材</span>}
+        <Button variant="secondary" disabled={!selectedItems.length} onClick={exportSelectedItems}>导出</Button>
+        <Button variant="primary" disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目</Button>
       </div>
     </aside>
 
