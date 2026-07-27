@@ -9,6 +9,8 @@ import { LutManagementDialog } from '../components/LutManagementDialog'
 import { Button, Input, Switch, toast } from '../ui'
 import '../styles/settings.css'
 
+const isWindows = window.navigator.platform.startsWith('Win')
+
 interface SettingsPageProps {
   activeDevice?: DeviceDefinition
   cacheStats: CacheStats | null
@@ -201,27 +203,29 @@ export function SettingsPage({
           </div>
         </section>
 
-        <section className="settings-group">
-          <h2 className="settings-group-title">实验性功能</h2>
-          <div className="settings-card">
-            <article className="settings-row">
-              <div className="settings-row-copy">
-                <span>GPU 预览加速</span>
-                <em>减少预览和时间跳转时的等待；部分设备上可能存在显示兼容问题</em>
-              </div>
-              <Switch
-                checked={settings?.experimentalGpuPreview ?? false}
-                disabled={!settings}
-                ariaLabel="GPU 预览加速"
-                onCheckedChange={(enabled) => {
-                  const patch = { experimentalGpuPreview: enabled }
-                  setSettings((current) => (current ? { ...current, ...patch } : current))
-                  void window.luna.saveSettings(patch).then(setSettings)
-                }}
-              />
-            </article>
-          </div>
-        </section>
+        {!isWindows && (
+          <section className="settings-group">
+            <h2 className="settings-group-title">实验性功能</h2>
+            <div className="settings-card">
+              <article className="settings-row">
+                <div className="settings-row-copy">
+                  <span>GPU 预览加速</span>
+                  <em>减少预览和时间跳转时的等待；部分设备上可能存在显示兼容问题</em>
+                </div>
+                <Switch
+                  checked={settings?.experimentalGpuPreview ?? false}
+                  disabled={!settings}
+                  ariaLabel="GPU 预览加速"
+                  onCheckedChange={(enabled) => {
+                    const patch = { experimentalGpuPreview: enabled }
+                    setSettings((current) => (current ? { ...current, ...patch } : current))
+                    void window.luna.saveSettings(patch).then(setSettings)
+                  }}
+                />
+              </article>
+            </div>
+          </section>
+        )}
 
         <section className="settings-group">
           <h2 className="settings-group-title">连接与维护</h2>
