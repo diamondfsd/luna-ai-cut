@@ -11,6 +11,7 @@ interface FaceObservation {
   itemId: string
   bounds: AiFaceDescriptor['bounds']
   embedding: number[]
+  frameTime?: number
 }
 
 interface WorkingGroup {
@@ -88,7 +89,7 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
   const observations: FaceObservation[] = items.flatMap((item) => (
     item.personEvidence?.faces?.flatMap((face) => (
       identityFace(item, face)
-        ? [{ itemId: item.id, bounds: face.bounds, embedding: face.embedding }]
+        ? [{ itemId: item.id, bounds: face.bounds, embedding: face.embedding, frameTime: face.frameTime }]
         : []
     )) ?? []
   ))
@@ -96,7 +97,10 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
 
   for (const observation of observations) {
     const candidate = groups
-      .filter((group) => !group.observations.some((entry) => entry.itemId === observation.itemId))
+      .filter((group) => !group.observations.some((entry) => (
+        entry.itemId === observation.itemId
+        && (entry.frameTime === undefined || observation.frameTime === undefined || entry.frameTime === observation.frameTime)
+      )))
       .map((group) => ({ group, ...groupSimilarity(group, observation) }))
       .filter((entry) => (
         entry.member >= FACE_MEMBER_MATCH_THRESHOLD
@@ -131,14 +135,17 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
     .sort((left, right) => right.itemIds.length - left.itemIds.length || left.coverItemId.localeCompare(right.coverItemId))
     .map((group, index) => {
       const identity = matchingIdentity(group.embeddings, identities)
+      const coverItem = items.find((item) => item.id === group.coverItemId)
       return {
         id: `face_${group.coverItemId}_${Math.round(group.coverBounds.x * 1000)}_${Math.round(group.coverBounds.y * 1000)}`,
         identityId: identity?.id ?? null,
         name: identity?.name ?? `人物 ${index + 1}`,
         itemIds: group.itemIds,
         coverItemId: group.coverItemId,
-        coverUrl: identity?.avatarDataUrl ?? items.find((item) => item.id === group.coverItemId)?.path ?? null,
-        coverBounds: identity?.avatarDataUrl ? { x: 0, y: 0, width: 1, height: 1 } : group.coverBounds,
+        coverUrl: identity?.avatarDataUrl ?? coverItem?.thumbnailUrl ?? coverItem?.path ?? null,
+        coverBounds: identity?.avatarDataUrl || coverItem?.kind === 'video'
+          ? { x: 0, y: 0, width: 1, height: 1 }
+          : group.coverBounds,
         memberFaces: group.memberFaces,
       }
     })
@@ -159,10 +166,12 @@ export function buildFaceGroups(items: AiSelectionItem[], identities: AiPersonId
 
 export function faceEmbeddingForGroup(items: AiSelectionItem[], group: AiFaceGroup): number[] | null {
   const item = items.find((candidate) => candidate.id === group.coverItemId)
+  const member = group.memberFaces.find((candidate) => candidate.itemId === group.coverItemId)
   const face = item?.personEvidence?.faces?.find((candidate) => (
     identityFace(item, candidate)
-    && Math.abs(candidate.bounds.x - group.coverBounds.x) < 0.0001
-    && Math.abs(candidate.bounds.y - group.coverBounds.y) < 0.0001
+    && member
+    && Math.abs(candidate.bounds.x - member.bounds.x) < 0.0001
+    && Math.abs(candidate.bounds.y - member.bounds.y) < 0.0001
   ))
   return face?.embedding ? [...face.embedding] : null
 }

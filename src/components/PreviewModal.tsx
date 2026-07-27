@@ -199,10 +199,6 @@ export function PreviewModal({
     try {
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) { toast.error('导出目录未配置'); return }
-      if (exportConfig.dolbyVision && watermarkLayers.length !== 1) {
-        toast.error('Dolby Vision 导出需要先开启水印')
-        return
-      }
 
       const sources: BatchExportSource[] = await Promise.all(exportList.map(async (sourcePath) => {
         const resolution = await window.luna.workspace.getMediaResolution(sourcePath)
@@ -210,9 +206,15 @@ export function PreviewModal({
           sourcePath,
           isVideoPath(sourcePath) ? 'video' : 'image',
         )
+        const layers = buildExportLayers(
+          sourcePath,
+          resolution,
+          usesCustomWatermark(watermarkSettings) || canUseBuiltinWatermark ? watermarkSettings : null,
+        )
         return {
           sourcePath,
-          layers: buildExportLayers(sourcePath, resolution, usesCustomWatermark(watermarkSettings) || canUseBuiltinWatermark ? watermarkSettings : null),
+          layers,
+          passthrough: layers.length === 1,
         }
       }))
 
@@ -228,7 +230,7 @@ export function PreviewModal({
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, exportAppleLivePhoto, exportConfig, exportList, hasVideoInBatch, watermarkLayers.length, watermarkSettings])
+  }, [batchEnqueuing, exportAppleLivePhoto, exportConfig, exportList, hasVideoInBatch, watermarkSettings])
 
   // Escape 关闭
   useEffect(() => {

@@ -2,7 +2,6 @@ import { dialog, ipcMain } from 'electron'
 
 import type { AiSelectionStartRequest, AiSelectionUserOperation } from '../src/shared/types'
 import type { IpcContext } from './ipcContext'
-import { getLocalResourcesDir, getSettings } from './settingsService'
 import {
   applyAiSelectionOperation,
   analyzeAiSelectionContentTags,
@@ -37,22 +36,6 @@ export function register(ctx: IpcContext): void {
       properties: ['openDirectory'],
     })
     return result.canceled ? null : result.filePaths[0] ?? null
-  })
-  ipcMain.handle('ai-selection:choose-files', async () => {
-    const settings = await getSettings()
-    const result = await dialog.showOpenDialog({
-      title: '选择需要 AI 选片的照片和视频',
-      defaultPath: getLocalResourcesDir(settings),
-      properties: ['openFile', 'multiSelections'],
-      filters: [{
-        name: '图片和视频',
-        extensions: [
-          'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'tiff', 'heic', 'heif',
-          'mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'mts', 'insv', 'm4v', 'lrv', 'ogg',
-        ],
-      }],
-    })
-    return result.canceled ? [] : result.filePaths
   })
   ipcMain.handle('ai-selection:start', (_event, request: AiSelectionStartRequest) => startAiSelection(request))
   ipcMain.handle('ai-selection:list', () => listAiSelectionSessions())

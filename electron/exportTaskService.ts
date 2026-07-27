@@ -161,7 +161,7 @@ export async function updateItem(
   const item = task.items.find((i) => i.id === itemId)
   if (!item) return
 
-  if (isTerminalStatus(item.status) && data.status === 'exporting') {
+  if (isTerminalStatus(item.status) && data.status !== undefined && data.status !== item.status) {
     return
   }
 

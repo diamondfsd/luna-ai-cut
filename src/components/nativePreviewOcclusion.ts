@@ -22,6 +22,10 @@ function isVisible(element: HTMLElement): boolean {
   return rect.width > 0 && rect.height > 0
 }
 
+export function shouldShowNativePreview(active: boolean, hasBounds: boolean, occluded: boolean): boolean {
+  return active && hasBounds && !occluded
+}
+
 export function isNativePreviewOccluded(canvas: HTMLElement): boolean {
   const canvasRect = canvas.getBoundingClientRect()
   if (canvasRect.width <= 0 || canvasRect.height <= 0) return false
