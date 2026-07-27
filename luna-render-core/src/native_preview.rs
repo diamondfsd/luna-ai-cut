@@ -101,7 +101,7 @@ pub fn get_native_preview_capabilities() -> NativePreviewCapabilities {
         decoder: decoder.to_string(),
         system_hardware_decode,
         external_gpu_texture,
-        direct_gpu_presentation: cfg!(target_os = "macos"),
+        direct_gpu_presentation: cfg!(any(target_os = "macos", target_os = "windows")),
     }
 }
 
@@ -138,12 +138,12 @@ impl Task for CreateNativePreviewSessionTask {
     type JsValue = u32;
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             return Err(napi::Error::from_reason("当前平台尚未接入原生 GPU 预览"));
         }
 
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             let input = self
                 .input
@@ -159,7 +159,7 @@ impl Task for CreateNativePreviewSessionTask {
             std::thread::Builder::new()
                 .name(format!("luna-native-preview-{session_id}"))
                 .spawn(move || {
-                    run_macos_preview_session(
+                    run_native_preview_session(
                         input,
                         parent_view,
                         command_receiver,
@@ -194,15 +194,18 @@ impl Task for CreateNativePreviewSessionTask {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn run_macos_preview_session(
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn run_native_preview_session(
     input: CreateNativePreviewSessionInput,
     parent_view: usize,
     receiver: Receiver<PreviewCommand>,
     ready: mpsc::SyncSender<Result<(), String>>,
     stats: std::sync::Arc<PreviewSessionStatsState>,
 ) {
+    #[cfg(target_os = "macos")]
     use crate::macos::{NativePreviewRuntime, PreviewBounds};
+    #[cfg(target_os = "windows")]
+    use crate::windows::{NativePreviewRuntime, PreviewBounds};
 
     let bounds = PreviewBounds {
         x: input.bounds.x,
@@ -212,7 +215,16 @@ fn run_macos_preview_session(
         scale_factor: input.bounds.scale_factor,
     };
     let mut runtime = match NativePreviewRuntime::new(
-        parent_view as *mut std::ffi::c_void,
+        {
+            #[cfg(target_os = "macos")]
+            {
+                parent_view as *mut std::ffi::c_void
+            }
+            #[cfg(target_os = "windows")]
+            {
+                parent_view
+            }
+        },
         bounds,
         input.ffmpeg_path,
         input.ffprobe_path,
@@ -314,18 +326,21 @@ fn run_macos_preview_session(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[allow(clippy::too_many_arguments)]
 fn apply_command(
     command: PreviewCommand,
-    runtime: &mut crate::macos::NativePreviewRuntime,
+    runtime: &mut PlatformNativePreviewRuntime,
     current_time: &mut f64,
     playing: &mut bool,
     play_started_at: &mut Instant,
     play_started_time: &mut f64,
     render_requested: &mut bool,
 ) -> bool {
+    #[cfg(target_os = "macos")]
     use crate::macos::PreviewBounds;
+    #[cfg(target_os = "windows")]
+    use crate::windows::PreviewBounds;
 
     match command {
         PreviewCommand::UpdateComposition(composition) => {
@@ -333,6 +348,7 @@ fn apply_command(
             *render_requested = true;
         }
         PreviewCommand::SetBounds(bounds) => {
+            #[cfg(target_os = "macos")]
             runtime.set_bounds(PreviewBounds {
                 x: bounds.x,
                 y: bounds.y,
@@ -340,6 +356,16 @@ fn apply_command(
                 height: bounds.height,
                 scale_factor: bounds.scale_factor,
             });
+            #[cfg(target_os = "windows")]
+            if let Err(error) = runtime.set_bounds(PreviewBounds {
+                x: bounds.x,
+                y: bounds.y,
+                width: bounds.width,
+                height: bounds.height,
+                scale_factor: bounds.scale_factor,
+            }) {
+                crate::logging::error(&format!("[NativePreview] resize: {error}"));
+            }
             *render_requested = true;
         }
         PreviewCommand::SetVisible(visible) => runtime.set_visible(visible),
@@ -365,6 +391,11 @@ fn apply_command(
     }
     true
 }
+
+#[cfg(target_os = "macos")]
+type PlatformNativePreviewRuntime = crate::macos::NativePreviewRuntime;
+#[cfg(target_os = "windows")]
+type PlatformNativePreviewRuntime = crate::windows::NativePreviewRuntime;
 
 #[napi]
 pub fn create_native_preview_session(
@@ -446,7 +477,7 @@ mod tests {
         let capabilities = get_native_preview_capabilities();
         assert_eq!(
             capabilities.direct_gpu_presentation,
-            cfg!(target_os = "macos")
+            cfg!(any(target_os = "macos", target_os = "windows"))
         );
         assert!(!capabilities.platform.is_empty());
         assert!(!capabilities.decoder.is_empty());

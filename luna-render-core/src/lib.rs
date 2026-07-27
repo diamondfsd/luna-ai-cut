@@ -135,16 +135,43 @@ pub(crate) fn lock_preview<T>(
 pub(crate) fn lock_export<T>(
     f: impl FnOnce(&mut Compositor) -> Result<T, String>,
 ) -> napi::Result<T> {
+    ensure_export_compositor()?;
     lock_compositor(&COMPOSITOR_EXPORT, "export", f)
+}
+
+fn ensure_export_compositor() -> napi::Result<()> {
+    {
+        let guard = COMPOSITOR_EXPORT
+            .lock()
+            .map_err(|e| napi::Error::from_reason(format!("lock export compositor: {}", e)))?;
+        if guard.is_some() {
+            return Ok(());
+        }
+    }
+    let replacement = new_shared_compositor().map_err(napi::Error::from_reason)?;
+    let mut guard = COMPOSITOR_EXPORT
+        .lock()
+        .map_err(|e| napi::Error::from_reason(format!("lock export compositor: {}", e)))?;
+    if guard.is_none() {
+        *guard = Some(replacement);
+        log!("init_export_compositor OK shared_gpu=true");
+    }
+    Ok(())
+}
+
+pub(crate) fn new_shared_compositor() -> Result<Compositor, String> {
+    let guard = COMPOSITOR_PREVIEW
+        .lock()
+        .map_err(|error| format!("lock preview compositor: {error}"))?;
+    let shared = guard
+        .as_ref()
+        .ok_or_else(|| "preview compositor is not initialized".to_string())?;
+    Compositor::new_with_shared_gpu(shared)
 }
 
 #[cfg(target_os = "windows")]
 pub(crate) fn reset_export_compositor() -> napi::Result<()> {
-    let log_path = COMPOSITOR_LOG_PATH
-        .lock()
-        .map_err(|e| napi::Error::from_reason(format!("lock compositor log path: {}", e)))?
-        .clone();
-    let replacement = Compositor::new(log_path.as_deref())
+    let replacement = new_shared_compositor()
         .map_err(|e| napi::Error::from_reason(format!("reinitialize export compositor: {}", e)))?;
     let mut guard = COMPOSITOR_EXPORT
         .lock()
@@ -170,7 +197,6 @@ fn init_compositors(log_path: Option<String>) -> napi::Result<()> {
     }
     let path = log_path.as_deref();
     init_one_compositor(&COMPOSITOR_PREVIEW, path, "preview")?;
-    init_one_compositor(&COMPOSITOR_EXPORT, path, "export")?;
     Ok(())
 }
 

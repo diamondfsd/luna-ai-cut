@@ -76,14 +76,20 @@ async function waitForRenderedFrame(
   api: NativePreviewApi,
   sessionId: number,
   previousFrames: number,
-): Promise<void> {
-  const deadline = performance.now() + 3000
+  isActive: () => boolean = () => true,
+): Promise<boolean> {
+  // Windows 首次创建 D3D12 管线并加载多个 LUT/水印时可能需要数秒。
+  // 会话仍在正常渲染时不应过早销毁并回退。
+  const deadline = performance.now() + 15000
   while (performance.now() < deadline) {
+    if (!isActive()) return false
     const stats = await api.getNativePreviewSessionStats(sessionId)
+    if (!isActive()) return false
     if (stats.renderErrors > 0) throw new Error('原生预览暂时无法显示画面')
-    if (stats.renderedFrames > previousFrames) return
+    if (stats.renderedFrames > previousFrames) return true
     await new Promise((resolve) => window.setTimeout(resolve, 16))
   }
+  if (!isActive()) return false
   throw new Error('等待原生预览画面超时')
 }
 
@@ -217,10 +223,16 @@ export function NativeGpuVideoPreview({
         return api.setNativePreviewVisible(sessionId, visible)
           .then(() => command)
           .then(() => (
-            visible ? waitForRenderedFrame(api, sessionId, 0) : undefined
+            visible
+              ? waitForRenderedFrame(api, sessionId, 0, () => (
+                !cancelled && sessionRef.current === sessionId
+              ))
+              : true
           ))
-          .then(() => {
-            if (!cancelled) callbackRef.current.onRender?.()
+          .then((rendered) => {
+            if (rendered && !cancelled && sessionRef.current === sessionId) {
+              callbackRef.current.onRender?.()
+            }
           })
       })
       .catch((error: unknown) => {
@@ -246,21 +258,22 @@ export function NativeGpuVideoPreview({
     if (sessionId === null) return
     const api = nativePreviewApi()
     if (!api) return
-    void api.getNativePreviewSessionStats(sessionId)
-      .then((before) => api.updateNativePreviewComposition(sessionId, composition)
-        .then(() => (
-          occludedRef.current
-            ? undefined
-            : waitForRenderedFrame(api, sessionId, before.renderedFrames)
-        )))
-      .then(() => {
-        if (sessionRef.current === sessionId) callbackRef.current.onRender?.()
-      })
-      .catch((error: unknown) => {
-        if (sessionRef.current === sessionId) {
+    const isActive = () => sessionRef.current === sessionId
+    void (async () => {
+      try {
+        const before = await api.getNativePreviewSessionStats(sessionId)
+        if (!isActive()) return
+        await api.updateNativePreviewComposition(sessionId, composition)
+        if (!isActive()) return
+        const rendered = occludedRef.current
+          || await waitForRenderedFrame(api, sessionId, before.renderedFrames, isActive)
+        if (rendered && isActive()) callbackRef.current.onRender?.()
+      } catch (error: unknown) {
+        if (isActive()) {
           callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
         }
-      })
+      }
+    })()
   }, [composition])
 
   useEffect(() => {
@@ -302,23 +315,25 @@ export function NativeGpuVideoPreview({
       const sessionId = sessionRef.current
       const api = nativePreviewApi()
       if (sessionId === null || !api) return
-      void api.getNativePreviewSessionStats(sessionId)
-        .then((before) => api.seekNativePreview(
-          sessionId,
-          compositionTimeFor(video, playbackRef.current.primaryLayer),
-        ).then(() => (
-          occludedRef.current
-            ? undefined
-            : waitForRenderedFrame(api, sessionId, before.renderedFrames)
-        )))
-        .then(() => {
-          if (sessionRef.current === sessionId) callbackRef.current.onRender?.()
-        })
-        .catch((error: unknown) => {
-          if (sessionRef.current === sessionId) {
+      const isActive = () => sessionRef.current === sessionId
+      void (async () => {
+        try {
+          const before = await api.getNativePreviewSessionStats(sessionId)
+          if (!isActive()) return
+          await api.seekNativePreview(
+            sessionId,
+            compositionTimeFor(video, playbackRef.current.primaryLayer),
+          )
+          if (!isActive()) return
+          const rendered = occludedRef.current
+            || await waitForRenderedFrame(api, sessionId, before.renderedFrames, isActive)
+          if (rendered && isActive()) callbackRef.current.onRender?.()
+        } catch (error: unknown) {
+          if (isActive()) {
             callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
           }
-        })
+        }
+      })()
     }
     video.addEventListener('loadedmetadata', handleLoaded)
     video.addEventListener('seeked', handleSeeked)
