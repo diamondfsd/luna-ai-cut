@@ -856,6 +856,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       <ExportSettingsDialog
         open={exportDialogOpen}
         tone="dark"
+        description={exportDialogSources.length > 1 ? `将分别导出 ${exportDialogSources.length} 个文件。` : undefined}
         onOpenChange={setExportDialogOpen}
         previewSource={exportDialogSources.length === 1
           ? {
