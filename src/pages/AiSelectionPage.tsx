@@ -155,6 +155,7 @@ export function AiSelectionPage() {
   }, [activeGroup?.itemIds, activePeopleItemIds, filter, items, photos, sceneSections, stage])
   const focused = itemsById.get(focusedId) ?? null
   const running = session?.status === 'indexing' || session?.status === 'analyzing' || session?.status === 'queued'
+  const peopleAnalysisActive = peopleAnalysis.running || (session?.status === 'analyzing' && session.phase === 'people')
   const completedPercent = session?.counts.total ? Math.round(session.counts.completed / session.counts.total * 100) : 0
   const percent = running ? Math.min(96, completedPercent) : completedPercent
 
@@ -418,8 +419,8 @@ export function AiSelectionPage() {
         {stage === 'compare' && activeGroup && <section className="ai-selection-sidebar-section"><Button variant="secondary" icon={<Check size={14} />} onClick={confirmCurrentGroup}>接受本组推荐</Button></section>}
       </div>
       <div className="ai-selection-sidebar-footer">
-        <Button variant="primary" icon={<FolderPlus size={14} />} disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目 ({selectedItems.length})</Button>
         <Button variant="secondary" icon={<Download size={14} />} disabled={!selectedItems.length} onClick={exportSelectedItems}>导出 ({selectedItems.length})</Button>
+        <Button variant="primary" icon={<FolderPlus size={14} />} disabled={!selectedItems.length || session.workspaceCreation.status === 'creating'} onClick={() => void createProject()}>创建项目 ({selectedItems.length})</Button>
       </div>
     </aside>
 
@@ -457,7 +458,7 @@ export function AiSelectionPage() {
       {stage === 'recommended' && <header className="ai-selection-view-heading"><div><h2>AI 推荐</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'scenes' && <header className="ai-selection-view-heading"><div><h2>全部素材</h2><span>{visibleItems.length} 项</span></div>{selectAllAction}</header>}
       {stage === 'compare' && activeGroup && <header className="ai-selection-view-heading"><div><h2>相似素材比较</h2><span>{activeGroup.itemIds.length} 项</span></div>{selectAllAction}</header>}
-      {stage === 'people' && <header className="ai-selection-view-heading"><div><h2>{activeCoPhotoGroup?.name ?? activeFaceGroup?.name ?? '人物分组'}</h2><span>{activeCoPhotoGroup || activeFaceGroup ? `${visibleItems.length} 项` : '尚未分析'}</span></div><div className="ai-selection-view-actions">
+      {stage === 'people' && <header className="ai-selection-view-heading"><div><h2>{activeCoPhotoGroup?.name ?? activeFaceGroup?.name ?? '人物分组'}</h2>{peopleAnalysisActive ? <div className="ai-selection-heading-loading"><LoadingIndicator label={peopleAnalysis.running && peopleAnalysis.total > 0 ? `正在分析人物 ${peopleAnalysis.completed}/${peopleAnalysis.total}` : '正在识别人物'} /></div> : <span>{activeCoPhotoGroup || activeFaceGroup ? `${visibleItems.length} 项` : '尚未分析'}</span>}</div><div className="ai-selection-view-actions">
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<Pencil size={14} />} disabled={busy} onClick={() => { setRenameValue(activeFaceGroup.name); setRenameOpen(true) }}>改名</Button>}
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<ImageIcon size={14} />} disabled={busy} onClick={() => setAvatarOpen(true)}>换头像</Button>}
         {activeFaceGroup && <Button variant="secondary" size="compact" icon={<GitMerge size={14} />} disabled={busy || (session.faceGroups.length < 2 && !activeFaceGroup.mergedMembers?.length)} onClick={() => setMergeOpen(true)}>合并</Button>}
