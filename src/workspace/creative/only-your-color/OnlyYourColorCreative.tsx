@@ -1,5 +1,5 @@
-import { ArrowLeft, Brush, Download, Eye, EyeOff, RotateCcw, ScanSearch } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { ArrowLeft, Download, Eye, EyeOff, RotateCcw, ScanSearch } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
 import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
@@ -8,22 +8,27 @@ import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 import { Button, IconButton, LoadingIndicator, SegmentedControl, toast } from '../../../ui'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
-import { useWorkspaceCanvas } from '../../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
-import { useWorkspaceMask } from '../../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
-import { MaskOverlay } from '../../mask/MaskOverlay'
-import { MaskPanel } from '../../mask/MaskPanel'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
 import { erodeMaskOnePixel, subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
 import { exportOnlyYourColorImage } from './exportOnlyYourColorImage'
 import { buildOnlyYourColorLayers } from './onlyYourColorLayers'
-import { ONLY_YOUR_COLOR_MASK_LAYER_ID, onlyYourColorMaskLayer } from './onlyYourColorMask'
+import {
+  ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID,
+  ONLY_YOUR_COLOR_MASK_LAYER_ID,
+  onlyYourColorBackgroundMaskLayer,
+  onlyYourColorMaskLayer,
+} from './onlyYourColorMask'
 import {
   DEFAULT_ONLY_YOUR_COLOR_INTENSITY,
+  DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION,
+  DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE,
   normalizeOnlyYourColorIntensity,
+  normalizeOnlyYourColorSubjectSaturation,
+  normalizeOnlyYourColorSubjectVibrance,
   onlyYourColorStateForAsset,
 } from './onlyYourColorState'
 import './only-your-color.css'
@@ -31,9 +36,6 @@ import './only-your-color.css'
 export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
-  const canvas = useWorkspaceCanvas()
-  const workspaceMask = useWorkspaceMask()
-  const setWorkspaceMaskEditing = workspaceMask.setEditing
   const activeAsset = media.activeMedia
   const projectId = media.currentProject?.id
   const activeAssetId = activeAsset?.id
@@ -41,6 +43,8 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
   const saved = onlyYourColorStateForAsset(media.currentProject, activeAssetId)
   const allowWatermark = useLunaUltraWatermark(activeAsset)
   const [intensity, setIntensity] = useState(normalizeOnlyYourColorIntensity(saved?.intensity))
+  const [subjectSaturation, setSubjectSaturation] = useState(normalizeOnlyYourColorSubjectSaturation(saved?.subjectSaturation))
+  const [subjectVibrance, setSubjectVibrance] = useState(normalizeOnlyYourColorSubjectVibrance(saved?.subjectVibrance))
   const [subjectModel, setSubjectModel] = useState<NonNullable<WorkspaceOnlyYourColorState['subjectModel']>>(saved?.subjectModel ?? 'fast')
   const [maskPath, setMaskPath] = useState<string | null>(saved?.maskPath ?? null)
   const [maskOwnerId, setMaskOwnerId] = useState<string | null>(saved?.maskPath ? activeAssetId ?? null : null)
@@ -51,7 +55,6 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
   const [segmenting, setSegmenting] = useState(false)
   const [progress, setProgress] = useState('')
   const [pointPicking, setPointPicking] = useState(false)
-  const [maskEditing, setMaskEditing] = useState(false)
   const [showOriginal, setShowOriginal] = useState(false)
   const [exporting, setExporting] = useState(false)
   const requestRef = useRef<string | null>(null)
@@ -59,17 +62,18 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
   const saveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
   const maskLayerOwnerRef = useRef<string | null>(null)
-  const stageRef = useRef<HTMLDivElement>(null)
   const isImage = activeAsset?.kind === 'image'
   const activeMaskPath = maskOwnerId === activeAssetId ? maskPath : null
-  const creativeMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === ONLY_YOUR_COLOR_MASK_LAYER_ID)
+  const subjectMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === ONLY_YOUR_COLOR_MASK_LAYER_ID)
+  const backgroundMaskLayer = edit.pipeline.colorMasks.find((layer) => layer.id === ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID)
 
   useEffect(() => {
     const restored = onlyYourColorStateForAsset(media.currentProject, activeAssetId)
     setIntensity(normalizeOnlyYourColorIntensity(restored?.intensity))
+    setSubjectSaturation(normalizeOnlyYourColorSubjectSaturation(restored?.subjectSaturation))
+    setSubjectVibrance(normalizeOnlyYourColorSubjectVibrance(restored?.subjectVibrance))
     setSubjectModel(restored?.subjectModel ?? 'fast')
     setRestoredOwnerKey(ownerKey)
-    setMaskEditing(false)
     setShowOriginal(false)
     // 只在项目或素材切换时恢复，避免自动保存引起面板重置。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,8 +106,6 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     setPointPicking(false)
-    setMaskEditing(false)
-    setWorkspaceMaskEditing(false)
     setSegmenting(false)
     setProgress('')
     automaticAttemptRef.current = null
@@ -113,31 +115,19 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
       requestRef.current = null
       void window.luna.workspace.cancelSegmentation(requestId)
     }
-  }, [activeAssetId, setWorkspaceMaskEditing])
+  }, [activeAssetId])
 
   useEffect(() => {
-    if (!creativeMaskLayer?.path || maskLayerOwnerRef.current !== activeAssetId) return
+    if (!subjectMaskLayer?.path || maskLayerOwnerRef.current !== activeAssetId) return
     setMaskOwnerId(activeAssetId ?? null)
-    setMaskPath(creativeMaskLayer.path)
-  }, [activeAssetId, creativeMaskLayer?.path])
-
-  useEffect(() => () => setWorkspaceMaskEditing(false), [setWorkspaceMaskEditing])
-
-  useLayoutEffect(() => {
-    const stage = stageRef.current
-    if (!stage || !sourceSize || !maskEditing) return
-    const updateMetrics = () => {
-      const rect = stage.getBoundingClientRect()
-      canvas.setPreviewMetrics({
-        imageRect: { x: 0, y: 0, width: rect.width, height: rect.height },
-        sourceAspect: sourceSize.width / sourceSize.height,
-      })
-    }
-    updateMetrics()
-    const observer = new ResizeObserver(updateMetrics)
-    observer.observe(stage)
-    return () => observer.disconnect()
-  }, [canvas, maskEditing, sourceSize])
+    setMaskPath(subjectMaskLayer.path)
+    if (backgroundMaskLayer?.path === subjectMaskLayer.path) return
+    edit.commitPatch({
+      colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID
+        ? onlyYourColorBackgroundMaskLayer(subjectMaskLayer.path, subjectMaskLayer.width, subjectMaskLayer.height, layer)
+        : layer),
+    })
+  }, [activeAssetId, backgroundMaskLayer?.path, edit, subjectMaskLayer])
 
   useEffect(() => {
     if (!activeMaskPath || !projectId) {
@@ -161,10 +151,24 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
   }, [activeMaskPath, projectId])
 
   useEffect(() => {
+    if (!activeMaskPath || !maskData || subjectMaskLayer && backgroundMaskLayer) return
+    maskLayerOwnerRef.current = activeAssetId ?? null
+    edit.commitPatch({
+      colorMasks: [
+        ...edit.pipeline.colorMasks.filter((layer) => layer.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID && layer.id !== ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID),
+        onlyYourColorMaskLayer(activeMaskPath, maskData.width, maskData.height, subjectMaskLayer),
+        onlyYourColorBackgroundMaskLayer(activeMaskPath, maskData.width, maskData.height, backgroundMaskLayer),
+      ],
+    })
+  }, [activeAssetId, activeMaskPath, backgroundMaskLayer, edit, maskData, subjectMaskLayer])
+
+  useEffect(() => {
     const project = media.currentProject
     if (!project || !activeAssetId || restoredOwnerKey !== ownerKey) return
     const nextState: WorkspaceOnlyYourColorState = {
       intensity,
+      subjectSaturation,
+      subjectVibrance,
       subjectModel,
       maskPath: activeMaskPath ?? undefined,
       maskAssetId: activeMaskPath ? activeAssetId : undefined,
@@ -188,7 +192,7 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
       void window.luna.workspace.saveProject(nextProject).catch(() => undefined)
     }, 300)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAssetId, activeMaskPath, intensity, ownerKey, restoredOwnerKey, subjectModel])
+  }, [activeAssetId, activeMaskPath, intensity, ownerKey, restoredOwnerKey, subjectModel, subjectSaturation, subjectVibrance])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -205,12 +209,17 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
     ? buildOnlyYourColorLayers({
       layers: baseLayers,
       sourcePath: activeAsset.path,
-      maskPath: activeMaskPath,
+      subjectMaskPath: subjectMaskLayer?.path ?? activeMaskPath,
+      backgroundMaskPath: backgroundMaskLayer?.path ?? activeMaskPath,
       intensity,
-      subjectMaskInverted: creativeMaskLayer?.inverted,
-      maskFeather: creativeMaskLayer?.feather,
+      subjectSaturation,
+      subjectVibrance,
+      subjectMaskInverted: subjectMaskLayer?.inverted,
+      backgroundMaskInverted: backgroundMaskLayer?.inverted,
+      subjectMaskFeather: subjectMaskLayer?.feather,
+      backgroundMaskFeather: backgroundMaskLayer?.feather,
     })
-    : baseLayers, [activeAsset, activeMaskPath, baseLayers, creativeMaskLayer?.feather, creativeMaskLayer?.inverted, intensity])
+    : baseLayers, [activeAsset, activeMaskPath, backgroundMaskLayer, baseLayers, intensity, subjectMaskLayer, subjectSaturation, subjectVibrance])
   const previewLayers = showOriginal ? baseLayers : effectLayers
 
   function changeSubjectModel(value: NonNullable<WorkspaceOnlyYourColorState['subjectModel']>): void {
@@ -253,14 +262,14 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
       setMaskData({ data: selectedMask, width: result.width, height: result.height })
       setMaskOwnerId(activeAsset.id)
       setMaskPath(savedMask.path)
-      if (creativeMaskLayer) {
-        maskLayerOwnerRef.current = activeAsset.id
-        edit.commitPatch({
-          colorMasks: edit.pipeline.colorMasks.map((layer) => layer.id === ONLY_YOUR_COLOR_MASK_LAYER_ID
-            ? onlyYourColorMaskLayer(savedMask.path, result.width, result.height, layer)
-            : layer),
-        })
-      }
+      maskLayerOwnerRef.current = activeAsset.id
+      edit.commitPatch({
+        colorMasks: [
+          ...edit.pipeline.colorMasks.filter((layer) => layer.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID && layer.id !== ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID),
+          onlyYourColorMaskLayer(savedMask.path, result.width, result.height, subjectMaskLayer),
+          onlyYourColorBackgroundMaskLayer(savedMask.path, result.width, result.height, backgroundMaskLayer),
+        ],
+      })
       setPointPicking(false)
       toast.success(point ? '已更新色彩主体' : '主体已识别，背景已转为黑白')
     } catch (error) {
@@ -276,7 +285,7 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
         setProgress('')
       }
     }
-  }, [activeAsset, creativeMaskLayer, edit, media.currentProject, segmenting, subjectModel])
+  }, [activeAsset, backgroundMaskLayer, edit, media.currentProject, segmenting, subjectMaskLayer, subjectModel])
 
   useEffect(() => {
     if (!isImage || !activeAsset || activeMaskPath || segmenting || restoredOwnerKey !== ownerKey) return
@@ -293,20 +302,6 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
       x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
       y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
     })
-  }
-
-  function openMaskEditor(): void {
-    if (!activeMaskPath || !maskData) return
-    maskLayerOwnerRef.current = activeAssetId ?? null
-    const layer = onlyYourColorMaskLayer(activeMaskPath, maskData.width, maskData.height, creativeMaskLayer)
-    edit.commitPatch({ colorMasks: [...edit.pipeline.colorMasks.filter((item) => item.id !== ONLY_YOUR_COLOR_MASK_LAYER_ID), layer] })
-    setPointPicking(false)
-    setMaskEditing(true)
-    workspaceMask.setActiveLayerId(ONLY_YOUR_COLOR_MASK_LAYER_ID)
-    workspaceMask.setManualTool('move')
-    workspaceMask.setSemanticPicking(false)
-    workspaceMask.setShowOverlay(true)
-    workspaceMask.setEditing(true)
   }
 
   const exportEffect = useCallback(async () => {
@@ -326,14 +321,13 @@ export function OnlyYourColorCreative({ onBack }: { onBack: () => void }) {
     <header className="only-your-color-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>只有你的色彩</span><Button className="only-your-color-compare" variant={showOriginal ? 'toolbar-primary' : 'toolbar'} size="compact" icon={showOriginal ? <EyeOff size={14} /> : <Eye size={14} />} disabled={!isImage || !sourceSize} aria-pressed={showOriginal} title="按住查看原图" onPointerDown={() => setShowOriginal(true)} onPointerUp={() => setShowOriginal(false)} onPointerCancel={() => setShowOriginal(false)} onPointerLeave={() => setShowOriginal(false)} onBlur={() => setShowOriginal(false)} onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') setShowOriginal(true) }} onKeyUp={(event) => { if (event.key === ' ' || event.key === 'Enter') setShowOriginal(false) }}>对比</Button></header>
     <div className="only-your-color-preview">
       {activeAsset && !isImage ? <div className="only-your-color-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>只有你的色彩目前支持图片素材</span></div>
-        : previewLayers.length && outputSize ? <div ref={stageRef} className={`only-your-color-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="only-your-color-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} />{!showOriginal && maskEditing && workspaceMask.editing && <MaskOverlay />}{!showOriginal && pointPicking && <span className="only-your-color-point-hint">点击要保留色彩的主体</span>}</div>
+        : previewLayers.length && outputSize ? <div className={`only-your-color-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="only-your-color-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} />{!showOriginal && pointPicking && <span className="only-your-color-point-hint">点击要保留色彩的主体</span>}</div>
           : activeAsset && isImage ? <img className="only-your-color-source-fallback" src={assetSourceUrl(activeAsset)} alt="" />
             : <div className="only-your-color-empty"><ScanSearch size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要突出色彩主体的图片</span></div>}
     </div>
     <aside className="only-your-color-panel"><div className="only-your-color-panel-head"><strong>效果设置</strong><span>主体保留原色，背景转为黑白</span></div>
-      {maskEditing ? <div className="only-your-color-mask-editor"><Button variant="primary" size="compact" onClick={() => { workspaceMask.setEditing(false); setMaskEditing(false) }}>完成蒙版调整</Button><MaskPanel /></div>
-        : <div className="only-your-color-options"><span>智能选择</span><SegmentedControl ariaLabel="智能选择质量" value={subjectModel} options={[{ value: 'fast', label: '快速' }, { value: 'precise', label: '精准' }]} onChange={changeSubjectModel} /><div className="only-your-color-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>重新识别</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={() => { setMaskEditing(false); setPointPicking(true) }}>点选主体</Button></div>{segmenting && <div className="only-your-color-loading" role="status"><LoadingIndicator /><div><strong>{progress || '正在识别'}</strong><span>{subjectModel === 'precise' ? '精准识别' : '快速识别'}处理中</span></div></div>}{pointPicking && !segmenting && <span className="only-your-color-status">在预览图中点击需要保留色彩的区域</span>}<Button variant="secondary" size="compact" icon={<Brush size={14} />} disabled={!maskData || segmenting} onClick={openMaskEditor}>调整蒙版</Button><ParamSlider label="黑白强度" value={intensity} min={0} max={100} onChange={setIntensity} /></div>}
-      <div className="only-your-color-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置强度" aria-label="重置强度" onClick={() => setIntensity(DEFAULT_ONLY_YOUR_COLOR_INTENSITY)} /><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMaskPath || exporting} onClick={() => void exportEffect()}>{exporting ? '导出中' : '导出图片'}</Button></div>
+      <div className="only-your-color-options"><span>智能选择</span><SegmentedControl ariaLabel="智能选择质量" value={subjectModel} options={[{ value: 'fast', label: '快速' }, { value: 'precise', label: '精准' }]} onChange={changeSubjectModel} /><div className="only-your-color-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>重新识别</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={() => setPointPicking(true)}>点选主体</Button></div>{segmenting && <div className="only-your-color-loading" role="status"><LoadingIndicator /><div><strong>{progress || '正在识别'}</strong><span>{subjectModel === 'precise' ? '精准识别' : '快速识别'}处理中</span></div></div>}{pointPicking && !segmenting && <span className="only-your-color-status">在预览图中点击需要保留色彩的区域</span>}<ParamSlider label="主体饱和度" value={subjectSaturation} min={-100} max={100} onChange={setSubjectSaturation} /><ParamSlider label="主体鲜艳度" value={subjectVibrance} min={-100} max={100} onChange={setSubjectVibrance} /><ParamSlider label="背景黑白强度" value={intensity} min={0} max={100} onChange={setIntensity} /></div>
+      <div className="only-your-color-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置效果" aria-label="重置效果" onClick={() => { setIntensity(DEFAULT_ONLY_YOUR_COLOR_INTENSITY); setSubjectSaturation(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION); setSubjectVibrance(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE) }} /><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMaskPath || exporting} onClick={() => void exportEffect()}>{exporting ? '导出中' : '导出图片'}</Button></div>
     </aside>
     <div className="only-your-color-media-strip"><WorkspaceMediaStrip /></div>
   </section>

@@ -2,6 +2,7 @@ import type { WorkspaceOnlyYourColorState, WorkspaceProject } from '../../../sha
 
 export const DEFAULT_ONLY_YOUR_COLOR_INTENSITY = 100
 export const DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION = 0
+export const DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE = 0
 
 export function onlyYourColorStateForAsset(
   project: WorkspaceProject | null | undefined,
@@ -22,4 +23,9 @@ export function normalizeOnlyYourColorIntensity(value: unknown): number {
 export function normalizeOnlyYourColorSubjectSaturation(value: unknown): number {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? Math.max(-100, Math.min(100, numeric)) : DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION
+}
+
+export function normalizeOnlyYourColorSubjectVibrance(value: unknown): number {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.max(-100, Math.min(100, numeric)) : DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE
 }

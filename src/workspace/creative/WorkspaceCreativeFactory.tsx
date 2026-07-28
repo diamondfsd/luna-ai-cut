@@ -22,6 +22,33 @@ const CREATIVE_RENDERERS: Record<CreativeModeId, (onBack: () => void) => ReactNo
   'triple-stitch': (onBack) => <TripleStitchCreative onBack={onBack} />,
 }
 
+function CreativeCover({ id }: { id: CreativeModeId }) {
+  if (id === 'only-your-color') return <span className="creative-cover-only-color">
+    <span className="creative-cover-city"><i /><i /><i /><i /></span>
+    <span className="creative-cover-street" />
+    <span className="creative-cover-person-back"><i /></span>
+  </span>
+  if (id === 'pixel-stretch') return <span className="pixel-stretch-cover-scene">
+    <span className="pixel-stretch-cover-sky" />
+    <span className="pixel-stretch-cover-ridge" />
+    <span className="pixel-stretch-cover-ground" />
+    <span className="pixel-stretch-cover-flow"><i /><i /><i /><i /><i /></span>
+    <span className="pixel-stretch-cover-subject"><i /></span>
+  </span>
+  if (id === 'color-reveal') return <span className="creative-cover-reveal">
+    <span className="creative-cover-reveal-sky" />
+    <span className="creative-cover-reveal-hill" />
+    <span className="creative-cover-reveal-water" />
+    <span className="creative-cover-reveal-mono" />
+    <span className="creative-cover-reveal-line" />
+  </span>
+  return <span className="creative-cover-triple">
+    <span className="creative-cover-triple-top"><i /></span>
+    <span className="creative-cover-triple-middle"><i /></span>
+    <span className="creative-cover-triple-bottom"><i /></span>
+  </span>
+}
+
 export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange }: WorkspaceCreativeFactoryProps) {
   const media = useWorkspaceMedia()
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspaceCreativeFactory render creativeModeId=${creativeModeId}`)
@@ -42,7 +69,6 @@ export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange 
       </header>
       <div className="workspace-creative-list">
         {CREATIVE_CATALOG.map((item) => {
-          const ItemIcon = item.icon
           return (
             <button
               key={item.id}
@@ -51,13 +77,7 @@ export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange 
               onClick={() => onCreativeModeChange(item.id)}
             >
               <span className={`workspace-creative-preview ${item.previewClassName}`} aria-hidden="true">
-                {item.id === 'pixel-stretch' ? <span className="pixel-stretch-cover-scene">
-                  <span className="pixel-stretch-cover-sky" />
-                  <span className="pixel-stretch-cover-ridge" />
-                  <span className="pixel-stretch-cover-ground" />
-                  <span className="pixel-stretch-cover-flow"><i /><i /><i /><i /><i /></span>
-                  <span className="pixel-stretch-cover-subject"><i /></span>
-                </span> : <ItemIcon size={24} />}
+                <CreativeCover id={item.id} />
               </span>
               <span className="workspace-creative-card-copy">
                 <strong>{item.name}</strong>
