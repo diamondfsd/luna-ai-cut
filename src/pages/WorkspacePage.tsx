@@ -137,7 +137,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
   const [fitScalePercent, setFitScalePercent] = useState(100)
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
-  const allowWatermark = useLunaUltraWatermark(media.activeMedia)
+  const allowBuiltinWatermark = useLunaUltraWatermark(media.activeMedia)
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
   const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
 
