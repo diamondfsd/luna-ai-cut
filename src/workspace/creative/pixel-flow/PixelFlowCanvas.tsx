@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { assetSourceUrl } from '../shared/creativeMedia'
 import type { WorkspaceMediaAsset } from '../../../shared/types'
-import { createPixelFlowCells, pixelFlowProgress, type PixelFlowMask } from './pixelFlowRender'
+import { createPixelFlowCells, pixelFlowProgress, type PixelFlowCell, type PixelFlowMask } from './pixelFlowRender'
 
 interface PixelFlowCanvasProps {
   asset: WorkspaceMediaAsset
@@ -21,6 +21,27 @@ interface PixelFlowCanvasProps {
 }
 
 const MAX_PREVIEW_SIDE = 1080
+
+function pixelLightStrength(distance: number, band: number): number {
+  const fadeInDistance = band * 0.9
+  const fadeOutDistance = band * 2.6
+  const linear = distance >= 0
+    ? 1 - distance / fadeInDistance
+    : 1 + distance / fadeOutDistance
+  const clamped = Math.max(0, Math.min(1, linear))
+  return clamped * clamped * (3 - 2 * clamped)
+}
+
+function firstCellAtOrAfter(cells: PixelFlowCell[], arrival: number): number {
+  let start = 0
+  let end = cells.length
+  while (start < end) {
+    const middle = Math.floor((start + end) / 2)
+    if (cells[middle].arrival < arrival) start = middle + 1
+    else end = middle
+  }
+  return start
+}
 
 export function PixelFlowCanvas({
   asset,
@@ -104,36 +125,59 @@ export function PixelFlowCanvas({
     if (!context) return
     const cellSize = Math.max(4, Math.round(Math.max(scene.width, scene.height) * pixelSize / 1000))
     const cells = createPixelFlowCells(scene.pixels, scene.width, scene.height, cellSize, semanticDelay / 100, subjectMask, skyMask)
+      .sort((left, right) => left.arrival - right.arrival)
     const band = Math.max(0.012, lightWidth / 100)
+    const reveal = document.createElement('canvas')
+    reveal.width = scene.width
+    reveal.height = scene.height
+    const revealContext = reveal.getContext('2d')
+    if (!revealContext) return
+    let revealedCount = 0
+    let previousProgress = Number.NEGATIVE_INFINITY
 
     function render(time: number): void {
-      const progress = pixelFlowProgress(time, duration) * (1.02 + band)
+      const progress = pixelFlowProgress(time, duration) * (1.04 + band * 2.8)
+      if (progress < previousProgress) {
+        revealContext!.clearRect(0, 0, scene!.width, scene!.height)
+        revealedCount = 0
+      }
+      while (revealedCount < cells.length && cells[revealedCount].arrival <= progress) {
+        const cell = cells[revealedCount]
+        revealContext!.drawImage(
+          scene!.color,
+          cell.x,
+          cell.y,
+          cell.width,
+          cell.height,
+          cell.x,
+          cell.y,
+          cell.width + 0.5,
+          cell.height + 0.5,
+        )
+        revealedCount += 1
+      }
+      previousProgress = progress
       context!.globalAlpha = 1
       context!.globalCompositeOperation = 'source-over'
       context!.filter = 'none'
       context!.drawImage(scene!.mono, 0, 0)
+      context!.drawImage(reveal, 0, 0)
 
       context!.save()
-      context!.beginPath()
-      for (const cell of cells) {
-        if (cell.arrival <= progress) context!.rect(cell.x, cell.y, cell.width + 0.5, cell.height + 0.5)
-      }
-      context!.clip()
-      context!.drawImage(scene!.color, 0, 0)
-      context!.restore()
-
-      context!.save()
-      context!.globalCompositeOperation = 'screen'
-      context!.shadowBlur = cellSize * 1.4
-      for (const cell of cells) {
+      context!.globalCompositeOperation = 'lighter'
+      context!.shadowBlur = cellSize * 2.2
+      const firstVisible = firstCellAtOrAfter(cells, progress - band * 2.6)
+      const lastVisible = firstCellAtOrAfter(cells, progress + band * 0.9)
+      for (let index = firstVisible; index < lastVisible; index += 1) {
+        const cell = cells[index]
         const distance = cell.arrival - progress
-        if (distance < -band * 0.3 || distance > band) continue
-        const strength = 1 - Math.abs(distance - band * 0.2) / (band * 0.8)
-        context!.globalAlpha = Math.max(0.16, Math.min(0.92, strength))
+        const strength = pixelLightStrength(distance, band)
+        if (strength <= 0) continue
+        context!.globalAlpha = Math.min(1, strength)
         context!.shadowColor = cell.glowColor
         context!.fillStyle = cell.color
         context!.fillRect(cell.x + 0.5, cell.y + 0.5, Math.max(1, cell.width - 1), Math.max(1, cell.height - 1))
-        context!.globalAlpha *= 0.62
+        context!.globalAlpha *= 0.72
         context!.fillStyle = cell.highlightColor
         context!.fillRect(cell.x + 1, cell.y + 1, Math.max(1, cell.width - 2), Math.max(1, cell.height - 2))
       }

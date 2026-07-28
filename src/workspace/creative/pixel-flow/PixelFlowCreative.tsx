@@ -246,11 +246,11 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
           : <div className="pixel-flow-empty"><ScanLine size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要制作效果的图片</span></div>}
     </div>
     <aside className="pixel-flow-panel">
-      <div className="pixel-flow-panel-head"><strong>效果设置</strong><span>流光沿画面内容从上向下唤醒色彩</span></div>
+      <div className="pixel-flow-panel-head"><strong>效果设置</strong><span>流光从天空中心向画面四周扩散</span></div>
       <div className="pixel-flow-options">
         <ParamSlider label="流动时间" value={duration} min={1.5} max={6} step={0.1} onChange={setDuration} formatValue={(value) => `${value.toFixed(1)}s`} />
         <ParamSlider label="流光方块大小" value={pixelSize} min={4} max={36} onChange={setPixelSize} formatValue={(value) => `${value}px`} />
-        <ParamSlider label="光带宽度" value={lightWidth} min={2} max={16} onChange={setLightWidth} />
+        <ParamSlider label="波纹宽度" value={lightWidth} min={2} max={16} onChange={setLightWidth} />
         <ParamSlider label="层次速度差" value={semanticDelay} min={0} max={24} onChange={setSemanticDelay} />
         {subjectMask && skyMask && <span className="pixel-flow-ready">已按天空和主体调整流动速度</span>}
       </div>
