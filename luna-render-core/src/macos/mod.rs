@@ -7,7 +7,9 @@ mod preview;
 
 pub(crate) use preview::{NativePreviewRuntime, PreviewBounds};
 
-use crate::composition::{composition_layers, mux_primary_audio, CompositionInput};
+use crate::composition::{
+    bind_layer_mask_texture, composition_layers, mux_primary_audio, CompositionInput,
+};
 use crate::compositor::{Compositor, PreviewTextureInfo};
 use crate::export::TaskState;
 use crate::media::decode_static_image_scaled;
@@ -284,6 +286,7 @@ pub(crate) fn export_video(
     )?;
     let mut decoders: HashMap<String, Decoder> = HashMap::new();
     let mut static_textures: HashMap<String, (u32, u32, u32)> = HashMap::new();
+    let mut mask_textures: HashMap<String, u32> = HashMap::new();
 
     let export_start = std::time::Instant::now();
     let mut cum_decode_us = 0u64;
@@ -371,6 +374,14 @@ pub(crate) fn export_video(
                 static_textures.insert(layer.file_path.clone(), cached);
                 cached
             };
+            bind_layer_mask_texture(
+                compositor,
+                ffmpeg_path,
+                ffprobe_path,
+                composition.canvas.width.max(composition.canvas.height),
+                &mut mask_textures,
+                &mut layer,
+            )?;
             source_layers.push((
                 layer,
                 PreviewTextureInfo {

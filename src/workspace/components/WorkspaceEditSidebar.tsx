@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Crop, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, X } from 'lucide-react'
+import { ArrowLeft, Check, Crop, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Accordion, Button, Dialog, IconButton, Tooltip } from '../../ui'
@@ -16,8 +16,10 @@ import { BorderPanel } from '../border/BorderPanel'
 import { TrimPanel } from '../trim/TrimPanel'
 import { buildVideoSegmentsExport } from '../trim/videoSegmentMarkers'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
+import { WorkspaceCreativePanel } from '../creative/WorkspaceCreativeFactory'
+import type { CreativeModeId } from '../creative/creativeCatalog'
 
-export type WorkspaceTool = 'border' | 'color' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask'
+export type WorkspaceTool = 'border' | 'color' | 'creative' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -86,6 +88,7 @@ const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element
   { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
   { value: 'watermark', label: '水印', icon: <ImagePlus size={22} /> },
   { value: 'border', label: '边框', icon: <Image size={22} strokeWidth={1.8} /> },
+  { value: 'creative', label: '创意', icon: <Sparkles size={22} /> },
 ]
 
 function titleForTool(tool: WorkspaceTool): string {
@@ -94,6 +97,7 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'watermark') return '水印'
   if (tool === 'border') return '边框'
   if (tool === 'filter') return '滤镜'
+  if (tool === 'creative') return '创意'
   return '调色与蒙版'
 }
 
@@ -104,9 +108,10 @@ interface WorkspaceEditSidebarProps {
   allowWatermark: boolean
   allowBuiltinWatermark: boolean
   runtimeResourceLoading?: { fonts: boolean; luts: boolean }
+  onOpenCreative: (modeId: CreativeModeId) => void
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWatermark, allowBuiltinWatermark, runtimeResourceLoading }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWatermark, allowBuiltinWatermark, runtimeResourceLoading, onOpenCreative }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -141,6 +146,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
     trim: isTrimModified(edit.pipeline.trim) || edit.pipeline.videoMarkers.length > 0,
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
+    creative: false,
     mask: edit.pipeline.colorMasks.length > 0,
   }), [edit.pipeline])
 
@@ -252,8 +258,10 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
             </span>
           )}
         </header>
-        <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}`}>
-          {activeTool === 'filter' ? (
+        <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}${activeTool === 'creative' ? ' is-creative-panel' : ''}`}>
+          {activeTool === 'creative' ? (
+            <WorkspaceCreativePanel onSelect={onOpenCreative} />
+          ) : activeTool === 'filter' ? (
             <FilterPanel
               restoreLutId={edit.pipeline.logRestore.activeId}
               onRestoreChange={(activeId) => edit.updateWorkspacePanel({ logRestore: { activeId } })}

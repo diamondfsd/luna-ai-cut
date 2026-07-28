@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, FileUp, ImagePlus, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowLeft, ClipboardPaste, Copy, Eye, EyeOff, FileDown, Minus, Plus, Redo2, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 
 import { Button, IconButton, Select, Tooltip, toast } from '../../ui'
 import type { WorkspacePreviewQuality } from '../../shared/types/settings'
@@ -7,6 +7,7 @@ import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { createWorkspaceDefaultPipeline } from '../shared/workspaceDefaultPipeline'
 import { useApp } from '../../context/AppContext'
+import { WorkspaceMediaImportButtons } from './WorkspaceMediaImportButtons'
 import './WorkspacePreviewToolbar.css'
 
 export type WorkspaceViewScale = 'fit' | number
@@ -88,12 +89,7 @@ export function WorkspacePreviewToolbar({
     <header className="workspace-toolbar">
       <div className="workspace-toolbar-group workspace-toolbar-left">
         <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={media.backToProjects}>返回工作台</Button>
-        <Button variant="toolbar" size="compact" icon={<ImagePlus size={14} />} onClick={onImport}>
-          添加素材
-        </Button>
-        <Button variant="toolbar" size="compact" icon={<FileUp size={14} />} onClick={onImportLocal}>
-          导入
-        </Button>
+        <WorkspaceMediaImportButtons onAddMedia={onImport} onImportLocal={onImportLocal} />
         <Tooltip content="重置">
           <IconButton variant="ghost" size="compact" icon={<RotateCcw size={16} />} disabled={!hasActiveMedia} onClick={resetAdjustments} />
         </Tooltip>

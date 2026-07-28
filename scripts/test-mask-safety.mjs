@@ -63,6 +63,12 @@ try {
     'src/workspace/shared/editPipelineSerialization.ts',
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
+    'src/workspace/creative/only-your-color/onlyYourColorAutoTone.ts',
+    'src/workspace/creative/only-your-color/onlyYourColorLayers.ts',
+    'src/workspace/creative/only-your-color/onlyYourColorBatchMask.ts',
+    'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.ts',
+    'src/workspace/creative/pixel-flow/pixelFlowBatchMask.ts',
+    'src/workspace/creative/pixel-flow/pixelFlowLayers.ts',
     'src/components/renderComposition.ts',
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
@@ -84,6 +90,12 @@ try {
   const pipelineSerialization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipelineSerialization.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
+  const onlyYourColorAutoTone = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorAutoTone.js')))
+  const onlyYourColorLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorLayers.js')))
+  const onlyYourColorBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorBatchMask.js')))
+  const onlyYourColorMaskRefinement = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.js')))
+  const pixelFlowBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/pixel-flow/pixelFlowBatchMask.js')))
+  const pixelFlowLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/pixel-flow/pixelFlowLayers.js')))
   const renderComposition = await import(pathToFileURL(path.join(temporaryRoot, 'src/components/renderComposition.js')))
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
@@ -697,6 +709,276 @@ try {
     framedPrecomposition.map((layer) => [layer.precomposeGroup, layer.precomposeRole]).sort(),
     'preview and export composition must preserve identical precomposition groups',
   )
+
+  const existingGlobalColor = {
+    ...renderModule.pipelineColorToRenderColor(ordered.color),
+    exposure: 1.25,
+  }
+  const existingLocalColor = { ...existingGlobalColor, exposure: 2 }
+  const creativeSource = {
+    filePath: '/image.jpg',
+    layerType: 'media',
+    dstX: 0,
+    dstY: 0,
+    dstW: 1,
+    dstH: 1,
+    srcX: 0,
+    srcY: 0,
+    srcW: 1,
+    srcH: 1,
+    zIndex: 0,
+    color: existingGlobalColor,
+  }
+  const creativeLayers = onlyYourColorLayers.buildOnlyYourColorLayers({
+    layers: [creativeSource, {
+      ...creativeSource,
+      layerType: 'local-color',
+      color: existingLocalColor,
+      maskPath: '/existing-local.pgm',
+      zIndex: 1,
+    }],
+    sourcePath: '/image.jpg',
+    subjectMaskPath: '/subject.pgm',
+    backgroundMaskPath: '/background.pgm',
+    intensity: 100,
+    subjectExposure: 0.65,
+    backgroundExposure: -0.75,
+    backgroundBrightness: 18,
+    backgroundContrast: 24,
+    subjectSaturation: 20,
+    subjectVibrance: 30,
+  })
+  const creativeInputs = creativeLayers.filter((layer) => layer.precomposeRole === 'input')
+  const creativeOutputs = creativeLayers.filter((layer) => layer.precomposeRole === 'output')
+  assert.deepEqual(
+    creativeInputs.map((layer) => layer.color.exposure),
+    [1.25, 2],
+    'only-your-color must flatten existing global and local exposure before applying its effect',
+  )
+  assert.equal(creativeOutputs.length, 3, 'flattened source, monochrome background, and color subject must share one precomposition')
+  assert.ok(creativeOutputs.every((layer) => layer.precomposeGroup === 'only-your-color-source'))
+  assert.equal(creativeOutputs[0].color, undefined, 'flattened source must not apply global color twice')
+  assert.equal(creativeOutputs[1].color.exposure, -0.75, 'background exposure must be relative to the flattened existing exposure')
+  assert.equal(creativeOutputs[1].color.brightness, 18)
+  assert.equal(creativeOutputs[1].color.contrast, 24)
+  assert.equal(creativeOutputs[2].color.exposure, 0.65, 'subject exposure must be relative to the flattened existing exposure')
+  assert.equal(creativeOutputs[1].color.saturation, -100)
+  assert.equal(creativeOutputs[2].color.saturation, 20)
+  assert.equal(creativeOutputs[2].color.vibrance, 30)
+  assert.deepEqual(
+    creativeOutputs.slice(1).map((layer) => layer.maskFeather),
+    [0, 0],
+    'only-your-color must use one complementary soft edge instead of expanding both mask sides',
+  )
+  const neutralCreativeOutputs = onlyYourColorLayers.buildOnlyYourColorLayers({
+    layers: [creativeSource],
+    sourcePath: '/image.jpg',
+    subjectMaskPath: '/subject.pgm',
+    backgroundMaskPath: '/background.pgm',
+    intensity: 100,
+    subjectExposure: 0,
+    backgroundExposure: 0,
+    backgroundBrightness: 0,
+    backgroundContrast: 0,
+    subjectSaturation: 0,
+    subjectVibrance: 0,
+  }).filter((layer) => layer.precomposeRole === 'output')
+  assert.equal(neutralCreativeOutputs.length, 2, 'a neutral subject must not narrow the soft edge with a duplicate source layer')
+
+  const hardMask = new Uint8Array(15 * 9)
+  for (let y = 1; y < 8; y += 1) {
+    for (let x = 2; x < 13; x += 1) hardMask[y * 15 + x] = 255
+  }
+  const refinedMask = onlyYourColorMaskRefinement.refineOnlyYourColorMask(hardMask, 15, 9)
+  const refinedRow = [...refinedMask.slice(4 * 15, 5 * 15)]
+  assert.ok(refinedRow[2] > 0 && refinedRow[2] < refinedRow[3], 'refined subject edges must start with partial coverage')
+  assert.ok(refinedRow[3] < refinedRow[4] && refinedRow[4] < refinedRow[5], 'refined subject edges must increase continuously')
+  assert.equal(refinedRow[7], 255, 'refinement must preserve the opaque center of a large subject')
+  assert.deepEqual(
+    [...onlyYourColorMaskRefinement.refineOnlyYourColorMask(new Uint8Array(9), 3, 3)],
+    [...new Uint8Array(9)],
+    'refinement must keep an empty recognition result empty',
+  )
+
+  const darkBackgroundPixels = new Uint8ClampedArray(10 * 10 * 4)
+  for (let index = 0; index < darkBackgroundPixels.length; index += 4) {
+    darkBackgroundPixels[index] = 32
+    darkBackgroundPixels[index + 1] = 32
+    darkBackgroundPixels[index + 2] = 32
+    darkBackgroundPixels[index + 3] = 255
+  }
+  const centerSubjectMask = new Uint8Array(10 * 10)
+  for (let y = 3; y < 7; y += 1) {
+    for (let x = 3; x < 7; x += 1) centerSubjectMask[y * 10 + x] = 255
+  }
+  const darkAutoTone = onlyYourColorAutoTone.calculateOnlyYourColorAutoTone({
+    pixels: darkBackgroundPixels,
+    imageWidth: 10,
+    imageHeight: 10,
+    mask: centerSubjectMask,
+    maskWidth: 10,
+    maskHeight: 10,
+  })
+  assert.ok(darkAutoTone.backgroundExposure > 0 && darkAutoTone.backgroundExposure <= 1.25, 'dark backgrounds must receive a bounded exposure lift')
+  assert.equal(darkAutoTone.backgroundBrightness, 0, 'automatic tone must not crush shadows with negative brightness')
+  assert.equal(darkAutoTone.backgroundContrast, 0, 'automatic tone must not crush shadows with fixed contrast')
+
+  const brightBackgroundPixels = new Uint8ClampedArray(darkBackgroundPixels)
+  for (let index = 0; index < brightBackgroundPixels.length; index += 4) {
+    brightBackgroundPixels[index] = 160
+    brightBackgroundPixels[index + 1] = 160
+    brightBackgroundPixels[index + 2] = 160
+  }
+  for (let y = 3; y < 7; y += 1) {
+    for (let x = 3; x < 7; x += 1) {
+      const offset = (y * 10 + x) * 4
+      brightBackgroundPixels[offset] = 0
+      brightBackgroundPixels[offset + 1] = 0
+      brightBackgroundPixels[offset + 2] = 0
+    }
+  }
+  assert.deepEqual(
+    onlyYourColorAutoTone.calculateOnlyYourColorAutoTone({
+      pixels: brightBackgroundPixels,
+      imageWidth: 10,
+      imageHeight: 10,
+      mask: centerSubjectMask,
+      maskWidth: 10,
+      maskHeight: 10,
+    }),
+    { backgroundExposure: 0, backgroundBrightness: 0, backgroundContrast: 0 },
+    'a dark subject must not cause a balanced background to be lifted',
+  )
+
+  let batchSegmentCalls = 0
+  const batchAsset = { id: 'asset-batch', name: 'batch.jpg', path: '/batch.jpg', kind: 'image' }
+  const validStoredMask = new Uint8Array([
+    0, 0, 0,
+    0, 255, 0,
+    0, 0, 0,
+  ])
+  const reusedBatchMask = await onlyYourColorBatchMask.resolveOnlyYourColorBatchMask({
+    projectId: 'project-batch',
+    asset: batchAsset,
+    savedState: { intensity: 80, subjectExposure: 0.4, backgroundExposure: -1, backgroundBrightness: 12, backgroundContrast: 22, subjectSaturation: 15, subjectVibrance: 20, maskPath: '/saved.pgm', maskAssetId: batchAsset.id },
+    api: {
+      loadMask: async () => ({ bytes: validStoredMask.buffer, width: 3, height: 3 }),
+      segment: async () => { batchSegmentCalls += 1; throw new Error('must not segment') },
+      saveMask: async () => { throw new Error('must not save') },
+    },
+  })
+  assert.equal(reusedBatchMask.newlyRecognized, false)
+  assert.equal(reusedBatchMask.state.backgroundExposure, -1)
+  assert.equal(reusedBatchMask.state.subjectExposure, 0.4)
+  assert.equal(reusedBatchMask.state.backgroundBrightness, 12)
+  assert.equal(reusedBatchMask.state.backgroundContrast, 22)
+  assert.equal(batchSegmentCalls, 0, 'batch export must reuse a valid saved mask')
+
+  let batchSegmentRequest = null
+  const generatedMask = new Uint8Array(25).fill(255)
+  const recognizedBatchMask = await onlyYourColorBatchMask.resolveOnlyYourColorBatchMask({
+    projectId: 'project-batch',
+    asset: batchAsset,
+    api: {
+      loadMask: async () => { throw new Error('missing') },
+      segment: async (request) => {
+        batchSegmentRequest = request
+        return { requestId: request.requestId, bytes: generatedMask.buffer, width: 5, height: 5 }
+      },
+      saveMask: async (_projectId, _assetId, width, height) => ({ path: '/generated.pgm', width, height }),
+      calculateAutoTone: async () => ({ backgroundExposure: 0.65, backgroundBrightness: 0, backgroundContrast: 0 }),
+    },
+  })
+  assert.equal(batchSegmentRequest.modelId, 'rmbg-1.4', 'unrecognized batch items must use the default fast subject model')
+  assert.equal(recognizedBatchMask.newlyRecognized, true)
+  assert.equal(recognizedBatchMask.state.intensity, 100)
+  assert.equal(recognizedBatchMask.state.backgroundExposure, 0.65)
+  assert.equal(recognizedBatchMask.state.subjectExposure, 0)
+  assert.equal(recognizedBatchMask.state.backgroundBrightness, 0)
+  assert.equal(recognizedBatchMask.state.backgroundContrast, 0)
+  assert.equal(recognizedBatchMask.state.subjectSaturation, 0)
+  assert.equal(recognizedBatchMask.state.subjectVibrance, 0)
+  assert.equal(recognizedBatchMask.state.maskPath, '/generated.pgm')
+
+  await assert.rejects(
+    onlyYourColorBatchMask.resolveOnlyYourColorBatchMask({
+      projectId: 'project-batch',
+      asset: batchAsset,
+      api: {
+        loadMask: async () => { throw new Error('missing') },
+        segment: async (request) => ({ requestId: request.requestId, bytes: new Uint8Array(25).buffer, width: 5, height: 5 }),
+        saveMask: async () => { throw new Error('empty masks must not be saved') },
+      },
+    }),
+    /未识别到主体/,
+    'batch export must fail an item instead of exporting an empty segmentation mask',
+  )
+
+  const pixelFlowAsset = { id: 'pixel-video', name: 'pixel.mp4', path: '/pixel.mp4', kind: 'video' }
+  let pixelFlowSegmentCalls = 0
+  const reusedPixelFlowMask = await pixelFlowBatchMask.resolvePixelFlowBatchMask({
+    projectId: 'project-pixel-flow',
+    asset: pixelFlowAsset,
+    savedState: {
+      duration: 3, pixelCount: 280, lightWidth: 16, initialSaturation: 0, initialBrightness: 0,
+      subjectDirection: 'down', rainSpeed: 50, rainLength: 50, flowStrength: 50,
+      subjectDelay: 50, bloomStrength: 50, filterStrength: 50, colorTransition: 0.5,
+      depthMaskPath: '/pixel-depth.pgm', maskAssetId: pixelFlowAsset.id,
+    },
+    api: {
+      loadMask: async () => ({ bytes: new Uint8Array([128]).buffer, width: 1, height: 1 }),
+      segment: async () => { pixelFlowSegmentCalls += 1; throw new Error('must not segment') },
+      saveMask: async () => { throw new Error('must not save') },
+    },
+  })
+  assert.equal(reusedPixelFlowMask.depthMaskPath, '/pixel-depth.pgm')
+  assert.equal(reusedPixelFlowMask.newlyPrepared, false)
+  assert.equal(pixelFlowSegmentCalls, 0, 'pixel flow batch export must reuse each asset\'s valid depth mask')
+
+  const pixelFlowRequests = []
+  const savedPixelFlowMasks = []
+  const recognizedPixelFlowMask = await pixelFlowBatchMask.resolvePixelFlowBatchMask({
+    projectId: 'project-pixel-flow',
+    asset: pixelFlowAsset,
+    savedState: {
+      duration: 3, pixelCount: 280, lightWidth: 16, initialSaturation: 0, initialBrightness: 0,
+      subjectDirection: 'down', rainSpeed: 50, rainLength: 50, flowStrength: 50,
+      subjectDelay: 50, bloomStrength: 50, filterStrength: 50, colorTransition: 0.5,
+      depthMaskPath: '/missing-depth.pgm', maskAssetId: pixelFlowAsset.id,
+    },
+    api: {
+      loadMask: async () => { throw new Error('missing') },
+      segment: async (request) => {
+        pixelFlowRequests.push(request)
+        if (request.targetId === 'sky') throw new Error('scene has no sky')
+        return { requestId: request.requestId, bytes: new Uint8Array([0, 255, 0, 0]).buffer, width: 2, height: 2 }
+      },
+      saveMask: async (_projectId, assetId, width, height, bytes) => {
+        savedPixelFlowMasks.push({ assetId, bytes: [...bytes] })
+        return { path: `/${assetId}.pgm`, width, height }
+      },
+    },
+  })
+  assert.equal(recognizedPixelFlowMask.newlyPrepared, true)
+  assert.equal(pixelFlowRequests.length, 2, 'missing pixel flow masks must recognize subject and sky')
+  assert.ok(pixelFlowRequests.every((request) => request.frameTime === 0), 'video masks must use the first frame')
+  assert.deepEqual(savedPixelFlowMasks.at(-1).bytes, [128, 224, 128, 128], 'a scene without sky must still encode subject and background regions')
+
+  const pixelFlowSettings = {
+    duration: 3, pixelCount: 280, lightWidth: 16, initialSaturation: 0, initialBrightness: 0,
+    subjectDirection: 'down', rainSpeed: 50, rainLength: 50, flowStrength: 50,
+    subjectDelay: 50, bloomStrength: 50, filterStrength: 50, colorTransition: 0.5,
+  }
+  const pixelFlowLayer = pixelFlowLayers.buildPixelFlowLayer({
+    asset: pixelFlowAsset,
+    maskPath: recognizedPixelFlowMask.depthMaskPath,
+    playbackDuration: 6,
+    settings: pixelFlowSettings,
+  })
+  const pixelFlowComposition = renderComposition.buildCompositionFromPreviewLayers([pixelFlowLayer], 1920, 1080, { duration: 6 })
+  assert.equal(pixelFlowLayer.maskPath, recognizedPixelFlowMask.depthMaskPath)
+  assert.equal(pixelFlowComposition.layers[0].maskPath, recognizedPixelFlowMask.depthMaskPath, 'pixel flow export must preserve the preview mask path')
+  assert.equal(pixelFlowComposition.layers[0].pixelFlow.segmented, true, 'pixel flow export must keep segmented rendering enabled')
 
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b5-ade20k'), 'rmbg-1.4')
