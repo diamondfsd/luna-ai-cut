@@ -44,6 +44,32 @@ fn pixel_flow_edge_strength(uv: vec2<f32>, source_size: vec2<f32>, cell_px: f32)
     return smoothstep(0.055, 0.32, abs(left - right) + abs(above - below));
 }
 
+// Estimate a stable tangent from image structure at a scale larger than one block.
+// The wider sampling rejects fine texture while retaining silhouettes and strong object lines.
+fn pixel_flow_major_line_guide(uv: vec2<f32>, source_size: vec2<f32>, cell_px: f32) -> vec3<f32> {
+    let guide_px = max(2.0, cell_px * 1.65);
+    let step_uv = vec2<f32>(guide_px) / source_size;
+    let left = pixel_flow_luma(pixel_flow_source(uv - vec2<f32>(step_uv.x, 0.0)));
+    let right = pixel_flow_luma(pixel_flow_source(uv + vec2<f32>(step_uv.x, 0.0)));
+    let above = pixel_flow_luma(pixel_flow_source(uv - vec2<f32>(0.0, step_uv.y)));
+    let below = pixel_flow_luma(pixel_flow_source(uv + vec2<f32>(0.0, step_uv.y)));
+    let gradient = vec2<f32>(right - left, below - above);
+    let magnitude = length(gradient);
+    let tangent = select(vec2<f32>(0.0, 1.0), normalize(vec2<f32>(-gradient.y, gradient.x)), magnitude > 0.0001);
+    return vec3<f32>(tangent, smoothstep(0.075, 0.31, magnitude));
+}
+
+fn pixel_flow_subject_direction_vector(uv: vec2<f32>, source_size: vec2<f32>) -> vec2<f32> {
+    let direction = params.pixel_flow_scale.z;
+    if (direction < 0.5) { return vec2<f32>(0.0, 1.0); }
+    if (direction < 1.5) { return vec2<f32>(0.0, -1.0); }
+    if (direction < 2.5) { return vec2<f32>(1.0, 0.0); }
+    if (direction < 3.5) { return vec2<f32>(-1.0, 0.0); }
+    let centered = (uv - vec2<f32>(0.5)) * source_size;
+    let radial = select(vec2<f32>(0.0, 1.0), normalize(centered), length(centered) > 0.0001);
+    return select(radial, -radial, direction > 4.5);
+}
+
 fn pixel_flow_subject_direction_coord(uv: vec2<f32>, source_size: vec2<f32>) -> f32 {
     let direction = params.pixel_flow_scale.z;
     if (direction < 0.5) { return uv.y; }
@@ -55,7 +81,23 @@ fn pixel_flow_subject_direction_coord(uv: vec2<f32>, source_size: vec2<f32>) -> 
     return select(radial, 1.0 - radial, direction > 4.5);
 }
 
-// Sky and background keep gravity; only the subject can use a different scan direction.
+fn pixel_flow_line_guided_coord(
+    uv: vec2<f32>,
+    source_size: vec2<f32>,
+    base_coord: f32,
+    base_direction: vec2<f32>,
+    guide: vec3<f32>,
+    influence: f32,
+) -> f32 {
+    let alignment = abs(dot(guide.xy, base_direction));
+    let signed_tangent = select(-guide.xy, guide.xy, dot(guide.xy, base_direction) >= 0.0);
+    let projection_span = max(1.0, dot(abs(signed_tangent), source_size));
+    let line_coord = 0.5 + dot((uv - vec2<f32>(0.5)) * source_size, signed_tangent) / projection_span;
+    let guide_weight = guide.z * smoothstep(0.08, 0.72, alignment) * influence;
+    return mix(base_coord, clamp(line_coord, 0.0, 1.0), guide_weight);
+}
+
+// Sky keeps gravity; surface regions may bend toward stable image structure.
 fn pixel_flow_arrival(uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<f32>, cell_px: f32) -> vec4<f32> {
     let regions = pixel_flow_regions(uv);
     let column_noise = pixel_flow_hash(vec2<f32>(cell_index.x * 1.37 + 19.0, 7.0));
@@ -65,14 +107,25 @@ fn pixel_flow_arrival(uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<f3
     let fine = pixel_flow_hash(stream_index * vec2<f32>(2.73, 1.91) + vec2<f32>(61.0, 43.0));
     let speed = mix(0.78, 1.32, params.pixel_flow_geometry.x);
     let edge = pixel_flow_edge_strength(uv, source_size, cell_px);
+    let line_guide = pixel_flow_major_line_guide(uv, source_size, cell_px);
     let luma = pixel_flow_luma(pixel_flow_source(uv));
-    let subject_coord = pixel_flow_subject_direction_coord(uv, source_size);
+    let background_coord = pixel_flow_line_guided_coord(
+        uv, source_size, uv.y, vec2<f32>(0.0, 1.0), line_guide, 0.28,
+    );
+    let subject_coord = pixel_flow_line_guided_coord(
+        uv,
+        source_size,
+        pixel_flow_subject_direction_coord(uv, source_size),
+        pixel_flow_subject_direction_vector(uv, source_size),
+        line_guide,
+        0.68,
+    );
     let highlight_advance = smoothstep(0.46, 0.88, luma) * 0.055;
     let sky_arrival = 0.005 + uv.y * 0.22 / speed + column_noise * 0.09 + fine * 0.02;
-    let background_arrival = 0.11 + uv.y * 0.47 / speed + column_noise * 0.06 + coarse * 0.065
-        - edge * 0.075 - highlight_advance;
+    let background_arrival = 0.11 + background_coord * 0.47 / speed + column_noise * 0.06 + coarse * 0.065
+        - edge * 0.06 - line_guide.z * 0.045 - highlight_advance;
     let subject_arrival = 0.17 + subject_coord * 0.48 / speed + column_noise * 0.055 + coarse * 0.05
-        + params.pixel_flow_geometry.w * 0.14 - edge * 0.09 - highlight_advance;
+        + params.pixel_flow_geometry.w * 0.14 - edge * 0.065 - line_guide.z * 0.075 - highlight_advance;
     let arrival = dot(regions, vec3<f32>(sky_arrival, background_arrival, subject_arrival));
     return vec4<f32>(clamp(arrival, 0.0, 0.92), regions);
 }
@@ -82,10 +135,22 @@ fn pixel_flow_continuous_arrival(uv: vec2<f32>, source_size: vec2<f32>, cell_px:
     let speed = mix(0.78, 1.32, params.pixel_flow_geometry.x);
     let field = uv * source_size / max(12.0, cell_px * 7.0) + vec2<f32>(17.0, 29.0);
     let warp = (pixel_flow_smooth_noise(field) - 0.5) * 0.055;
-    let subject_coord = pixel_flow_subject_direction_coord(uv, source_size);
+    let line_guide = pixel_flow_major_line_guide(uv, source_size, cell_px);
+    let background_coord = pixel_flow_line_guided_coord(
+        uv, source_size, uv.y, vec2<f32>(0.0, 1.0), line_guide, 0.22,
+    );
+    let subject_coord = pixel_flow_line_guided_coord(
+        uv,
+        source_size,
+        pixel_flow_subject_direction_coord(uv, source_size),
+        pixel_flow_subject_direction_vector(uv, source_size),
+        line_guide,
+        0.56,
+    );
     let sky_arrival = 0.02 + uv.y * 0.21 / speed + warp * 0.35;
-    let background_arrival = 0.13 + uv.y * 0.44 / speed + warp;
-    let subject_arrival = 0.19 + subject_coord * 0.46 / speed + params.pixel_flow_geometry.w * 0.12 + warp;
+    let background_arrival = 0.13 + background_coord * 0.44 / speed + warp - line_guide.z * 0.025;
+    let subject_arrival = 0.19 + subject_coord * 0.46 / speed + params.pixel_flow_geometry.w * 0.12
+        + warp - line_guide.z * 0.045;
     return clamp(dot(regions, vec3<f32>(sky_arrival, background_arrival, subject_arrival)), 0.0, 1.0);
 }
 
