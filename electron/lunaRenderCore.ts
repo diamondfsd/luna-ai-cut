@@ -85,6 +85,7 @@ export interface CompositionInput {
       skyScale?: number
       backgroundScale?: number
       subjectScale?: number
+      skyBlackRatio?: number
     }
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }

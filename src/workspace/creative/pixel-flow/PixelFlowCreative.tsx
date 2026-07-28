@@ -9,7 +9,7 @@ import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import type { CreativeModuleProps } from '../creativeCatalog'
-import { combinePixelFlowDepthMask, pixelFlowImpact, pixelFlowOrigin, type PixelFlowMask } from './pixelFlowRender'
+import { combinePixelFlowDepthMask, pixelFlowImpact, pixelFlowOrigin, pixelFlowRegionScales, pixelFlowSkyBlackRatio, type PixelFlowMask } from './pixelFlowRender'
 import './pixel-flow.css'
 
 const SETTINGS_VERSION = 4
@@ -68,6 +68,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [depthMaskPath, setDepthMaskPath] = useState<string | null>(saved?.depthMaskPath ?? null)
   const [subjectMask, setSubjectMask] = useState<PixelFlowMask | null>(null)
   const [skyMask, setSkyMask] = useState<PixelFlowMask | null>(null)
+  const [skyBlackRatio, setSkyBlackRatio] = useState(0)
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -99,6 +100,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setDepthMaskPath(restored?.depthMaskPath ?? null)
     setSubjectMask(null)
     setSkyMask(null)
+    setSkyBlackRatio(0)
     setSourceSize(null)
     setCurrentTime(0)
     setPlaying(false)
@@ -158,6 +160,29 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     }).catch(() => { if (!cancelled) toast.error('无法读取图片尺寸') })
     return () => { cancelled = true }
   }, [activeAsset])
+
+  useEffect(() => {
+    if (!activeAsset || !skyMask) return
+    let cancelled = false
+    let bitmap: ImageBitmap | null = null
+    void window.luna.workspace.loadPreview(activeAsset.path).then(async (preview) => {
+      bitmap = await createImageBitmap(new Blob([preview.buffer], { type: preview.mimeType }))
+      if (cancelled) {
+        bitmap.close()
+        return
+      }
+      const canvas = new OffscreenCanvas(skyMask.width, skyMask.height)
+      const context = canvas.getContext('2d')
+      if (!context) return
+      context.drawImage(bitmap, 0, 0, skyMask.width, skyMask.height)
+      const pixels = context.getImageData(0, 0, skyMask.width, skyMask.height).data
+      if (!cancelled) setSkyBlackRatio(pixelFlowSkyBlackRatio(pixels, skyMask))
+    }).catch(() => { if (!cancelled) setSkyBlackRatio(0) })
+    return () => {
+      cancelled = true
+      bitmap?.close()
+    }
+  }, [activeAsset, skyMask])
 
   useEffect(() => {
     if (!depthMaskPath || !sourceSize || !skyMask) return
@@ -315,6 +340,9 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     return () => cancelAnimationFrame(frame)
   }, [duration, playing])
 
+  const regionScales = useMemo(() => subjectMask && skyMask
+    ? pixelFlowRegionScales(subjectMask, skyMask)
+    : { sky: 1, background: 1, subject: 1 }, [skyMask, subjectMask])
   const previewLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize || !depthMaskPath || !skyMask) return []
     const origin = pixelFlowOrigin(skyMask)
@@ -346,9 +374,13 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
         originY: origin.y,
         impactX: impact.x,
         impactY: impact.y,
+        skyScale: regionScales.sky,
+        backgroundScale: regionScales.background,
+        subjectScale: regionScales.subject,
+        skyBlackRatio,
       },
     }]
-  }, [activeAsset, depthMaskPath, duration, lightWidth, otherDirection, pixelSize, semanticDelay, skyMask, skyMode, sourceSize])
+  }, [activeAsset, depthMaskPath, duration, lightWidth, otherDirection, pixelSize, regionScales, semanticDelay, skyBlackRatio, skyMask, skyMode, sourceSize])
   const gpuPreviewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
@@ -402,8 +434,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     <aside className="pixel-flow-panel">
       <div className="pixel-flow-panel-head"><strong>效果设置</strong><span>天空先向外点亮，再逐层落向背景和主体</span></div>
       <div className="pixel-flow-options">
-        <label className="pixel-flow-preset-field"><span>天空效果</span><Select variant="compact" fullWidth options={SKY_MODE_OPTIONS} value={skyMode} onValueChange={(value) => setSkyMode(value as PixelFlowSkyMode)} /></label>
-        <label className="pixel-flow-preset-field"><span>其他方向</span><Select variant="compact" fullWidth options={OTHER_DIRECTION_OPTIONS} value={otherDirection} onValueChange={(value) => setOtherDirection(value as PixelFlowOtherDirection)} /></label>
+        <div className="pixel-flow-preset-field"><span>天空效果</span><Select variant="compact" fullWidth placeholder="天空效果" options={SKY_MODE_OPTIONS} value={skyMode} onValueChange={(value) => setSkyMode(value as PixelFlowSkyMode)} /></div>
+        <div className="pixel-flow-preset-field"><span>其他方向</span><Select variant="compact" fullWidth placeholder="其他方向" options={OTHER_DIRECTION_OPTIONS} value={otherDirection} onValueChange={(value) => setOtherDirection(value as PixelFlowOtherDirection)} /></div>
         <ParamSlider label="流动时间" value={duration} min={1.5} max={6} step={0.1} onChange={setDuration} formatValue={(value) => `${value.toFixed(1)}s`} />
         <ParamSlider label="流光方块大小" value={pixelSize} min={4} max={36} onChange={setPixelSize} formatValue={(value) => `${value}px`} />
         <ParamSlider label="波纹宽度比例" value={lightWidth} min={2} max={30} onChange={setLightWidth} formatValue={(value) => `${value}%`} />

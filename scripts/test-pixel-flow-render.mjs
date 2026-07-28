@@ -92,13 +92,17 @@ try {
         originY: 0.18,
         impactX: 0.5,
         impactY: 0.42,
+        skyScale: 1,
+        backgroundScale: 1,
+        subjectScale: 1,
+        skyBlackRatio: 0,
       },
     }],
   }
 
   native.initCompositor()
   const initial = render(composition, 0)
-  const falling = render(composition, duration * 0.18)
+  const falling = render(composition, duration * 0.12)
   const verticalWave = render(composition, duration * 0.55)
   const edgeHold = render(composition, duration * 0.62)
   const background = render(composition, duration * 0.68)
@@ -106,8 +110,12 @@ try {
   const finished = render(composition, duration)
   const skySweep = render(compositionWithModes(composition, 'sweep', 'top-down'), duration * 0.18)
   const skyFull = render(compositionWithModes(composition, 'full', 'top-down'), duration * 0.18)
-  const outsideIn = render(compositionWithModes(composition, 'ripple', 'outside-in'), duration * 0.55)
-  const insideOut = render(compositionWithModes(composition, 'ripple', 'inside-out'), duration * 0.5)
+  const outsideIn = render(compositionWithModes(composition, 'ripple', 'outside-in'), duration * 0.62)
+  const insideOut = render(compositionWithModes(composition, 'ripple', 'inside-out'), duration * 0.58)
+  const normalSkySpeed = render(composition, duration * 0.14)
+  const darkSkyComposition = compositionWithModes(composition, 'ripple', 'top-down')
+  darkSkyComposition.layers[0].pixelFlow.skyBlackRatio = 0.9
+  const darkSkySpeed = render(darkSkyComposition, duration * 0.14)
   for (const frame of [initial, falling, verticalWave, edgeHold, background, subject, finished]) {
     assert.equal(frame.width, width)
     assert.equal(frame.height, height)
@@ -117,6 +125,8 @@ try {
   const edgeAfterglow = brightness(edgeHold, 8, 54) - brightness(finished, 8, 54)
   const centerAfterglow = brightness(edgeHold, 64, 54) - brightness(finished, 64, 54)
   assert.ok(edgeAfterglow > centerAfterglow + 10, 'the outer edge keeps glowing after the inner wave fades')
+  const backgroundBlockBrightness = [30, 42, 54, 78, 90, 102, 114].map((x) => brightness(verticalWave, x, 54))
+  assert.ok(Math.max(...backgroundBlockBrightness) - Math.min(...backgroundBlockBrightness) > 80, 'the fixed half-bright half-dim split creates block contrast')
   assert.ok(colorfulness(background, 96, 54) > colorfulness(background, 64, 88) + 25, 'the background wave reaches before the subject')
   assert.ok(brightness(background, 12, 70) <= brightness(initial, 12, 70) + 3, 'black source blocks do not emit a pixel-flow glow')
   assert.ok(colorfulness(subject, 64, 88) > colorfulness(initial, 64, 88) + 40, 'the subject lights in the foreground stage')
@@ -125,6 +135,7 @@ try {
   assert.ok(brightness(skyFull, 18, 24) > brightness(initial, 18, 24) + 40, 'the full-sky preset lights the whole sky together')
   assert.ok(brightness(outsideIn, 18, 54) > brightness(outsideIn, 66, 54) + 40, 'the outside-in preset reaches the edge before the center')
   assert.ok(brightness(insideOut, 66, 54) > brightness(insideOut, 18, 54) + 40, 'the inside-out preset reaches the center before the edge')
+  assert.ok(brightness(darkSkySpeed, 18, 34) > brightness(normalSkySpeed, 18, 34) + 40, 'a mostly black sky advances faster than a regular sky')
   console.log('pixel-flow WGPU render stages passed')
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })

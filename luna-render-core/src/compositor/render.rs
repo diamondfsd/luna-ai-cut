@@ -419,14 +419,17 @@ impl Compositor {
                     ]
                 });
                 let pixel_flow_scale =
-                    layer.pixel_flow.as_ref().map_or([1.0, 1.0, 1.0, 0.0], |effect| {
-                        [
-                            effect.sky_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
-                            effect.background_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
-                            effect.subject_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
-                            0.0,
-                        ]
-                    });
+                    layer
+                        .pixel_flow
+                        .as_ref()
+                        .map_or([1.0, 1.0, 1.0, 0.0], |effect| {
+                            [
+                                effect.sky_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
+                                effect.background_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
+                                effect.subject_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
+                                effect.sky_black_ratio.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
+                            ]
+                        });
                 let shape_kind = match layer.shape.as_deref() {
                     Some("rounded-rectangle") => 1.0,
                     Some("line") => 2.0,
