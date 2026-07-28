@@ -187,6 +187,8 @@ pub struct RenderPixelStretch {
 pub struct RenderPixelFlow {
     pub duration: f64,
     pub progress: Option<f64>,
+    pub sky_mode: Option<String>,
+    pub other_direction: Option<String>,
     pub pixel_size: f64,
     pub light_width: f64,
     pub depth_strength: f64,
@@ -194,6 +196,9 @@ pub struct RenderPixelFlow {
     pub origin_y: f64,
     pub impact_x: f64,
     pub impact_y: f64,
+    pub sky_scale: Option<f64>,
+    pub background_scale: Option<f64>,
+    pub subject_scale: Option<f64>,
 }
 
 impl Default for RenderLayerTransform {

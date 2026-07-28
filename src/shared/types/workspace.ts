@@ -66,6 +66,8 @@ export interface WorkspaceOnlyYourColorState {
 
 export interface WorkspacePixelFlowState {
   settingsVersion?: number
+  skyMode?: 'ripple' | 'sweep' | 'full'
+  otherDirection?: 'top-down' | 'outside-in' | 'inside-out'
   duration: number
   pixelSize: number
   lightWidth: number

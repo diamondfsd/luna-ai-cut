@@ -22,7 +22,8 @@ function sourceImage() {
       const offset = (y * width + x) * 3
       const subject = Math.hypot(x - 64, y - 88) <= 18
       const sky = y < 45
-      const color = subject ? [32, 205, 76] : sky ? [42, 126, 224] : [226, 48, 82]
+      const black = x < 24 && y >= 60 && y < 84
+      const color = black ? [0, 0, 0] : subject ? [32, 205, 76] : sky ? [42, 126, 224] : [226, 48, 82]
       pixels[offset] = color[0]
       pixels[offset + 1] = color[1]
       pixels[offset + 2] = color[2]
@@ -57,6 +58,13 @@ function render(composition, time) {
   return native.renderCompositionFrame({ ffmpegPath, ffprobePath, composition, time, maxSide: width })
 }
 
+function compositionWithModes(composition, skyMode, otherDirection) {
+  const copy = structuredClone(composition)
+  copy.layers[0].pixelFlow.skyMode = skyMode
+  copy.layers[0].pixelFlow.otherDirection = otherDirection
+  return copy
+}
+
 try {
   const sourcePath = path.join(temporaryRoot, 'scene.ppm')
   const maskPath = path.join(temporaryRoot, 'depth.pgm')
@@ -75,6 +83,8 @@ try {
       maskPath,
       pixelFlow: {
         duration,
+        skyMode: 'ripple',
+        otherDirection: 'top-down',
         pixelSize: 12,
         lightWidth: 7,
         depthStrength: 44,
@@ -88,24 +98,33 @@ try {
 
   native.initCompositor()
   const initial = render(composition, 0)
-  const falling = render(composition, duration * 0.25)
+  const falling = render(composition, duration * 0.18)
   const verticalWave = render(composition, duration * 0.55)
   const edgeHold = render(composition, duration * 0.62)
   const background = render(composition, duration * 0.68)
   const subject = render(composition, duration * 0.8)
   const finished = render(composition, duration)
+  const skySweep = render(compositionWithModes(composition, 'sweep', 'top-down'), duration * 0.18)
+  const skyFull = render(compositionWithModes(composition, 'full', 'top-down'), duration * 0.18)
+  const outsideIn = render(compositionWithModes(composition, 'ripple', 'outside-in'), duration * 0.55)
+  const insideOut = render(compositionWithModes(composition, 'ripple', 'inside-out'), duration * 0.5)
   for (const frame of [initial, falling, verticalWave, edgeHold, background, subject, finished]) {
     assert.equal(frame.width, width)
     assert.equal(frame.height, height)
   }
-  assert.ok(colorfulness(falling, 64, 24) > colorfulness(falling, 20, 34) + 20, 'the sky center explodes before the surrounding sky')
+  assert.ok(brightness(falling, 64, 24) > brightness(falling, 20, 34) + 40, 'the sky center explodes before the surrounding sky')
   assert.ok(brightness(verticalWave, 64, 54) > brightness(verticalWave, 64, 108) + 40, 'non-sky regions flow from top to bottom')
   const edgeAfterglow = brightness(edgeHold, 8, 54) - brightness(finished, 8, 54)
   const centerAfterglow = brightness(edgeHold, 64, 54) - brightness(finished, 64, 54)
   assert.ok(edgeAfterglow > centerAfterglow + 10, 'the outer edge keeps glowing after the inner wave fades')
   assert.ok(colorfulness(background, 96, 54) > colorfulness(background, 64, 88) + 25, 'the background wave reaches before the subject')
+  assert.ok(brightness(background, 12, 70) <= brightness(initial, 12, 70) + 3, 'black source blocks do not emit a pixel-flow glow')
   assert.ok(colorfulness(subject, 64, 88) > colorfulness(initial, 64, 88) + 40, 'the subject lights in the foreground stage')
   assert.ok(colorfulness(finished, 64, 88) > colorfulness(initial, 64, 88) + 40, 'the final frame preserves the revealed subject color')
+  assert.ok(brightness(skySweep, 18, 24) > brightness(skySweep, 102, 24) + 40, 'the sky sweep moves from left to right')
+  assert.ok(brightness(skyFull, 18, 24) > brightness(initial, 18, 24) + 40, 'the full-sky preset lights the whole sky together')
+  assert.ok(brightness(outsideIn, 18, 54) > brightness(outsideIn, 66, 54) + 40, 'the outside-in preset reaches the edge before the center')
+  assert.ok(brightness(insideOut, 66, 54) > brightness(insideOut, 18, 54) + 40, 'the inside-out preset reaches the center before the edge')
   console.log('pixel-flow WGPU render stages passed')
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })

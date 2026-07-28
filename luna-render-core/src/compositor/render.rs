@@ -401,13 +401,32 @@ impl Compositor {
                             ]
                         });
                 let pixel_flow_depth = layer.pixel_flow.as_ref().map_or([0.0; 4], |effect| {
+                    let sky_mode = match effect.sky_mode.as_deref() {
+                        Some("sweep") => 1.0,
+                        Some("full") => 2.0,
+                        _ => 0.0,
+                    };
+                    let other_direction = match effect.other_direction.as_deref() {
+                        Some("outside-in") => 1.0,
+                        Some("inside-out") => 2.0,
+                        _ => 0.0,
+                    };
                     [
                         effect.depth_strength.clamp(0.0, 100.0) as f32,
                         effect.duration.clamp(0.1, 60.0) as f32,
-                        0.0,
-                        0.0,
+                        sky_mode,
+                        other_direction,
                     ]
                 });
+                let pixel_flow_scale =
+                    layer.pixel_flow.as_ref().map_or([1.0, 1.0, 1.0, 0.0], |effect| {
+                        [
+                            effect.sky_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
+                            effect.background_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
+                            effect.subject_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
+                            0.0,
+                        ]
+                    });
                 let shape_kind = match layer.shape.as_deref() {
                     Some("rounded-rectangle") => 1.0,
                     Some("line") => 2.0,
@@ -615,6 +634,7 @@ impl Compositor {
                     pixel_flow,
                     pixel_flow_geometry,
                     pixel_flow_depth,
+                    pixel_flow_scale,
                     fill_rgba,
                     stroke_rgba,
                     text_meta: [

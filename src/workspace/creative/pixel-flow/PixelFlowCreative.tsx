@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LrcRender } from '../../../components/LrcRender'
 import { NativeGpuVideoPreview } from '../../../components/NativeGpuVideoPreview'
 import type { PreviewLayer, WorkspacePixelFlowState, WorkspaceProject } from '../../../shared/types'
-import { Button, IconButton, LoadingIndicator, VideoControls, toast } from '../../../ui'
+import { Button, IconButton, LoadingIndicator, Select, VideoControls, toast } from '../../../ui'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
@@ -12,11 +12,26 @@ import type { CreativeModuleProps } from '../creativeCatalog'
 import { combinePixelFlowDepthMask, pixelFlowImpact, pixelFlowOrigin, type PixelFlowMask } from './pixelFlowRender'
 import './pixel-flow.css'
 
-const SETTINGS_VERSION = 3
+const SETTINGS_VERSION = 4
 const DEFAULT_DURATION = 2.5
 const DEFAULT_PIXEL_SIZE = 6
-const DEFAULT_LIGHT_WIDTH = 2
+const DEFAULT_LIGHT_WIDTH = 15
 const DEFAULT_SEMANTIC_DELAY = 8
+const DEFAULT_SKY_MODE = 'ripple'
+const DEFAULT_OTHER_DIRECTION = 'top-down'
+type PixelFlowSkyMode = NonNullable<WorkspacePixelFlowState['skyMode']>
+type PixelFlowOtherDirection = NonNullable<WorkspacePixelFlowState['otherDirection']>
+
+const SKY_MODE_OPTIONS = [
+  { value: 'ripple', label: '水波' },
+  { value: 'sweep', label: '横扫' },
+  { value: 'full', label: '全亮' },
+]
+const OTHER_DIRECTION_OPTIONS = [
+  { value: 'top-down', label: '上到下' },
+  { value: 'outside-in', label: '外到内' },
+  { value: 'inside-out', label: '内到外' },
+]
 
 function savedParameter(
   saved: WorkspacePixelFlowState | undefined,
@@ -46,6 +61,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [pixelSize, setPixelSize] = useState(savedParameter(saved, 'pixelSize', DEFAULT_PIXEL_SIZE))
   const [lightWidth, setLightWidth] = useState(savedParameter(saved, 'lightWidth', DEFAULT_LIGHT_WIDTH))
   const [semanticDelay, setSemanticDelay] = useState(savedParameter(saved, 'semanticDelay', DEFAULT_SEMANTIC_DELAY))
+  const [skyMode, setSkyMode] = useState<PixelFlowSkyMode>(saved?.skyMode ?? DEFAULT_SKY_MODE)
+  const [otherDirection, setOtherDirection] = useState<PixelFlowOtherDirection>(saved?.otherDirection ?? DEFAULT_OTHER_DIRECTION)
   const [maskPath, setMaskPath] = useState<string | null>(saved?.maskPath ?? null)
   const [skyMaskPath, setSkyMaskPath] = useState<string | null>(saved?.skyMaskPath ?? null)
   const [depthMaskPath, setDepthMaskPath] = useState<string | null>(saved?.depthMaskPath ?? null)
@@ -75,6 +92,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setPixelSize(savedParameter(restored, 'pixelSize', DEFAULT_PIXEL_SIZE))
     setLightWidth(savedParameter(restored, 'lightWidth', DEFAULT_LIGHT_WIDTH))
     setSemanticDelay(savedParameter(restored, 'semanticDelay', DEFAULT_SEMANTIC_DELAY))
+    setSkyMode(restored?.skyMode ?? DEFAULT_SKY_MODE)
+    setOtherDirection(restored?.otherDirection ?? DEFAULT_OTHER_DIRECTION)
     setMaskPath(restored?.maskPath ?? null)
     setSkyMaskPath(restored?.skyMaskPath ?? null)
     setDepthMaskPath(restored?.depthMaskPath ?? null)
@@ -236,6 +255,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     if (!project || !activeAssetId) return
     const state: WorkspacePixelFlowState = {
       settingsVersion: SETTINGS_VERSION,
+      skyMode,
+      otherDirection,
       duration,
       pixelSize,
       lightWidth,
@@ -265,7 +286,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     }, 300)
   // Project context refreshes are intentionally excluded from parameter persistence.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAssetId, depthMaskPath, duration, lightWidth, maskPath, pixelSize, semanticDelay, skyMaskPath])
+  }, [activeAssetId, depthMaskPath, duration, lightWidth, maskPath, otherDirection, pixelSize, semanticDelay, skyMaskPath, skyMode])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -316,6 +337,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       maskPath: depthMaskPath,
       pixelFlow: {
         duration,
+        skyMode,
+        otherDirection,
         pixelSize,
         lightWidth,
         depthStrength: Math.min(100, semanticDelay * 4),
@@ -325,7 +348,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
         impactY: impact.y,
       },
     }]
-  }, [activeAsset, depthMaskPath, duration, lightWidth, pixelSize, semanticDelay, skyMask, sourceSize])
+  }, [activeAsset, depthMaskPath, duration, lightWidth, otherDirection, pixelSize, semanticDelay, skyMask, skyMode, sourceSize])
   const gpuPreviewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
@@ -352,6 +375,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setPixelSize(DEFAULT_PIXEL_SIZE)
     setLightWidth(DEFAULT_LIGHT_WIDTH)
     setSemanticDelay(DEFAULT_SEMANTIC_DELAY)
+    setSkyMode(DEFAULT_SKY_MODE)
+    setOtherDirection(DEFAULT_OTHER_DIRECTION)
     replay()
   }
 
@@ -377,9 +402,11 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     <aside className="pixel-flow-panel">
       <div className="pixel-flow-panel-head"><strong>效果设置</strong><span>天空先向外点亮，再逐层落向背景和主体</span></div>
       <div className="pixel-flow-options">
+        <label className="pixel-flow-preset-field"><span>天空效果</span><Select variant="compact" fullWidth options={SKY_MODE_OPTIONS} value={skyMode} onValueChange={(value) => setSkyMode(value as PixelFlowSkyMode)} /></label>
+        <label className="pixel-flow-preset-field"><span>其他方向</span><Select variant="compact" fullWidth options={OTHER_DIRECTION_OPTIONS} value={otherDirection} onValueChange={(value) => setOtherDirection(value as PixelFlowOtherDirection)} /></label>
         <ParamSlider label="流动时间" value={duration} min={1.5} max={6} step={0.1} onChange={setDuration} formatValue={(value) => `${value.toFixed(1)}s`} />
         <ParamSlider label="流光方块大小" value={pixelSize} min={4} max={36} onChange={setPixelSize} formatValue={(value) => `${value}px`} />
-        <ParamSlider label="波纹宽度" value={lightWidth} min={2} max={16} onChange={setLightWidth} />
+        <ParamSlider label="波纹宽度比例" value={lightWidth} min={2} max={30} onChange={setLightWidth} formatValue={(value) => `${value}%`} />
         <ParamSlider label="层次速度差" value={semanticDelay} min={0} max={24} onChange={setSemanticDelay} />
         {subjectMask && skyMask && <span className="pixel-flow-ready">已按天空和主体调整流动速度</span>}
       </div>

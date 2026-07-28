@@ -323,7 +323,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let cell_index = floor(tex_coord * source_size / cell_px);
         let cell_uv = clamp((cell_index + vec2<f32>(0.5)) * cell_px / source_size, vec2<f32>(0.0), vec2<f32>(1.0));
         let cell = pixel_flow_cell(cell_uv, cell_index, source_size, cell_px);
-        let band = max(0.012, params.pixel_flow.w / 100.0);
+        let region_scale = dot(cell.yzw, params.pixel_flow_scale.xyz);
+        let band = max(0.006, params.pixel_flow.w / 100.0 * max(0.08, region_scale));
         let accelerated = params.pixel_flow.y * params.pixel_flow.y;
         let progress = accelerated * (1.04 + band * 3.4);
         let distance = cell.x - progress;
@@ -343,13 +344,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let maximum = max(block_adjusted.r, max(block_adjusted.g, block_adjusted.b));
         let minimum = min(block_adjusted.r, min(block_adjusted.g, block_adjusted.b));
         let center = (maximum + minimum) * 0.5;
+        let color_gate = smoothstep(0.055, 0.14, maximum);
         let saturated = clamp(vec3<f32>(center) + (block_adjusted - vec3<f32>(center)) * 2.08, vec3<f32>(0.0), vec3<f32>(1.0));
-        let highlight = mix(saturated, vec3<f32>(1.0), 0.3);
-        let depth_light = cell.y * 1.08 + cell.z * 1.34 + cell.w * 1.68;
+        let highlight = mix(saturated, vec3<f32>(1.0), 0.34);
+        let depth_light = cell.y * 1.22 + cell.z * 1.52 + cell.w * 1.88;
         let block_local = abs(fract(tex_coord * source_size / cell_px) - vec2<f32>(0.5));
-        let soft_core = 1.0 - smoothstep(0.3, 0.52, max(block_local.x, block_local.y));
-        let glow = pulse * depth_light;
-        let lit = base + saturated * glow * (0.78 + soft_core * 0.58) + highlight * glow * soft_core * 0.46;
+        let block_distance = max(block_local.x, block_local.y);
+        let block_core = 1.0 - smoothstep(0.34, 0.42, block_distance);
+        let outer_glow = 1.0 - smoothstep(0.37, 0.5, block_distance);
+        let glow = pulse * depth_light * color_gate;
+        let lit = base
+            + saturated * glow * (outer_glow * 0.62 + block_core * 1.18)
+            + highlight * glow * block_core * 0.72;
         let layer_alpha = source.a * params.opacity * corner_coverage;
         return vec4<f32>(clamp(lit, vec3<f32>(0.0), vec3<f32>(1.35)) * layer_alpha, layer_alpha);
     }
