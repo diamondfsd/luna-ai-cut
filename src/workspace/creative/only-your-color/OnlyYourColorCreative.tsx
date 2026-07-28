@@ -12,12 +12,12 @@ import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
-import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
+import { assetSourceUrl, loadCreativeImageSize, normalizeCreativePipeline } from '../shared/creativeMedia'
 import { CreativeCompareButton } from '../shared/CreativeCompareButton'
 import { preparePreciseSubjectModelIfNeeded } from '../shared/preparePreciseSubjectModel'
 import type { CreativeModuleProps } from '../creativeCatalog'
 import { erodeMaskOnePixel, subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
-import { exportOnlyYourColorImage } from './exportOnlyYourColorImage'
+import { exportOnlyYourColorBatch } from './onlyYourColorBatchExport'
 import { buildOnlyYourColorLayers } from './onlyYourColorLayers'
 import {
   ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID,
@@ -63,6 +63,7 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
   const [pointPicking, setPointPicking] = useState(false)
   const [showOriginal, setShowOriginal] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState('')
   const requestRef = useRef<string | null>(null)
   const automaticAttemptRef = useRef<string | null>(null)
   const saveTimerRef = useRef<number | null>(null)
@@ -310,18 +311,75 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
     })
   }
 
+  const exportableIndices = useMemo(() => {
+    const selected = [...media.selectedIndices].filter((index) => {
+      const asset = media.media[index]
+      return asset?.kind === 'image' && !media.brokenPaths.has(asset.path)
+    })
+    if (selected.length > 0) return selected
+    return activeAsset?.kind === 'image' && !media.brokenPaths.has(activeAsset.path)
+      ? [media.activeIndex]
+      : []
+  }, [activeAsset, media.activeIndex, media.brokenPaths, media.media, media.selectedIndices])
+  const exportCount = exportableIndices.length
+
   const exportEffect = useCallback(async () => {
-    if (!activeAsset || !outputSize || !activeMaskPath || exporting) return
+    const project = pendingProjectRef.current ?? media.currentProject
+    if (!project || exportCount === 0 || exporting || segmenting) return
     setExporting(true)
+    setExportProgress('准备导出')
     try {
-      await exportOnlyYourColorImage({ asset: activeAsset, layers: effectLayers, width: outputSize.width, height: outputSize.height })
-      toast.success('图片已导出')
+      const result = await exportOnlyYourColorBatch({
+        project,
+        sources: exportableIndices.map((index) => {
+          const asset = media.media[index]
+          return {
+            asset,
+            pipeline: index === media.activeIndex
+              ? edit.pipeline
+              : normalizeCreativePipeline((asset as { pipeline?: unknown }).pipeline),
+          }
+        }),
+        onProgress: setExportProgress,
+      })
+      if (Object.keys(result.recognizedStates).length > 0) {
+        const latestProject = pendingProjectRef.current?.id === project.id ? pendingProjectRef.current : project
+        const persistedRecognizedStates = Object.fromEntries(Object.entries(result.recognizedStates).map(([assetId, recognized]) => {
+          const current = onlyYourColorStateForAsset(latestProject, assetId)
+          return [assetId, current
+            ? { ...recognized, ...current, maskPath: recognized.maskPath, maskAssetId: assetId }
+            : recognized]
+        }))
+        const nextProject = {
+          ...latestProject,
+          updatedAt: new Date().toISOString(),
+          creative: {
+            ...latestProject.creative,
+            onlyYourColorByAssetId: {
+              ...latestProject.creative?.onlyYourColorByAssetId,
+              ...persistedRecognizedStates,
+            },
+          },
+        }
+        pendingProjectRef.current = nextProject
+        media.setCurrentProject(nextProject)
+        await window.luna.workspace.saveProject(nextProject)
+        const activeResolved = activeAssetId ? persistedRecognizedStates[activeAssetId] : undefined
+        if (activeResolved?.maskPath) {
+          setMaskOwnerId(activeAssetId ?? null)
+          setMaskPath(activeResolved.maskPath)
+        }
+      }
+      if (result.failedCount === 0) toast.success(`已导出 ${result.exportedCount} 张图片`)
+      else if (result.exportedCount > 0) toast.show(`已导出 ${result.exportedCount} 张，${result.failedCount} 张失败`)
+      else toast.error('批量导出失败，请查看导出任务')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '图片导出失败')
     } finally {
       setExporting(false)
+      setExportProgress('')
     }
-  }, [activeAsset, activeMaskPath, effectLayers, exporting, outputSize])
+  }, [activeAssetId, edit.pipeline, exportCount, exportableIndices, exporting, media, segmenting])
 
   return <section className="only-your-color-page">
     <header className="only-your-color-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>只有你的色彩</span><CreativeCompareButton className="only-your-color-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
@@ -333,7 +391,7 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
     </div>
     <aside className="only-your-color-panel"><div className="only-your-color-panel-head"><strong>效果设置</strong><span>主体保留原色，背景转为黑白</span></div>
       <div className="only-your-color-options"><span>智能选择</span><SegmentedControl ariaLabel="智能选择质量" value={subjectModel} options={[{ value: 'fast', label: '快速' }, { value: 'precise', label: '精准' }]} onChange={changeSubjectModel} /><div className="only-your-color-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>重新识别</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={() => setPointPicking(true)}>点选主体</Button></div>{segmenting && <div className="only-your-color-loading" role="status"><LoadingIndicator /><div><strong>{progress || '正在识别'}</strong><span>{subjectModel === 'precise' ? '精准识别' : '快速识别'}处理中</span></div></div>}{pointPicking && !segmenting && <span className="only-your-color-status">在预览图中点击需要保留色彩的区域</span>}<ParamSlider label="主体饱和度" value={subjectSaturation} min={-100} max={100} onChange={setSubjectSaturation} /><ParamSlider label="主体鲜艳度" value={subjectVibrance} min={-100} max={100} onChange={setSubjectVibrance} /><ParamSlider label="背景黑白强度" value={intensity} min={0} max={100} onChange={setIntensity} /><ParamSlider label="背景曝光" value={backgroundExposure} min={-5} max={5} step={0.01} onChange={setBackgroundExposure} /></div>
-      <div className="only-your-color-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置效果" aria-label="重置效果" onClick={() => { setIntensity(DEFAULT_ONLY_YOUR_COLOR_INTENSITY); setBackgroundExposure(DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE); setSubjectSaturation(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION); setSubjectVibrance(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE) }} /><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMaskPath || exporting} onClick={() => void exportEffect()}>{exporting ? '导出中' : '导出图片'}</Button></div>
+      <div className="only-your-color-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置效果" aria-label="重置效果" onClick={() => { setIntensity(DEFAULT_ONLY_YOUR_COLOR_INTENSITY); setBackgroundExposure(DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE); setSubjectSaturation(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION); setSubjectVibrance(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE) }} /><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={exportCount === 0 || exporting || segmenting} onClick={() => void exportEffect()}>{exporting ? exportProgress || '导出中' : exportCount > 1 ? `导出 ${exportCount} 张` : '导出图片'}</Button></div>
     </aside>
     <div className="only-your-color-media-strip"><WorkspaceMediaStrip supportedMediaKinds={supportedMediaKinds} /></div>
   </section>
