@@ -37,6 +37,7 @@
     "test:mask:render": "node scripts/build-native.mjs && node scripts/test-mask-render-consistency.mjs",
     "test:mask:tracking": "pnpm run build:app && node scripts/test-mask-tracking-worker.mjs",
     "test:pixel-stretch:render": "node scripts/build-native.mjs && node scripts/test-pixel-stretch-render.mjs",
+    "test:pixel-flow:render": "node scripts/build-native.mjs && node scripts/test-pixel-flow-render.mjs",
     "test:semantic-worker": "node scripts/test-semantic-worker-protocol.mjs",
     "test:e2e": "pnpm run build:app && playwright test",
     "test:model-loader": "node scripts/test-model-loader.mjs",

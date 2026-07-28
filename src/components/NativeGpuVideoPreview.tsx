@@ -45,6 +45,8 @@ interface NativeGpuVideoPreviewProps {
   canvasHeight: number
   active?: boolean
   playing: boolean
+  time?: number
+  seekRevision?: number
   className?: string
   onVideoElement?: (element: HTMLVideoElement | null) => void
   onFallback: (reason: string) => void
@@ -102,6 +104,8 @@ export function NativeGpuVideoPreview({
   canvasHeight,
   active = true,
   playing,
+  time = 0,
+  seekRevision = 0,
   className,
   onVideoElement,
   onFallback,
@@ -116,11 +120,11 @@ export function NativeGpuVideoPreview({
   const activeRef = useRef(active)
   const compositionRef = useRef<CompositionInput | null>(null)
   const callbackRef = useRef({ onFallback, onRender, onVideoElement })
-  const playbackRef = useRef({ playing, primaryLayer: layers.find((layer) => layer.isVideo) })
+  const playbackRef = useRef({ playing, time, primaryLayer: layers.find((layer) => layer.isVideo) })
   const [initialBounds, setInitialBounds] = useState<NativePreviewBounds | null>(null)
   const primaryLayer = layers.find((layer) => layer.isVideo)
   callbackRef.current = { onFallback, onRender, onVideoElement }
-  playbackRef.current = { playing, primaryLayer }
+  playbackRef.current = { playing, time, primaryLayer }
   activeRef.current = active
   const primarySource = primaryLayer
     ? filePathToPreviewUrl(primaryLayer.filePath) ?? primaryLayer.filePath
@@ -234,7 +238,7 @@ export function NativeGpuVideoPreview({
         surfaceBoundsRef.current = initialBounds
         const video = videoRef.current
         const playback = playbackRef.current
-        const time = video ? compositionTimeFor(video, playback.primaryLayer) : 0
+        const time = video ? compositionTimeFor(video, playback.primaryLayer) : playback.time
         const command = playback.playing
           ? api.playNativePreview(sessionId, time)
           : api.pauseNativePreview(sessionId, time)
@@ -331,24 +335,43 @@ export function NativeGpuVideoPreview({
   useEffect(() => {
     const sessionId = sessionRef.current
     const video = videoRef.current
-    if (sessionId === null || !video) return
-    const time = compositionTimeFor(video, playbackRef.current.primaryLayer)
+    if (sessionId === null) return
+    const playbackTime = video
+      ? compositionTimeFor(video, playbackRef.current.primaryLayer)
+      : playbackRef.current.time
     const api = nativePreviewApi()
     if (!api) return
     const command = playing
-      ? api.playNativePreview(sessionId, time)
-      : api.pauseNativePreview(sessionId, time)
+      ? api.playNativePreview(sessionId, playbackTime)
+      : api.pauseNativePreview(sessionId, playbackTime)
     void command.catch((error: unknown) => {
       if (sessionRef.current === sessionId) {
         callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
       }
     })
-    if (playing) {
+    if (playing && video) {
       void video.play().catch(() => {})
-    } else {
+    } else if (video) {
       video.pause()
     }
   }, [playing])
+
+  useEffect(() => {
+    if (seekRevision === 0) return
+    const sessionId = sessionRef.current
+    const api = nativePreviewApi()
+    if (sessionId === null || !api) return
+    const command = playing
+      ? api.playNativePreview(sessionId, time)
+      : api.seekNativePreview(sessionId, time)
+    void command.catch((error: unknown) => {
+      if (sessionRef.current === sessionId) {
+        callbackRef.current.onFallback(error instanceof Error ? error.message : String(error))
+      }
+    })
+    // Time changes every animation frame; seek only for an explicit replay or scrub action.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekRevision])
 
   useEffect(() => {
     if (!primarySource) return
