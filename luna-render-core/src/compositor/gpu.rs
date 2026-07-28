@@ -1,5 +1,6 @@
 use super::GpuLayerParams;
 use std::sync::OnceLock;
+use std::time::Instant;
 use wgpu::{TexelCopyBufferLayout, TexelCopyTextureInfo};
 
 pub(super) fn layer_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
@@ -128,15 +129,24 @@ pub(super) fn create_compositor_pipelines(
     format: wgpu::TextureFormat,
     label: &str,
 ) -> BlendPipelines {
+    let started = Instant::now();
+    crate::logging::write(&format!(
+        "GPU pipeline compile start label={label} format={format:?}"
+    ));
+    let normal = create_compositor_pipeline(
+        device,
+        layout,
+        shader,
+        format,
+        &format!("{label} normal"),
+        "normal",
+    );
+    crate::logging::write(&format!(
+        "GPU pipeline compile complete label={label} format={format:?} elapsed_ms={}",
+        started.elapsed().as_millis()
+    ));
     BlendPipelines {
-        normal: create_compositor_pipeline(
-            device,
-            layout,
-            shader,
-            format,
-            &format!("{label} normal"),
-            "normal",
-        ),
+        normal,
         multiply: OnceLock::new(),
         screen: OnceLock::new(),
         add: OnceLock::new(),
