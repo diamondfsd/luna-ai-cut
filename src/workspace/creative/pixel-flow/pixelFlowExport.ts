@@ -31,6 +31,7 @@ interface PixelFlowExportOptions {
   layers: PreviewLayer[]
   sourceSize: { width: number; height: number }
   config: VideoExportSettings
+  waitForCompletion?: boolean
 }
 
 interface LiveExportEntry {
@@ -106,7 +107,7 @@ async function runImageLiveExport(options: PixelFlowExportOptions, exportDir: st
     label: entry.format === 'apple-live' ? 'Apple Live 图' : '通用 Live 图',
   })))
 
-  void (async () => {
+  const exportWork = (async () => {
     const tempVideoPath = filePath(exportDir, `.${baseName}-pixel-flow-${stamp}.mp4`)
     const tempImagePath = filePath(exportDir, `.${baseName}-pixel-flow-${stamp}.jpg`)
     const composition = buildCompositionFromPreviewLayers(options.layers, resolved.width, resolved.height, {
@@ -162,6 +163,7 @@ async function runImageLiveExport(options: PixelFlowExportOptions, exportDir: st
       await window.luna.deleteLocalFiles([tempVideoPath, tempImagePath]).catch(() => undefined)
     }
   })()
+  if (options.waitForCompletion) await exportWork
 
   return entries.length
 }
@@ -187,7 +189,7 @@ async function runVideoExport(options: PixelFlowExportOptions, exportDir: string
     label: '创意视频',
   }])
 
-  void renderApi().exportCompositionVideo(
+  const exportWork = renderApi().exportCompositionVideo(
     destinationPath,
     composition,
     resolved.fps,
@@ -201,6 +203,7 @@ async function runVideoExport(options: PixelFlowExportOptions, exportDir: string
     const message = error instanceof Error ? error.message : '视频导出失败'
     await window.luna.exportTask.updateItem(task.id, itemId, { status: 'failed', error: message }).catch(() => undefined)
   })
+  if (options.waitForCompletion) await exportWork
   return 1
 }
 
