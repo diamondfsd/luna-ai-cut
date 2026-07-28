@@ -64,6 +64,15 @@ export interface WorkspaceOnlyYourColorState {
   maskAssetId?: string
 }
 
+export interface WorkspacePixelFlowState {
+  duration: number
+  pixelSize: number
+  lightWidth: number
+  semanticDelay: number
+  maskPath?: string
+  maskAssetId?: string
+}
+
 export type PixelStretchPresetId = 'left' | 'right' | 'top' | 'bottom' | 'horizontal' | 'vertical'
 export type PixelStretchSubjectModel = 'fast' | 'precise'
 export type PixelStretchFlowShape = 'straight' | 'arc' | 'cape' | 's-curve' | 'custom'
@@ -104,6 +113,8 @@ export interface WorkspaceProject {
   updatedAt: string
   assets: WorkspaceProjectAsset[]
   creative?: {
+    pixelFlow?: WorkspacePixelFlowState
+    pixelFlowByAssetId?: Record<string, WorkspacePixelFlowState>
     tripleStitch?: WorkspaceTripleStitchState
     colorReveal?: WorkspaceColorRevealState
     onlyYourColor?: WorkspaceOnlyYourColorState
