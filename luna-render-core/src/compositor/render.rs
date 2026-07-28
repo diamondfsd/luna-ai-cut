@@ -420,7 +420,13 @@ impl Compositor {
                             .unwrap_or(0.0)
                             .clamp(-100.0, 100.0) as f32
                             / 100.0,
-                        0.0,
+                        match effect.subject_direction.as_deref() {
+                            Some("up") => 1.0,
+                            Some("right") => 2.0,
+                            Some("left") => 3.0,
+                            Some("outward") => 4.0,
+                            _ => 0.0,
+                        },
                         0.0,
                     ]
                 });

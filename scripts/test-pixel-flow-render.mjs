@@ -167,6 +167,7 @@ try {
         lightWidth: 8,
         initialSaturation: 0,
         initialBrightness: 0,
+        subjectDirection: 'down',
         rainSpeed: 50,
         rainLength: 58,
         flowStrength: 78,
@@ -205,6 +206,8 @@ try {
   segmented.layers[0].pixelFlow.segmented = true
   const immediateSubject = render(compositionWithPixelFlow(segmented, { subjectDelay: 0 }), 0.55)
   const delayedSubject = render(compositionWithPixelFlow(segmented, { subjectDelay: 100 }), 0.55)
+  const subjectRight = render(compositionWithPixelFlow(segmented, { subjectDirection: 'right' }), 0.48)
+  const subjectLeft = render(compositionWithPixelFlow(segmented, { subjectDirection: 'left' }), 0.48)
   const plainComposition = compositionWithoutPixelFlow(composition)
   const plainStart = render(plainComposition, 0)
   const plainEnd = render(plainComposition, duration)
@@ -239,6 +242,10 @@ try {
   assert.ok(revealedSkyColor > unrevealedLowerColor + 8, `source color follows the local pixel front (${revealedSkyColor} > ${unrevealedLowerColor})`)
   const subjectDifference = rectangleDifference(immediateSubject, delayedSubject, 46, 70, 82, 106)
   assert.ok(subjectDifference > 0.5, `the segmented subject keeps its own delayed surface flow (${subjectDifference})`)
+  const subjectDirectionDifference = rectangleDifference(subjectRight, subjectLeft, 46, 70, 82, 106)
+  const skyDirectionDifference = rectangleDifference(subjectRight, subjectLeft, 0, 0, width, 44)
+  assert.ok(subjectDirectionDifference > 1, `subject direction presets change the foreground scan (${subjectDirectionDifference})`)
+  assert.ok(skyDirectionDifference < 0.05, `subject direction leaves the downward sky rain unchanged (${skyDirectionDifference})`)
   assert.deepEqual(plainStart.data, plainEnd.data, 'layers without pixel flow remain unaffected by pixel-flow timing and finishing')
 
   const liveComposition = structuredClone(composition)

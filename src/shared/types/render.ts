@@ -182,6 +182,8 @@ export interface RenderPixelStretch {
   fillSampleGaps?: boolean
 }
 
+export type PixelFlowSubjectDirection = 'down' | 'up' | 'right' | 'left' | 'outward'
+
 export interface RenderPixelFlow {
   duration: number
   progress?: number
@@ -189,6 +191,7 @@ export interface RenderPixelFlow {
   lightWidth: number
   initialSaturation: number
   initialBrightness: number
+  subjectDirection: PixelFlowSubjectDirection
   rainSpeed: number
   rainLength: number
   flowStrength: number

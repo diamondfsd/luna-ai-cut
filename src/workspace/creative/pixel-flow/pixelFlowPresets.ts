@@ -1,9 +1,12 @@
-export const PIXEL_FLOW_SETTINGS_VERSION = 12
+import type { PixelFlowSubjectDirection } from '../../../shared/types'
+
+export const PIXEL_FLOW_SETTINGS_VERSION = 13
 export const DEFAULT_PIXEL_FLOW_DURATION = 2
 export const DEFAULT_PIXEL_FLOW_COUNT = 240
 export const DEFAULT_PIXEL_FLOW_WIDTH = 8
 export const DEFAULT_PIXEL_FLOW_INITIAL_SATURATION = 0
 export const DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS = 0
+export const DEFAULT_PIXEL_FLOW_SUBJECT_DIRECTION: PixelFlowSubjectDirection = 'down'
 export const DEFAULT_PIXEL_FLOW_RAIN_SPEED = 50
 export const DEFAULT_PIXEL_FLOW_RAIN_LENGTH = 58
 export const DEFAULT_PIXEL_FLOW_FLOW_STRENGTH = 78
