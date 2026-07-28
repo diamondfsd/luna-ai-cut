@@ -7,6 +7,7 @@ import { CREATIVE_CATALOG, getCreativeCatalogItem, type CreativeModeId, type Cre
 import { ColorRevealCreative } from './color-reveal/ColorRevealCreative'
 import { OnlyYourColorCreative } from './only-your-color/OnlyYourColorCreative'
 import { PixelStretchCreative } from './pixel-stretch/PixelStretchCreative'
+import { PixelFlowCreative } from './pixel-flow/PixelFlowCreative'
 import { TripleStitchCreative } from './triple-stitch/TripleStitchCreative'
 import './creative-factory.css'
 
@@ -18,6 +19,7 @@ interface WorkspaceCreativeFactoryProps {
 }
 
 const CREATIVE_RENDERERS: Record<CreativeModeId, (props: CreativeModuleProps) => ReactNode> = {
+  'pixel-flow': (props) => <PixelFlowCreative {...props} />,
   'color-reveal': (props) => <ColorRevealCreative {...props} />,
   'only-your-color': (props) => <OnlyYourColorCreative {...props} />,
   'pixel-stretch': (props) => <PixelStretchCreative {...props} />,
@@ -25,6 +27,12 @@ const CREATIVE_RENDERERS: Record<CreativeModeId, (props: CreativeModuleProps) =>
 }
 
 function CreativeCover({ id }: { id: CreativeModeId }) {
+  if (id === 'pixel-flow') return <span className="pixel-flow-cover-scene">
+    <span className="pixel-flow-cover-color" />
+    <span className="pixel-flow-cover-mono" />
+    <span className="pixel-flow-cover-light"><i /><i /><i /><i /><i /><i /><i /></span>
+    <span className="pixel-flow-cover-subject" />
+  </span>
   if (id === 'only-your-color') return <span className="creative-cover-only-color">
     <span className="creative-cover-city"><i /><i /><i /><i /></span>
     <span className="creative-cover-street" />
