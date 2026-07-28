@@ -1,4 +1,4 @@
-import type { WorkspacePixelFlowState, WorkspaceProject } from '../../../shared/types'
+import type { PixelFlowSubjectDirection, WorkspacePixelFlowState, WorkspaceProject } from '../../../shared/types'
 import { PIXEL_FLOW_SETTINGS_VERSION } from './pixelFlowPresets'
 
 type NumericPixelFlowKey = 'duration' | 'pixelCount' | 'lightWidth' | 'rainSpeed' | 'rainLength'
@@ -12,6 +12,14 @@ export function savedPixelFlowParameter(
 ): number {
   if (saved?.settingsVersion !== PIXEL_FLOW_SETTINGS_VERSION) return fallback
   return saved[key] ?? fallback
+}
+
+export function savedPixelFlowSubjectDirection(
+  saved: WorkspacePixelFlowState | undefined,
+  fallback: PixelFlowSubjectDirection,
+): PixelFlowSubjectDirection {
+  if (saved?.settingsVersion !== PIXEL_FLOW_SETTINGS_VERSION) return fallback
+  return saved.subjectDirection ?? fallback
 }
 
 export function pixelFlowStateForAsset(

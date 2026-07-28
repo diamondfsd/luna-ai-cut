@@ -29,7 +29,7 @@ import {
   DEFAULT_PIXEL_FLOW_WIDTH,
   PIXEL_FLOW_SETTINGS_VERSION,
 } from './pixelFlowPresets'
-import { pixelFlowStateForAsset, savedPixelFlowParameter } from './pixelFlowState'
+import { pixelFlowStateForAsset, savedPixelFlowParameter, savedPixelFlowSubjectDirection } from './pixelFlowState'
 import { PIXEL_FLOW_LIVE_DURATION } from './pixelFlowExport'
 import { usePixelFlowBatchExport } from './usePixelFlowBatchExport'
 import './pixel-flow.css'
@@ -45,7 +45,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [lightWidth, setLightWidth] = useState(savedPixelFlowParameter(saved, 'lightWidth', DEFAULT_PIXEL_FLOW_WIDTH))
   const [initialSaturation, setInitialSaturation] = useState(savedPixelFlowParameter(saved, 'initialSaturation', DEFAULT_PIXEL_FLOW_INITIAL_SATURATION))
   const [initialBrightness, setInitialBrightness] = useState(savedPixelFlowParameter(saved, 'initialBrightness', DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS))
-  const [subjectDirection, setSubjectDirection] = useState<PixelFlowSubjectDirection>(saved?.subjectDirection ?? DEFAULT_PIXEL_FLOW_SUBJECT_DIRECTION)
+  const [subjectDirection, setSubjectDirection] = useState<PixelFlowSubjectDirection>(savedPixelFlowSubjectDirection(saved, DEFAULT_PIXEL_FLOW_SUBJECT_DIRECTION))
   const [bloomStrength, setBloomStrength] = useState(savedPixelFlowParameter(saved, 'bloomStrength', DEFAULT_PIXEL_FLOW_BLOOM))
   const [filterStrength, setFilterStrength] = useState(savedPixelFlowParameter(saved, 'filterStrength', DEFAULT_PIXEL_FLOW_FILTER))
   const [colorTransition, setColorTransition] = useState(savedPixelFlowParameter(saved, 'colorTransition', DEFAULT_PIXEL_FLOW_COLOR_TRANSITION))
@@ -83,7 +83,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setLightWidth(savedPixelFlowParameter(restored, 'lightWidth', DEFAULT_PIXEL_FLOW_WIDTH))
     setInitialSaturation(savedPixelFlowParameter(restored, 'initialSaturation', DEFAULT_PIXEL_FLOW_INITIAL_SATURATION))
     setInitialBrightness(savedPixelFlowParameter(restored, 'initialBrightness', DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS))
-    setSubjectDirection(restored?.subjectDirection ?? DEFAULT_PIXEL_FLOW_SUBJECT_DIRECTION)
+    setSubjectDirection(savedPixelFlowSubjectDirection(restored, DEFAULT_PIXEL_FLOW_SUBJECT_DIRECTION))
     setBloomStrength(savedPixelFlowParameter(restored, 'bloomStrength', DEFAULT_PIXEL_FLOW_BLOOM))
     setFilterStrength(savedPixelFlowParameter(restored, 'filterStrength', DEFAULT_PIXEL_FLOW_FILTER))
     setColorTransition(savedPixelFlowParameter(restored, 'colorTransition', DEFAULT_PIXEL_FLOW_COLOR_TRANSITION))
