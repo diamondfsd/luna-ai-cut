@@ -51,6 +51,8 @@ export interface AiFaceDescriptor {
   bounds: { x: number; y: number; width: number; height: number }
   embedding: number[] | null
   embeddingVersion?: string | null
+  /** 视频人物取样所在时间；照片不设置。 */
+  frameTime?: number
 }
 
 export interface AiVideoKeyframe {
@@ -171,7 +173,10 @@ export interface AiFaceGroup {
   name: string
   itemIds: string[]
   coverItemId: string
+  coverUrl: string | null
   coverBounds: { x: number; y: number; width: number; height: number }
+  memberFaces: Array<{ itemId: string; bounds: { x: number; y: number; width: number; height: number } }>
+  mergedMembers?: Array<{ id: string; name: string; avatarDataUrl: string | null }>
 }
 
 export interface AiSelectionCounts {

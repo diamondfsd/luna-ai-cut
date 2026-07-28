@@ -6,6 +6,7 @@ import {
   getSettings, saveSettings, getCacheStats, clearCache,
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
+import { deleteCustomLut, listCustomLuts } from './customLutLibraryService'
 
 export function register(): void {
   ipcMain.handle('settings:get', () => getSettings())
@@ -15,6 +16,8 @@ export function register(): void {
   ipcMain.handle('settings:chooseLocalResourcesDir', () => chooseLocalResourcesDir())
   ipcMain.handle('settings:chooseExportDir', () => chooseExportDir())
   ipcMain.handle('settings:chooseLutDir', () => chooseLutDir())
+  ipcMain.handle('settings:listCustomLuts', () => listCustomLuts())
+  ipcMain.handle('settings:deleteCustomLut', (_event, filePath: string) => deleteCustomLut(filePath))
   ipcMain.handle('settings:chooseMockMediaDir', () => chooseMockMediaDir())
   ipcMain.handle('workspace:chooseMediaFiles', () => chooseWorkspaceMediaFiles())
   ipcMain.handle('mock:start', (_event, s?: Partial<AppSettings>) => startMockServer(s))

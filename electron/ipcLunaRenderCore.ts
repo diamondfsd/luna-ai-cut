@@ -26,6 +26,7 @@ import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { RUNTIME_RESOURCE_DEFINITIONS } from './runtimeResourceDefinitions'
 import { loadRuntimeResource } from './runtimeResourceService'
 import { embedJpegSourceMetadata, embedVideoSourceMetadata } from './exportSourceMetadata'
+import { registerNativePreviewIpc } from './nativePreviewIpc'
 
 interface RegisterContext {
   win: Electron.BrowserWindow | null
@@ -115,6 +116,8 @@ function safe<T extends (...args: any[]) => any>(label: string, fn: T): T {
 }
 
 export function register(ctx: RegisterContext): void {
+  registerNativePreviewIpc(ctx, resolveRuntimePaths)
+
   ipcMain.handle('lrc:resetCompatibilityBlock', async () => {
     resetRenderCompatibilityBlock()
     logMainInfo('[LRC] 已解除渲染兼容保护，等待重新检测')
@@ -123,6 +126,10 @@ export function register(ctx: RegisterContext): void {
   ipcMain.handle('lrc:init', safe('init', async (_event: IpcMainInvokeEvent, logPath?: string) => {
     await warmupRenderCore(logPath)
     rcLog('lrc:init OK')
+  }))
+
+  ipcMain.handle('lrc:getNativePreviewCapabilities', safe('getNativePreviewCapabilities', async () => {
+    return getNative().getNativePreviewCapabilities()
   }))
 
   ipcMain.handle('lrc:prepareRuntimeResource', safe('prepareRuntimeResource',

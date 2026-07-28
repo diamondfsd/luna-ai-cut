@@ -5,14 +5,17 @@ import ts from 'typescript'
 
 let source = null
 let lrcRecoverySource = null
+let lrcErrorSource = null
 try {
   source = await readFile(new URL('../src/shared/crashDiagnosticUtils.ts', import.meta.url), 'utf8')
   lrcRecoverySource = await readFile(new URL('../src/shared/lrcInitGuardRecovery.ts', import.meta.url), 'utf8')
+  lrcErrorSource = await readFile(new URL('../src/shared/lrcErrorDiagnostics.ts', import.meta.url), 'utf8')
 } catch {
   // The first run is expected to fail until the diagnostic module exists.
 }
 assert.ok(source, 'crash diagnostic utilities must exist')
 assert.ok(lrcRecoverySource, 'LRC init guard recovery utilities must exist')
+assert.ok(lrcErrorSource, 'LRC error diagnostics must exist')
 
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
@@ -28,6 +31,13 @@ const lrcRecoveryCompiled = ts.transpileModule(lrcRecoverySource, {
   },
 }).outputText
 const lrcRecovery = await import(`data:text/javascript;base64,${Buffer.from(lrcRecoveryCompiled).toString('base64')}`)
+const lrcErrorCompiled = ts.transpileModule(lrcErrorSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+  },
+}).outputText
+const lrcError = await import(`data:text/javascript;base64,${Buffer.from(lrcErrorCompiled).toString('base64')}`)
 
 const root = new Error('render failed')
 const error = new Error('native call failed', { cause: root })
@@ -60,7 +70,7 @@ assert.deepEqual(
 )
 
 assert.equal(lrcRecovery.LRC_INIT_GUARD_FILE, '.lrc-init-running.json')
-assert.equal(lrcRecovery.LRC_INIT_RECOVERY_FILE, '.lrc-init-recovery-v1.json')
+assert.equal(lrcRecovery.LRC_INIT_RECOVERY_FILE, '.lrc-init-recovery-v2.json')
 assert.equal(
   lrcRecovery.shouldRecoverLrcInitGuard({ packaged: true, guardExists: true, recoveryAttempted: false }),
   true,
@@ -76,5 +86,30 @@ assert.equal(
   false,
   'development does not persist compatibility recovery state',
 )
+
+const missingRuntime = lrcError.describeRenderInitFailure(new Error(
+  'Error invoking remote method \'lrc:init\': Error: LRC_NATIVE_LOAD_FAILED\n' +
+  '  - [present] C:\\app\\luna-render-core.node\n' +
+  '    code=ERR_DLOPEN_FAILED\n' +
+  '    error=The specified module could not be found.',
+))
+assert.match(missingRuntime.summary, /Visual C\+\+/)
+assert.match(missingRuntime.detail, /ERR_DLOPEN_FAILED/)
+
+const missingNative = lrcError.describeRenderInitFailure(new Error(
+  'LRC_NATIVE_LOAD_FAILED\n  - [missing] C:\\app\\luna-render-core.node\n    code=MODULE_NOT_FOUND',
+))
+assert.match(missingNative.summary, /文件不完整/)
+
+const incompatibleNative = lrcError.describeRenderInitFailure(new Error(
+  'LRC_NATIVE_LOAD_FAILED\n  - [present] C:\\app\\luna-render-core.node\n' +
+  '    code=ERR_DLOPEN_FAILED\n    error=%1 is not a valid Win32 application',
+))
+assert.match(incompatibleNative.summary, /不匹配/)
+
+const blocked = lrcError.describeRenderInitFailure(new Error(
+  'LRC_COMPATIBILITY_BLOCKED: previous native initialization did not complete',
+))
+assert.match(blocked.summary, /重新检测/)
 
 console.log('crash diagnostic tests passed')

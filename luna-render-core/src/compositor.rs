@@ -7,6 +7,7 @@ mod mask;
 mod playback;
 mod preview;
 mod render;
+mod shared;
 #[cfg(test)]
 mod tests;
 mod texture;
@@ -176,6 +177,7 @@ struct TextureEntry {
     width: u32,
     height: u32,
     #[cfg(target_os = "windows")]
+    #[allow(dead_code)]
     external: bool,
 }
 
@@ -231,7 +233,7 @@ pub struct Compositor {
     queue: wgpu::Queue,
     pipelines: gpu::BlendPipelines,
     /// BGRA sRGB 格式渲染管线（macOS Metal External）
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pipelines_bgra: gpu::BlendPipelines,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
@@ -364,7 +366,7 @@ impl Compositor {
             wgpu::TextureFormat::Rgba8UnormSrgb,
             "compositor pipeline",
         );
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let pipelines_bgra = create_compositor_pipelines(
             &device,
             &pipeline_layout,
@@ -416,7 +418,7 @@ impl Compositor {
             device,
             queue,
             pipelines,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             pipelines_bgra,
             sampler,
             bind_group_layout: bgl,
@@ -448,7 +450,7 @@ impl Compositor {
         canvas_height: u32,
         layers: &[RenderLayer],
     ) -> Result<Vec<u8>, String> {
-        self.render_impl(canvas_width, canvas_height, layers, true)
+        self.render_impl(canvas_width, canvas_height, layers, true, false)
     }
 }
 

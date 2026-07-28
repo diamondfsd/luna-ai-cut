@@ -2,11 +2,16 @@ import { useState } from 'react'
 import { FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
-import type { WorkspaceProject } from '../../shared/types'
-import { Button, Dialog, IconButton, Input, toast } from '../../ui'
+import type { WorkspaceMediaAsset, WorkspaceProject } from '../../shared/types'
+import { Button, Dialog, IconButton, Input } from '../../ui'
 import { ThumbImage } from '../../components/ThumbImage'
 import { WorkspaceMissingMedia } from './WorkspaceMissingMedia'
+import { WorkspaceImportDialog } from './WorkspaceImportDialog'
 import '../../styles/workspace-project-picker.css'
+
+function generatedProjectName(count: number): string {
+  return `${count} 个素材项目`
+}
 
 export function WorkspaceProjectPicker() {
   const { projects, projectLoading, openProject, deleteProject, renameProject, createProject } = useWorkspaceMedia()
@@ -61,15 +66,12 @@ export function WorkspaceProjectPicker() {
     setDeleteConfirmOpen(false)
   }
 
-  async function handleCreateConfirm(): Promise<void> {
-    if (creating || !createName.trim()) return
+  async function handleCreateProject(assets: WorkspaceMediaAsset[]): Promise<void> {
+    if (creating || assets.length === 0) return
     setCreating(true)
     try {
-      await createProject(createName.trim())
-      setCreateOpen(false)
+      await createProject(createName.trim() || generatedProjectName(assets.length), assets)
       setCreateName('')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error))
     } finally {
       setCreating(false)
     }
@@ -158,25 +160,19 @@ export function WorkspaceProjectPicker() {
         </div>
       </Dialog>
 
-      {/* 创建项目弹窗 */}
-      <Dialog
-        tone="dark"
+      <WorkspaceImportDialog
         open={createOpen}
-        onOpenChange={setCreateOpen}
-        title="新建项目"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button variant="primary" onClick={() => void handleCreateConfirm()} disabled={!createName.trim() || creating}>
-              {creating ? '创建中...' : '创建'}
-            </Button>
-          </>
-        }
-      >
-        <div className="workspace-dialog-body">
-          <Input fullWidth value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="项目名称" autoFocus />
-        </div>
-      </Dialog>
+        onOpenChange={(open) => {
+          if (creating) return
+          setCreateOpen(open)
+          if (!open) setCreateName('')
+        }}
+        existingPaths={new Set()}
+        mode="create"
+        projectName={createName}
+        onProjectNameChange={setCreateName}
+        onImport={handleCreateProject}
+      />
 
       {/* 删除确认弹窗 */}
       <Dialog

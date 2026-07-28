@@ -4,7 +4,10 @@ import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 
 const source = await readFile(new URL('../src/components/htmlPreviewGeometry.ts', import.meta.url), 'utf8')
+const watermarkGeometrySource = await readFile(new URL('../src/shared/watermarkGeometry.ts', import.meta.url), 'utf8')
+const watermarkLibrarySource = await readFile(new URL('../src/shared/watermarkLibrary.ts', import.meta.url), 'utf8')
 const rendererSelectionSource = await readFile(new URL('../src/components/previewRendererSelection.ts', import.meta.url), 'utf8')
+const nativePreviewOcclusionSource = await readFile(new URL('../src/components/nativePreviewOcclusion.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -13,6 +16,22 @@ const compiled = ts.transpileModule(source, {
   },
 }).outputText
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
+const watermarkGeometryCompiled = ts.transpileModule(watermarkGeometrySource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
+  },
+}).outputText
+const watermarkGeometry = await import(`data:text/javascript;base64,${Buffer.from(watermarkGeometryCompiled).toString('base64')}`)
+const watermarkLibraryCompiled = ts.transpileModule(watermarkLibrarySource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
+  },
+}).outputText
+const watermarkLibrary = await import(`data:text/javascript;base64,${Buffer.from(watermarkLibraryCompiled).toString('base64')}`)
 const rendererSelectionCompiled = ts.transpileModule(rendererSelectionSource, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -21,6 +40,14 @@ const rendererSelectionCompiled = ts.transpileModule(rendererSelectionSource, {
   },
 }).outputText
 const rendererSelection = await import(`data:text/javascript;base64,${Buffer.from(rendererSelectionCompiled).toString('base64')}`)
+const nativePreviewOcclusionCompiled = ts.transpileModule(nativePreviewOcclusionSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
+  },
+}).outputText
+const nativePreviewOcclusion = await import(`data:text/javascript;base64,${Buffer.from(nativePreviewOcclusionCompiled).toString('base64')}`)
 
 function close(actual, expected, message) {
   assert.ok(Math.abs(actual - expected) < 0.0001, `${message}: expected ${expected}, got ${actual}`)
@@ -45,6 +72,106 @@ assert.deepEqual(
   geometry.watermarkPositionStyle({ anchor: 'bottom-center', targetWidth: 0.39, marginX: 0.03, marginY: 0.03 }),
   { width: '39%', bottom: '3%', left: '50%', transform: 'translateX(-50%)' },
   'CSS watermark uses the same normalized width, margin, and anchor as export positioning',
+)
+
+const customSettings = {
+  enabled: true,
+  style: 'custom',
+  position: 'bottom-center',
+  sourceKind: 'custom',
+  customAsset: { filePath: '/tmp/logo.png', width: 400, height: 100 },
+  imageWidth: 400,
+  imageHeight: 100,
+  sizeOnCanvasWidth: 0.3,
+  placement: { mode: 'preset', anchor: 'bottom-center', insetOnShortEdge: 0.059 },
+}
+const customLandscape = watermarkGeometry.resolveWatermarkPositioning(customSettings, 1920, 1080)
+const customPortrait = watermarkGeometry.resolveWatermarkPositioning(customSettings, 1080, 1920)
+const defaultWidthCustom = watermarkGeometry.resolveWatermarkPositioning({
+  ...customSettings,
+  sizeOnCanvasWidth: undefined,
+}, 1920, 1080)
+const verticalCustom = watermarkGeometry.resolveWatermarkPositioning({
+  ...customSettings,
+  customAsset: { filePath: '/tmp/vertical-logo.png', width: 100, height: 400 },
+  imageWidth: 100,
+  imageHeight: 400,
+}, 1080, 1920)
+const eightyPercentWide = watermarkGeometry.resolveWatermarkPositioning({
+  ...customSettings,
+  sizeOnCanvasWidth: 0.8,
+}, 1920, 1080)
+assert.equal(watermarkGeometry.usesCustomWatermark(customSettings), true)
+assert.equal(watermarkGeometry.usesCustomWatermark({
+  ...customSettings,
+  sourceKind: 'builtin',
+}), false, 'built-in watermark ignores retained custom geometry fields')
+close(customLandscape.targetWidth, 0.3, 'custom landscape width uses canvas-width percentage')
+close(customPortrait.targetWidth, 0.3, 'custom portrait width uses canvas-width percentage')
+close(defaultWidthCustom.targetWidth, 0.23, 'custom watermark defaults to 23 percent of canvas width')
+close(eightyPercentWide.targetWidth, 0.8, '80 percent size occupies 80 percent of canvas width')
+close(
+  verticalCustom.targetWidth,
+  0.3,
+  'vertical custom watermark keeps the requested width when it fits the canvas',
+)
+assert.equal(customLandscape.anchor, 'top-left')
+close(customLandscape.marginX, (1 - customLandscape.targetWidth) / 2, 'bottom-center preset centers landscape watermark')
+assert.ok(customLandscape.marginY > 0.8, 'bottom-center preset remains near the bottom')
+
+const moved = watermarkGeometry.resolveWatermarkPositioning({
+  ...customSettings,
+  placement: { mode: 'free', centerX: 0.95, centerY: 0.95 },
+}, 1080, 1920)
+assert.ok((moved.marginX ?? 0) + moved.targetWidth <= 1, 'free watermark stays inside right edge')
+assert.ok((moved.marginY ?? 0) >= 0, 'free watermark stays inside vertical bounds')
+
+const firstAsset = { id: 'first', filePath: '/tmp/first.png' }
+const secondAsset = { id: 'second', filePath: '/tmp/second.png' }
+assert.deepEqual(
+  watermarkLibrary.addCustomWatermarkAsset([firstAsset, secondAsset], secondAsset).map((asset) => asset.id),
+  ['second', 'first'],
+  'reimporting a watermark keeps one library entry and moves it to the front',
+)
+assert.deepEqual(
+  watermarkLibrary.addCustomWatermarkAssets([firstAsset], [secondAsset, firstAsset]).map((asset) => asset.id),
+  ['second', 'first'],
+  'batch importing watermarks preserves selection order and removes duplicates',
+)
+assert.deepEqual(
+  watermarkLibrary.removeCustomWatermarkAsset([firstAsset, secondAsset], 'first').map((asset) => asset.id),
+  ['second'],
+  'removing a watermark only removes the selected library entry',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('My Logo_(白色) 01.PNG', 'my-logo 白色01'),
+  true,
+  'watermark search ignores case, spaces, punctuation, and symbols',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('Ｃａｆｅ́－品牌.webp', 'cafe 品牌'),
+  true,
+  'watermark search normalizes full-width characters and diacritics',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('ic_watermark_iac2_image_cn.png', 'ica2 cn'),
+  true,
+  'watermark search tolerates one adjacent transposition in a multi-term query',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('ic_watermark_iac2_image_en.png', 'ica2 cn'),
+  false,
+  'watermark search still requires short terms such as language codes to match exactly',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('Primary Logo.png', 'secondary'),
+  false,
+  'watermark search still rejects unrelated file names',
+)
+assert.equal(
+  watermarkLibrary.matchesWatermarkFileName('Primary Logo.png', ' - ( ) '),
+  true,
+  'a symbols-only query behaves like an empty search',
 )
 
 const videoLayer = { filePath: '/tmp/video.mp4', isVideo: true }
@@ -73,6 +200,21 @@ assert.equal(
   ]),
   false,
   'image preview remains on the existing image renderer',
+)
+assert.equal(
+  nativePreviewOcclusion.shouldShowNativePreview(false, true, false),
+  false,
+  'native GPU preview hides when its preserved route becomes inactive',
+)
+assert.equal(
+  nativePreviewOcclusion.shouldShowNativePreview(true, false, false),
+  false,
+  'native GPU preview hides when its canvas has no visible bounds',
+)
+assert.equal(
+  nativePreviewOcclusion.shouldShowNativePreview(true, true, false),
+  true,
+  'native GPU preview returns when the workspace is active and visible',
 )
 
 console.log('media preview geometry tests passed')
