@@ -1,7 +1,7 @@
 import type { VideoExportSettings, WorkspaceMediaAsset, WorkspacePixelFlowState, WorkspaceProject } from '../../../shared/types'
 import { loadCreativeImageSize } from '../shared/creativeMedia'
 import { resolvePixelFlowBatchMask } from './pixelFlowBatchMask'
-import { queuePixelFlowExport } from './pixelFlowExport'
+import { queuePixelFlowExports } from './pixelFlowExport'
 import { buildPixelFlowLayer, type PixelFlowEffectSettings } from './pixelFlowLayers'
 import { PIXEL_FLOW_SETTINGS_VERSION } from './pixelFlowPresets'
 import { pixelFlowStateForAsset } from './pixelFlowState'
@@ -75,27 +75,26 @@ export async function queuePixelFlowBatchExport(options: PixelFlowBatchExportOpt
     }
   }
 
-  void (async () => {
-    for (const item of prepared) {
-      const layers = [buildPixelFlowLayer({
+  const queuedCount = await queuePixelFlowExports(prepared.map((item) => {
+    const layers = [buildPixelFlowLayer({
         asset: item.asset,
         maskPath: item.state.depthMaskPath!,
         playbackDuration: item.playbackDuration,
         settings: item.state,
-      })]
-      await queuePixelFlowExport({
-        asset: item.asset,
-        layers,
-        sourceSize: item.sourceSize,
-        playbackDuration: item.playbackDuration,
-        config: {
-          ...options.config,
-          exportFormats: item.asset.kind === 'image' ? options.config.exportFormats : ['video'],
-        },
-        waitForCompletion: true,
-      }).catch(() => undefined)
+    })]
+    return {
+      asset: item.asset,
+      layers,
+      sourceSize: item.sourceSize,
+      playbackDuration: item.playbackDuration,
+      config: {
+        ...options.config,
+        exportFormats: item.asset.kind === 'image'
+          ? options.config.exportFormats
+          : ['video'] as VideoExportSettings['exportFormats'],
+      },
     }
-  })()
+  }))
 
-  return { queuedCount: prepared.length, failedCount, resolvedStates }
+  return { queuedCount, failedCount, resolvedStates }
 }
