@@ -4,6 +4,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 
 import { readMediaDeviceInfo } from './exifReader'
+import { normalizeJpegExifSegment } from './jpegExifMetadata'
 
 const execFileAsync = promisify(execFile)
 
@@ -38,8 +39,9 @@ function jpegMetadataInsertOffset(bytes: Buffer): number {
 export async function embedJpegSourceMetadata(outputPath: string, sourcePath?: string): Promise<boolean> {
   if (!sourcePath || !/\.jpe?g$/i.test(outputPath)) return false
   const [source, output] = await Promise.all([readFile(sourcePath), readFile(outputPath)])
-  const exif = jpegExifSegment(source)
-  if (!exif || output[0] !== 0xff || output[1] !== 0xd8) return false
+  const sourceExif = jpegExifSegment(source)
+  if (!sourceExif || output[0] !== 0xff || output[1] !== 0xd8) return false
+  const exif = normalizeJpegExifSegment(sourceExif, output)
   const insertAt = jpegMetadataInsertOffset(output)
   await writeFile(outputPath, Buffer.concat([output.subarray(0, insertAt), exif, output.subarray(insertAt)]))
   return true
