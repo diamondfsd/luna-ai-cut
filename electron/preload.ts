@@ -154,6 +154,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     getSegmentationModelStatus: (modelId: import('../src/shared/segmentationModels').SegmentationModelId) => ipcRenderer.invoke('workspace:getSegmentationModelStatus', modelId),
     prepareSegmentationModels: (modelIds: import('../src/shared/segmentationModels').SegmentationModelId[]) => ipcRenderer.invoke('workspace:prepareSegmentationModels', modelIds),
     segmentImage: (request: WorkspaceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentImage', request),
+    segmentInstances: (request: import('../src/shared/types').WorkspaceInstanceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentInstances', request),
     cancelSegmentation: (requestId: string) => ipcRenderer.invoke('workspace:cancelSegmentation', requestId),
     trackMask: (request: WorkspaceMaskTrackingRequest) => ipcRenderer.invoke('workspace:trackMask', request),
     cancelMaskTracking: (requestId: string) => ipcRenderer.invoke('workspace:cancelMaskTracking', requestId),

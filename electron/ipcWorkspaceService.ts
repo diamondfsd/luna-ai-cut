@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
+import type { WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from './fileService'
@@ -312,6 +312,75 @@ export function register(): void {
   ipcMain.handle('workspace:cancelSegmentation', (event, requestId: string) => {
     if (typeof requestId !== 'string' || requestId.length === 0) return false
     return segmentationTasks.cancel(event.sender.id, requestId)
+  })
+  ipcMain.handle('workspace:segmentInstances', async (event, request: WorkspaceInstanceSegmentationRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('划选任务标识无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0 || VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('划选当前仅支持图片')
+    const { requestId, filePath } = request
+    const task = segmentationTasks.begin(event.sender.id, requestId)
+    const { signal } = task.controller
+    const finishForegroundSegmentation = beginForegroundSegmentation('yolo26s-seg')
+    watchSender(event.sender)
+    const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
+      if (!segmentationTasks.isActive(task) || event.sender.isDestroyed()) return
+      event.sender.send('workspace:segmentation-progress', { requestId, phase, label, percent })
+    }
+    try {
+      const totalStartedAt = performance.now()
+      const modelStartedAt = performance.now()
+      reportProgress('model', '正在准备模型', null)
+      const model = await loadModel('yolo26s-seg', (progress) => reportProgress(
+        'model',
+        progress.completedBytes === progress.totalBytes ? '正在校验模型' : '正在下载模型',
+        progress.totalBytes > 0 ? Math.round(progress.completedBytes / progress.totalBytes * 100) : null,
+      ), signal)
+      const modelFileLoadMs = performance.now() - modelStartedAt
+      signal.throwIfAborted()
+      reportProgress('preparing', '正在准备画面', null)
+      const prepareStartedAt = performance.now()
+      const sourceSize = await probeDisplayResolution(filePath)
+      const scale = Math.min(640 / sourceSize.width, 640 / sourceSize.height)
+      const scaledWidth = Math.max(1, Math.round(sourceSize.width * scale))
+      const scaledHeight = Math.max(1, Math.round(sourceSize.height * scale))
+      const padX = Math.floor((640 - scaledWidth) / 2)
+      const padY = Math.floor((640 - scaledHeight) / 2)
+      const { stdout } = await execFileAsync(getFfmpegPath(), [
+        '-v', 'error', '-i', filePath,
+        '-vf', `scale=${scaledWidth}:${scaledHeight}:flags=bilinear,pad=640:640:${padX}:${padY}:color=0x727272`,
+        '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1',
+      ], { encoding: 'buffer', maxBuffer: 640 * 640 * 3 + 1024, signal })
+      const imagePrepareMs = performance.now() - prepareStartedAt
+      signal.throwIfAborted()
+      reportProgress('recognizing', '正在识别', null)
+      const inferenceStartedAt = performance.now()
+      const result = await segmentSpecializedInWorker({
+        backend: 'yolo26-instances',
+        modelPath: model.path,
+        rgb: Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout),
+        scaledWidth,
+        scaledHeight,
+        padX,
+        padY,
+        outputSize: 512,
+      }, signal)
+      const inferenceMs = performance.now() - inferenceStartedAt
+      signal.throwIfAborted()
+      return {
+        requestId,
+        width: result.width,
+        height: result.height,
+        instanceIds: result.bytes.buffer.slice(result.bytes.byteOffset, result.bytes.byteOffset + result.bytes.byteLength),
+        performance: {
+          modelLoadMs: Math.round(modelFileLoadMs + result.sessionLoadMs),
+          imagePrepareMs: Math.round(imagePrepareMs),
+          inferenceMs: Math.round(inferenceMs),
+          totalMs: Math.round(performance.now() - totalStartedAt),
+        },
+      }
+    } finally {
+      segmentationTasks.finish(task)
+      finishForegroundSegmentation()
+    }
   })
   ipcMain.handle('workspace:segmentImage', async (event, request: WorkspaceSegmentationRequest) => {
     if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) {

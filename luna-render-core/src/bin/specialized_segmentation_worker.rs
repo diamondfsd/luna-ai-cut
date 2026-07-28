@@ -77,6 +77,8 @@ fn write_response<W: Write>(writer: &mut W, response: &WorkerResponse) -> Result
 fn expected_output_bytes(backend: &str, output_size: usize) -> usize {
     if backend == "dinov2-small" || backend == "sface" || backend == "ultraface-boxes" {
         output_size * std::mem::size_of::<f32>()
+    } else if backend == "yolo26-instances" {
+        output_size * output_size * std::mem::size_of::<u16>()
     } else {
         output_size * output_size
     }
@@ -176,7 +178,7 @@ fn run() -> Result<(), String> {
     let pad_y = number(&args[8], "纵向留白")?;
     let output_size = number(&args[9], "输出尺寸")?;
     let mask = match args[1].as_str() {
-        "yolo26-seg" | "yolo26-labels" | "segformer-labels" => {
+        "yolo26-seg" | "yolo26-labels" | "yolo26-instances" | "segformer-labels" => {
             let mut session =
                 specialized_segmentation::SpecializedSession::load(&args[1], &args[2])?;
             session.segment(&rgb, scaled_width, scaled_height, pad_x, pad_y, output_size)?
