@@ -10,13 +10,15 @@ import type { WorkspaceRemovalOperation } from '../../shared/types'
 import './RemovalPanel.css'
 
 const MODEL_VERSION = 'carve-c3c0c9e' as const
+const DEFAULT_EDGE_EXPANSION = 8
+const DEFAULT_AI_EDGE_EXPANSION = 12
 
 export function RemovalPanel() {
   const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
   const setMaskReconstructing = mask.setReconstructing
   const media = useWorkspaceMedia()
-  const [edgeExpansion, setEdgeExpansion] = useState(8)
+  const [edgeExpansion, setEdgeExpansion] = useState(DEFAULT_EDGE_EXPANSION)
   const [feather, setFeather] = useState(6)
   const [processing, setProcessing] = useState(false)
   const requestRef = useRef<string | null>(null)
@@ -28,6 +30,19 @@ export function RemovalPanel() {
   const activeResult = [...operations].reverse().find((operation) => operation.enabled)
   const usableMask = Boolean(mask.maskData && hasUsableMask(mask.maskData))
   const isImage = media.activeMedia?.kind === 'image'
+
+  useEffect(() => {
+    if (!isImage || mask.editing) return
+    mask.createMask()
+    mask.setManualTool('move')
+    mask.setSemanticPicking(true)
+    mask.setSelectionOperation('add')
+  }, [isImage, mask])
+
+  useEffect(() => {
+    if (mask.activeMask?.kind !== 'semantic') return
+    setEdgeExpansion((current) => current === DEFAULT_EDGE_EXPANSION ? DEFAULT_AI_EDGE_EXPANSION : current)
+  }, [mask.activeMask?.kind])
 
   useEffect(() => () => {
     if (requestRef.current) void window.luna.workspace.cancelObjectRemoval(requestRef.current)
@@ -43,14 +58,18 @@ export function RemovalPanel() {
     return () => setMaskReconstructing(false)
   }, [processing, setMaskReconstructing])
 
-  const saveRemoval = async (nextOperations: WorkspaceRemovalOperation[]): Promise<void> => {
+  const saveRemoval = async (nextOperations: WorkspaceRemovalOperation[], discardedMaskId?: string): Promise<void> => {
     const project = media.currentProject
     if (!project) return
     const next = {
       ...project,
-      assets: project.assets.map((item, index) => index === media.activeIndex
-        ? { ...item, removal: { schemaVersion: 1 as const, operations: nextOperations } }
-        : item),
+      assets: project.assets.map((item, index) => {
+        if (index !== media.activeIndex) return item
+        const pipeline = discardedMaskId
+          ? { ...edit.pipeline, colorMasks: edit.pipeline.colorMasks.filter((layer) => layer.id !== discardedMaskId) }
+          : item.pipeline
+        return { ...item, pipeline, removal: { schemaVersion: 1 as const, operations: nextOperations } }
+      }),
       updatedAt: new Date().toISOString(),
     }
     media.setCurrentProject(next)
@@ -90,8 +109,10 @@ export function RemovalPanel() {
         model: { id: 'big-lama-fp32', version: MODEL_VERSION, sha256: result.modelSha256 },
         createdAt: new Date().toISOString(),
       }
-      await saveRemoval([...operations, operation])
-      if (mask.activeLayerId) mask.removeLayer(mask.activeLayerId)
+      const discardedMaskId = mask.activeLayerId ?? undefined
+      if (discardedMaskId) mask.removeLayer(discardedMaskId)
+      draftLayerRef.current = null
+      await saveRemoval([...operations, operation], discardedMaskId)
       mask.setEditing(false)
       edit.setCompareOriginal(false)
       toast.success(`消除完成 · ${Math.max(0.1, result.inferenceMs / 1000).toFixed(1)} 秒`)
@@ -111,46 +132,34 @@ export function RemovalPanel() {
     void window.luna.workspace.cancelObjectRemoval(requestId)
   }
 
-  const beginSelection = (): void => {
-    mask.createMask()
-    mask.setManualTool('brush')
-    mask.setSelectionOperation('replace')
-  }
-
   if (!isImage) return <div className="workspace-removal-empty">对象消除当前仅支持普通图片。</div>
 
   return (
     <div className="workspace-removal-panel">
       <section>
         <h3>选区</h3>
-        {!mask.editing ? (
-          <Button variant="secondary" className="workspace-removal-full-button" onClick={beginSelection}>{activeResult ? '继续消除' : '选择要消除的区域'}</Button>
-        ) : (
-          <>
-            <ButtonGroup
-              options={[
-                { value: 'brush', label: <><Brush size={16} />画笔</> },
-                { value: 'rectangle', label: <><Square size={16} />框选</> },
-                { value: 'point', label: <><Crosshair size={16} />智能</> },
-              ]}
-              value={mask.semanticPicking ? 'point' : mask.manualTool === 'rectangle' ? 'rectangle' : 'brush'}
-              onChange={(value) => {
-                mask.setSemanticPicking(value === 'point')
-                mask.setManualTool(value === 'rectangle' ? 'rectangle' : value === 'brush' ? 'brush' : 'move')
-              }}
-            />
-            <ButtonGroup
-              options={[
-                { value: 'add', label: <><Plus size={15} />添加</> },
-                { value: 'subtract', label: <><Minus size={15} />减去</> },
-              ]}
-              value={mask.selectionOperation === 'subtract' ? 'subtract' : 'add'}
-              onChange={(value) => mask.setSelectionOperation(value)}
-            />
-            {mask.manualTool === 'brush' && <ParamSlider label="画笔大小" value={mask.brushSize} min={2} max={100} onChange={mask.setBrushSize} />}
-            <label className="workspace-removal-switch"><span>显示选区</span><Switch ariaLabel="显示消除选区" checked={mask.showOverlay} onCheckedChange={mask.setShowOverlay} /></label>
-          </>
-        )}
+        <ButtonGroup
+          options={[
+            { value: 'point', label: <><Crosshair size={16} />智能</> },
+            { value: 'brush', label: <><Brush size={16} />画笔</> },
+            { value: 'rectangle', label: <><Square size={16} />框选</> },
+          ]}
+          value={mask.semanticPicking ? 'point' : mask.manualTool === 'rectangle' ? 'rectangle' : 'brush'}
+          onChange={(value) => {
+            mask.setSemanticPicking(value === 'point')
+            mask.setManualTool(value === 'rectangle' ? 'rectangle' : value === 'brush' ? 'brush' : 'move')
+          }}
+        />
+        <ButtonGroup
+          options={[
+            { value: 'add', label: <><Plus size={15} />添加</> },
+            { value: 'subtract', label: <><Minus size={15} />减去</> },
+          ]}
+          value={mask.selectionOperation === 'subtract' ? 'subtract' : 'add'}
+          onChange={(value) => mask.setSelectionOperation(value)}
+        />
+        {mask.manualTool === 'brush' && <ParamSlider label="画笔大小" value={mask.brushSize} min={2} max={100} onChange={mask.setBrushSize} />}
+        <label className="workspace-removal-switch"><span>显示选区</span><Switch ariaLabel="显示消除选区" checked={mask.showOverlay} onCheckedChange={mask.setShowOverlay} /></label>
       </section>
       <section>
         <h3>边缘</h3>

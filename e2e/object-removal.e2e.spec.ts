@@ -41,11 +41,14 @@ test('对象消除完成框选、处理中流光与结果持久化', async ({ lu
   await lunaApp.page.getByRole('link', { name: '工作台', exact: true }).click()
   await lunaApp.page.getByRole('button', { name: `${projectName} 1 个素材`, exact: true }).click()
   await lunaApp.page.getByRole('button', { name: '对象消除', exact: true }).click()
-  await lunaApp.page.getByRole('button', { name: '选择要消除的区域', exact: true }).click()
-  await lunaApp.page.getByRole('button', { name: '框选', exact: true }).click()
 
   const overlay = lunaApp.page.locator('.workspace-mask-overlay-shell')
   await expect(overlay).toBeVisible()
+  await expect(lunaApp.page.getByRole('button', { name: '智能', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  const rectangleButton = lunaApp.page.getByRole('button', { name: '框选', exact: true })
+  await rectangleButton.click()
+  await expect(rectangleButton).toHaveAttribute('aria-pressed', 'true')
+  await expect(overlay.locator('.workspace-mask-overlay')).toHaveCSS('cursor', 'crosshair')
   const box = await overlay.boundingBox()
   expect(box).not.toBeNull()
   if (!box) throw new Error('对象消除遮罩没有可交互区域')
@@ -63,6 +66,7 @@ test('对象消除完成框选、处理中流光与结果持久化', async ({ lu
   await expect(overlay).toHaveAttribute('data-reconstructing', 'true')
   await expect(lunaApp.page.getByRole('button', { name: '按住查看原图', exact: true })).toBeVisible({ timeout: 120_000 })
   await expect(lunaApp.page.getByRole('button', { name: '删除消除结果', exact: true })).toBeVisible()
+  await expect(lunaApp.page.locator('.preview-loading-overlay')).toBeHidden({ timeout: 30_000 })
 
   const projectFile = path.join(
     lunaApp.temporaryRoot,
@@ -73,6 +77,7 @@ test('对象消除完成框选、处理中流光与结果持久化', async ({ lu
   )
   const persisted = JSON.parse(await readFile(projectFile, 'utf8')) as {
     assets: Array<{
+      pipeline?: { colorMasks?: unknown[] }
       removal?: {
         schemaVersion: number
         operations: Array<{ enabled: boolean; resultPath: string; maskPath: string }>
@@ -81,6 +86,7 @@ test('对象消除完成框选、处理中流光与结果持久化', async ({ lu
   }
   const operation = persisted.assets[0]?.removal?.operations[0]
   expect(persisted.assets[0]?.removal?.schemaVersion).toBe(1)
+  expect(persisted.assets[0]?.pipeline?.colorMasks ?? []).toEqual([])
   expect(operation?.enabled).toBe(true)
   expect(operation?.resultPath.startsWith(lunaApp.temporaryRoot)).toBe(true)
   expect(operation?.maskPath.startsWith(lunaApp.temporaryRoot)).toBe(true)
