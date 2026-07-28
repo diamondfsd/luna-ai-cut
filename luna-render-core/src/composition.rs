@@ -125,6 +125,8 @@ pub struct CompositionLayer {
     pub mask_track: Option<MaskTrack>,
     #[serde(rename = "pixelStretch", alias = "pixel_stretch")]
     pub pixel_stretch: Option<crate::RenderPixelStretch>,
+    #[serde(rename = "pixelFlow", alias = "pixel_flow")]
+    pub pixel_flow: Option<crate::RenderPixelFlow>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
     pub restore_lut_id: Option<String>,
