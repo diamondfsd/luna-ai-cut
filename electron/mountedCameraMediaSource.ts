@@ -125,10 +125,22 @@ async function platformVolumeRoots(): Promise<string[]> {
 
 export async function detectMountedCameraVolumes(): Promise<MountedCameraVolume[]> {
   const candidates = await platformVolumeRoots()
-  const inspected = await Promise.all(candidates.map((candidate) => inspectVolume(candidate)))
+  const inspected = await Promise.all(candidates.map((candidate) => inspectVolume(candidate, false)))
   const volumes = inspected.filter((volume): volume is MountedCameraVolume => Boolean(volume))
   logMainInfo('[有线相机] 磁盘检测完成', { candidateCount: candidates.length, volumeCount: volumes.length })
   return volumes
+}
+
+export async function resolveMountedCameraVolumes(preferredRoot?: string): Promise<MountedCameraVolume[]> {
+  const detected = await detectMountedCameraVolumes()
+  const preferred = preferredRoot ? await inspectVolume(preferredRoot, false) : null
+  const volumes = preferred ? [...detected, preferred] : detected
+  const unique = new Map<string, MountedCameraVolume>()
+  for (const volume of volumes) {
+    const mediaRootsKey = [...volume.mediaRoots].sort().join('\0')
+    if (!unique.has(mediaRootsKey)) unique.set(mediaRootsKey, volume)
+  }
+  return [...unique.values()]
 }
 
 export async function chooseMountedCameraVolume(): Promise<MountedCameraVolume | null> {
@@ -175,6 +187,54 @@ export async function mountedCameraStatus(rootPath: string | undefined, deviceId
   }
 }
 
+export function mountedCameraVolumesStatus(
+  volumes: MountedCameraVolume[],
+  deviceId: string,
+): CameraMediaSourceStatus {
+  if (volumes.length === 0) return {
+    mode: 'wired',
+    connected: false,
+    sourceId: 'mounted-camera',
+    host: '',
+    httpOk: false,
+    controlOk: false,
+    message: '未检测到包含 DCIM 的相机磁盘',
+    deviceId,
+    deviceName: deviceDefinitionFor(deviceId).name,
+    capabilities: MOUNTED_CAMERA_CAPABILITIES,
+  }
+  if (volumes.length === 1) {
+    const volume = volumes[0]
+    return {
+      mode: 'wired',
+      connected: true,
+      sourceId: volume.id,
+      rootPath: volume.rootPath,
+      volumeLabel: volume.label,
+      host: volume.rootPath,
+      httpOk: true,
+      controlOk: true,
+      message: `已通过有线连接 ${volume.label}`,
+      deviceId,
+      deviceName: deviceDefinitionFor(deviceId).name,
+      capabilities: MOUNTED_CAMERA_CAPABILITIES,
+    }
+  }
+  return {
+    mode: 'wired',
+    connected: true,
+    sourceId: `mounted-camera:${volumes.map((volume) => volume.id).sort().join('|')}`,
+    volumeLabel: `${volumes.length} 个磁盘`,
+    host: volumes[0].rootPath,
+    httpOk: true,
+    controlOk: true,
+    message: `已读取 ${volumes.length} 个相机磁盘`,
+    deviceId,
+    deviceName: deviceDefinitionFor(deviceId).name,
+    capabilities: MOUNTED_CAMERA_CAPABILITIES,
+  }
+}
+
 async function assertInsideMediaRoot(filePath: string, mediaRoots: string[]): Promise<string> {
   const resolved = await fs.realpath(filePath)
   const inside = mediaRoots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`))
@@ -201,13 +261,23 @@ export async function deleteMountedCameraFiles(rootPath: string, files: LunaFile
   const volume = await inspectVolume(rootPath, false)
   if (!volume) throw new Error('相机磁盘已断开或没有找到可识别素材')
 
+  return deleteMountedCameraFilesFromVolumes([volume], files)
+}
+
+export async function deleteMountedCameraFilesFromVolumes(
+  volumes: MountedCameraVolume[],
+  files: LunaFile[],
+): Promise<CameraDeleteResult> {
+  if (volumes.length === 0) throw new Error('相机磁盘已断开或没有找到可识别素材')
+
   const requestedPaths = [...new Set(files.flatMap(mountedPathsForFile))]
+  const mediaRoots = volumes.flatMap((volume) => volume.mediaRoots)
   const result: CameraDeleteResult = { deleted: [], failed: [] }
   for (const requestedPath of requestedPaths) {
     try {
       const stats = await fs.lstat(requestedPath)
       if (!stats.isFile() || stats.isSymbolicLink()) throw new Error('素材路径不是可删除的相机文件')
-      const filePath = await assertInsideMediaRoot(requestedPath, volume.mediaRoots)
+      const filePath = await assertInsideMediaRoot(requestedPath, mediaRoots)
       await fs.unlink(filePath)
       result.deleted.push(filePath)
     } catch (error) {
@@ -218,7 +288,7 @@ export async function deleteMountedCameraFiles(rootPath: string, files: LunaFile
     }
   }
   logMainInfo('[有线相机] 删除完成', {
-    rootPath: volume.rootPath,
+    volumeCount: volumes.length,
     requestedCount: requestedPaths.length,
     deletedCount: result.deleted.length,
     failedCount: result.failed.length,
@@ -286,4 +356,12 @@ export async function listMountedCameraFiles(rootPath: string, deviceId: string)
   const result = lunaMediaAdapter.attachRelatedFiles(files)
   logMainInfo('[有线相机] 素材列表读取完成', { rootPath: volume.rootPath, fileCount: result.length })
   return result
+}
+
+export async function listMountedCameraFilesFromVolumes(
+  volumes: MountedCameraVolume[],
+  deviceId: string,
+): Promise<LunaFile[]> {
+  const files = await Promise.all(volumes.map((volume) => listMountedCameraFiles(volume.rootPath, deviceId)))
+  return files.flat()
 }
