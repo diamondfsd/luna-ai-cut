@@ -8,6 +8,7 @@ interface OnlyYourColorLayerOptions {
   subjectMaskPath: string
   backgroundMaskPath: string
   intensity: number
+  backgroundExposure: number
   subjectSaturation: number
   subjectVibrance: number
   subjectMaskInverted?: boolean
@@ -70,7 +71,11 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
   const background: PreviewLayer = {
     ...flattened,
     layerType: 'local-color',
-    color: { ...neutralColor, saturation: -100 * effectAmount },
+    color: {
+      ...neutralColor,
+      exposure: Math.max(-5, Math.min(5, options.backgroundExposure)),
+      saturation: -100 * effectAmount,
+    },
     maskPath: options.backgroundMaskPath,
     maskOpacity: 1,
     maskInverted: options.backgroundMaskInverted ?? true,
