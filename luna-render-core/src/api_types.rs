@@ -187,6 +187,7 @@ pub struct RenderPixelStretch {
 pub struct RenderPixelFlow {
     pub duration: f64,
     pub progress: Option<f64>,
+    pub flow_mode: Option<String>,
     pub sky_mode: Option<String>,
     pub other_direction: Option<String>,
     pub pixel_size: f64,
