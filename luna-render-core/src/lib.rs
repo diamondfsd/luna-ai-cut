@@ -8,72 +8,12 @@ mod logging;
 mod macos;
 mod media;
 mod native_preview;
-mod sam_core;
-pub mod sam_segmentation;
-mod segmentation;
-mod segmentation_refinement;
 #[cfg(target_os = "windows")]
 mod windows;
 
 use std::sync::{LazyLock, Mutex};
 
 pub use api_types::*;
-
-#[napi(object)]
-pub struct SegmentationResult {
-    pub width: u32,
-    pub height: u32,
-    pub class_id: u32,
-    pub bytes: Buffer,
-}
-
-#[napi]
-pub fn segment_image(
-    model_path: String,
-    rgb: Buffer,
-    point_x: f64,
-    point_y: f64,
-    target_class_id: Option<u32>,
-    input_size: Option<u32>,
-) -> napi::Result<SegmentationResult> {
-    segmentation::segment(
-        model_path,
-        rgb.to_vec(),
-        point_x,
-        point_y,
-        target_class_id,
-        input_size,
-    )
-    .map(|result| SegmentationResult {
-        width: result.width,
-        height: result.height,
-        class_id: result.class_id,
-        bytes: result.bytes.into(),
-    })
-    .map_err(napi::Error::from_reason)
-}
-
-#[napi]
-pub fn segment_sam(
-    vision_encoder_path: String,
-    prompt_decoder_path: String,
-    rgb: Buffer,
-    source_width: u32,
-    source_height: u32,
-    point_x: f64,
-    point_y: f64,
-) -> napi::Result<sam_segmentation::SamSegmentationResult> {
-    sam_segmentation::segment(
-        vision_encoder_path,
-        prompt_decoder_path,
-        rgb,
-        source_width,
-        source_height,
-        point_x,
-        point_y,
-    )
-    .map_err(napi::Error::from_reason)
-}
 pub use color_source::{resolve_render_source, ColorInfo, ResolvedRenderSource};
 pub use composition::*;
 use compositor::Compositor;
@@ -328,6 +268,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
                     ..Default::default()
                 }),
             pixel_stretch: l.pixel_stretch.clone(),
+            pixel_flow: l.pixel_flow.clone(),
             transform: l.transform.clone().unwrap_or_default(),
             positioning: l.positioning.clone(),
             restore_lut_id: l.restore_lut_id.clone(),
@@ -411,6 +352,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                         },
                     ),
                     pixel_stretch: item.layer.pixel_stretch.clone(),
+                    pixel_flow: item.layer.pixel_flow.clone(),
                     transform: item.layer.transform.clone().unwrap_or_default(),
                     positioning: item.layer.positioning.clone(),
                     restore_lut_id: item.layer.restore_lut_id.clone(),

@@ -16,9 +16,7 @@ import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import { LrcRenderError } from './LrcRenderError'
 import { getStaticPreviewFrame, setStaticPreviewFrame, staticPreviewFrameKey, type CachedPreviewFrame } from './staticPreviewFrameCache'
 import './LrcRender.css'
-
 const PREVIEW_TEXTURE_MAX_SIDE = 3840
-
 export interface LrcRenderHandle {
   exportImage(outputPath: string, width: number, height: number, format: string, quality: number): Promise<void>
   exportVideo(
@@ -52,6 +50,7 @@ export interface LrcRenderProps {
   onImageScaleChange?: (scale: number | null) => void
   /** 画布缩放或平移后通知外部覆盖层同步位置。 */
   onViewportChange?: () => void
+  compositionTime?: number
 }
 
 interface RenderPreviewOutput {
@@ -128,6 +127,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     imageScale,
     onImageScaleChange,
     onViewportChange,
+    compositionTime = 0,
   },
   ref,
 ) {
@@ -167,7 +167,6 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     await lrc.init()
     logger.info('[预览诊断] 渲染引擎初始化完成')
   }
-
   useEffect(() => {
     const lrc = getLRC()
     if (!lrc) {
@@ -229,6 +228,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   }
 
   function staticFrameKey(renderLayers: PreviewLayer[], effectiveMaxSide: number): string | null {
+    if (renderLayers.some((layer) => layer.isVideo)) return null
     return staticPreviewFrameKey(renderLayers, canvasWidth, canvasHeight, effectiveMaxSide)
   }
 
@@ -287,7 +287,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
         })
       }
       // 使用异步方法，避免阻塞主线程
-      const result = await (lrc.renderCompositionFrameAsync ?? lrc.renderCompositionFrame)(composition, 0, effectiveMaxSide)
+      const result = await (lrc.renderCompositionFrameAsync ?? lrc.renderCompositionFrame)(composition, compositionTime, effectiveMaxSide)
       if (destroyRef.current) return
 
       if (traceFirstRender) {
@@ -387,7 +387,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     }
 
     void renderPreviewFrame()
-  }, [canvasHeight, canvasWidth, layers, maxSide, ready])
+  }, [canvasHeight, canvasWidth, compositionTime, layers, maxSide, ready])
 
   useEffect(() => {
     if (!ready || !layers.some((layer) => layer.isVideo)) return
@@ -477,6 +477,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     prevProps.canvasWidth === nextProps.canvasWidth &&
     prevProps.canvasHeight === nextProps.canvasHeight &&
     prevProps.maxSide === nextProps.maxSide &&
+    prevProps.compositionTime === nextProps.compositionTime &&
     prevProps.className === nextProps.className &&
     prevProps.maxImageScale === nextProps.maxImageScale &&
     prevProps.imageScale === nextProps.imageScale &&

@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { Select, Input, Switch } from '../ui'
-import type { PreviewLayer, VideoResolution, VideoFrameRate, VideoQuality, VideoExportSettings } from '../shared/types'
+import type { PreviewLayer, VideoExportFormat, VideoResolution, VideoFrameRate, VideoQuality, VideoExportSettings } from '../shared/types'
 import { lockDolbyVisionExportSettings } from '../shared/types'
 import { LivePhotoExportControls } from './LivePhotoExportControls'
 import './ExportSettingsPanel.css'
@@ -20,6 +20,7 @@ interface ExportSettingsPanelProps {
     layers: PreviewLayer[]
     outputSize: { width: number; height: number }
   }
+  allowedFormats?: VideoExportFormat[]
   dolbyVisionAvailable?: boolean
   dolbyVisionChecking?: boolean
 }
@@ -62,7 +63,7 @@ const QUALITY_OPTIONS = [
  * <ExportSettingsPanel value={config} onChange={setConfig} />
  * ```
  */
-export function ExportSettingsPanel({ value, onChange, livePhotoSource, dolbyVisionAvailable, dolbyVisionChecking }: ExportSettingsPanelProps) {
+export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedFormats, dolbyVisionAvailable, dolbyVisionChecking }: ExportSettingsPanelProps) {
   const locked = Boolean(value.dolbyVision)
   const handleResolutionChange = useCallback(
     (v: string) => onChange({ ...value, resolution: v as VideoResolution }),
@@ -115,6 +116,7 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource, dolbyVis
           <LivePhotoExportControls
             value={value}
             duration={livePhotoSource.duration}
+            allowedFormats={allowedFormats}
             onChange={onChange}
           />
         ) : null}
