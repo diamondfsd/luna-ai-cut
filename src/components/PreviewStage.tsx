@@ -10,11 +10,11 @@ import { isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
+import { usePreviewResolution } from './usePreviewResolution'
 import {
   buildLayers,
   calcAspectRatio,
   projectCanvasFor,
-  type MediaResolution,
 } from './previewStageGeometry'
 import './PreviewStage.css'
 export { buildLayers, calcAspectRatio } from './previewStageGeometry'
@@ -58,7 +58,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   // ── 媒体分辨率 ──
-  const [resolution, setResolution] = useState<MediaResolution | null>(null)
 
   // ── 加载状态（url 切换时自动 loading） ──
   const [loading, setLoading] = useState(false)
@@ -81,6 +80,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const displayUrl = livePlaying && liveVideoUrl ? liveVideoUrl : url
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
+  const resolution = usePreviewResolution(layoutUrl)
 
   useEffect(() => setNativePreviewFailed(false), [gpuPreviewEnabled])
   // 暴露给父组件的视频控制 API
@@ -352,27 +352,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     observer.observe(wrapper)
     return () => observer.disconnect()
   }, [syncCanvasMetrics])
-
-  // 通过 IPC 获取媒体文件实际分辨率
-  useEffect(() => {
-    if (!layoutUrl) {
-      setResolution(null)
-      return
-    }
-    let canceled = false
-    setResolution(null)
-    window.luna.workspace.getMediaResolution(layoutUrl)
-      .then((res) => {
-        if (canceled) return
-        setResolution(res)
-      })
-      .catch(() => {
-        if (!canceled) setResolution(null)
-      })
-    return () => {
-      canceled = true
-    }
-  }, [layoutUrl])
 
   useEffect(() => {
     if (!resolution) return

@@ -27,7 +27,7 @@
     "build:resources": "node scripts/publish-runtime-resources.mjs",
     "publish:models": "node scripts/publish-model-resources.mjs --upload",
     "build:models": "node scripts/publish-model-resources.mjs",
-    "test:workspace": "node scripts/test-workspace-geometry.mjs",
+    "test:workspace": "node scripts/test-workspace-geometry.mjs && node --experimental-strip-types scripts/test-preview-frame-cache.mjs",
     "test:inpaint": "node --experimental-strip-types scripts/test-inpaint-mask.mjs",
     "test:media-preview": "node scripts/test-media-preview.mjs",
     "test:dolby-vision": "node scripts/test-dolby-vision-hvcc.mjs",

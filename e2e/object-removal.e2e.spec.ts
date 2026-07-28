@@ -70,6 +70,16 @@ test('对象消除完成框选、处理中流光与结果持久化', async ({ lu
   await expect(lunaApp.page.getByRole('button', { name: '删除消除结果', exact: true })).toBeVisible()
   await expect(lunaApp.page.locator('.preview-loading-overlay')).toBeHidden({ timeout: 30_000 })
 
+  const previewCanvas = await lunaApp.page.locator('.preview-canvas-wrapper canvas').elementHandle()
+  expect(previewCanvas).not.toBeNull()
+  const compareButton = lunaApp.page.getByRole('button', { name: '按住查看原图', exact: true })
+  await compareButton.dispatchEvent('pointerdown')
+  await expect(lunaApp.page.locator('.preview-loading-overlay')).toBeHidden({ timeout: 1_000 })
+  expect(await previewCanvas?.evaluate((canvas) => canvas.isConnected)).toBe(true)
+  await compareButton.dispatchEvent('pointerup')
+  await expect(lunaApp.page.locator('.preview-loading-overlay')).toBeHidden({ timeout: 1_000 })
+  expect(await previewCanvas?.evaluate((canvas) => canvas.isConnected)).toBe(true)
+
   const projectFile = path.join(
     lunaApp.temporaryRoot,
     'downloads',
