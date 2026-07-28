@@ -51,7 +51,8 @@ fn pixel_flow_subject_direction_coord(uv: vec2<f32>, source_size: vec2<f32>) -> 
     if (direction < 2.5) { return uv.x; }
     if (direction < 3.5) { return 1.0 - uv.x; }
     let pixel_offset = (uv - vec2<f32>(0.5)) * source_size;
-    return clamp(length(pixel_offset) / max(1.0, length(source_size * 0.5)), 0.0, 1.0);
+    let radial = clamp(length(pixel_offset) / max(1.0, length(source_size * 0.5)), 0.0, 1.0);
+    return select(radial, 1.0 - radial, direction > 4.5);
 }
 
 // Sky and background keep gravity; only the subject can use a different scan direction.
@@ -116,7 +117,7 @@ fn pixel_flow_pulse(progress: f32, arrival: f32, regions: vec3<f32>) -> f32 {
 fn pixel_flow_source_visibility(color: vec3<f32>) -> f32 {
     let peak = max(color.r, max(color.g, color.b));
     let signal = max(pixel_flow_luma(color), peak * 0.78);
-    return smoothstep(0.035, 0.16, signal);
+    return smoothstep(0.005, 0.08, signal);
 }
 
 fn pixel_flow_rain_color(color: vec3<f32>) -> vec3<f32> {

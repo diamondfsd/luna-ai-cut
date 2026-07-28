@@ -182,7 +182,7 @@ export interface RenderPixelStretch {
   fillSampleGaps?: boolean
 }
 
-export type PixelFlowSubjectDirection = 'down' | 'up' | 'right' | 'left' | 'outward'
+export type PixelFlowSubjectDirection = 'down' | 'up' | 'right' | 'left' | 'outward' | 'inward'
 
 export interface RenderPixelFlow {
   duration: number
