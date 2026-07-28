@@ -11,15 +11,32 @@ interface MediaGalleryProps {
   groupTitle: (group: string) => string
 }
 
+type ScrollTarget = HTMLElement | Window
+
+function scrollTopOf(target: ScrollTarget): number {
+  return target === window ? window.scrollY : (target as HTMLElement).scrollTop
+}
+
+function setScrollTop(target: ScrollTarget, top: number): void {
+  if (target === window) window.scrollTo(window.scrollX, top)
+  else (target as HTMLElement).scrollTop = top
+}
+
 export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
   const ctrl = useMediaLib()
   const { downloadProgress } = ctrl
   const isLocal = mode === 'local'
   const galleryRef = useRef<HTMLDivElement>(null)
+  const dateNavListRef = useRef<HTMLElement>(null)
+  const scrollTargetRef = useRef<ScrollTarget | null>(null)
+  const contentScrollFrameRef = useRef(0)
+  const dateNavScrollFrameRef = useRef(0)
+  const navigationTargetRef = useRef<string | null>(null)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [dateNavCollapsed, setDateNavCollapsed] = useState(false)
   const [activeDateGroup, setActiveDateGroup] = useState<string | null>(ctrl.firstGroup)
+  const groupSignature = ctrl.groups.map(([group]) => group).join('\0')
 
   useEffect(() => {
     setActiveDateGroup(ctrl.firstGroup)
@@ -27,7 +44,7 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
 
   useEffect(() => {
     const gallery = galleryRef.current
-    if (!gallery || ctrl.groups.length === 0) return
+    if (!gallery || !groupSignature) return
     const sections = [...gallery.querySelectorAll<HTMLElement>('.media-section[data-group]')]
     let scrollParent: HTMLElement | null = gallery
     while (scrollParent) {
@@ -38,8 +55,10 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
 
     let frame = 0
     const updateActiveDate = () => {
+      if (navigationTargetRef.current) return
       window.cancelAnimationFrame(frame)
       frame = window.requestAnimationFrame(() => {
+        if (navigationTargetRef.current) return
         const anchor = (scrollParent?.getBoundingClientRect().top ?? 0) + (scrollParent === gallery ? 16 : 66)
         let active = sections[0]?.dataset.group ?? null
         for (const section of sections) {
@@ -52,21 +71,89 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
 
     updateActiveDate()
     const target: HTMLElement | Window = scrollParent ?? window
+    scrollTargetRef.current = target
     target.addEventListener('scroll', updateActiveDate, { passive: true })
     window.addEventListener('resize', updateActiveDate)
     return () => {
       window.cancelAnimationFrame(frame)
+      window.cancelAnimationFrame(contentScrollFrameRef.current)
+      navigationTargetRef.current = null
+      scrollTargetRef.current = null
       target.removeEventListener('scroll', updateActiveDate)
       window.removeEventListener('resize', updateActiveDate)
     }
-  }, [ctrl.groups])
+  }, [groupSignature])
+
+  useEffect(() => {
+    if (!activeDateGroup || navigationTargetRef.current) return
+    const nav = dateNavListRef.current
+    const activeItem = [...(nav?.querySelectorAll<HTMLElement>('[data-date-nav-group]') ?? [])]
+      .find((candidate) => candidate.dataset.dateNavGroup === activeDateGroup)
+    if (!nav || !activeItem) return
+
+    window.cancelAnimationFrame(dateNavScrollFrameRef.current)
+    const startTop = nav.scrollTop
+    const navRect = nav.getBoundingClientRect()
+    const itemRect = activeItem.getBoundingClientRect()
+    const centeredTop = startTop + itemRect.top - navRect.top - (nav.clientHeight - itemRect.height) / 2
+    const targetTop = Math.min(Math.max(0, nav.scrollHeight - nav.clientHeight), Math.max(0, centeredTop))
+    const distance = targetTop - startTop
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 80
+    const startTime = performance.now()
+    const animate = (now: number) => {
+      const progress = duration === 0 ? 1 : Math.min(1, (now - startTime) / duration)
+      nav.scrollTop = startTop + distance * (1 - (1 - progress) ** 3)
+      if (progress < 1) dateNavScrollFrameRef.current = window.requestAnimationFrame(animate)
+    }
+    dateNavScrollFrameRef.current = window.requestAnimationFrame(animate)
+    return () => window.cancelAnimationFrame(dateNavScrollFrameRef.current)
+  }, [activeDateGroup, dateNavCollapsed])
 
   function scrollToGroup(group: string): void {
-    const section = [...(galleryRef.current?.querySelectorAll<HTMLElement>('.media-section[data-group]') ?? [])]
+    const gallery = galleryRef.current
+    const section = [...(gallery?.querySelectorAll<HTMLElement>('.media-section[data-group]') ?? [])]
       .find((candidate) => candidate.dataset.group === group)
-    if (!section) return
     setActiveDateGroup(group)
-    section.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+    const target = scrollTargetRef.current
+    if (!gallery || !section || !target) return
+
+    const currentTop = scrollTopOf(target)
+    const resolveTargetTop = () => {
+      const targetRect = target === window
+        ? { top: 0, height: window.innerHeight }
+        : (target as HTMLElement).getBoundingClientRect()
+      const latestTop = scrollTopOf(target)
+      const sectionRect = section.getBoundingClientRect()
+      const targetTop = latestTop + sectionRect.top - targetRect.top - 58
+      const maxScrollTop = target === window
+        ? Math.max(0, document.documentElement.scrollHeight - targetRect.height)
+        : Math.max(0, (target as HTMLElement).scrollHeight - targetRect.height)
+      return Math.min(maxScrollTop, Math.max(0, targetTop))
+    }
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180
+    const startTime = performance.now()
+
+    window.cancelAnimationFrame(contentScrollFrameRef.current)
+    navigationTargetRef.current = group
+    const settleAtLatestPosition = (framesRemaining: number) => {
+      setScrollTop(target, resolveTargetTop())
+      if (framesRemaining > 0) {
+        contentScrollFrameRef.current = window.requestAnimationFrame(() => settleAtLatestPosition(framesRemaining - 1))
+      } else {
+        navigationTargetRef.current = null
+      }
+    }
+    const animate = (now: number) => {
+      const progress = duration === 0 ? 1 : Math.min(1, (now - startTime) / duration)
+      const eased = 1 - (1 - progress) ** 3
+      setScrollTop(target, currentTop + (resolveTargetTop() - currentTop) * eased)
+      if (progress < 1) {
+        contentScrollFrameRef.current = window.requestAnimationFrame(animate)
+      } else {
+        settleAtLatestPosition(2)
+      }
+    }
+    contentScrollFrameRef.current = window.requestAnimationFrame(animate)
   }
 
   function handlePointerDown(e: React.PointerEvent): void {
@@ -153,13 +240,14 @@ export function MediaGallery({ mode, groupTitle }: MediaGalleryProps) {
             onClick={() => setDateNavCollapsed((value) => !value)}
           />
         </div>
-        {!dateNavCollapsed && <nav className="media-date-nav-list">
+        {!dateNavCollapsed && <nav ref={dateNavListRef} className="media-date-nav-list">
           {ctrl.groups.map(([group, items]) => (
             <Button
               key={group}
               variant="ghost"
               size="compact"
               className={`media-date-nav-item${activeDateGroup === group ? ' active' : ''}`}
+              data-date-nav-group={group}
               onClick={() => scrollToGroup(group)}
             >
               <span>{groupTitle(group)}</span>

@@ -148,8 +148,9 @@ async function main() {
     const segment = video.videoSegments.find((item) => item.status === 'usable') ?? video.videoSegments[0]
     const selectedSession = await client.evaluate(`window.luna.aiSelection.applyOperation(${JSON.stringify(sessionId)}, ${storySession.revision}, ${JSON.stringify({ type: 'set-video-segment-state', itemId: videoId, segmentId: segment.id, state: 'kept' })})`)
     const project = await client.evaluate(`window.luna.aiSelection.createWorkspaceProject(${JSON.stringify(sessionId)}, '自动化选片工程')`)
-    const videoAsset = project.assets.find((item) => item.path === video.path && item.pipeline?.trim)
-    assert.deepEqual(videoAsset.pipeline.trim, { startTime: segment.startTime, endTime: segment.endTime })
+    const videoAsset = project.assets.find((item) => item.path === video.path)
+    assert.ok(videoAsset)
+    assert.equal(videoAsset.pipeline?.trim, undefined)
     assert.equal(selectedSession.items.find((item) => item.id === videoId).state, 'kept')
     assert.deepEqual(client.errors, [])
     succeeded = true

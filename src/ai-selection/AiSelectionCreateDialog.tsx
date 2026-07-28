@@ -37,7 +37,6 @@ export function AiSelectionCreateDialog({ open, busy, onOpenChange, onCreate }: 
   const controller = useMediaLibraryController('local')
   const [taskName, setTaskName] = useState('')
   const [taskNameEdited, setTaskNameEdited] = useState(false)
-  const [importedPaths, setImportedPaths] = useState<string[]>([])
   const [directory, setDirectory] = useState('')
   const [preset, setPreset] = useState<AiSelectionPreset>('balanced')
   const [purpose, setPurpose] = useState<AiSelectionPurpose>('general')
@@ -48,7 +47,6 @@ export function AiSelectionCreateDialog({ open, busy, onOpenChange, onCreate }: 
     if (!open) return
     setTaskName('')
     setTaskNameEdited(false)
-    setImportedPaths([])
     setDirectory('')
     setPreset('balanced')
     setPurpose('general')
@@ -63,7 +61,6 @@ export function AiSelectionCreateDialog({ open, busy, onOpenChange, onCreate }: 
 
   useEffect(() => {
     if (controller.selectedFiles.length === 0) return
-    setImportedPaths([])
     setDirectory('')
   }, [controller.selectedFiles.length])
 
@@ -74,35 +71,25 @@ export function AiSelectionCreateDialog({ open, busy, onOpenChange, onCreate }: 
 
   const source = useMemo<AiSelectionSource | null>(() => {
     if (directory) return { kind: 'directory', label: pathName(directory), directory }
-    if (importedPaths.length > 0) return { kind: 'files', label: `导入 ${importedPaths.length} 个素材`, paths: importedPaths }
     if (selectedLocalPaths.length > 0) return { kind: 'files', label: `本地资源 ${selectedLocalPaths.length} 个素材`, paths: selectedLocalPaths }
     return null
-  }, [directory, importedPaths, selectedLocalPaths])
+  }, [directory, selectedLocalPaths])
 
   const selectionLabel = directory
     ? `已选择文件夹：${pathName(directory)}`
-    : `已选择 ${importedPaths.length || selectedLocalPaths.length} 个`
+    : `已选择 ${selectedLocalPaths.length} 个`
 
   useEffect(() => {
     if (taskNameEdited) return
-    const count = importedPaths.length || selectedLocalPaths.length
+    const count = selectedLocalPaths.length
     if (count > 0) setTaskName(generatedTaskName(count))
     else if (!directory) setTaskName('')
-  }, [directory, importedPaths.length, selectedLocalPaths.length, taskNameEdited])
-
-  async function chooseFiles(): Promise<void> {
-    const paths = await window.luna.aiSelection.chooseFiles()
-    if (paths.length === 0) return
-    controller.setSelected(new Set())
-    setDirectory('')
-    setImportedPaths(paths)
-  }
+  }, [directory, selectedLocalPaths.length, taskNameEdited])
 
   async function chooseDirectory(): Promise<void> {
     const value = await window.luna.aiSelection.chooseDirectory()
     if (!value) return
     controller.setSelected(new Set())
-    setImportedPaths([])
     setDirectory(value)
     if (!taskNameEdited) setTaskName(`${pathName(value)} 素材选片`)
   }
@@ -130,7 +117,6 @@ export function AiSelectionCreateDialog({ open, busy, onOpenChange, onCreate }: 
       className="workspace-import-dialog ai-selection-create-dialog"
       footer={<>
         <span className="workspace-import-count">{selectionLabel}</span>
-        <Button variant="secondary" size="compact" icon={<FolderOpen size={14} />} disabled={busy} onClick={() => void chooseFiles()}>选择本地文件</Button>
         <Button variant="secondary" size="compact" icon={<FolderOpen size={14} />} disabled={busy} onClick={() => void chooseDirectory()}>选择文件夹</Button>
         <Button variant="secondary" size="compact" disabled={busy} onClick={() => onOpenChange(false)}>取消</Button>
         <Button variant="primary" size="compact" icon={<Plus size={14} />} disabled={!source || busy} onClick={() => void create()}>{busy ? '创建中' : '创建任务'}</Button>

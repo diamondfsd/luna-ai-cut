@@ -115,9 +115,18 @@ impl VideoConverter {
     }
 
     pub(crate) fn decode_to_bgra(&self, frame: &DecodedFrame) -> Result<ID3D11Texture2D, String> {
+        self.decode_to_bgra_scaled(frame, frame.width, frame.height)
+    }
+
+    pub(crate) fn decode_to_bgra_scaled(
+        &self,
+        frame: &DecodedFrame,
+        output_width: u32,
+        output_height: u32,
+    ) -> Result<ID3D11Texture2D, String> {
         let output = self.create_texture(
-            frame.width,
-            frame.height,
+            output_width,
+            output_height,
             DXGI_FORMAT_B8G8R8A8_UNORM,
             (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
         )?;
@@ -127,8 +136,8 @@ impl VideoConverter {
             frame.width,
             frame.height,
             &output,
-            frame.width,
-            frame.height,
+            output_width,
+            output_height,
         )?;
         Ok(output)
     }

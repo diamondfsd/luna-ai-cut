@@ -1,0 +1,57 @@
+.lrc-render-error {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.lrc-render-error p {
+  max-width: 560px;
+  margin: 0;
+  color: var(--red, #e53e3e);
+  font-size: 14px;
+  text-align: center;
+}
+
+.lrc-render-error-details {
+  width: min(100%, 620px);
+  border: 0;
+  color: var(--muted-dark);
+  font-size: 12px;
+}
+
+.lrc-render-error-details .ui-accordion-header {
+  justify-content: center;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 4px 0;
+}
+
+.lrc-render-error-details .ui-accordion-title {
+  flex: none;
+}
+
+.lrc-render-error-details .ui-accordion-body {
+  padding: 0;
+}
+
+.lrc-render-error-details pre {
+  max-height: 180px;
+  margin: 8px 0 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--muted-dark);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

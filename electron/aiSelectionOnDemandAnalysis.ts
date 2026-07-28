@@ -1,7 +1,7 @@
 import * as path from 'node:path'
 
 import type { AiSelectionItem, AiSelectionSession } from '../src/shared/types'
-import { analyzePersonEvidence } from './aiSelectionPerson'
+import { analyzePersonEvidence, analyzeVideoPeopleEvidence } from './aiSelectionPerson'
 import { FACE_EMBEDDING_VERSION } from './aiSelectionFaceGroups'
 import { analyzeContentTags, CONTENT_TAG_VERSION } from './aiSelectionSemantic'
 import { refreshBasicSemanticTags } from './aiSelectionTags'
@@ -17,7 +17,9 @@ export interface AiSelectionAnalysisContext {
 }
 
 async function analyzePersonItem(context: AiSelectionAnalysisContext, item: AiSelectionItem, signal?: AbortSignal): Promise<void> {
-  item.personEvidence = await analyzePersonEvidence(item, signal)
+  item.personEvidence = item.kind === 'video'
+    ? await analyzeVideoPeopleEvidence(item, signal)
+    : await analyzePersonEvidence(item, signal)
   const evidenceTags = item.personEvidence.detected ? ['人物', '人像', '主体'] : ['无人像']
   if (item.personEvidence.faceCount > 0) evidenceTags.push('人脸')
   if (item.personEvidence.eyeState === 'closed') evidenceTags.push('闭眼', '建议复查')
@@ -25,6 +27,38 @@ async function analyzePersonItem(context: AiSelectionAnalysisContext, item: AiSe
   item.semanticTags = [...new Set([...item.semanticTags, ...evidenceTags])]
   refreshBasicSemanticTags(item)
   await context.writeCachedItem(item)
+  context.rebuild()
+}
+
+export async function analyzeVideoPeopleOnDemand(
+  context: AiSelectionAnalysisContext,
+  itemIds: string[],
+  signal?: AbortSignal,
+): Promise<void> {
+  const requested = new Set(itemIds)
+  const targets = context.session.items.filter((item) => (
+    requested.has(item.id)
+    && item.kind === 'video'
+    && item.analysisState === 'ready'
+    && !item.personEvidence
+  ))
+  if (targets.length === 0) return
+  try {
+    context.session.phase = 'people'
+    await context.update()
+    for (const item of targets) {
+      signal?.throwIfAborted()
+      try {
+        await analyzePersonItem(context, item, signal)
+      } catch (error) {
+        signal?.throwIfAborted()
+        // 视频人物识别是尽力而为，不影响视频进入拍摄时段和任务完成。
+      }
+      await context.update(item.name)
+    }
+  } finally {
+    shutdownSpecializedSegmentationWorker()
+  }
 }
 
 async function analyzeContentItem(context: AiSelectionAnalysisContext, item: AiSelectionItem, signal?: AbortSignal): Promise<void> {
@@ -36,6 +70,7 @@ async function analyzeContentItem(context: AiSelectionAnalysisContext, item: AiS
   item.semanticTags = [...new Set([...item.semanticTags, ...item.contentTags])]
   refreshBasicSemanticTags(item)
   await context.writeCachedItem(item)
+  context.rebuild()
 }
 
 export async function analyzePeopleOnDemand(context: AiSelectionAnalysisContext, itemIds: string[]): Promise<void> {
@@ -103,10 +138,12 @@ export async function analyzeRecommendationEvidence(context: AiSelectionAnalysis
       }
     }
 
-    const peopleTargets = photos.filter((item) => !item.personEvidence?.faces?.some((face) => (
-      face.embedding && face.embeddingVersion === FACE_EMBEDDING_VERSION
-    ))
-      && (context.session.purpose === 'people' || item.contentTags.includes('人物')))
+    const peopleTargets = photos.filter((item) => {
+      if (!item.personEvidence) return true
+      return item.personEvidence.faces?.some((face) => (
+        face.embedding && face.embeddingVersion !== FACE_EMBEDDING_VERSION
+      )) ?? false
+    })
     if (peopleTargets.length > 0) {
       context.session.phase = 'people'
       await context.update()

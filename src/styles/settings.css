@@ -93,14 +93,6 @@
   gap: 10px;
 }
 
-.settings-default-watermark-row {
-  align-items: start;
-}
-
-.settings-default-watermark-control {
-  width: min(420px, 42vw);
-}
-
 .settings-secret-trigger {
   cursor: pointer;
   user-select: none;

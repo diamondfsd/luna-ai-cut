@@ -1,0 +1,30 @@
+.dl-recommendation {
+  min-height: 20px;
+  margin: 0 0 6px;
+  color: var(--blue-on-dark);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dl-chip-selector.is-auto-arm select {
+  display: none !important;
+}
+
+.download-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--blue-on-dark);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.download-card:hover .download-action svg {
+  transform: translateY(2px);
+}
+
+.download-action svg {
+  transition: transform 160ms ease;
+}

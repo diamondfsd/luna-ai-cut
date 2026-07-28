@@ -10,6 +10,7 @@ import { useApp } from '../context/AppContext'
 import { DownloadProgressProvider } from '../context/DownloadProgressContext'
 import { ExportProgressProvider } from '../context/ExportProgressContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
+import { invalidateThumbnailReady } from '../lib/thumbnailReady'
 import { CameraMediaPage } from '../pages/CameraMediaPage'
 import { DevPage } from '../pages/DevPage'
 import { DeviceDebugPage } from '../pages/DeviceDebugPage'
@@ -71,7 +72,9 @@ export function AppRoutes() {
   }
 
   async function clearCache(): Promise<void> {
-    setCacheStats(await window.luna.clearCache())
+    const nextStats = await window.luna.clearCache()
+    invalidateThumbnailReady()
+    setCacheStats(nextStats)
     setPagesKey((key) => key + 1)
   }
 
@@ -96,6 +99,7 @@ export function AppRoutes() {
   const isKnownRoute = routeAccess.some(([path, allowed]) => allowed && isActive(path))
 
   // ── 特殊处理 ──
+  if (location.pathname === '/') return <Navigate to="/library" replace />
   if (isActive('/downloads')) return <Navigate to="/local-resources" replace />
   if (!isKnownRoute) return <Navigate to={developerMode ? '/developer' : '/library'} replace />
 

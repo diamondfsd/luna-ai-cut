@@ -200,8 +200,8 @@ export function useProjectManager(routeState: WorkspaceRouteState | null, locati
     if (activeIndex >= nextAssets.length) setActiveIndex(Math.max(0, nextAssets.length - 1))
   }, [activeIndex, brokenPaths, currentProject])
 
-  const createProject = useCallback(async (name: string) => {
-    const project = await window.luna.workspace.createProject(name, [])
+  const createProject = useCallback(async (name: string, assets: WorkspaceMediaAsset[] = []) => {
+    const project = await window.luna.workspace.createProject(name, assets)
     setProjects((prev) => [...prev, project])
     openProject(project)
   }, [openProject])

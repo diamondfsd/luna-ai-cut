@@ -6,23 +6,47 @@ export interface AiPersonIdentity {
   id: string
   name: string
   samples: number[][]
+  avatarDataUrl: string | null
+  mergedIntoId: string | null
   createdAt: string
   updatedAt: string
 }
 
 interface AiPeopleStore {
-  schemaVersion: 1
-  identities: AiPersonIdentity[]
+  schemaVersion: 1 | 2
+  identities: Array<Omit<AiPersonIdentity, 'mergedIntoId'> & { mergedIntoId?: string | null }>
 }
 
 const STORE_FILE = 'people.json'
-const MAX_SAMPLES_PER_IDENTITY = 32
 
 export async function loadPeopleStore(rootDir: string): Promise<AiPersonIdentity[]> {
   try {
     const parsed = JSON.parse(await fs.readFile(path.join(rootDir, STORE_FILE), 'utf8')) as AiPeopleStore
-    if (parsed.schemaVersion !== 1 || !Array.isArray(parsed.identities)) return []
-    return parsed.identities.filter((identity) => identity.id && identity.name && Array.isArray(identity.samples))
+    if (![1, 2].includes(parsed.schemaVersion) || !Array.isArray(parsed.identities)) return []
+    const identities = parsed.identities.filter((identity) => identity.id && identity.name && Array.isArray(identity.samples)).map((identity) => ({
+      ...identity,
+      avatarDataUrl: typeof identity.avatarDataUrl === 'string' && identity.avatarDataUrl.startsWith('data:image/')
+        ? identity.avatarDataUrl
+        : null,
+      mergedIntoId: typeof identity.mergedIntoId === 'string' ? identity.mergedIntoId : null,
+    }))
+    const byId = new Map(identities.map((identity) => [identity.id, identity]))
+    for (const identity of identities) {
+      if (!identity.mergedIntoId || identity.mergedIntoId === identity.id || !byId.has(identity.mergedIntoId)) {
+        identity.mergedIntoId = null
+        continue
+      }
+      const seen = new Set([identity.id])
+      let current = identity
+      while (current.mergedIntoId) {
+        if (seen.has(current.mergedIntoId)) { identity.mergedIntoId = null; break }
+        seen.add(current.mergedIntoId)
+        const next = byId.get(current.mergedIntoId)
+        if (!next) { identity.mergedIntoId = null; break }
+        current = next
+      }
+    }
+    return identities
   } catch {
     return []
   }
@@ -33,7 +57,7 @@ export async function savePeopleStore(rootDir: string, identities: AiPersonIdent
   const destination = path.join(rootDir, STORE_FILE)
   const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`
   try {
-    const store: AiPeopleStore = { schemaVersion: 1, identities }
+    const store: AiPeopleStore = { schemaVersion: 2, identities }
     await fs.writeFile(temporary, `${JSON.stringify(store)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
     try {
       await fs.rename(temporary, destination)
@@ -50,11 +74,5 @@ export async function savePeopleStore(rootDir: string, identities: AiPersonIdent
 
 export function createPersonIdentity(name: string, sample: number[]): AiPersonIdentity {
   const now = new Date().toISOString()
-  return { id: `person_${randomUUID()}`, name, samples: [[...sample]], createdAt: now, updatedAt: now }
-}
-
-export function mergeIdentitySamples(target: AiPersonIdentity, samples: number[][]): void {
-  const unique = new Map([...target.samples, ...samples].map((sample) => [sample.join(','), sample]))
-  target.samples = [...unique.values()].slice(-MAX_SAMPLES_PER_IDENTITY)
-  target.updatedAt = new Date().toISOString()
+  return { id: `person_${randomUUID()}`, name, samples: [[...sample]], avatarDataUrl: null, mergedIntoId: null, createdAt: now, updatedAt: now }
 }

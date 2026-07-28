@@ -102,6 +102,16 @@ export interface RenderPreviewOutput {
 interface LunaRenderCoreNative {
   initCompositor(logPath?: string): void
   initCompositorAsync(logPath?: string): Promise<void>
+  getNativePreviewCapabilities(): NativePreviewCapabilities
+  createNativePreviewSession(input: unknown): Promise<number>
+  updateNativePreviewComposition(sessionId: number, composition: unknown): void
+  setNativePreviewBounds(sessionId: number, bounds: NativePreviewBounds): void
+  setNativePreviewVisible(sessionId: number, visible: boolean): void
+  playNativePreview(sessionId: number, time: number): void
+  pauseNativePreview(sessionId: number, time: number): void
+  seekNativePreview(sessionId: number, time: number): void
+  getNativePreviewSessionStats(sessionId: number): NativePreviewSessionStats
+  destroyNativePreviewSession(sessionId: number): void
   loadTexture(data: Buffer, width: number, height: number): number
   updateTexture(textureId: number, data: Buffer): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: unknown[]): Buffer
@@ -131,6 +141,30 @@ interface LunaRenderCoreNative {
   }
 }
 
+export interface NativePreviewCapabilities {
+  platform: string
+  decoder: string
+  systemHardwareDecode: boolean
+  externalGpuTexture: boolean
+  directGpuPresentation: boolean
+}
+
+export interface NativePreviewBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+  scaleFactor: number
+}
+
+export interface NativePreviewSessionStats {
+  renderedFrames: number
+  renderErrors: number
+  currentTime: number
+  cacheHits: number
+  cacheMisses: number
+}
+
 let native: LunaRenderCoreNative | null = null
 
 export function getNative(): LunaRenderCoreNative {
@@ -150,15 +184,22 @@ export function getNative(): LunaRenderCoreNative {
   // 热更新的 appMain 会将 APP_ROOT 指向 userData/.luna-hot，必须优先加载
   // 其中已切换的新原生模块；正式安装包则回退到 resources 目录。
   const candidates = [appRootNative, packagedNative]
+  const attempts: string[] = []
   for (const nodePath of candidates) {
     try {
       native = require(nodePath) as LunaRenderCoreNative
       return native!
-    } catch { /* try next candidate */ }
+    } catch (error) {
+      const present = existsSync(nodePath)
+      const code = error && typeof error === 'object' && 'code' in error
+        ? String((error as { code?: unknown }).code ?? 'UNKNOWN')
+        : 'UNKNOWN'
+      const message = error instanceof Error ? error.message : String(error)
+      attempts.push(`  - [${present ? 'present' : 'missing'}] ${nodePath}\n    code=${code}\n    error=${message}`)
+    }
   }
   throw new Error(
-    `Failed to load native render core. Tried:\n` +
-      candidates.map((p) => `  - ${p}`).join('\n'),
+    `LRC_NATIVE_LOAD_FAILED: 无法加载预览组件。\n${attempts.join('\n')}`,
   )
 }
 
@@ -229,8 +270,11 @@ export function warmupRenderCore(logPath?: string): Promise<void> {
   }
 
   initializing = true
-  writeInitGuard()
-  warmupTask = getNative().initCompositorAsync(logPath ?? undefined)
+  warmupTask = Promise.resolve()
+    .then(() => {
+      writeInitGuard()
+      return getNative().initCompositorAsync(logPath ?? undefined)
+    })
     .then(() => {
       initialized = true
       clearInitGuard()
