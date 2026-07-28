@@ -218,7 +218,7 @@ impl Compositor {
         self.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
-                timeout: None,
+                timeout: Some(std::time::Duration::from_secs(2)),
             })
             .map_err(|e| format!("GPU wait failed: {e}"))?;
         Ok(())

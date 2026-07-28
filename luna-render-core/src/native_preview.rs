@@ -10,6 +10,8 @@ use napi_derive::napi;
 
 use crate::composition::CompositionInput;
 
+const MAX_COMMANDS_PER_FRAME: usize = 64;
+
 static NEXT_SESSION_ID: AtomicU32 = AtomicU32::new(1);
 static PREVIEW_SESSIONS: LazyLock<Mutex<HashMap<u32, PreviewSessionHandle>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -271,7 +273,12 @@ fn run_native_preview_session(
                 ) {
                     break;
                 }
-                while let Ok(command) = receiver.try_recv() {
+                // Keep a continuous stream of UI updates from starving rendering forever.
+                // Remaining commands stay queued for the next loop iteration.
+                for _ in 1..MAX_COMMANDS_PER_FRAME {
+                    let Ok(command) = receiver.try_recv() else {
+                        break;
+                    };
                     if !apply_command(
                         command,
                         &mut runtime,
@@ -380,7 +387,9 @@ fn apply_command(
         PreviewCommand::Pause(time) => {
             *current_time = time.max(0.0);
             *playing = false;
-            *render_requested = true;
+            // The swap chain already contains the last presented frame. Re-rendering here
+            // forces an unnecessary D3D11On12 synchronization and can stall on Windows.
+            // An initial pending render remains pending; explicit seeks still request a frame.
         }
         PreviewCommand::Seek(time) => {
             *current_time = time.max(0.0);
