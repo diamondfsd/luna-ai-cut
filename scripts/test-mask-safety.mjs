@@ -731,6 +731,7 @@ try {
     subjectMaskPath: '/subject.pgm',
     backgroundMaskPath: '/background.pgm',
     intensity: 100,
+    backgroundExposure: -0.75,
     subjectSaturation: 20,
     subjectVibrance: 30,
   })
@@ -744,7 +745,7 @@ try {
   assert.equal(creativeOutputs.length, 3, 'flattened source, monochrome background, and color subject must share one precomposition')
   assert.ok(creativeOutputs.every((layer) => layer.precomposeGroup === 'only-your-color-source'))
   assert.equal(creativeOutputs[0].color, undefined, 'flattened source must not apply global color twice')
-  assert.equal(creativeOutputs[1].color.exposure, 0, 'background effect must not overwrite existing exposure')
+  assert.equal(creativeOutputs[1].color.exposure, -0.75, 'background exposure must be relative to the flattened existing exposure')
   assert.equal(creativeOutputs[2].color.exposure, 0, 'subject effect must not overwrite existing exposure')
   assert.equal(creativeOutputs[1].color.saturation, -100)
   assert.equal(creativeOutputs[2].color.saturation, 20)

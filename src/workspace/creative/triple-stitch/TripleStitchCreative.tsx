@@ -15,6 +15,7 @@ import { ParamSlider } from '../../components/ParamSlider'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
 import { useTripleStitchPlayback } from './useTripleStitchPlayback'
 import { useTripleStitchSources, type TripleStitchSource } from './useTripleStitchSources'
+import type { CreativeModuleProps } from '../creativeCatalog'
 import {
   createDefaultSlotEdits,
   DEFAULT_SLOT_EDIT,
@@ -171,7 +172,7 @@ function compositionApi(): LunaCompositionExportApi {
   return api
 }
 
-export function TripleStitchCreative({ onBack }: { onBack: () => void }) {
+export function TripleStitchCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] TripleStitchCreative mount at ${performance.now().toFixed(0)}ms`)
   const media = useWorkspaceMedia()
   const renderCountRef = useRef(0)
@@ -937,7 +938,7 @@ export function TripleStitchCreative({ onBack }: { onBack: () => void }) {
       </aside>
 
       <div className="triple-stitch-media-strip">
-        <WorkspaceMediaStrip />
+        <WorkspaceMediaStrip supportedMediaKinds={supportedMediaKinds} />
       </div>
 
       <ExportSettingsDialog

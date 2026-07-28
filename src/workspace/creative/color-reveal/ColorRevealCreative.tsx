@@ -29,14 +29,11 @@ import { buildColorRevealLayers } from './colorRevealLayers'
 import { queueColorRevealBatchExport } from './colorRevealBatchExport'
 import './color-reveal.css'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
+import type { CreativeModuleProps } from '../creativeCatalog'
 
 type ColorRevealStageMode = 'two' | 'three'
 
-interface ColorRevealCreativeProps {
-  onBack: () => void
-}
-
-export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
+export function ColorRevealCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
   const activeAsset = media.activeMedia
@@ -387,7 +384,7 @@ export function ColorRevealCreative({ onBack }: ColorRevealCreativeProps) {
       </aside>
 
       <div className="color-reveal-media-strip">
-        <WorkspaceMediaStrip />
+        <WorkspaceMediaStrip supportedMediaKinds={supportedMediaKinds} />
       </div>
 
       <ExportSettingsDialog
