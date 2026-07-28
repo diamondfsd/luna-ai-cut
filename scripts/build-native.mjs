@@ -31,12 +31,20 @@ const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
 
-function prepareMacArtifact(filePath) {
+function prepareMacArtifact(filePath, expectOnnxRuntime) {
   if (!isMac || process.platform !== 'darwin') return
 
   const inspect = spawnSync('otool', ['-L', filePath], { encoding: 'utf8' })
   if (inspect.status !== 0) {
     console.error(`[build-native] ❌ otool failed: ${filePath}`)
+    process.exit(1)
+  }
+
+  const linksOnnxRuntime = /libonnxruntime.*\.dylib/i.test(inspect.stdout)
+  if (linksOnnxRuntime !== expectOnnxRuntime) {
+    console.error(expectOnnxRuntime
+      ? `[build-native] ❌ ONNX Runtime dependency missing: ${filePath}`
+      : `[build-native] ❌ render core must not link ONNX Runtime: ${filePath}`)
     process.exit(1)
   }
 
@@ -135,7 +143,7 @@ const src = target
 
 const dest = join(rcDir, 'luna-render-core.node')
 copyFileSync(src, dest)
-prepareMacArtifact(dest)
+prepareMacArtifact(dest, false)
 console.log('[build-native] ✅', dest)
 
 for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker']) {
@@ -144,6 +152,6 @@ for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker
   const workerDest = join(rcDir, workerName)
   copyFileSync(workerSrc, workerDest)
   if (!isWin) chmodSync(workerDest, 0o755)
-  prepareMacArtifact(workerDest)
+  prepareMacArtifact(workerDest, true)
   console.log('[build-native] ✅', workerDest)
 }
