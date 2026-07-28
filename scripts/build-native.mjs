@@ -26,12 +26,13 @@ const targetLower = target.toLowerCase()
 // 从 target 推断平台；没有 target 则用当前主机
 const isWin = targetLower.includes('windows') || (!target && process.platform === 'win32')
 const isMac = targetLower.includes('apple-darwin') || (!target && process.platform === 'darwin')
+const isMacX64 = isMac && (targetLower.includes('x86_64') || (!target && process.arch === 'x64'))
 
 const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
 
-function prepareMacArtifact(filePath, expectOnnxRuntime) {
+function prepareMacArtifact(filePath, onnxRuntimePolicy) {
   if (!isMac || process.platform !== 'darwin') return
 
   const inspect = spawnSync('otool', ['-L', filePath], { encoding: 'utf8' })
@@ -41,10 +42,12 @@ function prepareMacArtifact(filePath, expectOnnxRuntime) {
   }
 
   const linksOnnxRuntime = /libonnxruntime.*\.dylib/i.test(inspect.stdout)
-  if (linksOnnxRuntime !== expectOnnxRuntime) {
-    console.error(expectOnnxRuntime
-      ? `[build-native] ❌ ONNX Runtime dependency missing: ${filePath}`
-      : `[build-native] ❌ render core must not link ONNX Runtime: ${filePath}`)
+  if (onnxRuntimePolicy === 'required' && !linksOnnxRuntime) {
+    console.error(`[build-native] ❌ ONNX Runtime dependency missing: ${filePath}`)
+    process.exit(1)
+  }
+  if (onnxRuntimePolicy === 'forbidden' && linksOnnxRuntime) {
+    console.error(`[build-native] ❌ render core must not link ONNX Runtime: ${filePath}`)
     process.exit(1)
   }
 
@@ -143,7 +146,7 @@ const src = target
 
 const dest = join(rcDir, 'luna-render-core.node')
 copyFileSync(src, dest)
-prepareMacArtifact(dest, false)
+prepareMacArtifact(dest, 'forbidden')
 console.log('[build-native] ✅', dest)
 
 for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker']) {
@@ -152,6 +155,6 @@ for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker
   const workerDest = join(rcDir, workerName)
   copyFileSync(workerSrc, workerDest)
   if (!isWin) chmodSync(workerDest, 0o755)
-  prepareMacArtifact(workerDest, true)
+  prepareMacArtifact(workerDest, isMacX64 ? 'required' : 'optional')
   console.log('[build-native] ✅', workerDest)
 }
