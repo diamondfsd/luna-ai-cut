@@ -145,17 +145,6 @@ interface LunaRenderCoreNative {
   exportCompositionImageAsync(input: unknown): Promise<void>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
-  segmentImage(modelPath: string, rgb: Buffer, pointX: number, pointY: number, targetClassId?: number, inputSize?: number): {
-    width: number
-    height: number
-    classId: number
-    bytes: Buffer
-  }
-  segmentSam(visionEncoderPath: string, promptDecoderPath: string, rgb: Buffer, sourceWidth: number, sourceHeight: number, pointX: number, pointY: number): {
-    width: number
-    height: number
-    bytes: Buffer
-  }
 }
 
 export interface NativePreviewCapabilities {

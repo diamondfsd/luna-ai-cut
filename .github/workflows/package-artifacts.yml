@@ -138,8 +138,13 @@ jobs:
             echo "Intel App 缺少 ONNX Runtime 运行库"
             exit 1
           }
+          render_core="$native_dir/luna-render-core.node"
+          test -f "$render_core" || { echo "Intel App 缺少原生组件: $render_core"; exit 1; }
+          otool -L "$render_core" | grep -q 'libonnxruntime' && {
+            echo "Intel App 的渲染核心不应依赖 ONNX Runtime"
+            exit 1
+          }
           for native_file in \
-            "$native_dir/luna-render-core.node" \
             "$native_dir/sam-segmentation-worker" \
             "$native_dir/semantic-segmentation-worker" \
             "$native_dir/specialized-segmentation-worker"; do
