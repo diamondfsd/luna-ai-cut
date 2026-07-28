@@ -1,9 +1,9 @@
 import type { PixelFlowSubjectDirection } from '../../../shared/types'
 
-export const PIXEL_FLOW_SETTINGS_VERSION = 14
+export const PIXEL_FLOW_SETTINGS_VERSION = 15
 export const DEFAULT_PIXEL_FLOW_DURATION = 3
 export const DEFAULT_PIXEL_FLOW_COUNT = 280
-export const DEFAULT_PIXEL_FLOW_WIDTH = 8
+export const DEFAULT_PIXEL_FLOW_WIDTH = 16
 export const DEFAULT_PIXEL_FLOW_INITIAL_SATURATION = 0
 export const DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS = 0
 export const DEFAULT_PIXEL_FLOW_SUBJECT_DIRECTION: PixelFlowSubjectDirection = 'down'
