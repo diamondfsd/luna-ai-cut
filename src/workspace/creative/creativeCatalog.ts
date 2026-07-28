@@ -1,6 +1,6 @@
-import { LayoutTemplate, ScanSearch, WandSparkles, type LucideIcon } from 'lucide-react'
+import { Droplets, LayoutTemplate, ScanSearch, WandSparkles, type LucideIcon } from 'lucide-react'
 
-export type CreativeModeId = 'triple-stitch' | 'color-reveal' | 'pixel-stretch'
+export type CreativeModeId = 'triple-stitch' | 'color-reveal' | 'only-your-color' | 'pixel-stretch'
 
 export interface CreativeCatalogItem {
   id: CreativeModeId
@@ -19,6 +19,14 @@ export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
     description: '识别主体后，将背景延展为像素流动效果',
     icon: ScanSearch,
     previewClassName: 'workspace-creative-preview--pixel-stretch',
+  },
+  {
+    id: 'only-your-color',
+    name: '只有你的色彩',
+    subtitle: '只有你的色彩',
+    description: '保留主体色彩，让背景自然呈现黑白质感',
+    icon: Droplets,
+    previewClassName: 'workspace-creative-preview--only-your-color',
   },
   {
     id: 'color-reveal',
