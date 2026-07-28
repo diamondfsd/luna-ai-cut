@@ -17,6 +17,7 @@
 .pixel-flow-panel-head strong { color: #e0e0e0; font-size: 14px; }
 .pixel-flow-panel-head span { color: #888; font-size: 12px; line-height: 1.5; }
 .pixel-flow-options { display: grid; gap: 13px; }
+.pixel-flow-preset-field { display: grid; gap: 6px; color: #aaa; font-size: 11px; }
 .pixel-flow-ready { padding: 8px 10px; border: 1px solid #3e5264; border-radius: 6px; background: #202b34; color: #9fc2db; font-size: 11px; }
 .pixel-flow-actions { grid-row: 4; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid #333; }
 .pixel-flow-media-strip { grid-column: 1; grid-row: 3; min-width: 0; min-height: 0; }

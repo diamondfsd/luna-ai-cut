@@ -185,6 +185,8 @@ export interface RenderPixelStretch {
 export interface RenderPixelFlow {
   duration: number
   progress?: number
+  skyMode?: 'ripple' | 'sweep' | 'full'
+  otherDirection?: 'top-down' | 'outside-in' | 'inside-out'
   pixelSize: number
   lightWidth: number
   depthStrength: number
@@ -192,6 +194,9 @@ export interface RenderPixelFlow {
   originY: number
   impactX: number
   impactY: number
+  skyScale?: number
+  backgroundScale?: number
+  subjectScale?: number
 }
 
 export interface CompositionInput {
