@@ -9,6 +9,7 @@ import { Button, LoadingIndicator, VideoControls, toast } from '../../../ui'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import type { CreativeModuleProps } from '../creativeCatalog'
+import { loadCreativeImageSize } from '../shared/creativeMedia'
 import { PixelFlowControls } from './PixelFlowControls'
 import { combinePixelFlowDepthMask, type PixelFlowMask } from './pixelFlowRender'
 import {
@@ -74,7 +75,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [subjectMask, setSubjectMask] = useState<PixelFlowMask | null>(null)
   const [skyMask, setSkyMask] = useState<PixelFlowMask | null>(null)
   const [segmenting, setSegmenting] = useState(false)
-  const [progress, setProgress] = useState('')
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
   const [mediaDuration, setMediaDuration] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
@@ -113,7 +113,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setSubjectMask(null)
     setSkyMask(null)
     setSegmenting(false)
-    setProgress('')
     setSourceSize(null)
     setMediaDuration(null)
     setCurrentTime(0)
@@ -167,7 +166,9 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     if (!activeAsset) return
     let cancelled = false
     Promise.all([
-      window.luna.workspace.getMediaResolution(activeAsset.path),
+      activeAsset.kind === 'image'
+        ? loadCreativeImageSize(activeAsset)
+        : window.luna.workspace.getMediaResolution(activeAsset.path),
       activeAsset.kind === 'video' ? window.luna.workspace.getVideoDuration(activeAsset.path) : Promise.resolve(null),
     ]).then(([size, sourceDuration]) => {
       if (cancelled) return
@@ -192,15 +193,10 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setSkyMask(null)
     depthBuildRef.current = null
     setSegmenting(true)
-    setProgress('正在识别画面层次')
-    const unsubscribe = window.luna.onWorkspaceSegmentationProgress((event) => {
-      if (requestRef.current.has(event.requestId)) setProgress(event.label)
-    })
     const subjectRequestId = `${operationId}-subject`
     const skyRequestId = `${operationId}-sky`
     try {
       requestRef.current.add(subjectRequestId)
-      setProgress('正在识别画面主体')
       const subjectResult = await window.luna.workspace.segmentImage({
         requestId: subjectRequestId,
         filePath: activeAsset.path,
@@ -223,7 +219,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       setMaskPath(savedSubject.path)
 
       requestRef.current.add(skyRequestId)
-      setProgress('正在识别天空层次')
       const skyResult = await window.luna.workspace.segmentImage({
         requestId: skyRequestId,
         filePath: activeAsset.path,
@@ -249,13 +244,11 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
         toast.error(error instanceof Error ? error.message : '画面识别失败')
       }
     } finally {
-      unsubscribe()
       requestRef.current.delete(subjectRequestId)
       requestRef.current.delete(skyRequestId)
       if (operationRef.current === operationId) {
         operationRef.current = null
         setSegmenting(false)
-        setProgress('')
       }
     }
   }, [activeAsset, media.currentProject, segmenting])
@@ -460,7 +453,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
             ? <LrcRender className="pixel-flow-canvas" layers={previewLayers} canvasWidth={gpuPreviewSize.width} canvasHeight={gpuPreviewSize.height} maxSide={1080} compositionTime={currentTime} interactiveImageLayerIndexes={[]} onError={handleError} />
             : <NativeGpuVideoPreview className="pixel-flow-canvas" layers={previewLayers} canvasWidth={gpuPreviewSize.width} canvasHeight={gpuPreviewSize.height} playing={playing} time={currentTime} seekRevision={seekRevision} onFallback={() => setGpuFallback(true)} />)}
         </div>
-        {maskPreparing && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>{progress || '正在准备画面层次'}</span></div>}
+        {maskPreparing && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>生成中</span></div>}
         <VideoControls className="pixel-flow-controls" currentTime={currentTime} duration={playbackDuration} playing={playing} disabled={!playbackReady} onToggle={() => playing ? setPlaying(false) : replay()} onSeek={seek} step={1 / 60} />
       </div>
         : <div className="pixel-flow-empty"><ScanLine size={28} /><strong>选择图片或视频素材</strong><span>在下方素材栏中选择需要制作效果的素材</span></div>}
