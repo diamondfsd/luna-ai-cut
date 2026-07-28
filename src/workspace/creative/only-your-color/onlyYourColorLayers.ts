@@ -1,4 +1,6 @@
 import type { PreviewLayer } from '../../../shared/types'
+import { createDefaultPipeline } from '../../shared/editPipeline'
+import { pipelineColorToRenderColor } from '../../shared/renderLayerPipeline'
 
 interface OnlyYourColorLayerOptions {
   layers: PreviewLayer[]
@@ -7,6 +9,7 @@ interface OnlyYourColorLayerOptions {
   backgroundMaskPath: string
   intensity: number
   subjectSaturation: number
+  subjectVibrance: number
   subjectMaskInverted?: boolean
   backgroundMaskInverted?: boolean
   subjectMaskFeather?: number
@@ -14,44 +17,86 @@ interface OnlyYourColorLayerOptions {
 }
 
 export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): PreviewLayer[] {
-  const main = options.layers.find((layer) => layer.filePath === options.sourcePath)
+  const sourceLayers = options.layers.filter((layer) => (
+    layer.filePath === options.sourcePath && layer.layoutRole === undefined
+  ))
+  const main = sourceLayers.find((layer) => layer.layerType === 'media') ?? sourceLayers[0]
   if (!main) return options.layers
-  const sourceTop = Math.max(...options.layers
-    .filter((layer) => layer.filePath === options.sourcePath)
-    .map((layer) => layer.zIndex))
-  const baseSaturation = main.color?.saturation ?? 0
+  const precomposeGroup = 'only-your-color-source'
+  const inputs: PreviewLayer[] = sourceLayers.map((layer, index) => ({
+    ...layer,
+    precomposeGroup,
+    precomposeRole: 'input',
+    fit: 'stretch',
+    dstX: 0,
+    dstY: 0,
+    dstW: 1,
+    dstH: 1,
+    srcX: 0,
+    srcY: 0,
+    srcW: 1,
+    srcH: 1,
+    opacity: 1,
+    zIndex: index,
+    transform: {
+      crop: null,
+      orientation: 0,
+      rotate: 0,
+      flipH: false,
+      flipV: false,
+      scale: 1,
+      translateX: 0,
+      translateY: 0,
+    },
+    positioning: undefined,
+    cornerRadius: undefined,
+  }))
+  const flattened: PreviewLayer = {
+    ...main,
+    precomposeGroup,
+    precomposeRole: 'output',
+    color: undefined,
+    restoreLutId: undefined,
+    lutId: undefined,
+    lutIntensity: undefined,
+    maskPath: undefined,
+    maskOpacity: undefined,
+    maskInverted: undefined,
+    maskFeather: undefined,
+    zIndex: 0,
+  }
+  const neutralColor = pipelineColorToRenderColor(createDefaultPipeline().color)
   const effectAmount = Math.max(0, Math.min(100, options.intensity)) / 100
   const background: PreviewLayer = {
-    ...main,
+    ...flattened,
     layerType: 'local-color',
-    color: main.color ? {
-      ...main.color,
-      saturation: baseSaturation + (-100 - baseSaturation) * effectAmount,
-    } : main.color,
+    color: { ...neutralColor, saturation: -100 * effectAmount },
     maskPath: options.backgroundMaskPath,
     maskOpacity: 1,
     maskInverted: options.backgroundMaskInverted ?? true,
     maskFeather: options.backgroundMaskFeather ?? 1,
-    zIndex: sourceTop + 0.01,
+    zIndex: 1,
   }
   const subject: PreviewLayer = {
-    ...main,
+    ...flattened,
     layerType: 'local-color',
-    color: main.color ? {
-      ...main.color,
-      saturation: Math.max(-100, Math.min(100, baseSaturation + options.subjectSaturation)),
-    } : main.color,
+    color: {
+      ...neutralColor,
+      saturation: options.subjectSaturation,
+      vibrance: options.subjectVibrance,
+    },
     maskPath: options.subjectMaskPath,
     maskOpacity: 1,
     maskInverted: options.subjectMaskInverted ?? false,
     maskFeather: options.subjectMaskFeather ?? 1,
-    zIndex: sourceTop + 0.02,
+    zIndex: 2,
   }
   const decorations = options.layers
-    .filter((layer) => layer.filePath !== options.sourcePath)
+    .filter((layer) => !sourceLayers.includes(layer))
     .map((layer, index) => ({ ...layer, zIndex: Math.max(20 + index, layer.zIndex) }))
   return [
-    ...options.layers.filter((layer) => layer.filePath === options.sourcePath),
+    ...inputs,
+    flattened,
     background,
     subject,
     ...decorations,

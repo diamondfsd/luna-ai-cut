@@ -13,20 +13,20 @@ export interface CreativeCatalogItem {
 
 export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
   {
-    id: 'pixel-stretch',
-    name: '像素拉伸',
-    subtitle: '像素拉伸',
-    description: '识别主体后，将背景延展为像素流动效果',
-    icon: ScanSearch,
-    previewClassName: 'workspace-creative-preview--pixel-stretch',
-  },
-  {
     id: 'only-your-color',
     name: '只有你的色彩',
     subtitle: '只有你的色彩',
     description: '保留主体色彩，让背景自然呈现黑白质感',
     icon: Droplets,
     previewClassName: 'workspace-creative-preview--only-your-color',
+  },
+  {
+    id: 'pixel-stretch',
+    name: '像素拉伸',
+    subtitle: '像素拉伸',
+    description: '识别主体后，将背景延展为像素流动效果',
+    icon: ScanSearch,
+    previewClassName: 'workspace-creative-preview--pixel-stretch',
   },
   {
     id: 'color-reveal',

@@ -63,6 +63,7 @@ try {
     'src/workspace/shared/editPipelineSerialization.ts',
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
+    'src/workspace/creative/only-your-color/onlyYourColorLayers.ts',
     'src/components/renderComposition.ts',
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
@@ -84,6 +85,7 @@ try {
   const pipelineSerialization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipelineSerialization.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
+  const onlyYourColorLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorLayers.js')))
   const renderComposition = await import(pathToFileURL(path.join(temporaryRoot, 'src/components/renderComposition.js')))
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
@@ -697,6 +699,56 @@ try {
     framedPrecomposition.map((layer) => [layer.precomposeGroup, layer.precomposeRole]).sort(),
     'preview and export composition must preserve identical precomposition groups',
   )
+
+  const existingGlobalColor = {
+    ...renderModule.pipelineColorToRenderColor(ordered.color),
+    exposure: 1.25,
+  }
+  const existingLocalColor = { ...existingGlobalColor, exposure: 2 }
+  const creativeSource = {
+    filePath: '/image.jpg',
+    layerType: 'media',
+    dstX: 0,
+    dstY: 0,
+    dstW: 1,
+    dstH: 1,
+    srcX: 0,
+    srcY: 0,
+    srcW: 1,
+    srcH: 1,
+    zIndex: 0,
+    color: existingGlobalColor,
+  }
+  const creativeLayers = onlyYourColorLayers.buildOnlyYourColorLayers({
+    layers: [creativeSource, {
+      ...creativeSource,
+      layerType: 'local-color',
+      color: existingLocalColor,
+      maskPath: '/existing-local.pgm',
+      zIndex: 1,
+    }],
+    sourcePath: '/image.jpg',
+    subjectMaskPath: '/subject.pgm',
+    backgroundMaskPath: '/background.pgm',
+    intensity: 100,
+    subjectSaturation: 20,
+    subjectVibrance: 30,
+  })
+  const creativeInputs = creativeLayers.filter((layer) => layer.precomposeRole === 'input')
+  const creativeOutputs = creativeLayers.filter((layer) => layer.precomposeRole === 'output')
+  assert.deepEqual(
+    creativeInputs.map((layer) => layer.color.exposure),
+    [1.25, 2],
+    'only-your-color must flatten existing global and local exposure before applying its effect',
+  )
+  assert.equal(creativeOutputs.length, 3, 'flattened source, monochrome background, and color subject must share one precomposition')
+  assert.ok(creativeOutputs.every((layer) => layer.precomposeGroup === 'only-your-color-source'))
+  assert.equal(creativeOutputs[0].color, undefined, 'flattened source must not apply global color twice')
+  assert.equal(creativeOutputs[1].color.exposure, 0, 'background effect must not overwrite existing exposure')
+  assert.equal(creativeOutputs[2].color.exposure, 0, 'subject effect must not overwrite existing exposure')
+  assert.equal(creativeOutputs[1].color.saturation, -100)
+  assert.equal(creativeOutputs[2].color.saturation, 20)
+  assert.equal(creativeOutputs[2].color.vibrance, 30)
 
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b5-ade20k'), 'rmbg-1.4')
