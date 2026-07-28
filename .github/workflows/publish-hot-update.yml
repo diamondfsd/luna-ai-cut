@@ -32,15 +32,19 @@ jobs:
             exit 0
           fi
           version="${GITHUB_REF_NAME#hot/v}"
-          previous="$(git tag --list 'hot/v*' --sort=-creatordate | grep -vx "$GITHUB_REF_NAME" | head -1 || true)"
+          base_version="${version%%-hot.*}"
+          previous="$(git tag --list "hot/v${base_version}-hot.*" --sort=-creatordate | grep -vx "$GITHUB_REF_NAME" | head -1 || true)"
+          if [ -z "$previous" ]; then
+            previous="v${base_version}"
+          fi
           include_native=true
-          if [ -n "$previous" ] && git diff --quiet "$previous" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs; then
+          if git rev-parse "$previous" >/dev/null 2>&1 && git diff --quiet "$previous" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs electron/lunaRenderCore.ts; then
             include_native=false
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "include_native=$include_native" >> "$GITHUB_OUTPUT"
           if [ "$include_native" = "false" ]; then
-            echo "No native changes detected. The local universal hot-update package is sufficient." >> "$GITHUB_STEP_SUMMARY"
+            echo "No native changes detected since ${previous}. The uploaded universal JS hot-update package is sufficient; no platform packages will be built." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   native:
