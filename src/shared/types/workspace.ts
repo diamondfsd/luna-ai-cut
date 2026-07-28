@@ -70,6 +70,7 @@ export interface WorkspacePixelFlowState {
   lightWidth: number
   semanticDelay: number
   maskPath?: string
+  skyMaskPath?: string
   maskAssetId?: string
 }
 
