@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
 import { NativeGpuVideoPreview } from '../../../components/NativeGpuVideoPreview'
-import type { PreviewLayer, WorkspacePixelFlowState, WorkspaceProject } from '../../../shared/types'
+import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
+import { DEFAULT_VIDEO_EXPORT_SETTINGS, type PreviewLayer, type VideoExportSettings, type WorkspacePixelFlowState, type WorkspaceProject } from '../../../shared/types'
 import { Button, LoadingIndicator, VideoControls, toast } from '../../../ui'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
@@ -17,16 +18,20 @@ import {
   DEFAULT_PIXEL_FLOW_DURATION,
   DEFAULT_PIXEL_FLOW_FILTER,
   DEFAULT_PIXEL_FLOW_FLOW_STRENGTH,
+  DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS,
+  DEFAULT_PIXEL_FLOW_INITIAL_SATURATION,
   DEFAULT_PIXEL_FLOW_RAIN_LENGTH,
   DEFAULT_PIXEL_FLOW_RAIN_SPEED,
   DEFAULT_PIXEL_FLOW_SUBJECT_DELAY,
   DEFAULT_PIXEL_FLOW_WIDTH,
   PIXEL_FLOW_SETTINGS_VERSION,
 } from './pixelFlowPresets'
+import { PIXEL_FLOW_IMAGE_EXPORT_SETTINGS, PIXEL_FLOW_LIVE_DURATION, queuePixelFlowExport } from './pixelFlowExport'
 import './pixel-flow.css'
 
 type NumericPixelFlowKey = 'duration' | 'pixelCount' | 'lightWidth' | 'rainSpeed' | 'rainLength'
   | 'flowStrength' | 'subjectDelay' | 'bloomStrength' | 'filterStrength' | 'colorTransition'
+  | 'initialSaturation' | 'initialBrightness'
 
 function savedParameter(
   saved: WorkspacePixelFlowState | undefined,
@@ -54,6 +59,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [duration, setDuration] = useState(savedParameter(saved, 'duration', DEFAULT_PIXEL_FLOW_DURATION))
   const [pixelCount, setPixelCount] = useState(savedParameter(saved, 'pixelCount', DEFAULT_PIXEL_FLOW_COUNT))
   const [lightWidth, setLightWidth] = useState(savedParameter(saved, 'lightWidth', DEFAULT_PIXEL_FLOW_WIDTH))
+  const [initialSaturation, setInitialSaturation] = useState(savedParameter(saved, 'initialSaturation', DEFAULT_PIXEL_FLOW_INITIAL_SATURATION))
+  const [initialBrightness, setInitialBrightness] = useState(savedParameter(saved, 'initialBrightness', DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS))
   const [bloomStrength, setBloomStrength] = useState(savedParameter(saved, 'bloomStrength', DEFAULT_PIXEL_FLOW_BLOOM))
   const [filterStrength, setFilterStrength] = useState(savedParameter(saved, 'filterStrength', DEFAULT_PIXEL_FLOW_FILTER))
   const [colorTransition, setColorTransition] = useState(savedParameter(saved, 'colorTransition', DEFAULT_PIXEL_FLOW_COLOR_TRANSITION))
@@ -69,10 +76,13 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [segmenting, setSegmenting] = useState(false)
   const [progress, setProgress] = useState('')
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number } | null>(null)
+  const [mediaDuration, setMediaDuration] = useState<number | null>(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [gpuFallback, setGpuFallback] = useState(false)
   const [seekRevision, setSeekRevision] = useState(0)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const saveTimerRef = useRef<number | null>(null)
   const pendingProjectRef = useRef(media.currentProject)
   const requestRef = useRef(new Set<string>())
@@ -88,6 +98,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setDuration(savedParameter(restored, 'duration', DEFAULT_PIXEL_FLOW_DURATION))
     setPixelCount(savedParameter(restored, 'pixelCount', DEFAULT_PIXEL_FLOW_COUNT))
     setLightWidth(savedParameter(restored, 'lightWidth', DEFAULT_PIXEL_FLOW_WIDTH))
+    setInitialSaturation(savedParameter(restored, 'initialSaturation', DEFAULT_PIXEL_FLOW_INITIAL_SATURATION))
+    setInitialBrightness(savedParameter(restored, 'initialBrightness', DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS))
     setBloomStrength(savedParameter(restored, 'bloomStrength', DEFAULT_PIXEL_FLOW_BLOOM))
     setFilterStrength(savedParameter(restored, 'filterStrength', DEFAULT_PIXEL_FLOW_FILTER))
     setColorTransition(savedParameter(restored, 'colorTransition', DEFAULT_PIXEL_FLOW_COLOR_TRANSITION))
@@ -103,6 +115,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setSegmenting(false)
     setProgress('')
     setSourceSize(null)
+    setMediaDuration(null)
     setCurrentTime(0)
     setPlaying(false)
     setGpuFallback(false)
@@ -153,13 +166,17 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   useEffect(() => {
     if (!activeAsset) return
     let cancelled = false
-    window.luna.workspace.getMediaResolution(activeAsset.path).then((size) => {
+    Promise.all([
+      window.luna.workspace.getMediaResolution(activeAsset.path),
+      activeAsset.kind === 'video' ? window.luna.workspace.getVideoDuration(activeAsset.path) : Promise.resolve(null),
+    ]).then(([size, sourceDuration]) => {
       if (cancelled) return
       setSourceSize(size)
+      setMediaDuration(sourceDuration)
       setCurrentTime(0)
       setPlaying(false)
       setSeekRevision((revision) => revision + 1)
-    }).catch(() => { if (!cancelled) toast.error('无法读取素材尺寸') })
+    }).catch(() => { if (!cancelled) toast.error('无法读取素材信息') })
     return () => { cancelled = true }
   }, [activeAsset])
 
@@ -243,6 +260,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     }
   }, [activeAsset, media.currentProject, segmenting])
 
+  const playbackDuration = activeAsset?.kind === 'video' ? mediaDuration ?? duration : duration
+
   useEffect(() => {
     if (!activeAsset || (maskPath && skyMaskPath) || segmenting) return
     if (attemptedAssetRef.current === activeAsset.id) return
@@ -268,6 +287,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       duration,
       pixelCount,
       lightWidth,
+      initialSaturation,
+      initialBrightness,
       bloomStrength,
       filterStrength,
       colorTransition,
@@ -300,7 +321,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     }, 300)
   // Project context refreshes are intentionally excluded from parameter persistence.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAssetId, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowStrength, lightWidth, maskPath, pixelCount, rainLength, rainSpeed, skyMaskPath, subjectDelay])
+  }, [activeAssetId, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowStrength, initialBrightness, initialSaturation, lightWidth, maskPath, pixelCount, rainLength, rainSpeed, skyMaskPath, subjectDelay])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -317,15 +338,15 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       const elapsed = Math.max(0, now - previous) / 1000
       previous = now
       setCurrentTime((time) => {
-        const next = Math.min(duration, time + elapsed)
-        if (next >= duration) setPlaying(false)
+        const next = Math.min(playbackDuration, time + elapsed)
+        if (next >= playbackDuration) setPlaying(false)
         return next
       })
       frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [duration, playing])
+  }, [playbackDuration, playing])
 
   const previewLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
@@ -334,7 +355,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       filePath: activeAsset.path,
       isVideo: activeAsset.kind === 'video',
       videoTime: 0,
-      videoDuration: activeAsset.kind === 'video' ? duration : undefined,
+      videoDuration: activeAsset.kind === 'video' ? playbackDuration : undefined,
       fit: 'stretch',
       dstX: 0,
       dstY: 0,
@@ -351,6 +372,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
         duration,
         pixelCount,
         lightWidth,
+        initialSaturation,
+        initialBrightness,
         rainSpeed,
         rainLength,
         flowStrength,
@@ -361,7 +384,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
         segmented: Boolean(depthMaskPath),
       },
     }]
-  }, [activeAsset, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowStrength, lightWidth, pixelCount, rainLength, rainSpeed, sourceSize, subjectDelay])
+  }, [activeAsset, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowStrength, initialBrightness, initialSaturation, lightWidth, pixelCount, playbackDuration, rainLength, rainSpeed, sourceSize, subjectDelay])
   const gpuPreviewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
@@ -371,6 +394,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     }
   }, [sourceSize])
   const playbackReady = Boolean(sourceSize && depthMaskPath && !segmenting)
+  const maskPreparing = Boolean(activeAsset && (!sourceSize || segmenting || !depthMaskPath))
 
   const replay = useCallback(() => {
     if (!playbackReady) return
@@ -390,6 +414,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setDuration(DEFAULT_PIXEL_FLOW_DURATION)
     setPixelCount(DEFAULT_PIXEL_FLOW_COUNT)
     setLightWidth(DEFAULT_PIXEL_FLOW_WIDTH)
+    setInitialSaturation(DEFAULT_PIXEL_FLOW_INITIAL_SATURATION)
+    setInitialBrightness(DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS)
     setBloomStrength(DEFAULT_PIXEL_FLOW_BLOOM)
     setFilterStrength(DEFAULT_PIXEL_FLOW_FILTER)
     setColorTransition(DEFAULT_PIXEL_FLOW_COLOR_TRANSITION)
@@ -401,6 +427,25 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   }
 
   const handleError = useCallback((message: string) => toast.error(message), [])
+
+  const handleExport = useCallback(async (config: VideoExportSettings) => {
+    if (!activeAsset || !sourceSize || !depthMaskPath || previewLayers.length === 0) return
+    setExporting(true)
+    try {
+      const count = await queuePixelFlowExport({
+        asset: activeAsset,
+        layers: previewLayers,
+        sourceSize,
+        config,
+      })
+      toast.success(`已加入 ${count} 个导出任务`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '无法开始导出')
+      throw error
+    } finally {
+      setExporting(false)
+    }
+  }, [activeAsset, depthMaskPath, previewLayers, sourceSize])
 
   return <section className="pixel-flow-page">
     <header className="pixel-flow-toolbar">
@@ -415,20 +460,37 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
             ? <LrcRender className="pixel-flow-canvas" layers={previewLayers} canvasWidth={gpuPreviewSize.width} canvasHeight={gpuPreviewSize.height} maxSide={1080} compositionTime={currentTime} interactiveImageLayerIndexes={[]} onError={handleError} />
             : <NativeGpuVideoPreview className="pixel-flow-canvas" layers={previewLayers} canvasWidth={gpuPreviewSize.width} canvasHeight={gpuPreviewSize.height} playing={playing} time={currentTime} seekRevision={seekRevision} onFallback={() => setGpuFallback(true)} />)}
         </div>
-        {segmenting && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>{progress || '正在识别画面层次'}</span></div>}
-        <VideoControls className="pixel-flow-controls" currentTime={currentTime} duration={duration} playing={playing} disabled={!playbackReady} onToggle={() => playing ? setPlaying(false) : replay()} onSeek={seek} step={1 / 60} />
+        {maskPreparing && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>{progress || '正在准备画面层次'}</span></div>}
+        <VideoControls className="pixel-flow-controls" currentTime={currentTime} duration={playbackDuration} playing={playing} disabled={!playbackReady} onToggle={() => playing ? setPlaying(false) : replay()} onSeek={seek} step={1 / 60} />
       </div>
         : <div className="pixel-flow-empty"><ScanLine size={28} /><strong>选择图片或视频素材</strong><span>在下方素材栏中选择需要制作效果的素材</span></div>}
     </div>
     <PixelFlowControls
-      duration={duration} pixelCount={pixelCount} lightWidth={lightWidth} bloomStrength={bloomStrength}
-      filterStrength={filterStrength} colorTransition={colorTransition} rainSpeed={rainSpeed} rainLength={rainLength}
-      flowStrength={flowStrength} subjectDelay={subjectDelay} disabled={!playbackReady}
+      duration={duration} pixelCount={pixelCount} lightWidth={lightWidth}
+      initialSaturation={initialSaturation} initialBrightness={initialBrightness}
+      disabled={!playbackReady} exporting={exporting}
       onDurationChange={setDuration} onPixelCountChange={setPixelCount} onLightWidthChange={setLightWidth}
-      onBloomStrengthChange={setBloomStrength} onFilterStrengthChange={setFilterStrength}
-      onColorTransitionChange={setColorTransition} onRainSpeedChange={setRainSpeed} onRainLengthChange={setRainLength}
-      onFlowStrengthChange={setFlowStrength} onSubjectDelayChange={setSubjectDelay} onReset={resetParameters} onReplay={replay}
+      onInitialSaturationChange={setInitialSaturation} onInitialBrightnessChange={setInitialBrightness}
+      onReset={resetParameters} onExport={() => setExportDialogOpen(true)}
     />
     <div className="pixel-flow-media-strip"><WorkspaceMediaStrip supportedMediaKinds={supportedMediaKinds} /></div>
+    {activeAsset && sourceSize ? <ExportSettingsDialog
+      open={exportDialogOpen}
+      onOpenChange={setExportDialogOpen}
+      title={activeAsset.kind === 'image' ? '导出 Live 图' : '导出视频'}
+      description={activeAsset.kind === 'image' ? '动态画面固定为 3 秒，可选择通用 Live 图或 Apple Live 图。' : undefined}
+      loading={exporting}
+      initialConfig={activeAsset.kind === 'image' ? PIXEL_FLOW_IMAGE_EXPORT_SETTINGS : DEFAULT_VIDEO_EXPORT_SETTINGS}
+      allowedFormats={activeAsset.kind === 'image' ? ['google-live', 'apple-live'] : ['video']}
+      livePhotoSource={activeAsset.kind === 'image' ? {
+        path: activeAsset.path,
+        startTime: 0,
+        duration: PIXEL_FLOW_LIVE_DURATION,
+        thumbnailDuration: PIXEL_FLOW_LIVE_DURATION,
+        layers: previewLayers,
+        outputSize: sourceSize,
+      } : undefined}
+      onConfirm={handleExport}
+    /> : null}
   </section>
 }

@@ -69,6 +69,8 @@ export interface WorkspacePixelFlowState {
   duration: number
   pixelCount: number
   lightWidth: number
+  initialSaturation: number
+  initialBrightness: number
   rainSpeed: number
   rainLength: number
   flowStrength: number

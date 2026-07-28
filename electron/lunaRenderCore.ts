@@ -75,6 +75,8 @@ export interface CompositionInput {
       progress?: number
       pixelCount: number
       lightWidth: number
+      initialSaturation: number
+      initialBrightness: number
       rainSpeed: number
       rainLength: number
       flowStrength: number

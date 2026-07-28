@@ -367,6 +367,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let adjusted = pixel_flow_hertz_grade(apply_color(source.rgb, tex_coord, local_x), filter_strength);
         let gray_value = pixel_flow_luma(adjusted);
         let monochrome = vec3<f32>(clamp((gray_value - 0.5) * 1.06 + 0.505, 0.0, 1.0));
+        let initial_saturation = clamp(params.pixel_flow_scale.x, 0.0, 1.0);
+        let initial_brightness = clamp(params.pixel_flow_scale.y, -1.0, 1.0) * 0.5;
+        let initial_plate = clamp(
+            mix(monochrome, adjusted, initial_saturation) + vec3<f32>(initial_brightness),
+            vec3<f32>(0.0),
+            vec3<f32>(1.0),
+        );
         let transition_duration = max(0.001, params.pixel_flow_finish.z);
         let reveal_regions = pixel_flow_regions(tex_coord);
         let block_arrival = cell.x * reveal_regions.x
@@ -380,7 +387,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         );
         let final_reveal = smoothstep(0.94, 1.0, progress);
         let color_reveal = max(local_reveal, final_reveal);
-        let base = mix(monochrome, adjusted, color_reveal);
+        let base = mix(initial_plate, adjusted, color_reveal);
 
         let block_offset = fract(tex_coord * source_size / cell_px) - vec2<f32>(0.5);
         let block_local = abs(block_offset) * square_correction;

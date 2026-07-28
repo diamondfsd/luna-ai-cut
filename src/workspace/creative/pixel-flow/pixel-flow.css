@@ -8,7 +8,7 @@
 .pixel-flow-stage.is-landscape .pixel-flow-canvas { width: 100%; height: auto; }
 .pixel-flow-stage.is-portrait .pixel-flow-canvas { width: auto; height: 100%; }
 .pixel-flow-controls.ui-video-controls { position: relative; right: auto; bottom: auto; left: auto; width: 100%; box-sizing: border-box; flex: 0 0 38px; min-height: 38px; padding: 6px 10px; background: #202020; opacity: 1; }
-.pixel-flow-identifying { position: absolute; top: 12px; left: 50%; z-index: 4; min-width: 180px; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 8px 12px; transform: translateX(-50%); border: 1px solid rgba(174, 213, 241, 0.38); border-radius: 6px; background: rgba(20, 28, 34, 0.86); color: #d7e9f5; font-size: 12px; backdrop-filter: blur(8px); }
+.pixel-flow-identifying { position: absolute; inset: 0 0 38px; z-index: 4; display: flex; align-items: center; justify-content: center; gap: 9px; background: rgba(12, 16, 19, 0.46); color: #e4f1f8; font-size: 12px; backdrop-filter: blur(2px); }
 .pixel-flow-empty { display: grid; justify-items: center; gap: 8px; color: #777; text-align: center; }
 .pixel-flow-empty strong { color: #ddd; font-size: 14px; }
 .pixel-flow-empty span { font-size: 12px; }
