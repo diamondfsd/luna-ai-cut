@@ -88,7 +88,6 @@ interface WatermarkSettingsProps {
   title?: string
   filePath?: string
   mediaKind?: 'image' | 'video'
-  allowBuiltin?: boolean
 }
 
 function WatermarkSlider({ label, value, min, max, onChange }: {
@@ -162,7 +161,6 @@ export function WatermarkSettings({
   title = '水印设置',
   filePath,
   mediaKind,
-  allowBuiltin = true,
 }: WatermarkSettingsProps) {
   const controlled = settings !== undefined
   const [internalSettings, setInternalSettings] = useState<WatermarkSettingsType>({
@@ -232,6 +230,7 @@ export function WatermarkSettings({
       }
     })
   }, [deviceId, preferencesOnly, watermarkKind])
+  const builtinAvailable = stylePills.length > 0
 
   const publish = useCallback((next: WatermarkSettingsType, layer?: PreviewLayer) => {
     settingsRef.current = next
@@ -264,17 +263,17 @@ export function WatermarkSettings({
             imageWidth: undefined,
             imageHeight: undefined,
           }
-    } else if (next.enabled && allowBuiltin) {
+    } else if (next.enabled && builtinAvailable) {
       const info = await window.luna.getWatermarkPath(next.style, watermarkKind).catch(() => null)
       if (seq !== enrichSeqRef.current) return
       next = { ...next, sourceKind: 'builtin', imagePath: info?.filePath, imageWidth: info?.width, imageHeight: info?.height }
-    } else if (!allowBuiltin) {
+    } else if (!builtinAvailable) {
       next = { ...next, imagePath: undefined, imageWidth: undefined, imageHeight: undefined }
     }
     const size = resolvedMediaSize ?? { width: 16, height: 9 }
     const layer = next.enabled ? buildResolvedWatermarkStaticLayer(next, size.width, size.height) ?? undefined : undefined
     publish(next, layer)
-  }, [allowBuiltin, defaultWatermarkWidthRatio, preferencesOnly, publish, resolvedMediaSize, watermarkKind])
+  }, [builtinAvailable, defaultWatermarkWidthRatio, preferencesOnly, publish, resolvedMediaSize, watermarkKind])
 
   useEffect(() => {
     if (!hydrated || (filePath && !resolvedMediaSize)) return
@@ -338,14 +337,14 @@ export function WatermarkSettings({
     void enrichAndChange(patch)
   }
 
-  const selectedSourceKind = allowBuiltin ? currentSettings.sourceKind ?? 'builtin' : 'custom'
+  const selectedSourceKind = builtinAvailable ? currentSettings.sourceKind ?? 'builtin' : 'custom'
   const customSelected = selectedSourceKind === 'custom' && usesCustomWatermark(currentSettings)
-  const sourceOptions: Array<{ value: 'builtin' | 'custom'; label: string }> = allowBuiltin
+  const sourceOptions: Array<{ value: 'builtin' | 'custom'; label: string }> = builtinAvailable
     ? [{ value: 'builtin', label: '内置' }, { value: 'custom', label: '自定义' }]
     : [{ value: 'custom', label: '自定义' }]
   const content = (
     <div className="wm-settings-content">
-      {!preferencesOnly && allowBuiltin && (
+      {!preferencesOnly && builtinAvailable && (
         <div className="wm-source-control">
           <SegmentedControl
             ariaLabel="水印来源"
