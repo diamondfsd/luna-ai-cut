@@ -5,22 +5,16 @@ import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '.
 import { useExportProgress } from '../context/ExportProgressContext'
 import { ExportProgressModal } from './ExportProgressModal'
 import { HelpDialog } from './HelpDialog'
-import { WorkspaceModeHeader, type CreativeModeId, type WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
 import '../styles/nav.css'
 
 interface AppNavProps {
   activeDevice?: DeviceDefinition
   connection: ConnectionStatus | null
   sourceMode: CameraConnectionMode
-  showWorkspaceMode?: boolean
-  workspaceMode?: WorkspaceMode
-  creativeModeId?: CreativeModeId | null
-  onModeChange?: (mode: WorkspaceMode) => void
-  onCreativeModeChange?: (modeId: CreativeModeId | null) => void
   onChangeConnection?: () => Promise<void>
 }
 
-export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode, workspaceMode, creativeModeId, onModeChange, onCreativeModeChange, onChangeConnection }: AppNavProps) {
+export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
   const { exportProgress } = useExportProgress()
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
@@ -59,17 +53,6 @@ export function AppNav({ activeDevice, connection, sourceMode, showWorkspaceMode
             </NavLink>
           )} */}
         </div>
-        {showWorkspaceMode && workspaceMode && onModeChange && onCreativeModeChange && (
-          <div className="nav-center">
-            <WorkspaceModeHeader
-              variant="nav"
-              mode={workspaceMode}
-              creativeModeId={creativeModeId ?? null}
-              onModeChange={onModeChange}
-              onCreativeModeChange={onCreativeModeChange}
-            />
-          </div>
-        )}
         <div className="nav-status">
           <span className={connected ? 'status-dot ok' : 'status-dot'} />
           <span>{statusText}</span>
