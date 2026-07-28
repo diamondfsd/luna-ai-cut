@@ -451,8 +451,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     {activeAsset && sourceSize ? <ExportSettingsDialog
       open={exportDialogOpen}
       onOpenChange={setExportDialogOpen}
-      title={exportableAssets.length > 1 ? `导出 ${exportableAssets.length} 个像素流光作品` : exportHasImages ? '导出 Live 图' : '导出视频'}
-      description={exportableAssets.length > 1 ? '每个素材使用自己的画面识别结果，缺失时会先自动生成。' : exportHasImages ? '动态画面固定为 3 秒，可选择通用 Live 图或 Apple Live 图。' : undefined}
+      title={exportableAssets.length > 1 ? `导出 ${exportableAssets.length} 个像素流光作品` : exportHasImages ? '导出像素流光' : '导出视频'}
+      description={exportableAssets.length > 1 ? '每个素材使用自己的画面识别结果，缺失时会先自动生成。' : exportHasImages ? '可导出完整效果视频，也可同时生成 Live 图。' : undefined}
       loading={exporting}
       initialConfig={exportInitialConfig}
       allowedFormats={allowedFormats}
