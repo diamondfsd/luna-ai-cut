@@ -16,7 +16,7 @@ import { assetSourceUrl, loadCreativeImageSize, normalizeCreativePipeline } from
 import { CreativeCompareButton } from '../shared/CreativeCompareButton'
 import { preparePreciseSubjectModelIfNeeded } from '../shared/preparePreciseSubjectModel'
 import type { CreativeModuleProps } from '../creativeCatalog'
-import { erodeMaskOnePixel, subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
+import { subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
 import { exportOnlyYourColorBatch } from './onlyYourColorBatchExport'
 import { buildOnlyYourColorLayers } from './onlyYourColorLayers'
 import {
@@ -25,6 +25,7 @@ import {
   onlyYourColorBackgroundMaskLayer,
   onlyYourColorMaskLayer,
 } from './onlyYourColorMask'
+import { refineOnlyYourColorMask } from './onlyYourColorMaskRefinement'
 import {
   DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE,
   DEFAULT_ONLY_YOUR_COLOR_INTENSITY,
@@ -226,8 +227,6 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
       subjectVibrance,
       subjectMaskInverted: subjectMaskLayer?.inverted,
       backgroundMaskInverted: backgroundMaskLayer?.inverted,
-      subjectMaskFeather: subjectMaskLayer?.feather,
-      backgroundMaskFeather: backgroundMaskLayer?.feather,
     })
     : baseLayers, [activeAsset, activeMaskPath, backgroundExposure, backgroundMaskLayer, baseLayers, intensity, subjectMaskLayer, subjectSaturation, subjectVibrance])
   const previewLayers = showOriginal ? baseLayers : effectLayers
@@ -262,7 +261,7 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
         ? { requestId, filePath: activeAsset.path, point, modelId: 'slimsam-77-uniform' }
         : { requestId, filePath: activeAsset.path, modelId: subjectModel === 'precise' ? 'birefnet-general-lite' : 'rmbg-1.4' })
       if (requestRef.current !== requestId) return
-      const selectedMask = erodeMaskOnePixel(new Uint8Array(result.bytes), result.width, result.height)
+      const selectedMask = refineOnlyYourColorMask(new Uint8Array(result.bytes), result.width, result.height)
       if (!subjectBoundsFromMask(selectedMask, result.width, result.height)) throw new Error(point ? '点选区域没有有效主体' : '未识别到主体，可使用点选')
       const savedMask = await window.luna.workspace.saveColorMask(media.currentProject.id, activeAsset.id, result.width, result.height, selectedMask, 1)
       if (requestRef.current !== requestId) return

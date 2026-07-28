@@ -11,7 +11,7 @@ export function onlyYourColorMaskLayer(path: string, width: number, height: numb
     height,
     opacity: 1,
     inverted: false,
-    feather: 1,
+    feather: 0,
     kind: 'brush',
     id: ONLY_YOUR_COLOR_MASK_LAYER_ID,
     name: '色彩主体',

@@ -117,8 +117,6 @@ export async function exportOnlyYourColorBatch(options: OnlyYourColorBatchExport
         subjectVibrance: mask.state.subjectVibrance ?? 0,
         subjectMaskInverted: subjectLayer?.inverted,
         backgroundMaskInverted: backgroundLayer?.inverted,
-        subjectMaskFeather: subjectLayer?.feather,
-        backgroundMaskFeather: backgroundLayer?.feather,
       })
       await window.luna.exportTask.updateItem(task.id, entry.itemId, { progress: 25, label: '正在导出' }).catch(() => undefined)
       await exportPreviewImage({
