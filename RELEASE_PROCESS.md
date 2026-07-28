@@ -119,6 +119,8 @@ GitHub Release 创建完成后，需要再执行部署脚本，从 GitHub Releas
 
 当只需要推送增量修复（不涉及版本号变更、Electron 升级或原生模块变更）时，使用本地脚本生成一份平台无关的通用热更新包。`dist/`、`luna-appMain.js` 和 `preload.mjs` 均为平台无关的 JS，无需让 GitHub Actions 重复构建三份。
 
+纯前端/纯 JS 热更新只发布一个无平台后缀的通用 ZIP（例如 `renderer-1.6.5-hot.1.zip`）和发布说明。**不构建、不上传 macOS ARM64、macOS x64 或 Windows x64 平台包**；客户端直接从 GitCode Release 附件列表中选择最新的通用 ZIP，不依赖 `renderer-latest.json` 清单。
+
 ### 1. 创建热更新发布说明
 
 创建 `RELEASE_NOTES_v<版本号>-hot.<build号>.md`，按以下分类整理变更：
@@ -172,7 +174,7 @@ git commit -m "fix: xxx"
 git push origin main
 ```
 
-推送热更新 tag 后，GitHub Actions 会比较上一个热更新 tag。没有修改 `luna-render-core/`、`Cargo.lock`、`scripts/build-native.mjs` 或 `electron/lunaRenderCore.ts` 时，只执行变更检测，不再构建或上传平台包。
+推送热更新 tag 后，GitHub Actions 会检查原生相关文件。已有热更新时与上一个热更新 tag 比较；当前正式版的第一个热更新则与对应正式版 tag（例如 `v1.6.5`）比较。没有修改 `luna-render-core/`、`Cargo.lock`、`scripts/build-native.mjs` 或 `electron/lunaRenderCore.ts` 时，只执行变更检测，不构建或上传任何平台包。
 
 > 客户端每次启动会自动检查热更新（2 秒后），发现新版本后提示用户「立即更新」→ 下载 ~1.4MB → 重启生效。
 

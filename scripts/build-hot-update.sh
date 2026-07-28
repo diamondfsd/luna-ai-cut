@@ -95,9 +95,7 @@ HOT_VERSION=$(resolve_build_number "$HOT_VERSION_ARG")
 FULL_VERSION="${PKG_VERSION}-hot.${HOT_VERSION}"
 ZIP_NAME="renderer-${FULL_VERSION}.zip"
 ZIP_PATH="${RELEASE_DIR}/${ZIP_NAME}"
-MANIFEST_PATH="${RELEASE_DIR}/renderer-latest.json"
 NOTES_NAME="RELEASE_NOTES_v${FULL_VERSION}.md"
-NOTES_PATH="${RELEASE_DIR}/${NOTES_NAME}"
 
 # ============================================================
 # 第一步：构建
@@ -154,22 +152,11 @@ if [ "$UPLOAD_ONLY" = false ]; then
   "
   ok "ZIP: ${ZIP_PATH}"
 
-  # ── 创建元数据 ──
-  cat > "$MANIFEST_PATH" <<EOF
-{
-  "version": "${FULL_VERSION}",
-  "zipName": "${ZIP_NAME}",
-  "minAppVersion": "${PKG_VERSION}"
-}
-EOF
-  ok "元数据: ${MANIFEST_PATH}"
-
   # ── 展示文件信息 ──
   echo ""
   size=$(stat -f%z "$ZIP_PATH" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "$(wc -c < "$ZIP_PATH") bytes")
   echo "  ZIP 大小:   ${size}"
   echo "  ZIP 路径:   ${ZIP_PATH}"
-  echo "  元数据路径: ${MANIFEST_PATH}"
   echo ""
 
   # ── 验证 ──
@@ -202,7 +189,7 @@ fi
 if [ "$BUILD_ONLY" = true ]; then
   echo "  上传以下文件到 GitCode Release ${LATEST_TAG}:"
   echo "    - ${ZIP_PATH}"
-  echo "    - ${MANIFEST_PATH}"
+  echo "    - ${NOTES_NAME}（存在时）"
   exit 0
 fi
 
@@ -224,12 +211,6 @@ if [ ! -f "$ZIP_PATH" ]; then
   err "请先构建（去掉 --upload-only）"
   exit 1
 fi
-if [ ! -f "$MANIFEST_PATH" ]; then
-  err "文件不存在: ${MANIFEST_PATH}"
-  err "请先构建（去掉 --upload-only）"
-  exit 1
-fi
-
 # ── 确保 Release 存在 ──
 info "确保 Release ${LATEST_TAG} 存在..."
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${API_BASE}/releases" \

@@ -16,7 +16,7 @@ Luna AI Cut 是一款开源、非商业的桌面素材管理与创作工具。�
 
 ## 使用文档
 
-- 产品介绍与使用指南：[https://diamondfsd.github.io/luna-ai-cut/](https://diamondfsd.github.io/luna-ai-cut/)
+- 产品介绍与使用指南：[https://luna.diamondfsd.com/](https://luna.diamondfsd.com/)
 
 ## 核心功能
 

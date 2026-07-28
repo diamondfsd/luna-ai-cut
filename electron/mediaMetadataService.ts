@@ -162,11 +162,14 @@ function parseFrameRate(value: string | undefined): number | null {
   const fps = parts.length === 2 && Number(parts[1]) > 0
     ? Number(parts[0]) / Number(parts[1])
     : Number(parts[0])
-  return fps > 0 ? Math.round(fps * 100) / 100 : null
+  return Number.isFinite(fps) && fps > 0 && fps <= 1000
+    ? Math.round(fps * 100) / 100
+    : null
 }
 
 interface VideoProbeStream {
   codec_type: string
+  avg_frame_rate?: string
   r_frame_rate?: string
   side_data_list?: Array<{
     side_data_type?: string
@@ -260,7 +263,8 @@ export async function getVideoFrameRate(file: LunaFile, cachedPath?: string | nu
     ])
     const data = JSON.parse(stdout) as { streams?: VideoProbeStream[]; format?: VideoProbeFormat }
     const videoStream = data.streams?.find((stream) => stream.codec_type === 'video')
-    const frameRate = parseFrameRate(videoStream?.r_frame_rate)
+    const frameRate = parseFrameRate(videoStream?.avg_frame_rate)
+      ?? parseFrameRate(videoStream?.r_frame_rate)
     const duration = data.format?.duration ? Math.round(Number(data.format.duration)) : null
     return { frameRate, duration, ...dolbyVisionInfo(videoStream, data.format), iLog }
   } catch {
@@ -319,6 +323,7 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
           codec_name?: string
           width?: number
           height?: number
+          avg_frame_rate?: string
           r_frame_rate?: string
           bit_rate?: string
         }>
@@ -342,11 +347,10 @@ export async function getMediaMetadata(file: LunaFile, cachedPath?: string | nul
         entries.push({ key: '分辨率', value: `${videoStream.width} x ${videoStream.height}` })
       }
 
-      if (videoStream.r_frame_rate) {
-        const fps = parseFrameRate(videoStream.r_frame_rate)
-        if (fps !== null) {
-          entries.push({ key: '帧率', value: `${fps} fps` })
-        }
+      const fps = parseFrameRate(videoStream.avg_frame_rate)
+        ?? parseFrameRate(videoStream.r_frame_rate)
+      if (fps !== null) {
+        entries.push({ key: '帧率', value: `${fps} fps` })
       }
 
       if (videoStream.codec_name) {

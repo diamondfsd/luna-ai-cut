@@ -54,6 +54,7 @@ const SHADER: &str = concat!(
     include_str!("shaders/detail.wgsl"),
     include_str!("shaders/curve.wgsl"),
     include_str!("shaders/color.wgsl"),
+    include_str!("shaders/pixel_flow.wgsl"),
     include_str!("shaders/fragment.wgsl"),
 );
 
@@ -132,6 +133,11 @@ struct GpuLayerParams {
     pixel_stretch_center: [f32; 4],
     pixel_stretch_path_meta: [f32; 4],
     pixel_stretch_path_data: [[f32; 4]; 4],
+    pixel_flow: [f32; 4],
+    pixel_flow_geometry: [f32; 4],
+    pixel_flow_depth: [f32; 4],
+    pixel_flow_scale: [f32; 4],
+    pixel_flow_finish: [f32; 4],
     fill_rgba: [f32; 4],
     stroke_rgba: [f32; 4],
     text_meta: [f32; 4],
