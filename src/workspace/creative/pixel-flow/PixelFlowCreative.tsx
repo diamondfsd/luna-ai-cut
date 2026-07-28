@@ -12,6 +12,8 @@ import type { CreativeModuleProps } from '../creativeCatalog'
 import { loadCreativeImageSize } from '../shared/creativeMedia'
 import { PixelFlowControls } from './PixelFlowControls'
 import { combinePixelFlowDepthMask, type PixelFlowMask } from './pixelFlowRender'
+import { queuePixelFlowBatchExport } from './pixelFlowBatchExport'
+import { buildPixelFlowLayer, type PixelFlowEffectSettings } from './pixelFlowLayers'
 import {
   DEFAULT_PIXEL_FLOW_BLOOM,
   DEFAULT_PIXEL_FLOW_COLOR_TRANSITION,
@@ -29,7 +31,7 @@ import {
   PIXEL_FLOW_SETTINGS_VERSION,
 } from './pixelFlowPresets'
 import { pixelFlowStateForAsset, savedPixelFlowParameter } from './pixelFlowState'
-import { PIXEL_FLOW_IMAGE_EXPORT_SETTINGS, PIXEL_FLOW_LIVE_DURATION, queuePixelFlowExport } from './pixelFlowExport'
+import { PIXEL_FLOW_IMAGE_EXPORT_SETTINGS, PIXEL_FLOW_LIVE_DURATION } from './pixelFlowExport'
 import './pixel-flow.css'
 
 export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
@@ -336,44 +338,31 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     return () => cancelAnimationFrame(frame)
   }, [playbackDuration, playing])
 
+  const effectSettings = useMemo<PixelFlowEffectSettings>(() => ({
+    duration,
+    pixelCount,
+    lightWidth,
+    initialSaturation,
+    initialBrightness,
+    subjectDirection,
+    rainSpeed,
+    rainLength,
+    flowStrength,
+    subjectDelay,
+    bloomStrength,
+    filterStrength,
+    colorTransition,
+  }), [bloomStrength, colorTransition, duration, filterStrength, flowStrength, initialBrightness, initialSaturation, lightWidth, pixelCount, rainLength, rainSpeed, subjectDelay, subjectDirection])
+
   const previewLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
-    return [{
-      layerType: 'pixel-flow',
-      filePath: activeAsset.path,
-      isVideo: activeAsset.kind === 'video',
-      videoTime: 0,
-      videoDuration: activeAsset.kind === 'video' ? playbackDuration : undefined,
-      fit: 'stretch',
-      dstX: 0,
-      dstY: 0,
-      dstW: 1,
-      dstH: 1,
-      srcX: 0,
-      srcY: 0,
-      srcW: 1,
-      srcH: 1,
-      opacity: 1,
-      zIndex: 0,
+    return [buildPixelFlowLayer({
+      asset: activeAsset,
       maskPath: depthMaskPath ?? undefined,
-      pixelFlow: {
-        duration,
-        pixelCount,
-        lightWidth,
-        initialSaturation,
-        initialBrightness,
-        subjectDirection,
-        rainSpeed,
-        rainLength,
-        flowStrength,
-        subjectDelay,
-        bloomStrength,
-        filterStrength,
-        colorTransition,
-        segmented: Boolean(depthMaskPath),
-      },
-    }]
-  }, [activeAsset, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowStrength, initialBrightness, initialSaturation, lightWidth, pixelCount, playbackDuration, rainLength, rainSpeed, sourceSize, subjectDelay, subjectDirection])
+      playbackDuration,
+      settings: effectSettings,
+    })]
+  }, [activeAsset, depthMaskPath, effectSettings, playbackDuration, sourceSize])
   const gpuPreviewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
@@ -418,28 +407,74 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
 
   const handleError = useCallback((message: string) => toast.error(message), [])
 
+  const exportableAssets = useMemo(() => {
+    const selected = [...media.selectedIndices]
+      .map((index) => media.media[index])
+      .filter((asset) => asset && !media.brokenPaths.has(asset.path)
+      .filter((asset) => !supportedMediaKinds || supportedMediaKinds.includes(asset.kind))
+    if (selected.length > 0) return selected
+    return activeAsset && !media.brokenPaths.has(activeAsset.path) ? [activeAsset] : []
+  }, [activeAsset, media.brokenPaths, media.media, media.selectedIndices, supportedMediaKinds])
+  const exportHasImages = exportableAssets.some((asset) => asset.kind === 'image')
+  const exportHasVideos = exportableAssets.some((asset) => asset.kind === 'video')
+  const exportInitialConfig = useMemo<VideoExportSettings>(() => exportHasImages
+    ? {
+        ...PIXEL_FLOW_IMAGE_EXPORT_SETTINGS,
+        exportFormats: exportHasVideos ? ['video', 'google-live'] : ['google-live'],
+      }
+    : DEFAULT_VIDEO_EXPORT_SETTINGS, [exportHasImages, exportHasVideos])
+  const exportFormats = exportHasImages
+    ? exportHasVideos ? ['video', 'google-live', 'apple-live'] as const : ['google-live', 'apple-live'] as const
+    : ['video'] as const
+
   const handleExport = useCallback(async (config: VideoExportSettings) => {
-    if (!activeAsset || !sourceSize || !depthMaskPath || previewLayers.length === 0) return
+    const project = pendingProjectRef.current ?? media.currentProject
+    if (!project || exportableAssets.length === 0) return
     setExporting(true)
     try {
-      const count = await queuePixelFlowExport({
-        asset: activeAsset,
-        layers: previewLayers,
-        sourceSize,
+      const result = await queuePixelFlowBatchExport({
+        project,
+        assets: exportableAssets,
         config,
+        settings: effectSettings,
       })
-      toast.success(`已加入 ${count} 个导出任务`)
+      if (Object.keys(result.resolvedStates).length > 0) {
+        const latestProject = pendingProjectRef.current?.id === project.id ? pendingProjectRef.current : project
+        const nextProject = {
+          ...latestProject,
+          updatedAt: new Date().toISOString(),
+          creative: {
+            ...latestProject.creative,
+            pixelFlowByAssetId: {
+              ...latestProject.creative?.pixelFlowByAssetId,
+              ...result.resolvedStates,
+            },
+          },
+        }
+        pendingProjectRef.current = nextProject
+        media.setCurrentProject(nextProject)
+        await window.luna.workspace.saveProject(nextProject)
+        const activeResolved = activeAssetId ? result.resolvedStates[activeAssetId] : undefined
+        if (activeResolved?.depthMaskPath) {
+          setMaskPath(activeResolved.maskPath ?? null)
+          setSkyMaskPath(activeResolved.skyMaskPath ?? null)
+          setDepthMaskPath(activeResolved.depthMaskPath)
+        }
+      }
+      if (result.failedCount === 0) toast.success(`已加入 ${result.queuedCount} 个导出任务`)
+      else if (result.queuedCount > 0) toast.show(`已加入 ${result.queuedCount} 个，${result.failedCount} 个准备失败`)
+      else toast.error('没有可导出的素材，请查看素材是否可用')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '无法开始导出')
       throw error
     } finally {
       setExporting(false)
     }
-  }, [activeAsset, depthMaskPath, previewLayers, sourceSize])
+  }, [activeAssetId, effectSettings, exportableAssets, media])
 
   return <section className="pixel-flow-page">
     <header className="pixel-flow-toolbar">
-      <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button>
+      <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>返回</Button>
       <span>像素流光</span>
       <Button className="pixel-flow-replay" variant="toolbar" size="compact" icon={<Play size={14} />} disabled={!playbackReady} onClick={replay}>重播</Button>
     </header>
@@ -459,7 +494,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       duration={duration} pixelCount={pixelCount} lightWidth={lightWidth}
       initialSaturation={initialSaturation} initialBrightness={initialBrightness}
       subjectDirection={subjectDirection}
-      generating={maskPreparing}
+      generating={maskPreparing || exporting}
       disabled={!playbackReady} exporting={exporting}
       onDurationChange={setDuration} onPixelCountChange={setPixelCount} onLightWidthChange={setLightWidth}
       onInitialSaturationChange={setInitialSaturation} onInitialBrightnessChange={setInitialBrightness}
@@ -470,13 +505,13 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     {activeAsset && sourceSize ? <ExportSettingsDialog
       open={exportDialogOpen}
       onOpenChange={setExportDialogOpen}
-      title={activeAsset.kind === 'image' ? '导出 Live 图' : '导出视频'}
-      description={activeAsset.kind === 'image' ? '动态画面固定为 3 秒，可选择通用 Live 图或 Apple Live 图。' : undefined}
+      title={exportableAssets.length > 1 ? `导出 ${exportableAssets.length} 个像素流光作品` : exportHasImages ? '导出 Live 图' : '导出视频'}
+      description={exportableAssets.length > 1 ? '每个素材使用自己的画面识别结果，缺失时会先自动生成。' : exportHasImages ? '动态画面固定为 3 秒，可选择通用 Live 图或 Apple Live 图。' : undefined}
       loading={exporting}
-      initialConfig={activeAsset.kind === 'image' ? PIXEL_FLOW_IMAGE_EXPORT_SETTINGS : DEFAULT_VIDEO_EXPORT_SETTINGS}
-      allowedFormats={activeAsset.kind === 'image' ? ['google-live', 'apple-live'] : ['video']}
-      livePhotoSource={activeAsset.kind === 'image' ? {
-        path: activeAsset.path,
+      initialConfig={exportInitialConfig}
+      allowedFormats={[...exportFormats]}
+      livePhotoSource={exportHasImages ? {
+        path: exportableAssets.find((asset) => asset.kind === 'image')?.path ?? activeAsset.path,
         startTime: 0,
         duration: PIXEL_FLOW_LIVE_DURATION,
         thumbnailDuration: PIXEL_FLOW_LIVE_DURATION,
