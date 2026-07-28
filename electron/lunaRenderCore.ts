@@ -88,6 +88,9 @@ export interface CompositionInput {
       backgroundScale?: number
       subjectScale?: number
       skyBlackRatio?: number
+      bloomStrength?: number
+      filterStrength?: number
+      colorTransition?: number
     }
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }

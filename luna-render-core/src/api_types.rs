@@ -202,6 +202,9 @@ pub struct RenderPixelFlow {
     pub background_scale: Option<f64>,
     pub subject_scale: Option<f64>,
     pub sky_black_ratio: Option<f64>,
+    pub bloom_strength: Option<f64>,
+    pub filter_strength: Option<f64>,
+    pub color_transition: Option<f64>,
 }
 
 impl Default for RenderLayerTransform {

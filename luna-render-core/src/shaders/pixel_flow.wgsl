@@ -7,6 +7,43 @@ fn pixel_flow_source_luma(uv: vec2<f32>) -> f32 {
     return dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
 }
 
+fn pixel_flow_bloom_tap(uv: vec2<f32>) -> vec3<f32> {
+    let color = textureSampleLevel(src_texture, src_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).rgb;
+    let luma = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let peak = max(color.r, max(color.g, color.b));
+    let energy = smoothstep(0.34, 0.86, max(luma, peak * 0.72));
+    return color * energy + vec3<f32>(energy * energy * 0.16);
+}
+
+fn pixel_flow_ccd_bloom(uv: vec2<f32>, radius: vec2<f32>) -> vec3<f32> {
+    let inner = radius * 1.4;
+    let middle = radius * 3.4;
+    let outer = radius * 7.2;
+    var bloom = pixel_flow_bloom_tap(uv) * 0.12;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(inner.x, 0.0)) * 0.09;
+    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(inner.x, 0.0)) * 0.09;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(0.0, inner.y)) * 0.09;
+    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(0.0, inner.y)) * 0.09;
+    bloom += pixel_flow_bloom_tap(uv + middle) * 0.07;
+    bloom += pixel_flow_bloom_tap(uv - middle) * 0.07;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(middle.x, -middle.y)) * 0.07;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(-middle.x, middle.y)) * 0.07;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(outer.x, 0.0)) * 0.06;
+    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(outer.x, 0.0)) * 0.06;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(0.0, outer.y)) * 0.06;
+    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(0.0, outer.y)) * 0.06;
+    return bloom;
+}
+
+fn pixel_flow_hertz_grade(color: vec3<f32>, strength: f32) -> vec3<f32> {
+    let luma = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let contrasted = (color - vec3<f32>(0.5)) * 1.16 + vec3<f32>(0.52);
+    let saturated = vec3<f32>(luma) + (contrasted - vec3<f32>(luma)) * 1.28;
+    let teal_shadows = vec3<f32>(-0.025, 0.045, 0.07) * (1.0 - smoothstep(0.28, 0.72, luma));
+    let warm_highlights = vec3<f32>(0.075, 0.025, -0.018) * smoothstep(0.46, 0.92, luma);
+    return mix(color, saturated + teal_shadows + warm_highlights, strength);
+}
+
 // Returns arrival time plus sky/background/subject weights encoded in the depth mask.
 fn pixel_flow_cell(cell_uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<f32>, cell_px: f32) -> vec4<f32> {
     let depth = textureSampleLevel(mask_texture, src_sampler, clamp(cell_uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).r;
