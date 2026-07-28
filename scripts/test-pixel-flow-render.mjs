@@ -55,6 +55,18 @@ function brightness(frame, x, y) {
   return frame.data[offset] + frame.data[offset + 1] + frame.data[offset + 2]
 }
 
+function averageBrightness(frame, x0, y0, x1, y1) {
+  let total = 0
+  let count = 0
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      total += brightness(frame, x, y)
+      count += 1
+    }
+  }
+  return total / count
+}
+
 function render(composition, time) {
   return native.renderCompositionFrame({ ffmpegPath, ffprobePath, composition, time, maxSide: width })
 }
@@ -66,10 +78,11 @@ function compositionWithModes(composition, skyMode, otherDirection) {
   return copy
 }
 
-function wholeFrameComposition(composition) {
+function wholeFrameComposition(composition, trajectory = 'highlight-flow') {
   const copy = structuredClone(composition)
   delete copy.layers[0].maskPath
   copy.layers[0].pixelFlow.flowMode = 'whole-frame'
+  copy.layers[0].pixelFlow.trajectory = trajectory
   copy.layers[0].pixelFlow.depthStrength = 100
   copy.layers[0].pixelFlow.originX = 0.5
   copy.layers[0].pixelFlow.originY = 0.06
@@ -132,6 +145,8 @@ try {
   const darkSkySpeed = render(darkSkyComposition, duration * 0.14)
   const wholeFrameEarly = render(wholeFrameComposition(composition), duration * 0.38)
   const wholeFrameMiddle = render(wholeFrameComposition(composition), duration * 0.68)
+  const diagonalFlow = render(wholeFrameComposition(composition, 'diagonal'), duration * 0.48)
+  const splitFlow = render(wholeFrameComposition(composition, 'split'), duration * 0.38)
   for (const frame of [initial, falling, verticalWave, edgeHold, background, subject, finished]) {
     assert.equal(frame.width, width)
     assert.equal(frame.height, height)
@@ -143,7 +158,7 @@ try {
   assert.ok(edgeAfterglow > centerAfterglow + 10, 'the outer edge keeps glowing after the inner wave fades')
   const backgroundBlockBrightness = [30, 42, 54, 78, 90, 102, 114].map((x) => brightness(verticalWave, x, 54))
   assert.ok(Math.max(...backgroundBlockBrightness) - Math.min(...backgroundBlockBrightness) > 80, 'the fixed half-bright half-dim split creates block contrast')
-  assert.ok(colorfulness(background, 96, 54) > colorfulness(background, 64, 88) + 25, 'the background wave reaches before the subject')
+  assert.ok(colorfulness(background, 78, 54) > colorfulness(background, 64, 88) + 25, 'the background wave reaches before the subject')
   assert.ok(brightness(background, 12, 70) <= brightness(initial, 12, 70) + 3, 'black source blocks do not emit a pixel-flow glow')
   assert.ok(colorfulness(subject, 64, 88) > colorfulness(initial, 64, 88) + 40, 'the subject lights in the foreground stage')
   assert.ok(colorfulness(finished, 64, 88) > colorfulness(initial, 64, 88) + 40, 'the final frame preserves the revealed subject color')
@@ -155,9 +170,11 @@ try {
   assert.ok(brightness(wholeFrameEarly, 64, 24) > brightness(wholeFrameEarly, 10, 24) + 30, 'whole-frame flow expands from the upper center')
   assert.ok(colorfulness(wholeFrameEarly, 64, 24) > colorfulness(initial, 64, 24) + 30, 'whole-frame flow renders without a segmentation mask')
   assert.ok(colorfulness(wholeFrameMiddle, 64, 54) > colorfulness(wholeFrameMiddle, 64, 108) + 30, 'whole-frame flow falls from top to bottom without semantic staging')
-  const highlightLift = brightness(verticalWave, 96, 54) - brightness(finished, 96, 54)
-  const regularLift = brightness(verticalWave, 78, 54) - brightness(finished, 78, 54)
-  assert.ok(highlightLift > regularLift + 25, 'the broad underlight lifts source highlights more strongly')
+  assert.ok(brightness(diagonalFlow, 106, 42) > brightness(diagonalFlow, 18, 42) + 30, 'the diagonal preset travels from the upper right')
+  assert.ok(brightness(splitFlow, 64, 24) > brightness(splitFlow, 10, 24) + 30, 'the split preset branches outward from the center')
+  const highlightBrightness = averageBrightness(verticalWave, 92, 50, 108, 64)
+  const finishedHighlightBrightness = averageBrightness(finished, 92, 50, 108, 64)
+  assert.ok(highlightBrightness > finishedHighlightBrightness + 70, 'the broad underlight strongly lifts source highlights')
   console.log('pixel-flow WGPU render stages passed')
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })

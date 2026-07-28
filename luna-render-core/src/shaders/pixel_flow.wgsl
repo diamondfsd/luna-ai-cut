@@ -2,6 +2,11 @@ fn pixel_flow_hash(cell: vec2<f32>) -> f32 {
     return fract(sin(dot(cell, vec2<f32>(12.9898, 78.233))) * 43758.5453);
 }
 
+fn pixel_flow_source_luma(uv: vec2<f32>) -> f32 {
+    let color = textureSampleLevel(src_texture, src_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).rgb;
+    return dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
 // Returns arrival time plus sky/background/subject weights encoded in the depth mask.
 fn pixel_flow_cell(cell_uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<f32>, cell_px: f32) -> vec4<f32> {
     let depth = textureSampleLevel(mask_texture, src_sampler, clamp(cell_uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).r;
@@ -60,10 +65,31 @@ fn pixel_flow_cell(cell_uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<
         + depth_strength * 0.14
         + timing_jitter * 0.82;
     let segmented_arrival = sky * sky_arrival + background * background_arrival + subject * subject_arrival;
-    // A single top-center fall combined with an expanding radius. This path deliberately
-    // ignores semantic depth so it can render without a segmentation mask.
-    let whole_progress = vertical_fall * 0.58 + impact_radius * 0.42;
-    let whole_arrival = 0.06 + whole_progress * 0.72 + timing_jitter * 0.88;
+    // Whole-frame paths use warped directional fields rather than an equal-distance ring.
+    // Nearby source highlights advance the wave so rails, water, roofs and sunlight form branches.
+    let neighbor_step = vec2<f32>(max(0.012, 24.0 / source_size.x), max(0.012, 24.0 / source_size.y));
+    let local_luma = pixel_flow_source_luma(cell_uv);
+    let nearby_luma = local_luma * 0.38
+        + pixel_flow_source_luma(cell_uv - vec2<f32>(0.0, neighbor_step.y)) * 0.24
+        + pixel_flow_source_luma(cell_uv + vec2<f32>(neighbor_step.x, 0.0)) * 0.13
+        + pixel_flow_source_luma(cell_uv - vec2<f32>(neighbor_step.x, 0.0)) * 0.13
+        + pixel_flow_source_luma(cell_uv + vec2<f32>(0.0, neighbor_step.y)) * 0.12;
+    let highlight_advance = smoothstep(0.26, 0.82, max(local_luma, nearby_luma)) * 0.22;
+    let field_noise = pixel_flow_hash(floor(cell_index / vec2<f32>(5.0, 4.0)) + vec2<f32>(31.0, 17.0));
+    let branch_warp = sin(cell_uv.y * 19.0 + cell_uv.x * 7.0 + field_noise * 6.283) * 0.045
+        + sin(cell_uv.x * 27.0 - cell_uv.y * 8.0 + fine_noise * 4.0) * 0.025
+        + (field_noise - 0.5) * 0.075;
+    let lateral = abs(cell_uv.x - 0.5) * 2.0;
+    let highlight_flow = vertical_fall * 0.8 + lateral * 0.08 + branch_warp - highlight_advance;
+    let cascade_flow = vertical_fall * 0.9 + lateral * 0.06 + branch_warp * 1.35;
+    let diagonal_flow = vertical_fall * 0.68 + (1.0 - cell_uv.x) * 0.27 + branch_warp * 1.1;
+    let split_flow = vertical_fall * 0.7 + lateral * 0.26 + branch_warp * 1.2;
+    let whole_progress = select(
+        select(highlight_flow, cascade_flow, sky_mode > 0.5),
+        select(diagonal_flow, split_flow, sky_mode > 2.5),
+        sky_mode > 1.5,
+    );
+    let whole_arrival = 0.055 + clamp(whole_progress, 0.0, 1.0) * 0.76 + timing_jitter * 0.55;
     let arrival = select(segmented_arrival, whole_arrival, whole_frame);
     return select(vec4<f32>(arrival, sky, background, subject), vec4<f32>(arrival, 0.0, 1.0, 0.0), whole_frame);
 }
