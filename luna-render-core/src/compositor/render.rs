@@ -401,10 +401,19 @@ impl Compositor {
                             ]
                         });
                 let pixel_flow_depth = layer.pixel_flow.as_ref().map_or([0.0; 4], |effect| {
-                    let sky_mode = match effect.sky_mode.as_deref() {
-                        Some("sweep") => 1.0,
-                        Some("full") => 2.0,
-                        _ => 0.0,
+                    let sky_mode = if effect.flow_mode.as_deref() == Some("whole-frame") {
+                        match effect.trajectory.as_deref() {
+                            Some("cascade") => 1.0,
+                            Some("diagonal") => 2.0,
+                            Some("split") => 3.0,
+                            _ => 0.0,
+                        }
+                    } else {
+                        match effect.sky_mode.as_deref() {
+                            Some("sweep") => 1.0,
+                            Some("full") => 2.0,
+                            _ => 0.0,
+                        }
                     };
                     let other_direction = if effect.flow_mode.as_deref() == Some("whole-frame") {
                         3.0

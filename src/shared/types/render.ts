@@ -186,6 +186,7 @@ export interface RenderPixelFlow {
   duration: number
   progress?: number
   flowMode?: 'segmented' | 'whole-frame'
+  trajectory?: 'highlight-flow' | 'cascade' | 'diagonal' | 'split'
   skyMode?: 'ripple' | 'sweep' | 'full'
   otherDirection?: 'top-down' | 'outside-in' | 'inside-out'
   pixelSize: number
