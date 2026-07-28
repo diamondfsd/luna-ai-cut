@@ -73,6 +73,8 @@ export interface CompositionInput {
     pixelFlow?: {
       duration: number
       progress?: number
+      skyMode?: 'ripple' | 'sweep' | 'full'
+      otherDirection?: 'top-down' | 'outside-in' | 'inside-out'
       pixelSize: number
       lightWidth: number
       depthStrength: number
@@ -80,6 +82,9 @@ export interface CompositionInput {
       originY: number
       impactX: number
       impactY: number
+      skyScale?: number
+      backgroundScale?: number
+      subjectScale?: number
     }
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }

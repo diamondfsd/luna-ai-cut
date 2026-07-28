@@ -30,14 +30,30 @@ fn pixel_flow_cell(cell_uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<
     );
     let sky_radius = length(sky_delta) / max(1.0, sky_maximum_distance);
     let vertical_fall = clamp((cell_uv.y - impact.y * 0.72) / max(0.08, 1.0 - impact.y * 0.72), 0.0, 1.0);
+    let frame_edge = max(abs(cell_uv.x - 0.5) * 2.0, abs(cell_uv.y - 0.5) * 2.0);
+    let outside_in = 1.0 - clamp(frame_edge, 0.0, 1.0);
     let depth_strength = clamp(params.pixel_flow_depth.x / 100.0, 0.0, 1.0);
-    let sky_arrival = 0.025 + sky_radius * 0.25 + timing_jitter * 0.28;
+    let sky_mode = params.pixel_flow_depth.z;
+    let other_mode = params.pixel_flow_depth.w;
+    let sky_ripple_arrival = 0.025 + sky_radius * 0.25 + timing_jitter * 0.28;
+    let sky_sweep_arrival = 0.025 + cell_uv.x * 0.25 + timing_jitter * 0.2;
+    let sky_full_arrival = 0.035 + timing_jitter * 0.06;
+    let sky_arrival = select(
+        select(sky_ripple_arrival, sky_sweep_arrival, sky_mode > 0.5),
+        sky_full_arrival,
+        sky_mode > 1.5,
+    );
+    let directional_progress = select(
+        select(vertical_fall, outside_in, other_mode > 0.5),
+        impact_radius,
+        other_mode > 1.5,
+    );
     let background_arrival = 0.27
-        + vertical_fall * 0.34
+        + directional_progress * 0.34
         + depth_strength * 0.045
         + timing_jitter;
     let subject_arrival = 0.41
-        + vertical_fall * 0.3
+        + directional_progress * 0.3
         + depth_strength * 0.13
         + timing_jitter * 0.82;
     let arrival = sky * sky_arrival + background * background_arrival + subject * subject_arrival;

@@ -71,6 +71,7 @@ struct LayerParams {
     pixel_flow: vec4<f32>,
     pixel_flow_geometry: vec4<f32>,
     pixel_flow_depth: vec4<f32>,
+    pixel_flow_scale: vec4<f32>,
     fill_rgba: vec4<f32>,
     stroke_rgba: vec4<f32>,
     text_meta: vec4<f32>,
