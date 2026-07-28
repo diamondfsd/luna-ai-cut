@@ -412,7 +412,18 @@ impl Compositor {
                         0.0,
                     ]
                 });
-                let pixel_flow_scale = [0.0; 4];
+                let pixel_flow_scale = layer.pixel_flow.as_ref().map_or([0.0; 4], |effect| {
+                    [
+                        effect.initial_saturation.unwrap_or(0.0).clamp(0.0, 100.0) as f32 / 100.0,
+                        effect
+                            .initial_brightness
+                            .unwrap_or(0.0)
+                            .clamp(-100.0, 100.0) as f32
+                            / 100.0,
+                        0.0,
+                        0.0,
+                    ]
+                });
                 let pixel_flow_finish =
                     layer
                         .pixel_flow

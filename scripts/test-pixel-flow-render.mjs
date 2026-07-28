@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
+import { execFile } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { promisify } from 'node:util'
 
 const require = createRequire(import.meta.url)
 const projectRoot = path.resolve(import.meta.dirname, '..')
 const native = require(path.join(projectRoot, 'luna-render-core/luna-render-core.node'))
 const ffmpegPath = require('ffmpeg-static')
 const ffprobePath = require('ffprobe-static').path
+const execFileAsync = promisify(execFile)
 const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'luna-pixel-flow-'))
 const width = 128
 const height = 128
@@ -162,6 +165,8 @@ try {
         duration,
         pixelCount: 160,
         lightWidth: 8,
+        initialSaturation: 0,
+        initialBrightness: 0,
         rainSpeed: 50,
         rainLength: 58,
         flowStrength: 78,
@@ -175,6 +180,8 @@ try {
 
   native.initCompositor()
   const initial = render(composition, 0)
+  const saturatedInitial = render(compositionWithPixelFlow(composition, { initialSaturation: 100 }), 0)
+  const brighterInitial = render(compositionWithPixelFlow(composition, { initialBrightness: 50 }), 0)
   const ignition = render(composition, 0.2)
   const spreading = render(composition, 0.5)
   const finished = render(composition, duration)
@@ -206,6 +213,8 @@ try {
     assert.equal(frame.height, height)
   }
   assert.ok(colorfulness(initial, 64, 88) < 5, 'the effect starts from a monochrome plate')
+  assert.ok(averageColorfulness(saturatedInitial) > averageColorfulness(initial) + 35, 'initial saturation restores source color before the effect')
+  assert.ok(averageBrightness(brighterInitial, 0, 0, width, height) > averageBrightness(initial, 0, 0, width, height) + 100, 'initial brightness lifts the starting plate')
   const upperRain = regionDifference(ignition, initial, 0, 48)
   const lowerRain = regionDifference(ignition, initial, 88, 128)
   assert.ok(upperRain > lowerRain + 4, `pixel rain reaches the upper frame first (${upperRain} > ${lowerRain})`)
@@ -231,6 +240,25 @@ try {
   const subjectDifference = rectangleDifference(immediateSubject, delayedSubject, 46, 70, 82, 106)
   assert.ok(subjectDifference > 0.5, `the segmented subject keeps its own delayed surface flow (${subjectDifference})`)
   assert.deepEqual(plainStart.data, plainEnd.data, 'layers without pixel flow remain unaffected by pixel-flow timing and finishing')
+
+  const liveComposition = structuredClone(composition)
+  liveComposition.canvas.duration = 3
+  const liveVideoPath = path.join(temporaryRoot, 'pixel-flow-live.mp4')
+  await native.exportCompositionVideoAsync({
+    ffmpegPath,
+    ffprobePath,
+    outputPath: liveVideoPath,
+    composition: liveComposition,
+    fps: 30,
+    duration: 3,
+    hardware: false,
+    taskId: 'pixel-flow-live-test',
+    qualityPreset: 'small',
+  })
+  const { stdout: exportedDuration } = await execFileAsync(ffprobePath, [
+    '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', liveVideoPath,
+  ])
+  assert.ok(Math.abs(Number(exportedDuration.trim()) - 3) < 0.08, `still-image Live motion renders for 3 seconds (${exportedDuration.trim()})`)
   console.log('pixel-flow source-color rain stages passed')
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })
