@@ -1,5 +1,6 @@
 mod frame;
 mod image_export;
+mod mask_texture;
 mod timeline;
 mod video_export;
 
@@ -9,6 +10,7 @@ pub use frame::{
 pub use image_export::{
     export_composition_image_async, ExportCompositionImageInput, ExportCompositionImageTask,
 };
+pub(crate) use mask_texture::bind_layer_mask_texture;
 #[cfg(target_os = "windows")]
 pub(crate) use timeline::is_video_source;
 pub(crate) use timeline::{composition_layers, mux_primary_audio};
