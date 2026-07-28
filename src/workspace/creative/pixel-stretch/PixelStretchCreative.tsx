@@ -1,4 +1,4 @@
-import { ArrowLeft, Brush, Download, Eye, EyeOff, RotateCcw, ScanSearch } from 'lucide-react'
+import { ArrowLeft, Brush, Download, RotateCcw, ScanSearch } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
@@ -6,6 +6,7 @@ import type { MediaMetadata, PixelStretchFlowShape, PixelStretchPathPoint, Previ
 import { Button, IconButton, LoadingIndicator, SegmentedControl, toast } from '../../../ui'
 import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
+import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImportButtons'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { useWorkspaceCanvas } from '../../context/WorkspaceCanvasContext'
@@ -15,6 +16,9 @@ import { MaskPanel } from '../../mask/MaskPanel'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
+import { CreativeCompareButton } from '../shared/CreativeCompareButton'
+import { preparePreciseSubjectModelIfNeeded } from '../shared/preparePreciseSubjectModel'
+import type { CreativeModuleProps } from '../creativeCatalog'
 import { PixelStretchSampleEditor, type PixelStretchSampleEditorValue } from './PixelStretchSampleEditor'
 import { PixelStretchEffectControls } from './PixelStretchEffectControls'
 import { buildPixelStretchLayers, erodeMaskOnePixel, invertMask, subjectBoundsFromMask, suggestPixelStretchPreset, type SubjectBounds } from './pixelStretchLayers'
@@ -44,7 +48,7 @@ import './pixel-stretch.css'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 
 const DEFAULT_INTENSITY = 100
-export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
+export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, supportedMediaKinds }: CreativeModuleProps) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
@@ -292,10 +296,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     setPointPicking(false)
     setSubjectModel(value)
     if (value === 'precise') {
-      toast.show('正在准备精准识别，完成后即可使用')
-      void window.luna.workspace.prepareSegmentationModels(['birefnet-general-lite'])
-        .then(() => toast.success('精准识别已准备好'))
-        .catch((error) => toast.error(error instanceof Error ? error.message : '精准识别准备失败，请稍后重试'))
+      void preparePreciseSubjectModelIfNeeded().catch(() => undefined)
     }
   }
 
@@ -470,7 +471,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   }
 
   return <section className="pixel-stretch-page">
-    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><Button className="pixel-stretch-compare" variant={showOriginal ? 'toolbar-primary' : 'toolbar'} size="compact" icon={showOriginal ? <EyeOff size={14} /> : <Eye size={14} />} disabled={!isImage || !sourceSize} aria-pressed={showOriginal} title="按住查看原图" onPointerDown={() => setShowOriginal(true)} onPointerUp={() => setShowOriginal(false)} onPointerCancel={() => setShowOriginal(false)} onPointerLeave={() => setShowOriginal(false)} onBlur={() => setShowOriginal(false)} onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') setShowOriginal(true) }} onKeyUp={(event) => { if (event.key === ' ' || event.key === 'Enter') setShowOriginal(false) }}>对比</Button></header>
+    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="pixel-stretch-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
     <div className="pixel-stretch-preview">
       {activeAsset && !isImage ? <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>像素拉伸目前支持图片素材</span></div>
         : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} />{!showOriginal && sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{!showOriginal && maskEditing && workspaceMask.editing && <MaskOverlay />}{!showOriginal && pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
@@ -489,6 +490,6 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
         <div><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMaskPath || exporting} onClick={() => void exportEffect()}>{exporting ? '导出中' : '导出图片'}</Button></div>
       </div>
     </aside>
-    <div className="pixel-stretch-media-strip"><WorkspaceMediaStrip /></div>
+    <div className="pixel-stretch-media-strip"><WorkspaceMediaStrip supportedMediaKinds={supportedMediaKinds} /></div>
   </section>
 }

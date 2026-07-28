@@ -70,7 +70,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [nativePreviewFailed, setNativePreviewFailed] = useState(false)
-  const gpuPreviewEnabled = settings?.experimentalGpuPreview ?? false
+  const gpuPreviewEnabled = !window.navigator.platform.startsWith('Win') && (settings?.experimentalGpuPreview ?? false)
   const detectedLivePhoto = useIsLivePhoto(isLivePhotoOverride === undefined ? url : null)
   const isLivePhoto = isLivePhotoOverride ?? detectedLivePhoto
   const [liveVideoUrl, setLiveVideoUrl] = useState<string | null>(null)

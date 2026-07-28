@@ -7,10 +7,11 @@ import './LivePhotoExportControls.css'
 interface LivePhotoExportControlsProps {
   value: VideoExportSettings
   duration: number
+  allowedFormats?: VideoExportFormat[]
   onChange: (settings: VideoExportSettings) => void
 }
 
-export function LivePhotoExportControls({ value, duration, onChange }: LivePhotoExportControlsProps) {
+export function LivePhotoExportControls({ value, duration, allowedFormats, onChange }: LivePhotoExportControlsProps) {
   const isMac = window.navigator.platform.includes('Mac')
   const liveSelected = value.exportFormats.some((format) => format !== 'video')
 
@@ -33,10 +34,10 @@ export function LivePhotoExportControls({ value, duration, onChange }: LivePhoto
   }, [duration, onChange, value])
 
   const formats: Array<{ value: VideoExportFormat; label: string; description: string }> = [
-    { value: 'video', label: '普通视频', description: '导出完整编辑后视频' },
-    { value: 'google-live', label: 'Android Live 图', description: '生成可分享的动态照片' },
+    { value: 'video' as const, label: '普通视频', description: '导出完整编辑后视频' },
+    { value: 'google-live' as const, label: '通用 Live 图', description: '生成可分享的动态照片' },
     ...(isMac ? [{ value: 'apple-live' as const, label: 'Apple Live 图', description: '保存到系统照片中' }] : []),
-  ]
+  ].filter((format) => !allowedFormats || allowedFormats.includes(format.value))
 
   return (
     <div className="live-photo-export-controls">

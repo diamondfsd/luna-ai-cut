@@ -14,6 +14,7 @@ export interface VideoControlsProps {
   onSeekEnd?: () => void
   step?: number
   className?: string
+  disabled?: boolean
 }
 
 function formatTime(seconds: number): string {
@@ -33,6 +34,7 @@ export function VideoControls({
   onSeekEnd,
   step = 0.1,
   className,
+  disabled = false,
 }: VideoControlsProps) {
   return (
     <div
@@ -45,6 +47,7 @@ export function VideoControls({
         variant="ghost"
         size="mini"
         icon={playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+        disabled={disabled}
         onClick={onToggle}
         title={playing ? '暂停' : '播放'}
         aria-label={playing ? '暂停' : '播放'}
@@ -55,7 +58,7 @@ export function VideoControls({
         max={duration > 0 ? duration : 1}
         step={step}
         value={[duration > 0 ? Math.min(currentTime, duration) : 0]}
-        disabled={duration <= 0}
+        disabled={disabled || duration <= 0}
         onValueChange={([time]) => onSeek(time)}
         onValueCommit={onSeekEnd}
         onPointerDown={onSeekStart}

@@ -105,7 +105,7 @@ export interface RenderMaskTrack {
 }
 
 export interface PreviewLayer {
-  layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
+  layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'pixel-flow' | 'shape' | 'text' | 'logo' | 'decoration'
   /** 相框版式中的素材用途，仅用于构建渲染层。 */
   layoutRole?: 'background' | 'content'
   /** 同组 input 层会先在 GPU 中合成为一张纹理，再供 output 层使用。 */
@@ -136,6 +136,7 @@ export interface PreviewLayer {
   maskFeather?: number
   maskTrack?: RenderMaskTrack
   pixelStretch?: RenderPixelStretch
+  pixelFlow?: RenderPixelFlow
   transform?: RenderLayerTransform
   /** 水印相对定位：有则 Rust 自动重算 dstX/Y/W/H，纹样不变形 */
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
@@ -181,6 +182,26 @@ export interface RenderPixelStretch {
   fillSampleGaps?: boolean
 }
 
+export type PixelFlowSubjectDirection = 'down' | 'up' | 'right' | 'left' | 'outward' | 'inward'
+
+export interface RenderPixelFlow {
+  duration: number
+  progress?: number
+  pixelCount: number
+  lightWidth: number
+  initialSaturation: number
+  initialBrightness: number
+  subjectDirection: PixelFlowSubjectDirection
+  rainSpeed: number
+  rainLength: number
+  flowStrength: number
+  subjectDelay: number
+  bloomStrength: number
+  filterStrength: number
+  colorTransition: number
+  segmented?: boolean
+}
+
 export interface CompositionInput {
   version?: number
   canvas: {
@@ -204,7 +225,7 @@ export interface CompositionReveal {
 }
 
 export interface CompositionLayer {
-  layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
+  layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'pixel-flow' | 'shape' | 'text' | 'logo' | 'decoration'
   id?: string
   precomposeGroup?: string
   precomposeRole?: 'input' | 'output'
@@ -234,6 +255,7 @@ export interface CompositionLayer {
   maskFeather?: number
   maskTrack?: RenderMaskTrack
   pixelStretch?: RenderPixelStretch
+  pixelFlow?: RenderPixelFlow
   transform?: RenderLayerTransform
   positioning?: WatermarkPositioning | { landscape?: WatermarkPositioning; portrait?: WatermarkPositioning }
   /** i-Log 技术还原 LUT 文件路径 */

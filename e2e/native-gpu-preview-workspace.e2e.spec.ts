@@ -1,5 +1,4 @@
 import { execFile } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
@@ -9,8 +8,8 @@ import { expect, test } from './fixtures/lunaElectron'
 
 const execFileAsync = promisify(execFile)
 
-test('工作台 GPU 预览跟随画布并可无错误退出', async ({ lunaApp }) => {
-  test.skip(process.platform !== 'win32', '验证 Windows 原生预览窗口生命周期')
+test('Windows 暂停使用 GPU 预览', async ({ lunaApp }) => {
+  test.skip(process.platform !== 'win32', '验证 Windows GPU 预览禁用策略')
   if (!ffmpegPath) throw new Error('测试视频生成工具不可用')
 
   const videoPath = path.join(lunaApp.temporaryRoot, 'workspace-native-preview.mp4')
@@ -47,6 +46,12 @@ test('工作台 GPU 预览跟随画布并可无错误退出', async ({ lunaApp }
   }, videoPath)
   await lunaApp.page.reload()
   await lunaApp.page.waitForLoadState('domcontentloaded')
+
+  await lunaApp.page.evaluate(() => {
+    window.location.hash = '#/settings'
+  })
+  await expect(lunaApp.page.getByRole('switch', { name: 'GPU 预览加速' })).toHaveCount(0)
+
   await lunaApp.page.evaluate(() => {
     window.location.hash = '#/workspace'
   })
@@ -55,32 +60,11 @@ test('工作台 GPU 预览跟随画布并可无错误退出', async ({ lunaApp }
   await expect(project).toBeVisible()
   await project.click()
 
-  const preview = lunaApp.page.locator('canvas.native-gpu-video-preview')
-  await expect(preview).toBeVisible({ timeout: 30_000 })
-  const initialBounds = await preview.boundingBox()
-  expect(initialBounds).not.toBeNull()
-
-  await lunaApp.app.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed())
-    window?.setSize(1100, 700)
-  })
-  await expect.poll(async () => {
-    const bounds = await preview.boundingBox()
-    return bounds ? `${Math.round(bounds.x)},${Math.round(bounds.y)},${Math.round(bounds.width)},${Math.round(bounds.height)}` : ''
-  }).not.toBe(
-    initialBounds
-      ? `${Math.round(initialBounds.x)},${Math.round(initialBounds.y)},${Math.round(initialBounds.width)},${Math.round(initialBounds.height)}`
-      : '',
-  )
+  await expect(lunaApp.page.locator('.preview-canvas-wrapper canvas')).toBeVisible({ timeout: 30_000 })
+  await expect(lunaApp.page.locator('canvas.native-gpu-video-preview')).toHaveCount(0)
 
   await lunaApp.page.getByRole('button', { name: '返回工作台' }).click()
-  await expect(preview).toHaveCount(0)
+  await expect(lunaApp.page.locator('.preview-canvas-wrapper canvas')).toHaveCount(0)
   await lunaApp.page.waitForTimeout(500)
-
-  const appLog = await readFile(
-    path.join(lunaApp.temporaryRoot, 'artifacts', 'app.log'),
-    'utf8',
-  )
-  expect(appLog).not.toContain("Error occurred in handler for 'lrc:updateNativePreviewComposition'")
   expect(lunaApp.runtimeErrors).toEqual([])
 })
