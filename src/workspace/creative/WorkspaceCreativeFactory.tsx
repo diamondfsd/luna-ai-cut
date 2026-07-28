@@ -1,8 +1,7 @@
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { Button } from '../../ui'
-import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { CREATIVE_CATALOG, getCreativeCatalogItem, type CreativeModeId, type CreativeModuleProps } from './creativeCatalog'
 import { ColorRevealCreative } from './color-reveal/ColorRevealCreative'
 import { OnlyYourColorCreative } from './only-your-color/OnlyYourColorCreative'
@@ -59,50 +58,34 @@ function CreativeCover({ id }: { id: CreativeModeId }) {
   </span>
 }
 
-export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange, onAddMedia, onImportLocal }: WorkspaceCreativeFactoryProps) {
-  const media = useWorkspaceMedia()
-  console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspaceCreativeFactory render creativeModeId=${creativeModeId}`)
-  if (creativeModeId) {
-    return CREATIVE_RENDERERS[creativeModeId]({
-      onBack: () => onCreativeModeChange(null),
-      onAddMedia,
-      onImportLocal,
-      supportedMediaKinds: getCreativeCatalogItem(creativeModeId)?.supportedMediaKinds,
-    })
-  }
+interface WorkspaceCreativePanelProps {
+  onSelect: (modeId: CreativeModeId) => void
+}
 
-  return (
-    <section className="workspace-creative-list-page">
-      <header className="workspace-creative-list-header">
-        <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={media.backToProjects}>
-          返回工作台列表
-        </Button>
-        <div>
-          <h2>创意效果</h2>
-          <p>选择一个效果开始制作</p>
-        </div>
-      </header>
-      <div className="workspace-creative-list">
-        {CREATIVE_CATALOG.map((item) => {
-          return (
-            <button
-              key={item.id}
-              className="workspace-creative-card"
-              type="button"
-              onClick={() => onCreativeModeChange(item.id)}
-            >
-              <span className={`workspace-creative-preview ${item.previewClassName}`} aria-hidden="true">
-                <CreativeCover id={item.id} />
-              </span>
-              <span className="workspace-creative-card-copy">
-                <strong>{item.name}</strong>
-                <span>{item.description}</span>
-              </span>
-              <ArrowRight className="workspace-creative-card-arrow" size={17} />
-            </button>
-          )
-        })}
-      </div>
-    </section>
-  )
+export function WorkspaceCreativePanel({ onSelect }: WorkspaceCreativePanelProps) {
+  return <div className="workspace-creative-panel-list">
+    {CREATIVE_CATALOG.map((item) => (
+      <Button key={item.id} className="workspace-creative-panel-item" variant="utility" onClick={() => onSelect(item.id)}>
+        <span className={`workspace-creative-preview ${item.previewClassName}`} aria-hidden="true">
+          <CreativeCover id={item.id} />
+        </span>
+        <span className="workspace-creative-card-copy">
+          <strong>{item.name}</strong>
+          <span>{item.description}</span>
+        </span>
+        <ArrowRight className="workspace-creative-card-arrow" size={16} />
+      </Button>
+    ))}
+  </div>
+}
+
+export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange, onAddMedia, onImportLocal }: WorkspaceCreativeFactoryProps) {
+  console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspaceCreativeFactory render creativeModeId=${creativeModeId}`)
+  if (!creativeModeId) return null
+  return CREATIVE_RENDERERS[creativeModeId]({
+    onBack: () => onCreativeModeChange(null),
+    onAddMedia,
+    onImportLocal,
+    supportedMediaKinds: getCreativeCatalogItem(creativeModeId)?.supportedMediaKinds,
+  })
 }
