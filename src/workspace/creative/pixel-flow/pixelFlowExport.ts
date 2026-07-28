@@ -32,13 +32,27 @@ interface PixelFlowExportOptions {
   sourceSize: { width: number; height: number }
   playbackDuration: number
   config: VideoExportSettings
-  waitForCompletion?: boolean
 }
 
 interface LiveExportEntry {
   id: string
   format: 'google-live' | 'apple-live'
   outputPath: string
+}
+
+interface VideoExportEntry {
+  id: string
+  outputPath: string
+}
+
+interface PixelFlowExportPlan {
+  video?: VideoExportEntry
+  live: LiveExportEntry[]
+}
+
+interface PixelFlowExportTask {
+  id: string
+  name: string
 }
 
 function renderApi(): LunaCompositionExportApi {
@@ -55,9 +69,52 @@ function outputBaseName(name: string): string {
   return name.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*]+/g, '-').trim() || 'pixel-flow'
 }
 
+function buildExportPlan(
+  options: PixelFlowExportOptions,
+  exportDir: string,
+  stamp: number,
+  index: number,
+  total: number,
+): PixelFlowExportPlan {
+  const baseName = outputBaseName(options.asset.name)
+  const suffix = total > 1 ? `-${index + 1}` : ''
+  const liveFormats = options.asset.kind === 'image'
+    ? [...new Set(options.config.exportFormats.filter(
+        (format): format is LiveExportEntry['format'] => format === 'google-live' || format === 'apple-live',
+      ))]
+    : []
+  return {
+    video: options.config.exportFormats.includes('video') ? {
+      id: `pixel_flow_video_${stamp}_${index}`,
+      outputPath: filePath(exportDir, `${baseName}-pixel-flow-${stamp}${suffix}.mp4`),
+    } : undefined,
+    live: liveFormats.map((format) => ({
+      id: `pixel_flow_${format}_${stamp}_${index}`,
+      format,
+      outputPath: filePath(exportDir, `${baseName}-pixel-flow-${format}-${stamp}${suffix}.jpg`),
+    })),
+  }
+}
+
+function planItems(options: PixelFlowExportOptions, plan: PixelFlowExportPlan) {
+  return [
+    ...(plan.video ? [{
+      id: plan.video.id,
+      sourcePath: options.asset.path,
+      outputPath: plan.video.outputPath,
+      label: '创意视频',
+    }] : []),
+    ...plan.live.map((entry) => ({
+      id: entry.id,
+      sourcePath: options.asset.path,
+      outputPath: entry.outputPath,
+      label: entry.format === 'apple-live' ? 'Apple Live 图' : '通用 Live 图',
+    })),
+  ]
+}
+
 function reportLiveEntry(
-  taskId: string,
-  taskName: string,
+  task: PixelFlowExportTask,
   entry: LiveExportEntry,
   index: number,
   total: number,
@@ -68,8 +125,8 @@ function reportLiveEntry(
 ): Promise<void> {
   emitLocalExportProgress({
     exportId: entry.id,
-    taskId,
-    taskName,
+    taskId: task.id,
+    taskName: task.name,
     fileName: entry.outputPath.split(/[/\\]/).pop() || 'Live 图',
     index,
     totalFiles: total,
@@ -78,7 +135,7 @@ function reportLiveEntry(
     destinationPath: destinationPath ?? entry.outputPath,
     error,
   })
-  return window.luna.exportTask.updateItem(taskId, entry.id, {
+  return window.luna.exportTask.updateItem(task.id, entry.id, {
     status,
     progress: percent,
     destinationPath,
@@ -86,98 +143,88 @@ function reportLiveEntry(
   }).catch(() => undefined)
 }
 
-async function runImageLiveExport(options: PixelFlowExportOptions, exportDir: string): Promise<number> {
-  const formats = [...new Set(options.config.exportFormats.filter(
-    (format): format is LiveExportEntry['format'] => format === 'google-live' || format === 'apple-live',
-  ))]
-  if (formats.length === 0) throw new Error('请至少选择一种 Live 图格式')
-
-  const stamp = Date.now()
-  const baseName = outputBaseName(options.asset.name)
-  const resolved = resolveExportConfig(options.config, options.sourceSize.width, options.sourceSize.height)
-  const entries: LiveExportEntry[] = formats.map((format, index) => ({
-    id: `pixel_flow_${format}_${stamp}_${index}`,
-    format,
-    outputPath: filePath(exportDir, `${baseName}-pixel-flow-${format}-${stamp}.jpg`),
-  }))
-  const taskName = '像素流光 Live 图'
-  const task = await window.luna.exportTask.create(taskName, entries.map((entry) => ({
-    id: entry.id,
-    sourcePath: options.asset.path,
-    outputPath: entry.outputPath,
-    label: entry.format === 'apple-live' ? 'Apple Live 图' : '通用 Live 图',
-  })))
-
-  const exportWork = (async () => {
-    const tempVideoPath = filePath(exportDir, `.${baseName}-pixel-flow-${stamp}.mp4`)
-    const tempImagePath = filePath(exportDir, `.${baseName}-pixel-flow-${stamp}.jpg`)
-    const composition = buildCompositionFromPreviewLayers(options.layers, resolved.width, resolved.height, {
-      fps: resolved.fps ?? undefined,
-      duration: PIXEL_FLOW_LIVE_DURATION,
-    })
-    composition.canvas.duration = PIXEL_FLOW_LIVE_DURATION
-    try {
-      await Promise.all(entries.map((entry, index) => reportLiveEntry(task.id, taskName, entry, index, entries.length, 5, 'exporting')))
-      await renderApi().exportCompositionVideo(
-        tempVideoPath,
-        composition,
-        resolved.fps,
-        PIXEL_FLOW_LIVE_DURATION,
-        true,
-        `pixel_flow_live_render_${stamp}`,
-        resolved.qualityPreset ?? 'high',
-      )
-      await Promise.all(entries.map((entry, index) => reportLiveEntry(task.id, taskName, entry, index, entries.length, 75, 'exporting')))
-
-      const coverTime = PIXEL_FLOW_LIVE_DURATION - 1 / 30
-      await window.luna.workspace.extractVideoFrame(tempVideoPath, tempImagePath, coverTime)
-      for (const [index, entry] of entries.entries()) {
-        const currentTask = await window.luna.exportTask.get(task.id).catch(() => undefined)
-        if (currentTask?.items.find((item) => item.id === entry.id)?.status === 'canceled') continue
-        try {
-          await reportLiveEntry(task.id, taskName, entry, index, entries.length, 90, 'exporting')
-          const result = await window.luna.workspace.exportRenderedLivePhoto(
-            `${baseName}-pixel-flow-${entry.format}`,
-            tempImagePath,
-            tempVideoPath,
-            entry.format === 'apple-live',
-            true,
-            false,
-            coverTime,
-          )
-          await reportLiveEntry(task.id, taskName, entry, index, entries.length, 100, 'done', result.path)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Live 图导出失败'
-          await reportLiveEntry(task.id, taskName, entry, index, entries.length, 100, 'failed', undefined, message)
-        }
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Live 图导出失败'
-      await Promise.all(entries.map(async (entry, index) => {
-        const currentTask = await window.luna.exportTask.get(task.id).catch(() => undefined)
-        const status = currentTask?.items.find((item) => item.id === entry.id)?.status
-        if (status !== 'done' && status !== 'canceled') {
-          await reportLiveEntry(task.id, taskName, entry, index, entries.length, 100, 'failed', undefined, message)
-        }
-      }))
-    } finally {
-      await window.luna.deleteLocalFiles([tempVideoPath, tempImagePath]).catch(() => undefined)
-    }
-  })()
-  if (options.waitForCompletion) await exportWork
-
-  return entries.length
+async function itemCanceled(taskId: string, itemId: string): Promise<boolean> {
+  const task = await window.luna.exportTask.get(taskId).catch(() => undefined)
+  return task?.items.find((item) => item.id === itemId)?.status === 'canceled'
 }
 
-async function runVideoExport(options: PixelFlowExportOptions, exportDir: string): Promise<number> {
-  const stamp = Date.now()
+async function allItemsCanceled(taskId: string, itemIds: string[]): Promise<boolean> {
+  const task = await window.luna.exportTask.get(taskId).catch(() => undefined)
+  return itemIds.every((itemId) => task?.items.find((item) => item.id === itemId)?.status === 'canceled')
+}
+
+async function runImageLiveExport(
+  options: PixelFlowExportOptions,
+  exportDir: string,
+  task: PixelFlowExportTask,
+  plan: PixelFlowExportPlan,
+): Promise<void> {
+  const entries = plan.live
+  if (entries.length === 0 || await allItemsCanceled(task.id, entries.map((entry) => entry.id))) return
+
   const baseName = outputBaseName(options.asset.name)
-  const fileName = `${baseName}-pixel-flow-${stamp}.mp4`
-  const destinationPath = filePath(exportDir, fileName)
-  const itemId = `pixel_flow_video_${stamp}`
-  const sourceDuration = options.asset.kind === 'video'
-    ? await window.luna.workspace.getVideoDuration(options.asset.path)
-    : options.playbackDuration
+  const tempSuffix = entries[0].id.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const tempVideoPath = filePath(exportDir, `.${baseName}-${tempSuffix}.mp4`)
+  const tempImagePath = filePath(exportDir, `.${baseName}-${tempSuffix}.jpg`)
+  const resolved = resolveExportConfig(options.config, options.sourceSize.width, options.sourceSize.height)
+  const composition = buildCompositionFromPreviewLayers(options.layers, resolved.width, resolved.height, {
+    fps: resolved.fps ?? undefined,
+    duration: PIXEL_FLOW_LIVE_DURATION,
+  })
+  composition.canvas.duration = PIXEL_FLOW_LIVE_DURATION
+  try {
+    await Promise.all(entries.map((entry, index) => reportLiveEntry(task, entry, index, entries.length, 5, 'exporting')))
+    await renderApi().exportCompositionVideo(
+      tempVideoPath,
+      composition,
+      resolved.fps,
+      PIXEL_FLOW_LIVE_DURATION,
+      true,
+      `pixel_flow_live_render_${tempSuffix}`,
+      resolved.qualityPreset ?? 'high',
+    )
+    await Promise.all(entries.map((entry, index) => reportLiveEntry(task, entry, index, entries.length, 75, 'exporting')))
+
+    const coverTime = PIXEL_FLOW_LIVE_DURATION - 1 / 30
+    await window.luna.workspace.extractVideoFrame(tempVideoPath, tempImagePath, coverTime)
+    for (const [index, entry] of entries.entries()) {
+      if (await itemCanceled(task.id, entry.id)) continue
+      try {
+        await reportLiveEntry(task, entry, index, entries.length, 90, 'exporting')
+        const result = await window.luna.workspace.exportRenderedLivePhoto(
+          `${baseName}-pixel-flow-${entry.format}`,
+          tempImagePath,
+          tempVideoPath,
+          entry.format === 'apple-live',
+          true,
+          false,
+          coverTime,
+        )
+        await reportLiveEntry(task, entry, index, entries.length, 100, 'done', result.path)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Live 图导出失败'
+        await reportLiveEntry(task, entry, index, entries.length, 100, 'failed', undefined, message)
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Live 图导出失败'
+    await Promise.all(entries.map(async (entry, index) => {
+      if (!await itemCanceled(task.id, entry.id)) {
+        await reportLiveEntry(task, entry, index, entries.length, 100, 'failed', undefined, message)
+      }
+    }))
+  } finally {
+    await window.luna.deleteLocalFiles([tempVideoPath, tempImagePath]).catch(() => undefined)
+  }
+}
+
+async function runVideoExport(
+  options: PixelFlowExportOptions,
+  task: PixelFlowExportTask,
+  entry?: VideoExportEntry,
+): Promise<void> {
+  if (!entry || await itemCanceled(task.id, entry.id)) return
+  const sourceDuration = options.playbackDuration
   const resolved = resolveExportConfig(options.config, options.sourceSize.width, options.sourceSize.height)
   const layers = options.layers.map((layer) => layer.isVideo ? { ...layer, videoDuration: sourceDuration } : layer)
   const composition = buildCompositionFromPreviewLayers(layers, resolved.width, resolved.height, {
@@ -185,44 +232,65 @@ async function runVideoExport(options: PixelFlowExportOptions, exportDir: string
     duration: sourceDuration,
   })
   composition.canvas.duration = sourceDuration
-  const task = await window.luna.exportTask.create('像素流光视频', [{
-    id: itemId,
-    sourcePath: options.asset.path,
-    outputPath: destinationPath,
-    label: '创意视频',
-  }])
-
-  const exportWork = renderApi().exportCompositionVideo(
-    destinationPath,
+  await renderApi().exportCompositionVideo(
+    entry.outputPath,
     composition,
     resolved.fps,
     sourceDuration,
     true,
-    itemId,
+    entry.id,
     resolved.qualityPreset,
     task.id,
-    itemId,
+    entry.id,
   ).catch(async (error) => {
     const message = error instanceof Error ? error.message : '视频导出失败'
-    await window.luna.exportTask.updateItem(task.id, itemId, { status: 'failed', error: message }).catch(() => undefined)
+    await window.luna.exportTask.updateItem(task.id, entry.id, { status: 'failed', error: message }).catch(() => undefined)
   })
-  if (options.waitForCompletion) await exportWork
-  return 1
 }
 
-export async function queuePixelFlowExport(options: PixelFlowExportOptions): Promise<number> {
+export async function queuePixelFlowExports(exports: PixelFlowExportOptions[]): Promise<number> {
+  if (exports.length === 0) return 0
   const settings = await window.luna.getSettings()
   if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
-  if (options.asset.kind === 'video') return runVideoExport(options, settings.exportDir)
+  const exportDir = settings.exportDir
+  const stamp = Date.now()
+  const plans = exports.map((options, index) => buildExportPlan(options, exportDir, stamp, index, exports.length))
+  const items = exports.flatMap((options, index) => planItems(options, plans[index]))
+  if (items.length === 0) throw new Error('请至少选择一种导出格式')
+  const task = await window.luna.exportTask.create('像素流光', items)
 
-  const exports: Array<Promise<number>> = []
-  if (options.config.exportFormats.includes('video')) {
-    exports.push(runVideoExport(options, settings.exportDir))
-  }
-  if (options.config.exportFormats.some((format) => format !== 'video')) {
-    exports.push(runImageLiveExport(options, settings.exportDir))
-  }
-  if (exports.length === 0) throw new Error('请至少选择一种导出格式')
-  const counts = await Promise.all(exports)
-  return counts.reduce((total, count) => total + count, 0)
+  void (async () => {
+    for (const [index, options] of exports.entries()) {
+      const plan = plans[index]
+      try {
+        await runVideoExport(options, task, plan.video)
+      } catch (error) {
+        if (plan.video && !await itemCanceled(task.id, plan.video.id)) {
+          const message = error instanceof Error ? error.message : '视频导出失败'
+          await window.luna.exportTask.updateItem(task.id, plan.video.id, {
+            status: 'failed',
+            error: message,
+          }).catch(() => undefined)
+        }
+      }
+      try {
+        await runImageLiveExport(options, exportDir, task, plan)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Live 图导出失败'
+        await Promise.all(plan.live.map(async (entry) => {
+          if (!await itemCanceled(task.id, entry.id)) {
+            await window.luna.exportTask.updateItem(task.id, entry.id, {
+              status: 'failed',
+              error: message,
+            }).catch(() => undefined)
+          }
+        }))
+      }
+    }
+  })()
+  return items.length
+}
+
+export function queuePixelFlowExport(options: PixelFlowExportOptions): Promise<number> {
+  return queuePixelFlowExports([options])
 }
