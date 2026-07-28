@@ -1,5 +1,6 @@
 import type { WorkspaceMediaAsset, WorkspaceOnlyYourColorState } from '../../../shared/types'
-import { erodeMaskOnePixel, subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
+import { subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
+import { refineOnlyYourColorMask } from './onlyYourColorMaskRefinement'
 import {
   DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE,
   DEFAULT_ONLY_YOUR_COLOR_INTENSITY,
@@ -96,7 +97,7 @@ export async function resolveOnlyYourColorBatchMask(options: {
 
   const requestId = crypto.randomUUID()
   const result = await api.segment({ requestId, filePath: asset.path, modelId: 'rmbg-1.4' })
-  const data = erodeMaskOnePixel(new Uint8Array(result.bytes), result.width, result.height)
+  const data = refineOnlyYourColorMask(new Uint8Array(result.bytes), result.width, result.height)
   if (!subjectBoundsFromMask(data, result.width, result.height)) {
     throw new Error(`「${asset.name}」未识别到主体`)
   }
