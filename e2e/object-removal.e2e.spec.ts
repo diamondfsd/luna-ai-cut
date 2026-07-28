@@ -44,7 +44,8 @@ test('对象消除完成框选、处理中流光与结果持久化', async ({ lu
 
   const overlay = lunaApp.page.locator('.workspace-mask-overlay-shell')
   await expect(overlay).toBeVisible()
-  await expect(lunaApp.page.getByRole('button', { name: '智能', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(lunaApp.page.getByRole('button', { name: '划选', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(overlay.locator('.workspace-instance-stroke-overlay')).toBeVisible()
   const rectangleButton = lunaApp.page.getByRole('button', { name: '框选', exact: true })
   await rectangleButton.click()
   await expect(rectangleButton).toHaveAttribute('aria-pressed', 'true')

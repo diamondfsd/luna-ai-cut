@@ -9,9 +9,11 @@ import { createDefaultPipeline, type ColorMaskLayer } from '../shared/editPipeli
 import { createMaskOperation, isMatchingMaskOperation, isMatchingSegmentationRequest, type MaskOperation } from '../mask/maskOperationIdentity'
 import { mergeCompletedColorMaskLayer, moveColorMaskLayer } from '../color/colorMaskLayerOperations'
 import { applyMaskSelectionOperation, hasUsableMask, resampleMask, type MaskSelectionOperation } from '../mask/maskSelectionOperations'
+import { hardExpandMask } from '../removal/instanceStrokeSelection'
 import type { MaskManualTool, SegmentationPerformance, WorkspaceMaskValue } from './WorkspaceMaskContextTypes'
 import { rebuildMaskCache, useMaskComponentPersistence } from './useMaskComponentPersistence'
 import { useMaskShortcuts } from './useMaskShortcuts'
+import { useInstanceStrokeSelection } from './useInstanceStrokeSelection'
 export type { SegmentationModelId } from '../../shared/segmentationModels'
 const WorkspaceMaskContext = createContext<WorkspaceMaskValue | null>(null)
 // eslint-disable-next-line react-refresh/only-export-components
@@ -121,6 +123,21 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setActiveLayerId,
   })
   const { setActiveComponentId } = componentPersistence
+  const generateInstanceStrokeMask = useInstanceStrokeSelection({
+    filePath: media.activeMedia?.kind === 'image' ? media.activeMedia.path : undefined,
+    projectId: media.currentProject?.id,
+    assetId: media.activeMedia?.id,
+    maskSize,
+    maskData,
+    selectionOperation,
+    beginOperation,
+    isCurrentOperation,
+    finishOperation,
+    commitMask: componentPersistence.commitMask,
+    setPerformance: setLastSegmentationPerformance,
+    setProgress: setSegmentationProgress,
+    setError: setSegmentationError,
+  })
 
   useEffect(() => () => {
     const operation = activeOperationRef.current
@@ -346,7 +363,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, frameTime, point, modelId, targetId, targetClassId: target?.classId })
       if (result.requestId !== requestId || !isCurrentOperation(operation)) return
       setLastSegmentationPerformance(result.performance)
-      const generatedData = new Uint8Array(result.bytes)
+      const generatedData = hardExpandMask(new Uint8Array(result.bytes), result.width, result.height, 4)
       if (targetId !== undefined && !hasUsableMask(generatedData)) {
         logger.warn('[Mask] 自动选择未找到有效区域', { requestId, targetId, modelId: result.modelId })
         setSegmentationError(`未找到${result.className}，可使用画笔手动选择`)
@@ -361,7 +378,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
         operationAssetId,
         result.width,
         result.height,
-        result.bytes,
+        generatedData.buffer.slice(generatedData.byteOffset, generatedData.byteOffset + generatedData.byteLength),
         0,
       )
       const saved = await window.luna.workspace.saveColorMask(
@@ -498,7 +515,8 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     updateGroupedMaskSettings,
     removeMask,
     generateSemanticMask,
-  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, prepareVideoMasksForExport, projectId, reconstructing, removeLayer, removeMask, segmentationError, segmentationProgress, selectionOperation, semanticPicking, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+    generateInstanceStrokeMask,
+  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateInstanceStrokeMask, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, prepareVideoMasksForExport, projectId, reconstructing, removeLayer, removeMask, segmentationError, segmentationProgress, selectionOperation, semanticPicking, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }
