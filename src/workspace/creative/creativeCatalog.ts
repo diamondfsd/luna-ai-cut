@@ -1,8 +1,8 @@
-import { Droplets, LayoutTemplate, ScanSearch, WandSparkles, type LucideIcon } from 'lucide-react'
+import { Droplets, LayoutTemplate, ScanLine, ScanSearch, WandSparkles, type LucideIcon } from 'lucide-react'
 
 import type { WorkspaceMediaKind } from '../../shared/types'
 
-export type CreativeModeId = 'triple-stitch' | 'color-reveal' | 'only-your-color' | 'pixel-stretch'
+export type CreativeModeId = 'triple-stitch' | 'color-reveal' | 'only-your-color' | 'pixel-stretch' | 'pixel-flow'
 
 export interface CreativeCatalogItem {
   id: CreativeModeId
@@ -22,6 +22,15 @@ export interface CreativeModuleProps {
 }
 
 export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
+  {
+    id: 'pixel-flow',
+    name: '像素流光',
+    subtitle: '像素流光',
+    description: '流光沿画面内容向下推进，逐步唤醒照片色彩',
+    icon: ScanLine,
+    previewClassName: 'workspace-creative-preview--pixel-flow',
+    supportedMediaKinds: ['image'],
+  },
   {
     id: 'only-your-color',
     name: '只有你的色彩',
