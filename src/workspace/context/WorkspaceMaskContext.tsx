@@ -47,6 +47,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
   const [busy, setBusy] = useState(false)
   const [reconstructing, setReconstructing] = useState(false)
   const [semanticPicking, setSemanticPicking] = useState(false)
+  const [aiMaskExpansion, setAiMaskExpansion] = useState(1)
   const [lastSegmentationPerformance, setLastSegmentationPerformance] = useState<SegmentationPerformance | null>(null)
   const [segmentationProgress, setSegmentationProgress] = useState<WorkspaceSegmentationProgress | null>(null)
   const [segmentationError, setSegmentationError] = useState<string | null>(null)
@@ -130,6 +131,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     maskSize,
     maskData,
     selectionOperation,
+    expansion: aiMaskExpansion,
     beginOperation,
     isCurrentOperation,
     finishOperation,
@@ -363,7 +365,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
       const result = await window.luna.workspace.segmentImage({ requestId, filePath: operationMediaPath, frameTime, point, modelId, targetId, targetClassId: target?.classId })
       if (result.requestId !== requestId || !isCurrentOperation(operation)) return
       setLastSegmentationPerformance(result.performance)
-      const generatedData = hardExpandMask(new Uint8Array(result.bytes), result.width, result.height, 4)
+      const generatedData = hardExpandMask(new Uint8Array(result.bytes), result.width, result.height, aiMaskExpansion)
       if (targetId !== undefined && !hasUsableMask(generatedData)) {
         logger.warn('[Mask] 自动选择未找到有效区域', { requestId, targetId, modelId: result.modelId })
         setSegmentationError(`未找到${result.className}，可使用画笔手动选择`)
@@ -461,7 +463,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     } finally {
       finishOperation(operation)
     }
-  }, [activeMask, beginOperation, edit, finishOperation, isCurrentOperation, maskData, maskSize, media.activeMedia, media.currentProject, selectionOperation, setActiveComponentId])
+  }, [activeMask, aiMaskExpansion, beginOperation, edit, finishOperation, isCurrentOperation, maskData, maskSize, media.activeMedia, media.currentProject, selectionOperation, setActiveComponentId])
 
   const prepareVideoMasksForExport = useCallback(async (): Promise<ColorMaskLayer[]> => colorMasksRef.current, [])
 
@@ -487,6 +489,8 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     setReconstructing,
     semanticPicking,
     setSemanticPicking,
+    aiMaskExpansion,
+    setAiMaskExpansion,
     lastSegmentationPerformance,
     segmentationProgress,
     segmentationError,
@@ -516,7 +520,7 @@ export function WorkspaceMaskProvider({ children, active }: { children: ReactNod
     removeMask,
     generateSemanticMask,
     generateInstanceStrokeMask,
-  }), [activeLayerId, activeMask, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateInstanceStrokeMask, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, prepareVideoMasksForExport, projectId, reconstructing, removeLayer, removeMask, segmentationError, segmentationProgress, selectionOperation, semanticPicking, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
+  }), [activeLayerId, activeMask, aiMaskExpansion, available, brushFeather, brushSize, busy, cancelSegmentation, clearSegmentationError, componentPersistence.activeComponent, componentPersistence.activeComponentId, componentPersistence.commitMask, componentPersistence.duplicateActiveComponent, componentPersistence.removeActiveComponent, componentPersistence.setActiveComponentId, componentPersistence.updateActiveComponent, createMask, duplicateLayer, editing, generateInstanceStrokeMask, generateSemanticMask, lastSegmentationPerformance, manualTool, maskData, maskSize, moveActiveLayer, moveLayer, prepareVideoMasksForExport, projectId, reconstructing, removeLayer, removeMask, segmentationError, segmentationProgress, selectionOperation, semanticPicking, setVideoFrameTime, showOverlay, updateActiveLayer, updateGroupedMaskSettings, updateLayer, updateMaskSettings])
 
   return <WorkspaceMaskContext.Provider value={value}>{children}</WorkspaceMaskContext.Provider>
 }

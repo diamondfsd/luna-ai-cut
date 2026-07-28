@@ -13,6 +13,7 @@ interface InstanceStrokeSelectionOptions {
   maskSize: { width: number; height: number } | null
   maskData: Uint8Array | null
   selectionOperation: MaskSelectionOperation
+  expansion: number
   beginOperation: (kind: MaskOperation['kind'], projectId: string, assetId: string, requestId?: string) => MaskOperation
   isCurrentOperation: (operation: MaskOperation) => boolean
   finishOperation: (operation: MaskOperation) => void
@@ -44,7 +45,7 @@ export function useInstanceStrokeSelection(options: InstanceStrokeSelectionOptio
         targetWidth: maskSize.width,
         targetHeight: maskSize.height,
         points,
-        expansion: 4,
+        expansion: options.expansion,
       })
       options.setPerformance(result.performance)
       if (!selected) {

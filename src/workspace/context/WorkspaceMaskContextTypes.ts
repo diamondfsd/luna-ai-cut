@@ -41,6 +41,8 @@ export interface WorkspaceMaskValue {
   setReconstructing: (value: boolean) => void
   semanticPicking: boolean
   setSemanticPicking: (value: boolean) => void
+  aiMaskExpansion: number
+  setAiMaskExpansion: (value: number) => void
   lastSegmentationPerformance: SegmentationPerformance | null
   segmentationProgress: WorkspaceSegmentationProgress | null
   segmentationError: string | null
