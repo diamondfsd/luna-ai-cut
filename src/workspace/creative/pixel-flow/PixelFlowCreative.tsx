@@ -12,16 +12,22 @@ import type { CreativeModuleProps } from '../creativeCatalog'
 import { combinePixelFlowDepthMask, pixelFlowImpact, pixelFlowOrigin, pixelFlowRegionScales, pixelFlowSkyBlackRatio, type PixelFlowMask } from './pixelFlowRender'
 import './pixel-flow.css'
 
-const SETTINGS_VERSION = 4
+const SETTINGS_VERSION = 5
 const DEFAULT_DURATION = 2.5
 const DEFAULT_PIXEL_SIZE = 6
 const DEFAULT_LIGHT_WIDTH = 15
 const DEFAULT_SEMANTIC_DELAY = 8
 const DEFAULT_SKY_MODE = 'ripple'
 const DEFAULT_OTHER_DIRECTION = 'top-down'
+const DEFAULT_FLOW_MODE = 'segmented'
+type PixelFlowMode = NonNullable<WorkspacePixelFlowState['flowMode']>
 type PixelFlowSkyMode = NonNullable<WorkspacePixelFlowState['skyMode']>
 type PixelFlowOtherDirection = NonNullable<WorkspacePixelFlowState['otherDirection']>
 
+const FLOW_MODE_OPTIONS = [
+  { value: 'segmented', label: '智能分层' },
+  { value: 'whole-frame', label: '整体流动' },
+]
 const SKY_MODE_OPTIONS = [
   { value: 'ripple', label: '水波' },
   { value: 'sweep', label: '横扫' },
@@ -61,6 +67,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [pixelSize, setPixelSize] = useState(savedParameter(saved, 'pixelSize', DEFAULT_PIXEL_SIZE))
   const [lightWidth, setLightWidth] = useState(savedParameter(saved, 'lightWidth', DEFAULT_LIGHT_WIDTH))
   const [semanticDelay, setSemanticDelay] = useState(savedParameter(saved, 'semanticDelay', DEFAULT_SEMANTIC_DELAY))
+  const [flowMode, setFlowMode] = useState<PixelFlowMode>(saved?.flowMode ?? DEFAULT_FLOW_MODE)
   const [skyMode, setSkyMode] = useState<PixelFlowSkyMode>(saved?.skyMode ?? DEFAULT_SKY_MODE)
   const [otherDirection, setOtherDirection] = useState<PixelFlowOtherDirection>(saved?.otherDirection ?? DEFAULT_OTHER_DIRECTION)
   const [maskPath, setMaskPath] = useState<string | null>(saved?.maskPath ?? null)
@@ -93,6 +100,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setPixelSize(savedParameter(restored, 'pixelSize', DEFAULT_PIXEL_SIZE))
     setLightWidth(savedParameter(restored, 'lightWidth', DEFAULT_LIGHT_WIDTH))
     setSemanticDelay(savedParameter(restored, 'semanticDelay', DEFAULT_SEMANTIC_DELAY))
+    setFlowMode(restored?.flowMode ?? DEFAULT_FLOW_MODE)
     setSkyMode(restored?.skyMode ?? DEFAULT_SKY_MODE)
     setOtherDirection(restored?.otherDirection ?? DEFAULT_OTHER_DIRECTION)
     setMaskPath(restored?.maskPath ?? null)
@@ -129,7 +137,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   }, [maskPath, projectId, skyMaskPath])
 
   useEffect(() => {
-    if (!projectId || !activeAssetId || !subjectMask || !skyMask || depthMaskPath) return
+    if (flowMode !== 'segmented' || !projectId || !activeAssetId || !subjectMask || !skyMask || depthMaskPath) return
     const buildKey = `${activeAssetId}:${maskPath ?? ''}:${skyMaskPath ?? ''}`
     if (depthBuildRef.current === buildKey) return
     depthBuildRef.current = buildKey
@@ -149,7 +157,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
         toast.error(error instanceof Error ? error.message : '无法准备画面层次')
       }
     })
-  }, [activeAssetId, depthMaskPath, maskPath, projectId, skyMask, skyMaskPath, subjectMask])
+  }, [activeAssetId, depthMaskPath, flowMode, maskPath, projectId, skyMask, skyMaskPath, subjectMask])
 
   useEffect(() => {
     if (!activeAsset || activeAsset.kind !== 'image') return
@@ -162,7 +170,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   }, [activeAsset])
 
   useEffect(() => {
-    if (!activeAsset || !skyMask) return
+    if (flowMode !== 'segmented' || !activeAsset || !skyMask) return
     let cancelled = false
     let bitmap: ImageBitmap | null = null
     void window.luna.workspace.loadPreview(activeAsset.path).then(async (preview) => {
@@ -182,14 +190,24 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       cancelled = true
       bitmap?.close()
     }
-  }, [activeAsset, skyMask])
+  }, [activeAsset, flowMode, skyMask])
 
   useEffect(() => {
-    if (!depthMaskPath || !sourceSize || !skyMask) return
+    const ready = flowMode === 'whole-frame' || Boolean(depthMaskPath && skyMask)
+    if (!ready || !sourceSize) return
     setCurrentTime(0)
     setPlaying(true)
     setSeekRevision((revision) => revision + 1)
-  }, [depthMaskPath, skyMask, sourceSize])
+  }, [depthMaskPath, flowMode, skyMask, sourceSize])
+
+  useEffect(() => {
+    if (flowMode !== 'whole-frame' || !operationRef.current) return
+    operationRef.current = null
+    for (const requestId of requestRef.current) void window.luna.workspace.cancelSegmentation(requestId)
+    requestRef.current.clear()
+    setSegmenting(false)
+    setProgress('')
+  }, [flowMode])
 
   const segmentScene = useCallback(async () => {
     if (!activeAsset || !media.currentProject || activeAsset.kind !== 'image' || segmenting) return
@@ -269,17 +287,18 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   }, [activeAsset, media.currentProject, segmenting])
 
   useEffect(() => {
-    if (!isImage || !activeAsset || (maskPath && skyMaskPath) || segmenting) return
+    if (flowMode !== 'segmented' || !isImage || !activeAsset || (maskPath && skyMaskPath) || segmenting) return
     if (attemptedAssetRef.current === activeAsset.id) return
     attemptedAssetRef.current = activeAsset.id
     void segmentScene()
-  }, [activeAsset, isImage, maskPath, segmentScene, segmenting, skyMaskPath])
+  }, [activeAsset, flowMode, isImage, maskPath, segmentScene, segmenting, skyMaskPath])
 
   useEffect(() => {
     const project = media.currentProject
     if (!project || !activeAssetId) return
     const state: WorkspacePixelFlowState = {
       settingsVersion: SETTINGS_VERSION,
+      flowMode,
       skyMode,
       otherDirection,
       duration,
@@ -311,7 +330,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     }, 300)
   // Project context refreshes are intentionally excluded from parameter persistence.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAssetId, depthMaskPath, duration, lightWidth, maskPath, otherDirection, pixelSize, semanticDelay, skyMaskPath, skyMode])
+  }, [activeAssetId, depthMaskPath, duration, flowMode, lightWidth, maskPath, otherDirection, pixelSize, semanticDelay, skyMaskPath, skyMode])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -344,9 +363,10 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     ? pixelFlowRegionScales(subjectMask, skyMask)
     : { sky: 1, background: 1, subject: 1 }, [skyMask, subjectMask])
   const previewLayers = useMemo<PreviewLayer[]>(() => {
-    if (!activeAsset || !sourceSize || !depthMaskPath || !skyMask) return []
-    const origin = pixelFlowOrigin(skyMask)
-    const impact = pixelFlowImpact(skyMask, origin)
+    if (!activeAsset || !sourceSize) return []
+    if (flowMode === 'segmented' && (!depthMaskPath || !skyMask)) return []
+    const origin = flowMode === 'whole-frame' ? { x: 0.5, y: 0.06 } : pixelFlowOrigin(skyMask)
+    const impact = flowMode === 'whole-frame' ? { x: 0.5, y: 0.14 } : pixelFlowImpact(skyMask, origin)
     return [{
       layerType: 'pixel-flow',
       filePath: activeAsset.path,
@@ -362,9 +382,10 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       srcH: 1,
       opacity: 1,
       zIndex: 0,
-      maskPath: depthMaskPath,
+      maskPath: flowMode === 'segmented' ? depthMaskPath ?? undefined : undefined,
       pixelFlow: {
         duration,
+        flowMode,
         skyMode,
         otherDirection,
         pixelSize,
@@ -380,7 +401,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
         skyBlackRatio,
       },
     }]
-  }, [activeAsset, depthMaskPath, duration, lightWidth, otherDirection, pixelSize, regionScales, semanticDelay, skyBlackRatio, skyMask, skyMode, sourceSize])
+  }, [activeAsset, depthMaskPath, duration, flowMode, lightWidth, otherDirection, pixelSize, regionScales, semanticDelay, skyBlackRatio, skyMask, skyMode, sourceSize])
   const gpuPreviewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
@@ -407,6 +428,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setPixelSize(DEFAULT_PIXEL_SIZE)
     setLightWidth(DEFAULT_LIGHT_WIDTH)
     setSemanticDelay(DEFAULT_SEMANTIC_DELAY)
+    setFlowMode(DEFAULT_FLOW_MODE)
     setSkyMode(DEFAULT_SKY_MODE)
     setOtherDirection(DEFAULT_OTHER_DIRECTION)
     replay()
@@ -432,15 +454,18 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
           : <div className="pixel-flow-empty"><ScanLine size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要制作效果的图片</span></div>}
     </div>
     <aside className="pixel-flow-panel">
-      <div className="pixel-flow-panel-head"><strong>效果设置</strong><span>天空先向外点亮，再逐层落向背景和主体</span></div>
+      <div className="pixel-flow-panel-head"><strong>效果设置</strong><span>{flowMode === 'whole-frame' ? '从画面上方向下坠落，并由内向外展开' : '天空先向外点亮，再逐层落向背景和主体'}</span></div>
       <div className="pixel-flow-options">
-        <div className="pixel-flow-preset-field"><span>天空效果</span><Select variant="compact" fullWidth placeholder="天空效果" options={SKY_MODE_OPTIONS} value={skyMode} onValueChange={(value) => setSkyMode(value as PixelFlowSkyMode)} /></div>
-        <div className="pixel-flow-preset-field"><span>其他方向</span><Select variant="compact" fullWidth placeholder="其他方向" options={OTHER_DIRECTION_OPTIONS} value={otherDirection} onValueChange={(value) => setOtherDirection(value as PixelFlowOtherDirection)} /></div>
+        <div className="pixel-flow-preset-field"><span>流动方式</span><Select variant="compact" fullWidth placeholder="流动方式" options={FLOW_MODE_OPTIONS} value={flowMode} onValueChange={(value) => setFlowMode(value as PixelFlowMode)} /></div>
+        {flowMode === 'segmented' && <>
+          <div className="pixel-flow-preset-field"><span>天空效果</span><Select variant="compact" fullWidth placeholder="天空效果" options={SKY_MODE_OPTIONS} value={skyMode} onValueChange={(value) => setSkyMode(value as PixelFlowSkyMode)} /></div>
+          <div className="pixel-flow-preset-field"><span>其他方向</span><Select variant="compact" fullWidth placeholder="其他方向" options={OTHER_DIRECTION_OPTIONS} value={otherDirection} onValueChange={(value) => setOtherDirection(value as PixelFlowOtherDirection)} /></div>
+        </>}
         <ParamSlider label="流动时间" value={duration} min={1.5} max={6} step={0.1} onChange={setDuration} formatValue={(value) => `${value.toFixed(1)}s`} />
         <ParamSlider label="流光方块大小" value={pixelSize} min={4} max={36} onChange={setPixelSize} formatValue={(value) => `${value}px`} />
         <ParamSlider label="波纹宽度比例" value={lightWidth} min={2} max={30} onChange={setLightWidth} formatValue={(value) => `${value}%`} />
-        <ParamSlider label="层次速度差" value={semanticDelay} min={0} max={24} onChange={setSemanticDelay} />
-        {subjectMask && skyMask && <span className="pixel-flow-ready">已按天空和主体调整流动速度</span>}
+        {flowMode === 'segmented' && <ParamSlider label="层次速度差" value={semanticDelay} min={0} max={24} onChange={setSemanticDelay} />}
+        {flowMode === 'segmented' && subjectMask && skyMask && <span className="pixel-flow-ready">已按天空和主体调整流动速度</span>}
       </div>
       <div className="pixel-flow-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置参数" aria-label="重置参数" onClick={resetParameters} /><Button variant="primary" size="compact" icon={<Play size={14} />} disabled={!sourceSize} onClick={replay}>播放效果</Button></div>
     </aside>

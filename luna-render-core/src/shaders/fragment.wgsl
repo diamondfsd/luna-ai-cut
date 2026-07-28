@@ -358,7 +358,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let dim_amount = (1.0 - bright_group) * pulse * color_gate * 0.24;
         let contrasted_base = base * (1.0 - dim_amount);
         let glow = pulse * depth_light * color_gate;
+        let source_luma = dot(block_adjusted, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let highlight_weight = smoothstep(0.32, 0.86, source_luma);
+        let underlight_pulse = pixel_flow_light(distance, band * 1.9, cell.w, edge_hold);
+        let underlight = underlight_pulse * color_gate * mix(0.22, 1.0, highlight_weight);
+        let underlight_color = mix(saturated, vec3<f32>(1.0), 0.18 + highlight_weight * 0.28);
         let lit = contrasted_base
+            + saturated * underlight * 0.38
+            + underlight_color * underlight * highlight_weight * 0.58
             + saturated * glow * emission_gain * (outer_glow * 0.62 + block_core * 1.18)
             + highlight * glow * emission_gain * block_core * 0.72;
         let layer_alpha = source.a * params.opacity * corner_coverage;

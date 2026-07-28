@@ -35,6 +35,7 @@ fn pixel_flow_cell(cell_uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<
     let depth_strength = clamp(params.pixel_flow_depth.x / 100.0, 0.0, 1.0);
     let sky_mode = params.pixel_flow_depth.z;
     let other_mode = params.pixel_flow_depth.w;
+    let whole_frame = other_mode > 2.5;
     let dark_sky_boost = smoothstep(0.6, 1.0, params.pixel_flow_scale.w);
     let sky_speed_scale = mix(1.0, 0.38, dark_sky_boost);
     let sky_ripple_arrival = (0.015 + sky_radius * 0.16 + timing_jitter * 0.2) * sky_speed_scale;
@@ -58,8 +59,13 @@ fn pixel_flow_cell(cell_uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<
         + directional_progress * 0.4
         + depth_strength * 0.14
         + timing_jitter * 0.82;
-    let arrival = sky * sky_arrival + background * background_arrival + subject * subject_arrival;
-    return vec4<f32>(arrival, sky, background, subject);
+    let segmented_arrival = sky * sky_arrival + background * background_arrival + subject * subject_arrival;
+    // A single top-center fall combined with an expanding radius. This path deliberately
+    // ignores semantic depth so it can render without a segmentation mask.
+    let whole_progress = vertical_fall * 0.58 + impact_radius * 0.42;
+    let whole_arrival = 0.06 + whole_progress * 0.72 + timing_jitter * 0.88;
+    let arrival = select(segmented_arrival, whole_arrival, whole_frame);
+    return select(vec4<f32>(arrival, sky, background, subject), vec4<f32>(arrival, 0.0, 1.0, 0.0), whole_frame);
 }
 
 fn pixel_flow_light(distance: f32, band: f32, subject: f32, edge_hold: f32) -> f32 {
