@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsPanel'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
-import type { PreviewLayer } from '../shared/types'
+import type { PreviewLayer, VideoExportFormat } from '../shared/types'
 import { Button, Dialog } from '../ui'
 import { ExportPreviewPane, type ExportPreviewSource } from './ExportPreviewPane'
 import './ExportSettingsDialog.css'
@@ -24,6 +24,8 @@ interface ExportSettingsDialogProps {
     layers: PreviewLayer[]
     outputSize: { width: number; height: number }
   }
+  initialConfig?: VideoExportSettings
+  allowedFormats?: VideoExportFormat[]
   onConfirm: (config: VideoExportSettings) => void | Promise<void>
 }
 
@@ -53,10 +55,20 @@ export function ExportSettingsDialog({
   tone = 'default',
   previewSource,
   livePhotoSource,
+  initialConfig,
+  allowedFormats,
   onConfirm,
 }: ExportSettingsDialogProps) {
-  const [exportConfig, setExportConfig] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
+  const defaultConfig = useMemo(
+    () => initialConfig ?? DEFAULT_VIDEO_EXPORT_SETTINGS,
+    [initialConfig],
+  )
+  const [exportConfig, setExportConfig] = useState<VideoExportSettings>(defaultConfig)
   const [internalLoading, setInternalLoading] = useState(false)
+
+  useEffect(() => {
+    if (open) setExportConfig(defaultConfig)
+  }, [defaultConfig, open])
 
   const liveSelected = exportConfig.exportFormats.some((format) => format !== 'video')
   const selectedDuration = livePhotoSource
@@ -71,12 +83,12 @@ export function ExportSettingsDialog({
     setInternalLoading(true)
     try {
       await onConfirm(exportConfig)
-      setExportConfig(DEFAULT_VIDEO_EXPORT_SETTINGS)
+      setExportConfig(defaultConfig)
       onOpenChange(false)
     } finally {
       setInternalLoading(false)
     }
-  }, [isBusy, onConfirm, exportConfig, onOpenChange])
+  }, [defaultConfig, isBusy, onConfirm, exportConfig, onOpenChange])
 
   const handleConfigChange = useCallback((config: VideoExportSettings) => {
     setExportConfig(config)
@@ -85,11 +97,11 @@ export function ExportSettingsDialog({
   // 关闭时重置配置
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {
-      setExportConfig(DEFAULT_VIDEO_EXPORT_SETTINGS)
+      setExportConfig(defaultConfig)
       setInternalLoading(false)
     }
     onOpenChange(nextOpen)
-  }, [onOpenChange])
+  }, [defaultConfig, onOpenChange])
 
   return (
     <Dialog
@@ -124,7 +136,7 @@ export function ExportSettingsDialog({
           />
         ) : null}
         <div className="workspace-export-settings-column">
-          <ExportSettingsPanel value={exportConfig} onChange={handleConfigChange} livePhotoSource={livePhotoSource} />
+          <ExportSettingsPanel value={exportConfig} onChange={handleConfigChange} livePhotoSource={livePhotoSource} allowedFormats={allowedFormats} />
         </div>
       </div>
     </Dialog>

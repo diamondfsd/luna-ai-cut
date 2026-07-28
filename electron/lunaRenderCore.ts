@@ -29,7 +29,7 @@ export interface CompositionInput {
   }
   layers: Array<{
     id?: string
-    layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'shape' | 'text' | 'logo' | 'decoration'
+    layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'pixel-flow' | 'shape' | 'text' | 'logo' | 'decoration'
     source: {
       path: string
       sourceType?: 'auto' | 'image' | 'video' | string
@@ -69,6 +69,23 @@ export interface CompositionInput {
       pathStartWidth?: number
       pathEndWidth?: number
       fillSampleGaps?: boolean
+    }
+    pixelFlow?: {
+      duration: number
+      progress?: number
+      pixelCount: number
+      lightWidth: number
+      initialSaturation: number
+      initialBrightness: number
+      subjectDirection: 'down' | 'up' | 'right' | 'left' | 'outward' | 'inward'
+      rainSpeed: number
+      rainLength: number
+      flowStrength: number
+      subjectDelay: number
+      bloomStrength: number
+      filterStrength: number
+      colorTransition: number
+      segmented?: boolean
     }
     transform?: Partial<RenderLayerTransform>
     positioning?: LayerPositioningData | { landscape?: LayerPositioningData; portrait?: LayerPositioningData }

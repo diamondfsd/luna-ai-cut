@@ -160,6 +160,7 @@ mod tests {
             mask_feather: Some(180.0),
             mask_transform: None,
             pixel_stretch: None,
+            pixel_flow: None,
             transform: None,
             positioning: None,
             restore_lut_id: None,

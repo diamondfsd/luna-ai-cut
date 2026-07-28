@@ -106,7 +106,6 @@ pub fn probe_video_info(ffprobe: &str, input: &str) -> Result<VideoInfo, String>
         .find(|s| s["codec_type"].as_str() == Some("video"))
         .ok_or("no video stream")?;
     let (width, height) = video_display_dimensions(video, input)?;
-    let fps = parse_fps(video["r_frame_rate"].as_str().unwrap_or("30/1"));
     let duration_secs = video["duration"]
         .as_str()
         .or_else(|| parsed["format"]["duration"].as_str())
@@ -115,6 +114,12 @@ pub fn probe_video_info(ffprobe: &str, input: &str) -> Result<VideoInfo, String>
     let frame_count = video["nb_frames"]
         .as_str()
         .and_then(|count| count.parse::<u64>().ok());
+    let fps = select_fps(
+        video["avg_frame_rate"].as_str(),
+        video["r_frame_rate"].as_str(),
+        frame_count,
+        duration_secs,
+    );
     let src_bitrate = parsed["format"]["bit_rate"]
         .as_str()
         .and_then(|bitrate| bitrate.parse::<u32>().ok())
@@ -176,28 +181,61 @@ fn video_rotation_degrees(stream: &serde_json::Value) -> i32 {
         .unwrap_or(0)
 }
 
-fn parse_fps(value: &str) -> f64 {
+const MAX_REASONABLE_FPS: f64 = 1000.0;
+
+fn parse_fps(value: &str) -> Option<f64> {
     let parts: Vec<&str> = value.split('/').collect();
-    if parts.len() == 2 {
-        let numerator: f64 = parts[0].parse().unwrap_or(30.0);
-        let denominator: f64 = parts[1].parse().unwrap_or(1.0);
-        if denominator > 0.0 {
-            numerator / denominator
-        } else {
-            30.0
-        }
+    let fps = if parts.len() == 2 {
+        let numerator = parts[0].parse::<f64>().ok()?;
+        let denominator = parts[1].parse::<f64>().ok()?;
+        (denominator > 0.0).then_some(numerator / denominator)?
     } else {
-        value.parse().unwrap_or(30.0)
-    }
+        value.parse::<f64>().ok()?
+    };
+    (fps.is_finite() && fps > 0.0 && fps <= MAX_REASONABLE_FPS).then_some(fps)
+}
+
+fn select_fps(
+    average: Option<&str>,
+    nominal: Option<&str>,
+    frame_count: Option<u64>,
+    duration_secs: f64,
+) -> f64 {
+    average
+        .and_then(parse_fps)
+        .or_else(|| {
+            frame_count
+                .filter(|count| *count > 0 && duration_secs > 0.0)
+                .and_then(|count| parse_fps(&(count as f64 / duration_secs).to_string()))
+        })
+        .or_else(|| nominal.and_then(parse_fps))
+        .unwrap_or(30.0)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_fps;
+    use super::{parse_fps, select_fps};
 
     #[test]
     fn preserves_ntsc_fractional_frame_rate() {
-        let fps = parse_fps("60000/1001");
+        let fps = parse_fps("60000/1001").unwrap();
         assert!((fps - 59.940_059_940_059_94).abs() < 1e-9);
+    }
+
+    #[test]
+    fn prefers_average_rate_over_container_timescale() {
+        let fps = select_fps(
+            Some("109080000/1861199"),
+            Some("90000/1"),
+            Some(1212),
+            20.679_989,
+        );
+        assert!((fps - 58.607_381_807).abs() < 1e-6);
+    }
+
+    #[test]
+    fn derives_rate_when_nominal_rate_is_not_reasonable() {
+        let fps = select_fps(None, Some("90000/1"), Some(1212), 20.679_989);
+        assert!((fps - 58.607_381_800).abs() < 1e-6);
     }
 }
