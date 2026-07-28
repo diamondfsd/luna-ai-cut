@@ -14,6 +14,7 @@ import { logger } from '../lib/rendererLogger'
 import { buildCompositionFromPreviewLayers, COMPOSITION_RENDER_FPS } from './renderComposition'
 import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import { LrcRenderError } from './LrcRenderError'
+import { getStaticPreviewFrame, setStaticPreviewFrame, staticPreviewFrameKey, type CachedPreviewFrame } from './staticPreviewFrameCache'
 import './LrcRender.css'
 
 const PREVIEW_TEXTURE_MAX_SIDE = 3840
@@ -57,12 +58,6 @@ interface RenderPreviewOutput {
   width: number
   height: number
   data: Uint8Array | ArrayBuffer | { data?: number[] }
-}
-
-interface CachedPreviewFrame {
-  width: number
-  height: number
-  pixels: Uint8ClampedArray
 }
 
 interface LunaRenderCore {
@@ -156,7 +151,6 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   const firstRenderTraceRef = useRef(true)
   const lastVideoFrameAtRef = useRef(0)
   const lastMediaSizeRef = useRef<[number, number]>([0, 0])
-  const staticFrameCacheRef = useRef(new Map<string, CachedPreviewFrame>())
   const isSeekingRef = useRef(false)
   const seekStartTimeRef = useRef<number | null>(null)
   const [ready, setReady] = useState(false)
@@ -235,8 +229,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
   }
 
   function staticFrameKey(renderLayers: PreviewLayer[], effectiveMaxSide: number): string | null {
-    if (renderLayers.some((layer) => layer.isVideo)) return null
-    return JSON.stringify({ canvasWidth, canvasHeight, maxSide: effectiveMaxSide, layers: renderLayers })
+    return staticPreviewFrameKey(renderLayers, canvasWidth, canvasHeight, effectiveMaxSide)
   }
 
   function paintFrame(frame: CachedPreviewFrame): void {
@@ -272,7 +265,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
     const effectiveMaxSide = maxSide ?? PREVIEW_TEXTURE_MAX_SIDE
     const cacheKey = staticFrameKey(renderLayers, effectiveMaxSide)
-    const cachedFrame = cacheKey ? staticFrameCacheRef.current.get(cacheKey) : undefined
+    const cachedFrame = cacheKey ? getStaticPreviewFrame(cacheKey) : undefined
     if (cachedFrame) {
       paintFrame(cachedFrame)
       return
@@ -307,15 +300,10 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       const pixelData = bytesFromRenderData(result.data)
       const frame = { width: result.width, height: result.height, pixels: pixelData }
       if (cacheKey) {
-        staticFrameCacheRef.current.set(cacheKey, frame)
-        while (staticFrameCacheRef.current.size > 2) {
-          const oldestKey = staticFrameCacheRef.current.keys().next().value
-          if (oldestKey === undefined) break
-          staticFrameCacheRef.current.delete(oldestKey)
-        }
+        setStaticPreviewFrame(cacheKey, frame)
         const currentKey = staticFrameKey(layersWithVideoTime(), effectiveMaxSide)
         if (currentKey !== cacheKey) {
-          const currentFrame = currentKey ? staticFrameCacheRef.current.get(currentKey) : undefined
+          const currentFrame = currentKey ? getStaticPreviewFrame(currentKey) : undefined
           if (currentFrame) {
             renderQueuedRef.current = false
             paintFrame(currentFrame)
