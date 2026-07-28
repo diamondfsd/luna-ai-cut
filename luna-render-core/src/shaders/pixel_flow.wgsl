@@ -16,22 +16,22 @@ fn pixel_flow_bloom_tap(uv: vec2<f32>) -> vec3<f32> {
 }
 
 fn pixel_flow_ccd_bloom(uv: vec2<f32>, radius: vec2<f32>) -> vec3<f32> {
-    let inner = radius * 1.4;
-    let middle = radius * 3.4;
-    let outer = radius * 7.2;
-    var bloom = pixel_flow_bloom_tap(uv) * 0.12;
-    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(inner.x, 0.0)) * 0.09;
-    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(inner.x, 0.0)) * 0.09;
-    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(0.0, inner.y)) * 0.09;
-    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(0.0, inner.y)) * 0.09;
-    bloom += pixel_flow_bloom_tap(uv + middle) * 0.07;
-    bloom += pixel_flow_bloom_tap(uv - middle) * 0.07;
-    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(middle.x, -middle.y)) * 0.07;
-    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(-middle.x, middle.y)) * 0.07;
-    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(outer.x, 0.0)) * 0.06;
-    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(outer.x, 0.0)) * 0.06;
-    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(0.0, outer.y)) * 0.06;
-    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(0.0, outer.y)) * 0.06;
+    let inner = radius * 0.9;
+    let middle = radius * 1.8;
+    let outer = radius * 3.4;
+    var bloom = pixel_flow_bloom_tap(uv) * 0.24;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(inner.x, 0.0)) * 0.11;
+    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(inner.x, 0.0)) * 0.11;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(0.0, inner.y)) * 0.11;
+    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(0.0, inner.y)) * 0.11;
+    bloom += pixel_flow_bloom_tap(uv + middle) * 0.055;
+    bloom += pixel_flow_bloom_tap(uv - middle) * 0.055;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(middle.x, -middle.y)) * 0.055;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(-middle.x, middle.y)) * 0.055;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(outer.x, 0.0)) * 0.025;
+    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(outer.x, 0.0)) * 0.025;
+    bloom += pixel_flow_bloom_tap(uv + vec2<f32>(0.0, outer.y)) * 0.025;
+    bloom += pixel_flow_bloom_tap(uv - vec2<f32>(0.0, outer.y)) * 0.025;
     return bloom;
 }
 
@@ -42,6 +42,82 @@ fn pixel_flow_hertz_grade(color: vec3<f32>, strength: f32) -> vec3<f32> {
     let teal_shadows = vec3<f32>(-0.025, 0.045, 0.07) * (1.0 - smoothstep(0.28, 0.72, luma));
     let warm_highlights = vec3<f32>(0.075, 0.025, -0.018) * smoothstep(0.46, 0.92, luma);
     return mix(color, saturated + teal_shadows + warm_highlights, strength);
+}
+
+fn pixel_flow_smooth_noise(position: vec2<f32>) -> f32 {
+    let base = floor(position);
+    let fraction = fract(position);
+    let curve = fraction * fraction * (vec2<f32>(3.0) - 2.0 * fraction);
+    let top = mix(pixel_flow_hash(base), pixel_flow_hash(base + vec2<f32>(1.0, 0.0)), curve.x);
+    let bottom = mix(pixel_flow_hash(base + vec2<f32>(0.0, 1.0)), pixel_flow_hash(base + vec2<f32>(1.0, 1.0)), curve.x);
+    return mix(top, bottom, curve.y);
+}
+
+// A continuous version of the motion field used only by the broad light layer.
+// Keeping this separate from the cell arrival prevents the CCD bloom from becoming tiled.
+fn pixel_flow_continuous_arrival(uv: vec2<f32>, source_size: vec2<f32>, cell_px: f32) -> f32 {
+    let depth = textureSampleLevel(mask_texture, src_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).r;
+    let sky = 1.0 - smoothstep(0.22, 0.4, depth);
+    let subject = smoothstep(0.66, 0.84, depth);
+    let background = max(0.0, 1.0 - sky - subject);
+    let origin = params.pixel_flow_geometry.xy;
+    let impact = params.pixel_flow_geometry.zw;
+    let position_px = uv * source_size;
+    let origin_px = origin * source_size;
+    let impact_px = impact * source_size;
+    let impact_delta = position_px - impact_px;
+    let impact_maximum = max(
+        max(length(impact_px), length(vec2<f32>(source_size.x - impact_px.x, impact_px.y))),
+        max(length(vec2<f32>(impact_px.x, source_size.y - impact_px.y)), length(source_size - impact_px)),
+    );
+    let impact_radius = length(impact_delta) / max(1.0, impact_maximum);
+    let sky_delta = position_px - origin_px;
+    let sky_maximum = max(
+        max(length(origin_px), length(vec2<f32>(source_size.x - origin_px.x, origin_px.y))),
+        max(length(vec2<f32>(origin_px.x, source_size.y - origin_px.y)), length(source_size - origin_px)),
+    );
+    let sky_radius = length(sky_delta) / max(1.0, sky_maximum);
+    let vertical = clamp((uv.y - impact.y * 0.72) / max(0.08, 1.0 - impact.y * 0.72), 0.0, 1.0);
+    let frame_edge = max(abs(uv.x - 0.5) * 2.0, abs(uv.y - 0.5) * 2.0);
+    let outside_in = 1.0 - clamp(frame_edge, 0.0, 1.0);
+    let depth_strength = clamp(params.pixel_flow_depth.x / 100.0, 0.0, 1.0);
+    let mode = params.pixel_flow_depth.z;
+    let other_mode = params.pixel_flow_depth.w;
+    let noise_position = position_px / max(8.0, cell_px * 5.0);
+    let smooth_noise = pixel_flow_smooth_noise(noise_position);
+    let timing_warp = (smooth_noise - 0.5) * 0.085;
+    let dark_sky_boost = smoothstep(0.6, 1.0, params.pixel_flow_scale.w);
+    let sky_speed = mix(1.0, 0.38, dark_sky_boost);
+    let ripple = (0.015 + sky_radius * 0.16 + timing_warp * 0.2) * sky_speed;
+    let sweep = (0.015 + uv.x * 0.16 + timing_warp * 0.15) * sky_speed;
+    let full = (0.02 + timing_warp * 0.04) * sky_speed;
+    let sky_arrival = select(select(ripple, sweep, mode > 0.5), full, mode > 1.5);
+    let directional = select(
+        select(vertical, outside_in, other_mode > 0.5),
+        impact_radius,
+        other_mode > 1.5,
+    );
+    let background_arrival = 0.32 + directional * 0.45 + depth_strength * 0.055 + timing_warp;
+    let subject_arrival = 0.5 + directional * 0.4 + depth_strength * 0.14 + timing_warp * 0.82;
+    let segmented = sky * sky_arrival + background * background_arrival + subject * subject_arrival;
+
+    let local_luma = pixel_flow_source_luma(uv);
+    let highlight_advance = smoothstep(0.26, 0.82, local_luma) * 0.2;
+    let branch_warp = sin(uv.y * 19.0 + uv.x * 7.0 + smooth_noise * 6.283) * 0.045
+        + sin(uv.x * 27.0 - uv.y * 8.0 + smooth_noise * 4.0) * 0.025
+        + timing_warp;
+    let lateral = abs(uv.x - 0.5) * 2.0;
+    let highlight_flow = vertical * 0.8 + lateral * 0.08 + branch_warp - highlight_advance;
+    let cascade = vertical * 0.9 + lateral * 0.06 + branch_warp * 1.35;
+    let diagonal = vertical * 0.68 + (1.0 - uv.x) * 0.27 + branch_warp * 1.1;
+    let split = vertical * 0.7 + lateral * 0.26 + branch_warp * 1.2;
+    let whole_progress = select(
+        select(highlight_flow, cascade, mode > 0.5),
+        select(diagonal, split, mode > 2.5),
+        mode > 1.5,
+    );
+    let whole = 0.055 + clamp(whole_progress, 0.0, 1.0) * 0.76;
+    return select(segmented, whole, other_mode > 2.5);
 }
 
 // Returns arrival time plus sky/background/subject weights encoded in the depth mask.

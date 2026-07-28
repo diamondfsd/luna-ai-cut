@@ -13,12 +13,12 @@ import { combinePixelFlowDepthMask, pixelFlowImpact, pixelFlowOrigin, pixelFlowR
 import {
   DEFAULT_PIXEL_FLOW_BLOOM,
   DEFAULT_PIXEL_FLOW_COLOR_TRANSITION,
+  DEFAULT_PIXEL_FLOW_COUNT,
   DEFAULT_PIXEL_FLOW_DURATION,
   DEFAULT_PIXEL_FLOW_FILTER,
   DEFAULT_PIXEL_FLOW_MODE,
   DEFAULT_PIXEL_FLOW_OTHER_DIRECTION,
   DEFAULT_PIXEL_FLOW_SEMANTIC_DELAY,
-  DEFAULT_PIXEL_FLOW_SIZE,
   DEFAULT_PIXEL_FLOW_SKY_MODE,
   DEFAULT_PIXEL_FLOW_TRAJECTORY,
   DEFAULT_PIXEL_FLOW_WIDTH,
@@ -37,7 +37,7 @@ type PixelFlowOtherDirection = NonNullable<WorkspacePixelFlowState['otherDirecti
 
 function savedParameter(
   saved: WorkspacePixelFlowState | undefined,
-  key: 'duration' | 'pixelSize' | 'lightWidth' | 'semanticDelay' | 'bloomStrength' | 'filterStrength' | 'colorTransition',
+  key: 'duration' | 'pixelCount' | 'lightWidth' | 'semanticDelay' | 'bloomStrength' | 'filterStrength' | 'colorTransition',
   fallback: number,
 ): number {
   if (saved?.settingsVersion !== PIXEL_FLOW_SETTINGS_VERSION) return fallback
@@ -59,7 +59,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const projectId = media.currentProject?.id
   const saved = stateForAsset(media.currentProject, activeAssetId)
   const [duration, setDuration] = useState(savedParameter(saved, 'duration', DEFAULT_PIXEL_FLOW_DURATION))
-  const [pixelSize, setPixelSize] = useState(savedParameter(saved, 'pixelSize', DEFAULT_PIXEL_FLOW_SIZE))
+  const [pixelCount, setPixelCount] = useState(savedParameter(saved, 'pixelCount', DEFAULT_PIXEL_FLOW_COUNT))
   const [lightWidth, setLightWidth] = useState(savedParameter(saved, 'lightWidth', DEFAULT_PIXEL_FLOW_WIDTH))
   const [semanticDelay, setSemanticDelay] = useState(savedParameter(saved, 'semanticDelay', DEFAULT_PIXEL_FLOW_SEMANTIC_DELAY))
   const [bloomStrength, setBloomStrength] = useState(savedParameter(saved, 'bloomStrength', DEFAULT_PIXEL_FLOW_BLOOM))
@@ -97,7 +97,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     operationRef.current = null
     const restored = stateForAsset(media.currentProject, activeAssetId)
     setDuration(savedParameter(restored, 'duration', DEFAULT_PIXEL_FLOW_DURATION))
-    setPixelSize(savedParameter(restored, 'pixelSize', DEFAULT_PIXEL_FLOW_SIZE))
+    setPixelCount(savedParameter(restored, 'pixelCount', DEFAULT_PIXEL_FLOW_COUNT))
     setLightWidth(savedParameter(restored, 'lightWidth', DEFAULT_PIXEL_FLOW_WIDTH))
     setSemanticDelay(savedParameter(restored, 'semanticDelay', DEFAULT_PIXEL_FLOW_SEMANTIC_DELAY))
     setBloomStrength(savedParameter(restored, 'bloomStrength', DEFAULT_PIXEL_FLOW_BLOOM))
@@ -308,7 +308,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       skyMode,
       otherDirection,
       duration,
-      pixelSize,
+      pixelCount,
       lightWidth,
       semanticDelay,
       bloomStrength,
@@ -339,7 +339,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     }, 300)
   // Project context refreshes are intentionally excluded from parameter persistence.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAssetId, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowMode, lightWidth, maskPath, otherDirection, pixelSize, semanticDelay, skyMaskPath, skyMode, trajectory])
+  }, [activeAssetId, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowMode, lightWidth, maskPath, otherDirection, pixelCount, semanticDelay, skyMaskPath, skyMode, trajectory])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -398,7 +398,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
         trajectory,
         skyMode,
         otherDirection,
-        pixelSize,
+        pixelCount,
         lightWidth,
         depthStrength: Math.min(100, semanticDelay * 4),
         originX: origin.x,
@@ -414,7 +414,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
         colorTransition,
       },
     }]
-  }, [activeAsset, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowMode, lightWidth, otherDirection, pixelSize, regionScales, semanticDelay, skyBlackRatio, skyMask, skyMode, sourceSize, trajectory])
+  }, [activeAsset, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowMode, lightWidth, otherDirection, pixelCount, regionScales, semanticDelay, skyBlackRatio, skyMask, skyMode, sourceSize, trajectory])
   const gpuPreviewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
@@ -438,7 +438,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
 
   function resetParameters(): void {
     setDuration(DEFAULT_PIXEL_FLOW_DURATION)
-    setPixelSize(DEFAULT_PIXEL_FLOW_SIZE)
+    setPixelCount(DEFAULT_PIXEL_FLOW_COUNT)
     setLightWidth(DEFAULT_PIXEL_FLOW_WIDTH)
     setSemanticDelay(DEFAULT_PIXEL_FLOW_SEMANTIC_DELAY)
     setBloomStrength(DEFAULT_PIXEL_FLOW_BLOOM)
@@ -480,7 +480,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
           <div className="pixel-flow-preset-field"><span>其他方向</span><Select variant="compact" fullWidth placeholder="其他方向" options={PIXEL_FLOW_OTHER_DIRECTION_OPTIONS} value={otherDirection} onValueChange={(value) => setOtherDirection(value as PixelFlowOtherDirection)} /></div>
         </>}
         <ParamSlider label="流动时间" value={duration} min={1.5} max={6} step={0.1} onChange={setDuration} formatValue={(value) => `${value.toFixed(1)}s`} />
-        <ParamSlider label="流光方块大小" value={pixelSize} min={4} max={36} onChange={setPixelSize} formatValue={(value) => `${value}px`} />
+        <ParamSlider label="像素块数量" value={pixelCount} min={40} max={320} step={4} onChange={setPixelCount} formatValue={(value) => `${Math.round(value)}个`} />
         <ParamSlider label="波纹宽度比例" value={lightWidth} min={2} max={30} onChange={setLightWidth} formatValue={(value) => `${value}%`} />
         <ParamSlider label="CCD 泛光" value={bloomStrength} min={0} max={100} onChange={setBloomStrength} />
         <ParamSlider label="赫兹色彩" value={filterStrength} min={0} max={100} onChange={setFilterStrength} />

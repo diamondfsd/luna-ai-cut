@@ -319,7 +319,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     if (params.pixel_flow.x > 0.5) {
         let source_size = vec2<f32>(textureDimensions(src_texture));
-        let cell_px = max(2.0, max(source_size.x, source_size.y) * params.pixel_flow.z / 1000.0);
+        let cell_px = max(2.0, max(source_size.x, source_size.y) / max(24.0, params.pixel_flow.z));
         let cell_index = floor(tex_coord * source_size / cell_px);
         let cell_uv = clamp((cell_index + vec2<f32>(0.5)) * cell_px / source_size, vec2<f32>(0.0), vec2<f32>(1.0));
         let cell = pixel_flow_cell(cell_uv, cell_index, source_size, cell_px);
@@ -331,16 +331,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let accelerated = flow_time * flow_time;
         let progress = accelerated * (1.04 + band * 3.4);
         let distance = cell.x - progress;
+        let field_arrival = pixel_flow_continuous_arrival(tex_coord, source_size, cell_px);
+        let block_offset = fract(tex_coord * source_size / cell_px) - vec2<f32>(0.5);
+        let block_alignment = 1.0 - smoothstep(0.16, 0.68, length(block_offset));
+        // Pull the continuous light front toward each active block only near its center.
+        // The influence reaches zero at cell edges, so adjacent cells cannot form hard seams.
+        let bloom_arrival = mix(field_arrival, cell.x, block_alignment * 0.24);
+        let field_distance = bloom_arrival - progress;
         let frame_edge = max(abs(cell_uv.x - 0.5) * 2.0, abs(cell_uv.y - 0.5) * 2.0);
         let edge_hold = smoothstep(0.76, 0.98, frame_edge);
-        let pulse = pixel_flow_light(distance, band, cell.w, edge_hold);
+        let field_edge = max(abs(tex_coord.x - 0.5) * 2.0, abs(tex_coord.y - 0.5) * 2.0);
+        let field_edge_hold = smoothstep(0.76, 0.98, field_edge);
+        let field_pulse = pixel_flow_light(field_distance, band * 3.2, 0.0, field_edge_hold);
+        let exposure_pulse = pixel_flow_light(field_distance, band * 1.25, 0.0, field_edge_hold);
 
         let source = sample_media_texture(tex_coord);
         let filter_strength = params.pixel_flow_finish.y;
         let adjusted = pixel_flow_hertz_grade(apply_color(source.rgb, tex_coord, local_x), filter_strength);
         let gray_value = dot(adjusted, vec3<f32>(0.2126, 0.7152, 0.0722));
         let monochrome = vec3<f32>(clamp((gray_value - 0.5) * 1.08 + 0.52, 0.0, 1.0));
-        let arrival_time = sqrt(max(0.0, cell.x) / max(1.04, 1.04 + band * 3.4)) * flow_end;
+        // Base-color restoration follows the same smooth bloom front, not the square pulse.
+        let arrival_time = sqrt(max(0.0, bloom_arrival) / max(1.04, 1.04 + band * 3.4)) * flow_end;
         let reveal = smoothstep(arrival_time, arrival_time + max(0.001, transition_ratio), params.pixel_flow.y);
         let base = mix(monochrome, adjusted, reveal);
 
@@ -353,32 +364,48 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let saturated = clamp(vec3<f32>(center) + (block_adjusted - vec3<f32>(center)) * 2.08, vec3<f32>(0.0), vec3<f32>(1.0));
         let highlight = mix(saturated, vec3<f32>(1.0), 0.34);
         let depth_light = cell.y * 1.22 + cell.z * 1.52 + cell.w * 1.88;
-        let block_local = abs(fract(tex_coord * source_size / cell_px) - vec2<f32>(0.5));
+        let block_local = abs(block_offset);
         let block_distance = max(block_local.x, block_local.y);
         let block_core = 1.0 - smoothstep(0.34, 0.42, block_distance);
         let outer_glow = 1.0 - smoothstep(0.37, 0.5, block_distance);
         let contrast_noise = pixel_flow_hash(cell_index * vec2<f32>(5.37, 3.11) + vec2<f32>(71.0, 29.0));
         let bright_group = step(0.5, contrast_noise);
-        let emission_gain = mix(0.28, 1.38, bright_group);
-        let dim_amount = (1.0 - bright_group) * pulse * color_gate * 0.24;
-        let contrasted_base = base * (1.0 - dim_amount);
-        let glow = pulse * depth_light * color_gate;
-        let source_luma = max(gray_value, dot(block_adjusted, vec3<f32>(0.2126, 0.7152, 0.0722)));
-        let highlight_weight = smoothstep(0.24, 0.78, source_luma);
+        let emission_gain = mix(0.3, 1.16, bright_group);
+        let fade_noise = pixel_flow_hash(cell_index * vec2<f32>(3.17, 6.29) + vec2<f32>(13.0, 89.0));
+        let random_hold = edge_hold + mix(0.08, 0.58, fade_noise);
+        let random_pulse = pixel_flow_light(
+            distance,
+            band * mix(0.76, 1.18, contrast_noise),
+            cell.w,
+            random_hold,
+        );
+        let glow = random_pulse * depth_light * color_gate;
+        let local_maximum = max(adjusted.r, max(adjusted.g, adjusted.b));
+        let local_gate = smoothstep(0.018, 0.09, local_maximum);
+        let highlight_weight = smoothstep(0.24, 0.78, gray_value);
         let bloom_strength = params.pixel_flow_finish.x;
-        let underlight_pulse = pixel_flow_light(distance, band * 3.2, cell.w, edge_hold);
-        let underlight = underlight_pulse * color_gate * mix(0.14, 1.35, bloom_strength) * mix(0.38, 1.35, highlight_weight);
-        let underlight_color = mix(saturated, vec3<f32>(1.0), 0.22 + highlight_weight * 0.38);
-        let exposed_base = contrasted_base * (1.0 + underlight * (0.52 + highlight_weight * 0.72));
+        let radial_halo = exp(-dot(block_offset, block_offset) * 8.0);
+        let localized_pulse = sqrt(max(0.0, field_pulse * random_pulse)) * radial_halo;
+        let underlight = localized_pulse * local_gate * mix(0.08, 0.78, bloom_strength) * mix(0.45, 1.12, highlight_weight);
+        let smooth_color = clamp(adjusted * 1.26, vec3<f32>(0.0), vec3<f32>(1.0));
+        let underlight_color = mix(smooth_color, vec3<f32>(1.0), 0.42 + highlight_weight * 0.42);
+        let exposure_amount = clamp(
+            underlight * 0.2
+                + exposure_pulse * radial_halo * local_gate * bloom_strength * mix(0.24, 0.74, highlight_weight),
+            0.0,
+            1.0,
+        );
+        // Screen-style exposure creates the clipped white/cyan light plate seen in CCD glow.
+        let exposed_base = vec3<f32>(1.0)
+            - (vec3<f32>(1.0) - base) * (vec3<f32>(1.0) - underlight_color * exposure_amount);
         let bloom_radius = vec2<f32>(cell_px) / source_size * mix(0.75, 1.8, bloom_strength);
         let ccd_bloom = pixel_flow_hertz_grade(pixel_flow_ccd_bloom(tex_coord, bloom_radius), filter_strength);
-        let ccd_light = ccd_bloom * underlight_pulse * bloom_strength * color_gate * 1.75;
+        let ccd_light = ccd_bloom * localized_pulse * bloom_strength * 0.72;
         let lit = exposed_base
-            + saturated * underlight * 0.62
-            + underlight_color * underlight * highlight_weight * 1.05
+            + underlight_color * underlight * 0.16
             + ccd_light
-            + saturated * glow * emission_gain * (outer_glow * 0.62 + block_core * 1.18)
-            + highlight * glow * emission_gain * block_core * 0.72;
+            + saturated * glow * emission_gain * (outer_glow * 0.46 + block_core * 0.96)
+            + highlight * glow * emission_gain * block_core * 0.5;
         let layer_alpha = source.a * params.opacity * corner_coverage;
         return vec4<f32>(clamp(lit, vec3<f32>(0.0), vec3<f32>(1.35)) * layer_alpha, layer_alpha);
     }
