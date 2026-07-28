@@ -87,6 +87,22 @@
   background: #277b68;
 }
 
+.workspace-creative-preview--only-your-color {
+  background: #62666a;
+}
+
+.workspace-creative-preview--only-your-color::before {
+  content: '';
+  position: absolute;
+  left: 36%;
+  bottom: 14%;
+  width: 28%;
+  height: 58%;
+  border-radius: 45% 45% 10% 10%;
+  background: #d0503e;
+  box-shadow: 0 -20px 0 -7px #e3b18a;
+}
+
 .workspace-creative-preview--triple {
   background: #384c3c;
 }

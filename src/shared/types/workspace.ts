@@ -49,6 +49,14 @@ export interface WorkspaceColorRevealState {
   stageMode?: 'two' | 'three'
 }
 
+export interface WorkspaceOnlyYourColorState {
+  intensity: number
+  subjectSaturation?: number
+  subjectModel?: PixelStretchSubjectModel
+  maskPath?: string
+  maskAssetId?: string
+}
+
 export type PixelStretchPresetId = 'left' | 'right' | 'top' | 'bottom' | 'horizontal' | 'vertical'
 export type PixelStretchSubjectModel = 'fast' | 'precise'
 export type PixelStretchFlowShape = 'straight' | 'arc' | 'cape' | 's-curve' | 'custom'
@@ -91,6 +99,8 @@ export interface WorkspaceProject {
   creative?: {
     tripleStitch?: WorkspaceTripleStitchState
     colorReveal?: WorkspaceColorRevealState
+    onlyYourColor?: WorkspaceOnlyYourColorState
+    onlyYourColorByAssetId?: Record<string, WorkspaceOnlyYourColorState>
     pixelStretch?: WorkspacePixelStretchState
     pixelStretchByAssetId?: Record<string, WorkspacePixelStretchState>
   }
