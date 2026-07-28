@@ -115,6 +115,8 @@ export function NativeGpuVideoPreview({
   const occludedRef = useRef(false)
   const activeRef = useRef(active)
   const compositionRef = useRef<CompositionInput | null>(null)
+  const compositionUpdateRef = useRef(0)
+  const seekUpdateRef = useRef(0)
   const callbackRef = useRef({ onFallback, onRender, onVideoElement })
   const playbackRef = useRef({ playing, primaryLayer: layers.find((layer) => layer.isVideo) })
   const [initialBounds, setInitialBounds] = useState<NativePreviewBounds | null>(null)
@@ -306,7 +308,10 @@ export function NativeGpuVideoPreview({
     if (!api) return
     const sourceChanged = compositionSourceRef.current !== primarySource
     compositionSourceRef.current = primarySource
-    const isActive = () => sessionRef.current === sessionId
+    const updateId = ++compositionUpdateRef.current
+    const isActive = () => (
+      sessionRef.current === sessionId && compositionUpdateRef.current === updateId
+    )
     void (async () => {
       try {
         const before = await api.getNativePreviewSessionStats(sessionId)
@@ -326,6 +331,9 @@ export function NativeGpuVideoPreview({
         }
       }
     })()
+    return () => {
+      if (compositionUpdateRef.current === updateId) compositionUpdateRef.current += 1
+    }
   }, [composition, primarySource])
 
   useEffect(() => {
@@ -367,7 +375,12 @@ export function NativeGpuVideoPreview({
       const sessionId = sessionRef.current
       const api = nativePreviewApi()
       if (sessionId === null || !api) return
-      const isActive = () => sessionRef.current === sessionId && videoRef.current === video
+      const updateId = ++seekUpdateRef.current
+      const isActive = () => (
+        sessionRef.current === sessionId
+        && videoRef.current === video
+        && seekUpdateRef.current === updateId
+      )
       void (async () => {
         try {
           const before = await api.getNativePreviewSessionStats(sessionId)
@@ -375,7 +388,8 @@ export function NativeGpuVideoPreview({
           const time = compositionTimeFor(video, playbackRef.current.primaryLayer)
           const command = playbackRef.current.playing
             ? api.playNativePreview(sessionId, time)
-            : api.pauseNativePreview(sessionId, time)
+            : api.seekNativePreview(sessionId, time)
+                .then(() => api.pauseNativePreview(sessionId, time))
           await command
           if (!isActive()) return
           const rendered = occludedRef.current
@@ -393,11 +407,13 @@ export function NativeGpuVideoPreview({
     video.load()
     videoRef.current = video
     return () => {
+      seekUpdateRef.current += 1
       callbackRef.current.onVideoElement?.(null)
       video.removeEventListener('loadedmetadata', handleLoaded)
       video.removeEventListener('seeked', handleSeeked)
       video.pause()
-      video.src = ''
+      video.removeAttribute('src')
+      video.load()
       videoRef.current = null
     }
   }, [primarySource])

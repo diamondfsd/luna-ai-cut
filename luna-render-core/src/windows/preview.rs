@@ -13,6 +13,8 @@ use super::device::InteropDevice;
 use super::preview_surface::{PreviewBounds, PreviewSurface};
 use super::{ComGuard, MediaFoundationGuard};
 
+const MAX_FRAME_CACHE_BYTES: u64 = 256 * 1024 * 1024;
+
 pub(crate) struct NativePreviewRuntime {
     // 守卫必须覆盖整个会话；Media Foundation 必须在 COM 反初始化前关闭。
     _media_foundation: MediaFoundationGuard,
@@ -109,10 +111,21 @@ impl NativePreviewRuntime {
             .iter()
             .map(|layer| layer.source.path.as_str())
             .collect::<std::collections::HashSet<_>>();
-        self.decoders
-            .retain(|key, _| active.iter().any(|path| key.starts_with(*path)));
-        self.frame_cache
-            .retain(|key, _| active.iter().any(|path| key.starts_with(*path)));
+        let previous_active = self
+            .composition
+            .layers
+            .iter()
+            .map(|layer| layer.source.path.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        if active != previous_active {
+            self.frame_cache.clear();
+            self.decoders.clear();
+        } else {
+            self.decoders
+                .retain(|key, _| active.iter().any(|path| key.starts_with(*path)));
+            self.frame_cache
+                .retain(|key, _| active.iter().any(|path| key.starts_with(*path)));
+        }
         self.composition = composition;
     }
 
@@ -168,7 +181,13 @@ impl NativePreviewRuntime {
             width,
             height,
         });
-        while frames.len() > 3 {
+        while frames.len() > 3
+            || frames
+                .iter()
+                .map(|frame| frame.width as u64 * frame.height as u64 * 4)
+                .sum::<u64>()
+                > MAX_FRAME_CACHE_BYTES
+        {
             frames.pop_front();
         }
         Ok(Some((texture, width, height, rotation, false)))
