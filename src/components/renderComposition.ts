@@ -28,7 +28,8 @@ export function buildCompositionFromPreviewLayers(
 
   // 从视频层的 videoDuration 推导画布时长（截取模式），否则用 options.duration
   const videoLayerDuration = layers.find((l) => l.isVideo && l.videoDuration != null)?.videoDuration
-  const duration = videoLayerDuration ?? options?.duration
+  const effectDuration = layers.find((layer) => layer.pixelFlow)?.pixelFlow?.duration
+  const duration = videoLayerDuration ?? options?.duration ?? effectDuration
 
   const composition: CompositionInput = {
     version: 1,
@@ -81,6 +82,7 @@ export function buildCompositionFromPreviewLayers(
       maskFeather: layer.maskFeather,
       maskTrack: layer.maskTrack,
       pixelStretch: layer.pixelStretch,
+      pixelFlow: layer.pixelFlow,
       transform: layer.transform,
       positioning: layer.positioning,
       restoreLutId: layer.restoreLutId,

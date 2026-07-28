@@ -181,6 +181,21 @@ pub struct RenderPixelStretch {
     pub fill_sample_gaps: Option<bool>,
 }
 
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderPixelFlow {
+    pub duration: f64,
+    pub progress: Option<f64>,
+    pub pixel_size: f64,
+    pub light_width: f64,
+    pub depth_strength: f64,
+    pub origin_x: f64,
+    pub origin_y: f64,
+    pub impact_x: f64,
+    pub impact_y: f64,
+}
+
 impl Default for RenderLayerTransform {
     fn default() -> Self {
         Self {
@@ -240,6 +255,7 @@ pub struct RenderLayer {
     pub mask_feather: Option<f64>,
     pub mask_transform: Option<RenderMaskTransform>,
     pub pixel_stretch: Option<RenderPixelStretch>,
+    pub pixel_flow: Option<RenderPixelFlow>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
     pub restore_lut_id: Option<String>,
@@ -275,6 +291,7 @@ pub struct PreviewLayer {
     pub mask_feather: Option<f64>,
     pub mask_transform: Option<RenderMaskTransform>,
     pub pixel_stretch: Option<RenderPixelStretch>,
+    pub pixel_flow: Option<RenderPixelFlow>,
     pub transform: Option<RenderLayerTransform>,
     pub positioning: Option<LayerPositioning>,
     pub restore_lut_id: Option<String>,

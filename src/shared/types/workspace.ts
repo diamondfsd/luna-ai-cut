@@ -65,12 +65,14 @@ export interface WorkspaceOnlyYourColorState {
 }
 
 export interface WorkspacePixelFlowState {
+  settingsVersion?: number
   duration: number
   pixelSize: number
   lightWidth: number
   semanticDelay: number
   maskPath?: string
   skyMaskPath?: string
+  depthMaskPath?: string
   maskAssetId?: string
 }
 
