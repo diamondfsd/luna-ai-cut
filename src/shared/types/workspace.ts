@@ -1,3 +1,5 @@
+import type { PixelFlowSubjectDirection } from './render'
+
 export interface WorkspaceMediaAsset {
   id: string
   name: string
@@ -71,6 +73,7 @@ export interface WorkspacePixelFlowState {
   lightWidth: number
   initialSaturation: number
   initialBrightness: number
+  subjectDirection: PixelFlowSubjectDirection
   rainSpeed: number
   rainLength: number
   flowStrength: number

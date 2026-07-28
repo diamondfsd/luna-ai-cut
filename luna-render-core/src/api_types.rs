@@ -191,6 +191,7 @@ pub struct RenderPixelFlow {
     pub light_width: f64,
     pub initial_saturation: Option<f64>,
     pub initial_brightness: Option<f64>,
+    pub subject_direction: Option<String>,
     pub rain_speed: f64,
     pub rain_length: f64,
     pub flow_strength: f64,
