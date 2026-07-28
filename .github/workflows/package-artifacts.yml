@@ -133,6 +133,26 @@ jobs:
         run: |
           app_path="$(find release -type d -name '*.app' -print -quit)"
           test -n "$app_path" || { echo "未找到 macOS App"; exit 1; }
+          native_dir="$app_path/Contents/Resources/luna-render-core"
+          test -f "$native_dir/libonnxruntime.1.23.2.dylib" || {
+            echo "Intel App 缺少 ONNX Runtime 运行库"
+            exit 1
+          }
+          for native_file in \
+            "$native_dir/luna-render-core.node" \
+            "$native_dir/sam-segmentation-worker" \
+            "$native_dir/semantic-segmentation-worker" \
+            "$native_dir/specialized-segmentation-worker"; do
+            test -f "$native_file" || { echo "Intel App 缺少原生组件: $native_file"; exit 1; }
+            otool -L "$native_file" | grep -q '@rpath/libonnxruntime' && {
+              echo "Intel App 的 ONNX Runtime 加载路径无效: $native_file"
+              exit 1
+            }
+            otool -L "$native_file" | grep -q '@loader_path/libonnxruntime' || {
+              echo "Intel App 的 ONNX Runtime 加载路径缺失: $native_file"
+              exit 1
+            }
+          done
           codesign --verify --deep --strict --verbose=2 "$app_path"
           codesign --display --verbose=4 "$app_path" 2>&1 | grep -q 'Signature=adhoc' || {
             echo "macOS x64 App 不是 Ad Hoc 签名: $app_path"
