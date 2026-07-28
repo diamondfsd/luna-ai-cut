@@ -44,7 +44,17 @@ fn pixel_flow_edge_strength(uv: vec2<f32>, source_size: vec2<f32>, cell_px: f32)
     return smoothstep(0.055, 0.32, abs(left - right) + abs(above - below));
 }
 
-// The three regions share gravity, but sky starts first and foreground surfaces hold longer streams.
+fn pixel_flow_subject_direction_coord(uv: vec2<f32>, source_size: vec2<f32>) -> f32 {
+    let direction = params.pixel_flow_scale.z;
+    if (direction < 0.5) { return uv.y; }
+    if (direction < 1.5) { return 1.0 - uv.y; }
+    if (direction < 2.5) { return uv.x; }
+    if (direction < 3.5) { return 1.0 - uv.x; }
+    let pixel_offset = (uv - vec2<f32>(0.5)) * source_size;
+    return clamp(length(pixel_offset) / max(1.0, length(source_size * 0.5)), 0.0, 1.0);
+}
+
+// Sky and background keep gravity; only the subject can use a different scan direction.
 fn pixel_flow_arrival(uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<f32>, cell_px: f32) -> vec4<f32> {
     let regions = pixel_flow_regions(uv);
     let column_noise = pixel_flow_hash(vec2<f32>(cell_index.x * 1.37 + 19.0, 7.0));
@@ -55,11 +65,12 @@ fn pixel_flow_arrival(uv: vec2<f32>, cell_index: vec2<f32>, source_size: vec2<f3
     let speed = mix(0.78, 1.32, params.pixel_flow_geometry.x);
     let edge = pixel_flow_edge_strength(uv, source_size, cell_px);
     let luma = pixel_flow_luma(pixel_flow_source(uv));
+    let subject_coord = pixel_flow_subject_direction_coord(uv, source_size);
     let highlight_advance = smoothstep(0.46, 0.88, luma) * 0.055;
     let sky_arrival = 0.005 + uv.y * 0.22 / speed + column_noise * 0.09 + fine * 0.02;
     let background_arrival = 0.11 + uv.y * 0.47 / speed + column_noise * 0.06 + coarse * 0.065
         - edge * 0.075 - highlight_advance;
-    let subject_arrival = 0.17 + uv.y * 0.48 / speed + column_noise * 0.055 + coarse * 0.05
+    let subject_arrival = 0.17 + subject_coord * 0.48 / speed + column_noise * 0.055 + coarse * 0.05
         + params.pixel_flow_geometry.w * 0.14 - edge * 0.09 - highlight_advance;
     let arrival = dot(regions, vec3<f32>(sky_arrival, background_arrival, subject_arrival));
     return vec4<f32>(clamp(arrival, 0.0, 0.92), regions);
@@ -70,9 +81,10 @@ fn pixel_flow_continuous_arrival(uv: vec2<f32>, source_size: vec2<f32>, cell_px:
     let speed = mix(0.78, 1.32, params.pixel_flow_geometry.x);
     let field = uv * source_size / max(12.0, cell_px * 7.0) + vec2<f32>(17.0, 29.0);
     let warp = (pixel_flow_smooth_noise(field) - 0.5) * 0.055;
+    let subject_coord = pixel_flow_subject_direction_coord(uv, source_size);
     let sky_arrival = 0.02 + uv.y * 0.21 / speed + warp * 0.35;
     let background_arrival = 0.13 + uv.y * 0.44 / speed + warp;
-    let subject_arrival = 0.19 + uv.y * 0.46 / speed + params.pixel_flow_geometry.w * 0.12 + warp;
+    let subject_arrival = 0.19 + subject_coord * 0.46 / speed + params.pixel_flow_geometry.w * 0.12 + warp;
     return clamp(dot(regions, vec3<f32>(sky_arrival, background_arrival, subject_arrival)), 0.0, 1.0);
 }
 

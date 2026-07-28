@@ -16,6 +16,9 @@
 .pixel-flow-panel-head { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid #333; }
 .pixel-flow-panel-head strong { color: #e0e0e0; font-size: 14px; }
 .pixel-flow-panel-head span { color: #888; font-size: 12px; line-height: 1.5; }
+.pixel-flow-generating { min-height: 34px; display: flex; align-items: center; padding: 0 10px; border: 1px solid #3e5264; border-radius: 6px; background: #202b34; color: #b6d4e8; font-size: 12px; }
+.pixel-flow-generating .loading-indicator { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; }
+.pixel-flow-generating .loading-indicator svg { width: 16px; height: 16px; }
 .pixel-flow-options { display: grid; gap: 13px; }
 .pixel-flow-preset-field { display: grid; gap: 6px; color: #aaa; font-size: 11px; }
 .pixel-flow-ready { padding: 8px 10px; border: 1px solid #3e5264; border-radius: 6px; background: #202b34; color: #9fc2db; font-size: 11px; }

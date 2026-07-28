@@ -77,6 +77,7 @@ export interface CompositionInput {
       lightWidth: number
       initialSaturation: number
       initialBrightness: number
+      subjectDirection: 'down' | 'up' | 'right' | 'left' | 'outward'
       rainSpeed: number
       rainLength: number
       flowStrength: number
