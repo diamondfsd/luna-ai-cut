@@ -1,5 +1,7 @@
 import { Droplets, LayoutTemplate, ScanSearch, WandSparkles, type LucideIcon } from 'lucide-react'
 
+import type { WorkspaceMediaKind } from '../../shared/types'
+
 export type CreativeModeId = 'triple-stitch' | 'color-reveal' | 'only-your-color' | 'pixel-stretch'
 
 export interface CreativeCatalogItem {
@@ -9,6 +11,12 @@ export interface CreativeCatalogItem {
   description: string
   icon: LucideIcon
   previewClassName: string
+  supportedMediaKinds?: readonly WorkspaceMediaKind[]
+}
+
+export interface CreativeModuleProps {
+  onBack: () => void
+  supportedMediaKinds?: readonly WorkspaceMediaKind[]
 }
 
 export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
@@ -19,6 +27,7 @@ export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
     description: '保留主体色彩，让背景自然呈现黑白质感',
     icon: Droplets,
     previewClassName: 'workspace-creative-preview--only-your-color',
+    supportedMediaKinds: ['image'],
   },
   {
     id: 'pixel-stretch',
@@ -27,6 +36,7 @@ export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
     description: '识别主体后，将背景延展为像素流动效果',
     icon: ScanSearch,
     previewClassName: 'workspace-creative-preview--pixel-stretch',
+    supportedMediaKinds: ['image'],
   },
   {
     id: 'color-reveal',
@@ -35,6 +45,7 @@ export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
     description: '首帧停留后，分段揭示还原后的色彩',
     icon: WandSparkles,
     previewClassName: 'workspace-creative-preview--color',
+    supportedMediaKinds: ['image', 'video'],
   },
   {
     id: 'triple-stitch',
@@ -43,6 +54,7 @@ export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
     description: '将三个素材拼成 9:16 竖版内容',
     icon: LayoutTemplate,
     previewClassName: 'workspace-creative-preview--triple',
+    supportedMediaKinds: ['image', 'video'],
   },
 ]
 

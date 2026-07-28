@@ -16,6 +16,8 @@ import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
 import { CreativeCompareButton } from '../shared/CreativeCompareButton'
+import { preparePreciseSubjectModelIfNeeded } from '../shared/preparePreciseSubjectModel'
+import type { CreativeModuleProps } from '../creativeCatalog'
 import { PixelStretchSampleEditor, type PixelStretchSampleEditorValue } from './PixelStretchSampleEditor'
 import { PixelStretchEffectControls } from './PixelStretchEffectControls'
 import { buildPixelStretchLayers, erodeMaskOnePixel, invertMask, subjectBoundsFromMask, suggestPixelStretchPreset, type SubjectBounds } from './pixelStretchLayers'
@@ -45,7 +47,7 @@ import './pixel-stretch.css'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 
 const DEFAULT_INTENSITY = 100
-export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
+export function PixelStretchCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
@@ -293,10 +295,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
     setPointPicking(false)
     setSubjectModel(value)
     if (value === 'precise') {
-      toast.show('正在准备精准识别，完成后即可使用')
-      void window.luna.workspace.prepareSegmentationModels(['birefnet-general-lite'])
-        .then(() => toast.success('精准识别已准备好'))
-        .catch((error) => toast.error(error instanceof Error ? error.message : '精准识别准备失败，请稍后重试'))
+      void preparePreciseSubjectModelIfNeeded().catch(() => undefined)
     }
   }
 
@@ -490,6 +489,6 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
         <div><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={!activeMaskPath || exporting} onClick={() => void exportEffect()}>{exporting ? '导出中' : '导出图片'}</Button></div>
       </div>
     </aside>
-    <div className="pixel-stretch-media-strip"><WorkspaceMediaStrip /></div>
+    <div className="pixel-stretch-media-strip"><WorkspaceMediaStrip supportedMediaKinds={supportedMediaKinds} /></div>
   </section>
 }

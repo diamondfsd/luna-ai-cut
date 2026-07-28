@@ -1,6 +1,7 @@
 import type { WorkspaceOnlyYourColorState, WorkspaceProject } from '../../../shared/types'
 
 export const DEFAULT_ONLY_YOUR_COLOR_INTENSITY = 100
+export const DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE = 0
 export const DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION = 0
 export const DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE = 0
 
@@ -18,6 +19,11 @@ export function onlyYourColorStateForAsset(
 export function normalizeOnlyYourColorIntensity(value: unknown): number {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric)) : DEFAULT_ONLY_YOUR_COLOR_INTENSITY
+}
+
+export function normalizeOnlyYourColorBackgroundExposure(value: unknown): number {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.max(-5, Math.min(5, numeric)) : DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE
 }
 
 export function normalizeOnlyYourColorSubjectSaturation(value: unknown): number {

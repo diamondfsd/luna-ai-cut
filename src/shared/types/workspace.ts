@@ -7,6 +7,8 @@ export interface WorkspaceMediaAsset {
   isLivePhoto?: boolean
 }
 
+export type WorkspaceMediaKind = WorkspaceMediaAsset['kind']
+
 export interface WorkspaceVideoSegmentsExport {
   sourcePath: string
   segments: Array<{
@@ -51,6 +53,7 @@ export interface WorkspaceColorRevealState {
 
 export interface WorkspaceOnlyYourColorState {
   intensity: number
+  backgroundExposure?: number
   subjectSaturation?: number
   subjectVibrance?: number
   subjectModel?: PixelStretchSubjectModel

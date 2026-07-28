@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 import { Button } from '../../ui'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
-import { CREATIVE_CATALOG, type CreativeModeId } from './creativeCatalog'
+import { CREATIVE_CATALOG, getCreativeCatalogItem, type CreativeModeId, type CreativeModuleProps } from './creativeCatalog'
 import { ColorRevealCreative } from './color-reveal/ColorRevealCreative'
 import { OnlyYourColorCreative } from './only-your-color/OnlyYourColorCreative'
 import { PixelStretchCreative } from './pixel-stretch/PixelStretchCreative'
@@ -15,11 +15,11 @@ interface WorkspaceCreativeFactoryProps {
   onCreativeModeChange: (modeId: CreativeModeId | null) => void
 }
 
-const CREATIVE_RENDERERS: Record<CreativeModeId, (onBack: () => void) => ReactNode> = {
-  'color-reveal': (onBack) => <ColorRevealCreative onBack={onBack} />,
-  'only-your-color': (onBack) => <OnlyYourColorCreative onBack={onBack} />,
-  'pixel-stretch': (onBack) => <PixelStretchCreative onBack={onBack} />,
-  'triple-stitch': (onBack) => <TripleStitchCreative onBack={onBack} />,
+const CREATIVE_RENDERERS: Record<CreativeModeId, (props: CreativeModuleProps) => ReactNode> = {
+  'color-reveal': (props) => <ColorRevealCreative {...props} />,
+  'only-your-color': (props) => <OnlyYourColorCreative {...props} />,
+  'pixel-stretch': (props) => <PixelStretchCreative {...props} />,
+  'triple-stitch': (props) => <TripleStitchCreative {...props} />,
 }
 
 function CreativeCover({ id }: { id: CreativeModeId }) {
@@ -53,7 +53,10 @@ export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange 
   const media = useWorkspaceMedia()
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspaceCreativeFactory render creativeModeId=${creativeModeId}`)
   if (creativeModeId) {
-    return CREATIVE_RENDERERS[creativeModeId](() => onCreativeModeChange(null))
+    return CREATIVE_RENDERERS[creativeModeId]({
+      onBack: () => onCreativeModeChange(null),
+      supportedMediaKinds: getCreativeCatalogItem(creativeModeId)?.supportedMediaKinds,
+    })
   }
 
   return (
