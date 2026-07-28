@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::composition::{composition_layers, mux_primary_audio, CompositionInput};
+use crate::composition::{
+    bind_layer_mask_texture, composition_layers, mux_primary_audio, CompositionInput,
+};
 use crate::compositor::{Compositor, PreviewTextureInfo};
 use crate::export::TaskState;
 use crate::media::decode_static_image_scaled;
@@ -125,6 +127,7 @@ fn export_frames(
 ) -> Result<(), String> {
     let mut decoders: HashMap<String, VideoDecoder> = HashMap::new();
     let mut static_textures: HashMap<String, (u32, u32, u32)> = HashMap::new();
+    let mut mask_textures: HashMap<String, u32> = HashMap::new();
     let started = std::time::Instant::now();
     let log_interval = (total_frames / 10).max(1);
 
@@ -200,6 +203,14 @@ fn export_frames(
                             static_textures.insert(layer.file_path.clone(), cached);
                             cached
                         };
+                    bind_layer_mask_texture(
+                        compositor,
+                        ffmpeg_path,
+                        ffprobe_path,
+                        composition.canvas.width.max(composition.canvas.height),
+                        &mut mask_textures,
+                        &mut layer,
+                    )?;
                     source_layers.push((
                         layer,
                         PreviewTextureInfo {
