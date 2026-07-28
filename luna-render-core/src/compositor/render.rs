@@ -425,6 +425,7 @@ impl Compositor {
                             Some("right") => 2.0,
                             Some("left") => 3.0,
                             Some("outward") => 4.0,
+                            Some("inward") => 5.0,
                             _ => 0.0,
                         },
                         0.0,

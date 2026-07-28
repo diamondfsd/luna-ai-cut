@@ -49,6 +49,7 @@ export function PixelFlowControls(props: PixelFlowControlsProps) {
             { value: 'right', label: '向右' },
             { value: 'left', label: '向左' },
             { value: 'outward', label: '中心扩散' },
+            { value: 'inward', label: '向内聚合' },
           ]}
           onValueChange={(value) => props.onSubjectDirectionChange(value as PixelFlowSubjectDirection)}
         />
