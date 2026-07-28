@@ -6,7 +6,8 @@ import { createPixelFlowCells, pixelFlowProgress, type PixelFlowMask } from './p
 
 interface PixelFlowCanvasProps {
   asset: WorkspaceMediaAsset
-  mask: PixelFlowMask | null
+  subjectMask: PixelFlowMask | null
+  skyMask: PixelFlowMask | null
   duration: number
   pixelSize: number
   lightWidth: number
@@ -23,7 +24,8 @@ const MAX_PREVIEW_SIDE = 1080
 
 export function PixelFlowCanvas({
   asset,
-  mask,
+  subjectMask,
+  skyMask,
   duration,
   pixelSize,
   lightWidth,
@@ -101,11 +103,11 @@ export function PixelFlowCanvas({
     const context = canvas.getContext('2d')
     if (!context) return
     const cellSize = Math.max(4, Math.round(Math.max(scene.width, scene.height) * pixelSize / 1000))
-    const cells = createPixelFlowCells(scene.pixels, scene.width, scene.height, cellSize, semanticDelay / 100, mask)
+    const cells = createPixelFlowCells(scene.pixels, scene.width, scene.height, cellSize, semanticDelay / 100, subjectMask, skyMask)
     const band = Math.max(0.012, lightWidth / 100)
 
     function render(time: number): void {
-      const progress = pixelFlowProgress(time, duration) * (1 + semanticDelay / 100 + band)
+      const progress = pixelFlowProgress(time, duration) * (1.02 + band)
       context!.globalAlpha = 1
       context!.globalCompositeOperation = 'source-over'
       context!.filter = 'none'
@@ -122,17 +124,17 @@ export function PixelFlowCanvas({
 
       context!.save()
       context!.globalCompositeOperation = 'screen'
-      context!.shadowColor = 'rgba(210, 238, 255, 0.95)'
       context!.shadowBlur = cellSize * 1.4
       for (const cell of cells) {
         const distance = cell.arrival - progress
         if (distance < -band * 0.3 || distance > band) continue
         const strength = 1 - Math.abs(distance - band * 0.2) / (band * 0.8)
         context!.globalAlpha = Math.max(0.16, Math.min(0.92, strength))
+        context!.shadowColor = cell.glowColor
         context!.fillStyle = cell.color
         context!.fillRect(cell.x + 0.5, cell.y + 0.5, Math.max(1, cell.width - 1), Math.max(1, cell.height - 1))
         context!.globalAlpha *= 0.62
-        context!.fillStyle = '#ffffff'
+        context!.fillStyle = cell.highlightColor
         context!.fillRect(cell.x + 1, cell.y + 1, Math.max(1, cell.width - 2), Math.max(1, cell.height - 2))
       }
       context!.restore()
@@ -143,7 +145,7 @@ export function PixelFlowCanvas({
     return () => {
       if (renderFrameRef.current === render) renderFrameRef.current = () => undefined
     }
-  }, [duration, lightWidth, mask, pixelSize, sceneVersion, semanticDelay])
+  }, [duration, lightWidth, pixelSize, sceneVersion, semanticDelay, skyMask, subjectMask])
 
   useEffect(() => {
     if (!playing) renderFrameRef.current(currentTime)
