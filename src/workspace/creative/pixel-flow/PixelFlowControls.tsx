@@ -35,7 +35,7 @@ export function PixelFlowControls(props: PixelFlowControlsProps) {
     <div className="pixel-flow-options">
       <ParamSlider label="效果时长" value={props.duration} min={0.7} max={3} step={0.05} onChange={props.onDurationChange} formatValue={(value) => `${value.toFixed(2)}s`} />
       <ParamSlider label="像素密度" value={props.pixelCount} min={120} max={360} step={4} onChange={props.onPixelCountChange} formatValue={(value) => `${Math.round(value)}个`} />
-      <ParamSlider label="像素亮度" value={props.lightWidth} min={2} max={16} onChange={props.onLightWidthChange} formatValue={(value) => `${Math.round(value)}%`} />
+      <ParamSlider label="像素亮度" value={props.lightWidth} min={2} max={32} onChange={props.onLightWidthChange} formatValue={(value) => `${Math.round(value)}%`} />
       <label className="pixel-flow-preset-field">
         <span>主体方向</span>
         <Select

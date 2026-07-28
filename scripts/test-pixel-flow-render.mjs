@@ -26,13 +26,22 @@ function sourceImage() {
       const subject = Math.hypot(x - 64, y - 88) <= 18
       const sky = y < 45
       const black = x < 24 && (y < 45 || (y >= 60 && y < 84))
-      const darkRed = x >= 24 && x < 40 && y >= 60 && y < 84
       const highlight = x >= 90 && x < 110 && y >= 48 && y < 66
-      const color = black ? [0, 0, 0] : darkRed ? [24, 2, 4] : highlight ? [245, 210, 96] : subject ? [32, 205, 76] : sky ? [42, 126, 224] : [226, 48, 82]
+      const color = black ? [0, 0, 0] : highlight ? [245, 210, 96] : subject ? [32, 205, 76] : sky ? [42, 126, 224] : [226, 48, 82]
       pixels[offset] = color[0]
       pixels[offset + 1] = color[1]
       pixels[offset + 2] = color[2]
     }
+  }
+  return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
+}
+
+function solidSourceImage([red, green, blue]) {
+  const pixels = Buffer.alloc(width * height * 3)
+  for (let offset = 0; offset < pixels.length; offset += 3) {
+    pixels[offset] = red
+    pixels[offset + 1] = green
+    pixels[offset + 2] = blue
   }
   return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
 }
@@ -149,8 +158,15 @@ function compositionWithoutPixelFlow(composition) {
 
 try {
   const sourcePath = path.join(temporaryRoot, 'scene.ppm')
+  const blackSourcePath = path.join(temporaryRoot, 'black.ppm')
+  const darkRedSourcePath = path.join(temporaryRoot, 'dark-red.ppm')
   const depthPath = path.join(temporaryRoot, 'depth.pgm')
-  await Promise.all([writeFile(sourcePath, sourceImage()), writeFile(depthPath, depthMaskImage())])
+  await Promise.all([
+    writeFile(sourcePath, sourceImage()),
+    writeFile(blackSourcePath, solidSourceImage([0, 0, 0])),
+    writeFile(darkRedSourcePath, solidSourceImage([24, 2, 4])),
+    writeFile(depthPath, depthMaskImage()),
+  ])
   const composition = {
     version: 1,
     canvas: { width, height, duration, fps: 30 },
@@ -185,7 +201,6 @@ try {
   const saturatedInitial = render(compositionWithPixelFlow(composition, { initialSaturation: 100 }), 0)
   const brighterInitial = render(compositionWithPixelFlow(composition, { initialBrightness: 50 }), 0)
   const ignition = render(composition, 0.2)
-  const ignitionBloomOff = render(compositionWithPixelFlow(composition, { bloomStrength: 0 }), 0.2)
   const spreading = render(composition, 0.5)
   const finished = render(composition, duration)
   const slowRain = render(compositionWithPixelFlow(composition, { rainSpeed: 20 }), 0.45)
@@ -196,6 +211,8 @@ try {
   const flowFull = render(compositionWithPixelFlow(composition, { flowStrength: 100, bloomStrength: 0 }), 0.36)
   const bloomOff = render(compositionWithPixelFlow(composition, { bloomStrength: 0 }), 0.42)
   const bloomFull = render(compositionWithPixelFlow(composition, { bloomStrength: 100 }), 0.42)
+  const brightness16 = render(compositionWithPixelFlow(composition, { lightWidth: 16, bloomStrength: 0 }), 0.42)
+  const brightness32 = render(compositionWithPixelFlow(composition, { lightWidth: 32, bloomStrength: 0 }), 0.42)
   const finishedBloomOff = render(compositionWithPixelFlow(composition, { bloomStrength: 0 }), duration)
   const finishedBloomFull = render(compositionWithPixelFlow(composition, { bloomStrength: 100 }), duration)
   const filterOff = render(compositionWithPixelFlow(composition, { filterStrength: 0 }), duration)
@@ -203,6 +220,12 @@ try {
   const fastColor = render(compositionWithPixelFlow(composition, { colorTransition: 0.1, flowStrength: 20, bloomStrength: 0 }), 0.52)
   const gradualColor = render(compositionWithPixelFlow(composition, { colorTransition: 0.8, flowStrength: 20, bloomStrength: 0 }), 0.52)
   const localColorReveal = render(compositionWithPixelFlow(composition, { flowStrength: 0, bloomStrength: 0 }), 0.3)
+  const blackComposition = structuredClone(composition)
+  blackComposition.layers[0].source.path = blackSourcePath
+  const blackInitial = render(blackComposition, 0)
+  const blackIgnition = render(blackComposition, 0.2)
+  const darkRedComposition = structuredClone(composition)
+  darkRedComposition.layers[0].source.path = darkRedSourcePath
   const segmented = structuredClone(composition)
   segmented.layers[0].maskPath = depthPath
   segmented.layers[0].pixelFlow.segmented = true
@@ -225,18 +248,14 @@ try {
   const upperRain = regionDifference(ignition, initial, 0, 48)
   const lowerRain = regionDifference(ignition, initial, 88, 128)
   assert.ok(upperRain > lowerRain + 4, `pixel rain reaches the upper frame first (${upperRain} > ${lowerRain})`)
-  const blackSkyRain = rectangleDifference(ignitionBloomOff, initial, 112, 0, 128, 40)
-  const coloredSkyRain = rectangleDifference(ignitionBloomOff, initial, 8, 0, 96, 40)
-  assert.ok(blackSkyRain < coloredSkyRain * 0.18, `black source areas do not generate rain (${blackSkyRain} < ${coloredSkyRain})`)
-  let blackSurfaceFlow = 0
+  assert.ok(frameDifference(blackIgnition, blackInitial) < 0.01, 'pure black source areas do not generate pixel flow')
   let darkRedSurfaceFlow = 0
   for (const sampleTime of [0.3, 0.4, 0.5, 0.6, 0.7]) {
-    const darkFlowOff = render(compositionWithPixelFlow(composition, { flowStrength: 0, bloomStrength: 0 }), sampleTime)
-    const darkFlowFull = render(compositionWithPixelFlow(composition, { flowStrength: 100, bloomStrength: 0 }), sampleTime)
-    blackSurfaceFlow = Math.max(blackSurfaceFlow, rectangleDifference(darkFlowFull, darkFlowOff, 108, 62, 126, 82))
-    darkRedSurfaceFlow = Math.max(darkRedSurfaceFlow, rectangleDifference(darkFlowFull, darkFlowOff, 89, 62, 103, 82))
+    const darkFlowOff = render(compositionWithPixelFlow(darkRedComposition, { flowStrength: 0, bloomStrength: 0 }), sampleTime)
+    const darkFlowFull = render(compositionWithPixelFlow(darkRedComposition, { flowStrength: 100, bloomStrength: 0 }), sampleTime)
+    darkRedSurfaceFlow = Math.max(darkRedSurfaceFlow, frameDifference(darkFlowFull, darkFlowOff))
   }
-  assert.ok(darkRedSurfaceFlow > blackSurfaceFlow + 0.2, `dark saturated red still generates flow (${darkRedSurfaceFlow} > ${blackSurfaceFlow})`)
+  assert.ok(darkRedSurfaceFlow > 0.2, `dark saturated red still generates flow (${darkRedSurfaceFlow})`)
   const speedDifference = frameDifference(slowRain, fastRain)
   const lengthDifference = frameDifference(shortRain, longRain)
   assert.ok(speedDifference > 0.8, `rain speed changes the vertical flow position (${speedDifference})`)
@@ -246,6 +265,7 @@ try {
   assert.ok(colorfulness(finished, 64, 88) > colorfulness(initial, 64, 88) + 40, 'the final frame preserves full color')
   const bloomBrightnessLift = averageBrightness(bloomFull, 88, 46, 112, 68) - averageBrightness(bloomOff, 88, 46, 112, 68)
   assert.ok(bloomBrightnessLift > 2, `CCD bloom lifts the active rain front (${bloomBrightnessLift})`)
+  assert.ok(averageBrightness(brightness32, 88, 46, 112, 68) > averageBrightness(brightness16, 88, 46, 112, 68), 'pixel brightness continues increasing from 16 to 32')
   const finishedBloomDifference = frameDifference(finishedBloomOff, finishedBloomFull)
   assert.ok(finishedBloomDifference > 0.01, `CCD remains restrained but active on the final composite (${finishedBloomDifference})`)
   assert.ok(frameDifference(filterOff, filterFull) > 8, 'the Hertz color strength changes the final color grade')

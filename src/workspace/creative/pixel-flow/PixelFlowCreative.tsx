@@ -201,26 +201,37 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       setSubjectMask({ data: subjectData, width: subjectResult.width, height: subjectResult.height })
       setMaskPath(savedSubject.path)
 
-      requestRef.current.add(skyRequestId)
-      const skyResult = await window.luna.workspace.segmentImage({
-        requestId: skyRequestId,
-        filePath: activeAsset.path,
-        frameTime,
-        targetId: 'sky',
-      })
-      requestRef.current.delete(skyRequestId)
-      if (operationRef.current !== operationId) return
-      const skyData = new Uint8Array(skyResult.bytes)
+      let skyWidth = subjectResult.width
+      let skyHeight = subjectResult.height
+      let skyData = new Uint8Array(skyWidth * skyHeight)
+      try {
+        requestRef.current.add(skyRequestId)
+        const skyResult = await window.luna.workspace.segmentImage({
+          requestId: skyRequestId,
+          filePath: activeAsset.path,
+          frameTime,
+          targetId: 'sky',
+        })
+        if (operationRef.current !== operationId) return
+        skyWidth = skyResult.width
+        skyHeight = skyResult.height
+        skyData = new Uint8Array(skyResult.bytes)
+      } catch {
+        if (operationRef.current !== operationId) return
+        // 没有天空或天空识别不可用时，主体和普通背景仍然可以生成完整效果。
+      } finally {
+        requestRef.current.delete(skyRequestId)
+      }
       const savedSky = await window.luna.workspace.saveColorMask(
         media.currentProject.id,
         `${activeAsset.id}-pixel-flow-sky`,
-        skyResult.width,
-        skyResult.height,
+        skyWidth,
+        skyHeight,
         skyData,
         1,
       )
       if (operationRef.current !== operationId) return
-      setSkyMask({ data: skyData, width: skyResult.width, height: skyResult.height })
+      setSkyMask({ data: skyData, width: skyWidth, height: skyHeight })
       setSkyMaskPath(savedSky.path)
     } catch (error) {
       if (operationRef.current === operationId) {

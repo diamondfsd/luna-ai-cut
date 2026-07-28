@@ -416,11 +416,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let surface_visibility = pixel_flow_source_visibility(surface_native_source);
         let surface_source = pixel_flow_hertz_grade(surface_native_source, filter_strength);
         let surface_color = pixel_flow_vivid_color(surface_source);
-        let surface_brightness = mix(
-            1.45,
-            2.35,
-            clamp((params.pixel_flow.w - 2.0) / 14.0, 0.0, 1.0),
-        );
+        let surface_brightness_level = clamp((params.pixel_flow.w - 2.0) / 14.0, 0.0, 2.15);
+        let surface_brightness = 1.45 + 0.9 * surface_brightness_level;
         let surface_energy = surface_pulse * params.pixel_flow_geometry.z
             * surface_brightness * surface_visibility;
         let colored_surface = surface_color * surface_energy

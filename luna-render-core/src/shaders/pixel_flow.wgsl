@@ -117,7 +117,7 @@ fn pixel_flow_pulse(progress: f32, arrival: f32, regions: vec3<f32>) -> f32 {
 fn pixel_flow_source_visibility(color: vec3<f32>) -> f32 {
     let peak = max(color.r, max(color.g, color.b));
     let signal = max(pixel_flow_luma(color), peak * 0.78);
-    return smoothstep(0.005, 0.08, signal);
+    return smoothstep(0.0015, 0.01, signal);
 }
 
 fn pixel_flow_rain_color(color: vec3<f32>) -> vec3<f32> {
