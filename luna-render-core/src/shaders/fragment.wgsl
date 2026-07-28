@@ -327,8 +327,33 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let duration = max(0.1, params.pixel_flow_depth.x);
         let effect_time = params.pixel_flow.y * duration;
         let progress = effect_time / duration;
-        let cell_pulse = pixel_flow_pulse(progress, cell.x, cell.yzw)
-            * pixel_flow_presence(cell_index, cell, cell_uv, source_size, cell_px);
+        let sky_pulse = pixel_flow_pulse(progress, cell.x, cell.yzw)
+            * pixel_flow_presence(cell_index, cell, cell_uv, source_size, cell_px)
+            * cell.y;
+
+        let surface_cell_px = cell_px * 2.0;
+        let surface_cell_index = floor(tex_coord * source_size / surface_cell_px);
+        let surface_cell_uv = clamp(
+            (surface_cell_index + vec2<f32>(0.5)) * surface_cell_px / source_size,
+            vec2<f32>(0.0),
+            vec2<f32>(1.0),
+        );
+        let surface_cell = pixel_flow_arrival(
+            surface_cell_uv,
+            surface_cell_index,
+            source_size,
+            surface_cell_px,
+        );
+        let surface_region = surface_cell.z + surface_cell.w;
+        let surface_pulse = pixel_flow_pulse(progress, surface_cell.x, surface_cell.yzw)
+            * pixel_flow_presence(
+                surface_cell_index,
+                surface_cell,
+                surface_cell_uv,
+                source_size,
+                surface_cell_px,
+            )
+            * surface_region;
 
         let source = sample_media_texture(tex_coord);
         let filter_strength = params.pixel_flow_finish.y;
@@ -336,13 +361,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let gray_value = pixel_flow_luma(adjusted);
         let monochrome = vec3<f32>(clamp((gray_value - 0.5) * 1.06 + 0.505, 0.0, 1.0));
         let transition_duration = max(0.001, params.pixel_flow_finish.z);
-        let color_start = min(0.14, duration * 0.14);
-        let spatial_delay = field_arrival * min(0.12, transition_duration * 0.24);
-        let color_reveal = smoothstep(
-            color_start + spatial_delay,
-            color_start + spatial_delay + transition_duration,
-            effect_time,
+        let reveal_regions = pixel_flow_regions(tex_coord);
+        let block_arrival = cell.x * reveal_regions.x
+            + surface_cell.x * (reveal_regions.y + reveal_regions.z);
+        let reveal_arrival = mix(field_arrival, block_arrival, 0.72);
+        let reveal_width = clamp(transition_duration / duration * 0.55, 0.025, 0.18);
+        let local_reveal = smoothstep(
+            reveal_arrival - 0.018,
+            reveal_arrival + reveal_width,
+            progress,
         );
+        let final_reveal = smoothstep(0.94, 1.0, progress);
+        let color_reveal = max(local_reveal, final_reveal);
         let base = mix(monochrome, adjusted, color_reveal);
 
         let block_offset = fract(tex_coord * source_size / cell_px) - vec2<f32>(0.5);
@@ -350,31 +380,49 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let block_distance = max(block_local.x, block_local.y);
         let block_core = 1.0 - smoothstep(0.32, 0.44, block_distance);
         let block_halo = 1.0 - smoothstep(0.38, 0.5, block_distance);
-        let block_source = pixel_flow_hertz_grade(apply_color(pixel_flow_source(cell_uv), cell_uv, local_x), filter_strength);
-        let block_luma = pixel_flow_luma(block_source);
-        let highlight_weight = smoothstep(0.35, 0.88, block_luma);
+        let block_source = apply_color(pixel_flow_source(cell_uv), cell_uv, local_x);
+        let rain_visibility = pixel_flow_source_visibility(block_source);
         let cell_noise = pixel_flow_hash(cell_index * vec2<f32>(7.17, 2.93) + vec2<f32>(37.0, 101.0));
         let intensity = params.pixel_flow_geometry.z * mix(0.92, 1.34, cell_noise);
-        let source_peak = max(block_source.r, max(block_source.g, block_source.b));
-        let normalized_color = block_source / max(0.045, source_peak);
-        let target_peak = mix(0.58, 1.08, smoothstep(0.06, 0.72, source_peak));
-        let dark_lift = vec3<f32>((1.0 - smoothstep(0.015, 0.12, source_peak)) * 0.32);
-        let chromatic_color = normalized_color * target_peak + dark_lift;
-        let pale_amount = 0.18 + (1.0 - smoothstep(0.08, 0.6, source_peak)) * 0.32;
-        let native_color = clamp(mix(chromatic_color, vec3<f32>(target_peak), pale_amount), vec3<f32>(0.0), vec3<f32>(1.12));
-        let luminous_color = mix(native_color, vec3<f32>(1.0), highlight_weight * 0.1);
-        let emission = cell_pulse * intensity;
-        let pixel_light = luminous_color * emission * (block_halo * 0.14 + block_core * 0.86);
-        let scanned = vec3<f32>(1.0)
+        let rain_color = pixel_flow_rain_color(block_source);
+        let emission = sky_pulse * intensity * rain_visibility;
+        let pixel_light = rain_color * emission * (block_halo * 0.14 + block_core * 0.86);
+        let rain_scanned = vec3<f32>(1.0)
             - (vec3<f32>(1.0) - base) * (vec3<f32>(1.0) - clamp(pixel_light, vec3<f32>(0.0), vec3<f32>(0.94)));
+
+        let surface_offset = fract(tex_coord * source_size / surface_cell_px) - vec2<f32>(0.5);
+        let surface_distance = max(abs(surface_offset.x), abs(surface_offset.y));
+        let surface_core = 1.0 - smoothstep(0.34, 0.45, surface_distance);
+        let surface_hot_core = 1.0 - smoothstep(0.16, 0.29, surface_distance);
+        let surface_halo = 1.0 - smoothstep(0.4, 0.5, surface_distance);
+        let surface_native_source = apply_color(pixel_flow_source(surface_cell_uv), surface_cell_uv, local_x);
+        let surface_visibility = pixel_flow_source_visibility(surface_native_source);
+        let surface_source = pixel_flow_hertz_grade(surface_native_source, filter_strength);
+        let surface_color = pixel_flow_vivid_color(surface_source);
+        let surface_brightness = mix(
+            1.45,
+            2.35,
+            clamp((params.pixel_flow.w - 2.0) / 14.0, 0.0, 1.0),
+        );
+        let surface_energy = surface_pulse * params.pixel_flow_geometry.z
+            * surface_brightness * surface_visibility;
+        let colored_surface = surface_color * surface_energy
+            * (surface_halo * 0.32 + surface_core * 1.24);
+        let white_hot_core = vec3<f32>(1.0) * surface_energy * surface_hot_core * 0.34;
+        let surface_light = colored_surface + white_hot_core;
+        let scanned = vec3<f32>(1.0)
+            - (vec3<f32>(1.0) - rain_scanned)
+                * (vec3<f32>(1.0) - clamp(surface_light, vec3<f32>(0.0), vec3<f32>(1.0)));
 
         let bloom_strength = params.pixel_flow_finish.x;
         let bloom_radius = vec2<f32>(cell_px) / source_size * mix(0.8, 1.65, bloom_strength);
         let ccd_bloom = pixel_flow_hertz_grade(pixel_flow_ccd_bloom(tex_coord, bloom_radius), filter_strength);
-        let ccd_amount = bloom_strength * (color_reveal * 0.025 + cell_pulse * 0.13);
-        let lit = scanned + ccd_bloom * ccd_amount;
+        let ccd_amount = bloom_strength * (color_reveal * 0.025 + sky_pulse * 0.13 + surface_pulse * 0.08);
+        let surface_aura = surface_color * surface_pulse * surface_halo
+            * bloom_strength * 0.28;
+        let lit = scanned + ccd_bloom * ccd_amount + surface_aura;
         let layer_alpha = source.a * params.opacity * corner_coverage;
-        return vec4<f32>(clamp(lit, vec3<f32>(0.0), vec3<f32>(1.18)) * layer_alpha, layer_alpha);
+        return vec4<f32>(clamp(lit, vec3<f32>(0.0), vec3<f32>(1.35)) * layer_alpha, layer_alpha);
     }
 
     if (params.pixel_stretch.x > 0.5) {
