@@ -1,4 +1,4 @@
-import { ArrowLeft, Brush, Download, Eye, EyeOff, RotateCcw, ScanSearch } from 'lucide-react'
+import { ArrowLeft, Brush, Download, RotateCcw, ScanSearch } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
 import { LrcRender } from '../../../components/LrcRender'
@@ -15,6 +15,7 @@ import { MaskPanel } from '../../mask/MaskPanel'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { assetSourceUrl, loadCreativeImageSize } from '../shared/creativeMedia'
+import { CreativeCompareButton } from '../shared/CreativeCompareButton'
 import { PixelStretchSampleEditor, type PixelStretchSampleEditorValue } from './PixelStretchSampleEditor'
 import { PixelStretchEffectControls } from './PixelStretchEffectControls'
 import { buildPixelStretchLayers, erodeMaskOnePixel, invertMask, subjectBoundsFromMask, suggestPixelStretchPreset, type SubjectBounds } from './pixelStretchLayers'
@@ -470,7 +471,7 @@ export function PixelStretchCreative({ onBack }: { onBack: () => void }) {
   }
 
   return <section className="pixel-stretch-page">
-    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><Button className="pixel-stretch-compare" variant={showOriginal ? 'toolbar-primary' : 'toolbar'} size="compact" icon={showOriginal ? <EyeOff size={14} /> : <Eye size={14} />} disabled={!isImage || !sourceSize} aria-pressed={showOriginal} title="按住查看原图" onPointerDown={() => setShowOriginal(true)} onPointerUp={() => setShowOriginal(false)} onPointerCancel={() => setShowOriginal(false)} onPointerLeave={() => setShowOriginal(false)} onBlur={() => setShowOriginal(false)} onKeyDown={(event) => { if (event.key === ' ' || event.key === 'Enter') setShowOriginal(true) }} onKeyUp={(event) => { if (event.key === ' ' || event.key === 'Enter') setShowOriginal(false) }}>对比</Button></header>
+    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><CreativeCompareButton className="pixel-stretch-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
     <div className="pixel-stretch-preview">
       {activeAsset && !isImage ? <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>像素拉伸目前支持图片素材</span></div>
         : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} />{!showOriginal && sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{!showOriginal && maskEditing && workspaceMask.editing && <MaskOverlay />}{!showOriginal && pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>
