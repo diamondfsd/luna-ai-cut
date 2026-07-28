@@ -199,6 +199,7 @@ pub struct RenderPixelFlow {
     pub sky_scale: Option<f64>,
     pub background_scale: Option<f64>,
     pub subject_scale: Option<f64>,
+    pub sky_black_ratio: Option<f64>,
 }
 
 impl Default for RenderLayerTransform {

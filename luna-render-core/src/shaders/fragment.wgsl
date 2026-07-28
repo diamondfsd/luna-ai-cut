@@ -352,10 +352,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let block_distance = max(block_local.x, block_local.y);
         let block_core = 1.0 - smoothstep(0.34, 0.42, block_distance);
         let outer_glow = 1.0 - smoothstep(0.37, 0.5, block_distance);
+        let contrast_noise = pixel_flow_hash(cell_index * vec2<f32>(5.37, 3.11) + vec2<f32>(71.0, 29.0));
+        let bright_group = step(0.5, contrast_noise);
+        let emission_gain = mix(0.28, 1.38, bright_group);
+        let dim_amount = (1.0 - bright_group) * pulse * color_gate * 0.24;
+        let contrasted_base = base * (1.0 - dim_amount);
         let glow = pulse * depth_light * color_gate;
-        let lit = base
-            + saturated * glow * (outer_glow * 0.62 + block_core * 1.18)
-            + highlight * glow * block_core * 0.72;
+        let lit = contrasted_base
+            + saturated * glow * emission_gain * (outer_glow * 0.62 + block_core * 1.18)
+            + highlight * glow * emission_gain * block_core * 0.72;
         let layer_alpha = source.a * params.opacity * corner_coverage;
         return vec4<f32>(clamp(lit, vec3<f32>(0.0), vec3<f32>(1.35)) * layer_alpha, layer_alpha);
     }
