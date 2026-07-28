@@ -77,7 +77,7 @@ export interface CompositionInput {
       trajectory?: 'highlight-flow' | 'cascade' | 'diagonal' | 'split'
       skyMode?: 'ripple' | 'sweep' | 'full'
       otherDirection?: 'top-down' | 'outside-in' | 'inside-out'
-      pixelSize: number
+      pixelCount: number
       lightWidth: number
       depthStrength: number
       originX: number

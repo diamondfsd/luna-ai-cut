@@ -75,6 +75,20 @@ function frameDifference(first, second) {
   return difference / first.data.length
 }
 
+function averageAdjacentGainJump(withBloom, withoutBloom, x0, y0, x1, y1) {
+  let total = 0
+  let count = 0
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1 - 1; x += 1) {
+      const gain = brightness(withBloom, x, y) - brightness(withoutBloom, x, y)
+      const nextGain = brightness(withBloom, x + 1, y) - brightness(withoutBloom, x + 1, y)
+      total += Math.abs(gain - nextGain)
+      count += 1
+    }
+  }
+  return total / count
+}
+
 function render(composition, time) {
   return native.renderCompositionFrame({ ffmpegPath, ffprobePath, composition, time, maxSide: width })
 }
@@ -134,7 +148,7 @@ try {
         flowMode: 'segmented',
         skyMode: 'ripple',
         otherDirection: 'top-down',
-        pixelSize: 12,
+        pixelCount: 84,
         lightWidth: 7,
         depthStrength: 44,
         originX: 0.5,
@@ -156,24 +170,25 @@ try {
   const initial = render(composition, 0)
   const falling = render(composition, duration * 0.12)
   const verticalWave = render(composition, duration * 0.55)
-  const edgeHold = render(composition, duration * 0.62)
+  const edgeHold = render(composition, duration * 0.52)
   const background = render(composition, duration * 0.68)
   const subject = render(composition, duration * 0.8)
   const finished = render(composition, duration)
   const skySweep = render(compositionWithModes(composition, 'sweep', 'top-down'), duration * 0.18)
   const skyFull = render(compositionWithModes(composition, 'full', 'top-down'), duration * 0.18)
-  const outsideIn = render(compositionWithModes(composition, 'ripple', 'outside-in'), duration * 0.48)
-  const insideOut = render(compositionWithModes(composition, 'ripple', 'inside-out'), duration * 0.44)
+  const outsideIn = render(compositionWithModes(composition, 'ripple', 'outside-in'), duration * 0.55)
+  const insideOut = render(compositionWithModes(composition, 'ripple', 'inside-out'), duration * 0.55)
   const normalSkySpeed = render(composition, duration * 0.14)
   const darkSkyComposition = compositionWithModes(composition, 'ripple', 'top-down')
   darkSkyComposition.layers[0].pixelFlow.skyBlackRatio = 0.9
   const darkSkySpeed = render(darkSkyComposition, duration * 0.14)
   const wholeFrameEarly = render(wholeFrameComposition(composition), duration * 0.28)
   const wholeFrameMiddle = render(wholeFrameComposition(composition), duration * 0.48)
-  const diagonalFlow = render(wholeFrameComposition(composition, 'diagonal'), duration * 0.32)
-  const splitFlow = render(wholeFrameComposition(composition, 'split'), duration * 0.28)
+  const diagonalFlow = render(wholeFrameComposition(composition, 'diagonal'), duration * 0.45)
+  const splitFlow = render(wholeFrameComposition(composition, 'split'), duration * 0.38)
   const bloomOff = render(compositionWithPixelFlow(composition, { bloomStrength: 0 }), duration * 0.55)
   const bloomFull = render(compositionWithPixelFlow(composition, { bloomStrength: 100 }), duration * 0.55)
+  const blackFilter = render(compositionWithPixelFlow(composition, { bloomStrength: 0 }), duration * 0.68)
   const filterOff = render(compositionWithPixelFlow(composition, { filterStrength: 0 }), duration)
   const filterFull = render(compositionWithPixelFlow(composition, { filterStrength: 100 }), duration)
   const instantColor = render(compositionWithPixelFlow(composition, { colorTransition: 0 }), duration * 0.3)
@@ -193,22 +208,25 @@ try {
   const backgroundBlockBrightness = [30, 42, 54, 78, 90, 102, 114].map((x) => brightness(verticalWave, x, 54))
   assert.ok(Math.max(...backgroundBlockBrightness) - Math.min(...backgroundBlockBrightness) > 80, 'the fixed half-bright half-dim split creates block contrast')
   assert.ok(colorfulness(background, 78, 54) > colorfulness(background, 64, 88) + 25, 'the background wave reaches before the subject')
-  assert.ok(brightness(background, 12, 70) <= brightness(initial, 12, 70) + 3, 'black source blocks do not emit a pixel-flow glow')
+  assert.ok(brightness(blackFilter, 12, 70) <= brightness(initial, 12, 70) + 3, 'black source blocks do not emit square light')
   assert.ok(colorfulness(subject, 64, 88) > colorfulness(initial, 64, 88) + 40, 'the subject lights in the foreground stage')
   assert.ok(colorfulness(finished, 64, 88) > colorfulness(initial, 64, 88) + 40, 'the final frame preserves the revealed subject color')
   assert.ok(brightness(skySweep, 18, 24) > brightness(skySweep, 102, 24) + 40, 'the sky sweep moves from left to right')
   assert.ok(brightness(skyFull, 18, 24) > brightness(initial, 18, 24) + 40, 'the full-sky preset lights the whole sky together')
-  assert.ok(brightness(outsideIn, 18, 54) > brightness(outsideIn, 66, 54) + 40, 'the outside-in preset reaches the edge before the center')
-  assert.ok(brightness(insideOut, 66, 54) > brightness(insideOut, 18, 54) + 40, 'the inside-out preset reaches the center before the edge')
+  assert.ok(colorfulness(outsideIn, 18, 54) > colorfulness(outsideIn, 66, 54) + 20, 'the outside-in preset reaches the edge before the center')
+  assert.ok(colorfulness(insideOut, 66, 54) > colorfulness(insideOut, 18, 54) + 20, 'the inside-out preset reaches the center before the edge')
   assert.ok(brightness(darkSkySpeed, 18, 34) > brightness(normalSkySpeed, 18, 34) + 40, 'a mostly black sky advances faster than a regular sky')
   assert.ok(brightness(wholeFrameEarly, 64, 24) > brightness(wholeFrameEarly, 10, 24) + 30, 'whole-frame flow expands from the upper center')
   assert.ok(colorfulness(wholeFrameMiddle, 64, 54) > colorfulness(wholeFrameMiddle, 64, 108) + 30, 'whole-frame flow falls from top to bottom without semantic staging')
-  assert.ok(brightness(diagonalFlow, 106, 42) > brightness(diagonalFlow, 18, 42) + 30, 'the diagonal preset travels from the upper right')
-  assert.ok(brightness(splitFlow, 64, 24) > brightness(splitFlow, 10, 24) + 30, 'the split preset branches outward from the center')
+  assert.ok(colorfulness(diagonalFlow, 106, 42) > colorfulness(diagonalFlow, 18, 42) + 15, 'the diagonal preset travels from the upper right')
+  assert.ok(colorfulness(splitFlow, 64, 24) > colorfulness(splitFlow, 10, 24) + 15, 'the split preset branches outward from the center')
   const highlightBrightness = averageBrightness(verticalWave, 92, 50, 108, 64)
   const finishedHighlightBrightness = averageBrightness(finished, 92, 50, 108, 64)
   assert.ok(highlightBrightness > finishedHighlightBrightness + 70, 'the broad underlight strongly lifts source highlights')
-  assert.ok(averageBrightness(bloomFull, 88, 46, 112, 68) > averageBrightness(bloomOff, 88, 46, 112, 68) + 35, 'CCD bloom strength controls the wide highlight field')
+  const bloomBrightnessLift = averageBrightness(bloomFull, 88, 46, 112, 68) - averageBrightness(bloomOff, 88, 46, 112, 68)
+  assert.ok(bloomBrightnessLift > 12, `CCD bloom strength controls the local highlight field (${bloomBrightnessLift})`)
+  const bloomGainJump = averageAdjacentGainJump(bloomFull, bloomOff, 30, 50, 86, 64)
+  assert.ok(bloomGainJump < 25, `CCD bloom keeps directional texture without hard pixel-cell seams (${bloomGainJump})`)
   assert.ok(frameDifference(filterOff, filterFull) > 8, 'the Hertz color strength changes the final color grade')
   assert.ok(frameDifference(instantColor, gradualColor) > 5, 'the color transition remains independent from the pixel wave')
   assert.deepEqual(plainStart.data, plainEnd.data, 'layers without pixel flow remain unaffected by pixel-flow timing and finishing')

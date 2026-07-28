@@ -71,7 +71,7 @@ export interface WorkspacePixelFlowState {
   skyMode?: 'ripple' | 'sweep' | 'full'
   otherDirection?: 'top-down' | 'outside-in' | 'inside-out'
   duration: number
-  pixelSize: number
+  pixelCount: number
   lightWidth: number
   semanticDelay: number
   bloomStrength?: number
