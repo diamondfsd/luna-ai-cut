@@ -185,6 +185,7 @@ export interface RenderPixelStretch {
 export interface RenderPixelFlow {
   duration: number
   progress?: number
+  flowMode?: 'segmented' | 'whole-frame'
   skyMode?: 'ripple' | 'sweep' | 'full'
   otherDirection?: 'top-down' | 'outside-in' | 'inside-out'
   pixelSize: number

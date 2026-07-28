@@ -23,7 +23,8 @@ function sourceImage() {
       const subject = Math.hypot(x - 64, y - 88) <= 18
       const sky = y < 45
       const black = x < 24 && y >= 60 && y < 84
-      const color = black ? [0, 0, 0] : subject ? [32, 205, 76] : sky ? [42, 126, 224] : [226, 48, 82]
+      const highlight = x >= 90 && x < 110 && y >= 48 && y < 66
+      const color = black ? [0, 0, 0] : highlight ? [245, 210, 96] : subject ? [32, 205, 76] : sky ? [42, 126, 224] : [226, 48, 82]
       pixels[offset] = color[0]
       pixels[offset + 1] = color[1]
       pixels[offset + 2] = color[2]
@@ -65,6 +66,18 @@ function compositionWithModes(composition, skyMode, otherDirection) {
   return copy
 }
 
+function wholeFrameComposition(composition) {
+  const copy = structuredClone(composition)
+  delete copy.layers[0].maskPath
+  copy.layers[0].pixelFlow.flowMode = 'whole-frame'
+  copy.layers[0].pixelFlow.depthStrength = 100
+  copy.layers[0].pixelFlow.originX = 0.5
+  copy.layers[0].pixelFlow.originY = 0.06
+  copy.layers[0].pixelFlow.impactX = 0.5
+  copy.layers[0].pixelFlow.impactY = 0.14
+  return copy
+}
+
 try {
   const sourcePath = path.join(temporaryRoot, 'scene.ppm')
   const maskPath = path.join(temporaryRoot, 'depth.pgm')
@@ -83,6 +96,7 @@ try {
       maskPath,
       pixelFlow: {
         duration,
+        flowMode: 'segmented',
         skyMode: 'ripple',
         otherDirection: 'top-down',
         pixelSize: 12,
@@ -116,6 +130,8 @@ try {
   const darkSkyComposition = compositionWithModes(composition, 'ripple', 'top-down')
   darkSkyComposition.layers[0].pixelFlow.skyBlackRatio = 0.9
   const darkSkySpeed = render(darkSkyComposition, duration * 0.14)
+  const wholeFrameEarly = render(wholeFrameComposition(composition), duration * 0.38)
+  const wholeFrameMiddle = render(wholeFrameComposition(composition), duration * 0.68)
   for (const frame of [initial, falling, verticalWave, edgeHold, background, subject, finished]) {
     assert.equal(frame.width, width)
     assert.equal(frame.height, height)
@@ -136,6 +152,12 @@ try {
   assert.ok(brightness(outsideIn, 18, 54) > brightness(outsideIn, 66, 54) + 40, 'the outside-in preset reaches the edge before the center')
   assert.ok(brightness(insideOut, 66, 54) > brightness(insideOut, 18, 54) + 40, 'the inside-out preset reaches the center before the edge')
   assert.ok(brightness(darkSkySpeed, 18, 34) > brightness(normalSkySpeed, 18, 34) + 40, 'a mostly black sky advances faster than a regular sky')
+  assert.ok(brightness(wholeFrameEarly, 64, 24) > brightness(wholeFrameEarly, 10, 24) + 30, 'whole-frame flow expands from the upper center')
+  assert.ok(colorfulness(wholeFrameEarly, 64, 24) > colorfulness(initial, 64, 24) + 30, 'whole-frame flow renders without a segmentation mask')
+  assert.ok(colorfulness(wholeFrameMiddle, 64, 54) > colorfulness(wholeFrameMiddle, 64, 108) + 30, 'whole-frame flow falls from top to bottom without semantic staging')
+  const highlightLift = brightness(verticalWave, 96, 54) - brightness(finished, 96, 54)
+  const regularLift = brightness(verticalWave, 78, 54) - brightness(finished, 78, 54)
+  assert.ok(highlightLift > regularLift + 25, 'the broad underlight lifts source highlights more strongly')
   console.log('pixel-flow WGPU render stages passed')
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })

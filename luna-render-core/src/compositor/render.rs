@@ -406,10 +406,14 @@ impl Compositor {
                         Some("full") => 2.0,
                         _ => 0.0,
                     };
-                    let other_direction = match effect.other_direction.as_deref() {
-                        Some("outside-in") => 1.0,
-                        Some("inside-out") => 2.0,
-                        _ => 0.0,
+                    let other_direction = if effect.flow_mode.as_deref() == Some("whole-frame") {
+                        3.0
+                    } else {
+                        match effect.other_direction.as_deref() {
+                            Some("outside-in") => 1.0,
+                            Some("inside-out") => 2.0,
+                            _ => 0.0,
+                        }
                     };
                     [
                         effect.depth_strength.clamp(0.0, 100.0) as f32,
