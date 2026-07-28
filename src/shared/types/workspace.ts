@@ -7,6 +7,15 @@ export interface WorkspaceMediaAsset {
   isLivePhoto?: boolean
 }
 
+export interface WorkspaceVideoSegmentsExport {
+  sourcePath: string
+  segments: Array<{
+    note: string
+    startTime: number
+    endTime: number
+  }>
+}
+
 export interface WorkspaceColorMetadata {
   whiteBalanceMode: 'auto' | 'manual' | 'unknown'
   temperatureKelvin: number | null

@@ -5,6 +5,8 @@ import { constants } from 'node:fs'
 import path from 'node:path'
 import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest } from '../src/shared/types'
 import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
+import { resolveDolbyVisionBitrate } from './dolbyVisionBitrate'
+import { hvccMatchesSps, readHevcSpsConfiguration, readHvccConfigurations, repairHvccFromSps } from './dolbyVisionHvcc'
 
 interface DolbyVisionExportCallbacks {
   signal?: AbortSignal
@@ -30,7 +32,7 @@ interface VideoStream {
 
 interface MediaProbeJson {
   streams?: Array<VideoStream & { codec_type?: string }>
-  format?: { duration?: string }
+  format?: { duration?: string; bit_rate?: string; tags?: Record<string, string> }
 }
 
 function toolPath(name: 'dovi_tool' | 'mp4mux'): string {
@@ -46,8 +48,9 @@ async function executable(name: 'dovi_tool' | 'mp4mux'): Promise<string> {
     await access(bundled, constants.X_OK)
     return bundled
   } catch {
-    if (!app.isPackaged) return name
-    throw new Error('Dolby Vision 导出组件缺失，请重新安装应用')
+    throw new Error(app.isPackaged
+      ? 'Dolby Vision 导出组件缺失，请重新安装应用'
+      : 'Dolby Vision 导出组件尚未准备好，请重新启动应用')
   }
 }
 
@@ -104,6 +107,8 @@ export function parseDolbyVisionProbe(probe: MediaProbeJson): DolbyVisionProbeRe
   const stream = videoStream(probe)
   if (!stream) return { eligible: false, reason: '未找到视频轨道' }
   const dovi = stream.side_data_list?.find((item) => item.side_data_type === 'DOVI configuration record')
+  const brands = probe.format?.tags?.compatible_brands?.toLowerCase() ?? ''
+  const containerMarkedDolbyVision = brands.includes('dby1')
   const profile = Number(dovi?.dv_profile)
   const compatibilityId = Number(dovi?.dv_bl_signal_compatibility_id)
   const baseValid = stream.codec_name === 'hevc'
@@ -112,7 +117,12 @@ export function parseDolbyVisionProbe(probe: MediaProbeJson): DolbyVisionProbeRe
     && stream.color_primaries === 'bt2020'
     && stream.color_transfer === 'arib-std-b67'
     && stream.color_space === 'bt2020nc'
-  const eligible = baseValid && profile === 8 && compatibilityId === 4 && Number(dovi?.rpu_present_flag) === 1
+  const detailedDolbyVisionMatch = profile === 8
+    && compatibilityId === 4
+    && Number(dovi?.rpu_present_flag) === 1
+  // 与媒体列表保持一致：旧版 ffprobe 可能不返回 DOVI side data，
+  // 此时使用容器的 dby1 兼容品牌标记识别 Dolby Vision。
+  const eligible = baseValid && (detailedDolbyVisionMatch || (!dovi && containerMarkedDolbyVision))
   return {
     eligible,
     profile: Number.isFinite(profile) ? profile : undefined,
@@ -180,6 +190,9 @@ function assertRequest(request: DolbyVisionWatermarkExportRequest): void {
   if (!(request.positioning.targetWidth > 0 && request.positioning.targetWidth <= 1)) {
     throw new Error('Dolby Vision 水印尺寸无效')
   }
+  if (request.opacity !== undefined && !(request.opacity >= 0 && request.opacity <= 1)) {
+    throw new Error('Dolby Vision 水印透明度无效')
+  }
 }
 
 export async function exportDolbyVisionWatermark(
@@ -195,7 +208,7 @@ export async function exportDolbyVisionWatermark(
   const fps = frameRateNumber(sourceVideo.avg_frame_rate || sourceVideo.r_frame_rate)
   if (!fps || !eligibility.width || !eligibility.height) throw new Error('无法读取原视频规格')
   const duration = Number(sourceVideo.duration ?? sourceProbe.format?.duration) || 0
-  const bitrate = Math.max(10_000_000, Number(sourceVideo.bit_rate) || 40_000_000)
+  const bitrate = resolveDolbyVisionBitrate(sourceVideo.bit_rate, sourceProbe.format?.bit_rate)
   const ffmpeg = getFfmpegPath()
   const dovi = await executable('dovi_tool')
   const mp4mux = await executable('mp4mux')
@@ -217,7 +230,8 @@ export async function exportDolbyVisionWatermark(
 
     const position = overlayExpression(request.positioning)
     const width = Math.max(2, Math.round(eligibility.width * request.positioning.targetWidth / 2) * 2)
-    const filter = `[0:v]format=p010le,setparams=range=limited:color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc[base];[1:v]scale=${width}:-2:flags=lanczos,format=rgba,colorchannelmixer=rr=0.90:gg=0.90:bb=0.90,format=yuva444p10le[wm];[base][wm]overlay=x=${position.x}:y=${position.y}:format=yuv420p10:shortest=1[out]`
+    const opacity = request.opacity ?? 1
+    const filter = `[0:v]format=p010le,setparams=range=limited:color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc[base];[1:v]scale=${width}:-2:flags=lanczos,format=rgba,colorchannelmixer=rr=0.90:gg=0.90:bb=0.90:aa=${opacity},format=yuva444p10le[wm];[base][wm]overlay=x=${position.x}:y=${position.y}:format=yuv420p10:shortest=1[out]`
     let encoded = false
     let lastError: unknown
     for (const candidate of encoderCandidates()) {
@@ -247,6 +261,12 @@ export async function exportDolbyVisionWatermark(
     if (!encoded) throw lastError instanceof Error ? lastError : new Error('没有可用的 10-bit HEVC 编码器')
     progress(84)
     await run(dovi, ['inject-rpu', '-i', encodedHevc, '-r', rpu, '-o', injectedHevc], callbacks.signal)
+    const encodedSps = await readHevcSpsConfiguration(injectedHevc)
+    if (encodedSps.profileIdc !== 2 || encodedSps.chromaFormat !== 1
+      || encodedSps.lumaBitDepth !== 10 || encodedSps.chromaBitDepth !== 10
+      || encodedSps.numTemporalLayers < 1) {
+      throw new Error('HEVC 编码结果不是受支持的 Main 10 4:2:0 视频')
+    }
     progress(90)
     const videoTrack = `h265:${injectedHevc}#dv_profile=8,dv_bc=4,frame_rate=${fps},format=hvc1`
     const hasAudio = sourceProbe.streams?.some((stream) => stream.codec_type === 'audio')
@@ -254,6 +274,11 @@ export async function exportDolbyVisionWatermark(
     if (hasAudio) muxArgs.push('--track', `mp4:${request.sourcePath}#track=audio`)
     muxArgs.push(partialOutput)
     await run(mp4mux, muxArgs, callbacks.signal)
+    await repairHvccFromSps(partialOutput, encodedSps)
+    const repairedHvcc = await readHvccConfigurations(partialOutput)
+    if (repairedHvcc.length !== 1 || !hvccMatchesSps(repairedHvcc[0], encodedSps)) {
+      throw new Error('Dolby Vision 输出的 hvcC 配置与 HEVC 码流不一致')
+    }
     progress(96)
     const outputProbeJson = await ffprobe(partialOutput)
     const outputProbe = parseDolbyVisionProbe(outputProbeJson)

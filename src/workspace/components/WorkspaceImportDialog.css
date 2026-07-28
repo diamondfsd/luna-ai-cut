@@ -9,6 +9,26 @@
   overflow: hidden;
 }
 
+.workspace-create-project-dialog .workspace-import-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.workspace-create-project-title {
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid var(--hairline);
+  display: grid;
+  grid-template-columns: 88px minmax(0, 420px);
+  align-items: center;
+  gap: 12px;
+}
+
+.workspace-create-project-title > span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .workspace-import-body > .gallery {
   height: 100%;
   overflow: auto;

@@ -10,7 +10,6 @@ import type {
   AiSelectionScene,
   AiSelectionTarget,
 } from '../src/shared/types'
-
 function stableId(prefix: string, value: string): string {
   return `${prefix}_${createHash('sha1').update(value).digest('hex').slice(0, 16)}`
 }
@@ -445,7 +444,7 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
 
   const candidates = items.filter((item) => {
     if (item.analysisState !== 'ready' || item.error || item.quality?.grade === 'review' || item.flags.closedEyes) return false
-    if (item.kind === 'video') return purpose === 'editing'
+    if (item.kind === 'video') return false
     if (purpose === 'people' && item.personEvidence?.detected !== true && !item.contentTags.includes('人物')) return false
     const group = grouped.get(item.id)
     return !group || group.representativeId === item.id

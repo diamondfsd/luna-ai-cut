@@ -1,0 +1,26 @@
+.apple-live-photo-export-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+}
+
+.apple-live-photo-export-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.apple-live-photo-export-copy span {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.apple-live-photo-export-copy small {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 11px;
+  line-height: 1.35;
+}

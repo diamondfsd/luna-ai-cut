@@ -34,7 +34,7 @@ jobs:
           version="${GITHUB_REF_NAME#hot/v}"
           previous="$(git tag --list 'hot/v*' --sort=-creatordate | grep -vx "$GITHUB_REF_NAME" | head -1 || true)"
           include_native=true
-          if [ -n "$previous" ] && git diff --quiet "$previous" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs electron/lunaRenderCore.ts; then
+          if [ -n "$previous" ] && git diff --quiet "$previous" HEAD -- luna-render-core Cargo.lock scripts/build-native.mjs; then
             include_native=false
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"

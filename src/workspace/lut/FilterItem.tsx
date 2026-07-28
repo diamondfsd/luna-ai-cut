@@ -1,7 +1,9 @@
+import { Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { useFileCache } from '../../hooks/useFileCache'
 import type { CompositionInput } from '../../shared/types'
+import { IconButton, Tooltip } from '../../ui'
 
 interface FilterItemProps {
   filePath: string
@@ -14,12 +16,23 @@ interface FilterItemProps {
   hideName?: boolean
   /** LUT 强度 0-100，默认 100 */
   intensity?: number
+  editing?: boolean
+  deleting?: boolean
+  onDelete?: () => void
 }
 
 const THUMB_CACHE = new Map<string, string>()
 
-function getLrc(): any {
-  return (window as unknown as { lunaRenderCore?: any }).lunaRenderCore ?? null
+interface FilterThumbnailRenderer {
+  renderCompositionFrame: (
+    composition: CompositionInput,
+    time: number,
+    maxSize: number,
+  ) => Promise<{ width: number; height: number; data: Uint8Array | ArrayBuffer }>
+}
+
+function getLrc(): FilterThumbnailRenderer | null {
+  return (window as unknown as { lunaRenderCore?: FilterThumbnailRenderer }).lunaRenderCore ?? null
 }
 
 /** 调用 Rust 渲染一帧带 LUT 的缩略图，返回 data URL */
@@ -65,7 +78,18 @@ async function renderFilterThumb(
   return url
 }
 
-export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hideName, intensity = 30 }: FilterItemProps) {
+export function FilterItem({
+  filePath,
+  name = '',
+  active,
+  onClick,
+  mediaPath,
+  hideName,
+  intensity = 30,
+  editing = false,
+  deleting = false,
+  onDelete,
+}: FilterItemProps) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const mountedRef = useRef(true)
@@ -126,7 +150,7 @@ export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hi
   return (
     <article
       ref={cardRef}
-      className={`filter-card ${active ? 'selected' : ''}`}
+      className={`filter-card${active ? ' selected' : ''}${editing ? ' editing' : ''}`}
       onClick={onClick}
     >
       <div className="thumb">
@@ -138,6 +162,22 @@ export function FilterItem({ filePath, name = '', active, onClick, mediaPath, hi
           <div className="thumb-placeholder" />
         )}
       </div>
+      {editing && onDelete && (
+        <Tooltip content={deleting ? '正在删除' : `删除${name}`}>
+          <IconButton
+            variant="ghost"
+            size="mini"
+            className="filter-card-delete"
+            icon={<Trash2 size={14} />}
+            aria-label={`删除${name}`}
+            disabled={deleting}
+            onClick={(event) => {
+              event.stopPropagation()
+              onDelete()
+            }}
+          />
+        </Tooltip>
+      )}
       {active && !hideName && <div className="check">✓</div>}
       {!hideName && <div className="name">{name}</div>}
     </article>
