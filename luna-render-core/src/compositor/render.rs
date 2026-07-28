@@ -402,7 +402,7 @@ impl Compositor {
                         });
                 let pixel_flow_depth = layer.pixel_flow.as_ref().map_or([0.0; 4], |effect| {
                     [
-                        effect.duration.clamp(0.1, 60.0) as f32,
+                        effect.duration.clamp(0.1, 3.0) as f32,
                         if effect.segmented.unwrap_or(false) {
                             1.0
                         } else {

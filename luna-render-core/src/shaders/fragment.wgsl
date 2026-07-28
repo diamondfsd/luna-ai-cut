@@ -320,6 +320,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (params.pixel_flow.x > 0.5) {
         let source_size = vec2<f32>(textureDimensions(src_texture));
         let cell_px = max(2.0, max(source_size.x, source_size.y) / max(24.0, params.pixel_flow.z));
+        let source_per_screen_pixel = vec2<f32>(
+            max(0.0001, length(dpdx(tex_coord) * source_size)),
+            max(0.0001, length(dpdy(tex_coord) * source_size)),
+        );
+        let projected_cell_size = vec2<f32>(cell_px) / source_per_screen_pixel;
+        let square_cell_size = max(0.0001, min(projected_cell_size.x, projected_cell_size.y));
+        let square_correction = projected_cell_size / square_cell_size;
         let cell_index = floor(tex_coord * source_size / cell_px);
         let cell_uv = clamp((cell_index + vec2<f32>(0.5)) * cell_px / source_size, vec2<f32>(0.0), vec2<f32>(1.0));
         let cell = pixel_flow_arrival(cell_uv, cell_index, source_size, cell_px);
@@ -376,7 +383,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let base = mix(monochrome, adjusted, color_reveal);
 
         let block_offset = fract(tex_coord * source_size / cell_px) - vec2<f32>(0.5);
-        let block_local = abs(block_offset);
+        let block_local = abs(block_offset) * square_correction;
         let block_distance = max(block_local.x, block_local.y);
         let block_core = 1.0 - smoothstep(0.32, 0.44, block_distance);
         let block_halo = 1.0 - smoothstep(0.38, 0.5, block_distance);
@@ -391,7 +398,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             - (vec3<f32>(1.0) - base) * (vec3<f32>(1.0) - clamp(pixel_light, vec3<f32>(0.0), vec3<f32>(0.94)));
 
         let surface_offset = fract(tex_coord * source_size / surface_cell_px) - vec2<f32>(0.5);
-        let surface_distance = max(abs(surface_offset.x), abs(surface_offset.y));
+        let surface_distance = max(
+            abs(surface_offset.x) * square_correction.x,
+            abs(surface_offset.y) * square_correction.y,
+        );
         let surface_core = 1.0 - smoothstep(0.34, 0.45, surface_distance);
         let surface_hot_core = 1.0 - smoothstep(0.16, 0.29, surface_distance);
         let surface_halo = 1.0 - smoothstep(0.4, 0.5, surface_distance);
