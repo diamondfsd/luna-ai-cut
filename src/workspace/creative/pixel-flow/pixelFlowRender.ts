@@ -47,10 +47,23 @@ export function pixelFlowOrigin(mask: PixelFlowMask | null): { x: number; y: num
 
 export function pixelFlowImpact(mask: PixelFlowMask | null, origin = pixelFlowOrigin(mask)): { x: number; y: number } {
   if (!mask) return { x: origin.x, y: Math.min(0.82, origin.y + 0.2) }
-  let skyBottom = 0
+  const rowWeights = new Float64Array(mask.height)
+  let totalWeight = 0
   for (let y = 0; y < mask.height; y += 1) {
     for (let x = 0; x < mask.width; x += 1) {
-      if (mask.data[y * mask.width + x] >= 90) skyBottom = Math.max(skyBottom, (y + 0.5) / mask.height)
+      const value = mask.data[y * mask.width + x] / 255
+      if (value < 0.35) continue
+      rowWeights[y] += value
+      totalWeight += value
+    }
+  }
+  let accumulated = 0
+  let skyBottom = origin.y
+  for (let y = 0; y < rowWeights.length; y += 1) {
+    accumulated += rowWeights[y]
+    if (accumulated >= totalWeight * 0.96) {
+      skyBottom = (y + 1) / mask.height
+      break
     }
   }
   const impactY = Math.max(origin.y + 0.12, skyBottom + 0.035)
