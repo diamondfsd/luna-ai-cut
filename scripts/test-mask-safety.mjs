@@ -67,6 +67,8 @@ try {
     'src/workspace/creative/only-your-color/onlyYourColorLayers.ts',
     'src/workspace/creative/only-your-color/onlyYourColorBatchMask.ts',
     'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.ts',
+    'src/workspace/creative/pixel-flow/pixelFlowBatchMask.ts',
+    'src/workspace/creative/pixel-flow/pixelFlowLayers.ts',
     'src/components/renderComposition.ts',
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
@@ -92,6 +94,8 @@ try {
   const onlyYourColorLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorLayers.js')))
   const onlyYourColorBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorBatchMask.js')))
   const onlyYourColorMaskRefinement = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.js')))
+  const pixelFlowBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/pixel-flow/pixelFlowBatchMask.js')))
+  const pixelFlowLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/pixel-flow/pixelFlowLayers.js')))
   const renderComposition = await import(pathToFileURL(path.join(temporaryRoot, 'src/components/renderComposition.js')))
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
@@ -909,6 +913,72 @@ try {
     /未识别到主体/,
     'batch export must fail an item instead of exporting an empty segmentation mask',
   )
+
+  const pixelFlowAsset = { id: 'pixel-video', name: 'pixel.mp4', path: '/pixel.mp4', kind: 'video' }
+  let pixelFlowSegmentCalls = 0
+  const reusedPixelFlowMask = await pixelFlowBatchMask.resolvePixelFlowBatchMask({
+    projectId: 'project-pixel-flow',
+    asset: pixelFlowAsset,
+    savedState: {
+      duration: 3, pixelCount: 280, lightWidth: 16, initialSaturation: 0, initialBrightness: 0,
+      subjectDirection: 'down', rainSpeed: 50, rainLength: 50, flowStrength: 50,
+      subjectDelay: 50, bloomStrength: 50, filterStrength: 50, colorTransition: 0.5,
+      depthMaskPath: '/pixel-depth.pgm', maskAssetId: pixelFlowAsset.id,
+    },
+    api: {
+      loadMask: async () => ({ bytes: new Uint8Array([128]).buffer, width: 1, height: 1 }),
+      segment: async () => { pixelFlowSegmentCalls += 1; throw new Error('must not segment') },
+      saveMask: async () => { throw new Error('must not save') },
+    },
+  })
+  assert.equal(reusedPixelFlowMask.depthMaskPath, '/pixel-depth.pgm')
+  assert.equal(reusedPixelFlowMask.newlyPrepared, false)
+  assert.equal(pixelFlowSegmentCalls, 0, 'pixel flow batch export must reuse each asset\'s valid depth mask')
+
+  const pixelFlowRequests = []
+  const savedPixelFlowMasks = []
+  const recognizedPixelFlowMask = await pixelFlowBatchMask.resolvePixelFlowBatchMask({
+    projectId: 'project-pixel-flow',
+    asset: pixelFlowAsset,
+    savedState: {
+      duration: 3, pixelCount: 280, lightWidth: 16, initialSaturation: 0, initialBrightness: 0,
+      subjectDirection: 'down', rainSpeed: 50, rainLength: 50, flowStrength: 50,
+      subjectDelay: 50, bloomStrength: 50, filterStrength: 50, colorTransition: 0.5,
+      depthMaskPath: '/missing-depth.pgm', maskAssetId: pixelFlowAsset.id,
+    },
+    api: {
+      loadMask: async () => { throw new Error('missing') },
+      segment: async (request) => {
+        pixelFlowRequests.push(request)
+        if (request.targetId === 'sky') throw new Error('scene has no sky')
+        return { requestId: request.requestId, bytes: new Uint8Array([0, 255, 0, 0]).buffer, width: 2, height: 2 }
+      },
+      saveMask: async (_projectId, assetId, width, height, bytes) => {
+        savedPixelFlowMasks.push({ assetId, bytes: [...bytes] })
+        return { path: `/${assetId}.pgm`, width, height }
+      },
+    },
+  })
+  assert.equal(recognizedPixelFlowMask.newlyPrepared, true)
+  assert.equal(pixelFlowRequests.length, 2, 'missing pixel flow masks must recognize subject and sky')
+  assert.ok(pixelFlowRequests.every((request) => request.frameTime === 0), 'video masks must use the first frame')
+  assert.deepEqual(savedPixelFlowMasks.at(-1).bytes, [128, 224, 128, 128], 'a scene without sky must still encode subject and background regions')
+
+  const pixelFlowSettings = {
+    duration: 3, pixelCount: 280, lightWidth: 16, initialSaturation: 0, initialBrightness: 0,
+    subjectDirection: 'down', rainSpeed: 50, rainLength: 50, flowStrength: 50,
+    subjectDelay: 50, bloomStrength: 50, filterStrength: 50, colorTransition: 0.5,
+  }
+  const pixelFlowLayer = pixelFlowLayers.buildPixelFlowLayer({
+    asset: pixelFlowAsset,
+    maskPath: recognizedPixelFlowMask.depthMaskPath,
+    playbackDuration: 6,
+    settings: pixelFlowSettings,
+  })
+  const pixelFlowComposition = renderComposition.buildCompositionFromPreviewLayers([pixelFlowLayer], 1920, 1080, { duration: 6 })
+  assert.equal(pixelFlowLayer.maskPath, recognizedPixelFlowMask.depthMaskPath)
+  assert.equal(pixelFlowComposition.layers[0].maskPath, recognizedPixelFlowMask.depthMaskPath, 'pixel flow export must preserve the preview mask path')
+  assert.equal(pixelFlowComposition.layers[0].pixelFlow.segmented, true, 'pixel flow export must keep segmented rendering enabled')
 
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b5-ade20k'), 'rmbg-1.4')
