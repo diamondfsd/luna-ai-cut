@@ -8,7 +8,10 @@ interface OnlyYourColorLayerOptions {
   subjectMaskPath: string
   backgroundMaskPath: string
   intensity: number
+  subjectExposure: number
   backgroundExposure: number
+  backgroundBrightness: number
+  backgroundContrast: number
   subjectSaturation: number
   subjectVibrance: number
   subjectMaskInverted?: boolean
@@ -72,6 +75,8 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
     color: {
       ...neutralColor,
       exposure: Math.max(-5, Math.min(5, options.backgroundExposure)),
+      brightness: Math.max(-100, Math.min(100, options.backgroundBrightness)),
+      contrast: Math.max(-100, Math.min(100, options.backgroundContrast)),
       saturation: -100 * effectAmount,
     },
     maskPath: options.backgroundMaskPath,
@@ -85,6 +90,7 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
     layerType: 'local-color',
     color: {
       ...neutralColor,
+      exposure: Math.max(-5, Math.min(5, options.subjectExposure)),
       saturation: options.subjectSaturation,
       vibrance: options.subjectVibrance,
     },
@@ -97,7 +103,7 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
   const decorations = options.layers
     .filter((layer) => !sourceLayers.includes(layer))
     .map((layer, index) => ({ ...layer, zIndex: Math.max(20 + index, layer.zIndex) }))
-  const subjectLayers = options.subjectSaturation === 0 && options.subjectVibrance === 0
+  const subjectLayers = options.subjectExposure === 0 && options.subjectSaturation === 0 && options.subjectVibrance === 0
     ? []
     : [subject]
   return [

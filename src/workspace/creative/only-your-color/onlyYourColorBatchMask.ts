@@ -3,12 +3,18 @@ import { subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
 import { refineOnlyYourColorMask } from './onlyYourColorMaskRefinement'
 import {
   DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE,
+  DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_BRIGHTNESS,
+  DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_CONTRAST,
   DEFAULT_ONLY_YOUR_COLOR_INTENSITY,
+  DEFAULT_ONLY_YOUR_COLOR_SUBJECT_EXPOSURE,
   DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION,
   DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE,
   normalizeOnlyYourColorBackgroundExposure,
+  normalizeOnlyYourColorBackgroundBrightness,
+  normalizeOnlyYourColorBackgroundContrast,
   normalizeOnlyYourColorIntensity,
   normalizeOnlyYourColorSubjectSaturation,
+  normalizeOnlyYourColorSubjectExposure,
   normalizeOnlyYourColorSubjectVibrance,
 } from './onlyYourColorState'
 
@@ -49,7 +55,10 @@ function normalizedRecognizedState(
 ): WorkspaceOnlyYourColorState {
   return {
     intensity: normalizeOnlyYourColorIntensity(state.intensity),
+    subjectExposure: normalizeOnlyYourColorSubjectExposure(state.subjectExposure),
     backgroundExposure: normalizeOnlyYourColorBackgroundExposure(state.backgroundExposure),
+    backgroundBrightness: normalizeOnlyYourColorBackgroundBrightness(state.backgroundBrightness),
+    backgroundContrast: normalizeOnlyYourColorBackgroundContrast(state.backgroundContrast),
     subjectSaturation: normalizeOnlyYourColorSubjectSaturation(state.subjectSaturation),
     subjectVibrance: normalizeOnlyYourColorSubjectVibrance(state.subjectVibrance),
     subjectModel: state.subjectModel ?? 'fast',
@@ -61,7 +70,10 @@ function normalizedRecognizedState(
 function defaultRecognizedState(assetId: string, maskPath: string): WorkspaceOnlyYourColorState {
   return {
     intensity: DEFAULT_ONLY_YOUR_COLOR_INTENSITY,
+    subjectExposure: DEFAULT_ONLY_YOUR_COLOR_SUBJECT_EXPOSURE,
     backgroundExposure: DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE,
+    backgroundBrightness: DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_BRIGHTNESS,
+    backgroundContrast: DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_CONTRAST,
     subjectSaturation: DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION,
     subjectVibrance: DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE,
     subjectModel: 'fast',

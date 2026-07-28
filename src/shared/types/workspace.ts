@@ -53,7 +53,10 @@ export interface WorkspaceColorRevealState {
 
 export interface WorkspaceOnlyYourColorState {
   intensity: number
+  subjectExposure?: number
   backgroundExposure?: number
+  backgroundBrightness?: number
+  backgroundContrast?: number
   subjectSaturation?: number
   subjectVibrance?: number
   subjectModel?: PixelStretchSubjectModel

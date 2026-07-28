@@ -735,7 +735,10 @@ try {
     subjectMaskPath: '/subject.pgm',
     backgroundMaskPath: '/background.pgm',
     intensity: 100,
+    subjectExposure: 0.65,
     backgroundExposure: -0.75,
+    backgroundBrightness: 18,
+    backgroundContrast: 24,
     subjectSaturation: 20,
     subjectVibrance: 30,
   })
@@ -750,7 +753,9 @@ try {
   assert.ok(creativeOutputs.every((layer) => layer.precomposeGroup === 'only-your-color-source'))
   assert.equal(creativeOutputs[0].color, undefined, 'flattened source must not apply global color twice')
   assert.equal(creativeOutputs[1].color.exposure, -0.75, 'background exposure must be relative to the flattened existing exposure')
-  assert.equal(creativeOutputs[2].color.exposure, 0, 'subject effect must not overwrite existing exposure')
+  assert.equal(creativeOutputs[1].color.brightness, 18)
+  assert.equal(creativeOutputs[1].color.contrast, 24)
+  assert.equal(creativeOutputs[2].color.exposure, 0.65, 'subject exposure must be relative to the flattened existing exposure')
   assert.equal(creativeOutputs[1].color.saturation, -100)
   assert.equal(creativeOutputs[2].color.saturation, 20)
   assert.equal(creativeOutputs[2].color.vibrance, 30)
@@ -765,7 +770,10 @@ try {
     subjectMaskPath: '/subject.pgm',
     backgroundMaskPath: '/background.pgm',
     intensity: 100,
+    subjectExposure: 0,
     backgroundExposure: 0,
+    backgroundBrightness: 0,
+    backgroundContrast: 0,
     subjectSaturation: 0,
     subjectVibrance: 0,
   }).filter((layer) => layer.precomposeRole === 'output')
@@ -796,7 +804,7 @@ try {
   const reusedBatchMask = await onlyYourColorBatchMask.resolveOnlyYourColorBatchMask({
     projectId: 'project-batch',
     asset: batchAsset,
-    savedState: { intensity: 80, backgroundExposure: -1, subjectSaturation: 15, subjectVibrance: 20, maskPath: '/saved.pgm', maskAssetId: batchAsset.id },
+    savedState: { intensity: 80, subjectExposure: 0.4, backgroundExposure: -1, backgroundBrightness: 12, backgroundContrast: 22, subjectSaturation: 15, subjectVibrance: 20, maskPath: '/saved.pgm', maskAssetId: batchAsset.id },
     api: {
       loadMask: async () => ({ bytes: validStoredMask.buffer, width: 3, height: 3 }),
       segment: async () => { batchSegmentCalls += 1; throw new Error('must not segment') },
@@ -805,6 +813,9 @@ try {
   })
   assert.equal(reusedBatchMask.newlyRecognized, false)
   assert.equal(reusedBatchMask.state.backgroundExposure, -1)
+  assert.equal(reusedBatchMask.state.subjectExposure, 0.4)
+  assert.equal(reusedBatchMask.state.backgroundBrightness, 12)
+  assert.equal(reusedBatchMask.state.backgroundContrast, 22)
   assert.equal(batchSegmentCalls, 0, 'batch export must reuse a valid saved mask')
 
   let batchSegmentRequest = null
@@ -825,8 +836,11 @@ try {
   assert.equal(recognizedBatchMask.newlyRecognized, true)
   assert.equal(recognizedBatchMask.state.intensity, 100)
   assert.equal(recognizedBatchMask.state.backgroundExposure, 0)
-  assert.equal(recognizedBatchMask.state.subjectSaturation, 0)
-  assert.equal(recognizedBatchMask.state.subjectVibrance, 0)
+  assert.equal(recognizedBatchMask.state.subjectExposure, 0.2)
+  assert.equal(recognizedBatchMask.state.backgroundBrightness, -20)
+  assert.equal(recognizedBatchMask.state.backgroundContrast, -15)
+  assert.equal(recognizedBatchMask.state.subjectSaturation, 15)
+  assert.equal(recognizedBatchMask.state.subjectVibrance, 15)
   assert.equal(recognizedBatchMask.state.maskPath, '/generated.pgm')
 
   await assert.rejects(

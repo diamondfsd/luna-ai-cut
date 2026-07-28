@@ -13,6 +13,8 @@ import './creative-factory.css'
 interface WorkspaceCreativeFactoryProps {
   creativeModeId: CreativeModeId | null
   onCreativeModeChange: (modeId: CreativeModeId | null) => void
+  onAddMedia: () => void
+  onImportLocal: () => void
 }
 
 const CREATIVE_RENDERERS: Record<CreativeModeId, (props: CreativeModuleProps) => ReactNode> = {
@@ -49,12 +51,14 @@ function CreativeCover({ id }: { id: CreativeModeId }) {
   </span>
 }
 
-export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange }: WorkspaceCreativeFactoryProps) {
+export function WorkspaceCreativeFactory({ creativeModeId, onCreativeModeChange, onAddMedia, onImportLocal }: WorkspaceCreativeFactoryProps) {
   const media = useWorkspaceMedia()
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] WorkspaceCreativeFactory render creativeModeId=${creativeModeId}`)
   if (creativeModeId) {
     return CREATIVE_RENDERERS[creativeModeId]({
       onBack: () => onCreativeModeChange(null),
+      onAddMedia,
+      onImportLocal,
       supportedMediaKinds: getCreativeCatalogItem(creativeModeId)?.supportedMediaKinds,
     })
   }

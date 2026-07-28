@@ -16,6 +16,8 @@ export interface CreativeCatalogItem {
 
 export interface CreativeModuleProps {
   onBack: () => void
+  onAddMedia: () => void
+  onImportLocal: () => void
   supportedMediaKinds?: readonly WorkspaceMediaKind[]
 }
 

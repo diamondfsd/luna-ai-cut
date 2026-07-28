@@ -762,6 +762,8 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
         <WorkspaceCreativeFactory
           creativeModeId={creativeModeId}
           onCreativeModeChange={onCreativeModeChange}
+          onAddMedia={() => setImportDialogOpen(true)}
+          onImportLocal={() => void handleImportLocalFiles()}
         />
       ) : (
         <>

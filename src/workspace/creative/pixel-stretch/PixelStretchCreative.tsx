@@ -6,6 +6,7 @@ import type { MediaMetadata, PixelStretchFlowShape, PixelStretchPathPoint, Previ
 import { Button, IconButton, LoadingIndicator, SegmentedControl, toast } from '../../../ui'
 import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
+import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImportButtons'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { useWorkspaceCanvas } from '../../context/WorkspaceCanvasContext'
@@ -47,7 +48,7 @@ import './pixel-stretch.css'
 import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 
 const DEFAULT_INTENSITY = 100
-export function PixelStretchCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
+export function PixelStretchCreative({ onBack, onAddMedia, onImportLocal, supportedMediaKinds }: CreativeModuleProps) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
@@ -470,7 +471,7 @@ export function PixelStretchCreative({ onBack, supportedMediaKinds }: CreativeMo
   }
 
   return <section className="pixel-stretch-page">
-    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><CreativeCompareButton className="pixel-stretch-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
+    <header className="pixel-stretch-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>像素拉伸</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="pixel-stretch-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
     <div className="pixel-stretch-preview">
       {activeAsset && !isImage ? <div className="pixel-stretch-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>像素拉伸目前支持图片素材</span></div>
         : previewLayers.length && outputSize ? <div ref={stageRef} className={`pixel-stretch-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="pixel-stretch-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} />{!showOriginal && sampleEditing && subjectBounds && <PixelStretchSampleEditor bounds={subjectBounds} horizontal={isHorizontalPreset} value={sampleEditorValue} onChange={updateSampleEditor} />}{!showOriginal && maskEditing && workspaceMask.editing && <MaskOverlay />}{!showOriginal && pointPicking && <span className="pixel-stretch-point-hint">点击要保留的主体</span>}</div>

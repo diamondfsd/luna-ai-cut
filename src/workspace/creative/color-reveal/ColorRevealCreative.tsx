@@ -8,6 +8,7 @@ import { Button, IconButton, SegmentedControl, VideoControls, toast } from '../.
 import { useLunaUltraWatermark } from '../../../hooks/useLunaUltraWatermark'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
+import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImportButtons'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
@@ -33,7 +34,7 @@ import type { CreativeModuleProps } from '../creativeCatalog'
 
 type ColorRevealStageMode = 'two' | 'three'
 
-export function ColorRevealCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
+export function ColorRevealCreative({ onBack, onAddMedia, onImportLocal, supportedMediaKinds }: CreativeModuleProps) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
   const activeAsset = media.activeMedia
@@ -274,6 +275,7 @@ export function ColorRevealCreative({ onBack, supportedMediaKinds }: CreativeMod
           创意列表
         </Button>
         <span>色彩还原</span>
+        <WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} />
       </header>
 
       <div className="color-reveal-preview">
