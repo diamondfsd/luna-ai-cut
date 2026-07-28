@@ -285,6 +285,8 @@ try {
 
   const liveComposition = structuredClone(composition)
   liveComposition.canvas.duration = 3
+  liveComposition.layers[0].maskPath = depthPath
+  liveComposition.layers[0].pixelFlow.segmented = true
   const liveVideoPath = path.join(temporaryRoot, 'pixel-flow-live.mp4')
   await native.exportCompositionVideoAsync({
     ffmpegPath,
@@ -301,6 +303,20 @@ try {
     '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', liveVideoPath,
   ])
   assert.ok(Math.abs(Number(exportedDuration.trim()) - 3) < 0.08, `still-image Live motion renders for 3 seconds (${exportedDuration.trim()})`)
+  const { stdout: exportedFrameData } = await execFileAsync(ffmpegPath, [
+    '-v', 'error', '-ss', '0.5', '-i', liveVideoPath,
+    '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1',
+  ], { encoding: 'buffer', maxBuffer: width * height * 8 })
+  const exportedFrame = { data: exportedFrameData }
+  const segmentedPreview = render(liveComposition, 0.5)
+  const unsegmentedComposition = structuredClone(liveComposition)
+  delete unsegmentedComposition.layers[0].maskPath
+  unsegmentedComposition.layers[0].pixelFlow.segmented = false
+  const unsegmentedPreview = render(unsegmentedComposition, 0.5)
+  assert.ok(
+    frameDifference(exportedFrame, segmentedPreview) < frameDifference(exportedFrame, unsegmentedPreview),
+    'exported pixel flow frames must use the same segmentation mask as preview frames',
+  )
   console.log('pixel-flow source-color rain stages passed')
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })

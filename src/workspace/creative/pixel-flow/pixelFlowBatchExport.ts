@@ -61,7 +61,9 @@ export async function queuePixelFlowBatchExport(options: PixelFlowBatchExportOpt
       const state: WorkspacePixelFlowState = {
         ...options.settings,
         settingsVersion: PIXEL_FLOW_SETTINGS_VERSION,
-        ...mask,
+        maskPath: mask.maskPath,
+        skyMaskPath: mask.skyMaskPath,
+        depthMaskPath: mask.depthMaskPath,
         maskAssetId: asset.id,
       }
       resolvedStates[asset.id] = state

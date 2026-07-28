@@ -35,8 +35,8 @@ export interface PixelFlowBatchMaskApi {
 }
 
 export interface ResolvedPixelFlowBatchMask {
-  maskPath: string
-  skyMaskPath: string
+  maskPath?: string
+  skyMaskPath?: string
   depthMaskPath: string
   newlyPrepared: boolean
 }
@@ -76,8 +76,8 @@ export async function resolvePixelFlowBatchMask(options: {
     try {
       await api.loadMask(projectId, savedState.depthMaskPath)
       return {
-        maskPath: savedState.maskPath ?? '',
-        skyMaskPath: savedState.skyMaskPath ?? '',
+        maskPath: savedState.maskPath,
+        skyMaskPath: savedState.skyMaskPath,
         depthMaskPath: savedState.depthMaskPath,
         newlyPrepared: false,
       }
