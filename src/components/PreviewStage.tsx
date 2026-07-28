@@ -419,6 +419,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         <div ref={wrapperRef} className="preview-canvas-wrapper">
           {useNativeGpuPreview && previewCanvas ? (
             <NativeGpuVideoPreview
+              key={window.navigator.platform.includes('Win') ? displayUrl : 'native-preview'}
               layers={layers}
               canvasWidth={previewCanvas.width}
               canvasHeight={previewCanvas.height}
