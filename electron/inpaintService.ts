@@ -7,9 +7,8 @@ import path from 'node:path'
 import type { WorkspaceObjectRemovalRequest, WorkspaceObjectRemovalResult } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { INPAINT_MODEL, loadInpaintModel } from './inpaintModelService'
-import { dilateInpaintMask, featherInpaintMask, INPAINT_MODEL_SIZE, resampleInpaintMask } from './inpaintMask'
+import { compositeInpaintRegion, createInpaintRegion, dilateInpaintMask, featherInpaintMask, INPAINT_MODEL_SIZE, modelRadiusForSourcePixels, prepareInpaintInputs } from './inpaintMask'
 
-const MODEL_SIZE = INPAINT_MODEL_SIZE
 const MAX_PIXELS = 100_000_000
 
 function appRoot(): string { return process.env.APP_ROOT ?? path.join(import.meta.dirname, '..') }
@@ -37,10 +36,6 @@ async function runProcess(executable: string, args: string[], options: { input?:
   })
 }
 
-async function scaleRaw(input: Buffer, pixelFormat: 'rgb24' | 'gray', from: number, width: number, height: number, signal?: AbortSignal): Promise<Buffer> {
-  return runProcess(getFfmpegPath(), ['-v', 'error', '-f', 'rawvideo', '-pixel_format', pixelFormat, '-video_size', `${from}x${from}`, '-i', 'pipe:0', '-vf', `scale=${width}:${height}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', pixelFormat, 'pipe:1'], { input, signal })
-}
-
 export async function removeObject(request: WorkspaceObjectRemovalRequest, downloadDir: string, width: number, height: number, signal?: AbortSignal): Promise<WorkspaceObjectRemovalResult> {
   if (width * height > MAX_PIXELS) throw new Error('图片尺寸过大，暂不支持消除')
   const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
@@ -48,34 +43,24 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
   const directory = await mkdtemp(path.join(tmpdir(), 'luna-inpaint-'))
   try {
     signal?.throwIfAborted()
-    const [modelPath, original, modelInput] = await Promise.all([
+    const [modelPath, original] = await Promise.all([
       loadInpaintModel(signal),
       runProcess(getFfmpegPath(), ['-v', 'error', '-i', request.filePath, '-vf', `scale=${width}:${height}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { signal }),
-      runProcess(getFfmpegPath(), ['-v', 'error', '-i', request.filePath, '-vf', `scale=${MODEL_SIZE}:${MODEL_SIZE}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { signal }),
     ])
-    const binary = resampleInpaintMask(maskBytes, request.maskWidth, request.maskHeight)
-    const expanded = dilateInpaintMask(binary, Math.round(request.edgeExpansion))
-    const alpha = featherInpaintMask(expanded, Math.round(request.feather))
+    if (original.length !== width * height * 3) throw new Error('图片读取结果尺寸异常')
+    const region = createInpaintRegion(maskBytes, request.maskWidth, request.maskHeight, width, height)
+    const prepared = prepareInpaintInputs(original, width, height, maskBytes, request.maskWidth, request.maskHeight, region)
+    const expanded = dilateInpaintMask(prepared.mask, modelRadiusForSourcePixels(request.edgeExpansion, region))
+    const alpha = featherInpaintMask(expanded, modelRadiusForSourcePixels(request.feather, region))
     const inputPath = path.join(directory, 'input.rgb')
     const maskPath = path.join(directory, 'input.mask')
     const generatedPath = path.join(directory, 'generated.rgb')
     const metricsPath = path.join(directory, 'metrics.json')
-    await Promise.all([writeFile(inputPath, modelInput), writeFile(maskPath, expanded)])
+    await Promise.all([writeFile(inputPath, prepared.rgb), writeFile(maskPath, expanded)])
     await runProcess(workerPath(), [modelPath, inputPath, maskPath, generatedPath, metricsPath], { signal, maxOutput: 64 * 1024 })
     const [generated, metricsRaw] = await Promise.all([readFile(generatedPath), readFile(metricsPath, 'utf8')])
-    const [generatedFull, alphaFull] = await Promise.all([
-      scaleRaw(generated, 'rgb24', MODEL_SIZE, width, height, signal),
-      scaleRaw(Buffer.from(alpha), 'gray', MODEL_SIZE, width, height, signal),
-    ])
-    if (original.length !== width * height * 3 || generatedFull.length !== original.length || alphaFull.length !== width * height) throw new Error('消除结果尺寸异常')
-    const composite = Buffer.allocUnsafe(original.length)
-    for (let pixel = 0; pixel < width * height; pixel++) {
-      const mix = alphaFull[pixel] / 255
-      for (let channel = 0; channel < 3; channel++) {
-        const index = pixel * 3 + channel
-        composite[index] = Math.round(original[index] * (1 - mix) + generatedFull[index] * mix)
-      }
-    }
+    if (generated.length !== INPAINT_MODEL_SIZE * INPAINT_MODEL_SIZE * 3) throw new Error('消除结果尺寸异常')
+    const composite = compositeInpaintRegion(original, width, height, generated, alpha, region)
     const projectId = request.projectId
     if (!/^[\w.-]{1,100}$/.test(projectId)) throw new Error('项目标识无效')
     const outputDir = path.join(downloadDir, 'workspace-projects', projectId, 'removal')
