@@ -20,7 +20,7 @@ import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import type { CacheStats } from '../shared/types'
-import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
+import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 
 export function AppRoutes() {
   const { settings, setSettings, connection, hiddenDevMode } = useApp()
@@ -43,9 +43,7 @@ export function AppRoutes() {
 
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
   const [pagesKey, setPagesKey] = useState(0)
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('edit')
   const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
-  const [workspaceEditing, setWorkspaceEditing] = useState(false)
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -119,11 +117,6 @@ export function AppRoutes() {
         connection={connection}
         sourceMode={sourceMode}
         activeDevice={activeDevice}
-        showWorkspaceMode={isActive('/workspace') && workspaceEditing}
-        workspaceMode={workspaceMode}
-        creativeModeId={creativeModeId}
-        onModeChange={setWorkspaceMode}
-        onCreativeModeChange={setCreativeModeId}
         onChangeConnection={disconnectDevice}
       />
       <UpdateBanner />
@@ -165,11 +158,9 @@ export function AppRoutes() {
 
         <AppRoute path="/workspace">
           <WorkspacePage
-            workspaceMode={workspaceMode}
             creativeModeId={creativeModeId}
             onCreativeModeChange={setCreativeModeId}
             pageActive={isActive('/workspace')}
-            onEditingChange={setWorkspaceEditing}
           />
         </AppRoute>
 

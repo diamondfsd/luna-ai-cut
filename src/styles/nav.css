@@ -53,15 +53,6 @@
   color: var(--blue);
 }
 
-.nav-center {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-}
-
 .nav-status {
   display: flex;
   align-items: center;
