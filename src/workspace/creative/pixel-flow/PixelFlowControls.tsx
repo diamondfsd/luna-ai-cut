@@ -36,7 +36,7 @@ export function PixelFlowControls(props: PixelFlowControlsProps) {
       <span>细密像素从上方落下，经过画面层次后还原原有色彩</span>
     </div>
     <div className="pixel-flow-options">
-      <ParamSlider label="效果时长" value={props.duration} min={0.7} max={2} step={0.05} onChange={props.onDurationChange} formatValue={(value) => `${value.toFixed(2)}s`} />
+      <ParamSlider label="效果时长" value={props.duration} min={0.7} max={3} step={0.05} onChange={props.onDurationChange} formatValue={(value) => `${value.toFixed(2)}s`} />
       <ParamSlider label="下落速度" value={props.rainSpeed} min={20} max={100} onChange={props.onRainSpeedChange} />
       <ParamSlider label="雨尾长度" value={props.rainLength} min={10} max={100} onChange={props.onRainLengthChange} />
       <ParamSlider label="表面流量" value={props.flowStrength} min={20} max={100} onChange={props.onFlowStrengthChange} />

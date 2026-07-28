@@ -157,7 +157,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       if (cancelled) return
       setSourceSize(size)
       setCurrentTime(0)
-      setPlaying(true)
+      setPlaying(false)
       setSeekRevision((revision) => revision + 1)
     }).catch(() => { if (!cancelled) toast.error('无法读取素材尺寸') })
     return () => { cancelled = true }
@@ -168,6 +168,8 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     const operationId = crypto.randomUUID()
     const frameTime = activeAsset.kind === 'video' ? 0 : undefined
     operationRef.current = operationId
+    setPlaying(false)
+    setCurrentTime(0)
     setDepthMaskPath(null)
     setSubjectMask(null)
     setSkyMask(null)
@@ -249,11 +251,14 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   }, [activeAsset, maskPath, segmentScene, segmenting, skyMaskPath])
 
   useEffect(() => {
-    if (!depthMaskPath) return
+    if (!depthMaskPath || !sourceSize || segmenting) {
+      setPlaying(false)
+      return
+    }
     setCurrentTime(0)
     setPlaying(true)
     setSeekRevision((revision) => revision + 1)
-  }, [depthMaskPath])
+  }, [depthMaskPath, segmenting, sourceSize])
 
   useEffect(() => {
     const project = media.currentProject
@@ -365,14 +370,17 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       height: Math.max(1, Math.round(sourceSize.height * scale)),
     }
   }, [sourceSize])
+  const playbackReady = Boolean(sourceSize && depthMaskPath && !segmenting)
 
   const replay = useCallback(() => {
+    if (!playbackReady) return
     setCurrentTime(0)
     setPlaying(true)
     setSeekRevision((revision) => revision + 1)
-  }, [])
+  }, [playbackReady])
 
   function seek(time: number): void {
+    if (!playbackReady) return
     setPlaying(false)
     setCurrentTime(time)
     setSeekRevision((revision) => revision + 1)
@@ -398,7 +406,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     <header className="pixel-flow-toolbar">
       <Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button>
       <span>像素流光</span>
-      <Button className="pixel-flow-replay" variant="toolbar" size="compact" icon={<Play size={14} />} disabled={!sourceSize} onClick={replay}>重播</Button>
+      <Button className="pixel-flow-replay" variant="toolbar" size="compact" icon={<Play size={14} />} disabled={!playbackReady} onClick={replay}>重播</Button>
     </header>
     <div className="pixel-flow-preview">
       {activeAsset ? <div className={`pixel-flow-stage${sourceSize ? sourceSize.width > sourceSize.height ? ' is-landscape' : ' is-portrait' : ''}`}>
@@ -408,14 +416,14 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
             : <NativeGpuVideoPreview className="pixel-flow-canvas" layers={previewLayers} canvasWidth={gpuPreviewSize.width} canvasHeight={gpuPreviewSize.height} playing={playing} time={currentTime} seekRevision={seekRevision} onFallback={() => setGpuFallback(true)} />)}
         </div>
         {segmenting && <div className="pixel-flow-identifying" role="status"><LoadingIndicator /><span>{progress || '正在识别画面层次'}</span></div>}
-        <VideoControls className="pixel-flow-controls" currentTime={currentTime} duration={duration} playing={playing} onToggle={() => playing ? setPlaying(false) : replay()} onSeek={seek} step={1 / 60} />
+        <VideoControls className="pixel-flow-controls" currentTime={currentTime} duration={duration} playing={playing} disabled={!playbackReady} onToggle={() => playing ? setPlaying(false) : replay()} onSeek={seek} step={1 / 60} />
       </div>
         : <div className="pixel-flow-empty"><ScanLine size={28} /><strong>选择图片或视频素材</strong><span>在下方素材栏中选择需要制作效果的素材</span></div>}
     </div>
     <PixelFlowControls
       duration={duration} pixelCount={pixelCount} lightWidth={lightWidth} bloomStrength={bloomStrength}
       filterStrength={filterStrength} colorTransition={colorTransition} rainSpeed={rainSpeed} rainLength={rainLength}
-      flowStrength={flowStrength} subjectDelay={subjectDelay} disabled={!sourceSize}
+      flowStrength={flowStrength} subjectDelay={subjectDelay} disabled={!playbackReady}
       onDurationChange={setDuration} onPixelCountChange={setPixelCount} onLightWidthChange={setLightWidth}
       onBloomStrengthChange={setBloomStrength} onFilterStrengthChange={setFilterStrength}
       onColorTransitionChange={setColorTransition} onRainSpeedChange={setRainSpeed} onRainLengthChange={setRainLength}
