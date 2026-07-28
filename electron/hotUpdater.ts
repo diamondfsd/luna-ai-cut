@@ -38,7 +38,7 @@ function currentPlatformPackage(): string {
 
 // ── 类型 ──
 
-/** renderer-latest.json 清单结构 */
+/** 从 GitCode Release 附件解析出的热更新信息。 */
 export interface HotUpdateManifest {
   version: string
   zipName: string
