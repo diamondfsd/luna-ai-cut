@@ -74,6 +74,9 @@ export interface WorkspacePixelFlowState {
   pixelSize: number
   lightWidth: number
   semanticDelay: number
+  bloomStrength?: number
+  filterStrength?: number
+  colorTransition?: number
   maskPath?: string
   skyMaskPath?: string
   depthMaskPath?: string

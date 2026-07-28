@@ -137,6 +137,7 @@ struct GpuLayerParams {
     pixel_flow_geometry: [f32; 4],
     pixel_flow_depth: [f32; 4],
     pixel_flow_scale: [f32; 4],
+    pixel_flow_finish: [f32; 4],
     fill_rgba: [f32; 4],
     stroke_rgba: [f32; 4],
     text_meta: [f32; 4],

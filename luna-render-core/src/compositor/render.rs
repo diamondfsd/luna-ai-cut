@@ -443,6 +443,20 @@ impl Compositor {
                                 effect.sky_black_ratio.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
                             ]
                         });
+                let pixel_flow_finish =
+                    layer
+                        .pixel_flow
+                        .as_ref()
+                        .map_or([0.5, 0.5, 0.5, 0.0], |effect| {
+                            [
+                                effect.bloom_strength.unwrap_or(50.0).clamp(0.0, 100.0) as f32
+                                    / 100.0,
+                                effect.filter_strength.unwrap_or(50.0).clamp(0.0, 100.0) as f32
+                                    / 100.0,
+                                effect.color_transition.unwrap_or(0.5).clamp(0.0, 2.0) as f32,
+                                0.0,
+                            ]
+                        });
                 let shape_kind = match layer.shape.as_deref() {
                     Some("rounded-rectangle") => 1.0,
                     Some("line") => 2.0,
@@ -651,6 +665,7 @@ impl Compositor {
                     pixel_flow_geometry,
                     pixel_flow_depth,
                     pixel_flow_scale,
+                    pixel_flow_finish,
                     fill_rgba,
                     stroke_rgba,
                     text_meta: [
