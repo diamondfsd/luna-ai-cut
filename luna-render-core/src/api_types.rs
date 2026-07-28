@@ -191,7 +191,7 @@ pub struct RenderPixelFlow {
     pub trajectory: Option<String>,
     pub sky_mode: Option<String>,
     pub other_direction: Option<String>,
-    pub pixel_size: f64,
+    pub pixel_count: f64,
     pub light_width: f64,
     pub depth_strength: f64,
     pub origin_x: f64,
