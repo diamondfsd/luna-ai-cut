@@ -73,6 +73,7 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
 
   function handlePointerDown(e: React.PointerEvent): void {
     if (e.button !== 0) return
+    if (!e.currentTarget.contains(e.target as Node)) return
     containerRef.current?.focus({ preventScroll: true })
     if ((e.target as HTMLElement).closest('.workspace-thumb')) return
 
