@@ -26,8 +26,9 @@ function sourceImage() {
       const subject = Math.hypot(x - 64, y - 88) <= 18
       const sky = y < 45
       const black = x < 24 && (y < 45 || (y >= 60 && y < 84))
+      const darkRed = x >= 24 && x < 40 && y >= 60 && y < 84
       const highlight = x >= 90 && x < 110 && y >= 48 && y < 66
-      const color = black ? [0, 0, 0] : highlight ? [245, 210, 96] : subject ? [32, 205, 76] : sky ? [42, 126, 224] : [226, 48, 82]
+      const color = black ? [0, 0, 0] : darkRed ? [24, 2, 4] : highlight ? [245, 210, 96] : subject ? [32, 205, 76] : sky ? [42, 126, 224] : [226, 48, 82]
       pixels[offset] = color[0]
       pixels[offset + 1] = color[1]
       pixels[offset + 2] = color[2]
@@ -184,6 +185,7 @@ try {
   const saturatedInitial = render(compositionWithPixelFlow(composition, { initialSaturation: 100 }), 0)
   const brighterInitial = render(compositionWithPixelFlow(composition, { initialBrightness: 50 }), 0)
   const ignition = render(composition, 0.2)
+  const ignitionBloomOff = render(compositionWithPixelFlow(composition, { bloomStrength: 0 }), 0.2)
   const spreading = render(composition, 0.5)
   const finished = render(composition, duration)
   const slowRain = render(compositionWithPixelFlow(composition, { rainSpeed: 20 }), 0.45)
@@ -208,6 +210,8 @@ try {
   const delayedSubject = render(compositionWithPixelFlow(segmented, { subjectDelay: 100 }), 0.55)
   const subjectRight = render(compositionWithPixelFlow(segmented, { subjectDirection: 'right' }), 0.48)
   const subjectLeft = render(compositionWithPixelFlow(segmented, { subjectDirection: 'left' }), 0.48)
+  const subjectOutward = render(compositionWithPixelFlow(segmented, { subjectDirection: 'outward' }), 0.48)
+  const subjectInward = render(compositionWithPixelFlow(segmented, { subjectDirection: 'inward' }), 0.48)
   const plainComposition = compositionWithoutPixelFlow(composition)
   const plainStart = render(plainComposition, 0)
   const plainEnd = render(plainComposition, duration)
@@ -221,9 +225,18 @@ try {
   const upperRain = regionDifference(ignition, initial, 0, 48)
   const lowerRain = regionDifference(ignition, initial, 88, 128)
   assert.ok(upperRain > lowerRain + 4, `pixel rain reaches the upper frame first (${upperRain} > ${lowerRain})`)
-  const blackSkyRain = rectangleDifference(ignition, initial, 0, 0, 16, 40)
-  const coloredSkyRain = rectangleDifference(ignition, initial, 32, 0, 120, 40)
+  const blackSkyRain = rectangleDifference(ignitionBloomOff, initial, 112, 0, 128, 40)
+  const coloredSkyRain = rectangleDifference(ignitionBloomOff, initial, 8, 0, 96, 40)
   assert.ok(blackSkyRain < coloredSkyRain * 0.18, `black source areas do not generate rain (${blackSkyRain} < ${coloredSkyRain})`)
+  let blackSurfaceFlow = 0
+  let darkRedSurfaceFlow = 0
+  for (const sampleTime of [0.3, 0.4, 0.5, 0.6, 0.7]) {
+    const darkFlowOff = render(compositionWithPixelFlow(composition, { flowStrength: 0, bloomStrength: 0 }), sampleTime)
+    const darkFlowFull = render(compositionWithPixelFlow(composition, { flowStrength: 100, bloomStrength: 0 }), sampleTime)
+    blackSurfaceFlow = Math.max(blackSurfaceFlow, rectangleDifference(darkFlowFull, darkFlowOff, 108, 62, 126, 82))
+    darkRedSurfaceFlow = Math.max(darkRedSurfaceFlow, rectangleDifference(darkFlowFull, darkFlowOff, 89, 62, 103, 82))
+  }
+  assert.ok(darkRedSurfaceFlow > blackSurfaceFlow + 0.2, `dark saturated red still generates flow (${darkRedSurfaceFlow} > ${blackSurfaceFlow})`)
   const speedDifference = frameDifference(slowRain, fastRain)
   const lengthDifference = frameDifference(shortRain, longRain)
   assert.ok(speedDifference > 0.8, `rain speed changes the vertical flow position (${speedDifference})`)
@@ -246,6 +259,8 @@ try {
   const skyDirectionDifference = rectangleDifference(subjectRight, subjectLeft, 0, 0, width, 44)
   assert.ok(subjectDirectionDifference > 1, `subject direction presets change the foreground scan (${subjectDirectionDifference})`)
   assert.ok(skyDirectionDifference < 0.05, `subject direction leaves the downward sky rain unchanged (${skyDirectionDifference})`)
+  const radialDirectionDifference = rectangleDifference(subjectOutward, subjectInward, 46, 70, 82, 106)
+  assert.ok(radialDirectionDifference > 1, `inward and outward subject presets move in opposite directions (${radialDirectionDifference})`)
   assert.deepEqual(plainStart.data, plainEnd.data, 'layers without pixel flow remain unaffected by pixel-flow timing and finishing')
 
   const liveComposition = structuredClone(composition)
