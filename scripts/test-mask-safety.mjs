@@ -65,6 +65,7 @@ try {
     'src/workspace/shared/renderLayerPipeline.ts',
     'src/workspace/creative/only-your-color/onlyYourColorLayers.ts',
     'src/workspace/creative/only-your-color/onlyYourColorBatchMask.ts',
+    'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.ts',
     'src/components/renderComposition.ts',
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
@@ -88,6 +89,7 @@ try {
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
   const onlyYourColorLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorLayers.js')))
   const onlyYourColorBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorBatchMask.js')))
+  const onlyYourColorMaskRefinement = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.js')))
   const renderComposition = await import(pathToFileURL(path.join(temporaryRoot, 'src/components/renderComposition.js')))
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
@@ -752,6 +754,37 @@ try {
   assert.equal(creativeOutputs[1].color.saturation, -100)
   assert.equal(creativeOutputs[2].color.saturation, 20)
   assert.equal(creativeOutputs[2].color.vibrance, 30)
+  assert.deepEqual(
+    creativeOutputs.slice(1).map((layer) => layer.maskFeather),
+    [0, 0],
+    'only-your-color must use one complementary soft edge instead of expanding both mask sides',
+  )
+  const neutralCreativeOutputs = onlyYourColorLayers.buildOnlyYourColorLayers({
+    layers: [creativeSource],
+    sourcePath: '/image.jpg',
+    subjectMaskPath: '/subject.pgm',
+    backgroundMaskPath: '/background.pgm',
+    intensity: 100,
+    backgroundExposure: 0,
+    subjectSaturation: 0,
+    subjectVibrance: 0,
+  }).filter((layer) => layer.precomposeRole === 'output')
+  assert.equal(neutralCreativeOutputs.length, 2, 'a neutral subject must not narrow the soft edge with a duplicate source layer')
+
+  const hardMask = new Uint8Array(15 * 9)
+  for (let y = 1; y < 8; y += 1) {
+    for (let x = 2; x < 13; x += 1) hardMask[y * 15 + x] = 255
+  }
+  const refinedMask = onlyYourColorMaskRefinement.refineOnlyYourColorMask(hardMask, 15, 9)
+  const refinedRow = [...refinedMask.slice(4 * 15, 5 * 15)]
+  assert.ok(refinedRow[2] > 0 && refinedRow[2] < refinedRow[3], 'refined subject edges must start with partial coverage')
+  assert.ok(refinedRow[3] < refinedRow[4] && refinedRow[4] < refinedRow[5], 'refined subject edges must increase continuously')
+  assert.equal(refinedRow[7], 255, 'refinement must preserve the opaque center of a large subject')
+  assert.deepEqual(
+    [...onlyYourColorMaskRefinement.refineOnlyYourColorMask(new Uint8Array(9), 3, 3)],
+    [...new Uint8Array(9)],
+    'refinement must keep an empty recognition result empty',
+  )
 
   let batchSegmentCalls = 0
   const batchAsset = { id: 'asset-batch', name: 'batch.jpg', path: '/batch.jpg', kind: 'image' }

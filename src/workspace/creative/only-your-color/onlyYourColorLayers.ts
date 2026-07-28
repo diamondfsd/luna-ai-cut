@@ -13,8 +13,6 @@ interface OnlyYourColorLayerOptions {
   subjectVibrance: number
   subjectMaskInverted?: boolean
   backgroundMaskInverted?: boolean
-  subjectMaskFeather?: number
-  backgroundMaskFeather?: number
 }
 
 export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): PreviewLayer[] {
@@ -79,7 +77,7 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
     maskPath: options.backgroundMaskPath,
     maskOpacity: 1,
     maskInverted: options.backgroundMaskInverted ?? true,
-    maskFeather: options.backgroundMaskFeather ?? 1,
+    maskFeather: 0,
     zIndex: 1,
   }
   const subject: PreviewLayer = {
@@ -93,17 +91,20 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
     maskPath: options.subjectMaskPath,
     maskOpacity: 1,
     maskInverted: options.subjectMaskInverted ?? false,
-    maskFeather: options.subjectMaskFeather ?? 1,
+    maskFeather: 0,
     zIndex: 2,
   }
   const decorations = options.layers
     .filter((layer) => !sourceLayers.includes(layer))
     .map((layer, index) => ({ ...layer, zIndex: Math.max(20 + index, layer.zIndex) }))
+  const subjectLayers = options.subjectSaturation === 0 && options.subjectVibrance === 0
+    ? []
+    : [subject]
   return [
     ...inputs,
     flattened,
     background,
-    subject,
+    ...subjectLayers,
     ...decorations,
   ]
 }
