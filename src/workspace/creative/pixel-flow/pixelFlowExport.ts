@@ -30,6 +30,7 @@ interface PixelFlowExportOptions {
   asset: WorkspaceMediaAsset
   layers: PreviewLayer[]
   sourceSize: { width: number; height: number }
+  playbackDuration: number
   config: VideoExportSettings
   waitForCompletion?: boolean
 }
@@ -174,7 +175,9 @@ async function runVideoExport(options: PixelFlowExportOptions, exportDir: string
   const fileName = `${baseName}-pixel-flow-${stamp}.mp4`
   const destinationPath = filePath(exportDir, fileName)
   const itemId = `pixel_flow_video_${stamp}`
-  const sourceDuration = await window.luna.workspace.getVideoDuration(options.asset.path)
+  const sourceDuration = options.asset.kind === 'video'
+    ? await window.luna.workspace.getVideoDuration(options.asset.path)
+    : options.playbackDuration
   const resolved = resolveExportConfig(options.config, options.sourceSize.width, options.sourceSize.height)
   const layers = options.layers.map((layer) => layer.isVideo ? { ...layer, videoDuration: sourceDuration } : layer)
   const composition = buildCompositionFromPreviewLayers(layers, resolved.width, resolved.height, {
@@ -210,6 +213,16 @@ async function runVideoExport(options: PixelFlowExportOptions, exportDir: string
 export async function queuePixelFlowExport(options: PixelFlowExportOptions): Promise<number> {
   const settings = await window.luna.getSettings()
   if (!settings.exportDir) throw new Error('请先在设置中选择导出目录')
-  if (options.asset.kind === 'image') return runImageLiveExport(options, settings.exportDir)
-  return runVideoExport(options, settings.exportDir)
+  if (options.asset.kind === 'video') return runVideoExport(options, settings.exportDir)
+
+  const exports: Array<Promise<number>> = []
+  if (options.config.exportFormats.includes('video')) {
+    exports.push(runVideoExport(options, settings.exportDir))
+  }
+  if (options.config.exportFormats.some((format) => format !== 'video')) {
+    exports.push(runImageLiveExport(options, settings.exportDir))
+  }
+  if (exports.length === 0) throw new Error('请至少选择一种导出格式')
+  const counts = await Promise.all(exports)
+  return counts.reduce((total, count) => total + count, 0)
 }

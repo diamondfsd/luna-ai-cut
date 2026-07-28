@@ -23,7 +23,9 @@ export interface PixelFlowBatchExportResult {
 export async function queuePixelFlowBatchExport(options: PixelFlowBatchExportOptions): Promise<PixelFlowBatchExportResult> {
   const liveFormats = options.config.exportFormats.filter((format) => format !== 'video')
   const videoSelected = options.config.exportFormats.includes('video')
-  const assets = options.assets.filter((asset) => asset.kind === 'image' ? liveFormats.length > 0 : videoSelected)
+  const assets = options.assets.filter((asset) => asset.kind === 'image'
+    ? videoSelected || liveFormats.length > 0
+    : videoSelected)
   if (assets.length === 0) throw new Error('请选择与素材类型对应的导出格式')
 
   const prepared: Array<{
@@ -85,9 +87,10 @@ export async function queuePixelFlowBatchExport(options: PixelFlowBatchExportOpt
         asset: item.asset,
         layers,
         sourceSize: item.sourceSize,
+        playbackDuration: item.playbackDuration,
         config: {
           ...options.config,
-          exportFormats: item.asset.kind === 'image' ? liveFormats : ['video'],
+          exportFormats: item.asset.kind === 'image' ? options.config.exportFormats : ['video'],
         },
         waitForCompletion: true,
       }).catch(() => undefined)

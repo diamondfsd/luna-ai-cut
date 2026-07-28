@@ -32,11 +32,11 @@ export function usePixelFlowBatchExport(options: UsePixelFlowBatchExportOptions)
   const initialConfig = useMemo<VideoExportSettings>(() => hasImages
     ? {
         ...PIXEL_FLOW_IMAGE_EXPORT_SETTINGS,
-        exportFormats: hasVideos ? ['video', 'google-live'] : ['google-live'],
+        exportFormats: hasVideos ? ['video', 'google-live'] : ['video'],
       }
     : DEFAULT_VIDEO_EXPORT_SETTINGS, [hasImages, hasVideos])
   const allowedFormats: VideoExportFormat[] = hasImages
-    ? hasVideos ? ['video', 'google-live', 'apple-live'] : ['google-live', 'apple-live']
+    ? ['video', 'google-live', 'apple-live']
     : ['video']
 
   const handleExport = useCallback(async (config: VideoExportSettings) => {
