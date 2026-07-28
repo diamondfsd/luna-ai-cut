@@ -343,6 +343,10 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 mask_feather: layer.mask_feather.unwrap_or(0.0).clamp(0.0, 100.0),
                 mask_transform: mask_track_transform(layer.mask_track.as_ref(), video_time),
                 pixel_stretch: layer.pixel_stretch.clone(),
+                pixel_flow: layer.pixel_flow.clone().map(|mut effect| {
+                    effect.progress = Some((video_time / effect.duration.max(0.1)).clamp(0.0, 1.0));
+                    effect
+                }),
                 transform: layer.transform.clone().unwrap_or_default(),
                 positioning: layer.positioning.clone(),
                 restore_lut_id: layer.restore_lut_id.clone(),

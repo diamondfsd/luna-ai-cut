@@ -380,6 +380,34 @@ impl Compositor {
                         }
                     }
                 }
+                let pixel_flow = layer.pixel_flow.as_ref().map_or([0.0; 4], |effect| {
+                    [
+                        1.0,
+                        effect.progress.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
+                        effect.pixel_size.clamp(2.0, 64.0) as f32,
+                        effect.light_width.clamp(1.0, 30.0) as f32,
+                    ]
+                });
+                let pixel_flow_geometry =
+                    layer
+                        .pixel_flow
+                        .as_ref()
+                        .map_or([0.5, 0.28, 0.5, 0.48], |effect| {
+                            [
+                                effect.origin_x.clamp(0.0, 1.0) as f32,
+                                effect.origin_y.clamp(0.0, 1.0) as f32,
+                                effect.impact_x.clamp(0.0, 1.0) as f32,
+                                effect.impact_y.clamp(0.0, 1.0) as f32,
+                            ]
+                        });
+                let pixel_flow_depth = layer.pixel_flow.as_ref().map_or([0.0; 4], |effect| {
+                    [
+                        effect.depth_strength.clamp(0.0, 100.0) as f32,
+                        effect.duration.clamp(0.1, 60.0) as f32,
+                        0.0,
+                        0.0,
+                    ]
+                });
                 let shape_kind = match layer.shape.as_deref() {
                     Some("rounded-rectangle") => 1.0,
                     Some("line") => 2.0,
@@ -584,6 +612,9 @@ impl Compositor {
                     pixel_stretch_center,
                     pixel_stretch_path_meta,
                     pixel_stretch_path_data,
+                    pixel_flow,
+                    pixel_flow_geometry,
+                    pixel_flow_depth,
                     fill_rgba,
                     stroke_rgba,
                     text_meta: [

@@ -317,6 +317,43 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         params.src_y + source_local.y * params.src_h,
     );
 
+    if (params.pixel_flow.x > 0.5) {
+        let source_size = vec2<f32>(textureDimensions(src_texture));
+        let cell_px = max(2.0, max(source_size.x, source_size.y) * params.pixel_flow.z / 1000.0);
+        let cell_index = floor(tex_coord * source_size / cell_px);
+        let cell_uv = clamp((cell_index + vec2<f32>(0.5)) * cell_px / source_size, vec2<f32>(0.0), vec2<f32>(1.0));
+        let cell = pixel_flow_cell(cell_uv, cell_index, source_size, cell_px);
+        let band = max(0.012, params.pixel_flow.w / 100.0);
+        let accelerated = params.pixel_flow.y * params.pixel_flow.y;
+        let progress = accelerated * (1.04 + band * 3.4);
+        let distance = cell.x - progress;
+        let frame_edge = max(abs(cell_uv.x - 0.5) * 2.0, abs(cell_uv.y - 0.5) * 2.0);
+        let edge_hold = smoothstep(0.76, 0.98, frame_edge);
+        let pulse = pixel_flow_light(distance, band, cell.w, edge_hold);
+
+        let source = sample_media_texture(tex_coord);
+        let adjusted = apply_color(source.rgb, tex_coord, local_x);
+        let gray_value = dot(adjusted, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let monochrome = vec3<f32>(clamp((gray_value - 0.5) * 1.08 + 0.52, 0.0, 1.0));
+        let reveal = smoothstep(-0.012, 0.006, progress - cell.x);
+        let base = mix(monochrome, adjusted, reveal);
+
+        let block_source = textureSampleLevel(src_texture, src_sampler, cell_uv, 0.0).rgb;
+        let block_adjusted = apply_color(block_source, cell_uv, local_x);
+        let maximum = max(block_adjusted.r, max(block_adjusted.g, block_adjusted.b));
+        let minimum = min(block_adjusted.r, min(block_adjusted.g, block_adjusted.b));
+        let center = (maximum + minimum) * 0.5;
+        let saturated = clamp(vec3<f32>(center) + (block_adjusted - vec3<f32>(center)) * 2.08, vec3<f32>(0.0), vec3<f32>(1.0));
+        let highlight = mix(saturated, vec3<f32>(1.0), 0.3);
+        let depth_light = cell.y * 1.08 + cell.z * 1.34 + cell.w * 1.68;
+        let block_local = abs(fract(tex_coord * source_size / cell_px) - vec2<f32>(0.5));
+        let soft_core = 1.0 - smoothstep(0.3, 0.52, max(block_local.x, block_local.y));
+        let glow = pulse * depth_light;
+        let lit = base + saturated * glow * (0.78 + soft_core * 0.58) + highlight * glow * soft_core * 0.46;
+        let layer_alpha = source.a * params.opacity * corner_coverage;
+        return vec4<f32>(clamp(lit, vec3<f32>(0.0), vec3<f32>(1.35)) * layer_alpha, layer_alpha);
+    }
+
     if (params.pixel_stretch.x > 0.5) {
         let stretch_mode = params.pixel_stretch.x;
         let is_s_curve = stretch_mode > 2.5 && stretch_mode < 4.5;

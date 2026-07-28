@@ -328,6 +328,7 @@ pub fn render_preview(input: RenderPreviewInput) -> napi::Result<RenderPreviewOu
                     ..Default::default()
                 }),
             pixel_stretch: l.pixel_stretch.clone(),
+            pixel_flow: l.pixel_flow.clone(),
             transform: l.transform.clone().unwrap_or_default(),
             positioning: l.positioning.clone(),
             restore_lut_id: l.restore_lut_id.clone(),
@@ -411,6 +412,7 @@ pub fn plan_preview(input: PreviewPlanInput) -> napi::Result<PreviewPlanOutput> 
                         },
                     ),
                     pixel_stretch: item.layer.pixel_stretch.clone(),
+                    pixel_flow: item.layer.pixel_flow.clone(),
                     transform: item.layer.transform.clone().unwrap_or_default(),
                     positioning: item.layer.positioning.clone(),
                     restore_lut_id: item.layer.restore_lut_id.clone(),
