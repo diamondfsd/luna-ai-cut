@@ -24,7 +24,7 @@ import type { WorkspaceViewScale } from '../workspace/components/WorkspacePrevie
 import { WorkspaceProjectPicker } from '../workspace/components/WorkspaceProjectPicker'
 import { WorkspaceRemoveDialog } from '../workspace/components/WorkspaceRemoveDialog'
 import { WorkspaceEditSidebar } from '../workspace/components/WorkspaceEditSidebar'
-import type { CreativeModeId, WorkspaceMode } from '../workspace/components/WorkspaceModeHeader'
+import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
@@ -59,11 +59,9 @@ function extractExifValue(metadata: MediaMetadata, key: string): string | null {
 }
 
 interface WorkspacePageProps {
-  workspaceMode: WorkspaceMode
   creativeModeId: CreativeModeId | null
   onCreativeModeChange: (modeId: CreativeModeId | null) => void
   pageActive: boolean
-  onEditingChange?: (editing: boolean) => void
 }
 
 type WorkspaceRuntimeResource = 'fonts' | 'luts'
@@ -77,7 +75,7 @@ function prepareWorkspaceRuntimeResource(kind: WorkspaceRuntimeResource): Promis
   return renderCore?.prepareRuntimeResource?.(kind) ?? Promise.resolve()
 }
 
-export function WorkspacePage({ workspaceMode, creativeModeId, onCreativeModeChange, pageActive, onEditingChange }: WorkspacePageProps) {
+export function WorkspacePage({ creativeModeId, onCreativeModeChange, pageActive }: WorkspacePageProps) {
   // 非活跃时不渲染：AppRoute 的 preserve 只隐藏不卸载，不跳过会导致 context 消费者持续响应全局 state 变化
   const location = useLocation()
   const routeState = location.state as WorkspaceRouteState | null
@@ -86,14 +84,12 @@ export function WorkspacePage({ workspaceMode, creativeModeId, onCreativeModeCha
     <WorkspaceEditProvider>
       <WorkspaceMediaProvider routeState={routeState} locationKey={location.key}>
         <WorkspaceCanvasProvider>
-          <WorkspaceMaskProvider active={pageActive && (workspaceMode === 'edit' || creativeModeId === 'pixel-stretch')}>
+          <WorkspaceMaskProvider active={pageActive && (!creativeModeId || creativeModeId === 'pixel-stretch')}>
             <ErrorBoundary>
               <WorkspacePageInner
-                workspaceMode={workspaceMode}
                 creativeModeId={creativeModeId}
                 onCreativeModeChange={onCreativeModeChange}
                 pageActive={pageActive}
-                onEditingChange={onEditingChange}
               />
             </ErrorBoundary>
           </WorkspaceMaskProvider>
@@ -105,7 +101,7 @@ export function WorkspacePage({ workspaceMode, creativeModeId, onCreativeModeCha
 
 // ── inner page that consumes all three contexts ──
 
-function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChange, pageActive, onEditingChange }: WorkspacePageProps) {
+function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }: WorkspacePageProps) {
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
   const canvas = useWorkspaceCanvas()
@@ -424,7 +420,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   useEffect(() => {
     if (!settingsReady) return
-    if (workspaceMode !== 'edit') {
+    if (creativeModeId) {
       flushProjectSave()
       return
     }
@@ -436,7 +432,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
     pendingProjectSaveRef.current = nextProject
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(flushProjectSave, 500)
-  }, [edit.pipeline, flushProjectSave, media.activeIndex, media.activeMedia?.path, media.currentProject?.id, setCurrentProject, settingsReady, workspaceMode])
+  }, [creativeModeId, edit.pipeline, flushProjectSave, media.activeIndex, media.activeMedia?.path, media.currentProject?.id, setCurrentProject, settingsReady])
 
   function handlePastePipeline(): void {
     const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
@@ -630,12 +626,6 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
     }
   }
 
-  // ── onEditingChange ──
-  useEffect(() => {
-    onEditingChange?.(media.editorOpen)
-    return () => onEditingChange?.(false)
-  }, [media.editorOpen, onEditingChange])
-
   // ── Keyboard shortcuts ──
   // Refs for values accessed in stable event listeners
   const cropActiveRef = useRef(false)
@@ -662,7 +652,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   // Stable keyboard handler (registered once, refs keep latest values)
   useEffect(() => {
-    if (!pageActive || workspaceMode !== 'edit') return
+    if (!pageActive || creativeModeId) return
 
     function handleKeyDown(event: KeyboardEvent): void {
       // 全局阻止空格默认行为（使用捕获阶段在滑块内部处理前拦截）
@@ -727,7 +717,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
       window.removeEventListener('keydown', handleKeyDown, { capture: true })
       window.removeEventListener('keyup', handleKeyUp, { capture: true })
     }
-  }, [pageActive, workspaceMode])
+  }, [creativeModeId, pageActive])
 
   // ── Empty state — 列表页独立布局，不使用详情页的 workspace-layout 网格 ──
   if (!media.currentProject && media.media.length === 0) {
@@ -751,10 +741,12 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
 
   return (
     <div className={`workspace-layout${edit.trimActive ? ' trim-active' : ''}`}>
-      {workspaceMode === 'creative' ? (
+      {creativeModeId ? (
         <WorkspaceCreativeFactory
           creativeModeId={creativeModeId}
           onCreativeModeChange={onCreativeModeChange}
+          onAddMedia={() => setImportDialogOpen(true)}
+          onImportLocal={() => void handleImportLocalFiles()}
         />
       ) : (
         <>
@@ -803,6 +795,7 @@ function WorkspacePageInner({ workspaceMode, creativeModeId, onCreativeModeChang
             onTrimSeek={handleTrimSeek}
             allowWatermark={Boolean(media.activeMedia)}
             runtimeResourceLoading={runtimeResourceLoading}
+            onOpenCreative={onCreativeModeChange}
           />
 
           {edit.trimActive ? (

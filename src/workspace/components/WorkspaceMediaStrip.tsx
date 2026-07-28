@@ -1,7 +1,7 @@
 import { FolderOpen } from 'lucide-react'
 import { type MouseEvent, useRef, useState } from 'react'
 
-import type { WorkspaceMediaAsset } from '../../shared/types'
+import type { WorkspaceMediaAsset, WorkspaceMediaKind } from '../../shared/types'
 import { mergePipeline, type EditPipeline } from '../shared/editPipeline'
 import type { PipelinePatch } from '../shared/editPipeline'
 import { createWorkspaceDefaultPipeline } from '../shared/workspaceDefaultPipeline'
@@ -19,7 +19,11 @@ function isAssetModified(item: WorkspaceMediaAsset, defaultPipeline: EditPipelin
   return JSON.stringify(normalized) !== JSON.stringify(defaultPipeline)
 }
 
-export function WorkspaceMediaStrip() {
+interface WorkspaceMediaStripProps {
+  supportedMediaKinds?: readonly WorkspaceMediaKind[]
+}
+
+export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStripProps = {}) {
   const { media: mediaList, brokenPaths, setBrokenPaths, selectedIndices, setSelectedIndices, activeIndex, setActiveIndex, handleSelectionChange } = useWorkspaceMedia()
   const { settings } = useApp()
   const defaultPipeline = createWorkspaceDefaultPipeline(settings)
@@ -27,11 +31,39 @@ export function WorkspaceMediaStrip() {
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [dragHighlighted, setDragHighlighted] = useState<Set<number>>(new Set())
+  const visibleMedia = mediaList
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => !supportedMediaKinds || supportedMediaKinds.includes(item.kind))
+  const visibleIndices = visibleMedia.map(({ index }) => index)
+  const visibleIndexSet = new Set(visibleIndices)
 
   function handleClick(index: number, event: MouseEvent): void {
     containerRef.current?.focus({ preventScroll: true })
     window.dispatchEvent(new CustomEvent('workspace-media-strip-click', { detail: { index } }))
     if (event.shiftKey || event.ctrlKey || event.metaKey) {
+      if (supportedMediaKinds) {
+        setSelectedIndices((current) => {
+          const selectedVisible = [...current].filter((selectedIndex) => visibleIndexSet.has(selectedIndex))
+          if (event.shiftKey && selectedVisible.length > 0) {
+            const clickedPosition = visibleIndices.indexOf(index)
+            const anchor = selectedVisible.reduce((nearest, selectedIndex) => {
+              const position = visibleIndices.indexOf(selectedIndex)
+              return Math.abs(position - clickedPosition) < Math.abs(visibleIndices.indexOf(nearest) - clickedPosition)
+                ? selectedIndex
+                : nearest
+            })
+            const anchorPosition = visibleIndices.indexOf(anchor)
+            const from = Math.min(anchorPosition, clickedPosition)
+            const to = Math.max(anchorPosition, clickedPosition)
+            return new Set(visibleIndices.slice(from, to + 1))
+          }
+          const next = new Set(selectedVisible)
+          if (next.has(index)) next.delete(index)
+          else next.add(index)
+          return next
+        })
+        return
+      }
       handleSelectionChange(index, { shift: event.shiftKey, ctrl: event.ctrlKey, meta: event.metaKey })
       return
     }
@@ -69,7 +101,9 @@ export function WorkspaceMediaStrip() {
 
     const thumbs = container.querySelectorAll<HTMLElement>('.workspace-thumb')
     const highlighted = new Set<number>()
-    thumbs.forEach((thumb, index) => {
+    thumbs.forEach((thumb) => {
+      const index = Number(thumb.dataset.mediaIndex)
+      if (!Number.isInteger(index)) return
       const rect = thumb.getBoundingClientRect()
       if (rect.left < dragBounds.right && rect.right > dragBounds.left &&
           rect.top < dragBounds.bottom && rect.bottom > dragBounds.top) {
@@ -85,7 +119,9 @@ export function WorkspaceMediaStrip() {
     setDragRect(null)
 
     if (dragHighlighted.size > 0) {
-      const toggled = new Set(selectedIndices)
+      const toggled = new Set(supportedMediaKinds
+        ? [...selectedIndices].filter((index) => visibleIndexSet.has(index))
+        : selectedIndices)
       for (const idx of dragHighlighted) {
         if (toggled.has(idx)) toggled.delete(idx)
         else toggled.add(idx)
@@ -98,7 +134,7 @@ export function WorkspaceMediaStrip() {
   function handleKeyDown(e: React.KeyboardEvent): void {
     if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
       e.preventDefault()
-      const allIndices = new Set(mediaList.map((_, i) => i))
+      const allIndices = new Set(visibleMedia.map(({ index }) => index))
       setSelectedIndices(allIndices)
     }
   }
@@ -122,7 +158,7 @@ export function WorkspaceMediaStrip() {
       onPointerCancel={handlePointerUp}
       onKeyDown={handleKeyDown}
     >
-      {mediaList.map((item, index) => {
+      {visibleMedia.map(({ item, index }) => {
         const isBroken = brokenPaths.has(item.path)
         const isActive = index === activeIndex
         const isSelected = selectedIndices.has(index)
@@ -133,6 +169,7 @@ export function WorkspaceMediaStrip() {
             <ContextMenuTrigger asChild>
               <button
                 className={`workspace-thumb${isActive ? ' active' : ''}${isSelected || isDragHighlighted ? ' selected' : ''}${isBroken ? ' is-broken' : ''}`}
+                data-media-index={index}
                 type="button"
                 onClick={(e) => handleClick(index, e)}
               >

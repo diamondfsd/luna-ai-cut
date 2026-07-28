@@ -196,27 +196,11 @@ info "  更新镜像仓库 README"
 info "═══════════════════════════════════════════════════════════"
 echo ""
 
-# 获取 release 详情得到附件 browser_download_url
+# 获取 release 详情得到附件名称
 release_json=$(curl -sS \
   "${API_BASE}/releases/tags/${TAG}" \
   -H "PRIVATE-TOKEN: ${GITCODE_TOKEN}")
 
-# 提取附件 URL
-extract_asset() {
-  local pattern="$1"
-  echo "$release_json" | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-for a in d.get('assets',[]):
-    if a.get('name','').endswith('${pattern}'):
-        print(a.get('browser_download_url',''))
-        break
-" 2>/dev/null
-}
-
-mac_arm_url=$(extract_asset "-arm64.dmg")
-mac_x64_url=$(extract_asset "-x64.dmg")
-win_url=$(extract_asset ".exe")
 mac_arm_name=$(echo "$release_json" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
@@ -238,6 +222,12 @@ for a in d.get('assets',[]):
     if a['name'].endswith('.exe'):
         print(a['name']); break
 ")
+
+# API 返回的 browser_download_url 使用 api.gitcode.com，公开下载会返回 404。
+# README 与 Landing 页面统一使用 GitCode Release 的公开下载域名。
+mac_arm_url="${GITCODE_DL}/${TAG}/${mac_arm_name}"
+mac_x64_url="${GITCODE_DL}/${TAG}/${mac_x64_name}"
+win_url="${GITCODE_DL}/${TAG}/${win_name}"
 
 echo "  macOS ARM64: ${mac_arm_name:-<未上传>}"
 echo "  macOS x64:   ${mac_x64_name:-<未上传>}"

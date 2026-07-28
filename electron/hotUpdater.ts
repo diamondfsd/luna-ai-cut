@@ -38,7 +38,7 @@ function currentPlatformPackage(): string {
 
 // ── 类型 ──
 
-/** renderer-latest.json 清单结构 */
+/** 从 GitCode Release 附件解析出的热更新信息。 */
 export interface HotUpdateManifest {
   version: string
   zipName: string
@@ -240,8 +240,7 @@ export async function applyHotUpdate(info: HotUpdateCheckResult): Promise<void> 
   }
 
   const fileStream = createWriteStream(zipPath)
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-  await pipeline(res.body as any, fileStream)
+  await pipeline(res.body as unknown as NodeJS.ReadableStream, fileStream)
 
   // 2. 解压
   const zip = new AdmZip(zipPath)
