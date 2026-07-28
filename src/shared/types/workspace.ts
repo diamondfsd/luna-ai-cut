@@ -66,17 +66,16 @@ export interface WorkspaceOnlyYourColorState {
 
 export interface WorkspacePixelFlowState {
   settingsVersion?: number
-  flowMode?: 'segmented' | 'whole-frame'
-  trajectory?: 'highlight-flow' | 'cascade' | 'diagonal' | 'split'
-  skyMode?: 'ripple' | 'sweep' | 'full'
-  otherDirection?: 'top-down' | 'outside-in' | 'inside-out'
   duration: number
   pixelCount: number
   lightWidth: number
-  semanticDelay: number
-  bloomStrength?: number
-  filterStrength?: number
-  colorTransition?: number
+  rainSpeed: number
+  rainLength: number
+  flowStrength: number
+  subjectDelay: number
+  bloomStrength: number
+  filterStrength: number
+  colorTransition: number
   maskPath?: string
   skyMaskPath?: string
   depthMaskPath?: string

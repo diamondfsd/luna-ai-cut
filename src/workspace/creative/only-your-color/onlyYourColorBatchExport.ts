@@ -7,6 +7,7 @@ import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
 import { buildWorkspaceExportLayers } from '../../shared/workspaceExportLayers'
 import { loadCreativeImageSize } from '../shared/creativeMedia'
 import { buildOnlyYourColorLayers } from './onlyYourColorLayers'
+import { calculateOnlyYourColorAutoToneForFile } from './onlyYourColorAutoTone'
 import { ONLY_YOUR_COLOR_BACKGROUND_MASK_LAYER_ID, ONLY_YOUR_COLOR_MASK_LAYER_ID } from './onlyYourColorMask'
 import { resolveOnlyYourColorBatchMask } from './onlyYourColorBatchMask'
 import { onlyYourColorStateForAsset } from './onlyYourColorState'
@@ -84,6 +85,12 @@ export async function exportOnlyYourColorBatch(options: OnlyYourColorBatchExport
           saveMask: (projectId, assetId, width, height, bytes) => (
             window.luna.workspace.saveColorMask(projectId, assetId, width, height, bytes, 1)
           ),
+          calculateAutoTone: (filePath, data, width, height) => calculateOnlyYourColorAutoToneForFile({
+            filePath,
+            mask: data,
+            maskWidth: width,
+            maskHeight: height,
+          }),
         },
       })
       if (mask.newlyRecognized) recognizedStates[entry.asset.id] = mask.state

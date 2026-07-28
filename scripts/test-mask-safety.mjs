@@ -63,6 +63,7 @@ try {
     'src/workspace/shared/editPipelineSerialization.ts',
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
+    'src/workspace/creative/only-your-color/onlyYourColorAutoTone.ts',
     'src/workspace/creative/only-your-color/onlyYourColorLayers.ts',
     'src/workspace/creative/only-your-color/onlyYourColorBatchMask.ts',
     'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.ts',
@@ -87,6 +88,7 @@ try {
   const pipelineSerialization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipelineSerialization.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
+  const onlyYourColorAutoTone = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorAutoTone.js')))
   const onlyYourColorLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorLayers.js')))
   const onlyYourColorBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorBatchMask.js')))
   const onlyYourColorMaskRefinement = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorMaskRefinement.js')))
@@ -794,6 +796,56 @@ try {
     'refinement must keep an empty recognition result empty',
   )
 
+  const darkBackgroundPixels = new Uint8ClampedArray(10 * 10 * 4)
+  for (let index = 0; index < darkBackgroundPixels.length; index += 4) {
+    darkBackgroundPixels[index] = 32
+    darkBackgroundPixels[index + 1] = 32
+    darkBackgroundPixels[index + 2] = 32
+    darkBackgroundPixels[index + 3] = 255
+  }
+  const centerSubjectMask = new Uint8Array(10 * 10)
+  for (let y = 3; y < 7; y += 1) {
+    for (let x = 3; x < 7; x += 1) centerSubjectMask[y * 10 + x] = 255
+  }
+  const darkAutoTone = onlyYourColorAutoTone.calculateOnlyYourColorAutoTone({
+    pixels: darkBackgroundPixels,
+    imageWidth: 10,
+    imageHeight: 10,
+    mask: centerSubjectMask,
+    maskWidth: 10,
+    maskHeight: 10,
+  })
+  assert.ok(darkAutoTone.backgroundExposure > 0 && darkAutoTone.backgroundExposure <= 1.25, 'dark backgrounds must receive a bounded exposure lift')
+  assert.equal(darkAutoTone.backgroundBrightness, 0, 'automatic tone must not crush shadows with negative brightness')
+  assert.equal(darkAutoTone.backgroundContrast, 0, 'automatic tone must not crush shadows with fixed contrast')
+
+  const brightBackgroundPixels = new Uint8ClampedArray(darkBackgroundPixels)
+  for (let index = 0; index < brightBackgroundPixels.length; index += 4) {
+    brightBackgroundPixels[index] = 160
+    brightBackgroundPixels[index + 1] = 160
+    brightBackgroundPixels[index + 2] = 160
+  }
+  for (let y = 3; y < 7; y += 1) {
+    for (let x = 3; x < 7; x += 1) {
+      const offset = (y * 10 + x) * 4
+      brightBackgroundPixels[offset] = 0
+      brightBackgroundPixels[offset + 1] = 0
+      brightBackgroundPixels[offset + 2] = 0
+    }
+  }
+  assert.deepEqual(
+    onlyYourColorAutoTone.calculateOnlyYourColorAutoTone({
+      pixels: brightBackgroundPixels,
+      imageWidth: 10,
+      imageHeight: 10,
+      mask: centerSubjectMask,
+      maskWidth: 10,
+      maskHeight: 10,
+    }),
+    { backgroundExposure: 0, backgroundBrightness: 0, backgroundContrast: 0 },
+    'a dark subject must not cause a balanced background to be lifted',
+  )
+
   let batchSegmentCalls = 0
   const batchAsset = { id: 'asset-batch', name: 'batch.jpg', path: '/batch.jpg', kind: 'image' }
   const validStoredMask = new Uint8Array([
@@ -830,17 +882,18 @@ try {
         return { requestId: request.requestId, bytes: generatedMask.buffer, width: 5, height: 5 }
       },
       saveMask: async (_projectId, _assetId, width, height) => ({ path: '/generated.pgm', width, height }),
+      calculateAutoTone: async () => ({ backgroundExposure: 0.65, backgroundBrightness: 0, backgroundContrast: 0 }),
     },
   })
   assert.equal(batchSegmentRequest.modelId, 'rmbg-1.4', 'unrecognized batch items must use the default fast subject model')
   assert.equal(recognizedBatchMask.newlyRecognized, true)
   assert.equal(recognizedBatchMask.state.intensity, 100)
-  assert.equal(recognizedBatchMask.state.backgroundExposure, 0)
-  assert.equal(recognizedBatchMask.state.subjectExposure, 0.2)
-  assert.equal(recognizedBatchMask.state.backgroundBrightness, -20)
-  assert.equal(recognizedBatchMask.state.backgroundContrast, 15)
-  assert.equal(recognizedBatchMask.state.subjectSaturation, 15)
-  assert.equal(recognizedBatchMask.state.subjectVibrance, 15)
+  assert.equal(recognizedBatchMask.state.backgroundExposure, 0.65)
+  assert.equal(recognizedBatchMask.state.subjectExposure, 0)
+  assert.equal(recognizedBatchMask.state.backgroundBrightness, 0)
+  assert.equal(recognizedBatchMask.state.backgroundContrast, 0)
+  assert.equal(recognizedBatchMask.state.subjectSaturation, 0)
+  assert.equal(recognizedBatchMask.state.subjectVibrance, 0)
   assert.equal(recognizedBatchMask.state.maskPath, '/generated.pgm')
 
   await assert.rejects(
