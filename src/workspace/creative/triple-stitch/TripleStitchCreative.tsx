@@ -10,6 +10,7 @@ import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { emitLocalExportProgress, resolveExportConfig } from '../../../components/previewStageExport'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
+import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImportButtons'
 import { pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../../shared/renderLayerPipeline'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WM_SRC, watermarkStyleOptionsForDevice } from '../../../shared/watermarkAssets'
@@ -172,7 +173,7 @@ function compositionApi(): LunaCompositionExportApi {
   return api
 }
 
-export function TripleStitchCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
+export function TripleStitchCreative({ onBack, onAddMedia, onImportLocal, supportedMediaKinds }: CreativeModuleProps) {
   console.log(`[Perf ${new Date().toISOString().slice(11, 23)}] TripleStitchCreative mount at ${performance.now().toFixed(0)}ms`)
   const media = useWorkspaceMedia()
   const renderCountRef = useRef(0)
@@ -696,6 +697,7 @@ export function TripleStitchCreative({ onBack, supportedMediaKinds }: CreativeMo
           创意列表
         </Button>
         <span>Live 三拼</span>
+        <WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} />
       </header>
       <div className="triple-stitch-preview">
         <div className="triple-stitch-board ui-video-controls-host">

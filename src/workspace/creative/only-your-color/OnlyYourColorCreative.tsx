@@ -8,6 +8,7 @@ import { usesCustomWatermark } from '../../../shared/watermarkGeometry'
 import { Button, IconButton, LoadingIndicator, SegmentedControl, toast } from '../../../ui'
 import { ParamSlider } from '../../components/ParamSlider'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
+import { WorkspaceMediaImportButtons } from '../../components/WorkspaceMediaImportButtons'
 import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import { outputSizeForTransform } from '../../shared/renderLayerPipeline'
@@ -28,18 +29,24 @@ import {
 import { refineOnlyYourColorMask } from './onlyYourColorMaskRefinement'
 import {
   DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE,
+  DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_BRIGHTNESS,
+  DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_CONTRAST,
   DEFAULT_ONLY_YOUR_COLOR_INTENSITY,
+  DEFAULT_ONLY_YOUR_COLOR_SUBJECT_EXPOSURE,
   DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION,
   DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE,
   normalizeOnlyYourColorBackgroundExposure,
+  normalizeOnlyYourColorBackgroundBrightness,
+  normalizeOnlyYourColorBackgroundContrast,
   normalizeOnlyYourColorIntensity,
   normalizeOnlyYourColorSubjectSaturation,
+  normalizeOnlyYourColorSubjectExposure,
   normalizeOnlyYourColorSubjectVibrance,
   onlyYourColorStateForAsset,
 } from './onlyYourColorState'
 import './only-your-color.css'
 
-export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
+export function OnlyYourColorCreative({ onBack, onAddMedia, onImportLocal, supportedMediaKinds }: CreativeModuleProps) {
   const media = useWorkspaceMedia()
   const edit = useWorkspaceEdit()
   const activeAsset = media.activeMedia
@@ -49,7 +56,10 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
   const saved = onlyYourColorStateForAsset(media.currentProject, activeAssetId)
   const allowWatermark = useLunaUltraWatermark(activeAsset)
   const [intensity, setIntensity] = useState(normalizeOnlyYourColorIntensity(saved?.intensity))
+  const [subjectExposure, setSubjectExposure] = useState(normalizeOnlyYourColorSubjectExposure(saved?.subjectExposure))
   const [backgroundExposure, setBackgroundExposure] = useState(normalizeOnlyYourColorBackgroundExposure(saved?.backgroundExposure))
+  const [backgroundBrightness, setBackgroundBrightness] = useState(normalizeOnlyYourColorBackgroundBrightness(saved?.backgroundBrightness))
+  const [backgroundContrast, setBackgroundContrast] = useState(normalizeOnlyYourColorBackgroundContrast(saved?.backgroundContrast))
   const [subjectSaturation, setSubjectSaturation] = useState(normalizeOnlyYourColorSubjectSaturation(saved?.subjectSaturation))
   const [subjectVibrance, setSubjectVibrance] = useState(normalizeOnlyYourColorSubjectVibrance(saved?.subjectVibrance))
   const [subjectModel, setSubjectModel] = useState<NonNullable<WorkspaceOnlyYourColorState['subjectModel']>>(saved?.subjectModel ?? 'fast')
@@ -78,7 +88,10 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
   useEffect(() => {
     const restored = onlyYourColorStateForAsset(media.currentProject, activeAssetId)
     setIntensity(normalizeOnlyYourColorIntensity(restored?.intensity))
+    setSubjectExposure(normalizeOnlyYourColorSubjectExposure(restored?.subjectExposure))
     setBackgroundExposure(normalizeOnlyYourColorBackgroundExposure(restored?.backgroundExposure))
+    setBackgroundBrightness(normalizeOnlyYourColorBackgroundBrightness(restored?.backgroundBrightness))
+    setBackgroundContrast(normalizeOnlyYourColorBackgroundContrast(restored?.backgroundContrast))
     setSubjectSaturation(normalizeOnlyYourColorSubjectSaturation(restored?.subjectSaturation))
     setSubjectVibrance(normalizeOnlyYourColorSubjectVibrance(restored?.subjectVibrance))
     setSubjectModel(restored?.subjectModel ?? 'fast')
@@ -176,7 +189,10 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
     if (!project || !activeAssetId || restoredOwnerKey !== ownerKey) return
     const nextState: WorkspaceOnlyYourColorState = {
       intensity,
+      subjectExposure,
       backgroundExposure,
+      backgroundBrightness,
+      backgroundContrast,
       subjectSaturation,
       subjectVibrance,
       subjectModel,
@@ -202,7 +218,7 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
       void window.luna.workspace.saveProject(nextProject).catch(() => undefined)
     }, 300)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAssetId, activeMaskPath, backgroundExposure, intensity, ownerKey, restoredOwnerKey, subjectModel, subjectSaturation, subjectVibrance])
+  }, [activeAssetId, activeMaskPath, backgroundBrightness, backgroundContrast, backgroundExposure, intensity, ownerKey, restoredOwnerKey, subjectExposure, subjectModel, subjectSaturation, subjectVibrance])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -222,13 +238,16 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
       subjectMaskPath: subjectMaskLayer?.path ?? activeMaskPath,
       backgroundMaskPath: backgroundMaskLayer?.path ?? activeMaskPath,
       intensity,
+      subjectExposure,
       backgroundExposure,
+      backgroundBrightness,
+      backgroundContrast,
       subjectSaturation,
       subjectVibrance,
       subjectMaskInverted: subjectMaskLayer?.inverted,
       backgroundMaskInverted: backgroundMaskLayer?.inverted,
     })
-    : baseLayers, [activeAsset, activeMaskPath, backgroundExposure, backgroundMaskLayer, baseLayers, intensity, subjectMaskLayer, subjectSaturation, subjectVibrance])
+    : baseLayers, [activeAsset, activeMaskPath, backgroundBrightness, backgroundContrast, backgroundExposure, backgroundMaskLayer, baseLayers, intensity, subjectExposure, subjectMaskLayer, subjectSaturation, subjectVibrance])
   const previewLayers = showOriginal ? baseLayers : effectLayers
 
   function changeSubjectModel(value: NonNullable<WorkspaceOnlyYourColorState['subjectModel']>): void {
@@ -381,7 +400,7 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
   }, [activeAssetId, edit.pipeline, exportCount, exportableIndices, exporting, media, segmenting])
 
   return <section className="only-your-color-page">
-    <header className="only-your-color-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>只有你的色彩</span><CreativeCompareButton className="only-your-color-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
+    <header className="only-your-color-toolbar"><Button variant="toolbar" size="compact" icon={<ArrowLeft size={15} />} onClick={onBack}>创意列表</Button><span>只有你的色彩</span><WorkspaceMediaImportButtons onAddMedia={onAddMedia} onImportLocal={onImportLocal} /><CreativeCompareButton className="only-your-color-compare" active={showOriginal} disabled={!isImage || !sourceSize} onActiveChange={setShowOriginal} /></header>
     <div className="only-your-color-preview">
       {activeAsset && !isImage ? <div className="only-your-color-empty"><ScanSearch size={28} /><strong>请选择图片素材</strong><span>只有你的色彩目前支持图片素材</span></div>
         : previewLayers.length && outputSize ? <div className={`only-your-color-stage${pointPicking ? ' is-point-picking' : ''}`} style={{ aspectRatio: `${outputSize.width} / ${outputSize.height}` }} onClick={handlePreviewClick}><LrcRender className="only-your-color-canvas" layers={previewLayers} canvasWidth={outputSize.width} canvasHeight={outputSize.height} maxSide={960} interactiveImageLayerIndexes={[]} onError={toast.error} />{!showOriginal && pointPicking && <span className="only-your-color-point-hint">点击要保留色彩的主体</span>}</div>
@@ -389,8 +408,8 @@ export function OnlyYourColorCreative({ onBack, supportedMediaKinds }: CreativeM
             : <div className="only-your-color-empty"><ScanSearch size={28} /><strong>选择一张图片素材</strong><span>在下方素材栏中选择需要突出色彩主体的图片</span></div>}
     </div>
     <aside className="only-your-color-panel"><div className="only-your-color-panel-head"><strong>效果设置</strong><span>主体保留原色，背景转为黑白</span></div>
-      <div className="only-your-color-options"><span>智能选择</span><SegmentedControl ariaLabel="智能选择质量" value={subjectModel} options={[{ value: 'fast', label: '快速' }, { value: 'precise', label: '精准' }]} onChange={changeSubjectModel} /><div className="only-your-color-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>重新识别</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={() => setPointPicking(true)}>点选主体</Button></div>{segmenting && <div className="only-your-color-loading" role="status"><LoadingIndicator /><div><strong>{progress || '正在识别'}</strong><span>{subjectModel === 'precise' ? '精准识别' : '快速识别'}处理中</span></div></div>}{pointPicking && !segmenting && <span className="only-your-color-status">在预览图中点击需要保留色彩的区域</span>}<ParamSlider label="主体饱和度" value={subjectSaturation} min={-100} max={100} onChange={setSubjectSaturation} /><ParamSlider label="主体鲜艳度" value={subjectVibrance} min={-100} max={100} onChange={setSubjectVibrance} /><ParamSlider label="背景黑白强度" value={intensity} min={0} max={100} onChange={setIntensity} /><ParamSlider label="背景曝光" value={backgroundExposure} min={-5} max={5} step={0.01} onChange={setBackgroundExposure} /></div>
-      <div className="only-your-color-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置效果" aria-label="重置效果" onClick={() => { setIntensity(DEFAULT_ONLY_YOUR_COLOR_INTENSITY); setBackgroundExposure(DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE); setSubjectSaturation(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION); setSubjectVibrance(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE) }} /><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={exportCount === 0 || exporting || segmenting} onClick={() => void exportEffect()}>{exporting ? exportProgress || '导出中' : exportCount > 1 ? `导出 ${exportCount} 张` : '导出图片'}</Button></div>
+      <div className="only-your-color-options"><span>智能选择</span><SegmentedControl ariaLabel="智能选择质量" value={subjectModel} options={[{ value: 'fast', label: '快速' }, { value: 'precise', label: '精准' }]} onChange={changeSubjectModel} /><div className="only-your-color-detect-actions"><Button variant="secondary" size="compact" icon={<ScanSearch size={14} />} disabled={!isImage || segmenting} onClick={() => void segmentSubject()}>重新识别</Button><Button variant={pointPicking ? 'primary' : 'secondary'} size="compact" disabled={!isImage || segmenting} onClick={() => setPointPicking(true)}>点选主体</Button></div>{segmenting && <div className="only-your-color-loading" role="status"><LoadingIndicator /><div><strong>{progress || '正在识别'}</strong><span>{subjectModel === 'precise' ? '精准识别' : '快速识别'}处理中</span></div></div>}{pointPicking && !segmenting && <span className="only-your-color-status">在预览图中点击需要保留色彩的区域</span>}<ParamSlider label="主体曝光" value={subjectExposure} min={-5} max={5} step={0.01} onChange={setSubjectExposure} /><ParamSlider label="主体饱和度" value={subjectSaturation} min={-100} max={100} onChange={setSubjectSaturation} /><ParamSlider label="主体鲜艳度" value={subjectVibrance} min={-100} max={100} onChange={setSubjectVibrance} /><ParamSlider label="背景黑白强度" value={intensity} min={0} max={100} onChange={setIntensity} /><ParamSlider label="背景曝光" value={backgroundExposure} min={-5} max={5} step={0.01} onChange={setBackgroundExposure} /><ParamSlider label="背景亮度" value={backgroundBrightness} min={-100} max={100} onChange={setBackgroundBrightness} /><ParamSlider label="背景对比度" value={backgroundContrast} min={-100} max={100} onChange={setBackgroundContrast} /></div>
+      <div className="only-your-color-actions"><IconButton variant="ghost" size="mini" icon={<RotateCcw size={14} />} title="重置效果" aria-label="重置效果" onClick={() => { setIntensity(DEFAULT_ONLY_YOUR_COLOR_INTENSITY); setSubjectExposure(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_EXPOSURE); setBackgroundExposure(DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE); setBackgroundBrightness(DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_BRIGHTNESS); setBackgroundContrast(DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_CONTRAST); setSubjectSaturation(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION); setSubjectVibrance(DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE) }} /><Button variant="primary" size="compact" icon={<Download size={14} />} disabled={exportCount === 0 || exporting || segmenting} onClick={() => void exportEffect()}>{exporting ? exportProgress || '导出中' : exportCount > 1 ? `导出 ${exportCount} 张` : '导出图片'}</Button></div>
     </aside>
     <div className="only-your-color-media-strip"><WorkspaceMediaStrip supportedMediaKinds={supportedMediaKinds} /></div>
   </section>
