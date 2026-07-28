@@ -200,6 +200,9 @@ export interface RenderPixelFlow {
   backgroundScale?: number
   subjectScale?: number
   skyBlackRatio?: number
+  bloomStrength?: number
+  filterStrength?: number
+  colorTransition?: number
 }
 
 export interface CompositionInput {

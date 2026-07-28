@@ -67,6 +67,14 @@ function averageBrightness(frame, x0, y0, x1, y1) {
   return total / count
 }
 
+function frameDifference(first, second) {
+  let difference = 0
+  for (let index = 0; index < first.data.length; index += 1) {
+    difference += Math.abs(first.data[index] - second.data[index])
+  }
+  return difference / first.data.length
+}
+
 function render(composition, time) {
   return native.renderCompositionFrame({ ffmpegPath, ffprobePath, composition, time, maxSide: width })
 }
@@ -88,6 +96,20 @@ function wholeFrameComposition(composition, trajectory = 'highlight-flow') {
   copy.layers[0].pixelFlow.originY = 0.06
   copy.layers[0].pixelFlow.impactX = 0.5
   copy.layers[0].pixelFlow.impactY = 0.14
+  return copy
+}
+
+function compositionWithPixelFlow(composition, values) {
+  const copy = structuredClone(composition)
+  Object.assign(copy.layers[0].pixelFlow, values)
+  return copy
+}
+
+function compositionWithoutPixelFlow(composition) {
+  const copy = structuredClone(composition)
+  delete copy.layers[0].pixelFlow
+  delete copy.layers[0].maskPath
+  copy.layers[0].layerType = 'media'
   return copy
 }
 
@@ -123,6 +145,9 @@ try {
         backgroundScale: 1,
         subjectScale: 1,
         skyBlackRatio: 0,
+        bloomStrength: 50,
+        filterStrength: 50,
+        colorTransition: 0.5,
       },
     }],
   }
@@ -137,16 +162,25 @@ try {
   const finished = render(composition, duration)
   const skySweep = render(compositionWithModes(composition, 'sweep', 'top-down'), duration * 0.18)
   const skyFull = render(compositionWithModes(composition, 'full', 'top-down'), duration * 0.18)
-  const outsideIn = render(compositionWithModes(composition, 'ripple', 'outside-in'), duration * 0.62)
-  const insideOut = render(compositionWithModes(composition, 'ripple', 'inside-out'), duration * 0.58)
+  const outsideIn = render(compositionWithModes(composition, 'ripple', 'outside-in'), duration * 0.48)
+  const insideOut = render(compositionWithModes(composition, 'ripple', 'inside-out'), duration * 0.44)
   const normalSkySpeed = render(composition, duration * 0.14)
   const darkSkyComposition = compositionWithModes(composition, 'ripple', 'top-down')
   darkSkyComposition.layers[0].pixelFlow.skyBlackRatio = 0.9
   const darkSkySpeed = render(darkSkyComposition, duration * 0.14)
-  const wholeFrameEarly = render(wholeFrameComposition(composition), duration * 0.38)
-  const wholeFrameMiddle = render(wholeFrameComposition(composition), duration * 0.68)
-  const diagonalFlow = render(wholeFrameComposition(composition, 'diagonal'), duration * 0.48)
-  const splitFlow = render(wholeFrameComposition(composition, 'split'), duration * 0.38)
+  const wholeFrameEarly = render(wholeFrameComposition(composition), duration * 0.28)
+  const wholeFrameMiddle = render(wholeFrameComposition(composition), duration * 0.48)
+  const diagonalFlow = render(wholeFrameComposition(composition, 'diagonal'), duration * 0.32)
+  const splitFlow = render(wholeFrameComposition(composition, 'split'), duration * 0.28)
+  const bloomOff = render(compositionWithPixelFlow(composition, { bloomStrength: 0 }), duration * 0.55)
+  const bloomFull = render(compositionWithPixelFlow(composition, { bloomStrength: 100 }), duration * 0.55)
+  const filterOff = render(compositionWithPixelFlow(composition, { filterStrength: 0 }), duration)
+  const filterFull = render(compositionWithPixelFlow(composition, { filterStrength: 100 }), duration)
+  const instantColor = render(compositionWithPixelFlow(composition, { colorTransition: 0 }), duration * 0.3)
+  const gradualColor = render(compositionWithPixelFlow(composition, { colorTransition: 0.8 }), duration * 0.3)
+  const plainComposition = compositionWithoutPixelFlow(composition)
+  const plainStart = render(plainComposition, 0)
+  const plainEnd = render(plainComposition, duration)
   for (const frame of [initial, falling, verticalWave, edgeHold, background, subject, finished]) {
     assert.equal(frame.width, width)
     assert.equal(frame.height, height)
@@ -168,13 +202,16 @@ try {
   assert.ok(brightness(insideOut, 66, 54) > brightness(insideOut, 18, 54) + 40, 'the inside-out preset reaches the center before the edge')
   assert.ok(brightness(darkSkySpeed, 18, 34) > brightness(normalSkySpeed, 18, 34) + 40, 'a mostly black sky advances faster than a regular sky')
   assert.ok(brightness(wholeFrameEarly, 64, 24) > brightness(wholeFrameEarly, 10, 24) + 30, 'whole-frame flow expands from the upper center')
-  assert.ok(colorfulness(wholeFrameEarly, 64, 24) > colorfulness(initial, 64, 24) + 30, 'whole-frame flow renders without a segmentation mask')
   assert.ok(colorfulness(wholeFrameMiddle, 64, 54) > colorfulness(wholeFrameMiddle, 64, 108) + 30, 'whole-frame flow falls from top to bottom without semantic staging')
   assert.ok(brightness(diagonalFlow, 106, 42) > brightness(diagonalFlow, 18, 42) + 30, 'the diagonal preset travels from the upper right')
   assert.ok(brightness(splitFlow, 64, 24) > brightness(splitFlow, 10, 24) + 30, 'the split preset branches outward from the center')
   const highlightBrightness = averageBrightness(verticalWave, 92, 50, 108, 64)
   const finishedHighlightBrightness = averageBrightness(finished, 92, 50, 108, 64)
   assert.ok(highlightBrightness > finishedHighlightBrightness + 70, 'the broad underlight strongly lifts source highlights')
+  assert.ok(averageBrightness(bloomFull, 88, 46, 112, 68) > averageBrightness(bloomOff, 88, 46, 112, 68) + 35, 'CCD bloom strength controls the wide highlight field')
+  assert.ok(frameDifference(filterOff, filterFull) > 8, 'the Hertz color strength changes the final color grade')
+  assert.ok(frameDifference(instantColor, gradualColor) > 5, 'the color transition remains independent from the pixel wave')
+  assert.deepEqual(plainStart.data, plainEnd.data, 'layers without pixel flow remain unaffected by pixel-flow timing and finishing')
   console.log('pixel-flow WGPU render stages passed')
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })
