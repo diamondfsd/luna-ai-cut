@@ -4,6 +4,8 @@ import path from 'node:path'
 import { expect, test } from './fixtures/lunaElectron'
 
 const PROJECT_PATH = 'C:\\Users\\diamond\\Pictures\\LunaAI-Cut\\workspace-projects\\2026-07-11T15-58-37-554Z-1\\project.json'
+const MEMORY_ABORT_DELTA_KB = 1024 * 1024
+const MEMORY_SAMPLE_INTERVAL_MS = 250
 
 test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ lunaApp }, testInfo) => {
   test.skip(process.platform !== 'win32', '验证 Windows 原生 GPU 预览')
@@ -108,6 +110,20 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
     })
     memorySamples.push({ label, ...memory })
     await writeFile(samplesPath, JSON.stringify(memorySamples, null, 2), 'utf8')
+    const baseline = memorySamples[0]
+    if (baseline && memory.privateKb - baseline.privateKb > MEMORY_ABORT_DELTA_KB) {
+      throw new Error(
+        `GPU 预览内存增长过快，已中止测试：${Math.round(
+          (memory.privateKb - baseline.privateKb) / 1024,
+        )} MB`,
+      )
+    }
+  }
+  const monitorPlayback = async (label: string, durationMs: number) => {
+    for (let elapsed = MEMORY_SAMPLE_INTERVAL_MS; elapsed <= durationMs; elapsed += MEMORY_SAMPLE_INTERVAL_MS) {
+      await lunaApp.page.waitForTimeout(MEMORY_SAMPLE_INTERVAL_MS)
+      await sampleMemory(`${label}-${elapsed}ms`)
+    }
   }
 
   try {
@@ -127,8 +143,7 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
 
       await playback.click()
       await expect(playback).toHaveAttribute('aria-label', '暂停')
-      await lunaApp.page.waitForTimeout(2_000)
-      await sampleMemory(`playing-${index + 1}-${video.name}`)
+      await monitorPlayback(`playing-${index + 1}-${video.name}`, 2_000)
 
       await playback.click()
       await expect(playback).toHaveAttribute('aria-label', '播放')
@@ -137,8 +152,7 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
 
       await playback.click()
       await expect(playback).toHaveAttribute('aria-label', '暂停')
-      await lunaApp.page.waitForTimeout(1_000)
-      await sampleMemory(`resumed-${index + 1}-${video.name}`)
+      await monitorPlayback(`resumed-${index + 1}-${video.name}`, 1_000)
 
       await playback.click()
       await expect(playback).toHaveAttribute('aria-label', '播放')
