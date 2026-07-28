@@ -385,7 +385,7 @@ impl Compositor {
                         1.0,
                         effect.progress.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
                         effect.pixel_count.clamp(24.0, 500.0) as f32,
-                        effect.light_width.clamp(1.0, 30.0) as f32,
+                        effect.light_width.clamp(1.0, 32.0) as f32,
                     ]
                 });
                 let pixel_flow_geometry =
