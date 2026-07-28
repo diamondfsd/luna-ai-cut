@@ -26,10 +26,10 @@ export const CREATIVE_CATALOG: readonly CreativeCatalogItem[] = [
     id: 'pixel-flow',
     name: '像素流光',
     subtitle: '像素流光',
-    description: '流光沿画面内容向下推进，逐步唤醒照片色彩',
+    description: '细密像素从上方落下，沿画面层次唤醒原有色彩',
     icon: ScanLine,
     previewClassName: 'workspace-creative-preview--pixel-flow',
-    supportedMediaKinds: ['image'],
+    supportedMediaKinds: ['image', 'video'],
   },
   {
     id: 'only-your-color',

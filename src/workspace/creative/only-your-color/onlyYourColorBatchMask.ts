@@ -1,10 +1,9 @@
 import type { WorkspaceMediaAsset, WorkspaceOnlyYourColorState } from '../../../shared/types'
 import { subjectBoundsFromMask } from '../pixel-stretch/pixelStretchLayers'
+import type { OnlyYourColorAutoTone } from './onlyYourColorAutoTone'
+import { NEUTRAL_ONLY_YOUR_COLOR_AUTO_TONE } from './onlyYourColorAutoTone'
 import { refineOnlyYourColorMask } from './onlyYourColorMaskRefinement'
 import {
-  DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE,
-  DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_BRIGHTNESS,
-  DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_CONTRAST,
   DEFAULT_ONLY_YOUR_COLOR_INTENSITY,
   DEFAULT_ONLY_YOUR_COLOR_SUBJECT_EXPOSURE,
   DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION,
@@ -38,6 +37,7 @@ export interface OnlyYourColorBatchMaskApi {
   loadMask: (projectId: string, path: string) => Promise<StoredMask>
   segment: (request: { requestId: string; filePath: string; modelId: 'rmbg-1.4' }) => Promise<SegmentationResult>
   saveMask: (projectId: string, assetId: string, width: number, height: number, bytes: Uint8Array) => Promise<SavedMask>
+  calculateAutoTone?: (filePath: string, mask: Uint8Array, width: number, height: number) => Promise<OnlyYourColorAutoTone>
 }
 
 export interface ResolvedOnlyYourColorBatchMask {
@@ -67,13 +67,13 @@ function normalizedRecognizedState(
   }
 }
 
-function defaultRecognizedState(assetId: string, maskPath: string): WorkspaceOnlyYourColorState {
+function defaultRecognizedState(assetId: string, maskPath: string, autoTone: OnlyYourColorAutoTone): WorkspaceOnlyYourColorState {
   return {
     intensity: DEFAULT_ONLY_YOUR_COLOR_INTENSITY,
     subjectExposure: DEFAULT_ONLY_YOUR_COLOR_SUBJECT_EXPOSURE,
-    backgroundExposure: DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_EXPOSURE,
-    backgroundBrightness: DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_BRIGHTNESS,
-    backgroundContrast: DEFAULT_ONLY_YOUR_COLOR_BACKGROUND_CONTRAST,
+    backgroundExposure: normalizeOnlyYourColorBackgroundExposure(autoTone.backgroundExposure),
+    backgroundBrightness: normalizeOnlyYourColorBackgroundBrightness(autoTone.backgroundBrightness),
+    backgroundContrast: normalizeOnlyYourColorBackgroundContrast(autoTone.backgroundContrast),
     subjectSaturation: DEFAULT_ONLY_YOUR_COLOR_SUBJECT_SATURATION,
     subjectVibrance: DEFAULT_ONLY_YOUR_COLOR_SUBJECT_VIBRANCE,
     subjectModel: 'fast',
@@ -114,11 +114,14 @@ export async function resolveOnlyYourColorBatchMask(options: {
     throw new Error(`「${asset.name}」未识别到主体`)
   }
   const saved = await api.saveMask(projectId, asset.id, result.width, result.height, data)
+  const autoTone = await api.calculateAutoTone?.(asset.path, data, result.width, result.height)
+    .catch(() => NEUTRAL_ONLY_YOUR_COLOR_AUTO_TONE)
+    ?? NEUTRAL_ONLY_YOUR_COLOR_AUTO_TONE
   return {
     data,
     width: saved.width,
     height: saved.height,
-    state: defaultRecognizedState(asset.id, saved.path),
+    state: defaultRecognizedState(asset.id, saved.path, autoTone),
     newlyRecognized: true,
   }
 }
