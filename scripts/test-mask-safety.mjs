@@ -64,6 +64,7 @@ try {
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
     'src/workspace/creative/only-your-color/onlyYourColorLayers.ts',
+    'src/workspace/creative/only-your-color/onlyYourColorBatchMask.ts',
     'src/components/renderComposition.ts',
     'src/workspace/shared/exportLayerSnapshot.ts',
     'src/workspace/mask/maskOperationIdentity.ts',
@@ -86,6 +87,7 @@ try {
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
   const onlyYourColorLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorLayers.js')))
+  const onlyYourColorBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorBatchMask.js')))
   const renderComposition = await import(pathToFileURL(path.join(temporaryRoot, 'src/components/renderComposition.js')))
   const exportSnapshot = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/exportLayerSnapshot.js')))
   const operationIdentity = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/mask/maskOperationIdentity.js')))
@@ -750,6 +752,63 @@ try {
   assert.equal(creativeOutputs[1].color.saturation, -100)
   assert.equal(creativeOutputs[2].color.saturation, 20)
   assert.equal(creativeOutputs[2].color.vibrance, 30)
+
+  let batchSegmentCalls = 0
+  const batchAsset = { id: 'asset-batch', name: 'batch.jpg', path: '/batch.jpg', kind: 'image' }
+  const validStoredMask = new Uint8Array([
+    0, 0, 0,
+    0, 255, 0,
+    0, 0, 0,
+  ])
+  const reusedBatchMask = await onlyYourColorBatchMask.resolveOnlyYourColorBatchMask({
+    projectId: 'project-batch',
+    asset: batchAsset,
+    savedState: { intensity: 80, backgroundExposure: -1, subjectSaturation: 15, subjectVibrance: 20, maskPath: '/saved.pgm', maskAssetId: batchAsset.id },
+    api: {
+      loadMask: async () => ({ bytes: validStoredMask.buffer, width: 3, height: 3 }),
+      segment: async () => { batchSegmentCalls += 1; throw new Error('must not segment') },
+      saveMask: async () => { throw new Error('must not save') },
+    },
+  })
+  assert.equal(reusedBatchMask.newlyRecognized, false)
+  assert.equal(reusedBatchMask.state.backgroundExposure, -1)
+  assert.equal(batchSegmentCalls, 0, 'batch export must reuse a valid saved mask')
+
+  let batchSegmentRequest = null
+  const generatedMask = new Uint8Array(25).fill(255)
+  const recognizedBatchMask = await onlyYourColorBatchMask.resolveOnlyYourColorBatchMask({
+    projectId: 'project-batch',
+    asset: batchAsset,
+    api: {
+      loadMask: async () => { throw new Error('missing') },
+      segment: async (request) => {
+        batchSegmentRequest = request
+        return { requestId: request.requestId, bytes: generatedMask.buffer, width: 5, height: 5 }
+      },
+      saveMask: async (_projectId, _assetId, width, height) => ({ path: '/generated.pgm', width, height }),
+    },
+  })
+  assert.equal(batchSegmentRequest.modelId, 'rmbg-1.4', 'unrecognized batch items must use the default fast subject model')
+  assert.equal(recognizedBatchMask.newlyRecognized, true)
+  assert.equal(recognizedBatchMask.state.intensity, 100)
+  assert.equal(recognizedBatchMask.state.backgroundExposure, 0)
+  assert.equal(recognizedBatchMask.state.subjectSaturation, 0)
+  assert.equal(recognizedBatchMask.state.subjectVibrance, 0)
+  assert.equal(recognizedBatchMask.state.maskPath, '/generated.pgm')
+
+  await assert.rejects(
+    onlyYourColorBatchMask.resolveOnlyYourColorBatchMask({
+      projectId: 'project-batch',
+      asset: batchAsset,
+      api: {
+        loadMask: async () => { throw new Error('missing') },
+        segment: async (request) => ({ requestId: request.requestId, bytes: new Uint8Array(25).buffer, width: 5, height: 5 }),
+        saveMask: async () => { throw new Error('empty masks must not be saved') },
+      },
+    }),
+    /未识别到主体/,
+    'batch export must fail an item instead of exporting an empty segmentation mask',
+  )
 
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b5-ade20k'), 'rmbg-1.4')
