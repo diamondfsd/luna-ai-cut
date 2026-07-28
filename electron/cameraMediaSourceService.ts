@@ -3,11 +3,10 @@ import { deviceDefinitionFor } from './deviceDefaults'
 import { getLocalResourcesDir, getSettings, resolveLocalThumbnails, saveSettings } from './fileService'
 import type { IpcContext } from './ipcContext'
 import {
-  MOUNTED_CAMERA_CAPABILITIES,
-  deleteMountedCameraFiles,
-  detectMountedCameraVolumes,
-  listMountedCameraFiles,
-  mountedCameraStatus,
+  deleteMountedCameraFilesFromVolumes,
+  listMountedCameraFilesFromVolumes,
+  mountedCameraVolumesStatus,
+  resolveMountedCameraVolumes,
 } from './mountedCameraMediaSource'
 import type {
   CameraDeleteResult,
@@ -136,44 +135,37 @@ class MountedCameraMediaSource implements CameraMediaSourceAdapter {
 
   async connect(): Promise<CameraMediaSourceStatus> {
     const { deviceId, rootPath } = await this.values()
-    let selectedRoot = rootPath
-    let status = selectedRoot ? await mountedCameraStatus(selectedRoot, deviceId) : null
-    if (!status?.connected) {
-      const volumes = await detectMountedCameraVolumes()
-      if (volumes.length === 1) selectedRoot = volumes[0].rootPath
-      if (volumes.length > 1) {
-        return {
-          mode: 'wired', connected: false, sourceId: 'mounted-camera', host: '', httpOk: false, controlOk: false,
-          message: '检测到多个相机磁盘，请手动选择', deviceId, deviceName: deviceDefinitionFor(deviceId).name,
-          capabilities: MOUNTED_CAMERA_CAPABILITIES,
-        }
-      }
-      if (volumes.length === 0) selectedRoot = undefined
-    }
-    status = await mountedCameraStatus(selectedRoot, deviceId)
-    if (status.connected && status.rootPath) {
-      await saveSettings({ cameraConnectionMode: 'wired', mountedCameraRoot: status.rootPath, activeDeviceId: deviceId })
+    const volumes = await resolveMountedCameraVolumes(rootPath)
+    const status = mountedCameraVolumesStatus(volumes, deviceId)
+    if (status.connected) {
+      await saveSettings({
+        cameraConnectionMode: 'wired',
+        mountedCameraRoot: volumes.length === 1 ? volumes[0].rootPath : '',
+        activeDeviceId: deviceId,
+      })
     }
     return status
   }
 
   async check(): Promise<CameraMediaSourceStatus> {
     const { deviceId, rootPath } = await this.values()
-    return mountedCameraStatus(rootPath, deviceId)
+    return mountedCameraVolumesStatus(await resolveMountedCameraVolumes(rootPath), deviceId)
   }
 
   async listFiles(): Promise<LunaFile[]> {
     const { deviceId, rootPath } = await this.values()
-    if (!rootPath) throw new Error('请先连接或选择相机磁盘')
-    const files = await listMountedCameraFiles(rootPath, deviceId)
+    const volumes = await resolveMountedCameraVolumes(rootPath)
+    if (volumes.length === 0) throw new Error('未检测到包含 DCIM 的相机磁盘')
+    const files = await listMountedCameraFilesFromVolumes(volumes, deviceId)
     await resolveLocalThumbnails(files, getLocalResourcesDir(await getSettings()))
     return files
   }
 
   async deleteFiles(files: LunaFile[]): Promise<CameraDeleteResult> {
     const { rootPath } = await this.values()
-    if (!rootPath) throw new Error('请先连接或选择相机磁盘')
-    return deleteMountedCameraFiles(rootPath, files)
+    const volumes = await resolveMountedCameraVolumes(rootPath)
+    if (volumes.length === 0) throw new Error('未检测到包含 DCIM 的相机磁盘')
+    return deleteMountedCameraFilesFromVolumes(volumes, files)
   }
 
   async disconnect(): Promise<void> {
