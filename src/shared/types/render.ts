@@ -185,24 +185,16 @@ export interface RenderPixelStretch {
 export interface RenderPixelFlow {
   duration: number
   progress?: number
-  flowMode?: 'segmented' | 'whole-frame'
-  trajectory?: 'highlight-flow' | 'cascade' | 'diagonal' | 'split'
-  skyMode?: 'ripple' | 'sweep' | 'full'
-  otherDirection?: 'top-down' | 'outside-in' | 'inside-out'
   pixelCount: number
   lightWidth: number
-  depthStrength: number
-  originX: number
-  originY: number
-  impactX: number
-  impactY: number
-  skyScale?: number
-  backgroundScale?: number
-  subjectScale?: number
-  skyBlackRatio?: number
-  bloomStrength?: number
-  filterStrength?: number
-  colorTransition?: number
+  rainSpeed: number
+  rainLength: number
+  flowStrength: number
+  subjectDelay: number
+  bloomStrength: number
+  filterStrength: number
+  colorTransition: number
+  segmented?: boolean
 }
 
 export interface CompositionInput {

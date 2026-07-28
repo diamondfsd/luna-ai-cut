@@ -392,68 +392,36 @@ impl Compositor {
                     layer
                         .pixel_flow
                         .as_ref()
-                        .map_or([0.5, 0.28, 0.5, 0.48], |effect| {
+                        .map_or([0.5, 0.58, 0.78, 0.34], |effect| {
                             [
-                                effect.origin_x.clamp(0.0, 1.0) as f32,
-                                effect.origin_y.clamp(0.0, 1.0) as f32,
-                                effect.impact_x.clamp(0.0, 1.0) as f32,
-                                effect.impact_y.clamp(0.0, 1.0) as f32,
+                                effect.rain_speed.clamp(0.0, 100.0) as f32 / 100.0,
+                                effect.rain_length.clamp(0.0, 100.0) as f32 / 100.0,
+                                effect.flow_strength.clamp(0.0, 100.0) as f32 / 100.0,
+                                effect.subject_delay.clamp(0.0, 100.0) as f32 / 100.0,
                             ]
                         });
                 let pixel_flow_depth = layer.pixel_flow.as_ref().map_or([0.0; 4], |effect| {
-                    let sky_mode = if effect.flow_mode.as_deref() == Some("whole-frame") {
-                        match effect.trajectory.as_deref() {
-                            Some("cascade") => 1.0,
-                            Some("diagonal") => 2.0,
-                            Some("split") => 3.0,
-                            _ => 0.0,
-                        }
-                    } else {
-                        match effect.sky_mode.as_deref() {
-                            Some("sweep") => 1.0,
-                            Some("full") => 2.0,
-                            _ => 0.0,
-                        }
-                    };
-                    let other_direction = if effect.flow_mode.as_deref() == Some("whole-frame") {
-                        3.0
-                    } else {
-                        match effect.other_direction.as_deref() {
-                            Some("outside-in") => 1.0,
-                            Some("inside-out") => 2.0,
-                            _ => 0.0,
-                        }
-                    };
                     [
-                        effect.depth_strength.clamp(0.0, 100.0) as f32,
                         effect.duration.clamp(0.1, 60.0) as f32,
-                        sky_mode,
-                        other_direction,
+                        if effect.segmented.unwrap_or(false) {
+                            1.0
+                        } else {
+                            0.0
+                        },
+                        0.0,
+                        0.0,
                     ]
                 });
-                let pixel_flow_scale =
-                    layer
-                        .pixel_flow
-                        .as_ref()
-                        .map_or([1.0, 1.0, 1.0, 0.0], |effect| {
-                            [
-                                effect.sky_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
-                                effect.background_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
-                                effect.subject_scale.unwrap_or(1.0).clamp(0.02, 1.0) as f32,
-                                effect.sky_black_ratio.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
-                            ]
-                        });
+                let pixel_flow_scale = [0.0; 4];
                 let pixel_flow_finish =
                     layer
                         .pixel_flow
                         .as_ref()
                         .map_or([0.5, 0.5, 0.5, 0.0], |effect| {
                             [
-                                effect.bloom_strength.unwrap_or(50.0).clamp(0.0, 100.0) as f32
-                                    / 100.0,
-                                effect.filter_strength.unwrap_or(50.0).clamp(0.0, 100.0) as f32
-                                    / 100.0,
-                                effect.color_transition.unwrap_or(0.5).clamp(0.0, 2.0) as f32,
+                                effect.bloom_strength.clamp(0.0, 100.0) as f32 / 100.0,
+                                effect.filter_strength.clamp(0.0, 100.0) as f32 / 100.0,
+                                effect.color_transition.clamp(0.0, 2.0) as f32,
                                 0.0,
                             ]
                         });
