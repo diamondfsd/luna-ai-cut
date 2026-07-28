@@ -146,6 +146,9 @@ export function RemovalPanel() {
             mask.setManualTool(value === 'stroke' ? 'instance-stroke' : value === 'rectangle' ? 'rectangle' : value === 'brush' ? 'brush' : 'move')
           }}
         />
+        {(mask.manualTool === 'instance-stroke' || mask.semanticPicking) && (
+          <ParamSlider label="蒙版扩展" value={mask.aiMaskExpansion} min={0} max={12} onChange={mask.setAiMaskExpansion} formatValue={(value) => `${Math.round(value)} px`} />
+        )}
         <ButtonGroup
           options={[
             { value: 'add', label: <><Plus size={15} />添加</> },
