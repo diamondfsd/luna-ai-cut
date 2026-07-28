@@ -101,6 +101,31 @@ fn pixel_flow_pulse(progress: f32, arrival: f32, regions: vec3<f32>) -> f32 {
     return attack * decay;
 }
 
+fn pixel_flow_source_visibility(color: vec3<f32>) -> f32 {
+    let peak = max(color.r, max(color.g, color.b));
+    let signal = max(pixel_flow_luma(color), peak * 0.78);
+    return smoothstep(0.035, 0.16, signal);
+}
+
+fn pixel_flow_rain_color(color: vec3<f32>) -> vec3<f32> {
+    let luma = pixel_flow_luma(color);
+    let saturated = vec3<f32>(luma) + (color - vec3<f32>(luma)) * 1.48;
+    let visibility = pixel_flow_source_visibility(color);
+    return clamp(saturated * mix(1.18, 1.68, visibility), vec3<f32>(0.0), vec3<f32>(1.25));
+}
+
+fn pixel_flow_vivid_color(color: vec3<f32>) -> vec3<f32> {
+    let peak = max(color.r, max(color.g, color.b));
+    let normalized = color / max(0.025, peak);
+    let normalized_luma = pixel_flow_luma(normalized);
+    let saturated = vec3<f32>(normalized_luma)
+        + (normalized - vec3<f32>(normalized_luma)) * 1.82;
+    let visibility = pixel_flow_source_visibility(color);
+    let target_peak = mix(0.92, 1.38, smoothstep(0.05, 0.68, peak));
+    let vivid = saturated * target_peak * visibility;
+    return clamp(vivid, vec3<f32>(0.0), vec3<f32>(1.45));
+}
+
 fn pixel_flow_bloom_tap(uv: vec2<f32>) -> vec3<f32> {
     let color = pixel_flow_source(uv);
     let energy = smoothstep(0.42, 0.9, max(pixel_flow_luma(color), max(color.r, max(color.g, color.b)) * 0.68));

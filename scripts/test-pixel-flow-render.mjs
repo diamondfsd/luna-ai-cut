@@ -22,7 +22,7 @@ function sourceImage() {
       const offset = (y * width + x) * 3
       const subject = Math.hypot(x - 64, y - 88) <= 18
       const sky = y < 45
-      const black = x < 24 && y >= 60 && y < 84
+      const black = x < 24 && (y < 45 || (y >= 60 && y < 84))
       const highlight = x >= 90 && x < 110 && y >= 48 && y < 66
       const color = black ? [0, 0, 0] : highlight ? [245, 210, 96] : subject ? [32, 205, 76] : sky ? [42, 126, 224] : [226, 48, 82]
       pixels[offset] = color[0]
@@ -114,6 +114,18 @@ function averageColorfulness(frame) {
   return total / (frame.data.length / 4)
 }
 
+function regionColorfulness(frame, y0, y1) {
+  let total = 0
+  let count = 0
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      total += colorfulness(frame, x, y)
+      count += 1
+    }
+  }
+  return total / count
+}
+
 function render(composition, time) {
   return native.renderCompositionFrame({ ffmpegPath, ffprobePath, composition, time, maxSide: width })
 }
@@ -180,6 +192,7 @@ try {
   const filterFull = render(compositionWithPixelFlow(composition, { filterStrength: 100 }), duration)
   const fastColor = render(compositionWithPixelFlow(composition, { colorTransition: 0.1, flowStrength: 20, bloomStrength: 0 }), 0.52)
   const gradualColor = render(compositionWithPixelFlow(composition, { colorTransition: 0.8, flowStrength: 20, bloomStrength: 0 }), 0.52)
+  const localColorReveal = render(compositionWithPixelFlow(composition, { flowStrength: 0, bloomStrength: 0 }), 0.3)
   const segmented = structuredClone(composition)
   segmented.layers[0].maskPath = depthPath
   segmented.layers[0].pixelFlow.segmented = true
@@ -196,12 +209,15 @@ try {
   const upperRain = regionDifference(ignition, initial, 0, 48)
   const lowerRain = regionDifference(ignition, initial, 88, 128)
   assert.ok(upperRain > lowerRain + 4, `pixel rain reaches the upper frame first (${upperRain} > ${lowerRain})`)
+  const blackSkyRain = rectangleDifference(ignition, initial, 0, 0, 16, 40)
+  const coloredSkyRain = rectangleDifference(ignition, initial, 32, 0, 120, 40)
+  assert.ok(blackSkyRain < coloredSkyRain * 0.18, `black source areas do not generate rain (${blackSkyRain} < ${coloredSkyRain})`)
   const speedDifference = frameDifference(slowRain, fastRain)
   const lengthDifference = frameDifference(shortRain, longRain)
   assert.ok(speedDifference > 0.8, `rain speed changes the vertical flow position (${speedDifference})`)
   assert.ok(lengthDifference > 0.3, `rain length changes the vertical stream tails (${lengthDifference})`)
-  const flowColorLift = averageColorfulness(flowFull) - averageColorfulness(flowLow)
-  assert.ok(flowColorLift > 1, `surface flow controls the source-colored pixel layer (${flowColorLift})`)
+  const flowDifference = frameDifference(flowLow, flowFull)
+  assert.ok(flowDifference > 1, `surface flow controls the source-colored pixel layer (${flowDifference})`)
   assert.ok(colorfulness(finished, 64, 88) > colorfulness(initial, 64, 88) + 40, 'the final frame preserves full color')
   const bloomBrightnessLift = averageBrightness(bloomFull, 88, 46, 112, 68) - averageBrightness(bloomOff, 88, 46, 112, 68)
   assert.ok(bloomBrightnessLift > 2, `CCD bloom lifts the active rain front (${bloomBrightnessLift})`)
@@ -209,6 +225,9 @@ try {
   assert.ok(finishedBloomDifference > 0.01, `CCD remains restrained but active on the final composite (${finishedBloomDifference})`)
   assert.ok(frameDifference(filterOff, filterFull) > 8, 'the Hertz color strength changes the final color grade')
   assert.ok(frameDifference(fastColor, gradualColor) > 5, 'the 30-frame color transition remains independent from the pixel rain')
+  const revealedSkyColor = regionColorfulness(localColorReveal, 0, 40)
+  const unrevealedLowerColor = regionColorfulness(localColorReveal, 92, 128)
+  assert.ok(revealedSkyColor > unrevealedLowerColor + 8, `source color follows the local pixel front (${revealedSkyColor} > ${unrevealedLowerColor})`)
   const subjectDifference = rectangleDifference(immediateSubject, delayedSubject, 46, 70, 82, 106)
   assert.ok(subjectDifference > 0.5, `the segmented subject keeps its own delayed surface flow (${subjectDifference})`)
   assert.deepEqual(plainStart.data, plainEnd.data, 'layers without pixel flow remain unaffected by pixel-flow timing and finishing')

@@ -79,7 +79,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const operationRef = useRef<string | null>(null)
   const attemptedAssetRef = useRef<string | null>(null)
   const depthBuildRef = useRef<string | null>(null)
-  const isImage = activeAsset?.kind === 'image'
 
   useEffect(() => {
     for (const requestId of requestRef.current) void window.luna.workspace.cancelSegmentation(requestId)
@@ -165,8 +164,9 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   }, [activeAsset])
 
   const segmentScene = useCallback(async () => {
-    if (!activeAsset || !media.currentProject || activeAsset.kind !== 'image' || segmenting) return
+    if (!activeAsset || !media.currentProject || segmenting) return
     const operationId = crypto.randomUUID()
+    const frameTime = activeAsset.kind === 'video' ? 0 : undefined
     operationRef.current = operationId
     setDepthMaskPath(null)
     setSubjectMask(null)
@@ -185,6 +185,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       const subjectResult = await window.luna.workspace.segmentImage({
         requestId: subjectRequestId,
         filePath: activeAsset.path,
+        frameTime,
         targetId: 'subject',
       })
       requestRef.current.delete(subjectRequestId)
@@ -207,6 +208,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       const skyResult = await window.luna.workspace.segmentImage({
         requestId: skyRequestId,
         filePath: activeAsset.path,
+        frameTime,
         targetId: 'sky',
       })
       requestRef.current.delete(skyRequestId)
@@ -240,11 +242,11 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   }, [activeAsset, media.currentProject, segmenting])
 
   useEffect(() => {
-    if (!isImage || !activeAsset || (maskPath && skyMaskPath) || segmenting) return
+    if (!activeAsset || (maskPath && skyMaskPath) || segmenting) return
     if (attemptedAssetRef.current === activeAsset.id) return
     attemptedAssetRef.current = activeAsset.id
     void segmentScene()
-  }, [activeAsset, isImage, maskPath, segmentScene, segmenting, skyMaskPath])
+  }, [activeAsset, maskPath, segmentScene, segmenting, skyMaskPath])
 
   useEffect(() => {
     if (!depthMaskPath) return
