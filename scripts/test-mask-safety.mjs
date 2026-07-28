@@ -838,7 +838,7 @@ try {
   assert.equal(recognizedBatchMask.state.backgroundExposure, 0)
   assert.equal(recognizedBatchMask.state.subjectExposure, 0.2)
   assert.equal(recognizedBatchMask.state.backgroundBrightness, -20)
-  assert.equal(recognizedBatchMask.state.backgroundContrast, -15)
+  assert.equal(recognizedBatchMask.state.backgroundContrast, 15)
   assert.equal(recognizedBatchMask.state.subjectSaturation, 15)
   assert.equal(recognizedBatchMask.state.subjectVibrance, 15)
   assert.equal(recognizedBatchMask.state.maskPath, '/generated.pgm')
