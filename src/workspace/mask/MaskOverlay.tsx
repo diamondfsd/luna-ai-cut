@@ -13,6 +13,7 @@ import { MaskSelectionBoundaryCanvas, type MaskSelectionBoundaryHandle } from '.
 import { buildMaskOverlayPreview } from './maskOverlayPreview'
 import { applyMaskSelectionOperation, type MaskSelectionOperation } from './maskSelectionOperations'
 import { shapeBoundsFromDrag } from './maskShapeRasterization'
+import { InstanceStrokeOverlay } from '../removal/InstanceStrokeOverlay'
 import './MaskOverlay.css'
 export function MaskOverlay() {
   const canvas = useWorkspaceCanvas()
@@ -523,6 +524,9 @@ export function MaskOverlay() {
         height={controlSize.height}
         aria-hidden="true"
       />
+      {mask.manualTool === 'instance-stroke' && !mask.semanticPicking && (
+        <InstanceStrokeOverlay width={displaySize.width} height={displaySize.height} displayToSource={displayToSource} />
+      )}
       {!mask.busy && !mask.reconstructing && mask.manualTool === 'brush' && !mask.semanticPicking && cursorPoint && (
         <MaskBrushCursor x={cursorPoint.x} y={cursorPoint.y} diameter={brushCursorDiameter} subtract={mask.selectionOperation === 'subtract' || temporarySubtract} />
       )}

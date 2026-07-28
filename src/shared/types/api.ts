@@ -41,6 +41,24 @@ export interface WorkspaceSegmentationRequest {
   targetClassId?: number
 }
 
+export interface WorkspaceInstanceSegmentationRequest {
+  requestId: string
+  filePath: string
+}
+
+export interface WorkspaceInstanceSegmentationResult {
+  requestId: string
+  width: number
+  height: number
+  instanceIds: ArrayBuffer
+  performance: {
+    modelLoadMs: number
+    imagePrepareMs: number
+    inferenceMs: number
+    totalMs: number
+  }
+}
+
 export interface WorkspaceSegmentationProgress {
   requestId: string
   phase: 'model' | 'preparing' | 'recognizing'
@@ -252,6 +270,7 @@ export interface LunaApi {
       }
       bytes: ArrayBuffer
     }>
+    segmentInstances(request: WorkspaceInstanceSegmentationRequest): Promise<WorkspaceInstanceSegmentationResult>
     cancelSegmentation(requestId: string): Promise<boolean>
     trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>
     cancelMaskTracking(requestId: string): Promise<boolean>

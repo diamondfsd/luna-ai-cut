@@ -13,6 +13,7 @@ import {
 export type SpecializedSegmentationBackend =
   | 'yolo26-seg'
   | 'yolo26-labels'
+  | 'yolo26-instances'
   | 'segformer-labels'
   | 'rmbg-1.4'
   | 'birefnet-general-lite'
@@ -83,7 +84,7 @@ export async function segmentSpecializedInWorker(
       onnxWorker,
       command,
       outputPath,
-      input.outputSize * input.outputSize,
+      input.outputSize * input.outputSize * (input.backend === 'yolo26-instances' ? 2 : 1),
       signal,
     )
     return {

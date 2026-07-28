@@ -1,4 +1,4 @@
-import { Brush, Crosshair, Eye, Loader2, Minus, Plus, Square, Trash2, X } from 'lucide-react'
+import { Brush, Crosshair, Eye, Loader2, Minus, Plus, Spline, Square, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button, ButtonGroup, Switch, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
@@ -10,16 +10,16 @@ import type { WorkspaceRemovalOperation } from '../../shared/types'
 import './RemovalPanel.css'
 
 const MODEL_VERSION = 'carve-c3c0c9e' as const
-const DEFAULT_EDGE_EXPANSION = 8
-const DEFAULT_AI_EDGE_EXPANSION = 12
+const DEFAULT_EDGE_EXPANSION = 0
 
 export function RemovalPanel() {
   const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
+  const { createMask, editing: maskEditing, setManualTool, setSelectionOperation, setSemanticPicking } = mask
   const setMaskReconstructing = mask.setReconstructing
   const media = useWorkspaceMedia()
   const [edgeExpansion, setEdgeExpansion] = useState(DEFAULT_EDGE_EXPANSION)
-  const [feather, setFeather] = useState(6)
+  const [feather, setFeather] = useState(0)
   const [processing, setProcessing] = useState(false)
   const requestRef = useRef<string | null>(null)
   const draftLayerRef = useRef<string | null>(null)
@@ -32,17 +32,12 @@ export function RemovalPanel() {
   const isImage = media.activeMedia?.kind === 'image'
 
   useEffect(() => {
-    if (!isImage || mask.editing) return
-    mask.createMask()
-    mask.setManualTool('move')
-    mask.setSemanticPicking(true)
-    mask.setSelectionOperation('add')
-  }, [isImage, mask])
-
-  useEffect(() => {
-    if (mask.activeMask?.kind !== 'semantic') return
-    setEdgeExpansion((current) => current === DEFAULT_EDGE_EXPANSION ? DEFAULT_AI_EDGE_EXPANSION : current)
-  }, [mask.activeMask?.kind])
+    if (!isImage || maskEditing) return
+    createMask()
+    setManualTool('instance-stroke')
+    setSemanticPicking(false)
+    setSelectionOperation('add')
+  }, [createMask, isImage, maskEditing, setManualTool, setSelectionOperation, setSemanticPicking])
 
   useEffect(() => () => {
     if (requestRef.current) void window.luna.workspace.cancelObjectRemoval(requestRef.current)
@@ -140,14 +135,15 @@ export function RemovalPanel() {
         <h3>选区</h3>
         <ButtonGroup
           options={[
+            { value: 'stroke', label: <><Spline size={16} />划选</> },
             { value: 'point', label: <><Crosshair size={16} />智能</> },
             { value: 'brush', label: <><Brush size={16} />画笔</> },
             { value: 'rectangle', label: <><Square size={16} />框选</> },
           ]}
-          value={mask.semanticPicking ? 'point' : mask.manualTool === 'rectangle' ? 'rectangle' : 'brush'}
+          value={mask.semanticPicking ? 'point' : mask.manualTool === 'instance-stroke' ? 'stroke' : mask.manualTool === 'rectangle' ? 'rectangle' : 'brush'}
           onChange={(value) => {
             mask.setSemanticPicking(value === 'point')
-            mask.setManualTool(value === 'rectangle' ? 'rectangle' : value === 'brush' ? 'brush' : 'move')
+            mask.setManualTool(value === 'stroke' ? 'instance-stroke' : value === 'rectangle' ? 'rectangle' : value === 'brush' ? 'brush' : 'move')
           }}
         />
         <ButtonGroup

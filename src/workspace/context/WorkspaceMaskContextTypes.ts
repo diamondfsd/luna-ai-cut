@@ -4,7 +4,7 @@ import type { ColorMaskComponent, ColorMaskLayer } from '../shared/editPipeline'
 import type { MaskSelectionOperation } from '../mask/maskSelectionOperations'
 import type { MaskShapeKind } from '../mask/maskShapeRasterization'
 
-export type MaskManualTool = 'move' | 'brush' | MaskShapeKind | 'linear-gradient' | 'radial-gradient'
+export type MaskManualTool = 'move' | 'brush' | 'instance-stroke' | MaskShapeKind | 'linear-gradient' | 'radial-gradient'
 
 export interface MaskComponentCommit {
   component: ColorMaskComponent
@@ -69,4 +69,5 @@ export interface WorkspaceMaskValue {
   updateGroupedMaskSettings: (patch: { opacity?: number; feather?: number }, groupKey: string, finalize?: boolean) => void
   removeMask: () => Promise<void>
   generateSemanticMask: (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId, modelId?: SegmentationModelId) => Promise<void>
+  generateInstanceStrokeMask: (points: Array<{ x: number; y: number }>) => Promise<void>
 }
