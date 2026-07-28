@@ -15,7 +15,7 @@
 .only-your-color-panel-head strong { color: #e0e0e0; font-size: 14px; }
 .only-your-color-panel-head span, .only-your-color-options > span { color: #888; font-size: 12px; }
 .only-your-color-options { min-width: 0; display: grid; align-content: start; gap: 12px; }
-.only-your-color-detect-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.only-your-color-detect-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .only-your-color-detect-actions .ui-button { min-width: 0; padding-inline: 7px; }
 .only-your-color-loading { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: center; min-height: 58px; padding: 10px 12px; border: 1px solid #3e5264; border-radius: 6px; background: #202b34; }
 .only-your-color-loading > div { min-width: 0; display: grid; gap: 3px; }
