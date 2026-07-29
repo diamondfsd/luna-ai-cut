@@ -30,6 +30,7 @@ import type {
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { LocalMediaShareNetwork, LocalMediaShareStartOptions, LocalMediaShareStatus } from './localMediaShare'
+import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -282,6 +283,7 @@ export interface LunaApi {
       bytes: ArrayBuffer
     }>
     segmentInstances(request: WorkspaceInstanceSegmentationRequest): Promise<WorkspaceInstanceSegmentationResult>
+    analyzeBeauty(request: WorkspaceBeautyAnalysisRequest): Promise<WorkspaceBeautyAnalysisResult>
     cancelSegmentation(requestId: string): Promise<boolean>
     trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>
     cancelMaskTracking(requestId: string): Promise<boolean>
