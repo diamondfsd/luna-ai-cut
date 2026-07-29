@@ -116,16 +116,6 @@ export interface WorkspaceObjectRemovalRequest {
   maskBytes: ArrayBuffer | Uint8Array
   edgeExpansion: number
   feather: number
-  mode?: 'lama' | 'generative'
-}
-
-export interface WorkspaceGenerativeRemovalCapability {
-  supported: boolean
-  backend: 'metal' | 'cuda' | null
-  deviceName: string | null
-  modelCached: boolean
-  modelSizeBytes: number
-  reason?: string
 }
 
 export interface WorkspaceObjectRemovalResult {
@@ -137,19 +127,6 @@ export interface WorkspaceObjectRemovalResult {
   modelLoadMs: number
   inferenceMs: number
   modelSha256: string
-  mode: 'lama' | 'generative'
-  generation?: {
-    backend: 'metal' | 'cuda'
-    deviceName: string
-    prompt: string
-    negativePrompt: string
-    seed: number
-    steps: number
-    strength: number
-    cfgScale: number
-    sampler: string
-    runtimeVersion: string
-  }
 }
 
 export interface WorkspaceSegmentationModelStatus {
@@ -298,8 +275,6 @@ export interface LunaApi {
     trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>
     cancelMaskTracking(requestId: string): Promise<boolean>
     removeObject(request: WorkspaceObjectRemovalRequest): Promise<WorkspaceObjectRemovalResult>
-    getGenerativeRemovalCapability(): Promise<WorkspaceGenerativeRemovalCapability>
-    prepareGenerativeRemoval(requestId: string): Promise<WorkspaceGenerativeRemovalCapability>
     cancelObjectRemoval(requestId: string): Promise<boolean>
     listProjects(): Promise<WorkspaceProject[]>
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>

@@ -7,7 +7,6 @@ import path from 'node:path'
 import type { WorkspaceObjectRemovalRequest, WorkspaceObjectRemovalResult } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { INPAINT_MODEL, loadInpaintModel } from './inpaintModelService'
-import { removeObjectGeneratively } from './generativeInpaintService'
 import { compositeInpaintRegion, createInpaintMaskJobs, dilateInpaintMask, featherInpaintMask, INPAINT_MODEL_SIZE, modelRadiusForSourcePixels, prepareInpaintInputs } from './inpaintMask'
 
 const MAX_PIXELS = 100_000_000
@@ -41,7 +40,6 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
   if (width * height > MAX_PIXELS) throw new Error('图片尺寸过大，暂不支持消除')
   const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
   if (maskBytes.byteLength !== request.maskWidth * request.maskHeight || !maskBytes.some((value) => value >= 16)) throw new Error('请先选择要消除的区域')
-  if (request.mode === 'generative') return removeObjectGeneratively(request, downloadDir, width, height, signal)
   const directory = await mkdtemp(path.join(tmpdir(), 'luna-inpaint-'))
   try {
     signal?.throwIfAborted()
@@ -100,7 +98,7 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
       throw error
     }
     const metrics = JSON.parse(metricsRaw) as { modelLoadMs: number; inferenceMs: number; regionCount: number }
-    return { requestId: request.requestId, resultPath, maskPath: savedMaskPath, width, height, modelLoadMs: metrics.modelLoadMs, inferenceMs: metrics.inferenceMs, modelSha256: INPAINT_MODEL.sha256, mode: 'lama' }
+    return { requestId: request.requestId, resultPath, maskPath: savedMaskPath, width, height, modelLoadMs: metrics.modelLoadMs, inferenceMs: metrics.inferenceMs, modelSha256: INPAINT_MODEL.sha256 }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
