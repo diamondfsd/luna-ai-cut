@@ -13,10 +13,21 @@
 
 * { box-sizing: border-box; }
 
+[hidden] { display: none !important; }
+
+html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
+  width: 100%;
+  max-width: 100%;
   min-width: 280px;
   min-height: 100vh;
   margin: 0;
+  overflow-x: hidden;
   background: var(--parchment);
 }
 
@@ -24,6 +35,14 @@ button,
 a { font: inherit; }
 
 button { cursor: pointer; }
+
+.boot-screen { display: grid; min-height: 100vh; min-height: 100dvh; place-items: center; color: var(--muted); font-size: 13px; }
+.wechat-guide { min-height: 100vh; min-height: 100dvh; color: var(--ink); background: var(--canvas); }
+.wechat-guide-bar { display: flex; height: calc(44px + env(safe-area-inset-top)); align-items: center; padding: env(safe-area-inset-top) 20px 0; color: #ffffff; background: #272729; font-size: 14px; font-weight: 500; }
+.wechat-guide-main { display: grid; min-height: calc(100vh - 44px); min-height: calc(100dvh - 44px - env(safe-area-inset-top)); align-content: center; padding: 32px 24px calc(72px + env(safe-area-inset-bottom)); }
+.wechat-guide-main span { color: var(--blue); font-size: 13px; }
+.wechat-guide-main h1 { margin: 12px 0 14px; font-size: 28px; font-weight: 600; letter-spacing: 0; }
+.wechat-guide-main p { max-width: 340px; margin: 0; color: var(--muted); font-size: 16px; line-height: 1.65; }
 
 .app-shell {
   max-width: 1180px;
@@ -92,7 +111,7 @@ button { cursor: pointer; }
   color: #a1a1a6;
   background: transparent;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .tab.active {
@@ -158,22 +177,32 @@ button { cursor: pointer; }
 
 .video-badge {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  right: 8px;
+  bottom: 8px;
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   place-items: center;
   border-radius: 50%;
   color: #ffffff;
   background: rgba(0, 0, 0, 0.5);
-  font-size: 11px;
+  pointer-events: none;
+}
+
+.video-badge::before {
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid currentColor;
+  content: "";
 }
 
 .file-placeholder {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
 }
 
@@ -192,13 +221,29 @@ button { cursor: pointer; }
   color: #ffffff;
   background: rgba(0, 0, 0, 0.22);
   box-shadow: none;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 0;
+}
+
+.selection-dot::before {
+  width: 7px;
+  height: 12px;
+  margin-top: -3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  opacity: 0;
+  transform: rotate(45deg) scale(0.7);
+  transition: opacity 100ms ease, transform 100ms ease;
 }
 
 .photo-card.selected .selection-dot {
   border-color: var(--blue);
   background: var(--blue);
+}
+
+.photo-card.selected .selection-dot::before {
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
 }
 
 .loading,
@@ -220,15 +265,17 @@ button { cursor: pointer; }
 }
 
 .more {
+  display: grid;
   width: 100%;
-  height: 36px;
-  margin-top: 16px;
-  border: 1px solid var(--blue);
-  border-radius: 999px;
-  color: var(--blue);
-  background: transparent;
-  font-weight: 600;
+  height: 48px;
+  margin-top: 8px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
 }
+
+.more[hidden],
+.viewer[hidden] { display: none; }
 
 .selection-bar {
   position: fixed;
@@ -255,7 +302,7 @@ button { cursor: pointer; }
 
 .selection-bar span {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .selection-bar button {
@@ -266,12 +313,11 @@ button { cursor: pointer; }
   border-radius: 999px;
   color: #ffffff;
   background: var(--blue);
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .selection-bar button:active,
-.download-button:active,
-.more:active { transform: scale(0.95); }
+.download-button:active { transform: scale(0.95); }
 
 .selection-bar button:disabled {
   color: #8e8e93;
@@ -279,34 +325,41 @@ button { cursor: pointer; }
   cursor: default;
 }
 
-dialog {
+.viewer {
   position: fixed;
+  z-index: 20;
   inset: 0;
-  width: 100vw;
-  width: 100dvw;
-  max-width: none;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   height: 100vh;
   height: 100dvh;
-  max-height: none;
+  max-height: 100dvh;
   margin: 0;
   padding: 0;
+  overflow: hidden;
   border: 0;
   color: #ffffff;
   background: #111111;
 }
 
-dialog::backdrop { background: #111111; }
+.viewer-open { overflow: hidden; }
 
 .viewer-layout {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   height: 100vh;
   height: 100dvh;
+  overflow: hidden;
 }
 
 .viewer-header {
   display: flex;
+  width: 100%;
+  min-width: 0;
   min-height: calc(56px + env(safe-area-inset-top));
   align-items: center;
   justify-content: space-between;
@@ -332,6 +385,8 @@ dialog::backdrop { background: #111111; }
 }
 
 .close-button {
+  position: relative;
+  display: grid;
   flex: 0 0 40px;
   width: 40px;
   height: 40px;
@@ -339,11 +394,28 @@ dialog::backdrop { background: #111111; }
   border-radius: 50%;
   color: #ffffff;
   background: rgba(255, 255, 255, 0.14);
-  font-size: 22px;
+  padding: 0;
+  place-items: center;
 }
+
+.close-button::before,
+.close-button::after {
+  position: absolute;
+  width: 17px;
+  height: 1.5px;
+  border-radius: 2px;
+  background: currentColor;
+  content: "";
+}
+
+.close-button::before { transform: rotate(45deg); }
+.close-button::after { transform: rotate(-45deg); }
 
 .viewer-media {
   display: grid;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
   padding: 0;
   place-items: center;
@@ -354,6 +426,8 @@ dialog::backdrop { background: #111111; }
 
 .viewer-media img,
 .viewer-media video {
+  display: block;
+  min-width: 0;
   width: auto;
   height: auto;
   max-width: 100%;
@@ -363,12 +437,19 @@ dialog::backdrop { background: #111111; }
 
 .viewer-media img { -webkit-user-drag: none; }
 
+.viewer-media video {
+  width: 100%;
+  height: 100%;
+}
+
 .download-only {
   color: #c7c7cc;
   text-align: center;
 }
 
 .viewer-footer {
+  width: 100%;
+  min-width: 0;
   padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
   background: rgba(17, 17, 17, 0.94);
 }
@@ -387,7 +468,7 @@ dialog::backdrop { background: #111111; }
   border-radius: 999px;
   color: #ffffff;
   background: var(--blue);
-  font-weight: 600;
+  font-weight: 400;
   text-decoration: none;
 }
 

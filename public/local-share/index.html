@@ -9,7 +9,18 @@
   <link rel="stylesheet" href="./app.css">
 </head>
 <body>
-  <div class="app-shell">
+  <div class="boot-screen" id="boot-screen">正在打开...</div>
+
+  <section class="wechat-guide" id="wechat-guide" hidden>
+    <header class="wechat-guide-bar">Luna AI Cut</header>
+    <main class="wechat-guide-main">
+      <span>手机访问</span>
+      <h1>请在浏览器中打开</h1>
+      <p>微信内无法稳定下载原文件。请点击右上角菜单，选择“在浏览器打开”。</p>
+    </main>
+  </section>
+
+  <div class="app-shell" id="app-shell" hidden>
     <header class="topbar">
       <div class="global-nav">
         <div class="tabs" role="tablist" aria-label="资源来源">
@@ -26,22 +37,22 @@
     <main>
       <div id="error"></div>
       <div class="photo-grid" id="grid"><div class="loading">正在加载...</div></div>
-      <button class="more" id="more" hidden>加载更多</button>
+      <div class="more" id="more" hidden aria-live="polite">正在加载更多...</div>
     </main>
   </div>
 
-  <div class="selection-bar" id="selection-bar">
+  <div class="selection-bar" id="selection-bar" hidden>
     <span id="selection-count">已选择 0 项</span>
     <button id="download-selected" disabled>下载所选资源</button>
   </div>
 
-  <dialog id="viewer">
+  <div class="viewer" id="viewer" role="dialog" aria-modal="true" hidden>
     <div class="viewer-layout">
-      <div class="viewer-header"><div class="viewer-heading"><div class="viewer-title" id="viewer-title"></div><div class="viewer-position" id="viewer-position"></div></div><button class="close-button" id="close" aria-label="关闭">×</button></div>
+      <div class="viewer-header"><div class="viewer-heading"><div class="viewer-title" id="viewer-title"></div><div class="viewer-position" id="viewer-position"></div></div><button class="close-button" id="close" aria-label="关闭"></button></div>
       <div class="viewer-media" id="viewer-media"></div>
       <div class="viewer-footer"><div class="viewer-info" id="viewer-info"></div><a class="download-button" id="download">下载原文件</a></div>
     </div>
-  </dialog>
+  </div>
   <script src="./app.js" defer></script>
 </body>
 </html>
