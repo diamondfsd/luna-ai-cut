@@ -437,13 +437,13 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         }
       }
 
-      // ── layers 变化时触发一次渲染（仅依赖 ready，避免父组件渲染连锁） ──
+      // ── layers 变化时触发一次渲染 ──
       // renderFrame 内部通过 layersRef.current 读取最新 layers，不受闭包影响。
       useEffect(() => {
         if (!ready) return
         scheduleRender()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [ready])
+      }, [layers, ready])
 
       // ── 错误状态 UI ──
       if (fatalError) {
