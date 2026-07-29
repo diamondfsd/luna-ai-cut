@@ -1,10 +1,25 @@
 import { defineConfig } from 'vite'
 import path from 'node:path'
-import { readFileSync } from 'node:fs'
+import { cpSync, readFileSync } from 'node:fs'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
+
+function copyLocalShareAssets() {
+  return {
+    name: 'copy-local-share-assets',
+    apply: 'build' as const,
+    closeBundle() {
+      cpSync(
+        path.resolve(__dirname, 'public/local-share'),
+        path.resolve(__dirname, 'dist/local-share'),
+        { recursive: true },
+      )
+    },
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   publicDir: false,
@@ -12,6 +27,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [
+    copyLocalShareAssets(),
     react(),
     electron({
       main: {

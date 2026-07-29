@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f7f8">
+  <meta name="referrer" content="no-referrer">
+  <title>Luna AI Cut 手机访问</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-row">
+        <div class="brand"><span class="brand-mark">LA</span><div><h1>手机访问</h1><p id="summary">正在读取资源</p></div></div>
+        <button class="select-button" id="select-button">选择</button>
+      </div>
+      <div class="tabs" role="tablist" aria-label="资源来源">
+        <button class="tab active" data-source="export" role="tab">导出文件</button>
+        <button class="tab" data-source="local" role="tab">本地资源</button>
+      </div>
+    </header>
+    <main>
+      <div id="error"></div>
+      <div class="photo-grid" id="grid"><div class="loading">正在加载...</div></div>
+      <button class="more" id="more" hidden>加载更多</button>
+    </main>
+  </div>
+
+  <div class="selection-bar" id="selection-bar" hidden>
+    <span id="selection-count">已选择 0 项</span>
+    <button id="download-selected" disabled>下载所选资源</button>
+  </div>
+
+  <dialog id="viewer">
+    <div class="viewer-layout">
+      <div class="viewer-header"><div class="viewer-title" id="viewer-title"></div><button class="close-button" id="close" aria-label="关闭">×</button></div>
+      <div class="viewer-media" id="viewer-media"></div>
+      <div class="viewer-footer"><div class="viewer-info" id="viewer-info"></div><a class="download-button" id="download">下载原文件</a></div>
+    </div>
+  </dialog>
+  <script src="./app.js" defer></script>
+</body>
+</html>
