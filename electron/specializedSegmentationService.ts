@@ -22,6 +22,8 @@ export type SpecializedSegmentationBackend =
   | 'eye-state'
   | 'dinov2-small'
   | 'sface'
+  | 'face-parsing'
+  | 'human-parsing'
 
 interface SpecializedSegmentationInput {
   backend: SpecializedSegmentationBackend

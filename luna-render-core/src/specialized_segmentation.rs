@@ -412,6 +412,8 @@ pub enum SpecializedSession {
     Dinov2Small(Session),
     SFace(Session),
     BirefNet(Session),
+    FaceParsing(Session),
+    HumanParsing(Session),
 }
 
 impl SpecializedSession {
@@ -428,6 +430,8 @@ impl SpecializedSession {
             "dinov2-small" => Ok(Self::Dinov2Small(session(model_path)?)),
             "sface" => Ok(Self::SFace(session(model_path)?)),
             "birefnet-general-lite" => Ok(Self::BirefNet(session(model_path)?)),
+            "face-parsing" => Ok(Self::FaceParsing(session(model_path)?)),
+            "human-parsing" => Ok(Self::HumanParsing(session(model_path)?)),
             _ => Err("不支持的专用分割模型".to_string()),
         }
     }
@@ -495,8 +499,124 @@ impl SpecializedSession {
             Self::Dinov2Small(session) => extract_dinov2_with_session(session, rgb, output_size),
             Self::SFace(session) => extract_sface_with_session(session, rgb, output_size),
             Self::BirefNet(session) => segment_birefnet_with_session(session, rgb, output_size),
+            Self::FaceParsing(session) => {
+                segment_face_parsing_with_session(session, rgb, output_size)
+            }
+            Self::HumanParsing(session) => {
+                segment_human_parsing_with_session(session, rgb, output_size)
+            }
         }
     }
+}
+
+fn segment_face_parsing_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    const SIDE: usize = 512;
+    const CLASSES: usize = 19;
+    if output_size != SIDE || rgb.len() != SIDE * SIDE * 3 {
+        return Err("面部皮肤识别输入尺寸不兼容".to_string());
+    }
+    let mean = [0.485f32, 0.456, 0.406];
+    let std = [0.229f32, 0.224, 0.225];
+    let mut input = vec![0.0f32; 3 * SIDE * SIDE];
+    for pixel in 0..SIDE * SIDE {
+        for channel in 0..3 {
+            input[channel * SIDE * SIDE + pixel] =
+                (rgb[pixel * 3 + channel] as f32 / 255.0 - mean[channel]) / std[channel];
+        }
+    }
+    let tensor = Tensor::from_array(([1usize, 3, SIDE, SIDE], input))
+        .map_err(|error| format!("创建面部皮肤识别输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("面部皮肤识别失败: {error}"))?;
+    let (_, output) = outputs
+        .iter()
+        .next()
+        .ok_or_else(|| "面部皮肤识别缺少输出".to_string())?;
+    let (shape, values) = output
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("读取面部皮肤识别输出失败: {error}"))?;
+    if shape.len() != 4
+        || shape[0] != 1
+        || shape[1] != CLASSES as i64
+        || shape[2] != SIDE as i64
+        || shape[3] != SIDE as i64
+        || values.len() != CLASSES * SIDE * SIDE
+    {
+        return Err(format!("面部皮肤识别输出尺寸不兼容: {shape:?}"));
+    }
+    let mut labels = vec![0u8; SIDE * SIDE];
+    for pixel in 0..SIDE * SIDE {
+        let mut best_class = 0usize;
+        let mut best_score = f32::NEG_INFINITY;
+        for class_id in 0..CLASSES {
+            let score = values[class_id * SIDE * SIDE + pixel];
+            if score > best_score {
+                best_score = score;
+                best_class = class_id;
+            }
+        }
+        labels[pixel] = best_class as u8;
+    }
+    Ok(labels)
+}
+
+fn segment_human_parsing_with_session(
+    session: &mut Session,
+    rgb: &[u8],
+    output_size: usize,
+) -> Result<Vec<u8>, String> {
+    const SIDE: usize = 512;
+    const CLASSES: usize = 18;
+    if output_size != SIDE || rgb.len() != SIDE * SIDE * 3 {
+        return Err("人体皮肤识别输入尺寸不兼容".to_string());
+    }
+    let mean = [0.406f32, 0.456, 0.485];
+    let std = [0.225f32, 0.224, 0.229];
+    let mut input = vec![0.0f32; 3 * SIDE * SIDE];
+    for pixel in 0..SIDE * SIDE {
+        for channel in 0..3 {
+            input[channel * SIDE * SIDE + pixel] =
+                (rgb[pixel * 3 + channel] as f32 / 255.0 - mean[channel]) / std[channel];
+        }
+    }
+    let tensor = Tensor::from_array(([1usize, 3, SIDE, SIDE], input))
+        .map_err(|error| format!("创建人体皮肤识别输入失败: {error}"))?;
+    let outputs = session
+        .run(ort::inputs![tensor])
+        .map_err(|error| format!("人体皮肤识别失败: {error}"))?;
+    for (_, output) in outputs.iter() {
+        let Ok((shape, values)) = output.try_extract_tensor::<f32>() else {
+            continue;
+        };
+        if shape.len() != 4
+            || shape[0] != 1
+            || shape[1] != CLASSES as i64
+            || shape[2] != SIDE as i64
+            || shape[3] != SIDE as i64
+        {
+            continue;
+        }
+        let mut labels = vec![0u8; SIDE * SIDE];
+        for pixel in 0..SIDE * SIDE {
+            let mut best_class = 0usize;
+            let mut best_score = f32::NEG_INFINITY;
+            for class_id in 0..CLASSES {
+                let score = values[class_id * SIDE * SIDE + pixel];
+                if score > best_score {
+                    best_score = score;
+                    best_class = class_id;
+                }
+            }
+            labels[pixel] = best_class as u8;
+        }
+        return Ok(labels);
+    }
+    Err("人体皮肤识别缺少语义输出".to_string())
 }
 
 fn extract_sface_with_session(

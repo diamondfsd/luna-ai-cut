@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Crop, Eraser, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, Scissors, SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, Check, Crop, Eraser, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, ScanFace, Scissors, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Accordion, Button, Dialog, IconButton, Tooltip } from '../../ui'
@@ -19,8 +19,9 @@ import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { RemovalPanel } from '../removal/RemovalPanel'
 import { WorkspaceCreativePanel } from '../creative/WorkspaceCreativeFactory'
 import type { CreativeModeId } from '../creative/creativeCatalog'
+import { BeautyPanel } from '../beauty/BeautyPanel'
 
-export type WorkspaceTool = 'border' | 'color' | 'creative' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal'
+export type WorkspaceTool = 'beauty' | 'border' | 'color' | 'creative' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -82,9 +83,12 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
   return trim !== null
 }
 
+const BEAUTY_ENABLED = import.meta.env.VITE_BEAUTY !== 'false'
+
 const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
   { value: 'color', label: '调色与蒙版', icon: <SlidersHorizontal size={22} /> },
   { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
+  ...(BEAUTY_ENABLED ? [{ value: 'beauty' as const, label: '美颜', icon: <ScanFace size={22} /> }] : []),
   { value: 'removal', label: '对象消除', icon: <Eraser size={22} /> },
   { value: 'crop', label: '裁剪工具', icon: <Crop size={24} /> },
   { value: 'trim', label: '截取', icon: <Scissors size={22} /> },
@@ -99,6 +103,7 @@ function titleForTool(tool: WorkspaceTool): string {
   if (tool === 'watermark') return '水印'
   if (tool === 'border') return '边框'
   if (tool === 'filter') return '滤镜'
+  if (tool === 'beauty') return '美颜'
   if (tool === 'removal') return '对象消除'
   if (tool === 'creative') return '创意'
   return '调色与蒙版'
@@ -143,6 +148,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
   // 各面板是否有未保存的修改
   const toolModified = useMemo(() => ({
     filter: isFilterModified(edit.pipeline.lutFilter),
+    beauty: edit.pipeline.colorMasks.some((layer) => layer.id === 'beauty-face-skin' || layer.id === 'beauty-body-skin'),
     color: isColorModified(edit.pipeline.color) || edit.pipeline.colorMasks.some((layer) => isColorModified(layer.color)),
     crop: isCropModified(edit.pipeline.transform),
     trim: isTrimModified(edit.pipeline.trim) || edit.pipeline.videoMarkers.length > 0,
@@ -280,6 +286,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
             />
           ) : activeTool === 'color' ? (
             <ColorMaskPanel />
+          ) : activeTool === 'beauty' ? (
+            <BeautyPanel />
           ) : activeTool === 'removal' ? (
             <RemovalPanel />
           ) : activeTool === 'crop' ? (
@@ -375,7 +383,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
                   size="compact"
                   icon={resourceLoading ? <Loader2 className="spin" size={20} /> : item.icon}
                   aria-label={item.label}
-                  disabled={resourceLoading || (item.value === 'mask' && !mask.available) || (item.value === 'removal' && mediaCtx.activeMedia?.kind !== 'image')}
+                  disabled={resourceLoading || (item.value === 'mask' && !mask.available) || ((item.value === 'removal' || item.value === 'beauty') && mediaCtx.activeMedia?.kind !== 'image')}
                   onClick={() => {
                     mask.setEditing(item.value === 'mask')
                     edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)
