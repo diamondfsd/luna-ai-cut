@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f5f7f8">
+  <meta name="theme-color" content="#272729">
   <meta name="referrer" content="no-referrer">
   <title>Luna AI Cut 手机访问</title>
   <link rel="stylesheet" href="./app.css">
@@ -11,13 +11,16 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand-row">
-        <div class="brand"><span class="brand-mark">LA</span><div><h1>手机访问</h1><p id="summary">正在读取资源</p></div></div>
-        <button class="select-button" id="select-button">选择</button>
+      <div class="global-nav">
+        <div class="tabs" role="tablist" aria-label="资源来源">
+          <button class="tab active" data-source="export" role="tab" aria-selected="true">导出文件</button>
+          <button class="tab" data-source="local" role="tab" aria-selected="false">本地资源</button>
+        </div>
+        <div class="share-status"><span class="status-dot"></span><span>手机访问</span></div>
       </div>
-      <div class="tabs" role="tablist" aria-label="资源来源">
-        <button class="tab active" data-source="export" role="tab">导出文件</button>
-        <button class="tab" data-source="local" role="tab">本地资源</button>
+      <div class="context-nav">
+        <strong>手机访问</strong>
+        <p id="summary">正在读取资源</p>
       </div>
     </header>
     <main>
@@ -27,7 +30,7 @@
     </main>
   </div>
 
-  <div class="selection-bar" id="selection-bar" hidden>
+  <div class="selection-bar" id="selection-bar">
     <span id="selection-count">已选择 0 项</span>
     <button id="download-selected" disabled>下载所选资源</button>
   </div>
