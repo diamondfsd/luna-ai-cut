@@ -479,7 +479,7 @@ export function applySelectionPlan(items: AiSelectionItem[], groups: AiSelection
         ? '检测到闭眼，需要确认'
         : item.quality?.reasons[0] ?? (item.error ? '素材分析失败' : '需要人工确认')
     } else if (chosen.has(item.id)) {
-      item.state = 'recommended'
+      item.state = 'kept'
       item.recommendationReason = recommendationReason(item, group, purpose)
     } else if (group) {
       item.state = 'alternative'
