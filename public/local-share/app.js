@@ -127,23 +127,16 @@
     const index = state.items.findIndex((candidate) => candidate.id === item.id)
     if (index < 0) return
     renderViewer(index)
-    if (viewer.hasAttribute('open')) return
+    if (!viewer.hidden) return
     history.pushState(Object.assign({}, history.state || {}, { lunaViewer: true }), '')
     state.viewerHistoryActive = true
-    if (typeof viewer.showModal === 'function') {
-      try {
-        viewer.showModal()
-      } catch {
-        viewer.setAttribute('open', '')
-      }
-    } else viewer.setAttribute('open', '')
+    viewer.hidden = false
+    document.body.classList.add('viewer-open')
   }
 
   function closeViewer() {
-    if (viewer.hasAttribute('open')) {
-      if (typeof viewer.close === 'function') viewer.close()
-      else viewer.removeAttribute('open')
-    }
+    viewer.hidden = true
+    document.body.classList.remove('viewer-open')
     document.getElementById('viewer-media').replaceChildren()
     state.viewerIndex = -1
   }
@@ -194,6 +187,7 @@
       summary.textContent = '连接不可用'
     } finally {
       state.loading = false
+      requestAnimationFrame(maybeLoadMore)
     }
   }
 
@@ -215,6 +209,13 @@
     downloadSelected.disabled = false
   }
 
+  function maybeLoadMore() {
+    if (!state.cursor || state.loading || more.hidden) return
+    const scrollTop = window.scrollY || window.pageYOffset || 0
+    const remaining = document.documentElement.scrollHeight - scrollTop - window.innerHeight
+    if (remaining < 400) void load(false)
+  }
+
   document.querySelectorAll('.tab').forEach((button) => button.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((item) => {
       const active = item === button
@@ -225,22 +226,24 @@
     load(true)
   }))
   downloadSelected.addEventListener('click', () => void downloadSelection())
-  more.addEventListener('click', () => load(false))
   document.getElementById('close').addEventListener('click', requestViewerClose)
-  viewer.addEventListener('cancel', (event) => {
-    event.preventDefault()
-    requestViewerClose()
-  })
-  viewer.addEventListener('close', () => document.getElementById('viewer-media').replaceChildren())
   window.addEventListener('popstate', () => {
-    if (viewer.hasAttribute('open')) closeViewer()
+    if (!viewer.hidden) closeViewer()
     state.viewerHistoryActive = false
   })
+  window.addEventListener('scroll', maybeLoadMore, { passive: true })
+  window.addEventListener('resize', maybeLoadMore)
+  if ('IntersectionObserver' in window) {
+    const loadObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void load(false)
+    }, { rootMargin: '400px 0px' })
+    loadObserver.observe(more)
+  }
 
   let touchStart = null
   document.getElementById('viewer-media').addEventListener('touchstart', (event) => {
     if (event.touches.length !== 1) return
-    const video = event.target.closest('video')
+    const video = typeof event.target.closest === 'function' ? event.target.closest('video') : null
     if (video && event.touches[0].clientY > video.getBoundingClientRect().bottom - 64) return
     touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY }
   }, { passive: true })

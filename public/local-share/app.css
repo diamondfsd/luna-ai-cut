@@ -255,15 +255,17 @@ button { cursor: pointer; }
 }
 
 .more {
+  display: grid;
   width: 100%;
-  height: 36px;
-  margin-top: 16px;
-  border: 1px solid var(--blue);
-  border-radius: 999px;
-  color: var(--blue);
-  background: transparent;
-  font-weight: 400;
+  height: 48px;
+  margin-top: 8px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
 }
+
+.more[hidden],
+.viewer[hidden] { display: none; }
 
 .selection-bar {
   position: fixed;
@@ -305,8 +307,7 @@ button { cursor: pointer; }
 }
 
 .selection-bar button:active,
-.download-button:active,
-.more:active { transform: scale(0.95); }
+.download-button:active { transform: scale(0.95); }
 
 .selection-bar button:disabled {
   color: #8e8e93;
@@ -314,8 +315,9 @@ button { cursor: pointer; }
   cursor: default;
 }
 
-dialog {
+.viewer {
   position: fixed;
+  z-index: 20;
   inset: 0;
   width: 100%;
   min-width: 0;
@@ -331,9 +333,7 @@ dialog {
   background: #111111;
 }
 
-dialog::backdrop { background: #111111; }
-
-dialog:not([open]) { display: none; }
+.viewer-open { overflow: hidden; }
 
 .viewer-layout {
   display: grid;
