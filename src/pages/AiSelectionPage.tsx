@@ -200,16 +200,6 @@ export function AiSelectionPage() {
     if (next === 'people' && !peopleGroupKey && activeFaceGroup) setPeopleGroupKey(`person:${activeFaceGroup.id}`)
   }
 
-  function confirmCurrentScene(): void {
-    if (!session || !activeScene) return
-    const index = sortedScenes.findIndex((scene) => scene.id === activeScene.id)
-    const next = sortedScenes.slice(index + 1).find((scene) => scene.confirmation !== 'confirmed')
-      ?? sortedScenes.slice(0, index).find((scene) => scene.confirmation !== 'confirmed')
-    void controls.apply({ type: 'confirm-scene', sceneId: activeScene.id })
-    if (next) setSceneId(next.id)
-    setFocusedId('')
-  }
-
   function confirmCurrentGroup(): void {
     if (!session || !activeGroup) return
     const index = pendingGroups.findIndex((group) => group.id === activeGroup.id)
@@ -302,7 +292,6 @@ export function AiSelectionPage() {
   const filters: Array<{ id: AiSelectionResultFilter; label: string; count: number }> = [
     { id: 'attention', label: '待确认', count: photos.filter((item) => matchesResultFilter(item, 'attention')).length },
     { id: 'kept', label: '已保留', count: photos.filter((item) => matchesResultFilter(item, 'kept')).length },
-    { id: 'rejected', label: '已排除', count: photos.filter((item) => matchesResultFilter(item, 'rejected')).length },
     { id: 'all', label: '全部', count: photos.length },
   ]
   const hasFilterRail = stage === 'scenes' || stage === 'compare' || stage === 'people' || stage === 'review'
@@ -415,7 +404,6 @@ export function AiSelectionPage() {
           <strong className="ai-selection-current-name" title={focused.name}>{focused.name}</strong>
           {focused.videoSegments.length > 0 && <div className="ai-selection-keyframes"><strong>可选片段</strong>{focused.videoSegments.map((segment, index) => <button key={segment.id} className={segment.state === 'kept' ? 'selected' : ''} onClick={() => void controls.apply({ type: 'set-video-segment-state', itemId: focused.id, segmentId: segment.id, state: segment.state === 'kept' ? 'rejected' : 'kept' })}><img src={focused.videoKeyframes[index]?.thumbnailUrl} alt="" /><span>{formatTime(segment.startTime)} - {formatTime(segment.endTime)}</span>{segment.state === 'kept' && <Check size={13} />}</button>)}</div>}
         </section>}
-        {stage === 'scenes' && activeScene && <section className="ai-selection-sidebar-section"><Button variant="secondary" icon={<Check size={14} />} onClick={confirmCurrentScene}>{activeScene.confirmation === 'confirmed' ? '已确认时段' : '接受当前建议'}</Button></section>}
         {stage === 'compare' && activeGroup && <section className="ai-selection-sidebar-section"><Button variant="secondary" icon={<Check size={14} />} onClick={confirmCurrentGroup}>接受本组推荐</Button></section>}
       </div>
       <div className="ai-selection-sidebar-footer">

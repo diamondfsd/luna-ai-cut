@@ -111,6 +111,7 @@ async function ensureLoaded(): Promise<void> {
       // Ignore a damaged session; other sessions remain available.
     }
   }
+  queueMicrotask(() => { void scheduleNext() })
 }
 
 function emitSession(session: StoredSession): void {
@@ -273,6 +274,7 @@ function requireSession(id: string): StoredSession {
 
 export async function startAiSelection(request: AiSelectionStartRequest): Promise<AiSelectionSession> {
   await ensureLoaded()
+  const target = normalizeSelectionTarget(request.target ?? { mode: 'preset', value: null })
   const now = new Date().toISOString()
   const id = `selection_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   const session: StoredSession = {
@@ -283,13 +285,13 @@ export async function startAiSelection(request: AiSelectionStartRequest): Promis
     source: structuredClone(request.source),
     preset: request.preset,
     purpose: request.purpose ?? 'general',
-    target: normalizeSelectionTarget(request.target ?? { mode: 'preset', value: null }),
+    target,
     status: 'queued',
     phase: 'indexing',
     revision: 1,
     createdAt: now,
     updatedAt: now,
-    counts: { total: 0, completed: 0, failed: 0, recommended: 0, attention: 0, kept: 0, rejected: 0, undecided: 0 },
+    counts: { total: request.source.kind === 'files' ? new Set(request.source.paths ?? []).size : 0, completed: 0, failed: 0, recommended: 0, attention: 0, kept: 0, rejected: 0, undecided: 0 },
     items: [],
     scenes: [],
     groups: [],
