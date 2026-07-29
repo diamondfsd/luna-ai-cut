@@ -18,7 +18,7 @@ test.use({
   },
 })
 
-test('对象消除完成框选、处理中流光与结果持久化', async ({ lunaApp }) => {
+test('对象消除批量处理分离选区并持久化结果', async ({ lunaApp }) => {
   test.skip(!modelPath, '需要通过 LUNA_E2E_LAMA_MODEL_PATH 提供已校验的 Big-LaMa FP32 模型')
 
   const fixtureDir = path.join(lunaApp.temporaryRoot, 'fixtures')
@@ -55,10 +55,12 @@ test('对象消除完成框选、处理中流光与结果持久化', async ({ lu
   expect(box).not.toBeNull()
   if (!box) throw new Error('对象消除遮罩没有可交互区域')
 
-  await lunaApp.page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.35)
-  await lunaApp.page.mouse.down()
-  await lunaApp.page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.65, { steps: 8 })
-  await lunaApp.page.mouse.up()
+  for (const [left, right] of [[0.18, 0.3], [0.7, 0.82]]) {
+    await lunaApp.page.mouse.move(box.x + box.width * left, box.y + box.height * 0.42)
+    await lunaApp.page.mouse.down()
+    await lunaApp.page.mouse.move(box.x + box.width * right, box.y + box.height * 0.58, { steps: 8 })
+    await lunaApp.page.mouse.up()
+  }
 
   const startButton = lunaApp.page.getByRole('button', { name: '开始消除', exact: true })
   await expect(startButton).toBeEnabled()

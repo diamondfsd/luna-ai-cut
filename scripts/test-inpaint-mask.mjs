@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import {
   compositeInpaintRegion,
+  createInpaintMaskJobs,
   createInpaintRegion,
   dilateInpaintMask,
   featherInpaintMask,
@@ -35,8 +36,21 @@ assert.equal(sampled[sampled.length - 1], 255)
 const wideMask = new Uint8Array(400 * 200)
 for (let y = 90; y < 110; y++) for (let x = 180; x < 220; x++) wideMask[y * 400 + x] = 255
 const localRegion = createInpaintRegion(wideMask, 400, 200, 4000, 2000)
-assert.deepEqual(localRegion, { x: 1400, y: 400, size: 1200 }, 'small selections must use a square local context without stretching the full image')
-assert.equal(modelRadiusForSourcePixels(12, localRegion), 5, 'edge controls must be converted from source pixels to model pixels')
+assert.deepEqual(localRegion, { x: 1550, y: 550, size: 900 }, 'moderately wide selections must keep more target detail while retaining local context')
+assert.equal(modelRadiusForSourcePixels(12, localRegion), 7, 'edge controls must be converted from source pixels to model pixels')
+
+const separatedMask = new Uint8Array(400 * 200)
+for (let y = 90; y < 110; y++) for (let x = 30; x < 50; x++) separatedMask[y * 400 + x] = 255
+for (let y = 90; y < 110; y++) for (let x = 350; x < 370; x++) separatedMask[y * 400 + x] = 255
+const separatedJobs = createInpaintMaskJobs(separatedMask, 400, 200, 4000, 2000)
+assert.equal(separatedJobs.length, 2, 'distant selections must use separate high-detail inpaint jobs')
+assert.ok(separatedJobs.every((job) => job.region.size === 600), 'each distant selection must retain its own local context')
+assert.equal(separatedJobs.reduce((count, job) => count + Number(job.mask.some(Boolean)), 0), 2, 'each split job must retain selected pixels')
+
+const nearbyMask = new Uint8Array(40 * 20)
+for (let y = 8; y < 11; y++) for (let x = 10; x < 13; x++) nearbyMask[y * 40 + x] = 255
+for (let y = 8; y < 11; y++) for (let x = 16; x < 19; x++) nearbyMask[y * 40 + x] = 255
+assert.equal(createInpaintMaskJobs(nearbyMask, 40, 20, 4000, 2000).length, 1, 'nearby mask fragments must stay in one coherent inpaint job')
 
 const panoramicMask = new Uint8Array(400 * 100).fill(255)
 const panoramicRegion = createInpaintRegion(panoramicMask, 400, 100, 4000, 1000)
