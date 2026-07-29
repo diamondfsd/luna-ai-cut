@@ -164,9 +164,9 @@ const selectionItems = Array.from({ length: 20 }, (_, index) => item(`selection-
   luminanceHistogram: [0.05, 0.15, 0.3, 0.5],
 }))
 applySelectionPlan(selectionItems, [], 'balanced')
-assert.equal(selectionItems.filter((entry) => entry.state === 'recommended').length, 7)
+assert.equal(selectionItems.filter((entry) => entry.state === 'kept').length, 7, 'AI 推荐素材应自动选中')
 assert.equal(selectionItems.filter((entry) => entry.flags.aiRecommended).length, 7)
-assert.ok(selectionItems.filter((entry) => entry.state === 'recommended').every((entry) => entry.recommendationReason))
+assert.ok(selectionItems.filter((entry) => entry.flags.aiRecommended).every((entry) => entry.recommendationReason))
 selectionItems[0].state = 'rejected'
 selectionItems[0].decisionSource = 'user'
 applySelectionPlan(selectionItems, [], 'deep')
@@ -184,7 +184,7 @@ const forcedGroups = [
   { id: 'target-group-2', sceneId: 'event', kind: 'burst', itemIds: ['group-target-c', 'group-target-d'], representativeId: 'group-target-c', reason: '', confidence: 0.9, suggestedKeepCount: 1, confirmation: 'pending', userModified: false },
 ]
 applySelectionPlan(groupedSelectionItems, forcedGroups, 'balanced', 'general', { mode: 'count', value: 1 })
-assert.equal(groupedSelectionItems.filter((entry) => entry.state === 'recommended').length, 1, '相似组不能强制突破用户设置的推荐数量')
+assert.equal(groupedSelectionItems.filter((entry) => entry.state === 'kept').length, 1, '相似组不能强制突破用户设置的推荐数量')
 
 const peopleItems = [
   item('no-person', '2026-07-18T01:00:00.000Z'),
@@ -193,7 +193,7 @@ const peopleItems = [
 applySelectionPlan(peopleItems, [], 'deep', 'people')
 assert.equal(peopleItems[0].state, 'undecided')
 assert.equal(peopleItems[0].recommendationReason, null)
-assert.equal(peopleItems[1].state, 'recommended')
+assert.equal(peopleItems[1].state, 'kept')
 assert.match(peopleItems[1].recommendationReason, /^综合评分 \d+ · 识别到人物$/)
 
 const faceEvidence = (eyeState, subjectEdgeScore) => ({
@@ -216,7 +216,7 @@ const eyeSelectionItems = [
 applySelectionPlan(eyeSelectionItems, [], 'deep', 'people', { mode: 'count', value: 1 })
 assert.equal(eyeSelectionItems[0].state, 'undecided', '高分闭眼素材不能进入 AI 推荐')
 assert.equal(eyeSelectionItems[0].flags.closedEyes, true)
-assert.equal(eyeSelectionItems[1].state, 'recommended')
+assert.equal(eyeSelectionItems[1].state, 'kept')
 assert.match(eyeSelectionItems[1].recommendationReason, /人物睁眼/)
 
 const metadataOnlyVideo = item('metadata-only-video', '2026-07-18T02:10:00.000Z', {

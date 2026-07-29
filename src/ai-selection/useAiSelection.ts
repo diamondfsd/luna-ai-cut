@@ -16,6 +16,13 @@ interface PeopleAnalysisState {
   currentLabel: string | null
 }
 
+function sameFiles(session: AiSelectionSession, paths: string[]): boolean {
+  if (session.source.kind !== 'files') return false
+  const existing = new Set(session.source.paths ?? [])
+  const incoming = new Set(paths)
+  return existing.size === incoming.size && [...incoming].every((filePath) => existing.has(filePath))
+}
+
 export function useAiSelection() {
   const location = useLocation()
   const incoming = location.state as IncomingSelectionState | null
@@ -51,8 +58,19 @@ export function useAiSelection() {
   }, [upsert])
 
   useEffect(() => {
-    if (!incoming?.paths?.length || startedIncoming.current) return
+    if (!incoming?.paths?.length || loadingSessions || startedIncoming.current) return
     startedIncoming.current = true
+    const reusableStatuses: AiSelectionSession['status'][] = ['indexing', 'analyzing', 'queued', 'paused', 'interrupted']
+    const existing = reusableStatuses
+      .map((status) => sessions.find((candidate) => candidate.status === status && sameFiles(candidate, incoming.paths!)))
+      .find((candidate): candidate is AiSelectionSession => Boolean(candidate))
+    if (existing) {
+      setSession(existing)
+      setPreset(existing.preset)
+      setPurpose(existing.purpose)
+      setTarget(existing.target)
+      return
+    }
     setBusy(true)
     void window.luna.aiSelection.start({
       name: incoming.label ?? '本地资源 AI 选片',
@@ -63,7 +81,7 @@ export function useAiSelection() {
     }).then((next) => { upsert(next); setSession(next) })
       .catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
       .finally(() => setBusy(false))
-  }, [incoming, preset, purpose, target, upsert])
+  }, [incoming, loadingSessions, preset, purpose, sessions, target, upsert])
 
   async function selectSession(id: string): Promise<void> {
     const next = sessions.find((item) => item.id === id) ?? await window.luna.aiSelection.getSession(id)
