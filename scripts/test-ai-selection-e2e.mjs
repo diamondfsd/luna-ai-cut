@@ -110,7 +110,7 @@ async function main() {
     assert.equal(session.items.length, 5)
     assert.equal(session.items.filter((item) => item.kind === 'video').length, 1)
     assert.ok(session.groups.length >= 1, '连续实拍照片应形成可比较组')
-    assert.ok(session.items.some((item) => item.state === 'recommended'), '新任务应默认给出推荐结果')
+    assert.ok(session.items.some((item) => item.flags.aiRecommended && item.state === 'kept'), 'AI 推荐素材应默认选中')
 
     await waitFor('选片任务卡片', async () => {
       const opened = await client.evaluate(`(() => { const card = Array.from(document.querySelectorAll('.ai-selection-task-open')).find((item) => item.textContent?.includes('真实素材自动化选片')); if (!card) return false; card.click(); return true })()`)

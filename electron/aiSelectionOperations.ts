@@ -24,7 +24,7 @@ function requireItem(items: AiSelectionItem[], id: string): AiSelectionItem {
 function acceptRecommendations(items: AiSelectionItem[]): void {
   for (const item of items) {
     if (item.decisionSource === 'user') continue
-    if (item.state === 'recommended') { item.state = 'kept'; item.decisionSource = 'user' }
+    if (item.state === 'recommended' || item.state === 'kept') { item.state = 'kept'; item.decisionSource = 'user' }
     else if (item.state === 'alternative') { item.state = 'rejected'; item.decisionSource = 'user' }
   }
 }

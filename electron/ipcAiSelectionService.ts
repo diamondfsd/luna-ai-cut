@@ -29,6 +29,7 @@ export function register(ctx: IpcContext): void {
     if (!ctx.win || ctx.win.isDestroyed()) return
     ctx.win.webContents.send(event === 'progress' ? 'ai-selection:progress' : 'ai-selection:session-updated', payload)
   })
+  void listAiSelectionSessions().catch(() => undefined)
 
   ipcMain.handle('ai-selection:choose-directory', async () => {
     const result = await dialog.showOpenDialog({

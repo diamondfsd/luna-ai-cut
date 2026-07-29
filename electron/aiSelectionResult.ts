@@ -25,7 +25,7 @@ export function rebuildSelectionResult(session: AiSelectionSession): void {
   session.faceGroups = buildGlobalFaceGroups(session.items)
   applySelectionPlan(session.items, session.groups, session.preset, session.purpose, session.target, session.preferenceProfile)
   for (const scene of session.scenes) {
-    scene.recommendedCount = scene.itemIds.filter((id) => session.items.find((item) => item.id === id)?.state === 'recommended').length
-    scene.coverItemId = scene.itemIds.find((id) => session.items.find((item) => item.id === id)?.state === 'recommended') ?? scene.coverItemId
+    scene.recommendedCount = scene.itemIds.filter((id) => session.items.find((item) => item.id === id)?.flags.aiRecommended).length
+    scene.coverItemId = scene.itemIds.find((id) => session.items.find((item) => item.id === id)?.flags.aiRecommended) ?? scene.coverItemId
   }
 }
