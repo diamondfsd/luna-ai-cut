@@ -1,4 +1,4 @@
-import { Brush, Crosshair, Eye, Loader2, Minus, Plus, Spline, Square, Trash2, X } from 'lucide-react'
+import { Brush, Crosshair, Eye, Loader2, Minus, Plus, Sparkles, Spline, Square, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button, ButtonGroup, Switch, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
@@ -6,7 +6,7 @@ import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ParamSlider } from '../components/ParamSlider'
 import { hasUsableMask } from '../mask/maskSelectionOperations'
-import type { WorkspaceRemovalOperation } from '../../shared/types'
+import type { WorkspaceGenerativeRemovalCapability, WorkspaceRemovalOperation } from '../../shared/types'
 import './RemovalPanel.css'
 
 const MODEL_VERSION = 'carve-c3c0c9e' as const
@@ -22,7 +22,11 @@ export function RemovalPanel() {
   const [edgeExpansion, setEdgeExpansion] = useState(DEFAULT_EDGE_EXPANSION)
   const [feather, setFeather] = useState(DEFAULT_FEATHER)
   const [processing, setProcessing] = useState(false)
+  const [removalMode, setRemovalMode] = useState<'lama' | 'generative'>('lama')
+  const [generativeCapability, setGenerativeCapability] = useState<WorkspaceGenerativeRemovalCapability | null>(null)
+  const [preparingGenerative, setPreparingGenerative] = useState(false)
   const requestRef = useRef<string | null>(null)
+  const prepareRequestRef = useRef<string | null>(null)
   const draftLayerRef = useRef<string | null>(null)
   const removeLayerRef = useRef(mask.removeLayer)
   removeLayerRef.current = mask.removeLayer
@@ -42,7 +46,18 @@ export function RemovalPanel() {
 
   useEffect(() => () => {
     if (requestRef.current) void window.luna.workspace.cancelObjectRemoval(requestRef.current)
+    if (prepareRequestRef.current) void window.luna.workspace.cancelObjectRemoval(prepareRequestRef.current)
     if (draftLayerRef.current) removeLayerRef.current(draftLayerRef.current)
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void window.luna.workspace.getGenerativeRemovalCapability().then((capability) => {
+      if (active) setGenerativeCapability(capability)
+    }).catch(() => {
+      if (active) setGenerativeCapability({ supported: false, backend: null, deviceName: null, modelCached: false, modelSizeBytes: 1_747_219_584, reason: '显卡检测失败，只能使用普通消除' })
+    })
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
@@ -90,8 +105,17 @@ export function RemovalPanel() {
         maskBytes: bytes,
         edgeExpansion,
         feather,
+        mode: removalMode,
       })
       if (requestRef.current !== requestId) return
+      const model: WorkspaceRemovalOperation['model'] = result.mode === 'generative' && result.generation
+        ? {
+            id: 'stable-diffusion-v1-5-inpainting-q4-0',
+            version: 'gpustack-master-20260729',
+            sha256: result.modelSha256,
+            ...result.generation,
+          }
+        : { id: 'big-lama-fp32', version: MODEL_VERSION, sha256: result.modelSha256 }
       const operation: WorkspaceRemovalOperation = {
         id: crypto.randomUUID(),
         enabled: true,
@@ -102,7 +126,8 @@ export function RemovalPanel() {
         inputRevision: activeResult?.resultPath ?? media.activeMedia.path,
         edgeExpansion,
         feather,
-        model: { id: 'big-lama-fp32', version: MODEL_VERSION, sha256: result.modelSha256 },
+        mode: result.mode,
+        model,
         createdAt: new Date().toISOString(),
       }
       const discardedMaskId = mask.activeLayerId ?? undefined
@@ -126,6 +151,32 @@ export function RemovalPanel() {
     requestRef.current = null
     setProcessing(false)
     void window.luna.workspace.cancelObjectRemoval(requestId)
+  }
+
+  const setGenerativeEnabled = (enabled: boolean): void => {
+    if (!enabled) {
+      if (prepareRequestRef.current) void window.luna.workspace.cancelObjectRemoval(prepareRequestRef.current)
+      prepareRequestRef.current = null
+      setPreparingGenerative(false)
+      setRemovalMode('lama')
+      return
+    }
+    if (!generativeCapability?.supported || preparingGenerative) return
+    setRemovalMode('generative')
+    if (generativeCapability.modelCached) return
+    const requestId = crypto.randomUUID()
+    prepareRequestRef.current = requestId
+    setPreparingGenerative(true)
+    void window.luna.workspace.prepareGenerativeRemoval(requestId).then((capability) => {
+      if (prepareRequestRef.current === requestId) setGenerativeCapability(capability)
+    }).catch((error) => {
+      if (prepareRequestRef.current !== requestId) return
+      setRemovalMode('lama')
+      toast.error(error instanceof Error ? error.message : '生成式重建模型准备失败')
+    }).finally(() => {
+      if (prepareRequestRef.current === requestId) prepareRequestRef.current = null
+      setPreparingGenerative(false)
+    })
   }
 
   if (!isImage) return <div className="workspace-removal-empty">对象消除当前仅支持普通图片。</div>
@@ -166,13 +217,29 @@ export function RemovalPanel() {
         <ParamSlider label="扩展" value={edgeExpansion} min={0} max={24} onChange={setEdgeExpansion} formatValue={(value) => `${Math.round(value)} px`} />
         <ParamSlider label="羽化" value={feather} min={0} max={18} onChange={setFeather} formatValue={(value) => `${Math.round(value)} px`} />
       </section>
+      <section className="workspace-removal-generative">
+        <div className="workspace-removal-generative-heading">
+          <span><Sparkles size={15} />生成式重建</span>
+          <Switch
+            ariaLabel="使用显卡生成式重建"
+            checked={removalMode === 'generative'}
+            disabled={!generativeCapability?.supported || processing}
+            onCheckedChange={setGenerativeEnabled}
+          />
+        </div>
+        <p>{generativeCapability?.supported
+          ? preparingGenerative
+            ? '正在下载并校验 1.75 GB 重建模型…'
+            : `${generativeCapability.deviceName ?? '显卡'} · ${generativeCapability.modelCached ? '模型已就绪' : '开启后下载 1.75 GB 模型'}`
+          : generativeCapability?.reason ?? '正在检测显卡…'}</p>
+      </section>
       {activeResult && <section className="workspace-removal-result">
         <h3>结果</h3>
         <Button variant="secondary" className="workspace-removal-full-button" icon={<Eye size={16} />} onPointerDown={() => edit.setCompareOriginal(true)} onPointerUp={() => edit.setCompareOriginal(false)} onPointerLeave={() => edit.setCompareOriginal(false)}>按住查看原图</Button>
         <Button variant="danger" className="workspace-removal-full-button" icon={<Trash2 size={16} />} onClick={() => void saveRemoval([])}>删除消除结果</Button>
       </section>}
       <div className="workspace-removal-actions">
-        {processing ? <Button variant="secondary" className="workspace-removal-full-button" icon={<X size={16} />} onClick={cancel}>取消处理</Button> : <Button variant="primary" className="workspace-removal-full-button" disabled={!mask.editing || !usableMask || mask.busy} icon={mask.busy ? <Loader2 className="spin" size={16} /> : undefined} onClick={() => void startRemoval()}>开始消除</Button>}
+        {processing ? <Button variant="secondary" className="workspace-removal-full-button" icon={<X size={16} />} onClick={cancel}>取消处理</Button> : <Button variant="primary" className="workspace-removal-full-button" disabled={!mask.editing || !usableMask || mask.busy || preparingGenerative} icon={mask.busy || preparingGenerative ? <Loader2 className="spin" size={16} /> : undefined} onClick={() => void startRemoval()}>{removalMode === 'generative' ? '开始重建' : '开始消除'}</Button>}
       </div>
     </div>
   )

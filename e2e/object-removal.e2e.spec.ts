@@ -11,11 +11,64 @@ const modelCandidates = [
   path.join(process.env.HOME ?? '', 'Library', 'Caches', 'LunaAICut', 'models', 'big-lama-fp32', 'lama_fp32.onnx'),
 ].filter((candidate): candidate is string => Boolean(candidate))
 const modelPath = modelCandidates.find(existsSync)
+const generativeModelPath = process.env.LUNA_E2E_SD_MODEL_PATH
+const generativeRuntimePath = process.env.LUNA_E2E_SD_CLI_PATH
+const generativeReady = Boolean(generativeModelPath && generativeRuntimePath && existsSync(generativeModelPath) && existsSync(generativeRuntimePath))
 
 test.use({
   lunaElectronOptions: {
-    launchEnv: modelPath ? { LUNA_LAMA_MODEL_PATH: modelPath } : {},
+    launchEnv: {
+      ...(modelPath ? { LUNA_LAMA_MODEL_PATH: modelPath } : {}),
+      ...(generativeReady ? { LUNA_SD_INPAINT_MODEL_PATH: generativeModelPath, LUNA_SD_CLI_PATH: generativeRuntimePath } : {}),
+    },
   },
+})
+
+test('Apple GPU 生成式重建按需启用并持久化生成参数', async ({ lunaApp }) => {
+  test.skip(process.platform !== 'darwin' || process.arch !== 'arm64' || !generativeReady, '需要 Apple Silicon、Metal sd-cli 和已校验的 SD inpainting 模型')
+
+  const fixtureDir = path.join(lunaApp.temporaryRoot, 'generative-fixtures')
+  const inputPath = path.join(fixtureDir, 'generative-input.png')
+  await mkdir(fixtureDir, { recursive: true })
+  await copyFile(path.join(projectRoot, 'public', 'luna-icon.png'), inputPath)
+  const projectName = `生成式重建 E2E ${Date.now()}`
+  const project = await lunaApp.page.evaluate(async ({ name, filePath }) => window.luna.workspace.createProject(name, [{
+    id: 'generative-input', name: 'generative-input.png', path: filePath, kind: 'image',
+  }]), { name: projectName, filePath: inputPath })
+  await lunaApp.page.reload()
+  await lunaApp.page.waitForLoadState('domcontentloaded')
+  await lunaApp.page.getByRole('link', { name: '工作台', exact: true }).click()
+  await lunaApp.page.getByRole('button', { name: `${projectName} 1 个素材`, exact: true }).click()
+  await lunaApp.page.getByRole('button', { name: '对象消除', exact: true }).click()
+
+  const generativeSwitch = lunaApp.page.getByLabel('使用显卡生成式重建')
+  await expect(generativeSwitch).toBeEnabled({ timeout: 30_000 })
+  await expect(lunaApp.page.getByText(/Apple .*模型已就绪/)).toBeVisible()
+  await generativeSwitch.click()
+  await expect(generativeSwitch).toBeChecked()
+
+  const overlay = lunaApp.page.locator('.workspace-mask-overlay-shell')
+  await lunaApp.page.getByRole('button', { name: '框选', exact: true }).click()
+  const box = await overlay.boundingBox()
+  if (!box) throw new Error('生成式重建遮罩没有可交互区域')
+  await lunaApp.page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.35)
+  await lunaApp.page.mouse.down()
+  await lunaApp.page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 })
+  await lunaApp.page.mouse.up()
+  await lunaApp.page.getByRole('button', { name: '开始重建', exact: true }).click()
+  await expect(lunaApp.page.getByRole('button', { name: '按住查看原图', exact: true })).toBeVisible({ timeout: 180_000 })
+
+  const projectFile = path.join(lunaApp.temporaryRoot, 'downloads', 'workspace-projects', project.id, 'project.json')
+  const persisted = JSON.parse(await readFile(projectFile, 'utf8')) as {
+    assets: Array<{ removal?: { operations: Array<{ mode?: string; model: Record<string, unknown> }> } }>
+  }
+  const operation = persisted.assets[0]?.removal?.operations[0]
+  expect(operation?.mode).toBe('generative')
+  expect(operation?.model.id).toBe('stable-diffusion-v1-5-inpainting-q4-0')
+  expect(operation?.model.backend).toBe('metal')
+  expect(operation?.model.seed).toBe(42)
+  expect(operation?.model.steps).toBe(20)
+  expect(lunaApp.runtimeErrors).toEqual([])
 })
 
 test('对象消除批量处理分离选区并持久化结果', async ({ lunaApp }) => {
