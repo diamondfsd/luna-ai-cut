@@ -26,7 +26,7 @@
     <main>
       <div id="error"></div>
       <div class="photo-grid" id="grid"><div class="loading">正在加载...</div></div>
-      <button class="more" id="more" hidden>加载更多</button>
+      <div class="more" id="more" hidden aria-live="polite">正在加载更多...</div>
     </main>
   </div>
 
@@ -35,13 +35,13 @@
     <button id="download-selected" disabled>下载所选资源</button>
   </div>
 
-  <dialog id="viewer">
+  <div class="viewer" id="viewer" role="dialog" aria-modal="true" hidden>
     <div class="viewer-layout">
       <div class="viewer-header"><div class="viewer-heading"><div class="viewer-title" id="viewer-title"></div><div class="viewer-position" id="viewer-position"></div></div><button class="close-button" id="close" aria-label="关闭"></button></div>
       <div class="viewer-media" id="viewer-media"></div>
       <div class="viewer-footer"><div class="viewer-info" id="viewer-info"></div><a class="download-button" id="download">下载原文件</a></div>
     </div>
-  </dialog>
+  </div>
   <script src="./app.js" defer></script>
 </body>
 </html>
