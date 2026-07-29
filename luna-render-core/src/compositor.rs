@@ -1,6 +1,7 @@
 mod cache;
 mod external;
 mod gpu;
+mod init;
 mod layer_kind;
 mod lut;
 mod mask;
@@ -313,10 +314,7 @@ impl Compositor {
             wgpu::Backends::default()
         };
         log!("Enabled wgpu backends: {:?}", backends);
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends,
-            ..wgpu::InstanceDescriptor::new_without_display_handle()
-        });
+        let instance = wgpu::Instance::new(init::instance_descriptor(backends, log_path)?);
 
         log!("Requesting GPU adapter (LowPower, no surface)...");
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {

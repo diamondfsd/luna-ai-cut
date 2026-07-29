@@ -4,15 +4,20 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-use napi::bindgen_prelude::{AsyncTask, Buffer};
-use napi::{Env, Task};
+use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
 use crate::composition::CompositionInput;
 
+mod lifecycle;
+pub use lifecycle::{create_native_preview_session, destroy_native_preview_session};
+
+const MAX_COMMANDS_PER_FRAME: usize = 64;
+
 static NEXT_SESSION_ID: AtomicU32 = AtomicU32::new(1);
 static PREVIEW_SESSIONS: LazyLock<Mutex<HashMap<u32, PreviewSessionHandle>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static PREVIEW_RUNTIME: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Default)]
 struct PreviewSessionStatsState {
@@ -23,10 +28,10 @@ struct PreviewSessionStatsState {
     cache_misses: AtomicU32,
 }
 
-#[derive(Clone)]
 struct PreviewSessionHandle {
     sender: Sender<PreviewCommand>,
     stats: std::sync::Arc<PreviewSessionStatsState>,
+    worker: std::thread::JoinHandle<()>,
 }
 
 #[napi(object)]
@@ -105,15 +110,6 @@ pub fn get_native_preview_capabilities() -> NativePreviewCapabilities {
     }
 }
 
-fn native_window_pointer(handle: &[u8]) -> Result<usize, String> {
-    if handle.len() < std::mem::size_of::<usize>() {
-        return Err("窗口句柄无效".to_string());
-    }
-    let mut bytes = [0u8; std::mem::size_of::<usize>()];
-    bytes.copy_from_slice(&handle[..std::mem::size_of::<usize>()]);
-    Ok(usize::from_ne_bytes(bytes))
-}
-
 fn send_command(session_id: u32, command: PreviewCommand) -> napi::Result<()> {
     let sender = PREVIEW_SESSIONS
         .lock()
@@ -121,81 +117,20 @@ fn send_command(session_id: u32, command: PreviewCommand) -> napi::Result<()> {
         .get(&session_id)
         .map(|session| session.sender.clone())
         .ok_or_else(|| napi::Error::from_reason("预览会话不存在"))?;
-    sender.send(command).map_err(|_| {
+    if sender.send(command).is_err() {
         if let Ok(mut sessions) = PREVIEW_SESSIONS.lock() {
-            sessions.remove(&session_id);
+            if let Some(session) = sessions.remove(&session_id) {
+                let _ = session.worker.join();
+            }
         }
-        napi::Error::from_reason("预览会话已经结束")
-    })
-}
-
-pub struct CreateNativePreviewSessionTask {
-    input: Option<CreateNativePreviewSessionInput>,
-}
-
-impl Task for CreateNativePreviewSessionTask {
-    type Output = u32;
-    type JsValue = u32;
-
-    fn compute(&mut self) -> napi::Result<Self::Output> {
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            return Err(napi::Error::from_reason("当前平台尚未接入原生 GPU 预览"));
-        }
-
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            let input = self
-                .input
-                .take()
-                .ok_or_else(|| napi::Error::from_reason("预览参数已经使用"))?;
-            let parent_view =
-                native_window_pointer(&input.window_handle).map_err(napi::Error::from_reason)?;
-            let session_id = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
-            let (command_sender, command_receiver) = mpsc::channel();
-            let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
-            let stats = std::sync::Arc::new(PreviewSessionStatsState::default());
-            let thread_stats = stats.clone();
-            std::thread::Builder::new()
-                .name(format!("luna-native-preview-{session_id}"))
-                .spawn(move || {
-                    run_native_preview_session(
-                        input,
-                        parent_view,
-                        command_receiver,
-                        ready_sender,
-                        thread_stats,
-                    )
-                })
-                .map_err(|error| {
-                    napi::Error::from_reason(format!("无法启动原生预览线程: {error}"))
-                })?;
-
-            ready_receiver
-                .recv()
-                .map_err(|_| napi::Error::from_reason("原生预览线程启动中断"))?
-                .map_err(napi::Error::from_reason)?;
-            PREVIEW_SESSIONS
-                .lock()
-                .map_err(|error| napi::Error::from_reason(format!("预览会话锁定失败: {error}")))?
-                .insert(
-                    session_id,
-                    PreviewSessionHandle {
-                        sender: command_sender,
-                        stats,
-                    },
-                );
-            Ok(session_id)
-        }
+        return Err(napi::Error::from_reason("预览会话已经结束"));
     }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> napi::Result<Self::JsValue> {
-        Ok(output)
-    }
+    Ok(())
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn run_native_preview_session(
+    session_id: u32,
     input: CreateNativePreviewSessionInput,
     parent_view: usize,
     receiver: Receiver<PreviewCommand>,
@@ -207,6 +142,13 @@ fn run_native_preview_session(
     #[cfg(target_os = "windows")]
     use crate::windows::{NativePreviewRuntime, PreviewBounds};
 
+    crate::logging::write(&format!(
+        "[NativePreview] session={session_id} waiting for runtime"
+    ));
+    let _runtime_guard = PREVIEW_RUNTIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::logging::write(&format!("[NativePreview] session={session_id} starting"));
     let bounds = PreviewBounds {
         x: input.bounds.x,
         y: input.bounds.y,
@@ -237,6 +179,9 @@ fn run_native_preview_session(
         }
         Err(error) => {
             let _ = ready.send(Err(error));
+            crate::logging::error(&format!(
+                "[NativePreview] session={session_id} failed to start"
+            ));
             return;
         }
     };
@@ -256,7 +201,7 @@ fn run_native_preview_session(
         } else if render_requested {
             Duration::ZERO
         } else {
-            Duration::from_secs(60)
+            Duration::from_millis(100)
         };
         match receiver.recv_timeout(timeout) {
             Ok(command) => {
@@ -271,7 +216,12 @@ fn run_native_preview_session(
                 ) {
                     break;
                 }
-                while let Ok(command) = receiver.try_recv() {
+                // Keep a continuous stream of UI updates from starving rendering forever.
+                // Remaining commands stay queued for the next loop iteration.
+                for _ in 1..MAX_COMMANDS_PER_FRAME {
+                    let Ok(command) = receiver.try_recv() else {
+                        break;
+                    };
                     if !apply_command(
                         command,
                         &mut runtime,
@@ -288,6 +238,9 @@ fn run_native_preview_session(
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
+
+        #[cfg(target_os = "windows")]
+        runtime.pump_events();
 
         let now = Instant::now();
         if playing && now >= next_frame_at {
@@ -325,6 +278,8 @@ fn run_native_preview_session(
             render_requested = false;
         }
     }
+    drop(runtime);
+    crate::logging::write(&format!("[NativePreview] session={session_id} stopped"));
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -380,7 +335,9 @@ fn apply_command(
         PreviewCommand::Pause(time) => {
             *current_time = time.max(0.0);
             *playing = false;
-            *render_requested = true;
+            // The swap chain already contains the last presented frame. Re-rendering here
+            // forces an unnecessary D3D11On12 synchronization and can stall on Windows.
+            // An initial pending render remains pending; explicit seeks still request a frame.
         }
         PreviewCommand::Seek(time) => {
             *current_time = time.max(0.0);
@@ -397,13 +354,6 @@ fn apply_command(
 type PlatformNativePreviewRuntime = crate::macos::NativePreviewRuntime;
 #[cfg(target_os = "windows")]
 type PlatformNativePreviewRuntime = crate::windows::NativePreviewRuntime;
-
-#[napi]
-pub fn create_native_preview_session(
-    input: CreateNativePreviewSessionInput,
-) -> AsyncTask<CreateNativePreviewSessionTask> {
-    AsyncTask::new(CreateNativePreviewSessionTask { input: Some(input) })
-}
 
 #[napi]
 pub fn update_native_preview_composition(
@@ -455,18 +405,6 @@ pub fn get_native_preview_session_stats(
         cache_hits: stats.cache_hits.load(Ordering::Relaxed),
         cache_misses: stats.cache_misses.load(Ordering::Relaxed),
     })
-}
-
-#[napi]
-pub fn destroy_native_preview_session(session_id: u32) -> napi::Result<()> {
-    let sender = PREVIEW_SESSIONS
-        .lock()
-        .map_err(|error| napi::Error::from_reason(format!("预览会话锁定失败: {error}")))?
-        .remove(&session_id);
-    if let Some(session) = sender {
-        let _ = session.sender.send(PreviewCommand::Shutdown);
-    }
-    Ok(())
 }
 
 #[cfg(test)]
