@@ -16,9 +16,6 @@ use super::{ComGuard, MediaFoundationGuard};
 const MAX_FRAME_CACHE_BYTES: u64 = 256 * 1024 * 1024;
 
 pub(crate) struct NativePreviewRuntime {
-    // 守卫必须覆盖整个会话；Media Foundation 必须在 COM 反初始化前关闭。
-    _media_foundation: MediaFoundationGuard,
-    _com: ComGuard,
     compositor: Compositor,
     surface: PreviewSurface,
     _interop: InteropDevice,
@@ -32,6 +29,10 @@ pub(crate) struct NativePreviewRuntime {
     mask_textures: HashMap<String, u32>,
     desired_visible: bool,
     has_presented: bool,
+    // 字段按声明顺序释放：所有解码器和 D3D 资源必须先销毁，
+    // 最后再关闭 Media Foundation 和 COM。
+    _media_foundation: MediaFoundationGuard,
+    _com: ComGuard,
 }
 
 struct CachedVideoFrame {
@@ -71,8 +72,6 @@ impl NativePreviewRuntime {
         )?;
         let surface = PreviewSurface::new(HWND(parent as *mut _), &queue, bounds)?;
         Ok(Self {
-            _media_foundation: media_foundation,
-            _com: com,
             compositor,
             surface,
             _interop: interop,
@@ -86,6 +85,8 @@ impl NativePreviewRuntime {
             mask_textures: HashMap::new(),
             desired_visible: true,
             has_presented: false,
+            _media_foundation: media_foundation,
+            _com: com,
         })
     }
 
@@ -103,6 +104,10 @@ impl NativePreviewRuntime {
     pub(crate) fn set_visible(&mut self, visible: bool) {
         self.desired_visible = visible;
         self.surface.set_visible(visible && self.has_presented);
+    }
+
+    pub(crate) fn pump_events(&self) {
+        self.surface.pump_messages();
     }
 
     pub(crate) fn update_composition(&mut self, composition: CompositionInput) {

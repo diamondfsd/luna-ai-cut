@@ -65,7 +65,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const prevUrlRef = useRef<string | null>(null)
 
   // ── 视频控件状态 ──
-  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const videoRef = useRef<HTMLMediaElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -100,7 +100,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   }), [currentTime, duration, playing])
 
   // 暴露 video 元素并绑定事件
-  const handleVideoElement = useCallback((el: HTMLVideoElement | null) => {
+  const handleVideoElement = useCallback((el: HTMLMediaElement | null) => {
     if (videoRef.current === el) return
     // 解绑旧元素
     if (videoRef.current) {

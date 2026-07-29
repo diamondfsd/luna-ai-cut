@@ -45,6 +45,19 @@ export function registerNativePreviewIpc(
     lifecycleQueue = result.then(() => undefined, () => undefined)
     return result
   }
+  const destroyActiveSession = (): Promise<void> => enqueueLifecycle(async () => {
+    const sessionId = activeSessionId
+    activeSessionId = null
+    if (sessionId !== null) await getNative().destroyNativePreviewSession(sessionId)
+  })
+
+  ctx.win?.once('closed', () => {
+    void destroyActiveSession().catch((error: unknown) => {
+      logMainError('[原生预览] 关闭会话失败', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
+  })
 
   ipcMain.handle('lrc:createNativePreviewSession', safe('createNativePreviewSession',
     async (
