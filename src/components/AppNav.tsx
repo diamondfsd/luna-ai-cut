@@ -32,6 +32,9 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           <NavLink to="/local-resources" className={({ isActive }) => (isActive ? 'active' : '')}>
             本地资源
           </NavLink>
+          <NavLink to="/mobile-access" className={({ isActive }) => (isActive ? 'active' : '')}>
+            手机访问
+          </NavLink>
           <NavLink to="/ai-selection" className={({ isActive }) => (isActive ? 'active' : '')}>
             AI 选片
           </NavLink>
