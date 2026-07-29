@@ -33,6 +33,7 @@ import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHa
 import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
 import { startSegmentationModelPrefetch, stopSegmentationModelPrefetch } from './segmentationModelPrefetchService'
+import { stopLocalMediaShare } from './localMediaShareService'
 import type {
   AppSettings,
   DeviceConnectOptions,
@@ -286,6 +287,7 @@ app.on('before-quit', () => {
   stopAllKeepAlive()
   cleanupDeviceDebug()
   void stopMockServer()
+  void stopLocalMediaShare()
 })
 
 app.on('activate', () => {
