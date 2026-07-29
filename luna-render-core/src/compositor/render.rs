@@ -749,7 +749,7 @@ impl Compositor {
                 // while a non-blocking poll lets per-frame resources accumulate until OOM.
                 wgpu::PollType::Wait {
                     submission_index: Some(submission_index),
-                    timeout: None,
+                    timeout: Some(std::time::Duration::from_secs(2)),
                 }
             } else {
                 wgpu::PollType::Wait {

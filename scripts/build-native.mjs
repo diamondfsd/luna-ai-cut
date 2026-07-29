@@ -15,6 +15,7 @@ import { chmodSync, copyFileSync, existsSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
+import { prepareDxcRuntime } from './prepare-dxc.mjs'
 
 const root = join(import.meta.dirname, '..')
 const rcDir = join(root, 'luna-render-core')
@@ -27,10 +28,21 @@ const targetLower = target.toLowerCase()
 const isWin = targetLower.includes('windows') || (!target && process.platform === 'win32')
 const isMac = targetLower.includes('apple-darwin') || (!target && process.platform === 'darwin')
 const isMacX64 = isMac && (targetLower.includes('x86_64') || (!target && process.arch === 'x64'))
+const targetArch = targetLower.includes('aarch64')
+  ? 'arm64'
+  : targetLower.includes('i686')
+    ? 'ia32'
+    : targetLower.includes('x86_64')
+      ? 'x64'
+      : process.arch
 
 const ext = isWin ? '.dll' : isMac ? '.dylib' : '.so'
 const prefix = isWin ? '' : 'lib'
 const libName = `${prefix}luna_render_core${ext}`
+
+if (isWin) {
+  await prepareDxcRuntime({ rootDir: root, outputDir: rcDir, arch: targetArch })
+}
 
 function prepareMacArtifact(filePath, onnxRuntimePolicy) {
   if (!isMac || process.platform !== 'darwin') return

@@ -263,6 +263,7 @@ fn export_frames(
             for texture_id in transient_texture_ids {
                 compositor.unregister_external_texture(texture_id);
             }
+            let cleanup_result = compositor.wait_for_gpu();
             let mut sync_error = None;
             for lease in input_leases {
                 if let Err(error) = lease.finish() {
@@ -280,6 +281,7 @@ fn export_frames(
                     None => error,
                 });
             }
+            cleanup_result?;
             if let Some(error) = sync_error {
                 return Err(error);
             }

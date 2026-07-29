@@ -8,7 +8,7 @@
 import { app } from 'electron'
 import { createRequire } from 'node:module'
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   type LayerPositioningData,
   type RenderColorAdjustments,
@@ -128,7 +128,7 @@ interface LunaRenderCoreNative {
   pauseNativePreview(sessionId: number, time: number): void
   seekNativePreview(sessionId: number, time: number): void
   getNativePreviewSessionStats(sessionId: number): NativePreviewSessionStats
-  destroyNativePreviewSession(sessionId: number): void
+  destroyNativePreviewSession(sessionId: number): Promise<void>
   loadTexture(data: Buffer, width: number, height: number): number
   updateTexture(textureId: number, data: Buffer): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: unknown[]): Buffer
@@ -193,7 +193,17 @@ export function getNative(): LunaRenderCoreNative {
   const attempts: string[] = []
   for (const nodePath of candidates) {
     try {
-      native = require(nodePath) as LunaRenderCoreNative
+      const loaded = require(nodePath) as LunaRenderCoreNative
+      if (process.platform === 'win32') {
+        const nativeDir = dirname(nodePath)
+        const dxcPath = join(nativeDir, 'dxcompiler.dll')
+        const dxilPath = join(nativeDir, 'dxil.dll')
+        if (!existsSync(dxcPath) || !existsSync(dxilPath)) {
+          throw new Error(`LRC_DXC_MISSING: ${nativeDir}`)
+        }
+        process.env.LUNA_DXC_PATH = dxcPath
+      }
+      native = loaded
       return native!
     } catch (error) {
       const present = existsSync(nodePath)

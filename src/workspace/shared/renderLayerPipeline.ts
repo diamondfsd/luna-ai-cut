@@ -1,4 +1,4 @@
-import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform } from '../../shared/types'
+import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform, WatermarkPositioning } from '../../shared/types'
 import type { BorderSettings } from './editPipeline'
 import { HSL_CHANNELS, type EditPipeline } from './editPipeline'
 import { shouldSwapOrientation } from '../transform/cropGeometry'
@@ -187,6 +187,73 @@ export function applyLocalColorToSourceMediaLayers(
       ? [layer, ...buildLocalColorLayers(layer, pipeline)]
       : [layer]
   ))
+}
+
+function mapSingleWatermarkPositioningToContent(
+  positioning: WatermarkPositioning,
+  contentLayer: PreviewLayer,
+): WatermarkPositioning {
+  const rightAnchored = positioning.anchor.endsWith('right')
+  const bottomAnchored = positioning.anchor.startsWith('bottom')
+  const marginX = positioning.marginX ?? 0
+  const marginY = positioning.marginY ?? 0
+  return {
+    ...positioning,
+    targetWidth: positioning.targetWidth * contentLayer.dstW,
+    marginX: rightAnchored
+      ? 1 - contentLayer.dstX - contentLayer.dstW + marginX * contentLayer.dstW
+      : contentLayer.dstX + marginX * contentLayer.dstW,
+    marginY: bottomAnchored
+      ? 1 - contentLayer.dstY - contentLayer.dstH + marginY * contentLayer.dstH
+      : contentLayer.dstY + marginY * contentLayer.dstH,
+  }
+}
+
+function mapWatermarkPositioningToContent(
+  positioning: NonNullable<PreviewLayer['positioning']>,
+  contentLayer: PreviewLayer,
+): NonNullable<PreviewLayer['positioning']> {
+  if ('anchor' in positioning) {
+    return mapSingleWatermarkPositioningToContent(positioning, contentLayer)
+  }
+  return {
+    landscape: positioning.landscape
+      ? mapSingleWatermarkPositioningToContent(positioning.landscape, contentLayer)
+      : undefined,
+    portrait: positioning.portrait
+      ? mapSingleWatermarkPositioningToContent(positioning.portrait, contentLayer)
+      : undefined,
+  }
+}
+
+/** 柔焦相框中的水印以清晰主图为画布，而不是以整张柔焦背景为画布。 */
+export function placeWatermarkOnFramedContent(
+  watermarkLayers: PreviewLayer[],
+  borderLayers: PreviewLayer[],
+): PreviewLayer[] {
+  const hasBlurredBackground = borderLayers.some((layer) => layer.layoutRole === 'background')
+  const contentLayer = borderLayers.find((layer) => layer.layoutRole === 'content')
+  if (!hasBlurredBackground || !contentLayer) return watermarkLayers
+
+  return watermarkLayers.map((layer) => {
+    const positioning = layer.positioning
+    if (!positioning) {
+      return {
+        ...layer,
+        dstX: contentLayer.dstX + layer.dstX * contentLayer.dstW,
+        dstY: contentLayer.dstY + layer.dstY * contentLayer.dstH,
+        dstW: layer.dstW * contentLayer.dstW,
+        dstH: layer.dstH * contentLayer.dstH,
+        zIndex: (contentLayer.zIndex ?? 0) + 1,
+      }
+    }
+
+    return {
+      ...layer,
+      zIndex: (contentLayer.zIndex ?? 0) + 1,
+      positioning: mapWatermarkPositioningToContent(positioning, contentLayer),
+    }
+  })
 }
 
 export function pipelineTransformToRenderTransform(transform: EditPipeline['transform']): RenderLayerTransform {

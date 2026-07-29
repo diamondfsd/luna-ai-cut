@@ -38,18 +38,45 @@ export function registerNativePreviewIpc(
   ctx: NativePreviewIpcContext,
   resolveRuntimePaths: RuntimePathResolver,
 ): void {
+  let activeSessionId: number | null = null
+  let lifecycleQueue = Promise.resolve()
+  const enqueueLifecycle = <Result>(operation: () => Promise<Result>): Promise<Result> => {
+    const result = lifecycleQueue.then(operation, operation)
+    lifecycleQueue = result.then(() => undefined, () => undefined)
+    return result
+  }
+  const destroyActiveSession = (): Promise<void> => enqueueLifecycle(async () => {
+    const sessionId = activeSessionId
+    activeSessionId = null
+    if (sessionId !== null) await getNative().destroyNativePreviewSession(sessionId)
+  })
+
+  ctx.win?.once('closed', () => {
+    void destroyActiveSession().catch((error: unknown) => {
+      logMainError('[原生预览] 关闭会话失败', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
+  })
+
   ipcMain.handle('lrc:createNativePreviewSession', safe('createNativePreviewSession',
     async (
       _event: IpcMainInvokeEvent,
       composition: CompositionInput,
       bounds: NativePreviewBounds,
-    ) => {
+    ) => enqueueLifecycle(async () => {
+      const native = getNative()
+      const previousSessionId = activeSessionId
+      activeSessionId = null
+      if (previousSessionId !== null) {
+        await native.destroyNativePreviewSession(previousSessionId)
+      }
       const win = ctx.win
       if (!win || win.isDestroyed()) throw new Error('预览窗口不可用')
       await warmupRenderCore()
       const appRoot = process.resourcesPath || process.env.APP_ROOT || join(import.meta.dirname, '..')
       const resolvedComposition = await resolveRuntimePaths(composition)
-      return getNative().createNativePreviewSession({
+      const sessionId = await native.createNativePreviewSession({
         windowHandle: win.getNativeWindowHandle(),
         bounds,
         ffmpegPath: getFfmpegPath(),
@@ -57,7 +84,9 @@ export function registerNativePreviewIpc(
         composition: cleanNativeInput(resolvedComposition),
         logPath: join(appRoot, 'luna-render-core', 'luna-rc.log'),
       })
-    },
+      activeSessionId = sessionId
+      return sessionId
+    }),
   ))
 
   ipcMain.handle('lrc:updateNativePreviewComposition', safe('updateNativePreviewComposition',
@@ -114,8 +143,9 @@ export function registerNativePreviewIpc(
   ))
 
   ipcMain.handle('lrc:destroyNativePreviewSession', safe('destroyNativePreviewSession',
-    async (_event: IpcMainInvokeEvent, sessionId: number) => {
-      return getNative().destroyNativePreviewSession(sessionId)
-    },
+    async (_event: IpcMainInvokeEvent, sessionId: number) => enqueueLifecycle(async () => {
+      await getNative().destroyNativePreviewSession(sessionId)
+      if (activeSessionId === sessionId) activeSessionId = null
+    }),
   ))
 }
