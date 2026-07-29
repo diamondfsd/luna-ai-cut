@@ -1,7 +1,8 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
-import type { WorkspaceMediaAsset, WorkspaceProject, WorkspaceProjectAsset } from '../src/shared/types'
+import type { WorkspaceMediaAsset, WorkspaceProject, WorkspaceProjectAsset, WorkspaceRemovalOperation } from '../src/shared/types'
+import { fileSha256 } from './resumableDownloadService'
 
 const PROJECTS_DIR = 'workspace-projects'
 const PROJECT_FILE = 'project.json'
@@ -46,6 +47,80 @@ function projectDir(downloadDir: string, id: string): string {
 
 function projectJsonPath(downloadDir: string, id: string): string {
   return path.join(projectDir(downloadDir, id), PROJECT_FILE)
+}
+
+function removalDir(downloadDir: string, projectId: string): string {
+  return path.join(projectDir(downloadDir, projectId), 'removal')
+}
+
+function resolvedRemovalPath(directory: string, candidate: unknown): string | null {
+  if (typeof candidate !== 'string' || candidate.length === 0) return null
+  const resolved = path.resolve(path.isAbsolute(candidate) ? candidate : path.join(path.dirname(directory), candidate))
+  const relative = path.relative(directory, resolved)
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null
+  return resolved
+}
+
+async function normalizeRemovalOperation(operation: WorkspaceRemovalOperation, directory: string): Promise<WorkspaceRemovalOperation | null> {
+  if (!operation || typeof operation !== 'object' || typeof operation.id !== 'string') return null
+  const resultPath = resolvedRemovalPath(directory, operation.resultPath)
+  const maskPath = resolvedRemovalPath(directory, operation.maskPath)
+  let failureReason: string | undefined
+  let resultBytes = Number(operation.resultBytes) || undefined
+  let maskBytes = Number(operation.maskBytes) || undefined
+  let resultSha256 = typeof operation.resultSha256 === 'string' ? operation.resultSha256 : undefined
+  let maskSha256 = typeof operation.maskSha256 === 'string' ? operation.maskSha256 : undefined
+  if (!resultPath || !maskPath) {
+    failureReason = '消除结果路径无效'
+  } else {
+    const [resultInfo, maskInfo] = await Promise.all([fs.stat(resultPath).catch(() => null), fs.stat(maskPath).catch(() => null)])
+    if (!resultInfo?.isFile() || !maskInfo?.isFile()) {
+      failureReason = '消除结果文件缺失'
+    } else if ((resultBytes && resultBytes !== resultInfo.size) || (maskBytes && maskBytes !== maskInfo.size)) {
+      failureReason = '消除结果文件大小异常'
+    } else if (maskInfo.size !== Number(operation.maskWidth) * Number(operation.maskHeight)) {
+      failureReason = '消除蒙版尺寸异常'
+    } else {
+      resultBytes = resultInfo.size
+      maskBytes = maskInfo.size
+      if (!resultSha256 || !maskSha256) {
+        const [actualResultSha, actualMaskSha] = await Promise.all([fileSha256(resultPath), fileSha256(maskPath)])
+        if (!actualResultSha || !actualMaskSha) failureReason = '消除结果文件校验失败'
+        else {
+          resultSha256 = actualResultSha
+          maskSha256 = actualMaskSha
+        }
+      }
+    }
+  }
+  return {
+    ...operation,
+    resultPath: resultPath ?? operation.resultPath,
+    maskPath: maskPath ?? operation.maskPath,
+    resultBytes,
+    resultSha256,
+    maskBytes,
+    maskSha256,
+    status: failureReason ? 'needs-regeneration' : operation.status === 'needs-regeneration' ? 'needs-regeneration' : 'ready',
+    ...(failureReason ? { failureReason } : { failureReason: operation.failureReason }),
+  }
+}
+
+async function normalizeRemovalPipelines(project: WorkspaceProject, projectDirectory: string): Promise<WorkspaceProject> {
+  const directory = path.join(projectDirectory, 'removal')
+  return {
+    ...project,
+    assets: await Promise.all(project.assets.map(async (asset) => {
+      if (!asset.removal?.operations) return asset
+      const operations = (await Promise.all(asset.removal.operations.map((operation) => normalizeRemovalOperation(operation, directory))))
+        .filter((operation): operation is WorkspaceRemovalOperation => operation !== null)
+      return { ...asset, removal: { schemaVersion: 1, operations } }
+    })),
+  }
+}
+
+function removalReferences(project: WorkspaceProject | null): Set<string> {
+  return new Set(project?.assets.flatMap((asset) => asset.removal?.operations.flatMap((operation) => [operation.resultPath, operation.maskPath]) ?? []) ?? [])
 }
 
 function createId(name: string): string {
@@ -101,7 +176,9 @@ function dedupeAssets(current: WorkspaceProject['assets'], assets: WorkspaceProj
 async function readProject(filePath: string): Promise<WorkspaceProject | null> {
   try {
     const raw = await fs.readFile(filePath, 'utf8')
-    return JSON.parse(raw) as WorkspaceProject
+    const project = JSON.parse(raw) as WorkspaceProject
+    if (!project || !Array.isArray(project.assets) || typeof project.dir !== 'string') return null
+    return await normalizeRemovalPipelines(project, path.dirname(filePath))
   } catch {
     return null
   }
@@ -187,7 +264,32 @@ export async function saveWorkspaceProject(downloadDir: string, project: Workspa
     dir: projectDir(downloadDir, project.id),
     updatedAt: new Date().toISOString(),
   }
-  return writeProject(downloadDir, next)
+  return withProjectOperation(downloadDir, project.id, async () => {
+    const current = await readProject(projectJsonPath(downloadDir, project.id))
+    const saved = await writeProjectUnlocked(downloadDir, next)
+    const retained = removalReferences(saved)
+    const removed = [...removalReferences(current)].filter((filePath) => !retained.has(filePath))
+    await discardWorkspaceRemovalFiles(downloadDir, project.id, removed)
+    return saved
+  })
+}
+
+export async function discardWorkspaceRemovalFiles(downloadDir: string, projectId: string, filePaths: string[]): Promise<void> {
+  const directory = removalDir(downloadDir, projectId)
+  await Promise.all(filePaths.map(async (filePath) => {
+    const resolved = resolvedRemovalPath(directory, filePath)
+    if (!resolved) return
+    await fs.rm(resolved, { force: true }).catch(() => undefined)
+  }))
+}
+
+export async function loadWorkspaceRemovalMask(downloadDir: string, projectId: string, filePath: string, expectedBytes: number): Promise<ArrayBuffer> {
+  if (!Number.isInteger(expectedBytes) || expectedBytes <= 0 || expectedBytes > 1_048_576) throw new Error('消除蒙版尺寸无效')
+  const resolved = resolvedRemovalPath(removalDir(downloadDir, projectId), filePath)
+  if (!resolved || path.extname(resolved) !== '.mask') throw new Error('消除蒙版路径无效')
+  const data = await fs.readFile(resolved)
+  if (data.byteLength !== expectedBytes) throw new Error('消除蒙版文件损坏，请重新选择区域')
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
 }
 
 export async function deleteWorkspaceProject(downloadDir: string, projectId: string): Promise<void> {

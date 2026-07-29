@@ -122,6 +122,10 @@ export interface WorkspaceObjectRemovalResult {
   requestId: string
   resultPath: string
   maskPath: string
+  resultBytes: number
+  resultSha256: string
+  maskBytes: number
+  maskSha256: string
   width: number
   height: number
   modelLoadMs: number
@@ -276,6 +280,8 @@ export interface LunaApi {
     cancelMaskTracking(requestId: string): Promise<boolean>
     removeObject(request: WorkspaceObjectRemovalRequest): Promise<WorkspaceObjectRemovalResult>
     cancelObjectRemoval(requestId: string): Promise<boolean>
+    discardObjectRemovalFiles(projectId: string, filePaths: string[]): Promise<void>
+    loadObjectRemovalMask(projectId: string, filePath: string, expectedBytes: number): Promise<ArrayBuffer>
     listProjects(): Promise<WorkspaceProject[]>
     createProject(name: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>
     addAssetsToProject(projectId: string, assets: WorkspaceMediaAsset[]): Promise<WorkspaceProject>

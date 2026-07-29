@@ -28,7 +28,7 @@
     "publish:models": "node scripts/publish-model-resources.mjs --upload",
     "build:models": "node scripts/publish-model-resources.mjs",
     "test:workspace": "node scripts/test-workspace-geometry.mjs && node --experimental-strip-types scripts/test-preview-frame-cache.mjs",
-    "test:inpaint": "node --experimental-strip-types scripts/test-inpaint-mask.mjs",
+    "test:inpaint": "node --experimental-strip-types scripts/test-inpaint-mask.mjs && node --experimental-strip-types scripts/test-removal-operations.mjs && node scripts/test-workspace-removal-storage.mjs",
     "test:media-preview": "node scripts/test-media-preview.mjs",
     "test:dolby-vision": "node scripts/test-dolby-vision-hvcc.mjs",
     "test:original-export": "node scripts/test-original-file-export.mjs",
