@@ -6,6 +6,8 @@
     items: [],
     loading: false,
     selected: new Set(),
+    viewerIndex: -1,
+    viewerHistoryActive: false,
   }
   const grid = document.getElementById('grid')
   const more = document.getElementById('more')
@@ -91,8 +93,12 @@
     return card
   }
 
-  function openViewer(item) {
+  function renderViewer(index) {
+    const item = state.items[index]
+    if (!item) return
+    state.viewerIndex = index
     document.getElementById('viewer-title').textContent = item.name
+    document.getElementById('viewer-position').textContent = `${index + 1} / ${state.items.length}`
     document.getElementById('viewer-info').textContent = `${formatTime(item.createdAt)} · ${formatSize(item.size)}`
     const media = document.getElementById('viewer-media')
     media.replaceChildren()
@@ -117,7 +123,31 @@
     const download = document.getElementById('download')
     download.href = `${base}download/${encodeURIComponent(item.id)}`
     download.setAttribute('download', item.name)
+  }
+
+  function openViewer(item) {
+    const index = state.items.findIndex((candidate) => candidate.id === item.id)
+    if (index < 0) return
+    renderViewer(index)
+    if (viewer.open) return
+    history.pushState({ ...(history.state ?? {}), lunaViewer: true }, '')
+    state.viewerHistoryActive = true
     viewer.showModal()
+  }
+
+  function closeViewer() {
+    if (viewer.open) viewer.close()
+    state.viewerIndex = -1
+  }
+
+  function requestViewerClose() {
+    if (state.viewerHistoryActive) history.back()
+    else closeViewer()
+  }
+
+  function moveViewer(direction) {
+    const index = state.viewerIndex + direction
+    if (index >= 0 && index < state.items.length) renderViewer(index)
   }
 
   async function load(reset) {
@@ -188,7 +218,32 @@
   }))
   downloadSelected.addEventListener('click', () => void downloadSelection())
   more.addEventListener('click', () => load(false))
-  document.getElementById('close').addEventListener('click', () => viewer.close())
+  document.getElementById('close').addEventListener('click', requestViewerClose)
+  viewer.addEventListener('cancel', (event) => {
+    event.preventDefault()
+    requestViewerClose()
+  })
   viewer.addEventListener('close', () => document.getElementById('viewer-media').replaceChildren())
+  window.addEventListener('popstate', () => {
+    if (viewer.open) closeViewer()
+    state.viewerHistoryActive = false
+  })
+
+  let touchStart = null
+  document.getElementById('viewer-media').addEventListener('touchstart', (event) => {
+    if (event.touches.length !== 1) return
+    const video = event.target.closest('video')
+    if (video && event.touches[0].clientY > video.getBoundingClientRect().bottom - 64) return
+    touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY }
+  }, { passive: true })
+  document.getElementById('viewer-media').addEventListener('touchend', (event) => {
+    if (!touchStart || event.changedTouches.length !== 1) return
+    const deltaX = event.changedTouches[0].clientX - touchStart.x
+    const deltaY = event.changedTouches[0].clientY - touchStart.y
+    touchStart = null
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.25) return
+    moveViewer(deltaX < 0 ? 1 : -1)
+  }, { passive: true })
+  document.getElementById('viewer-media').addEventListener('touchcancel', () => { touchStart = null })
   load(true)
 })()
