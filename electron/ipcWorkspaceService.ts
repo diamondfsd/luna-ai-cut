@@ -39,6 +39,8 @@ import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 import { beginForegroundSegmentation } from './segmentationModelPrefetchService'
 import { trackMaskInWorker } from './maskTrackingService'
 import { removeObject } from './inpaintService'
+import { getGenerativeRemovalCapability } from './generativeInpaintService'
+import { loadGenerativeInpaintModel } from './generativeInpaintModelService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
@@ -229,6 +231,22 @@ export function register(): void {
     return removalTasks.cancel(event.sender.id, requestId)
   })
 
+  ipcMain.handle('workspace:getGenerativeRemovalCapability', () => getGenerativeRemovalCapability())
+
+  ipcMain.handle('workspace:prepareGenerativeRemoval', async (event, requestId: string) => {
+    if (typeof requestId !== 'string' || requestId.length === 0 || requestId.length > 128) throw new Error('模型准备任务标识无效')
+    const capability = await getGenerativeRemovalCapability()
+    if (!capability.supported) throw new Error(capability.reason ?? '当前设备不支持生成式重建')
+    const task = removalTasks.begin(event.sender.id, requestId)
+    watchSender(event.sender)
+    try {
+      await loadGenerativeInpaintModel(task.controller.signal)
+      return await getGenerativeRemovalCapability()
+    } finally {
+      removalTasks.finish(task)
+    }
+  })
+
   ipcMain.handle('workspace:removeObject', async (event, request: WorkspaceObjectRemovalRequest) => {
     if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('消除任务标识无效')
     if (typeof request.filePath !== 'string' || request.filePath.length === 0 || VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('对象消除当前仅支持图片')
@@ -237,6 +255,7 @@ export function register(): void {
     if (maskWidth <= 0 || maskHeight <= 0 || maskWidth * maskHeight > 1_048_576) throw new Error('消除选区尺寸无效')
     request.edgeExpansion = Math.max(0, Math.min(32, Math.round(Number(request.edgeExpansion))))
     request.feather = Math.max(0, Math.min(24, Math.round(Number(request.feather))))
+    request.mode = request.mode === 'generative' ? 'generative' : 'lama'
     const task = removalTasks.begin(event.sender.id, request.requestId)
     watchSender(event.sender)
     try {
