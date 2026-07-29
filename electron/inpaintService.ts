@@ -1,13 +1,14 @@
 import { app } from 'electron'
 import { spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { WorkspaceObjectRemovalRequest, WorkspaceObjectRemovalResult } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { INPAINT_MODEL, loadInpaintModel } from './inpaintModelService'
 import { compositeInpaintRegion, createInpaintMaskJobs, dilateInpaintMask, featherInpaintMask, INPAINT_MODEL_SIZE, modelRadiusForSourcePixels, prepareInpaintInputs } from './inpaintMask'
+import { fileSha256 } from './resumableDownloadService'
 
 const MAX_PIXELS = 100_000_000
 
@@ -91,6 +92,9 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
     const savedMaskPath = path.join(outputDir, `${id}.mask`)
     await runProcess(getFfmpegPath(), ['-v', 'error', '-f', 'rawvideo', '-pixel_format', 'rgb24', '-video_size', `${width}x${height}`, '-i', 'pipe:0', '-frames:v', '1', '-f', 'image2', '-c:v', 'png', staging], { input: composite, signal, maxOutput: 64 * 1024 })
     await writeFile(maskStaging, maskBytes)
+    const [resultInfo, resultSha256] = await Promise.all([stat(staging), fileSha256(staging, signal)])
+    if (!resultSha256) throw new Error('消除结果校验失败')
+    const maskSha256 = createHash('sha256').update(maskBytes).digest('hex')
     try {
       await Promise.all([rename(staging, resultPath), rename(maskStaging, savedMaskPath)])
     } catch (error) {
@@ -98,7 +102,20 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
       throw error
     }
     const metrics = JSON.parse(metricsRaw) as { modelLoadMs: number; inferenceMs: number; regionCount: number }
-    return { requestId: request.requestId, resultPath, maskPath: savedMaskPath, width, height, modelLoadMs: metrics.modelLoadMs, inferenceMs: metrics.inferenceMs, modelSha256: INPAINT_MODEL.sha256 }
+    return {
+      requestId: request.requestId,
+      resultPath,
+      maskPath: savedMaskPath,
+      resultBytes: resultInfo.size,
+      resultSha256,
+      maskBytes: maskBytes.byteLength,
+      maskSha256,
+      width,
+      height,
+      modelLoadMs: metrics.modelLoadMs,
+      inferenceMs: metrics.inferenceMs,
+      modelSha256: INPAINT_MODEL.sha256,
+    }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

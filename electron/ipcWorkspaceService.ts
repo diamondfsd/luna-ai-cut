@@ -17,7 +17,9 @@ import {
   addAssetsToWorkspaceProject,
   createWorkspaceProject,
   deleteWorkspaceProject,
+  discardWorkspaceRemovalFiles,
   listWorkspaceProjects,
+  loadWorkspaceRemovalMask,
   renameWorkspaceProject,
   saveWorkspaceProject,
 } from './workspaceProjectService'
@@ -227,6 +229,17 @@ export function register(): void {
   ipcMain.handle('workspace:cancelObjectRemoval', (event, requestId: string) => {
     if (typeof requestId !== 'string' || requestId.length === 0) return false
     return removalTasks.cancel(event.sender.id, requestId)
+  })
+
+  ipcMain.handle('workspace:discardObjectRemovalFiles', async (_event, projectId: string, filePaths: string[]) => {
+    if (!Array.isArray(filePaths) || filePaths.length > 100 || filePaths.some((filePath) => typeof filePath !== 'string')) throw new Error('待清理的消除结果无效')
+    const settings = await getSettings()
+    await discardWorkspaceRemovalFiles(settings.downloadDir, projectId, filePaths)
+  })
+
+  ipcMain.handle('workspace:loadObjectRemovalMask', async (_event, projectId: string, filePath: string, expectedBytes: number) => {
+    const settings = await getSettings()
+    return loadWorkspaceRemovalMask(settings.downloadDir, projectId, filePath, Math.round(Number(expectedBytes)))
   })
 
   ipcMain.handle('workspace:removeObject', async (event, request: WorkspaceObjectRemovalRequest) => {

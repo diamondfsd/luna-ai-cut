@@ -37,11 +37,17 @@ export interface WorkspaceRemovalOperation {
   maskPath: string
   maskWidth: number
   maskHeight: number
+  maskBytes?: number
+  maskSha256?: string
   resultPath: string
+  resultBytes?: number
+  resultSha256?: string
   inputRevision: string
   edgeExpansion: number
   feather: number
   model: { id: 'big-lama-fp32'; version: 'carve-c3c0c9e'; sha256: string }
+  status?: 'ready' | 'needs-regeneration'
+  failureReason?: string
   createdAt: string
 }
 

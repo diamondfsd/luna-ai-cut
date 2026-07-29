@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, readFile, stat } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 
 import { expect, test } from './fixtures/lunaElectron'
@@ -23,23 +23,25 @@ test('对象消除批量处理分离选区并持久化结果', async ({ lunaApp 
 
   const fixtureDir = path.join(lunaApp.temporaryRoot, 'fixtures')
   const inputPath = path.join(fixtureDir, 'object-removal-input.png')
+  const secondInputPath = path.join(fixtureDir, 'object-removal-second.png')
   await mkdir(fixtureDir, { recursive: true })
-  await copyFile(path.join(projectRoot, 'public', 'luna-icon.png'), inputPath)
+  await Promise.all([
+    copyFile(path.join(projectRoot, 'public', 'luna-icon.png'), inputPath),
+    copyFile(path.join(projectRoot, 'public', 'luna-icon.png'), secondInputPath),
+  ])
 
   const projectName = `对象消除 E2E ${Date.now()}`
-  const project = await lunaApp.page.evaluate(async ({ name, filePath }) => (
-    window.luna.workspace.createProject(name, [{
-      id: 'object-removal-input',
-      name: 'object-removal-input.png',
-      path: filePath,
-      kind: 'image',
-    }])
-  ), { name: projectName, filePath: inputPath })
+  const project = await lunaApp.page.evaluate(async ({ name, filePath, secondFilePath }) => (
+    window.luna.workspace.createProject(name, [
+      { id: 'object-removal-input', name: 'object-removal-input.png', path: filePath, kind: 'image' },
+      { id: 'object-removal-second', name: 'object-removal-second.png', path: secondFilePath, kind: 'image' },
+    ])
+  ), { name: projectName, filePath: inputPath, secondFilePath: secondInputPath })
   await lunaApp.page.reload()
   await lunaApp.page.waitForLoadState('domcontentloaded')
 
   await lunaApp.page.getByRole('link', { name: '工作台', exact: true }).click()
-  await lunaApp.page.getByRole('button', { name: `${projectName} 1 个素材`, exact: true }).click()
+  await lunaApp.page.getByRole('button', { name: `${projectName} 2 个素材`, exact: true }).click()
   await lunaApp.page.getByRole('button', { name: '对象消除', exact: true }).click()
 
   const overlay = lunaApp.page.locator('.workspace-mask-overlay-shell')
@@ -69,7 +71,7 @@ test('对象消除批量处理分离选区并持久化结果', async ({ lunaApp 
   await expect(lunaApp.page.getByRole('button', { name: '取消处理', exact: true })).toBeVisible()
   await expect(overlay).toHaveAttribute('data-reconstructing', 'true')
   await expect(lunaApp.page.getByRole('button', { name: '按住查看原图', exact: true })).toBeVisible({ timeout: 120_000 })
-  await expect(lunaApp.page.getByRole('button', { name: '删除消除结果', exact: true })).toBeVisible()
+  await expect(lunaApp.page.getByRole('button', { name: '删除全部结果', exact: true })).toBeVisible()
   await expect(lunaApp.page.locator('.preview-loading-overlay')).toBeHidden({ timeout: 30_000 })
 
   const previewCanvas = await lunaApp.page.locator('.preview-canvas-wrapper canvas').elementHandle()
@@ -94,7 +96,15 @@ test('对象消除批量处理分离选区并持久化结果', async ({ lunaApp 
       pipeline?: { colorMasks?: unknown[] }
       removal?: {
         schemaVersion: number
-        operations: Array<{ enabled: boolean; resultPath: string; maskPath: string }>
+        operations: Array<{
+          enabled: boolean
+          resultPath: string
+          resultBytes: number
+          resultSha256: string
+          maskPath: string
+          maskBytes: number
+          maskSha256: string
+        }>
       }
     }>
   }
@@ -104,7 +114,37 @@ test('对象消除批量处理分离选区并持久化结果', async ({ lunaApp 
   expect(operation?.enabled).toBe(true)
   expect(operation?.resultPath.startsWith(lunaApp.temporaryRoot)).toBe(true)
   expect(operation?.maskPath.startsWith(lunaApp.temporaryRoot)).toBe(true)
+  expect(operation?.resultBytes).toBeGreaterThan(0)
+  expect(operation?.resultSha256).toMatch(/^[a-f0-9]{64}$/)
+  expect(operation?.maskBytes).toBeGreaterThan(0)
+  expect(operation?.maskSha256).toMatch(/^[a-f0-9]{64}$/)
   await expect.poll(async () => Boolean(operation && (await stat(operation.resultPath)).isFile())).toBe(true)
   await expect.poll(async () => Boolean(operation && (await stat(operation.maskPath)).isFile())).toBe(true)
+
+  const stepSwitch = lunaApp.page.getByLabel('启用消除步骤 1')
+  await stepSwitch.click()
+  await expect(stepSwitch).not.toBeChecked()
+  await stepSwitch.click()
+  await expect(stepSwitch).toBeChecked()
+
+  await rectangleButton.click()
+  const currentBox = await overlay.boundingBox()
+  if (!currentBox) throw new Error('第二次对象消除遮罩没有可交互区域')
+  await lunaApp.page.mouse.move(currentBox.x + currentBox.width * 0.35, currentBox.y + currentBox.height * 0.35)
+  await lunaApp.page.mouse.down()
+  await lunaApp.page.mouse.move(currentBox.x + currentBox.width * 0.55, currentBox.y + currentBox.height * 0.55, { steps: 8 })
+  await lunaApp.page.mouse.up()
+  await startButton.click()
+  await expect(lunaApp.page.getByRole('button', { name: '取消处理', exact: true })).toBeVisible()
+  await lunaApp.page.locator('.workspace-thumb[data-media-index="1"]').click()
+  await expect(lunaApp.page.getByRole('button', { name: '取消处理', exact: true })).toBeHidden()
+  await expect.poll(async () => {
+    const current = JSON.parse(await readFile(projectFile, 'utf8')) as { assets: Array<{ removal?: { operations: unknown[] } }> }
+    return [current.assets[0]?.removal?.operations.length ?? 0, current.assets[1]?.removal?.operations.length ?? 0]
+  }).toEqual([1, 0])
+
+  await lunaApp.page.locator('.workspace-thumb[data-media-index="0"]').click()
+  await lunaApp.page.getByLabel('删除消除步骤 1').click()
+  await expect.poll(async () => (await readdir(path.dirname(operation!.resultPath))).filter((name) => name.endsWith('.png') || name.endsWith('.mask'))).toEqual([])
   expect(lunaApp.runtimeErrors).toEqual([])
 })
