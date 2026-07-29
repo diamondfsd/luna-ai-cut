@@ -436,6 +436,8 @@ button { cursor: pointer; }
 }
 
 .viewer-media img { -webkit-user-drag: none; }
+.viewer-media.image-zoomable { touch-action: none; }
+.viewer-media.image-zoomable img { transform-origin: center; will-change: transform; }
 
 .viewer-media video {
   width: 100%;

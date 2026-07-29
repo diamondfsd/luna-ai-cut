@@ -24,8 +24,11 @@
   const error = document.getElementById('error')
   const summary = document.getElementById('summary')
   const viewer = document.getElementById('viewer')
+  const viewerMedia = document.getElementById('viewer-media')
   const selectionCount = document.getElementById('selection-count')
   const downloadSelected = document.getElementById('download-selected')
+  const imageTransform = { scale: 1, x: 0, y: 0 }
+  let touchGesture = null
 
   const formatSize = (bytes) => {
     if (bytes < 1024) return `${bytes} B`
@@ -108,8 +111,10 @@
     document.getElementById('viewer-title').textContent = item.name
     document.getElementById('viewer-position').textContent = `${index + 1} / ${state.items.length}`
     document.getElementById('viewer-info').textContent = `${formatTime(item.createdAt)} · ${formatSize(item.size)}`
-    const media = document.getElementById('viewer-media')
+    const media = viewerMedia
     media.replaceChildren()
+    media.classList.toggle('image-zoomable', item.previewKind === 'image')
+    resetImageTransform()
     const mediaUrl = `${base}media/${encodeURIComponent(item.id)}`
     if (item.previewKind === 'image') {
       const image = document.createElement('img')
@@ -147,7 +152,9 @@
   function closeViewer() {
     viewer.hidden = true
     document.body.classList.remove('viewer-open')
-    document.getElementById('viewer-media').replaceChildren()
+    viewerMedia.replaceChildren()
+    viewerMedia.classList.remove('image-zoomable')
+    resetImageTransform()
     state.viewerIndex = -1
   }
 
@@ -159,6 +166,31 @@
   function moveViewer(direction) {
     const index = state.viewerIndex + direction
     if (index >= 0 && index < state.items.length) renderViewer(index)
+  }
+
+  function touchDistance(touches) {
+    return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY)
+  }
+
+  function resetImageTransform() {
+    imageTransform.scale = 1
+    imageTransform.x = 0
+    imageTransform.y = 0
+    touchGesture = null
+    const image = viewerMedia.querySelector('img')
+    if (image) image.style.transform = ''
+  }
+
+  function applyImageTransform(scale, x, y) {
+    const image = viewerMedia.querySelector('img')
+    if (!image) return
+    const nextScale = Math.min(4, Math.max(1, scale))
+    const maxX = Math.max(0, (image.offsetWidth * nextScale - viewerMedia.clientWidth) / 2)
+    const maxY = Math.max(0, (image.offsetHeight * nextScale - viewerMedia.clientHeight) / 2)
+    imageTransform.scale = nextScale
+    imageTransform.x = Math.min(maxX, Math.max(-maxX, x))
+    imageTransform.y = Math.min(maxY, Math.max(-maxY, y))
+    image.style.transform = `translate3d(${imageTransform.x}px, ${imageTransform.y}px, 0) scale(${nextScale})`
   }
 
   async function load(reset) {
@@ -250,21 +282,54 @@
     loadObserver.observe(more)
   }
 
-  let touchStart = null
-  document.getElementById('viewer-media').addEventListener('touchstart', (event) => {
+  viewerMedia.addEventListener('touchstart', (event) => {
+    const image = viewerMedia.querySelector('img')
+    if (image && event.touches.length === 2) {
+      event.preventDefault()
+      touchGesture = { mode: 'pinch', distance: Math.max(1, touchDistance(event.touches)), scale: imageTransform.scale }
+      return
+    }
     if (event.touches.length !== 1) return
+    const touch = event.touches[0]
+    if (image && imageTransform.scale > 1) {
+      event.preventDefault()
+      touchGesture = { mode: 'pan', x: touch.clientX, y: touch.clientY, baseX: imageTransform.x, baseY: imageTransform.y }
+      return
+    }
     const video = typeof event.target.closest === 'function' ? event.target.closest('video') : null
-    if (video && event.touches[0].clientY > video.getBoundingClientRect().bottom - 64) return
-    touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY }
+    if (video && touch.clientY > video.getBoundingClientRect().bottom - 64) return
+    touchGesture = { mode: 'swipe', x: touch.clientX, y: touch.clientY }
+  }, { passive: false })
+
+  viewerMedia.addEventListener('touchmove', (event) => {
+    if (!touchGesture) return
+    if (touchGesture.mode === 'pinch' && event.touches.length === 2) {
+      event.preventDefault()
+      applyImageTransform(touchGesture.scale * touchDistance(event.touches) / touchGesture.distance, imageTransform.x, imageTransform.y)
+    } else if (touchGesture.mode === 'pan' && event.touches.length === 1) {
+      event.preventDefault()
+      applyImageTransform(
+        imageTransform.scale,
+        touchGesture.baseX + event.touches[0].clientX - touchGesture.x,
+        touchGesture.baseY + event.touches[0].clientY - touchGesture.y
+      )
+    }
+  }, { passive: false })
+
+  viewerMedia.addEventListener('touchend', (event) => {
+    if (!touchGesture) return
+    if (touchGesture.mode === 'pinch' && event.touches.length === 1) {
+      const touch = event.touches[0]
+      touchGesture = { mode: 'pan', x: touch.clientX, y: touch.clientY, baseX: imageTransform.x, baseY: imageTransform.y }
+      return
+    }
+    if (touchGesture.mode === 'swipe' && event.changedTouches.length === 1) {
+      const deltaX = event.changedTouches[0].clientX - touchGesture.x
+      const deltaY = event.changedTouches[0].clientY - touchGesture.y
+      if (Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25) moveViewer(deltaX < 0 ? 1 : -1)
+    }
+    touchGesture = null
   }, { passive: true })
-  document.getElementById('viewer-media').addEventListener('touchend', (event) => {
-    if (!touchStart || event.changedTouches.length !== 1) return
-    const deltaX = event.changedTouches[0].clientX - touchStart.x
-    const deltaY = event.changedTouches[0].clientY - touchStart.y
-    touchStart = null
-    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.25) return
-    moveViewer(deltaX < 0 ? 1 : -1)
-  }, { passive: true })
-  document.getElementById('viewer-media').addEventListener('touchcancel', () => { touchStart = null })
+  viewerMedia.addEventListener('touchcancel', () => { touchGesture = null })
   load(true)
 })()
