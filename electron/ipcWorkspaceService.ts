@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
+import type { WorkspaceBeautyAnalysisRequest, WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from './fileService'
@@ -41,6 +41,7 @@ import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 import { beginForegroundSegmentation } from './segmentationModelPrefetchService'
 import { trackMaskInWorker } from './maskTrackingService'
 import { removeObject } from './inpaintService'
+import { analyzeBeauty } from './beautyAnalysisService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
@@ -325,6 +326,21 @@ export function register(): void {
   ipcMain.handle('workspace:cancelSegmentation', (event, requestId: string) => {
     if (typeof requestId !== 'string' || requestId.length === 0) return false
     return segmentationTasks.cancel(event.sender.id, requestId)
+  })
+  ipcMain.handle('workspace:analyzeBeauty', async (event, request: WorkspaceBeautyAnalysisRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('美颜任务标识无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0 || VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('美颜当前仅支持图片')
+    const task = segmentationTasks.begin(event.sender.id, request.requestId)
+    watchSender(event.sender)
+    const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
+      if (!segmentationTasks.isActive(task) || event.sender.isDestroyed()) return
+      event.sender.send('workspace:segmentation-progress', { requestId: request.requestId, phase, label, percent })
+    }
+    try {
+      return await analyzeBeauty(request.requestId, request.filePath, task.controller.signal, reportProgress)
+    } finally {
+      segmentationTasks.finish(task)
+    }
   })
   ipcMain.handle('workspace:segmentInstances', async (event, request: WorkspaceInstanceSegmentationRequest) => {
     if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('划选任务标识无效')

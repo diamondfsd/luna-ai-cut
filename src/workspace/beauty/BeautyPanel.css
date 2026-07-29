@@ -1,0 +1,32 @@
+.beauty-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.beauty-panel-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0 4px;
+}
+
+.beauty-panel-summary > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.beauty-panel-summary strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.beauty-panel-summary span {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
