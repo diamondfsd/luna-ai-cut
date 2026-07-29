@@ -179,6 +179,16 @@ button { cursor: pointer; }
   pointer-events: none;
 }
 
+.video-badge::before {
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid currentColor;
+  content: "";
+}
+
 .file-placeholder {
   color: var(--muted);
   font-size: 12px;
@@ -204,11 +214,15 @@ button { cursor: pointer; }
   font-size: 0;
 }
 
-.icon { display: block; }
-
-.selection-dot .icon-check {
+.selection-dot::before {
+  width: 7px;
+  height: 12px;
+  margin-top: -3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
   opacity: 0;
-  transform: scale(0.7);
+  transform: rotate(45deg) scale(0.7);
   transition: opacity 100ms ease, transform 100ms ease;
 }
 
@@ -217,9 +231,9 @@ button { cursor: pointer; }
   background: var(--blue);
 }
 
-.photo-card.selected .selection-dot .icon-check {
+.photo-card.selected .selection-dot::before {
   opacity: 1;
-  transform: scale(1);
+  transform: rotate(45deg) scale(1);
 }
 
 .loading,
@@ -319,6 +333,8 @@ dialog {
 
 dialog::backdrop { background: #111111; }
 
+dialog:not([open]) { display: none; }
+
 .viewer-layout {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -359,6 +375,7 @@ dialog::backdrop { background: #111111; }
 }
 
 .close-button {
+  position: relative;
   display: grid;
   flex: 0 0 40px;
   width: 40px;
@@ -370,6 +387,19 @@ dialog::backdrop { background: #111111; }
   padding: 0;
   place-items: center;
 }
+
+.close-button::before,
+.close-button::after {
+  position: absolute;
+  width: 17px;
+  height: 1.5px;
+  border-radius: 2px;
+  background: currentColor;
+  content: "";
+}
+
+.close-button::before { transform: rotate(45deg); }
+.close-button::after { transform: rotate(-45deg); }
 
 .viewer-media {
   display: grid;
