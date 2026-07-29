@@ -6,6 +6,7 @@ import { expect, test } from './fixtures/lunaElectron'
 const PROJECT_PATH = 'C:\\Users\\diamond\\Pictures\\LunaAI-Cut\\workspace-projects\\2026-07-11T15-58-37-554Z-1\\project.json'
 const MEMORY_ABORT_DELTA_KB = 1024 * 1024
 const MEMORY_SAMPLE_INTERVAL_MS = 250
+const VIDEO_LIMIT = Number.parseInt(process.env.LUNA_REAL_4K_VIDEO_LIMIT ?? '', 10)
 
 test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ lunaApp }, testInfo) => {
   test.skip(process.platform !== 'win32', '验证 Windows 原生 GPU 预览')
@@ -25,8 +26,11 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
       pipeline?: unknown
     }>
   }
-  const sourceVideos = sourceProject.assets.filter((asset) => asset.kind === 'video')
-  if (sourceVideos.length < 2) throw new Error('真实工作空间中没有足够的 4K 视频')
+  const availableVideos = sourceProject.assets.filter((asset) => asset.kind === 'video')
+  const sourceVideos = Number.isFinite(VIDEO_LIMIT)
+    ? availableVideos.slice(0, Math.max(1, VIDEO_LIMIT))
+    : availableVideos
+  if (sourceVideos.length === 0) throw new Error('真实工作空间中没有 4K 视频')
 
   await lunaApp.page.evaluate(async (assets) => {
     const api = (window as typeof window & {
@@ -70,9 +74,12 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
   const preview = lunaApp.page.locator('canvas.native-gpu-video-preview')
   const loading = lunaApp.page.locator('.preview-loading-overlay')
   const playback = lunaApp.page.locator('.ui-video-controls-button')
+  const progress = lunaApp.page.getByRole('slider', { name: '视频进度' })
+  const progressRoot = lunaApp.page.locator('.ui-video-controls-progress')
   const thumbs = lunaApp.page.locator('.workspace-thumb')
   await expect(preview).toBeVisible({ timeout: 120_000 })
   await expect(playback).toBeVisible({ timeout: 120_000 })
+  await expect(progress).toBeEnabled({ timeout: 120_000 })
   await expect(thumbs).toHaveCount(sourceVideos.length)
   await expect(loading).toBeVisible({ timeout: 120_000 })
   await expect(loading).toBeHidden({ timeout: 120_000 })
@@ -125,6 +132,25 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
       await sampleMemory(`${label}-${elapsed}ms`)
     }
   }
+  const seekByRatio = async (label: string, ratio: number) => {
+    const max = Number(await progress.getAttribute('aria-valuemax'))
+    const bounds = await progressRoot.boundingBox()
+    if (!Number.isFinite(max) || max <= 1 || !bounds) {
+      throw new Error('视频进度暂时无法操作')
+    }
+    await progressRoot.click({
+      position: {
+        x: Math.max(1, Math.min(bounds.width - 1, bounds.width * ratio)),
+        y: bounds.height / 2,
+      },
+    })
+    await expect.poll(async () => {
+      const value = Number(await progress.getAttribute('aria-valuenow'))
+      return Math.abs(value - max * ratio)
+    }, { timeout: 25_000 }).toBeLessThan(Math.max(1, max * 0.05))
+    await expect(loading).toBeHidden({ timeout: 25_000 })
+    await sampleMemory(label)
+  }
 
   try {
     await sampleMemory('ready')
@@ -149,10 +175,15 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
       await expect(playback).toHaveAttribute('aria-label', '播放')
       await lunaApp.page.waitForTimeout(1_000)
       await sampleMemory(`paused-${index + 1}-${video.name}`)
+      await seekByRatio(`seek-paused-${index + 1}-${video.name}`, 0.65)
+      await expect(playback).toHaveAttribute('aria-label', '播放')
 
       await playback.click()
       await expect(playback).toHaveAttribute('aria-label', '暂停')
       await monitorPlayback(`resumed-${index + 1}-${video.name}`, 1_000)
+      await seekByRatio(`seek-playing-${index + 1}-${video.name}`, 0.2)
+      await expect(playback).toHaveAttribute('aria-label', '暂停', { timeout: 25_000 })
+      await monitorPlayback(`playing-after-seek-${index + 1}-${video.name}`, 750)
 
       await playback.click()
       await expect(playback).toHaveAttribute('aria-label', '播放')
@@ -170,5 +201,7 @@ test('真实工作空间 4K 视频切换和暂停恢复内存采样', async ({ l
   const peak = Math.max(...memorySamples.map((sample) => sample.privateKb))
   expect(final.privateKb - baseline.privateKb).toBeLessThan(500 * 1024)
   expect(peak - baseline.privateKb).toBeLessThan(800 * 1024)
+  const appLog = await readFile(path.join(lunaApp.temporaryRoot, 'artifacts', 'app.log'), 'utf8')
+  expect(appLog).not.toContain('ERROR: [NativePreview] render')
   expect(lunaApp.runtimeErrors).toEqual([])
 })

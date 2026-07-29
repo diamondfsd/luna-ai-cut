@@ -201,7 +201,7 @@ fn run_native_preview_session(
         } else if render_requested {
             Duration::ZERO
         } else {
-            Duration::from_secs(60)
+            Duration::from_millis(100)
         };
         match receiver.recv_timeout(timeout) {
             Ok(command) => {
@@ -238,6 +238,9 @@ fn run_native_preview_session(
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
+
+        #[cfg(target_os = "windows")]
+        runtime.pump_events();
 
         let now = Instant::now();
         if playing && now >= next_frame_at {
