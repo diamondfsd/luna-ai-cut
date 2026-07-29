@@ -11,7 +11,6 @@ import {
   prepareInpaintInputs,
   resampleInpaintMask,
 } from '../electron/inpaintMask.ts'
-import { selectGenerativeGpuDevice, verifyGpuOnlyGenerativeLog } from '../electron/generativeInpaintRuntime.ts'
 
 const empty = new Uint8Array(INPAINT_MODEL_SIZE * INPAINT_MODEL_SIZE)
 assert.equal(dilateInpaintMask(empty, 12).some(Boolean), false, 'empty mask must stay empty')
@@ -79,15 +78,3 @@ assert.deepEqual(
 )
 
 console.log('inpaint mask tests passed')
-
-assert.deepEqual(selectGenerativeGpuDevice('MTL0\tApple M5\nCPU\tApple M5', 'darwin', 'arm64'), { backend: 'metal', deviceName: 'Apple M5' })
-assert.deepEqual(selectGenerativeGpuDevice('CUDA0\tNVIDIA GeForce RTX 4060\nCPU\tIntel', 'win32', 'x64'), { backend: 'cuda', deviceName: 'NVIDIA GeForce RTX 4060' })
-assert.equal(selectGenerativeGpuDevice('Vulkan0\tAMD Radeon\nCPU\tAMD', 'win32', 'x64'), null)
-assert.equal(selectGenerativeGpuDevice('MTL0\tAMD Radeon', 'darwin', 'x64'), null)
-
-const gpuOnlyLog = 'backend: "MTL0"\noffload_params_to_cpu: false\nInitializing backend: MTL0\ntotal params memory size = 1667.62MB (VRAM 1667.62MB, RAM 0.00MB)'
-assert.doesNotThrow(() => verifyGpuOnlyGenerativeLog(gpuOnlyLog, 'MTL0'))
-assert.throws(() => verifyGpuOnlyGenerativeLog(`${gpuOnlyLog}\nInitializing backend: CPU`, 'MTL0'), /完全使用显卡/)
-assert.throws(() => verifyGpuOnlyGenerativeLog(gpuOnlyLog.replace('RAM 0.00MB', 'RAM 235.06MB'), 'MTL0'), /完全使用显卡/)
-
-console.log('generative inpaint GPU gate tests passed')

@@ -58,9 +58,6 @@ luna-render-core/specialized-segmentation-worker
 luna-render-core/specialized-segmentation-worker.exe
 luna-render-core/luna-inpaint-worker
 luna-render-core/luna-inpaint-worker.exe
-luna-render-core/sd-cli
-luna-render-core/sd-cli.exe
-luna-render-core/stable-diffusion.cpp-LICENSE.txt
 luna-render-core/dxcompiler.dll
 luna-render-core/dxil.dll
 luna-render-core/DXC-LICENSE-*.txt
