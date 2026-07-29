@@ -5,6 +5,14 @@
 .workspace-removal-panel .ui-button-group > * { min-width: 0; flex: 1; }
 .workspace-removal-switch { display: flex; align-items: center; justify-content: space-between; color: var(--ink); font-size: 13px; }
 .workspace-removal-result { padding-top: 16px; border-top: 1px solid var(--hairline); }
+.workspace-removal-steps { padding-top: 16px; border-top: 1px solid var(--hairline); }
+.workspace-removal-step { min-height: 42px; display: grid; grid-template-columns: minmax(0, 1fr) auto 28px; align-items: center; gap: 8px; }
+.workspace-removal-step-copy { min-width: 0; display: grid; gap: 2px; }
+.workspace-removal-step-copy strong { color: var(--ink); font-size: 12px; font-weight: 600; }
+.workspace-removal-step-copy span { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-removal-step.is-invalid .workspace-removal-step-copy span { color: var(--danger, #b42318); }
+.workspace-removal-warning { display: flex; align-items: flex-start; gap: 8px; color: var(--danger, #b42318); font-size: 12px; line-height: 1.5; }
+.workspace-removal-warning svg { flex: 0 0 auto; margin-top: 1px; }
 .workspace-removal-actions { margin-top: auto; padding-top: 12px; }
 .workspace-removal-full-button { width: 100%; }
 .workspace-removal-empty { padding: 18px; color: var(--muted); font-size: 13px; line-height: 1.6; }

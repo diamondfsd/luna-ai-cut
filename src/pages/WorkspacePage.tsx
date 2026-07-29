@@ -40,6 +40,7 @@ import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePh
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
+import { activeRemovalOperation, latestReadyRemovalOperation } from '../workspace/removal/removalOperations'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -50,7 +51,7 @@ function normalizePipeline(value: unknown, defaultPipeline: EditPipeline = creat
 
 function removalSourcePath(asset: WorkspaceProjectAsset | undefined, compareOriginal = false): string | undefined {
   if (!asset || compareOriginal) return asset?.path
-  return [...(asset.removal?.operations ?? [])].reverse().find((operation) => operation.enabled)?.resultPath ?? asset.path
+  return latestReadyRemovalOperation(asset.removal?.operations ?? [])?.resultPath ?? asset.path
 }
 
 /** 从 MediaMetadata 中按 key 提取第一个匹配的 EXIF 值 */
@@ -553,6 +554,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         : activePipeline.colorMasks
       const sourceGroups = await Promise.all(exportIndices.map(async (index): Promise<BatchExportSource[]> => {
         const asset = media.media[index]
+        const activeRemoval = activeRemovalOperation(media.currentProject?.assets[index]?.removal?.operations ?? [])
+        if (activeRemoval?.status === 'needs-regeneration') throw new Error(`${asset.name} 的消除结果需要重新生成`)
         const sourcePath = removalSourcePath(media.currentProject?.assets[index]) ?? asset.path
         const pipeline = index === media.activeIndex
           ? mergePipeline(activePipeline, { colorMasks: trackedActiveMasks })

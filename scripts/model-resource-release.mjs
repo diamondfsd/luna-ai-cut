@@ -23,6 +23,7 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
     const sources = [
       path.join(sourceRoot, 'segmentationModels.ts'),
       path.join(sourceRoot, 'ade20kSegmentationTargets.ts'),
+      path.join(sourceRoot, 'inpaintModels.ts'),
     ]
     const program = ts.createProgram(sources, {
       target: ts.ScriptTarget.ES2022,
@@ -43,7 +44,10 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
     }
     if (program.emit().emitSkipped) throw new Error('模型注册表编译失败')
     await writeFile(path.join(temporaryRoot, 'package.json'), '{"type":"commonjs"}\n')
-    return require(path.join(temporaryRoot, 'src', 'shared', 'segmentationModels.js'))
+    return {
+      ...require(path.join(temporaryRoot, 'src', 'shared', 'segmentationModels.js')),
+      ...require(path.join(temporaryRoot, 'src', 'shared', 'inpaintModels.js')),
+    }
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true })
   }
@@ -65,13 +69,13 @@ function addArtifact(artifacts, artifact) {
 
 export function buildModelArtifacts(registry) {
   const artifacts = []
-  for (const model of [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS]) {
+  for (const model of [...registry.SEGMENTATION_MODELS, ...registry.SPECIALIZED_SEGMENTATION_MODELS, ...registry.AI_SELECTION_MODELS, ...registry.INPAINT_MODELS]) {
     addArtifact(artifacts, {
       fileName: `${model.id}.onnx`,
       sizeBytes: model.sizeBytes,
       sha256: model.sha256,
       sourceUrls: nonGitCodeSources(model),
-      models: [{ modelId: model.id, role: 'model' }],
+      models: [{ modelId: model.id, role: 'model', cacheFileName: model.fileName ?? 'model.onnx' }],
       version: model.version,
       license: model.license,
       source: model.source,
@@ -108,9 +112,10 @@ export function defaultModelCacheRoots() {
   return [...new Set(roots)]
 }
 
-function cachedFileName(role) {
-  if (role === 'visionEncoder') return 'vision_encoder_quantized.onnx'
-  if (role === 'promptDecoder') return 'prompt_encoder_mask_decoder_quantized.onnx'
+function cachedFileName(reference) {
+  if (reference.cacheFileName) return reference.cacheFileName
+  if (reference.role === 'visionEncoder') return 'vision_encoder_quantized.onnx'
+  if (reference.role === 'promptDecoder') return 'prompt_encoder_mask_decoder_quantized.onnx'
   return 'model.onnx'
 }
 
@@ -136,7 +141,7 @@ export async function importCachedModelArtifacts(artifacts, outputDir, cacheRoot
     for (const root of cacheRoots) {
       let imported = false
       for (const reference of artifact.models) {
-        const cachedPath = path.join(root, reference.modelId, cachedFileName(reference.role))
+        const cachedPath = path.join(root, reference.modelId, cachedFileName(reference))
         if (!await validFile(cachedPath, artifact)) continue
         const temporary = `${destination}.${process.pid}.import`
         await copyFile(cachedPath, temporary)
