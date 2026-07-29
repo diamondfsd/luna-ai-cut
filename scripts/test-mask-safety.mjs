@@ -699,6 +699,24 @@ try {
   assert.equal(precomposeOutputs[0].color.exposure, 0)
   assert.equal(precomposeOutputs[0].color.denoise, 3100, 'blur must run after mask color is flattened')
   assert.equal(precomposeOutputs[1].color, undefined, 'foreground must not apply global color a second time')
+  const framedWatermark = renderModule.placeWatermarkOnFramedContent([{
+    ...baseLayer,
+    filePath: '/watermark.png',
+    zIndex: 1,
+    positioning: {
+      anchor: 'bottom-right',
+      targetWidth: 0.2,
+      marginX: 0.03,
+      marginY: 0.04,
+    },
+  }], [
+    { ...blurredBackground, dstX: 0, dstY: 0, dstW: 1, dstH: 1, zIndex: 10 },
+    { ...framedSource, isVideo: true, layoutRole: 'content', dstX: 0.1, dstY: 0.06, dstW: 0.8, dstH: 0.82, zIndex: 13 },
+  ])[0]
+  close(framedWatermark.positioning.targetWidth, 0.16, 'video frame watermark width must be relative to the clear content')
+  close(framedWatermark.positioning.marginX, 0.124, 'video frame watermark right inset must stay inside the clear content')
+  close(framedWatermark.positioning.marginY, 0.1528, 'video frame watermark bottom inset must stay inside the clear content')
+  assert.equal(framedWatermark.zIndex, 14, 'video frame watermark must render above the clear content')
   const framedComposition = renderComposition.buildCompositionFromPreviewLayers(
     framedPrecomposition,
     1440,

@@ -1,7 +1,7 @@
 import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer, MediaMetadata } from '../../shared/types'
-import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from './renderLayerPipeline'
+import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
 
@@ -31,7 +31,8 @@ export function buildWorkspaceExportLayers(
   }
 
   const layers = buildExportLayers(sourcePath, finalCanvasSize, allowWatermark ? pipeline.watermark : null)
-  const result = main[0] ? [{ ...layers[0], ...main[0] }, ...layers.slice(1)] : layers
+  const watermarkLayers = layers.slice(1)
+  const result = main[0] ? [{ ...layers[0], ...main[0] }] : layers.slice(0, 1)
   if (result[0]) result.splice(1, 0, ...buildLocalColorLayers(result[0], pipeline))
 
   // 边框层（如果有元数据）
@@ -50,7 +51,13 @@ export function buildWorkspaceExportLayers(
         lutIntensity: pipeline.lutFilter.intensity,
       },
     })
-    result.push(...applyLocalColorToSourceMediaLayers(borderLayers, sourcePath, pipeline))
+    const adjustedBorderLayers = applyLocalColorToSourceMediaLayers(borderLayers, sourcePath, pipeline)
+    result.push(
+      ...placeWatermarkOnFramedContent(watermarkLayers, adjustedBorderLayers),
+      ...adjustedBorderLayers,
+    )
+  } else {
+    result.push(...watermarkLayers)
   }
 
   return result

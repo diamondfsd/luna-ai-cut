@@ -140,10 +140,11 @@ impl VideoDecoder {
         timestamp_100ns: i64,
     ) -> Result<Option<DecodedFrame>, String> {
         let target = timestamp_100ns.max(0);
-        let should_seek = self.last_timestamp_100ns.map_or(
-            target > MAX_SEQUENTIAL_DECODE_TICKS,
-            |last| target < last || target - last > MAX_SEQUENTIAL_DECODE_TICKS,
-        );
+        let should_seek = self
+            .last_timestamp_100ns
+            .map_or(target > MAX_SEQUENTIAL_DECODE_TICKS, |last| {
+                target < last || target - last > MAX_SEQUENTIAL_DECODE_TICKS
+            });
         if should_seek {
             self.seek(target)?;
         }

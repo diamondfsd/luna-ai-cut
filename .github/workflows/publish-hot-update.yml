@@ -83,7 +83,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}
-          path: luna-render-core/luna-render-core.node
+          path: |
+            luna-render-core/luna-render-core.node
+            luna-render-core/dxcompiler.dll
+            luna-render-core/dxil.dll
+            luna-render-core/DXC-LICENSE-*.txt
           if-no-files-found: error
 
   publish:

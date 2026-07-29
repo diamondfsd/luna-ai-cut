@@ -57,6 +57,19 @@ for (const platform of platforms) {
     const nativePath = join(nativeDir, platform, 'luna-render-core.node')
     if (!existsSync(nativePath)) throw new Error(`缺少 ${platform} 原生模块: ${nativePath}`)
     zip.addLocalFile(nativePath, 'pending-native')
+    if (platform === 'win32-x64') {
+      for (const file of [
+        'dxcompiler.dll',
+        'dxil.dll',
+        'DXC-LICENSE-MIT.txt',
+        'DXC-LICENSE-LLVM.txt',
+        'DXC-LICENSE-MS.txt',
+      ]) {
+        const runtimePath = join(nativeDir, platform, file)
+        if (!existsSync(runtimePath)) throw new Error(`缺少 ${platform} DXC 运行文件: ${runtimePath}`)
+        zip.addLocalFile(runtimePath, 'pending-native')
+      }
+    }
   }
   const zipName = `renderer-${version}-${platform}.zip`
   const zipPath = join(releaseDir, zipName)

@@ -72,6 +72,19 @@ function activatePendingNativeUpdate(hotDir: string): void {
   mkdirSync(targetDir, { recursive: true })
   rmSync(target, { force: true })
   renameSync(pending, target)
+  for (const file of [
+    'dxcompiler.dll',
+    'dxil.dll',
+    'DXC-LICENSE-MIT.txt',
+    'DXC-LICENSE-LLVM.txt',
+    'DXC-LICENSE-MS.txt',
+  ]) {
+    const pendingRuntime = join(hotDir, 'pending-native', file)
+    if (!existsSync(pendingRuntime)) continue
+    const targetRuntime = join(targetDir, file)
+    rmSync(targetRuntime, { force: true })
+    renameSync(pendingRuntime, targetRuntime)
+  }
   rmSync(join(hotDir, 'pending-native'), { recursive: true, force: true })
   console.log('[hot-update] 已切换原生渲染模块')
 }

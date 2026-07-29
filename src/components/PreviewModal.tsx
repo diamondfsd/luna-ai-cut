@@ -9,7 +9,7 @@ import { PreviewStage } from './PreviewStage'
 import { PreviewThumbnailStrip } from './PreviewThumbnailStrip'
 import { WatermarkSettings } from './WatermarkSettings'
 import { useFileCache } from '../hooks/useFileCache'
-import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
+import { canUseLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
 import { filePathToPreviewUrl, isVideoPath } from '../lib/fileUtils'
 import { logger } from '../lib/rendererLogger'
 import { getIsLivePhoto } from '../shared/livePhoto'
@@ -92,10 +92,6 @@ export function PreviewModal({
   const stageSource = toLocalPath(activeSourcePath)
   const proxyPreview = proxyPreviewPaths?.includes(currentFilePath) ?? false
   const currentSelected = selectionOverrides.get(currentFilePath) ?? isFileSelected?.(currentFilePath)
-  const allowBuiltinWatermark = useLunaUltraWatermark(stageSource ? {
-    path: stageSource,
-    kind: isVideoPath(stageSource) ? 'video' : 'image',
-  } : null)
   const exportList = useMemo(
     () => batchExportMode ? (filePathList ?? []) : [currentFilePath],
     [batchExportMode, currentFilePath, filePathList],
@@ -172,10 +168,6 @@ export function PreviewModal({
   useEffect(() => {
     setWatermarkLayers([])
   }, [currentFilePath, displaySource, resolvedPath, stageSource])
-
-  useEffect(() => {
-    if (!allowBuiltinWatermark && !usesCustomWatermark(watermarkSettings)) setWatermarkLayers([])
-  }, [allowBuiltinWatermark, watermarkSettings])
 
   useEffect(() => {
     if (!watermarkSettings) return
@@ -297,7 +289,6 @@ export function PreviewModal({
                     onChange={handleWatermarkChange}
                     filePath={stageSource ?? undefined}
                     mediaKind={isVideoPath(currentFilePath) ? 'video' : 'image'}
-                    allowBuiltin={allowBuiltinWatermark}
                   />
                 ) : undefined}
               />

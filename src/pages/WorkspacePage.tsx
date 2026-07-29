@@ -33,15 +33,13 @@ import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
-import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
-import { canUseLunaUltraWatermark, useLunaUltraWatermark } from '../hooks/useLunaUltraWatermark'
-import { usesCustomWatermark } from '../shared/watermarkGeometry'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -133,10 +131,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [fitScalePercent, setFitScalePercent] = useState(100)
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
-  const allowBuiltinWatermark = useLunaUltraWatermark(media.activeMedia)
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
   const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
-
   useEffect(() => {
     if (!pageActive) return
     let disposed = false
@@ -311,12 +307,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   // ── 从 pipeline 水印设置自动生成预览层 ──
   const watermarkLayer = useMemo(() => {
     const wm = edit.pipeline.watermark
-    if (!allowBuiltinWatermark && !usesCustomWatermark(wm)) return []
     if (!wm?.enabled) return []
     if (!finalCanvasSize) return []
     const layer = buildResolvedWatermarkStaticLayer(wm, finalCanvasSize.width, finalCanvasSize.height)
     return layer ? [layer] : []
-  }, [allowBuiltinWatermark, edit.pipeline.watermark, finalCanvasSize])
+  }, [edit.pipeline.watermark, finalCanvasSize])
 
   // ── 边框预览层（JSON 预设解析为多个独立合成层） ──
   const borderLayer = useMemo(() => {
@@ -344,7 +339,9 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
 
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
-    () => edit.cropActive || mask.editing ? [] : [...watermarkLayer, ...borderLayer],
+    () => edit.cropActive || mask.editing
+      ? []
+      : [...placeWatermarkOnFramedContent(watermarkLayer, borderLayer), ...borderLayer],
     [edit.cropActive, mask.editing, watermarkLayer, borderLayer],
   )
 
@@ -571,8 +568,6 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         const borderMeta = pipeline.border?.enabled
           ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => null)
           : null
-        const allowAssetWatermark = usesCustomWatermark(pipeline.watermark)
-          || await canUseLunaUltraWatermark(asset.path, asset.kind)
         const segmentRanges = isVideoPath(asset.path)
           ? buildVideoSegmentExportRanges(outputBaseName, pipeline.videoMarkers, sourceDuration)
           : []
@@ -588,7 +583,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         return variants.map((variant) => ({
           sourcePath,
           outputBaseName: variant.outputBaseName,
-          layers: buildWorkspaceExportLayers(sourcePath, resolution, variant.pipeline, borderMeta, allowAssetWatermark),
+          layers: buildWorkspaceExportLayers(sourcePath, resolution, variant.pipeline, borderMeta, true),
           outputSize: outputSizeForTransform(resolution, variant.pipeline.transform),
           mediaDuration: isVideoPath(asset.path)
             ? Math.max(0, Math.min(sourceDuration, variant.trimEnd) - variant.trimStart)
@@ -809,7 +804,6 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             duration={activeTrimDuration}
             onTrimSeek={handleTrimSeek}
             allowWatermark={Boolean(media.activeMedia)}
-            allowBuiltinWatermark={allowBuiltinWatermark}
             runtimeResourceLoading={runtimeResourceLoading}
             onOpenCreative={onCreativeModeChange}
           />

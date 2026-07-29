@@ -1,11 +1,13 @@
-use std::mem::ManuallyDrop;
+use std::mem::{size_of, ManuallyDrop};
 use std::ptr;
+use std::time::{Duration, Instant};
 
-use windows::core::Interface;
+use windows::core::{Interface, BOOL};
 use windows::Win32::Graphics::Direct3D11::{
-    ID3D11Device, ID3D11DeviceContext, ID3D11Resource, ID3D11Texture2D, ID3D11VideoContext,
-    ID3D11VideoDevice, D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_TEX2D_VPIV,
-    D3D11_TEX2D_VPOV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+    ID3D11Device, ID3D11DeviceContext, ID3D11Query, ID3D11Resource, ID3D11Texture2D,
+    ID3D11VideoContext, ID3D11VideoDevice, D3D11_ASYNC_GETDATA_DONOTFLUSH,
+    D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_QUERY_DESC, D3D11_QUERY_EVENT,
+    D3D11_TEX2D_VPIV, D3D11_TEX2D_VPOV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
     D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE, D3D11_VIDEO_PROCESSOR_CONTENT_DESC,
     D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0,
     D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0,
@@ -31,6 +33,7 @@ pub(crate) struct VideoConverter {
     queue: ID3D12CommandQueue,
     fence: ID3D12Fence,
     next_fence_value: u64,
+    completion_query: ID3D11Query,
 }
 
 pub(crate) struct D3d12TextureLease {
@@ -102,6 +105,15 @@ impl VideoConverter {
             .map_err(|error| format!("当前显卡无法创建视频处理队列: {error}"))?;
         let fence = unsafe { d3d12_device.CreateFence(0, D3D12_FENCE_FLAG_NONE) }
             .map_err(|error| format!("无法创建显卡同步对象: {error}"))?;
+        let query_desc = D3D11_QUERY_DESC {
+            Query: D3D11_QUERY_EVENT,
+            MiscFlags: 0,
+        };
+        let mut completion_query = None;
+        unsafe { device.CreateQuery(&query_desc, Some(&mut completion_query)) }
+            .map_err(|error| format!("无法创建视频转换同步对象: {error}"))?;
+        let completion_query =
+            completion_query.ok_or_else(|| "视频转换同步对象创建后为空".to_string())?;
         Ok(Self {
             device: device.clone(),
             context: context.clone(),
@@ -111,6 +123,7 @@ impl VideoConverter {
             queue: queue.clone(),
             fence,
             next_fence_value: 1,
+            completion_query,
         })
     }
 
@@ -319,7 +332,33 @@ impl VideoConverter {
         };
         unsafe { ManuallyDrop::drop(&mut stream.pInputSurface) };
         result.map_err(|error| format!("显卡颜色转换失败: {error}"))?;
-        unsafe { self.context.Flush() };
-        Ok(())
+        self.wait_for_blit()
+    }
+
+    fn wait_for_blit(&self) -> Result<(), String> {
+        unsafe {
+            self.context.End(&self.completion_query);
+            self.context.Flush();
+        }
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let mut complete = BOOL::default();
+            unsafe {
+                self.context.GetData(
+                    &self.completion_query,
+                    Some((&mut complete as *mut BOOL).cast()),
+                    size_of::<BOOL>() as u32,
+                    D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+                )
+            }
+            .map_err(|error| format!("等待显卡颜色转换失败: {error}"))?;
+            if complete.as_bool() {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err("等待显卡颜色转换超时".to_string());
+            }
+            std::thread::yield_now();
+        }
     }
 }
