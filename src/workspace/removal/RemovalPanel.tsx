@@ -10,7 +10,8 @@ import type { WorkspaceRemovalOperation } from '../../shared/types'
 import './RemovalPanel.css'
 
 const MODEL_VERSION = 'carve-c3c0c9e' as const
-const DEFAULT_EDGE_EXPANSION = 0
+const DEFAULT_EDGE_EXPANSION = 4
+const DEFAULT_FEATHER = 2
 
 export function RemovalPanel() {
   const edit = useWorkspaceEdit()
@@ -19,7 +20,7 @@ export function RemovalPanel() {
   const setMaskReconstructing = mask.setReconstructing
   const media = useWorkspaceMedia()
   const [edgeExpansion, setEdgeExpansion] = useState(DEFAULT_EDGE_EXPANSION)
-  const [feather, setFeather] = useState(0)
+  const [feather, setFeather] = useState(DEFAULT_FEATHER)
   const [processing, setProcessing] = useState(false)
   const requestRef = useRef<string | null>(null)
   const draftLayerRef = useRef<string | null>(null)

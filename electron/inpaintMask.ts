@@ -6,12 +6,24 @@ export interface InpaintRegion {
   size: number
 }
 
+export interface InpaintMaskJob {
+  mask: Uint8Array
+  region: InpaintRegion
+}
+
 interface MaskBounds {
   left: number
   top: number
   right: number
   bottom: number
 }
+
+interface MaskComponent {
+  bounds: MaskBounds
+  pixels: number[]
+}
+
+const MAX_SPLIT_COMPONENTS = 64
 
 function selectedMaskBounds(input: Uint8Array, width: number, height: number): MaskBounds | null {
   let left = width
@@ -28,6 +40,80 @@ function selectedMaskBounds(input: Uint8Array, width: number, height: number): M
     }
   }
   return right < left ? null : { left, top, right, bottom }
+}
+
+function connectedMaskComponents(input: Uint8Array, width: number, height: number): MaskComponent[] | null {
+  const visited = new Uint8Array(input.length)
+  const queue = new Int32Array(input.length)
+  const components: MaskComponent[] = []
+  for (let start = 0; start < input.length; start++) {
+    if (visited[start] || input[start] < 16) continue
+    if (components.length >= MAX_SPLIT_COMPONENTS) return null
+    let read = 0
+    let write = 0
+    queue[write++] = start
+    visited[start] = 1
+    const pixels: number[] = []
+    const bounds: MaskBounds = { left: width, top: height, right: -1, bottom: -1 }
+    while (read < write) {
+      const index = queue[read++]
+      const x = index % width
+      const y = Math.floor(index / width)
+      pixels.push(index)
+      bounds.left = Math.min(bounds.left, x)
+      bounds.top = Math.min(bounds.top, y)
+      bounds.right = Math.max(bounds.right, x)
+      bounds.bottom = Math.max(bounds.bottom, y)
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue
+        const nextX = x + dx
+        const nextY = y + dy
+        if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) continue
+        const next = nextY * width + nextX
+        if (visited[next] || input[next] < 16) continue
+        visited[next] = 1
+        queue[write++] = next
+      }
+    }
+    components.push({ bounds, pixels })
+  }
+  return components
+}
+
+function boundsSpan(bounds: MaskBounds): number {
+  return Math.max(bounds.right - bounds.left + 1, bounds.bottom - bounds.top + 1)
+}
+
+function componentsAreNear(a: MaskComponent, b: MaskComponent): boolean {
+  const gapX = Math.max(0, Math.max(a.bounds.left, b.bounds.left) - Math.min(a.bounds.right, b.bounds.right) - 1)
+  const gapY = Math.max(0, Math.max(a.bounds.top, b.bounds.top) - Math.min(a.bounds.bottom, b.bounds.bottom) - 1)
+  const mergeDistance = Math.max(4, Math.round(Math.min(boundsSpan(a.bounds), boundsSpan(b.bounds)) * 0.5))
+  return Math.hypot(gapX, gapY) <= mergeDistance
+}
+
+function mergeNearbyComponents(components: MaskComponent[]): MaskComponent[] {
+  const groups = components.map((component) => ({ ...component, pixels: [...component.pixels] }))
+  let merged = true
+  while (merged) {
+    merged = false
+    outer: for (let first = 0; first < groups.length; first++) {
+      for (let second = first + 1; second < groups.length; second++) {
+        if (!componentsAreNear(groups[first], groups[second])) continue
+        const other = groups[second]
+        groups[first].bounds = {
+          left: Math.min(groups[first].bounds.left, other.bounds.left),
+          top: Math.min(groups[first].bounds.top, other.bounds.top),
+          right: Math.max(groups[first].bounds.right, other.bounds.right),
+          bottom: Math.max(groups[first].bounds.bottom, other.bounds.bottom),
+        }
+        for (const pixel of other.pixels) groups[first].pixels.push(pixel)
+        groups.splice(second, 1)
+        merged = true
+        break outer
+      }
+    }
+  }
+  return groups
 }
 
 function placeRegionAxis(center: number, size: number, sourceSize: number): number {
@@ -50,13 +136,38 @@ export function createInpaintRegion(
   const top = Math.floor(bounds.top * sourceHeight / maskHeight)
   const right = Math.ceil((bounds.right + 1) * sourceWidth / maskWidth)
   const bottom = Math.ceil((bounds.bottom + 1) * sourceHeight / maskHeight)
-  const span = Math.max(right - left, bottom - top)
-  const size = Math.min(Math.max(sourceWidth, sourceHeight), Math.max(INPAINT_MODEL_SIZE, Math.ceil(span * 3)))
+  const width = right - left
+  const height = bottom - top
+  const span = Math.max(width, height)
+  const aspect = span / Math.max(1, Math.min(width, height))
+  const contextFactor = aspect >= 4 ? 1.75 : aspect >= 2 ? 2.25 : 3
+  const size = Math.min(Math.max(sourceWidth, sourceHeight), Math.max(INPAINT_MODEL_SIZE, Math.ceil(span * contextFactor)))
   return {
     x: placeRegionAxis((left + right) / 2, size, sourceWidth),
     y: placeRegionAxis((top + bottom) / 2, size, sourceHeight),
     size,
   }
+}
+
+export function createInpaintMaskJobs(
+  mask: Uint8Array,
+  maskWidth: number,
+  maskHeight: number,
+  sourceWidth: number,
+  sourceHeight: number,
+): InpaintMaskJob[] {
+  const components = connectedMaskComponents(mask, maskWidth, maskHeight)
+  if (!components || components.length <= 1) {
+    return [{ mask: mask.slice(), region: createInpaintRegion(mask, maskWidth, maskHeight, sourceWidth, sourceHeight) }]
+  }
+  return mergeNearbyComponents(components).map((component) => {
+    const componentMask = new Uint8Array(mask.length)
+    for (const pixel of component.pixels) componentMask[pixel] = mask[pixel]
+    return {
+      mask: componentMask,
+      region: createInpaintRegion(componentMask, maskWidth, maskHeight, sourceWidth, sourceHeight),
+    }
+  }).sort((a, b) => a.region.size - b.region.size)
 }
 
 function bilinearSample(input: Uint8Array, width: number, height: number, x: number, y: number, channels: number, channel = 0): number {
