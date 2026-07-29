@@ -5,7 +5,6 @@
     cursor: null,
     items: [],
     loading: false,
-    selecting: false,
     selected: new Set(),
   }
   const grid = document.getElementById('grid')
@@ -13,8 +12,6 @@
   const error = document.getElementById('error')
   const summary = document.getElementById('summary')
   const viewer = document.getElementById('viewer')
-  const selectButton = document.getElementById('select-button')
-  const selectionBar = document.getElementById('selection-bar')
   const selectionCount = document.getElementById('selection-count')
   const downloadSelected = document.getElementById('download-selected')
 
@@ -34,16 +31,17 @@
   const extension = (name) => (name.split('.').pop() || 'FILE').slice(0, 5)
 
   function updateSelection() {
-    grid.classList.toggle('selecting', state.selecting)
-    selectButton.classList.toggle('active', state.selecting)
-    selectButton.textContent = state.selecting ? '完成' : '选择'
-    selectionBar.hidden = !state.selecting
     selectionCount.textContent = `已选择 ${state.selected.size} 项`
     downloadSelected.disabled = state.selected.size === 0
     grid.querySelectorAll('.photo-card').forEach((card) => {
       card.classList.toggle('selected', state.selected.has(card.dataset.id))
       const dot = card.querySelector('.selection-dot')
-      if (dot) dot.textContent = state.selected.has(card.dataset.id) ? '✓' : ''
+      if (dot) {
+        const selected = state.selected.has(card.dataset.id)
+        dot.textContent = selected ? '✓' : ''
+        dot.setAttribute('aria-pressed', String(selected))
+        dot.setAttribute('aria-label', `${selected ? '取消选择' : '选择'} ${dot.dataset.name}`)
+      }
     })
   }
 
@@ -54,10 +52,12 @@
   }
 
   function createCard(item) {
-    const button = document.createElement('button')
-    button.className = 'photo-card'
-    button.dataset.id = item.id
-    button.setAttribute('aria-label', item.name)
+    const card = document.createElement('article')
+    card.className = 'photo-card'
+    card.dataset.id = item.id
+    const preview = document.createElement('button')
+    preview.className = 'preview-trigger'
+    preview.setAttribute('aria-label', `预览 ${item.name}`)
 
     if (item.previewKind !== 'download-only') {
       const image = document.createElement('img')
@@ -65,28 +65,30 @@
       image.alt = ''
       image.src = `${base}thumb/${encodeURIComponent(item.id)}`
       image.addEventListener('error', () => image.remove())
-      button.appendChild(image)
+      preview.appendChild(image)
       if (item.previewKind === 'video') {
         const play = document.createElement('span')
         play.className = 'video-badge'
         play.textContent = '▶'
-        button.appendChild(play)
+        preview.appendChild(play)
       }
     } else {
       const placeholder = document.createElement('span')
       placeholder.className = 'file-placeholder'
       placeholder.textContent = extension(item.name)
-      button.appendChild(placeholder)
+      preview.appendChild(placeholder)
     }
 
-    const selection = document.createElement('span')
+    const selection = document.createElement('button')
     selection.className = 'selection-dot'
-    button.appendChild(selection)
-    button.addEventListener('click', () => {
-      if (state.selecting) toggleSelection(item.id)
-      else openViewer(item)
-    })
-    return button
+    selection.type = 'button'
+    selection.dataset.name = item.name
+    selection.setAttribute('aria-pressed', 'false')
+    selection.setAttribute('aria-label', `选择 ${item.name}`)
+    selection.addEventListener('click', () => toggleSelection(item.id))
+    preview.addEventListener('click', () => openViewer(item))
+    card.append(preview, selection)
+    return card
   }
 
   function openViewer(item) {
@@ -176,15 +178,14 @@
   }
 
   document.querySelectorAll('.tab').forEach((button) => button.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((item) => item.classList.toggle('active', item === button))
+    document.querySelectorAll('.tab').forEach((item) => {
+      const active = item === button
+      item.classList.toggle('active', active)
+      item.setAttribute('aria-selected', String(active))
+    })
     state.source = button.dataset.source
     load(true)
   }))
-  selectButton.addEventListener('click', () => {
-    state.selecting = !state.selecting
-    if (!state.selecting) state.selected.clear()
-    updateSelection()
-  })
   downloadSelected.addEventListener('click', () => void downloadSelection())
   more.addEventListener('click', () => load(false))
   document.getElementById('close').addEventListener('click', () => viewer.close())
