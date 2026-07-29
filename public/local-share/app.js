@@ -16,6 +16,32 @@
   const viewer = document.getElementById('viewer')
   const selectionCount = document.getElementById('selection-count')
   const downloadSelected = document.getElementById('download-selected')
+  const svgNamespace = 'http://www.w3.org/2000/svg'
+
+  function createIcon(name, size) {
+    const icon = document.createElementNS(svgNamespace, 'svg')
+    icon.setAttribute('class', `icon icon-${name}`)
+    icon.setAttribute('width', String(size))
+    icon.setAttribute('height', String(size))
+    icon.setAttribute('viewBox', '0 0 24 24')
+    icon.setAttribute('fill', 'none')
+    icon.setAttribute('stroke', 'currentColor')
+    icon.setAttribute('stroke-width', '2')
+    icon.setAttribute('stroke-linecap', 'round')
+    icon.setAttribute('stroke-linejoin', 'round')
+    icon.setAttribute('aria-hidden', 'true')
+    const definitions = {
+      check: [['path', { d: 'M20 6 9 17l-5-5' }]],
+      close: [['path', { d: 'M18 6 6 18' }], ['path', { d: 'm6 6 12 12' }]],
+      play: [['polygon', { points: '6 3 20 12 6 21 6 3', fill: 'currentColor' }]],
+    }
+    definitions[name].forEach(([tag, attributes]) => {
+      const shape = document.createElementNS(svgNamespace, tag)
+      Object.entries(attributes).forEach(([key, value]) => shape.setAttribute(key, value))
+      icon.appendChild(shape)
+    })
+    return icon
+  }
 
   const formatSize = (bytes) => {
     if (bytes < 1024) return `${bytes} B`
@@ -40,7 +66,6 @@
       const dot = card.querySelector('.selection-dot')
       if (dot) {
         const selected = state.selected.has(card.dataset.id)
-        dot.textContent = selected ? '✓' : ''
         dot.setAttribute('aria-pressed', String(selected))
         dot.setAttribute('aria-label', `${selected ? '取消选择' : '选择'} ${dot.dataset.name}`)
       }
@@ -71,7 +96,7 @@
       if (item.previewKind === 'video') {
         const play = document.createElement('span')
         play.className = 'video-badge'
-        play.textContent = '▶'
+        play.appendChild(createIcon('play', 12))
         preview.appendChild(play)
       }
     } else {
@@ -87,6 +112,7 @@
     selection.dataset.name = item.name
     selection.setAttribute('aria-pressed', 'false')
     selection.setAttribute('aria-label', `选择 ${item.name}`)
+    selection.appendChild(createIcon('check', 15))
     selection.addEventListener('click', () => toggleSelection(item.id))
     preview.addEventListener('click', () => openViewer(item))
     card.append(preview, selection)
@@ -218,6 +244,7 @@
   }))
   downloadSelected.addEventListener('click', () => void downloadSelection())
   more.addEventListener('click', () => load(false))
+  document.getElementById('close').appendChild(createIcon('close', 18))
   document.getElementById('close').addEventListener('click', requestViewerClose)
   viewer.addEventListener('cancel', (event) => {
     event.preventDefault()
