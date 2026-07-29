@@ -33,7 +33,7 @@ import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
-import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
@@ -332,7 +332,9 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
 
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
-    () => edit.cropActive || mask.editing ? [] : [...watermarkLayer, ...borderLayer],
+    () => edit.cropActive || mask.editing
+      ? []
+      : [...placeWatermarkOnFramedContent(watermarkLayer, borderLayer), ...borderLayer],
     [edit.cropActive, mask.editing, watermarkLayer, borderLayer],
   )
 
