@@ -5,6 +5,8 @@ import {
   type DownloadProgress,
 } from './resumableDownloadService.js'
 
+const MAX_MODEL_BYTES = 1024 * 1024 * 1024
+
 export interface ModelFileDefinition {
   fileName: string
   url: string
@@ -30,9 +32,7 @@ export async function loadVerifiedModelFile(
 ): Promise<string> {
   const downloadOptions: DownloadOptions = {
     ...options,
-    // The immutable definition is the limit. This permits large declared models
-    // without turning the shared downloader into an unbounded file sink.
-    maxBytes: definition.sizeBytes,
+    maxBytes: MAX_MODEL_BYTES,
     label: '模型',
     onProgress: options.onProgress
       ? ({ completedBytes, totalBytes }) => options.onProgress?.({ completedBytes, totalBytes })

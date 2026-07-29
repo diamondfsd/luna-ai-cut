@@ -41,24 +41,7 @@ export interface WorkspaceRemovalOperation {
   inputRevision: string
   edgeExpansion: number
   feather: number
-  mode?: 'lama' | 'generative'
-  model:
-    | { id: 'big-lama-fp32'; version: 'carve-c3c0c9e'; sha256: string }
-    | {
-        id: 'stable-diffusion-v1-5-inpainting-q4-0'
-        version: 'gpustack-master-20260729'
-        sha256: string
-        backend: 'metal' | 'cuda'
-        deviceName: string
-        prompt: string
-        negativePrompt: string
-        seed: number
-        steps: number
-        strength: number
-        cfgScale: number
-        sampler: string
-        runtimeVersion: string
-      }
+  model: { id: 'big-lama-fp32'; version: 'carve-c3c0c9e'; sha256: string }
   createdAt: string
 }
 
