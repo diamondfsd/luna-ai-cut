@@ -240,6 +240,8 @@ pub struct RenderLayer {
     pub text_color: Option<String>,
     pub text_align: Option<String>,
     pub vertical_align: Option<String>,
+    pub active_start: Option<f64>,
+    pub active_end: Option<f64>,
     pub fit: Option<String>,
     pub dst_x: f64,
     pub dst_y: f64,

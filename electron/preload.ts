@@ -161,6 +161,9 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     segmentImage: (request: WorkspaceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentImage', request),
     segmentInstances: (request: import('../src/shared/types').WorkspaceInstanceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentInstances', request),
     analyzeBeauty: (request: import('../src/shared/types').WorkspaceBeautyAnalysisRequest) => ipcRenderer.invoke('workspace:analyzeBeauty', request),
+    transcribeSubtitles: (request: import('../src/shared/types').WorkspaceSubtitleTranscriptionRequest) => ipcRenderer.invoke('workspace:transcribeSubtitles', request),
+    cancelSubtitleTranscription: (requestId: string) => ipcRenderer.invoke('workspace:cancelSubtitleTranscription', requestId),
+    exportSubtitlesSrt: (request: { sourcePath: string; track: import('../src/shared/types').WorkspaceSubtitleTrack; range: { startMs: number; endMs: number } }) => ipcRenderer.invoke('workspace:exportSubtitlesSrt', request),
     cancelSegmentation: (requestId: string) => ipcRenderer.invoke('workspace:cancelSegmentation', requestId),
     trackMask: (request: WorkspaceMaskTrackingRequest) => ipcRenderer.invoke('workspace:trackMask', request),
     cancelMaskTracking: (requestId: string) => ipcRenderer.invoke('workspace:cancelMaskTracking', requestId),
@@ -202,6 +205,11 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types/api').WorkspaceMaskTrackingProgress): void => callback(progress)
     ipcRenderer.on('workspace:mask-tracking-progress', listener)
     return () => ipcRenderer.off('workspace:mask-tracking-progress', listener)
+  },
+  onWorkspaceSubtitleProgress: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').WorkspaceSubtitleProgress): void => callback(progress)
+    ipcRenderer.on('workspace:subtitle-progress', listener)
+    return () => ipcRenderer.off('workspace:subtitle-progress', listener)
   },
   onConnectionLost: (callback: () => void) => {
     const listener = (): void => callback()
@@ -363,8 +371,8 @@ const lunaRenderCoreApi = {
     ipcRenderer.invoke('lrc:loadTexture', data, width, height),
   updateTexture: (textureId: number, data: Buffer) =>
     ipcRenderer.invoke('lrc:updateTexture', textureId, data),
-  renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[]) =>
-    ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers),
+  renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[], compositionTime?: number) =>
+    ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers, compositionTime),
   releaseTexture: (textureId: number) =>
     ipcRenderer.invoke('lrc:releaseTexture', textureId),
   renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) =>

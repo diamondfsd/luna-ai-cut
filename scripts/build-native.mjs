@@ -161,12 +161,12 @@ copyFileSync(src, dest)
 prepareMacArtifact(dest, 'forbidden')
 console.log('[build-native] ✅', dest)
 
-for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker']) {
+for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-asr-worker']) {
   const workerName = isWin ? `${baseName}.exe` : baseName
   const workerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), workerName)
   const workerDest = join(rcDir, workerName)
   copyFileSync(workerSrc, workerDest)
   if (!isWin) chmodSync(workerDest, 0o755)
-  prepareMacArtifact(workerDest, isMacX64 ? 'required' : 'optional')
+  prepareMacArtifact(workerDest, baseName === 'luna-asr-worker' ? 'forbidden' : isMacX64 ? 'required' : 'optional')
   console.log('[build-native] ✅', workerDest)
 }

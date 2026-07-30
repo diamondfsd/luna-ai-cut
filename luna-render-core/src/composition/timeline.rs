@@ -298,6 +298,11 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
     input
         .layers
         .iter()
+        .filter(|layer| {
+            let starts = layer.active_start.is_none_or(|start| time >= start);
+            let ends = layer.active_end.is_none_or(|end| time < end);
+            starts && ends
+        })
         .map(|layer| {
             let source_rect = layer.source_rect.as_ref();
             let reveal_progress = layer
@@ -511,5 +516,22 @@ mod tests {
         assert_eq!((layers[0].src_w, layers[0].src_h), (0.001, 0.6));
         assert_eq!((layers[1].src_x, layers[1].src_y), (0.0, 0.0));
         assert_eq!((layers[1].src_w, layers[1].src_h), (1.0, 1.0));
+    }
+
+    #[test]
+    fn composition_filters_layers_by_active_time_range() {
+        let input: CompositionInput = serde_json::from_str(
+            r#"{
+                "canvas":{"width":100,"height":100},
+                "layers":[
+                    {"id":"base","source":{"path":"base.png"},"rect":{"x":0,"y":0,"w":1,"h":1}},
+                    {"id":"subtitle","activeStart":1.0,"activeEnd":2.0,"source":{"path":""},"rect":{"x":0,"y":0,"w":1,"h":1}}
+                ]
+            }"#,
+        ).expect("composition JSON should deserialize");
+        assert_eq!(composition_layers(&input, 0.999).len(), 1);
+        assert_eq!(composition_layers(&input, 1.0).len(), 2);
+        assert_eq!(composition_layers(&input, 1.999).len(), 2);
+        assert_eq!(composition_layers(&input, 2.0).len(), 1);
     }
 }

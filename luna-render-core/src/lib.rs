@@ -217,15 +217,42 @@ pub fn release_texture(texture_id: u32) -> napi::Result<()> {
     lock_preview(|c| c.release_texture(texture_id))
 }
 
+fn time_range_is_active(start: Option<f64>, end: Option<f64>, time: f64) -> bool {
+    start.is_none_or(|start| time >= start) && end.is_none_or(|end| time < end)
+}
+
 /// 渲染一帧
 #[napi]
 pub fn render_frame(
     canvas_width: u32,
     canvas_height: u32,
     layers: Vec<RenderLayer>,
+    composition_time: Option<f64>,
 ) -> napi::Result<Buffer> {
+    let composition_time = composition_time.filter(|time| time.is_finite());
+    let layers: Vec<RenderLayer> = layers
+        .into_iter()
+        .filter(|layer| {
+            composition_time
+                .is_none_or(|time| time_range_is_active(layer.active_start, layer.active_end, time))
+        })
+        .collect();
     let result = lock_preview(|c| c.render(canvas_width, canvas_height, &layers))?;
     Ok(result.into())
+}
+
+#[cfg(test)]
+mod render_frame_timing_tests {
+    use super::time_range_is_active;
+
+    #[test]
+    fn uses_left_closed_right_open_layer_range() {
+        assert!(!time_range_is_active(Some(1.0), Some(2.0), 0.999));
+        assert!(time_range_is_active(Some(1.0), Some(2.0), 1.0));
+        assert!(time_range_is_active(Some(1.0), Some(2.0), 1.999));
+        assert!(!time_range_is_active(Some(1.0), Some(2.0), 2.0));
+        assert!(time_range_is_active(None, None, 100.0));
+    }
 }
 
 /// 统一预览入口：传路径列表，Rust 内部解码 + 缓存 + 合成，返回 RGBA Buffer 和实际输出尺寸。
