@@ -1,21 +1,17 @@
 import OpenCC from 'opencc-js/t2cn'
 import type { WorkspaceSubtitleCue, WorkspaceSubtitleStyle, WorkspaceSubtitleTrack } from './types/subtitles'
 
-export const SUBTITLE_FONT_WEIGHTS = {
-  200: 'fonts/SourceHanSansSC-ExtraLight.otf',
-  300: 'fonts/SourceHanSansSC-Light.otf',
-  350: 'fonts/SourceHanSansSC-Normal.otf',
-  400: 'fonts/SourceHanSansSC-Regular.otf',
-  500: 'fonts/SourceHanSansSC-Medium.otf',
-  700: 'fonts/SourceHanSansSC-Bold.otf',
-  900: 'fonts/SourceHanSansSC-Heavy.otf',
+export const SUBTITLE_BUILTIN_FONT = {
+  fileName: 'SourceHanSansSC-Regular.otf',
+  filePath: 'fonts/SourceHanSansSC-Regular.otf',
+  format: 'otf',
 } as const
 
 export const DEFAULT_SUBTITLE_STYLE: WorkspaceSubtitleStyle = {
   fontSize: 52,
-  fontWeight: 500,
+  fontWeight: 400,
   fontFamily: 'Source Han Sans SC',
-  fontFile: SUBTITLE_FONT_WEIGHTS[500],
+  fontFile: SUBTITLE_BUILTIN_FONT.filePath,
   textColor: '#FFFFFF',
   backgroundColor: '#000000',
   backgroundOpacity: 68,
@@ -49,23 +45,25 @@ function color(value: unknown, fallback: string): string {
 
 export function normalizeSubtitleStyle(value: unknown): WorkspaceSubtitleStyle {
   const style = value && typeof value === 'object' ? value as Partial<WorkspaceSubtitleStyle> : {}
-  const customFont = style.customFont
-    && typeof style.customFont.fileName === 'string'
-    && typeof style.customFont.filePath === 'string'
-    && (style.customFont.format === 'otf' || style.customFont.format === 'ttf')
-    ? style.customFont
-    : undefined
-  const weight = String(style.fontWeight) in SUBTITLE_FONT_WEIGHTS
-    ? Number(style.fontWeight) as WorkspaceSubtitleStyle['fontWeight']
-    : DEFAULT_SUBTITLE_STYLE.fontWeight
+  const validFontAsset = (font: unknown) => font
+    && typeof font === 'object'
+    && typeof (font as { fileName?: unknown }).fileName === 'string'
+    && typeof (font as { filePath?: unknown }).filePath === 'string'
+    && ((font as { format?: unknown }).format === 'otf' || (font as { format?: unknown }).format === 'ttf')
+  const customFont = validFontAsset(style.customFont) ? style.customFont : undefined
+  const fontAssets = [...(Array.isArray(style.fontAssets) ? style.fontAssets.filter(validFontAsset) : []), ...(customFont ? [customFont] : [])]
+    .filter((font, index, all) => all.findIndex((item) => item.filePath === font.filePath) === index)
+  const rawWeight = Number(style.fontWeight)
+  const weight: WorkspaceSubtitleStyle['fontWeight'] = rawWeight >= 700 ? 700 : rawWeight <= 350 ? 300 : 400
   return {
     fontSize: clampNumber(style.fontSize, DEFAULT_SUBTITLE_STYLE.fontSize, 24, 96),
     fontWeight: weight,
     fontFamily: customFont
       ? (typeof style.fontFamily === 'string' && style.fontFamily.trim() ? style.fontFamily.trim() : customFont.fileName)
       : DEFAULT_SUBTITLE_STYLE.fontFamily,
-    fontFile: customFont?.filePath ?? SUBTITLE_FONT_WEIGHTS[weight],
+    fontFile: customFont?.filePath ?? SUBTITLE_BUILTIN_FONT.filePath,
     ...(customFont ? { customFont } : {}),
+    ...(fontAssets.length ? { fontAssets } : {}),
     textColor: color(style.textColor, DEFAULT_SUBTITLE_STYLE.textColor),
     backgroundColor: color(style.backgroundColor, DEFAULT_SUBTITLE_STYLE.backgroundColor),
     backgroundOpacity: clampNumber(style.backgroundOpacity, DEFAULT_SUBTITLE_STYLE.backgroundOpacity, 0, 100),

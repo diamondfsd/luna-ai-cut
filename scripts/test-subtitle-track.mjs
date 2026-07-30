@@ -34,11 +34,13 @@ const track = normalizeSubtitleTrack({
     cornerRadius: 18,
     width: 72,
     positionY: 80,
+    fontAssets: [{ fileName: 'MyFont.ttf', filePath: '/tmp/MyFont.ttf', format: 'ttf' }],
   },
   generatedAt: '2026-07-30T00:00:00.000Z',
 })
 assert.ok(track)
 assert.equal(track.style.fontWeight, 700)
+assert.deepEqual(track.style.fontAssets?.map((font) => font.fileName), ['MyFont.ttf'])
 assert.equal(subtitleTrackToSrt(track), '1\n00:00:00,000 --> 00:00:00,700\n第一段 换行\n\n2\n00:00:01,000 --> 00:00:02,000\n第二段\n')
 assert.equal(wrapSubtitleText('一二三四五六七八九十', 4), '一二三四\n五六七八\n九十')
 
@@ -52,7 +54,7 @@ assert.ok(layers[0].cornerRadius > 0 && layers[0].cornerRadius < 0.5)
 assert.ok(layers[0].dstW < track.style.width / 100)
 assert.equal(layers[0].dstX, layers[1].dstX)
 assert.equal(layers[0].dstW, layers[1].dstW)
-assert.equal(layers[1].fontFile, 'fonts/SourceHanSansSC-Bold.otf')
+assert.equal(layers[1].fontFile, 'fonts/SourceHanSansSC-Regular.otf')
 assert.equal(layers[1].fontSize, 60)
 const composition = buildCompositionFromPreviewLayers(layers, 1920, 1080)
 assert.deepEqual([composition.layers[2].activeStart, composition.layers[2].activeEnd], [1, 2])

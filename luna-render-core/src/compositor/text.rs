@@ -19,13 +19,19 @@ impl Compositor {
             (layer.font_size.unwrap_or(16.0) * canvas_height as f64 / 1080.0).max(5.0) as f32;
         let content = layer.content.as_deref().unwrap_or("");
         let color = parse_hex_color(layer.text_color.as_deref(), [1.0, 1.0, 1.0, 1.0]);
+        let font_weight = match layer.font_weight.unwrap_or(400.0) {
+            weight if weight >= 700.0 => 700,
+            weight if weight <= 300.0 => 300,
+            _ => 400,
+        };
         let key = format!(
-            "{}|{}|{}|{}|{:.2}|{:?}|{:?}|{:?}",
+            "{}|{}|{}|{}|{:.2}|{}|{:?}|{:?}|{:?}",
             font_path,
             content,
             width,
             height,
             requested_font_px,
+            font_weight,
             color,
             layer.text_align,
             layer.vertical_align
@@ -170,9 +176,54 @@ impl Compositor {
                 }
             }
         }
+        apply_synthetic_weight(&mut rgba, width, height, color, font_weight);
         let id = self.load_texture(&rgba, width, height)?;
         self.text_texture_cache.insert(key, id);
         Ok(id)
+    }
+}
+
+fn apply_synthetic_weight(
+    rgba: &mut [u8],
+    width: u32,
+    height: u32,
+    color: [f32; 4],
+    font_weight: u32,
+) {
+    if font_weight == 400 || width < 3 || height < 3 {
+        return;
+    }
+    let source = rgba.to_vec();
+    let alpha_at = |x: i32, y: i32| -> u8 {
+        if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
+            return 0;
+        }
+        source[((y as u32 * width + x as u32) * 4 + 3) as usize]
+    };
+    for y in 0..height as i32 {
+        for x in 0..width as i32 {
+            let center = alpha_at(x, y);
+            let neighbors = [
+                alpha_at(x - 1, y),
+                alpha_at(x + 1, y),
+                alpha_at(x, y - 1),
+                alpha_at(x, y + 1),
+            ];
+            let alpha = if font_weight >= 700 {
+                center.max((neighbors.into_iter().max().unwrap_or(0) as f32 * 0.72).round() as u8)
+            } else if center > 0 {
+                (center as f32 * 0.72 + neighbors.into_iter().min().unwrap_or(0) as f32 * 0.28)
+                    .round() as u8
+            } else {
+                0
+            };
+            let offset = ((y as u32 * width + x as u32) * 4) as usize;
+            let normalized = alpha as f32 / 255.0;
+            rgba[offset] = (color[0] * normalized * 255.0).round() as u8;
+            rgba[offset + 1] = (color[1] * normalized * 255.0).round() as u8;
+            rgba[offset + 2] = (color[2] * normalized * 255.0).round() as u8;
+            rgba[offset + 3] = alpha;
+        }
     }
 }
 
@@ -213,7 +264,9 @@ fn text_fit_scale(
 
 #[cfg(test)]
 mod tests {
-    use super::{horizontal_ink_offset, text_fit_scale, vertical_ink_offset};
+    use super::{
+        apply_synthetic_weight, horizontal_ink_offset, text_fit_scale, vertical_ink_offset,
+    };
 
     #[test]
     fn shrinks_text_to_fit_both_dimensions() {
@@ -235,5 +288,21 @@ mod tests {
         assert_eq!(offset, 0.0);
         let offset = vertical_ink_offset(Some("middle"), 100.0, 45.0, 85.0);
         assert_eq!(offset, -15.0);
+    }
+
+    #[test]
+    fn synthesizes_weight_from_the_selected_font_file() {
+        let mut bold = vec![0; 3 * 3 * 4];
+        bold[(4 * 4) + 3] = 255;
+        apply_synthetic_weight(&mut bold, 3, 3, [1.0; 4], 700);
+        assert!(bold[(1 * 4) + 3] > 0);
+
+        let mut thin = vec![255; 3 * 3 * 4];
+        for pixel in thin.chunks_exact_mut(4) {
+            pixel[3] = 0;
+        }
+        thin[(4 * 4) + 3] = 255;
+        apply_synthetic_weight(&mut thin, 3, 3, [1.0; 4], 300);
+        assert!(thin[(4 * 4) + 3] < 255);
     }
 }

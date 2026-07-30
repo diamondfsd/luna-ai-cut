@@ -16,10 +16,11 @@ export interface WorkspaceSubtitleFontAsset {
 
 export interface WorkspaceSubtitleStyle {
   fontSize: number
-  fontWeight: 200 | 300 | 350 | 400 | 500 | 700 | 900
+  fontWeight: 300 | 400 | 700
   fontFamily: string
   fontFile: string
   customFont?: WorkspaceSubtitleFontAsset
+  fontAssets?: WorkspaceSubtitleFontAsset[]
   textColor: string
   backgroundColor: string
   backgroundOpacity: number
