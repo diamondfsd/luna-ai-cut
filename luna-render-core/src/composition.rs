@@ -118,6 +118,10 @@ pub struct CompositionLayer {
     pub opacity: Option<f64>,
     pub blend_mode: Option<String>,
     pub z_index: Option<i32>,
+    #[serde(rename = "activeStart", alias = "active_start")]
+    pub active_start: Option<f64>,
+    #[serde(rename = "activeEnd", alias = "active_end")]
+    pub active_end: Option<f64>,
     pub reveal: Option<CompositionReveal>,
     pub color: Option<RenderColorAdjustments>,
     pub mask_path: Option<String>,

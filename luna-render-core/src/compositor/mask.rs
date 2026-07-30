@@ -139,6 +139,8 @@ mod tests {
             text_color: None,
             text_align: None,
             vertical_align: None,
+            active_start: None,
+            active_end: None,
             fit: None,
             dst_x: 0.0,
             dst_y: 0.0,

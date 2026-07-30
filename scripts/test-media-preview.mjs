@@ -7,6 +7,7 @@ const source = await readFile(new URL('../src/components/htmlPreviewGeometry.ts'
 const watermarkGeometrySource = await readFile(new URL('../src/shared/watermarkGeometry.ts', import.meta.url), 'utf8')
 const watermarkLibrarySource = await readFile(new URL('../src/shared/watermarkLibrary.ts', import.meta.url), 'utf8')
 const rendererSelectionSource = await readFile(new URL('../src/components/previewRendererSelection.ts', import.meta.url), 'utf8')
+const previewLayerTimingSource = await readFile(new URL('../src/components/previewLayerTiming.ts', import.meta.url), 'utf8')
 const nativePreviewOcclusionSource = await readFile(new URL('../src/components/nativePreviewOcclusion.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
@@ -40,6 +41,14 @@ const rendererSelectionCompiled = ts.transpileModule(rendererSelectionSource, {
   },
 }).outputText
 const rendererSelection = await import(`data:text/javascript;base64,${Buffer.from(rendererSelectionCompiled).toString('base64')}`)
+const previewLayerTimingCompiled = ts.transpileModule(previewLayerTimingSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ES2020,
+    target: ts.ScriptTarget.ES2020,
+    importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
+  },
+}).outputText
+const previewLayerTiming = await import(`data:text/javascript;base64,${Buffer.from(previewLayerTimingCompiled).toString('base64')}`)
 const nativePreviewOcclusionCompiled = ts.transpileModule(nativePreviewOcclusionSource, {
   compilerOptions: {
     module: ts.ModuleKind.ES2020,
@@ -179,6 +188,19 @@ assert.equal(
   rendererSelection.requiresCompositionVideoRenderer(true, [videoLayer]),
   false,
   'ordinary video preview keeps the direct frame-upload renderer',
+)
+assert.equal(
+  rendererSelection.requiresCompositionVideoRenderer(true, [
+    videoLayer,
+    { filePath: '', activeStart: 1, activeEnd: 2 },
+  ]),
+  false,
+  'timed subtitle layers keep the continuous video decoder',
+)
+close(
+  previewLayerTiming.compositionTimeForVideoLayer({ videoTime: 4.4, videoOffset: 0 }, 5.5),
+  1.1,
+  'subtitle timing uses output-relative composition time',
 )
 assert.equal(
   rendererSelection.requiresCompositionVideoRenderer(true, [videoLayer], true),

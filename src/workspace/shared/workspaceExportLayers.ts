@@ -1,9 +1,10 @@
 import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
-import type { PreviewLayer, MediaMetadata } from '../../shared/types'
+import type { PreviewLayer, MediaMetadata, WorkspaceSubtitleTrack } from '../../shared/types'
 import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
+import { buildSubtitleLayers } from '../subtitles/subtitleLayers'
 
 export function buildWorkspaceExportLayers(
   sourcePath: string,
@@ -11,6 +12,7 @@ export function buildWorkspaceExportLayers(
   pipeline: EditPipeline,
   borderMetadata: MediaMetadata | null | undefined,
   allowWatermark: boolean,
+  subtitles?: WorkspaceSubtitleTrack,
 ): PreviewLayer[] {
   const finalCanvasSize = outputSizeForTransform(resolution, pipeline.transform)
   const main = buildLayers(sourcePath)
@@ -60,5 +62,8 @@ export function buildWorkspaceExportLayers(
     result.push(...watermarkLayers)
   }
 
+  const trimStartMs = Math.round((pipeline.trim?.startTime ?? 0) * 1_000)
+  const trimEndMs = pipeline.trim?.endTime == null ? Number.MAX_SAFE_INTEGER : Math.round(pipeline.trim.endTime * 1_000)
+  result.push(...buildSubtitleLayers(subtitles, finalCanvasSize, { startMs: trimStartMs, endMs: trimEndMs }))
   return result
 }

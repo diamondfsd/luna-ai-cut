@@ -1,6 +1,7 @@
 import { compositionRevealProgress } from '../lib/revealProgress'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { PreviewLayer } from '../shared/types'
+import { compositionTimeForVideoLayer } from './previewLayerTiming'
 
 const DEFAULT_PREVIEW_MAX_SIDE = 1280
 const PREVIEW_HARD_MAX_SIDE = 3840
@@ -15,7 +16,7 @@ export interface LunaRenderCore {
   }>
   loadTexture: (data: Buffer, width: number, height: number) => Promise<number>
   updateTexture: (textureId: number, data: Buffer) => Promise<void>
-  renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[]) => Promise<Buffer>
+  renderFrame: (canvasWidth: number, canvasHeight: number, layers: unknown[], compositionTime?: number) => Promise<Buffer>
   releaseTexture: (textureId: number) => Promise<void>
 }
 
@@ -234,6 +235,16 @@ export async function renderMultipleLayerVideoFrame(
   const renderLayers: Array<Record<string, unknown> & { zIndex: number }> = []
   const usedImageTextures = new Set<string>()
   const frameVideoTextures = new Map<string, number>()
+  const primaryVideoIndex = layers.findIndex((layer) => layer.isVideo)
+  const primaryVideoLayer = primaryVideoIndex >= 0 ? layers[primaryVideoIndex] : undefined
+  const primaryVideo = primaryVideoLayer
+    ? videoStates.get(videoLayerKey(primaryVideoLayer, primaryVideoIndex))?.video
+    : undefined
+  const frameCompositionTime = Number.isFinite(compositionTime)
+    ? Math.max(0, compositionTime!)
+    : primaryVideoLayer && primaryVideo
+      ? compositionTimeForVideoLayer(primaryVideoLayer, primaryVideo.currentTime)
+      : 0
 
   for (let index = 0; index < layers.length; index++) {
     const layer = layers[index]
@@ -263,9 +274,6 @@ export async function renderMultipleLayerVideoFrame(
       }
     }
 
-    const revealTime = compositionTime ?? (
-      layer.isVideo ? videoStates.get(videoLayerKey(layer, index))?.video.currentTime ?? 0 : 0
-    )
     renderLayers.push({
       textureId,
       fit: layer.fit,
@@ -279,7 +287,7 @@ export async function renderMultipleLayerVideoFrame(
       srcH: layer.srcH ?? 1,
       opacity: layer.opacity ?? 1,
       blendMode: layer.blendMode,
-      revealProgress: layer.reveal ? compositionRevealProgress(layer.reveal, revealTime) : 1,
+      revealProgress: layer.reveal ? compositionRevealProgress(layer.reveal, frameCompositionTime) : 1,
       zIndex: layer.zIndex ?? 0,
       color: layer.color,
       transform: layer.transform,
@@ -301,6 +309,8 @@ export async function renderMultipleLayerVideoFrame(
       textColor: layer.textColor,
       textAlign: layer.textAlign,
       verticalAlign: layer.verticalAlign,
+      activeStart: layer.activeStart,
+      activeEnd: layer.activeEnd,
     })
   }
 
@@ -317,7 +327,7 @@ export async function renderMultipleLayerVideoFrame(
     : [maxSide, Math.round(maxSide * 0.75)]
   if (isDestroyed() || getTextureVersion() !== textureVersion) return 'stale'
 
-  const pixels = await lrc.renderFrame(outputWidth, outputHeight, renderLayers)
+  const pixels = await lrc.renderFrame(outputWidth, outputHeight, renderLayers, frameCompositionTime)
   if (isDestroyed()) return 'stale'
   canvas.width = outputWidth
   canvas.height = outputHeight

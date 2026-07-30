@@ -74,6 +74,8 @@ export function buildCompositionFromPreviewLayers(
       opacity: layer.opacity ?? 1,
       blendMode: layer.blendMode,
       zIndex: layer.zIndex ?? index,
+      activeStart: layer.activeStart,
+      activeEnd: layer.activeEnd,
       reveal: layer.reveal,
       color: layer.color,
       maskPath: layer.maskPath ? toLocalPath(layer.maskPath) : undefined,

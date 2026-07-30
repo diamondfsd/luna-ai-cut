@@ -36,6 +36,7 @@ import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
 import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
+import { buildSubtitleLayers } from '../workspace/subtitles/subtitleLayers'
 import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
@@ -338,12 +339,21 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       : layers
   }, [activeSourcePath, edit.pipeline.border, stagePipeline, finalCanvasSize, borderMetadata, media.activeMedia?.path])
 
+  const subtitleLayer = useMemo(() => {
+    if (!finalCanvasSize || media.activeMedia?.kind !== 'video') return []
+    const track = media.currentProject?.assets[media.activeIndex]?.subtitles
+    return buildSubtitleLayers(track, finalCanvasSize, {
+      startMs: Math.round((edit.pipeline.trim?.startTime ?? 0) * 1_000),
+      endMs: Math.round((edit.pipeline.trim?.endTime ?? activeTrimDuration) * 1_000),
+    })
+  }, [activeTrimDuration, edit.pipeline.trim?.endTime, edit.pipeline.trim?.startTime, finalCanvasSize, media.activeIndex, media.activeMedia?.kind, media.currentProject?.assets])
+
   // ── 稳定 extraLayers 引用，避免父组件重渲染时内联展开导致子组件连锁重渲染 ──
   const combinedExtraLayers = useMemo(
     () => edit.cropActive || mask.editing
       ? []
-      : [...placeWatermarkOnFramedContent(watermarkLayer, borderLayer), ...borderLayer],
-    [edit.cropActive, mask.editing, watermarkLayer, borderLayer],
+      : [...placeWatermarkOnFramedContent(watermarkLayer, borderLayer), ...borderLayer, ...subtitleLayer],
+    [edit.cropActive, mask.editing, watermarkLayer, borderLayer, subtitleLayer],
   )
 
   // ── Initialize pipeline / reset crop/trim when active asset changes ──
@@ -554,7 +564,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         : activePipeline.colorMasks
       const sourceGroups = await Promise.all(exportIndices.map(async (index): Promise<BatchExportSource[]> => {
         const asset = media.media[index]
-        const activeRemoval = activeRemovalOperation(media.currentProject?.assets[index]?.removal?.operations ?? [])
+        const projectAsset = media.currentProject?.assets[index]
+        const activeRemoval = activeRemovalOperation(projectAsset?.removal?.operations ?? [])
         if (activeRemoval?.status === 'needs-regeneration') throw new Error(`${asset.name} 的消除结果需要重新生成`)
         const sourcePath = removalSourcePath(media.currentProject?.assets[index]) ?? asset.path
         const pipeline = index === media.activeIndex
@@ -586,7 +597,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         return variants.map((variant) => ({
           sourcePath,
           outputBaseName: variant.outputBaseName,
-          layers: buildWorkspaceExportLayers(sourcePath, resolution, variant.pipeline, borderMeta, true),
+          layers: buildWorkspaceExportLayers(sourcePath, resolution, variant.pipeline, borderMeta, true, projectAsset?.subtitles),
           outputSize: outputSizeForTransform(resolution, variant.pipeline.transform),
           mediaDuration: isVideoPath(asset.path)
             ? Math.max(0, Math.min(sourceDuration, variant.trimEnd) - variant.trimStart)

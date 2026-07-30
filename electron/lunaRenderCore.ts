@@ -131,7 +131,7 @@ interface LunaRenderCoreNative {
   destroyNativePreviewSession(sessionId: number): Promise<void>
   loadTexture(data: Buffer, width: number, height: number): number
   updateTexture(textureId: number, data: Buffer): void
-  renderFrame(canvasWidth: number, canvasHeight: number, layers: unknown[]): Buffer
+  renderFrame(canvasWidth: number, canvasHeight: number, layers: unknown[], compositionTime?: number): Buffer
   releaseTexture(textureId: number): void
   renderCompositionFrame(input: unknown): RenderPreviewOutput
   renderCompositionFrameAsync(input: unknown): Promise<RenderPreviewOutput>

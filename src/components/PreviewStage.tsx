@@ -10,6 +10,7 @@ import { isVideoPath } from '../lib/fileUtils'
 import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
+import { compositionTimeForVideoLayer } from './previewLayerTiming'
 import { usePreviewResolution } from './usePreviewResolution'
 import {
   buildLayers,
@@ -277,6 +278,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         restoreLutId: restoreLutFilePath,
         lutId: lutFilePath,
         lutIntensity: pipeline?.lutFilter?.intensity ?? 100,
+        ...(pipeline.trim?.startTime != null ? { videoTime: pipeline.trim.startTime } : {}),
+        ...(pipeline.trim ? { videoDuration: pipeline.trim.endTime - pipeline.trim.startTime } : {}),
       }
       main[0] = cropActive
         ? styledMain
@@ -322,6 +325,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     && !cropActive
     && viewScale === 'fit'
     && !nativePreviewFailed
+  const primaryVideoLayer = layers.find((layer) => layer.isVideo)
+  const compositionTime = primaryVideoLayer
+    ? compositionTimeForVideoLayer(primaryVideoLayer, currentTime)
+    : Math.max(0, currentTime)
 
   const syncCanvasMetrics = useCallback(() => {
     const stage = stageRef.current
@@ -403,6 +410,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               canvasHeight={previewCanvas.height}
               active={active}
               playing={playing}
+              time={compositionTime}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
               onFallback={(reason) => {
@@ -429,6 +437,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               canvasWidth={previewCanvas?.width}
               canvasHeight={previewCanvas?.height}
               maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}
+              compositionTime={compositionTime}
               interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
               onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}

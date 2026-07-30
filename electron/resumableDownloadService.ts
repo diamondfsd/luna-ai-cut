@@ -206,5 +206,8 @@ export async function downloadVerifiedFile(
       lastError = error
     }
   }
+  if (lastError instanceof TypeError && /fetch failed/i.test(lastError.message)) {
+    throw new Error(`${options.label ?? '资源'}下载失败，请检查网络后重试`)
+  }
   throw lastError ?? new Error(`${options.label ?? '资源'}没有可用下载源`)
 }

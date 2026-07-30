@@ -1,4 +1,5 @@
 import type { PixelFlowSubjectDirection } from './render'
+import type { WorkspaceSubtitleTrack } from './subtitles'
 
 export interface WorkspaceMediaAsset {
   id: string
@@ -29,6 +30,7 @@ export interface WorkspaceColorMetadata {
 export interface WorkspaceProjectAsset extends WorkspaceMediaAsset {
   pipeline?: unknown
   removal?: WorkspaceRemovalPipeline
+  subtitles?: WorkspaceSubtitleTrack
 }
 
 export interface WorkspaceRemovalOperation {

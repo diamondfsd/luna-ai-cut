@@ -11,6 +11,7 @@ import ts from 'typescript'
 export const MODEL_RELEASE_VERSION = '1.0.0'
 export const MODEL_RELEASE_TAG = `model-resources-v${MODEL_RELEASE_VERSION}`
 export const MODEL_MANIFEST_NAME = `${MODEL_RELEASE_TAG}.json`
+export const SUBTITLE_MODEL_MANIFEST_NAME = `subtitle-${MODEL_MANIFEST_NAME}`
 export const DEFAULT_GITCODE_OWNER = 'diamondfsd'
 export const DEFAULT_GITCODE_REPO = 'luna-ai-cut-package-release'
 
@@ -24,6 +25,7 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
       path.join(sourceRoot, 'segmentationModels.ts'),
       path.join(sourceRoot, 'ade20kSegmentationTargets.ts'),
       path.join(sourceRoot, 'inpaintModels.ts'),
+      path.join(sourceRoot, 'subtitleModels.ts'),
     ]
     const program = ts.createProgram(sources, {
       target: ts.ScriptTarget.ES2022,
@@ -47,6 +49,7 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
     return {
       ...require(path.join(temporaryRoot, 'src', 'shared', 'segmentationModels.js')),
       ...require(path.join(temporaryRoot, 'src', 'shared', 'inpaintModels.js')),
+      ...require(path.join(temporaryRoot, 'src', 'shared', 'subtitleModels.js')),
     }
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true })
@@ -54,7 +57,7 @@ export async function loadModelRegistry(rootDir = process.cwd()) {
 }
 
 function nonGitCodeSources(file) {
-  return [...new Set([file.url, ...(file.mirrors ?? [])])].filter((url) => !url.includes('gitcode.com/'))
+  return [...new Set([file.url, ...(file.mirrors ?? []), file.upstreamUrl].filter(Boolean))].filter((url) => !url.includes('gitcode.com/'))
 }
 
 function addArtifact(artifacts, artifact) {
@@ -96,6 +99,19 @@ export function buildModelArtifacts(registry) {
         licenseUrl: model.licenseUrl,
       })
     }
+  }
+  for (const model of [registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_VAD_MODEL]) {
+    addArtifact(artifacts, {
+      fileName: model.fileName,
+      sizeBytes: model.sizeBytes,
+      sha256: model.sha256,
+      sourceUrls: nonGitCodeSources(model),
+      models: [{ modelId: model.id, role: 'model', cacheFileName: model.fileName }],
+      version: model.version,
+      license: model.license,
+      source: model.source,
+      licenseUrl: model.licenseUrl,
+    })
   }
   for (const artifact of artifacts) {
     if (artifact.sourceUrls.length === 0) throw new Error(`${artifact.fileName} 缺少非 GitCode 源地址`)
@@ -217,7 +233,7 @@ export async function downloadModelArtifacts(artifacts, outputDir, onProgress) {
   return artifacts
 }
 
-export async function writeModelManifest(artifacts, outputDir, owner = DEFAULT_GITCODE_OWNER, repo = DEFAULT_GITCODE_REPO) {
+export async function writeModelManifest(artifacts, outputDir, owner = DEFAULT_GITCODE_OWNER, repo = DEFAULT_GITCODE_REPO, manifestName = MODEL_MANIFEST_NAME) {
   const downloadBase = `https://gitcode.com/${owner}/${repo}/releases/download/${MODEL_RELEASE_TAG}`
   const manifest = {
     schemaVersion: 1,
@@ -233,7 +249,7 @@ export async function writeModelManifest(artifacts, outputDir, owner = DEFAULT_G
       }
     }),
   }
-  const manifestPath = path.join(outputDir, MODEL_MANIFEST_NAME)
+  const manifestPath = path.join(outputDir, manifestName)
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
   return { manifest, manifestPath }
 }
@@ -260,7 +276,7 @@ async function ensureRelease(api, token) {
     body: JSON.stringify({
       tag_name: MODEL_RELEASE_TAG,
       name: `Luna AI Cut Model Resources v${MODEL_RELEASE_VERSION}`,
-      body: 'Luna AI Cut 按需下载的 ONNX 模型镜像。附件由登记源下载，并经过固定大小与 SHA256 校验。',
+      body: 'Luna AI Cut 按需下载的模型镜像。附件由登记源下载，并经过固定大小与 SHA256 校验。',
     }),
   }, '创建模型 Release')
   return getRelease(api, token)

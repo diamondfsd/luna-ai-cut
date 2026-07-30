@@ -127,10 +127,12 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     imageScale,
     onImageScaleChange,
     onViewportChange,
-    compositionTime = 0,
+    compositionTime: requestedCompositionTime,
   },
   ref,
 ) {
+  const compositionTime = requestedCompositionTime ?? 0
+  const usesCompositionTimeline = requestedCompositionTime !== undefined
   const internalRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = extRef ?? internalRef
   const destroyRef = useRef(false)
@@ -221,7 +223,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
 
   function layersWithVideoTime(): PreviewLayer[] {
     return sortedLayers(layersRef.current).map((layer) => {
-      if (!layer.isVideo) return layer
+      if (!layer.isVideo || usesCompositionTimeline) return layer
       const video = videosRef.current.get(layerKey(layer))
       return { ...layer, videoTime: video?.currentTime ?? layer.videoTime ?? 0 }
     })
