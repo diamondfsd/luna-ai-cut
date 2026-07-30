@@ -1,0 +1,54 @@
+.send-to-phone-dialog.ui-dialog-content {
+  width: min(400px, calc(100vw - 32px));
+}
+
+.send-to-phone-body {
+  display: flex;
+  min-height: 310px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+
+.send-to-phone-qr {
+  width: min(240px, 66vw);
+  aspect-ratio: 1;
+  border: 8px solid #fff;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.send-to-phone-body strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.send-to-phone-body > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.send-to-phone-trigger {
+  position: relative;
+  background: var(--parchment);
+}
+
+.send-to-phone-trigger[data-running='true'] {
+  color: var(--blue);
+}
+
+.send-to-phone-trigger[data-running='true']::after {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 6px;
+  height: 6px;
+  border: 2px solid var(--canvas);
+  border-radius: 50%;
+  background: var(--blue);
+  content: '';
+}

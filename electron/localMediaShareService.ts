@@ -14,7 +14,6 @@ import { startLocalMediaShareServer, type RunningLocalMediaShareServer, type Sha
 import type {
   LocalMediaShareNetwork,
   LocalMediaShareSource,
-  LocalMediaShareStartOptions,
   LocalMediaShareStatus,
 } from '../src/shared/types/localMediaShare'
 
@@ -121,7 +120,18 @@ export function listLocalMediaShareNetworks(): LocalMediaShareNetwork[] {
       result.push({ id: `${name}:${entry.address}`, name, address: entry.address })
     }
   }
-  return result.sort((left, right) => left.name.localeCompare(right.name) || left.address.localeCompare(right.address))
+  const preference = (network: LocalMediaShareNetwork): number => {
+    if (/^(bridge|docker|veth|vethernet|vmnet|vbox|utun|awdl|llw|tailscale|zt)/i.test(network.name)) return 4
+    if (/wi-?fi|wlan|airport|en0/i.test(network.name)) return 0
+    if (/ethernet|^eth\d*$|^en\d+$/i.test(network.name)) return 1
+    if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(network.address)) return 2
+    return 3
+  }
+  return result.sort((left, right) => (
+    preference(left) - preference(right)
+    || left.name.localeCompare(right.name)
+    || left.address.localeCompare(right.address)
+  ))
 }
 
 async function thumbnailFor(resource: ShareResourceRecord): Promise<Buffer | null> {
@@ -157,13 +167,13 @@ export async function stopLocalMediaShare(): Promise<LocalMediaShareStatus> {
   return getLocalMediaShareStatus()
 }
 
-export async function startLocalMediaShare(options: LocalMediaShareStartOptions): Promise<LocalMediaShareStatus> {
+export async function startLocalMediaShare(): Promise<LocalMediaShareStatus> {
   await stopLocalMediaShare()
-  if (options.sources.length === 0) throw new Error('请至少选择一种要分享的资源')
   const networks = listLocalMediaShareNetworks()
-  if (!networks.some((network) => network.address === options.address)) throw new Error('所选网络当前不可用，请重新选择')
+  const network = networks[0]
+  if (!network) throw new Error('没有找到可用的局域网，请先连接 Wi-Fi 或有线网络')
 
-  const sourceSet = new Set(options.sources)
+  const sourceSet = new Set<LocalMediaShareSource>(['local', 'export'])
   const [locals, exports] = await Promise.all([
     sourceSet.has('local') ? localResources() : Promise.resolve([]),
     sourceSet.has('export') ? exportResources() : Promise.resolve([]),
@@ -173,7 +183,7 @@ export async function startLocalMediaShare(options: LocalMediaShareStartOptions)
   const resources = [...deduplicated.values()]
 
   const assetsDir = join(process.env.VITE_PUBLIC ?? '', 'local-share')
-  const server = await startLocalMediaShareServer({ address: options.address, assetsDir, resources, thumbnail: thumbnailFor })
+  const server = await startLocalMediaShareServer({ address: network.address, assetsDir, resources, thumbnail: thumbnailFor })
   try {
     const qrDataUrl = await QRCode.toDataURL(server.url, { width: 320, margin: 1, errorCorrectionLevel: 'M' })
     runningServer = server

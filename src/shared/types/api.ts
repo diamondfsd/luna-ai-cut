@@ -29,7 +29,7 @@ import type {
 } from './aiSelection'
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
-import type { LocalMediaShareNetwork, LocalMediaShareStartOptions, LocalMediaShareStatus } from './localMediaShare'
+import type { LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 
 export interface WorkspaceSegmentationRequest {
@@ -194,9 +194,8 @@ export interface LunaApi {
   getExportTask(taskId: string): Promise<ExportTaskRecord | null>
   clearExportTasks(): Promise<void>
   localMediaShare: {
-    listNetworks(): Promise<LocalMediaShareNetwork[]>
     getStatus(): Promise<LocalMediaShareStatus>
-    start(options: LocalMediaShareStartOptions): Promise<LocalMediaShareStatus>
+    start(): Promise<LocalMediaShareStatus>
     stop(): Promise<LocalMediaShareStatus>
   }
   getDownloadedRecords(files: LunaFile[], downloadDir?: string): Promise<DownloadRecord[]>
