@@ -8,18 +8,17 @@ export const SUBTITLE_BUILTIN_FONT = {
 } as const
 
 export const DEFAULT_SUBTITLE_STYLE: WorkspaceSubtitleStyle = {
-  fontSize: 52,
+  fontSize: 50,
   fontWeight: 400,
   fontFamily: 'Source Han Sans SC',
   fontFile: SUBTITLE_BUILTIN_FONT.filePath,
   textColor: '#FFFFFF',
   backgroundColor: '#000000',
-  backgroundOpacity: 68,
+  backgroundOpacity: 60,
   borderColor: '#FFFFFF',
   borderWidth: 0,
-  cornerRadius: 24,
-  width: 86,
-  positionY: 84,
+  cornerRadius: 60,
+  positionY: 90,
 }
 
 let traditionalToSimplified: ((text: string) => string) | null = null
@@ -70,7 +69,6 @@ export function normalizeSubtitleStyle(value: unknown): WorkspaceSubtitleStyle {
     borderColor: color(style.borderColor, DEFAULT_SUBTITLE_STYLE.borderColor),
     borderWidth: clampNumber(style.borderWidth, DEFAULT_SUBTITLE_STYLE.borderWidth, 0, 12),
     cornerRadius: clampNumber(style.cornerRadius, DEFAULT_SUBTITLE_STYLE.cornerRadius, 0, 80),
-    width: clampNumber(style.width, DEFAULT_SUBTITLE_STYLE.width, 50, 96),
     positionY: clampNumber(style.positionY, DEFAULT_SUBTITLE_STYLE.positionY, 50, 94),
   }
 }
