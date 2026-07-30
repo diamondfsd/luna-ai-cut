@@ -134,6 +134,13 @@ try {
     /模型下载失败 \(503\)/,
   )
 
+  await assert.rejects(
+    loadVerifiedModelFile(modelDir, definition, {
+      fetcher: async () => { throw new TypeError('fetch failed') },
+    }),
+    /模型下载失败，请检查网络后重试/,
+  )
+
   const abortController = new AbortController()
   await assert.rejects(
     loadVerifiedModelFile(modelDir, definition, {

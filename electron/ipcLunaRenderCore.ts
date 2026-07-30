@@ -153,8 +153,13 @@ export function register(ctx: RegisterContext): void {
   ))
 
   ipcMain.handle('lrc:renderFrame', safe('renderFrame',
-    async (_event: IpcMainInvokeEvent, canvasWidth: number, canvasHeight: number, layers: any[]) => {
-      return getNative().renderFrame(canvasWidth, canvasHeight, cleanNativeInput(await resolveRuntimePaths(layers)))
+    async (_event: IpcMainInvokeEvent, canvasWidth: number, canvasHeight: number, layers: any[], compositionTime?: number) => {
+      return getNative().renderFrame(
+        canvasWidth,
+        canvasHeight,
+        cleanNativeInput(await resolveRuntimePaths(layers)),
+        compositionTime,
+      )
     },
   ))
 

@@ -159,6 +159,9 @@ export interface PreviewLayer {
   textColor?: string
   textAlign?: 'left' | 'center' | 'right'
   verticalAlign?: 'top' | 'middle' | 'bottom'
+  /** 图层在输出时间轴上的生效区间，单位为秒，左闭右开。 */
+  activeStart?: number
+  activeEnd?: number
 }
 
 export interface RenderPixelStretch {
@@ -246,6 +249,9 @@ export interface CompositionLayer {
   opacity?: number
   blendMode?: 'normal' | 'multiply' | 'screen' | 'add'
   zIndex?: number
+  /** 图层在合成时间轴上的生效区间，单位为秒，左闭右开。 */
+  activeStart?: number
+  activeEnd?: number
   /** 按合成时间从左向右展开当前图层。 */
   reveal?: CompositionReveal
   color?: RenderColorAdjustments

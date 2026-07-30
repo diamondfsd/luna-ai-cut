@@ -11,6 +11,7 @@ import {
   importCachedModelArtifacts,
   loadModelRegistry,
   MODEL_RELEASE_TAG,
+  SUBTITLE_MODEL_MANIFEST_NAME,
   publishModelRelease,
   writeModelManifest,
 } from './model-resource-release.mjs'
@@ -41,7 +42,8 @@ const repo = process.env.GITCODE_REPO ?? config.GITCODE_REPO ?? DEFAULT_GITCODE_
 const token = process.env.GITCODE_TOKEN ?? config.GITCODE_TOKEN
 const outputDir = path.join(rootDir, 'release', 'model-resources', MODEL_RELEASE_TAG)
 const registry = await loadModelRegistry(rootDir)
-const artifacts = buildModelArtifacts(registry)
+const subtitleOnly = process.argv.includes('--subtitle-only')
+const artifacts = buildModelArtifacts(registry).filter((artifact) => !subtitleOnly || artifact.fileName.endsWith('.bin'))
 let lastProgress = ''
 
 async function existingManifestArtifacts() {
@@ -54,7 +56,7 @@ async function existingManifestArtifacts() {
   return manifest.artifacts
 }
 
-console.log(`[model-resources] ${MODEL_RELEASE_TAG}: ${artifacts.length} 个唯一 ONNX 文件`)
+console.log(`[model-resources] ${MODEL_RELEASE_TAG}: ${artifacts.length} 个唯一模型文件${subtitleOnly ? '（仅字幕）' : ''}`)
 await importCachedModelArtifacts(artifacts, outputDir, undefined, ({ artifact, cachedPath }) => {
   console.log(`[model-resources] imported ${artifact.fileName} from ${cachedPath}`)
 })
@@ -71,7 +73,13 @@ const manifestArtifacts = [
   ...existingArtifacts.filter((artifact) => !currentFileNames.has(artifact.fileName)),
   ...artifacts,
 ]
-const { manifestPath } = await writeModelManifest(manifestArtifacts, outputDir, owner, repo)
+const { manifestPath } = await writeModelManifest(
+  manifestArtifacts,
+  outputDir,
+  owner,
+  repo,
+  subtitleOnly ? SUBTITLE_MODEL_MANIFEST_NAME : undefined,
+)
 console.log(`[model-resources] manifest ${manifestPath}`)
 
 if (process.argv.includes('--upload')) {

@@ -31,6 +31,7 @@ import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segm
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
+import type { WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -283,6 +284,9 @@ export interface LunaApi {
     }>
     segmentInstances(request: WorkspaceInstanceSegmentationRequest): Promise<WorkspaceInstanceSegmentationResult>
     analyzeBeauty(request: WorkspaceBeautyAnalysisRequest): Promise<WorkspaceBeautyAnalysisResult>
+    transcribeSubtitles(request: WorkspaceSubtitleTranscriptionRequest): Promise<WorkspaceSubtitleTranscriptionResult>
+    cancelSubtitleTranscription(requestId: string): Promise<void>
+    exportSubtitlesSrt(request: { sourcePath: string; track: WorkspaceSubtitleTrack; range: { startMs: number; endMs: number } }): Promise<{ path: string } | null>
     cancelSegmentation(requestId: string): Promise<boolean>
     trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>
     cancelMaskTracking(requestId: string): Promise<boolean>
@@ -309,6 +313,7 @@ export interface LunaApi {
   onExportProgress(callback: (progress: ExportProgress) => void): () => void
   onWorkspaceSegmentationProgress(callback: (progress: WorkspaceSegmentationProgress) => void): () => void
   onWorkspaceMaskTrackingProgress(callback: (progress: WorkspaceMaskTrackingProgress) => void): () => void
+  onWorkspaceSubtitleProgress(callback: (progress: WorkspaceSubtitleProgress) => void): () => void
   onConnectionLost(callback: () => void): () => void
   onThumbnailReady(callback: (data: { fileId: string; fileName?: string; downloadName?: string; cacheFilePath: string | null; thumbnailUrl: string | null }) => void): () => void
   onVideoFrameRateReady(callback: (data: { fileId: string; fileName: string; frameRate: number | null; duration?: number | null; dolbyVision?: boolean | null; dolbyVisionProfile?: number | null; iLog?: boolean | null }) => void): () => void

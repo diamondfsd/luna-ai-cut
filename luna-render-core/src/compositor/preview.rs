@@ -318,6 +318,8 @@ impl super::Compositor {
                     text_color: layer.text_color.clone(),
                     text_align: layer.text_align.clone(),
                     vertical_align: layer.vertical_align.clone(),
+                    active_start: None,
+                    active_end: None,
                     fit: Some(layer.fit.clone()),
                     dst_x,
                     dst_y,
