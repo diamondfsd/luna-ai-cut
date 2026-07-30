@@ -27,7 +27,6 @@ export interface WorkspaceSubtitleStyle {
   borderColor: string
   borderWidth: number
   cornerRadius: number
-  width: number
   positionY: number
 }
 
