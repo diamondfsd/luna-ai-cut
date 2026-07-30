@@ -45,7 +45,12 @@ try {
         sourceRange: { startMs: 0, endMs: 5000 },
         sourceFingerprint: { size: 10, modifiedAtMs: 20 },
         generatedAt: '2026-07-30T00:00:00.000Z',
-        style: { backgroundOpacity: 35, cornerRadius: 12, fontWeight: 700 },
+        style: {
+          backgroundOpacity: 35,
+          cornerRadius: 12,
+          fontWeight: 700,
+          fontAssets: [{ fileName: 'MyFont.ttf', filePath: '/tmp/MyFont.ttf', format: 'ttf' }],
+        },
         cues: [
           { id: 'duplicate', startMs: 2000, endMs: 3000, text: '第二條', source: 'generated' },
           { id: 'duplicate', startMs: 500, endMs: 1500, text: ' 第一条 ', source: 'generated' },
@@ -59,7 +64,8 @@ try {
   assert.deepEqual(loaded.assets[0].subtitles.cues.map((cue) => cue.text), ['第一条', '第二条', '手動編輯'])
   assert.equal(new Set(loaded.assets[0].subtitles.cues.map((cue) => cue.id)).size, 3)
   assert.equal(loaded.assets[0].subtitles.style.backgroundOpacity, 35)
-  assert.equal(loaded.assets[0].subtitles.style.fontFile, 'fonts/SourceHanSansSC-Bold.otf')
+  assert.equal(loaded.assets[0].subtitles.style.fontFile, 'fonts/SourceHanSansSC-Regular.otf')
+  assert.deepEqual(loaded.assets[0].subtitles.style.fontAssets.map((font) => font.fileName), ['MyFont.ttf'])
   console.log('workspace subtitle storage tests passed')
 } finally {
   await Promise.all([rm(compiled, { recursive: true, force: true }), rm(temporary, { recursive: true, force: true })])
