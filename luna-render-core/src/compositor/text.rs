@@ -83,22 +83,15 @@ impl Compositor {
         .max(0.0);
         let mut rgba = vec![0u8; (width * height * 4) as usize];
         let mut scale_context = swash::scale::ScaleContext::new();
+        let mut rendered_lines = Vec::with_capacity(lines.len());
         for (line_index, line) in lines.iter().enumerate() {
             let glyph_ids: Vec<_> = line
                 .chars()
                 .map(|character| charmap.map(character))
                 .collect();
-            let text_width = glyph_ids
-                .iter()
-                .map(|glyph_id| glyph_metrics.advance_width(*glyph_id))
-                .sum::<f32>();
-            let mut pen_x = match layer.text_align.as_deref() {
-                Some("right") => width as f32 - text_width - 2.0,
-                Some("center") => (width as f32 - text_width) * 0.5,
-                _ => 2.0,
-            }
-            .max(0.0);
             let baseline = block_top + font_metrics.ascent + line_index as f32 * line_advance;
+            let mut pen_x = 0.0;
+            let mut rendered_glyphs = Vec::with_capacity(glyph_ids.len());
             for glyph_id in glyph_ids {
                 use swash::scale::{Render, Source};
                 use swash::zeno::Format;
@@ -107,32 +100,95 @@ impl Compositor {
                     .format(Format::Alpha)
                     .render(&mut scaler, glyph_id)
                 {
-                    let origin_x = pen_x.round() as i32 + image.placement.left;
-                    let origin_y = baseline.round() as i32 - image.placement.top;
-                    for y in 0..image.placement.height as usize {
-                        for x in 0..image.placement.width as usize {
-                            let dx = origin_x + x as i32;
-                            let dy = origin_y + y as i32;
-                            if dx < 0 || dy < 0 || dx >= width as i32 || dy >= height as i32 {
-                                continue;
-                            }
-                            let alpha = image.data[y * image.placement.width as usize + x] as f32
-                                / 255.0
-                                * color[3];
-                            let offset = ((dy as u32 * width + dx as u32) * 4) as usize;
-                            rgba[offset] = (color[0] * alpha * 255.0).round() as u8;
-                            rgba[offset + 1] = (color[1] * alpha * 255.0).round() as u8;
-                            rgba[offset + 2] = (color[2] * alpha * 255.0).round() as u8;
-                            rgba[offset + 3] = (alpha * 255.0).round() as u8;
-                        }
-                    }
+                    rendered_glyphs.push((pen_x, image));
                 }
                 pen_x += glyph_metrics.advance_width(glyph_id);
+            }
+            rendered_lines.push((baseline, rendered_glyphs));
+        }
+        let ink_top = rendered_lines
+            .iter()
+            .flat_map(|(baseline, glyphs)| {
+                glyphs
+                    .iter()
+                    .map(move |(_, image)| baseline - image.placement.top as f32)
+            })
+            .fold(f32::INFINITY, f32::min);
+        let ink_bottom = rendered_lines
+            .iter()
+            .flat_map(|(baseline, glyphs)| {
+                glyphs.iter().map(move |(_, image)| {
+                    baseline - image.placement.top as f32 + image.placement.height as f32
+                })
+            })
+            .fold(f32::NEG_INFINITY, f32::max);
+        let offset_y = if ink_top.is_finite() && ink_bottom.is_finite() {
+            vertical_ink_offset(
+                layer.vertical_align.as_deref(),
+                height as f32,
+                ink_top,
+                ink_bottom,
+            )
+        } else {
+            0.0
+        };
+        for (baseline, rendered_glyphs) in rendered_lines {
+            let ink_min = rendered_glyphs
+                .iter()
+                .map(|(glyph_x, image)| glyph_x + image.placement.left as f32)
+                .fold(f32::INFINITY, f32::min);
+            let ink_max = rendered_glyphs
+                .iter()
+                .map(|(glyph_x, image)| {
+                    glyph_x + image.placement.left as f32 + image.placement.width as f32
+                })
+                .fold(f32::NEG_INFINITY, f32::max);
+            let offset_x = if ink_min.is_finite() && ink_max.is_finite() {
+                horizontal_ink_offset(layer.text_align.as_deref(), width as f32, ink_min, ink_max)
+            } else {
+                0.0
+            };
+            for (glyph_x, image) in rendered_glyphs {
+                let origin_x = (offset_x + glyph_x).round() as i32 + image.placement.left;
+                let origin_y = (offset_y + baseline).round() as i32 - image.placement.top;
+                for y in 0..image.placement.height as usize {
+                    for x in 0..image.placement.width as usize {
+                        let dx = origin_x + x as i32;
+                        let dy = origin_y + y as i32;
+                        if dx < 0 || dy < 0 || dx >= width as i32 || dy >= height as i32 {
+                            continue;
+                        }
+                        let alpha = image.data[y * image.placement.width as usize + x] as f32
+                            / 255.0
+                            * color[3];
+                        let offset = ((dy as u32 * width + dx as u32) * 4) as usize;
+                        rgba[offset] = (color[0] * alpha * 255.0).round() as u8;
+                        rgba[offset + 1] = (color[1] * alpha * 255.0).round() as u8;
+                        rgba[offset + 2] = (color[2] * alpha * 255.0).round() as u8;
+                        rgba[offset + 3] = (alpha * 255.0).round() as u8;
+                    }
+                }
             }
         }
         let id = self.load_texture(&rgba, width, height)?;
         self.text_texture_cache.insert(key, id);
         Ok(id)
+    }
+}
+
+fn horizontal_ink_offset(align: Option<&str>, width: f32, ink_min: f32, ink_max: f32) -> f32 {
+    match align {
+        Some("right") => width - 2.0 - ink_max,
+        Some("center") => width * 0.5 - (ink_min + ink_max) * 0.5,
+        _ => 2.0 - ink_min,
+    }
+}
+
+fn vertical_ink_offset(align: Option<&str>, height: f32, ink_top: f32, ink_bottom: f32) -> f32 {
+    match align {
+        Some("top") => 2.0 - ink_top,
+        Some("bottom") => height - 2.0 - ink_bottom,
+        _ => height * 0.5 - (ink_top + ink_bottom) * 0.5,
     }
 }
 
@@ -157,12 +213,27 @@ fn text_fit_scale(
 
 #[cfg(test)]
 mod tests {
-    use super::text_fit_scale;
+    use super::{horizontal_ink_offset, text_fit_scale, vertical_ink_offset};
 
     #[test]
     fn shrinks_text_to_fit_both_dimensions() {
         assert_eq!(text_fit_scale(200.0, 50.0, 100.0, 100.0), 0.5);
         assert_eq!(text_fit_scale(50.0, 200.0, 100.0, 100.0), 0.5);
         assert_eq!(text_fit_scale(50.0, 50.0, 100.0, 100.0), 1.0);
+    }
+
+    #[test]
+    fn centers_visible_glyph_bounds() {
+        let offset = horizontal_ink_offset(Some("center"), 200.0, 12.0, 92.0);
+        assert_eq!(offset + 12.0, 60.0);
+        assert_eq!(offset + 92.0, 140.0);
+    }
+
+    #[test]
+    fn centers_visible_block_bounds_vertically() {
+        let offset = vertical_ink_offset(Some("middle"), 100.0, 30.0, 70.0);
+        assert_eq!(offset, 0.0);
+        let offset = vertical_ink_offset(Some("middle"), 100.0, 45.0, 85.0);
+        assert_eq!(offset, -15.0);
     }
 }
