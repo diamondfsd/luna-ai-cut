@@ -33,6 +33,8 @@ interface SelectProps {
   disabled?: boolean
   /** 额外 class */
   className?: string
+  /** 下拉内容额外 class */
+  contentClassName?: string
 }
 
 /**
@@ -59,6 +61,7 @@ export function Select({
   fullWidth,
   disabled,
   className,
+  contentClassName,
 }: SelectProps) {
   return (
     <RadixSelect.Root
@@ -80,7 +83,7 @@ export function Select({
 
       <RadixSelect.Portal>
         <RadixSelect.Content
-          className={cx('ui-select-content', `ui-select-content-${variant}`)}
+          className={cx('ui-select-content', `ui-select-content-${variant}`, contentClassName)}
           position="popper"
           sideOffset={4}
         >

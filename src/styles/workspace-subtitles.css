@@ -17,7 +17,8 @@
 .workspace-subtitle-times { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; }
 .workspace-subtitle-times span { color: #a1a1a6; font-size: 11px; }
 .workspace-subtitle-times .ui-input { min-width: 0; text-align: center; }
-.workspace-subtitle-style-popover { width: min(340px, calc(100vw - 32px)); max-height: min(680px, calc(100vh - 32px)); padding: 0; overflow: hidden; border-color: rgba(255,255,255,.14); background: rgba(31,32,35,.98); color: #f5f5f7; }
+.ui-popover-content.workspace-subtitle-style-popover { width: min(340px, calc(100vw - 32px)); max-height: min(680px, calc(100vh - 32px)); padding: 0; overflow: hidden; border-color: rgba(255,255,255,.13); border-radius: 10px; background: #191a1e; color: #f5f5f7; color-scheme: dark; box-shadow: 0 18px 48px rgba(0,0,0,.48); backdrop-filter: none; -webkit-backdrop-filter: none; --ink: #f5f5f7; --muted: #a5a7ae; --parchment: #282a30; --hairline: rgba(255,255,255,.14); }
+.workspace-subtitle-style-popover .ui-popover-arrow { fill: #191a1e; stroke: rgba(255,255,255,.13); }
 .workspace-subtitle-style-popover > header { display: flex; height: 42px; align-items: center; justify-content: space-between; padding: 0 10px 0 14px; border-bottom: 1px solid rgba(255,255,255,.1); }
 .workspace-subtitle-style-popover > header strong { font-size: 13px; }
 .workspace-subtitle-style-scroll { max-height: min(620px, calc(100vh - 90px)); overflow-y: auto; padding: 4px 14px 14px; }
@@ -30,6 +31,13 @@
 .workspace-subtitle-font-row span, .workspace-subtitle-field-row > span, .workspace-subtitle-color-row > span { color: #b7b7bc; }
 .workspace-subtitle-font-hint { margin: -3px 0 9px; color: #868890; font-size: 10px; line-height: 1.45; }
 .workspace-subtitle-style-scroll .workspace-param-slider { margin-top: 11px; }
+.workspace-subtitle-style-popover .ui-select-trigger { background: #282a30; color: #f5f5f7; }
+.workspace-subtitle-style-popover .workspace-slider-track { background: #3a3c43; }
+.workspace-subtitle-style-popover .workspace-slider-fill { background: rgba(68,145,255,.62); }
+.workspace-subtitle-style-popover .workspace-slider-zero { background: #777a83; }
+.workspace-subtitle-style-popover .workspace-param-value-input { border-color: rgba(255,255,255,.14); background: #25272c; color: #f5f5f7; }
+.workspace-subtitle-style-select-content.ui-select-content { border-color: rgba(255,255,255,.14); background: #24262b; color: #f5f5f7; box-shadow: 0 12px 30px rgba(0,0,0,.42); }
+.workspace-subtitle-style-select-content .ui-select-item[data-highlighted] { background: #343740; }
 .workspace-subtitle-color-row label { position: relative; display: grid; height: 30px; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 8px; padding: 0 8px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; background: rgba(255,255,255,.04); cursor: pointer; }
 .workspace-subtitle-color-row input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .workspace-subtitle-color-row i { width: 16px; height: 16px; border: 1px solid rgba(255,255,255,.25); border-radius: 3px; }

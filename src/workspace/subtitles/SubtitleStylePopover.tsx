@@ -68,6 +68,7 @@ export function SubtitleStylePopover({ style, onChange }: SubtitleStylePopoverPr
               <Select
                 variant="compact"
                 fullWidth
+                contentClassName="workspace-subtitle-style-select-content"
                 value={style.customFont ? undefined : String(style.fontWeight)}
                 disabled={Boolean(style.customFont)}
                 placeholder={style.customFont ? '由字体文件决定' : '字重'}
