@@ -86,7 +86,6 @@ export function SubtitleStylePopover({ style, onChange }: SubtitleStylePopoverPr
 
           <section>
             <h4>位置</h4>
-            <ParamSlider label="最大字幕宽度" value={style.width} min={50} max={96} step={1} onChange={(width) => patch({ width })} formatValue={(value) => `${value}%`} />
             <ParamSlider label="垂直位置" value={style.positionY} min={50} max={94} step={1} onChange={(positionY) => patch({ positionY })} formatValue={(value) => `${value}%`} />
           </section>
         </div>

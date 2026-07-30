@@ -1,6 +1,8 @@
 import type { PreviewLayer, WorkspaceSubtitleTrack } from '../../shared/types'
 import { normalizeSubtitleStyle } from '../../shared/subtitleTrack.ts'
 
+const SUBTITLE_MAX_WIDTH_RATIO = 0.86
+
 export function wrapSubtitleText(text: string, maxCharacters = 18): string {
   const compact = text.trim().replace(/\s+/g, ' ')
   const characters = Array.from(compact)
@@ -42,7 +44,7 @@ export function buildSubtitleLayers(
     const activeStart = (startMs - range.startMs) / 1_000
     const activeEnd = (endMs - range.startMs) / 1_000
     const fontPx = style.fontSize * canvas.height / 1080
-    const maxBoxWidthPx = style.width / 100 * canvas.width
+    const maxBoxWidthPx = SUBTITLE_MAX_WIDTH_RATIO * canvas.width
     const maxCharacters = Math.max(4, Math.min(18, Math.floor((maxBoxWidthPx - fontPx * 1.2) / Math.max(1, fontPx))))
     const content = wrapSubtitleText(cue.text, maxCharacters)
     const estimatedTextWidthPx = Math.max(...content.split('\n').map((line) => estimatedTextUnits(line) * fontPx))
