@@ -8,6 +8,28 @@ export interface WorkspaceSubtitleCue {
   source: 'generated' | 'edited'
 }
 
+export interface WorkspaceSubtitleFontAsset {
+  fileName: string
+  filePath: string
+  format: 'otf' | 'ttf'
+}
+
+export interface WorkspaceSubtitleStyle {
+  fontSize: number
+  fontWeight: 200 | 300 | 350 | 400 | 500 | 700 | 900
+  fontFamily: string
+  fontFile: string
+  customFont?: WorkspaceSubtitleFontAsset
+  textColor: string
+  backgroundColor: string
+  backgroundOpacity: number
+  borderColor: string
+  borderWidth: number
+  cornerRadius: number
+  width: number
+  positionY: number
+}
+
 export interface WorkspaceSubtitleTrack {
   schemaVersion: 1
   enabled: boolean
@@ -16,6 +38,7 @@ export interface WorkspaceSubtitleTrack {
   sourceRange: { startMs: number; endMs: number }
   sourceFingerprint: { size: number; modifiedAtMs: number }
   cues: WorkspaceSubtitleCue[]
+  style?: WorkspaceSubtitleStyle
   generatedAt: string
 }
 
