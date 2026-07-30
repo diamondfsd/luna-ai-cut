@@ -6,11 +6,6 @@ export interface LocalMediaShareNetwork {
   address: string
 }
 
-export interface LocalMediaShareStartOptions {
-  address: string
-  sources: LocalMediaShareSource[]
-}
-
 export interface LocalMediaShareStatus {
   running: boolean
   address: string | null
