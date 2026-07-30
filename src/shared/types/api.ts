@@ -31,7 +31,7 @@ import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segm
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
-import type { WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
+import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -286,6 +286,7 @@ export interface LunaApi {
     analyzeBeauty(request: WorkspaceBeautyAnalysisRequest): Promise<WorkspaceBeautyAnalysisResult>
     transcribeSubtitles(request: WorkspaceSubtitleTranscriptionRequest): Promise<WorkspaceSubtitleTranscriptionResult>
     cancelSubtitleTranscription(requestId: string): Promise<void>
+    chooseSubtitleFont(): Promise<WorkspaceSubtitleFontAsset | null>
     exportSubtitlesSrt(request: { sourcePath: string; track: WorkspaceSubtitleTrack; range: { startMs: number; endMs: number } }): Promise<{ path: string } | null>
     cancelSegmentation(requestId: string): Promise<boolean>
     trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>

@@ -1,10 +1,12 @@
 import { Captions, Combine, Download, Plus, Scissors, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { WorkspaceProject, WorkspaceSubtitleCue, WorkspaceSubtitleLanguage, WorkspaceSubtitleTrack } from '../../shared/types'
-import { Button, Dialog, IconButton, Input, Select, Switch, Tooltip } from '../../ui'
+import { normalizeSubtitleStyle } from '../../shared/subtitleTrack'
+import type { WorkspaceProject, WorkspaceSubtitleCue, WorkspaceSubtitleLanguage, WorkspaceSubtitleStyle, WorkspaceSubtitleTrack } from '../../shared/types'
+import { Button, Dialog, IconButton, Input, Select, Switch, toast, Tooltip } from '../../ui'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import type { EditPipeline } from '../shared/editPipeline'
+import { SubtitleStylePopover } from './SubtitleStylePopover'
 import '../../styles/workspace-subtitles.css'
 
 interface SubtitlePanelProps {
@@ -37,6 +39,8 @@ export function SubtitlePanel({ duration, trim, onSeek }: SubtitlePanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const activeIdentity = `${project?.id ?? ''}:${asset?.id ?? ''}`
   const identityRef = useRef(activeIdentity)
+  const saveTimerRef = useRef<number | null>(null)
+  const pendingSaveRef = useRef<WorkspaceProject | null>(null)
   identityRef.current = activeIdentity
 
   useEffect(() => window.luna.onWorkspaceSubtitleProgress((next) => {
@@ -58,9 +62,29 @@ export function SubtitlePanel({ duration, trim, onSeek }: SubtitlePanelProps) {
     endMs: Math.round((trim?.endTime ?? duration) * 1_000),
   }), [duration, trim?.endTime, trim?.startTime])
 
+  const flushSave = useCallback((): void => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = null
+    const pending = pendingSaveRef.current
+    pendingSaveRef.current = null
+    if (pending) void window.luna.workspace.saveProject(pending).catch((cause) => {
+      toast.error(cause instanceof Error ? cause.message : '字幕修改保存失败')
+    })
+  }, [])
+
+  useEffect(() => () => flushSave(), [activeIdentity, flushSave])
+
   const setTrack = (next: WorkspaceSubtitleTrack): void => {
     if (!project || !asset) return
-    media.setCurrentProject(updatedProject(project, asset.id, next))
+    const nextProject = updatedProject(project, asset.id, next)
+    media.setCurrentProject(nextProject)
+    pendingSaveRef.current = nextProject
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(flushSave, 400)
+  }
+
+  const setStyle = (style: WorkspaceSubtitleStyle): void => {
+    if (track) setTrack({ ...track, style: normalizeSubtitleStyle(style) })
   }
 
   const patchCue = (id: string, patch: Partial<WorkspaceSubtitleCue>): void => {
@@ -97,6 +121,7 @@ export function SubtitlePanel({ duration, trim, onSeek }: SubtitlePanelProps) {
         sourceRange: range,
         sourceFingerprint: result.sourceFingerprint,
         cues: result.cues,
+        style: normalizeSubtitleStyle(track?.style),
         generatedAt: new Date().toISOString(),
       }
       const saved = await window.luna.workspace.saveProject(updatedProject(project, asset.id, subtitles))
@@ -184,6 +209,7 @@ export function SubtitlePanel({ duration, trim, onSeek }: SubtitlePanelProps) {
           <div className="workspace-subtitle-toolbar">
             <label><Switch ariaLabel="显示字幕" checked={track.enabled} onCheckedChange={(enabled) => setTrack({ ...track, enabled })} />显示字幕</label>
             <span>
+              <SubtitleStylePopover style={normalizeSubtitleStyle(track.style)} onChange={setStyle} />
               <Tooltip content="新增字幕"><IconButton variant="ghost" size="mini" icon={<Plus size={16} />} aria-label="新增字幕" onClick={addCue} /></Tooltip>
               <Tooltip content="拆分字幕"><IconButton variant="ghost" size="mini" icon={<Scissors size={15} />} aria-label="拆分字幕" disabled={!selectedId} onClick={splitSelected} /></Tooltip>
               <Tooltip content="与下一条合并"><IconButton variant="ghost" size="mini" icon={<Combine size={15} />} aria-label="与下一条合并" disabled={!selectedId} onClick={mergeSelected} /></Tooltip>

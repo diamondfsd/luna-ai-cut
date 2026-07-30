@@ -1,9 +1,80 @@
-import type { WorkspaceSubtitleCue, WorkspaceSubtitleTrack } from './types/subtitles'
-import { simplifyChineseText } from './chineseText'
+import OpenCC from 'opencc-js/t2cn'
+import type { WorkspaceSubtitleCue, WorkspaceSubtitleStyle, WorkspaceSubtitleTrack } from './types/subtitles'
+
+export const SUBTITLE_FONT_WEIGHTS = {
+  200: 'fonts/SourceHanSansSC-ExtraLight.otf',
+  300: 'fonts/SourceHanSansSC-Light.otf',
+  350: 'fonts/SourceHanSansSC-Normal.otf',
+  400: 'fonts/SourceHanSansSC-Regular.otf',
+  500: 'fonts/SourceHanSansSC-Medium.otf',
+  700: 'fonts/SourceHanSansSC-Bold.otf',
+  900: 'fonts/SourceHanSansSC-Heavy.otf',
+} as const
+
+export const DEFAULT_SUBTITLE_STYLE: WorkspaceSubtitleStyle = {
+  fontSize: 52,
+  fontWeight: 500,
+  fontFamily: 'Source Han Sans SC',
+  fontFile: SUBTITLE_FONT_WEIGHTS[500],
+  textColor: '#FFFFFF',
+  backgroundColor: '#000000',
+  backgroundOpacity: 68,
+  borderColor: '#FFFFFF',
+  borderWidth: 0,
+  cornerRadius: 24,
+  width: 86,
+  positionY: 84,
+}
+
+let traditionalToSimplified: ((text: string) => string) | null = null
+
+export function simplifyChineseText(text: string): string {
+  traditionalToSimplified ??= OpenCC.Converter({ from: 't', to: 'cn' })
+  return traditionalToSimplified(text)
+}
 
 function finiteInteger(value: unknown, fallback: number): number {
   const number = Number(value)
   return Number.isFinite(number) ? Math.round(number) : fallback
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback
+}
+
+function color(value: unknown, fallback: string): string {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toUpperCase() : fallback
+}
+
+export function normalizeSubtitleStyle(value: unknown): WorkspaceSubtitleStyle {
+  const style = value && typeof value === 'object' ? value as Partial<WorkspaceSubtitleStyle> : {}
+  const customFont = style.customFont
+    && typeof style.customFont.fileName === 'string'
+    && typeof style.customFont.filePath === 'string'
+    && (style.customFont.format === 'otf' || style.customFont.format === 'ttf')
+    ? style.customFont
+    : undefined
+  const weight = String(style.fontWeight) in SUBTITLE_FONT_WEIGHTS
+    ? Number(style.fontWeight) as WorkspaceSubtitleStyle['fontWeight']
+    : DEFAULT_SUBTITLE_STYLE.fontWeight
+  return {
+    fontSize: clampNumber(style.fontSize, DEFAULT_SUBTITLE_STYLE.fontSize, 24, 96),
+    fontWeight: weight,
+    fontFamily: customFont
+      ? (typeof style.fontFamily === 'string' && style.fontFamily.trim() ? style.fontFamily.trim() : customFont.fileName)
+      : DEFAULT_SUBTITLE_STYLE.fontFamily,
+    fontFile: customFont?.filePath ?? SUBTITLE_FONT_WEIGHTS[weight],
+    ...(customFont ? { customFont } : {}),
+    textColor: color(style.textColor, DEFAULT_SUBTITLE_STYLE.textColor),
+    backgroundColor: color(style.backgroundColor, DEFAULT_SUBTITLE_STYLE.backgroundColor),
+    backgroundOpacity: clampNumber(style.backgroundOpacity, DEFAULT_SUBTITLE_STYLE.backgroundOpacity, 0, 100),
+    borderColor: color(style.borderColor, DEFAULT_SUBTITLE_STYLE.borderColor),
+    borderWidth: clampNumber(style.borderWidth, DEFAULT_SUBTITLE_STYLE.borderWidth, 0, 12),
+    cornerRadius: clampNumber(style.cornerRadius, DEFAULT_SUBTITLE_STYLE.cornerRadius, 0, 80),
+    width: clampNumber(style.width, DEFAULT_SUBTITLE_STYLE.width, 50, 96),
+    positionY: clampNumber(style.positionY, DEFAULT_SUBTITLE_STYLE.positionY, 50, 94),
+  }
 }
 
 export function normalizeSubtitleCues(value: unknown, maxEndMs = Number.MAX_SAFE_INTEGER): WorkspaceSubtitleCue[] {
@@ -53,6 +124,7 @@ export function normalizeSubtitleTrack(value: unknown): WorkspaceSubtitleTrack |
         ? { ...cue, text: simplifyChineseText(cue.text) }
         : cue)
       : cues,
+    style: normalizeSubtitleStyle(track.style),
     generatedAt: typeof track.generatedAt === 'string' ? track.generatedAt : new Date(0).toISOString(),
   }
 }

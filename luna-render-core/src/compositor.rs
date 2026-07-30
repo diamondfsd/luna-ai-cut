@@ -11,6 +11,7 @@ mod render;
 mod shared;
 #[cfg(test)]
 mod tests;
+mod text;
 mod texture;
 
 use gpu::{

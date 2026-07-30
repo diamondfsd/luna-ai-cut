@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { simplifyChineseText } from '../src/shared/chineseText'
+import { simplifyChineseText } from '../src/shared/subtitleTrack.ts'
 import type { WorkspaceSubtitleCue } from '../src/shared/types'
 
 export type SubtitleWorkerEvent =

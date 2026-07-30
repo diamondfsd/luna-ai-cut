@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
-import { createRequire } from 'node:module'
+import { createRequire, Module } from 'node:module'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import ts from 'typescript'
 
 const root = path.resolve(import.meta.dirname, '..')
+process.env.NODE_PATH = [path.join(root, 'node_modules'), process.env.NODE_PATH].filter(Boolean).join(path.delimiter)
+Module._initPaths()
 const compiled = await mkdtemp(path.join(tmpdir(), 'luna-workspace-subtitle-test-'))
 const temporary = await mkdtemp(path.join(tmpdir(), 'luna-workspace-subtitle-data-'))
 try {
@@ -18,6 +20,8 @@ try {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.CommonJS,
     moduleResolution: ts.ModuleResolutionKind.Node10,
+    baseUrl: root,
+    paths: { 'opencc-js/t2cn': ['node_modules/opencc-js/types/full.d.ts'] },
     rootDir: root,
     outDir: compiled,
     esModuleInterop: true,
@@ -41,6 +45,7 @@ try {
         sourceRange: { startMs: 0, endMs: 5000 },
         sourceFingerprint: { size: 10, modifiedAtMs: 20 },
         generatedAt: '2026-07-30T00:00:00.000Z',
+        style: { backgroundOpacity: 35, cornerRadius: 12, fontWeight: 700 },
         cues: [
           { id: 'duplicate', startMs: 2000, endMs: 3000, text: '第二條', source: 'generated' },
           { id: 'duplicate', startMs: 500, endMs: 1500, text: ' 第一条 ', source: 'generated' },
@@ -53,6 +58,8 @@ try {
   const loaded = (await service.listWorkspaceProjects(temporary))[0]
   assert.deepEqual(loaded.assets[0].subtitles.cues.map((cue) => cue.text), ['第一条', '第二条', '手動編輯'])
   assert.equal(new Set(loaded.assets[0].subtitles.cues.map((cue) => cue.id)).size, 3)
+  assert.equal(loaded.assets[0].subtitles.style.backgroundOpacity, 35)
+  assert.equal(loaded.assets[0].subtitles.style.fontFile, 'fonts/SourceHanSansSC-Bold.otf')
   console.log('workspace subtitle storage tests passed')
 } finally {
   await Promise.all([rm(compiled, { recursive: true, force: true }), rm(temporary, { recursive: true, force: true })])
