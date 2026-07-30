@@ -121,9 +121,8 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   getExportTask: (taskId: string) => ipcRenderer.invoke('export-task:get', taskId),
   clearExportTasks: () => ipcRenderer.invoke('export-task:clear'),
   localMediaShare: {
-    listNetworks: () => ipcRenderer.invoke('local-media-share:list-networks'),
     getStatus: () => ipcRenderer.invoke('local-media-share:status'),
-    start: (options) => ipcRenderer.invoke('local-media-share:start', options),
+    start: () => ipcRenderer.invoke('local-media-share:start'),
     stop: () => ipcRenderer.invoke('local-media-share:stop'),
   },
   getDownloadedRecords: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('downloads:records', files, downloadDir),
