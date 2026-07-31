@@ -15,6 +15,18 @@ export const DEFAULT_BEAUTY_PARAMETERS: BeautyParameters = {
   smoothing: 28,
 }
 
+const BODY_EXPOSURE_PER_STEP = 0.0015
+const BODY_RENDER_EXPOSURE_PER_STEP = BODY_EXPOSURE_PER_STEP * 2
+const FACE_EXPOSURE_PER_STEP = 0.003
+
+function clampParameter(value: number): number {
+  return Math.max(0, Math.min(100, value))
+}
+
+function normalizedExposure(value: number): number {
+  return Number(value.toFixed(4))
+}
+
 export function beautyLayers(pipeline: EditPipeline): { face: ColorMaskLayer | null; body: ColorMaskLayer | null } {
   return {
     face: pipeline.colorMasks.find((layer) => layer.id === BEAUTY_FACE_LAYER_ID) ?? null,
@@ -24,22 +36,31 @@ export function beautyLayers(pipeline: EditPipeline): { face: ColorMaskLayer | n
 
 export function beautyParameters(pipeline: EditPipeline): BeautyParameters {
   const layers = beautyLayers(pipeline)
-  const skinWhitening = Math.round((layers.body?.color.brightness ?? 0) / 0.18)
-  const combinedFaceWhitening = (layers.face?.color.brightness ?? 0) - skinWhitening * 0.18
+  const bodyColor = layers.body?.color
+  const faceColor = layers.face?.color
+  const skinWhitening = clampParameter(bodyColor?.exposure
+    ? Math.round(bodyColor.exposure / BODY_EXPOSURE_PER_STEP)
+    : Math.round((bodyColor?.brightness ?? 0) / 0.18))
+  const combinedFaceExposure = (faceColor?.exposure ?? 0) - skinWhitening * BODY_EXPOSURE_PER_STEP
+  const combinedFaceBrightness = (faceColor?.brightness ?? 0) - skinWhitening * 0.18
+  const faceWhitening = faceColor?.exposure
+    ? Math.round(combinedFaceExposure / FACE_EXPOSURE_PER_STEP)
+    : Math.round(combinedFaceBrightness / 0.22)
   return {
-    faceWhitening: Math.max(0, Math.min(100, Math.round(combinedFaceWhitening / 0.22))),
-    skinWhitening: Math.max(0, Math.min(100, skinWhitening)),
-    smoothing: Math.max(0, Math.min(100, Math.round(layers.face?.color.denoise ?? 0))),
+    faceWhitening: clampParameter(faceWhitening),
+    skinWhitening,
+    smoothing: clampParameter(Math.round(layers.face?.color.denoise ?? 0)),
   }
 }
 
 function faceColor(parameters: BeautyParameters): EditPipeline['color'] {
   const color = createDefaultPipeline().color
-  const brightness = parameters.skinWhitening * 0.18 + parameters.faceWhitening * 0.22
   return {
     ...color,
-    brightness,
-    shadows: parameters.faceWhitening * 0.04,
+    exposure: normalizedExposure(
+      parameters.skinWhitening * BODY_EXPOSURE_PER_STEP
+        + parameters.faceWhitening * FACE_EXPOSURE_PER_STEP,
+    ),
     highlights: -parameters.faceWhitening * 0.03,
     denoise: parameters.smoothing,
   }
@@ -48,9 +69,36 @@ function faceColor(parameters: BeautyParameters): EditPipeline['color'] {
 function bodyColor(parameters: BeautyParameters): EditPipeline['color'] {
   return {
     ...createDefaultPipeline().color,
-    brightness: parameters.skinWhitening * 0.18,
+    exposure: normalizedExposure(parameters.skinWhitening * BODY_EXPOSURE_PER_STEP),
     highlights: -parameters.skinWhitening * 0.02,
   }
+}
+
+function faceColorForRendering(parameters: BeautyParameters): EditPipeline['color'] {
+  return {
+    ...faceColor(parameters),
+    exposure: normalizedExposure(
+      parameters.skinWhitening * BODY_RENDER_EXPOSURE_PER_STEP
+        + parameters.faceWhitening * FACE_EXPOSURE_PER_STEP,
+    ),
+  }
+}
+
+function bodyColorForRendering(parameters: BeautyParameters): EditPipeline['color'] {
+  return {
+    ...bodyColor(parameters),
+    exposure: normalizedExposure(parameters.skinWhitening * BODY_RENDER_EXPOSURE_PER_STEP),
+  }
+}
+
+export function beautyLayerColorForRendering(
+  pipeline: EditPipeline,
+  layer: ColorMaskLayer,
+): EditPipeline['color'] {
+  const parameters = beautyParameters(pipeline)
+  if (layer.id === BEAUTY_FACE_LAYER_ID) return faceColorForRendering(parameters)
+  if (layer.id === BEAUTY_BODY_LAYER_ID) return bodyColorForRendering(parameters)
+  return layer.color
 }
 
 export function updateBeautyParameters(pipeline: EditPipeline, parameters: BeautyParameters): ColorMaskLayer[] {

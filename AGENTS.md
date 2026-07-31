@@ -203,7 +203,7 @@ Luna AI Cut 是一款面向 Insta360 Luna Ultra 相机的桌面媒体管理。
 - 每个随应用发布的模型必须记录官方来源、模型版本、许可证文件和 SHA256；许可证与必要声明应随打包资源一同发布。
 - 模型加载接口应保持可替换，不要让业务逻辑绑定到单个模型。后续若项目用途变更为商业用途，必须重新审计并替换不支持商业使用的模型权重。
 - 本项目计划持续叠加 ONNX 模型。优先使用统一的 ONNX 推理运行时、统一的模型清单和平台资源目录，避免为每个模型重复引入不同推理框架。
-- ONNX 模型下载源按固定优先级选择：ModelScope（魔搭社区）中完全相同的固定模型文件优先，Luna GitCode resource release 镜像其次，境外官方上游最后。不得为命中国内源而替换成不同模型或权重；多个源必须匹配同一大小与 SHA256，并统一通过 `electron/modelLoader.ts` 和通用断点续传下载器加载，不把模型二进制提交到代码仓库或打入安装包。
+- ONNX 模型运行时下载源只允许 ModelScope（魔搭社区）和 Luna GitCode resource release：ModelScope 中完全相同的固定模型文件优先，GitCode 镜像其次；没有字节一致的 ModelScope 文件时只使用 GitCode。境外官方上游仅保留为发布来源、许可与哈希审计信息，不得进入客户端 `url` 或 `mirrors`。不得为命中国内源而替换成不同模型或权重；多个运行时源必须匹配同一大小与 SHA256，并统一通过 `electron/modelLoader.ts` 和通用断点续传下载器加载，不把模型二进制提交到代码仓库或打入安装包。
 - 发布 GitCode 安装包、runtime resources 或模型镜像时，凭证配置默认读取主仓库 `/Users/zhouchao/projects/luna-ai-cut/scripts/deploy-release.conf`。该文件已被 Git 忽略，不得打印、复制到工作树或提交；文件不存在、字段缺失或凭证失效时再请求用户提供。
 
 ### 核心流程

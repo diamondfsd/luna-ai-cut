@@ -2,6 +2,11 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  color: #f5f5f7;
+  --ink: #f5f5f7;
+  --muted: #b7b7bc;
+  --parchment: #34363c;
+  --hairline: rgba(255, 255, 255, 0.14);
 }
 
 .beauty-panel-summary {
@@ -20,13 +25,54 @@
 }
 
 .beauty-panel-summary strong {
-  color: var(--text-primary);
+  color: var(--ink);
   font-size: 13px;
   font-weight: 500;
 }
 
 .beauty-panel-summary span {
-  color: var(--text-secondary);
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.beauty-analysis-status,
+.beauty-analysis-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.beauty-analysis-status > span,
+.beauty-analysis-error > span {
+  min-width: 0;
+  flex: 1;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.beauty-analysis-error {
+  align-items: flex-start;
+  flex-direction: column;
+  padding: 8px;
+  border: 1px solid rgba(255, 120, 120, 0.24);
+  border-radius: 6px;
+  background: rgba(120, 24, 24, 0.16);
+}
+
+.beauty-analysis-error > span {
+  color: #ffb4b4;
+}
+
+.beauty-panel .ui-accordion-title,
+.beauty-panel .workspace-param-label {
+  color: #d7d7dc;
+}
+
+.beauty-panel .workspace-param-value-input {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: #33353a;
+  color: #f5f5f7;
 }
