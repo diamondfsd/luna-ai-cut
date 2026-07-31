@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
-import { createRequire } from 'node:module'
+import { createRequire, Module } from 'node:module'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import ts from 'typescript'
 
 const root = path.resolve(import.meta.dirname, '..')
+process.env.NODE_PATH = [path.join(root, 'node_modules'), process.env.NODE_PATH].filter(Boolean).join(path.delimiter)
+Module._initPaths()
 const compiled = await mkdtemp(path.join(tmpdir(), 'luna-workspace-removal-test-'))
 const temporary = await mkdtemp(path.join(tmpdir(), 'luna-workspace-removal-data-'))
 try {
@@ -16,6 +18,8 @@ try {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.CommonJS,
     moduleResolution: ts.ModuleResolutionKind.Node10,
+    baseUrl: root,
+    paths: { 'opencc-js/t2cn': ['node_modules/opencc-js/types/full.d.ts'] },
     rootDir: root,
     outDir: compiled,
     esModuleInterop: true,

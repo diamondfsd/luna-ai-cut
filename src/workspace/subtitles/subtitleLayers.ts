@@ -45,7 +45,7 @@ export function buildSubtitleLayers(
     const activeEnd = (endMs - range.startMs) / 1_000
     const fontPx = style.fontSize * canvas.height / 1080
     const maxBoxWidthPx = SUBTITLE_MAX_WIDTH_RATIO * canvas.width
-    const maxCharacters = Math.max(4, Math.min(18, Math.floor((maxBoxWidthPx - fontPx * 1.2) / Math.max(1, fontPx))))
+    const maxCharacters = Math.max(4, Math.floor((maxBoxWidthPx - fontPx * 1.2) / Math.max(1, fontPx)))
     const content = wrapSubtitleText(cue.text, maxCharacters)
     const estimatedTextWidthPx = Math.max(...content.split('\n').map((line) => estimatedTextUnits(line) * fontPx))
     const boxWidthPx = Math.min(maxBoxWidthPx, Math.max(fontPx * 2.2, estimatedTextWidthPx + fontPx * 1.2))

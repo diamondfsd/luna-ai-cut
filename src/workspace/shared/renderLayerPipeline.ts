@@ -2,6 +2,7 @@ import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform, Waterm
 import type { BorderSettings } from './editPipeline'
 import { HSL_CHANNELS, type EditPipeline } from './editPipeline'
 import { shouldSwapOrientation } from '../transform/cropGeometry'
+import { beautyLayerColorForRendering } from '../beauty/beautyLayers'
 
 export function pipelineColorToRenderColor(color: EditPipeline['color']): RenderColorAdjustments {
   return {
@@ -97,7 +98,7 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     blendMode: layer.blendMode,
     color: renderColorWithLocalAdjustments(
       base.color ?? pipelineColorToRenderColor(pipeline.color),
-      pipelineColorToRenderColor(layer.color),
+      pipelineColorToRenderColor(beautyLayerColorForRendering(pipeline, layer)),
     ),
     maskPath: layer.path,
     maskOpacity: layer.opacity,

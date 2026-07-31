@@ -83,6 +83,11 @@ try {
     'src/workspace/color/colorMaskLayerOperations.ts',
     'src/workspace/shared/workspaceProjectPipeline.ts',
   ])
+  await symlink(
+    path.join(projectRoot, 'node_modules'),
+    path.join(temporaryRoot, 'node_modules'),
+    process.platform === 'win32' ? 'junction' : 'dir',
+  )
 
   const projectService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/workspaceProjectService.js')))
   const maskService = await import(pathToFileURL(path.join(temporaryRoot, 'electron/colorMaskService.js')))
@@ -90,6 +95,7 @@ try {
   const pipelineSerialization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editPipelineSerialization.js')))
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
+  const beautyLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/beauty/beautyLayers.js')))
   const onlyYourColorAutoTone = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorAutoTone.js')))
   const onlyYourColorLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorLayers.js')))
   const onlyYourColorBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorBatchMask.js')))
@@ -110,6 +116,16 @@ try {
   const layerOperations = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/color/colorMaskLayerOperations.js')))
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
   const { createDefaultPipeline, mergePipeline } = pipelineModule
+
+  const maxBeautyParameters = { faceWhitening: 100, skinWhitening: 100, smoothing: 0 }
+  const beautyBodyLayer = beautyLayers.createBeautyMaskLayer('body', { path: '/tmp/body.pgm', width: 1, height: 1 }, maxBeautyParameters)
+  const beautyFaceLayer = beautyLayers.createBeautyMaskLayer('face', { path: '/tmp/face.pgm', width: 1, height: 1 }, maxBeautyParameters)
+  const beautyPipeline = { ...createDefaultPipeline(), colorMasks: [beautyBodyLayer, beautyFaceLayer] }
+  close(beautyBodyLayer.color.exposure, 0.15, 'stored body whitening must preserve existing slider semantics')
+  close(beautyFaceLayer.color.exposure, 0.45, 'stored face whitening must preserve existing slider semantics')
+  close(beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyBodyLayer).exposure, 0.3, 'rendered body whitening maximum must double')
+  close(beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyFaceLayer).exposure, 0.6, 'rendered face exposure must include doubled overall whitening')
+  assert.deepEqual(beautyLayers.beautyParameters(beautyPipeline), maxBeautyParameters)
 
   const normalizedTrack = maskTrack.normalizeMaskTrack({
     version: 1,
@@ -628,6 +644,31 @@ try {
   assert.deepEqual(layers.map((layer) => layer.maskPath), ['/bottom.pgm', '/top.pgm'], 'the visual top layer must render last')
   assert.deepEqual(layers.map((layer) => layer.blendMode), ['multiply', 'screen'])
   assert.ok(layers.every((layer) => layer.layerType === 'local-color'))
+  const legacyBeauty = createDefaultPipeline()
+  legacyBeauty.colorMasks = [
+    {
+      ...legacy.colorMasks[0],
+      id: 'beauty-face-skin',
+      enabled: true,
+      path: '/beauty-face.pgm',
+      color: { ...createDefaultPipeline().color, brightness: 5.76, denoise: 28 },
+    },
+    {
+      ...legacy.colorMasks[0],
+      id: 'beauty-body-skin',
+      enabled: true,
+      path: '/beauty-body.pgm',
+      color: { ...createDefaultPipeline().color, brightness: 1.8 },
+    },
+  ]
+  const migratedBeauty = renderModule.buildLocalColorLayers(baseLayer, legacyBeauty)
+  const migratedFace = migratedBeauty.find((layer) => layer.maskPath === '/beauty-face.pgm')
+  const migratedBody = migratedBeauty.find((layer) => layer.maskPath === '/beauty-body.pgm')
+  assert.equal(migratedFace.color.brightness, 0, 'legacy face whitening must not render as additive RGB brightness')
+  assert.equal(migratedBody.color.brightness, 0, 'legacy body whitening must not render as additive RGB brightness')
+  close(migratedFace.color.exposure, 0.084, 'legacy face whitening must include doubled overall whitening')
+  close(migratedBody.color.exposure, 0.03, 'legacy body whitening must use the doubled render mapping')
+  assert.equal(migratedFace.color.denoise, 28, 'legacy smoothing strength must survive whitening migration')
   assert.equal(
     renderModule.buildLocalColorLayers(baseLayer, stressPipeline)[0].maskTrack,
     undefined,

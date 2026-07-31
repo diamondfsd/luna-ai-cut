@@ -71,4 +71,13 @@ assert.equal(layers[1].fontSize, 60)
 const composition = buildCompositionFromPreviewLayers(layers, 1920, 1080)
 assert.deepEqual([composition.layers[2].activeStart, composition.layers[2].activeEnd], [1, 2])
 
+const singleLineText = '大家好,这是一段用于字幕识别的中文示例。'
+const singleLineLayers = buildSubtitleLayers({
+  ...track,
+  sourceRange: { startMs: 0, endMs: 5000 },
+  cues: [{ id: 'single-line', startMs: 0, endMs: 5000, text: singleLineText, source: 'generated' }],
+  style: { ...track.style, fontSize: 50 },
+}, { width: 1280, height: 720 }, { startMs: 0, endMs: 5000 })
+assert.equal(singleLineLayers[1].content, singleLineText)
+
 console.log('subtitle track tests passed')

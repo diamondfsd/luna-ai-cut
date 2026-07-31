@@ -51,6 +51,20 @@ function writeUniformPpmPixels(value = 72) {
   ])
 }
 
+function writeSkinTexturePpmPixels() {
+  const pixels = Buffer.alloc(width * height * 3)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 3
+      const texture = ((x * 13 + y * 7) % 5 - 2) * 4
+      pixels[offset] = 158 + texture
+      pixels[offset + 1] = 116 + texture
+      pixels[offset + 2] = 102 + texture
+    }
+  }
+  return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
+}
+
 function maskPixels(kind) {
   const pixels = Buffer.alloc(width * height)
   for (let y = 0; y < height; y += 1) {
@@ -171,12 +185,14 @@ async function renderAndMatchExport(name, input) {
 try {
   const sourcePath = path.join(temporaryRoot, 'asymmetric.ppm')
   const uniformSourcePath = path.join(temporaryRoot, 'uniform.ppm')
+  const skinTextureSourcePath = path.join(temporaryRoot, 'skin-texture.ppm')
   const rectMaskPath = path.join(temporaryRoot, 'rect.pgm')
   const leftMaskPath = path.join(temporaryRoot, 'left.pgm')
   const fullMaskPath = path.join(temporaryRoot, 'full.pgm')
   await Promise.all([
     writeFile(sourcePath, writePpmPixels()),
     writeFile(uniformSourcePath, writeUniformPpmPixels()),
+    writeFile(skinTextureSourcePath, writeSkinTexturePpmPixels()),
     writeFile(rectMaskPath, maskPixels('rect')),
     writeFile(leftMaskPath, maskPixels('left')),
     writeFile(fullMaskPath, maskPixels('full')),
@@ -188,6 +204,17 @@ try {
     mediaLayer(sourcePath), localLayer(sourcePath, rectMaskPath),
   ]))
   assert.ok(pixelDifference(base, normal).changed > 150, 'normal mask must change the selected region')
+  const skinTextureBase = await renderAndMatchExport('skin-texture-base', composition([
+    mediaLayer(skinTextureSourcePath),
+  ]))
+  const beautySmoothing = await renderAndMatchExport('beauty-smoothing', composition([
+    mediaLayer(skinTextureSourcePath),
+    localLayer(skinTextureSourcePath, fullMaskPath, { color: { denoise: 60 } }),
+  ]))
+  assert.ok(
+    pixelDifference(skinTextureBase, beautySmoothing).total > 0,
+    'beauty smoothing must execute the edge-aware denoise branch',
+  )
   const precomposeGroup = 'mask-color-source'
   const precomposedClear = await renderAndMatchExport('precomposed-clear', composition([
     { ...mediaLayer(sourcePath), precomposeGroup, precomposeRole: 'input' },
