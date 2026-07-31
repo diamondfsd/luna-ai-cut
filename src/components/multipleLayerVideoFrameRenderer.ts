@@ -49,6 +49,7 @@ export interface MultipleLayerVideoPreviewLrcRenderProps {
   onImageScaleChange?: (scale: number | null) => void
   maxImageScale?: number
   interactiveImageLayerIndexes?: readonly number[]
+  viewportKey?: string
 }
 
 export function multipleLayerVideoPreviewPropsEqual(
@@ -65,6 +66,7 @@ export function multipleLayerVideoPreviewPropsEqual(
     && previous.className === next.className
     && previous.imageScale === next.imageScale
     && previous.maxImageScale === next.maxImageScale
+    && previous.viewportKey === next.viewportKey
     && previous.onImageScaleChange === next.onImageScaleChange
     && JSON.stringify(previous.interactiveImageLayerIndexes) === JSON.stringify(next.interactiveImageLayerIndexes)
     && JSON.stringify(previous.layers) === JSON.stringify(next.layers)

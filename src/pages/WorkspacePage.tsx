@@ -808,6 +808,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
             onFitScaleChange={setFitScalePercent}
+            viewportKey={media.activeMedia?.path}
             previewMaxSide={workspacePreviewMaxSide(previewQuality)}
             keepCompositionVideoRenderer={keepCompositionVideoRenderer}
             onPlayStateChange={handlePlayStateChange}

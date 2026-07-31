@@ -44,6 +44,8 @@ interface PreviewStageProps {
   viewScale?: 'fit' | number
   onViewScaleChange?: (scale: 'fit' | number) => void
   onFitScaleChange?: (scale: number) => void
+  /** Stable media identity; unlike url, it must not change while temporarily showing the original. */
+  viewportKey?: string
   previewMaxSide?: number
   /** 临时旁路效果时保持合成视频渲染器，避免对比过程中卸载画布和解码器。 */
   keepCompositionVideoRenderer?: boolean
@@ -52,7 +54,7 @@ interface PreviewStageProps {
 }
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
+    { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const { settings } = useApp()
@@ -430,6 +432,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
               onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
               interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
+              viewportKey={viewportKey}
             />
           ) : (
             <LrcRender
@@ -439,6 +442,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               maxSide={previewCanvas ? Math.max(previewCanvas.width, previewCanvas.height) : undefined}
               compositionTime={compositionTime}
               interactiveImageLayerIndexes={cropActive ? [] : layers.length > 0 ? [0] : []}
+              viewportKey={viewportKey}
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
               onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
               onViewportChange={syncCanvasMetrics}

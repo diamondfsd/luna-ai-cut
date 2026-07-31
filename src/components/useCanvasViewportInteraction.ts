@@ -27,6 +27,7 @@ interface UseCanvasViewportInteractionOptions {
   layers: PreviewLayer[]
   canvasRef: RefObject<HTMLCanvasElement | null>
   interactiveImageLayerIndexes?: readonly number[]
+  viewportKey?: string
   maxImageScale: number
   imageScale?: number | null
   onImageScaleChange?: (scale: number | null) => void
@@ -48,13 +49,13 @@ interface CanvasMetrics {
   fitPixelRatio: number
 }
 
-function canvasMetrics(canvas: HTMLCanvasElement, currentScale: number): CanvasMetrics | null {
+function canvasMetrics(canvas: HTMLCanvasElement): CanvasMetrics | null {
   const container = canvas.parentElement
-  if (!container || canvas.width <= 0 || canvas.height <= 0 || currentScale <= 0) return null
-  const rect = canvas.getBoundingClientRect()
+  if (!container || canvas.width <= 0 || canvas.height <= 0) return null
   const containerRect = container.getBoundingClientRect()
-  const baseWidth = rect.width / currentScale
-  const baseHeight = rect.height / currentScale
+  // clientWidth/clientHeight are layout sizes and are not affected by the current CSS transform.
+  const baseWidth = canvas.clientWidth
+  const baseHeight = canvas.clientHeight
   if (baseWidth <= 0 || baseHeight <= 0) return null
   return {
     baseWidth,
@@ -83,6 +84,7 @@ export function useCanvasViewportInteraction({
   layers,
   canvasRef,
   interactiveImageLayerIndexes,
+  viewportKey,
   maxImageScale,
   imageScale,
   onImageScaleChange,
@@ -99,7 +101,7 @@ export function useCanvasViewportInteraction({
     const layer = layers[index]
     return !!layer && !layer.positioning
   })
-  const sourceKey = interactiveIndexes
+  const sourceKey = viewportKey ?? interactiveIndexes
     .map((index) => layers[index]?.filePath ?? '')
     .join('\n')
 
@@ -115,7 +117,7 @@ export function useCanvasViewportInteraction({
     if (!interactive || !canvas || !container) return
     const observer = new ResizeObserver(() => {
       setViewport((current) => {
-        const metrics = canvasMetrics(canvas, current.scale)
+        const metrics = canvasMetrics(canvas)
         if (!metrics) return current
         return { ...current, ...clampTranslation(metrics, current.scale, current.translateX, current.translateY) }
       })
@@ -129,7 +131,7 @@ export function useCanvasViewportInteraction({
     if (!interactive || !canvas) return
     setViewport((current) => {
       if (imageScale == null) return INITIAL_VIEWPORT
-      const metrics = canvasMetrics(canvas, current.scale)
+      const metrics = canvasMetrics(canvas)
       if (!metrics) return current
       const nextScale = Math.max(1, Math.min(maxImageScale / metrics.fitPixelRatio, imageScale / metrics.fitPixelRatio))
       return { scale: nextScale, ...clampTranslation(metrics, nextScale, current.translateX, current.translateY) }
@@ -162,7 +164,7 @@ export function useCanvasViewportInteraction({
     const clientX = event.clientX
     const clientY = event.clientY
     setViewport((current) => {
-      const metrics = canvasMetrics(canvas, current.scale)
+      const metrics = canvasMetrics(canvas)
       if (!metrics) return current
       const translation = clampTranslation(
         metrics,
@@ -189,7 +191,7 @@ export function useCanvasViewportInteraction({
     const rect = canvas.getBoundingClientRect()
 
     setViewport((current) => {
-      const metrics = canvasMetrics(canvas, current.scale)
+      const metrics = canvasMetrics(canvas)
       if (!metrics) return current
       const upperBound = Math.max(1, maxImageScale / metrics.fitPixelRatio)
       const nextScale = Math.min(
@@ -218,7 +220,7 @@ export function useCanvasViewportInteraction({
     const clientX = event.clientX
     const clientY = event.clientY
     setViewport((current) => {
-      const metrics = canvasMetrics(canvas, current.scale)
+      const metrics = canvasMetrics(canvas)
       if (!metrics || current.scale > 1.001) {
         onImageScaleChange?.(null)
         return INITIAL_VIEWPORT
