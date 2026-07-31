@@ -43,6 +43,8 @@ export interface LrcRenderProps {
   onVideoElement?: (el: HTMLVideoElement | null) => void
   /** 允许画布查看交互的图片图层下标；默认包含所有普通图片，传空数组可关闭。 */
   interactiveImageLayerIndexes?: readonly number[]
+  /** Stable media identity used to preserve the viewport when comparison swaps render sources. */
+  viewportKey?: string
   /** 最大查看比例，1 表示画布像素与屏幕 CSS 像素 1:1；默认最大 200%。 */
   maxImageScale?: number
   /** 受控查看比例：null 表示适应窗口，1 表示画布像素与屏幕像素 1:1。 */
@@ -123,6 +125,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     canvasHeight,
     onVideoElement,
     interactiveImageLayerIndexes,
+    viewportKey,
     maxImageScale = 2,
     imageScale,
     onImageScaleChange,
@@ -141,6 +144,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     layers,
     canvasRef,
     interactiveImageLayerIndexes,
+    viewportKey,
     maxImageScale,
     imageScale,
     onImageScaleChange,
@@ -482,6 +486,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     prevProps.compositionTime === nextProps.compositionTime &&
     prevProps.className === nextProps.className &&
     prevProps.maxImageScale === nextProps.maxImageScale &&
+    prevProps.viewportKey === nextProps.viewportKey &&
     prevProps.imageScale === nextProps.imageScale &&
     prevProps.onImageScaleChange === nextProps.onImageScaleChange &&
     prevProps.onViewportChange === nextProps.onViewportChange &&
