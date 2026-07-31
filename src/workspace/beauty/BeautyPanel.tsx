@@ -1,4 +1,4 @@
-import { Loader2, RotateCcw, ScanFace, X } from 'lucide-react'
+import { Loader2, RotateCcw, ScanFace } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Accordion, Button, Switch, toast } from '../../ui'
@@ -28,7 +28,9 @@ export function BeautyPanel() {
   const enabled = Boolean(layers.face?.enabled || layers.body?.enabled)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
+  const [analysisError, setAnalysisError] = useState('')
   const requestRef = useRef<string | null>(null)
+  const attemptedAssetRef = useRef<string | null>(null)
 
   const cancel = useCallback(() => {
     const requestId = requestRef.current
@@ -38,7 +40,11 @@ export function BeautyPanel() {
     setStatus('')
   }, [])
 
-  useEffect(() => cancel, [activeAsset?.id, cancel])
+  useEffect(() => {
+    attemptedAssetRef.current = null
+    setAnalysisError('')
+    return cancel
+  }, [activeAsset?.id, cancel])
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
     if (progress.requestId !== requestRef.current) return
@@ -55,6 +61,7 @@ export function BeautyPanel() {
       return
     }
     cancel()
+    setAnalysisError('')
     const requestId = `beauty-${crypto.randomUUID()}`
     requestRef.current = requestId
     setBusy(true)
@@ -72,10 +79,11 @@ export function BeautyPanel() {
       const faceLayer = createBeautyMaskLayer('face', faceSaved, currentParameters)
       const bodyLayer = createBeautyMaskLayer('body', bodySaved, currentParameters)
       edit.commitPatch({ colorMasks: replaceBeautyLayers(edit.pipeline, faceLayer, bodyLayer) })
-      toast.success(`已识别 ${result.faceCount} 张人脸`)
     } catch (error) {
       if (requestRef.current !== requestId) return
-      toast.error(error instanceof Error ? error.message : '美颜分析失败')
+      const message = error instanceof Error ? error.message : '美颜分析失败'
+      setAnalysisError(message)
+      toast.error(message)
     } finally {
       if (requestRef.current === requestId) {
         requestRef.current = null
@@ -84,6 +92,14 @@ export function BeautyPanel() {
       }
     }
   }, [activeAsset, analyzed, cancel, edit, media.currentProject, parameters])
+
+  useEffect(() => {
+    if (analyzed || busy || activeAsset?.kind !== 'image' || !media.currentProject) return
+    const assetKey = `${media.currentProject.id}:${activeAsset.id}`
+    if (attemptedAssetRef.current === assetKey) return
+    attemptedAssetRef.current = assetKey
+    void analyze()
+  }, [activeAsset, analyze, analyzed, busy, media.currentProject])
 
   const setEnabled = (next: boolean) => {
     edit.commitPatch({
@@ -107,17 +123,24 @@ export function BeautyPanel() {
         {analyzed && <Switch checked={enabled} onCheckedChange={setEnabled} ariaLabel="启用美颜" />}
       </div>
 
-      <Button
-        variant={analyzed ? 'secondary' : 'primary'}
-        size="compact"
-        icon={busy ? <Loader2 className="spin" size={16} /> : <ScanFace size={16} />}
-        disabled={busy || activeAsset?.kind !== 'image' || !media.currentProject}
-        onClick={() => void analyze()}
-      >
-        {busy ? status || '正在识别' : analyzed ? '重新识别皮肤' : '开始美颜'}
-      </Button>
       {busy && (
-        <Button variant="ghost" size="mini" icon={<X size={14} />} onClick={cancel}>取消</Button>
+        <div className="beauty-analysis-status" role="status">
+          <Loader2 className="spin" size={16} />
+          <span>{status || '正在识别人脸和皮肤'}</span>
+        </div>
+      )}
+      {!busy && !analyzed && analysisError && (
+        <div className="beauty-analysis-error" role="alert">
+          <span>{analysisError}</span>
+          <Button
+            variant="secondary"
+            size="compact"
+            icon={<ScanFace size={16} />}
+            onClick={() => void analyze()}
+          >
+            重试识别
+          </Button>
+        </div>
       )}
 
       {analyzed && (

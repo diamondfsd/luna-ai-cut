@@ -3,12 +3,16 @@ import { execFile } from 'node:child_process'
 import type { WorkspaceBeautyAnalysisResult } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { loadModel } from './modelLoader'
+import { logMainInfo } from './loggerService'
 import { extractFaceBoxesInWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
 
 const INPUT_SIZE = 640
-const MASK_SIZE = 512
+const MASK_SIZE = 1024
 const FACE_PARSE_SIZE = 512
+const HUMAN_PARSE_SIZE = 512
 const FACE_SKIN_LABELS = new Set([1, 7, 8, 10, 14])
+const FACE_EYE_LABELS = new Set([4, 5])
+const FACE_MOUTH_LABELS = new Set([11, 12, 13])
 const BODY_SKIN_LABELS = new Set([12, 13, 14, 15])
 
 interface SourceLayout {
@@ -23,6 +27,12 @@ interface FaceBounds {
   y: number
   width: number
   height: number
+}
+
+interface FaceSkinAssessment {
+  mask: Uint8Array | null
+  skinRatio: number
+  featureSamples: number
 }
 
 function decodeImage(filePath: string, signal: AbortSignal): Promise<{ rgb: Buffer; layout: SourceLayout }> {
@@ -67,9 +77,9 @@ function decodeImage(filePath: string, signal: AbortSignal): Promise<{ rgb: Buff
 function cropFace(rgb: Buffer, face: FaceBounds, layout: SourceLayout): { rgb: Buffer; x: number; y: number; side: number } {
   const centerX = layout.padX + (face.x + face.width / 2) * layout.scaledWidth
   const centerY = layout.padY + (face.y + face.height / 2) * layout.scaledHeight
-  const side = Math.max(face.width * layout.scaledWidth, face.height * layout.scaledHeight) * 1.65
+  const side = Math.max(face.width * layout.scaledWidth, face.height * layout.scaledHeight) * 1.75
   const cropX = centerX - side / 2
-  const cropY = centerY - side * 0.44
+  const cropY = centerY - side / 2
   const output = Buffer.alloc(FACE_PARSE_SIZE * FACE_PARSE_SIZE * 3)
   for (let y = 0; y < FACE_PARSE_SIZE; y += 1) {
     const sourceY = Math.max(0, Math.min(INPUT_SIZE - 1, Math.round(cropY + (y + 0.5) / FACE_PARSE_SIZE * side)))
@@ -85,55 +95,158 @@ function cropFace(rgb: Buffer, face: FaceBounds, layout: SourceLayout): { rgb: B
   return { rgb: output, x: cropX, y: cropY, side }
 }
 
-function compositeFaceLabels(target: Uint8Array, labels: Buffer, crop: ReturnType<typeof cropFace>, layout: SourceLayout): void {
+function assessFaceSkin(labels: Buffer): FaceSkinAssessment {
+  let skinSamples = 0
+  let featureSamples = 0
+  let totalSamples = 0
+  for (let y = 0; y < FACE_PARSE_SIZE; y += 8) {
+    for (let x = 0; x < FACE_PARSE_SIZE; x += 8) {
+      const label = labels[y * FACE_PARSE_SIZE + x]
+      if (FACE_SKIN_LABELS.has(label)) skinSamples += 1
+      if (FACE_EYE_LABELS.has(label) || FACE_MOUTH_LABELS.has(label)) featureSamples += 1
+      totalSamples += 1
+    }
+  }
+  const skinRatio = skinSamples / totalSamples
+  if (skinRatio < 0.035 || featureSamples < 3) {
+    return { mask: null, skinRatio, featureSamples }
+  }
+
+  const output = new Uint8Array(labels.length)
+  for (let index = 0; index < labels.length; index += 1) {
+    if (FACE_SKIN_LABELS.has(labels[index])) output[index] = 1
+  }
+  return { mask: output, skinRatio, featureSamples }
+}
+
+function compositeFaceLabels(
+  skinSamples: Uint32Array,
+  protectedSamples: Uint32Array,
+  totalSamples: Uint32Array,
+  labels: Buffer,
+  usableSkin: Uint8Array,
+  crop: ReturnType<typeof cropFace>,
+  layout: SourceLayout,
+): void {
   for (let y = 0; y < FACE_PARSE_SIZE; y += 1) {
     for (let x = 0; x < FACE_PARSE_SIZE; x += 1) {
-      if (!FACE_SKIN_LABELS.has(labels[y * FACE_PARSE_SIZE + x])) continue
       const inputX = crop.x + (x + 0.5) / FACE_PARSE_SIZE * crop.side
       const inputY = crop.y + (y + 0.5) / FACE_PARSE_SIZE * crop.side
       const targetX = Math.floor((inputX - layout.padX) / layout.scaledWidth * MASK_SIZE)
       const targetY = Math.floor((inputY - layout.padY) / layout.scaledHeight * MASK_SIZE)
       if (targetX >= 0 && targetX < MASK_SIZE && targetY >= 0 && targetY < MASK_SIZE) {
-        target[targetY * MASK_SIZE + targetX] = 255
+        const targetIndex = targetY * MASK_SIZE + targetX
+        const label = labels[y * FACE_PARSE_SIZE + x]
+        totalSamples[targetIndex] += 1
+        if (usableSkin[y * FACE_PARSE_SIZE + x]) skinSamples[targetIndex] += 1
+        else if (label !== 0) protectedSamples[targetIndex] += 1
       }
     }
   }
 }
 
-function softenMask(input: Uint8Array): Uint8Array {
-  const closed = new Uint8Array(input.length)
-  for (let y = 1; y < MASK_SIZE - 1; y += 1) {
-    for (let x = 1; x < MASK_SIZE - 1; x += 1) {
-      let count = 0
-      for (let yy = -1; yy <= 1; yy += 1) {
-        for (let xx = -1; xx <= 1; xx += 1) count += input[(y + yy) * MASK_SIZE + x + xx] >= 128 ? 1 : 0
+function faceSkinMask(
+  skinSamples: Uint32Array,
+  protectedSamples: Uint32Array,
+  totalSamples: Uint32Array,
+): Uint8Array {
+  const output = new Uint8Array(MASK_SIZE * MASK_SIZE)
+  let hasSkin = false
+  for (let index = 0; index < output.length; index += 1) {
+    const total = totalSamples[index]
+    if (total === 0 || skinSamples[index] === 0) continue
+    // Any protected sample wins over skin so thin brows, eye contours and lips
+    // survive projection into the whole-image mask.
+    if (protectedSamples[index] > 0) continue
+    output[index] = Math.round(skinSamples[index] / total * 255)
+    hasSkin = true
+  }
+  return hasSkin ? softenMask(output) : output
+}
+
+function closeMask(input: Uint8Array): Uint8Array {
+  const dilated = new Uint8Array(input.length)
+  for (let y = 0; y < MASK_SIZE; y += 1) {
+    for (let x = 0; x < MASK_SIZE; x += 1) {
+      let active = false
+      for (let offsetY = -1; offsetY <= 1 && !active; offsetY += 1) {
+        const sampleY = Math.max(0, Math.min(MASK_SIZE - 1, y + offsetY))
+        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+          const sampleX = Math.max(0, Math.min(MASK_SIZE - 1, x + offsetX))
+          if (input[sampleY * MASK_SIZE + sampleX] >= 128) {
+            active = true
+            break
+          }
+        }
       }
-      closed[y * MASK_SIZE + x] = count >= 4 ? 255 : 0
+      if (active) dilated[y * MASK_SIZE + x] = 255
     }
   }
+
   const output = new Uint8Array(input.length)
-  for (let y = 1; y < MASK_SIZE - 1; y += 1) {
-    for (let x = 1; x < MASK_SIZE - 1; x += 1) {
-      let sum = 0
-      for (let yy = -1; yy <= 1; yy += 1) {
-        for (let xx = -1; xx <= 1; xx += 1) sum += closed[(y + yy) * MASK_SIZE + x + xx]
+  for (let y = 0; y < MASK_SIZE; y += 1) {
+    for (let x = 0; x < MASK_SIZE; x += 1) {
+      let active = true
+      for (let offsetY = -1; offsetY <= 1 && active; offsetY += 1) {
+        const sampleY = Math.max(0, Math.min(MASK_SIZE - 1, y + offsetY))
+        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+          const sampleX = Math.max(0, Math.min(MASK_SIZE - 1, x + offsetX))
+          if (dilated[sampleY * MASK_SIZE + sampleX] === 0) {
+            active = false
+            break
+          }
+        }
       }
-      output[y * MASK_SIZE + x] = Math.round(sum / 9)
+      if (active) output[y * MASK_SIZE + x] = 255
     }
   }
   return output
 }
 
-function resizeContent(rgb: Buffer, layout: SourceLayout): Buffer {
-  const output = Buffer.alloc(MASK_SIZE * MASK_SIZE * 3)
+function softenMask(input: Uint8Array): Uint8Array {
+  const radius = 3
+  const closed = closeMask(input)
+  const horizontal = new Float32Array(closed.length)
   for (let y = 0; y < MASK_SIZE; y += 1) {
-    const sourceY = Math.max(0, Math.min(INPUT_SIZE - 1,
-      Math.floor(layout.padY + (y + 0.5) * layout.scaledHeight / MASK_SIZE)))
     for (let x = 0; x < MASK_SIZE; x += 1) {
+      let sum = 0
+      let weightSum = 0
+      for (let offset = -radius; offset <= radius; offset += 1) {
+        const sampleX = Math.max(0, Math.min(MASK_SIZE - 1, x + offset))
+        const weight = radius + 1 - Math.abs(offset)
+        sum += closed[y * MASK_SIZE + sampleX] * weight
+        weightSum += weight
+      }
+      horizontal[y * MASK_SIZE + x] = sum / weightSum
+    }
+  }
+  const output = new Uint8Array(input.length)
+  for (let y = 0; y < MASK_SIZE; y += 1) {
+    for (let x = 0; x < MASK_SIZE; x += 1) {
+      let sum = 0
+      let weightSum = 0
+      for (let offset = -radius; offset <= radius; offset += 1) {
+        const sampleY = Math.max(0, Math.min(MASK_SIZE - 1, y + offset))
+        const weight = radius + 1 - Math.abs(offset)
+        sum += horizontal[sampleY * MASK_SIZE + x] * weight
+        weightSum += weight
+      }
+      output[y * MASK_SIZE + x] = Math.round(sum / weightSum)
+    }
+  }
+  return output
+}
+
+function resizeContent(rgb: Buffer, layout: SourceLayout, outputSize: number): Buffer {
+  const output = Buffer.alloc(outputSize * outputSize * 3)
+  for (let y = 0; y < outputSize; y += 1) {
+    const sourceY = Math.max(0, Math.min(INPUT_SIZE - 1,
+      Math.floor(layout.padY + (y + 0.5) * layout.scaledHeight / outputSize)))
+    for (let x = 0; x < outputSize; x += 1) {
       const sourceX = Math.max(0, Math.min(INPUT_SIZE - 1,
-        Math.floor(layout.padX + (x + 0.5) * layout.scaledWidth / MASK_SIZE)))
+        Math.floor(layout.padX + (x + 0.5) * layout.scaledWidth / outputSize)))
       const sourceOffset = (sourceY * INPUT_SIZE + sourceX) * 3
-      const targetOffset = (y * MASK_SIZE + x) * 3
+      const targetOffset = (y * outputSize + x) * 3
       output[targetOffset] = rgb[sourceOffset]
       output[targetOffset + 1] = rgb[sourceOffset + 1]
       output[targetOffset + 2] = rgb[sourceOffset + 2]
@@ -144,10 +257,18 @@ function resizeContent(rgb: Buffer, layout: SourceLayout): Buffer {
 
 function bodySkinMask(labels: Buffer): Uint8Array {
   const output = new Uint8Array(MASK_SIZE * MASK_SIZE)
-  for (let index = 0; index < output.length; index += 1) {
-    if (BODY_SKIN_LABELS.has(labels[index])) output[index] = 255
+  let hasSkin = false
+  for (let y = 0; y < MASK_SIZE; y += 1) {
+    const sourceY = Math.min(HUMAN_PARSE_SIZE - 1, Math.floor((y + 0.5) * HUMAN_PARSE_SIZE / MASK_SIZE))
+    for (let x = 0; x < MASK_SIZE; x += 1) {
+      const sourceX = Math.min(HUMAN_PARSE_SIZE - 1, Math.floor((x + 0.5) * HUMAN_PARSE_SIZE / MASK_SIZE))
+      if (BODY_SKIN_LABELS.has(labels[sourceY * HUMAN_PARSE_SIZE + sourceX])) {
+        output[y * MASK_SIZE + x] = 255
+        hasSkin = true
+      }
+    }
   }
-  return softenMask(output)
+  return hasSkin ? softenMask(output) : output
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -178,18 +299,20 @@ export async function analyzeBeauty(
 
   report?.('recognizing', '正在识别人脸与皮肤', null)
   const inferenceStarted = performance.now()
-  const humanRgb = resizeContent(rgb, layout)
+  const humanRgb = resizeContent(rgb, layout, HUMAN_PARSE_SIZE)
   const [faces, humanResult] = await Promise.all([
     extractFaceBoxesInWorker(faceDetector.path, rgb, layout, signal),
     segmentSpecializedInWorker({
       backend: 'human-parsing', modelPath: humanParser.path, rgb: humanRgb,
-      scaledWidth: MASK_SIZE, scaledHeight: MASK_SIZE, padX: 0, padY: 0, outputSize: MASK_SIZE,
+      scaledWidth: HUMAN_PARSE_SIZE, scaledHeight: HUMAN_PARSE_SIZE,
+      padX: 0, padY: 0, outputSize: HUMAN_PARSE_SIZE,
     }, signal),
   ])
-  if (faces.length === 0) throw new Error('未发现可处理的人脸')
-
-  const faceMask = new Uint8Array(MASK_SIZE * MASK_SIZE)
+  const skinSamples = new Uint32Array(MASK_SIZE * MASK_SIZE)
+  const protectedSamples = new Uint32Array(MASK_SIZE * MASK_SIZE)
+  const totalSamples = new Uint32Array(MASK_SIZE * MASK_SIZE)
   const processedFaces = faces.slice(0, 8)
+  let acceptedFaceCount = 0
   for (const face of processedFaces) {
     signal.throwIfAborted()
     const crop = cropFace(rgb, face, layout)
@@ -197,17 +320,37 @@ export async function analyzeBeauty(
       backend: 'face-parsing', modelPath: faceParser.path, rgb: crop.rgb,
       scaledWidth: FACE_PARSE_SIZE, scaledHeight: FACE_PARSE_SIZE, padX: 0, padY: 0, outputSize: FACE_PARSE_SIZE,
     }, signal)
-    compositeFaceLabels(faceMask, parsed.bytes, crop, layout)
+    const assessment = assessFaceSkin(parsed.bytes)
+    logMainInfo('[Beauty] 面部皮肤解析', {
+      skinRatio: Number(assessment.skinRatio.toFixed(4)),
+      featureSamples: assessment.featureSamples,
+      accepted: assessment.mask !== null,
+    })
+    if (!assessment.mask) continue
+    acceptedFaceCount += 1
+    compositeFaceLabels(
+      skinSamples,
+      protectedSamples,
+      totalSamples,
+      parsed.bytes,
+      assessment.mask,
+      crop,
+      layout,
+    )
   }
-  const softFaceMask = softenMask(faceMask)
-  if (!softFaceMask.some((value) => value >= 128)) throw new Error('没有识别到可靠的面部皮肤')
+  const softFaceMask = faceSkinMask(skinSamples, protectedSamples, totalSamples)
+  logMainInfo('[Beauty] 面部选区完成', {
+    candidates: processedFaces.length,
+    accepted: acceptedFaceCount,
+    activePixels: softFaceMask.reduce((count, value) => count + Number(value >= 128), 0),
+  })
   const skinMask = bodySkinMask(humanResult.bytes)
   const inferenceMs = performance.now() - inferenceStarted
   return {
     requestId,
     width: MASK_SIZE,
     height: MASK_SIZE,
-    faceCount: processedFaces.length,
+    faceCount: acceptedFaceCount,
     faceMask: toArrayBuffer(softFaceMask),
     skinMask: toArrayBuffer(skinMask),
     performance: {
