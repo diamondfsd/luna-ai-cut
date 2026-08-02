@@ -14,6 +14,7 @@ import {
   DEFAULT_BEAUTY_PARAMETERS,
   beautyLayers,
   beautyParameters,
+  isBeautyAnalysisCurrent,
   updateBeautyParameters,
   type BeautyParameters,
 } from './beautyLayers'
@@ -29,7 +30,7 @@ export function BeautyPanel() {
   const layers = useMemo(() => beautyLayers(edit.pipeline), [edit.pipeline])
   const parameters = useMemo(() => beautyParameters(edit.pipeline), [edit.pipeline])
   const hasSkinAnalysis = Boolean(layers.face && layers.body)
-  const analyzed = Boolean(layers.face && layers.body && layers.acne && layers.spot && layers.wrinkle)
+  const analyzed = useMemo(() => isBeautyAnalysisCurrent(edit.pipeline), [edit.pipeline])
   const enabled = Boolean(layers.face?.enabled || layers.body?.enabled || layers.acne?.enabled || layers.spot?.enabled || layers.wrinkle?.enabled)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')

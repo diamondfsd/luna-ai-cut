@@ -13,7 +13,7 @@ const models = {
   ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))),
   humanParsing: [
     process.env.LUNA_E2E_HUMAN_PARSING_MODEL_PATH,
-    path.join(supportRoot, 'schp-atr-18-int8', 'model.onnx'),
+    path.join(supportRoot, 'schp-atr-resnet101-512', 'model.onnx'),
   ].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))),
   faceDetector: [
     process.env.LUNA_E2E_ULTRAFACE_MODEL_PATH,
@@ -25,7 +25,7 @@ async function installBeautyModels(lunaApp: LunaElectronApp): Promise<void> {
   const modelRoot = path.join(lunaApp.temporaryRoot, 'user-data', 'models')
   await Promise.all([
     ['face-parsing-resnet18', models.face!],
-    ['schp-atr-18-int8', models.humanParsing!],
+    ['schp-atr-resnet101-512', models.humanParsing!],
     ['ultraface-rfb-320', models.faceDetector!],
   ].map(async ([id, source]) => {
     const directory = path.join(modelRoot, id)
@@ -147,7 +147,7 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
     spotExposure: 0.04,
     wrinkleDenoise: 15,
     faceModelId: 'face-parsing-resnet18',
-    bodyModelId: 'schp-atr-18-int8',
+    bodyModelId: 'schp-atr-resnet101-512',
     paths: expect.any(Array),
   })
 

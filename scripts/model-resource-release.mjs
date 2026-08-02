@@ -10,8 +10,8 @@ import ts from 'typescript'
 
 export const MODEL_RELEASE_VERSION = '1.0.0'
 export const MODEL_RELEASE_TAG = `model-resources-v${MODEL_RELEASE_VERSION}`
-export const MODEL_MANIFEST_NAME = `${MODEL_RELEASE_TAG}.json`
-export const SUBTITLE_MODEL_MANIFEST_NAME = `subtitle-${MODEL_MANIFEST_NAME}`
+export const MODEL_MANIFEST_NAME = `${MODEL_RELEASE_TAG}-r3.json`
+export const SUBTITLE_MODEL_MANIFEST_NAME = `subtitle-${MODEL_RELEASE_TAG}.json`
 export const DEFAULT_GITCODE_OWNER = 'diamondfsd'
 export const DEFAULT_GITCODE_REPO = 'luna-ai-cut-package-release'
 
@@ -83,6 +83,9 @@ export function buildModelArtifacts(registry) {
       license: model.license,
       source: model.source,
       licenseUrl: model.licenseUrl,
+      trainingData: model.trainingData,
+      trainingDataUrl: model.trainingDataUrl,
+      convertedFromSha256: model.convertedFromSha256,
     })
   }
   for (const model of registry.SAM_MODELS) {
