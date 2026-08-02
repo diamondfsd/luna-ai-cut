@@ -135,6 +135,17 @@ try {
   close(beautyWrinkleLayer.color.denoise, 75, 'wrinkle reduction must preserve texture with bounded local smoothing')
   assert.deepEqual(beautyLayers.beautyClipboardSettings(beautyPipeline), { parameters: maxBeautyParameters, enabled: true })
   assert.deepEqual(beautyLayers.beautyParameters(beautyPipeline), maxBeautyParameters)
+  assert.equal(beautyLayers.isBeautyAnalysisCurrent(beautyPipeline), true, 'current beauty masks must not be analyzed again')
+  assert.equal(
+    beautyLayers.isBeautyAnalysisCurrent({
+      ...beautyPipeline,
+      beautyMasks: beautyPipeline.beautyMasks.map((layer) => layer.id === 'beauty-body-skin'
+        ? { ...layer, modelId: 'schp-atr-18-int8' }
+        : layer),
+    }),
+    false,
+    'legacy SCHP ResNet18 body masks must be regenerated with ResNet101',
+  )
   assert.deepEqual(
     beautyVisualization.BEAUTY_MASK_VISUALIZATION.map(({ id, label, color }) => ({ id, label, color })),
     [
