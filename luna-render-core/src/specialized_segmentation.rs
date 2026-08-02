@@ -580,8 +580,9 @@ fn segment_human_parsing_with_session(
     let mut input = vec![0.0f32; 3 * SIDE * SIDE];
     for pixel in 0..SIDE * SIDE {
         for channel in 0..3 {
+            let source_channel = 2 - channel;
             input[channel * SIDE * SIDE + pixel] =
-                (rgb[pixel * 3 + channel] as f32 / 255.0 - mean[channel]) / std[channel];
+                (rgb[pixel * 3 + source_channel] as f32 / 255.0 - mean[channel]) / std[channel];
         }
     }
     let tensor = Tensor::from_array(([1usize, 3, SIDE, SIDE], input))

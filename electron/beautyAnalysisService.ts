@@ -6,6 +6,7 @@ import { loadModel } from './modelLoader'
 import { logMainInfo } from './loggerService'
 import { extractFaceBoxesInWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
 import { detectFaceBlemishes } from './beautyBlemishDetection'
+import { bodySkinMaskFromHumanLabels } from './beautySkinSegmentation'
 
 const INPUT_SIZE = 640
 const MASK_SIZE = 1024
@@ -14,7 +15,6 @@ const HUMAN_PARSE_SIZE = 512
 const FACE_SKIN_LABELS = new Set([1, 7, 8, 10, 14])
 const FACE_EYE_LABELS = new Set([4, 5])
 const FACE_MOUTH_LABELS = new Set([11, 12, 13])
-const BODY_SKIN_LABELS = new Set([12, 13, 14, 15])
 
 interface SourceLayout {
   scaledWidth: number
@@ -281,22 +281,6 @@ function resizeContent(rgb: Buffer, layout: SourceLayout, outputSize: number): B
   return output
 }
 
-function bodySkinMask(labels: Buffer): Uint8Array {
-  const output = new Uint8Array(MASK_SIZE * MASK_SIZE)
-  let hasSkin = false
-  for (let y = 0; y < MASK_SIZE; y += 1) {
-    const sourceY = Math.min(HUMAN_PARSE_SIZE - 1, Math.floor((y + 0.5) * HUMAN_PARSE_SIZE / MASK_SIZE))
-    for (let x = 0; x < MASK_SIZE; x += 1) {
-      const sourceX = Math.min(HUMAN_PARSE_SIZE - 1, Math.floor((x + 0.5) * HUMAN_PARSE_SIZE / MASK_SIZE))
-      if (BODY_SKIN_LABELS.has(labels[sourceY * HUMAN_PARSE_SIZE + sourceX])) {
-        output[y * MASK_SIZE + x] = 255
-        hasSkin = true
-      }
-    }
-  }
-  return hasSkin ? softenMask(output) : output
-}
-
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
 }
@@ -312,7 +296,7 @@ export async function analyzeBeauty(
   const modelStarted = performance.now()
   const [faceDetector, humanParser, faceParser] = await Promise.all([
     loadModel('ultraface-rfb-320', undefined, signal),
-    loadModel('schp-atr-18-int8', undefined, signal),
+    loadModel('schp-atr-resnet101-512', undefined, signal),
     loadModel('face-parsing-resnet18', undefined, signal),
   ])
   const modelLoadMs = performance.now() - modelStarted
@@ -386,7 +370,9 @@ export async function analyzeBeauty(
     spotCount,
     wrinkleCount,
   })
-  const skinMask = bodySkinMask(humanResult.bytes)
+  const skinMask = softenMask(
+    bodySkinMaskFromHumanLabels(humanResult.bytes, HUMAN_PARSE_SIZE, MASK_SIZE),
+  )
   const inferenceMs = performance.now() - inferenceStarted
   return {
     requestId,

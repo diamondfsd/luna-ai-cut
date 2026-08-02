@@ -5,6 +5,7 @@ export const BEAUTY_BODY_LAYER_ID = 'beauty-body-skin'
 export const BEAUTY_ACNE_LAYER_ID = 'beauty-acne'
 export const BEAUTY_SPOT_LAYER_ID = 'beauty-spots'
 export const BEAUTY_WRINKLE_LAYER_ID = 'beauty-wrinkles'
+export const BEAUTY_BODY_MODEL_ID = 'schp-atr-resnet101-512'
 
 export type BeautyMaskKind = 'face' | 'body' | 'acne' | 'spot' | 'wrinkle'
 
@@ -80,6 +81,17 @@ export function beautyParameters(pipeline: EditPipeline): BeautyParameters {
       ? clampParameter(Math.round((layers.wrinkle.color.denoise ?? 0) / 0.75))
       : DEFAULT_BEAUTY_PARAMETERS.wrinkleReduction,
   }
+}
+
+export function isBeautyAnalysisCurrent(pipeline: EditPipeline): boolean {
+  const layers = beautyLayers(pipeline)
+  return Boolean(
+    layers.face
+      && layers.body?.modelId === BEAUTY_BODY_MODEL_ID
+      && layers.acne
+      && layers.spot
+      && layers.wrinkle,
+  )
 }
 
 function faceColor(parameters: BeautyParameters): EditPipeline['color'] {
@@ -205,7 +217,7 @@ export function createBeautyMaskLayer(
     inverted: false,
     feather: 0,
     kind: 'semantic',
-    modelId: body ? 'schp-atr-18-int8' : 'face-parsing-resnet18',
+    modelId: body ? BEAUTY_BODY_MODEL_ID : 'face-parsing-resnet18',
     enabled: true,
     blendMode: 'normal',
     color: face
