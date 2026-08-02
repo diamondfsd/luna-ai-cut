@@ -30,6 +30,7 @@ import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
 import { buildVideoSegmentExportRanges } from '../workspace/trim/videoSegmentMarkers'
 import { MaskOverlay } from '../workspace/mask/MaskOverlay'
+import { BeautyMaskOverlay } from '../workspace/beauty/BeautyMaskOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
@@ -42,6 +43,8 @@ import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMe
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
 import { activeRemovalOperation, latestReadyRemovalOperation } from '../workspace/removal/removalOperations'
+import { beautyClipboardSettings } from '../workspace/beauty/beautyLayers'
+import { prepareBeautyPasteTargets } from '../workspace/beauty/beautyPaste'
 import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
@@ -133,6 +136,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [fitScalePercent, setFitScalePercent] = useState(100)
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
+  const pasteInProgressRef = useRef(false)
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
   const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
   useEffect(() => {
@@ -294,7 +298,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       border: { ...visiblePipeline.border, enabled: false },
     })
   }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft, mask.editing])
-  const keepCompositionVideoRenderer = edit.previewPipeline.colorMasks.some(
+  const keepCompositionVideoRenderer = [...edit.previewPipeline.colorMasks, ...edit.previewPipeline.beautyMasks].some(
     (layer) => layer.enabled && !layer.loadError,
   )
 
@@ -454,13 +458,12 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     saveTimerRef.current = window.setTimeout(flushProjectSave, 500)
   }, [creativeModeId, edit.pipeline, flushProjectSave, media.activeIndex, media.activeMedia?.path, media.currentProject?.id, setCurrentProject, settingsReady])
 
-  function handlePastePipeline(): void {
-    const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
-    if (indices.size === 1 && indices.has(media.activeIndex)) {
-      edit.pasteToCurrent()
+  async function handlePastePipeline(): Promise<void> {
+    if (pasteInProgressRef.current) {
+      toast.show('正在识别并应用效果')
       return
     }
-
+    const indices = media.selectedIndices.size > 0 ? media.selectedIndices : new Set([media.activeIndex])
     const data = readWorkspacePipelineClipboard()
     if (!data) {
       toast.error('没有可粘贴的效果')
@@ -474,10 +477,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       watermark: data.watermark,
       border: data.border,
     }
+    const singleActiveTarget = indices.size === 1 && indices.has(media.activeIndex)
     const targetIndices = new Set([...indices].filter((index) => {
       const asset = media.media[index]
       if (!asset) return false
-      if (!data.sourceAssetId || asset.id !== data.sourceAssetId) return true
+      if (singleActiveTarget || !data.sourceAssetId || asset.id !== data.sourceAssetId) return true
       return (data.sourceProjectId ?? null) !== (media.currentProject?.id ?? null)
     }))
     if (targetIndices.size === 0) {
@@ -485,30 +489,78 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       return
     }
 
-    if (media.currentProject) {
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-      pendingProjectSaveRef.current = null
-      const nextAssets = media.currentProject.assets.map((asset, i) => {
-        if (!targetIndices.has(i)) return asset
-        const nextPipeline = mergePipeline(normalizePipeline(asset.pipeline, defaultPipelineRef.current), patch)
-        return { ...asset, pipeline: nextPipeline }
-      })
-      const nextProject = { ...media.currentProject, assets: nextAssets, updatedAt: new Date().toISOString() }
-      media.setCurrentProject(nextProject)
-      window.luna.workspace.saveProject(nextProject).catch(() => undefined)
-    } else {
-      media.setTransientMedia((current) => current.map((asset, i) => {
-        if (!targetIndices.has(i)) return asset
-        const nextPipeline = mergePipeline(normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current), patch)
-        return { ...asset, pipeline: nextPipeline }
-      }))
-    }
+    pasteInProgressRef.current = true
+    try {
+      const nextPipelines = new Map<number, EditPipeline>()
+      for (const index of targetIndices) {
+        const asset = media.media[index]
+        if (!asset) continue
+        const current = index === media.activeIndex
+          ? edit.pipeline
+          : normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current)
+        nextPipelines.set(index, mergePipeline(current, patch))
+      }
 
-    if (targetIndices.has(media.activeIndex)) {
-      edit.commitPatch(patch)
+      if (data.beauty) {
+        if (!media.currentProject) {
+          toast.error('请先将素材加入项目后再粘贴美颜参数')
+          return
+        }
+        const beautyTargets = [...targetIndices].flatMap((index) => {
+          const asset = media.media[index]
+          const pipeline = nextPipelines.get(index)
+          return asset?.kind === 'image' && pipeline
+            ? [{ index, assetId: asset.id, filePath: asset.path, pipeline }]
+            : []
+        })
+        if (beautyTargets.length > 0) {
+          const prepared = await prepareBeautyPasteTargets(
+            media.currentProject.id,
+            beautyTargets,
+            data.beauty,
+            (completed, total) => {
+              if (completed === 0) toast.show(`正在识别目标图片的美颜区域，共 ${total} 张`, 10_000)
+            },
+          )
+          for (const [index, pipeline] of prepared) nextPipelines.set(index, pipeline)
+        }
+      }
+
+      if (media.currentProject) {
+        if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+        pendingProjectSaveRef.current = null
+        const nextAssets = media.currentProject.assets.map((asset, i) => {
+          if (!targetIndices.has(i)) return asset
+          return { ...asset, pipeline: nextPipelines.get(i) ?? asset.pipeline }
+        })
+        const nextProject = { ...media.currentProject, assets: nextAssets, updatedAt: new Date().toISOString() }
+        media.setCurrentProject(nextProject)
+        await window.luna.workspace.saveProject(nextProject)
+      } else {
+        media.setTransientMedia((current) => current.map((asset, i) => {
+          if (!targetIndices.has(i)) return asset
+          const existingPipeline = (asset as { pipeline?: unknown }).pipeline
+          return { ...asset, pipeline: nextPipelines.get(i) ?? existingPipeline }
+        }))
+      }
+
+      if (targetIndices.has(media.activeIndex)) {
+        const activePipeline = nextPipelines.get(media.activeIndex)
+        edit.commitPatch(activePipeline ? {
+          ...patch,
+          colorMasks: activePipeline.colorMasks,
+          beautyMasks: activePipeline.beautyMasks,
+        } : patch)
+      }
+      toast.success(data.beauty
+        ? `已重新识别并粘贴到 ${targetIndices.size} 个素材`
+        : `已粘贴到 ${targetIndices.size} 个素材`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '粘贴效果失败')
+    } finally {
+      pasteInProgressRef.current = false
     }
-    toast.success(`已粘贴到 ${targetIndices.size} 个素材`)
   }
 
   function handleCopyPipeline(): void {
@@ -518,6 +570,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         const asset = media.media[selectedIndex]
         if (!asset) return
         const pipe = normalizePipeline((asset as { pipeline?: unknown }).pipeline, defaultPipelineRef.current)
+        const beauty = beautyClipboardSettings(pipe)
         writeWorkspacePipelineClipboard({
           sourceAssetId: asset.id,
           sourceProjectId: media.currentProject?.id ?? null,
@@ -527,8 +580,9 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           lutFilter: structuredClone(pipe.lutFilter),
           watermark: structuredClone(pipe.watermark),
           border: structuredClone(pipe.border),
+          beauty: beauty ? structuredClone(beauty) : undefined,
         })
-        toast.success('已复制调色、滤镜、水印和边框设置')
+        toast.success(beauty ? '已复制效果和美颜参数' : '已复制调色、滤镜、水印和边框设置')
         return
       }
     }
@@ -804,7 +858,15 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             hideControls={edit.trimActive}
             onMetricsChange={canvas.setPreviewMetrics}
             onMediaSize={handleMediaSize}
-            renderOverlay={() => (edit.cropActive ? <CropOverlay /> : mask.editing ? <MaskOverlay /> : null)}
+            renderOverlay={() => (
+              edit.cropActive
+                ? <CropOverlay />
+                : mask.editing
+                  ? <MaskOverlay />
+                  : edit.beautyMaskPreview
+                    ? <BeautyMaskOverlay />
+                    : null
+            )}
             viewScale={viewScale}
             onViewScaleChange={setViewScale}
             onFitScaleChange={setFitScalePercent}
