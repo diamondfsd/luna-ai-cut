@@ -9,6 +9,7 @@ import { useEditPipeline } from '../hooks/useEditPipeline'
 import { useCropMachine } from '../hooks/useCropMachine'
 import type { WorkspaceTool } from '../components/WorkspaceEditSidebar'
 import { useTrimMachine } from '../trim/useTrimMachine'
+import { beautyClipboardSettings, type BeautyClipboardSettings } from '../beauty/beautyLayers'
 
 const PIPELINE_CLIPBOARD_KEY = 'workspace_pipeline_clipboard'
 
@@ -21,6 +22,7 @@ export interface WorkspacePipelineClipboardData {
   lutFilter: EditPipeline['lutFilter']
   watermark: EditPipeline['watermark']
   border: EditPipeline['border']
+  beauty?: BeautyClipboardSettings
 }
 
 export function readWorkspacePipelineClipboard(): WorkspacePipelineClipboardData | null {
@@ -60,6 +62,10 @@ interface WorkspaceEditValue {
   pipetteActive: boolean
   setPipetteActive: (v: boolean) => void
 
+  // Beauty mask preview (session-only)
+  beautyMaskPreview: boolean
+  setBeautyMaskPreview: (v: boolean) => void
+
   // Crop state machine
   cropActive: boolean
   transformDraft: EditPipeline['transform'] | null
@@ -86,7 +92,6 @@ interface WorkspaceEditValue {
 
   // Clipboard
   copyPipeline: (source?: { assetId: string; projectId: string | null }) => void
-  pasteToCurrent: () => void
 
   // Trim
   trimActive: boolean
@@ -120,6 +125,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   const [activeTool, setActiveTool] = useState<WorkspaceTool>('color')
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [pipetteActive, setPipetteActive] = useState(false)
+  const [beautyMaskPreview, setBeautyMaskPreview] = useState(false)
 
   const cropMachine = useCropMachine(pipeline, commitPatch, setActiveTool)
   const trimMachine = useTrimMachine()
@@ -138,6 +144,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       logRestore: DEFAULT_PIPELINE.logRestore,
       lutFilter: DEFAULT_PIPELINE.lutFilter,
       colorMasks: [],
+      beautyMasks: [],
       border: { ...DEFAULT_PIPELINE.border, enabled: previewPipeline.border.enabled },
     }),
     [previewPipeline],
@@ -154,18 +161,11 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
       lutFilter: structuredClone(pipeline.lutFilter),
       watermark: structuredClone(pipeline.watermark),
       border: structuredClone(pipeline.border),
+      beauty: structuredClone(beautyClipboardSettings(pipeline)),
     }
     writeWorkspacePipelineClipboard(data)
-    toast.success('已复制调色、滤镜、水印和边框设置')
+    toast.success(data.beauty ? '已复制效果和美颜参数' : '已复制调色、滤镜、水印和边框设置')
   }, [pipeline])
-
-  const pasteToCurrent = useCallback(() => {
-    const data = readWorkspacePipelineClipboard()
-    if (!data) toast.error('没有可粘贴的效果')
-    if (!data) return
-    commitPatch({ color: data.color, effects: data.effects, logRestore: data.logRestore, lutFilter: data.lutFilter, watermark: data.watermark, border: data.border })
-    toast.success('已粘贴调色、滤镜、水印和边框设置')
-  }, [commitPatch])
 
   // Crop-aware pipeline update: draft in crop mode, commit otherwise
   const updateWorkspacePanel = useCallback((patch: PipelinePatch) => {
@@ -263,12 +263,13 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     setCompareOriginal,
     pipetteActive,
     setPipetteActive,
+    beautyMaskPreview,
+    setBeautyMaskPreview,
     ...cropMachine,
     ...trimMachine,
     selectTool,
     updateWorkspacePanel,
     copyPipeline,
-    pasteToCurrent,
   }), [
     pipeline,
     previewPipeline,
@@ -288,12 +289,12 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     setCompareOriginal,
     pipetteActive,
     setPipetteActive,
+    beautyMaskPreview,
     cropMachine,
     trimMachine,
     selectTool,
     updateWorkspacePanel,
     copyPipeline,
-    pasteToCurrent,
   ])
 
   return (
