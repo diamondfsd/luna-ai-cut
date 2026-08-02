@@ -156,7 +156,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
   // 各面板是否有未保存的修改
   const toolModified = useMemo(() => ({
     filter: isFilterModified(edit.pipeline.lutFilter),
-    beauty: edit.pipeline.colorMasks.some((layer) => layer.id === 'beauty-face-skin' || layer.id === 'beauty-body-skin'),
+    beauty: edit.pipeline.beautyMasks.length > 0,
     color: isColorModified(edit.pipeline.color) || edit.pipeline.colorMasks.some((layer) => isColorModified(layer.color)),
     crop: isCropModified(edit.pipeline.transform),
     trim: isTrimModified(edit.pipeline.trim) || edit.pipeline.videoMarkers.length > 0,

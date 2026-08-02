@@ -8,8 +8,14 @@ export interface WorkspaceBeautyAnalysisResult {
   width: number
   height: number
   faceCount: number
+  acneCount: number
+  spotCount: number
+  wrinkleCount: number
   faceMask: ArrayBuffer
   skinMask: ArrayBuffer
+  acneMask: ArrayBuffer
+  spotMask: ArrayBuffer
+  wrinkleMask: ArrayBuffer
   performance: {
     modelLoadMs: number
     imagePrepareMs: number

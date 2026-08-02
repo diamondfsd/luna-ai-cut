@@ -2,17 +2,28 @@ import { createDefaultPipeline, type ColorMaskLayer, type EditPipeline } from '.
 
 export const BEAUTY_FACE_LAYER_ID = 'beauty-face-skin'
 export const BEAUTY_BODY_LAYER_ID = 'beauty-body-skin'
+export const BEAUTY_ACNE_LAYER_ID = 'beauty-acne'
+export const BEAUTY_SPOT_LAYER_ID = 'beauty-spots'
+export const BEAUTY_WRINKLE_LAYER_ID = 'beauty-wrinkles'
+
+export type BeautyMaskKind = 'face' | 'body' | 'acne' | 'spot' | 'wrinkle'
 
 export interface BeautyParameters {
   faceWhitening: number
   skinWhitening: number
   smoothing: number
+  acneRemoval: number
+  spotRemoval: number
+  wrinkleReduction: number
 }
 
 export const DEFAULT_BEAUTY_PARAMETERS: BeautyParameters = {
   faceWhitening: 18,
   skinWhitening: 10,
   smoothing: 28,
+  acneRemoval: 35,
+  spotRemoval: 20,
+  wrinkleReduction: 20,
 }
 
 const BODY_EXPOSURE_PER_STEP = 0.0015
@@ -27,10 +38,19 @@ function normalizedExposure(value: number): number {
   return Number(value.toFixed(4))
 }
 
-export function beautyLayers(pipeline: EditPipeline): { face: ColorMaskLayer | null; body: ColorMaskLayer | null } {
+export function beautyLayers(pipeline: EditPipeline): {
+  face: ColorMaskLayer | null
+  body: ColorMaskLayer | null
+  acne: ColorMaskLayer | null
+  spot: ColorMaskLayer | null
+  wrinkle: ColorMaskLayer | null
+} {
   return {
-    face: pipeline.colorMasks.find((layer) => layer.id === BEAUTY_FACE_LAYER_ID) ?? null,
-    body: pipeline.colorMasks.find((layer) => layer.id === BEAUTY_BODY_LAYER_ID) ?? null,
+    face: pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_FACE_LAYER_ID) ?? null,
+    body: pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_BODY_LAYER_ID) ?? null,
+    acne: pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_ACNE_LAYER_ID) ?? null,
+    spot: pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_SPOT_LAYER_ID) ?? null,
+    wrinkle: pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_WRINKLE_LAYER_ID) ?? null,
   }
 }
 
@@ -50,6 +70,15 @@ export function beautyParameters(pipeline: EditPipeline): BeautyParameters {
     faceWhitening: clampParameter(faceWhitening),
     skinWhitening,
     smoothing: clampParameter(Math.round(layers.face?.color.denoise ?? 0)),
+    acneRemoval: layers.acne
+      ? clampParameter(Math.round(layers.acne.color.denoise ?? 0))
+      : DEFAULT_BEAUTY_PARAMETERS.acneRemoval,
+    spotRemoval: layers.spot
+      ? clampParameter(Math.round((layers.spot.color.exposure ?? 0) / 0.002))
+      : DEFAULT_BEAUTY_PARAMETERS.spotRemoval,
+    wrinkleReduction: layers.wrinkle
+      ? clampParameter(Math.round((layers.wrinkle.color.denoise ?? 0) / 0.75))
+      : DEFAULT_BEAUTY_PARAMETERS.wrinkleReduction,
   }
 }
 
@@ -71,6 +100,33 @@ function bodyColor(parameters: BeautyParameters): EditPipeline['color'] {
     ...createDefaultPipeline().color,
     exposure: normalizedExposure(parameters.skinWhitening * BODY_EXPOSURE_PER_STEP),
     highlights: -parameters.skinWhitening * 0.02,
+  }
+}
+
+function acneColor(parameters: BeautyParameters): EditPipeline['color'] {
+  return {
+    ...createDefaultPipeline().color,
+    exposure: normalizedExposure(parameters.acneRemoval * 0.00025),
+    highlights: -parameters.acneRemoval * 0.02,
+    denoise: parameters.acneRemoval,
+  }
+}
+
+function spotColor(parameters: BeautyParameters): EditPipeline['color'] {
+  return {
+    ...createDefaultPipeline().color,
+    exposure: normalizedExposure(parameters.spotRemoval * 0.002),
+    saturation: -parameters.spotRemoval * 0.08,
+    denoise: parameters.spotRemoval * 0.35,
+  }
+}
+
+function wrinkleColor(parameters: BeautyParameters): EditPipeline['color'] {
+  return {
+    ...createDefaultPipeline().color,
+    exposure: normalizedExposure(parameters.wrinkleReduction * 0.0002),
+    clarity: -parameters.wrinkleReduction * 0.2,
+    denoise: parameters.wrinkleReduction * 0.75,
   }
 }
 
@@ -102,22 +158,46 @@ export function beautyLayerColorForRendering(
 }
 
 export function updateBeautyParameters(pipeline: EditPipeline, parameters: BeautyParameters): ColorMaskLayer[] {
-  return pipeline.colorMasks.map((layer) => {
+  return pipeline.beautyMasks.map((layer) => {
     if (layer.id === BEAUTY_FACE_LAYER_ID) return { ...layer, color: faceColor(parameters) }
     if (layer.id === BEAUTY_BODY_LAYER_ID) return { ...layer, color: bodyColor(parameters) }
+    if (layer.id === BEAUTY_ACNE_LAYER_ID) return { ...layer, color: acneColor(parameters) }
+    if (layer.id === BEAUTY_SPOT_LAYER_ID) return { ...layer, color: spotColor(parameters) }
+    if (layer.id === BEAUTY_WRINKLE_LAYER_ID) return { ...layer, color: wrinkleColor(parameters) }
     return layer
   })
 }
 
 export function createBeautyMaskLayer(
-  kind: 'face' | 'body',
+  kind: BeautyMaskKind,
   saved: { path: string; width: number; height: number },
   parameters: BeautyParameters,
 ): ColorMaskLayer {
   const face = kind === 'face'
+  const body = kind === 'body'
+  const acne = kind === 'acne'
+  const spot = kind === 'spot'
+  const id = face
+    ? BEAUTY_FACE_LAYER_ID
+    : body
+      ? BEAUTY_BODY_LAYER_ID
+      : acne
+        ? BEAUTY_ACNE_LAYER_ID
+        : spot
+          ? BEAUTY_SPOT_LAYER_ID
+          : BEAUTY_WRINKLE_LAYER_ID
+  const name = face
+    ? '美颜 · 面部皮肤'
+    : body
+      ? '美颜 · 身体皮肤'
+      : acne
+        ? '美颜 · 祛痘'
+        : spot
+          ? '美颜 · 淡斑'
+          : '美颜 · 淡化皱纹'
   return {
-    id: face ? BEAUTY_FACE_LAYER_ID : BEAUTY_BODY_LAYER_ID,
-    name: face ? '美颜 · 面部皮肤' : '美颜 · 身体皮肤',
+    id,
+    name,
     path: saved.path,
     width: saved.width,
     height: saved.height,
@@ -125,15 +205,41 @@ export function createBeautyMaskLayer(
     inverted: false,
     feather: 0,
     kind: 'semantic',
-    modelId: face ? 'face-parsing-resnet18' : 'schp-atr-18-int8',
+    modelId: body ? 'schp-atr-18-int8' : 'face-parsing-resnet18',
     enabled: true,
     blendMode: 'normal',
-    color: face ? faceColor(parameters) : bodyColor(parameters),
+    color: face
+      ? faceColor(parameters)
+      : body
+        ? bodyColor(parameters)
+        : acne
+          ? acneColor(parameters)
+          : spot
+            ? spotColor(parameters)
+            : wrinkleColor(parameters),
   }
 }
 
-export function replaceBeautyLayers(pipeline: EditPipeline, face: ColorMaskLayer, body: ColorMaskLayer): ColorMaskLayer[] {
-  return [...pipeline.colorMasks.filter((layer) => (
-    layer.id !== BEAUTY_FACE_LAYER_ID && layer.id !== BEAUTY_BODY_LAYER_ID
-  )), body, face]
+export function replaceBeautyLayers(
+  face: ColorMaskLayer,
+  body: ColorMaskLayer,
+  acne: ColorMaskLayer,
+  spot: ColorMaskLayer,
+  wrinkle: ColorMaskLayer,
+): ColorMaskLayer[] {
+  return [body, face, spot, acne, wrinkle]
+}
+
+export interface BeautyClipboardSettings {
+  parameters: BeautyParameters
+  enabled: boolean
+}
+
+export function beautyClipboardSettings(pipeline: EditPipeline): BeautyClipboardSettings | undefined {
+  const layers = beautyLayers(pipeline)
+  if (!layers.face || !layers.body) return undefined
+  return {
+    parameters: beautyParameters(pipeline),
+    enabled: Boolean(layers.face.enabled || layers.body.enabled || layers.acne?.enabled || layers.spot?.enabled || layers.wrinkle?.enabled),
+  }
 }

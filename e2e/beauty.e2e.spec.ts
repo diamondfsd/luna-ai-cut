@@ -34,22 +34,25 @@ async function installBeautyModels(lunaApp: LunaElectronApp): Promise<void> {
   }))
 }
 
-async function openBeautyFixture(lunaApp: LunaElectronApp, fixtureSource: string): Promise<{
+async function openBeautyFixture(lunaApp: LunaElectronApp, fixtureSource: string, assetCount = 1): Promise<{
   project: { id: string }
   projectName: string
 }> {
   const fixtureDir = path.join(lunaApp.temporaryRoot, 'fixtures')
-  const inputPath = path.join(fixtureDir, `beauty-input${path.extname(fixtureSource) || '.jpg'}`)
   await mkdir(fixtureDir, { recursive: true })
-  await copyFile(fixtureSource, inputPath)
+  const assets = await Promise.all(Array.from({ length: assetCount }, async (_, index) => {
+    const inputPath = path.join(fixtureDir, `beauty-input-${index + 1}${path.extname(fixtureSource) || '.jpg'}`)
+    await copyFile(fixtureSource, inputPath)
+    return { id: `beauty-input-${index + 1}`, name: `beauty-input-${index + 1}.jpg`, path: inputPath, kind: 'image' as const }
+  }))
   const projectName = `美颜 E2E ${Date.now()}`
-  const project = await lunaApp.page.evaluate(async ({ name, filePath }) => (
-    window.luna.workspace.createProject(name, [{ id: 'beauty-input', name: 'beauty-input.jpg', path: filePath, kind: 'image' }])
-  ), { name: projectName, filePath: inputPath })
+  const project = await lunaApp.page.evaluate(async ({ name, projectAssets }) => (
+    window.luna.workspace.createProject(name, projectAssets)
+  ), { name: projectName, projectAssets: assets })
   await lunaApp.page.reload()
   await lunaApp.page.waitForLoadState('domcontentloaded')
   await lunaApp.page.getByRole('link', { name: '工作台', exact: true }).click()
-  await lunaApp.page.getByRole('button', { name: `${projectName} 1 个素材`, exact: true }).click()
+  await lunaApp.page.getByRole('button', { name: `${projectName} ${assetCount} 个素材`, exact: true }).click()
   await expect(lunaApp.page.locator('.preview-loading-overlay')).toBeHidden({ timeout: 30_000 })
   return { project, projectName }
 }
@@ -72,13 +75,22 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
   await expect(lunaApp.page.getByRole('button', { name: '重试识别', exact: true })).toHaveCount(0)
   await expect(lunaApp.page.getByLabel('皮肤整体美白数值')).toHaveValue('10')
   await expect(lunaApp.page.getByLabel('磨皮数值')).toHaveValue('28')
-  const setBeautyValues = async (face: number, skin: number, smoothing: number) => {
+  await expect(lunaApp.page.getByLabel('祛痘数值')).toHaveValue('35')
+  await expect(lunaApp.page.getByLabel('淡化色斑数值')).toHaveValue('20')
+  await expect(lunaApp.page.getByLabel('淡化皱纹数值')).toHaveValue('20')
+  const setBeautyValues = async (face: number, skin: number, smoothing: number, acne = 35, spots = 20, wrinkles = 20) => {
     await lunaApp.page.getByLabel('面部美白数值').fill(String(face))
     await lunaApp.page.getByLabel('面部美白数值').blur()
     await lunaApp.page.getByLabel('皮肤整体美白数值').fill(String(skin))
     await lunaApp.page.getByLabel('皮肤整体美白数值').blur()
     await lunaApp.page.getByLabel('磨皮数值').fill(String(smoothing))
     await lunaApp.page.getByLabel('磨皮数值').blur()
+    await lunaApp.page.getByLabel('祛痘数值').fill(String(acne))
+    await lunaApp.page.getByLabel('祛痘数值').blur()
+    await lunaApp.page.getByLabel('淡化色斑数值').fill(String(spots))
+    await lunaApp.page.getByLabel('淡化色斑数值').blur()
+    await lunaApp.page.getByLabel('淡化皱纹数值').fill(String(wrinkles))
+    await lunaApp.page.getByLabel('淡化皱纹数值').blur()
     await expect(lunaApp.page.locator('.preview-loading-overlay')).toBeHidden({ timeout: 30_000 })
   }
   const captureBeauty = async (name: string) => {
@@ -100,14 +112,14 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
   const projectFile = path.join(lunaApp.temporaryRoot, 'downloads', 'workspace-projects', project.id, 'project.json')
   await expect.poll(async () => {
     const persisted = JSON.parse(await readFile(projectFile, 'utf8')) as {
-      assets: Array<{ pipeline?: { colorMasks?: Array<{
+      assets: Array<{ pipeline?: { beautyMasks?: Array<{
         id: string
         path: string
         modelId: string
         color: { exposure: number; brightness: number; denoise: number }
       }> } }>
     }
-    const layers = persisted.assets[0]?.pipeline?.colorMasks ?? []
+    const layers = persisted.assets[0]?.pipeline?.beautyMasks ?? []
     const face = layers.find((layer) => layer.id === 'beauty-face-skin')
     const body = layers.find((layer) => layer.id === 'beauty-body-skin')
     return {
@@ -117,44 +129,128 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
       faceDenoise: face?.color.denoise,
       bodyExposure: body?.color.exposure,
       bodyBrightness: body?.color.brightness,
+      acneDenoise: layers.find((layer) => layer.id === 'beauty-acne')?.color.denoise,
+      spotExposure: layers.find((layer) => layer.id === 'beauty-spots')?.color.exposure,
+      wrinkleDenoise: layers.find((layer) => layer.id === 'beauty-wrinkles')?.color.denoise,
       faceModelId: face?.modelId,
       bodyModelId: body?.modelId,
       paths: [face?.path, body?.path].filter(Boolean),
     }
   }).toMatchObject({
-    count: 2,
+    count: 5,
     faceExposure: 0.45,
     faceBrightness: 0,
     faceDenoise: 100,
     bodyExposure: 0.15,
     bodyBrightness: 0,
+    acneDenoise: 35,
+    spotExposure: 0.04,
+    wrinkleDenoise: 15,
     faceModelId: 'face-parsing-resnet18',
     bodyModelId: 'schp-atr-18-int8',
     paths: expect.any(Array),
   })
 
   const persisted = JSON.parse(await readFile(projectFile, 'utf8')) as {
-    assets: Array<{ pipeline?: { colorMasks?: Array<{ id: string; path: string }> } }>
+    assets: Array<{ pipeline?: {
+      colorMasks?: Array<{ id: string; path: string }>
+      beautyMasks?: Array<{ id: string; path: string }>
+    } }>
   }
-  const beautyMasks = (persisted.assets[0]?.pipeline?.colorMasks ?? [])
+  expect(persisted.assets[0]?.pipeline?.colorMasks ?? []).toEqual([])
+  const beautyMasks = (persisted.assets[0]?.pipeline?.beautyMasks ?? [])
     .filter((layer) => layer.id.startsWith('beauty-'))
-  expect(beautyMasks).toHaveLength(2)
+  expect(beautyMasks).toHaveLength(5)
   for (const mask of beautyMasks) {
     expect((await stat(mask.path)).size).toBeGreaterThan(0)
     const pgm = await readFile(mask.path)
     const dataStart = pgm.indexOf('\n255\n') + 5
     expect(dataStart).toBeGreaterThan(4)
     expect(pgm.subarray(0, dataStart).toString('ascii')).toContain('1024 1024')
-    expect(pgm.subarray(dataStart).some((value) => value >= 128), `${mask.id} 应包含有效皮肤像素`).toBe(true)
-    expect(
-      pgm.subarray(dataStart).some((value) => value > 0 && value < 255),
-      `${mask.id} 应包含渐变边缘`,
-    ).toBe(true)
+    if (mask.id === 'beauty-face-skin' || mask.id === 'beauty-body-skin') {
+      expect(pgm.subarray(dataStart).some((value) => value >= 128), `${mask.id} 应包含有效皮肤像素`).toBe(true)
+      expect(
+        pgm.subarray(dataStart).some((value) => value > 0 && value < 255),
+        `${mask.id} 应包含渐变边缘`,
+      ).toBe(true)
+    }
     if (screenshotDir) await copyFile(mask.path, path.join(screenshotDir, `${mask.id}.pgm`))
   }
   if (screenshotDir) {
     await lunaApp.page.locator('.preview-stage').screenshot({ path: path.join(screenshotDir, 'beauty-max.png') })
   }
+  const projectBeforeMaskPreview = await readFile(projectFile, 'utf8')
+  await lunaApp.page.getByRole('button', { name: '测试蒙版', exact: true }).click()
+  const legend = lunaApp.page.getByLabel('美颜蒙版图例')
+  await expect(legend).toBeVisible()
+  for (const label of ['身体肌肤', '面部肌肤', '斑点', '痘痘', '皱纹']) {
+    await expect(legend.getByText(label, { exact: true })).toBeVisible()
+  }
+  await expect(lunaApp.page.getByTestId('beauty-mask-overlay')).toHaveAttribute('data-mask-count', '5')
+  expect(await readFile(projectFile, 'utf8')).toEqual(projectBeforeMaskPreview)
+  await lunaApp.page.getByRole('button', { name: '关闭蒙版', exact: true }).click()
+  await expect(lunaApp.page.getByTestId('beauty-mask-overlay')).toHaveCount(0)
+  await lunaApp.page.getByRole('button', { name: '调色与蒙版', exact: true }).click()
+  await expect(lunaApp.page.locator('.workspace-color-mask-layer')).toHaveCount(1)
+  await expect(lunaApp.page.getByText('美颜 · 面部皮肤', { exact: true })).toHaveCount(0)
+  expect(lunaApp.runtimeErrors).toEqual([])
+})
+
+test('复制美颜参数后在目标图片自动重新识别并应用', async ({ lunaApp }) => {
+  test.skip(!models.face || !models.humanParsing || !models.faceDetector, '需要提供面部、人体和人脸检测 ONNX 模型')
+  await installBeautyModels(lunaApp)
+  const fixtureSource = process.env.LUNA_E2E_BEAUTY_INPUT_PATH
+    ?? path.join(projectRoot, 'test-data', 'color-masking', 'd3-effect-set', 'images', 'person', 'person-04.jpg')
+  const { project } = await openBeautyFixture(lunaApp, fixtureSource, 2)
+  await lunaApp.page.getByRole('button', { name: '美颜', exact: true }).click()
+  await expect(lunaApp.page.getByLabel('面部美白数值')).toHaveValue('18', { timeout: 120_000 })
+
+  const values = [33, 22, 44, 55, 66, 77]
+  const labels = ['面部美白数值', '皮肤整体美白数值', '磨皮数值', '祛痘数值', '淡化色斑数值', '淡化皱纹数值']
+  for (let index = 0; index < labels.length; index += 1) {
+    const input = lunaApp.page.getByLabel(labels[index])
+    await input.fill(String(values[index]))
+    await input.blur()
+  }
+  await lunaApp.page.getByRole('button', { name: '调色与蒙版', exact: true }).click()
+  await lunaApp.page.getByRole('button', { name: '复制效果', exact: true }).click()
+  await lunaApp.page.locator('.workspace-thumb[data-media-index="1"]').click()
+
+  const projectFile = path.join(lunaApp.temporaryRoot, 'downloads', 'workspace-projects', project.id, 'project.json')
+  await expect.poll(async () => {
+    const persisted = JSON.parse(await readFile(projectFile, 'utf8')) as { assets: Array<{ pipeline?: { beautyMasks?: unknown[] } }> }
+    return persisted.assets[1]?.pipeline?.beautyMasks?.length ?? 0
+  }).toBe(0)
+  await lunaApp.page.getByRole('button', { name: '粘贴效果', exact: true }).click()
+  await expect(lunaApp.page.getByText('已重新识别并粘贴到 1 个素材', { exact: true })).toBeVisible({ timeout: 120_000 })
+
+  await expect.poll(async () => {
+    const persisted = JSON.parse(await readFile(projectFile, 'utf8')) as {
+      assets: Array<{ pipeline?: { beautyMasks?: Array<{ id: string; path: string; enabled: boolean; color: { exposure: number; denoise: number } }> } }>
+    }
+    const layers = persisted.assets[1]?.pipeline?.beautyMasks ?? []
+    return {
+      count: layers.filter((layer) => layer.id.startsWith('beauty-')).length,
+      face: layers.find((layer) => layer.id === 'beauty-face-skin')?.color.exposure,
+      body: layers.find((layer) => layer.id === 'beauty-body-skin')?.color.exposure,
+      smoothing: layers.find((layer) => layer.id === 'beauty-face-skin')?.color.denoise,
+      acne: layers.find((layer) => layer.id === 'beauty-acne')?.color.denoise,
+      spots: layers.find((layer) => layer.id === 'beauty-spots')?.color.exposure,
+      wrinkles: layers.find((layer) => layer.id === 'beauty-wrinkles')?.color.denoise,
+      paths: layers.filter((layer) => layer.id.startsWith('beauty-')).map((layer) => layer.path),
+      enabled: layers.filter((layer) => layer.id.startsWith('beauty-')).every((layer) => layer.enabled),
+    }
+  }).toMatchObject({
+    count: 5,
+    face: 0.132,
+    body: 0.033,
+    smoothing: 44,
+    acne: 55,
+    spots: 0.132,
+    wrinkles: 57.75,
+    paths: expect.arrayContaining([expect.stringContaining('beauty-input-2')]),
+    enabled: true,
+  })
   expect(lunaApp.runtimeErrors).toEqual([])
 })
 
@@ -175,19 +271,22 @@ test('图片美颜没有检测到人脸时仍提供参数且保持空效果', as
   await expect(lunaApp.page.getByLabel('面部美白数值')).toHaveValue('18', { timeout: 120_000 })
   await expect(lunaApp.page.getByLabel('皮肤整体美白数值')).toHaveValue('10')
   await expect(lunaApp.page.getByLabel('磨皮数值')).toHaveValue('28')
+  await expect(lunaApp.page.getByLabel('祛痘数值')).toHaveValue('35')
+  await expect(lunaApp.page.getByLabel('淡化色斑数值')).toHaveValue('20')
+  await expect(lunaApp.page.getByLabel('淡化皱纹数值')).toHaveValue('20')
   await expect(lunaApp.page.getByRole('button', { name: '重试识别', exact: true })).toHaveCount(0)
   const projectFile = path.join(lunaApp.temporaryRoot, 'downloads', 'workspace-projects', project.id, 'project.json')
   await expect.poll(async () => {
     const persisted = JSON.parse(await readFile(projectFile, 'utf8')) as {
-      assets: Array<{ pipeline?: { colorMasks?: Array<{ id: string; path: string }> } }>
+      assets: Array<{ pipeline?: { beautyMasks?: Array<{ id: string; path: string }> } }>
     }
-    return (persisted.assets[0]?.pipeline?.colorMasks ?? []).filter((layer) => layer.id.startsWith('beauty-'))
-  }).toHaveLength(2)
+    return (persisted.assets[0]?.pipeline?.beautyMasks ?? []).filter((layer) => layer.id.startsWith('beauty-'))
+  }).toHaveLength(5)
 
   const persisted = JSON.parse(await readFile(projectFile, 'utf8')) as {
-    assets: Array<{ pipeline?: { colorMasks?: Array<{ id: string; path: string }> } }>
+    assets: Array<{ pipeline?: { beautyMasks?: Array<{ id: string; path: string }> } }>
   }
-  const face = persisted.assets[0]?.pipeline?.colorMasks?.find((layer) => layer.id === 'beauty-face-skin')
+  const face = persisted.assets[0]?.pipeline?.beautyMasks?.find((layer) => layer.id === 'beauty-face-skin')
   expect(face).toBeDefined()
   const pgm = await readFile(face!.path)
   const dataStart = pgm.indexOf('\n255\n') + 5

@@ -92,7 +92,8 @@ function renderColorWithLocalAdjustments(
 }
 
 export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline): PreviewLayer[] {
-  return pipeline.colorMasks.filter((layer) => layer.enabled && !layer.loadError).reverse().map((layer) => ({
+  const adjustmentMasks = [...pipeline.beautyMasks, ...pipeline.colorMasks]
+  return adjustmentMasks.filter((layer) => layer.enabled && !layer.loadError).reverse().map((layer) => ({
     ...base,
     layerType: 'local-color' as const,
     blendMode: layer.blendMode,
@@ -119,7 +120,7 @@ export function applyLocalColorToSourceMediaLayers(
     layer.layerType === 'media' && layer.filePath === sourcePath
   ))
   const hasBlurredBackground = sourceLayers.some((layer) => layer.layoutRole === 'background')
-  const hasLocalColor = pipeline.colorMasks.some((layer) => layer.enabled && !layer.loadError)
+  const hasLocalColor = [...pipeline.colorMasks, ...pipeline.beautyMasks].some((layer) => layer.enabled && !layer.loadError)
   if (hasBlurredBackground && hasLocalColor) {
     const contentLayer = sourceLayers.find((layer) => layer.layoutRole === 'content')
       ?? sourceLayers.find((layer) => layer.layoutRole !== 'background')

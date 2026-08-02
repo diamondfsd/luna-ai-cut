@@ -63,6 +63,7 @@ try {
     'src/workspace/shared/editPipelineSerialization.ts',
     'src/workspace/shared/editHistory.ts',
     'src/workspace/shared/renderLayerPipeline.ts',
+    'src/workspace/beauty/beautyMaskVisualization.ts',
     'src/workspace/creative/only-your-color/onlyYourColorAutoTone.ts',
     'src/workspace/creative/only-your-color/onlyYourColorLayers.ts',
     'src/workspace/creative/only-your-color/onlyYourColorBatchMask.ts',
@@ -96,6 +97,7 @@ try {
   const historyModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/editHistory.js')))
   const renderModule = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/renderLayerPipeline.js')))
   const beautyLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/beauty/beautyLayers.js')))
+  const beautyVisualization = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/beauty/beautyMaskVisualization.js')))
   const onlyYourColorAutoTone = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorAutoTone.js')))
   const onlyYourColorLayers = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorLayers.js')))
   const onlyYourColorBatchMask = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/creative/only-your-color/onlyYourColorBatchMask.js')))
@@ -117,15 +119,33 @@ try {
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
   const { createDefaultPipeline, mergePipeline } = pipelineModule
 
-  const maxBeautyParameters = { faceWhitening: 100, skinWhitening: 100, smoothing: 0 }
+  const maxBeautyParameters = { faceWhitening: 100, skinWhitening: 100, smoothing: 0, acneRemoval: 100, spotRemoval: 100, wrinkleReduction: 100 }
   const beautyBodyLayer = beautyLayers.createBeautyMaskLayer('body', { path: '/tmp/body.pgm', width: 1, height: 1 }, maxBeautyParameters)
   const beautyFaceLayer = beautyLayers.createBeautyMaskLayer('face', { path: '/tmp/face.pgm', width: 1, height: 1 }, maxBeautyParameters)
-  const beautyPipeline = { ...createDefaultPipeline(), colorMasks: [beautyBodyLayer, beautyFaceLayer] }
+  const beautyAcneLayer = beautyLayers.createBeautyMaskLayer('acne', { path: '/tmp/acne.pgm', width: 1, height: 1 }, maxBeautyParameters)
+  const beautySpotLayer = beautyLayers.createBeautyMaskLayer('spot', { path: '/tmp/spot.pgm', width: 1, height: 1 }, maxBeautyParameters)
+  const beautyWrinkleLayer = beautyLayers.createBeautyMaskLayer('wrinkle', { path: '/tmp/wrinkle.pgm', width: 1, height: 1 }, maxBeautyParameters)
+  const beautyPipeline = { ...createDefaultPipeline(), beautyMasks: [beautyBodyLayer, beautyFaceLayer, beautySpotLayer, beautyAcneLayer, beautyWrinkleLayer] }
   close(beautyBodyLayer.color.exposure, 0.15, 'stored body whitening must preserve existing slider semantics')
   close(beautyFaceLayer.color.exposure, 0.45, 'stored face whitening must preserve existing slider semantics')
   close(beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyBodyLayer).exposure, 0.3, 'rendered body whitening maximum must double')
   close(beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyFaceLayer).exposure, 0.6, 'rendered face exposure must include doubled overall whitening')
+  close(beautyAcneLayer.color.denoise, 100, 'acne removal strength must use local edge-aware smoothing')
+  close(beautySpotLayer.color.exposure, 0.2, 'spot removal strength must use local exposure correction')
+  close(beautyWrinkleLayer.color.denoise, 75, 'wrinkle reduction must preserve texture with bounded local smoothing')
+  assert.deepEqual(beautyLayers.beautyClipboardSettings(beautyPipeline), { parameters: maxBeautyParameters, enabled: true })
   assert.deepEqual(beautyLayers.beautyParameters(beautyPipeline), maxBeautyParameters)
+  assert.deepEqual(
+    beautyVisualization.BEAUTY_MASK_VISUALIZATION.map(({ id, label, color }) => ({ id, label, color })),
+    [
+      { id: 'beauty-body-skin', label: '身体肌肤', color: '#35C46A' },
+      { id: 'beauty-face-skin', label: '面部肌肤', color: '#21C7D9' },
+      { id: 'beauty-spots', label: '斑点', color: '#F2C94C' },
+      { id: 'beauty-acne', label: '痘痘', color: '#FF4D5A' },
+      { id: 'beauty-wrinkles', label: '皱纹', color: '#D45AF0' },
+    ],
+    'beauty mask preview legend must retain five distinct stable mappings',
+  )
 
   const normalizedTrack = maskTrack.normalizeMaskTrack({
     version: 1,
@@ -661,7 +681,10 @@ try {
       color: { ...createDefaultPipeline().color, brightness: 1.8 },
     },
   ]
-  const migratedBeauty = renderModule.buildLocalColorLayers(baseLayer, legacyBeauty)
+  const migratedBeautyPipeline = mergePipeline(legacyBeauty, {})
+  assert.equal(migratedBeautyPipeline.colorMasks.length, 0, 'legacy beauty masks must leave the color mask collection')
+  assert.equal(migratedBeautyPipeline.beautyMasks.length, 2, 'legacy beauty masks must migrate into the beauty collection')
+  const migratedBeauty = renderModule.buildLocalColorLayers(baseLayer, migratedBeautyPipeline)
   const migratedFace = migratedBeauty.find((layer) => layer.maskPath === '/beauty-face.pgm')
   const migratedBody = migratedBeauty.find((layer) => layer.maskPath === '/beauty-body.pgm')
   assert.equal(migratedFace.color.brightness, 0, 'legacy face whitening must not render as additive RGB brightness')

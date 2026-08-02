@@ -101,11 +101,11 @@ export function WorkspacePreviewToolbar({
           <IconButton variant="ghost" size="compact" icon={<Redo2 size={16} />} aria-label="重做" disabled={!edit.canRedo || mask.busy} onClick={edit.redo} />
         </Tooltip>
         <div className="workspace-toolbar-divider" />
-        <Tooltip content="复制效果（含边框）">
-          <IconButton variant="ghost" size="compact" icon={<Copy size={16} />} disabled={!hasActiveMedia} onClick={onCopy} />
+        <Tooltip content="复制效果（含美颜和边框）">
+          <IconButton variant="ghost" size="compact" icon={<Copy size={16} />} aria-label="复制效果" disabled={!hasActiveMedia} onClick={onCopy} />
         </Tooltip>
-        <Tooltip content="粘贴效果（含边框）">
-          <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={16} />} onClick={onPaste} />
+        <Tooltip content="粘贴效果（自动重新识别美颜区域）">
+          <IconButton variant="ghost" size="compact" icon={<ClipboardPaste size={16} />} aria-label="粘贴效果" onClick={onPaste} />
         </Tooltip>
         {media.brokenPaths.size > 0 && (
           <>

@@ -59,6 +59,8 @@ export interface EditPipeline {
   colorMask: ColorMaskRef | null
   /** 按列表顺序叠加的局部调色蒙版。 */
   colorMasks: ColorMaskLayer[]
+  /** 美颜识别生成的专用蒙版，不参与调色蒙版编辑。 */
+  beautyMasks: ColorMaskLayer[]
   transform: {
     crop: CropRect | null
     orientation: number
@@ -132,6 +134,7 @@ export type PipelinePatch = {
   videoMarkers?: VideoSegmentMarker[]
   colorMask?: ColorMaskRef | null
   colorMasks?: ColorMaskLayer[]
+  beautyMasks?: ColorMaskLayer[]
   transform?: Partial<EditPipeline['transform']>
   color?: Partial<EditPipeline['color']>
   effects?: Partial<EditPipeline['effects']>
@@ -172,6 +175,7 @@ export const DEFAULT_PIPELINE: EditPipeline = {
   videoMarkers: [],
   colorMask: null,
   colorMasks: [],
+  beautyMasks: [],
   transform: {
     crop: null,
     orientation: 0,
@@ -365,11 +369,17 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
 
   const legacyMask = normalizeColorMask(pipeline.colorMask)
   const rawColorMasks = Array.isArray(pipeline.colorMasks) ? pipeline.colorMasks : []
-  const colorMasks = (rawColorMasks.length > 0
+  const rawBeautyMasks = Array.isArray(pipeline.beautyMasks) ? pipeline.beautyMasks : []
+  const isBeautyMask = (layer: ColorMaskLayer) => layer.id.startsWith('beauty-')
+  const normalizedLegacyMasks = (rawColorMasks.length > 0
     ? rawColorMasks
     : legacyMask ? [{ ...legacyMask, id: 'mask-1', name: '蒙版 1', enabled: true, color: DEFAULT_PIPELINE.color }] : [])
     .map(normalizeColorMaskLayer)
     .filter((layer): layer is ColorMaskLayer => layer !== null)
+  const colorMasks = normalizedLegacyMasks.filter((layer) => !isBeautyMask(layer))
+  const beautyMasks = (rawBeautyMasks.length > 0
+    ? rawBeautyMasks.map(normalizeColorMaskLayer).filter((layer): layer is ColorMaskLayer => layer !== null)
+    : normalizedLegacyMasks.filter(isBeautyMask))
 
   return {
     ...pipeline,
@@ -377,6 +387,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
     videoMarkers: normalizeVideoSegmentMarkers(pipeline.videoMarkers),
     colorMask: null,
     colorMasks,
+    beautyMasks,
     watermark: { ...DEFAULT_PIPELINE.watermark, ...(pipeline.watermark ?? {}) },
     border: normalizeBorder(pipeline.border),
     color: {
@@ -440,6 +451,7 @@ function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { bl
     color: { ...DEFAULT_PIPELINE.color, ...colorInput },
     colorMask: null,
     colorMasks: [],
+    beautyMasks: [],
   }).color
   return {
     ...mask,
@@ -515,6 +527,7 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
     videoMarkers: patch.videoMarkers !== undefined ? patch.videoMarkers : pipeline.videoMarkers,
     colorMask: patch.colorMask !== undefined ? patch.colorMask : pipeline.colorMask,
     colorMasks: patch.colorMasks !== undefined ? patch.colorMasks : pipeline.colorMasks,
+    beautyMasks: patch.beautyMasks !== undefined ? patch.beautyMasks : pipeline.beautyMasks,
     transform: { ...pipeline.transform, ...patch.transform },
     color: {
       ...pipeline.color,

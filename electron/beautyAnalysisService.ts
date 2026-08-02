@@ -5,6 +5,7 @@ import { getFfmpegPath } from './ffmpeg/pipeline'
 import { loadModel } from './modelLoader'
 import { logMainInfo } from './loggerService'
 import { extractFaceBoxesInWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
+import { detectFaceBlemishes } from './beautyBlemishDetection'
 
 const INPUT_SIZE = 640
 const MASK_SIZE = 1024
@@ -164,6 +165,31 @@ function faceSkinMask(
   return hasSkin ? softenMask(output) : output
 }
 
+function compositeFaceMask(
+  output: Uint8Array,
+  localMask: Uint8Array,
+  crop: ReturnType<typeof cropFace>,
+  layout: SourceLayout,
+): void {
+  const left = Math.max(0, Math.floor((crop.x - layout.padX) / layout.scaledWidth * MASK_SIZE))
+  const top = Math.max(0, Math.floor((crop.y - layout.padY) / layout.scaledHeight * MASK_SIZE))
+  const right = Math.min(MASK_SIZE - 1, Math.ceil((crop.x + crop.side - layout.padX) / layout.scaledWidth * MASK_SIZE))
+  const bottom = Math.min(MASK_SIZE - 1, Math.ceil((crop.y + crop.side - layout.padY) / layout.scaledHeight * MASK_SIZE))
+  for (let y = top; y <= bottom; y += 1) {
+    const inputY = layout.padY + (y + 0.5) / MASK_SIZE * layout.scaledHeight
+    const localY = Math.floor((inputY - crop.y) / crop.side * FACE_PARSE_SIZE)
+    if (localY < 0 || localY >= FACE_PARSE_SIZE) continue
+    for (let x = left; x <= right; x += 1) {
+      const inputX = layout.padX + (x + 0.5) / MASK_SIZE * layout.scaledWidth
+      const localX = Math.floor((inputX - crop.x) / crop.side * FACE_PARSE_SIZE)
+      if (localX < 0 || localX >= FACE_PARSE_SIZE) continue
+      const value = localMask[localY * FACE_PARSE_SIZE + localX]
+      const index = y * MASK_SIZE + x
+      if (value > output[index]) output[index] = value
+    }
+  }
+}
+
 function closeMask(input: Uint8Array): Uint8Array {
   const dilated = new Uint8Array(input.length)
   for (let y = 0; y < MASK_SIZE; y += 1) {
@@ -297,7 +323,7 @@ export async function analyzeBeauty(
   const { rgb, layout } = await decodeImage(filePath, signal)
   const imagePrepareMs = performance.now() - prepareStarted
 
-  report?.('recognizing', '正在识别人脸与皮肤', null)
+  report?.('recognizing', '正在识别人脸、皮肤和面部瑕疵', null)
   const inferenceStarted = performance.now()
   const humanRgb = resizeContent(rgb, layout, HUMAN_PARSE_SIZE)
   const [faces, humanResult] = await Promise.all([
@@ -311,8 +337,14 @@ export async function analyzeBeauty(
   const skinSamples = new Uint32Array(MASK_SIZE * MASK_SIZE)
   const protectedSamples = new Uint32Array(MASK_SIZE * MASK_SIZE)
   const totalSamples = new Uint32Array(MASK_SIZE * MASK_SIZE)
+  const acneMask = new Uint8Array(MASK_SIZE * MASK_SIZE)
+  const spotMask = new Uint8Array(MASK_SIZE * MASK_SIZE)
+  const wrinkleMask = new Uint8Array(MASK_SIZE * MASK_SIZE)
   const processedFaces = faces.slice(0, 8)
   let acceptedFaceCount = 0
+  let acneCount = 0
+  let spotCount = 0
+  let wrinkleCount = 0
   for (const face of processedFaces) {
     signal.throwIfAborted()
     const crop = cropFace(rgb, face, layout)
@@ -328,6 +360,13 @@ export async function analyzeBeauty(
     })
     if (!assessment.mask) continue
     acceptedFaceCount += 1
+    const blemishes = detectFaceBlemishes(crop.rgb, parsed.bytes, FACE_PARSE_SIZE)
+    compositeFaceMask(acneMask, blemishes.acneMask, crop, layout)
+    compositeFaceMask(spotMask, blemishes.spotMask, crop, layout)
+    compositeFaceMask(wrinkleMask, blemishes.wrinkleMask, crop, layout)
+    acneCount += blemishes.acneCount
+    spotCount += blemishes.spotCount
+    wrinkleCount += blemishes.wrinkleCount
     compositeFaceLabels(
       skinSamples,
       protectedSamples,
@@ -343,6 +382,9 @@ export async function analyzeBeauty(
     candidates: processedFaces.length,
     accepted: acceptedFaceCount,
     activePixels: softFaceMask.reduce((count, value) => count + Number(value >= 128), 0),
+    acneCount,
+    spotCount,
+    wrinkleCount,
   })
   const skinMask = bodySkinMask(humanResult.bytes)
   const inferenceMs = performance.now() - inferenceStarted
@@ -351,8 +393,14 @@ export async function analyzeBeauty(
     width: MASK_SIZE,
     height: MASK_SIZE,
     faceCount: acceptedFaceCount,
+    acneCount,
+    spotCount,
+    wrinkleCount,
     faceMask: toArrayBuffer(softFaceMask),
     skinMask: toArrayBuffer(skinMask),
+    acneMask: toArrayBuffer(acneMask),
+    spotMask: toArrayBuffer(spotMask),
+    wrinkleMask: toArrayBuffer(wrinkleMask),
     performance: {
       modelLoadMs: Math.round(modelLoadMs),
       imagePrepareMs: Math.round(imagePrepareMs),

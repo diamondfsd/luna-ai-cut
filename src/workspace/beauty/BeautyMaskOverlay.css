@@ -1,0 +1,12 @@
+.beauty-mask-overlay-shell {
+  position: absolute;
+  z-index: 8;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.beauty-mask-overlay {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

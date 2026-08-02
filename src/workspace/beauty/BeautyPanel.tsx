@@ -1,4 +1,4 @@
-import { Loader2, RotateCcw, ScanFace } from 'lucide-react'
+import { Eye, EyeOff, Loader2, RotateCcw, ScanFace } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Accordion, Button, Switch, toast } from '../../ui'
@@ -8,24 +8,29 @@ import { ParamSlider } from '../components/ParamSlider'
 import {
   BEAUTY_BODY_LAYER_ID,
   BEAUTY_FACE_LAYER_ID,
+  BEAUTY_ACNE_LAYER_ID,
+  BEAUTY_SPOT_LAYER_ID,
+  BEAUTY_WRINKLE_LAYER_ID,
   DEFAULT_BEAUTY_PARAMETERS,
   beautyLayers,
   beautyParameters,
-  createBeautyMaskLayer,
-  replaceBeautyLayers,
   updateBeautyParameters,
   type BeautyParameters,
 } from './beautyLayers'
+import { analyzeBeautyForPipeline } from './beautyAnalysisClient'
+import { BEAUTY_MASK_VISUALIZATION } from './beautyMaskVisualization'
 import './BeautyPanel.css'
 
 export function BeautyPanel() {
   const edit = useWorkspaceEdit()
+  const setBeautyMaskPreview = edit.setBeautyMaskPreview
   const media = useWorkspaceMedia()
   const activeAsset = media.currentProject?.assets[media.activeIndex] ?? null
   const layers = useMemo(() => beautyLayers(edit.pipeline), [edit.pipeline])
   const parameters = useMemo(() => beautyParameters(edit.pipeline), [edit.pipeline])
-  const analyzed = Boolean(layers.face && layers.body)
-  const enabled = Boolean(layers.face?.enabled || layers.body?.enabled)
+  const hasSkinAnalysis = Boolean(layers.face && layers.body)
+  const analyzed = Boolean(layers.face && layers.body && layers.acne && layers.spot && layers.wrinkle)
+  const enabled = Boolean(layers.face?.enabled || layers.body?.enabled || layers.acne?.enabled || layers.spot?.enabled || layers.wrinkle?.enabled)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [analysisError, setAnalysisError] = useState('')
@@ -43,8 +48,11 @@ export function BeautyPanel() {
   useEffect(() => {
     attemptedAssetRef.current = null
     setAnalysisError('')
+    setBeautyMaskPreview(false)
     return cancel
-  }, [activeAsset?.id, cancel])
+  }, [activeAsset?.id, cancel, setBeautyMaskPreview])
+
+  useEffect(() => () => setBeautyMaskPreview(false), [setBeautyMaskPreview])
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
     if (progress.requestId !== requestRef.current) return
@@ -52,7 +60,7 @@ export function BeautyPanel() {
   }), [])
 
   const commitParameters = useCallback((next: BeautyParameters) => {
-    edit.commitPatch({ colorMasks: updateBeautyParameters(edit.pipeline, next) })
+    edit.commitPatch({ beautyMasks: updateBeautyParameters(edit.pipeline, next) })
   }, [edit])
 
   const analyze = useCallback(async () => {
@@ -66,19 +74,18 @@ export function BeautyPanel() {
     requestRef.current = requestId
     setBusy(true)
     setStatus('正在准备美颜模型')
-    const currentParameters = analyzed ? parameters : DEFAULT_BEAUTY_PARAMETERS
+    const currentParameters = hasSkinAnalysis ? parameters : DEFAULT_BEAUTY_PARAMETERS
     try {
-      const result = await window.luna.workspace.analyzeBeauty({ requestId, filePath: activeAsset.path })
-      if (requestRef.current !== requestId) return
-      setStatus('正在保存皮肤区域')
-      const [faceSaved, bodySaved] = await Promise.all([
-        window.luna.workspace.saveColorMask(media.currentProject.id, activeAsset.id, result.width, result.height, result.faceMask, 0),
-        window.luna.workspace.saveColorMask(media.currentProject.id, activeAsset.id, result.width, result.height, result.skinMask, 0),
-      ])
-      if (requestRef.current !== requestId) return
-      const faceLayer = createBeautyMaskLayer('face', faceSaved, currentParameters)
-      const bodyLayer = createBeautyMaskLayer('body', bodySaved, currentParameters)
-      edit.commitPatch({ colorMasks: replaceBeautyLayers(edit.pipeline, faceLayer, bodyLayer) })
+      const beautyMasks = await analyzeBeautyForPipeline({
+        requestId,
+        projectId: media.currentProject.id,
+        assetId: activeAsset.id,
+        filePath: activeAsset.path,
+        parameters: currentParameters,
+        onStatus: setStatus,
+        shouldContinue: () => requestRef.current === requestId,
+      })
+      if (beautyMasks) edit.commitPatch({ beautyMasks })
     } catch (error) {
       if (requestRef.current !== requestId) return
       const message = error instanceof Error ? error.message : '美颜分析失败'
@@ -91,7 +98,7 @@ export function BeautyPanel() {
         setStatus('')
       }
     }
-  }, [activeAsset, analyzed, cancel, edit, media.currentProject, parameters])
+  }, [activeAsset, cancel, edit, hasSkinAnalysis, media.currentProject, parameters])
 
   useEffect(() => {
     if (analyzed || busy || activeAsset?.kind !== 'image' || !media.currentProject) return
@@ -103,22 +110,26 @@ export function BeautyPanel() {
 
   const setEnabled = (next: boolean) => {
     edit.commitPatch({
-      colorMasks: edit.pipeline.colorMasks.map((layer) => (
-        layer.id === BEAUTY_FACE_LAYER_ID || layer.id === BEAUTY_BODY_LAYER_ID
+      beautyMasks: edit.pipeline.beautyMasks.map((layer) => (
+        layer.id === BEAUTY_FACE_LAYER_ID
+          || layer.id === BEAUTY_BODY_LAYER_ID
+          || layer.id === BEAUTY_ACNE_LAYER_ID
+          || layer.id === BEAUTY_SPOT_LAYER_ID
+          || layer.id === BEAUTY_WRINKLE_LAYER_ID
           ? { ...layer, enabled: next }
           : layer
       )),
     })
   }
 
-  const reset = () => commitParameters({ faceWhitening: 0, skinWhitening: 0, smoothing: 0 })
+  const reset = () => commitParameters({ faceWhitening: 0, skinWhitening: 0, smoothing: 0, acneRemoval: 0, spotRemoval: 0, wrinkleReduction: 0 })
 
   return (
     <div className="beauty-panel">
       <div className="beauty-panel-summary">
         <div>
           <strong>自然美颜</strong>
-          <span>{analyzed ? '已识别人脸和可见皮肤' : '本地识别人脸和可见皮肤'}</span>
+          <span>{analyzed ? '已识别人脸、皮肤和面部瑕疵' : '本地识别人脸、皮肤和面部瑕疵'}</span>
         </div>
         {analyzed && <Switch checked={enabled} onCheckedChange={setEnabled} ariaLabel="启用美颜" />}
       </div>
@@ -144,15 +155,37 @@ export function BeautyPanel() {
       )}
 
       {analyzed && (
-        <Accordion
-          title="肤质与美白"
-          defaultOpen
-          actions={(
-            <button className="workspace-acc-reset" type="button" onClick={reset} title="重置美颜参数">
-              <RotateCcw size={11} />
-            </button>
-          )}
-        >
+        <>
+          <div className="beauty-mask-test">
+            <Button
+              variant="secondary"
+              size="compact"
+              icon={edit.beautyMaskPreview ? <EyeOff size={15} /> : <Eye size={15} />}
+              aria-pressed={edit.beautyMaskPreview}
+              onClick={() => setBeautyMaskPreview(!edit.beautyMaskPreview)}
+            >
+              {edit.beautyMaskPreview ? '关闭蒙版' : '测试蒙版'}
+            </Button>
+            {edit.beautyMaskPreview && (
+              <div className="beauty-mask-legend" aria-label="美颜蒙版图例">
+                {BEAUTY_MASK_VISUALIZATION.map((item) => (
+                  <span key={item.id} className="beauty-mask-legend-item">
+                    <i style={{ backgroundColor: item.color }} aria-hidden="true" />
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <Accordion
+            title="肤质与美白"
+            defaultOpen
+            actions={(
+              <button className="workspace-acc-reset" type="button" onClick={reset} title="重置美颜参数">
+                <RotateCcw size={11} />
+              </button>
+            )}
+          >
           <ParamSlider
             label="面部美白"
             value={parameters.faceWhitening}
@@ -177,7 +210,32 @@ export function BeautyPanel() {
             onChange={(smoothing) => commitParameters({ ...parameters, smoothing })}
             formatValue={(value) => String(value)}
           />
-        </Accordion>
+          <ParamSlider
+            label="祛痘"
+            value={parameters.acneRemoval}
+            min={0}
+            max={100}
+            onChange={(acneRemoval) => commitParameters({ ...parameters, acneRemoval })}
+            formatValue={(value) => String(value)}
+          />
+          <ParamSlider
+            label="淡化色斑"
+            value={parameters.spotRemoval}
+            min={0}
+            max={100}
+            onChange={(spotRemoval) => commitParameters({ ...parameters, spotRemoval })}
+            formatValue={(value) => String(value)}
+          />
+          <ParamSlider
+            label="淡化皱纹"
+            value={parameters.wrinkleReduction}
+            min={0}
+            max={100}
+            onChange={(wrinkleReduction) => commitParameters({ ...parameters, wrinkleReduction })}
+            formatValue={(value) => String(value)}
+          />
+          </Accordion>
+        </>
       )}
     </div>
   )
