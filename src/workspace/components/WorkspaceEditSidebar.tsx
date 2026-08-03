@@ -107,12 +107,16 @@ interface WorkspaceEditSidebarProps {
   onTrimSeek: (time: number) => void
   livePhotoSelection: LivePhotoSelection | null
   onLivePhotoSelectionChange: (selection: LivePhotoSelection | null) => void
+  activeMarkerId: string | null
+  onActiveMarkerChange: (markerId: string | null) => void
+  playingMarkerId: string | null
+  onToggleMarkerPreview: (marker: Extract<EditPipeline['outputMarkers'][number], { kind: 'video' | 'live' }>) => void
   allowWatermark: boolean
   runtimeResourceLoading?: { fonts: boolean; luts: boolean }
   onOpenCreative: (modeId: CreativeModeId) => void
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimSeek, livePhotoSelection, onLivePhotoSelectionChange, allowWatermark, runtimeResourceLoading, onOpenCreative }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimSeek, livePhotoSelection, onLivePhotoSelectionChange, activeMarkerId, onActiveMarkerChange, playingMarkerId, onToggleMarkerPreview, allowWatermark, runtimeResourceLoading, onOpenCreative }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -324,6 +328,11 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
               liveSelection={livePhotoSelection}
               onLiveSelectionChange={onLivePhotoSelectionChange}
               videoPath={mediaCtx.activeMedia?.path ?? null}
+              activeMarkerId={activeMarkerId}
+              onActiveMarkerChange={onActiveMarkerChange}
+              playingMarkerId={playingMarkerId}
+              onToggleMarkerPreview={onToggleMarkerPreview}
+              onMarkerPreviewTimeChange={onTrimSeek}
               onStartTimeChange={(time) => {
                 const end = edit.pipeline.trim?.endTime ?? duration
                 edit.commitPatch({ trim: { startTime: time, endTime: Math.max(time + 0.1, end) } })
@@ -342,7 +351,6 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                   onTrimSeek(marker.coverTime)
                   return
                 }
-                edit.commitPatch({ trim: { startTime: marker.startTime, endTime: marker.endTime } })
                 onTrimSeek(marker.startTime)
               }}
             />

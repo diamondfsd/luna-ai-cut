@@ -186,6 +186,13 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [trimDurationSourcePath, setTrimDurationSourcePath] = useState<string | null>(null)
   const [trimPlaying, setTrimPlaying] = useState(false)
   const [livePhotoSelection, setLivePhotoSelection] = useState<LivePhotoSelection | null>(null)
+  const [activeOutputMarkerId, setActiveOutputMarkerId] = useState<string | null>(null)
+  const [playingOutputMarkerId, setPlayingOutputMarkerId] = useState<string | null>(null)
+  const markerPlaybackRangeRef = useRef<{
+    markerId: string
+    startTime: number
+    endTime: number
+  } | null>(null)
   const activeVideoPath = media.activeMedia?.path && isVideoPath(media.activeMedia.path)
     ? media.activeMedia.path
     : null
@@ -193,9 +200,17 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const activeVideoPathRef = useRef<string | null>(activeVideoPath)
   activeVideoPathRef.current = activeVideoPath
   const activeTrimDuration = trimDurationSourcePath === activeVideoPath ? trimDuration : 0
+  const activeVideoMarker = edit.pipeline.outputMarkers.find((marker): marker is Extract<EditPipeline['outputMarkers'][number], { kind: 'video' }> => (
+    marker.kind === 'video' && marker.id === activeOutputMarkerId
+  ))
+  const activeVideoMarkerRef = useRef(activeVideoMarker)
+  activeVideoMarkerRef.current = activeVideoMarker
 
   useEffect(() => {
     setLivePhotoSelection(null)
+    setActiveOutputMarkerId(null)
+    setPlayingOutputMarkerId(null)
+    markerPlaybackRangeRef.current = null
   }, [activeVideoPath])
 
   // 同步截取状态到 ref（避免闭包过期）
@@ -234,15 +249,33 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       setTrimDurationSourcePath(activeVideoPathRef.current)
     }
 
-    // 截取模式下限制当前时间不超过 endTime
+    const markerRange = markerPlaybackRangeRef.current
+    const activeVideoRange = activeVideoMarkerRef.current
+    // 标记预览优先使用自己的范围，普通播放才受主截取范围限制。
     const trimEnd = trimStateRef.current.trimEnd
-    const displayTime = trimStateRef.current.trimActive && trimEnd != null
+    const displayTime = markerRange
+      ? Math.max(markerRange.startTime, Math.min(state.currentTime, markerRange.endTime))
+      : activeVideoRange
+        ? Math.max(activeVideoRange.startTime, Math.min(state.currentTime, activeVideoRange.endTime))
+      : trimStateRef.current.trimActive && trimEnd != null
       ? Math.min(state.currentTime, trimEnd)
       : state.currentTime
     setTrimCurrentTime(displayTime)
 
+    if (markerRange && state.playing && state.currentTime >= markerRange.endTime) {
+      previewRef.current?.seek(markerRange.startTime)
+      markerPlaybackRangeRef.current = null
+      setPlayingOutputMarkerId(null)
+      if (previewRef.current?.isPlaying()) previewRef.current.togglePlay()
+      return
+    }
+    if (markerRange && !state.playing) {
+      markerPlaybackRangeRef.current = null
+      setPlayingOutputMarkerId(null)
+    }
+
     // 播放到截取结束时间时自动暂停
-    if (trimStateRef.current.trimActive && state.playing && trimEnd != null && trimEnd > 0 && state.currentTime >= trimEnd) {
+    if (!markerRange && trimStateRef.current.trimActive && state.playing && trimEnd != null && trimEnd > 0 && state.currentTime >= trimEnd) {
       previewRef.current?.seek(trimEnd)
       if (!previewRef.current?.isPlaying()) return
       previewRef.current?.togglePlay()
@@ -260,6 +293,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
 
   const handleTrimTogglePlay = useCallback(() => {
     if (!previewRef.current) return
+    markerPlaybackRangeRef.current = null
+    setPlayingOutputMarkerId(null)
     // 如果当前时间在截取范围外（结束位置），回到开始时间再播放
     const trimEnd = trimStateRef.current.trimEnd
     const trimStart = edit.pipeline.trim?.startTime
@@ -269,13 +304,72 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     previewRef.current.togglePlay()
   }, [edit.pipeline.trim?.endTime, edit.pipeline.trim?.startTime, trimCurrentTime])
 
+  const handleToggleMarkerPreview = useCallback((marker: Extract<EditPipeline['outputMarkers'][number], { kind: 'video' | 'live' }>) => {
+    const preview = previewRef.current
+    if (!preview) return
+    const active = markerPlaybackRangeRef.current?.markerId === marker.id && preview.isPlaying()
+    if (active) {
+      markerPlaybackRangeRef.current = null
+      setPlayingOutputMarkerId(null)
+      preview.togglePlay()
+      return
+    }
+    markerPlaybackRangeRef.current = {
+      markerId: marker.id,
+      startTime: marker.startTime,
+      endTime: marker.endTime,
+    }
+    setPlayingOutputMarkerId(marker.id)
+    preview.seek(marker.startTime)
+    setTrimCurrentTime(marker.startTime)
+    if (!preview.isPlaying()) preview.togglePlay()
+  }, [])
+
+  useEffect(() => {
+    const activeRange = markerPlaybackRangeRef.current
+    if (!activeRange) return
+    if (activeRange.markerId !== activeOutputMarkerId) {
+      markerPlaybackRangeRef.current = null
+      setPlayingOutputMarkerId(null)
+      if (previewRef.current?.isPlaying()) previewRef.current.togglePlay()
+      return
+    }
+    const activeMarker = edit.pipeline.outputMarkers.find((marker) => marker.id === activeRange.markerId)
+    if (!activeMarker || activeMarker.kind === 'photo') return
+    markerPlaybackRangeRef.current = {
+      ...activeRange,
+      startTime: activeMarker.startTime,
+      endTime: activeMarker.endTime,
+    }
+  }, [activeOutputMarkerId, edit.pipeline.outputMarkers])
+
   const handleStartTimeChange = useCallback((time: number) => {
+    if (activeVideoMarker) {
+      edit.commitPatch({
+        outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
+          marker.kind === 'video' && marker.id === activeVideoMarker.id
+            ? { ...marker, startTime: Math.min(time, marker.endTime - 0.1) }
+            : marker
+        )),
+      })
+      return
+    }
     edit.commitPatch({ trim: { startTime: time, endTime: edit.pipeline.trim?.endTime ?? activeTrimDuration } })
-  }, [edit, activeTrimDuration])
+  }, [activeTrimDuration, activeVideoMarker, edit])
 
   const handleEndTimeChange = useCallback((time: number) => {
+    if (activeVideoMarker) {
+      edit.commitPatch({
+        outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
+          marker.kind === 'video' && marker.id === activeVideoMarker.id
+            ? { ...marker, endTime: Math.max(time, marker.startTime + 0.1) }
+            : marker
+        )),
+      })
+      return
+    }
     edit.commitPatch({ trim: { startTime: edit.pipeline.trim?.startTime ?? 0, endTime: time } })
-  }, [edit])
+  }, [activeVideoMarker, edit])
 
   // ── 当前显示的管线：对比模式时用 comparePipeline（颜色/效果归零） ──
   const displayPipeline = edit.compareOriginal ? edit.comparePipeline : edit.previewPipeline
@@ -860,6 +954,10 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             onTrimSeek={handleTrimSeek}
             livePhotoSelection={livePhotoSelection}
             onLivePhotoSelectionChange={setLivePhotoSelection}
+            activeMarkerId={activeOutputMarkerId}
+            onActiveMarkerChange={setActiveOutputMarkerId}
+            playingMarkerId={playingOutputMarkerId}
+            onToggleMarkerPreview={handleToggleMarkerPreview}
             allowWatermark={Boolean(media.activeMedia)}
             runtimeResourceLoading={runtimeResourceLoading}
             onOpenCreative={onCreativeModeChange}
@@ -868,11 +966,13 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           {edit.trimActive ? (
             <TrimStrip
               duration={activeTrimDuration}
-              startTime={edit.pipeline.trim?.startTime ?? 0}
-              endTime={edit.pipeline.trim?.endTime ?? activeTrimDuration}
+              startTime={activeVideoMarker?.startTime ?? edit.pipeline.trim?.startTime ?? 0}
+              endTime={activeVideoMarker?.endTime ?? edit.pipeline.trim?.endTime ?? activeTrimDuration}
               currentTime={trimCurrentTime}
               playing={trimPlaying}
-              onTogglePlay={handleTrimTogglePlay}
+              onTogglePlay={activeVideoMarker
+                ? () => handleToggleMarkerPreview(activeVideoMarker)
+                : handleTrimTogglePlay}
               onSeek={handleTrimSeek}
               onStartTimeChange={handleStartTimeChange}
               onEndTimeChange={handleEndTimeChange}

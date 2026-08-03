@@ -1,4 +1,4 @@
-import { Camera, Images, Pause, Play, Plus, Trash2, Video } from 'lucide-react'
+import { Camera, CircleCheck, Images, Pause, Play, Plus, Trash2, Video } from 'lucide-react'
 import { Slider as RadixSlider } from 'radix-ui'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -25,6 +25,11 @@ interface TrimPanelProps {
   liveSelection: LivePhotoSelection | null
   onLiveSelectionChange: (selection: LivePhotoSelection | null) => void
   videoPath: string | null
+  activeMarkerId: string | null
+  onActiveMarkerChange: (markerId: string | null) => void
+  playingMarkerId: string | null
+  onToggleMarkerPreview: (marker: Extract<VideoOutputMarker, { kind: 'video' | 'live' }>) => void
+  onMarkerPreviewTimeChange: (time: number) => void
 }
 
 export interface LivePhotoSelection {
@@ -41,6 +46,14 @@ function formatSeconds(seconds: number): string {
   const secs = Math.floor((totalMs % 60000) / 1000)
   const ms = totalMs % 1000
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`
+}
+
+function formatCompactSeconds(seconds: number): string {
+  const totalCs = Math.max(0, Math.floor(seconds * 100))
+  const mins = Math.floor(totalCs / 6000)
+  const secs = Math.floor((totalCs % 6000) / 100)
+  const cs = totalCs % 100
+  return `${mins}:${String(secs).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
 }
 
 function parseTimeInput(text: string): number {
@@ -82,151 +95,159 @@ interface MarkerRowProps {
   onDelete: () => void
   videoPath: string | null
   onCoverTimeChange: (time: number) => void
+  currentTime: number
+  playing: boolean
+  onTogglePreview: () => void
+  onPreviewTimeChange: (time: number) => void
 }
 
-function MarkerRow({ marker, displayLabel, selected, autoFocus, onSelect, onNoteCommit, onDelete, videoPath, onCoverTimeChange }: MarkerRowProps) {
-  const [note, setNote] = useState(marker.note)
-  const [livePlaying, setLivePlaying] = useState(false)
-  const liveVideoRef = useRef<HTMLVideoElement>(null)
-  const livePlaybackStartedRef = useRef(false)
-  useEffect(() => setNote(marker.note), [marker.note])
+function MarkerRow({ marker, displayLabel, selected, autoFocus, onSelect, onNoteCommit, onDelete, videoPath, onCoverTimeChange, currentTime, playing, onTogglePreview, onPreviewTimeChange }: MarkerRowProps) {
+  const [note, setNote] = useState(marker.note || displayLabel)
+  const thumbnailVideoRef = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    setNote(marker.note || displayLabel)
+  }, [displayLabel, marker.note])
 
   const liveMarker = marker.kind === 'live' ? marker : null
+  const videoMarker = marker.kind === 'video' ? marker : null
+  const thumbnailTime = marker.kind === 'photo'
+    ? marker.time
+    : marker.kind === 'live'
+      ? marker.coverTime
+      : marker.startTime
   useEffect(() => {
-    const video = liveVideoRef.current
-    if (!video || !liveMarker) return
-    const seekCover = () => { video.currentTime = liveMarker.coverTime }
-    if (video.readyState >= 1) seekCover()
-    else video.addEventListener('loadedmetadata', seekCover, { once: true })
-    return () => video.removeEventListener('loadedmetadata', seekCover)
-  }, [liveMarker?.coverTime, liveMarker?.id, videoPath])
+    const video = thumbnailVideoRef.current
+    if (!video) return
+    const seekThumbnail = () => { video.currentTime = thumbnailTime }
+    if (video.readyState >= 1) seekThumbnail()
+    else video.addEventListener('loadedmetadata', seekThumbnail, { once: true })
+    return () => video.removeEventListener('loadedmetadata', seekThumbnail)
+  }, [marker.id, thumbnailTime, videoPath])
 
   const commitNote = () => {
-    const nextNote = note.trim().slice(0, 200)
+    const nextNote = note.trim().slice(0, 40)
     setNote(nextNote)
     if (nextNote !== marker.note) onNoteCommit(nextNote)
   }
 
-  const toggleLivePlayback = () => {
-    const video = liveVideoRef.current
-    if (!video || !liveMarker) return
-    if (!video.paused) {
-      video.pause()
-      return
-    }
-    if (
-      !livePlaybackStartedRef.current
-      || video.currentTime < liveMarker.startTime
-      || video.currentTime >= liveMarker.endTime - 0.01
-    ) {
-      video.currentTime = liveMarker.startTime
-    }
-    livePlaybackStartedRef.current = true
-    void video.play().catch(() => setLivePlaying(false))
-  }
-
-  const markerContent = (
-    <>
-      <button className="workspace-trim-marker-range" type="button" onClick={onSelect}>
-        <span className={`workspace-trim-marker-kind is-${marker.kind}`}>
-          {markerIcon(marker)}
-          {displayLabel}
-        </span>
-        <span className="workspace-trim-marker-time">
-          {marker.kind === 'photo'
-            ? formatSeconds(marker.time)
-            : `${formatSeconds(marker.startTime)} - ${formatSeconds(marker.endTime)}`}
-        </span>
-      </button>
-      <div className="workspace-trim-marker-note-row">
-        <Input
-          className="workspace-trim-marker-note"
-          variant="compact"
-          fullWidth
-          type="text"
-          value={note}
-          maxLength={200}
-          placeholder="添加备注"
-          autoFocus={autoFocus}
-          onChange={(event) => setNote(event.target.value)}
-          onBlur={commitNote}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
-          }}
-        />
-        <Tooltip content={`删除${markerLabel(marker)}标记`}>
-          <IconButton
-            className="workspace-trim-marker-delete"
-            variant="ghost"
-            size="mini"
-            icon={<Trash2 size={14} />}
-            aria-label={`删除${markerLabel(marker)}标记`}
-            onClick={onDelete}
-          />
-        </Tooltip>
-      </div>
-      {liveMarker && selected ? (
-        <div className="workspace-trim-live-cover-control">
-          <div>
-            <span>封面</span>
-            <strong>{formatSeconds(liveMarker.coverTime)}</strong>
-          </div>
-          <RadixSlider.Root
-            className="workspace-trim-live-cover-slider"
-            value={[liveMarker.coverTime]}
-            min={liveMarker.startTime}
-            max={liveMarker.endTime - 0.01}
-            step={0.01}
-            onValueChange={([time]) => {
-              const video = liveVideoRef.current
-              if (video) {
-                video.pause()
-                video.currentTime = time
-              }
-              livePlaybackStartedRef.current = false
-              onCoverTimeChange(time)
-            }}
-          >
-            <RadixSlider.Track className="workspace-trim-live-cover-track">
-              <RadixSlider.Range className="workspace-trim-live-cover-range" />
-            </RadixSlider.Track>
-            <RadixSlider.Thumb className="workspace-trim-live-cover-thumb" aria-label="Live 图封面" />
-          </RadixSlider.Root>
-        </div>
-      ) : null}
-    </>
-  )
-
   return (
-    <div className={`workspace-trim-marker-row${selected ? ' is-selected' : ''}${liveMarker && selected ? ' is-live-editor' : ''}`}>
-      {liveMarker && selected ? (
-        <div className="workspace-trim-live-thumbnail">
-          <video
-            ref={liveVideoRef}
-            src={filePathToPreviewUrl(videoPath) ?? undefined}
-            muted
-            playsInline
-            preload="metadata"
-            onPlay={() => setLivePlaying(true)}
-            onPause={() => setLivePlaying(false)}
-            onTimeUpdate={(event) => {
-              if (event.currentTarget.currentTime < liveMarker.endTime - 0.01) return
-              event.currentTarget.pause()
-              event.currentTarget.currentTime = liveMarker.coverTime
-              livePlaybackStartedRef.current = false
-            }}
-          />
+    <div
+      className={`workspace-trim-marker-row is-media-editor${selected ? ' is-active' : ''}`}
+      onClick={onSelect}
+    >
+      <div className="workspace-trim-marker-thumbnail">
+        <video
+          ref={thumbnailVideoRef}
+          src={filePathToPreviewUrl(videoPath) ?? undefined}
+          muted
+          playsInline
+          preload="metadata"
+        />
+        {liveMarker || videoMarker ? (
           <button
             type="button"
             className="workspace-trim-live-play-overlay"
-            aria-label={livePlaying ? '暂停 Live 图预览' : '播放 Live 图'}
-            onClick={toggleLivePlayback}
+            aria-label={playing ? `暂停${markerLabel(marker)}预览` : `播放${markerLabel(marker)}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onTogglePreview()
+            }}
           >
-            {livePlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+            {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
           </button>
+        ) : (
+          <button
+            type="button"
+            className="workspace-trim-thumbnail-select"
+            aria-label={`选择${markerLabel(marker)}标记`}
+            onClick={onSelect}
+          />
+        )}
+      </div>
+      <div className="workspace-trim-marker-content">
+        <div className="workspace-trim-marker-header">
+          <div className={`workspace-trim-marker-title-row is-${marker.kind}`}>
+            {markerIcon(marker)}
+            <Input
+              className="workspace-trim-marker-title"
+              variant="compact"
+              fullWidth
+              type="text"
+              value={note}
+              maxLength={40}
+              aria-label={`${displayLabel}标题`}
+              autoFocus={autoFocus}
+              onFocus={onSelect}
+              onChange={(event) => setNote(event.target.value)}
+              onBlur={commitNote}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+              }}
+            />
+            {selected ? <CircleCheck className="workspace-trim-marker-active-icon" size={14} aria-label="当前标记" /> : null}
+          </div>
+          <Tooltip content={`删除${markerLabel(marker)}标记`}>
+            <IconButton
+              className="workspace-trim-marker-delete"
+              variant="ghost"
+              size="mini"
+              icon={<Trash2 size={14} />}
+              aria-label={`删除${markerLabel(marker)}标记`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onDelete()
+              }}
+            />
+          </Tooltip>
         </div>
-      ) : null}
-      <div className="workspace-trim-marker-content">{markerContent}</div>
+        {marker.kind === 'photo' ? <span className="workspace-trim-marker-time">{formatSeconds(marker.time)}</span> : null}
+        {liveMarker ? (
+          <div className="workspace-trim-live-cover-control">
+            <span>封面</span>
+            <RadixSlider.Root
+              className="workspace-trim-live-cover-slider"
+              value={[liveMarker.coverTime]}
+              min={liveMarker.startTime}
+              max={liveMarker.endTime - 0.01}
+              step={0.01}
+              onPointerDown={onSelect}
+              onValueChange={([time]) => {
+                const video = thumbnailVideoRef.current
+                if (video) video.currentTime = time
+                onCoverTimeChange(time)
+              }}
+            >
+              <RadixSlider.Track className="workspace-trim-live-cover-track">
+                <RadixSlider.Range className="workspace-trim-live-cover-range" />
+              </RadixSlider.Track>
+              <RadixSlider.Thumb className="workspace-trim-live-cover-thumb" aria-label="Live 图封面" />
+            </RadixSlider.Root>
+            <strong>{formatCompactSeconds(liveMarker.startTime)} - {formatCompactSeconds(liveMarker.endTime)}</strong>
+          </div>
+        ) : null}
+        {videoMarker ? (
+          <div className="workspace-trim-video-progress-control">
+            <span>播放</span>
+            <RadixSlider.Root
+              className="workspace-trim-video-progress-slider"
+              value={[selected
+                ? Math.max(videoMarker.startTime, Math.min(currentTime, videoMarker.endTime))
+                : videoMarker.startTime]}
+              min={videoMarker.startTime}
+              max={videoMarker.endTime}
+              step={0.01}
+              onPointerDown={onSelect}
+              onValueChange={([time]) => onPreviewTimeChange(time)}
+            >
+              <RadixSlider.Track className="workspace-trim-video-progress-track">
+                <RadixSlider.Range className="workspace-trim-video-progress-range" />
+              </RadixSlider.Track>
+              <RadixSlider.Thumb className="workspace-trim-video-progress-thumb" aria-label="视频片段播放位置" />
+            </RadixSlider.Root>
+            <strong>{formatCompactSeconds(videoMarker.startTime)} - {formatCompactSeconds(videoMarker.endTime)}</strong>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -244,10 +265,14 @@ export function TrimPanel({
   liveSelection,
   onLiveSelectionChange,
   videoPath,
+  activeMarkerId,
+  onActiveMarkerChange,
+  playingMarkerId,
+  onToggleMarkerPreview,
+  onMarkerPreviewTimeChange,
 }: TrimPanelProps) {
   const [startText, setStartText] = useState(formatSeconds(startTime))
   const [endText, setEndText] = useState(formatSeconds(endTime))
-  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null)
   const [newMarkerId, setNewMarkerId] = useState<string | null>(null)
   const focusedInputRef = useRef<'start' | 'end' | null>(null)
 
@@ -276,22 +301,36 @@ export function TrimPanel({
 
   const addMarker = (marker: VideoOutputMarker) => {
     const nextMarkers = normalizeVideoOutputMarkers([...markers, marker], duration)
-    setSelectedMarkerId(marker.id)
+    onActiveMarkerChange(marker.id)
     setNewMarkerId(marker.id)
     onMarkersChange(nextMarkers)
     onSelectMarker(marker)
   }
 
   const addVideo = () => {
-    if (endTime <= startTime + 0.09) return
-    addMarker({ id: crypto.randomUUID(), kind: 'video', startTime, endTime, note: '' })
+    const lastVideoEnd = markers.reduce((latestEnd, marker) => (
+      marker.kind === 'video' ? Math.max(latestEnd, marker.endTime) : latestEnd
+    ), 0)
+    const nextStartTime = lastVideoEnd > 0 ? lastVideoEnd : startTime
+    const nextEndTime = endTime > nextStartTime + 0.09 ? endTime : duration
+    if (nextEndTime <= nextStartTime + 0.09) {
+      toast.show('视频末尾没有可添加的片段')
+      return
+    }
+    addMarker({
+      id: crypto.randomUUID(),
+      kind: 'video',
+      startTime: nextStartTime,
+      endTime: nextEndTime,
+      note: '',
+    })
   }
 
   const addPhoto = () => {
     const time = Math.min(currentTime, Math.max(0, duration - 0.001))
     const existing = markers.find((marker) => marker.kind === 'photo' && Math.abs(marker.time - time) < 0.01)
     if (existing) {
-      setSelectedMarkerId(existing.id)
+      onActiveMarkerChange(existing.id)
       onSelectMarker(existing)
       toast.show('当前画面已添加照片标记')
       return
@@ -324,16 +363,17 @@ export function TrimPanel({
       endTime: nextMarker.endTime,
       coverTime: nextMarker.coverTime,
     })
+    onSelectMarker(nextMarker)
   }
 
   const deleteMarker = (id: string) => {
-    if (selectedMarkerId === id) setSelectedMarkerId(null)
+    if (activeMarkerId === id) onActiveMarkerChange(null)
     if (liveSelection?.markerId === id) onLiveSelectionChange(null)
     onMarkersChange(markers.filter((marker) => marker.id !== id))
   }
 
   const selectMarker = (marker: VideoOutputMarker) => {
-    setSelectedMarkerId(marker.id)
+    onActiveMarkerChange(marker.id)
     setNewMarkerId(null)
     onLiveSelectionChange(marker.kind === 'live' ? {
       markerId: marker.id,
@@ -349,7 +389,11 @@ export function TrimPanel({
     photo: 0,
     live: 0,
   })
-  const liveMarkerIds = markers.filter((marker) => marker.kind === 'live').map((marker) => marker.id)
+  const markerIdsByKind = {
+    video: markers.filter((marker) => marker.kind === 'video').map((marker) => marker.id),
+    photo: markers.filter((marker) => marker.kind === 'photo').map((marker) => marker.id),
+    live: markers.filter((marker) => marker.kind === 'live').map((marker) => marker.id),
+  }
 
   return (
     <div className="workspace-trim-panel">
@@ -411,16 +455,25 @@ export function TrimPanel({
               <MarkerRow
                 key={marker.id}
                 marker={marker}
-                displayLabel={marker.kind === 'live'
-                  ? `Live ${String(liveMarkerIds.indexOf(marker.id) + 1).padStart(2, '0')}`
-                  : markerLabel(marker)}
-                selected={marker.id === selectedMarkerId || marker.id === liveSelection?.markerId}
+                displayLabel={`${marker.kind === 'live' ? 'Live' : markerLabel(marker)} ${String(markerIdsByKind[marker.kind].indexOf(marker.id) + 1).padStart(2, '0')}`}
+                selected={marker.id === activeMarkerId}
                 autoFocus={marker.id === newMarkerId}
                 onSelect={() => selectMarker(marker)}
                 onNoteCommit={(note) => updateMarkerNote(marker.id, note)}
                 onDelete={() => deleteMarker(marker.id)}
                 videoPath={videoPath}
                 onCoverTimeChange={(time) => { if (marker.kind === 'live') setLiveCover(marker, time) }}
+                currentTime={currentTime}
+                playing={marker.id === playingMarkerId}
+                onTogglePreview={() => {
+                  if (marker.kind !== 'live' && marker.kind !== 'video') return
+                  selectMarker(marker)
+                  onToggleMarkerPreview(marker)
+                }}
+                onPreviewTimeChange={(time) => {
+                  selectMarker(marker)
+                  onMarkerPreviewTimeChange(time)
+                }}
               />
             ))}
           </div>
