@@ -188,28 +188,23 @@ export function useCanvasViewportInteraction({
     const canvas = event.currentTarget
     const rect = canvas.getBoundingClientRect()
 
-    setViewport((current) => {
-      const metrics = canvasMetrics(canvas, current.scale)
-      if (!metrics) return current
-      const upperBound = Math.max(1, maxImageScale / metrics.fitPixelRatio)
-      const nextScale = Math.min(
-        upperBound,
-        Math.max(1, current.scale * Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY)),
-      )
-      onImageScaleChange?.(nextScale <= 1.001 ? null : nextScale * metrics.fitPixelRatio)
-      const scaleRatio = nextScale / current.scale
-      const translation = clampTranslation(
-        metrics,
-        nextScale,
-        current.translateX + (event.clientX - (rect.left + rect.width / 2)) * (1 - scaleRatio),
-        current.translateY + (event.clientY - (rect.top + rect.height / 2)) * (1 - scaleRatio),
-      )
-      return {
-        scale: nextScale,
-        ...translation,
-      }
-    })
-  }, [maxImageScale, onImageScaleChange])
+    const metrics = canvasMetrics(canvas, viewport.scale)
+    if (!metrics) return
+    const upperBound = Math.max(1, maxImageScale / metrics.fitPixelRatio)
+    const nextScale = Math.min(
+      upperBound,
+      Math.max(1, viewport.scale * Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY)),
+    )
+    const scaleRatio = nextScale / viewport.scale
+    const translation = clampTranslation(
+      metrics,
+      nextScale,
+      viewport.translateX + (event.clientX - (rect.left + rect.width / 2)) * (1 - scaleRatio),
+      viewport.translateY + (event.clientY - (rect.top + rect.height / 2)) * (1 - scaleRatio),
+    )
+    setViewport({ scale: nextScale, ...translation })
+    onImageScaleChange?.(nextScale <= 1.001 ? null : nextScale * metrics.fitPixelRatio)
+  }, [maxImageScale, onImageScaleChange, viewport])
 
   const onDoubleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     event.preventDefault()
@@ -217,26 +212,25 @@ export function useCanvasViewportInteraction({
     const rect = canvas.getBoundingClientRect()
     const clientX = event.clientX
     const clientY = event.clientY
-    setViewport((current) => {
-      const metrics = canvasMetrics(canvas, current.scale)
-      if (!metrics || current.scale > 1.001) {
-        onImageScaleChange?.(null)
-        return INITIAL_VIEWPORT
-      }
-      const actualSizeScale = Math.min(
-        Math.max(1, 1 / metrics.fitPixelRatio),
-        Math.max(1, maxImageScale / metrics.fitPixelRatio),
-      )
-      const translation = clampTranslation(
-        metrics,
-        actualSizeScale,
-        (clientX - (rect.left + rect.width / 2)) * (1 - actualSizeScale),
-        (clientY - (rect.top + rect.height / 2)) * (1 - actualSizeScale),
-      )
-      onImageScaleChange?.(actualSizeScale * metrics.fitPixelRatio)
-      return { scale: actualSizeScale, ...translation }
-    })
-  }, [maxImageScale, onImageScaleChange])
+    const metrics = canvasMetrics(canvas, viewport.scale)
+    if (!metrics || viewport.scale > 1.001) {
+      setViewport(INITIAL_VIEWPORT)
+      onImageScaleChange?.(null)
+      return
+    }
+    const actualSizeScale = Math.min(
+      Math.max(1, 1 / metrics.fitPixelRatio),
+      Math.max(1, maxImageScale / metrics.fitPixelRatio),
+    )
+    const translation = clampTranslation(
+      metrics,
+      actualSizeScale,
+      (clientX - (rect.left + rect.width / 2)) * (1 - actualSizeScale),
+      (clientY - (rect.top + rect.height / 2)) * (1 - actualSizeScale),
+    )
+    setViewport({ scale: actualSizeScale, ...translation })
+    onImageScaleChange?.(actualSizeScale * metrics.fitPixelRatio)
+  }, [maxImageScale, onImageScaleChange, viewport.scale])
 
   const style = useMemo<CSSProperties>(() => ({
     transform: `translate3d(${viewport.translateX}px, ${viewport.translateY}px, 0) scale(${viewport.scale})`,

@@ -195,7 +195,7 @@ export function ExportPreviewPane({ source, livePhotoSource, value, onChange }: 
               secondaryFixedRange={liveSelected ? {
                 startTime: liveStart,
                 duration: LIVE_DURATION,
-                label: 'Live 3 秒',
+                label: 'Live 图',
                 onStartChange: moveLiveRange,
               } : undefined}
               playheadRange={liveSelected ? { startTime: liveStart, endTime: liveStart + LIVE_DURATION } : undefined}

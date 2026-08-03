@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-import type { WorkspaceProject } from '../shared/types'
+import { DEFAULT_VIDEO_EXPORT_SETTINGS, type VideoExportSettings, type WorkspaceProject } from '../shared/types'
 import type { WorkspacePreviewQuality } from '../shared/types/settings'
 import { useApp } from '../context/AppContext'
 import { ErrorBoundary, toast } from '../ui'
-import { exportBatchFiles, type BatchExportSource } from '../components/previewStageExport'
 import { ExportSettingsDialog } from '../components/ExportSettingsDialog'
 import { isVideoPath } from '../lib/fileUtils'
 import { WorkspaceEditProvider, readWorkspacePipelineClipboard, useWorkspaceEdit, writeWorkspacePipelineClipboard } from '../workspace/context/WorkspaceEditContext'
@@ -28,7 +27,8 @@ import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 import { WorkspaceCreativeFactory } from '../workspace/creative/WorkspaceCreativeFactory'
 import { CropOverlay } from '../workspace/transform/CropOverlay'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
-import { buildVideoSegmentExportRanges } from '../workspace/trim/videoSegmentMarkers'
+import type { LivePhotoSelection } from '../workspace/trim/TrimPanel'
+import { buildVideoOutputExportItems, LIVE_PHOTO_DURATION } from '../workspace/trim/videoOutputMarkers'
 import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
@@ -36,7 +36,11 @@ import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
 import { applyLocalColorToSourceMediaLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from '../workspace/shared/renderLayerPipeline'
 import type { MediaMetadata } from '../shared/types'
 import { buildWorkspaceExportLayers } from '../workspace/shared/workspaceExportLayers'
-import { queueWorkspaceFormatsExport } from '../workspace/shared/workspaceLivePhotoExport'
+import {
+  queueWorkspaceMixedExport,
+  summarizeWorkspaceMixedExport,
+  type WorkspaceMixedExportPlanItem,
+} from '../workspace/shared/workspaceMixedExport'
 import { chooseWorkspaceMediaAssets } from '../workspace/shared/workspaceLocalMedia'
 import { normalizeWorkspacePreviewQuality, workspacePreviewMaxSide } from '../workspace/shared/workspacePreviewQuality'
 import { createWorkspaceDefaultPipeline } from '../workspace/shared/workspaceDefaultPipeline'
@@ -119,7 +123,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [borderMetadata, setBorderMetadata] = useState<MediaMetadata | null>(null)
   const [exportEnqueuing, setExportEnqueuing] = useState(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
-  const [exportDialogSources, setExportDialogSources] = useState<BatchExportSource[]>([])
+  const [exportDialogPlan, setExportDialogPlan] = useState<WorkspaceMixedExportPlanItem[]>([])
+  const [exportDialogInitialConfig, setExportDialogInitialConfig] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
   const [exportDialogDir, setExportDialogDir] = useState('')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [viewScale, setViewScale] = useState<WorkspaceViewScale>('fit')
@@ -180,6 +185,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [trimDuration, setTrimDuration] = useState(0)
   const [trimDurationSourcePath, setTrimDurationSourcePath] = useState<string | null>(null)
   const [trimPlaying, setTrimPlaying] = useState(false)
+  const [livePhotoSelection, setLivePhotoSelection] = useState<LivePhotoSelection | null>(null)
   const activeVideoPath = media.activeMedia?.path && isVideoPath(media.activeMedia.path)
     ? media.activeMedia.path
     : null
@@ -187,6 +193,10 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const activeVideoPathRef = useRef<string | null>(activeVideoPath)
   activeVideoPathRef.current = activeVideoPath
   const activeTrimDuration = trimDurationSourcePath === activeVideoPath ? trimDuration : 0
+
+  useEffect(() => {
+    setLivePhotoSelection(null)
+  }, [activeVideoPath])
 
   // 同步截取状态到 ref（避免闭包过期）
   useEffect(() => {
@@ -544,7 +554,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       const trackedActiveMasks = isVideoPath(media.activeMedia.path)
         ? await mask.prepareVideoMasksForExport()
         : activePipeline.colorMasks
-      const sourceGroups = await Promise.all(exportIndices.map(async (index): Promise<BatchExportSource[]> => {
+      const sourceGroups = await Promise.all(exportIndices.map(async (index): Promise<WorkspaceMixedExportPlanItem[]> => {
         const asset = media.media[index]
         const pipeline = index === media.activeIndex
           ? mergePipeline(activePipeline, { colorMasks: trackedActiveMasks })
@@ -553,48 +563,99 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         const sourceDuration = isVideoPath(asset.path)
           ? await window.luna.workspace.getVideoDuration(asset.path).catch(() => 0)
           : 0
+        if (isVideoPath(asset.path) && sourceDuration <= 0) {
+          throw new Error(`无法读取 ${asset.name} 的视频时长`)
+        }
         const trimStart = pipeline.trim?.startTime ?? 0
         const trimEnd = pipeline.trim?.endTime ?? sourceDuration
         const outputBaseName = asset.name.replace(/\.[^.]+$/, '') || 'export'
-        // 加载 EXIF 元数据（边框需要）
         const borderMeta = pipeline.border?.enabled
           ? await window.luna.getMediaMetadataByPath(asset.path).catch(() => null)
           : null
-        const segmentRanges = isVideoPath(asset.path)
-          ? buildVideoSegmentExportRanges(outputBaseName, pipeline.videoMarkers, sourceDuration)
-          : []
-        const variants = segmentRanges.length > 0
-          ? segmentRanges.map((segment) => ({
-              pipeline: mergePipeline(pipeline, { trim: { startTime: segment.startTime, endTime: segment.endTime } }),
-              outputBaseName: segment.outputBaseName,
-              trimStart: segment.startTime,
-              trimEnd: segment.endTime,
+        const untrimmedPipeline = isVideoPath(asset.path) ? mergePipeline(pipeline, { trim: null }) : pipeline
+        const layers = buildWorkspaceExportLayers(asset.path, resolution, untrimmedPipeline, borderMeta, true)
+        const outputSize = outputSizeForTransform(resolution, untrimmedPipeline.transform)
+
+        if (!isVideoPath(asset.path)) {
+          return [{
+            id: `${asset.id}-image`,
+            kind: 'photo',
+            sourcePath: asset.path,
+            outputBaseName,
+            layers,
+            outputSize,
+          }]
+        }
+
+        const markerItems = buildVideoOutputExportItems(outputBaseName, pipeline.outputMarkers, sourceDuration)
+        if (markerItems.length !== pipeline.outputMarkers.length) {
+          throw new Error(`${asset.name} 有导出标记超出视频范围，请删除后重新添加`)
+        }
+        const normalizedTrimStart = Math.max(0, Math.min(trimStart, Math.max(0, sourceDuration - 0.1)))
+        const normalizedTrimEnd = Math.max(
+          normalizedTrimStart + Math.min(0.1, sourceDuration - normalizedTrimStart),
+          Math.min(trimEnd, sourceDuration),
+        )
+        const videoMarkerItems = markerItems.filter((item) => item.kind === 'video')
+        const videoItems: WorkspaceMixedExportPlanItem[] = videoMarkerItems.length > 0
+          ? videoMarkerItems.map((item) => ({
+              id: `${asset.id}-${item.markerId}`,
+              kind: 'video',
+              sourcePath: asset.path,
+              outputBaseName: item.outputBaseName,
+              layers,
+              outputSize,
+              startTime: item.startTime,
+              endTime: item.endTime,
             }))
-          : [{ pipeline, outputBaseName, trimStart, trimEnd }]
+          : [{
+              id: `${asset.id}-video`,
+              kind: 'video',
+              sourcePath: asset.path,
+              outputBaseName,
+              layers,
+              outputSize,
+              startTime: normalizedTrimStart,
+              endTime: normalizedTrimEnd,
+            }]
 
-        return variants.map((variant) => ({
-          sourcePath: asset.path,
-          outputBaseName: variant.outputBaseName,
-          layers: buildWorkspaceExportLayers(asset.path, resolution, variant.pipeline, borderMeta, true),
-          outputSize: outputSizeForTransform(resolution, variant.pipeline.transform),
-          mediaDuration: isVideoPath(asset.path)
-            ? Math.max(0, Math.min(sourceDuration, variant.trimEnd) - variant.trimStart)
-            : undefined,
-          sourceDuration: isVideoPath(asset.path) ? sourceDuration : undefined,
-        }))
+        const markedItems: WorkspaceMixedExportPlanItem[] = markerItems
+          .filter((item) => item.kind !== 'video')
+          .map((item) => item.kind === 'photo' ? {
+            id: `${asset.id}-${item.markerId}`,
+            kind: 'photo',
+            sourcePath: asset.path,
+            outputBaseName: item.outputBaseName,
+            layers,
+            outputSize,
+            time: item.time,
+          } : {
+            id: `${asset.id}-${item.markerId}`,
+            kind: 'live',
+            sourcePath: asset.path,
+            outputBaseName: item.outputBaseName,
+            layers,
+            outputSize,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            coverTime: item.coverTime,
+          })
+        return [...videoItems, ...markedItems]
       }))
-      const sources = sourceGroups.flat()
-
-      // 检查是否有视频素材 → 有则弹窗让用户选择导出参数，否则直接导出
-      const hasVideo = sources.some((s) => isVideoPath(s.sourcePath))
-      if (hasVideo) {
-        setExportDialogSources(sources)
-        setExportDialogDir(settings.exportDir)
-        setExportDialogOpen(true)
-      } else {
-        await exportBatchFiles(sources, settings.exportDir)
-        toast.success(`已加入导出队列: ${sources.length} 个素材`)
-      }
+      const plan = sourceGroups.flat()
+      const summary = summarizeWorkspaceMixedExport(plan)
+      const exportFormats: VideoExportSettings['exportFormats'] = [
+        ...(summary.video > 0 ? ['video' as const] : []),
+        ...(summary.live > 0 ? ['google-live' as const] : []),
+      ]
+      setExportDialogPlan(plan)
+      setExportDialogInitialConfig({
+        ...DEFAULT_VIDEO_EXPORT_SETTINGS,
+        exportFormats,
+        exportPhotos: summary.photo > 0,
+      })
+      setExportDialogDir(settings.exportDir)
+      setExportDialogOpen(true)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导出失败')
     } finally {
@@ -740,6 +801,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     : exportableSelectionCount > 1
       ? `导出 ${exportableSelectionCount} 个`
       : '导出'
+  const exportDialogSummary = summarizeWorkspaceMixedExport(exportDialogPlan)
 
   return (
     <div className={`workspace-layout${edit.trimActive ? ' trim-active' : ''}`}>
@@ -794,7 +856,10 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           <WorkspaceEditSidebar
             mediaSize={mediaSize}
             duration={activeTrimDuration}
+            currentTime={trimCurrentTime}
             onTrimSeek={handleTrimSeek}
+            livePhotoSelection={livePhotoSelection}
+            onLivePhotoSelectionChange={setLivePhotoSelection}
             allowWatermark={Boolean(media.activeMedia)}
             runtimeResourceLoading={runtimeResourceLoading}
             onOpenCreative={onCreativeModeChange}
@@ -811,6 +876,46 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
               onSeek={handleTrimSeek}
               onStartTimeChange={handleStartTimeChange}
               onEndTimeChange={handleEndTimeChange}
+              outputMarkers={edit.pipeline.outputMarkers}
+              secondaryFixedRange={livePhotoSelection ? {
+                startTime: livePhotoSelection.startTime,
+                duration: LIVE_PHOTO_DURATION,
+                coverTime: livePhotoSelection.coverTime,
+                label: `Live ${String(edit.pipeline.outputMarkers
+                  .filter((marker) => marker.kind === 'live')
+                  .findIndex((marker) => marker.id === livePhotoSelection.markerId) + 1).padStart(2, '0')}`,
+                onStartChange: (startTime) => {
+                  const current = livePhotoSelection
+                  const delta = startTime - current.startTime
+                  const endTime = startTime + LIVE_PHOTO_DURATION
+                  const next = {
+                    markerId: current.markerId,
+                    startTime,
+                    endTime,
+                    coverTime: Math.max(startTime, Math.min(current.coverTime + delta, endTime - 0.01)),
+                  }
+                  setLivePhotoSelection(next)
+                  edit.commitPatch({
+                    outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
+                      marker.kind === 'live' && marker.id === current.markerId
+                        ? { ...marker, startTime: next.startTime, endTime: next.endTime, coverTime: next.coverTime }
+                        : marker
+                    )),
+                  })
+                },
+                onCoverTimeChange: (coverTime) => {
+                  const current = livePhotoSelection
+                  const next = { ...current, coverTime }
+                  setLivePhotoSelection(next)
+                  edit.commitPatch({
+                    outputMarkers: edit.pipeline.outputMarkers.map((marker) => (
+                      marker.kind === 'live' && marker.id === current.markerId
+                        ? { ...marker, coverTime }
+                        : marker
+                    )),
+                  })
+                },
+              } : undefined}
               thumbnails={thumbnails}
             />
           ) : null}
@@ -843,36 +948,17 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       <ExportSettingsDialog
         open={exportDialogOpen}
         tone="dark"
-        description={exportDialogSources.length > 1 ? `将分别导出 ${exportDialogSources.length} 个文件。` : undefined}
+        description={exportDialogSummary.text ? `本次包含${exportDialogSummary.text}。` : undefined}
         onOpenChange={setExportDialogOpen}
-        previewSource={exportDialogSources.length === 1
-          ? {
-              path: exportDialogSources[0].sourcePath,
-              layers: exportDialogSources[0].layers ?? [],
-              outputSize: exportDialogSources[0].outputSize ?? { width: 1920, height: 1080 },
-            }
-          : undefined}
-        livePhotoSource={exportDialogSources.length === 1
-          && isVideoPath(exportDialogSources[0]?.sourcePath ?? '')
-          && exportDialogSources[0]?.mediaDuration !== undefined
-          ? {
-              path: exportDialogSources[0].sourcePath,
-              startTime: exportDialogSources[0].layers?.find((layer) => layer.isVideo)?.videoTime ?? 0,
-              duration: exportDialogSources[0].mediaDuration!,
-              thumbnailDuration: exportDialogSources[0].sourceDuration ?? exportDialogSources[0].mediaDuration!,
-              layers: exportDialogSources[0].layers ?? [],
-              outputSize: exportDialogSources[0].outputSize ?? { width: 1920, height: 1080 },
-            }
-          : undefined}
+        initialConfig={exportDialogInitialConfig}
+        outputAvailability={{
+          video: exportDialogSummary.video > 0,
+          photo: exportDialogSummary.photo > 0,
+          live: exportDialogSummary.live > 0,
+        }}
         onConfirm={async (config) => {
-          if (exportDialogSources.length === 1 && isVideoPath(exportDialogSources[0]?.sourcePath ?? '')) {
-            const source = exportDialogSources[0]
-            await queueWorkspaceFormatsExport(source, exportDialogDir, config)
-            toast.success('已加入导出任务')
-            return
-          }
-          await exportBatchFiles(exportDialogSources, exportDialogDir, config)
-          toast.success(`已加入导出队列: ${exportDialogSources.length} 个素材`)
+          const result = await queueWorkspaceMixedExport(exportDialogPlan, exportDialogDir, config)
+          toast.success(`已加入导出队列: ${result.itemCount} 个结果`)
         }}
       />
     </div>

@@ -13,8 +13,7 @@ import { WatermarkSettings } from '../../components/WatermarkSettings'
 import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
 import type { EditPipeline } from '../shared/editPipeline'
 import { BorderPanel } from '../border/BorderPanel'
-import { TrimPanel } from '../trim/TrimPanel'
-import { buildVideoSegmentsExport } from '../trim/videoSegmentMarkers'
+import { TrimPanel, type LivePhotoSelection } from '../trim/TrimPanel'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { WorkspaceCreativePanel } from '../creative/WorkspaceCreativeFactory'
 import type { CreativeModeId } from '../creative/creativeCatalog'
@@ -104,13 +103,16 @@ function titleForTool(tool: WorkspaceTool): string {
 interface WorkspaceEditSidebarProps {
   mediaSize?: { w: number; h: number } | null
   duration: number
+  currentTime: number
   onTrimSeek: (time: number) => void
+  livePhotoSelection: LivePhotoSelection | null
+  onLivePhotoSelectionChange: (selection: LivePhotoSelection | null) => void
   allowWatermark: boolean
   runtimeResourceLoading?: { fonts: boolean; luts: boolean }
   onOpenCreative: (modeId: CreativeModeId) => void
 }
 
-export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWatermark, runtimeResourceLoading, onOpenCreative }: WorkspaceEditSidebarProps) {
+export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimSeek, livePhotoSelection, onLivePhotoSelectionChange, allowWatermark, runtimeResourceLoading, onOpenCreative }: WorkspaceEditSidebarProps) {
   const edit = useWorkspaceEdit()
   const canvas = useWorkspaceCanvas()
   const mediaCtx = useWorkspaceMedia()
@@ -142,7 +144,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
     filter: isFilterModified(edit.pipeline.lutFilter),
     color: isColorModified(edit.pipeline.color) || edit.pipeline.colorMasks.some((layer) => isColorModified(layer.color)),
     crop: isCropModified(edit.pipeline.transform),
-    trim: isTrimModified(edit.pipeline.trim) || edit.pipeline.videoMarkers.length > 0,
+    trim: isTrimModified(edit.pipeline.trim) || edit.pipeline.outputMarkers.length > 0,
     watermark: isWatermarkModified(edit.pipeline.watermark),
     border: isBorderModified(edit.pipeline.border),
     creative: false,
@@ -316,8 +318,12 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
             <TrimPanel
               startTime={edit.pipeline.trim?.startTime ?? 0}
               endTime={edit.pipeline.trim?.endTime ?? duration}
+              currentTime={currentTime}
               duration={duration}
-              markers={edit.pipeline.videoMarkers}
+              markers={edit.pipeline.outputMarkers}
+              liveSelection={livePhotoSelection}
+              onLiveSelectionChange={onLivePhotoSelectionChange}
+              videoPath={mediaCtx.activeMedia?.path ?? null}
               onStartTimeChange={(time) => {
                 const end = edit.pipeline.trim?.endTime ?? duration
                 edit.commitPatch({ trim: { startTime: time, endTime: Math.max(time + 0.1, end) } })
@@ -326,10 +332,16 @@ export function WorkspaceEditSidebar({ mediaSize, duration, onTrimSeek, allowWat
                 const curStart = edit.pipeline.trim?.startTime ?? 0
                 edit.commitPatch({ trim: { startTime: curStart, endTime: time } })
               }}
-              onMarkersChange={(videoMarkers) => edit.commitPatch({ videoMarkers })}
-              jsonValue={buildVideoSegmentsExport(mediaCtx.activeMedia?.path ?? '', edit.pipeline.videoMarkers)}
-              onExportJson={(data) => window.luna.workspace.exportVideoSegmentsJson(data)}
+              onMarkersChange={(outputMarkers) => edit.commitPatch({ outputMarkers })}
               onSelectMarker={(marker) => {
+                if (marker.kind === 'photo') {
+                  onTrimSeek(marker.time)
+                  return
+                }
+                if (marker.kind === 'live') {
+                  onTrimSeek(marker.coverTime)
+                  return
+                }
                 edit.commitPatch({ trim: { startTime: marker.startTime, endTime: marker.endTime } })
                 onTrimSeek(marker.startTime)
               }}
