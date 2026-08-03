@@ -71,3 +71,23 @@ fn aperture_blur(uv: vec2<f32>, radius: f32) -> vec3<f32> {
     }
     return sum / max(weight_sum, 0.0001);
 }
+
+fn aperture_highlight_blur(uv: vec2<f32>, radius: f32, threshold: f32) -> vec3<f32> {
+    let texel = vec2<f32>(params.texel_x, params.texel_y);
+    let step_size = max(radius, 1.0) / 6.0;
+    var sum = vec3<f32>(0.0);
+    var weight_sum = 0.0;
+    for (var y = -6; y <= 6; y = y + 1) {
+        for (var x = -6; x <= 6; x = x + 1) {
+            let distance_squared = f32(x * x + y * y);
+            let kernel_weight = exp(-distance_squared / 18.0);
+            let offset = vec2<f32>(f32(x), f32(y)) * texel * step_size;
+            let sample = sample_image(uv + offset);
+            let encoded_luma = pow(sat1(luminance(sample)), 1.0 / 2.2);
+            let highlight_weight = smoothstep(max(0.0, threshold - 0.12), min(1.0, threshold + 0.12), encoded_luma);
+            sum = sum + sample * highlight_weight * kernel_weight;
+            weight_sum = weight_sum + kernel_weight;
+        }
+    }
+    return sum / max(weight_sum, 0.0001);
+}

@@ -52,6 +52,7 @@ function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
     color.texture !== d.texture ||
     color.sharpen !== d.sharpen ||
     color.denoise !== d.denoise ||
+    color.glowStrength !== d.glowStrength ||
     Object.values(color.curve.points).some((points) => points.length > 0)
   )
 }

@@ -97,6 +97,7 @@ struct GpuLayerParams {
     texture: f32,
     sharpen: f32,
     denoise: f32,
+    glow: [f32; 4],
     grade_shadows_hue: f32,
     grade_shadows_amount: f32,
     grade_mid_hue: f32,

@@ -2,6 +2,7 @@ import { HSL_CHANNELS, type EditPipeline } from '../shared/editPipeline'
 import { CurvePanel } from './CurvePanel'
 import { DetailPanel } from './DetailPanel'
 import { GradingPanel } from './GradingPanel'
+import { GlowPanel } from './GlowPanel'
 import { HslPanel } from './HslPanel'
 import { TonePanel } from './TonePanel'
 import { WhiteBalancePanel } from './WhiteBalancePanel'
@@ -30,6 +31,7 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
     }),
     grading: value.gradeShadowsAmount !== 0 || value.gradeMidAmount !== 0 || value.gradeHighlightsAmount !== 0,
     detail: value.sharpen !== 0 || value.denoise !== 0,
+    glow: value.glowStrength !== 0,
   }
 
   const handlePresetApply = (color: EditPipeline['color']) => {
@@ -45,6 +47,7 @@ export function ColorPanel({ value, onChange, onActivatePipette }: ColorPanelPro
       <HslPanel value={value} modified={modified.hsl} onChange={onChange} />
       <GradingPanel value={value} modified={modified.grading} onChange={onChange} />
       <DetailPanel value={value} modified={modified.detail} onChange={onChange} />
+      <GlowPanel value={value} modified={modified.glow} onChange={onChange} />
     </div>
   )
 }

@@ -53,6 +53,9 @@ export interface RenderColorAdjustments {
   texture: number
   sharpen: number
   denoise: number
+  glowStrength: number
+  glowRadius: number
+  glowThreshold: number
   gradeShadowsHue: number
   gradeShadowsAmount: number
   gradeMidHue: number
