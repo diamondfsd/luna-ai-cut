@@ -15,6 +15,12 @@ interface MaskComponent {
   bottom: number
 }
 
+function mergeMasks(left: Uint8Array, right: Uint8Array): Uint8Array {
+  const output = new Uint8Array(left.length)
+  for (let index = 0; index < output.length; index += 1) output[index] = Math.max(left[index], right[index])
+  return output
+}
+
 function buildIntegral(values: Float32Array, size: number): Float64Array {
   const stride = size + 1
   const output = new Float64Array(stride * stride)
@@ -151,7 +157,10 @@ function softenComponents(raw: Uint8Array, labels: Uint8Array, size: number): { 
     if (component.pixels.length < 2 || component.pixels.length > maxPixels) continue
     if (width > maxSpan || height > maxSpan || aspect > 4) continue
     count += 1
-    for (const index of component.pixels) selected[index] = Math.max(selected[index], raw[index])
+    for (const index of component.pixels) {
+      const confidence = Math.min(255, Math.round(64 + raw[index] * 1.5))
+      selected[index] = Math.max(selected[index], confidence)
+    }
   }
 
   const dilated = new Uint8Array(raw.length)
@@ -216,6 +225,7 @@ export function detectFaceBlemishes(
   const radius = Math.max(5, Math.round(size * 0.025))
   const rawAcne = new Uint8Array(labels.length)
   const rawSpots = new Uint8Array(labels.length)
+  const rawBrightSpots = new Uint8Array(labels.length)
   const rawWrinkles = new Uint8Array(labels.length)
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
@@ -224,12 +234,16 @@ export function detectFaceBlemishes(
       const localLuminance = localMean(luminanceIntegral, size, x, y, radius)
       const localRedness = localMean(rednessIntegral, size, x, y, radius)
       const darkDelta = localLuminance - luminance[index]
+      const brightDelta = luminance[index] - localLuminance
       const redDelta = redness[index] - localRedness
       if (redDelta > 6 && luminance[index] > 24) {
         rawAcne[index] = Math.min(255, Math.round((redDelta - 6) * 12))
       }
       if (darkDelta > 9 && redDelta < 8) {
         rawSpots[index] = Math.min(255, Math.round((darkDelta - 9) * 11))
+      }
+      if (brightDelta > 14 && redDelta < 14) {
+        rawBrightSpots[index] = Math.min(255, Math.round((brightDelta - 14) * 10))
       }
       if (x >= 2 && x < size - 2 && y >= 2 && y < size - 2) {
         const horizontal = (luminance[(y - 2) * size + x] + luminance[(y + 2) * size + x]) / 2 - luminance[index]
@@ -244,13 +258,14 @@ export function detectFaceBlemishes(
   }
   const acne = softenComponents(rawAcne, labels, size)
   const spots = softenComponents(rawSpots, labels, size)
+  const brightSpots = softenComponents(rawBrightSpots, labels, size)
   const wrinkles = softenWrinkles(rawWrinkles, labels, size)
   return {
     acneMask: acne.mask,
-    spotMask: spots.mask,
+    spotMask: mergeMasks(spots.mask, brightSpots.mask),
     wrinkleMask: wrinkles.mask,
     acneCount: acne.count,
-    spotCount: spots.count,
+    spotCount: spots.count + brightSpots.count,
     wrinkleCount: wrinkles.count,
   }
 }

@@ -6,12 +6,14 @@ import { loadModel } from './modelLoader'
 import { logMainInfo } from './loggerService'
 import { extractFaceBoxesInWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
 import { detectFaceBlemishes } from './beautyBlemishDetection'
-import { bodySkinMaskFromHumanLabels } from './beautySkinSegmentation'
+import { bodySkinMaskFromHumanLabels, softenBeautyMask } from './beautySkinSegmentation'
 
 const INPUT_SIZE = 640
 const MASK_SIZE = 1024
 const FACE_PARSE_SIZE = 512
 const HUMAN_PARSE_SIZE = 512
+const FACE_SKIN_FEATHER_RADIUS = 10
+const BODY_SKIN_FEATHER_RADIUS = 12
 const FACE_SKIN_LABELS = new Set([1, 7, 8, 10, 14])
 const FACE_EYE_LABELS = new Set([4, 5])
 const FACE_MOUTH_LABELS = new Set([11, 12, 13])
@@ -162,7 +164,7 @@ function faceSkinMask(
     output[index] = Math.round(skinSamples[index] / total * 255)
     hasSkin = true
   }
-  return hasSkin ? softenMask(output) : output
+  return hasSkin ? softenBeautyMask(output, MASK_SIZE, FACE_SKIN_FEATHER_RADIUS) : output
 }
 
 function compositeFaceMask(
@@ -188,79 +190,6 @@ function compositeFaceMask(
       if (value > output[index]) output[index] = value
     }
   }
-}
-
-function closeMask(input: Uint8Array): Uint8Array {
-  const dilated = new Uint8Array(input.length)
-  for (let y = 0; y < MASK_SIZE; y += 1) {
-    for (let x = 0; x < MASK_SIZE; x += 1) {
-      let active = false
-      for (let offsetY = -1; offsetY <= 1 && !active; offsetY += 1) {
-        const sampleY = Math.max(0, Math.min(MASK_SIZE - 1, y + offsetY))
-        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-          const sampleX = Math.max(0, Math.min(MASK_SIZE - 1, x + offsetX))
-          if (input[sampleY * MASK_SIZE + sampleX] >= 128) {
-            active = true
-            break
-          }
-        }
-      }
-      if (active) dilated[y * MASK_SIZE + x] = 255
-    }
-  }
-
-  const output = new Uint8Array(input.length)
-  for (let y = 0; y < MASK_SIZE; y += 1) {
-    for (let x = 0; x < MASK_SIZE; x += 1) {
-      let active = true
-      for (let offsetY = -1; offsetY <= 1 && active; offsetY += 1) {
-        const sampleY = Math.max(0, Math.min(MASK_SIZE - 1, y + offsetY))
-        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-          const sampleX = Math.max(0, Math.min(MASK_SIZE - 1, x + offsetX))
-          if (dilated[sampleY * MASK_SIZE + sampleX] === 0) {
-            active = false
-            break
-          }
-        }
-      }
-      if (active) output[y * MASK_SIZE + x] = 255
-    }
-  }
-  return output
-}
-
-function softenMask(input: Uint8Array): Uint8Array {
-  const radius = 3
-  const closed = closeMask(input)
-  const horizontal = new Float32Array(closed.length)
-  for (let y = 0; y < MASK_SIZE; y += 1) {
-    for (let x = 0; x < MASK_SIZE; x += 1) {
-      let sum = 0
-      let weightSum = 0
-      for (let offset = -radius; offset <= radius; offset += 1) {
-        const sampleX = Math.max(0, Math.min(MASK_SIZE - 1, x + offset))
-        const weight = radius + 1 - Math.abs(offset)
-        sum += closed[y * MASK_SIZE + sampleX] * weight
-        weightSum += weight
-      }
-      horizontal[y * MASK_SIZE + x] = sum / weightSum
-    }
-  }
-  const output = new Uint8Array(input.length)
-  for (let y = 0; y < MASK_SIZE; y += 1) {
-    for (let x = 0; x < MASK_SIZE; x += 1) {
-      let sum = 0
-      let weightSum = 0
-      for (let offset = -radius; offset <= radius; offset += 1) {
-        const sampleY = Math.max(0, Math.min(MASK_SIZE - 1, y + offset))
-        const weight = radius + 1 - Math.abs(offset)
-        sum += horizontal[sampleY * MASK_SIZE + x] * weight
-        weightSum += weight
-      }
-      output[y * MASK_SIZE + x] = Math.round(sum / weightSum)
-    }
-  }
-  return output
 }
 
 function resizeContent(rgb: Buffer, layout: SourceLayout, outputSize: number): Buffer {
@@ -370,8 +299,10 @@ export async function analyzeBeauty(
     spotCount,
     wrinkleCount,
   })
-  const skinMask = softenMask(
+  const skinMask = softenBeautyMask(
     bodySkinMaskFromHumanLabels(humanResult.bytes, HUMAN_PARSE_SIZE, MASK_SIZE),
+    MASK_SIZE,
+    BODY_SKIN_FEATHER_RADIUS,
   )
   const inferenceMs = performance.now() - inferenceStarted
   return {

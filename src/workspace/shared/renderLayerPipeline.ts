@@ -2,7 +2,7 @@ import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform, Waterm
 import type { BorderSettings } from './editPipeline'
 import { HSL_CHANNELS, type EditPipeline } from './editPipeline'
 import { shouldSwapOrientation } from '../transform/cropGeometry'
-import { beautyLayerColorForRendering } from '../beauty/beautyLayers'
+import { beautyLayerColorForRendering, beautyLayerOpacityForRendering } from '../beauty/beautyLayers'
 
 export function pipelineColorToRenderColor(color: EditPipeline['color']): RenderColorAdjustments {
   return {
@@ -102,7 +102,7 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
       pipelineColorToRenderColor(beautyLayerColorForRendering(pipeline, layer)),
     ),
     maskPath: layer.path,
-    maskOpacity: layer.opacity,
+    maskOpacity: beautyLayerOpacityForRendering(pipeline, layer),
     maskInverted: layer.inverted,
     maskFeather: layer.components?.some((component) => component.type !== 'raster') ? 0 : layer.feather,
     // v1.6.0 video masks are intentionally static; keep saved tracks in project data only.

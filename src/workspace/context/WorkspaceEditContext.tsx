@@ -65,6 +65,12 @@ interface WorkspaceEditValue {
   // Beauty mask preview (session-only)
   beautyMaskPreview: boolean
   setBeautyMaskPreview: (v: boolean) => void
+  beautyRetouchActive: boolean
+  setBeautyRetouchActive: (v: boolean) => void
+  beautyRetouchBrushSize: number
+  setBeautyRetouchBrushSize: (v: number) => void
+  beautyRetouchMode: 'repair' | 'erase' | null
+  setBeautyRetouchMode: (v: 'repair' | 'erase' | null) => void
 
   // Crop state machine
   cropActive: boolean
@@ -126,6 +132,9 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
   const [compareOriginal, setCompareOriginal] = useState(false)
   const [pipetteActive, setPipetteActive] = useState(false)
   const [beautyMaskPreview, setBeautyMaskPreview] = useState(false)
+  const [beautyRetouchActive, setBeautyRetouchActive] = useState(false)
+  const [beautyRetouchBrushSize, setBeautyRetouchBrushSize] = useState(24)
+  const [beautyRetouchMode, setBeautyRetouchMode] = useState<'repair' | 'erase' | null>(null)
 
   const cropMachine = useCropMachine(pipeline, commitPatch, setActiveTool)
   const trimMachine = useTrimMachine()
@@ -265,6 +274,12 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     setPipetteActive,
     beautyMaskPreview,
     setBeautyMaskPreview,
+    beautyRetouchActive,
+    setBeautyRetouchActive,
+    beautyRetouchBrushSize,
+    setBeautyRetouchBrushSize,
+    beautyRetouchMode,
+    setBeautyRetouchMode,
     ...cropMachine,
     ...trimMachine,
     selectTool,
@@ -290,6 +305,9 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     pipetteActive,
     setPipetteActive,
     beautyMaskPreview,
+    beautyRetouchActive,
+    beautyRetouchBrushSize,
+    beautyRetouchMode,
     cropMachine,
     trimMachine,
     selectTool,

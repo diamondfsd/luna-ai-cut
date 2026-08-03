@@ -53,7 +53,7 @@ export function WorkspacePreviewToolbar({
   const currentScalePercent = scalePercent ?? fitScalePercent
 
   function changeScale(delta: number): void {
-    onViewScaleChange(Math.max(5, Math.min(200, currentScalePercent + delta)))
+    onViewScaleChange(Math.max(5, Math.min(500, currentScalePercent + delta)))
   }
 
   function resetAdjustments(): void {

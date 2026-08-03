@@ -215,6 +215,24 @@ try {
     pixelDifference(skinTextureBase, beautySmoothing).total > 0,
     'beauty smoothing must execute the edge-aware denoise branch',
   )
+  const beautyTexture = await renderAndMatchExport('beauty-texture', composition([
+    mediaLayer(skinTextureSourcePath),
+    localLayer(skinTextureSourcePath, fullMaskPath, { color: { texture: 50 } }),
+  ]))
+  assert.ok(
+    pixelDifference(skinTextureBase, beautyTexture).total > 0,
+    'beauty texture must restore local detail without requiring smoothing',
+  )
+  const manualBeautyRetouch = await renderAndMatchExport('beauty-manual-retouch', composition([
+    mediaLayer(skinTextureSourcePath),
+    localLayer(skinTextureSourcePath, rectMaskPath, { color: { denoise: 1900 } }),
+  ]))
+  assert.ok(
+    pixelDifference(skinTextureBase, manualBeautyRetouch).total > 0,
+    'manual beauty retouch must replace texture inside the painted mask',
+  )
+  assert.ok(pixelDeltaAt(skinTextureBase, manualBeautyRetouch, 15, 14) > 0, 'manual beauty retouch must affect the painted center')
+  assert.equal(pixelDeltaAt(skinTextureBase, manualBeautyRetouch, 2, 2), 0, 'manual beauty retouch must preserve pixels outside the mask')
   const precomposeGroup = 'mask-color-source'
   const precomposedClear = await renderAndMatchExport('precomposed-clear', composition([
     { ...mediaLayer(sourcePath), precomposeGroup, precomposeRole: 'input' },

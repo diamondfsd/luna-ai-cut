@@ -119,17 +119,59 @@ try {
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
   const { createDefaultPipeline, mergePipeline } = pipelineModule
 
-  const maxBeautyParameters = { faceWhitening: 100, skinWhitening: 100, smoothing: 0, acneRemoval: 100, spotRemoval: 100, wrinkleReduction: 100 }
+  const maxBeautyParameters = { faceWhitening: 100, skinWhitening: 100, smoothing: 0, texture: 100, acneRemoval: 100, spotRemoval: 100, wrinkleReduction: 100 }
   const beautyBodyLayer = beautyLayers.createBeautyMaskLayer('body', { path: '/tmp/body.pgm', width: 1, height: 1 }, maxBeautyParameters)
   const beautyFaceLayer = beautyLayers.createBeautyMaskLayer('face', { path: '/tmp/face.pgm', width: 1, height: 1 }, maxBeautyParameters)
   const beautyAcneLayer = beautyLayers.createBeautyMaskLayer('acne', { path: '/tmp/acne.pgm', width: 1, height: 1 }, maxBeautyParameters)
   const beautySpotLayer = beautyLayers.createBeautyMaskLayer('spot', { path: '/tmp/spot.pgm', width: 1, height: 1 }, maxBeautyParameters)
   const beautyWrinkleLayer = beautyLayers.createBeautyMaskLayer('wrinkle', { path: '/tmp/wrinkle.pgm', width: 1, height: 1 }, maxBeautyParameters)
+  const beautyManualLayer = beautyLayers.createManualBeautyRetouchLayer({ path: '/tmp/manual-retouch.pgm', width: 1, height: 1 })
   const beautyPipeline = { ...createDefaultPipeline(), beautyMasks: [beautyBodyLayer, beautyFaceLayer, beautySpotLayer, beautyAcneLayer, beautyWrinkleLayer] }
   close(beautyBodyLayer.color.exposure, 0.15, 'stored body whitening must preserve existing slider semantics')
   close(beautyFaceLayer.color.exposure, 0.45, 'stored face whitening must preserve existing slider semantics')
-  close(beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyBodyLayer).exposure, 0.3, 'rendered body whitening maximum must double')
-  close(beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyFaceLayer).exposure, 0.6, 'rendered face exposure must include doubled overall whitening')
+  const renderedBeautyBody = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyBodyLayer)
+  const renderedBeautyFace = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyFaceLayer)
+  close(renderedBeautyBody.exposure, 0.6, 'rendered body whitening maximum must remain visibly effective')
+  close(renderedBeautyFace.exposure, 1.2, 'rendered face exposure must combine overall and face whitening')
+  close(renderedBeautyBody.temperature, -5, 'skin whitening must gently neutralize warm color casts')
+  close(renderedBeautyBody.saturation, -6, 'skin whitening must reduce global skin saturation without washing it out')
+  close(renderedBeautyBody.curveLift, 5, 'skin whitening must lift midtones in addition to exposure')
+  close(renderedBeautyBody.hslChannels.orange.saturation, -8, 'skin whitening must reduce orange saturation')
+  close(renderedBeautyBody.hslChannels.orange.luminance, 6, 'skin whitening must lift orange skin luminance')
+  close(renderedBeautyFace.hslChannels.yellow.saturation, -20, 'face whitening must add the same yellow correction as overall whitening')
+  close(renderedBeautyFace.texture, 35, 'beauty texture must restore detail at a controlled strength')
+  const renderedBeautyAcne = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyAcneLayer)
+  const renderedBeautySpot = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautySpotLayer)
+  const renderedBeautyManual = beautyLayers.beautyLayerColorForRendering(
+    { ...beautyPipeline, beautyMasks: [beautyManualLayer, ...beautyPipeline.beautyMasks] },
+    beautyManualLayer,
+  )
+  close(renderedBeautyAcne.denoise, 1300, 'acne removal must use localized repair blur instead of edge-protected smoothing')
+  close(renderedBeautySpot.denoise, 1900, 'spot removal must use a wider localized repair sample')
+  close(renderedBeautyManual.denoise, 1900, 'manual retouch strokes must use localized skin repair')
+  close(beautyLayers.beautyLayerOpacityForRendering(beautyPipeline, beautyAcneLayer), 0, 'retired acne repair must not render')
+  close(beautyLayers.beautyLayerOpacityForRendering(beautyPipeline, beautySpotLayer), 0, 'retired spot repair must not render')
+  close(beautyLayers.beautyLayerOpacityForRendering(beautyPipeline, beautyWrinkleLayer), 0, 'retired wrinkle repair must not render')
+  const faceOnlyParameters = { ...maxBeautyParameters, skinWhitening: 0, smoothing: 0, texture: 0 }
+  const bodyOnlyParameters = { ...maxBeautyParameters, faceWhitening: 0, smoothing: 0, texture: 0 }
+  const faceOnlyLayer = beautyLayers.createBeautyMaskLayer('face', { path: '/tmp/face-only.pgm', width: 1, height: 1 }, faceOnlyParameters)
+  const faceOnlyBodyLayer = beautyLayers.createBeautyMaskLayer('body', { path: '/tmp/face-only-body.pgm', width: 1, height: 1 }, faceOnlyParameters)
+  const bodyOnlyFaceLayer = beautyLayers.createBeautyMaskLayer('face', { path: '/tmp/body-only-face.pgm', width: 1, height: 1 }, bodyOnlyParameters)
+  const bodyOnlyLayer = beautyLayers.createBeautyMaskLayer('body', { path: '/tmp/body-only.pgm', width: 1, height: 1 }, bodyOnlyParameters)
+  const renderedFaceOnly = beautyLayers.beautyLayerColorForRendering(
+    { ...createDefaultPipeline(), beautyMasks: [faceOnlyBodyLayer, faceOnlyLayer] },
+    faceOnlyLayer,
+  )
+  const renderedBodyOnly = beautyLayers.beautyLayerColorForRendering(
+    { ...createDefaultPipeline(), beautyMasks: [bodyOnlyLayer, bodyOnlyFaceLayer] },
+    bodyOnlyLayer,
+  )
+  assert.deepEqual(renderedFaceOnly, renderedBodyOnly, 'equal face and overall whitening strengths must use the same rendering algorithm')
+  assert.deepEqual(
+    beautyLayers.replaceBeautyLayers(beautyFaceLayer, beautyBodyLayer, beautyAcneLayer, beautySpotLayer, beautyWrinkleLayer).map((layer) => layer.id),
+    ['beauty-wrinkles', 'beauty-acne', 'beauty-spots', 'beauty-face-skin', 'beauty-body-skin'],
+    'localized beauty repairs must remain above broad face and body adjustments',
+  )
   close(beautyAcneLayer.color.denoise, 100, 'acne removal strength must use local edge-aware smoothing')
   close(beautySpotLayer.color.exposure, 0.2, 'spot removal strength must use local exposure correction')
   close(beautyWrinkleLayer.color.denoise, 75, 'wrinkle reduction must preserve texture with bounded local smoothing')
@@ -151,11 +193,8 @@ try {
     [
       { id: 'beauty-body-skin', label: '身体肌肤', color: '#35C46A' },
       { id: 'beauty-face-skin', label: '面部肌肤', color: '#21C7D9' },
-      { id: 'beauty-spots', label: '斑点', color: '#F2C94C' },
-      { id: 'beauty-acne', label: '痘痘', color: '#FF4D5A' },
-      { id: 'beauty-wrinkles', label: '皱纹', color: '#D45AF0' },
     ],
-    'beauty mask preview legend must retain five distinct stable mappings',
+    'beauty mask preview legend must only show active skin masks',
   )
 
   const normalizedTrack = maskTrack.normalizeMaskTrack({
@@ -700,9 +739,9 @@ try {
   const migratedBody = migratedBeauty.find((layer) => layer.maskPath === '/beauty-body.pgm')
   assert.equal(migratedFace.color.brightness, 0, 'legacy face whitening must not render as additive RGB brightness')
   assert.equal(migratedBody.color.brightness, 0, 'legacy body whitening must not render as additive RGB brightness')
-  close(migratedFace.color.exposure, 0.084, 'legacy face whitening must include doubled overall whitening')
-  close(migratedBody.color.exposure, 0.03, 'legacy body whitening must use the doubled render mapping')
-  assert.equal(migratedFace.color.denoise, 28, 'legacy smoothing strength must survive whitening migration')
+  close(migratedFace.color.exposure, 0.168, 'legacy face whitening must combine face and overall strength with the unified algorithm')
+  close(migratedBody.color.exposure, 0.06, 'legacy body whitening must use the stronger render mapping')
+  assert.equal(migratedFace.color.denoise, 20.16, 'legacy smoothing slider value must use the reduced anti-blur render mapping')
   assert.equal(
     renderModule.buildLocalColorLayers(baseLayer, stressPipeline)[0].maskTrack,
     undefined,

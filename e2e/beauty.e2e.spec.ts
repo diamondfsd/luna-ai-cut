@@ -73,24 +73,27 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
 
   await expect(lunaApp.page.getByLabel('面部美白数值')).toHaveValue('18', { timeout: 120_000 })
   await expect(lunaApp.page.getByRole('button', { name: '重试识别', exact: true })).toHaveCount(0)
+  const zoomIn = lunaApp.page.getByRole('button', { name: '放大预览', exact: true })
+  for (let step = 0; step < 50; step += 1) await zoomIn.click()
+  await expect(lunaApp.page.getByRole('button', { name: '当前缩放 500%，点击恢复适应窗口', exact: true })).toBeVisible()
+  await zoomIn.click()
+  await expect(lunaApp.page.getByRole('button', { name: '当前缩放 500%，点击恢复适应窗口', exact: true })).toBeVisible()
+  await lunaApp.page.getByRole('button', { name: '当前缩放 500%，点击恢复适应窗口', exact: true }).click()
   await expect(lunaApp.page.getByLabel('皮肤整体美白数值')).toHaveValue('10')
   await expect(lunaApp.page.getByLabel('磨皮数值')).toHaveValue('28')
-  await expect(lunaApp.page.getByLabel('祛痘数值')).toHaveValue('35')
-  await expect(lunaApp.page.getByLabel('淡化色斑数值')).toHaveValue('20')
-  await expect(lunaApp.page.getByLabel('淡化皱纹数值')).toHaveValue('20')
-  const setBeautyValues = async (face: number, skin: number, smoothing: number, acne = 35, spots = 20, wrinkles = 20) => {
+  await expect(lunaApp.page.getByLabel('质感数值')).toHaveValue('0')
+  await expect(lunaApp.page.getByLabel('祛痘数值')).toHaveCount(0)
+  await expect(lunaApp.page.getByLabel('淡化色斑数值')).toHaveCount(0)
+  await expect(lunaApp.page.getByLabel('淡化皱纹数值')).toHaveCount(0)
+  const setBeautyValues = async (face: number, skin: number, smoothing: number, texture = 0) => {
     await lunaApp.page.getByLabel('面部美白数值').fill(String(face))
     await lunaApp.page.getByLabel('面部美白数值').blur()
     await lunaApp.page.getByLabel('皮肤整体美白数值').fill(String(skin))
     await lunaApp.page.getByLabel('皮肤整体美白数值').blur()
     await lunaApp.page.getByLabel('磨皮数值').fill(String(smoothing))
     await lunaApp.page.getByLabel('磨皮数值').blur()
-    await lunaApp.page.getByLabel('祛痘数值').fill(String(acne))
-    await lunaApp.page.getByLabel('祛痘数值').blur()
-    await lunaApp.page.getByLabel('淡化色斑数值').fill(String(spots))
-    await lunaApp.page.getByLabel('淡化色斑数值').blur()
-    await lunaApp.page.getByLabel('淡化皱纹数值').fill(String(wrinkles))
-    await lunaApp.page.getByLabel('淡化皱纹数值').blur()
+    await lunaApp.page.getByLabel('质感数值').fill(String(texture))
+    await lunaApp.page.getByLabel('质感数值').blur()
     await expect(lunaApp.page.locator('.preview-loading-overlay')).toBeHidden({ timeout: 30_000 })
   }
   const captureBeauty = async (name: string) => {
@@ -107,7 +110,7 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
     await setBeautyValues(0, 0, 100)
     await captureBeauty('beauty-smoothing-100.png')
   }
-  await setBeautyValues(100, 100, 100)
+  await setBeautyValues(100, 100, 100, 100)
 
   const projectFile = path.join(lunaApp.temporaryRoot, 'downloads', 'workspace-projects', project.id, 'project.json')
   await expect.poll(async () => {
@@ -116,7 +119,7 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
         id: string
         path: string
         modelId: string
-        color: { exposure: number; brightness: number; denoise: number }
+        color: { exposure: number; brightness: number; denoise: number; texture: number }
       }> } }>
     }
     const layers = persisted.assets[0]?.pipeline?.beautyMasks ?? []
@@ -127,6 +130,7 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
       faceExposure: face?.color.exposure,
       faceBrightness: face?.color.brightness,
       faceDenoise: face?.color.denoise,
+      faceTexture: face?.color.texture,
       bodyExposure: body?.color.exposure,
       bodyBrightness: body?.color.brightness,
       acneDenoise: layers.find((layer) => layer.id === 'beauty-acne')?.color.denoise,
@@ -141,11 +145,12 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
     faceExposure: 0.45,
     faceBrightness: 0,
     faceDenoise: 100,
+    faceTexture: 100,
     bodyExposure: 0.15,
     bodyBrightness: 0,
-    acneDenoise: 35,
-    spotExposure: 0.04,
-    wrinkleDenoise: 15,
+    acneDenoise: 0,
+    spotExposure: 0,
+    wrinkleDenoise: 0,
     faceModelId: 'face-parsing-resnet18',
     bodyModelId: 'schp-atr-resnet101-512',
     paths: expect.any(Array),
@@ -183,14 +188,49 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
   await lunaApp.page.getByRole('button', { name: '测试蒙版', exact: true }).click()
   const legend = lunaApp.page.getByLabel('美颜蒙版图例')
   await expect(legend).toBeVisible()
-  for (const label of ['身体肌肤', '面部肌肤', '斑点', '痘痘', '皱纹']) {
+  for (const label of ['身体肌肤', '面部肌肤']) {
     await expect(legend.getByText(label, { exact: true })).toBeVisible()
   }
-  await expect(lunaApp.page.getByTestId('beauty-mask-overlay')).toHaveAttribute('data-mask-count', '5')
+  await expect(lunaApp.page.getByTestId('beauty-mask-overlay')).toHaveAttribute('data-mask-count', '2')
   expect(await readFile(projectFile, 'utf8')).toEqual(projectBeforeMaskPreview)
   await lunaApp.page.getByRole('button', { name: '关闭蒙版', exact: true }).click()
   await expect(lunaApp.page.getByTestId('beauty-mask-overlay')).toHaveCount(0)
+  const retouchCanvas = lunaApp.page.getByLabel('局部修复画笔')
+  const repairMode = lunaApp.page.getByRole('button', { name: '修复', exact: true })
+  const eraseMode = lunaApp.page.getByRole('button', { name: '擦除', exact: true })
+  await expect(repairMode).toHaveAttribute('aria-pressed', 'false')
+  await expect(eraseMode).toHaveAttribute('aria-pressed', 'false')
+  await expect(retouchCanvas).toHaveCount(0)
+  if (screenshotDir) {
+    await lunaApp.page.screenshot({ path: path.join(screenshotDir, 'beauty-local-retouch-idle.png') })
+  }
+  await repairMode.click()
+  await expect(retouchCanvas).toBeVisible()
+  await repairMode.click()
+  await expect(repairMode).toHaveAttribute('aria-pressed', 'false')
+  await expect(retouchCanvas).toHaveCount(0)
+  await repairMode.click()
+  await expect(retouchCanvas).toBeVisible()
+  if (screenshotDir) {
+    await lunaApp.page.screenshot({ path: path.join(screenshotDir, 'beauty-manual-retouch-layout.png') })
+  }
+  await retouchCanvas.click({ position: { x: 120, y: 90 } })
+  await expect.poll(async () => {
+    const projectData = JSON.parse(await readFile(projectFile, 'utf8')) as {
+      assets: Array<{ pipeline?: { beautyMasks?: Array<{ id: string; path: string }> } }>
+    }
+    return projectData.assets[0]?.pipeline?.beautyMasks?.find((layer) => layer.id === 'beauty-manual-retouch')?.path ?? ''
+  }).not.toBe('')
+  const manualProjectData = JSON.parse(await readFile(projectFile, 'utf8')) as {
+    assets: Array<{ pipeline?: { beautyMasks?: Array<{ id: string; path: string }> } }>
+  }
+  const manualMaskPath = manualProjectData.assets[0]?.pipeline?.beautyMasks?.find((layer) => layer.id === 'beauty-manual-retouch')?.path
+  expect(manualMaskPath).toBeTruthy()
+  const manualMask = await readFile(manualMaskPath!)
+  const manualDataStart = manualMask.indexOf('\n255\n') + 5
+  expect(manualMask.subarray(manualDataStart).some((value) => value > 0)).toBe(true)
   await lunaApp.page.getByRole('button', { name: '调色与蒙版', exact: true }).click()
+  await expect(retouchCanvas).toHaveCount(0)
   await expect(lunaApp.page.locator('.workspace-color-mask-layer')).toHaveCount(1)
   await expect(lunaApp.page.getByText('美颜 · 面部皮肤', { exact: true })).toHaveCount(0)
   expect(lunaApp.runtimeErrors).toEqual([])
@@ -205,8 +245,8 @@ test('复制美颜参数后在目标图片自动重新识别并应用', async ({
   await lunaApp.page.getByRole('button', { name: '美颜', exact: true }).click()
   await expect(lunaApp.page.getByLabel('面部美白数值')).toHaveValue('18', { timeout: 120_000 })
 
-  const values = [33, 22, 44, 55, 66, 77]
-  const labels = ['面部美白数值', '皮肤整体美白数值', '磨皮数值', '祛痘数值', '淡化色斑数值', '淡化皱纹数值']
+  const values = [33, 22, 44, 45]
+  const labels = ['面部美白数值', '皮肤整体美白数值', '磨皮数值', '质感数值']
   for (let index = 0; index < labels.length; index += 1) {
     const input = lunaApp.page.getByLabel(labels[index])
     await input.fill(String(values[index]))
@@ -226,7 +266,7 @@ test('复制美颜参数后在目标图片自动重新识别并应用', async ({
 
   await expect.poll(async () => {
     const persisted = JSON.parse(await readFile(projectFile, 'utf8')) as {
-      assets: Array<{ pipeline?: { beautyMasks?: Array<{ id: string; path: string; enabled: boolean; color: { exposure: number; denoise: number } }> } }>
+      assets: Array<{ pipeline?: { beautyMasks?: Array<{ id: string; path: string; enabled: boolean; color: { exposure: number; denoise: number; texture: number } }> } }>
     }
     const layers = persisted.assets[1]?.pipeline?.beautyMasks ?? []
     return {
@@ -234,6 +274,7 @@ test('复制美颜参数后在目标图片自动重新识别并应用', async ({
       face: layers.find((layer) => layer.id === 'beauty-face-skin')?.color.exposure,
       body: layers.find((layer) => layer.id === 'beauty-body-skin')?.color.exposure,
       smoothing: layers.find((layer) => layer.id === 'beauty-face-skin')?.color.denoise,
+      texture: layers.find((layer) => layer.id === 'beauty-face-skin')?.color.texture,
       acne: layers.find((layer) => layer.id === 'beauty-acne')?.color.denoise,
       spots: layers.find((layer) => layer.id === 'beauty-spots')?.color.exposure,
       wrinkles: layers.find((layer) => layer.id === 'beauty-wrinkles')?.color.denoise,
@@ -245,9 +286,10 @@ test('复制美颜参数后在目标图片自动重新识别并应用', async ({
     face: 0.132,
     body: 0.033,
     smoothing: 44,
-    acne: 55,
-    spots: 0.132,
-    wrinkles: 57.75,
+    texture: 45,
+    acne: 0,
+    spots: 0,
+    wrinkles: 0,
     paths: expect.arrayContaining([expect.stringContaining('beauty-input-2')]),
     enabled: true,
   })
@@ -271,9 +313,10 @@ test('图片美颜没有检测到人脸时仍提供参数且保持空效果', as
   await expect(lunaApp.page.getByLabel('面部美白数值')).toHaveValue('18', { timeout: 120_000 })
   await expect(lunaApp.page.getByLabel('皮肤整体美白数值')).toHaveValue('10')
   await expect(lunaApp.page.getByLabel('磨皮数值')).toHaveValue('28')
-  await expect(lunaApp.page.getByLabel('祛痘数值')).toHaveValue('35')
-  await expect(lunaApp.page.getByLabel('淡化色斑数值')).toHaveValue('20')
-  await expect(lunaApp.page.getByLabel('淡化皱纹数值')).toHaveValue('20')
+  await expect(lunaApp.page.getByLabel('质感数值')).toHaveValue('0')
+  await expect(lunaApp.page.getByLabel('祛痘数值')).toHaveCount(0)
+  await expect(lunaApp.page.getByLabel('淡化色斑数值')).toHaveCount(0)
+  await expect(lunaApp.page.getByLabel('淡化皱纹数值')).toHaveCount(0)
   await expect(lunaApp.page.getByRole('button', { name: '重试识别', exact: true })).toHaveCount(0)
   const projectFile = path.join(lunaApp.temporaryRoot, 'downloads', 'workspace-projects', project.id, 'project.json')
   await expect.poll(async () => {

@@ -1,16 +1,14 @@
-import { Eye, EyeOff, Loader2, RotateCcw, ScanFace } from 'lucide-react'
+import { Brush, Eraser, Eye, EyeOff, Loader2, RotateCcw, ScanFace } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Accordion, Button, Switch, toast } from '../../ui'
+import { Accordion, Button, ButtonGroup, Switch, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ParamSlider } from '../components/ParamSlider'
 import {
   BEAUTY_BODY_LAYER_ID,
   BEAUTY_FACE_LAYER_ID,
-  BEAUTY_ACNE_LAYER_ID,
-  BEAUTY_SPOT_LAYER_ID,
-  BEAUTY_WRINKLE_LAYER_ID,
+  BEAUTY_MANUAL_RETOUCH_LAYER_ID,
   DEFAULT_BEAUTY_PARAMETERS,
   beautyLayers,
   beautyParameters,
@@ -25,13 +23,16 @@ import './BeautyPanel.css'
 export function BeautyPanel() {
   const edit = useWorkspaceEdit()
   const setBeautyMaskPreview = edit.setBeautyMaskPreview
+  const setBeautyRetouchActive = edit.setBeautyRetouchActive
+  const setBeautyRetouchMode = edit.setBeautyRetouchMode
   const media = useWorkspaceMedia()
   const activeAsset = media.currentProject?.assets[media.activeIndex] ?? null
   const layers = useMemo(() => beautyLayers(edit.pipeline), [edit.pipeline])
   const parameters = useMemo(() => beautyParameters(edit.pipeline), [edit.pipeline])
   const hasSkinAnalysis = Boolean(layers.face && layers.body)
   const analyzed = useMemo(() => isBeautyAnalysisCurrent(edit.pipeline), [edit.pipeline])
-  const enabled = Boolean(layers.face?.enabled || layers.body?.enabled || layers.acne?.enabled || layers.spot?.enabled || layers.wrinkle?.enabled)
+  const manualLayer = edit.pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_MANUAL_RETOUCH_LAYER_ID)
+  const enabled = Boolean(layers.face?.enabled || layers.body?.enabled || manualLayer?.enabled)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [analysisError, setAnalysisError] = useState('')
@@ -50,10 +51,22 @@ export function BeautyPanel() {
     attemptedAssetRef.current = null
     setAnalysisError('')
     setBeautyMaskPreview(false)
+    setBeautyRetouchActive(false)
+    setBeautyRetouchMode(null)
     return cancel
-  }, [activeAsset?.id, cancel, setBeautyMaskPreview])
+  }, [activeAsset?.id, cancel, setBeautyMaskPreview, setBeautyRetouchActive, setBeautyRetouchMode])
 
-  useEffect(() => () => setBeautyMaskPreview(false), [setBeautyMaskPreview])
+  useEffect(() => () => {
+    setBeautyMaskPreview(false)
+    setBeautyRetouchActive(false)
+    setBeautyRetouchMode(null)
+  }, [setBeautyMaskPreview, setBeautyRetouchActive, setBeautyRetouchMode])
+
+  useEffect(() => {
+    if (!analyzed || activeAsset?.kind !== 'image') return
+    setBeautyMaskPreview(false)
+    setBeautyRetouchActive(true)
+  }, [activeAsset?.id, activeAsset?.kind, analyzed, setBeautyMaskPreview, setBeautyRetouchActive])
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
     if (progress.requestId !== requestRef.current) return
@@ -86,7 +99,10 @@ export function BeautyPanel() {
         onStatus: setStatus,
         shouldContinue: () => requestRef.current === requestId,
       })
-      if (beautyMasks) edit.commitPatch({ beautyMasks })
+      if (beautyMasks) {
+        const manual = edit.pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_MANUAL_RETOUCH_LAYER_ID)
+        edit.commitPatch({ beautyMasks: manual ? [manual, ...beautyMasks] : beautyMasks })
+      }
     } catch (error) {
       if (requestRef.current !== requestId) return
       const message = error instanceof Error ? error.message : '美颜分析失败'
@@ -114,23 +130,21 @@ export function BeautyPanel() {
       beautyMasks: edit.pipeline.beautyMasks.map((layer) => (
         layer.id === BEAUTY_FACE_LAYER_ID
           || layer.id === BEAUTY_BODY_LAYER_ID
-          || layer.id === BEAUTY_ACNE_LAYER_ID
-          || layer.id === BEAUTY_SPOT_LAYER_ID
-          || layer.id === BEAUTY_WRINKLE_LAYER_ID
+          || layer.id === BEAUTY_MANUAL_RETOUCH_LAYER_ID
           ? { ...layer, enabled: next }
           : layer
       )),
     })
   }
 
-  const reset = () => commitParameters({ faceWhitening: 0, skinWhitening: 0, smoothing: 0, acneRemoval: 0, spotRemoval: 0, wrinkleReduction: 0 })
+  const reset = () => commitParameters({ faceWhitening: 0, skinWhitening: 0, smoothing: 0, texture: 0, acneRemoval: 0, spotRemoval: 0, wrinkleReduction: 0 })
 
   return (
     <div className="beauty-panel">
       <div className="beauty-panel-summary">
         <div>
           <strong>自然美颜</strong>
-          <span>{analyzed ? '已识别人脸、皮肤和面部瑕疵' : '本地识别人脸、皮肤和面部瑕疵'}</span>
+          <span>{analyzed ? '已识别人脸和皮肤' : '本地识别人脸和皮肤'}</span>
         </div>
         {analyzed && <Switch checked={enabled} onCheckedChange={setEnabled} ariaLabel="启用美颜" />}
       </div>
@@ -163,7 +177,11 @@ export function BeautyPanel() {
               size="compact"
               icon={edit.beautyMaskPreview ? <EyeOff size={15} /> : <Eye size={15} />}
               aria-pressed={edit.beautyMaskPreview}
-              onClick={() => setBeautyMaskPreview(!edit.beautyMaskPreview)}
+              onClick={() => {
+                const next = !edit.beautyMaskPreview
+                setBeautyRetouchActive(!next)
+                setBeautyMaskPreview(next)
+              }}
             >
               {edit.beautyMaskPreview ? '关闭蒙版' : '测试蒙版'}
             </Button>
@@ -212,29 +230,40 @@ export function BeautyPanel() {
             formatValue={(value) => String(value)}
           />
           <ParamSlider
-            label="祛痘"
-            value={parameters.acneRemoval}
+            label="质感"
+            value={parameters.texture}
             min={0}
             max={100}
-            onChange={(acneRemoval) => commitParameters({ ...parameters, acneRemoval })}
+            onChange={(texture) => commitParameters({ ...parameters, texture })}
             formatValue={(value) => String(value)}
           />
-          <ParamSlider
-            label="淡化色斑"
-            value={parameters.spotRemoval}
-            min={0}
-            max={100}
-            onChange={(spotRemoval) => commitParameters({ ...parameters, spotRemoval })}
-            formatValue={(value) => String(value)}
-          />
-          <ParamSlider
-            label="淡化皱纹"
-            value={parameters.wrinkleReduction}
-            min={0}
-            max={100}
-            onChange={(wrinkleReduction) => commitParameters({ ...parameters, wrinkleReduction })}
-            formatValue={(value) => String(value)}
-          />
+          </Accordion>
+          <Accordion
+            title="局部修复"
+            defaultOpen
+            modified={Boolean(manualLayer)}
+          >
+            <ButtonGroup
+              className="beauty-retouch-modes"
+              ariaLabel="局部修复方式"
+              value={edit.beautyRetouchMode ?? 'none'}
+              onChange={(mode) => {
+                if (mode === edit.beautyRetouchMode) setBeautyRetouchMode(null)
+                else if (mode === 'repair' || mode === 'erase') setBeautyRetouchMode(mode)
+              }}
+              options={[
+                { value: 'repair', label: <><Brush size={15} />修复</> },
+                { value: 'erase', label: <><Eraser size={15} />擦除</> },
+              ]}
+            />
+            <ParamSlider
+              label="画笔大小"
+              value={edit.beautyRetouchBrushSize}
+              min={6}
+              max={80}
+              onChange={edit.setBeautyRetouchBrushSize}
+              formatValue={(value) => String(value)}
+            />
           </Accordion>
         </>
       )}
