@@ -18,7 +18,7 @@ import type {
   DeviceDebugEvent,
 } from './debug'
 import type { UpdateInfo, HotUpdateCheckResult, ReleaseNoteItem } from './update'
-import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset, WorkspaceVideoSegmentsExport } from './workspace'
+import type { WorkspaceColorMetadata, WorkspaceProject, WorkspaceMediaAsset } from './workspace'
 import type { WifiDebugResult, WifiDebugStatus, WifiDebugNetwork, WifiConnectOptions } from './wifi'
 import type { NetworkDiagnosticsResult } from './networkDiagnostics'
 import type {
@@ -249,7 +249,6 @@ export interface LunaApi {
   }
   workspace: {
     chooseMediaFiles(): Promise<string[]>
-    exportVideoSegmentsJson(data: WorkspaceVideoSegmentsExport): Promise<{ path: string } | null>
     loadTrimThumbnailCache(videoPath: string, duration: number): Promise<ArrayBuffer | null>
     saveTrimThumbnailCache(videoPath: string, duration: number, bytes: ArrayBuffer): Promise<void>
     saveColorMask(projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number): Promise<{ path: string; width: number; height: number }>
