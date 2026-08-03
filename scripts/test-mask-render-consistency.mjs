@@ -87,10 +87,10 @@ function writeBlueSkyPpmPixels() {
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const offset = (y * width + x) * 3
-      const noise = (x + y) % 2
-      pixels[offset] = 100 + noise
-      pixels[offset + 1] = 100 + noise
-      pixels[offset + 2] = 180 + noise
+      const alternate = (x + y) % 2 === 0
+      pixels[offset] = alternate ? 100 : 98
+      pixels[offset + 1] = alternate ? 98 : 102
+      pixels[offset + 2] = 180
     }
   }
   return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
@@ -159,6 +159,14 @@ function pixelDeltaAt(first, second, x, y) {
 function pixelBrightnessAt(frame, x, y) {
   const index = (y * width + x) * 4
   return frame[index] + frame[index + 1] + frame[index + 2]
+}
+
+function horizontalPixelDelta(frame, x, y) {
+  const first = (y * width + x) * 4
+  const second = first + 4
+  return Math.abs(frame[first] - frame[second])
+    + Math.abs(frame[first + 1] - frame[second + 1])
+    + Math.abs(frame[first + 2] - frame[second + 2])
 }
 
 function changedPixelCentroid(base, adjusted) {
@@ -241,6 +249,16 @@ try {
   native.initCompositor()
   const base = await renderAndMatchExport('base', composition([mediaLayer(sourcePath)]))
   const toneBase = await renderAndMatchExport('tone-base', composition([mediaLayer(toneGlowSourcePath)]))
+  const raisedBrightness = await renderAndMatchExport('raised-brightness', composition([{
+    ...mediaLayer(toneGlowSourcePath), color: renderColor({ brightness: 100 }),
+  }]))
+  assert.equal(pixelBrightnessAt(raisedBrightness, 2, 16), 0, 'raising brightness must preserve pure black')
+  assert.ok(pixelBrightnessAt(raisedBrightness, 12, 16) > pixelBrightnessAt(toneBase, 12, 16), 'raising brightness must lift midtones')
+  const highlightIndex = (16 * width + 24) * 4
+  assert.ok(
+    Math.min(raisedBrightness[highlightIndex], raisedBrightness[highlightIndex + 1], raisedBrightness[highlightIndex + 2]) < 255,
+    'raising brightness must preserve highlight color instead of clipping it to white',
+  )
   const lowContrast = await renderAndMatchExport('low-contrast', composition([{
     ...mediaLayer(toneGlowSourcePath), color: renderColor({ contrast: -100 }),
   }]))
@@ -254,8 +272,9 @@ try {
     ...mediaLayer(toneGlowSourcePath), color: renderColor({ glowStrength: 80, glowRadius: 65, glowThreshold: 70 }),
   }]))
   assert.ok(pixelBrightnessAt(glow, 18, 16) > pixelBrightnessAt(toneBase, 18, 16), 'glow must spread highlights into nearby pixels')
+  const blueSkyBase = await renderAndMatchExport('blue-sky-base', composition([mediaLayer(blueSkySourcePath)]))
   const blueSaturationChannels = renderColor().hslChannels.map((channel) => (
-    channel.hue === 240 ? { ...channel, saturation: 100 } : channel
+    channel.hue === 240 ? { ...channel, hueShift: 120, saturation: 100 } : channel
   ))
   const saturatedBlue = await renderAndMatchExport('hsl-blue-saturation', composition([{
     ...mediaLayer(blueSkySourcePath), color: renderColor({ hslChannels: blueSaturationChannels }),
@@ -264,6 +283,10 @@ try {
   assert.ok(
     Math.min(saturatedBlue[blueIndex], saturatedBlue[blueIndex + 1], saturatedBlue[blueIndex + 2]) > 0,
     'positive HSL saturation must not force a selected channel into clipped color noise',
+  )
+  assert.ok(
+    horizontalPixelDelta(saturatedBlue, 24, 16) <= Math.max(12, horizontalPixelDelta(blueSkyBase, 24, 16) * 2),
+    'HSL hue shifts must not amplify subtle neighboring hue noise into color speckles',
   )
   const normal = await renderAndMatchExport('normal', composition([
     mediaLayer(sourcePath), localLayer(sourcePath, rectMaskPath),
