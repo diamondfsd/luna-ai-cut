@@ -1,4 +1,3 @@
-import { app } from 'electron'
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
@@ -6,17 +5,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { WorkspaceObjectRemovalRequest, WorkspaceObjectRemovalResult } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
-import { INPAINT_MODEL, loadInpaintModel } from './inpaintModelService'
+import { INPAINT_MODEL } from './inpaintModelService'
 import { compositeInpaintRegion, createInpaintMaskJobs, dilateInpaintMask, featherInpaintMask, INPAINT_MODEL_SIZE, modelRadiusForSourcePixels, prepareInpaintInputs } from './inpaintMask'
+import { inpaintWorkerService } from './inpaintWorkerService'
 import { fileSha256 } from './resumableDownloadService'
 
 const MAX_PIXELS = 100_000_000
-
-function appRoot(): string { return process.env.APP_ROOT ?? path.join(import.meta.dirname, '..') }
-function workerPath(): string {
-  const name = process.platform === 'win32' ? 'luna-inpaint-worker.exe' : 'luna-inpaint-worker'
-  return app.isPackaged ? path.join(process.resourcesPath, 'luna-render-core', name) : path.join(appRoot(), 'luna-render-core', name)
-}
 
 async function runProcess(executable: string, args: string[], options: { input?: Buffer; signal?: AbortSignal; maxOutput?: number } = {}): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -37,17 +31,14 @@ async function runProcess(executable: string, args: string[], options: { input?:
   })
 }
 
-export async function removeObject(request: WorkspaceObjectRemovalRequest, downloadDir: string, width: number, height: number, signal?: AbortSignal): Promise<WorkspaceObjectRemovalResult> {
+export async function removeObject(request: WorkspaceObjectRemovalRequest, downloadDir: string, width: number, height: number, ownerId: number, signal?: AbortSignal): Promise<WorkspaceObjectRemovalResult> {
   if (width * height > MAX_PIXELS) throw new Error('图片尺寸过大，暂不支持消除')
   const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
   if (maskBytes.byteLength !== request.maskWidth * request.maskHeight || !maskBytes.some((value) => value >= 16)) throw new Error('请先选择要消除的区域')
   const directory = await mkdtemp(path.join(tmpdir(), 'luna-inpaint-'))
   try {
     signal?.throwIfAborted()
-    const [modelPath, original] = await Promise.all([
-      loadInpaintModel(signal),
-      runProcess(getFfmpegPath(), ['-v', 'error', '-i', request.filePath, '-vf', `scale=${width}:${height}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { signal }),
-    ])
+    const original = await runProcess(getFfmpegPath(), ['-v', 'error', '-i', request.filePath, '-vf', `scale=${width}:${height}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { signal })
     if (original.length !== width * height * 3) throw new Error('图片读取结果尺寸异常')
     const jobs = createInpaintMaskJobs(maskBytes, request.maskWidth, request.maskHeight, width, height)
     const preparedJobs = jobs.map((job, index) => {
@@ -64,16 +55,12 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
       }
     })
     const manifestPath = path.join(directory, 'jobs.json')
-    const metricsPath = path.join(directory, 'metrics.json')
     await Promise.all([
       ...preparedJobs.flatMap((job) => [writeFile(job.inputPath, job.rgb), writeFile(job.maskPath, job.mask)]),
       writeFile(manifestPath, JSON.stringify({ jobs: preparedJobs.map(({ inputPath, maskPath, outputPath }) => ({ inputPath, maskPath, outputPath })) })),
     ])
-    await runProcess(workerPath(), [modelPath, manifestPath, metricsPath], { signal, maxOutput: 64 * 1024 })
-    const [generatedRegions, metricsRaw] = await Promise.all([
-      Promise.all(preparedJobs.map((job) => readFile(job.outputPath))),
-      readFile(metricsPath, 'utf8'),
-    ])
+    const metrics = await inpaintWorkerService.run(ownerId, manifestPath, signal)
+    const generatedRegions = await Promise.all(preparedJobs.map((job) => readFile(job.outputPath)))
     let composite = Buffer.from(original)
     for (let index = 0; index < preparedJobs.length; index++) {
       const generated = generatedRegions[index]
@@ -101,7 +88,6 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
       await Promise.all([resultPath, savedMaskPath, staging, maskStaging].map((filePath) => rm(filePath, { force: true })))
       throw error
     }
-    const metrics = JSON.parse(metricsRaw) as { modelLoadMs: number; inferenceMs: number; regionCount: number }
     return {
       requestId: request.requestId,
       resultPath,

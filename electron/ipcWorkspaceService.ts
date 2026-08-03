@@ -41,6 +41,7 @@ import { SegmentationTaskRegistry } from './segmentationTaskRegistry'
 import { beginForegroundSegmentation } from './segmentationModelPrefetchService'
 import { trackMaskInWorker } from './maskTrackingService'
 import { removeObject } from './inpaintService'
+import { inpaintWorkerService } from './inpaintWorkerService'
 import { analyzeBeauty } from './beautyAnalysisService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
@@ -156,6 +157,7 @@ export function register(): void {
       segmentationTasks.cancelOwner(sender.id)
       trackingTasks.cancelOwner(sender.id)
       removalTasks.cancelOwner(sender.id)
+      inpaintWorkerService.release(sender.id)
     }
     sender.on('render-process-gone', cancelSenderTasks)
     sender.on('did-start-navigation', (_event, _url, isSameDocument, isMainFrame) => {
@@ -232,6 +234,16 @@ export function register(): void {
     return removalTasks.cancel(event.sender.id, requestId)
   })
 
+  ipcMain.handle('workspace:prepareObjectRemoval', async (event) => {
+    watchSender(event.sender)
+    await inpaintWorkerService.acquire(event.sender.id)
+  })
+
+  ipcMain.handle('workspace:releaseObjectRemoval', (event) => {
+    removalTasks.cancelOwner(event.sender.id)
+    inpaintWorkerService.release(event.sender.id)
+  })
+
   ipcMain.handle('workspace:discardObjectRemovalFiles', async (_event, projectId: string, filePaths: string[]) => {
     if (!Array.isArray(filePaths) || filePaths.length > 100 || filePaths.some((filePath) => typeof filePath !== 'string')) throw new Error('待清理的消除结果无效')
     const settings = await getSettings()
@@ -255,7 +267,7 @@ export function register(): void {
     watchSender(event.sender)
     try {
       const [settings, resolution] = await Promise.all([getSettings(), probeDisplayResolution(request.filePath)])
-      return await removeObject(request, settings.downloadDir, resolution.width, resolution.height, task.controller.signal)
+      return await removeObject(request, settings.downloadDir, resolution.width, resolution.height, event.sender.id, task.controller.signal)
     } finally {
       removalTasks.finish(task)
     }
