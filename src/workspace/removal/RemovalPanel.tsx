@@ -47,9 +47,13 @@ export function RemovalPanel() {
     setSelectionOperation('add')
   }, [createMask, isImage, maskEditing, setManualTool, setSelectionOperation, setSemanticPicking])
 
-  useEffect(() => () => {
-    if (requestRef.current) void window.luna.workspace.cancelObjectRemoval(requestRef.current)
-    if (draftLayerRef.current) removeLayerRef.current(draftLayerRef.current)
+  useEffect(() => {
+    void window.luna.workspace.prepareObjectRemoval().catch(() => undefined)
+    return () => {
+      if (requestRef.current) void window.luna.workspace.cancelObjectRemoval(requestRef.current)
+      if (draftLayerRef.current) removeLayerRef.current(draftLayerRef.current)
+      void window.luna.workspace.releaseObjectRemoval().catch(() => undefined)
+    }
   }, [])
 
   useEffect(() => {

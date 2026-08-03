@@ -290,6 +290,8 @@ export interface LunaApi {
     cancelSegmentation(requestId: string): Promise<boolean>
     trackMask(request: WorkspaceMaskTrackingRequest): Promise<WorkspaceMaskTrackingResult>
     cancelMaskTracking(requestId: string): Promise<boolean>
+    prepareObjectRemoval(): Promise<void>
+    releaseObjectRemoval(): Promise<void>
     removeObject(request: WorkspaceObjectRemovalRequest): Promise<WorkspaceObjectRemovalResult>
     cancelObjectRemoval(requestId: string): Promise<boolean>
     discardObjectRemovalFiles(projectId: string, filePaths: string[]): Promise<void>

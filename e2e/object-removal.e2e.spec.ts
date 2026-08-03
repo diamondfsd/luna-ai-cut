@@ -146,5 +146,7 @@ test('对象消除批量处理分离选区并持久化结果', async ({ lunaApp 
   await lunaApp.page.locator('.workspace-thumb[data-media-index="0"]').click()
   await lunaApp.page.getByLabel('删除消除步骤 1').click()
   await expect.poll(async () => (await readdir(path.dirname(operation!.resultPath))).filter((name) => name.endsWith('.png') || name.endsWith('.mask'))).toEqual([])
+  await lunaApp.page.getByRole('button', { name: '调色与蒙版', exact: true }).click()
+  await expect(lunaApp.page.getByRole('heading', { name: '调色与蒙版', exact: true })).toBeVisible()
   expect(lunaApp.runtimeErrors).toEqual([])
 })
