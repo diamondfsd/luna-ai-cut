@@ -31,6 +31,7 @@ import { TrimStrip } from '../workspace/trim/TrimStrip'
 import { buildVideoSegmentExportRanges } from '../workspace/trim/videoSegmentMarkers'
 import { MaskOverlay } from '../workspace/mask/MaskOverlay'
 import { BeautyMaskOverlay } from '../workspace/beauty/BeautyMaskOverlay'
+import { BeautyRetouchOverlay } from '../workspace/beauty/BeautyRetouchOverlay'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import { buildResolvedWatermarkStaticLayer } from '../components/WatermarkSettings'
 import { buildBorderLayer } from '../workspace/border/buildBorderLayer'
@@ -863,7 +864,9 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
                 ? <CropOverlay />
                 : mask.editing
                   ? <MaskOverlay />
-                  : edit.beautyMaskPreview
+                  : edit.activeTool === 'beauty' && edit.beautyRetouchActive && edit.beautyRetouchMode
+                    ? <BeautyRetouchOverlay />
+                    : edit.beautyMaskPreview
                     ? <BeautyMaskOverlay />
                     : null
             )}

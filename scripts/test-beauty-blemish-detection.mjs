@@ -49,6 +49,13 @@ assert.equal(detected.acneCount, 1, 'a compact red anomaly must be classified as
 assert.equal(detected.spotCount, 1, 'a compact dark anomaly must be classified as a spot')
 assert.ok(detected.acneMask.some((value) => value > 0), 'acne detection must produce a soft mask')
 assert.ok(detected.spotMask.some((value) => value > 0), 'spot detection must produce a soft mask')
+assert.ok(Math.max(...detected.acneMask) >= 64, 'acne mask must retain enough confidence for visible repair')
+assert.ok(Math.max(...detected.spotMask) >= 64, 'spot mask must retain enough confidence for visible repair')
+
+const brightBlemish = fixture()
+paint(brightBlemish.rgb, 33, 43, [245, 230, 220])
+const brightResult = detectFaceBlemishes(brightBlemish.rgb, brightBlemish.labels, size)
+assert.ok(brightResult.spotMask[43 * size + 33] > 0, 'a compact bright skin blemish must be repairable anywhere on skin')
 
 const wrinkled = fixture()
 for (let x = 22; x <= 36; x += 1) paint(wrinkled.rgb, x, 30, [135, 110, 105])
