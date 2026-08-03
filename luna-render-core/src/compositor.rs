@@ -18,7 +18,8 @@ use gpu::{
     align_to, create_compositor_pipelines, create_identity_lut, create_lut_3d_texture,
     create_rgba_texture, layer_bind_group_layout, parse_cube_lut, upload_rgba,
 };
-pub(crate) use layer_kind::is_procedural_layer_type;
+pub(crate) use layer_kind::is_optional_positioned_asset;
+pub(crate) use layer_kind::{is_procedural_layer_type, tolerate_optional_positioned_asset_error};
 use mask::{linear_clamp_sampler_descriptor, mask_params};
 use preview::{plan_cover_scale, plan_cover_transform, resolve_positioning};
 pub(crate) use preview::{PreviewLayerInput, PreviewTextureInfo};
@@ -256,6 +257,7 @@ pub struct Compositor {
     // ── render_preview 内部状态 ──
     /// 静态图路径→纹理ID LRU 缓存
     texture_cache: HashMap<String, u32>,
+    unavailable_optional_assets: std::collections::HashSet<String>,
     /// 灰度蒙版使用线性 RGBA 纹理，不能与 sRGB 媒体纹理共用缓存。
     mask_texture_cache: HashMap<String, u32>,
     /// LRU 顺序（前=最旧，后=最新）
@@ -433,6 +435,7 @@ impl Compositor {
             max_texture_size,
             output_texture: None,
             texture_cache: HashMap::new(),
+            unavailable_optional_assets: std::collections::HashSet::new(),
             mask_texture_cache: HashMap::new(),
             cache_order: VecDeque::new(),
             static_image_probed: HashMap::new(),

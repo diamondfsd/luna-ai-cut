@@ -1,11 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::composition::{
     bind_layer_mask_texture, composition_layers, mux_primary_audio, CompositionInput,
 };
-use crate::compositor::{Compositor, PreviewTextureInfo};
+use crate::compositor::{
+    is_optional_positioned_asset, tolerate_optional_positioned_asset_error, Compositor,
+    PreviewTextureInfo,
+};
 use crate::export::TaskState;
 use crate::media::decode_static_image_scaled;
 
@@ -127,6 +130,7 @@ fn export_frames(
 ) -> Result<(), String> {
     let mut decoders: HashMap<String, VideoDecoder> = HashMap::new();
     let mut static_textures: HashMap<String, (u32, u32, u32)> = HashMap::new();
+    let mut unavailable_optional_assets = HashSet::new();
     let mut mask_textures: HashMap<String, u32> = HashMap::new();
     let started = std::time::Instant::now();
     let log_interval = (total_frames / 10).max(1);
@@ -147,6 +151,13 @@ fn export_frames(
 
             let render_result = (|| -> Result<(), String> {
                 for (layer_index, mut layer) in layer_inputs.into_iter().enumerate() {
+                    if is_optional_positioned_asset(
+                        layer.layer_type.as_deref(),
+                        layer.positioning.is_some(),
+                    ) && unavailable_optional_assets.contains(&layer.file_path)
+                    {
+                        continue;
+                    }
                     let (texture_id, width, height) =
                         if crate::compositor::is_procedural_layer_type(layer.layer_type.as_deref())
                         {
@@ -192,13 +203,34 @@ fn export_frames(
                         {
                             cached
                         } else {
-                            let (rgba, width, height) = decode_static_image_scaled(
+                            let decoded = decode_static_image_scaled(
                                 ffmpeg_path,
                                 ffprobe_path,
                                 &layer.file_path,
                                 composition.canvas.width.max(composition.canvas.height),
-                            )?;
-                            let texture_id = compositor.load_texture(&rgba, width, height)?;
+                            );
+                            let Some((rgba, width, height)) =
+                                tolerate_optional_positioned_asset_error(
+                                    layer.layer_type.as_deref(),
+                                    layer.positioning.is_some(),
+                                    &layer.file_path,
+                                    &mut unavailable_optional_assets,
+                                    decoded,
+                                )?
+                            else {
+                                continue;
+                            };
+                            let uploaded = compositor.load_texture(&rgba, width, height);
+                            let Some(texture_id) = tolerate_optional_positioned_asset_error(
+                                layer.layer_type.as_deref(),
+                                layer.positioning.is_some(),
+                                &layer.file_path,
+                                &mut unavailable_optional_assets,
+                                uploaded,
+                            )?
+                            else {
+                                continue;
+                            };
                             let cached = (texture_id, width, height);
                             static_textures.insert(layer.file_path.clone(), cached);
                             cached

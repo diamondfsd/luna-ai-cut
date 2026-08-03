@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,7 +10,10 @@ pub(crate) use preview::{NativePreviewRuntime, PreviewBounds};
 use crate::composition::{
     bind_layer_mask_texture, composition_layers, mux_primary_audio, CompositionInput,
 };
-use crate::compositor::{Compositor, PreviewTextureInfo};
+use crate::compositor::{
+    is_optional_positioned_asset, tolerate_optional_positioned_asset_error, Compositor,
+    PreviewTextureInfo,
+};
 use crate::export::TaskState;
 use crate::media::decode_static_image_scaled;
 
@@ -286,6 +289,7 @@ pub(crate) fn export_video(
     )?;
     let mut decoders: HashMap<String, Decoder> = HashMap::new();
     let mut static_textures: HashMap<String, (u32, u32, u32)> = HashMap::new();
+    let mut unavailable_optional_assets = HashSet::new();
     let mut mask_textures: HashMap<String, u32> = HashMap::new();
 
     let export_start = std::time::Instant::now();
@@ -308,6 +312,13 @@ pub(crate) fn export_video(
         // ── 解码 ──
         let t0 = std::time::Instant::now();
         for (layer_idx, mut layer) in layer_inputs.into_iter().enumerate() {
+            if is_optional_positioned_asset(
+                layer.layer_type.as_deref(),
+                layer.positioning.is_some(),
+            ) && unavailable_optional_assets.contains(&layer.file_path)
+            {
+                continue;
+            }
             // shape / text / logo 不对应媒体文件：保留图层进入 WGPU 合成，
             // 但跳过文件解码，使用 Compositor 内置的 1×1 程序纹理（texture 0）。
             let (texture_id, width, height) = if is_procedural_layer(layer.layer_type.as_deref()) {
@@ -363,13 +374,33 @@ pub(crate) fn export_video(
             } else if let Some(cached) = static_textures.get(&layer.file_path).copied() {
                 cached
             } else {
-                let (rgba, width, height) = decode_static_image_scaled(
+                let decoded = decode_static_image_scaled(
                     ffmpeg_path,
                     ffprobe_path,
                     &layer.file_path,
                     composition.canvas.width.max(composition.canvas.height),
-                )?;
-                let texture_id = compositor.load_texture(&rgba, width, height)?;
+                );
+                let Some((rgba, width, height)) = tolerate_optional_positioned_asset_error(
+                    layer.layer_type.as_deref(),
+                    layer.positioning.is_some(),
+                    &layer.file_path,
+                    &mut unavailable_optional_assets,
+                    decoded,
+                )?
+                else {
+                    continue;
+                };
+                let uploaded = compositor.load_texture(&rgba, width, height);
+                let Some(texture_id) = tolerate_optional_positioned_asset_error(
+                    layer.layer_type.as_deref(),
+                    layer.positioning.is_some(),
+                    &layer.file_path,
+                    &mut unavailable_optional_assets,
+                    uploaded,
+                )?
+                else {
+                    continue;
+                };
                 let cached = (texture_id, width, height);
                 static_textures.insert(layer.file_path.clone(), cached);
                 cached

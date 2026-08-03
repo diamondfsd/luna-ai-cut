@@ -31,6 +31,7 @@ impl Compositor {
             max_texture_size: shared.max_texture_size,
             output_texture: None,
             texture_cache: HashMap::new(),
+            unavailable_optional_assets: std::collections::HashSet::new(),
             mask_texture_cache: HashMap::new(),
             cache_order: VecDeque::new(),
             static_image_probed: HashMap::new(),
