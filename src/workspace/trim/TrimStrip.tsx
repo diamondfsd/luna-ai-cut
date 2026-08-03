@@ -318,6 +318,8 @@ export function TrimStrip({
       if (Math.abs(target - lastSeekRef.current) < 0.01) return
       lastSeekRef.current = target
       secondaryFixedRange.onStartChange(target)
+      // The large preview follows the Live range start while the whole capsule moves.
+      onSeek(target)
       return
     } else if (drag.type === 'fixed-range' && fixedDuration) {
       target = Math.max(0, Math.min(drag.startStartTime + dt, duration - fixedDuration))
