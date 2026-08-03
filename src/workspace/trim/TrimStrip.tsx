@@ -1,5 +1,6 @@
 import { Pause, Play } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { VideoOutputMarker } from './videoOutputMarkers'
 
 import './TrimStrip.css'
 
@@ -23,16 +24,19 @@ interface TrimStripProps {
     startTime: number
     duration: number
     label?: string
+    coverTime?: number
     onStartChange: (time: number) => void
+    onCoverTimeChange?: (time: number) => void
   }
   playheadRange?: { startTime: number; endTime: number }
   /** 是否使用内部动画平滑播放头；关闭时严格使用外部视频时间。 */
   animatePlayhead?: boolean
   compact?: boolean
   thumbnails: ImageData[]
+  outputMarkers?: VideoOutputMarker[]
 }
 
-type TrimDragType = 'left-handle' | 'right-handle' | 'playhead' | 'fixed-range' | 'secondary-fixed-range'
+type TrimDragType = 'left-handle' | 'right-handle' | 'playhead' | 'fixed-range' | 'secondary-fixed-range' | 'secondary-cover'
 
 function formatShortTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -77,6 +81,7 @@ export function TrimStrip({
   animatePlayhead = true,
   compact = false,
   thumbnails,
+  outputMarkers = [],
 }: TrimStripProps) {
   const stripRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -256,6 +261,42 @@ export function TrimStrip({
     setDragging('secondary-fixed-range')
   }, [secondaryFixedRange])
 
+  const handleSecondaryCoverPointerDown = useCallback((e: React.PointerEvent) => {
+    if (!secondaryFixedRange || secondaryFixedRange.coverTime === undefined) return
+    e.preventDefault()
+    e.stopPropagation()
+    const target = trackRef.current
+    if (!target) return
+    target.setPointerCapture(e.pointerId)
+    lastSeekRef.current = -1
+    dragRef.current = {
+      type: 'secondary-cover',
+      startX: e.clientX,
+      startTime: secondaryFixedRange.coverTime,
+      startStartTime: secondaryFixedRange.startTime,
+      startEndTime: secondaryFixedRange.startTime + secondaryFixedRange.duration,
+    }
+    setDragging('secondary-cover')
+    onSeek(secondaryFixedRange.coverTime)
+  }, [onSeek, secondaryFixedRange])
+
+  const handleSecondaryCoverKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!secondaryFixedRange || secondaryFixedRange.coverTime === undefined) return
+    let nextTime: number | null = null
+    if (e.key === 'ArrowLeft') nextTime = secondaryFixedRange.coverTime - 0.1
+    if (e.key === 'ArrowRight') nextTime = secondaryFixedRange.coverTime + 0.1
+    if (e.key === 'Home') nextTime = secondaryFixedRange.startTime
+    if (e.key === 'End') nextTime = secondaryFixedRange.startTime + secondaryFixedRange.duration - 0.01
+    if (nextTime === null) return
+    e.preventDefault()
+    const clamped = Math.max(
+      secondaryFixedRange.startTime,
+      Math.min(nextTime, secondaryFixedRange.startTime + secondaryFixedRange.duration - 0.01),
+    )
+    secondaryFixedRange.onCoverTimeChange?.(clamped)
+    onSeek(clamped)
+  }, [onSeek, secondaryFixedRange])
+
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current
     if (!drag.type) return
@@ -264,12 +305,21 @@ export function TrimStrip({
     let target: number
     let doStart = false, doEnd = false
 
-    if (drag.type === 'secondary-fixed-range' && secondaryFixedRange) {
-      const maxStart = Math.max(startTime, endTime - secondaryFixedRange.duration)
-      target = Math.max(startTime, Math.min(drag.startStartTime + dt, maxStart))
+    if (drag.type === 'secondary-cover' && secondaryFixedRange) {
+      target = Math.max(drag.startStartTime, Math.min(drag.startTime + dt, drag.startEndTime - 0.01))
+      if (Math.abs(target - lastSeekRef.current) < 0.01) return
+      lastSeekRef.current = target
+      secondaryFixedRange.onCoverTimeChange?.(target)
+      onSeek(target)
+      return
+    } else if (drag.type === 'secondary-fixed-range' && secondaryFixedRange) {
+      const maxStart = Math.max(0, duration - secondaryFixedRange.duration)
+      target = Math.max(0, Math.min(drag.startStartTime + dt, maxStart))
       if (Math.abs(target - lastSeekRef.current) < 0.01) return
       lastSeekRef.current = target
       secondaryFixedRange.onStartChange(target)
+      // The large preview follows the Live range start while the whole capsule moves.
+      onSeek(target)
       return
     } else if (drag.type === 'fixed-range' && fixedDuration) {
       target = Math.max(0, Math.min(drag.startStartTime + dt, duration - fixedDuration))
@@ -325,6 +375,9 @@ export function TrimStrip({
   const secondaryRightX = secondaryFixedRange
     ? timeToX(secondaryFixedRange.startTime + secondaryFixedRange.duration)
     : 0
+  const secondaryCoverX = secondaryFixedRange?.coverTime === undefined
+    ? null
+    : timeToX(secondaryFixedRange.coverTime) - secondaryLeftX
   const rulerTicks = useMemo(() => {
     if (duration <= 0) return []
     const count = 5
@@ -358,13 +411,48 @@ export function TrimStrip({
         {/* 完整蓝色边框 */}
         <div className="workspace-trim-range-border" style={{ left: leftHandleX, width: Math.max(0, rightHandleX - leftHandleX) }} />
 
+        <div className="workspace-trim-output-markers" aria-hidden="true">
+          {outputMarkers.map((marker) => marker.kind === 'photo' ? (
+            <span
+              key={marker.id}
+              className="workspace-trim-output-photo"
+              style={{ left: timeToX(marker.time) }}
+            />
+          ) : (
+            <span
+              key={marker.id}
+              className={`workspace-trim-output-range is-${marker.kind}`}
+              style={{
+                left: timeToX(marker.startTime),
+                width: Math.max(2, timeToX(marker.endTime) - timeToX(marker.startTime)),
+              }}
+            />
+          ))}
+        </div>
+
         {secondaryFixedRange ? (
           <div
             className="workspace-trim-secondary-range"
             style={{ left: secondaryLeftX, width: Math.max(0, secondaryRightX - secondaryLeftX) }}
             onPointerDown={handleSecondaryPointerDown}
           >
-            <span>{secondaryFixedRange.label ?? 'Live 3 秒'}</span>
+            <span>{secondaryFixedRange.label ?? 'Live'}</span>
+            {secondaryCoverX !== null ? (
+              <div
+                className="workspace-trim-live-cover"
+                style={{ left: secondaryCoverX }}
+                role="slider"
+                tabIndex={0}
+                aria-label="Live 图封面"
+                aria-valuemin={secondaryFixedRange.startTime}
+                aria-valuemax={secondaryFixedRange.startTime + secondaryFixedRange.duration}
+                aria-valuenow={secondaryFixedRange.coverTime}
+                onPointerDown={handleSecondaryCoverPointerDown}
+                onKeyDown={handleSecondaryCoverKeyDown}
+              >
+                <i />
+              </div>
+            ) : null}
           </div>
         ) : null}
 

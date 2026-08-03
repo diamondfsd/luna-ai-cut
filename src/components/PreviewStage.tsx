@@ -18,6 +18,8 @@ import {
   projectCanvasFor,
 } from './previewStageGeometry'
 import './PreviewStage.css'
+
+const PREVIEW_LOADING_TIMEOUT_MS = 12_000
 export { buildLayers, calcAspectRatio } from './previewStageGeometry'
 export type { MediaResolution } from './previewStageGeometry'
 export interface PreviewStageHandle {
@@ -64,6 +66,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
 
   // ── 加载状态（url 切换时自动 loading） ──
   const [loading, setLoading] = useState(false)
+  const [renderedCanvasKey, setRenderedCanvasKey] = useState<string | null>(null)
   const prevUrlRef = useRef<string | null>(null)
 
   // ── 视频控件状态 ──
@@ -236,18 +239,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     if (pending) setLoading(true)
   }, [pending])
 
-  function handleRender() {
-    setLoading(false)
-    // 裁剪模式会在“最终裁剪画布”和“原始工作画布”之间切换。
-    // 渲染完成后再读取 canvas 的真实 DOM 尺寸，避免遮罩沿用切换前的比例。
-    window.requestAnimationFrame(syncCanvasMetrics)
-    // 渲染完成后，检查是否需要恢复播放
-    if (shouldResumePlaybackRef.current && videoRef.current) {
-      shouldResumePlaybackRef.current = false
-      videoRef.current.play().catch(() => {})
-    }
-  }
-
   // 宽高比（由 resolution 派生）
   const aspectRatio = useMemo(() => {
     if (!resolution) return null
@@ -261,9 +252,41 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     [pipeline, previewMaxSide, resolution],
   )
 
+  const canvasRenderKey = previewCanvas && displayUrl
+    ? `${displayUrl}\n${previewCanvas.width}x${previewCanvas.height}`
+    : null
+  const canvasAwaitingRender = canvasRenderKey !== null && renderedCanvasKey !== canvasRenderKey
+
+  function handleRender() {
+    setRenderedCanvasKey(canvasRenderKey)
+    setLoading(false)
+    // 裁剪模式会在“最终裁剪画布”和“原始工作画布”之间切换。
+    // 渲染完成后再读取 canvas 的真实 DOM 尺寸，避免遮罩沿用切换前的比例。
+    window.requestAnimationFrame(syncCanvasMetrics)
+    // 渲染完成后，检查是否需要恢复播放
+    if (shouldResumePlaybackRef.current && videoRef.current) {
+      shouldResumePlaybackRef.current = false
+      videoRef.current.play().catch(() => {})
+    }
+  }
+
+  function handleRenderFailure(reason: string) {
+    console.warn('[PreviewStage] preview render failed', { reason })
+    setRenderedCanvasKey(canvasRenderKey)
+    setLoading(false)
+    shouldResumePlaybackRef.current = false
+  }
+
   useEffect(() => {
-    if (previewCanvas?.width && previewCanvas.height) setLoading(true)
-  }, [previewCanvas?.width, previewCanvas?.height])
+    if (!loading && !canvasAwaitingRender) return
+    const timeout = window.setTimeout(() => {
+      console.warn('[PreviewStage] preview loading timed out', { canvasRenderKey })
+      setRenderedCanvasKey(canvasRenderKey)
+      setLoading(false)
+      shouldResumePlaybackRef.current = false
+    }, PREVIEW_LOADING_TIMEOUT_MS)
+    return () => window.clearTimeout(timeout)
+  }, [canvasAwaitingRender, canvasRenderKey, loading])
 
   const restoreLutFilePath = pipeline?.logRestore?.activeId ?? undefined
   const lutFilePath = pipeline?.lutFilter?.activeId ?? undefined
@@ -417,6 +440,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               onVideoElement={handleVideoElement}
               onFallback={(reason) => {
                 console.warn('[PreviewStage] native GPU preview fallback', { reason })
+                handleRenderFailure(reason)
                 setNativePreviewFailed(true)
               }}
             />
@@ -427,6 +451,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               canvasHeight={previewCanvas?.height}
               maxSide={Math.min(3840, Math.max(1, previewMaxSide))}
               playing={playing}
+              onError={handleRenderFailure}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
@@ -446,6 +471,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
               imageScale={viewScale === 'fit' ? null : viewScale / 100}
               onImageScaleChange={(scale) => onViewScaleChange?.(scale == null ? 'fit' : Math.round(scale * 100))}
               onViewportChange={syncCanvasMetrics}
+              onError={handleRenderFailure}
               onRender={handleRender}
               onVideoElement={handleVideoElement}
             />
@@ -453,7 +479,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         </div>
       )}
       {renderOverlay?.()}
-      {loading && (
+      {(loading || canvasAwaitingRender) && (
         <div className="preview-loading-overlay">
           <div className="preview-loading-spinner" />
         </div>

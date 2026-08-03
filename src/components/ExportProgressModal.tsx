@@ -34,7 +34,7 @@ export function ExportProgressModal({
   return (
     <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
       <Tooltip content="导出记录">
-        <button className="nav-icon-button" onClick={() => {
+        <button className="nav-icon-button" aria-label="导出记录" onClick={() => {
           setSeenCount(completedCount)
           setOpen(true)
         }}>

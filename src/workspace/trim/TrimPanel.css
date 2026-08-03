@@ -1,13 +1,17 @@
-.workspace-trim-panel {
+.workspace-trim-panel,
+.workspace-trim-panel .workspace-param-group,
+.workspace-trim-markers,
+.workspace-trim-marker-list {
   display: grid;
-  gap: 18px;
   min-width: 0;
 }
 
+.workspace-trim-panel {
+  gap: 18px;
+}
+
 .workspace-trim-panel .workspace-param-group {
-  display: grid;
   gap: 12px;
-  min-width: 0;
 }
 
 .workspace-trim-panel .workspace-param-row {
@@ -18,47 +22,42 @@
   min-width: 0;
 }
 
-.workspace-trim-panel .workspace-trim-time-input {
-  min-width: 0;
-  text-align: right;
-  color: var(--ink);
+.workspace-trim-time-input,
+.workspace-trim-duration-display,
+.workspace-trim-marker-time {
   font-variant-numeric: tabular-nums;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.workspace-trim-time-input,
+.workspace-trim-duration-display {
+  min-width: 0;
+  color: var(--ink);
+  text-align: right;
 }
 
 .workspace-trim-duration-display {
-  min-width: 0;
   padding-right: 10px;
-  color: var(--ink);
   font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  text-align: right;
 }
 
 .workspace-trim-markers {
-  display: grid;
   gap: 10px;
-  min-width: 0;
   padding-top: 16px;
   border-top: 1px solid var(--hairline);
 }
 
 .workspace-trim-markers-header,
-.workspace-trim-markers-header > div,
-.workspace-trim-marker-note-row {
+.workspace-trim-marker-actions,
+.workspace-trim-marker-kind,
+.workspace-trim-markers-empty {
   display: flex;
   align-items: center;
 }
 
 .workspace-trim-markers-header {
   justify-content: space-between;
-  gap: 10px;
-}
-
-.workspace-trim-markers-header > div {
-  gap: 6px;
-  min-width: 0;
+  gap: 8px;
 }
 
 .workspace-trim-markers-header h3 {
@@ -69,47 +68,27 @@
   letter-spacing: 0;
 }
 
-.workspace-trim-markers-header span,
-.workspace-trim-markers-empty {
+.workspace-trim-markers-header > span {
   color: var(--muted);
   font-size: 11px;
+  white-space: nowrap;
+}
+
+.workspace-trim-marker-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.workspace-trim-marker-actions .ui-button {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 6px;
+  white-space: nowrap;
 }
 
 .workspace-trim-marker-list {
-  display: grid;
   gap: 8px;
-  min-width: 0;
-}
-
-.workspace-trim-markers-json-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 2px;
-}
-
-.workspace-trim-markers-json-actions > button {
-  min-width: 0;
-}
-
-.workspace-trim-json-dialog {
-  width: min(680px, calc(100vw - 32px));
-}
-
-.workspace-trim-json-preview {
-  max-height: min(55vh, 460px);
-  margin: 0;
-  padding: 14px;
-  overflow: auto;
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.22);
-  color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .workspace-trim-marker-row {
@@ -118,60 +97,235 @@
   min-width: 0;
   padding: 9px;
   border: 1px solid var(--hairline);
-  border-radius: 6px;
-  background: var(--panel-soft, rgba(255, 255, 255, 0.035));
+  border-radius: 8px;
+  background: var(--canvas);
+}
+
+.workspace-trim-marker-row.is-active {
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 28%, transparent);
+}
+
+.workspace-trim-marker-row.is-media-editor {
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: start;
+}
+
+.workspace-trim-marker-content {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.workspace-trim-marker-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 .workspace-trim-marker-range {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
+  min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  text-align: left;
   cursor: pointer;
+  text-align: left;
 }
 
-.workspace-trim-marker-range:hover {
+.workspace-trim-marker-kind {
+  gap: 5px;
+  min-width: 58px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.workspace-trim-marker-kind.is-video { color: var(--blue); }
+.workspace-trim-marker-kind.is-photo { color: #2f9b62; }
+.workspace-trim-marker-kind.is-live { color: #c06b13; }
+
+.workspace-trim-marker-active-icon {
+  flex: 0 0 auto;
   color: var(--blue);
 }
 
-.workspace-trim-marker-range span:last-child {
-  text-align: right;
+.workspace-trim-marker-title-row {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
-.workspace-trim-marker-separator {
+.workspace-trim-marker-title-row.is-video { color: var(--blue); }
+.workspace-trim-marker-title-row.is-photo { color: #2f9b62; }
+.workspace-trim-marker-title-row.is-live { color: #c06b13; }
+
+.workspace-trim-marker-title {
+  min-width: 0;
+}
+
+.workspace-trim-marker-time {
+  overflow: hidden;
   color: var(--muted);
-  font-family: inherit;
   font-size: 10px;
-}
-
-.workspace-trim-marker-note-row {
-  gap: 4px;
-  min-width: 0;
-}
-
-.workspace-trim-marker-note {
-  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace-trim-marker-delete {
-  flex: 0 0 28px;
+  flex: 0 0 auto;
   color: var(--muted);
 }
 
-.workspace-trim-marker-delete:hover {
-  color: var(--danger, #ef4444);
+.workspace-trim-marker-thumbnail {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #171717;
+}
+
+.workspace-trim-marker-thumbnail video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.workspace-trim-live-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: rgba(0, 0, 0, 0.34);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.workspace-trim-marker-thumbnail:hover .workspace-trim-live-play-overlay,
+.workspace-trim-live-play-overlay:focus-visible {
+  opacity: 1;
+}
+
+.workspace-trim-thumbnail-select {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.workspace-trim-live-play-overlay:hover {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.workspace-trim-live-cover-control,
+.workspace-trim-video-progress-control {
+  display: grid;
+  grid-template-columns: auto minmax(28px, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 2px 1px 1px;
+}
+
+.workspace-trim-live-cover-control > span,
+.workspace-trim-video-progress-control > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.workspace-trim-live-cover-control strong,
+.workspace-trim-video-progress-control strong {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-trim-live-cover-slider,
+.workspace-trim-video-progress-slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 18px;
+  touch-action: none;
+  user-select: none;
+}
+
+.workspace-trim-live-cover-track,
+.workspace-trim-video-progress-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--hairline);
+}
+
+.workspace-trim-live-cover-range,
+.workspace-trim-video-progress-range {
+  position: absolute;
+  height: 100%;
+  border-radius: inherit;
+  background: #c06b13;
+}
+
+.workspace-trim-video-progress-range {
+  background: var(--blue);
+}
+
+.workspace-trim-live-cover-thumb,
+.workspace-trim-video-progress-thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--canvas);
+  border-radius: 50%;
+  background: #c06b13;
+  box-shadow: 0 0 0 1px #9b5710;
+  cursor: ew-resize;
+}
+
+.workspace-trim-video-progress-thumb {
+  background: var(--blue);
+  box-shadow: 0 0 0 1px #0053a6;
+}
+
+.workspace-trim-live-cover-thumb:focus-visible,
+.workspace-trim-video-progress-thumb:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .workspace-trim-markers-empty {
+  justify-content: center;
+  gap: 6px;
+  min-height: 58px;
   margin: 0;
+  padding: 10px;
+  border: 1px dashed var(--hairline);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11px;
   line-height: 1.5;
+  text-align: center;
 }

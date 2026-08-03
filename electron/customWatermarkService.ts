@@ -8,8 +8,7 @@ import { addCustomWatermarkAssets, removeCustomWatermarkAsset } from '../src/sha
 import { getSettings, saveSettings } from './settingsService'
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024
-const MIN_IMAGE_SIDE = 32
-const MAX_IMAGE_SIDE = 8192
+const MAX_IMAGE_SIDE = 2048
 const FORMAT_BY_EXTENSION: Record<string, CustomWatermarkAsset['format']> = {
   '.png': 'png',
   '.jpg': 'jpeg',
@@ -41,11 +40,9 @@ export async function importCustomWatermark(sourcePath: string): Promise<CustomW
 
   const image = nativeImage.createFromPath(sourcePath)
   const size = image.getSize()
-  if (image.isEmpty() || size.width < MIN_IMAGE_SIDE || size.height < MIN_IMAGE_SIDE) {
-    throw new Error('水印图片尺寸不能小于 32 x 32')
-  }
+  if (image.isEmpty()) throw new Error('无法读取这张水印图片')
   if (size.width > MAX_IMAGE_SIDE || size.height > MAX_IMAGE_SIDE) {
-    throw new Error('水印图片单边不能超过 8192 像素')
+    throw new Error('水印图片单边不能超过 2048 像素')
   }
 
   const sha256 = createHash('sha256').update(await readFile(sourcePath)).digest('hex')
