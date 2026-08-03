@@ -1,10 +1,10 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::c_void;
 
 use super::{is_procedural_layer, Decoder, Frame};
 use crate::composition::{composition_layers, CompositionInput};
-use crate::compositor::Compositor;
-use crate::compositor::PreviewTextureInfo;
+use crate::compositor::is_optional_positioned_asset;
+use crate::compositor::{tolerate_optional_positioned_asset_error, Compositor, PreviewTextureInfo};
 use crate::media::decode_static_image_scaled;
 
 #[repr(C)]
@@ -152,6 +152,7 @@ pub(crate) struct NativePreviewRuntime {
     cached_frame_bytes: u64,
     max_frame_cache_bytes: u64,
     static_textures: HashMap<String, (u32, u32, u32)>,
+    unavailable_optional_assets: HashSet<String>,
     mask_textures: HashMap<String, u32>,
 }
 
@@ -185,6 +186,7 @@ impl NativePreviewRuntime {
             cached_frame_bytes: 0,
             max_frame_cache_bytes: 256 * 1024 * 1024,
             static_textures: HashMap::new(),
+            unavailable_optional_assets: HashSet::new(),
             mask_textures: HashMap::new(),
         })
     }
@@ -326,6 +328,13 @@ impl NativePreviewRuntime {
         let mut cache_misses = 0u32;
 
         for (layer_index, mut layer) in layer_inputs.into_iter().enumerate() {
+            if is_optional_positioned_asset(
+                layer.layer_type.as_deref(),
+                layer.positioning.is_some(),
+            ) && self.unavailable_optional_assets.contains(&layer.file_path)
+            {
+                continue;
+            }
             let (texture_id, width, height) = if is_procedural_layer(layer.layer_type.as_deref()) {
                 (0, 1, 1)
             } else if layer.is_video {
@@ -390,13 +399,33 @@ impl NativePreviewRuntime {
             } else if let Some(cached) = self.static_textures.get(&layer.file_path).copied() {
                 cached
             } else {
-                let (rgba, width, height) = decode_static_image_scaled(
+                let decoded = decode_static_image_scaled(
                     &self.ffmpeg_path,
                     &self.ffprobe_path,
                     &layer.file_path,
                     output_width.max(output_height),
-                )?;
-                let texture_id = self.compositor.load_texture(&rgba, width, height)?;
+                );
+                let Some((rgba, width, height)) = tolerate_optional_positioned_asset_error(
+                    layer.layer_type.as_deref(),
+                    layer.positioning.is_some(),
+                    &layer.file_path,
+                    &mut self.unavailable_optional_assets,
+                    decoded,
+                )?
+                else {
+                    continue;
+                };
+                let uploaded = self.compositor.load_texture(&rgba, width, height);
+                let Some(texture_id) = tolerate_optional_positioned_asset_error(
+                    layer.layer_type.as_deref(),
+                    layer.positioning.is_some(),
+                    &layer.file_path,
+                    &mut self.unavailable_optional_assets,
+                    uploaded,
+                )?
+                else {
+                    continue;
+                };
                 let cached = (texture_id, width, height);
                 self.static_textures.insert(layer.file_path.clone(), cached);
                 cached

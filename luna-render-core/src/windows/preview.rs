@@ -1,10 +1,13 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
 use crate::composition::{composition_layers, CompositionInput};
-use crate::compositor::{is_procedural_layer_type, Compositor, PreviewTextureInfo};
+use crate::compositor::{
+    is_optional_positioned_asset, is_procedural_layer_type,
+    tolerate_optional_positioned_asset_error, Compositor, PreviewTextureInfo,
+};
 use crate::media::{decode_static_image_scaled, fit_output_size};
 
 use super::converter::{D3d12TextureLease, VideoConverter};
@@ -26,6 +29,7 @@ pub(crate) struct NativePreviewRuntime {
     decoders: HashMap<String, VideoDecoder>,
     frame_cache: HashMap<String, VecDeque<CachedVideoFrame>>,
     static_textures: HashMap<String, (u32, u32, u32)>,
+    unavailable_optional_assets: HashSet<String>,
     mask_textures: HashMap<String, u32>,
     desired_visible: bool,
     has_presented: bool,
@@ -82,6 +86,7 @@ impl NativePreviewRuntime {
             decoders: HashMap::new(),
             frame_cache: HashMap::new(),
             static_textures: HashMap::new(),
+            unavailable_optional_assets: HashSet::new(),
             mask_textures: HashMap::new(),
             desired_visible: true,
             has_presented: false,
@@ -211,6 +216,13 @@ impl NativePreviewRuntime {
 
         let result = (|| -> Result<(), String> {
             for (index, mut layer) in layer_inputs.into_iter().enumerate() {
+                if is_optional_positioned_asset(
+                    layer.layer_type.as_deref(),
+                    layer.positioning.is_some(),
+                ) && self.unavailable_optional_assets.contains(&layer.file_path)
+                {
+                    continue;
+                }
                 let (texture_id, width, height) =
                     if is_procedural_layer_type(layer.layer_type.as_deref()) {
                         (0, 1, 1)
@@ -253,13 +265,33 @@ impl NativePreviewRuntime {
                     {
                         cached
                     } else {
-                        let (rgba, width, height) = decode_static_image_scaled(
+                        let decoded = decode_static_image_scaled(
                             &self.ffmpeg_path,
                             &self.ffprobe_path,
                             &layer.file_path,
                             output_width.max(output_height),
-                        )?;
-                        let id = self.compositor.load_texture(&rgba, width, height)?;
+                        );
+                        let Some((rgba, width, height)) = tolerate_optional_positioned_asset_error(
+                            layer.layer_type.as_deref(),
+                            layer.positioning.is_some(),
+                            &layer.file_path,
+                            &mut self.unavailable_optional_assets,
+                            decoded,
+                        )?
+                        else {
+                            continue;
+                        };
+                        let uploaded = self.compositor.load_texture(&rgba, width, height);
+                        let Some(id) = tolerate_optional_positioned_asset_error(
+                            layer.layer_type.as_deref(),
+                            layer.positioning.is_some(),
+                            &layer.file_path,
+                            &mut self.unavailable_optional_assets,
+                            uploaded,
+                        )?
+                        else {
+                            continue;
+                        };
                         self.static_textures
                             .insert(layer.file_path.clone(), (id, width, height));
                         (id, width, height)
