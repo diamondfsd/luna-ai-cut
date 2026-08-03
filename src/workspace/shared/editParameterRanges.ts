@@ -41,6 +41,9 @@ export const EDIT_PARAMETER_RANGES = {
     curveContrast: signedPercent,
     sharpen: { min: 0, max: 200, step: 1 },
     denoise: { min: 0, max: 100 },
+    glowStrength: { min: 0, max: 100 },
+    glowRadius: { min: 1, max: 100 },
+    glowThreshold: { min: 0, max: 100 },
   },
   curve: {
     point: { min: 0, max: 1, step: 0.001 },

@@ -117,6 +117,11 @@ export interface EditPipeline {
     texture: number
     sharpen: number
     denoise: number
+
+    // Glow
+    glowStrength: number
+    glowRadius: number
+    glowThreshold: number
   }
   effects: { sharpen: number; denoise: number }
   logRestore: { activeId: string | null }
@@ -220,6 +225,9 @@ export const DEFAULT_PIPELINE: EditPipeline = {
     texture: 0,
     sharpen: 0,
     denoise: 0,
+    glowStrength: 0,
+    glowRadius: 35,
+    glowThreshold: 65,
   },
   effects: { sharpen: 0, denoise: 0 },
   logRestore: { activeId: null },
@@ -301,6 +309,12 @@ export const GRADING_DEFAULTS: Partial<EditPipeline['color']> = {
 export const DETAIL_DEFAULTS: Partial<EditPipeline['color']> = {
   sharpen: 0,
   denoise: 0,
+}
+
+export const GLOW_DEFAULTS: Partial<EditPipeline['color']> = {
+  glowStrength: 0,
+  glowRadius: 35,
+  glowThreshold: 65,
 }
 
 export const EFFECT_DETAIL_DEFAULTS: Partial<EditPipeline['effects']> = {
@@ -433,6 +447,9 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
       texture: clampNumber(pipeline.color.texture, color.texture),
       sharpen: clampNumber(pipeline.color.sharpen, color.sharpen),
       denoise: clampNumber(pipeline.color.denoise, color.denoise),
+      glowStrength: clampNumber(pipeline.color.glowStrength ?? DEFAULT_PIPELINE.color.glowStrength, color.glowStrength),
+      glowRadius: clampNumber(pipeline.color.glowRadius ?? DEFAULT_PIPELINE.color.glowRadius, color.glowRadius),
+      glowThreshold: clampNumber(pipeline.color.glowThreshold ?? DEFAULT_PIPELINE.color.glowThreshold, color.glowThreshold),
     },
     effects: {
       sharpen: clampNumber(pipeline.effects.sharpen, effects.sharpen),

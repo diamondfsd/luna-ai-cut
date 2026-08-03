@@ -1,6 +1,6 @@
 import type { PreviewLayer, RenderColorAdjustments, RenderLayerTransform, WatermarkPositioning } from '../../shared/types'
 import type { BorderSettings } from './editPipeline'
-import { HSL_CHANNELS, type EditPipeline } from './editPipeline'
+import { DEFAULT_PIPELINE, HSL_CHANNELS, type EditPipeline } from './editPipeline'
 import { shouldSwapOrientation } from '../transform/cropGeometry'
 import { beautyLayerColorForRendering, beautyLayerOpacityForRendering } from '../beauty/beautyLayers'
 
@@ -22,6 +22,9 @@ export function pipelineColorToRenderColor(color: EditPipeline['color']): Render
     texture: color.texture,
     sharpen: color.sharpen,
     denoise: color.denoise,
+    glowStrength: color.glowStrength,
+    glowRadius: color.glowRadius,
+    glowThreshold: color.glowThreshold,
     gradeShadowsHue: color.gradeShadowsHue,
     gradeShadowsAmount: color.gradeShadowsAmount,
     gradeMidHue: color.gradeMidHue,
@@ -66,9 +69,12 @@ function renderColorWithLocalAdjustments(
   const additive = [
     'exposure', 'brightness', 'contrast', 'saturation', 'vibrance', 'temperature', 'tint',
     'highlights', 'shadows', 'whites', 'blacks', 'clarity', 'texture', 'sharpen', 'denoise',
+    'glowStrength',
     'curveLift', 'curveContrast', 'gradeShadowsAmount', 'gradeMidAmount', 'gradeHighlightsAmount',
   ] as const
   for (const key of additive) combined[key] = global[key] + local[key]
+  if (local.glowRadius !== DEFAULT_PIPELINE.color.glowRadius) combined.glowRadius = local.glowRadius
+  if (local.glowThreshold !== DEFAULT_PIPELINE.color.glowThreshold) combined.glowThreshold = local.glowThreshold
   combined.levelsBlack = global.levelsBlack + local.levelsBlack
   combined.levelsGray = global.levelsGray + local.levelsGray - 0.5
   combined.levelsWhite = global.levelsWhite + local.levelsWhite - 1

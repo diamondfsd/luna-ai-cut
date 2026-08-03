@@ -37,7 +37,9 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
     let high_mask = pow(y, 2.0);
     c = c + c * (params.shadows / 100.0) * shadow_mask * 0.9;
     c = c + c * (params.highlights / 100.0) * high_mask * 0.9;
-    c = c + (params.blacks / 100.0) * shadow_mask * 0.35;
+    // Keep the black point anchored. Additive lifting turned neutral shadows
+    // into a gray veil, especially when the slider was raised.
+    c = c - c * (params.blacks / 100.0) * shadow_mask * 0.85;
     c = c + (params.whites / 100.0) * high_mask * 0.35;
 
     c = c + detail * (params.texture / 100.0 * 1.2 + params.clarity / 100.0 * 1.8);
@@ -57,8 +59,18 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
     c = c + color_wheel(params.grade_mid_hue, params.grade_mid_amount / 100.0) * mid;
     c = c + color_wheel(params.grade_highlights_hue, params.grade_highlights_amount / 100.0) * hi;
 
-    let pivot = 0.1845;
-    c = (c - pivot) * (1.0 + params.contrast / 100.0 * 1.35) + pivot;
+    let contrast_amount = params.contrast / 100.0;
+    if (contrast_amount >= 0.0) {
+        let pivot = 0.1845;
+        c = (c - pivot) * (1.0 + contrast_amount * 1.35) + pivot;
+    } else {
+        // Compress brighter tones toward the existing shadows instead of
+        // lifting the whole image toward a gray pivot.
+        let compression = -contrast_amount;
+        let positive = max(c, vec3<f32>(0.0));
+        c = positive * (1.0 + compression * 0.15)
+            / (vec3<f32>(1.0) + positive * compression * 0.75);
+    }
     let gray_luma = luminance(c);
     c = mix(vec3<f32>(gray_luma), c, 1.0 + params.saturation / 100.0);
     let maxc = max(c.r, max(c.g, c.b));
@@ -85,37 +97,49 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
     let ratio = select(0.0, shaped / y, y > 0.0001);
     c = c * ratio;
 
-    var hsl = rgb_to_hsl(sat3(c));
+    // HSL is a perceptual control, so perform it in display-encoded space.
+    // Linear-light HSL exaggerates small channel differences in smooth skies.
+    var hsl = rgb_to_hsl(linear_to_srgb(sat3(c)));
     let source_hsl = hsl;
     // Low-chroma pixels have an unstable hue. Excluding them prevents neutral
     // texture and sensor noise from turning into saturated color speckles.
-    let chroma_weight = smoothstep(0.04, 0.16, source_hsl.y);
-    let shadow_weight = smoothstep(0.015, 0.08, source_hsl.z);
+    let chroma_weight = smoothstep(0.06, 0.22, source_hsl.y);
+    let shadow_weight = smoothstep(0.02, 0.1, source_hsl.z);
     let highlight_weight = 1.0 - smoothstep(0.92, 0.995, source_hsl.z);
+    var hue_adjustment = 0.0;
+    var saturation_adjustment = 0.0;
+    var luminance_adjustment = 0.0;
     for (var i = 0u; i < 12u; i = i + 1u) {
         let channel = params.hsl_data[i];
         let target_hue = channel.x / 360.0;
         let distance_to_target = abs(fract(source_hsl.x - target_hue + 0.5) - 0.5);
         let band = (1.0 - smoothstep(0.04, 0.13, distance_to_target))
             * chroma_weight * shadow_weight * highlight_weight;
-        hsl.x = fract(hsl.x + channel.y / 360.0 * band);
-        let saturation_adjustment = channel.z / 100.0 * band;
-        if (saturation_adjustment >= 0.0) {
-            hsl.y = hsl.y + (1.0 - hsl.y) * saturation_adjustment;
-        } else {
-            hsl.y = hsl.y * (1.0 + saturation_adjustment);
-        }
-        let luminance_adjustment = channel.w / 100.0 * band;
-        if (luminance_adjustment >= 0.0) {
-            hsl.z = hsl.z + (1.0 - hsl.z) * luminance_adjustment;
-        } else {
-            hsl.z = hsl.z * (1.0 + luminance_adjustment);
-        }
+        hue_adjustment = hue_adjustment + channel.y / 360.0 * band;
+        saturation_adjustment = saturation_adjustment + channel.z / 100.0 * band;
+        luminance_adjustment = luminance_adjustment + channel.w / 100.0 * band;
     }
-    c = hsl_to_rgb(hsl);
+    hsl.x = fract(hsl.x + clamp(hue_adjustment, -0.5, 0.5));
+    // Positive saturation now scales existing chroma instead of forcing every
+    // selected pixel to full saturation. Adjacent bands are applied once.
+    hsl.y = sat1(hsl.y * (1.0 + clamp(saturation_adjustment, -1.0, 1.0)));
+    let safe_luminance_adjustment = clamp(luminance_adjustment, -1.0, 1.0);
+    if (safe_luminance_adjustment >= 0.0) {
+        hsl.z = hsl.z + (1.0 - hsl.z) * safe_luminance_adjustment;
+    } else {
+        hsl.z = hsl.z * (1.0 + safe_luminance_adjustment);
+    }
+    c = srgb_to_linear(hsl_to_rgb(hsl));
 
     c = c + detail * params.sharpen / 100.0 * 1.5;
     c = apply_lut(c);
+    if (params.glow.x > 0.001) {
+        let glow_radius = mix(3.0, 30.0, params.glow.y / 100.0);
+        let threshold = params.glow.z / 100.0;
+        let glow_sample = apply_restore_lut(aperture_highlight_blur(tex_coord, glow_radius, threshold));
+        let glow = sat3(glow_sample * params.glow.x / 100.0 * 0.9);
+        c = vec3<f32>(1.0) - (vec3<f32>(1.0) - sat3(c)) * (vec3<f32>(1.0) - glow);
+    }
     let reveal_progress = params.text_meta.w;
     if (reveal_progress > 0.001 && reveal_progress < 0.999) {
         let edge_distance_px = (reveal_progress - layer_x) * params.dst_w;
