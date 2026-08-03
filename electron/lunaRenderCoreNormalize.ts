@@ -22,6 +22,9 @@ export interface RenderColorAdjustments {
   texture: number
   sharpen: number
   denoise: number
+  glowStrength: number
+  glowRadius: number
+  glowThreshold: number
   gradeShadowsHue: number
   gradeShadowsAmount: number
   gradeMidHue: number
@@ -85,6 +88,9 @@ export function normalizeColor(color?: Partial<RenderColorAdjustments>): RenderC
     texture: color?.texture ?? 0,
     sharpen: color?.sharpen ?? 0,
     denoise: color?.denoise ?? 0,
+    glowStrength: color?.glowStrength ?? 0,
+    glowRadius: color?.glowRadius ?? 35,
+    glowThreshold: color?.glowThreshold ?? 65,
     gradeShadowsHue: color?.gradeShadowsHue ?? 220,
     gradeShadowsAmount: color?.gradeShadowsAmount ?? 0,
     gradeMidHue: color?.gradeMidHue ?? 35,

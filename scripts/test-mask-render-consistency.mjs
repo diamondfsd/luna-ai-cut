@@ -22,6 +22,7 @@ function renderColor(overrides = {}) {
     exposure: 0, black: 0, brightness: 0, contrast: 0, saturation: 0, vibrance: 0,
     temperature: 0, tint: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
     clarity: 0, texture: 0, sharpen: 0, denoise: 0,
+    glowStrength: 0, glowRadius: 35, glowThreshold: 65,
     gradeShadowsHue: 220, gradeShadowsAmount: 0, gradeMidHue: 35, gradeMidAmount: 0,
     gradeHighlightsHue: 42, gradeHighlightsAmount: 0, curveLift: 0, curveContrast: 0,
     curve: { rgb: [], luminance: [], red: [], green: [], blue: [] },
@@ -60,6 +61,36 @@ function writeSkinTexturePpmPixels() {
       pixels[offset] = 158 + texture
       pixels[offset + 1] = 116 + texture
       pixels[offset + 2] = 102 + texture
+    }
+  }
+  return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
+}
+
+function writeToneGlowPpmPixels() {
+  const pixels = Buffer.alloc(width * height * 3)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 3
+      const highlight = x >= 21 && x < 27 && y >= 13 && y < 19
+      const black = x < 8
+      const value = highlight ? 255 : black ? 0 : 96
+      pixels[offset] = value
+      pixels[offset + 1] = highlight ? 236 : value
+      pixels[offset + 2] = highlight ? 196 : value
+    }
+  }
+  return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
+}
+
+function writeBlueSkyPpmPixels() {
+  const pixels = Buffer.alloc(width * height * 3)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 3
+      const noise = (x + y) % 2
+      pixels[offset] = 100 + noise
+      pixels[offset + 1] = 100 + noise
+      pixels[offset + 2] = 180 + noise
     }
   }
   return Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), pixels])
@@ -125,6 +156,11 @@ function pixelDeltaAt(first, second, x, y) {
     + Math.abs(first[index + 2] - second[index + 2])
 }
 
+function pixelBrightnessAt(frame, x, y) {
+  const index = (y * width + x) * 4
+  return frame[index] + frame[index + 1] + frame[index + 2]
+}
+
 function changedPixelCentroid(base, adjusted) {
   let weight = 0
   let weightedX = 0
@@ -186,6 +222,8 @@ try {
   const sourcePath = path.join(temporaryRoot, 'asymmetric.ppm')
   const uniformSourcePath = path.join(temporaryRoot, 'uniform.ppm')
   const skinTextureSourcePath = path.join(temporaryRoot, 'skin-texture.ppm')
+  const toneGlowSourcePath = path.join(temporaryRoot, 'tone-glow.ppm')
+  const blueSkySourcePath = path.join(temporaryRoot, 'blue-sky.ppm')
   const rectMaskPath = path.join(temporaryRoot, 'rect.pgm')
   const leftMaskPath = path.join(temporaryRoot, 'left.pgm')
   const fullMaskPath = path.join(temporaryRoot, 'full.pgm')
@@ -193,6 +231,8 @@ try {
     writeFile(sourcePath, writePpmPixels()),
     writeFile(uniformSourcePath, writeUniformPpmPixels()),
     writeFile(skinTextureSourcePath, writeSkinTexturePpmPixels()),
+    writeFile(toneGlowSourcePath, writeToneGlowPpmPixels()),
+    writeFile(blueSkySourcePath, writeBlueSkyPpmPixels()),
     writeFile(rectMaskPath, maskPixels('rect')),
     writeFile(leftMaskPath, maskPixels('left')),
     writeFile(fullMaskPath, maskPixels('full')),
@@ -200,6 +240,31 @@ try {
 
   native.initCompositor()
   const base = await renderAndMatchExport('base', composition([mediaLayer(sourcePath)]))
+  const toneBase = await renderAndMatchExport('tone-base', composition([mediaLayer(toneGlowSourcePath)]))
+  const lowContrast = await renderAndMatchExport('low-contrast', composition([{
+    ...mediaLayer(toneGlowSourcePath), color: renderColor({ contrast: -100 }),
+  }]))
+  assert.equal(pixelBrightnessAt(lowContrast, 2, 16), 0, 'negative contrast must preserve pure black')
+  const raisedBlacks = await renderAndMatchExport('raised-blacks', composition([{
+    ...mediaLayer(toneGlowSourcePath), color: renderColor({ blacks: 100 }),
+  }]))
+  assert.equal(pixelBrightnessAt(raisedBlacks, 2, 16), 0, 'raising black must not turn pure black gray')
+  assert.ok(pixelBrightnessAt(raisedBlacks, 12, 16) < pixelBrightnessAt(toneBase, 12, 16), 'raising black must deepen shadow tones')
+  const glow = await renderAndMatchExport('glow', composition([{
+    ...mediaLayer(toneGlowSourcePath), color: renderColor({ glowStrength: 80, glowRadius: 65, glowThreshold: 70 }),
+  }]))
+  assert.ok(pixelBrightnessAt(glow, 18, 16) > pixelBrightnessAt(toneBase, 18, 16), 'glow must spread highlights into nearby pixels')
+  const blueSaturationChannels = renderColor().hslChannels.map((channel) => (
+    channel.hue === 240 ? { ...channel, saturation: 100 } : channel
+  ))
+  const saturatedBlue = await renderAndMatchExport('hsl-blue-saturation', composition([{
+    ...mediaLayer(blueSkySourcePath), color: renderColor({ hslChannels: blueSaturationChannels }),
+  }]))
+  const blueIndex = (16 * width + 24) * 4
+  assert.ok(
+    Math.min(saturatedBlue[blueIndex], saturatedBlue[blueIndex + 1], saturatedBlue[blueIndex + 2]) > 0,
+    'positive HSL saturation must not force a selected channel into clipped color noise',
+  )
   const normal = await renderAndMatchExport('normal', composition([
     mediaLayer(sourcePath), localLayer(sourcePath, rectMaskPath),
   ]))

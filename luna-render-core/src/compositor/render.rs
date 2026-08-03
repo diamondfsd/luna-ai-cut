@@ -561,6 +561,12 @@ impl Compositor {
                     texture: color.texture as f32,
                     sharpen: color.sharpen as f32,
                     denoise: color.denoise as f32,
+                    glow: [
+                        color.glow_strength.clamp(0.0, 100.0) as f32,
+                        color.glow_radius.clamp(1.0, 100.0) as f32,
+                        color.glow_threshold.clamp(0.0, 100.0) as f32,
+                        0.0,
+                    ],
                     grade_shadows_hue: color.grade_shadows_hue as f32,
                     grade_shadows_amount: color.grade_shadows_amount as f32,
                     grade_mid_hue: color.grade_mid_hue as f32,
