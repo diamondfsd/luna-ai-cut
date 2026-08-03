@@ -380,6 +380,13 @@ impl Compositor {
 
         for layer in layers {
             let procedural = super::is_procedural_layer_type(layer.layer_type.as_deref());
+            if super::is_optional_positioned_asset(
+                layer.layer_type.as_deref(),
+                layer.positioning.is_some(),
+            ) && self.unavailable_optional_assets.contains(&layer.file_path)
+            {
+                continue;
+            }
             let tex_id = if procedural {
                 0
             } else if layer.is_video {
@@ -391,8 +398,18 @@ impl Compositor {
                 // ── 静态图：LRU 缓存 ──
                 // 缓存以路径为单位保留当前最高分辨率版本。缩略图、工作台和导出
                 // 共用 Compositor，因此命中时必须校验纹理尺寸，避免放大低清纹理。
-                let (source_width, source_height) =
-                    self.probe_static_image(ffprobe, &layer.file_path)?;
+                let probe = self.probe_static_image(ffprobe, &layer.file_path);
+                let Some((source_width, source_height)) =
+                    super::tolerate_optional_positioned_asset_error(
+                        layer.layer_type.as_deref(),
+                        layer.positioning.is_some(),
+                        &layer.file_path,
+                        &mut self.unavailable_optional_assets,
+                        probe,
+                    )?
+                else {
+                    continue;
+                };
                 let layer_decode_max = calc_optimal_decode_max_edge(
                     &layer.positioning,
                     width,
@@ -408,13 +425,33 @@ impl Compositor {
                 } else {
                     // 对带 positioning 的层，先探测源图尺寸，计算最优解码尺寸
                     // 用 ffmpeg Lanczos 预降采样到接近显示尺寸，减少 GPU 双线性降采样导致的锯齿
-                    let (rgba, w, h) = decode_static_image_scaled(
+                    let decoded = decode_static_image_scaled(
                         ffmpeg,
                         ffprobe,
                         &layer.file_path,
                         layer_decode_max,
-                    )?;
-                    let tid = self.load_texture(&rgba, w, h)?;
+                    );
+                    let Some((rgba, w, h)) = super::tolerate_optional_positioned_asset_error(
+                        layer.layer_type.as_deref(),
+                        layer.positioning.is_some(),
+                        &layer.file_path,
+                        &mut self.unavailable_optional_assets,
+                        decoded,
+                    )?
+                    else {
+                        continue;
+                    };
+                    let uploaded = self.load_texture(&rgba, w, h);
+                    let Some(tid) = super::tolerate_optional_positioned_asset_error(
+                        layer.layer_type.as_deref(),
+                        layer.positioning.is_some(),
+                        &layer.file_path,
+                        &mut self.unavailable_optional_assets,
+                        uploaded,
+                    )?
+                    else {
+                        continue;
+                    };
                     self.cache_static_texture(layer.file_path.clone(), tid)?;
                     tid
                 }

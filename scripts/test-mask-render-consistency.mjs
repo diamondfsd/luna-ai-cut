@@ -232,6 +232,7 @@ try {
   const skinTextureSourcePath = path.join(temporaryRoot, 'skin-texture.ppm')
   const toneGlowSourcePath = path.join(temporaryRoot, 'tone-glow.ppm')
   const blueSkySourcePath = path.join(temporaryRoot, 'blue-sky.ppm')
+  const invalidWatermarkPath = path.join(temporaryRoot, 'invalid-watermark.png')
   const rectMaskPath = path.join(temporaryRoot, 'rect.pgm')
   const leftMaskPath = path.join(temporaryRoot, 'left.pgm')
   const fullMaskPath = path.join(temporaryRoot, 'full.pgm')
@@ -241,6 +242,7 @@ try {
     writeFile(skinTextureSourcePath, writeSkinTexturePpmPixels()),
     writeFile(toneGlowSourcePath, writeToneGlowPpmPixels()),
     writeFile(blueSkySourcePath, writeBlueSkyPpmPixels()),
+    writeFile(invalidWatermarkPath, Buffer.alloc(0)),
     writeFile(rectMaskPath, maskPixels('rect')),
     writeFile(leftMaskPath, maskPixels('left')),
     writeFile(fullMaskPath, maskPixels('full')),
@@ -248,6 +250,19 @@ try {
 
   native.initCompositor()
   const base = await renderAndMatchExport('base', composition([mediaLayer(sourcePath)]))
+  const invalidWatermark = await renderAndMatchExport('invalid-watermark', composition([
+    mediaLayer(sourcePath),
+    {
+      ...mediaLayer(invalidWatermarkPath),
+      id: 'watermark', zIndex: 1,
+      positioning: { anchor: 'bottom-center', targetWidth: 0.23, marginX: 0.03, marginY: 0.03 },
+    },
+  ]))
+  assert.equal(
+    pixelDifference(base, invalidWatermark).total,
+    0,
+    'an unavailable watermark must be ignored without blanking the rendered media',
+  )
   const toneBase = await renderAndMatchExport('tone-base', composition([mediaLayer(toneGlowSourcePath)]))
   const raisedBrightness = await renderAndMatchExport('raised-brightness', composition([{
     ...mediaLayer(toneGlowSourcePath), color: renderColor({ brightness: 100 }),
