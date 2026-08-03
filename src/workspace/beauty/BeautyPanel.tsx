@@ -137,7 +137,13 @@ export function BeautyPanel() {
     })
   }
 
-  const reset = () => commitParameters({ faceWhitening: 0, skinWhitening: 0, smoothing: 0, texture: 0, acneRemoval: 0, spotRemoval: 0, wrinkleReduction: 0 })
+  const reset = () => commitParameters({ faceWhitening: 0, skinWhitening: 0, skinWarmth: 0, smoothing: 0, texture: 0, acneRemoval: 0, spotRemoval: 0, wrinkleReduction: 0 })
+
+  const clearManualRetouch = () => {
+    edit.commitPatch({
+      beautyMasks: edit.pipeline.beautyMasks.filter((layer) => layer.id !== BEAUTY_MANUAL_RETOUCH_LAYER_ID),
+    })
+  }
 
   return (
     <div className="beauty-panel">
@@ -222,6 +228,14 @@ export function BeautyPanel() {
             formatValue={(value) => String(value)}
           />
           <ParamSlider
+            label="肤色暖调"
+            value={parameters.skinWarmth}
+            min={0}
+            max={100}
+            onChange={(skinWarmth) => commitParameters({ ...parameters, skinWarmth })}
+            formatValue={(value) => String(value)}
+          />
+          <ParamSlider
             label="磨皮"
             value={parameters.smoothing}
             min={0}
@@ -242,6 +256,17 @@ export function BeautyPanel() {
             title="局部修复"
             defaultOpen
             modified={Boolean(manualLayer)}
+            actions={manualLayer ? (
+              <button
+                className="workspace-acc-reset"
+                type="button"
+                onClick={clearManualRetouch}
+                title="清除局部修复"
+                aria-label="清除局部修复"
+              >
+                <RotateCcw size={11} />
+              </button>
+            ) : undefined}
           >
             <ButtonGroup
               className="beauty-retouch-modes"

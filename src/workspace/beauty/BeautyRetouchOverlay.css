@@ -4,6 +4,10 @@
   overflow: hidden;
 }
 
+.beauty-retouch-overlay-shell.is-panning {
+  pointer-events: none;
+}
+
 .beauty-retouch-overlay {
   display: block;
   width: 100%;

@@ -14,6 +14,7 @@ export type BeautyMaskKind = 'face' | 'body' | 'acne' | 'spot' | 'wrinkle'
 export interface BeautyParameters {
   faceWhitening: number
   skinWhitening: number
+  skinWarmth: number
   smoothing: number
   texture: number
   acneRemoval: number
@@ -24,6 +25,7 @@ export interface BeautyParameters {
 export const DEFAULT_BEAUTY_PARAMETERS: BeautyParameters = {
   faceWhitening: 18,
   skinWhitening: 10,
+  skinWarmth: 0,
   smoothing: 28,
   texture: 0,
   acneRemoval: 0,
@@ -74,6 +76,7 @@ export function beautyParameters(pipeline: EditPipeline): BeautyParameters {
   return {
     faceWhitening: clampParameter(faceWhitening),
     skinWhitening,
+    skinWarmth: clampParameter(bodyColor?.temperature ?? 0),
     smoothing: clampParameter(Math.round(layers.face?.color.denoise ?? 0)),
     texture: clampParameter(Math.round(layers.face?.color.texture ?? 0)),
     acneRemoval: layers.acne
@@ -109,6 +112,7 @@ function faceColor(parameters: BeautyParameters): EditPipeline['color'] {
         + parameters.faceWhitening * FACE_EXPOSURE_PER_STEP,
     ),
     highlights: -parameters.faceWhitening * 0.03,
+    temperature: clampParameter(parameters.skinWarmth ?? 0),
     denoise: parameters.smoothing,
     texture: parameters.texture,
   }
@@ -119,10 +123,11 @@ function bodyColor(parameters: BeautyParameters): EditPipeline['color'] {
     ...createDefaultPipeline().color,
     exposure: normalizedExposure(parameters.skinWhitening * BODY_EXPOSURE_PER_STEP),
     highlights: -parameters.skinWhitening * 0.02,
+    temperature: clampParameter(parameters.skinWarmth ?? 0),
   }
 }
 
-function skinWhiteningColorForRendering(value: number): Pick<EditPipeline['color'],
+function skinWhiteningColorForRendering(value: number, warmth: number): Pick<EditPipeline['color'],
   'exposure' | 'temperature' | 'saturation' | 'highlights' | 'curveLift' | 'hslChannels'> {
   const color = createDefaultPipeline().color
   const channel = (key: 'red' | 'orange' | 'yellow', saturation: number, luminance: number) => ({
@@ -132,7 +137,7 @@ function skinWhiteningColorForRendering(value: number): Pick<EditPipeline['color
   })
   return {
     exposure: normalizedExposure(value * BODY_RENDER_EXPOSURE_PER_STEP),
-    temperature: -value * 0.05,
+    temperature: clampParameter(warmth) - value * 0.05,
     saturation: -value * 0.06,
     highlights: -value * 0.03,
     curveLift: value * 0.05,
@@ -175,7 +180,7 @@ function wrinkleColor(parameters: BeautyParameters): EditPipeline['color'] {
 function faceColorForRendering(parameters: BeautyParameters): EditPipeline['color'] {
   return {
     ...faceColor(parameters),
-    ...skinWhiteningColorForRendering(parameters.skinWhitening + parameters.faceWhitening),
+    ...skinWhiteningColorForRendering(parameters.skinWhitening + parameters.faceWhitening, parameters.skinWarmth ?? 0),
     denoise: parameters.smoothing * 0.72,
     texture: parameters.texture * 0.35,
   }
@@ -184,7 +189,7 @@ function faceColorForRendering(parameters: BeautyParameters): EditPipeline['colo
 function bodyColorForRendering(parameters: BeautyParameters): EditPipeline['color'] {
   return {
     ...bodyColor(parameters),
-    ...skinWhiteningColorForRendering(parameters.skinWhitening),
+    ...skinWhiteningColorForRendering(parameters.skinWhitening, parameters.skinWarmth ?? 0),
   }
 }
 
