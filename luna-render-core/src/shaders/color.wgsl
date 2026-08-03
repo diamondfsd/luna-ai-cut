@@ -23,7 +23,11 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
     c = mix(raw, blurred, smoothing_mix);
 
     c = (c - params.black) * exp2(params.exposure);
-    c = c + vec3<f32>(params.brightness / 100.0);
+    let brightness_amount = params.brightness / 100.0;
+    let bounded_brightness = sat3(c);
+    let midtone_weight = bounded_brightness * (vec3<f32>(1.0) - bounded_brightness);
+    let brightness_strength = select(0.9, 1.25, brightness_amount >= 0.0);
+    c = c + midtone_weight * brightness_amount * brightness_strength;
 
     let wb = vec3<f32>(
         1.0 + params.temperature / 100.0 * 0.18 + params.tint / 100.0 * 0.04,
@@ -100,7 +104,21 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
     // HSL is a perceptual control, so perform it in display-encoded space.
     // Linear-light HSL exaggerates small channel differences in smooth skies.
     var hsl = rgb_to_hsl(linear_to_srgb(sat3(c)));
-    let source_hsl = hsl;
+    var source_hsl = hsl;
+    var hsl_activity = 0.0;
+    for (var i = 0u; i < 12u; i = i + 1u) {
+        let channel = params.hsl_data[i];
+        hsl_activity = max(hsl_activity, max(abs(channel.y), max(abs(channel.z), abs(channel.w))));
+    }
+    if (hsl_activity > 0.001) {
+        var stable_color = apply_restore_lut(blur3(tex_coord));
+        stable_color = (stable_color - params.black) * exp2(params.exposure);
+        let stable_bounded = sat3(stable_color);
+        let stable_midtone_weight = stable_bounded * (vec3<f32>(1.0) - stable_bounded);
+        stable_color = stable_color + stable_midtone_weight * brightness_amount * brightness_strength;
+        stable_color = stable_color * wb;
+        source_hsl = rgb_to_hsl(linear_to_srgb(sat3(stable_color)));
+    }
     // Low-chroma pixels have an unstable hue. Excluding them prevents neutral
     // texture and sensor noise from turning into saturated color speckles.
     let chroma_weight = smoothstep(0.06, 0.22, source_hsl.y);
@@ -119,7 +137,10 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
         saturation_adjustment = saturation_adjustment + channel.z / 100.0 * band;
         luminance_adjustment = luminance_adjustment + channel.w / 100.0 * band;
     }
-    hsl.x = fract(hsl.x + clamp(hue_adjustment, -0.5, 0.5));
+    let stable_hue_delta = fract(source_hsl.x - hsl.x + 0.5) - 0.5;
+    let hue_stabilization = sat1(abs(hue_adjustment) * 4.0)
+        * (1.0 - smoothstep(0.45, 0.85, source_hsl.y)) * 0.65;
+    hsl.x = fract(hsl.x + stable_hue_delta * hue_stabilization + clamp(hue_adjustment, -0.5, 0.5));
     // Positive saturation now scales existing chroma instead of forcing every
     // selected pixel to full saturation. Adjacent bands are applied once.
     hsl.y = sat1(hsl.y * (1.0 + clamp(saturation_adjustment, -1.0, 1.0)));
