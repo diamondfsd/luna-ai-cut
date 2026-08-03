@@ -26,6 +26,7 @@ interface ExportSettingsDialogProps {
   }
   initialConfig?: VideoExportSettings
   allowedFormats?: VideoExportFormat[]
+  outputAvailability?: { video: boolean; photo: boolean; live: boolean }
   onConfirm: (config: VideoExportSettings) => void | Promise<void>
 }
 
@@ -57,6 +58,7 @@ export function ExportSettingsDialog({
   livePhotoSource,
   initialConfig,
   allowedFormats,
+  outputAvailability,
   onConfirm,
 }: ExportSettingsDialogProps) {
   const defaultConfig = useMemo(
@@ -74,8 +76,14 @@ export function ExportSettingsDialog({
   const selectedDuration = livePhotoSource
     ? (exportConfig.trimEndTime ?? livePhotoSource.duration) - exportConfig.trimStartTime
     : 0
-  const livePhotoInvalid = exportConfig.exportFormats.length === 0
-    || (liveSelected && (!livePhotoSource || selectedDuration < 3))
+  const videoAvailable = outputAvailability?.video ?? true
+  const photoAvailable = outputAvailability?.photo ?? false
+  const liveAvailable = outputAvailability?.live ?? Boolean(livePhotoSource)
+  const hasSelectedOutput = (videoAvailable && exportConfig.exportFormats.includes('video'))
+    || (photoAvailable && exportConfig.exportPhotos)
+    || (liveAvailable && liveSelected)
+  const livePhotoInvalid = !hasSelectedOutput
+    || (liveSelected && livePhotoSource && selectedDuration < 3)
   const isBusy = loading || internalLoading
 
   const handleConfirm = useCallback(async () => {
@@ -136,7 +144,13 @@ export function ExportSettingsDialog({
           />
         ) : null}
         <div className="workspace-export-settings-column">
-          <ExportSettingsPanel value={exportConfig} onChange={handleConfigChange} livePhotoSource={livePhotoSource} allowedFormats={allowedFormats} />
+          <ExportSettingsPanel
+            value={exportConfig}
+            onChange={handleConfigChange}
+            livePhotoSource={livePhotoSource}
+            allowedFormats={allowedFormats}
+            outputAvailability={outputAvailability}
+          />
         </div>
       </div>
     </Dialog>

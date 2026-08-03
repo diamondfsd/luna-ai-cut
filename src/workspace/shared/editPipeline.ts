@@ -5,10 +5,10 @@ import { normalizeColorMaskComponent } from './colorMaskComponentNormalization'
 import { normalizeMaskTrack } from '../mask/maskTrack'
 import { framePresetDefaultSettings } from '../border/borderPresets'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
-import { normalizeVideoSegmentMarkers, type VideoSegmentMarker } from '../trim/videoSegmentMarkers'
+import { normalizeVideoOutputMarkers, type VideoOutputMarker } from '../trim/videoOutputMarkers'
 export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskDynamicSource, ColorMaskLayer, ColorMaskRef, ColorMaskSegmentationSource, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
 export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
-export type { VideoSegmentMarker } from '../trim/videoSegmentMarkers'
+export type { VideoOutputMarker } from '../trim/videoOutputMarkers'
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
 export type ToneCurveChannel = 'rgb' | 'luminance' | 'red' | 'green' | 'blue'
 export type HslChannelKey = 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'magenta'
@@ -53,8 +53,8 @@ export interface BorderSettings {
 export interface EditPipeline {
   /** 视频截取：非破坏性时间范围裁剪。图片素材忽略此字段。 */
   trim: VideoTrimState | null
-  /** 视频片段标记：用于记录多段时间范围和剪辑备注，不直接参与导出。 */
-  videoMarkers: VideoSegmentMarker[]
+  /** 视频导出标记：统一记录普通视频片段、照片帧和 Live 图片段。 */
+  outputMarkers: VideoOutputMarker[]
   /** 当前整套调色使用的局部蒙版；图片视为视频的第 0 帧。 */
   colorMask: ColorMaskRef | null
   /** 按列表顺序叠加的局部调色蒙版。 */
@@ -129,7 +129,7 @@ export interface EditPipeline {
 
 export type PipelinePatch = {
   trim?: VideoTrimState | null
-  videoMarkers?: VideoSegmentMarker[]
+  outputMarkers?: VideoOutputMarker[]
   colorMask?: ColorMaskRef | null
   colorMasks?: ColorMaskLayer[]
   transform?: Partial<EditPipeline['transform']>
@@ -169,7 +169,7 @@ export function createDefaultHslChannels(): Record<HslChannelKey, HslChannelAdju
 
 export const DEFAULT_PIPELINE: EditPipeline = {
   trim: null,
-  videoMarkers: [],
+  outputMarkers: [],
   colorMask: null,
   colorMasks: [],
   transform: {
@@ -374,7 +374,7 @@ function normalizePipeline(pipeline: EditPipeline): EditPipeline {
   return {
     ...pipeline,
     trim,
-    videoMarkers: normalizeVideoSegmentMarkers(pipeline.videoMarkers),
+    outputMarkers: normalizeVideoOutputMarkers(pipeline.outputMarkers),
     colorMask: null,
     colorMasks,
     watermark: { ...DEFAULT_PIPELINE.watermark, ...(pipeline.watermark ?? {}) },
@@ -512,7 +512,7 @@ export function mergePipeline(pipeline: EditPipeline, patch: PipelinePatch): Edi
     /Luna_I-Log_to_Rec709_BT1886_s65_v2\.cube$/i.test(patch.lutFilter.activeId.replace(/\\/g, '/')) ? patch.lutFilter.activeId : null
   return normalizePipeline({
     trim: patch.trim !== undefined ? patch.trim : pipeline.trim,
-    videoMarkers: patch.videoMarkers !== undefined ? patch.videoMarkers : pipeline.videoMarkers,
+    outputMarkers: patch.outputMarkers !== undefined ? patch.outputMarkers : pipeline.outputMarkers,
     colorMask: patch.colorMask !== undefined ? patch.colorMask : pipeline.colorMask,
     colorMasks: patch.colorMasks !== undefined ? patch.colorMasks : pipeline.colorMasks,
     transform: { ...pipeline.transform, ...patch.transform },
