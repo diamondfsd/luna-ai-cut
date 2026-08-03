@@ -26,7 +26,7 @@ function getLRC(): LunaRenderCore | undefined {
 export const MultipleLayerVideoPreviewLrcRender = memo(
   forwardRef<unknown, MultipleLayerVideoPreviewLrcRenderProps>(
     function MultipleLayerVideoPreviewLrcRender(
-      { layers, className, canvasWidth, canvasHeight, maxSide, playing = false, compositionTime, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 2, interactiveImageLayerIndexes, viewportKey },
+      { layers, className, canvasWidth, canvasHeight, maxSide, playing = false, compositionTime, decodeQuality = 1.5, onError, onReady, onRender, onVideoElement, imageScale, onImageScaleChange, maxImageScale = 5, interactiveImageLayerIndexes, viewportKey },
       ref,
     ) {
       const outputCanvasRef = useRef<HTMLCanvasElement>(null)

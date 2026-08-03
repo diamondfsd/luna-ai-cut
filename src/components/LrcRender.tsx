@@ -45,7 +45,7 @@ export interface LrcRenderProps {
   interactiveImageLayerIndexes?: readonly number[]
   /** Stable media identity used to preserve the viewport when comparison swaps render sources. */
   viewportKey?: string
-  /** 最大查看比例，1 表示画布像素与屏幕 CSS 像素 1:1；默认最大 200%。 */
+  /** 最大查看比例，1 表示画布像素与屏幕 CSS 像素 1:1；默认最大 500%。 */
   maxImageScale?: number
   /** 受控查看比例：null 表示适应窗口，1 表示画布像素与屏幕像素 1:1。 */
   imageScale?: number | null
@@ -126,7 +126,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     onVideoElement,
     interactiveImageLayerIndexes,
     viewportKey,
-    maxImageScale = 2,
+    maxImageScale = 5,
     imageScale,
     onImageScaleChange,
     onViewportChange,
