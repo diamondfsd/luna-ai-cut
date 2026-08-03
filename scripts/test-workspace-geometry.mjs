@@ -8,7 +8,7 @@ const pixelStretchSource = await readFile(new URL('../src/workspace/creative/pix
 const pixelStretchStateSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchState.ts', import.meta.url), 'utf8')
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
 const previewQualitySource = await readFile(new URL('../src/workspace/shared/workspacePreviewQuality.ts', import.meta.url), 'utf8')
-const videoSegmentMarkersSource = await readFile(new URL('../src/workspace/trim/videoSegmentMarkers.ts', import.meta.url), 'utf8')
+const videoOutputMarkersSource = await readFile(new URL('../src/workspace/trim/videoOutputMarkers.ts', import.meta.url), 'utf8')
 const aiSelectionWorkspaceAssetsSource = await readFile(new URL('../electron/aiSelectionWorkspaceAssets.ts', import.meta.url), 'utf8')
 const shaderSource = await readFile(new URL('../luna-render-core/src/shaders/fragment.wgsl', import.meta.url), 'utf8')
 const compilerOptions = {
@@ -21,7 +21,7 @@ const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pi
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
 const previewQualityCompiled = ts.transpileModule(previewQualitySource, { compilerOptions }).outputText
-const videoSegmentMarkersCompiled = ts.transpileModule(videoSegmentMarkersSource, { compilerOptions }).outputText
+const videoOutputMarkersCompiled = ts.transpileModule(videoOutputMarkersSource, { compilerOptions }).outputText
 const aiSelectionWorkspaceAssetsCompiled = ts.transpileModule(aiSelectionWorkspaceAssetsSource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
@@ -29,7 +29,7 @@ const pixelStretch = await import(`data:text/javascript;base64,${Buffer.from(pix
 const pixelStretchState = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchStateCompiled).toString('base64')}`)
 const pixelStretchPath = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchPathCompiled).toString('base64')}`)
 const previewQuality = await import(`data:text/javascript;base64,${Buffer.from(previewQualityCompiled).toString('base64')}`)
-const videoSegmentMarkers = await import(`data:text/javascript;base64,${Buffer.from(videoSegmentMarkersCompiled).toString('base64')}`)
+const videoOutputMarkers = await import(`data:text/javascript;base64,${Buffer.from(videoOutputMarkersCompiled).toString('base64')}`)
 const aiSelectionWorkspaceAssets = await import(`data:text/javascript;base64,${Buffer.from(aiSelectionWorkspaceAssetsCompiled).toString('base64')}`)
 
 function close(actual, expected, message, epsilon = 0.0001) {
@@ -51,53 +51,50 @@ assert.equal(previewQuality.workspacePreviewMaxSide('high'), 2160, 'high preview
 assert.equal(previewQuality.workspacePreviewMaxSide('original'), 3840, 'original preview never exceeds 4K')
 assert.equal(previewQuality.normalizeWorkspacePreviewQuality('unexpected'), 'balanced', 'invalid preview quality falls back to balanced')
 
-assert.deepEqual(videoSegmentMarkers.normalizeVideoSegmentMarkers(undefined), [], 'legacy projects default to no video markers')
+assert.deepEqual(videoOutputMarkers.normalizeVideoOutputMarkers(undefined), [], 'projects default to no output markers')
 assert.deepEqual(
-  videoSegmentMarkers.normalizeVideoSegmentMarkers([
-    { id: 'later', startTime: 12, endTime: 14, note: '  second shot  ' },
-    { id: 'same', startTime: 2, endTime: 4, note: 'opening' },
-    { id: 'same', startTime: 6, endTime: 8, note: '' },
-    { id: 'invalid', startTime: 5, endTime: 5.05, note: 'too short' },
-    { id: 'nan', startTime: Number.NaN, endTime: 10, note: '' },
+  videoOutputMarkers.normalizeVideoOutputMarkers([
+    { id: 'later', kind: 'live', startTime: 12, endTime: 15, coverTime: 13.5, note: '  second shot  ' },
+    { id: 'same', kind: 'photo', time: 2, note: 'opening' },
+    { id: 'same', kind: 'video', startTime: 6, endTime: 8, note: '' },
+    { id: 'invalid-live', kind: 'live', startTime: 5, endTime: 7, coverTime: 6, note: '' },
+    { id: 'legacy', startTime: 1, endTime: 3, note: 'ignored' },
   ]),
   [
-    { id: 'same', startTime: 2, endTime: 4, note: 'opening' },
-    { id: 'same-2', startTime: 6, endTime: 8, note: '' },
-    { id: 'later', startTime: 12, endTime: 14, note: 'second shot' },
+    { id: 'same', kind: 'photo', time: 2, note: 'opening' },
+    { id: 'same-2', kind: 'video', startTime: 6, endTime: 8, note: '' },
+    { id: 'later', kind: 'live', startTime: 12, endTime: 15, coverTime: 13.5, note: 'second shot' },
   ],
-  'video markers are validated, deduplicated, trimmed, and sorted',
+  'output markers require explicit kinds and are validated, deduplicated, trimmed, and sorted',
 )
 assert.deepEqual(
-  videoSegmentMarkers.buildVideoSegmentsExport('/absolute/source.mp4', [
-    { id: 'later', startTime: 8, endTime: 9.5, note: '  closing  ' },
-    { id: 'opening', startTime: 1, endTime: 3, note: 'opening' },
-  ]),
-  {
-    sourcePath: '/absolute/source.mp4',
-    segments: [
-      { note: 'opening', startTime: 1, endTime: 3 },
-      { note: 'closing', startTime: 8, endTime: 9.5 },
-    ],
-  },
-  'video marker export contains only the source path and ordered segment fields',
+  videoOutputMarkers.livePhotoRangeAround(0.5, 10),
+  { startTime: 0, endTime: 3, coverTime: 0.5 },
+  'Live ranges stay three seconds near the source start',
 )
 assert.deepEqual(
-  videoSegmentMarkers.buildVideoSegmentExportRanges('夏日/旅行', [
-    { id: 'closing', startTime: 8, endTime: 12, note: '海边:收尾?' },
-    { id: 'opening', startTime: 1, endTime: 3, note: '' },
+  videoOutputMarkers.buildVideoOutputExportItems('夏日/旅行', [
+    { id: 'live', kind: 'live', startTime: 6, endTime: 9, coverTime: 7.5, note: '海边:收尾?' },
+    { id: 'photo', kind: 'photo', time: 2, note: '' },
+    { id: 'video', kind: 'video', startTime: 1, endTime: 3, note: '' },
   ], 10),
   [
-    { startTime: 1, endTime: 3, outputBaseName: '夏日-旅行_片段-01' },
-    { startTime: 8, endTime: 10, outputBaseName: '夏日-旅行_片段-02_海边-收尾-' },
+    { markerId: 'video', kind: 'video', startTime: 1, endTime: 3, outputBaseName: '夏日-旅行_片段-01' },
+    { markerId: 'photo', kind: 'photo', time: 2, outputBaseName: '夏日-旅行_照片-01' },
+    { markerId: 'live', kind: 'live', startTime: 6, endTime: 9, coverTime: 7.5, outputBaseName: '夏日-旅行_Live-01_海边-收尾-' },
   ],
-  'video marker exports are ordered, named safely, and clamped to the source duration',
+  'mixed output items are ordered and named safely per output kind',
+)
+assert.equal(videoOutputMarkers.livePhotoRangeAround(1, 2.9), null, 'short videos cannot create Live ranges')
+assert.deepEqual(
+  videoOutputMarkers.livePhotoRangeAround(10, 10),
+  { startTime: 7, endTime: 10, coverTime: 9.99 },
+  'Live covers remain inside the range at the source end',
 )
 assert.deepEqual(
-  videoSegmentMarkers.buildVideoSegmentExportRanges('video', [
-    { id: 'outside', startTime: 10, endTime: 12, note: '' },
-  ], 10),
+  videoOutputMarkers.normalizeVideoOutputMarkers([{ id: 'last', kind: 'photo', time: 10, note: '' }], 10),
   [],
-  'video marker exports drop ranges outside the source duration',
+  'a photo marker cannot target the non-decodable source end boundary',
 )
 assert.deepEqual(
   aiSelectionWorkspaceAssets.workspaceAssetsFromSelection([{

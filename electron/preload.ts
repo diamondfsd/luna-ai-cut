@@ -13,7 +13,6 @@ import type {
   NetworkDiagnosticsResult,
   WorkspaceMediaAsset,
   WorkspaceProject,
-  WorkspaceVideoSegmentsExport,
   WorkspaceSegmentationRequest,
   WorkspaceMaskTrackingRequest,
   UpdateInfo,
@@ -136,7 +135,6 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   cacheFile: (params: { sourceUrl: string; previewUrl?: string | null }) => ipcRenderer.invoke('luna:cacheFile', params),
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
-    exportVideoSegmentsJson: (data: WorkspaceVideoSegmentsExport) => ipcRenderer.invoke('workspace:exportVideoSegmentsJson', data),
     loadTrimThumbnailCache: (videoPath: string, duration: number) => ipcRenderer.invoke('workspace:loadTrimThumbnailCache', videoPath, duration),
     saveTrimThumbnailCache: (videoPath: string, duration: number, bytes: ArrayBuffer) => ipcRenderer.invoke('workspace:saveTrimThumbnailCache', videoPath, duration, bytes),
     saveColorMask: (projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number) => ipcRenderer.invoke('workspace:saveColorMask', projectId, assetId, width, height, bytes, feather),

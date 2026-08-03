@@ -21,6 +21,7 @@ interface ExportSettingsPanelProps {
     outputSize: { width: number; height: number }
   }
   allowedFormats?: VideoExportFormat[]
+  outputAvailability?: { video: boolean; photo: boolean; live: boolean }
   dolbyVisionAvailable?: boolean
   dolbyVisionChecking?: boolean
 }
@@ -63,7 +64,7 @@ const QUALITY_OPTIONS = [
  * <ExportSettingsPanel value={config} onChange={setConfig} />
  * ```
  */
-export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedFormats, dolbyVisionAvailable, dolbyVisionChecking }: ExportSettingsPanelProps) {
+export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedFormats, outputAvailability, dolbyVisionAvailable, dolbyVisionChecking }: ExportSettingsPanelProps) {
   const locked = Boolean(value.dolbyVision)
   const handleResolutionChange = useCallback(
     (v: string) => onChange({ ...value, resolution: v as VideoResolution }),
@@ -112,11 +113,12 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedF
             />
           </div>
         )}
-        {livePhotoSource ? (
+        {livePhotoSource || outputAvailability ? (
           <LivePhotoExportControls
             value={value}
-            duration={livePhotoSource.duration}
+            duration={livePhotoSource?.duration ?? 3}
             allowedFormats={allowedFormats}
+            outputAvailability={outputAvailability}
             onChange={onChange}
           />
         ) : null}
