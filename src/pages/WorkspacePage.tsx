@@ -876,11 +876,17 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const setCompareOriginalRef = useRef(edit.setCompareOriginal)
   const togglePlayRef = useRef(handleTrimTogglePlay)
   const maskEditingRef = useRef(mask.editing)
+  const beautyRetouchEditingRef = useRef(false)
 
   // Sync refs with latest values
   useEffect(() => { cropActiveRef.current = edit.cropActive }, [edit.cropActive])
   useEffect(() => { trimStateRef.current.trimActive = edit.trimActive }, [edit.trimActive])
   useEffect(() => { maskEditingRef.current = mask.editing }, [mask.editing])
+  useEffect(() => {
+    beautyRetouchEditingRef.current = edit.activeTool === 'beauty'
+      && edit.beautyRetouchActive
+      && Boolean(edit.beautyRetouchMode)
+  }, [edit.activeTool, edit.beautyRetouchActive, edit.beautyRetouchMode])
   useEffect(() => { activeMediaRef.current = media.activeMedia }, [media.activeMedia])
   useEffect(() => { mediaLengthRef.current = media.media.length }, [media.media.length])
   useEffect(() => { selectedIndicesRef.current = media.selectedIndices }, [media.selectedIndices])
@@ -903,7 +909,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
           if (trimStateRef.current.trimActive) {
             // 截取模式下空格切换播放/暂停
             togglePlayRef.current()
-          } else if (!cropActiveRef.current) {
+          } else if (!cropActiveRef.current && !beautyRetouchEditingRef.current) {
             setCompareOriginalRef.current(true)
           }
         }

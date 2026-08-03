@@ -27,6 +27,7 @@ export function BeautyRetouchOverlay() {
   const lastPointRef = useRef<{ x: number; y: number } | null>(null)
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [spaceHeld, setSpaceHeld] = useState(false)
   const imageRect = canvas.imageRect
   const manualLayer = edit.pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_MANUAL_RETOUCH_LAYER_ID)
   const maskSize = {
@@ -81,6 +82,7 @@ export function BeautyRetouchOverlay() {
   useEffect(() => {
     let cancelled = false
     if (!edit.beautyRetouchActive || !edit.beautyRetouchMode) return
+    dataRef.current = null
     const load = manualLayer
       ? window.luna.workspace.loadColorMask(media.currentProject?.id ?? '', manualLayer.path)
         .then((loaded) => new Uint8Array(loaded.bytes))
@@ -101,6 +103,26 @@ export function BeautyRetouchOverlay() {
     if (dataRef.current) renderMask(dataRef.current, edit.beautyRetouchMode === 'erase')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displaySize.height, displaySize.width, edit.beautyRetouchMode, edit.pipeline.transform])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat) return
+      const inInput = event.target instanceof HTMLElement && Boolean(event.target.closest('input, textarea, [contenteditable]'))
+      if (!inInput) setSpaceHeld(true)
+    }
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') setSpaceHeld(false)
+    }
+    const handleBlur = () => setSpaceHeld(false)
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    window.addEventListener('keyup', handleKeyUp, { capture: true })
+    window.addEventListener('blur', handleBlur)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true })
+      window.removeEventListener('keyup', handleKeyUp, { capture: true })
+      window.removeEventListener('blur', handleBlur)
+    }
+  }, [])
 
   if (!edit.beautyRetouchActive || !edit.beautyRetouchMode) return null
 
@@ -191,7 +213,7 @@ export function BeautyRetouchOverlay() {
 
   return (
     <div
-      className="beauty-retouch-overlay-shell"
+      className={`beauty-retouch-overlay-shell${spaceHeld ? ' is-panning' : ''}`}
       style={{ left: imageRect.x, top: imageRect.y, width: imageRect.width, height: imageRect.height }}
     >
       <canvas
@@ -233,7 +255,7 @@ export function BeautyRetouchOverlay() {
         }}
         onPointerLeave={() => setCursor(null)}
       />
-      {cursor && (
+      {cursor && !spaceHeld && (
         <span
           className={`beauty-retouch-cursor${edit.beautyRetouchMode === 'erase' ? ' is-erase' : ''}`}
           style={{ left: cursor.x, top: cursor.y, width: cursorDiameter, height: cursorDiameter }}
