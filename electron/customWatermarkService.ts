@@ -5,6 +5,8 @@ import path from 'node:path'
 
 import type { CustomWatermarkAsset } from '../src/shared/types'
 import { addCustomWatermarkAssets, removeCustomWatermarkAsset } from '../src/shared/watermarkLibrary'
+import { convertWebpWatermarkToPng, probeWatermarkImage } from './customWatermarkImage'
+import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import { getSettings, saveSettings } from './settingsService'
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -38,38 +40,65 @@ export async function importCustomWatermark(sourcePath: string): Promise<CustomW
   if (!sourceStat.isFile() || sourceStat.size <= 0) throw new Error('无法读取这张水印图片')
   if (sourceStat.size > MAX_FILE_BYTES) throw new Error('水印图片不能超过 20 MB')
 
-  const image = nativeImage.createFromPath(sourcePath)
-  const size = image.getSize()
-  if (image.isEmpty()) throw new Error('无法读取这张水印图片')
+  let size: { width: number; height: number }
+  try {
+    size = format === 'webp'
+      ? await probeWatermarkImage(sourcePath, getFfprobePath())
+      : nativeImage.createFromPath(sourcePath).getSize()
+  } catch {
+    throw new Error('无法读取这张水印图片')
+  }
+  if (size.width <= 0 || size.height <= 0) throw new Error('无法读取这张水印图片')
   if (size.width > MAX_IMAGE_SIDE || size.height > MAX_IMAGE_SIDE) {
     throw new Error('水印图片单边不能超过 2048 像素')
   }
 
-  const sha256 = createHash('sha256').update(await readFile(sourcePath)).digest('hex')
   const destinationDir = assetDirectory()
-  const destination = path.join(destinationDir, `${sha256}${extension === '.jpeg' ? '.jpg' : extension}`)
   await mkdir(destinationDir, { recursive: true })
+  const sourceSha256 = createHash('sha256').update(await readFile(sourcePath)).digest('hex')
+  const staging = path.join(destinationDir, `.${sourceSha256}.${randomUUID()}.staging${format === 'webp' ? '.png' : ''}`)
 
-  if (!await exists(destination)) {
-    const staging = path.join(destinationDir, `.${sha256}.${randomUUID()}.staging`)
-    try {
-      await copyFile(sourcePath, staging)
-      await rename(staging, destination)
-    } catch (error) {
-      await rm(staging, { force: true })
-      if (!await exists(destination)) throw error
+  let importedPath = sourcePath
+  try {
+    if (format === 'webp') {
+      await convertWebpWatermarkToPng(sourcePath, staging, getFfmpegPath())
+      const converted = nativeImage.createFromPath(staging)
+      if (converted.isEmpty() || converted.getSize().width !== size.width || converted.getSize().height !== size.height) {
+        throw new Error('转换后的图片无效')
+      }
+      importedPath = staging
     }
-  }
 
-  return {
-    id: `watermark_${sha256.slice(0, 20)}`,
-    fileName: path.basename(sourcePath),
-    filePath: destination,
-    format,
-    width: size.width,
-    height: size.height,
-    bytes: sourceStat.size,
-    sha256,
+    const importedBytes = await readFile(importedPath)
+    const sha256 = createHash('sha256').update(importedBytes).digest('hex')
+    const outputFormat: CustomWatermarkAsset['format'] = format === 'webp' ? 'png' : format
+    const outputExtension = outputFormat === 'jpeg' ? '.jpg' : `.${outputFormat}`
+    const destination = path.join(destinationDir, `${sha256}${outputExtension}`)
+
+    if (!await exists(destination)) {
+      try {
+        if (format !== 'webp') await copyFile(sourcePath, staging)
+        await rename(staging, destination)
+      } catch (error) {
+        if (!await exists(destination)) throw error
+      }
+    }
+    const destinationStat = await stat(destination)
+
+    return {
+      id: `watermark_${sha256.slice(0, 20)}`,
+      fileName: path.basename(sourcePath),
+      filePath: destination,
+      format: outputFormat,
+      width: size.width,
+      height: size.height,
+      bytes: destinationStat.size,
+      sha256,
+    }
+  } catch {
+    throw new Error('无法读取这张水印图片')
+  } finally {
+    await rm(staging, { force: true })
   }
 }
 

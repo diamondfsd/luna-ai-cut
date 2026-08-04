@@ -31,6 +31,7 @@
     "test:inpaint": "node --experimental-strip-types scripts/test-inpaint-mask.mjs && node --experimental-strip-types scripts/test-removal-operations.mjs && node scripts/test-workspace-removal-storage.mjs",
     "test:beauty": "node --experimental-strip-types scripts/test-beauty-blemish-detection.mjs && node --experimental-strip-types scripts/test-beauty-skin-segmentation.mjs",
     "test:media-preview": "node scripts/test-media-preview.mjs",
+    "test:custom-watermark": "node --experimental-strip-types scripts/test-custom-watermark-webp.mjs",
     "test:dolby-vision": "node scripts/test-dolby-vision-hvcc.mjs",
     "test:original-export": "node scripts/test-original-file-export.mjs",
     "test:export-metadata": "node scripts/test-export-source-metadata.mjs",
