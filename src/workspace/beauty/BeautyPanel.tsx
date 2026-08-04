@@ -238,7 +238,7 @@ export function BeautyPanel() {
             formatValue={(value) => String(value)}
           />
           <ParamSlider
-            label="皮肤整体美白"
+            label="皮肤美白"
             value={parameters.skinWhitening}
             min={0}
             max={100}

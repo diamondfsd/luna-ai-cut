@@ -119,7 +119,7 @@ try {
   const projectPipeline = await import(pathToFileURL(path.join(temporaryRoot, 'src/workspace/shared/workspaceProjectPipeline.js')))
   const { createDefaultPipeline, mergePipeline } = pipelineModule
 
-  const maxBeautyParameters = { faceWhitening: 100, skinWhitening: 100, smoothing: 0, texture: 100, acneRemoval: 100, spotRemoval: 100, wrinkleReduction: 100 }
+  const maxBeautyParameters = { faceWhitening: 100, skinWhitening: 100, skinWarmth: 0, smoothing: 0, texture: 100, acneRemoval: 100, spotRemoval: 100, wrinkleReduction: 100 }
   const beautyBodyLayer = beautyLayers.createBeautyMaskLayer('body', { path: '/tmp/body.pgm', width: 1, height: 1 }, maxBeautyParameters)
   const beautyFaceLayer = beautyLayers.createBeautyMaskLayer('face', { path: '/tmp/face.pgm', width: 1, height: 1 }, maxBeautyParameters)
   const beautyAcneLayer = beautyLayers.createBeautyMaskLayer('acne', { path: '/tmp/acne.pgm', width: 1, height: 1 }, maxBeautyParameters)
@@ -127,18 +127,18 @@ try {
   const beautyWrinkleLayer = beautyLayers.createBeautyMaskLayer('wrinkle', { path: '/tmp/wrinkle.pgm', width: 1, height: 1 }, maxBeautyParameters)
   const beautyManualLayer = beautyLayers.createManualBeautyRetouchLayer({ path: '/tmp/manual-retouch.pgm', width: 1, height: 1 })
   const beautyPipeline = { ...createDefaultPipeline(), beautyMasks: [beautyBodyLayer, beautyFaceLayer, beautySpotLayer, beautyAcneLayer, beautyWrinkleLayer] }
-  close(beautyBodyLayer.color.exposure, 0.15, 'stored body whitening must preserve existing slider semantics')
-  close(beautyFaceLayer.color.exposure, 0.45, 'stored face whitening must preserve existing slider semantics')
+  close(beautyBodyLayer.color.exposure, 0.08, 'stored body brightening must remain restrained')
+  close(beautyFaceLayer.color.exposure, 0.2, 'stored face brightening must remain restrained')
   const renderedBeautyBody = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyBodyLayer)
   const renderedBeautyFace = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyFaceLayer)
-  close(renderedBeautyBody.exposure, 0.6, 'rendered body whitening maximum must remain visibly effective')
-  close(renderedBeautyFace.exposure, 1.2, 'rendered face exposure must combine overall and face whitening')
-  close(renderedBeautyBody.temperature, -5, 'skin whitening must gently neutralize warm color casts')
-  close(renderedBeautyBody.saturation, -6, 'skin whitening must reduce global skin saturation without washing it out')
-  close(renderedBeautyBody.curveLift, 5, 'skin whitening must lift midtones in addition to exposure')
-  close(renderedBeautyBody.hslChannels.orange.saturation, -8, 'skin whitening must reduce orange saturation')
-  close(renderedBeautyBody.hslChannels.orange.luminance, 6, 'skin whitening must lift orange skin luminance')
-  close(renderedBeautyFace.hslChannels.yellow.saturation, -20, 'face whitening must add the same yellow correction as overall whitening')
+  close(renderedBeautyBody.exposure, 0.12, 'rendered body brightening maximum must preserve skin detail')
+  close(renderedBeautyFace.exposure, 0.24, 'rendered face brightening must combine overall and face adjustments')
+  close(renderedBeautyBody.temperature, 0, 'brightening must not neutralize the original skin tone')
+  close(renderedBeautyBody.saturation, -2.5, 'brightening must retain natural skin saturation')
+  close(renderedBeautyBody.curveLift, 0, 'brightening must not lift midtones and flatten facial planes')
+  close(renderedBeautyBody.hslChannels.orange.saturation, -3, 'brightening must only gently reduce orange saturation')
+  close(renderedBeautyBody.hslChannels.orange.luminance, 1.5, 'brightening must only gently lift orange skin luminance')
+  close(renderedBeautyFace.hslChannels.yellow.saturation, -7, 'face brightening must retain yellow skin detail')
   close(renderedBeautyFace.texture, 35, 'beauty texture must restore detail at a controlled strength')
   const renderedBeautyAcne = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyAcneLayer)
   const renderedBeautySpot = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautySpotLayer)
@@ -737,10 +737,10 @@ try {
   const migratedBeauty = renderModule.buildLocalColorLayers(baseLayer, migratedBeautyPipeline)
   const migratedFace = migratedBeauty.find((layer) => layer.maskPath === '/beauty-face.pgm')
   const migratedBody = migratedBeauty.find((layer) => layer.maskPath === '/beauty-body.pgm')
-  assert.equal(migratedFace.color.brightness, 0, 'legacy face whitening must not render as additive RGB brightness')
-  assert.equal(migratedBody.color.brightness, 0, 'legacy body whitening must not render as additive RGB brightness')
-  close(migratedFace.color.exposure, 0.168, 'legacy face whitening must combine face and overall strength with the unified algorithm')
-  close(migratedBody.color.exposure, 0.06, 'legacy body whitening must use the stronger render mapping')
+  assert.equal(migratedFace.color.brightness, 0, 'legacy face brightening must not render as additive RGB brightness')
+  assert.equal(migratedBody.color.brightness, 0, 'legacy body brightening must not render as additive RGB brightness')
+  close(migratedFace.color.exposure, 0.0336, 'legacy face settings must use the restrained unified brightening algorithm')
+  close(migratedBody.color.exposure, 0.012, 'legacy body settings must use the restrained unified brightening algorithm')
   assert.equal(migratedFace.color.denoise, 20.16, 'legacy smoothing slider value must use the reduced anti-blur render mapping')
   assert.equal(
     renderModule.buildLocalColorLayers(baseLayer, stressPipeline)[0].maskTrack,
