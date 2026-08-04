@@ -40,10 +40,3 @@
 .preview-stage[data-crop-active] {
   padding: 60px;
 }
-
-.preview-stage-error {
-  color: var(--red, #e53e3e);
-  font-size: 14px;
-  text-align: center;
-  padding: 16px;
-}

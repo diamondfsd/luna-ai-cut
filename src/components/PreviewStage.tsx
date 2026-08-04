@@ -1,13 +1,13 @@
-import { forwardRef, useImperativeHandle, useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
+import { forwardRef, useImperativeHandle, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { LrcRender } from './LrcRender'
 import { MultipleLayerVideoPreviewLrcRender } from './MultipleLayerVideoPreviewLrcRender'
 import { NativeGpuVideoPreview } from './NativeGpuVideoPreview'
+import { PreviewStageError } from './PreviewStageError'
 import { useApp } from '../context/AppContext'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls } from '../ui'
 import { isVideoPath } from '../lib/fileUtils'
-import type { EditPipeline } from '../workspace/shared/editPipeline'
 import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
@@ -17,43 +17,13 @@ import {
   calcAspectRatio,
   projectCanvasFor,
 } from './previewStageGeometry'
+import type { PreviewStageHandle, PreviewStageProps } from './previewStageTypes'
 import './PreviewStage.css'
 
 const PREVIEW_LOADING_TIMEOUT_MS = 12_000
 export { buildLayers, calcAspectRatio } from './previewStageGeometry'
 export type { MediaResolution } from './previewStageGeometry'
-export interface PreviewStageHandle {
-  seek: (time: number) => void
-  togglePlay: () => void
-  getCurrentTime: () => number
-  getDuration: () => number
-  isPlaying: () => boolean
-}
-interface PreviewStageProps {
-  url: string | null
-  /** 保留页面 DOM 时控制原生 GPU 画面的显隐。 */
-  active?: boolean
-  /** 已知的 Live Photo 状态；传入后不再单独扫描文件，保证与素材列表一致。 */
-  isLivePhoto?: boolean
-  pending?: boolean
-  extraLayers?: PreviewLayer[]
-  pipeline?: EditPipeline
-  cropActive?: boolean
-  hideControls?: boolean
-  onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void
-  onMediaSize?: (width: number, height: number) => void
-  renderOverlay?: () => ReactNode
-  viewScale?: 'fit' | number
-  onViewScaleChange?: (scale: 'fit' | number) => void
-  onFitScaleChange?: (scale: number) => void
-  /** Stable media identity; unlike url, it must not change while temporarily showing the original. */
-  viewportKey?: string
-  previewMaxSide?: number
-  /** 临时旁路效果时保持合成视频渲染器，避免对比过程中卸载画布和解码器。 */
-  keepCompositionVideoRenderer?: boolean
-  /** 播放/暂停/当前时间变更回调 */
-  onPlayStateChange?: (state: { playing: boolean; currentTime: number; duration: number }) => void
-}
+export type { PreviewStageHandle, PreviewStageProps } from './previewStageTypes'
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
     { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
@@ -67,6 +37,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   // ── 加载状态（url 切换时自动 loading） ──
   const [loading, setLoading] = useState(false)
   const [renderedCanvasKey, setRenderedCanvasKey] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const prevUrlRef = useRef<string | null>(null)
 
   // ── 视频控件状态 ──
@@ -272,10 +243,15 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
 
   function handleRenderFailure(reason: string) {
     console.warn('[PreviewStage] preview render failed', { reason })
+    setPreviewError(reason)
     setRenderedCanvasKey(canvasRenderKey)
     setLoading(false)
     shouldResumePlaybackRef.current = false
   }
+
+  useEffect(() => {
+    setPreviewError(null)
+  }, [displayUrl])
 
   useEffect(() => {
     if (!loading && !canvasAwaitingRender) return
@@ -479,6 +455,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
         </div>
       )}
       {renderOverlay?.()}
+      {previewError && <PreviewStageError detail={previewError} />}
       {(loading || canvasAwaitingRender) && (
         <div className="preview-loading-overlay">
           <div className="preview-loading-spinner" />

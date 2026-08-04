@@ -135,6 +135,10 @@ export function videoLayerKey(layer: PreviewLayer, index: number): string {
     : `v${index}_${layer.filePath}`
 }
 
+export function describeVideoLoadFailure(filePath: string, error: MediaError | null): string {
+  return `视频加载失败\n文件: ${filePath}\n错误代码: ${error?.code ?? '未知'}\n错误信息: ${error?.message || '未提供'}`
+}
+
 async function loadImageTexture(
   lrc: LunaRenderCore,
   imageTextures: Map<string, number>,

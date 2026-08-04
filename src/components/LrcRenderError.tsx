@@ -1,4 +1,4 @@
-import { Accordion, Button } from '../ui'
+import { Button } from '../ui'
 import type { RenderInitFailure } from '../shared/lrcErrorDiagnostics'
 import './LrcRenderError.css'
 
@@ -13,9 +13,10 @@ export function LrcRenderError({ className, failure, retrying, onRetry }: LrcRen
   return (
     <div className={[className, 'lrc-render-error'].filter(Boolean).join(' ')}>
       <p>{failure.summary}</p>
-      <Accordion className="lrc-render-error-details" title="诊断详情（截图时请展开）">
+      <div className="lrc-render-error-details">
+        <strong>错误详情</strong>
         <pre>{failure.detail}</pre>
-      </Accordion>
+      </div>
       <Button variant="secondary" disabled={retrying} onClick={onRetry}>
         {retrying ? '正在检测...' : failure.retryLabel}
       </Button>

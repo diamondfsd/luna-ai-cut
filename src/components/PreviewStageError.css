@@ -1,0 +1,31 @@
+.preview-stage-error {
+  position: absolute;
+  z-index: 12;
+  top: 16px;
+  right: 16px;
+  left: 16px;
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  border: 1px solid var(--red, #e53e3e);
+  border-radius: 6px;
+  background: rgba(24, 24, 24, 0.96);
+  color: var(--red, #e53e3e);
+  font-size: 14px;
+  padding: 16px;
+  user-select: text;
+}
+
+.preview-stage-error strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.preview-stage-error pre {
+  margin: 0;
+  color: var(--muted-dark);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
