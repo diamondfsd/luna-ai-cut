@@ -1,5 +1,15 @@
 export type MediaKind = 'image' | 'video' | 'lrv' | 'unknown'
 
+export interface RelatedMediaFile {
+  name: string
+  sourceUrl: string
+  url: string
+  bytes: number | null
+  downloadName: string
+  downloadFilePath: string | null
+  localPath?: string
+}
+
 export interface LunaFile {
   id: string
   storageId?: string
@@ -40,6 +50,7 @@ export interface LunaFile {
   dolbyVision?: boolean
   dolbyVisionProfile?: number
   iLog?: boolean
+  rawCompanion: RelatedMediaFile | null
 }
 
 export interface CameraDeleteFailure {

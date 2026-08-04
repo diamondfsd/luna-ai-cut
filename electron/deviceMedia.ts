@@ -67,6 +67,9 @@ export const lunaMediaAdapter: DeviceMediaAdapter = {
   attachRelatedFiles(files: LunaFile[]): LunaFile[] {
     const previewByKey = new Map<string, Pick<LunaFile, 'name' | 'url' | 'sourceUrl' | 'downloadFilePath' | 'localPath'>>()
     const videoByKey = new Map<string, Pick<LunaFile, 'name' | 'url' | 'sourceUrl' | 'downloadFilePath' | 'localPath'>>()
+    const rawByKey = new Map<string, LunaFile>()
+
+    const rawKey = (name: string): string => name.replace(/\.[^.]+$/, '').toLowerCase()
 
     for (const file of files) {
       if (file.kind === 'lrv' && file.videoKey) {
@@ -75,14 +78,16 @@ export const lunaMediaAdapter: DeviceMediaAdapter = {
       if (file.kind === 'video' && file.videoKey) {
         videoByKey.set(file.videoKey, file)
       }
+      if (this.extensionOf(file.name) === 'dng') rawByKey.set(rawKey(file.name), file)
     }
 
     return files
-      .filter((file) => file.kind !== 'lrv')
+      .filter((file) => file.kind !== 'lrv' && this.extensionOf(file.name) !== 'dng')
       .map((file) => {
         const preview = file.kind === 'video' && file.videoKey ? previewByKey.get(file.videoKey) : null
         const livePhotoKey = this.livePhotoKey(file.name)
         const liveVideo = livePhotoKey ? previewByKey.get(livePhotoKey) ?? videoByKey.get(livePhotoKey) ?? null : null
+        const raw = /\.jpe?g$/i.test(file.name) ? rawByKey.get(rawKey(file.name)) : null
         return {
           ...file,
           previewName: preview?.name ?? null,
@@ -91,6 +96,15 @@ export const lunaMediaAdapter: DeviceMediaAdapter = {
           livePhotoVideoName: liveVideo?.name ?? null,
           livePhotoVideoUrl: liveVideo?.sourceUrl ?? liveVideo?.url ?? null,
           livePhotoCacheFilePath: liveVideo?.downloadFilePath ?? liveVideo?.localPath ?? null,
+          rawCompanion: raw ? {
+            name: raw.name,
+            sourceUrl: raw.sourceUrl,
+            url: raw.url,
+            bytes: raw.bytes,
+            downloadName: raw.downloadName,
+            downloadFilePath: raw.downloadFilePath,
+            localPath: raw.localPath,
+          } : null,
           canPreview: file.kind === 'image' || Boolean(preview) || file.kind === 'video',
         }
       })
