@@ -101,6 +101,7 @@ export function parseLunaIndex(html: string, baseUrl: string): LunaFile[] {
       previewName: null, previewUrl: null, cacheFilePath: null, downloadFilePath: null, thumbnailUrl: null,
       isLivePhoto: Boolean(livePhotoKey), livePhotoVideoName: null, livePhotoVideoUrl: null,
       livePhotoCacheFilePath: null, downloadName: lunaMediaAdapter.downloadName(name),
+      rawCompanion: null,
       canPreview: kind === 'image' || kind === 'video' || kind === 'lrv',
     })
   }
@@ -132,6 +133,7 @@ export function parseLunaFilePaths(cameraPaths: string[], baseUrl: string): Luna
       previewName: null, previewUrl: null, cacheFilePath: null, downloadFilePath: null, thumbnailUrl: null,
       isLivePhoto: Boolean(livePhotoKey), livePhotoVideoName: null, livePhotoVideoUrl: null,
       livePhotoCacheFilePath: null, downloadName: lunaMediaAdapter.downloadName(name),
+      rawCompanion: null,
       canPreview: kind === 'image' || kind === 'video' || kind === 'lrv',
     })
   }

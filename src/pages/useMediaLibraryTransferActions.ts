@@ -233,7 +233,10 @@ export function useMediaLibraryTransferActions({
     const filesToDelete = selectedFiles
     if (filesToDelete.length === 0) return
     const filePaths = filesToDelete
-      .map((file) => file.downloadFilePath ?? file.localPath)
+      .flatMap((file) => [
+        file.downloadFilePath ?? file.localPath,
+        file.rawCompanion?.downloadFilePath ?? file.rawCompanion?.localPath,
+      ])
       .filter((filePath): filePath is string => Boolean(filePath))
     if (filePaths.length === 0) {
       setDeleteError('没有可删除的本地文件')

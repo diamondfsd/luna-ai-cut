@@ -15,6 +15,15 @@ function destinationFor(localResourcesDir: string, file: LunaFile): string {
   return path.join(localResourcesDir, safeName(file.downloadName))
 }
 
+async function hasDownloadedRawCompanion(file: LunaFile, outputDir: string): Promise<boolean> {
+  if (!file.rawCompanion) return true
+  try {
+    return (await fs.stat(path.join(outputDir, safeName(file.rawCompanion.downloadName)))).isFile()
+  } catch {
+    return false
+  }
+}
+
 export async function getDownloadedRecords(files: LunaFile[], outputDir: string): Promise<DownloadRecord[]> {
   const records: DownloadRecord[] = []
 
@@ -22,7 +31,7 @@ export async function getDownloadedRecords(files: LunaFile[], outputDir: string)
     const destination = destinationFor(outputDir, file)
     try {
       const stats = await fs.stat(destination)
-      if (stats.isFile()) {
+      if (stats.isFile() && await hasDownloadedRawCompanion(file, outputDir)) {
         const record = await readSourceRecord(outputDir, path.basename(destination))
         records.push(withSourceMetadata({ fileName: file.name, path: destination, bytes: stats.size, downloadedAt: stats.mtime.toISOString() }, record))
       }
@@ -74,6 +83,7 @@ export async function listDownloadedFiles(outputDir: string): Promise<LunaFile[]
       livePhotoVideoUrl: null,
       livePhotoCacheFilePath: null,
       downloadName: name,
+      rawCompanion: null,
       canPreview: kind === 'image' || kind === 'video',
       localPath: filePath,
     }, sourceRecord))
