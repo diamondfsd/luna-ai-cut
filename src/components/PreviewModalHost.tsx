@@ -23,6 +23,7 @@ export function PreviewModalHost() {
       previewOnly={state.previewOnly}
       lightweightPreview={state.lightweightPreview}
       batchExportMode={state.batchExportMode}
+      enableILogRestoreOption={state.enableILogRestoreOption}
       onFilePathChange={state.onFilePathChange}
       isFileSelected={state.isFileSelected}
       onSetFileSelected={state.onSetFileSelected}

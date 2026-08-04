@@ -11,6 +11,8 @@ export interface PreviewState {
   onSetFileSelected?: (filePath: string, selected: boolean) => void
   /** 本地资源使用原生媒体元素和 CSS 水印，不启动后端预览渲染器。 */
   lightweightPreview?: boolean
+  /** 允许本地资源导出时自动还原 I-Log。 */
+  enableILogRestoreOption?: boolean
 }
 
 interface PreviewModalOptions {
@@ -48,6 +50,7 @@ export function showPreviewModal(
 export function showBatchExportModal(
   filePath: string,
   fileList: string[],
+  options?: { enableILogRestoreOption?: boolean },
 ): void {
-  setPreviewState?.({ filePath, fileList, batchExportMode: true, lightweightPreview: true })
+  setPreviewState?.({ filePath, fileList, batchExportMode: true, lightweightPreview: true, ...options })
 }

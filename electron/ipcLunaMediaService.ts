@@ -26,6 +26,7 @@ import type { IpcContext } from './ipcContext'
 import { listSampleFiles } from './localMedia'
 import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { enqueueThumbnailGeneration, thumbnailDir } from './thumbnailService'
+import { detectInsta360ILog } from './iLogDetection'
 
 function mediaKindForPath(filePath: string): LunaFile['kind'] {
   const ext = path.extname(filePath).toLowerCase()
@@ -221,6 +222,11 @@ export function register(ctx: IpcContext): void {
     })
     ctx.videoFrameRateTasks.set(key, task)
     return task
+  })
+
+  ipcMain.handle('luna:detectILog', async (_event, filePath: string) => {
+    if (typeof filePath !== 'string' || mediaKindForPath(filePath) !== 'video') return false
+    return detectInsta360ILog(filePath)
   })
 
   ipcMain.handle('luna:readExifModel', async (_event, localPath: string) => {

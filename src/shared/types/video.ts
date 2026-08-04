@@ -26,6 +26,8 @@ export interface VideoExportSettings {
   customBitrate?: number
   /** 本地资源中的 Dolby Vision 8.4 视频专用保真导出。 */
   dolbyVision?: boolean
+  /** 本地资源导出时，自动识别并还原 Luna I-Log 视频。 */
+  autoRestoreILog?: boolean
 }
 
 export const DEFAULT_VIDEO_EXPORT_SETTINGS: VideoExportSettings = {
@@ -53,6 +55,7 @@ export function lockDolbyVisionExportSettings(settings: VideoExportSettings): Vi
     trimEndTime: undefined,
     customBitrate: undefined,
     dolbyVision: true,
+    autoRestoreILog: false,
   }
 }
 
