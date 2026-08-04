@@ -118,6 +118,39 @@ function resolveCargo() {
 
 const cargoBin = resolveCargo()
 
+function resolveCmake() {
+  if (process.env.CMAKE_BIN) return process.env.CMAKE_BIN
+  if (process.platform !== 'win32') return 'cmake'
+
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files'
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'
+  const candidates = [
+    join(programFiles, 'CMake', 'bin', 'cmake.exe'),
+    join(programFilesX86, 'CMake', 'bin', 'cmake.exe'),
+  ]
+  for (const edition of ['Community', 'Professional', 'Enterprise', 'BuildTools']) {
+    candidates.push(
+      join(
+        programFiles,
+        'Microsoft Visual Studio',
+        '2022',
+        edition,
+        'Common7',
+        'IDE',
+        'CommonExtensions',
+        'Microsoft',
+        'CMake',
+        'CMake',
+        'bin',
+        'cmake.exe',
+      ),
+    )
+  }
+  return candidates.find((candidate) => existsSync(candidate)) || 'cmake'
+}
+
+const cmakeBin = resolveCmake()
+
 // 使用 rustup 工具链时，强制指定同 toolchain 的 rustc（避免 PATH 中的 Homebrew rustc 干扰）
 const rustcBin = cargoBin !== 'cargo'
   ? join(homedir(), '.rustup', 'toolchains', 'stable-aarch64-apple-darwin', 'bin', 'rustc')
@@ -155,17 +188,19 @@ if (isMac) {
   asrConfigureArgs.push('-A', targetArch === 'arm64' ? 'ARM64' : targetArch === 'ia32' ? 'Win32' : 'x64')
 }
 console.log('[build-native] cmake configure Paraformer worker...')
-const asrConfigure = spawnSync('cmake', asrConfigureArgs, { cwd: root, stdio: 'inherit' })
+const asrConfigure = spawnSync(cmakeBin, asrConfigureArgs, { cwd: root, stdio: 'inherit' })
 if (asrConfigure.status !== 0) {
+  if (asrConfigure.error) console.error(`[build-native] CMake could not start: ${asrConfigure.error.message}`)
   console.error('[build-native] ❌ Paraformer worker configure failed')
   process.exit(1)
 }
 console.log('[build-native] cmake build Paraformer worker...')
-const asrBuild = spawnSync('cmake', ['--build', asrBuildDir, '--config', 'Release', '--parallel'], {
+const asrBuild = spawnSync(cmakeBin, ['--build', asrBuildDir, '--config', 'Release', '--parallel'], {
   cwd: root,
   stdio: 'inherit',
 })
 if (asrBuild.status !== 0) {
+  if (asrBuild.error) console.error(`[build-native] CMake could not start: ${asrBuild.error.message}`)
   console.error('[build-native] ❌ Paraformer worker build failed')
   process.exit(1)
 }
@@ -214,6 +249,13 @@ const asrWorkerSrc = asrCandidates.find((candidate) => existsSync(candidate))
 if (!asrWorkerSrc) {
   console.error(`[build-native] ❌ Paraformer worker artifact missing: ${asrCandidates.join(', ')}`)
   process.exit(1)
+}
+if (!target) {
+  const asrHealthCheck = spawnSync(asrWorkerSrc, ['--health-check'], { stdio: 'inherit' })
+  if (asrHealthCheck.status !== 0) {
+    console.error('[build-native] ASR worker health check failed')
+    process.exit(1)
+  }
 }
 const asrWorkerDest = join(rcDir, asrWorkerName)
 copyFileSync(asrWorkerSrc, asrWorkerDest)

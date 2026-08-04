@@ -193,6 +193,10 @@ static bool read_stdin_audio(std::vector<float> &samples) {
 }
 
 int main(int argc,char**argv){
+  ggml_time_init();
+  if(argc == 2 && strcmp(argv[1], "--health-check") == 0) {
+    return ggml_time_us() >= 0 ? 0 : 1;
+  }
   if(argc != 8){fprintf(stderr,"字幕识别任务参数无效\n");return 1;}
   std::string gguf_path=argv[1],vad_path=argv[2];
   uint64_t source_start_ms=strtoull(argv[5],nullptr,10),total_ms=strtoull(argv[6],nullptr,10);
