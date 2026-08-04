@@ -1,27 +1,27 @@
-const WHISPER_UPSTREAM = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1'
-const VAD_UPSTREAM = 'https://huggingface.co/ggml-org/silero-v5.1.2/resolve/60cbe3094451f5bb86ecd0307c814356da24cdf6'
-const MODEL_RELEASE = 'https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0'
+const MODELSCOPE = 'https://www.modelscope.cn/models'
+const PARAFORMER_REVISION = '6231c426de8033aa6e5aeceaea63b4645afce449'
+const FSMN_VAD_REVISION = 'f04fc3013641c8d59c156e2cbf171c1ad596f74d'
 
 export const SUBTITLE_ASR_MODEL = {
-  id: 'whisper-small-q5-1',
-  fileName: 'ggml-small-q5_1.bin',
-  sizeBytes: 190_085_487,
-  sha256: 'ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb',
-  url: `${MODEL_RELEASE}/ggml-small-q5_1.bin`,
-  upstreamUrl: `${WHISPER_UPSTREAM}/ggml-small-q5_1.bin`,
-  version: 'whisper.cpp-5359861-small-q5_1',
-  license: 'MIT',
-  source: 'https://huggingface.co/ggerganov/whisper.cpp',
+  id: 'paraformer-zh-q8',
+  fileName: 'paraformer-q8.gguf',
+  sizeBytes: 236_929_024,
+  sha256: '42bf76ea1575a336aaca4c1b7c01a82b79113e6d04d0d6b799561bfcf07ee011',
+  url: `${MODELSCOPE}/FunAudioLLM/Paraformer-GGUF/resolve/${PARAFORMER_REVISION}/paraformer-q8.gguf`,
+  version: `paraformer-gguf-${PARAFORMER_REVISION.slice(0, 8)}-q8`,
+  license: 'Apache-2.0',
+  licenseUrl: 'https://www.modelscope.cn/models/FunAudioLLM/Paraformer-GGUF',
+  source: 'https://www.modelscope.cn/models/FunAudioLLM/Paraformer-GGUF',
 } as const
 
 export const SUBTITLE_VAD_MODEL = {
-  id: 'silero-vad-v5-1-2',
-  fileName: 'ggml-silero-v5.1.2.bin',
-  sizeBytes: 885_098,
-  sha256: '29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf',
-  url: `${MODEL_RELEASE}/ggml-silero-v5.1.2.bin`,
-  upstreamUrl: `${VAD_UPSTREAM}/ggml-silero-v5.1.2.bin`,
-  version: 'silero-v5.1.2-60cbe30',
-  license: 'MIT',
-  source: 'https://huggingface.co/ggml-org/silero-v5.1.2',
+  id: 'fsmn-vad-gguf',
+  fileName: 'fsmn-vad.gguf',
+  sizeBytes: 1_720_512,
+  sha256: '1270f2559c495f4e7b6e739541151027d360761a3fda43fc147034f5719f5479',
+  url: `${MODELSCOPE}/FunAudioLLM/fsmn-vad-GGUF/resolve/${FSMN_VAD_REVISION}/fsmn-vad.gguf`,
+  version: `fsmn-vad-gguf-${FSMN_VAD_REVISION.slice(0, 8)}`,
+  license: 'Apache-2.0',
+  licenseUrl: 'https://www.modelscope.cn/models/FunAudioLLM/fsmn-vad-GGUF',
+  source: 'https://www.modelscope.cn/models/FunAudioLLM/fsmn-vad-GGUF',
 } as const

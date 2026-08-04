@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { normalizeSubtitleCuesLanguage, parseSubtitleWorkerEvent, subtitleCueFromWorker } from '../electron/subtitleWorkerProtocol.ts'
+import { normalizeGeneratedSubtitleText, normalizeSubtitleCuesLanguage, parseSubtitleWorkerEvent, subtitleCueFromWorker } from '../electron/subtitleWorkerProtocol.ts'
 
 const ready = parseSubtitleWorkerEvent('{"version":1,"type":"ready","modelLoadMs":120,"gpu":true}')
 assert.equal(ready.type, 'ready')
@@ -27,5 +27,7 @@ assert.equal(complete.segmentCount, 18)
 assert.throws(() => parseSubtitleWorkerEvent('{"version":2,"type":"complete"}'), /不兼容/)
 assert.throws(() => parseSubtitleWorkerEvent('{"version":1,"type":"segment","text":"missing time"}'), /无效/)
 assert.equal(subtitleCueFromWorker({ version: 1, type: 'segment', startMs: 1, endMs: 2, text: '  ' }), null)
+assert.equal(normalizeGeneratedSubtitleText('大家好，今天测试一下！  Paraformer-zh。'), '大家好 今天测试一下 Paraformer zh')
+assert.equal(subtitleCueFromWorker({ version: 1, type: 'segment', startMs: 10, endMs: 20, text: '你好，世界！' }).text, '你好 世界')
 
 console.log('subtitle worker protocol tests passed')

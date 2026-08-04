@@ -7,7 +7,7 @@ import type { WorkspaceSubtitleProgress, WorkspaceSubtitleTranscriptionRequest, 
 import { SUBTITLE_ASR_MODEL } from '../src/shared/subtitleModels'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { loadSubtitleModels } from './subtitleModelService'
-import { normalizeSubtitleCuesLanguage, parseSubtitleWorkerEvent, subtitleCueFromWorker } from './subtitleWorkerProtocol'
+import { normalizeSubtitleCuesLanguage, parseSubtitleWorkerEvent, subtitleCuesFromWorker } from './subtitleWorkerProtocol'
 
 function appRoot(): string {
   return process.env.APP_ROOT ?? path.join(import.meta.dirname, '..')
@@ -125,8 +125,7 @@ export async function transcribeVideo(
           percent: event.totalMs > 0 ? Math.min(99, Math.round(event.processedMs / event.totalMs * 100)) : null,
         })
       } else if (event.type === 'segment') {
-        const cue = subtitleCueFromWorker(event)
-        if (cue) cues.push(cue)
+        cues.push(...subtitleCuesFromWorker(event))
       } else {
         workerState.completed = event
       }

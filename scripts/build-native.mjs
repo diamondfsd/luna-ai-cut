@@ -19,6 +19,7 @@ import { prepareDxcRuntime } from './prepare-dxc.mjs'
 
 const root = join(import.meta.dirname, '..')
 const rcDir = join(root, 'luna-render-core')
+const asrSourceDir = join(root, 'vendor', 'funasr-paraformer')
 
 // ── 确定目标平台 ──
 const target = process.env.CROSS_TARGET || ''
@@ -136,6 +137,39 @@ if (build.status !== 0) {
   process.exit(1)
 }
 
+// Paraformer 使用官方 FunASR GGUF/ggml 原生实现，保持为独立进程以隔离内存与故障。
+const asrBuildKey = target || `${process.platform}-${process.arch}`
+const asrBuildDir = join(rcDir, 'target', `funasr-${asrBuildKey}`)
+const asrConfigureArgs = [
+  '-S', asrSourceDir,
+  '-B', asrBuildDir,
+  '-DCMAKE_BUILD_TYPE=Release',
+]
+if (process.env.FUNASR_LLAMA_SOURCE_DIR) {
+  asrConfigureArgs.push(`-DFETCHCONTENT_SOURCE_DIR_LLAMA=${process.env.FUNASR_LLAMA_SOURCE_DIR}`)
+}
+if (isMac) {
+  asrConfigureArgs.push(`-DCMAKE_OSX_ARCHITECTURES=${targetArch === 'x64' ? 'x86_64' : 'arm64'}`)
+  asrConfigureArgs.push('-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0')
+} else if (isWin && process.platform === 'win32') {
+  asrConfigureArgs.push('-A', targetArch === 'arm64' ? 'ARM64' : targetArch === 'ia32' ? 'Win32' : 'x64')
+}
+console.log('[build-native] cmake configure Paraformer worker...')
+const asrConfigure = spawnSync('cmake', asrConfigureArgs, { cwd: root, stdio: 'inherit' })
+if (asrConfigure.status !== 0) {
+  console.error('[build-native] ❌ Paraformer worker configure failed')
+  process.exit(1)
+}
+console.log('[build-native] cmake build Paraformer worker...')
+const asrBuild = spawnSync('cmake', ['--build', asrBuildDir, '--config', 'Release', '--parallel'], {
+  cwd: root,
+  stdio: 'inherit',
+})
+if (asrBuild.status !== 0) {
+  console.error('[build-native] ❌ Paraformer worker build failed')
+  process.exit(1)
+}
+
 // ── 复制 ONNX Runtime ──
 // ort 可能将运行库放在 target/release，也可能使用外部 ORT_LIB_LOCATION。
 // 统一复制到 .node 同目录，供开发和打包加载。
@@ -161,12 +195,30 @@ copyFileSync(src, dest)
 prepareMacArtifact(dest, 'forbidden')
 console.log('[build-native] ✅', dest)
 
-for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker', 'luna-asr-worker']) {
+for (const baseName of ['sam-segmentation-worker', 'semantic-segmentation-worker', 'specialized-segmentation-worker', 'luna-inpaint-worker']) {
   const workerName = isWin ? `${baseName}.exe` : baseName
   const workerSrc = join(target ? join(rcDir, 'target', target, 'release') : join(rcDir, 'target', 'release'), workerName)
   const workerDest = join(rcDir, workerName)
   copyFileSync(workerSrc, workerDest)
   if (!isWin) chmodSync(workerDest, 0o755)
-  prepareMacArtifact(workerDest, baseName === 'luna-asr-worker' ? 'forbidden' : isMacX64 ? 'required' : 'optional')
+  prepareMacArtifact(workerDest, isMacX64 ? 'required' : 'optional')
   console.log('[build-native] ✅', workerDest)
 }
+
+const asrWorkerName = isWin ? 'luna-asr-worker.exe' : 'luna-asr-worker'
+const asrCandidates = [
+  join(asrBuildDir, 'Release', asrWorkerName),
+  join(asrBuildDir, asrWorkerName),
+]
+const asrWorkerSrc = asrCandidates.find((candidate) => existsSync(candidate))
+if (!asrWorkerSrc) {
+  console.error(`[build-native] ❌ Paraformer worker artifact missing: ${asrCandidates.join(', ')}`)
+  process.exit(1)
+}
+const asrWorkerDest = join(rcDir, asrWorkerName)
+copyFileSync(asrWorkerSrc, asrWorkerDest)
+if (!isWin) chmodSync(asrWorkerDest, 0o755)
+prepareMacArtifact(asrWorkerDest, 'forbidden')
+copyFileSync(join(asrSourceDir, 'LICENSE-FunASR'), join(rcDir, 'ASR-LICENSE-FunASR.txt'))
+copyFileSync(join(asrSourceDir, 'LICENSE-llama.cpp'), join(rcDir, 'ASR-LICENSE-llama.cpp.txt'))
+console.log('[build-native] ✅', asrWorkerDest)
