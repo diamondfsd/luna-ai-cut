@@ -23,19 +23,21 @@ export interface BeautyParameters {
 }
 
 export const DEFAULT_BEAUTY_PARAMETERS: BeautyParameters = {
-  faceWhitening: 18,
-  skinWhitening: 10,
+  // Natural retouch starts with skin cleanup only. Brightening is opt-in so
+  // the face keeps its existing light and shadow structure.
+  faceWhitening: 0,
+  skinWhitening: 0,
   skinWarmth: 0,
-  smoothing: 28,
-  texture: 0,
+  smoothing: 18,
+  texture: 10,
   acneRemoval: 0,
   spotRemoval: 0,
   wrinkleReduction: 0,
 }
 
-const BODY_EXPOSURE_PER_STEP = 0.0015
-const BODY_RENDER_EXPOSURE_PER_STEP = BODY_EXPOSURE_PER_STEP * 4
-const FACE_EXPOSURE_PER_STEP = 0.003
+const BODY_EXPOSURE_PER_STEP = 0.0008
+const BODY_RENDER_EXPOSURE_PER_STEP = 0.0012
+const FACE_EXPOSURE_PER_STEP = 0.0012
 
 function clampParameter(value: number): number {
   return Math.max(0, Math.min(100, value))
@@ -137,15 +139,18 @@ function skinWhiteningColorForRendering(value: number, warmth: number): Pick<Edi
   })
   return {
     exposure: normalizedExposure(value * BODY_RENDER_EXPOSURE_PER_STEP),
-    temperature: clampParameter(warmth) - value * 0.05,
-    saturation: -value * 0.06,
-    highlights: -value * 0.03,
-    curveLift: value * 0.05,
+    temperature: clampParameter(warmth),
+    saturation: -value * 0.025,
+    // Do not lift the tonal curve: it erases the facial planes that make a
+    // portrait read naturally. A small highlight recovery keeps bright skin
+    // from clipping when the user explicitly adds brightness.
+    highlights: -value * 0.06,
+    curveLift: 0,
     hslChannels: {
       ...color.hslChannels,
-      red: channel('red', 0.04, 0.03),
-      orange: channel('orange', 0.08, 0.06),
-      yellow: channel('yellow', 0.1, 0.04),
+      red: channel('red', 0.015, 0.008),
+      orange: channel('orange', 0.03, 0.015),
+      yellow: channel('yellow', 0.035, 0.01),
     },
   }
 }
