@@ -364,13 +364,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let source = sample_media_texture(tex_coord);
         let filter_strength = params.pixel_flow_finish.y;
-        let adjusted = pixel_flow_hertz_grade(apply_color(source.rgb, tex_coord, local_x), filter_strength);
+        let adjusted = apply_color(source.rgb, tex_coord, local_x);
         let gray_value = pixel_flow_luma(adjusted);
         let monochrome = vec3<f32>(clamp((gray_value - 0.5) * 1.06 + 0.505, 0.0, 1.0));
-        let initial_saturation = clamp(params.pixel_flow_scale.x, 0.0, 1.0);
         let initial_brightness = clamp(params.pixel_flow_scale.y, -1.0, 1.0) * 0.5;
         let initial_plate = clamp(
-            mix(monochrome, adjusted, initial_saturation) + vec3<f32>(initial_brightness),
+            monochrome + vec3<f32>(initial_brightness),
             vec3<f32>(0.0),
             vec3<f32>(1.0),
         );
@@ -398,7 +397,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let rain_visibility = pixel_flow_source_visibility(block_source);
         let cell_noise = pixel_flow_hash(cell_index * vec2<f32>(7.17, 2.93) + vec2<f32>(37.0, 101.0));
         let intensity = params.pixel_flow_geometry.z * mix(0.92, 1.34, cell_noise);
-        let rain_color = pixel_flow_rain_color(block_source);
+        let rain_color = pixel_flow_rain_color(pixel_flow_hertz_grade(block_source, filter_strength));
         let emission = sky_pulse * intensity * rain_visibility;
         let pixel_light = rain_color * emission * (block_halo * 0.14 + block_core * 0.86);
         let rain_scanned = vec3<f32>(1.0)

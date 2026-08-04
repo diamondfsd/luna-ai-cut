@@ -7,6 +7,7 @@ import { ExportSettingsDialog } from '../../../components/ExportSettingsDialog'
 import { type PixelFlowSubjectDirection, type PreviewLayer, type WorkspacePixelFlowState } from '../../../shared/types'
 import { Button, LoadingIndicator, VideoControls, toast } from '../../../ui'
 import { WorkspaceMediaStrip } from '../../components/WorkspaceMediaStrip'
+import { useWorkspaceEdit } from '../../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../../context/WorkspaceMediaContext'
 import type { CreativeModuleProps } from '../creativeCatalog'
 import { loadCreativeImageSize } from '../shared/creativeMedia'
@@ -21,7 +22,6 @@ import {
   DEFAULT_PIXEL_FLOW_FILTER,
   DEFAULT_PIXEL_FLOW_FLOW_STRENGTH,
   DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS,
-  DEFAULT_PIXEL_FLOW_INITIAL_SATURATION,
   DEFAULT_PIXEL_FLOW_RAIN_LENGTH,
   DEFAULT_PIXEL_FLOW_RAIN_SPEED,
   DEFAULT_PIXEL_FLOW_SUBJECT_DELAY,
@@ -36,6 +36,7 @@ import './pixel-flow.css'
 
 export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModuleProps) {
   const media = useWorkspaceMedia()
+  const edit = useWorkspaceEdit()
   const activeAsset = media.activeMedia
   const activeAssetId = activeAsset?.id
   const projectId = media.currentProject?.id
@@ -43,7 +44,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
   const [duration, setDuration] = useState(savedPixelFlowParameter(saved, 'duration', DEFAULT_PIXEL_FLOW_DURATION))
   const [pixelCount, setPixelCount] = useState(savedPixelFlowParameter(saved, 'pixelCount', DEFAULT_PIXEL_FLOW_COUNT))
   const [lightWidth, setLightWidth] = useState(savedPixelFlowParameter(saved, 'lightWidth', DEFAULT_PIXEL_FLOW_WIDTH))
-  const [initialSaturation, setInitialSaturation] = useState(savedPixelFlowParameter(saved, 'initialSaturation', DEFAULT_PIXEL_FLOW_INITIAL_SATURATION))
   const [initialBrightness, setInitialBrightness] = useState(savedPixelFlowParameter(saved, 'initialBrightness', DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS))
   const [subjectDirection, setSubjectDirection] = useState<PixelFlowSubjectDirection>(savedPixelFlowSubjectDirection(saved, DEFAULT_PIXEL_FLOW_SUBJECT_DIRECTION))
   const [bloomStrength, setBloomStrength] = useState(savedPixelFlowParameter(saved, 'bloomStrength', DEFAULT_PIXEL_FLOW_BLOOM))
@@ -81,7 +81,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setDuration(savedPixelFlowParameter(restored, 'duration', DEFAULT_PIXEL_FLOW_DURATION))
     setPixelCount(savedPixelFlowParameter(restored, 'pixelCount', DEFAULT_PIXEL_FLOW_COUNT))
     setLightWidth(savedPixelFlowParameter(restored, 'lightWidth', DEFAULT_PIXEL_FLOW_WIDTH))
-    setInitialSaturation(savedPixelFlowParameter(restored, 'initialSaturation', DEFAULT_PIXEL_FLOW_INITIAL_SATURATION))
     setInitialBrightness(savedPixelFlowParameter(restored, 'initialBrightness', DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS))
     setSubjectDirection(savedPixelFlowSubjectDirection(restored, DEFAULT_PIXEL_FLOW_SUBJECT_DIRECTION))
     setBloomStrength(savedPixelFlowParameter(restored, 'bloomStrength', DEFAULT_PIXEL_FLOW_BLOOM))
@@ -275,7 +274,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       duration,
       pixelCount,
       lightWidth,
-      initialSaturation,
+      initialSaturation: 0,
       initialBrightness,
       subjectDirection,
       bloomStrength,
@@ -310,7 +309,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     }, 300)
   // Project context refreshes are intentionally excluded from parameter persistence.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAssetId, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowStrength, initialBrightness, initialSaturation, lightWidth, maskPath, pixelCount, rainLength, rainSpeed, skyMaskPath, subjectDelay, subjectDirection])
+  }, [activeAssetId, bloomStrength, colorTransition, depthMaskPath, duration, filterStrength, flowStrength, initialBrightness, lightWidth, maskPath, pixelCount, rainLength, rainSpeed, skyMaskPath, subjectDelay, subjectDirection])
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -341,7 +340,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     duration,
     pixelCount,
     lightWidth,
-    initialSaturation,
+    initialSaturation: 0,
     initialBrightness,
     subjectDirection,
     rainSpeed,
@@ -351,7 +350,7 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     bloomStrength,
     filterStrength,
     colorTransition,
-  }), [bloomStrength, colorTransition, duration, filterStrength, flowStrength, initialBrightness, initialSaturation, lightWidth, pixelCount, rainLength, rainSpeed, subjectDelay, subjectDirection])
+  }), [bloomStrength, colorTransition, duration, filterStrength, flowStrength, initialBrightness, lightWidth, pixelCount, rainLength, rainSpeed, subjectDelay, subjectDirection])
 
   const previewLayers = useMemo<PreviewLayer[]>(() => {
     if (!activeAsset || !sourceSize) return []
@@ -359,9 +358,10 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
       asset: activeAsset,
       maskPath: depthMaskPath ?? undefined,
       playbackDuration,
+      pipeline: edit.pipeline,
       settings: effectSettings,
     })]
-  }, [activeAsset, depthMaskPath, effectSettings, playbackDuration, sourceSize])
+  }, [activeAsset, depthMaskPath, edit.pipeline, effectSettings, playbackDuration, sourceSize])
   const gpuPreviewSize = useMemo(() => {
     if (!sourceSize) return null
     const scale = Math.min(1, 1080 / Math.max(sourceSize.width, sourceSize.height))
@@ -391,7 +391,6 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     setDuration(DEFAULT_PIXEL_FLOW_DURATION)
     setPixelCount(DEFAULT_PIXEL_FLOW_COUNT)
     setLightWidth(DEFAULT_PIXEL_FLOW_WIDTH)
-    setInitialSaturation(DEFAULT_PIXEL_FLOW_INITIAL_SATURATION)
     setInitialBrightness(DEFAULT_PIXEL_FLOW_INITIAL_BRIGHTNESS)
     setSubjectDirection(DEFAULT_PIXEL_FLOW_SUBJECT_DIRECTION)
     setBloomStrength(DEFAULT_PIXEL_FLOW_BLOOM)
@@ -438,12 +437,12 @@ export function PixelFlowCreative({ onBack, supportedMediaKinds }: CreativeModul
     </div>
     <PixelFlowControls
       duration={duration} pixelCount={pixelCount} lightWidth={lightWidth}
-      initialSaturation={initialSaturation} initialBrightness={initialBrightness}
+      initialBrightness={initialBrightness}
       subjectDirection={subjectDirection}
       generating={maskPreparing || exporting}
       disabled={!playbackReady} exporting={exporting}
       onDurationChange={setDuration} onPixelCountChange={setPixelCount} onLightWidthChange={setLightWidth}
-      onInitialSaturationChange={setInitialSaturation} onInitialBrightnessChange={setInitialBrightness}
+      onInitialBrightnessChange={setInitialBrightness}
       onSubjectDirectionChange={setSubjectDirection}
       onReset={resetParameters} onExport={() => setExportDialogOpen(true)}
     />

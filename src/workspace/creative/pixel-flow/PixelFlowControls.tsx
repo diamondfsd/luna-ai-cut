@@ -8,7 +8,6 @@ interface PixelFlowControlsProps {
   duration: number
   pixelCount: number
   lightWidth: number
-  initialSaturation: number
   initialBrightness: number
   subjectDirection: PixelFlowSubjectDirection
   generating: boolean
@@ -17,7 +16,6 @@ interface PixelFlowControlsProps {
   onDurationChange: (value: number) => void
   onPixelCountChange: (value: number) => void
   onLightWidthChange: (value: number) => void
-  onInitialSaturationChange: (value: number) => void
   onInitialBrightnessChange: (value: number) => void
   onSubjectDirectionChange: (value: PixelFlowSubjectDirection) => void
   onReset: () => void
@@ -54,7 +52,6 @@ export function PixelFlowControls(props: PixelFlowControlsProps) {
           onValueChange={(value) => props.onSubjectDirectionChange(value as PixelFlowSubjectDirection)}
         />
       </label>
-      <ParamSlider label="初始饱和度" value={props.initialSaturation} min={0} max={100} onChange={props.onInitialSaturationChange} />
       <ParamSlider label="初始亮度" value={props.initialBrightness} min={-100} max={100} onChange={props.onInitialBrightnessChange} />
     </div>
     <div className="pixel-flow-actions">
