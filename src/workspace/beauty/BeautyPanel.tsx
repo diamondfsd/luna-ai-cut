@@ -35,6 +35,7 @@ export function BeautyPanel() {
   const enabled = Boolean(layers.face?.enabled || layers.body?.enabled || manualLayer?.enabled)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
+  const [progressPercent, setProgressPercent] = useState<number | null>(null)
   const [analysisError, setAnalysisError] = useState('')
   const requestRef = useRef<string | null>(null)
   const attemptedAssetRef = useRef<string | null>(null)
@@ -45,6 +46,7 @@ export function BeautyPanel() {
     if (requestId) void window.luna.workspace.cancelSegmentation(requestId)
     setBusy(false)
     setStatus('')
+    setProgressPercent(null)
   }, [])
 
   useEffect(() => {
@@ -71,6 +73,7 @@ export function BeautyPanel() {
   useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
     if (progress.requestId !== requestRef.current) return
     setStatus(progress.label)
+    setProgressPercent(progress.percent)
   }), [])
 
   const commitParameters = useCallback((next: BeautyParameters) => {
@@ -88,6 +91,7 @@ export function BeautyPanel() {
     requestRef.current = requestId
     setBusy(true)
     setStatus('正在准备美颜模型')
+    setProgressPercent(null)
     const currentParameters = hasSkinAnalysis ? parameters : DEFAULT_BEAUTY_PARAMETERS
     try {
       const beautyMasks = await analyzeBeautyForPipeline({
@@ -96,7 +100,10 @@ export function BeautyPanel() {
         assetId: activeAsset.id,
         filePath: activeAsset.path,
         parameters: currentParameters,
-        onStatus: setStatus,
+        onStatus: (nextStatus) => {
+          setStatus(nextStatus)
+          setProgressPercent(null)
+        },
         shouldContinue: () => requestRef.current === requestId,
       })
       if (beautyMasks) {
@@ -113,6 +120,7 @@ export function BeautyPanel() {
         requestRef.current = null
         setBusy(false)
         setStatus('')
+        setProgressPercent(null)
       }
     }
   }, [activeAsset, cancel, edit, hasSkinAnalysis, media.currentProject, parameters])
@@ -158,7 +166,17 @@ export function BeautyPanel() {
       {busy && (
         <div className="beauty-analysis-status" role="status">
           <Loader2 className="spin" size={16} />
-          <span>{status || '正在识别人脸和皮肤'}</span>
+          <div className="beauty-analysis-status-content">
+            <div>
+              <span>{status || '正在识别人脸和皮肤'}</span>
+              {progressPercent !== null && <strong>{progressPercent}%</strong>}
+            </div>
+            {progressPercent !== null && (
+              <div className="beauty-analysis-progress" aria-label={`美颜模型准备进度 ${progressPercent}%`}>
+                <span style={{ width: `${progressPercent}%` }} />
+              </div>
+            )}
+          </div>
         </div>
       )}
       {!busy && !analyzed && analysisError && (
