@@ -7,6 +7,7 @@ import type { LunaFile, WorkspaceMediaAsset } from '../../shared/types'
 import { Button, Dialog, Input, toast } from '../../ui'
 import { MediaLibraryCtx, useMediaLibraryController } from '../../pages/useMediaLibraryController'
 import { chooseWorkspaceMediaAssets } from '../shared/workspaceLocalMedia'
+import { filePathToPreviewUrl } from '../../lib/fileUtils'
 import '../../styles/library.css'
 import './WorkspaceImportDialog.css'
 
@@ -57,7 +58,8 @@ export function WorkspaceImportDialog({
   async function handleImport(): Promise<void> {
     const importingPaths = new Set(existingPaths)
     const assets = controller.selectedFiles.reduce<WorkspaceMediaAsset[]>((result, file) => {
-      const path = file.localPath ?? file.downloadFilePath ?? file.cacheFilePath
+      const thumbnailPath = file.localPath ?? file.downloadFilePath ?? file.cacheFilePath
+      const path = thumbnailPath
       if (!path || importingPaths.has(path) || (file.kind !== 'image' && file.kind !== 'video')) return result
       importingPaths.add(path)
       result.push({
@@ -65,6 +67,7 @@ export function WorkspaceImportDialog({
         name: file.name,
         path,
         kind: file.kind,
+        thumbnailUrl: thumbnailPath ? filePathToPreviewUrl(thumbnailPath) : null,
         isLivePhoto: file.isLivePhoto,
       })
       return result
