@@ -263,6 +263,7 @@ export function register(): void {
     if (maskWidth <= 0 || maskHeight <= 0 || maskWidth * maskHeight > 1_048_576) throw new Error('消除选区尺寸无效')
     request.edgeExpansion = Math.max(0, Math.min(32, Math.round(Number(request.edgeExpansion))))
     request.feather = Math.max(0, Math.min(24, Math.round(Number(request.feather))))
+    request.quality = request.quality === 'fast' ? 'fast' : 'high'
     const task = removalTasks.begin(event.sender.id, request.requestId)
     watchSender(event.sender)
     try {
