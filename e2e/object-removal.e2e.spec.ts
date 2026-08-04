@@ -46,6 +46,7 @@ test('对象消除批量处理分离选区并持久化结果', async ({ lunaApp 
 
   const overlay = lunaApp.page.locator('.workspace-mask-overlay-shell')
   await expect(overlay).toBeVisible()
+  await expect(lunaApp.page.getByRole('button', { name: '高清', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(lunaApp.page.getByRole('button', { name: '划选', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(overlay.locator('.workspace-instance-stroke-overlay')).toBeVisible()
   await expect(lunaApp.page.getByLabel('蒙版扩展数值')).toHaveValue('1')
