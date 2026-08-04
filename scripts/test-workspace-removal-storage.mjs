@@ -5,6 +5,7 @@ import { createRequire, Module } from 'node:module'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import process from 'node:process'
 import ts from 'typescript'
 
 const root = path.resolve(import.meta.dirname, '..')
@@ -44,7 +45,7 @@ try {
       ...project.assets[0],
       removal: { schemaVersion: 1, operations: [{
         id: 'operation', enabled: true, maskPath, maskWidth: 2, maskHeight: 2, resultPath,
-        inputRevision: '/tmp/source.png', edgeExpansion: 4, feather: 2,
+        inputRevision: '/tmp/source.png', edgeExpansion: 4, feather: 2, quality: 'high',
         model: { id: 'big-lama-fp32', version: 'carve-c3c0c9e', sha256: 'a'.repeat(64) },
         createdAt: '2026-07-29T00:00:00.000Z',
       }] },
@@ -54,6 +55,7 @@ try {
   let loaded = (await service.listWorkspaceProjects(temporary))[0]
   let operation = loaded.assets[0].removal.operations[0]
   assert.equal(operation.status, 'ready')
+  assert.equal(operation.quality, 'high')
   assert.equal(operation.resultSha256, createHash('sha256').update(result).digest('hex'))
   assert.equal(operation.maskSha256, createHash('sha256').update(mask).digest('hex'))
   await service.saveWorkspaceProject(temporary, loaded)
