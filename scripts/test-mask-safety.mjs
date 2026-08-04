@@ -1105,12 +1105,26 @@ try {
     asset: pixelFlowAsset,
     maskPath: recognizedPixelFlowMask.depthMaskPath,
     playbackDuration: 6,
+    pipeline: editPipeline.createDefaultPipeline(),
     settings: pixelFlowSettings,
   })
   const pixelFlowComposition = renderComposition.buildCompositionFromPreviewLayers([pixelFlowLayer], 1920, 1080, { duration: 6 })
   assert.equal(pixelFlowLayer.maskPath, recognizedPixelFlowMask.depthMaskPath)
   assert.equal(pixelFlowComposition.layers[0].maskPath, recognizedPixelFlowMask.depthMaskPath, 'pixel flow export must preserve the preview mask path')
   assert.equal(pixelFlowComposition.layers[0].pixelFlow.segmented, true, 'pixel flow export must keep segmented rendering enabled')
+  const pixelFlowPipeline = editPipeline.createDefaultPipeline()
+  pixelFlowPipeline.color.exposure = 0.75
+  pixelFlowPipeline.lutFilter.activeId = '/filters/look.cube'
+  pixelFlowPipeline.lutFilter.intensity = 64
+  const adjustedPixelFlowLayer = pixelFlowLayers.buildPixelFlowLayer({
+    asset: pixelFlowAsset,
+    playbackDuration: 6,
+    pipeline: pixelFlowPipeline,
+    settings: pixelFlowSettings,
+  })
+  assert.equal(adjustedPixelFlowLayer.color.exposure, 0.75, 'pixel flow must inherit the source color pipeline once')
+  assert.equal(adjustedPixelFlowLayer.lutId, '/filters/look.cube', 'pixel flow must reveal the selected source filter')
+  assert.equal(adjustedPixelFlowLayer.lutIntensity, 64, 'pixel flow must preserve the selected filter strength')
 
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'rmbg-1.4'), 'rmbg-1.4')
   assert.equal(segmentationModels.modelForSegmentationRequest('subject', 'segformer-b5-ade20k'), 'rmbg-1.4')

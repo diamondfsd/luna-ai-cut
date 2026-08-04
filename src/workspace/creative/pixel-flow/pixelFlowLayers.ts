@@ -1,4 +1,6 @@
 import type { PreviewLayer, WorkspaceMediaAsset, WorkspacePixelFlowState } from '../../../shared/types'
+import type { EditPipeline } from '../../shared/editPipeline'
+import { pipelineColorToRenderColor } from '../../shared/renderLayerPipeline'
 
 export type PixelFlowEffectSettings = Pick<WorkspacePixelFlowState,
   'duration' | 'pixelCount' | 'lightWidth' | 'initialSaturation' | 'initialBrightness'
@@ -9,9 +11,10 @@ export function buildPixelFlowLayer(options: {
   asset: WorkspaceMediaAsset
   maskPath?: string
   playbackDuration: number
+  pipeline: EditPipeline
   settings: PixelFlowEffectSettings
 }): PreviewLayer {
-  const { asset, maskPath, playbackDuration, settings } = options
+  const { asset, maskPath, pipeline, playbackDuration, settings } = options
   return {
     layerType: 'pixel-flow',
     filePath: asset.path,
@@ -29,6 +32,10 @@ export function buildPixelFlowLayer(options: {
     srcH: 1,
     opacity: 1,
     zIndex: 0,
+    color: pipelineColorToRenderColor(pipeline.color),
+    restoreLutId: pipeline.logRestore.activeId ?? undefined,
+    lutId: pipeline.lutFilter.activeId ?? undefined,
+    lutIntensity: pipeline.lutFilter.intensity,
     maskPath,
     pixelFlow: {
       ...settings,
