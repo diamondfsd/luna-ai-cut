@@ -73,6 +73,29 @@ async function fileSize(filePath: string): Promise<number> {
   }
 }
 
+function downloadTotalBytes(file: LunaFile): number | null {
+  if (file.bytes === null || (file.rawCompanion && file.rawCompanion.bytes === null)) return null
+  return file.bytes + (file.rawCompanion?.bytes ?? 0)
+}
+
+function rawCompanionAsFile(file: LunaFile): LunaFile | null {
+  if (!file.rawCompanion) return null
+  const raw = file.rawCompanion
+  return {
+    ...file,
+    id: `${file.id}:raw`,
+    name: raw.name,
+    sourceUrl: raw.sourceUrl,
+    url: raw.url,
+    bytes: raw.bytes,
+    extension: path.extname(raw.name),
+    downloadName: raw.downloadName,
+    downloadFilePath: raw.downloadFilePath,
+    localPath: raw.localPath,
+    rawCompanion: null,
+  }
+}
+
 async function copyIfPresent(source: string, destination: string): Promise<boolean> {
   try {
     await fs.access(source)
@@ -395,23 +418,27 @@ export async function downloadFiles(
     }
 
     const destination = destinationFor(outputDir, file)
+    const rawFile = rawCompanionAsFile(file)
+    const rawDestination = rawFile ? destinationFor(outputDir, rawFile) : null
+    const totalBytes = downloadTotalBytes(file)
     try {
       const existingFinal = await fileSize(destination)
-      if (existingFinal > 0) {
+      const existingRaw = rawDestination ? await fileSize(rawDestination) : 0
+      if (existingFinal > 0 && (!rawFile || existingRaw > 0)) {
         await recordDownloadedFileSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
           totalFiles: files.length,
-          downloaded: existingFinal,
-          total: existingFinal,
+          downloaded: existingFinal + existingRaw,
+          total: totalBytes ?? existingFinal + existingRaw,
           percent: 100,
           speedBps: 0,
           status: 'done',
           destinationPath: destination,
         })
         summary.completed.push({ name: file.name, path: destination })
-        logFinalDownloadSuccess(file, destination, existingFinal)
+        logFinalDownloadSuccess(file, destination, existingFinal + existingRaw)
         continue
       }
 
@@ -419,14 +446,14 @@ export async function downloadFiles(
       const previewDir = await previewCacheDir()
       const cachedPath = file.cacheFilePath ?? path.join(previewDir, safeName(file.name))
       const canCopyCachedFile = path.basename(cachedPath) === safeName(file.downloadName)
-      if (canCopyCachedFile && await copyIfPresent(cachedPath, destination)) {
+      if (!rawFile && canCopyCachedFile && await copyIfPresent(cachedPath, destination)) {
         await recordDownloadedFileSource(outputDir, destination, file)
         onProgress({
           fileName: file.name,
           index,
           totalFiles: files.length,
           downloaded: file.bytes ?? 0,
-          total: file.bytes,
+          total: totalBytes,
           percent: 100,
           speedBps: 0,
           status: 'done',
@@ -442,16 +469,35 @@ export async function downloadFiles(
           ...progress,
           index,
           totalFiles: files.length,
+          total: totalBytes,
+          percent: totalBytes ? Math.min(100, ((progress.downloaded ?? 0) / totalBytes) * 100) : progress.percent,
           status: 'downloading',
         })
       }, signal)
+
+      if (rawFile && rawDestination) {
+        await downloadToFileWithRetry({ ...rawFile, sourceUrl: sourceUrlFor(rawFile) }, rawDestination, (progress) => {
+          const downloaded = (file.bytes ?? 0) + progress.downloaded
+          onProgress({
+            ...progress,
+            fileName: file.name,
+            downloaded,
+            total: totalBytes,
+            percent: totalBytes ? Math.min(100, (downloaded / totalBytes) * 100) : progress.percent,
+            index,
+            totalFiles: files.length,
+            status: 'downloading',
+          })
+        }, signal)
+        await recordDownloadedFileSource(outputDir, rawDestination, rawFile)
+      }
 
       onProgress({
         fileName: file.name,
         index,
         totalFiles: files.length,
-        downloaded: file.bytes ?? 0,
-        total: file.bytes,
+        downloaded: totalBytes ?? file.bytes ?? 0,
+        total: totalBytes,
         percent: 100,
         speedBps: 0,
         status: 'done',
@@ -459,17 +505,19 @@ export async function downloadFiles(
       })
       await recordDownloadedFileSource(outputDir, destination, file)
       summary.completed.push({ name: file.name, path: destination })
-      logFinalDownloadSuccess(file, destination, file.bytes)
+      logFinalDownloadSuccess(file, destination, totalBytes)
     } catch (error) {
       if (signal?.aborted || isAbortError(error)) {
-        const partialSize = await fileSize(partialPathFor(destination))
+        const partialSize = await fileSize(destination)
+          + await fileSize(partialPathFor(destination))
+          + (rawDestination ? await fileSize(rawDestination) + await fileSize(partialPathFor(rawDestination)) : 0)
         onProgress({
           fileName: file.name,
           index,
           totalFiles: files.length,
           downloaded: partialSize,
-          total: file.bytes,
-          percent: file.bytes ? Math.min(100, (partialSize / file.bytes) * 100) : null,
+          total: totalBytes,
+          percent: totalBytes ? Math.min(100, (partialSize / totalBytes) * 100) : null,
           speedBps: 0,
           status: 'canceled',
         })
@@ -485,7 +533,7 @@ export async function downloadFiles(
         index,
         totalFiles: files.length,
         downloaded: 0,
-        total: file.bytes,
+        total: totalBytes,
         percent: null,
         speedBps: 0,
         status: 'failed',

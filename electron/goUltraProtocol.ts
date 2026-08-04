@@ -966,6 +966,7 @@ export class GoUltraClient {
         livePhotoVideoUrl: null,
         livePhotoCacheFilePath: null,
         downloadName: name,
+        rawCompanion: null,
         canPreview: false,
       })
     }

@@ -73,6 +73,7 @@ function localFileForPath(filePath: string): LunaFile {
     livePhotoVideoUrl: null,
     livePhotoCacheFilePath: null,
     downloadName: name,
+    rawCompanion: null,
     canPreview: true,
     localPath: filePath,
   }

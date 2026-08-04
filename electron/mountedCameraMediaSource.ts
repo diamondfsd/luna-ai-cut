@@ -346,6 +346,7 @@ export async function listMountedCameraFiles(rootPath: string, deviceId: string)
         livePhotoVideoUrl: null,
         livePhotoCacheFilePath: null,
         downloadName: lunaMediaAdapter.downloadName(name),
+        rawCompanion: null,
         canPreview: kind === 'image' || kind === 'video' || kind === 'lrv',
       })
     } catch (error) {

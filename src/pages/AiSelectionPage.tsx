@@ -79,6 +79,7 @@ function mediaFileForSelection(item: AiSelectionItem): LunaFile {
     livePhotoVideoUrl: null,
     livePhotoCacheFilePath: null,
     downloadName: item.name,
+    rawCompanion: null,
     canPreview: true,
     localPath: item.path,
     duration: item.duration ?? undefined,

@@ -170,6 +170,9 @@ export function MediaCard({
         ) : isILog ? (
           <span className="video-format-badge i-log-badge" title="I-Log">I-LOG</span>
         ) : null}
+        {file.rawCompanion && (
+          <span className="video-format-badge raw-badge" title="包含 RAW 原始文件">RAW</span>
+        )}
         {file.kind === 'video' && !isDolbyVision && !isILog && <VideoPlayBadge size={26} />}
         {overlay}
       </div>

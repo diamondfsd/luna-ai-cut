@@ -120,6 +120,7 @@ export async function listSampleFiles(sampleMediaDir?: string): Promise<LunaFile
       livePhotoVideoUrl: null,
       livePhotoCacheFilePath: null,
       downloadName: name,
+      rawCompanion: null,
       canPreview: kind === 'image' || kind === 'video' || kind === 'lrv',
     })
   }
