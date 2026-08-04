@@ -1,5 +1,5 @@
 import { FolderOpen } from 'lucide-react'
-import { type MouseEvent, useRef, useState } from 'react'
+import { type MouseEvent, useEffect, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset, WorkspaceMediaKind } from '../../shared/types'
 import { mergePipeline, type EditPipeline } from '../shared/editPipeline'
@@ -10,6 +10,14 @@ import { useApp } from '../../context/AppContext'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, LivePhotoBadge, VideoPlayBadge, toast } from '../../ui'
 import { ThumbImage } from '../../components/ThumbImage'
 import { WorkspaceMissingMedia } from './WorkspaceMissingMedia'
+import dolbyVisionLogo from '../../assets/logos/dolby-vision-vertical.png'
+import '../../styles/media-card-format-badge.css'
+
+interface MediaFormatInfo {
+  dolbyVision: boolean
+  iLog: boolean
+  raw: boolean
+}
 
 /** 检查素材的 pipeline 是否有非默认的修改 */
 function isAssetModified(item: WorkspaceMediaAsset, defaultPipeline: EditPipeline): boolean {
@@ -31,11 +39,35 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const [dragRect, setDragRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [dragHighlighted, setDragHighlighted] = useState<Set<number>>(new Set())
+  const [formatInfoByPath, setFormatInfoByPath] = useState<Map<string, MediaFormatInfo>>(new Map())
   const visibleMedia = mediaList
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => !supportedMediaKinds || supportedMediaKinds.includes(item.kind))
   const visibleIndices = visibleMedia.map(({ index }) => index)
   const visibleIndexSet = new Set(visibleIndices)
+
+  useEffect(() => {
+    let canceled = false
+    const missingItems = mediaList.filter((item) => !formatInfoByPath.has(item.path))
+    if (missingItems.length === 0) return
+
+    void Promise.all(missingItems.map(async (item) => {
+      try {
+        const info = await window.luna.workspace.getMediaFormatInfo(item.path)
+        return [item.path, info] as const
+      } catch {
+        return [item.path, { dolbyVision: false, iLog: false, raw: false }] as const
+      }
+    })).then((entries) => {
+      if (canceled) return
+      setFormatInfoByPath((current) => {
+        const next = new Map(current)
+        for (const [filePath, info] of entries) next.set(filePath, info)
+        return next
+      })
+    })
+    return () => { canceled = true }
+  }, [formatInfoByPath, mediaList])
 
   function handleClick(index: number, event: MouseEvent): void {
     containerRef.current?.focus({ preventScroll: true })
@@ -165,6 +197,7 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
         const isSelected = selectedIndices.has(index)
         const isDragHighlighted = dragHighlighted.has(index)
         const isModified = !isBroken && isAssetModified(item, defaultPipeline)
+        const formatInfo = formatInfoByPath.get(item.path)
         return (
           <ContextMenu key={item.id}>
             <ContextMenuTrigger asChild>
@@ -186,6 +219,15 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
                     />}
                 {item.kind === 'video' && <VideoPlayBadge size={20} />}
                 {item.isLivePhoto && <LivePhotoBadge size={22} className="workspace-thumb-live-chip" />}
+                {formatInfo?.dolbyVision ? (
+                  <span className="video-format-badge dolby-vision-badge" title="杜比视界">
+                    <img src={dolbyVisionLogo} alt="Dolby Vision" />
+                  </span>
+                ) : formatInfo?.iLog ? (
+                  <span className="video-format-badge i-log-badge" title="I-Log">I-LOG</span>
+                ) : formatInfo?.raw ? (
+                  <span className="video-format-badge raw-badge" title="包含 RAW 原始文件">RAW</span>
+                ) : null}
               </button>
             </ContextMenuTrigger>
             <ContextMenuContent>

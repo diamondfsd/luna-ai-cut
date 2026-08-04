@@ -107,7 +107,7 @@ function isFileUrl(url: string): boolean {
   return url.startsWith('file:')
 }
 
-function sourceUrlFor(file: LunaFile): string {
+function sourceUrlFor(file: Pick<LunaFile, 'sourceUrl' | 'url'>): string {
   return file.sourceUrl || file.url
 }
 
@@ -201,7 +201,10 @@ interface VideoProbeResult {
   iLog: boolean | null
 }
 
-export async function getVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<VideoProbeResult> {
+export async function getVideoFrameRate(
+  file: Pick<LunaFile, 'kind' | 'downloadFilePath' | 'localPath' | 'cacheFilePath' | 'sourceUrl' | 'url'>,
+  cachedPath?: string | null,
+): Promise<VideoProbeResult> {
   if (file.kind !== 'video') return { frameRate: null, duration: null, dolbyVision: null, dolbyVisionProfile: null, iLog: null }
 
   let sourcePath: string | null = null

@@ -13,6 +13,7 @@ import { getFfmpegPath, getFfprobePath } from './ffmpeg/pipeline'
 import { logMainError, logMainInfo, logMainWarn } from './loggerService'
 import { combineLivePhoto, isGoogleMotionPhoto } from './livePhotoService'
 import { readWorkspaceColorMetadata } from './workspaceColorMetadataService'
+import { getVideoFrameRate } from './mediaMetadataService'
 import {
   addAssetsToWorkspaceProject,
   createWorkspaceProject,
@@ -198,6 +199,25 @@ export function register(): void {
 
   ipcMain.handle('workspace:loadPreview', async (_event, filePath: string) => {
     return loadWorkspacePreview(filePath)
+  })
+
+  ipcMain.handle('workspace:getMediaFormatInfo', async (_event, filePath: string) => {
+    const extension = path.extname(filePath).toLowerCase()
+    const rawPath = extension === '.jpg' || extension === '.jpeg'
+      ? path.join(path.dirname(filePath), `${path.basename(filePath, extension)}.dng`)
+      : null
+    const raw = rawPath ? await fs.promises.access(rawPath).then(() => true).catch(() => false) : false
+    if (!VIDEO_EXTENSIONS.has(extension)) return { dolbyVision: false, iLog: false, raw }
+
+    const info = await getVideoFrameRate({
+      kind: 'video',
+      sourceUrl: filePath,
+      url: filePath,
+      downloadFilePath: filePath,
+      localPath: filePath,
+      cacheFilePath: null,
+    }, filePath)
+    return { dolbyVision: info.dolbyVision === true, iLog: info.iLog === true, raw }
   })
 
   ipcMain.handle('workspace:getMediaResolution', async (_event, filePath: string) => {
