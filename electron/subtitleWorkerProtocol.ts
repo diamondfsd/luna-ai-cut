@@ -18,12 +18,20 @@ export function parseSubtitleWorkerEvent(line: string): SubtitleWorkerEvent {
   throw new Error('字幕识别进程返回了无效数据')
 }
 
-export function subtitleCueFromWorker(event: Extract<SubtitleWorkerEvent, { type: 'segment' }>): WorkspaceSubtitleCue | null {
-  const text = event.text.trim()
+export function normalizeGeneratedSubtitleText(text: string): string {
+  return text.replace(/\p{P}+/gu, ' ').replace(/\s+/g, ' ').trim()
+}
+
+export function subtitleCuesFromWorker(event: Extract<SubtitleWorkerEvent, { type: 'segment' }>): WorkspaceSubtitleCue[] {
+  const text = normalizeGeneratedSubtitleText(event.text)
   const startMs = Math.max(0, Math.round(event.startMs))
   const endMs = Math.max(startMs + 10, Math.round(event.endMs))
-  if (!text) return null
-  return { id: randomUUID(), startMs, endMs, text, source: 'generated' }
+  if (!text) return []
+  return [{ id: randomUUID(), startMs, endMs, text, source: 'generated' }]
+}
+
+export function subtitleCueFromWorker(event: Extract<SubtitleWorkerEvent, { type: 'segment' }>): WorkspaceSubtitleCue | null {
+  return subtitleCuesFromWorker(event)[0] ?? null
 }
 
 export function normalizeSubtitleCuesLanguage(
