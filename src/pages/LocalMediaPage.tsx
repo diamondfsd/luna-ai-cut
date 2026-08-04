@@ -102,6 +102,7 @@ export function LocalMediaPage() {
       {pageActive && controller.previewFile && (
         <PreviewModal
           lightweightPreview
+          enableILogRestoreOption
           filePath={previewPath(controller.previewFile)}
           filePathList={controller.filteredFiles.map(previewPath)}
           isFileSelected={(filePath) => {

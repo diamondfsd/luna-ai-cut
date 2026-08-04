@@ -110,6 +110,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     ipcRenderer.invoke('luna:previewWithWatermark', file, sourcePath, settings),
   requestVideoFrameRate: (file: LunaFile, cachedPath?: string | null) =>
     ipcRenderer.invoke('luna:requestVideoFrameRate', file, cachedPath),
+  detectILog: (filePath: string) => ipcRenderer.invoke('luna:detectILog', filePath),
   downloadFiles: (files: LunaFile[], downloadDir?: string) => ipcRenderer.invoke('luna:downloadFiles', files, downloadDir),
   cancelDownloads: () => ipcRenderer.invoke('luna:cancelDownloads'),
   exportFiles: (files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>

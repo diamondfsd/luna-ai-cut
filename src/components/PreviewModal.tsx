@@ -17,6 +17,8 @@ import { DEFAULT_VIDEO_EXPORT_SETTINGS, lockDolbyVisionExportSettings } from '..
 import type { DolbyVisionProbeResult, PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { usesCustomWatermark } from '../shared/watermarkGeometry'
 import { Button, Dialog, toast } from '../ui'
+import { findLunaUltraRestoreLut } from '../workspace/lut/lunaUltraRestoreLut'
+import { lutManager } from '../workspace/lut/LutManager'
 import '../styles/modal.css'
 
 interface PreviewModalProps {
@@ -26,6 +28,7 @@ interface PreviewModalProps {
   lightweightPreview?: boolean
   proxyPreviewPaths?: string[]
   batchExportMode?: boolean
+  enableILogRestoreOption?: boolean
   onFilePathChange?: (filePath: string) => void
   isFileSelected?: (filePath: string) => boolean
   onSetFileSelected?: (filePath: string, selected: boolean) => void
@@ -53,6 +56,7 @@ export function PreviewModal({
   lightweightPreview,
   proxyPreviewPaths,
   batchExportMode,
+  enableILogRestoreOption,
   onFilePathChange,
   isFileSelected,
   onSetFileSelected,
@@ -79,7 +83,10 @@ export function PreviewModal({
   const [batchEnqueuing, setBatchEnqueuing] = useState(false)
   const [exportAppleLivePhoto, setExportAppleLivePhoto] = useState(false)
   const [livePhotoCount, setLivePhotoCount] = useState(0)
-  const [exportConfig, setExportConfig] = useState<VideoExportSettings>(DEFAULT_VIDEO_EXPORT_SETTINGS)
+  const [exportConfig, setExportConfig] = useState<VideoExportSettings>(() => ({
+    ...DEFAULT_VIDEO_EXPORT_SETTINGS,
+    autoRestoreILog: Boolean(enableILogRestoreOption),
+  }))
   const [dolbyVisionProbe, setDolbyVisionProbe] = useState<DolbyVisionProbeResult | null>(null)
   const [dolbyVisionChecking, setDolbyVisionChecking] = useState(false)
 
@@ -192,8 +199,21 @@ export function PreviewModal({
       const settings = await window.luna.getSettings()
       if (!settings.exportDir) { toast.error('导出目录未配置'); return }
 
+      const restoreByPath = new Map<string, boolean>()
+      if (exportConfig.autoRestoreILog) {
+        await Promise.all(exportList.map(async (sourcePath) => {
+          if (isVideoPath(sourcePath)) restoreByPath.set(sourcePath, await window.luna.detectILog(sourcePath))
+        }))
+      }
+      let restoreLutPath: string | null = null
+      if ([...restoreByPath.values()].some(Boolean)) {
+        restoreLutPath = findLunaUltraRestoreLut(await lutManager.discoverLuts())?.filePath ?? null
+        if (!restoreLutPath) throw new Error('未找到 I-Log 还原资源，请稍后重试')
+      }
+
       const sources: BatchExportSource[] = await Promise.all(exportList.map(async (sourcePath) => {
         const resolution = await window.luna.workspace.getMediaResolution(sourcePath)
+        const restoreILog = restoreByPath.get(sourcePath) === true
         const canUseBuiltinWatermark = await canUseLunaUltraWatermark(
           sourcePath,
           isVideoPath(sourcePath) ? 'video' : 'image',
@@ -203,10 +223,11 @@ export function PreviewModal({
           resolution,
           usesCustomWatermark(watermarkSettings) || canUseBuiltinWatermark ? watermarkSettings : null,
         )
+        if (restoreILog && layers[0] && restoreLutPath) layers[0] = { ...layers[0], restoreLutId: restoreLutPath }
         return {
           sourcePath,
           layers,
-          passthrough: layers.length === 1,
+          passthrough: layers.length === 1 && !restoreILog,
         }
       }))
 
@@ -300,6 +321,7 @@ export function PreviewModal({
                       onChange={setExportConfig}
                       dolbyVisionAvailable={dolbyVisionProbe?.eligible}
                       dolbyVisionChecking={dolbyVisionChecking}
+                      showILogRestore={enableILogRestoreOption}
                     />
                   )}
                   <div className="batch-export-actions">
