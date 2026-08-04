@@ -119,6 +119,7 @@ export interface WorkspaceObjectRemovalRequest {
   maskBytes: ArrayBuffer | Uint8Array
   edgeExpansion: number
   feather: number
+  quality?: 'fast' | 'high'
 }
 
 export interface WorkspaceObjectRemovalResult {
