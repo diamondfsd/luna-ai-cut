@@ -6,11 +6,26 @@ import path from 'node:path'
 import type { WorkspaceObjectRemovalRequest, WorkspaceObjectRemovalResult } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { INPAINT_MODEL } from './inpaintModelService'
-import { compositeInpaintRegion, createInpaintMaskJobs, dilateInpaintMask, featherInpaintMask, INPAINT_MODEL_SIZE, modelRadiusForSourcePixels, prepareInpaintInputs } from './inpaintMask'
+import { compositeInpaintRegion, createInpaintMaskJobs, createInpaintRefinementJobs, dilateInpaintMask, featherInpaintMask, INPAINT_MODEL_SIZE, modelRadiusForSourcePixels, prepareInpaintInputs, type InpaintMaskJob } from './inpaintMask'
 import { inpaintWorkerService } from './inpaintWorkerService'
 import { fileSha256 } from './resumableDownloadService'
 
 const MAX_PIXELS = 100_000_000
+
+interface InpaintStageOptions {
+  source: Buffer
+  sourceWidth: number
+  sourceHeight: number
+  maskWidth: number
+  maskHeight: number
+  jobs: InpaintMaskJob[]
+  edgeExpansion: number
+  feather: number
+  directory: string
+  stage: string
+  ownerId: number
+  signal?: AbortSignal
+}
 
 async function runProcess(executable: string, args: string[], options: { input?: Buffer; signal?: AbortSignal; maxOutput?: number } = {}): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -31,6 +46,38 @@ async function runProcess(executable: string, args: string[], options: { input?:
   })
 }
 
+async function runInpaintStage(options: InpaintStageOptions): Promise<{ composite: Buffer; modelLoadMs: number; inferenceMs: number }> {
+  options.signal?.throwIfAborted()
+  const preparedJobs = options.jobs.map((job, index) => {
+    const prepared = prepareInpaintInputs(options.source, options.sourceWidth, options.sourceHeight, job.mask, options.maskWidth, options.maskHeight, job.region)
+    const expanded = dilateInpaintMask(prepared.mask, modelRadiusForSourcePixels(options.edgeExpansion, job.region))
+    return {
+      region: job.region,
+      rgb: prepared.rgb,
+      mask: expanded,
+      alpha: featherInpaintMask(expanded, modelRadiusForSourcePixels(options.feather, job.region)),
+      inputPath: path.join(options.directory, `${options.stage}-input-${index}.rgb`),
+      maskPath: path.join(options.directory, `${options.stage}-input-${index}.mask`),
+      outputPath: path.join(options.directory, `${options.stage}-generated-${index}.rgb`),
+    }
+  })
+  const manifestPath = path.join(options.directory, `${options.stage}-jobs.json`)
+  await Promise.all([
+    ...preparedJobs.flatMap((job) => [writeFile(job.inputPath, job.rgb), writeFile(job.maskPath, job.mask)]),
+    writeFile(manifestPath, JSON.stringify({ jobs: preparedJobs.map(({ inputPath, maskPath, outputPath }) => ({ inputPath, maskPath, outputPath })) })),
+  ])
+  const metrics = await inpaintWorkerService.run(options.ownerId, manifestPath, options.signal)
+  const generatedRegions = await Promise.all(preparedJobs.map((job) => readFile(job.outputPath)))
+  let composite = Buffer.from(options.source)
+  for (let index = 0; index < preparedJobs.length; index++) {
+    const generated = generatedRegions[index]
+    if (generated.length !== INPAINT_MODEL_SIZE * INPAINT_MODEL_SIZE * 3) throw new Error('消除结果尺寸异常')
+    const job = preparedJobs[index]
+    composite = compositeInpaintRegion(composite, options.sourceWidth, options.sourceHeight, generated, job.alpha, job.region)
+  }
+  return { composite, modelLoadMs: metrics.modelLoadMs, inferenceMs: metrics.inferenceMs }
+}
+
 export async function removeObject(request: WorkspaceObjectRemovalRequest, downloadDir: string, width: number, height: number, ownerId: number, signal?: AbortSignal): Promise<WorkspaceObjectRemovalResult> {
   if (width * height > MAX_PIXELS) throw new Error('图片尺寸过大，暂不支持消除')
   const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
@@ -41,32 +88,42 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
     const original = await runProcess(getFfmpegPath(), ['-v', 'error', '-i', request.filePath, '-vf', `scale=${width}:${height}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { signal })
     if (original.length !== width * height * 3) throw new Error('图片读取结果尺寸异常')
     const jobs = createInpaintMaskJobs(maskBytes, request.maskWidth, request.maskHeight, width, height)
-    const preparedJobs = jobs.map((job, index) => {
-      const prepared = prepareInpaintInputs(original, width, height, job.mask, request.maskWidth, request.maskHeight, job.region)
-      const expanded = dilateInpaintMask(prepared.mask, modelRadiusForSourcePixels(request.edgeExpansion, job.region))
-      return {
-        region: job.region,
-        rgb: prepared.rgb,
-        mask: expanded,
-        alpha: featherInpaintMask(expanded, modelRadiusForSourcePixels(request.feather, job.region)),
-        inputPath: path.join(directory, `input-${index}.rgb`),
-        maskPath: path.join(directory, `input-${index}.mask`),
-        outputPath: path.join(directory, `generated-${index}.rgb`),
-      }
+    const base = await runInpaintStage({
+      source: original,
+      sourceWidth: width,
+      sourceHeight: height,
+      maskWidth: request.maskWidth,
+      maskHeight: request.maskHeight,
+      jobs,
+      edgeExpansion: request.edgeExpansion,
+      feather: request.feather,
+      directory,
+      stage: 'base',
+      ownerId,
+      signal,
     })
-    const manifestPath = path.join(directory, 'jobs.json')
-    await Promise.all([
-      ...preparedJobs.flatMap((job) => [writeFile(job.inputPath, job.rgb), writeFile(job.maskPath, job.mask)]),
-      writeFile(manifestPath, JSON.stringify({ jobs: preparedJobs.map(({ inputPath, maskPath, outputPath }) => ({ inputPath, maskPath, outputPath })) })),
-    ])
-    const metrics = await inpaintWorkerService.run(ownerId, manifestPath, signal)
-    const generatedRegions = await Promise.all(preparedJobs.map((job) => readFile(job.outputPath)))
-    let composite = Buffer.from(original)
-    for (let index = 0; index < preparedJobs.length; index++) {
-      const generated = generatedRegions[index]
-      if (generated.length !== INPAINT_MODEL_SIZE * INPAINT_MODEL_SIZE * 3) throw new Error('消除结果尺寸异常')
-      const job = preparedJobs[index]
-      composite = compositeInpaintRegion(composite, width, height, generated, job.alpha, job.region)
+    let composite = base.composite
+    let inferenceMs = base.inferenceMs
+    if (request.quality !== 'fast') {
+      const refinementJobs = createInpaintRefinementJobs(jobs, request.maskWidth, request.maskHeight, width, height)
+      if (refinementJobs.length > 0) {
+        const refinement = await runInpaintStage({
+          source: composite,
+          sourceWidth: width,
+          sourceHeight: height,
+          maskWidth: request.maskWidth,
+          maskHeight: request.maskHeight,
+          jobs: refinementJobs,
+          edgeExpansion: Math.max(2, Math.min(4, request.edgeExpansion)),
+          feather: Math.max(2, request.feather),
+          directory,
+          stage: 'refinement',
+          ownerId,
+          signal,
+        })
+        composite = refinement.composite
+        inferenceMs += refinement.inferenceMs
+      }
     }
     const projectId = request.projectId
     if (!/^[\w.-]{1,100}$/.test(projectId)) throw new Error('项目标识无效')
@@ -98,8 +155,8 @@ export async function removeObject(request: WorkspaceObjectRemovalRequest, downl
       maskSha256,
       width,
       height,
-      modelLoadMs: metrics.modelLoadMs,
-      inferenceMs: metrics.inferenceMs,
+      modelLoadMs: base.modelLoadMs,
+      inferenceMs,
       modelSha256: INPAINT_MODEL.sha256,
     }
   } finally {

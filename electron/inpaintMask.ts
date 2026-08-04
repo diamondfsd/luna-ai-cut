@@ -24,6 +24,9 @@ interface MaskComponent {
 }
 
 const MAX_SPLIT_COMPONENTS = 64
+const MAX_REFINEMENT_JOBS = 8
+const REFINEMENT_REGION_THRESHOLD = 640
+const REFINEMENT_CONTEXT_FACTOR = 1.4
 
 function selectedMaskBounds(input: Uint8Array, width: number, height: number): MaskBounds | null {
   let left = width
@@ -129,6 +132,7 @@ export function createInpaintRegion(
   maskHeight: number,
   sourceWidth: number,
   sourceHeight: number,
+  contextFactorOverride?: number,
 ): InpaintRegion {
   const bounds = selectedMaskBounds(mask, maskWidth, maskHeight)
   if (!bounds) throw new Error('请先选择要消除的区域')
@@ -140,13 +144,59 @@ export function createInpaintRegion(
   const height = bottom - top
   const span = Math.max(width, height)
   const aspect = span / Math.max(1, Math.min(width, height))
-  const contextFactor = aspect >= 4 ? 1.75 : aspect >= 2 ? 2.25 : 3
+  const contextFactor = contextFactorOverride ?? (aspect >= 4 ? 1.75 : aspect >= 2 ? 2.25 : 3)
   const size = Math.min(Math.max(sourceWidth, sourceHeight), Math.max(INPAINT_MODEL_SIZE, Math.ceil(span * contextFactor)))
   return {
     x: placeRegionAxis((left + right) / 2, size, sourceWidth),
     y: placeRegionAxis((top + bottom) / 2, size, sourceHeight),
     size,
   }
+}
+
+function refinementGrid(bounds: MaskBounds): { columns: number; rows: number } {
+  const width = bounds.right - bounds.left + 1
+  const height = bounds.bottom - bounds.top + 1
+  if (width >= height * 1.8) return { columns: 4, rows: 1 }
+  if (height >= width * 1.8) return { columns: 1, rows: 4 }
+  return { columns: 2, rows: 2 }
+}
+
+export function createInpaintRefinementJobs(
+  jobs: InpaintMaskJob[],
+  maskWidth: number,
+  maskHeight: number,
+  sourceWidth: number,
+  sourceHeight: number,
+): InpaintMaskJob[] {
+  const output: InpaintMaskJob[] = []
+  const candidates = jobs
+    .filter((job) => job.region.size > REFINEMENT_REGION_THRESHOLD)
+    .sort((a, b) => b.region.size - a.region.size)
+  for (const job of candidates) {
+    const bounds = selectedMaskBounds(job.mask, maskWidth, maskHeight)
+    if (!bounds) continue
+    const { columns, rows } = refinementGrid(bounds)
+    const tileCount = columns * rows
+    if (output.length + tileCount > MAX_REFINEMENT_JOBS) continue
+    const tiles = Array.from({ length: tileCount }, () => new Uint8Array(job.mask.length))
+    const boundsWidth = bounds.right - bounds.left + 1
+    const boundsHeight = bounds.bottom - bounds.top + 1
+    for (let y = bounds.top; y <= bounds.bottom; y++) for (let x = bounds.left; x <= bounds.right; x++) {
+      const index = y * maskWidth + x
+      if (job.mask[index] < 16) continue
+      const column = Math.min(columns - 1, Math.floor((x - bounds.left) * columns / boundsWidth))
+      const row = Math.min(rows - 1, Math.floor((y - bounds.top) * rows / boundsHeight))
+      tiles[row * columns + column][index] = job.mask[index]
+    }
+    for (const tile of tiles) {
+      if (!tile.some(Boolean)) continue
+      output.push({
+        mask: tile,
+        region: createInpaintRegion(tile, maskWidth, maskHeight, sourceWidth, sourceHeight, REFINEMENT_CONTEXT_FACTOR),
+      })
+    }
+  }
+  return output
 }
 
 export function createInpaintMaskJobs(
@@ -184,6 +234,31 @@ function bilinearSample(input: Uint8Array, width: number, height: number, x: num
   return top * (1 - fy) + bottom * fy
 }
 
+function cubicWeight(distance: number): number {
+  const value = Math.abs(distance)
+  if (value <= 1) return 1.5 * value ** 3 - 2.5 * value ** 2 + 1
+  if (value < 2) return -0.5 * value ** 3 + 2.5 * value ** 2 - 4 * value + 2
+  return 0
+}
+
+function bicubicSample(input: Uint8Array, width: number, height: number, x: number, y: number, channels: number, channel = 0): number {
+  const baseX = Math.floor(x)
+  const baseY = Math.floor(y)
+  let value = 0
+  let weight = 0
+  for (let offsetY = -1; offsetY <= 2; offsetY++) {
+    const sampleY = Math.max(0, Math.min(height - 1, baseY + offsetY))
+    const weightY = cubicWeight(y - (baseY + offsetY))
+    for (let offsetX = -1; offsetX <= 2; offsetX++) {
+      const sampleX = Math.max(0, Math.min(width - 1, baseX + offsetX))
+      const sampleWeight = weightY * cubicWeight(x - (baseX + offsetX))
+      value += input[(sampleY * width + sampleX) * channels + channel] * sampleWeight
+      weight += sampleWeight
+    }
+  }
+  return Math.max(0, Math.min(255, value / Math.max(Number.EPSILON, weight)))
+}
+
 export function prepareInpaintInputs(
   source: Uint8Array,
   sourceWidth: number,
@@ -201,7 +276,7 @@ export function prepareInpaintInputs(
       const sourceX = region.x + (x + 0.5) * region.size / INPAINT_MODEL_SIZE - 0.5
       const pixel = y * INPAINT_MODEL_SIZE + x
       for (let channel = 0; channel < 3; channel++) {
-        rgb[pixel * 3 + channel] = Math.round(bilinearSample(source, sourceWidth, sourceHeight, sourceX, sourceY, 3, channel))
+        rgb[pixel * 3 + channel] = Math.round(bicubicSample(source, sourceWidth, sourceHeight, sourceX, sourceY, 3, channel))
       }
       if (sourceX < 0 || sourceX >= sourceWidth || sourceY < 0 || sourceY >= sourceHeight) continue
       const maskX = Math.max(0, Math.min(maskWidth - 1, Math.floor((sourceX + 0.5) * maskWidth / sourceWidth)))
@@ -238,7 +313,7 @@ export function compositeInpaintRegion(
       if (mix <= 0) continue
       const outputPixel = (y * sourceWidth + x) * 3
       for (let channel = 0; channel < 3; channel++) {
-        const replacement = bilinearSample(generated, INPAINT_MODEL_SIZE, INPAINT_MODEL_SIZE, modelX, modelY, 3, channel)
+        const replacement = bicubicSample(generated, INPAINT_MODEL_SIZE, INPAINT_MODEL_SIZE, modelX, modelY, 3, channel)
         output[outputPixel + channel] = Math.round(source[outputPixel + channel] * (1 - mix) + replacement * mix)
       }
     }

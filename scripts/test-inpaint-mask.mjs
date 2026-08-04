@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer'
 import {
   compositeInpaintRegion,
   createInpaintMaskJobs,
+  createInpaintRefinementJobs,
   createInpaintRegion,
   dilateInpaintMask,
   featherInpaintMask,
@@ -38,6 +39,14 @@ for (let y = 90; y < 110; y++) for (let x = 180; x < 220; x++) wideMask[y * 400 
 const localRegion = createInpaintRegion(wideMask, 400, 200, 4000, 2000)
 assert.deepEqual(localRegion, { x: 1550, y: 550, size: 900 }, 'moderately wide selections must keep more target detail while retaining local context')
 assert.equal(modelRadiusForSourcePixels(12, localRegion), 7, 'edge controls must be converted from source pixels to model pixels')
+const refinementJobs = createInpaintRefinementJobs(createInpaintMaskJobs(wideMask, 400, 200, 4000, 2000), 400, 200, 4000, 2000)
+assert.equal(refinementJobs.length, 4, 'large selections must be split into bounded detail refinement jobs')
+assert.ok(refinementJobs.every((job) => job.region.size === INPAINT_MODEL_SIZE), 'detail jobs should avoid enlarging generated pixels when the selection allows it')
+assert.equal(
+  refinementJobs.reduce((pixels, job) => pixels + job.mask.reduce((count, value) => count + Number(value > 0), 0), 0),
+  wideMask.reduce((count, value) => count + Number(value > 0), 0),
+  'detail jobs must cover every selected pixel exactly once',
+)
 
 const separatedMask = new Uint8Array(400 * 200)
 for (let y = 90; y < 110; y++) for (let x = 30; x < 50; x++) separatedMask[y * 400 + x] = 255

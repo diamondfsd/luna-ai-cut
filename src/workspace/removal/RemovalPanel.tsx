@@ -22,6 +22,7 @@ export function RemovalPanel() {
   const media = useWorkspaceMedia()
   const [edgeExpansion, setEdgeExpansion] = useState(DEFAULT_EDGE_EXPANSION)
   const [feather, setFeather] = useState(DEFAULT_FEATHER)
+  const [quality, setQuality] = useState<'fast' | 'high'>('high')
   const [processing, setProcessing] = useState(false)
   const requestRef = useRef<string | null>(null)
   const projectRef = useRef(media.currentProject)
@@ -130,6 +131,7 @@ export function RemovalPanel() {
         maskBytes: bytes,
         edgeExpansion,
         feather,
+        quality,
       })
       generated = result
       if (requestRef.current !== requestId || ownerKeyRef.current !== requestOwnerKey) {
@@ -150,6 +152,7 @@ export function RemovalPanel() {
         inputRevision: activeResult?.resultPath ?? media.activeMedia.path,
         edgeExpansion,
         feather,
+        quality,
         model: { id: 'big-lama-fp32', version: MODEL_VERSION, sha256: result.modelSha256 },
         status: 'ready',
         createdAt: new Date().toISOString(),
@@ -225,6 +228,17 @@ export function RemovalPanel() {
         />
         {mask.manualTool === 'brush' && <ParamSlider label="画笔大小" value={mask.brushSize} min={2} max={100} onChange={mask.setBrushSize} />}
         <label className="workspace-removal-switch"><span>显示选区</span><Switch ariaLabel="显示消除选区" checked={mask.showOverlay} onCheckedChange={mask.setShowOverlay} /></label>
+      </section>
+      <section>
+        <h3>处理质量</h3>
+        <ButtonGroup
+          options={[
+            { value: 'fast', label: '快速' },
+            { value: 'high', label: '高清' },
+          ]}
+          value={quality}
+          onChange={setQuality}
+        />
       </section>
       <section>
         <h3>边缘</h3>

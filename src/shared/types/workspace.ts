@@ -38,6 +38,7 @@ export interface WorkspaceRemovalOperation {
   inputRevision: string
   edgeExpansion: number
   feather: number
+  quality?: 'fast' | 'high'
   model: { id: 'big-lama-fp32'; version: 'carve-c3c0c9e'; sha256: string }
   status?: 'ready' | 'needs-regeneration'
   failureReason?: string
