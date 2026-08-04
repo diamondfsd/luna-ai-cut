@@ -31,6 +31,14 @@ function terminate(child: ChildProcess | null): void {
   timer.unref()
 }
 
+function waitForClose(child: ChildProcess): Promise<number | null> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode)
+  return new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', resolve)
+  })
+}
+
 function validateRequest(request: WorkspaceSubtitleTranscriptionRequest): void {
   if (!request.requestId || !request.filePath) throw new Error('字幕识别任务无效')
   if (!Number.isFinite(request.startMs) || !Number.isFinite(request.endMs) || request.startMs < 0 || request.endMs <= request.startMs) {
@@ -97,6 +105,15 @@ export async function transcribeVideo(
   worker.stderr.on('data', (chunk: string) => { workerError = `${workerError}${chunk}`.slice(-16_384) })
   ffmpeg.stdout.pipe(worker.stdin)
 
+  const ffmpegDone = waitForClose(ffmpeg)
+  const workerDone = waitForClose(worker)
+  void ffmpegDone.then((code) => {
+    if (code !== 0 && worker.exitCode === null) terminate(worker)
+  }, () => {})
+  void workerDone.then((code) => {
+    if (code !== 0 && ffmpeg.exitCode === null) terminate(ffmpeg)
+  }, () => {})
+
   const abort = (): void => {
     ffmpeg.stdout.unpipe(worker.stdin)
     terminate(ffmpeg)
@@ -142,16 +159,7 @@ export async function transcribeVideo(
     })
     worker.stdout.on('end', () => processLine(lineBuffer))
 
-    const [ffmpegCode, workerCode] = await Promise.all([
-      new Promise<number | null>((resolve, reject) => {
-        ffmpeg.once('error', reject)
-        ffmpeg.once('close', resolve)
-      }),
-      new Promise<number | null>((resolve, reject) => {
-        worker.once('error', reject)
-        worker.once('close', resolve)
-      }),
-    ])
+    const [ffmpegCode, workerCode] = await Promise.all([ffmpegDone, workerDone])
     signal.throwIfAborted()
     if (ffmpegCode !== 0) throw new Error(ffmpegError.trim() || '无法读取视频语音')
     if (workerState.protocolError) throw workerState.protocolError

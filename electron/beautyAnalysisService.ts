@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 
 import type { WorkspaceBeautyAnalysisResult } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
-import { loadModel } from './modelLoader'
+import { loadModel, MODEL_REGISTRY, type ModelId, type ModelLoadProgress } from './modelLoader'
 import { logMainInfo } from './loggerService'
 import { extractFaceBoxesInWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
 import { detectFaceBlemishes } from './beautyBlemishDetection'
@@ -17,6 +17,7 @@ const BODY_SKIN_FEATHER_RADIUS = 12
 const FACE_SKIN_LABELS = new Set([1, 7, 8, 10, 14])
 const FACE_EYE_LABELS = new Set([4, 5])
 const FACE_MOUTH_LABELS = new Set([11, 12, 13])
+const BEAUTY_MODEL_IDS = ['ultraface-rfb-320', 'schp-atr-resnet101-512', 'face-parsing-resnet18'] as const satisfies readonly ModelId[]
 
 interface SourceLayout {
   scaledWidth: number
@@ -223,11 +224,20 @@ export async function analyzeBeauty(
   const started = performance.now()
   report?.('model', '正在准备美颜模型', null)
   const modelStarted = performance.now()
-  const [faceDetector, humanParser, faceParser] = await Promise.all([
-    loadModel('ultraface-rfb-320', undefined, signal),
-    loadModel('schp-atr-resnet101-512', undefined, signal),
-    loadModel('face-parsing-resnet18', undefined, signal),
-  ])
+  const completedByModel = new Map<ModelId, number>()
+  const totalModelBytes = BEAUTY_MODEL_IDS.reduce((total, id) => total + MODEL_REGISTRY[id].sizeBytes, 0)
+  let lastModelPercent = -1
+  const reportModelProgress = (id: ModelId) => (progress: ModelLoadProgress): void => {
+    completedByModel.set(id, Math.max(0, Math.min(MODEL_REGISTRY[id].sizeBytes, progress.completedBytes)))
+    const completedBytes = [...completedByModel.values()].reduce((total, bytes) => total + bytes, 0)
+    const percent = Math.round(completedBytes / totalModelBytes * 100)
+    if (percent === lastModelPercent) return
+    lastModelPercent = percent
+    report?.('model', '正在准备美颜模型', percent)
+  }
+  const [faceDetector, humanParser, faceParser] = await Promise.all(BEAUTY_MODEL_IDS.map((id) => (
+    loadModel(id, reportModelProgress(id), signal)
+  )))
   const modelLoadMs = performance.now() - modelStarted
   signal.throwIfAborted()
 

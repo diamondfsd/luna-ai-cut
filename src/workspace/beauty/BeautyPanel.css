@@ -44,13 +44,48 @@
   min-width: 0;
 }
 
-.beauty-analysis-status > span,
 .beauty-analysis-error > span {
   min-width: 0;
   flex: 1;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.beauty-analysis-status-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.beauty-analysis-status-content > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.beauty-analysis-status-content strong {
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.beauty-analysis-progress {
+  height: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.beauty-analysis-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  transition: width 160ms ease;
 }
 
 .beauty-analysis-error {
