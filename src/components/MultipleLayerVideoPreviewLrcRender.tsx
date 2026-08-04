@@ -5,6 +5,7 @@ import { useCanvasViewportInteraction } from './useCanvasViewportInteraction'
 import {
   calcRenderSize,
   computeLayerDecodeMaxSide,
+  describeVideoLoadFailure,
   multipleLayerVideoPreviewPropsEqual,
   normalizedPreviewMaxSide,
   perfLog,
@@ -17,7 +18,6 @@ import {
 } from './multipleLayerVideoFrameRenderer'
 
 export type { MultipleLayerVideoPreviewLrcRenderProps } from './multipleLayerVideoFrameRenderer'
-
 function getLRC(): LunaRenderCore | undefined {
   return (window as unknown as { lunaRenderCore?: LunaRenderCore }).lunaRenderCore
 }
@@ -38,7 +38,6 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       const renderQueuedRef = useRef(false)
       const [ready, setReady] = useState(false)
       const [fatalError, setFatalError] = useState<string | null>(null)
-
       const imageInteraction = useCanvasViewportInteraction({
         layers,
         canvasRef: outputCanvasRef,
@@ -66,7 +65,6 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
       const onVideoElementRef = useRef(onVideoElement)
       onVideoElementRef.current = onVideoElement
       const notifiedVideoRef = useRef<HTMLVideoElement | null>(null)
-
       const videoStatesRef = useRef<Map<string, VideoStateEntry>>(new Map())
       const imageTextureCacheRef = useRef<Map<string, number>>(new Map())
       const textureVersionRef = useRef(0)
@@ -344,11 +342,13 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
           video.addEventListener('error', () => {
             // 清理时设置 src='' 会触发 MEDIA_ELEMENT_ERROR(4)，属预期行为，静默忽略
             if (video.error?.code === 4) return
+            const message = describeVideoLoadFailure(layer.filePath, video.error)
             console.error('[MultipleLayerVideoPreviewLrcRender] video error', {
               file: layer.filePath,
               code: video.error?.code,
               message: video.error?.message,
             })
+            onError?.(message)
           })
 
           video.load()

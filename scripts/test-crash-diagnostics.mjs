@@ -112,4 +112,11 @@ const blocked = lrcError.describeRenderInitFailure(new Error(
 ))
 assert.match(blocked.summary, /重新检测/)
 
+const longNativeDetail = `LRC_NATIVE_LOAD_FAILED\n${'x'.repeat(2_500)}`
+assert.equal(
+  lrcError.describeRenderInitFailure(new Error(longNativeDetail)).detail,
+  longNativeDetail,
+  'native loading diagnostics must not be truncated before display',
+)
+
 console.log('crash diagnostic tests passed')

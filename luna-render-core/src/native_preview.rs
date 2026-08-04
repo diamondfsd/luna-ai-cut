@@ -23,6 +23,7 @@ static PREVIEW_RUNTIME: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 struct PreviewSessionStatsState {
     rendered_frames: AtomicU32,
     render_errors: AtomicU32,
+    last_render_error: Mutex<Option<String>>,
     current_time_bits: std::sync::atomic::AtomicU64,
     cache_hits: AtomicU32,
     cache_misses: AtomicU32,
@@ -82,6 +83,7 @@ pub struct NativePreviewCapabilities {
 pub struct NativePreviewSessionStats {
     pub rendered_frames: u32,
     pub render_errors: u32,
+    pub last_render_error: Option<String>,
     pub current_time: f64,
     pub cache_hits: u32,
     pub cache_misses: u32,
@@ -266,6 +268,9 @@ fn run_native_preview_session(
                 }
                 Err(error) => {
                     stats.render_errors.fetch_add(1, Ordering::Relaxed);
+                    if let Ok(mut last_render_error) = stats.last_render_error.lock() {
+                        *last_render_error = Some(error.clone());
+                    }
                     playing = false;
                     if last_error_log.elapsed() >= Duration::from_secs(1) {
                         crate::logging::error(&format!(
@@ -398,9 +403,15 @@ pub fn get_native_preview_session_stats(
         .get(&session_id)
         .map(|session| session.stats.clone())
         .ok_or_else(|| napi::Error::from_reason("预览会话不存在"))?;
+    let last_render_error = stats
+        .last_render_error
+        .lock()
+        .map_err(|error| napi::Error::from_reason(format!("预览错误信息读取失败: {error}")))?
+        .clone();
     Ok(NativePreviewSessionStats {
         rendered_frames: stats.rendered_frames.load(Ordering::Relaxed),
         render_errors: stats.render_errors.load(Ordering::Relaxed),
+        last_render_error,
         current_time: f64::from_bits(stats.current_time_bits.load(Ordering::Relaxed)),
         cache_hits: stats.cache_hits.load(Ordering::Relaxed),
         cache_misses: stats.cache_misses.load(Ordering::Relaxed),
