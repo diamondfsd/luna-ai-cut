@@ -1,5 +1,5 @@
 import type { VideoExportSettings, WorkspaceMediaAsset, WorkspacePixelFlowState, WorkspaceProject } from '../../../shared/types'
-import { loadCreativeImageSize } from '../shared/creativeMedia'
+import { loadCreativeImageSize, normalizeCreativePipeline } from '../shared/creativeMedia'
 import { resolvePixelFlowBatchMask } from './pixelFlowBatchMask'
 import { queuePixelFlowExports } from './pixelFlowExport'
 import { buildPixelFlowLayer, type PixelFlowEffectSettings } from './pixelFlowLayers'
@@ -77,10 +77,11 @@ export async function queuePixelFlowBatchExport(options: PixelFlowBatchExportOpt
 
   const queuedCount = await queuePixelFlowExports(prepared.map((item) => {
     const layers = [buildPixelFlowLayer({
-        asset: item.asset,
-        maskPath: item.state.depthMaskPath!,
-        playbackDuration: item.playbackDuration,
-        settings: item.state,
+      asset: item.asset,
+      maskPath: item.state.depthMaskPath!,
+      playbackDuration: item.playbackDuration,
+      pipeline: normalizeCreativePipeline((item.asset as { pipeline?: unknown }).pipeline),
+      settings: item.state,
     })]
     return {
       asset: item.asset,
