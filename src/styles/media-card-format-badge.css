@@ -21,7 +21,8 @@
   background: rgba(255, 255, 255, 0.5);
 }
 
-.media-frame .dolby-vision-badge img {
+.media-frame .dolby-vision-badge img,
+.workspace-thumb .dolby-vision-badge img {
   display: block;
   width: 100%;
   height: 100%;
