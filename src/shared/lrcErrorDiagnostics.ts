@@ -17,7 +17,7 @@ function trimIpcPrefix(message: string): string {
 }
 
 export function describeRenderInitFailure(error: unknown): RenderInitFailure {
-  const detail = trimIpcPrefix(errorText(error)).slice(0, 2_000)
+  const detail = trimIpcPrefix(errorText(error))
   const normalized = detail.toLowerCase()
 
   if (detail.includes('LRC_COMPATIBILITY_BLOCKED')) {

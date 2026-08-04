@@ -166,6 +166,7 @@ export interface NativePreviewBounds {
 export interface NativePreviewSessionStats {
   renderedFrames: number
   renderErrors: number
+  lastRenderError?: string | null
   currentTime: number
   cacheHits: number
   cacheMisses: number

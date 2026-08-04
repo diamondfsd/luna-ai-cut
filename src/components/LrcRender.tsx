@@ -178,7 +178,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
     if (!lrc) {
       const failure = describeRenderInitFailure(new Error('渲染引擎未加载'))
       setFatalError(failure)
-      onError?.(failure.summary)
+      onError?.(`${failure.summary}\n\n${failure.detail}`)
       return
     }
     destroyRef.current = false
@@ -194,7 +194,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
         const failure = describeRenderInitFailure(error)
         logger.error('[预览诊断] 渲染引擎初始化失败', { error: failure.detail })
         setFatalError(failure)
-        onError?.(failure.summary)
+        onError?.(`${failure.summary}\n\n${failure.detail}`)
       })
     return () => {
       destroyRef.current = true
@@ -219,7 +219,7 @@ export const LrcRender = memo(forwardRef<LrcRenderHandle, LrcRenderProps>(functi
       const failure = describeRenderInitFailure(error)
       logger.error('[预览诊断] 渲染引擎重新检测失败', { error: failure.detail })
       setFatalError(failure)
-      onError?.(failure.summary)
+      onError?.(`${failure.summary}\n\n${failure.detail}`)
     } finally {
       setRetrying(false)
     }

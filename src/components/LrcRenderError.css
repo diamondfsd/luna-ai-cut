@@ -19,29 +19,21 @@
 
 .lrc-render-error-details {
   width: min(100%, 620px);
-  border: 0;
   color: var(--muted-dark);
   font-size: 12px;
 }
 
-.lrc-render-error-details .ui-accordion-header {
-  justify-content: center;
-  width: fit-content;
-  margin: 0 auto;
-  padding: 4px 0;
-}
-
-.lrc-render-error-details .ui-accordion-title {
-  flex: none;
-}
-
-.lrc-render-error-details .ui-accordion-body {
-  padding: 0;
+.lrc-render-error-details > strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted-dark);
+  font-size: 12px;
+  text-align: center;
 }
 
 .lrc-render-error-details pre {
   max-height: 180px;
-  margin: 8px 0 0;
+  margin: 0;
   padding: 10px;
   overflow: auto;
   border: 1px solid var(--hairline);

@@ -35,7 +35,7 @@ interface NativePreviewApi {
   seekNativePreview: (sessionId: number, time: number) => Promise<void>
   getNativePreviewSessionStats: (
     sessionId: number,
-  ) => Promise<{ renderedFrames: number; renderErrors: number }>
+  ) => Promise<{ renderedFrames: number; renderErrors: number; lastRenderError?: string | null }>
   destroyNativePreviewSession: (sessionId: number) => Promise<void>
 }
 
@@ -90,7 +90,9 @@ async function waitForRenderedFrame(
     if (!isActive()) return false
     const stats = await api.getNativePreviewSessionStats(sessionId)
     if (!isActive()) return false
-    if (stats.renderErrors > 0) throw new Error('原生预览暂时无法显示画面')
+    if (stats.renderErrors > 0) {
+      throw new Error(stats.lastRenderError || '原生预览暂时无法显示画面（Rust 未提供错误详情）')
+    }
     if (stats.renderedFrames > previousFrames) return true
     await new Promise((resolve) => window.setTimeout(resolve, 16))
   }
