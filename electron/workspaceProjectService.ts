@@ -121,6 +121,23 @@ async function normalizeRemovalPipelines(project: WorkspaceProject, projectDirec
   }
 }
 
+async function normalizeRawPreviewAssets(project: WorkspaceProject): Promise<WorkspaceProject> {
+  const assets = await Promise.all(project.assets.map(async (asset) => {
+    if (path.extname(asset.path).toLowerCase() !== '.dng') return asset
+    const basePath = asset.path.slice(0, -path.extname(asset.path).length)
+    for (const extension of ['.jpg', '.jpeg']) {
+      const jpgPath = `${basePath}${extension}`
+      try {
+        if ((await fs.stat(jpgPath)).isFile()) return { ...asset, path: jpgPath, thumbnailUrl: undefined }
+      } catch {
+        // Try the next JPEG extension.
+      }
+    }
+    return asset
+  }))
+  return { ...project, assets }
+}
+
 function removalReferences(project: WorkspaceProject | null): Set<string> {
   return new Set(project?.assets.flatMap((asset) => asset.removal?.operations.flatMap((operation) => [operation.resultPath, operation.maskPath]) ?? []) ?? [])
 }
@@ -180,7 +197,7 @@ async function readProject(filePath: string): Promise<WorkspaceProject | null> {
     const raw = await fs.readFile(filePath, 'utf8')
     const project = JSON.parse(raw) as WorkspaceProject
     if (!project || !Array.isArray(project.assets) || typeof project.dir !== 'string') return null
-    return await normalizeRemovalPipelines(project, path.dirname(filePath))
+    return normalizeRawPreviewAssets(await normalizeRemovalPipelines(project, path.dirname(filePath)))
   } catch {
     return null
   }

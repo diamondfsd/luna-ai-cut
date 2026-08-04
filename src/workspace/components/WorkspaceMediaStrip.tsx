@@ -211,7 +211,7 @@ export function WorkspaceMediaStrip({ supportedMediaKinds }: WorkspaceMediaStrip
                 {isBroken
                   ? <WorkspaceMissingMedia />
                   : <ThumbImage
-                      src={item.path}
+                      src={item.thumbnailUrl ?? item.path}
                       alt=""
                       draggable={false}
                       unavailableFallback={<WorkspaceMissingMedia />}
