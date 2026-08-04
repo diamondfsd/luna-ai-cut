@@ -187,6 +187,7 @@ export interface LunaApi {
   /** 根据文件路径解析缩略图 URL（图片返回 file://，视频生成缩略图后返回） */
   resolveThumbnail(filePath: string, kind?: string): Promise<string | null>
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
+  detectILog(filePath: string): Promise<boolean>
   downloadFiles(files: LunaFile[], downloadDir?: string): Promise<DownloadSummary>
   cancelDownloads(): Promise<void>
   exportFiles(files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>

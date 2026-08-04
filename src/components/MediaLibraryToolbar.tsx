@@ -159,7 +159,7 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
                       const paths = ctrl.selectedFiles
                         .map((f) => f.downloadFilePath ?? f.localPath ?? '')
                         .filter(Boolean)
-                      if (paths.length > 0) showBatchExportModal(paths[0], paths)
+                      if (paths.length > 0) showBatchExportModal(paths[0], paths, { enableILogRestoreOption: true })
                     }}>
                       导出 ({ctrl.selectedFiles.length})
                     </Button>

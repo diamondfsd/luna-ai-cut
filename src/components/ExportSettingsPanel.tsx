@@ -24,6 +24,7 @@ interface ExportSettingsPanelProps {
   outputAvailability?: { video: boolean; photo: boolean; live: boolean }
   dolbyVisionAvailable?: boolean
   dolbyVisionChecking?: boolean
+  showILogRestore?: boolean
 }
 
 const RESOLUTION_OPTIONS = [
@@ -64,7 +65,7 @@ const QUALITY_OPTIONS = [
  * <ExportSettingsPanel value={config} onChange={setConfig} />
  * ```
  */
-export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedFormats, outputAvailability, dolbyVisionAvailable, dolbyVisionChecking }: ExportSettingsPanelProps) {
+export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedFormats, outputAvailability, dolbyVisionAvailable, dolbyVisionChecking, showILogRestore }: ExportSettingsPanelProps) {
   const locked = Boolean(value.dolbyVision)
   const handleResolutionChange = useCallback(
     (v: string) => onChange({ ...value, resolution: v as VideoResolution }),
@@ -100,6 +101,17 @@ export function ExportSettingsPanel({ value, onChange, livePhotoSource, allowedF
     <div className="export-settings-panel">
       <div className="export-settings-title">导出设置</div>
       <div className="export-settings-grid">
+        {showILogRestore && (
+          <div className="export-settings-row">
+            <label className="export-settings-label">自动还原 I-Log</label>
+            <Switch
+              checked={value.autoRestoreILog === true}
+              disabled={locked}
+              onCheckedChange={(enabled) => onChange({ ...value, autoRestoreILog: enabled })}
+              ariaLabel="自动还原 I-Log"
+            />
+          </div>
+        )}
         {(dolbyVisionAvailable || dolbyVisionChecking) && (
           <div className="export-settings-row export-settings-dolby-row">
             <label className="export-settings-label">Dolby Vision 导出</label>
