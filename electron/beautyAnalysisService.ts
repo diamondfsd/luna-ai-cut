@@ -39,10 +39,12 @@ interface FaceSkinAssessment {
   featureSamples: number
 }
 
-function decodeImage(filePath: string, signal: AbortSignal): Promise<{ rgb: Buffer; layout: SourceLayout }> {
+function decodeImage(filePath: string, signal: AbortSignal, frameTime?: number): Promise<{ rgb: Buffer; layout: SourceLayout }> {
   return new Promise((resolve, reject) => {
     const args = [
-      '-v', 'error', '-i', filePath, '-frames:v', '1',
+      '-v', 'error',
+      ...(frameTime == null ? [] : ['-ss', frameTime.toFixed(3)]),
+      '-i', filePath, '-frames:v', '1',
       '-vf', `scale=${INPUT_SIZE}:${INPUT_SIZE}:force_original_aspect_ratio=decrease:flags=bilinear,pad=${INPUT_SIZE}:${INPUT_SIZE}:(ow-iw)/2:(oh-ih)/2:color=0x727272`,
       '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1',
     ]
@@ -220,6 +222,7 @@ export async function analyzeBeauty(
   filePath: string,
   signal: AbortSignal,
   report?: (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null) => void,
+  frameTime?: number,
 ): Promise<WorkspaceBeautyAnalysisResult> {
   const started = performance.now()
   report?.('model', '正在准备美颜模型', null)
@@ -243,7 +246,7 @@ export async function analyzeBeauty(
 
   report?.('preparing', '正在读取图片', null)
   const prepareStarted = performance.now()
-  const { rgb, layout } = await decodeImage(filePath, signal)
+  const { rgb, layout } = await decodeImage(filePath, signal, frameTime)
   const imagePrepareMs = performance.now() - prepareStarted
 
   report?.('recognizing', '正在识别人脸、皮肤和面部瑕疵', null)

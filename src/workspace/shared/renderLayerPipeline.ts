@@ -98,7 +98,10 @@ function renderColorWithLocalAdjustments(
 }
 
 export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline): PreviewLayer[] {
-  const adjustmentMasks = [...pipeline.beautyMasks, ...pipeline.colorMasks]
+  const videoBeautyMasks = base.isVideo
+    ? pipeline.beautyMasks.filter((layer) => Boolean(layer.timeline?.frames.length))
+    : pipeline.beautyMasks
+  const adjustmentMasks = [...videoBeautyMasks, ...pipeline.colorMasks]
   return adjustmentMasks.filter((layer) => layer.enabled && !layer.loadError).reverse().map((layer) => ({
     ...base,
     layerType: 'local-color' as const,
@@ -111,8 +114,8 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     maskOpacity: beautyLayerOpacityForRendering(pipeline, layer),
     maskInverted: layer.inverted,
     maskFeather: layer.components?.some((component) => component.type !== 'raster') ? 0 : layer.feather,
-    // v1.6.0 video masks are intentionally static; keep saved tracks in project data only.
-    maskTrack: undefined,
+    maskTrack: layer.track,
+    maskTimeline: layer.timeline,
   }))
 }
 

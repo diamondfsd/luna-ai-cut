@@ -408,9 +408,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
       border: { ...visiblePipeline.border, enabled: false },
     })
   }, [displayPipeline, edit.compareOriginal, edit.comparePipeline, edit.cropActive, edit.pipeline, edit.transformDraft, mask.editing])
-  const keepCompositionVideoRenderer = [...edit.previewPipeline.colorMasks, ...edit.previewPipeline.beautyMasks].some(
-    (layer) => layer.enabled && !layer.loadError,
-  )
+  const keepCompositionVideoRenderer = false
 
   const finalCanvasSize = useMemo(() => {
     if (!watermarkMediaSize) return null
@@ -1021,6 +1019,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
             isLivePhoto={media.activeMedia?.isLivePhoto ?? false}
             pending={!media.activeMedia}
             pipeline={stagePipeline}
+            maskProjectId={media.currentProject?.id}
             extraLayers={combinedExtraLayers}
             cropActive={edit.cropActive}
             hideControls={edit.trimActive}
@@ -1034,7 +1033,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
                   : edit.activeTool === 'beauty' && edit.beautyRetouchActive && edit.beautyRetouchMode
                     ? <BeautyRetouchOverlay />
                     : edit.beautyMaskPreview
-                    ? <BeautyMaskOverlay />
+                    ? <BeautyMaskOverlay currentTime={trimCurrentTime} />
                     : null
             )}
             viewScale={viewScale}

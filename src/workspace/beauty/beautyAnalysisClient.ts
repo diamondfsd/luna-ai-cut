@@ -5,6 +5,16 @@ import {
   type BeautyParameters,
 } from './beautyLayers'
 
+export interface BeautyAnalysisForPipelineResult {
+  layers: EditPipeline['beautyMasks']
+  width: number
+  height: number
+  masks: {
+    face: Uint8Array
+    body: Uint8Array
+  }
+}
+
 interface AnalyzeBeautyForPipelineOptions {
   requestId: string
   projectId: string
@@ -12,6 +22,7 @@ interface AnalyzeBeautyForPipelineOptions {
   filePath: string
   parameters: BeautyParameters
   enabled?: boolean
+  frameTime?: number
   onStatus?: (status: string) => void
   shouldContinue?: () => boolean
 }
@@ -23,10 +34,11 @@ export async function analyzeBeautyForPipeline({
   filePath,
   parameters,
   enabled = true,
+  frameTime,
   onStatus,
   shouldContinue = () => true,
-}: AnalyzeBeautyForPipelineOptions): Promise<EditPipeline['beautyMasks'] | null> {
-  const result = await window.luna.workspace.analyzeBeauty({ requestId, filePath })
+}: AnalyzeBeautyForPipelineOptions): Promise<BeautyAnalysisForPipelineResult | null> {
+  const result = await window.luna.workspace.analyzeBeauty({ requestId, filePath, frameTime })
   if (!shouldContinue()) return null
   onStatus?.('正在保存美颜区域')
   const [faceSaved, bodySaved, acneSaved, spotSaved, wrinkleSaved] = await Promise.all([
@@ -44,5 +56,13 @@ export async function analyzeBeautyForPipeline({
     createBeautyMaskLayer('spot', spotSaved, parameters),
     createBeautyMaskLayer('wrinkle', wrinkleSaved, parameters),
   )
-  return layers.map((layer) => layer.id.startsWith('beauty-') ? { ...layer, enabled } : layer)
+  return {
+    layers: layers.map((layer) => layer.id.startsWith('beauty-') ? { ...layer, enabled } : layer),
+    width: result.width,
+    height: result.height,
+    masks: {
+      face: new Uint8Array(result.faceMask),
+      body: new Uint8Array(result.skinMask),
+    },
+  }
 }

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::c_void;
 
 use super::{is_procedural_layer, Decoder, Frame};
-use crate::composition::{composition_layers, CompositionInput};
+use crate::composition::{composition_layers, retain_layer_mask_textures, CompositionInput};
 use crate::compositor::is_optional_positioned_asset;
 use crate::compositor::{tolerate_optional_positioned_asset_error, Compositor, PreviewTextureInfo};
 use crate::media::decode_static_image_scaled;
@@ -322,6 +322,7 @@ impl NativePreviewRuntime {
         let output_width = drawable.width().max(1);
         let output_height = drawable.height().max(1);
         let layer_inputs = composition_layers(&self.composition, time);
+        retain_layer_mask_textures(&mut self.compositor, &mut self.mask_textures, &layer_inputs);
         let mut source_layers = Vec::with_capacity(layer_inputs.len());
         let mut transient_texture_ids = Vec::new();
         let mut cache_hits = 0u32;

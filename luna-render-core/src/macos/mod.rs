@@ -8,7 +8,8 @@ mod preview;
 pub(crate) use preview::{NativePreviewRuntime, PreviewBounds};
 
 use crate::composition::{
-    bind_layer_mask_texture, composition_layers, mux_primary_audio, CompositionInput,
+    bind_layer_mask_texture, composition_layers, mux_primary_audio, retain_layer_mask_textures,
+    CompositionInput,
 };
 use crate::compositor::{
     is_optional_positioned_asset, tolerate_optional_positioned_asset_error, Compositor,
@@ -305,6 +306,7 @@ pub(crate) fn export_video(
         }
         let time = frame_index as f64 / fps;
         let layer_inputs = composition_layers(composition, time);
+        retain_layer_mask_textures(compositor, &mut mask_textures, &layer_inputs);
         let mut source_layers = Vec::with_capacity(layer_inputs.len());
         let mut transient_texture_ids = Vec::new();
         let mut decoded_frames = Vec::new();

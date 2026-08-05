@@ -3,10 +3,11 @@ import { EDIT_PARAMETER_RANGES, clampNumber } from './editParameterRanges'
 import type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskLayer, ColorMaskRef } from './colorMaskTypes'
 import { normalizeColorMaskComponent } from './colorMaskComponentNormalization'
 import { normalizeMaskTrack } from '../mask/maskTrack'
+import { normalizeMaskTimeline } from '../mask/maskTimeline'
 import { framePresetDefaultSettings } from '../border/borderPresets'
 import type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 import { normalizeVideoOutputMarkers, type VideoOutputMarker } from '../trim/videoOutputMarkers'
-export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskDynamicSource, ColorMaskLayer, ColorMaskRef, ColorMaskSegmentationSource, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
+export type { ColorMaskBlendMode, ColorMaskComponent, ColorMaskComponentOperation, ColorMaskDynamicSource, ColorMaskLayer, ColorMaskRef, ColorMaskSegmentationSource, ColorMaskTimeline, ColorMaskTimelineFrame, ColorMaskTrack, ColorMaskTrackKeyframe } from './colorMaskTypes'
 export type { CropRect, VideoTrimState } from './editPipelineBasicTypes'
 export type { VideoOutputMarker } from '../trim/videoOutputMarkers'
 export type WhiteBalanceMode = 'custom' | 'daylight' | 'cloudy' | 'indoor'
@@ -484,6 +485,7 @@ function normalizeColorMaskLayer(input: Omit<ColorMaskLayer, 'blendMode'> & { bl
       ? input.components.map(normalizeColorMaskComponent).filter((component): component is ColorMaskComponent => component !== null)
       : undefined,
     track: normalizeMaskTrack(input.track),
+    timeline: normalizeMaskTimeline(input.timeline),
   }
 }
 

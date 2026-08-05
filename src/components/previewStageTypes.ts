@@ -17,6 +17,7 @@ export interface PreviewStageProps {
   pending?: boolean
   extraLayers?: PreviewLayer[]
   pipeline?: EditPipeline
+  maskProjectId?: string
   cropActive?: boolean
   hideControls?: boolean
   onMetricsChange?: (metrics: { imageRect: { x: number; y: number; width: number; height: number }; sourceAspect: number }) => void

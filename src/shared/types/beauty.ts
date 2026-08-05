@@ -1,6 +1,8 @@
 export interface WorkspaceBeautyAnalysisRequest {
   requestId: string
   filePath: string
+  /** 视频素材从该时间点取帧；图片素材忽略。 */
+  frameTime?: number
 }
 
 export interface WorkspaceBeautyAnalysisResult {

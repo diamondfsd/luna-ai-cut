@@ -209,7 +209,7 @@ export const MultipleLayerVideoPreviewLrcRender = memo(
         for (let i = 0; i < layers.length; i++) {
           const layer = layers[i]
           if (layer.isVideo) {
-            const key = videoLayerKey(layer, i)
+            const key = videoLayerKey(layer)
             requiredKeys.add(key)
             videoLayerInfos.push({ layer, index: i, key })
           }

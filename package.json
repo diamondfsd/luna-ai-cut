@@ -29,7 +29,7 @@
     "build:models": "node scripts/publish-model-resources.mjs",
     "test:workspace": "node scripts/test-workspace-geometry.mjs && node --experimental-strip-types scripts/test-preview-frame-cache.mjs",
     "test:inpaint": "node --experimental-strip-types scripts/test-inpaint-mask.mjs && node --experimental-strip-types scripts/test-removal-operations.mjs && node scripts/test-workspace-removal-storage.mjs",
-    "test:beauty": "node --experimental-strip-types scripts/test-beauty-blemish-detection.mjs && node --experimental-strip-types scripts/test-beauty-skin-segmentation.mjs",
+    "test:beauty": "node --experimental-strip-types scripts/test-beauty-blemish-detection.mjs && node --experimental-strip-types scripts/test-beauty-skin-segmentation.mjs && node --experimental-strip-types scripts/test-video-beauty-timeline.mjs",
     "test:media-preview": "node scripts/test-media-preview.mjs",
     "test:custom-watermark": "node --experimental-strip-types scripts/test-custom-watermark-webp.mjs",
     "test:dolby-vision": "node scripts/test-dolby-vision-hvcc.mjs",

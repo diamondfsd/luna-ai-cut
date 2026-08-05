@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::compositor::{Compositor, PreviewLayerInput};
 use crate::media::decode_static_image_scaled;
@@ -25,4 +25,25 @@ pub(crate) fn bind_layer_mask_texture(
     };
     layer.mask_texture_id = Some(texture_id);
     Ok(())
+}
+
+pub(crate) fn retain_layer_mask_textures(
+    compositor: &mut Compositor,
+    mask_textures: &mut HashMap<String, u32>,
+    layers: &[PreviewLayerInput],
+) {
+    let retained: HashSet<&str> = layers
+        .iter()
+        .filter_map(|layer| layer.mask_path.as_deref())
+        .collect();
+    let stale: Vec<String> = mask_textures
+        .keys()
+        .filter(|path| !retained.contains(path.as_str()))
+        .cloned()
+        .collect();
+    for path in stale {
+        if let Some(texture_id) = mask_textures.remove(&path) {
+            let _ = compositor.release_texture(texture_id);
+        }
+    }
 }

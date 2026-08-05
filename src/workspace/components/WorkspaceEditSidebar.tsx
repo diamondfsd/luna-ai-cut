@@ -303,7 +303,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
           ) : activeTool === 'color' ? (
             <ColorMaskPanel />
           ) : activeTool === 'beauty' ? (
-            <BeautyPanel />
+            <BeautyPanel duration={duration} />
           ) : activeTool === 'removal' ? (
             <RemovalPanel />
           ) : activeTool === 'subtitles' ? (
@@ -415,7 +415,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                   size="compact"
                   icon={resourceLoading ? <Loader2 className="spin" size={20} /> : item.icon}
                   aria-label={item.label}
-                  disabled={resourceLoading || (item.value === 'mask' && !mask.available) || ((item.value === 'removal' || item.value === 'beauty') && mediaCtx.activeMedia?.kind !== 'image') || ((item.value === 'trim' || item.value === 'subtitles') && mediaCtx.activeMedia?.kind !== 'video')}
+                  disabled={resourceLoading || (item.value === 'mask' && !mask.available) || (item.value === 'removal' && mediaCtx.activeMedia?.kind !== 'image') || ((item.value === 'trim' || item.value === 'subtitles') && mediaCtx.activeMedia?.kind !== 'video')}
                   onClick={() => {
                     mask.setEditing(item.value === 'mask')
                     edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)
