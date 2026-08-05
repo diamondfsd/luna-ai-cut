@@ -1,7 +1,7 @@
 import { buildLayers } from '../../components/PreviewStage'
 import { buildExportLayers } from '../../components/previewStageExport'
 import type { PreviewLayer, MediaMetadata, WorkspaceSubtitleTrack } from '../../shared/types'
-import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from './renderLayerPipeline'
+import { applyBorderMediaLayout, applyLocalColorToSourceMediaLayers, buildLocalColorPrecomposition, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform, placeWatermarkOnFramedContent } from './renderLayerPipeline'
 import type { EditPipeline } from './editPipeline'
 import { buildBorderLayer } from '../border/buildBorderLayer'
 import { buildSubtitleLayers } from '../subtitles/subtitleLayers'
@@ -35,7 +35,7 @@ export function buildWorkspaceExportLayers(
   const layers = buildExportLayers(sourcePath, finalCanvasSize, allowWatermark ? pipeline.watermark : null)
   const watermarkLayers = layers.slice(1)
   const result = main[0] ? [{ ...layers[0], ...main[0] }] : layers.slice(0, 1)
-  if (result[0]) result.splice(1, 0, ...buildLocalColorLayers(result[0], pipeline))
+  if (result[0]) result.splice(0, 1, ...buildLocalColorPrecomposition(result[0], pipeline, 'workspace-export-local-color'))
 
   // 边框层（如果有元数据）
   if (pipeline.border.enabled && borderMetadata !== undefined) {

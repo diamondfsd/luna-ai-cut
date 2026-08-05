@@ -8,7 +8,7 @@ import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
 import { LivePhotoBadge, VideoControls } from '../ui'
 import { isVideoPath } from '../lib/fileUtils'
-import { applyBorderMediaLayout, buildLocalColorLayers, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
+import { applyBorderMediaLayout, buildLocalColorPrecomposition, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
 import { usePreviewResolution } from './usePreviewResolution'
@@ -285,7 +285,8 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       main[0] = cropActive
         ? styledMain
         : applyBorderMediaLayout(styledMain, pipeline.border)
-      main.splice(1, 0, ...buildLocalColorLayers(main[0], pipeline).map((layer) => ({ ...layer, maskProjectId })))
+      main.splice(0, 1, ...buildLocalColorPrecomposition(main[0], pipeline, 'workspace-local-color')
+        .map((layer) => ({ ...layer, maskProjectId })))
     }
     const m = main[0]
     if (!m) {

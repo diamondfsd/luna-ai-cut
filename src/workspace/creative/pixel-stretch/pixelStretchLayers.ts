@@ -110,7 +110,7 @@ export function suggestPixelStretchPreset(bounds: SubjectBounds, sourceAspect = 
 
 /** 图层顺序：原图背景 -> 中心 1px 延展的纸带 -> 清晰主体。 */
 export function buildPixelStretchLayers(options: PixelStretchLayerOptions): PreviewLayer[] {
-  const main = options.layers[0]
+  const main = options.layers.find((layer) => layer.precomposeRole === 'output') ?? options.layers[0]
   if (!main) return []
   const bounds = options.subjectBounds
   const horizontal = options.preset === 'left' || options.preset === 'right' || options.preset === 'horizontal'
@@ -192,9 +192,12 @@ export function buildPixelStretchLayers(options: PixelStretchLayerOptions): Prev
     maskFeather: options.maskFeather ?? 1,
     zIndex: 2,
   }
-  const decorations = options.layers.slice(1).map((layer, index) => ({
+  const precomposeInputs = options.layers.filter((layer) => layer.precomposeRole === 'input')
+  const decorations = options.layers.filter((layer) => (
+    layer !== main && layer.precomposeRole !== 'input'
+  )).map((layer, index) => ({
     ...layer,
     zIndex: Math.max(20 + index, layer.zIndex),
   }))
-  return [background, stretch, subject, ...decorations]
+  return [...precomposeInputs, background, stretch, subject, ...decorations]
 }

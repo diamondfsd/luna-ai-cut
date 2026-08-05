@@ -351,6 +351,8 @@ export async function renderMultipleLayerVideoFrame(
       lutId: layer.lutId,
       lutIntensity: layer.lutIntensity,
       layerType: layer.layerType ?? 'media',
+      precomposeGroup: layer.precomposeGroup,
+      precomposeRole: layer.precomposeRole,
       shape: layer.shape,
       fillColor: layer.fillColor,
       cornerRadius: layer.cornerRadius,
