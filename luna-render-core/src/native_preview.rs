@@ -96,19 +96,26 @@ pub fn get_native_preview_capabilities() -> NativePreviewCapabilities {
         ("macos", "AVFoundation / VideoToolbox", true, true);
 
     #[cfg(target_os = "windows")]
-    let (platform, decoder, system_hardware_decode, external_gpu_texture) =
-        ("windows", "Media Foundation", true, true);
+    let (platform, decoder, system_hardware_decode, external_gpu_texture, direct_gpu_presentation) =
+        if crate::current_preview_backend() == Some(wgpu::Backend::Dx12) {
+            ("windows", "Media Foundation", true, true, true)
+        } else {
+            ("windows", "FFmpeg compatibility", false, false, false)
+        };
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let (platform, decoder, system_hardware_decode, external_gpu_texture) =
-        (std::env::consts::OS, "FFmpeg fallback", false, false);
+    let (platform, decoder, system_hardware_decode, external_gpu_texture, direct_gpu_presentation) =
+        (std::env::consts::OS, "FFmpeg fallback", false, false, false);
+
+    #[cfg(target_os = "macos")]
+    let direct_gpu_presentation = true;
 
     NativePreviewCapabilities {
         platform: platform.to_string(),
         decoder: decoder.to_string(),
         system_hardware_decode,
         external_gpu_texture,
-        direct_gpu_presentation: cfg!(any(target_os = "macos", target_os = "windows")),
+        direct_gpu_presentation,
     }
 }
 
@@ -423,12 +430,14 @@ mod tests {
     use super::get_native_preview_capabilities;
 
     #[test]
-    fn direct_presentation_matches_platform_support() {
+    fn native_preview_capabilities_are_consistent() {
         let capabilities = get_native_preview_capabilities();
-        assert_eq!(
-            capabilities.direct_gpu_presentation,
-            cfg!(any(target_os = "macos", target_os = "windows"))
-        );
+        if capabilities.direct_gpu_presentation {
+            assert!(capabilities.system_hardware_decode);
+            assert!(capabilities.external_gpu_texture);
+        }
+        #[cfg(target_os = "macos")]
+        assert!(capabilities.direct_gpu_presentation);
         assert!(!capabilities.platform.is_empty());
         assert!(!capabilities.decoder.is_empty());
     }
