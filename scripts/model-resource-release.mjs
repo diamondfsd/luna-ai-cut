@@ -103,7 +103,7 @@ export function buildModelArtifacts(registry) {
       })
     }
   }
-  for (const model of [registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_VAD_MODEL]) {
+  for (const model of [registry.SUBTITLE_ASR_MODEL, registry.SUBTITLE_VAD_MODEL, registry.SUBTITLE_PUNCTUATION_MODEL]) {
     addArtifact(artifacts, {
       fileName: model.fileName,
       sizeBytes: model.sizeBytes,
