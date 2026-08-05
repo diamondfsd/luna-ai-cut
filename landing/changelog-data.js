@@ -2,6 +2,30 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.7.0",
+    "title": "v1.7.0 - 发布说明",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>图片对象消除</strong>：可使用画笔、矩形或智能点选标记不需要的内容，在本地补全背景；支持多次处理、原图对比、项目保存和编辑后导出。</li>\n<li><strong>发送到手机</strong>：电脑与手机连接同一局域网后，可扫描二维码浏览本地素材和导出文件，预览图片或兼容视频，并选择多个文件下载到手机。</li>\n<li><strong>图片自然美颜</strong>：为人像图片提供面部美白、皮肤整体美白、磨皮和质感调整，支持自动识别皮肤区域并手动修复选区。</li>\n<li><strong>视频语音字幕</strong>：可在本地从视频语音生成带时间的字幕，修改文字和样式，并随画面一起导出或单独导出 SRT 文件。</li>\n<li><strong>DNG 素材支持</strong>：本地资源、相机媒体和 AI 整理流程可以识别并处理 DNG 原始图片。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>扩展视频截取与导出</strong>：时间线可分别标记视频片段、静态照片和 Live 图片段，并将多种结果一次加入导出队列。</li>\n<li><strong>优化工作台编辑体验</strong>：重新整理编辑工具入口和素材切换流程，复制效果时可同时包含美颜、边框等设置。</li>\n<li><strong>改善手机浏览体验</strong>：优化移动端相册、预览切换、图片缩放、持续加载和微信内打开提示。</li>\n<li><strong>提高 Windows 兼容性</strong>：D3D12 不可用时会自动回退到 OpenGL，并完善原生组件和 Dolby 工具的构建检查。</li>\n<li><strong>改善自动字幕分段</strong>：新增本地 ONNX 标点恢复模型，结合自然语言词组、停顿和字幕长度重新分段；保留问号并清理其他句末标点。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复局部调色叠加异常</strong>：多个重叠蒙版会按预期共同生效，旧版不兼容的调色数据会在渲染前安全处理。</li>\n<li><strong>修复自定义水印导入限制</strong>：允许使用小尺寸水印，并改善部分 WebP 水印的导入与显示。</li>\n<li><strong>修复预览与导出细节</strong>：改善暂停视频调色刷新、复杂图层组合和不同输出类型下的画面一致性。</li>\n</ul>\n<h3>说明</h3>\n<ul>\n<li>对象消除、自然美颜和语音字幕所需模型会在首次使用时按需下载，素材处理均在本地完成。</li>\n<li>对象消除与自然美颜当前用于图片；语音字幕当前用于视频。</li>\n<li>发送到手机只在用户主动开启时提供临时只读访问，停止发送或退出应用后原二维码失效。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.6.7-hot.3",
+    "title": "v1.6.7-hot.3 热更新发布说明",
+    "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>灵活标记导出内容</strong>：可以在视频时间线上分别添加视频片段、静态照片和 Live 图片段标记。</li>\n<li><strong>支持多种导出方式</strong>：可以按需要导出普通视频、通用 Live 图或 Apple Live 图，并将多种结果一次加入导出队列。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>优化时间线编辑体验</strong>：统一不同标记的预览、选择、命名和删除操作，导出内容更加直观。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.6.7-hot.2",
+    "title": "v1.6.7-hot.2 - 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>允许使用小尺寸自定义水印</strong>：移除自定义水印图片的最小尺寸限制。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>控制水印图片大小</strong>：自定义水印图片单边最大尺寸调整为 2048 像素。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.6.7-hot.1",
+    "title": "v1.6.7-hot.1 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复视频调色预览不更新</strong>：修复部分设备在视频暂停时调整 LUT、色彩参数或使用原图对比后，预览画面没有及时变化的问题。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li><strong>提升暂停预览响应</strong>：视频暂停时修改画面效果会立即刷新预览，无需播放视频后才能看到变化。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.6.7",
     "title": "v1.6.7 - 发布说明",
     "bodyHtml": "<h3>新功能</h3>\n<ul>\n<li><strong>柔焦相框支持水印</strong>：图片和视频使用柔焦相框时，水印会正确显示在清晰主图上，并保留所选位置、大小和透明度。</li>\n</ul>\n<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 Windows 预览播放问题</strong>：改善硬件加速预览的启动、暂停、继续播放和素材切换稳定性，减少黑屏、卡顿及画面停止更新。</li>\n<li><strong>修复 Windows 水印与相框导出</strong>：统一预览和导出的图层顺序及位置计算，避免水印被主图遮挡或偏离设置位置。</li>\n<li><strong>修复 Luna Ultra 水印选择</strong>：恢复不同水印样式的正确识别和切换，图片与视频会使用对应资源。</li>\n<li><strong>修复长时间预览的资源占用</strong>：完善预览会话创建、更新和释放流程，降低连续播放或频繁切换素材后的资源累积。</li>\n</ul>\n<h3>UI 变化</h3>\n<ul>\n<li><strong>水印设置与柔焦相框联动</strong>：水印的位置和大小现在以柔焦相框中的清晰主图区域为基准，设置结果更直观。</li>\n</ul>\n<h3>其他</h3>\n<ul>\n<li><strong>缩短 Windows 首次渲染等待</strong>：优化渲染组件准备流程，减少首次打开硬件加速预览时的等待。</li>\n<li><strong>完善 Windows 构建资源</strong>：补充发布构建所需资源的自动准备与校验，提高安装包构建稳定性。</li>\n<li><strong>优化有线相机读取</strong>：连接多个相机磁盘时，会自动读取所有包含媒体目录的磁盘。</li>\n</ul>",
