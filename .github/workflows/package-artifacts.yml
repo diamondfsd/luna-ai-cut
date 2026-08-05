@@ -78,6 +78,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: release/**/*.dmg
 
   # ─── macOS x64 (Intel) 构建 ────────────────────────
@@ -176,6 +177,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: release/**/*.dmg
 
   # ─── Windows 构建 ─────────────────────────────────
@@ -221,4 +223,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: release/**/*Setup*.exe
