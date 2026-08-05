@@ -14,8 +14,9 @@ for (const [token, mark] of [['好', '，'], ['能', '。'], ['后', '，'], ['�
   punctuation[index] = mark
 }
 const cues = segmentSubtitleUnits(units, punctuation)
-assert.equal(cues.map((cue) => cue.text).join(''), '大家好，今天给大家介绍一下Luna的自动字幕功能。识别完成以后，我们还可以继续编辑字幕内容。')
-assert.ok(cues.some((cue) => cue.text.endsWith('。')))
+assert.equal(cues.map((cue) => cue.text.replace(/\p{P}/gu, '')).join(''), '大家好今天给大家介绍一下Luna的自动字幕功能识别完成以后我们还可以继续编辑字幕内容')
+assert.ok(cues.some((cue) => cue.text.includes('，')))
+assert.ok(cues.every((cue) => !/[，。！、,.!]$/u.test(cue.text)))
 assert.ok(cues.every((cue) => !/^[的了着和]/u.test(cue.text)))
 assert.ok(cues.every((cue) => !/[的了着和]$/u.test(cue.text.replace(/[，。！？,!?]$/u, ''))))
 assert.ok(cues.every((cue) => !cue.text.endsWith('自')))
@@ -42,5 +43,10 @@ const crossCueWord = subtitleUnitsFromCues([
 ])
 assert.equal(crossCueWord[0].wordBoundaryAfter, false)
 assert.equal(crossCueWord[1].wordBoundaryAfter, true)
+
+const questionUnits = subtitleUnitsFromCues([{ id: 'question', startMs: 0, endMs: 1_000, text: '你准备好了吗', source: 'generated' }])
+const questionPunctuation = questionUnits.map(() => '_')
+questionPunctuation[questionPunctuation.length - 1] = '？'
+assert.equal(segmentSubtitleUnits(questionUnits, questionPunctuation)[0].text, '你准备好了吗？')
 
 console.log('subtitle segmentation tests passed')

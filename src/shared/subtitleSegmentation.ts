@@ -136,7 +136,9 @@ function cueText(units: TimedSubtitleUnit[], punctuations: readonly string[], st
     if (result && LATIN_WORD.test(token) && previous && LATIN_WORD.test(previous)) result += ' '
     result += token + punctuationAt(punctuations, index)
   }
-  return result.trim()
+  return result.trim().replace(/\p{P}+$/gu, (marks) => [...marks]
+    .filter((mark) => mark === '?' || mark === '？')
+    .join('')).trimEnd()
 }
 
 export function segmentSubtitleUnits(
