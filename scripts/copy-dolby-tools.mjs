@@ -57,7 +57,12 @@ function sha256(filePath) {
 
 function get(url, redirects = 5) {
   return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
+    https.get(url, {
+      headers: {
+        Accept: 'application/octet-stream',
+        'User-Agent': 'Luna-AI-Cut-Build/1.0',
+      },
+    }, (response) => {
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location && redirects > 0) {
         response.resume()
         resolve(get(new URL(response.headers.location, url).href, redirects - 1))
@@ -71,6 +76,10 @@ function get(url, redirects = 5) {
       resolve(response)
     }).on('error', reject)
   })
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
 async function archiveFor(name, release) {
@@ -92,6 +101,7 @@ async function archiveFor(name, release) {
         lastError = error
         rmSync(partial, { force: true })
         console.warn(`[copy-dolby-tools] ${name} download attempt ${attempt} failed`)
+        if (attempt < 4) await delay(attempt * 2_000)
       }
     }
     if (lastError) throw lastError
