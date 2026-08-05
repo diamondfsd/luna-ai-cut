@@ -25,3 +25,17 @@ export const SUBTITLE_VAD_MODEL = {
   licenseUrl: 'https://www.modelscope.cn/models/FunAudioLLM/fsmn-vad-GGUF',
   source: 'https://www.modelscope.cn/models/FunAudioLLM/fsmn-vad-GGUF',
 } as const
+
+const PUNCTUATION_REVISION = '8177426a1240345bd35b21616475ddcf425d5288'
+
+export const SUBTITLE_PUNCTUATION_MODEL = {
+  id: 'ct-transformer-punc-int8',
+  fileName: 'model.int8.onnx',
+  sizeBytes: 75_519_198,
+  sha256: '65a3fb9f5ad7bfb96bf69e0dc4481df97f6ee60513c1d94ce981ba6effd524b1',
+  url: `${MODELSCOPE}/ranger810/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8/resolve/${PUNCTUATION_REVISION}/model.int8.onnx`,
+  version: `sherpa-onnx-${PUNCTUATION_REVISION.slice(0, 8)}-int8`,
+  license: 'Apache-2.0',
+  licenseUrl: 'https://www.modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch',
+  source: 'https://www.modelscope.cn/models/ranger810/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8',
+} as const

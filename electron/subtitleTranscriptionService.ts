@@ -5,8 +5,10 @@ import { cpus } from 'node:os'
 import path from 'node:path'
 import type { WorkspaceSubtitleProgress, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from '../src/shared/types'
 import { SUBTITLE_ASR_MODEL } from '../src/shared/subtitleModels'
+import { segmentSubtitleUnits, subtitleUnitsFromCues } from '../src/shared/subtitleSegmentation'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { loadSubtitleModels } from './subtitleModelService'
+import { restoreSubtitlePunctuation } from './subtitlePunctuationService'
 import { normalizeSubtitleCuesLanguage, parseSubtitleWorkerEvent, subtitleCuesFromWorker } from './subtitleWorkerProtocol'
 
 function appRoot(): string {
@@ -165,6 +167,12 @@ export async function transcribeVideo(
     if (workerState.protocolError) throw workerState.protocolError
     const completed = workerState.completed
     if (workerCode !== 0 || !completed) throw new Error(workerError.trim() || '字幕识别未完成')
+    onProgress({ requestId: request.requestId, phase: 'recognizing', label: '正在整理字幕分段', percent: 99 })
+    const normalizedCues = normalizeSubtitleCuesLanguage(cues, completed.language)
+    const units = subtitleUnitsFromCues(normalizedCues)
+    const punctuation = await restoreSubtitlePunctuation(units, models.punctuation, signal)
+    const segmentedCues = segmentSubtitleUnits(units, punctuation.punctuations)
+    if (segmentedCues.length === 0) throw new Error('没有识别到可用语音')
     const sourceAfter = await stat(request.filePath)
     if (sourceAfter.size !== sourceBefore.size || sourceAfter.mtimeMs !== sourceBefore.mtimeMs) {
       throw new Error('识别期间视频文件发生变化，请重新生成字幕')
@@ -173,12 +181,12 @@ export async function transcribeVideo(
     return {
       requestId: request.requestId,
       language: completed.language,
-      cues: normalizeSubtitleCuesLanguage(cues, completed.language),
+      cues: segmentedCues,
       model: { id: SUBTITLE_ASR_MODEL.id, version: SUBTITLE_ASR_MODEL.version, sha256: SUBTITLE_ASR_MODEL.sha256 },
       sourceFingerprint: { size: sourceAfter.size, modifiedAtMs: sourceAfter.mtimeMs },
       performance: {
-        modelLoadMs,
-        inferenceMs: completed.inferenceMs,
+        modelLoadMs: modelLoadMs + punctuation.modelLoadMs,
+        inferenceMs: completed.inferenceMs + punctuation.inferenceMs,
         audioMs: completed.audioMs,
         totalMs: Math.round(performance.now() - startedAt),
       },

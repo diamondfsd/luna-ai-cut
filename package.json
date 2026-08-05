@@ -42,7 +42,7 @@
     "test:pixel-stretch:render": "node scripts/build-native.mjs && node scripts/test-pixel-stretch-render.mjs",
     "test:pixel-flow:render": "node scripts/build-native.mjs && node scripts/test-pixel-flow-render.mjs",
     "test:semantic-worker": "node scripts/test-semantic-worker-protocol.mjs",
-    "test:subtitles": "node --experimental-strip-types scripts/test-subtitle-protocol.mjs && node --experimental-strip-types scripts/test-subtitle-track.mjs && node scripts/test-workspace-subtitle-storage.mjs",
+    "test:subtitles": "node --experimental-strip-types scripts/test-subtitle-protocol.mjs && node --experimental-strip-types scripts/test-subtitle-segmentation.mjs && node --experimental-strip-types scripts/test-subtitle-track.mjs && node scripts/test-workspace-subtitle-storage.mjs",
     "test:e2e": "pnpm run build:app && playwright test",
     "test:model-loader": "node scripts/test-model-loader.mjs",
     "test:model-resources": "node scripts/test-model-resource-release.mjs",

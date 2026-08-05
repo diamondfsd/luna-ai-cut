@@ -19,7 +19,7 @@ export function parseSubtitleWorkerEvent(line: string): SubtitleWorkerEvent {
 }
 
 export function normalizeGeneratedSubtitleText(text: string): string {
-  return text.replace(/\p{P}+/gu, ' ').replace(/\s+/g, ' ').trim()
+  return text.normalize('NFKC').replace(/\s+/g, ' ').trim()
 }
 
 export function subtitleCuesFromWorker(event: Extract<SubtitleWorkerEvent, { type: 'segment' }>): WorkspaceSubtitleCue[] {
