@@ -141,10 +141,17 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
   const [resetColorDialogOpen, setResetColorDialogOpen] = useState(false)
   const setActiveTool = edit.setActiveTool
   const setMaskEditing = mask.setEditing
-  const activeTool = edit.activeTool === 'watermark' && !allowWatermark ? 'color' : edit.activeTool
+  const beautyAllowed = mediaCtx.activeMedia?.kind !== 'video'
+  const activeTool = (edit.activeTool === 'watermark' && !allowWatermark)
+    || (edit.activeTool === 'beauty' && !beautyAllowed)
+    ? 'color'
+    : edit.activeTool
   const visibleToolItems = useMemo(
-    () => allowWatermark ? TOOL_ITEMS : TOOL_ITEMS.filter((item) => item.value !== 'watermark'),
-    [allowWatermark],
+    () => TOOL_ITEMS.filter((item) => (
+      (allowWatermark || item.value !== 'watermark')
+      && (beautyAllowed || item.value !== 'beauty')
+    )),
+    [allowWatermark, beautyAllowed],
   )
 
   useEffect(() => {
@@ -153,6 +160,10 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
       setActiveTool('color')
     }
   }, [allowWatermark, edit.activeTool, setActiveTool, setMaskEditing])
+
+  useEffect(() => {
+    if (!beautyAllowed && edit.activeTool === 'beauty') setActiveTool('color')
+  }, [beautyAllowed, edit.activeTool, setActiveTool])
 
   useEffect(() => {
     if (edit.activeTool === 'subtitles' && mediaCtx.activeMedia?.kind !== 'video') {
