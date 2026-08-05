@@ -21,6 +21,33 @@ export function bodySkinMaskFromHumanLabels(
   return output
 }
 
+export function faceSkinMaskFromSamples(
+  skinSamples: Uint32Array,
+  protectedSamples: Uint32Array,
+  totalSamples: Uint32Array,
+  outputSize: number,
+  featherRadius: number,
+): Uint8Array {
+  const expectedLength = outputSize * outputSize
+  if (outputSize < 1
+    || skinSamples.length !== expectedLength
+    || protectedSamples.length !== expectedLength
+    || totalSamples.length !== expectedLength) {
+    throw new Error('面部皮肤分析数据尺寸不一致')
+  }
+  const output = new Uint8Array(expectedLength)
+  let hasSkin = false
+  for (let index = 0; index < output.length; index += 1) {
+    const total = totalSamples[index]
+    if (total === 0 || skinSamples[index] === 0) continue
+    // Protected samples keep brows, eye contours and lips out of the skin mask.
+    if (protectedSamples[index] > 0) continue
+    output[index] = Math.round(skinSamples[index] / total * 255)
+    hasSkin = true
+  }
+  return hasSkin ? softenBeautyMask(output, outputSize, featherRadius) : output
+}
+
 function closeMask(input: Uint8Array, size: number): Uint8Array {
   let current = input
   for (const mode of ['dilate', 'erode'] as const) {

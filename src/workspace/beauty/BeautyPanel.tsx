@@ -5,6 +5,7 @@ import { Accordion, Button, ButtonGroup, Switch, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ParamSlider } from '../components/ParamSlider'
+import type { EditPipeline } from '../shared/editPipeline'
 import {
   BEAUTY_BODY_LAYER_ID,
   BEAUTY_FACE_LAYER_ID,
@@ -23,6 +24,19 @@ import './BeautyPanel.css'
 
 interface BeautyPanelProps {
   duration?: number
+}
+
+function mergeVideoBeautyProgress(
+  pipeline: EditPipeline,
+  incoming: EditPipeline['beautyMasks'],
+): EditPipeline['beautyMasks'] {
+  const currentById = new Map(pipeline.beautyMasks.map((layer) => [layer.id, layer]))
+  const merged = incoming.map((layer) => {
+    const current = currentById.get(layer.id)
+    return current ? { ...layer, color: current.color, enabled: current.enabled } : layer
+  })
+  const manual = pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_MANUAL_RETOUCH_LAYER_ID)
+  return manual ? [manual, ...merged] : merged
 }
 
 export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
@@ -48,6 +62,8 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
   const [analysisError, setAnalysisError] = useState('')
   const requestRef = useRef<string | null>(null)
   const segmentationRequestIdsRef = useRef(new Set<string>())
+  const trackingRequestIdsRef = useRef(new Set<string>())
+  const videoProgressRef = useRef<{ completed: number; total: number } | null>(null)
   const attemptedAssetRef = useRef<string | null>(null)
 
   const cancel = useCallback(() => {
@@ -57,6 +73,11 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
       void window.luna.workspace.cancelSegmentation(activeRequestId)
     }
     segmentationRequestIdsRef.current.clear()
+    for (const activeRequestId of trackingRequestIdsRef.current) {
+      void window.luna.workspace.cancelMaskTracking(activeRequestId)
+    }
+    trackingRequestIdsRef.current.clear()
+    videoProgressRef.current = null
     if (requestId) void window.luna.workspace.cancelSegmentation(requestId)
     setBusy(false)
     setStatus('')
@@ -86,13 +107,39 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
     if (!segmentationRequestIdsRef.current.has(progress.requestId)) return
+    const videoProgress = videoProgressRef.current
+    if (videoProgress) {
+      const phaseProgress = progress.phase === 'recognizing'
+        ? 0.65
+        : progress.phase === 'preparing'
+          ? 0.2
+          : progress.percent == null
+            ? 0.05
+            : progress.percent / 100 * 0.15
+      const current = Math.min(videoProgress.completed + 1, videoProgress.total)
+      setStatus(`正在分析视频 ${current}/${videoProgress.total}`)
+      setProgressPercent(Math.min(99, Math.round(
+        (videoProgress.completed + phaseProgress) / videoProgress.total * 100,
+      )))
+      return
+    }
     setStatus(progress.label)
     setProgressPercent(progress.percent)
   }), [])
 
   const commitParameters = useCallback((next: BeautyParameters) => {
-    edit.commitPatch({ beautyMasks: updateBeautyParameters(edit.pipeline, next) })
-  }, [edit])
+    edit.commitUpdate((pipeline) => ({
+      ...pipeline,
+      beautyMasks: updateBeautyParameters(pipeline, next),
+    }))
+  }, [edit.commitUpdate])
+
+  const commitParameter = useCallback(<Key extends keyof BeautyParameters>(key: Key, value: BeautyParameters[Key]) => {
+    edit.commitUpdate((pipeline) => ({
+      ...pipeline,
+      beautyMasks: updateBeautyParameters(pipeline, { ...beautyParameters(pipeline), [key]: value }),
+    }))
+  }, [edit.commitUpdate])
 
   const analyze = useCallback(async () => {
     if (!media.currentProject || !activeAsset || (activeAsset.kind !== 'image' && activeAsset.kind !== 'video')) {
@@ -107,12 +154,13 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
     setStatus('正在准备美颜模型')
     setProgressPercent(null)
     const currentParameters = hasSkinAnalysis ? parameters : DEFAULT_BEAUTY_PARAMETERS
+    let videoPartialCommitted = false
     try {
       let beautyMasks: typeof edit.pipeline.beautyMasks | null
       if (activeAsset.kind === 'video') {
         const sourceDuration = duration > 0 ? duration : await window.luna.workspace.getVideoDuration(activeAsset.path)
         setStatus('正在逐段识别人脸和皮肤')
-        beautyMasks = await analyzeVideoBeauty({
+        await analyzeVideoBeauty({
           operationId: requestId,
           projectId: media.currentProject.id,
           assetId: activeAsset.id,
@@ -123,8 +171,30 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
           shouldContinue: () => requestRef.current === requestId,
           onRequestStart: (activeRequestId) => segmentationRequestIdsRef.current.add(activeRequestId),
           onRequestEnd: (activeRequestId) => segmentationRequestIdsRef.current.delete(activeRequestId),
-          onProgress: (completed, total) => setProgressPercent(Math.round(completed / total * 100)),
+          onTrackingStart: (activeRequestId) => trackingRequestIdsRef.current.add(activeRequestId),
+          onTrackingEnd: (activeRequestId) => trackingRequestIdsRef.current.delete(activeRequestId),
+          onProgress: (completed, total) => {
+            videoProgressRef.current = { completed, total }
+            setStatus(completed < total ? `正在分析视频 ${completed + 1}/${total}` : '视频分析完成')
+            setProgressPercent(Math.round(completed / total * 100))
+          },
+          onPartial: (partial) => {
+            if (!videoPartialCommitted) {
+              edit.commitPatch(
+                { beautyMasks: mergeVideoBeautyProgress(edit.pipeline, partial) },
+                { key: requestId },
+              )
+              videoPartialCommitted = true
+              return
+            }
+            edit.applySystemUpdate((pipeline) => (
+              pipeline.beautyMasks.some((layer) => layer.timeline?.frames.length)
+                ? { ...pipeline, beautyMasks: mergeVideoBeautyProgress(pipeline, partial) }
+                : pipeline
+            ))
+          },
         })
+        beautyMasks = null
       } else {
         segmentationRequestIdsRef.current.add(requestId)
         const beautyResult = await analyzeBeautyForPipeline({
@@ -155,6 +225,8 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
     } finally {
       if (requestRef.current === requestId) {
         segmentationRequestIdsRef.current.clear()
+        trackingRequestIdsRef.current.clear()
+        videoProgressRef.current = null
         requestRef.current = null
         setBusy(false)
         setStatus('')
@@ -196,7 +268,7 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
       <div className="beauty-panel-summary">
         <div>
           <strong>自然美颜</strong>
-          <span>{analyzed ? '已识别人脸和皮肤' : activeAsset?.kind === 'video' ? '识别整段视频中的人脸和皮肤' : '本地识别人脸和皮肤'}</span>
+          <span>{busy && hasVideoTimeline ? '已完成区域可预览和调整' : analyzed ? '已识别人脸和皮肤' : activeAsset?.kind === 'video' ? '识别整段视频中的人脸和皮肤' : '本地识别人脸和皮肤'}</span>
         </div>
         {analyzed && <Switch checked={enabled} onCheckedChange={setEnabled} ariaLabel="启用美颜" />}
       </div>
@@ -217,7 +289,7 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
           </div>
         </div>
       )}
-      {!busy && !analyzed && analysisError && (
+      {!busy && analysisError && (
         <div className="beauty-analysis-error" role="alert">
           <span>{analysisError}</span>
           <Button
@@ -277,7 +349,7 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
             value={parameters.faceWhitening}
             min={0}
             max={100}
-            onChange={(faceWhitening) => commitParameters({ ...parameters, faceWhitening })}
+            onChange={(faceWhitening) => commitParameter('faceWhitening', faceWhitening)}
             formatValue={(value) => String(value)}
           />
           <ParamSlider
@@ -285,7 +357,7 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
             value={parameters.skinWhitening}
             min={0}
             max={100}
-            onChange={(skinWhitening) => commitParameters({ ...parameters, skinWhitening })}
+            onChange={(skinWhitening) => commitParameter('skinWhitening', skinWhitening)}
             formatValue={(value) => String(value)}
           />
           <ParamSlider
@@ -293,7 +365,7 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
             value={parameters.skinWarmth}
             min={0}
             max={100}
-            onChange={(skinWarmth) => commitParameters({ ...parameters, skinWarmth })}
+            onChange={(skinWarmth) => commitParameter('skinWarmth', skinWarmth)}
             formatValue={(value) => String(value)}
           />
           <ParamSlider
@@ -301,7 +373,7 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
             value={parameters.smoothing}
             min={0}
             max={100}
-            onChange={(smoothing) => commitParameters({ ...parameters, smoothing })}
+            onChange={(smoothing) => commitParameter('smoothing', smoothing)}
             formatValue={(value) => String(value)}
           />
           <ParamSlider
@@ -309,7 +381,7 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
             value={parameters.texture}
             min={0}
             max={100}
-            onChange={(texture) => commitParameters({ ...parameters, texture })}
+            onChange={(texture) => commitParameter('texture', texture)}
             formatValue={(value) => String(value)}
           />
           </Accordion>

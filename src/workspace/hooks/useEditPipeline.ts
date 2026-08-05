@@ -24,6 +24,10 @@ export function useEditPipeline() {
     setHistory((current) => pushHistory(current, mergePipeline(current.present, patch), group))
   }, [])
 
+  const commitUpdate = useCallback((update: (pipeline: EditPipeline) => EditPipeline, group?: HistoryGroup) => {
+    setHistory((current) => pushHistory(current, update(current.present), group))
+  }, [])
+
   const applySystemUpdate = useCallback((update: (pipeline: EditPipeline) => EditPipeline) => {
     setHistory((current) => mapHistoryPipelines(current, update))
   }, [])
@@ -43,6 +47,7 @@ export function useEditPipeline() {
     undo,
     redo,
     commitPatch,
+    commitUpdate,
     applySystemUpdate,
     retainedMaskPaths: collectHistoryMaskPaths(history),
     resetPipeline,

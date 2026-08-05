@@ -4,12 +4,13 @@ import type { WorkspaceBeautyAnalysisResult } from '../src/shared/types'
 import { getFfmpegPath } from './ffmpeg/pipeline'
 import { loadModel, MODEL_REGISTRY, type ModelId, type ModelLoadProgress } from './modelLoader'
 import { logMainInfo } from './loggerService'
-import { extractFaceBoxesInWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
+import { extractFaceBoxesInWorker, segmentSpecializedInSecondaryWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
 import { detectFaceBlemishes } from './beautyBlemishDetection'
-import { bodySkinMaskFromHumanLabels, softenBeautyMask } from './beautySkinSegmentation'
+import { bodySkinMaskFromHumanLabels, faceSkinMaskFromSamples, softenBeautyMask } from './beautySkinSegmentation'
 
 const INPUT_SIZE = 640
 const MASK_SIZE = 1024
+const VIDEO_MASK_SIZE = 512
 const FACE_PARSE_SIZE = 512
 const HUMAN_PARSE_SIZE = 512
 const FACE_SKIN_FEATHER_RADIUS = 10
@@ -41,42 +42,59 @@ interface FaceSkinAssessment {
 
 function decodeImage(filePath: string, signal: AbortSignal, frameTime?: number): Promise<{ rgb: Buffer; layout: SourceLayout }> {
   return new Promise((resolve, reject) => {
-    const args = [
-      '-v', 'error',
-      ...(frameTime == null ? [] : ['-ss', frameTime.toFixed(3)]),
-      '-i', filePath, '-frames:v', '1',
-      '-vf', `scale=${INPUT_SIZE}:${INPUT_SIZE}:force_original_aspect_ratio=decrease:flags=bilinear,pad=${INPUT_SIZE}:${INPUT_SIZE}:(ow-iw)/2:(oh-ih)/2:color=0x727272`,
-      '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1',
-    ]
-    execFile(getFfmpegPath(), args, {
-      encoding: 'buffer',
-      maxBuffer: INPUT_SIZE * INPUT_SIZE * 3 + 1024,
-      signal,
-    }, (error, stdout) => {
-      if (error) return reject(error)
-      const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
-      if (rgb.byteLength !== INPUT_SIZE * INPUT_SIZE * 3) return reject(new Error('美颜分析画面读取不完整'))
-
-      // 从填充色边缘反推有效图像区域，避免再次运行探测命令。
-      let minX = INPUT_SIZE
-      let minY = INPUT_SIZE
-      let maxX = -1
-      let maxY = -1
-      for (let y = 0; y < INPUT_SIZE; y += 1) {
-        for (let x = 0; x < INPUT_SIZE; x += 1) {
-          const offset = (y * INPUT_SIZE + x) * 3
-          if (rgb[offset] === 0x72 && rgb[offset + 1] === 0x72 && rgb[offset + 2] === 0x72) continue
-          minX = Math.min(minX, x)
-          minY = Math.min(minY, y)
-          maxX = Math.max(maxX, x)
-          maxY = Math.max(maxY, y)
+    const decodeAt = (requestedTime: number | undefined, allowEndFallback: boolean, hardwareAcceleration = true): void => {
+      const args = [
+        '-v', 'error',
+        ...(hardwareAcceleration ? ['-hwaccel', 'auto'] : []),
+        ...(requestedTime == null ? [] : ['-ss', requestedTime.toFixed(3)]),
+        '-i', filePath, '-frames:v', '1',
+        '-vf', `scale=${INPUT_SIZE}:${INPUT_SIZE}:force_original_aspect_ratio=decrease:flags=bilinear,pad=${INPUT_SIZE}:${INPUT_SIZE}:(ow-iw)/2:(oh-ih)/2:color=0x727272`,
+        '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1',
+      ]
+      execFile(getFfmpegPath(), args, {
+        encoding: 'buffer',
+        maxBuffer: INPUT_SIZE * INPUT_SIZE * 3 + 1024,
+        signal,
+      }, (error, stdout) => {
+        if (error) {
+          if (hardwareAcceleration && !signal.aborted) {
+            decodeAt(requestedTime, allowEndFallback, false)
+            return
+          }
+          return reject(error)
         }
-      }
-      const layout = maxX >= minX && maxY >= minY
-        ? { scaledWidth: maxX - minX + 1, scaledHeight: maxY - minY + 1, padX: minX, padY: minY }
-        : { scaledWidth: INPUT_SIZE, scaledHeight: INPUT_SIZE, padX: 0, padY: 0 }
-      resolve({ rgb, layout })
-    })
+        const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
+        if (rgb.byteLength !== INPUT_SIZE * INPUT_SIZE * 3) {
+          if (allowEndFallback && requestedTime != null && requestedTime > 0 && !signal.aborted) {
+            decodeAt(Math.max(0, requestedTime - 0.25), false, hardwareAcceleration)
+            return
+          }
+          reject(new Error('美颜分析画面读取不完整'))
+          return
+        }
+
+        // 从填充色边缘反推有效图像区域，避免再次运行探测命令。
+        let minX = INPUT_SIZE
+        let minY = INPUT_SIZE
+        let maxX = -1
+        let maxY = -1
+        for (let y = 0; y < INPUT_SIZE; y += 1) {
+          for (let x = 0; x < INPUT_SIZE; x += 1) {
+            const offset = (y * INPUT_SIZE + x) * 3
+            if (rgb[offset] === 0x72 && rgb[offset + 1] === 0x72 && rgb[offset + 2] === 0x72) continue
+            minX = Math.min(minX, x)
+            minY = Math.min(minY, y)
+            maxX = Math.max(maxX, x)
+            maxY = Math.max(maxY, y)
+          }
+        }
+        const layout = maxX >= minX && maxY >= minY
+          ? { scaledWidth: maxX - minX + 1, scaledHeight: maxY - minY + 1, padX: minX, padY: minY }
+          : { scaledWidth: INPUT_SIZE, scaledHeight: INPUT_SIZE, padX: 0, padY: 0 }
+        resolve({ rgb, layout })
+      })
+    }
+    decodeAt(frameTime, frameTime != null)
   })
 }
 
@@ -133,15 +151,16 @@ function compositeFaceLabels(
   usableSkin: Uint8Array,
   crop: ReturnType<typeof cropFace>,
   layout: SourceLayout,
+  outputSize: number,
 ): void {
   for (let y = 0; y < FACE_PARSE_SIZE; y += 1) {
     for (let x = 0; x < FACE_PARSE_SIZE; x += 1) {
       const inputX = crop.x + (x + 0.5) / FACE_PARSE_SIZE * crop.side
       const inputY = crop.y + (y + 0.5) / FACE_PARSE_SIZE * crop.side
-      const targetX = Math.floor((inputX - layout.padX) / layout.scaledWidth * MASK_SIZE)
-      const targetY = Math.floor((inputY - layout.padY) / layout.scaledHeight * MASK_SIZE)
-      if (targetX >= 0 && targetX < MASK_SIZE && targetY >= 0 && targetY < MASK_SIZE) {
-        const targetIndex = targetY * MASK_SIZE + targetX
+      const targetX = Math.floor((inputX - layout.padX) / layout.scaledWidth * outputSize)
+      const targetY = Math.floor((inputY - layout.padY) / layout.scaledHeight * outputSize)
+      if (targetX >= 0 && targetX < outputSize && targetY >= 0 && targetY < outputSize) {
+        const targetIndex = targetY * outputSize + targetX
         const label = labels[y * FACE_PARSE_SIZE + x]
         totalSamples[targetIndex] += 1
         if (usableSkin[y * FACE_PARSE_SIZE + x]) skinSamples[targetIndex] += 1
@@ -151,45 +170,27 @@ function compositeFaceLabels(
   }
 }
 
-function faceSkinMask(
-  skinSamples: Uint32Array,
-  protectedSamples: Uint32Array,
-  totalSamples: Uint32Array,
-): Uint8Array {
-  const output = new Uint8Array(MASK_SIZE * MASK_SIZE)
-  let hasSkin = false
-  for (let index = 0; index < output.length; index += 1) {
-    const total = totalSamples[index]
-    if (total === 0 || skinSamples[index] === 0) continue
-    // Any protected sample wins over skin so thin brows, eye contours and lips
-    // survive projection into the whole-image mask.
-    if (protectedSamples[index] > 0) continue
-    output[index] = Math.round(skinSamples[index] / total * 255)
-    hasSkin = true
-  }
-  return hasSkin ? softenBeautyMask(output, MASK_SIZE, FACE_SKIN_FEATHER_RADIUS) : output
-}
-
 function compositeFaceMask(
   output: Uint8Array,
   localMask: Uint8Array,
   crop: ReturnType<typeof cropFace>,
   layout: SourceLayout,
+  outputSize: number,
 ): void {
-  const left = Math.max(0, Math.floor((crop.x - layout.padX) / layout.scaledWidth * MASK_SIZE))
-  const top = Math.max(0, Math.floor((crop.y - layout.padY) / layout.scaledHeight * MASK_SIZE))
-  const right = Math.min(MASK_SIZE - 1, Math.ceil((crop.x + crop.side - layout.padX) / layout.scaledWidth * MASK_SIZE))
-  const bottom = Math.min(MASK_SIZE - 1, Math.ceil((crop.y + crop.side - layout.padY) / layout.scaledHeight * MASK_SIZE))
+  const left = Math.max(0, Math.floor((crop.x - layout.padX) / layout.scaledWidth * outputSize))
+  const top = Math.max(0, Math.floor((crop.y - layout.padY) / layout.scaledHeight * outputSize))
+  const right = Math.min(outputSize - 1, Math.ceil((crop.x + crop.side - layout.padX) / layout.scaledWidth * outputSize))
+  const bottom = Math.min(outputSize - 1, Math.ceil((crop.y + crop.side - layout.padY) / layout.scaledHeight * outputSize))
   for (let y = top; y <= bottom; y += 1) {
-    const inputY = layout.padY + (y + 0.5) / MASK_SIZE * layout.scaledHeight
+    const inputY = layout.padY + (y + 0.5) / outputSize * layout.scaledHeight
     const localY = Math.floor((inputY - crop.y) / crop.side * FACE_PARSE_SIZE)
     if (localY < 0 || localY >= FACE_PARSE_SIZE) continue
     for (let x = left; x <= right; x += 1) {
-      const inputX = layout.padX + (x + 0.5) / MASK_SIZE * layout.scaledWidth
+      const inputX = layout.padX + (x + 0.5) / outputSize * layout.scaledWidth
       const localX = Math.floor((inputX - crop.x) / crop.side * FACE_PARSE_SIZE)
       if (localX < 0 || localX >= FACE_PARSE_SIZE) continue
       const value = localMask[localY * FACE_PARSE_SIZE + localX]
-      const index = y * MASK_SIZE + x
+      const index = y * outputSize + x
       if (value > output[index]) output[index] = value
     }
   }
@@ -223,6 +224,7 @@ export async function analyzeBeauty(
   signal: AbortSignal,
   report?: (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null) => void,
   frameTime?: number,
+  videoFrame = false,
 ): Promise<WorkspaceBeautyAnalysisResult> {
   const started = performance.now()
   report?.('model', '正在准备美颜模型', null)
@@ -249,23 +251,24 @@ export async function analyzeBeauty(
   const { rgb, layout } = await decodeImage(filePath, signal, frameTime)
   const imagePrepareMs = performance.now() - prepareStarted
 
-  report?.('recognizing', '正在识别人脸、皮肤和面部瑕疵', null)
+  report?.('recognizing', videoFrame ? '正在识别人脸和皮肤' : '正在识别人脸、皮肤和面部瑕疵', null)
   const inferenceStarted = performance.now()
+  const outputSize = videoFrame ? VIDEO_MASK_SIZE : MASK_SIZE
   const humanRgb = resizeContent(rgb, layout, HUMAN_PARSE_SIZE)
   const [faces, humanResult] = await Promise.all([
     extractFaceBoxesInWorker(faceDetector.path, rgb, layout, signal),
-    segmentSpecializedInWorker({
+    segmentSpecializedInSecondaryWorker({
       backend: 'human-parsing', modelPath: humanParser.path, rgb: humanRgb,
       scaledWidth: HUMAN_PARSE_SIZE, scaledHeight: HUMAN_PARSE_SIZE,
       padX: 0, padY: 0, outputSize: HUMAN_PARSE_SIZE,
     }, signal),
   ])
-  const skinSamples = new Uint32Array(MASK_SIZE * MASK_SIZE)
-  const protectedSamples = new Uint32Array(MASK_SIZE * MASK_SIZE)
-  const totalSamples = new Uint32Array(MASK_SIZE * MASK_SIZE)
-  const acneMask = new Uint8Array(MASK_SIZE * MASK_SIZE)
-  const spotMask = new Uint8Array(MASK_SIZE * MASK_SIZE)
-  const wrinkleMask = new Uint8Array(MASK_SIZE * MASK_SIZE)
+  const skinSamples = new Uint32Array(outputSize * outputSize)
+  const protectedSamples = new Uint32Array(outputSize * outputSize)
+  const totalSamples = new Uint32Array(outputSize * outputSize)
+  const acneMask = new Uint8Array(outputSize * outputSize)
+  const spotMask = new Uint8Array(outputSize * outputSize)
+  const wrinkleMask = new Uint8Array(outputSize * outputSize)
   const processedFaces = faces.slice(0, 8)
   let acceptedFaceCount = 0
   let acneCount = 0
@@ -286,13 +289,15 @@ export async function analyzeBeauty(
     })
     if (!assessment.mask) continue
     acceptedFaceCount += 1
-    const blemishes = detectFaceBlemishes(crop.rgb, parsed.bytes, FACE_PARSE_SIZE)
-    compositeFaceMask(acneMask, blemishes.acneMask, crop, layout)
-    compositeFaceMask(spotMask, blemishes.spotMask, crop, layout)
-    compositeFaceMask(wrinkleMask, blemishes.wrinkleMask, crop, layout)
-    acneCount += blemishes.acneCount
-    spotCount += blemishes.spotCount
-    wrinkleCount += blemishes.wrinkleCount
+    if (!videoFrame) {
+      const blemishes = detectFaceBlemishes(crop.rgb, parsed.bytes, FACE_PARSE_SIZE)
+      compositeFaceMask(acneMask, blemishes.acneMask, crop, layout, outputSize)
+      compositeFaceMask(spotMask, blemishes.spotMask, crop, layout, outputSize)
+      compositeFaceMask(wrinkleMask, blemishes.wrinkleMask, crop, layout, outputSize)
+      acneCount += blemishes.acneCount
+      spotCount += blemishes.spotCount
+      wrinkleCount += blemishes.wrinkleCount
+    }
     compositeFaceLabels(
       skinSamples,
       protectedSamples,
@@ -301,9 +306,16 @@ export async function analyzeBeauty(
       assessment.mask,
       crop,
       layout,
+      outputSize,
     )
   }
-  const softFaceMask = faceSkinMask(skinSamples, protectedSamples, totalSamples)
+  const softFaceMask = faceSkinMaskFromSamples(
+    skinSamples,
+    protectedSamples,
+    totalSamples,
+    outputSize,
+    FACE_SKIN_FEATHER_RADIUS,
+  )
   logMainInfo('[Beauty] 面部选区完成', {
     candidates: processedFaces.length,
     accepted: acceptedFaceCount,
@@ -313,15 +325,15 @@ export async function analyzeBeauty(
     wrinkleCount,
   })
   const skinMask = softenBeautyMask(
-    bodySkinMaskFromHumanLabels(humanResult.bytes, HUMAN_PARSE_SIZE, MASK_SIZE),
-    MASK_SIZE,
+    bodySkinMaskFromHumanLabels(humanResult.bytes, HUMAN_PARSE_SIZE, outputSize),
+    outputSize,
     BODY_SKIN_FEATHER_RADIUS,
   )
   const inferenceMs = performance.now() - inferenceStarted
   return {
     requestId,
-    width: MASK_SIZE,
-    height: MASK_SIZE,
+    width: outputSize,
+    height: outputSize,
     faceCount: acceptedFaceCount,
     acneCount,
     spotCount,

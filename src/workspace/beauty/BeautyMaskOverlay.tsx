@@ -56,21 +56,36 @@ export function BeautyMaskOverlay({ currentTime = 0 }: BeautyMaskOverlayProps) {
       const layer = edit.pipeline.beautyMasks.find((candidate) => candidate.id === item.id)
       const timelineSample = maskTimelineSampleAt(layer?.timeline, currentTime)
       const path = layer?.timeline ? timelineSample?.path : layer?.path
-      return layer && path && !layer.loadError ? [{ item, layer, path }] : []
+      return layer && path && !layer.loadError ? [{ item, layer, path, timelineSample }] : []
     })
-    void Promise.all(visibleMasks.map(async ({ item, layer, path }) => ({
+    void Promise.all(visibleMasks.map(async ({ item, layer, path, timelineSample }) => ({
       item,
       layer,
+      timelineSample,
       data: new Uint8Array((await window.luna.workspace.loadColorMask(media.currentProject?.id ?? '', path)).bytes),
     }))).then((loaded) => {
       if (cancelled) return
       const image = context.createImageData(displaySize.width, displaySize.height)
-      for (const { item, layer, data } of loaded) {
+      for (const { item, layer, timelineSample, data } of loaded) {
+        const maskTransform = timelineSample?.transform
+        const displayToMask = maskTransform
+          ? (x: number, y: number) => {
+              const source = displayToSource(x, y)
+              const translatedX = (source.x - 0.5 - maskTransform.translateX) * layer.width
+              const translatedY = (source.y - 0.5 - maskTransform.translateY) * layer.height
+              const cosine = Math.cos(maskTransform.rotation)
+              const sine = Math.sin(maskTransform.rotation)
+              return {
+                x: (cosine * translatedX + sine * translatedY) / maskTransform.scale / layer.width + 0.5,
+                y: (-sine * translatedX + cosine * translatedY) / maskTransform.scale / layer.height + 0.5,
+              }
+            }
+          : displayToSource
         const preview = buildMaskOverlayPreview(
           data,
           { width: layer.width, height: layer.height },
           displaySize,
-          displayToSource,
+          displayToMask,
           layer.inverted,
           layer.feather,
         )

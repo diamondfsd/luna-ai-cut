@@ -299,10 +299,12 @@ export function register(): void {
     if (typeof request.filePath !== 'string' || request.filePath.length === 0 || !VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('蒙版追踪仅支持视频素材')
     if (request.direction !== 'forward' && request.direction !== 'backward') throw new Error('蒙版追踪方向无效')
     const anchorTime = Number(request.anchorTime)
+    const requestedEndTime = request.endTime == null ? undefined : Number(request.endTime)
     const maskWidth = Math.round(Number(request.maskWidth))
     const maskHeight = Math.round(Number(request.maskHeight))
     const maskBytes = request.maskBytes instanceof Uint8Array ? request.maskBytes : new Uint8Array(request.maskBytes)
     if (!Number.isFinite(anchorTime) || anchorTime < 0) throw new Error('蒙版追踪起始时间无效')
+    if (requestedEndTime != null && !Number.isFinite(requestedEndTime)) throw new Error('蒙版追踪结束时间无效')
     if (maskWidth <= 0 || maskHeight <= 0 || maskWidth * maskHeight > 16_777_216 || maskBytes.byteLength !== maskWidth * maskHeight) throw new Error('蒙版追踪数据无效')
     let selectedPixels = 0
     for (const value of maskBytes) if (value >= 16) selectedPixels += 1
@@ -319,9 +321,13 @@ export function register(): void {
         probeDisplayResolution(request.filePath),
       ])
       if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长')
+      const boundedAnchorTime = Math.min(anchorTime, duration)
+      const endTime = requestedEndTime == null ? undefined : Math.min(Math.max(requestedEndTime, 0), duration)
+      if (request.direction === 'forward' && endTime != null && endTime < boundedAnchorTime) throw new Error('蒙版追踪结束时间不能早于起始时间')
       const result = await trackMaskInWorker({
         ...request,
-        anchorTime: Math.min(anchorTime, duration),
+        anchorTime: boundedAnchorTime,
+        endTime,
         maskWidth,
         maskHeight,
         maskBytes,
@@ -372,7 +378,7 @@ export function register(): void {
       event.sender.send('workspace:segmentation-progress', { requestId: request.requestId, phase, label, percent })
     }
     try {
-      return await analyzeBeauty(request.requestId, request.filePath, task.controller.signal, reportProgress, frameTime)
+      return await analyzeBeauty(request.requestId, request.filePath, task.controller.signal, reportProgress, frameTime, request.videoFrame === true)
     } finally {
       segmentationTasks.finish(task)
     }

@@ -48,12 +48,29 @@ function onnxWorkerLaunch(): SpecializedWorkerLaunch {
 }
 
 const onnxWorker = new SpecializedWorkerClient(onnxWorkerLaunch)
+const secondaryOnnxWorker = new SpecializedWorkerClient(onnxWorkerLaunch)
 
 export function shutdownSpecializedSegmentationWorker(): void {
   onnxWorker.shutdown()
+  secondaryOnnxWorker.shutdown()
 }
 
 export async function segmentSpecializedInWorker(
+  input: SpecializedSegmentationInput,
+  signal?: AbortSignal,
+): ReturnType<typeof segmentSpecializedWithWorker> {
+  return segmentSpecializedWithWorker(onnxWorker, input, signal)
+}
+
+export async function segmentSpecializedInSecondaryWorker(
+  input: SpecializedSegmentationInput,
+  signal?: AbortSignal,
+): ReturnType<typeof segmentSpecializedWithWorker> {
+  return segmentSpecializedWithWorker(secondaryOnnxWorker, input, signal)
+}
+
+async function segmentSpecializedWithWorker(
+  worker: SpecializedWorkerClient,
   input: SpecializedSegmentationInput,
   signal?: AbortSignal,
 ): Promise<{
@@ -83,7 +100,7 @@ export async function segmentSpecializedInWorker(
       outputSize: input.outputSize,
     }
     const attempt = await runSpecializedWorkerAttempt(
-      onnxWorker,
+      worker,
       command,
       outputPath,
       input.outputSize * input.outputSize * (input.backend === 'yolo26-instances' ? 2 : 1),

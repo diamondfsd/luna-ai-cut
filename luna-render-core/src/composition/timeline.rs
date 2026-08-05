@@ -67,7 +67,16 @@ fn mask_track_transform(track: Option<&MaskTrack>, time: f64) -> crate::RenderMa
     }
 }
 
-fn mask_timeline_path(timeline: &MaskTimeline, time: f64) -> Option<String> {
+fn mask_timeline_transform(transform: &MaskTimelineTransform) -> crate::RenderMaskTransform {
+    crate::RenderMaskTransform {
+        translate_x: transform.translate_x,
+        translate_y: transform.translate_y,
+        scale: transform.scale.clamp(0.1, 10.0),
+        rotation: transform.rotation,
+    }
+}
+
+fn mask_timeline_frame(timeline: &MaskTimeline, time: f64) -> Option<&MaskTimelineFrame> {
     if timeline.version != 1
         || timeline.frames.is_empty()
         || time < timeline.start_time
@@ -83,7 +92,6 @@ fn mask_timeline_path(timeline: &MaskTimeline, time: f64) -> Option<String> {
                 .abs()
                 .total_cmp(&(right.time - time).abs())
         })
-        .and_then(|frame| frame.path.clone())
 }
 
 fn ease_in_out_cubic(value: f64) -> f64 {
@@ -339,10 +347,18 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 1.0
             };
             let video_time = layer_time(&layer.source, time);
+            let timeline_frame = layer
+                .mask_timeline
+                .as_ref()
+                .and_then(|timeline| mask_timeline_frame(timeline, video_time));
             let mask_path = match layer.mask_timeline.as_ref() {
-                Some(timeline) => mask_timeline_path(timeline, video_time)?,
+                Some(_) => timeline_frame?.path.clone()?,
                 None => layer.mask_path.clone().unwrap_or_default(),
             };
+            let mask_transform = timeline_frame
+                .and_then(|frame| frame.transform.as_ref())
+                .map(mask_timeline_transform)
+                .unwrap_or_else(|| mask_track_transform(layer.mask_track.as_ref(), video_time));
             Some(PreviewLayerInput {
                 layer_type: layer.layer_type.clone(),
                 precompose_group: layer.precompose_group.clone(),
@@ -369,7 +385,7 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
                 mask_opacity: layer.mask_opacity.unwrap_or(1.0).clamp(0.0, 1.0),
                 mask_inverted: layer.mask_inverted.unwrap_or(false),
                 mask_feather: layer.mask_feather.unwrap_or(0.0).clamp(0.0, 100.0),
-                mask_transform: mask_track_transform(layer.mask_track.as_ref(), video_time),
+                mask_transform,
                 pixel_stretch: layer.pixel_stretch.clone(),
                 pixel_flow: layer.pixel_flow.clone().map(|mut effect| {
                     effect.progress = Some((video_time / effect.duration.max(0.1)).clamp(0.0, 1.0));
@@ -401,9 +417,9 @@ pub(crate) fn composition_layers(input: &CompositionInput, time: f64) -> Vec<Pre
 #[cfg(test)]
 mod tests {
     use super::{
-        composition_layers, layer_time, mask_timeline_path, mask_track_transform, reveal_progress,
+        composition_layers, layer_time, mask_timeline_frame, mask_track_transform, reveal_progress,
         CompositionInput, CompositionReveal, CompositionSource, CompositionSourceTime,
-        MaskTimeline, MaskTimelineFrame, MaskTrack, MaskTrackKeyframe,
+        MaskTimeline, MaskTimelineFrame, MaskTimelineTransform, MaskTrack, MaskTrackKeyframe,
     };
 
     fn sample_mask_track() -> MaskTrack {
@@ -473,27 +489,38 @@ mod tests {
                 MaskTimelineFrame {
                     time: 0.0,
                     path: Some("face-0.pgm".to_string()),
+                    transform: None,
                 },
                 MaskTimelineFrame {
                     time: 1.0,
                     path: None,
+                    transform: None,
                 },
                 MaskTimelineFrame {
                     time: 2.0,
                     path: Some("face-2.pgm".to_string()),
+                    transform: Some(MaskTimelineTransform {
+                        translate_x: 0.2,
+                        translate_y: 0.1,
+                        scale: 1.1,
+                        rotation: 0.05,
+                        confidence: 0.9,
+                    }),
                 },
             ],
         };
         assert_eq!(
-            mask_timeline_path(&timeline, 0.2).as_deref(),
+            mask_timeline_frame(&timeline, 0.2).and_then(|frame| frame.path.as_deref()),
             Some("face-0.pgm")
         );
-        assert_eq!(mask_timeline_path(&timeline, 1.0), None);
+        assert_eq!(mask_timeline_frame(&timeline, 1.0).and_then(|frame| frame.path.as_deref()), None);
         assert_eq!(
-            mask_timeline_path(&timeline, 1.8).as_deref(),
+            mask_timeline_frame(&timeline, 1.8).and_then(|frame| frame.path.as_deref()),
             Some("face-2.pgm")
         );
-        assert_eq!(mask_timeline_path(&timeline, 2.1), None);
+        assert!(mask_timeline_frame(&timeline, 2.1).is_none());
+        let transform = timeline.frames[2].transform.as_ref().expect("tracked frame");
+        assert_eq!(transform.translate_x, 0.2);
     }
 
     fn staged_reveal() -> CompositionReveal {

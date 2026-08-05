@@ -1,13 +1,14 @@
 import type { ColorMaskTimeline, EditPipeline } from '../shared/editPipeline'
-import { maskTimelineSampleTimes } from '../mask/maskTimeline'
 import {
   createBeautyMaskLayer,
   replaceVideoBeautyLayers,
   type BeautyParameters,
 } from './beautyLayers'
 
-const VIDEO_BEAUTY_SAMPLE_INTERVAL = 0.5
+const FULL_REFRESH_INTERVAL = 1
+const FLOW_SAMPLE_INTERVAL = 1 / 8
 const ACTIVE_MASK_THRESHOLD = 16
+const VIDEO_END_MARGIN = 0.05
 
 interface AnalyzeVideoBeautyOptions {
   operationId: string
@@ -20,89 +21,155 @@ interface AnalyzeVideoBeautyOptions {
   shouldContinue: () => boolean
   onRequestStart: (requestId: string) => void
   onRequestEnd: (requestId: string) => void
+  onTrackingStart: (requestId: string) => void
+  onTrackingEnd: (requestId: string) => void
   onProgress?: (completed: number, total: number) => void
+  onPartial?: (layers: EditPipeline['beautyMasks'], completed: number, total: number) => void
 }
 
-function hasActivePixels(buffer: ArrayBuffer): boolean {
-  return new Uint8Array(buffer).some((value) => value >= ACTIVE_MASK_THRESHOLD)
+function hasActivePixels(bytes: Uint8Array): boolean {
+  return bytes.some((value) => value >= ACTIVE_MASK_THRESHOLD)
 }
 
-export async function analyzeVideoBeauty({
-  operationId,
-  projectId,
-  assetId,
-  filePath,
-  duration,
-  parameters,
-  enabled,
-  shouldContinue,
-  onRequestStart,
-  onRequestEnd,
-  onProgress,
-}: AnalyzeVideoBeautyOptions): Promise<EditPipeline['beautyMasks'] | null> {
-  const times = maskTimelineSampleTimes(duration, VIDEO_BEAUTY_SAMPLE_INTERVAL)
+function upsertFrame(frames: ColorMaskTimeline['frames'], frame: ColorMaskTimeline['frames'][number]): void {
+  const existing = frames.findIndex((candidate) => Math.abs(candidate.time - frame.time) < 0.000_1)
+  if (existing >= 0) frames[existing] = frame
+  else frames.push(frame)
+  frames.sort((left, right) => left.time - right.time)
+}
+
+export async function analyzeVideoBeauty(options: AnalyzeVideoBeautyOptions): Promise<EditPipeline['beautyMasks'] | null> {
+  const {
+    operationId, projectId, assetId, filePath, duration, parameters, enabled,
+    shouldContinue, onRequestStart, onRequestEnd, onTrackingStart, onTrackingEnd,
+    onProgress, onPartial,
+  } = options
   const faceFrames: ColorMaskTimeline['frames'] = []
   const bodyFrames: ColorMaskTimeline['frames'] = []
   const createdPaths: string[] = []
-  let dimensions = { width: 1024, height: 1024 }
+  const lastSafeTime = Math.max(0, duration - VIDEO_END_MARGIN)
+  const total = Math.max(1, Math.ceil(duration / FLOW_SAMPLE_INTERVAL))
+  let dimensions = { width: 512, height: 512 }
+  let fallbackPath: string | null = null
+  let published = false
+  let taskIndex = 0
+
+  const timeline = (frames: ColorMaskTimeline['frames'], endTime: number): ColorMaskTimeline => ({
+    version: 1,
+    startTime: 0,
+    endTime,
+    sampleInterval: FLOW_SAMPLE_INTERVAL,
+    frames: [...frames],
+  })
+  const buildLayers = (endTime: number): EditPipeline['beautyMasks'] => {
+    const firstFacePath = faceFrames.find((frame) => frame.path)?.path ?? fallbackPath!
+    const firstBodyPath = bodyFrames.find((frame) => frame.path)?.path ?? fallbackPath!
+    return replaceVideoBeautyLayers(
+      { ...createBeautyMaskLayer('face', { ...dimensions, path: firstFacePath }, parameters), enabled, timeline: timeline(faceFrames, endTime) },
+      { ...createBeautyMaskLayer('body', { ...dimensions, path: firstBodyPath }, parameters), enabled, timeline: timeline(bodyFrames, endTime) },
+    )
+  }
+  const publish = (coverageEnd: number) => {
+    const completed = Math.min(total, Math.max(1, Math.round(coverageEnd / Math.max(duration, FLOW_SAMPLE_INTERVAL) * total)))
+    const partial = buildLayers(coverageEnd)
+    onPartial?.(partial, completed, total)
+    published = Boolean(onPartial) || published
+    onProgress?.(completed, total)
+  }
 
   try {
-    for (let index = 0; index < times.length; index += 1) {
+    onProgress?.(0, total)
+    let currentTime = 0
+    while (currentTime <= lastSafeTime + 0.000_1) {
       if (!shouldContinue()) throw new Error('美颜识别已取消')
-      const time = times[index]
-      const requestId = `${operationId}-${index}`
+      const requestId = `${operationId}-segment-${taskIndex++}`
       onRequestStart(requestId)
+      let result
       try {
-        const result = await window.luna.workspace.analyzeBeauty({ requestId, filePath, frameTime: time })
-        if (!shouldContinue()) throw new Error('美颜识别已取消')
-        dimensions = { width: result.width, height: result.height }
-        const [face, body] = await Promise.all([
-          hasActivePixels(result.faceMask)
-            ? window.luna.workspace.saveColorMask(projectId, assetId, result.width, result.height, result.faceMask, 0)
-            : null,
-          hasActivePixels(result.skinMask)
-            ? window.luna.workspace.saveColorMask(projectId, assetId, result.width, result.height, result.skinMask, 0)
-            : null,
-        ])
-        if (face) createdPaths.push(face.path)
-        if (body) createdPaths.push(body.path)
-        faceFrames.push({ time, path: face?.path })
-        bodyFrames.push({ time, path: body?.path })
+        result = await window.luna.workspace.analyzeBeauty({ requestId, filePath, frameTime: currentTime, videoFrame: true })
       } finally {
         onRequestEnd(requestId)
       }
-      onProgress?.(index + 1, times.length)
+      if (!shouldContinue()) throw new Error('美颜识别已取消')
+
+      dimensions = { width: result.width, height: result.height }
+      const faceBytes = new Uint8Array(result.faceMask)
+      const bodyBytes = new Uint8Array(result.skinMask)
+      const faceActive = hasActivePixels(faceBytes)
+      const bodyActive = hasActivePixels(bodyBytes)
+      const [face, body] = await Promise.all([
+        faceActive ? window.luna.workspace.saveColorMask(projectId, assetId, result.width, result.height, result.faceMask, 0) : null,
+        bodyActive ? window.luna.workspace.saveColorMask(projectId, assetId, result.width, result.height, result.skinMask, 0) : null,
+      ])
+      if (face) createdPaths.push(face.path)
+      if (body) createdPaths.push(body.path)
+      if (!fallbackPath) {
+        const fallback = await window.luna.workspace.saveColorMask(
+          projectId, assetId, result.width, result.height,
+          new Uint8Array(result.width * result.height).buffer, 0,
+        )
+        fallbackPath = fallback.path
+        createdPaths.push(fallback.path)
+      }
+      upsertFrame(faceFrames, { time: currentTime, path: face?.path })
+      upsertFrame(bodyFrames, { time: currentTime, path: body?.path })
+
+      const refreshEnd = Math.min(lastSafeTime, currentTime + FULL_REFRESH_INTERVAL)
+      let nextTime = Math.min(lastSafeTime + FLOW_SAMPLE_INTERVAL, currentTime + FLOW_SAMPLE_INTERVAL)
+      let coverageEnd = Math.min(duration, currentTime + FLOW_SAMPLE_INTERVAL / 2)
+      if (faceActive && bodyActive && refreshEnd > currentTime + 0.000_1) {
+        const union = new Uint8Array(faceBytes.length)
+        for (let index = 0; index < union.length; index += 1) union[index] = Math.max(faceBytes[index], bodyBytes[index])
+        const trackingId = `${operationId}-track-${taskIndex++}`
+        onTrackingStart(trackingId)
+        try {
+          const tracked = await window.luna.workspace.trackMask({
+            requestId: trackingId,
+            filePath,
+            direction: 'forward',
+            anchorTime: currentTime,
+            endTime: refreshEnd,
+            maskWidth: result.width,
+            maskHeight: result.height,
+            maskBytes: union,
+          })
+          if (!shouldContinue()) throw new Error('美颜识别已取消')
+          for (const keyframe of tracked.keyframes) {
+            const transform = {
+              translateX: keyframe.translateX,
+              translateY: keyframe.translateY,
+              scale: keyframe.scale,
+              rotation: keyframe.rotation,
+              confidence: keyframe.confidence,
+            }
+            upsertFrame(faceFrames, { time: keyframe.time, path: face?.path, transform })
+            upsertFrame(bodyFrames, { time: keyframe.time, path: body?.path, transform })
+          }
+          const lastTrackedTime = tracked.keyframes[tracked.keyframes.length - 1]?.time ?? currentTime
+          coverageEnd = Math.min(duration, lastTrackedTime + FLOW_SAMPLE_INTERVAL / 2)
+          nextTime = tracked.completed
+            ? refreshEnd
+            : Math.min(lastSafeTime + FLOW_SAMPLE_INTERVAL, lastTrackedTime + FLOW_SAMPLE_INTERVAL)
+        } catch (error) {
+          if (!shouldContinue()) throw error
+          nextTime = Math.min(lastSafeTime + FLOW_SAMPLE_INTERVAL, currentTime + FLOW_SAMPLE_INTERVAL)
+        } finally {
+          onTrackingEnd(trackingId)
+        }
+      }
+
+      publish(coverageEnd)
+      if (nextTime > lastSafeTime + 0.000_1) break
+      currentTime = Math.max(currentTime + FLOW_SAMPLE_INTERVAL, nextTime)
     }
     if (!shouldContinue()) throw new Error('美颜识别已取消')
-
-    const needsFallback = !faceFrames.some((frame) => frame.path) || !bodyFrames.some((frame) => frame.path)
-    const fallback = needsFallback
-      ? await window.luna.workspace.saveColorMask(
-          projectId,
-          assetId,
-          dimensions.width,
-          dimensions.height,
-          new Uint8Array(dimensions.width * dimensions.height).buffer,
-          0,
-        )
-      : null
-    if (fallback) createdPaths.push(fallback.path)
-    if (!shouldContinue()) throw new Error('美颜识别已取消')
-    const timeline = (frames: ColorMaskTimeline['frames']): ColorMaskTimeline => ({
-      version: 1,
-      startTime: 0,
-      endTime: duration,
-      sampleInterval: VIDEO_BEAUTY_SAMPLE_INTERVAL,
-      frames,
-    })
-    const firstFacePath = faceFrames.find((frame) => frame.path)?.path ?? fallback!.path
-    const firstBodyPath = bodyFrames.find((frame) => frame.path)?.path ?? fallback!.path
-    return replaceVideoBeautyLayers(
-      { ...createBeautyMaskLayer('face', { ...dimensions, path: firstFacePath }, parameters), enabled, timeline: timeline(faceFrames) },
-      { ...createBeautyMaskLayer('body', { ...dimensions, path: firstBodyPath }, parameters), enabled, timeline: timeline(bodyFrames) },
-    )
+    onPartial?.(buildLayers(duration), total, total)
+    onProgress?.(total, total)
+    return buildLayers(duration)
   } catch (error) {
-    await Promise.all(createdPaths.map((path) => window.luna.workspace.deleteColorMask(projectId, path).catch(() => undefined)))
+    if (!published) {
+      await Promise.all(createdPaths.map((maskPath) => window.luna.workspace.deleteColorMask(projectId, maskPath).catch(() => undefined)))
+    }
     if (!shouldContinue()) return null
     throw error
   }
