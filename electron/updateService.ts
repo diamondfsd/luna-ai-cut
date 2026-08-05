@@ -41,6 +41,16 @@ interface GitCodeRelease {
   assets?: GitCodeAsset[]
 }
 
+interface GitHubRelease {
+  tag_name?: string
+  body?: string
+  published_at?: string
+  html_url?: string
+  prerelease?: boolean
+  draft?: boolean
+  assets?: Array<{ name: string; browser_download_url: string }>
+}
+
 /**
  * 从 GitCode API 获取最新 Release（含下载链接），无需鉴权
  *
@@ -57,6 +67,8 @@ async function checkGitCode(): Promise<UpdateCheckResult | null> {
   // 从新到旧遍历（列表按创建时间升序，reverse 后最新在前）
   for (const data of releases.reverse()) {
     const tagName = data.tag_name ?? ''
+    // 稳定版更新通道不接收 Beta/RC，避免测试版本推送给所有用户。
+    if (tagName.includes('-')) continue
     const latestVersion = tagName.replace(/^v/, '')
     if (compareVersions(latestVersion, currentVersion) <= 0) continue
 
@@ -82,7 +94,7 @@ async function checkGitCode(): Promise<UpdateCheckResult | null> {
         { headers: { Accept: 'application/vnd.github+json' } },
       )
       if (ghRes.ok) {
-        const ghData: any = await ghRes.json()
+        const ghData = await ghRes.json() as GitHubRelease
         releaseNotes = ghData.body?.slice(0, 500) || undefined
       }
     } catch {
@@ -115,7 +127,8 @@ async function checkGitHub(): Promise<UpdateCheckResult | null> {
   )
   if (!res.ok) return null
 
-  const data: any = await res.json()
+  const data = await res.json() as GitHubRelease
+  if (data.prerelease || data.draft) return null
   const tagName: string = data.tag_name ?? ''
   const latestVersion = tagName.replace(/^v/, '')
   const currentVersion = app.getVersion()
