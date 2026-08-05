@@ -362,7 +362,9 @@ export function register(): void {
   })
   ipcMain.handle('workspace:analyzeBeauty', async (event, request: WorkspaceBeautyAnalysisRequest) => {
     if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('美颜任务标识无效')
-    if (typeof request.filePath !== 'string' || request.filePath.length === 0 || VIDEO_EXTENSIONS.has(path.extname(request.filePath).toLowerCase())) throw new Error('美颜当前仅支持图片')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('美颜素材无效')
+    const frameTime = request.frameTime == null ? undefined : Number(request.frameTime)
+    if (frameTime !== undefined && (!Number.isFinite(frameTime) || frameTime < 0)) throw new Error('美颜取帧时间无效')
     const task = segmentationTasks.begin(event.sender.id, request.requestId)
     watchSender(event.sender)
     const reportProgress = (phase: 'model' | 'preparing' | 'recognizing', label: string, percent: number | null): void => {
@@ -370,7 +372,7 @@ export function register(): void {
       event.sender.send('workspace:segmentation-progress', { requestId: request.requestId, phase, label, percent })
     }
     try {
-      return await analyzeBeauty(request.requestId, request.filePath, task.controller.signal, reportProgress)
+      return await analyzeBeauty(request.requestId, request.filePath, task.controller.signal, reportProgress, frameTime)
     } finally {
       segmentationTasks.finish(task)
     }

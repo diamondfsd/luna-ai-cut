@@ -83,6 +83,20 @@ export interface ColorMaskTrack {
   keyframes: ColorMaskTrackKeyframe[]
 }
 
+export interface ColorMaskTimelineFrame {
+  time: number
+  /** 缺少路径表示该采样区间没有可用人物蒙版。 */
+  path?: string
+}
+
+export interface ColorMaskTimeline {
+  version: 1
+  startTime: number
+  endTime: number
+  sampleInterval: number
+  frames: ColorMaskTimelineFrame[]
+}
+
 export interface ColorMaskRef {
   path: string
   width: number
@@ -107,4 +121,5 @@ export interface ColorMaskLayer extends ColorMaskRef {
   componentSchemaVersion?: 1
   components?: ColorMaskComponent[]
   track?: ColorMaskTrack
+  timeline?: ColorMaskTimeline
 }

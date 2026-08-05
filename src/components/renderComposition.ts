@@ -83,6 +83,13 @@ export function buildCompositionFromPreviewLayers(
       maskInverted: layer.maskInverted,
       maskFeather: layer.maskFeather,
       maskTrack: layer.maskTrack,
+      maskTimeline: layer.maskTimeline ? {
+        ...layer.maskTimeline,
+        frames: layer.maskTimeline.frames.map((frame) => ({
+          ...frame,
+          path: frame.path ? toLocalPath(frame.path) : undefined,
+        })),
+      } : undefined,
       pixelStretch: layer.pixelStretch,
       pixelFlow: layer.pixelFlow,
       transform: layer.transform,

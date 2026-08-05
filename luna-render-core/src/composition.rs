@@ -10,7 +10,7 @@ pub use frame::{
 pub use image_export::{
     export_composition_image_async, ExportCompositionImageInput, ExportCompositionImageTask,
 };
-pub(crate) use mask_texture::bind_layer_mask_texture;
+pub(crate) use mask_texture::{bind_layer_mask_texture, retain_layer_mask_textures};
 #[cfg(target_os = "windows")]
 pub(crate) use timeline::is_video_source;
 pub(crate) use timeline::{composition_layers, mux_primary_audio};
@@ -103,6 +103,23 @@ pub struct MaskTrack {
 
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
+pub struct MaskTimelineFrame {
+    pub time: f64,
+    pub path: Option<String>,
+}
+
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
+pub struct MaskTimeline {
+    pub version: u32,
+    pub start_time: f64,
+    pub end_time: f64,
+    pub sample_interval: f64,
+    pub frames: Vec<MaskTimelineFrame>,
+}
+
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompositionLayer {
     pub id: Option<String>,
     pub layer_type: Option<String>,
@@ -129,6 +146,7 @@ pub struct CompositionLayer {
     pub mask_inverted: Option<bool>,
     pub mask_feather: Option<f64>,
     pub mask_track: Option<MaskTrack>,
+    pub mask_timeline: Option<MaskTimeline>,
     #[serde(rename = "pixelStretch", alias = "pixel_stretch")]
     pub pixel_stretch: Option<crate::RenderPixelStretch>,
     #[serde(rename = "pixelFlow", alias = "pixel_flow")]

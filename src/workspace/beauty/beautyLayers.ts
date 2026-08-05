@@ -95,13 +95,14 @@ export function beautyParameters(pipeline: EditPipeline): BeautyParameters {
 
 export function isBeautyAnalysisCurrent(pipeline: EditPipeline): boolean {
   const layers = beautyLayers(pipeline)
+  const hasVideoTimeline = Boolean(layers.face?.timeline?.frames.length && layers.body?.timeline?.frames.length)
   return Boolean(
-    layers.face
+    hasVideoTimeline || (layers.face
       && layers.body?.modelId === BEAUTY_BODY_MODEL_ID
       && layers.body.className === BEAUTY_MASK_VERSION
       && layers.acne
       && layers.spot
-      && layers.wrinkle,
+      && layers.wrinkle),
   )
 }
 
@@ -356,6 +357,10 @@ export function replaceBeautyLayers(
   wrinkle: ColorMaskLayer,
 ): ColorMaskLayer[] {
   return [wrinkle, acne, spot, face, body]
+}
+
+export function replaceVideoBeautyLayers(face: ColorMaskLayer, body: ColorMaskLayer): ColorMaskLayer[] {
+  return [face, body]
 }
 
 export interface BeautyClipboardSettings {
