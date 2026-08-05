@@ -3,6 +3,8 @@ export interface WorkspaceBeautyAnalysisRequest {
   filePath: string
   /** 视频素材从该时间点取帧；图片素材忽略。 */
   frameTime?: number
+  /** 视频逐帧分析只生成皮肤蒙版，并使用较轻量的输出尺寸。 */
+  videoFrame?: boolean
 }
 
 export interface WorkspaceBeautyAnalysisResult {

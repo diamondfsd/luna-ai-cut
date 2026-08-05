@@ -1,9 +1,6 @@
 import type { ColorMaskTimeline } from '../shared/editPipeline'
 
-export interface MaskTimelineSample {
-  time: number
-  path?: string
-}
+export type MaskTimelineSample = ColorMaskTimeline['frames'][number]
 
 /** Avoids requesting the exact media endpoint, where decoders do not return a frame. */
 export function maskTimelineSampleTimes(duration: number, interval: number): number[] {
@@ -28,6 +25,15 @@ export function normalizeMaskTimeline(
     .map((frame) => ({
       time: Math.max(0, Number(frame.time) || 0),
       ...(typeof frame.path === 'string' && frame.path ? { path: frame.path } : {}),
+      ...(frame.transform ? {
+        transform: {
+          translateX: Math.max(-2, Math.min(2, Number(frame.transform.translateX) || 0)),
+          translateY: Math.max(-2, Math.min(2, Number(frame.transform.translateY) || 0)),
+          scale: Math.max(0.1, Math.min(10, Number(frame.transform.scale) || 1)),
+          rotation: Number(frame.transform.rotation) || 0,
+          confidence: Math.max(0, Math.min(1, Number(frame.transform.confidence) || 0)),
+        },
+      } : {}),
     }))
     .sort((left, right) => left.time - right.time)
   if (frames.length === 0) return undefined

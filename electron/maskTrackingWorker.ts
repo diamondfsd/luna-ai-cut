@@ -9,6 +9,7 @@ interface TrackingWorkerInput {
   filePath: string
   direction: 'forward' | 'backward'
   anchorTime: number
+  endTime?: number
   duration: number
   sourceWidth: number
   sourceHeight: number
@@ -76,12 +77,20 @@ function resizedMask(width: number, height: number): Uint8Array {
   return result
 }
 
-async function decodeFrames(start: number, duration: number, width: number, height: number): Promise<Buffer[]> {
+async function decodeFrames(
+  start: number,
+  duration: number,
+  width: number,
+  height: number,
+  hardwareAcceleration = true,
+): Promise<Buffer[]> {
   if (canceled) throw new Error('蒙版追踪已取消')
   if (duration <= 0.0001) return []
   const frameBytes = width * height
   const args = [
-    '-hide_banner', '-loglevel', 'error', '-ss', start.toFixed(6), '-i', input.filePath,
+    '-hide_banner', '-loglevel', 'error',
+    ...(hardwareAcceleration ? ['-hwaccel', 'auto'] : []),
+    '-ss', start.toFixed(6), '-i', input.filePath,
     '-t', duration.toFixed(6), '-an', '-sn',
     '-vf', `fps=${SAMPLE_RATE},scale=${width}:${height}:flags=bicubic,format=gray`,
     '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1',
@@ -101,6 +110,10 @@ async function decodeFrames(start: number, duration: number, width: number, heig
         return
       }
       if (code !== 0) {
+        if (hardwareAcceleration) {
+          void decodeFrames(start, duration, width, height, false).then(resolve, reject)
+          return
+        }
         reject(new Error(Buffer.concat(errors).toString('utf8').trim() || `视频解码进程异常退出 (${signal ?? code})`))
         return
       }
@@ -226,16 +239,17 @@ async function run(): Promise<void> {
   let currentTime = input.anchorTime
   let stoppedReason: string | undefined
   const keyframes: TrackKeyframe[] = [keyframe(accumulated, input.anchorTime, 1, width, height)]
-  const targetSpan = input.direction === 'forward' ? input.duration - input.anchorTime : input.anchorTime
+  const forwardEnd = Math.min(input.duration, input.endTime ?? input.duration)
+  const targetSpan = input.direction === 'forward' ? forwardEnd - input.anchorTime : input.anchorTime
   let processedFrames = 0
 
   try {
-    while (input.direction === 'forward' ? currentTime < input.duration - 0.0001 : currentTime > 0.0001) {
+    while (input.direction === 'forward' ? currentTime < forwardEnd - 0.0001 : currentTime > 0.0001) {
       const chunkStart = input.direction === 'forward'
         ? currentTime + 1 / SAMPLE_RATE
         : Math.max(0, currentTime - CHUNK_SECONDS)
       const chunkEnd = input.direction === 'forward'
-        ? Math.min(input.duration, chunkStart + CHUNK_SECONDS)
+        ? Math.min(forwardEnd, chunkStart + CHUNK_SECONDS)
         : currentTime
       const decoded = await decodeFrames(chunkStart, Math.max(1 / SAMPLE_RATE, chunkEnd - chunkStart), width, height)
       const scheduled = decoded.map((bytes, index) => ({
@@ -248,6 +262,7 @@ async function run(): Promise<void> {
       for (const item of scheduled) {
         if (input.direction === 'backward' && item.time >= currentTime - 0.0001) continue
         if (input.direction === 'forward' && item.time <= currentTime + 0.0001) continue
+        if (input.direction === 'forward' && item.time > forwardEnd + 0.0001) continue
         const nextFrame = new cv.Mat(height, width, cv.CV_8UC1)
         nextFrame.data.set(item.bytes)
         const step = estimateStep(cv, currentFrame, nextFrame, points, width, height)

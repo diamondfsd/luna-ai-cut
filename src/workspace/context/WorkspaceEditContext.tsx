@@ -45,6 +45,7 @@ interface WorkspaceEditValue {
   undo: () => void
   redo: () => void
   commitPatch: (patch: PipelinePatch, group?: HistoryGroup) => void
+  commitUpdate: (update: (pipeline: EditPipeline) => EditPipeline, group?: HistoryGroup) => void
   applySystemUpdate: (update: (pipeline: EditPipeline) => EditPipeline) => void
   retainedMaskPaths: string[]
   resetPipeline: (pipeline?: EditPipeline) => void
@@ -122,6 +123,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     undo,
     redo,
     commitPatch,
+    commitUpdate,
     applySystemUpdate,
     retainedMaskPaths,
     resetPipeline,
@@ -262,6 +264,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     undo,
     redo,
     commitPatch,
+    commitUpdate,
     applySystemUpdate,
     retainedMaskPaths,
     resetPipeline,
@@ -294,6 +297,7 @@ export function WorkspaceEditProvider({ children }: { children: React.ReactNode 
     undo,
     redo,
     commitPatch,
+    commitUpdate,
     applySystemUpdate,
     retainedMaskPaths,
     resetPipeline,

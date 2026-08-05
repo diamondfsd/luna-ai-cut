@@ -74,6 +74,8 @@ export interface WorkspaceMaskTrackingRequest {
   filePath: string
   direction: 'forward' | 'backward'
   anchorTime: number
+  /** 向前追踪时的最远时间，不设则追踪到视频末尾。 */
+  endTime?: number
   maskWidth: number
   maskHeight: number
   maskBytes: ArrayBuffer | Uint8Array

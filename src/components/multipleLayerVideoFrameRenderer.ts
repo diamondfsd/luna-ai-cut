@@ -320,9 +320,9 @@ export async function renderMultipleLayerVideoFrame(
         if (layer.maskTimeline) continue
       }
     }
-    const maskTransform = layer.maskTrack
+    const maskTransform = timelineSample?.transform ?? (layer.maskTrack
       ? maskTrackTransformAt(layer.maskTrack, maskTime)
-      : undefined
+      : undefined)
 
     renderLayers.push({
       textureId,
