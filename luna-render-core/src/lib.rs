@@ -72,6 +72,14 @@ pub(crate) fn lock_preview<T>(
     lock_compositor(&COMPOSITOR_PREVIEW, "preview", f)
 }
 
+#[cfg(target_os = "windows")]
+pub(crate) fn current_preview_backend() -> Option<wgpu::Backend> {
+    COMPOSITOR_PREVIEW
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(Compositor::backend))
+}
+
 pub(crate) fn lock_export<T>(
     f: impl FnOnce(&mut Compositor) -> Result<T, String>,
 ) -> napi::Result<T> {
