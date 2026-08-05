@@ -107,6 +107,14 @@ export interface RenderMaskTrack {
   keyframes: RenderMaskTrackKeyframe[]
 }
 
+export interface RenderMaskTimeline {
+  version: 1
+  startTime: number
+  endTime: number
+  sampleInterval: number
+  frames: Array<{ time: number; path?: string }>
+}
+
 export interface PreviewLayer {
   layerType?: 'media' | 'local-color' | 'pixel-stretch' | 'pixel-flow' | 'shape' | 'text' | 'logo' | 'decoration'
   /** 相框版式中的素材用途，仅用于构建渲染层。 */
@@ -134,10 +142,13 @@ export interface PreviewLayer {
   reveal?: CompositionReveal
   color?: RenderColorAdjustments
   maskPath?: string
+  /** 工作区蒙版归属项目，仅供实时预览读取 PGM 蒙版。 */
+  maskProjectId?: string
   maskOpacity?: number
   maskInverted?: boolean
   maskFeather?: number
   maskTrack?: RenderMaskTrack
+  maskTimeline?: RenderMaskTimeline
   pixelStretch?: RenderPixelStretch
   pixelFlow?: RenderPixelFlow
   transform?: RenderLayerTransform
@@ -263,6 +274,7 @@ export interface CompositionLayer {
   maskInverted?: boolean
   maskFeather?: number
   maskTrack?: RenderMaskTrack
+  maskTimeline?: RenderMaskTimeline
   pixelStretch?: RenderPixelStretch
   pixelFlow?: RenderPixelFlow
   transform?: RenderLayerTransform

@@ -17,10 +17,15 @@ import {
   type BeautyParameters,
 } from './beautyLayers'
 import { analyzeBeautyForPipeline } from './beautyAnalysisClient'
+import { analyzeVideoBeauty } from './videoBeautyAnalysis'
 import { BEAUTY_MASK_VISUALIZATION } from './beautyMaskVisualization'
 import './BeautyPanel.css'
 
-export function BeautyPanel() {
+interface BeautyPanelProps {
+  duration?: number
+}
+
+export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
   const edit = useWorkspaceEdit()
   const setBeautyMaskPreview = edit.setBeautyMaskPreview
   const setBeautyRetouchActive = edit.setBeautyRetouchActive
@@ -30,7 +35,11 @@ export function BeautyPanel() {
   const layers = useMemo(() => beautyLayers(edit.pipeline), [edit.pipeline])
   const parameters = useMemo(() => beautyParameters(edit.pipeline), [edit.pipeline])
   const hasSkinAnalysis = Boolean(layers.face && layers.body)
-  const analyzed = useMemo(() => isBeautyAnalysisCurrent(edit.pipeline), [edit.pipeline])
+  const hasVideoTimeline = Boolean(layers.face?.timeline?.frames.length && layers.body?.timeline?.frames.length)
+  const analyzed = useMemo(
+    () => isBeautyAnalysisCurrent(edit.pipeline) && (activeAsset?.kind !== 'video' || hasVideoTimeline),
+    [activeAsset?.kind, edit.pipeline, hasVideoTimeline],
+  )
   const manualLayer = edit.pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_MANUAL_RETOUCH_LAYER_ID)
   const enabled = Boolean(layers.face?.enabled || layers.body?.enabled || manualLayer?.enabled)
   const [busy, setBusy] = useState(false)
@@ -38,11 +47,16 @@ export function BeautyPanel() {
   const [progressPercent, setProgressPercent] = useState<number | null>(null)
   const [analysisError, setAnalysisError] = useState('')
   const requestRef = useRef<string | null>(null)
+  const segmentationRequestIdsRef = useRef(new Set<string>())
   const attemptedAssetRef = useRef<string | null>(null)
 
   const cancel = useCallback(() => {
     const requestId = requestRef.current
     requestRef.current = null
+    for (const activeRequestId of segmentationRequestIdsRef.current) {
+      void window.luna.workspace.cancelSegmentation(activeRequestId)
+    }
+    segmentationRequestIdsRef.current.clear()
     if (requestId) void window.luna.workspace.cancelSegmentation(requestId)
     setBusy(false)
     setStatus('')
@@ -71,7 +85,7 @@ export function BeautyPanel() {
   }, [activeAsset?.id, activeAsset?.kind, analyzed, setBeautyMaskPreview, setBeautyRetouchActive])
 
   useEffect(() => window.luna.onWorkspaceSegmentationProgress((progress) => {
-    if (progress.requestId !== requestRef.current) return
+    if (!segmentationRequestIdsRef.current.has(progress.requestId)) return
     setStatus(progress.label)
     setProgressPercent(progress.percent)
   }), [])
@@ -81,8 +95,8 @@ export function BeautyPanel() {
   }, [edit])
 
   const analyze = useCallback(async () => {
-    if (!media.currentProject || !activeAsset || activeAsset.kind !== 'image') {
-      toast.error('请先在项目中打开一张图片')
+    if (!media.currentProject || !activeAsset || (activeAsset.kind !== 'image' && activeAsset.kind !== 'video')) {
+      toast.error('请先在项目中打开图片或视频')
       return
     }
     cancel()
@@ -94,19 +108,42 @@ export function BeautyPanel() {
     setProgressPercent(null)
     const currentParameters = hasSkinAnalysis ? parameters : DEFAULT_BEAUTY_PARAMETERS
     try {
-      const beautyMasks = await analyzeBeautyForPipeline({
-        requestId,
-        projectId: media.currentProject.id,
-        assetId: activeAsset.id,
-        filePath: activeAsset.path,
-        parameters: currentParameters,
-        onStatus: (nextStatus) => {
-          setStatus(nextStatus)
-          setProgressPercent(null)
-        },
-        shouldContinue: () => requestRef.current === requestId,
-      })
+      let beautyMasks: typeof edit.pipeline.beautyMasks | null
+      if (activeAsset.kind === 'video') {
+        const sourceDuration = duration > 0 ? duration : await window.luna.workspace.getVideoDuration(activeAsset.path)
+        setStatus('正在逐段识别人脸和皮肤')
+        beautyMasks = await analyzeVideoBeauty({
+          operationId: requestId,
+          projectId: media.currentProject.id,
+          assetId: activeAsset.id,
+          filePath: activeAsset.path,
+          duration: sourceDuration,
+          parameters: currentParameters,
+          enabled: true,
+          shouldContinue: () => requestRef.current === requestId,
+          onRequestStart: (activeRequestId) => segmentationRequestIdsRef.current.add(activeRequestId),
+          onRequestEnd: (activeRequestId) => segmentationRequestIdsRef.current.delete(activeRequestId),
+          onProgress: (completed, total) => setProgressPercent(Math.round(completed / total * 100)),
+        })
+      } else {
+        segmentationRequestIdsRef.current.add(requestId)
+        const beautyResult = await analyzeBeautyForPipeline({
+          requestId,
+          projectId: media.currentProject.id,
+          assetId: activeAsset.id,
+          filePath: activeAsset.path,
+          parameters: currentParameters,
+          onStatus: (nextStatus) => {
+            setStatus(nextStatus)
+            setProgressPercent(null)
+          },
+          shouldContinue: () => requestRef.current === requestId,
+        })
+        segmentationRequestIdsRef.current.delete(requestId)
+        beautyMasks = beautyResult?.layers ?? null
+      }
       if (beautyMasks) {
+        if (requestRef.current !== requestId) return
         const manual = edit.pipeline.beautyMasks.find((layer) => layer.id === BEAUTY_MANUAL_RETOUCH_LAYER_ID)
         edit.commitPatch({ beautyMasks: manual ? [manual, ...beautyMasks] : beautyMasks })
       }
@@ -117,13 +154,14 @@ export function BeautyPanel() {
       toast.error(message)
     } finally {
       if (requestRef.current === requestId) {
+        segmentationRequestIdsRef.current.clear()
         requestRef.current = null
         setBusy(false)
         setStatus('')
         setProgressPercent(null)
       }
     }
-  }, [activeAsset, cancel, edit, hasSkinAnalysis, media.currentProject, parameters])
+  }, [activeAsset, cancel, duration, edit, hasSkinAnalysis, media.currentProject, parameters])
 
   useEffect(() => {
     if (analyzed || busy || activeAsset?.kind !== 'image' || !media.currentProject) return
@@ -158,7 +196,7 @@ export function BeautyPanel() {
       <div className="beauty-panel-summary">
         <div>
           <strong>自然美颜</strong>
-          <span>{analyzed ? '已识别人脸和皮肤' : '本地识别人脸和皮肤'}</span>
+          <span>{analyzed ? '已识别人脸和皮肤' : activeAsset?.kind === 'video' ? '识别整段视频中的人脸和皮肤' : '本地识别人脸和皮肤'}</span>
         </div>
         {analyzed && <Switch checked={enabled} onCheckedChange={setEnabled} ariaLabel="启用美颜" />}
       </div>
@@ -191,6 +229,11 @@ export function BeautyPanel() {
             重试识别
           </Button>
         </div>
+      )}
+      {!busy && !analyzed && !analysisError && activeAsset?.kind === 'video' && (
+        <Button variant="primary" size="compact" icon={<ScanFace size={16} />} onClick={() => void analyze()}>
+          识别整段视频
+        </Button>
       )}
 
       {analyzed && (
@@ -270,7 +313,7 @@ export function BeautyPanel() {
             formatValue={(value) => String(value)}
           />
           </Accordion>
-          <Accordion
+          {activeAsset?.kind === 'image' && <Accordion
             title="局部修复"
             defaultOpen
             modified={Boolean(manualLayer)}
@@ -307,7 +350,7 @@ export function BeautyPanel() {
               onChange={edit.setBeautyRetouchBrushSize}
               formatValue={(value) => String(value)}
             />
-          </Accordion>
+          </Accordion>}
         </>
       )}
     </div>

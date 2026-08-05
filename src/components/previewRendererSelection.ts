@@ -1,13 +1,10 @@
 import type { PreviewLayer } from '../shared/types'
 
-/** 视频蒙版需要走支持 maskPath 和线性蒙版纹理的 composition 渲染入口。 */
+/** 实时预览已能上传蒙版纹理；仅调用方明确要求时使用合成解码器。 */
 export function requiresCompositionVideoRenderer(
   isDisplayVideo: boolean,
-  layers: PreviewLayer[],
+  _layers: PreviewLayer[],
   keepCompositionRenderer = false,
 ): boolean {
-  return isDisplayVideo && (
-    keepCompositionRenderer
-    || layers.some((layer) => layer.isVideo && Boolean(layer.maskPath))
-  )
+  return isDisplayVideo && keepCompositionRenderer
 }

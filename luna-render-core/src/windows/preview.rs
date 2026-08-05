@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
-use crate::composition::{composition_layers, CompositionInput};
+use crate::composition::{composition_layers, retain_layer_mask_textures, CompositionInput};
 use crate::compositor::{
     is_optional_positioned_asset, is_procedural_layer_type,
     tolerate_optional_positioned_asset_error, Compositor, PreviewTextureInfo,
@@ -208,6 +208,7 @@ impl NativePreviewRuntime {
         let output_width = self.surface.width;
         let output_height = self.surface.height;
         let layer_inputs = composition_layers(&self.composition, time);
+        retain_layer_mask_textures(&mut self.compositor, &mut self.mask_textures, &layer_inputs);
         let mut source_layers = Vec::with_capacity(layer_inputs.len());
         let mut texture_ids = Vec::new();
         let mut leases: Vec<D3d12TextureLease> = Vec::new();

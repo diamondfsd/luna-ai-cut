@@ -26,7 +26,7 @@ export type { MediaResolution } from './previewStageGeometry'
 export type { PreviewStageHandle, PreviewStageProps } from './previewStageTypes'
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   function PreviewStage(
-    { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
+    { url, active = true, isLivePhoto: isLivePhotoOverride, pending = false, extraLayers, pipeline, maskProjectId, cropActive, hideControls, onMetricsChange, onMediaSize, renderOverlay, viewScale = 'fit', onViewScaleChange, onFitScaleChange, viewportKey, previewMaxSide = 1440, keepCompositionVideoRenderer = false, onPlayStateChange }: PreviewStageProps,
     ref,
   ) {
   const { settings } = useApp()
@@ -285,7 +285,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
       main[0] = cropActive
         ? styledMain
         : applyBorderMediaLayout(styledMain, pipeline.border)
-      main.splice(1, 0, ...buildLocalColorLayers(main[0], pipeline))
+      main.splice(1, 0, ...buildLocalColorLayers(main[0], pipeline).map((layer) => ({ ...layer, maskProjectId })))
     }
     const m = main[0]
     if (!m) {
@@ -302,13 +302,14 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
     const cH = canvasFrame?.dstH ?? 1
     const adjusted = extraLayers.map((l) => ({
       ...l,
+      maskProjectId: l.maskPath || l.maskTimeline ? maskProjectId : l.maskProjectId,
       dstX: cX + l.dstX * cW,
       dstY: cY + l.dstY * cH,
       dstW: l.dstW * cW,
       dstH: l.dstH * cH,
     }))
     return [...main, ...adjusted]
-  }, [cropActive, extraLayers, pipeline, restoreLutFilePath, lutFilePath])
+  }, [cropActive, extraLayers, pipeline, restoreLutFilePath, lutFilePath, maskProjectId])
 
   const layers = useMemo(() => {
     if (pending || !resolution) return []

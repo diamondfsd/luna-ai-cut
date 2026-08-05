@@ -4,13 +4,18 @@ import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { buildMaskOverlayPreview } from '../mask/maskOverlayPreview'
+import { maskTimelineSampleAt } from '../mask/maskTimeline'
 import { BEAUTY_MASK_VISUALIZATION } from './beautyMaskVisualization'
 import './BeautyMaskOverlay.css'
 
 const PREVIEW_MAX_SIDE = 512
 const OVERLAY_OPACITY = 0.62
 
-export function BeautyMaskOverlay() {
+interface BeautyMaskOverlayProps {
+  currentTime?: number
+}
+
+export function BeautyMaskOverlay({ currentTime = 0 }: BeautyMaskOverlayProps) {
   const canvas = useWorkspaceCanvas()
   const edit = useWorkspaceEdit()
   const media = useWorkspaceMedia()
@@ -49,12 +54,14 @@ export function BeautyMaskOverlay() {
 
     const visibleMasks = BEAUTY_MASK_VISUALIZATION.flatMap((item) => {
       const layer = edit.pipeline.beautyMasks.find((candidate) => candidate.id === item.id)
-      return layer && !layer.loadError ? [{ item, layer }] : []
+      const timelineSample = maskTimelineSampleAt(layer?.timeline, currentTime)
+      const path = layer?.timeline ? timelineSample?.path : layer?.path
+      return layer && path && !layer.loadError ? [{ item, layer, path }] : []
     })
-    void Promise.all(visibleMasks.map(async ({ item, layer }) => ({
+    void Promise.all(visibleMasks.map(async ({ item, layer, path }) => ({
       item,
       layer,
-      data: new Uint8Array((await window.luna.workspace.loadColorMask(media.currentProject?.id ?? '', layer.path)).bytes),
+      data: new Uint8Array((await window.luna.workspace.loadColorMask(media.currentProject?.id ?? '', path)).bytes),
     }))).then((loaded) => {
       if (cancelled) return
       const image = context.createImageData(displaySize.width, displaySize.height)
@@ -88,7 +95,7 @@ export function BeautyMaskOverlay() {
       if (!cancelled) element.dataset.loadError = 'true'
     })
     return () => { cancelled = true }
-  }, [canvas.sourceAspect, displaySize, edit.pipeline.beautyMasks, edit.pipeline.transform, media.currentProject?.id])
+  }, [canvas.sourceAspect, currentTime, displaySize, edit.pipeline.beautyMasks, edit.pipeline.transform, media.currentProject?.id])
 
   return (
     <div

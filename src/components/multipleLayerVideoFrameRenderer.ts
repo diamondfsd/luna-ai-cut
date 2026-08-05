@@ -1,6 +1,8 @@
 import { compositionRevealProgress } from '../lib/revealProgress'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
 import type { PreviewLayer } from '../shared/types'
+import { maskTrackTransformAt } from '../workspace/mask/maskTrack'
+import { maskTimelineSampleAt } from '../workspace/mask/maskTimeline'
 import { compositionTimeForVideoLayer } from './previewLayerTiming'
 
 const DEFAULT_PREVIEW_MAX_SIDE = 1280
@@ -129,10 +131,10 @@ export function computeLayerDecodeMaxSide(
   return Math.min(Math.round(Math.max(displayWidth, displayHeight, 1) * quality), outputMaxSide)
 }
 
-export function videoLayerKey(layer: PreviewLayer, index: number): string {
+export function videoLayerKey(layer: PreviewLayer): string {
   return layer.videoSourceKey
     ? `shared_${layer.videoSourceKey}_${layer.filePath}`
-    : `v${index}_${layer.filePath}`
+    : `v_${layer.filePath}_${layer.videoTime ?? 0}`
 }
 
 export function describeVideoLoadFailure(filePath: string, error: MediaError | null): string {
@@ -167,6 +169,29 @@ async function loadImageTexture(
     imageData.data.byteLength,
   )
   const textureId = await lrc.loadTexture(rgba as unknown as Buffer, width, height)
+  imageTextures.set(filePath, textureId)
+  return textureId
+}
+
+async function loadMaskTexture(
+  lrc: LunaRenderCore,
+  imageTextures: Map<string, number>,
+  projectId: string,
+  filePath: string,
+): Promise<number> {
+  const cached = imageTextures.get(filePath)
+  if (cached !== undefined) return cached
+  const mask = await window.luna.workspace.loadColorMask(projectId, filePath)
+  const source = new Uint8Array(mask.bytes)
+  const rgba = new Uint8Array(source.length * 4)
+  for (let index = 0; index < source.length; index += 1) {
+    const offset = index * 4
+    rgba[offset] = source[index]
+    rgba[offset + 1] = source[index]
+    rgba[offset + 2] = source[index]
+    rgba[offset + 3] = 255
+  }
+  const textureId = await lrc.loadTexture(rgba as unknown as Buffer, mask.width, mask.height)
   imageTextures.set(filePath, textureId)
   return textureId
 }
@@ -244,7 +269,7 @@ export async function renderMultipleLayerVideoFrame(
   const primaryVideoIndex = layers.findIndex((layer) => layer.isVideo)
   const primaryVideoLayer = primaryVideoIndex >= 0 ? layers[primaryVideoIndex] : undefined
   const primaryVideo = primaryVideoLayer
-    ? videoStates.get(videoLayerKey(primaryVideoLayer, primaryVideoIndex))?.video
+    ? videoStates.get(videoLayerKey(primaryVideoLayer))?.video
     : undefined
   const frameCompositionTime = Number.isFinite(compositionTime)
     ? Math.max(0, compositionTime!)
@@ -255,10 +280,11 @@ export async function renderMultipleLayerVideoFrame(
   for (let index = 0; index < layers.length; index++) {
     const layer = layers[index]
     let textureId: number
-    if (layer.layerType && layer.layerType !== 'media') {
+    const usesSourceTexture = !layer.layerType || layer.layerType === 'media' || layer.layerType === 'local-color'
+    if (!usesSourceTexture) {
       textureId = 0
     } else if (layer.isVideo) {
-      const key = videoLayerKey(layer, index)
+      const key = videoLayerKey(layer)
       const entry = videoStates.get(key)
       if (!entry?.ready) continue
       const sharedTexture = frameVideoTextures.get(key)
@@ -280,6 +306,24 @@ export async function renderMultipleLayerVideoFrame(
       }
     }
 
+    const maskTime = Math.max(0, (layer.videoTime ?? 0) + frameCompositionTime - (layer.videoOffset ?? 0))
+    const timelineSample = maskTimelineSampleAt(layer.maskTimeline, maskTime)
+    if (layer.maskTimeline && !timelineSample?.path) continue
+    const resolvedMaskPath = timelineSample?.path ?? layer.maskPath
+    let maskTextureId: number | undefined
+    if (resolvedMaskPath && layer.maskProjectId) {
+      usedImageTextures.add(resolvedMaskPath)
+      try {
+        maskTextureId = await loadMaskTexture(lrc, imageTextures, layer.maskProjectId, resolvedMaskPath)
+      } catch {
+        console.warn('[MultipleLayerVideoPreviewLrcRender] failed to load mask:', resolvedMaskPath)
+        if (layer.maskTimeline) continue
+      }
+    }
+    const maskTransform = layer.maskTrack
+      ? maskTrackTransformAt(layer.maskTrack, maskTime)
+      : undefined
+
     renderLayers.push({
       textureId,
       fit: layer.fit,
@@ -296,6 +340,11 @@ export async function renderMultipleLayerVideoFrame(
       revealProgress: layer.reveal ? compositionRevealProgress(layer.reveal, frameCompositionTime) : 1,
       zIndex: layer.zIndex ?? 0,
       color: layer.color,
+      maskTextureId,
+      maskOpacity: layer.maskOpacity,
+      maskInverted: layer.maskInverted,
+      maskFeather: layer.maskFeather,
+      maskTransform,
       transform: layer.transform,
       positioning: layerPositioning(layer),
       restoreLutId: layer.restoreLutId,

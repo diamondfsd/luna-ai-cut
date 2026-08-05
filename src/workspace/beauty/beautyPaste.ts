@@ -27,7 +27,7 @@ export async function prepareBeautyPasteTargets(
       parameters: beauty.parameters,
       enabled: beauty.enabled,
     })
-    if (beautyMasks) output.set(target.index, { ...target.pipeline, beautyMasks })
+    if (beautyMasks) output.set(target.index, { ...target.pipeline, beautyMasks: beautyMasks.layers })
   }
   onProgress?.(targets.length, targets.length)
   return output
