@@ -1,6 +1,6 @@
 import { filePathToPreviewUrl } from '../../../lib/fileUtils'
 import type { WorkspaceMediaAsset } from '../../../shared/types'
-import { createDefaultPipeline, mergePipeline, type EditPipeline, type PipelinePatch } from '../../shared/editPipeline'
+import { createDefaultPipeline, mergePipeline, normalizePersistedPipelinePatch, type EditPipeline } from '../../shared/editPipeline'
 
 export interface CreativeSlotSource {
   asset: WorkspaceMediaAsset
@@ -16,8 +16,7 @@ export interface CreativeSlotTransform {
 export type CreativePreviewSource = HTMLImageElement | HTMLVideoElement
 
 export function normalizeCreativePipeline(value: unknown): EditPipeline {
-  if (!value || typeof value !== 'object') return createDefaultPipeline()
-  return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
+  return mergePipeline(createDefaultPipeline(), normalizePersistedPipelinePatch(value).patch)
 }
 
 export function assetPreviewUrl(asset: WorkspaceMediaAsset): string {

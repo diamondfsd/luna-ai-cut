@@ -6,7 +6,7 @@ import { PreviewStageError } from './PreviewStageError'
 import { useApp } from '../context/AppContext'
 import type { PreviewLayer } from '../shared/types'
 import { useIsLivePhoto } from '../shared/livePhoto'
-import { LivePhotoBadge, VideoControls } from '../ui'
+import { LivePhotoBadge, VideoControls, toast } from '../ui'
 import { isVideoPath } from '../lib/fileUtils'
 import { applyBorderMediaLayout, buildLocalColorPrecomposition, outputSizeForTransform, pipelineColorToRenderColor, pipelineTransformToRenderTransform } from '../workspace/shared/renderLayerPipeline'
 import { requiresCompositionVideoRenderer } from './previewRendererSelection'
@@ -33,13 +33,12 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const stageRef = useRef<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   // ── 媒体分辨率 ──
-
   // ── 加载状态（url 切换时自动 loading） ──
   const [loading, setLoading] = useState(false)
   const [renderedCanvasKey, setRenderedCanvasKey] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const previewErrorToastRef = useRef<string | null>(null)
   const prevUrlRef = useRef<string | null>(null)
-
   // ── 视频控件状态 ──
   const videoRef = useRef<HTMLMediaElement | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -58,7 +57,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const isDisplayVideo = displayUrl ? isVideoPath(displayUrl) : false
   const layoutUrl = livePlaying && liveVideoUrl ? url : displayUrl
   const resolution = usePreviewResolution(layoutUrl)
-
   useEffect(() => setNativePreviewFailed(false), [gpuPreviewEnabled])
   // 暴露给父组件的视频控制 API
   useImperativeHandle(ref, () => ({
@@ -229,6 +227,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   const canvasAwaitingRender = canvasRenderKey !== null && renderedCanvasKey !== canvasRenderKey
 
   function handleRender() {
+    previewErrorToastRef.current = null
     setRenderedCanvasKey(canvasRenderKey)
     setLoading(false)
     // 裁剪模式会在“最终裁剪画布”和“原始工作画布”之间切换。
@@ -243,6 +242,10 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
 
   function handleRenderFailure(reason: string) {
     console.warn('[PreviewStage] preview render failed', { reason })
+    if (previewErrorToastRef.current !== reason) {
+      previewErrorToastRef.current = reason
+      toast.error('预览暂时无法显示，请重试或重置当前素材')
+    }
     setPreviewError(reason)
     setRenderedCanvasKey(canvasRenderKey)
     setLoading(false)
@@ -250,6 +253,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(
   }
 
   useEffect(() => {
+    previewErrorToastRef.current = null
     setPreviewError(null)
   }, [displayUrl])
 
