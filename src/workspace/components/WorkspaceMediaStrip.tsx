@@ -2,8 +2,7 @@ import { FolderOpen } from 'lucide-react'
 import { type MouseEvent, useEffect, useRef, useState } from 'react'
 
 import type { WorkspaceMediaAsset, WorkspaceMediaKind } from '../../shared/types'
-import { mergePipeline, type EditPipeline } from '../shared/editPipeline'
-import type { PipelinePatch } from '../shared/editPipeline'
+import { mergePipeline, normalizePersistedPipelinePatch, type EditPipeline } from '../shared/editPipeline'
 import { createWorkspaceDefaultPipeline } from '../shared/workspaceDefaultPipeline'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { useApp } from '../../context/AppContext'
@@ -23,7 +22,7 @@ interface MediaFormatInfo {
 function isAssetModified(item: WorkspaceMediaAsset, defaultPipeline: EditPipeline): boolean {
   const raw = (item as unknown as { pipeline?: unknown }).pipeline
   if (!raw || typeof raw !== 'object') return false
-  const normalized = mergePipeline(structuredClone(defaultPipeline), raw as PipelinePatch)
+  const normalized = mergePipeline(structuredClone(defaultPipeline), normalizePersistedPipelinePatch(raw).patch)
   return JSON.stringify(normalized) !== JSON.stringify(defaultPipeline)
 }
 

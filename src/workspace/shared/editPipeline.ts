@@ -266,6 +266,37 @@ export function createDefaultPipeline(): EditPipeline {
   return structuredClone(DEFAULT_PIPELINE)
 }
 
+function hasCurrentGlowFields(color: unknown): boolean {
+  if (!color || typeof color !== 'object') return false
+  const value = color as Record<string, unknown>
+  return Number.isFinite(value.glowStrength)
+    && Number.isFinite(value.glowRadius)
+    && Number.isFinite(value.glowThreshold)
+}
+
+export function normalizePersistedPipelinePatch(value: unknown): {
+  patch: PipelinePatch
+  resetColor: boolean
+} {
+  if (!value || typeof value !== 'object') return { patch: {}, resetColor: false }
+  const patch = { ...(value as PipelinePatch) }
+  let resetColor = false
+  if (patch.color && !hasCurrentGlowFields(patch.color)) {
+    patch.color = structuredClone(DEFAULT_PIPELINE.color)
+    resetColor = true
+  }
+  for (const key of ['colorMasks', 'beautyMasks'] as const) {
+    const layers = patch[key]
+    if (!Array.isArray(layers)) continue
+    patch[key] = layers.map((layer) => {
+      if (!layer.color || hasCurrentGlowFields(layer.color)) return layer
+      resetColor = true
+      return { ...layer, color: structuredClone(DEFAULT_PIPELINE.color) }
+    })
+  }
+  return { patch, resetColor }
+}
+
 export const WHITE_BALANCE_DEFAULTS: Partial<EditPipeline['color']> = {
   whiteBalanceMode: 'custom',
   temperature: 0,

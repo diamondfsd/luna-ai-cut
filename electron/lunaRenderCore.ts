@@ -13,6 +13,7 @@ import {
   type LayerPositioningData,
   type RenderColorAdjustments,
   type RenderLayerTransform,
+  cleanNativeInputValue,
 } from './lunaRenderCoreNormalize'
 
 const require = createRequire(import.meta.url)
@@ -93,14 +94,7 @@ export interface CompositionInput {
 }
 
 export function cleanNativeInput<T>(value: T): T {
-  if (Array.isArray(value)) return value.map((item) => cleanNativeInput(item)) as T
-  if (!value || typeof value !== 'object') return value
-  const output: Record<string, unknown> = {}
-  for (const [key, item] of Object.entries(value)) {
-    if (item == null) continue
-    output[key] = cleanNativeInput(item)
-  }
-  return output as T
+  return cleanNativeInputValue(value)
 }
 
 export interface ResolvedRenderSource {

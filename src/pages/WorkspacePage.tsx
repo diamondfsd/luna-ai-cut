@@ -17,7 +17,7 @@ import { WorkspaceMediaProvider, useWorkspaceMedia } from '../workspace/context/
 import type { WorkspaceRouteState } from '../workspace/hooks/useProjectManager'
 import { WorkspaceCanvasProvider, useWorkspaceCanvas } from '../workspace/context/WorkspaceCanvasContext'
 import { WorkspaceMaskProvider, useWorkspaceMask } from '../workspace/context/WorkspaceMaskContext'
-import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline } from '../workspace/shared/editPipeline'
+import { createDefaultPipeline, DEFAULT_PIPELINE, mergePipeline, normalizePersistedPipelinePatch } from '../workspace/shared/editPipeline'
 import type { EditPipeline, PipelinePatch } from '../workspace/shared/editPipeline'
 import { updateProjectAssetPipeline } from '../workspace/shared/workspaceProjectPipeline'
 import { PreviewStage, type PreviewStageHandle } from '../components/PreviewStage'
@@ -59,8 +59,8 @@ import '../styles/workspace-loading.css'
 import '../styles/workspace-trim.css'
 
 function normalizePipeline(value: unknown, defaultPipeline: EditPipeline = createDefaultPipeline()): EditPipeline {
-  if (!value || typeof value !== 'object') return structuredClone(defaultPipeline)
-  return mergePipeline(createDefaultPipeline(), value as PipelinePatch)
+  const { patch } = normalizePersistedPipelinePatch(value)
+  return mergePipeline(structuredClone(defaultPipeline), patch)
 }
 
 function removalSourcePath(asset: WorkspaceProjectAsset | undefined, compareOriginal = false): string | undefined {
@@ -148,6 +148,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const [previewQuality, setPreviewQuality] = useState<WorkspacePreviewQuality>(() => normalizeWorkspacePreviewQuality(settings?.workspacePreviewQuality))
   const [runtimeResourceLoading, setRuntimeResourceLoading] = useState({ fonts: false, luts: false })
   const pasteInProgressRef = useRef(false)
+  const colorResetNoticeRef = useRef(new Set<string>())
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
   const activeSourcePath = removalSourcePath(activeProjectAsset, edit.compareOriginal) ?? media.activeMedia?.path
   useEffect(() => {
@@ -475,6 +476,11 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
     edit.setCropActive(false)
     edit.setTransformDraft(null)
     edit.setCropPreset('original')
+    const compatibility = normalizePersistedPipelinePatch(asset?.pipeline)
+    if (compatibility.resetColor && asset && !colorResetNoticeRef.current.has(asset.id)) {
+      colorResetNoticeRef.current.add(asset.id)
+      toast.show('当前素材的旧版调色参数已重置')
+    }
     edit.initializePipeline(normalizePipeline(asset?.pipeline, defaultPipelineRef.current))
     if (media.activeMedia && !isVideoPath(media.activeMedia.path)) {
       // 图片不显示截取，退出截取模式
