@@ -28,7 +28,9 @@ FetchContent_Declare(
 FetchContent_GetProperties(llama)
 if(NOT llama_POPULATED)
   FetchContent_Populate(llama)
-  add_subdirectory(${llama_SOURCE_DIR} ${llama_BINARY_DIR})
+  # The worker only links ggml. Keep llama's full model library out of the
+  # default build so packaging does not compile every models/*.cpp source.
+  add_subdirectory(${llama_SOURCE_DIR} ${llama_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
 find_package(Threads REQUIRED)
