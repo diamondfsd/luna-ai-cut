@@ -97,16 +97,6 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/**
- * 解析 hot 版本号，检查基础版本是否匹配当前 app 版本
- * "1.3.1-hot.2" → { appVersion: "1.3.1", hotBuild: 2 }
- */
-function parseHotVersion(version: string): { appVersion: string; hotBuild: number } | null {
-  const match = version.match(/^(\d+\.\d+\.\d+)-hot\.(\d+)$/)
-  if (!match) return null
-  return { appVersion: match[1], hotBuild: Number(match[2]) }
-}
-
 // ── GitCode API ──
 
 // ── GitCode API ──
@@ -192,8 +182,7 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   }
 
   // 检查版本是否匹配当前 app 版本
-  const parsed = parseHotVersion(manifest.version)
-  if (!parsed || !canLoadHotUpdate(appVersion, manifest.version)) {
+  if (!canLoadHotUpdate(appVersion, manifest.version)) {
     return null
   }
 
