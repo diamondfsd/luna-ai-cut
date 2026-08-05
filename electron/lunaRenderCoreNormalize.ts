@@ -113,6 +113,45 @@ export function normalizeColor(color?: Partial<RenderColorAdjustments>): RenderC
   }
 }
 
+const REQUIRED_COLOR_NUMBER_FIELDS = [
+  'exposure', 'black', 'brightness', 'contrast', 'saturation', 'vibrance',
+  'temperature', 'tint', 'highlights', 'shadows', 'whites', 'blacks',
+  'clarity', 'texture', 'sharpen', 'denoise',
+  'glowStrength', 'glowRadius', 'glowThreshold',
+  'gradeShadowsHue', 'gradeShadowsAmount', 'gradeMidHue', 'gradeMidAmount',
+  'gradeHighlightsHue', 'gradeHighlightsAmount', 'curveLift', 'curveContrast',
+  'levelsBlack', 'levelsGray', 'levelsWhite',
+] as const satisfies ReadonlyArray<keyof RenderColorAdjustments>
+
+export function normalizeColorForNative(color: Partial<RenderColorAdjustments>): {
+  color: RenderColorAdjustments
+  reset: boolean
+} {
+  const curve = color.curve
+  const compatible = REQUIRED_COLOR_NUMBER_FIELDS.every((key) => Number.isFinite(color[key]))
+    && curve !== undefined
+    && ['rgb', 'luminance', 'red', 'green', 'blue'].every((key) => Array.isArray(curve[key as keyof typeof curve]))
+    && Array.isArray(color.hslChannels)
+  return compatible
+    ? { color: normalizeColor(color), reset: false }
+    : { color: normalizeColor(), reset: true }
+}
+
+export function cleanNativeInputValue<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => cleanNativeInputValue(item)) as T
+  if (!value || typeof value !== 'object') return value
+  const output: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (item == null) continue
+    if (key === 'color' && typeof item === 'object' && !Array.isArray(item)) {
+      output[key] = cleanNativeInputValue(normalizeColorForNative(item as Partial<RenderColorAdjustments>).color)
+      continue
+    }
+    output[key] = cleanNativeInputValue(item)
+  }
+  return output as T
+}
+
 const DEFAULT_HSL_CHANNELS = [0, 30, 60, 120, 180, 240, 285, 320]
 
 function normalizeHslChannels(channels?: Array<{ hue?: number; hueShift?: number; saturation?: number; luminance?: number }>): RenderColorAdjustments['hslChannels'] {
