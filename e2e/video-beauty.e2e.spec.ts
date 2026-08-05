@@ -99,7 +99,8 @@ test('视频美颜支持边分析边调整并完整导出', async ({ lunaApp }) 
   for (let index = 0; index < parameterLabels.length; index += 1) {
     const input = lunaApp.page.getByLabel(parameterLabels[index])
     await input.fill(String(parameterValues[index]))
-    await input.blur()
+    await input.press('Enter')
+    await expect(input).toHaveValue(String(parameterValues[index]))
   }
   await expect(status).toBeHidden({ timeout: 180_000 })
   await expect(lunaApp.page.getByRole('button', { name: '重试识别', exact: true })).toHaveCount(0)

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   bodySkinMaskFromHumanLabels,
   faceSkinMaskFromSamples,
+  personMaskFromHumanLabels,
   softenBeautyMask,
 } from '../electron/beautySkinSegmentation.ts'
 
@@ -17,8 +18,18 @@ assert.deepEqual([...mask], [
   0, 0, 255, 255,
   0, 0, 255, 255,
 ])
+assert.deepEqual([...personMaskFromHumanLabels(labels, 2, 4)], [
+  255, 255, 255, 255,
+  255, 255, 255, 255,
+  0, 0, 255, 255,
+  0, 0, 255, 255,
+])
 assert.throws(
   () => bodySkinMaskFromHumanLabels(new Uint8Array(3), 2, 4),
+  /尺寸不一致/,
+)
+assert.throws(
+  () => personMaskFromHumanLabels(new Uint8Array(3), 2, 4),
   /尺寸不一致/,
 )
 
