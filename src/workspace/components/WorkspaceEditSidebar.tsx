@@ -147,11 +147,8 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
     ? 'color'
     : edit.activeTool
   const visibleToolItems = useMemo(
-    () => TOOL_ITEMS.filter((item) => (
-      (allowWatermark || item.value !== 'watermark')
-      && (beautyAllowed || item.value !== 'beauty')
-    )),
-    [allowWatermark, beautyAllowed],
+    () => allowWatermark ? TOOL_ITEMS : TOOL_ITEMS.filter((item) => item.value !== 'watermark'),
+    [allowWatermark],
   )
 
   useEffect(() => {
@@ -426,7 +423,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
                   size="compact"
                   icon={resourceLoading ? <Loader2 className="spin" size={20} /> : item.icon}
                   aria-label={item.label}
-                  disabled={resourceLoading || (item.value === 'mask' && !mask.available) || (item.value === 'removal' && mediaCtx.activeMedia?.kind !== 'image') || ((item.value === 'trim' || item.value === 'subtitles') && mediaCtx.activeMedia?.kind !== 'video')}
+                  disabled={resourceLoading || (item.value === 'mask' && !mask.available) || ((item.value === 'beauty' || item.value === 'removal') && mediaCtx.activeMedia?.kind !== 'image') || ((item.value === 'trim' || item.value === 'subtitles') && mediaCtx.activeMedia?.kind !== 'video')}
                   onClick={() => {
                     mask.setEditing(item.value === 'mask')
                     edit.selectTool(item.value, canvas.sourceAspect, mediaSize ?? undefined)
