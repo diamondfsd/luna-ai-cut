@@ -195,7 +195,12 @@ if (asrConfigure.status !== 0) {
   process.exit(1)
 }
 console.log('[build-native] cmake build Paraformer worker...')
-const asrBuild = spawnSync(cmakeBin, ['--build', asrBuildDir, '--config', 'Release', '--parallel'], {
+const asrBuild = spawnSync(cmakeBin, [
+  '--build', asrBuildDir,
+  '--config', 'Release',
+  '--target', 'luna-asr-worker',
+  '--parallel',
+], {
   cwd: root,
   stdio: 'inherit',
 })
