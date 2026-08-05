@@ -49,7 +49,8 @@ impl Compositor {
 
         let mut group_textures = std::collections::BTreeMap::<String, u32>::new();
         let mut temporary_texture_ids = Vec::with_capacity(groups.len());
-        for (group, inputs) in groups {
+        for (group, mut inputs) in groups {
+            inputs.sort_by_key(|layer| layer.z_index);
             let first = inputs
                 .first()
                 .ok_or_else(|| format!("precompose group {group} has no inputs"))?;
@@ -58,37 +59,44 @@ impl Compositor {
             })?;
             let width = source.width.max(1);
             let height = source.height.max(1);
-            let texture = create_rgba_texture(
-                &self.device,
-                "precomposed layer group",
-                width,
-                height,
-                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-                1,
-                true,
-            );
-            let previous_output = self.output_texture.replace((texture, width, height));
-            let render_result = self.render_flat_impl(width, height, &inputs, false, false);
-            let rendered = self.output_texture.take();
-            self.output_texture = previous_output;
-            render_result?;
-            let (texture, _, _) =
-                rendered.ok_or_else(|| format!("precompose group {group} produced no texture"))?;
+            let local_color_start = inputs
+                .iter()
+                .position(|layer| layer.layer_type.as_deref() == Some("local-color"));
+            let texture_id = if let Some(start) = local_color_start {
+                let mut current =
+                    self.render_precomposition_pass(width, height, &inputs[..start], &group)?;
+                temporary_texture_ids.push(current);
+                for local in &inputs[start..] {
+                    let mut background = local.clone();
+                    background.texture_id = current;
+                    background.layer_type = Some("media".to_string());
+                    background.color = None;
+                    background.mask_texture_id = None;
+                    background.mask_opacity = None;
+                    background.mask_inverted = None;
+                    background.mask_feather = None;
+                    background.blend_mode = Some("normal".to_string());
+                    background.opacity = 1.0;
+                    background.z_index = 0;
 
-            let texture_id = self.next_texture_id;
-            self.next_texture_id += 1;
-            self.textures.insert(
-                texture_id,
-                TextureEntry {
-                    texture,
-                    width,
-                    height,
-                    #[cfg(target_os = "windows")]
-                    external: false,
-                },
-            );
+                    let mut adjustment = local.clone();
+                    adjustment.texture_id = current;
+                    adjustment.z_index = 1;
+                    current = self.render_precomposition_pass(
+                        width,
+                        height,
+                        &[background, adjustment],
+                        &group,
+                    )?;
+                    temporary_texture_ids.push(current);
+                }
+                current
+            } else {
+                let texture_id = self.render_precomposition_pass(width, height, &inputs, &group)?;
+                temporary_texture_ids.push(texture_id);
+                texture_id
+            };
             group_textures.insert(group, texture_id);
-            temporary_texture_ids.push(texture_id);
         }
 
         let mut prepared = Vec::with_capacity(layers.len());
@@ -114,6 +122,47 @@ impl Compositor {
             }
         }
         Ok((prepared, temporary_texture_ids))
+    }
+
+    fn render_precomposition_pass(
+        &mut self,
+        width: u32,
+        height: u32,
+        layers: &[RenderLayer],
+        group: &str,
+    ) -> Result<u32, String> {
+        if layers.is_empty() {
+            return Err(format!("precompose group {group} has no base input"));
+        }
+        let texture = create_rgba_texture(
+            &self.device,
+            "precomposed layer group",
+            width,
+            height,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            1,
+            true,
+        );
+        let previous_output = self.output_texture.replace((texture, width, height));
+        let render_result = self.render_flat_impl(width, height, layers, false, false);
+        let rendered = self.output_texture.take();
+        self.output_texture = previous_output;
+        render_result?;
+        let (texture, _, _) =
+            rendered.ok_or_else(|| format!("precompose group {group} produced no texture"))?;
+        let texture_id = self.next_texture_id;
+        self.next_texture_id += 1;
+        self.textures.insert(
+            texture_id,
+            TextureEntry {
+                texture,
+                width,
+                height,
+                #[cfg(target_os = "windows")]
+                external: false,
+            },
+        );
+        Ok(texture_id)
     }
 
     fn render_flat_impl(
