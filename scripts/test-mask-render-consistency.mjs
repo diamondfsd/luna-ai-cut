@@ -126,6 +126,7 @@ function localLayer(sourcePath, maskPath, options = {}) {
     maskPath, maskOpacity: options.opacity ?? 1, maskInverted: options.inverted ?? false,
     maskFeather: options.feather ?? 0,
     maskTrack: options.maskTrack,
+    maskTimeline: options.maskTimeline,
   }
 }
 
@@ -307,6 +308,23 @@ try {
     mediaLayer(sourcePath), localLayer(sourcePath, rectMaskPath),
   ]))
   assert.ok(pixelDifference(base, normal).changed > 150, 'normal mask must change the selected region')
+  const timelineTransform = await renderAndMatchExport('timeline-transform', composition([
+    mediaLayer(sourcePath),
+    localLayer(sourcePath, rectMaskPath, {
+      maskTimeline: {
+        version: 1,
+        startTime: 0,
+        endTime: 1,
+        sampleInterval: 0.125,
+        frames: [{
+          time: 0,
+          path: rectMaskPath,
+          transform: { translateX: 0.1, translateY: 0, scale: 1, rotation: 0, confidence: 0.9 },
+        }],
+      },
+    }),
+  ]))
+  assert.ok(pixelDifference(normal, timelineTransform).changed > 0, 'timeline transform must move the selected region')
   const skinTextureBase = await renderAndMatchExport('skin-texture-base', composition([
     mediaLayer(skinTextureSourcePath),
   ]))

@@ -3,6 +3,8 @@ import cvModule from '@techstark/opencv-js'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { parentPort } from 'node:worker_threads'
 
+import { runDenseMaskTracking } from './denseMaskTracking'
+
 interface TrackingWorkerInput {
   requestId: string
   ffmpegPath: string
@@ -16,6 +18,10 @@ interface TrackingWorkerInput {
   maskWidth: number
   maskHeight: number
   maskBytes: Uint8Array
+  mode?: 'similarity' | 'dense-mask'
+  guideMaskBytes?: Uint8Array
+  guideMaskWidth?: number
+  guideMaskHeight?: number
   initialTransform?: {
     translateX: number
     translateY: number
@@ -221,7 +227,7 @@ function fitSimilarityTransform(
   return { transform, residuals }
 }
 
-async function run(): Promise<void> {
+async function runSimilarity(): Promise<void> {
   const cv = await Promise.resolve(cvModule as unknown as PromiseLike<any>)
   const { width, height } = processingSize()
   const anchorMask = new cv.Mat(height, width, cv.CV_8UC1)
@@ -310,6 +316,32 @@ async function run(): Promise<void> {
     width,
     height,
   })
+}
+
+async function runDenseMask(): Promise<void> {
+  if (input.direction !== 'forward') throw new Error('稠密蒙版仅支持向前追踪')
+  if (!input.guideMaskBytes || !input.guideMaskWidth || !input.guideMaskHeight) throw new Error('人物轮廓追踪数据缺失')
+  const cv = await Promise.resolve(cvModule as unknown as PromiseLike<any>)
+  const { width, height } = processingSize()
+  const { masks, stoppedReason, completed } = await runDenseMaskTracking(
+    cv, { ...input, guideMaskBytes: input.guideMaskBytes, guideMaskWidth: input.guideMaskWidth, guideMaskHeight: input.guideMaskHeight },
+    width, height, SAMPLE_RATE, CHUNK_SECONDS, decodeFrames,
+    (time, confidence, percent) => post({ kind: 'progress', percent, time, confidence }),
+  )
+  post({
+    kind: 'result',
+    keyframes: [keyframe(initialTransform(width, height), input.anchorTime, 1, width, height)],
+    masks,
+    stoppedReason,
+    completed,
+    width: input.maskWidth,
+    height: input.maskHeight,
+  })
+}
+
+async function run(): Promise<void> {
+  if (input.mode === 'dense-mask') await runDenseMask()
+  else await runSimilarity()
 }
 
 function detectPoints(cv: any, frame: any, mask: any): Array<{ x: number; y: number }> {

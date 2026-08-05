@@ -9,6 +9,7 @@ interface TrackingWorkerMessage {
   time?: number
   confidence?: number
   keyframes?: WorkspaceMaskTrackingResult['keyframes']
+  masks?: Array<{ time: number; width: number; height: number; bytes: Uint8Array; confidence: number }>
   stoppedReason?: string
   completed?: boolean
   error?: string
@@ -54,6 +55,10 @@ export function trackMaskInWorker(
           direction: request.direction,
           anchorTime: request.anchorTime,
           keyframes: message.keyframes,
+          masks: message.masks?.map((sample) => ({
+            ...sample,
+            bytes: sample.bytes.buffer.slice(sample.bytes.byteOffset, sample.bytes.byteOffset + sample.bytes.byteLength) as ArrayBuffer,
+          })),
           completed: Boolean(message.completed),
           stoppedReason: message.stoppedReason,
         })

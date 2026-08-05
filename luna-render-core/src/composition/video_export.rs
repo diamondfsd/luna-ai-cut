@@ -133,9 +133,17 @@ impl Task for ExportCompositionVideoTask {
     type JsValue = ();
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        if let Ok(json) = serde_json::to_string_pretty(&self.input.composition) {
-            log_write(&format!("[Export:Rust:Video] composition=\n{}", json));
-        }
+        let mask_timeline_frames = self.input.composition.layers.iter()
+            .filter_map(|layer| layer.mask_timeline.as_ref())
+            .map(|timeline| timeline.frames.len())
+            .sum::<usize>();
+        log_write(&format!(
+            "[Export:Rust:Video] canvas={}x{} layers={} mask_timeline_frames={}",
+            self.input.composition.canvas.width,
+            self.input.composition.canvas.height,
+            self.input.composition.layers.len(),
+            mask_timeline_frames,
+        ));
         let fps = self
             .input
             .fps

@@ -44,6 +44,7 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
   const setBeautyMaskPreview = edit.setBeautyMaskPreview
   const setBeautyRetouchActive = edit.setBeautyRetouchActive
   const setBeautyRetouchMode = edit.setBeautyRetouchMode
+  const commitPipelineUpdate = edit.commitUpdate
   const media = useWorkspaceMedia()
   const activeAsset = media.currentProject?.assets[media.activeIndex] ?? null
   const layers = useMemo(() => beautyLayers(edit.pipeline), [edit.pipeline])
@@ -128,18 +129,18 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
   }), [])
 
   const commitParameters = useCallback((next: BeautyParameters) => {
-    edit.commitUpdate((pipeline) => ({
+    commitPipelineUpdate((pipeline) => ({
       ...pipeline,
       beautyMasks: updateBeautyParameters(pipeline, next),
     }))
-  }, [edit.commitUpdate])
+  }, [commitPipelineUpdate])
 
   const commitParameter = useCallback(<Key extends keyof BeautyParameters>(key: Key, value: BeautyParameters[Key]) => {
-    edit.commitUpdate((pipeline) => ({
+    commitPipelineUpdate((pipeline) => ({
       ...pipeline,
       beautyMasks: updateBeautyParameters(pipeline, { ...beautyParameters(pipeline), [key]: value }),
     }))
-  }, [edit.commitUpdate])
+  }, [commitPipelineUpdate])
 
   const analyze = useCallback(async () => {
     if (!media.currentProject || !activeAsset || (activeAsset.kind !== 'image' && activeAsset.kind !== 'video')) {

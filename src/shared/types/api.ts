@@ -79,6 +79,12 @@ export interface WorkspaceMaskTrackingRequest {
   maskWidth: number
   maskHeight: number
   maskBytes: ArrayBuffer | Uint8Array
+  /** 相似变换适合刚性区域；稠密蒙版用于身体等非刚性区域。 */
+  mode?: 'similarity' | 'dense-mask'
+  /** 稠密追踪的目标轮廓约束，不会成为最终效果蒙版。 */
+  guideMaskBytes?: ArrayBuffer | Uint8Array
+  guideMaskWidth?: number
+  guideMaskHeight?: number
   initialTransform?: {
     translateX: number
     translateY: number
@@ -105,6 +111,13 @@ export interface WorkspaceMaskTrackingResult {
     translateY: number
     scale: number
     rotation: number
+    confidence: number
+  }>
+  masks?: Array<{
+    time: number
+    width: number
+    height: number
+    bytes: ArrayBuffer
     confidence: number
   }>
   completed: boolean

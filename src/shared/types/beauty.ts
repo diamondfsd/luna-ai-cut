@@ -17,6 +17,8 @@ export interface WorkspaceBeautyAnalysisResult {
   wrinkleCount: number
   faceMask: ArrayBuffer
   skinMask: ArrayBuffer
+  /** 仅用于视频身体蒙版追踪，不参与美颜渲染。 */
+  trackingGuideMask: ArrayBuffer
   acneMask: ArrayBuffer
   spotMask: ArrayBuffer
   wrinkleMask: ArrayBuffer

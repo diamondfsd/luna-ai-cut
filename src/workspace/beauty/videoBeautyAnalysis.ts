@@ -1,4 +1,5 @@
 import type { ColorMaskTimeline, EditPipeline } from '../shared/editPipeline'
+import type { WorkspaceBeautyAnalysisResult } from '../../shared/types'
 import {
   createBeautyMaskLayer,
   replaceVideoBeautyLayers,
@@ -84,7 +85,7 @@ export async function analyzeVideoBeauty(options: AnalyzeVideoBeautyOptions): Pr
       if (!shouldContinue()) throw new Error('美颜识别已取消')
       const requestId = `${operationId}-segment-${taskIndex++}`
       onRequestStart(requestId)
-      let result
+      let result: WorkspaceBeautyAnalysisResult
       try {
         result = await window.luna.workspace.analyzeBeauty({ requestId, filePath, frameTime: currentTime, videoFrame: true })
       } finally {
@@ -117,45 +118,77 @@ export async function analyzeVideoBeauty(options: AnalyzeVideoBeautyOptions): Pr
       const refreshEnd = Math.min(lastSafeTime, currentTime + FULL_REFRESH_INTERVAL)
       let nextTime = Math.min(lastSafeTime + FLOW_SAMPLE_INTERVAL, currentTime + FLOW_SAMPLE_INTERVAL)
       let coverageEnd = Math.min(duration, currentTime + FLOW_SAMPLE_INTERVAL / 2)
-      if (faceActive && bodyActive && refreshEnd > currentTime + 0.000_1) {
-        const union = new Uint8Array(faceBytes.length)
-        for (let index = 0; index < union.length; index += 1) union[index] = Math.max(faceBytes[index], bodyBytes[index])
-        const trackingId = `${operationId}-track-${taskIndex++}`
-        onTrackingStart(trackingId)
-        try {
-          const tracked = await window.luna.workspace.trackMask({
-            requestId: trackingId,
-            filePath,
-            direction: 'forward',
-            anchorTime: currentTime,
-            endTime: refreshEnd,
-            maskWidth: result.width,
-            maskHeight: result.height,
-            maskBytes: union,
-          })
-          if (!shouldContinue()) throw new Error('美颜识别已取消')
-          for (const keyframe of tracked.keyframes) {
-            const transform = {
+      // If either model is empty, the next frame is sampled immediately. Running a full
+      // tracking segment for the other layer would be discarded by that earlier refresh.
+      if (refreshEnd > currentTime + 0.000_1 && faceActive && bodyActive) {
+        const runTracking = async (kind: 'face' | 'body') => {
+          const trackingId = `${operationId}-track-${kind}-${taskIndex++}`
+          onTrackingStart(trackingId)
+          try {
+            return await window.luna.workspace.trackMask({
+              requestId: trackingId,
+              filePath,
+              direction: 'forward',
+              anchorTime: currentTime,
+              endTime: refreshEnd,
+              maskWidth: result.width,
+              maskHeight: result.height,
+              maskBytes: kind === 'face' ? result.faceMask : result.skinMask,
+              mode: kind === 'body' ? 'dense-mask' : 'similarity',
+              guideMaskBytes: kind === 'body' ? result.trackingGuideMask : undefined,
+              guideMaskWidth: kind === 'body' ? result.width : undefined,
+              guideMaskHeight: kind === 'body' ? result.height : undefined,
+            })
+          } catch (error) {
+            if (!shouldContinue()) throw error
+            return null
+          } finally {
+            onTrackingEnd(trackingId)
+          }
+        }
+        const [faceTracked, bodyTracked] = await Promise.all([
+          faceActive ? runTracking('face') : null,
+          bodyActive ? runTracking('body') : null,
+        ])
+        if (!shouldContinue()) throw new Error('美颜识别已取消')
+
+        const faceLastTime = faceTracked?.keyframes[faceTracked.keyframes.length - 1]?.time ?? currentTime
+        const bodyMasks = bodyTracked?.masks ?? []
+        const bodyLastTime = bodyMasks[bodyMasks.length - 1]?.time ?? currentTime
+        const faceNextTime = faceActive && faceTracked?.completed
+          ? refreshEnd
+          : Math.min(lastSafeTime + FLOW_SAMPLE_INTERVAL, faceLastTime + FLOW_SAMPLE_INTERVAL)
+        const bodyNextTime = bodyActive && bodyTracked?.completed
+          ? refreshEnd
+          : Math.min(lastSafeTime + FLOW_SAMPLE_INTERVAL, bodyLastTime + FLOW_SAMPLE_INTERVAL)
+        nextTime = Math.min(faceNextTime, bodyNextTime)
+
+        for (const keyframe of faceTracked?.keyframes ?? []) {
+          if (keyframe.time > nextTime + 0.000_1) continue
+          upsertFrame(faceFrames, {
+            time: keyframe.time,
+            path: face?.path,
+            transform: {
               translateX: keyframe.translateX,
               translateY: keyframe.translateY,
               scale: keyframe.scale,
               rotation: keyframe.rotation,
               confidence: keyframe.confidence,
-            }
-            upsertFrame(faceFrames, { time: keyframe.time, path: face?.path, transform })
-            upsertFrame(bodyFrames, { time: keyframe.time, path: body?.path, transform })
-          }
-          const lastTrackedTime = tracked.keyframes[tracked.keyframes.length - 1]?.time ?? currentTime
-          coverageEnd = Math.min(duration, lastTrackedTime + FLOW_SAMPLE_INTERVAL / 2)
-          nextTime = tracked.completed
-            ? refreshEnd
-            : Math.min(lastSafeTime + FLOW_SAMPLE_INTERVAL, lastTrackedTime + FLOW_SAMPLE_INTERVAL)
-        } catch (error) {
-          if (!shouldContinue()) throw error
-          nextTime = Math.min(lastSafeTime + FLOW_SAMPLE_INTERVAL, currentTime + FLOW_SAMPLE_INTERVAL)
-        } finally {
-          onTrackingEnd(trackingId)
+            },
+          })
         }
+        const bodySamples = (bodyTracked?.masks ?? []).filter((sample) => sample.time <= nextTime + 0.000_1)
+        for (const sample of bodySamples) {
+          if (!shouldContinue()) throw new Error('美颜识别已取消')
+          const saved = await window.luna.workspace.saveColorMask(
+            projectId, assetId, sample.width, sample.height, sample.bytes, 0,
+          )
+          createdPaths.push(saved.path)
+          upsertFrame(bodyFrames, { time: sample.time, path: saved.path })
+        }
+        const faceCoverage = faceActive ? Math.min(nextTime, faceLastTime) : currentTime
+        const bodyCoverage = bodyActive ? Math.min(nextTime, bodyLastTime) : currentTime
+        coverageEnd = Math.min(duration, Math.min(faceCoverage, bodyCoverage) + FLOW_SAMPLE_INTERVAL / 2)
       }
 
       publish(coverageEnd)

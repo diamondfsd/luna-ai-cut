@@ -6,7 +6,7 @@ import { loadModel, MODEL_REGISTRY, type ModelId, type ModelLoadProgress } from 
 import { logMainInfo } from './loggerService'
 import { extractFaceBoxesInWorker, segmentSpecializedInSecondaryWorker, segmentSpecializedInWorker } from './specializedSegmentationService'
 import { detectFaceBlemishes } from './beautyBlemishDetection'
-import { bodySkinMaskFromHumanLabels, faceSkinMaskFromSamples, softenBeautyMask } from './beautySkinSegmentation'
+import { bodySkinMaskFromHumanLabels, faceSkinMaskFromSamples, personMaskFromHumanLabels, softenBeautyMask } from './beautySkinSegmentation'
 
 const INPUT_SIZE = 640
 const MASK_SIZE = 1024
@@ -329,6 +329,7 @@ export async function analyzeBeauty(
     outputSize,
     BODY_SKIN_FEATHER_RADIUS,
   )
+  const trackingGuideMask = personMaskFromHumanLabels(humanResult.bytes, HUMAN_PARSE_SIZE, outputSize)
   const inferenceMs = performance.now() - inferenceStarted
   return {
     requestId,
@@ -340,6 +341,7 @@ export async function analyzeBeauty(
     wrinkleCount,
     faceMask: toArrayBuffer(softFaceMask),
     skinMask: toArrayBuffer(skinMask),
+    trackingGuideMask: toArrayBuffer(trackingGuideMask),
     acneMask: toArrayBuffer(acneMask),
     spotMask: toArrayBuffer(spotMask),
     wrinkleMask: toArrayBuffer(wrinkleMask),

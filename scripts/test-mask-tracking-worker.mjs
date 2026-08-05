@@ -58,6 +58,48 @@ try {
   ], { encoding: 'utf8' })
   assert.equal(generatedPan.status, 0, generatedPan.stderr)
 
+  const deformVideoPath = join(temporaryRoot, 'deform.mp4')
+  const deformFrames = []
+  const deformMasks = []
+  const movingParts = (frame) => [
+    { x: 135, y: 70, width: 50, height: 100 },
+    { x: 100, y: 65 + frame * 4, width: 35, height: 110 },
+    { x: 185, y: 65 - frame * 4, width: 35, height: 110 },
+  ]
+  for (let frame = 0; frame < 16; frame += 1) {
+    const pixels = Buffer.alloc(320 * 240 * 3)
+    const frameMask = new Uint8Array(320 * 240)
+    for (let y = 0; y < 240; y += 1) {
+      for (let x = 0; x < 320; x += 1) {
+        const offset = (y * 320 + x) * 3
+        const background = 25 + ((Math.floor(x / 10) + Math.floor(y / 10)) % 2) * 18
+        pixels[offset] = background
+        pixels[offset + 1] = background + 7
+        pixels[offset + 2] = background + 12
+      }
+    }
+    for (const [partIndex, part] of movingParts(frame).entries()) {
+      for (let y = Math.max(0, part.y); y < Math.min(240, part.y + part.height); y += 1) {
+        for (let x = part.x; x < part.x + part.width; x += 1) {
+          const localX = x - part.x
+          const localY = y - part.y
+          const offset = (y * 320 + x) * 3
+          pixels[offset] = 90 + (localX * 13 + localY * 7 + partIndex * 31) % 150
+          pixels[offset + 1] = 55 + (localX * 5 + localY * 17 + partIndex * 19) % 170
+          pixels[offset + 2] = 45 + (localX * 11 + localY * 3 + partIndex * 43) % 180
+          frameMask[y * 320 + x] = 255
+        }
+      }
+    }
+    deformFrames.push(pixels)
+    deformMasks.push(frameMask)
+  }
+  const generatedDeform = spawnSync(ffmpegPath, [
+    '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '320x240', '-r', '8', '-i', 'pipe:0',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', deformVideoPath,
+  ], { input: Buffer.concat(deformFrames), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+  assert.equal(generatedDeform.status, 0, generatedDeform.stderr)
+
   const workerCandidates = (await readdir(resolve('dist-electron/assets')))
     .filter((name) => name.startsWith('maskTrackingWorker-'))
   const workerName = (await Promise.all(workerCandidates.map(async (name) => ({
@@ -70,7 +112,7 @@ try {
   for (let y = 20; y < 220; y += 1) {
     for (let x = 20; x < 300; x += 1) maskBytes[y * 320 + x] = 255
   }
-  async function track(direction, anchorTime, initialTransform, sourcePath = videoPath, endTime) {
+  async function track(direction, anchorTime, initialTransform, sourcePath = videoPath, endTime, options = {}) {
     const worker = new Worker(new URL(`file://${resolve('dist-electron/assets', workerName)}`), { workerData: null })
     const progress = []
     const result = await new Promise((resolveResult, reject) => {
@@ -87,6 +129,7 @@ try {
         requestId: `smoke-${direction}`, ffmpegPath, filePath: sourcePath, direction,
         anchorTime, endTime, duration: 2, sourceWidth: 320, sourceHeight: 240,
         maskWidth: 320, maskHeight: 240, maskBytes, initialTransform,
+        ...options,
       })
     })
     await worker.terminate()
@@ -129,6 +172,51 @@ try {
   assert.ok(Math.abs(pannedLast.translateY) < 0.015, `panning vertical drift is too large: ${pannedLast.translateY}`)
   assert.ok(Math.abs(pannedLast.scale - 1) < 0.025, `panning scale drift is too large: ${pannedLast.scale}`)
   assert.ok(Math.abs(pannedLast.rotation) < 0.02, `panning rotation drift is too large: ${pannedLast.rotation}`)
+  const dense = await track('forward', 0, undefined, panVideoPath, 1, {
+    mode: 'dense-mask', guideMaskBytes: maskBytes, guideMaskWidth: 320, guideMaskHeight: 240,
+  })
+  assert.equal(dense.result.kind, 'result', dense.result.error)
+  assert.ok(dense.result.masks.length > 2, 'dense tracking must return propagated masks')
+  assert.ok(dense.result.masks.at(-1).time <= 1.000001, 'dense tracking must stop at endTime')
+  assert.ok(dense.result.masks.every((sample) => sample.width === 320 && sample.height === 240 && sample.bytes.length === 320 * 240), 'dense mask dimensions must stay stable')
+  const deformOptions = { maskBytes: deformMasks[0] }
+  const deformSimilarity = await track('forward', 0, undefined, deformVideoPath, 1, deformOptions)
+  const deformDense = await track('forward', 0, undefined, deformVideoPath, 1, {
+    ...deformOptions,
+    mode: 'dense-mask', guideMaskBytes: deformMasks[0], guideMaskWidth: 320, guideMaskHeight: 240,
+  })
+  assert.equal(deformSimilarity.result.kind, 'result', deformSimilarity.result.error)
+  assert.equal(deformDense.result.kind, 'result', deformDense.result.error)
+  const denseMask = deformDense.result.masks.at(-1)?.bytes
+  const similarityFrame = deformSimilarity.result.keyframes.at(-1)
+  assert.ok(denseMask && similarityFrame, 'both trackers must reach the non-rigid comparison frame')
+  const similarityMask = new Uint8Array(320 * 240)
+  const cosine = Math.cos(similarityFrame.rotation) * similarityFrame.scale
+  const sine = Math.sin(similarityFrame.rotation) * similarityFrame.scale
+  for (let y = 0; y < 240; y += 1) {
+    for (let x = 0; x < 320; x += 1) {
+      if (deformMasks[0][y * 320 + x] === 0) continue
+      const targetX = Math.round(cosine * (x - 160) - sine * (y - 120) + 160 + similarityFrame.translateX * 320)
+      const targetY = Math.round(sine * (x - 160) + cosine * (y - 120) + 120 + similarityFrame.translateY * 240)
+      if (targetX >= 0 && targetX < 320 && targetY >= 0 && targetY < 240) similarityMask[targetY * 320 + targetX] = 255
+    }
+  }
+  const intersectionOverUnion = (actual, expected) => {
+    let intersection = 0
+    let union = 0
+    for (let index = 0; index < actual.length; index += 1) {
+      const selected = actual[index] >= 32
+      const expectedSelected = expected[index] >= 32
+      if (selected && expectedSelected) intersection += 1
+      if (selected || expectedSelected) union += 1
+    }
+    return intersection / union
+  }
+  const expectedMask = deformMasks[8]
+  const denseIou = intersectionOverUnion(denseMask, expectedMask)
+  const similarityIou = intersectionOverUnion(similarityMask, expectedMask)
+  assert.ok(denseIou > 0.7, `dense non-rigid IoU is too low: ${denseIou}`)
+  assert.ok(denseIou > similarityIou + 0.08, `dense tracking must beat similarity tracking: dense=${denseIou}, similarity=${similarityIou}`)
   console.log(`mask tracking worker test passed (${result.keyframes.length} forward, ${backward.result.keyframes.length} backward keyframes)`)
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })
