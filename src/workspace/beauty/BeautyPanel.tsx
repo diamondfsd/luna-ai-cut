@@ -1,4 +1,4 @@
-import { Brush, Eraser, Eye, EyeOff, Loader2, RotateCcw, ScanFace } from 'lucide-react'
+import { Brush, Eraser, Loader2, RotateCcw, ScanFace } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Accordion, Button, ButtonGroup, Switch, toast } from '../../ui'
@@ -19,7 +19,6 @@ import {
 } from './beautyLayers'
 import { analyzeBeautyForPipeline } from './beautyAnalysisClient'
 import { analyzeVideoBeauty } from './videoBeautyAnalysis'
-import { BEAUTY_MASK_VISUALIZATION } from './beautyMaskVisualization'
 import './BeautyPanel.css'
 
 interface BeautyPanelProps {
@@ -311,31 +310,6 @@ export function BeautyPanel({ duration = 0 }: BeautyPanelProps) {
 
       {analyzed && (
         <>
-          <div className="beauty-mask-test">
-            <Button
-              variant="secondary"
-              size="compact"
-              icon={edit.beautyMaskPreview ? <EyeOff size={15} /> : <Eye size={15} />}
-              aria-pressed={edit.beautyMaskPreview}
-              onClick={() => {
-                const next = !edit.beautyMaskPreview
-                setBeautyRetouchActive(!next)
-                setBeautyMaskPreview(next)
-              }}
-            >
-              {edit.beautyMaskPreview ? '关闭蒙版' : '测试蒙版'}
-            </Button>
-            {edit.beautyMaskPreview && (
-              <div className="beauty-mask-legend" aria-label="美颜蒙版图例">
-                {BEAUTY_MASK_VISUALIZATION.map((item) => (
-                  <span key={item.id} className="beauty-mask-legend-item">
-                    <i style={{ backgroundColor: item.color }} aria-hidden="true" />
-                    {item.label}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
           <Accordion
             title="肤质与美白"
             defaultOpen

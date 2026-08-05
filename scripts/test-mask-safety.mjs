@@ -131,8 +131,8 @@ try {
   close(beautyFaceLayer.color.exposure, 0.2, 'stored face brightening must remain restrained')
   const renderedBeautyBody = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyBodyLayer)
   const renderedBeautyFace = beautyLayers.beautyLayerColorForRendering(beautyPipeline, beautyFaceLayer)
-  close(renderedBeautyBody.exposure, 0.12, 'rendered body brightening maximum must preserve skin detail')
-  close(renderedBeautyFace.exposure, 0.24, 'rendered face brightening must combine overall and face adjustments')
+  close(renderedBeautyBody.exposure, 0.3, 'rendered body brightening maximum must remain visibly effective')
+  close(renderedBeautyFace.exposure, 0.6, 'rendered face brightening must combine overall and face adjustments')
   close(renderedBeautyBody.temperature, 0, 'brightening must not neutralize the original skin tone')
   close(renderedBeautyBody.saturation, -2.5, 'brightening must retain natural skin saturation')
   close(renderedBeautyBody.curveLift, 0, 'brightening must not lift midtones and flatten facial planes')
@@ -739,8 +739,8 @@ try {
   const migratedBody = migratedBeauty.find((layer) => layer.maskPath === '/beauty-body.pgm')
   assert.equal(migratedFace.color.brightness, 0, 'legacy face brightening must not render as additive RGB brightness')
   assert.equal(migratedBody.color.brightness, 0, 'legacy body brightening must not render as additive RGB brightness')
-  close(migratedFace.color.exposure, 0.0336, 'legacy face settings must use the restrained unified brightening algorithm')
-  close(migratedBody.color.exposure, 0.012, 'legacy body settings must use the restrained unified brightening algorithm')
+  close(migratedFace.color.exposure, 0.084, 'legacy face settings must use the stronger unified brightening algorithm')
+  close(migratedBody.color.exposure, 0.03, 'legacy body settings must use the stronger unified brightening algorithm')
   assert.equal(migratedFace.color.denoise, 20.16, 'legacy smoothing slider value must use the reduced anti-blur render mapping')
   assert.equal(
     renderModule.buildLocalColorLayers(baseLayer, stressPipeline)[0].maskTrack,
