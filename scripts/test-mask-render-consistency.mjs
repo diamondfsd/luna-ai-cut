@@ -102,6 +102,8 @@ function maskPixels(kind) {
     for (let x = 0; x < width; x += 1) {
       const selected = kind === 'full'
         || (kind === 'left' && x < width / 2)
+        || (kind === 'wide-left' && x < width * 2 / 3)
+        || (kind === 'wide-right' && x >= width / 3)
         || (kind === 'rect' && x >= 8 && x < 22 && y >= 6 && y < 23)
       pixels[y * width + x] = selected ? 255 : 0
     }
@@ -236,6 +238,8 @@ try {
   const invalidWatermarkPath = path.join(temporaryRoot, 'invalid-watermark.png')
   const rectMaskPath = path.join(temporaryRoot, 'rect.pgm')
   const leftMaskPath = path.join(temporaryRoot, 'left.pgm')
+  const wideLeftMaskPath = path.join(temporaryRoot, 'wide-left.pgm')
+  const wideRightMaskPath = path.join(temporaryRoot, 'wide-right.pgm')
   const fullMaskPath = path.join(temporaryRoot, 'full.pgm')
   await Promise.all([
     writeFile(sourcePath, writePpmPixels()),
@@ -246,6 +250,8 @@ try {
     writeFile(invalidWatermarkPath, Buffer.alloc(0)),
     writeFile(rectMaskPath, maskPixels('rect')),
     writeFile(leftMaskPath, maskPixels('left')),
+    writeFile(wideLeftMaskPath, maskPixels('wide-left')),
+    writeFile(wideRightMaskPath, maskPixels('wide-right')),
     writeFile(fullMaskPath, maskPixels('full')),
   ])
 
@@ -364,6 +370,40 @@ try {
   assert.ok(
     precomposedDifference.max <= 3,
     `clear precomposition must preserve the flattened mask color, max delta ${precomposedDifference.max}`,
+  )
+  const leftOnlyPrecomposed = await renderAndMatchExport('precomposed-left-adjustment', composition([
+    { ...mediaLayer(sourcePath), precomposeGroup: 'left-only', precomposeRole: 'input' },
+    { ...localLayer(sourcePath, wideLeftMaskPath, { color: { exposure: 0.6 } }), precomposeGroup: 'left-only', precomposeRole: 'input' },
+    { ...mediaLayer(sourcePath), precomposeGroup: 'left-only', precomposeRole: 'output' },
+  ]))
+  const rightOnlyPrecomposed = await renderAndMatchExport('precomposed-right-adjustment', composition([
+    { ...mediaLayer(sourcePath), precomposeGroup: 'right-only', precomposeRole: 'input' },
+    { ...localLayer(sourcePath, wideRightMaskPath, { color: { temperature: 65 } }), precomposeGroup: 'right-only', precomposeRole: 'input' },
+    { ...mediaLayer(sourcePath), precomposeGroup: 'right-only', precomposeRole: 'output' },
+  ]))
+  const accumulatedPrecomposed = await renderAndMatchExport('precomposed-overlap-accumulation', composition([
+    { ...mediaLayer(sourcePath), precomposeGroup: 'overlap', precomposeRole: 'input' },
+    { ...localLayer(sourcePath, wideLeftMaskPath, { color: { exposure: 0.6 }, zIndex: 1 }), precomposeGroup: 'overlap', precomposeRole: 'input' },
+    { ...localLayer(sourcePath, wideRightMaskPath, { color: { temperature: 65 }, zIndex: 2 }), precomposeGroup: 'overlap', precomposeRole: 'input' },
+    { ...mediaLayer(sourcePath), precomposeGroup: 'overlap', precomposeRole: 'output' },
+  ]))
+  assert.equal(
+    pixelDeltaAt(accumulatedPrecomposed, leftOnlyPrecomposed, 8, 16),
+    0,
+    'the later mask must not leak into the earlier-only region',
+  )
+  assert.equal(
+    pixelDeltaAt(accumulatedPrecomposed, rightOnlyPrecomposed, 40, 16),
+    0,
+    'the earlier mask must not leak into the later-only region',
+  )
+  assert.ok(
+    pixelDeltaAt(accumulatedPrecomposed, rightOnlyPrecomposed, 24, 16) > 3,
+    'overlapping beauty and color masks must retain the earlier local adjustment',
+  )
+  assert.ok(
+    pixelDeltaAt(accumulatedPrecomposed, leftOnlyPrecomposed, 24, 16) > 3,
+    'overlapping beauty and color masks must also apply the later local adjustment',
   )
   const precomposedBlur = await renderAndMatchExport('precomposed-blur', composition([
     { ...mediaLayer(sourcePath), precomposeGroup, precomposeRole: 'input' },

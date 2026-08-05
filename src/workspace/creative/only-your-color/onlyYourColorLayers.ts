@@ -22,10 +22,12 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
   const sourceLayers = options.layers.filter((layer) => (
     layer.filePath === options.sourcePath && layer.layoutRole === undefined
   ))
-  const main = sourceLayers.find((layer) => layer.layerType === 'media') ?? sourceLayers[0]
+  const existingInputs = sourceLayers.filter((layer) => layer.precomposeRole === 'input')
+  const existingOutput = sourceLayers.find((layer) => layer.precomposeRole === 'output')
+  const main = existingOutput ?? sourceLayers.find((layer) => layer.layerType === 'media') ?? sourceLayers[0]
   if (!main) return options.layers
-  const precomposeGroup = 'only-your-color-source'
-  const inputs: PreviewLayer[] = sourceLayers.map((layer, index) => ({
+  const precomposeGroup = existingOutput?.precomposeGroup ?? 'only-your-color-source'
+  const inputs: PreviewLayer[] = existingInputs.length > 0 ? existingInputs : sourceLayers.map((layer, index) => ({
     ...layer,
     precomposeGroup,
     precomposeRole: 'input',
@@ -53,7 +55,7 @@ export function buildOnlyYourColorLayers(options: OnlyYourColorLayerOptions): Pr
     positioning: undefined,
     cornerRadius: undefined,
   }))
-  const flattened: PreviewLayer = {
+  const flattened: PreviewLayer = existingOutput ?? {
     ...main,
     precomposeGroup,
     precomposeRole: 'output',

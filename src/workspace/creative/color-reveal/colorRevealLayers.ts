@@ -35,6 +35,7 @@ export function buildColorRevealLayers(options: ColorRevealLayerOptions): Previe
 
   return layers.flatMap((layer) => {
     if (layer.filePath !== sourcePath) return [layer]
+    if (layer.precomposeRole === 'input') return [layer]
     const afterColor = layer.color
     const beforeColor = afterColor ? {
       ...afterColor,

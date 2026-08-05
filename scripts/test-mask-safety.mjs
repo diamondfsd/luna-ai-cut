@@ -776,10 +776,12 @@ try {
     ['/bottom.pgm', '/top.pgm'],
     'frame media layers must preserve local mask ordering',
   )
+  assert.equal(framedLayers[0].color.denoise, 130, 'global media adjustments must enter the precomposition once')
   assert.ok(
-    framedLayers.slice(1, 3).every((layer) => layer.color.denoise === 130),
-    'frame local color layers must retain layout-specific media adjustments',
+    framedLayers.slice(1, 3).every((layer) => layer.color.denoise !== 130),
+    'local layers must not reapply global media adjustments',
   )
+  assert.equal(framedLayers[3].color, undefined, 'the flattened output must not apply global color twice')
   const blurredBackground = {
     ...framedSource,
     layoutRole: 'background',

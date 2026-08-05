@@ -97,12 +97,17 @@ function renderColorWithLocalAdjustments(
   return combined
 }
 
-export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline): PreviewLayer[] {
-  const videoBeautyMasks = base.isVideo
+function renderableAdjustmentMasks(pipeline: EditPipeline, isVideo: boolean) {
+  const videoBeautyMasks = isVideo
     ? pipeline.beautyMasks.filter((layer) => Boolean(layer.timeline?.frames.length))
     : pipeline.beautyMasks
-  const adjustmentMasks = [...videoBeautyMasks, ...pipeline.colorMasks]
-  return adjustmentMasks.filter((layer) => layer.enabled && !layer.loadError).reverse().map((layer) => ({
+  return [...videoBeautyMasks, ...pipeline.colorMasks]
+    .filter((layer) => layer.enabled && !layer.loadError)
+    .reverse()
+}
+
+export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline): PreviewLayer[] {
+  return renderableAdjustmentMasks(pipeline, Boolean(base.isVideo)).map((layer) => ({
     ...base,
     layerType: 'local-color' as const,
     blendMode: layer.blendMode,
@@ -117,6 +122,92 @@ export function buildLocalColorLayers(base: PreviewLayer, pipeline: EditPipeline
     maskTrack: layer.track,
     maskTimeline: layer.timeline,
   }))
+}
+
+/**
+ * 局部调色必须串行作用于上一层结果。预合成输入使用原始尺寸，输出层再恢复画布布局与变换。
+ */
+export function buildLocalColorPrecomposition(
+  base: PreviewLayer,
+  pipeline: EditPipeline,
+  group: string,
+): PreviewLayer[] {
+  const adjustmentMasks = renderableAdjustmentMasks(pipeline, Boolean(base.isVideo))
+  const localLayers = buildLocalColorLayers(base, pipeline)
+  if (localLayers.length === 0) return [base]
+
+  const inputBase: PreviewLayer = {
+    ...base,
+    precomposeGroup: group,
+    precomposeRole: 'input',
+    fit: 'stretch',
+    dstX: 0,
+    dstY: 0,
+    dstW: 1,
+    dstH: 1,
+    srcX: 0,
+    srcY: 0,
+    srcW: 1,
+    srcH: 1,
+    opacity: 1,
+    blendMode: 'normal',
+    zIndex: 0,
+    layoutRole: undefined,
+    reveal: undefined,
+    pixelStretch: undefined,
+    cornerRadius: undefined,
+    transform: {
+      crop: null,
+      orientation: 0,
+      rotate: 0,
+      flipH: false,
+      flipV: false,
+      scale: 1,
+      translateX: 0,
+      translateY: 0,
+    },
+    positioning: undefined,
+  }
+  const inputs = [
+    inputBase,
+    ...localLayers.map((layer, index) => ({
+      ...layer,
+      precomposeGroup: group,
+      precomposeRole: 'input' as const,
+      fit: 'stretch' as const,
+      dstX: 0,
+      dstY: 0,
+      dstW: 1,
+      dstH: 1,
+      srcX: 0,
+      srcY: 0,
+      srcW: 1,
+      srcH: 1,
+      opacity: 1,
+      layoutRole: undefined,
+      reveal: undefined,
+      pixelStretch: undefined,
+      cornerRadius: undefined,
+      transform: inputBase.transform,
+      positioning: undefined,
+      // 预合成核心会把局部参数应用到上一层结果，因此这里只传当前蒙版自身的调整。
+      color: pipelineColorToRenderColor(beautyLayerColorForRendering(
+        pipeline,
+        adjustmentMasks[index],
+      )),
+      zIndex: index + 1,
+    })),
+  ]
+  const output: PreviewLayer = {
+    ...base,
+    precomposeGroup: group,
+    precomposeRole: 'output',
+    color: undefined,
+    restoreLutId: undefined,
+    lutId: undefined,
+    lutIntensity: undefined,
+  }
+  return [...inputs, output]
 }
 
 /** 为相框中重复引用当前素材的媒体层补齐局部调色，Logo 等其他媒体不受影响。 */
@@ -136,47 +227,12 @@ export function applyLocalColorToSourceMediaLayers(
     if (!contentLayer) return layers
 
     const precomposeGroup = 'framed-source-color'
-    const inputBase: PreviewLayer = {
-      ...contentLayer,
-      layoutRole: undefined,
+    const precomposition = buildLocalColorPrecomposition(
+      { ...contentLayer, layoutRole: undefined, reveal: undefined, pixelStretch: undefined, cornerRadius: undefined },
+      pipeline,
       precomposeGroup,
-      precomposeRole: 'input',
-      fit: 'stretch',
-      dstX: 0,
-      dstY: 0,
-      dstW: 1,
-      dstH: 1,
-      srcX: 0,
-      srcY: 0,
-      srcW: 1,
-      srcH: 1,
-      opacity: 1,
-      blendMode: 'normal',
-      zIndex: 0,
-      reveal: undefined,
-      pixelStretch: undefined,
-      cornerRadius: undefined,
-      transform: {
-        crop: null,
-        orientation: 0,
-        rotate: 0,
-        flipH: false,
-        flipV: false,
-        scale: 1,
-        translateX: 0,
-        translateY: 0,
-      },
-      positioning: undefined,
-    }
-    const inputs = [
-      inputBase,
-      ...buildLocalColorLayers(inputBase, pipeline).map((layer, index) => ({
-        ...layer,
-        precomposeGroup,
-        precomposeRole: 'input' as const,
-        zIndex: index + 1,
-      })),
-    ]
+    )
+    const inputs = precomposition.filter((layer) => layer.precomposeRole === 'input')
     const outputs = layers.map((layer) => {
       if (layer.layerType !== 'media' || layer.filePath !== sourcePath) return layer
       return {
@@ -192,10 +248,10 @@ export function applyLocalColorToSourceMediaLayers(
     return [...inputs, ...outputs]
   }
 
-  return layers.flatMap((layer) => (
+  return layers.flatMap((layer, index) => (
     layer.layerType === 'media'
       && layer.filePath === sourcePath
-      ? [layer, ...buildLocalColorLayers(layer, pipeline)]
+      ? buildLocalColorPrecomposition(layer, pipeline, `source-local-color-${index}`)
       : [layer]
   ))
 }
