@@ -544,7 +544,7 @@ function createAppMenu(): void {
 
 app.whenReady().then(() => {
   initLogger()
-  logMainInfo('应用启动')
+  logMainInfo('应用启动', { codeSource: process.env.LUNA_BOOT_SOURCE ?? 'unknown' })
   recoverLegacyRenderInitGuardOnce()
   // 打印系统信息
   logMainInfo('[系统信息]', {
