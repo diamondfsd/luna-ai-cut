@@ -30,6 +30,8 @@ release
 *.sw?
 
 # Build artifacts
+__pycache__/
+*.py[cod]
 resources/ffmpeg/
 .ffmpeg-cache/
 resources/dolby-vision/
