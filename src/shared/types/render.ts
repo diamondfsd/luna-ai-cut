@@ -112,7 +112,17 @@ export interface RenderMaskTimeline {
   startTime: number
   endTime: number
   sampleInterval: number
-  frames: Array<{ time: number; path?: string }>
+  frames: Array<{
+    time: number
+    path?: string
+    transform?: {
+      translateX: number
+      translateY: number
+      scale: number
+      rotation: number
+      confidence: number
+    }
+  }>
 }
 
 export interface PreviewLayer {

@@ -87,6 +87,14 @@ export interface ColorMaskTimelineFrame {
   time: number
   /** 缺少路径表示该采样区间没有可用人物蒙版。 */
   path?: string
+  /** 由相邻视频帧的光流跟踪得到，作用于当前路径对应的蒙版。 */
+  transform?: {
+    translateX: number
+    translateY: number
+    scale: number
+    rotation: number
+    confidence: number
+  }
 }
 
 export interface ColorMaskTimeline {

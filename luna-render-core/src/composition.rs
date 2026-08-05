@@ -103,9 +103,20 @@ pub struct MaskTrack {
 
 #[napi(object)]
 #[derive(Clone, Serialize, Deserialize)]
+pub struct MaskTimelineTransform {
+    pub translate_x: f64,
+    pub translate_y: f64,
+    pub scale: f64,
+    pub rotation: f64,
+    pub confidence: f64,
+}
+
+#[napi(object)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct MaskTimelineFrame {
     pub time: f64,
     pub path: Option<String>,
+    pub transform: Option<MaskTimelineTransform>,
 }
 
 #[napi(object)]

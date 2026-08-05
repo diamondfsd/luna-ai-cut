@@ -70,7 +70,7 @@ try {
   for (let y = 20; y < 220; y += 1) {
     for (let x = 20; x < 300; x += 1) maskBytes[y * 320 + x] = 255
   }
-  async function track(direction, anchorTime, initialTransform, sourcePath = videoPath) {
+  async function track(direction, anchorTime, initialTransform, sourcePath = videoPath, endTime) {
     const worker = new Worker(new URL(`file://${resolve('dist-electron/assets', workerName)}`), { workerData: null })
     const progress = []
     const result = await new Promise((resolveResult, reject) => {
@@ -85,7 +85,7 @@ try {
       })
       worker.postMessage({
         requestId: `smoke-${direction}`, ffmpegPath, filePath: sourcePath, direction,
-        anchorTime, duration: 2, sourceWidth: 320, sourceHeight: 240,
+        anchorTime, endTime, duration: 2, sourceWidth: 320, sourceHeight: 240,
         maskWidth: 320, maskHeight: 240, maskBytes, initialTransform,
       })
     })
@@ -101,6 +101,10 @@ try {
   assert.deepEqual(result.keyframes[0], {
     time: 0, translateX: 0, translateY: 0, scale: 1, rotation: 0, confidence: 1,
   })
+  const bounded = await track('forward', 0, undefined, staticVideoPath, 1)
+  assert.equal(bounded.result.kind, 'result', bounded.result.error)
+  assert.ok(bounded.result.keyframes.length > 2, 'bounded tracking must return multiple trajectory samples')
+  assert.ok(bounded.result.keyframes.at(-1).time <= 1.000001, 'bounded tracking must stop at endTime')
   const backward = await track('backward', 1.75, { translateX: 0.05, translateY: 0, scale: 1, rotation: 0 })
   assert.equal(backward.result.kind, 'result', backward.result.error)
   assert.ok(backward.result.keyframes.length > 2, 'backward tracking must return multiple trajectory samples')
