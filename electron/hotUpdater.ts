@@ -19,6 +19,7 @@ import { cpSync, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync,
 import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import AdmZip from 'adm-zip'
+import { canLoadHotUpdate, stableReleaseVersion } from '../src/shared/hotUpdateCompatibility'
 
 // ── 常量 ──
 
@@ -178,6 +179,8 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
   if (!app.isPackaged) return null
 
   const appVersion = app.getVersion()
+  // 预发布安装包只能使用随安装包发布并验证过的代码与原生模块。
+  if (!stableReleaseVersion(appVersion)) return null
   const releaseTag = `v${appVersion}`
 
   const manifest = await fetchLatestHotUpdateViaAPI(releaseTag)
@@ -190,7 +193,7 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
 
   // 检查版本是否匹配当前 app 版本
   const parsed = parseHotVersion(manifest.version)
-  if (!parsed || parsed.appVersion !== appVersion) {
+  if (!parsed || !canLoadHotUpdate(appVersion, manifest.version)) {
     return null
   }
 
@@ -224,6 +227,9 @@ export async function checkForHotUpdates(): Promise<HotUpdateCheckResult | null>
  * 下载热更新 zip 包并应用到 userData/.luna-hot/ 目录
  */
 export async function applyHotUpdate(info: HotUpdateCheckResult): Promise<void> {
+  if (!canLoadHotUpdate(app.getVersion(), info.version)) {
+    throw new Error('此热更新与当前安装版本不匹配')
+  }
   const hotDir = HOT_DIR()
   const downloadTempDir = join(hotDir, '.download-temp')
   const zipPath = join(downloadTempDir, 'hot-update.zip')

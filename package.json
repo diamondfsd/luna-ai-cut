@@ -50,6 +50,7 @@
     "test:resource-packs": "node scripts/test-runtime-resource-packs.mjs",
     "test:resources": "node scripts/test-runtime-resource-service.mjs",
     "test:diagnostics": "node scripts/test-crash-diagnostics.mjs",
+    "test:hot-update": "node scripts/test-hot-update-compatibility.mjs",
     "test:landing": "node scripts/test-landing-platform.mjs",
     "test:local-share": "node --experimental-strip-types scripts/test-local-media-share.mjs",
     "test:ai-selection": "node --experimental-strip-types scripts/test-ai-selection.mjs",

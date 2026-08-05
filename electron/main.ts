@@ -11,11 +11,13 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { canLoadHotUpdate } from '../src/shared/hotUpdateCompatibility'
 import { failStartup, installStartupExperience } from './startupWindowService'
 
 async function boot(): Promise<void> {
   // 开发模式跳过热更新，避免本地代码被热更新覆盖
   if (!app.isPackaged) {
+    process.env.LUNA_BOOT_SOURCE = 'development'
     await import('./appMain.ts')
     return
   }
@@ -29,11 +31,11 @@ async function boot(): Promise<void> {
   // 检查是否有有效的热更新版本
   let hotVersion = readHotVersion(versionFile)
 
-  // 如果热更新的基础版本低于当前 app 版本，丢弃旧热更新（如 app 升到 1.3.2 后仍加载 1.3.1-hot.15）
+  // 热更新只能覆盖完全相同的稳定安装版。Beta/RC 必须使用安装包内置代码，
+  // 避免旧热更新同时替换主进程、页面和原生模块。
   const appVersion = app.getVersion()
-  const hotBaseVersion = parseHotBaseVersion(hotVersion)
-  if (hotBaseVersion && hotVersion && compareVersions(appVersion, hotBaseVersion) > 0) {
-    console.log(`[hot-update] 应用版本 ${appVersion} > 热更新基础版本 ${hotBaseVersion}，丢弃旧热更新`)
+  if (hotVersion && !canLoadHotUpdate(appVersion, hotVersion)) {
+    console.log(`[hot-update] 热更新 ${hotVersion} 与安装版本 ${appVersion} 不兼容，丢弃旧热更新`)
     try {
       const { rmSync } = await import('node:fs')
       rmSync(hotDir, { recursive: true, force: true })
@@ -44,6 +46,7 @@ async function boot(): Promise<void> {
   if (hotVersion && existsSync(hotMain)) {
     console.log(`[hot-update] 加载热更新版本: ${hotVersion}`)
     try {
+      process.env.LUNA_BOOT_SOURCE = `hot-update:${hotVersion}`
       await import(pathToFileURL(hotMain).href)
       console.log(`[hot-update] 热更新加载成功: ${hotVersion}`)
       return
@@ -56,6 +59,7 @@ async function boot(): Promise<void> {
     }
   }
   // 加载 asar 内置的 fallback 版本
+  process.env.LUNA_BOOT_SOURCE = 'bundled'
   await import('./appMain.ts')
 }
 
@@ -97,26 +101,6 @@ function readHotVersion(filePath: string): string | null {
   } catch {
     return null
   }
-}
-
-/** 从 "1.3.1-hot.15" 中提取基础版本 "1.3.1" */
-function parseHotBaseVersion(version: string | null): string | null {
-  if (!version) return null
-  const match = version.match(/^(\d+\.\d+\.\d+)-/)
-  return match ? match[1] : null
-}
-
-/** 简单 semver 比较，返回 1 (a>b) / 0 (a==b) / -1 (a<b) */
-function compareVersions(a: string, b: string): number {
-  const pa = a.replace(/^v/, '').split('.').map(Number)
-  const pb = b.replace(/^v/, '').split('.').map(Number)
-  for (let i = 0; i < 3; i++) {
-    const na = pa[i] || 0
-    const nb = pb[i] || 0
-    if (na > nb) return 1
-    if (na < nb) return -1
-  }
-  return 0
 }
 
 app.whenReady().then(async () => {

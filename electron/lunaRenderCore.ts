@@ -7,7 +7,7 @@
  */
 import { app } from 'electron'
 import { createRequire } from 'node:module'
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
   type LayerPositioningData,
@@ -15,6 +15,7 @@ import {
   type RenderLayerTransform,
   cleanNativeInputValue,
 } from './lunaRenderCoreNormalize'
+import { logMainInfo } from './loggerService'
 
 const require = createRequire(import.meta.url)
 
@@ -198,6 +199,11 @@ export function getNative(): LunaRenderCoreNative {
         }
         process.env.LUNA_DXC_PATH = dxcPath
       }
+      logMainInfo('[LRC] 原生渲染组件已加载', {
+        source: app.isPackaged
+          ? (nodePath === packagedNative ? 'bundled' : 'hot-update')
+          : 'development',
+      })
       native = loaded
       return native!
     } catch (error) {
@@ -241,6 +247,13 @@ function clearInitGuard(): void {
   }
 }
 
+function nativeLogPath(logPath?: string): string {
+  if (logPath) return logPath
+  const logDir = join(app.getPath('userData'), 'logs')
+  mkdirSync(logDir, { recursive: true })
+  return join(logDir, 'luna-rc.log')
+}
+
 export function resetRenderCompatibilityBlock(): void {
   clearInitGuard()
 }
@@ -258,7 +271,7 @@ export function ensureInit(logPath?: string): void {
   initializing = true
   writeInitGuard()
   try {
-    getNative().initCompositor(logPath ?? undefined)
+    getNative().initCompositor(nativeLogPath(logPath))
     initialized = true
     clearInitGuard()
   } catch (error) {
@@ -284,7 +297,7 @@ export function warmupRenderCore(logPath?: string): Promise<void> {
   warmupTask = Promise.resolve()
     .then(() => {
       writeInitGuard()
-      return getNative().initCompositorAsync(logPath ?? undefined)
+      return getNative().initCompositorAsync(nativeLogPath(logPath))
     })
     .then(() => {
       initialized = true
