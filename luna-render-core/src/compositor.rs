@@ -251,6 +251,7 @@ pub struct Compositor {
     textures: HashMap<u32, TextureEntry>,
     next_texture_id: u32,
     pub max_texture_size: u32,
+    backend: wgpu::Backend,
 
     output_texture: Option<(wgpu::Texture, u32, u32)>,
 
@@ -310,42 +311,21 @@ impl Compositor {
         let path = log_path.unwrap_or("luna-rc.log");
         crate::logging::init(path);
         log!("Creating wgpu instance...");
-        // Windows 默认枚举 Vulkan 和 D3D12。部分旧版 Intel Vulkan 驱动会在
-        // 枚举阶段直接访问冲突，进程无法捕获，因此 Windows 只启用 D3D12。
-        let backends = if cfg!(target_os = "windows") {
-            wgpu::Backends::DX12
-        } else {
-            wgpu::Backends::default()
-        };
-        log!("Enabled wgpu backends: {:?}", backends);
-        let instance = wgpu::Instance::new(init::instance_descriptor(backends, log_path)?);
-
-        log!("Requesting GPU adapter (LowPower, no surface)...");
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-            apply_limit_buckets: false,
-        }))
-        .map_err(|e| format!("No suitable GPU adapter: {}", e))?;
-
-        let info = adapter.get_info();
+        let selected = init::select_gpu(log_path)?;
+        let (device, queue, info, backend) = (
+            selected.device,
+            selected.queue,
+            selected.info,
+            selected.backend,
+        );
         log!(
-            "GPU adapter: name={} vendor={} device={} backend={:?}",
+            "GPU adapter selected: name={} type={:?} vendor={} device={} backend={:?}",
             info.name,
+            info.device_type,
             info.vendor,
             info.device,
-            info.backend
+            backend
         );
-
-        log!("Requesting GPU device...");
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("Luna Render Core"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            ..Default::default()
-        }))
-        .map_err(|e| format!("Failed to create device: {}", e))?;
         let max_texture_size = device.limits().max_texture_dimension_2d;
         log!(
             "GPU device created OK max_texture_dimension_2d={}",
@@ -433,6 +413,7 @@ impl Compositor {
             textures: initial_textures,
             next_texture_id: 1,
             max_texture_size,
+            backend,
             output_texture: None,
             texture_cache: HashMap::new(),
             unavailable_optional_assets: std::collections::HashSet::new(),
@@ -460,6 +441,11 @@ impl Compositor {
         layers: &[RenderLayer],
     ) -> Result<Vec<u8>, String> {
         self.render_impl(canvas_width, canvas_height, layers, true, false)
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn backend(&self) -> wgpu::Backend {
+        self.backend
     }
 }
 
