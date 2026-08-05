@@ -92,8 +92,7 @@ test('视频美颜支持边分析边调整并完整导出', async ({ lunaApp }) 
   const partialTimeline = partial.assets[0]?.pipeline?.beautyMasks?.find((layer) => layer.timeline)?.timeline
   expect(partialTimeline?.endTime).toBeLessThan(duration)
 
-  await lunaApp.page.getByRole('button', { name: '测试蒙版', exact: true }).click()
-  await expect(lunaApp.page.getByTestId('beauty-mask-overlay')).toBeVisible()
+  await expect(lunaApp.page.getByRole('button', { name: '测试蒙版', exact: true })).toHaveCount(0)
   const parameterValues = [40, 25, 55, 35]
   const parameterLabels = ['面部美白数值', '皮肤美白数值', '磨皮数值', '质感数值']
   for (let index = 0; index < parameterLabels.length; index += 1) {
@@ -146,7 +145,6 @@ test('视频美颜支持边分析边调整并完整导出', async ({ lunaApp }) 
     expect(pgm.subarray(0, pgm.indexOf('\n255\n') + 5).toString('ascii')).toContain('512 512')
   }
 
-  await lunaApp.page.getByRole('button', { name: '关闭蒙版', exact: true }).click()
   await lunaApp.page.getByRole('button', { name: '导出', exact: true }).click()
   await lunaApp.page.getByRole('button', { name: '确认导出', exact: true }).click()
   await expect(lunaApp.page.getByText('已加入导出队列: 1 个结果', { exact: true })).toBeVisible()

@@ -184,16 +184,7 @@ test('图片美颜识别人脸与身体皮肤并持久化参数', async ({ lunaA
   if (screenshotDir) {
     await lunaApp.page.locator('.preview-stage').screenshot({ path: path.join(screenshotDir, 'beauty-max.png') })
   }
-  const projectBeforeMaskPreview = await readFile(projectFile, 'utf8')
-  await lunaApp.page.getByRole('button', { name: '测试蒙版', exact: true }).click()
-  const legend = lunaApp.page.getByLabel('美颜蒙版图例')
-  await expect(legend).toBeVisible()
-  for (const label of ['身体肌肤', '面部肌肤']) {
-    await expect(legend.getByText(label, { exact: true })).toBeVisible()
-  }
-  await expect(lunaApp.page.getByTestId('beauty-mask-overlay')).toHaveAttribute('data-mask-count', '2')
-  expect(await readFile(projectFile, 'utf8')).toEqual(projectBeforeMaskPreview)
-  await lunaApp.page.getByRole('button', { name: '关闭蒙版', exact: true }).click()
+  await expect(lunaApp.page.getByRole('button', { name: '测试蒙版', exact: true })).toHaveCount(0)
   await expect(lunaApp.page.getByTestId('beauty-mask-overlay')).toHaveCount(0)
   const retouchCanvas = lunaApp.page.getByLabel('局部修复画笔')
   const repairMode = lunaApp.page.getByRole('button', { name: '修复', exact: true })

@@ -36,7 +36,7 @@ export const DEFAULT_BEAUTY_PARAMETERS: BeautyParameters = {
 }
 
 const BODY_EXPOSURE_PER_STEP = 0.0008
-const BODY_RENDER_EXPOSURE_PER_STEP = 0.002
+const BODY_RENDER_EXPOSURE_PER_STEP = 0.003
 const FACE_EXPOSURE_PER_STEP = 0.0012
 
 function clampParameter(value: number): number {
