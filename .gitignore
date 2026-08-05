@@ -62,6 +62,8 @@ luna-render-core/luna-inpaint-worker
 luna-render-core/luna-inpaint-worker.exe
 luna-render-core/luna-asr-worker
 luna-render-core/luna-asr-worker.exe
+luna-render-core/luna-punctuation-worker
+luna-render-core/luna-punctuation-worker.exe
 luna-render-core/dxcompiler.dll
 luna-render-core/dxil.dll
 luna-render-core/DXC-LICENSE-*.txt

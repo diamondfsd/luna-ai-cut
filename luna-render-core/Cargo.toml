@@ -23,6 +23,10 @@ path = "src/bin/specialized_segmentation_worker.rs"
 name = "luna-inpaint-worker"
 path = "src/bin/luna_inpaint_worker.rs"
 
+[[bin]]
+name = "luna-punctuation-worker"
+path = "src/bin/luna_punctuation_worker.rs"
+
 [dependencies]
 napi = { version = "2", features = ["full"] }
 napi-derive = "2"
