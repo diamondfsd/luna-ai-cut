@@ -94,8 +94,8 @@
         "iconAutoKey": "Auto-key: capture a keyframe automatically whenever you change this value.",
         "iconDiamond": "Add or remove a keyframe at the playhead.",
         "colorsHeading": "Keyframes",
-        "colorDefault": "Orange diamond: a keyframe.",
-        "colorSelected": "Bright orange with a ring: selected keyframe."
+        "colorDefault": "Blue diamond: a keyframe.",
+        "colorSelected": "Bright blue with a ring: selected keyframe."
       },
       "keyframeMarker": {
         "rowLabel": "Keyframe at frame {{frame}} — drag to retime, Alt-drag to duplicate",

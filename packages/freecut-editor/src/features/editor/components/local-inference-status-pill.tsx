@@ -75,9 +75,9 @@ export function LocalInferenceStatusPill() {
           className="hidden items-center gap-2 rounded-md border border-border/70 bg-secondary/35 px-2.5 py-1 lg:flex"
         >
           {summary.state === 'loading' || summary.state === 'running' ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-500" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
           ) : (
-            <Cpu className="h-3.5 w-3.5 text-orange-500" />
+            <Cpu className="h-3.5 w-3.5 text-primary" />
           )}
           <div className="min-w-0">
             <div className="text-[10px] font-medium leading-none">{getStateLabel(summary)}</div>

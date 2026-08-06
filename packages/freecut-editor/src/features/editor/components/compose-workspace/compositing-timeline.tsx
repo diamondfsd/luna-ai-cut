@@ -1270,10 +1270,12 @@ const MotionSelectionRetimeRange = memo(function MotionSelectionRetimeRange({
     <div
       ref={rangeRef}
       data-testid="motion-selection-retime-range"
-      className="pointer-events-none absolute bottom-0 z-10 h-1 rounded-full bg-primary/70 shadow-[0_0_0_1px_hsl(var(--background)),0_0_6px_hsl(var(--primary)/0.45)]"
+      className="pointer-events-none absolute bottom-0 z-10 h-1 rounded-full bg-primary/70"
       style={{
         left: `${frameToPercent(visibleRange.startFrame)}%`,
         width: `${Math.max(0.4, visibleRange.widthPercent)}%`,
+        boxShadow:
+          '0 0 0 1px var(--background), 0 0 6px color-mix(in oklab, var(--primary) 45%, transparent)',
       }}
       title={`${range.keyframeCount} selected keyframes across ${range.itemCount} layer${layerSuffix} · ${selectionDuration}f`}
     >
@@ -6329,7 +6331,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
                     className={cn(
                       'relative border-b border-border/70',
                       isDragging && 'z-30 opacity-85 shadow-lg',
-                      'data-[transform-parent-link-hover=true]:bg-orange-500/10 data-[transform-parent-link-hover=true]:ring-1 data-[transform-parent-link-hover=true]:ring-inset data-[transform-parent-link-hover=true]:ring-orange-400/70',
+                      'data-[transform-parent-link-hover=true]:bg-primary/10 data-[transform-parent-link-hover=true]:ring-1 data-[transform-parent-link-hover=true]:ring-inset data-[transform-parent-link-hover=true]:ring-primary/70',
                       'data-[transform-parent-link-rejected=true]:bg-red-500/10 data-[transform-parent-link-rejected=true]:ring-1 data-[transform-parent-link-rejected=true]:ring-inset data-[transform-parent-link-rejected=true]:ring-red-400/70',
                     )}
                   >
@@ -6571,7 +6573,7 @@ const CompositingTimelineCore = memo(function CompositingTimelineCore({
                               className={cn(
                                 'flex h-6 w-6 shrink-0 touch-none items-center justify-center rounded-sm outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-primary',
                                 parentItemId
-                                  ? 'text-orange-400'
+                                  ? 'text-primary'
                                   : 'text-muted-foreground hover:text-foreground',
                               )}
                             >

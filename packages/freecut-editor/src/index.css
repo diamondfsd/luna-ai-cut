@@ -40,8 +40,9 @@ body.canvas-translate-cursor-not-allowed * {
     --popover: oklch(0.16 0 0); /* #292929 - Dropdowns */
     --popover-foreground: oklch(0.92 0 0);
 
-    /* Primary - Orange accent (playback, active states) */
-    --primary: oklch(0.68 0.19 45); /* #FF8C3A - Vibrant orange */
+    /* Primary - Luna blue accent (playback, active states) */
+    --primary: #2997ff;
+    --primary-strong: #0066cc;
     --primary-foreground: oklch(0.12 0 0); /* Dark text on primary */
 
     /* Secondary - Subtle panel variation */
@@ -63,7 +64,7 @@ body.canvas-translate-cursor-not-allowed * {
     /* Borders - Subtle separators */
     --border: oklch(0.25 0 0); /* #404040 - Borders */
     --input: oklch(0.24 0 0); /* #3d3d3d - Input borders */
-    --ring: oklch(0.68 0.19 45); /* Orange focus ring */
+    --ring: var(--primary);
 
     /* Panel system - Layered depth */
     --panel-bg: oklch(0.18 0 0); /* #2e2e2e - Panels */
@@ -73,12 +74,12 @@ body.canvas-translate-cursor-not-allowed * {
     /* Sidebar */
     --sidebar: oklch(0.18 0 0);
     --sidebar-foreground: oklch(0.92 0 0);
-    --sidebar-primary: oklch(0.68 0.19 45);
+    --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: oklch(0.12 0 0);
     --sidebar-accent: oklch(0.22 0 0);
     --sidebar-accent-foreground: oklch(0.92 0 0);
     --sidebar-border: oklch(0.25 0 0);
-    --sidebar-ring: oklch(0.68 0.19 45);
+    --sidebar-ring: var(--primary);
 
     --radius: 0.5rem;
   }
@@ -221,11 +222,11 @@ body.canvas-translate-cursor-not-allowed * {
 
   /* Subtle glow for active elements */
   .glow-primary {
-    box-shadow: 0 0 12px oklch(var(--primary) / 0.3);
+    box-shadow: 0 0 12px color-mix(in oklab, var(--primary) 30%, transparent);
   }
 
   .glow-primary-sm {
-    box-shadow: 0 0 6px oklch(var(--primary) / 0.25);
+    box-shadow: 0 0 6px color-mix(in oklab, var(--primary) 25%, transparent);
   }
 
   /* Text shadows for better readability on dark */
@@ -299,8 +300,8 @@ body.canvas-translate-cursor-not-allowed * {
 }
 
 [data-media-id].media-marquee-preview > * {
-  border-color: oklch(var(--primary));
-  box-shadow: 0 0 0 1px oklch(var(--primary) / 0.2);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 20%, transparent);
 }
 
 [data-composition-id].composition-marquee-preview {

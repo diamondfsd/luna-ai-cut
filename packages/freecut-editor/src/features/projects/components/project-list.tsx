@@ -459,6 +459,23 @@ export function ProjectList({ onEditProject, onImportProject }: ProjectListProps
               </Button>
             </>
           )}
+
+          {selectionCount === 0 && (
+            <>
+              {onImportProject && (
+                <Button variant="outline" size="sm" className="gap-2" onClick={onImportProject}>
+                  <Upload className="w-4 h-4" />
+                  {t('projects.importProject')}
+                </Button>
+              )}
+              <Button size="sm" className="gap-2" asChild>
+                <Link to="/projects/new">
+                  <Plus className="w-4 h-4" />
+                  {t('projects.newProject')}
+                </Link>
+              </Button>
+            </>
+          )}
         </div>
       )}
 

@@ -75,6 +75,12 @@
       "auto": "自动",
       "tooltip": "缩放：{{label}}"
     },
+    "canvasRatio": {
+      "ariaLabel": "画布比例：{{label}}",
+      "tooltip": "画布比例：{{label}}",
+      "original": "适应（原始）",
+      "custom": "自定义"
+    },
     "canvasDrop": {
       "dropOnTimeline": "拖放到时间线",
       "compoundClipsTimeline": "复合剪辑仍然最适合放在时间线上。",

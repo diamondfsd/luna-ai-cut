@@ -84,8 +84,8 @@
         "iconAutoKey": "자동 키: 이 값을 변경할 때마다 키프레임을 자동으로 기록합니다.",
         "iconDiamond": "재생 헤드 위치에 키프레임을 추가하거나 제거합니다.",
         "colorsHeading": "키프레임",
-        "colorDefault": "주황색 다이아몬드: 키프레임.",
-        "colorSelected": "링이 있는 밝은 주황색: 선택된 키프레임."
+        "colorDefault": "파란색 다이아몬드: 키프레임.",
+        "colorSelected": "링이 있는 밝은 파란색: 선택된 키프레임."
       },
       "keyframeMarker": {
         "rowLabel": "{{frame}} 프레임의 키프레임 — 드래그하여 타이밍 변경, Alt+드래그하여 복제",

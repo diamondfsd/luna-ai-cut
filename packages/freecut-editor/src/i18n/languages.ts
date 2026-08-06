@@ -30,7 +30,7 @@ export const SUPPORTED_LANGUAGES: readonly AppLanguage[] = [
   { code: 'zh', nativeName: '简体中文', englishName: 'Chinese (Simplified)', dir: 'ltr' },
 ] as const
 
-export const DEFAULT_LANGUAGE = 'en'
+export const DEFAULT_LANGUAGE = 'zh'
 
 export const SUPPORTED_LANGUAGE_CODES: readonly string[] = SUPPORTED_LANGUAGES.map((l) => l.code)
 

@@ -84,8 +84,8 @@
         "iconAutoKey": "オートキー：この値を変更するたびに自動でキーフレームを記録します。",
         "iconDiamond": "再生ヘッドの位置にキーフレームを追加または削除します。",
         "colorsHeading": "キーフレーム",
-        "colorDefault": "オレンジのダイヤ：キーフレーム。",
-        "colorSelected": "リング付きの明るいオレンジ：選択中のキーフレーム。"
+        "colorDefault": "青いダイヤ：キーフレーム。",
+        "colorSelected": "リング付きの明るい青：選択中のキーフレーム。"
       },
       "keyframeMarker": {
         "rowLabel": "フレーム {{frame}} のキーフレーム — ドラッグでタイミング変更、Alt+ドラッグで複製",

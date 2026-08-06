@@ -22,6 +22,7 @@ import { ErrorBoundary } from '@freecut/app/error-boundary'
 import { useTranslation } from 'react-i18next'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { ShuttleIndicator } from '@freecut/shared/ui/shuttle-indicator'
+import { CanvasAspectRatioControls } from './canvas-aspect-ratio-controls'
 
 interface PreviewAreaProps {
   project: {
@@ -711,7 +712,8 @@ export const PreviewArea = memo(function PreviewArea({
                     </div>
                   </div>
 
-                  <div className="ml-auto flex-shrink-0">
+                  <div className="ml-auto flex flex-shrink-0 items-center gap-0.5">
+                    <CanvasAspectRatioControls />
                     <PreviewZoomControls />
                   </div>
                 </div>

@@ -1,5 +1,6 @@
 {
   "projects": {
+    "creatingProject": "正在创建项目…",
     "unknownError": "未知错误",
     "tryAgain": "请重试",
     "dismiss": "关闭",
@@ -112,8 +113,8 @@
       "selectedCount_other": "已选 {{count}} 个",
       "deleteN_one": "删除 {{count}} 个",
       "deleteN_other": "删除 {{count}} 个",
-      "welcomeTitle": "欢迎使用 FreeCut",
-      "welcomeDescription": "创建你的第一个视频项目开始吧。选择分辨率和帧率，然后开始编辑！",
+      "welcomeTitle": "欢迎使用LunaAiCut",
+      "welcomeDescription": "基于开源freecut二次开发",
       "noResultsTitle": "未找到项目",
       "noResultsDescription": "我们找不到符合你搜索条件的项目。请尝试调整筛选条件或搜索词。",
       "projectCount_one": "{{count}} 个项目",

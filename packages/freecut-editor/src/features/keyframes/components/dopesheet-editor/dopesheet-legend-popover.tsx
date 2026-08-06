@@ -43,7 +43,7 @@ export function DopesheetLegendPopover({ disabled }: DopesheetLegendPopoverProps
         </p>
         <ul className="mb-2 space-y-1 text-muted-foreground">
           <li className="flex items-start gap-1.5">
-            <LineChart className="mt-px h-3 w-3 flex-shrink-0 text-orange-500" />
+            <LineChart className="mt-px h-3 w-3 flex-shrink-0 text-primary" />
             <span>{t('timeline.keyframeEditor.legend.iconCurve')}</span>
           </li>
           <li className="flex items-start gap-1.5">

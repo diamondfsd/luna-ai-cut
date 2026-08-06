@@ -7,7 +7,7 @@ import {
 } from '@freecut/features/timeline/deps/media-library-resolver'
 import type { DroppableMediaType } from './dropped-media'
 import { isDroppableMediaType, isValidDragMediaItem, type DragMediaItem } from './drag-drop-preview'
-import { preflightFirstTimelineVideoProjectMatch } from './external-file-project-match'
+import { preflightFirstTimelineVisualProjectMatch } from './external-file-project-match'
 
 export interface DroppedMediaEntry {
   media: MediaMetadata
@@ -162,7 +162,7 @@ export async function resolveDroppedMediaEntriesFromExternalFiles({
   }
 
   try {
-    await preflightFirstTimelineVideoProjectMatch(entries)
+    await preflightFirstTimelineVisualProjectMatch(entries)
   } catch (error) {
     notify.error('Unable to inspect dropped file.', {
       description: error instanceof Error ? error.message : 'Please try again.',

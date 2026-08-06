@@ -69,12 +69,11 @@ for (const [path, mod] of Object.entries(enPartialModules).sort(([a], [b]) => a.
 }
 
 // Resources: full merged en tree + base-only trees for other languages.
-// Base-only ensures untranslated-yet feature strings fall back to English.
 const resources = Object.fromEntries(
   SUPPORTED_LANGUAGE_CODES.map((lang) => [
     lang,
     {
-      translation: lang === DEFAULT_LANGUAGE ? enMerged : structuredClone(baseLocales[lang] ?? {}),
+      translation: lang === 'en' ? enMerged : structuredClone(baseLocales[lang] ?? {}),
     },
   ]),
 )
@@ -92,7 +91,7 @@ void i18n
       escapeValue: false,
     },
     detection: {
-      order: ['localStorage', 'navigator'],
+      order: ['localStorage'],
       lookupLocalStorage: I18N_STORAGE_KEY,
       caches: ['localStorage'],
       convertDetectedLanguage: resolveSupportedLanguage,
@@ -112,7 +111,7 @@ syncDocumentLanguage(i18n.resolvedLanguage ?? i18n.language ?? DEFAULT_LANGUAGE)
 i18n.on('languageChanged', syncDocumentLanguage)
 
 // Track which languages have had their partials fully loaded.
-const loadedLanguages = new Set<string>([DEFAULT_LANGUAGE])
+const loadedLanguages = new Set<string>(['en'])
 
 export async function loadLanguageResources(lang: string): Promise<void> {
   const resolved = resolveSupportedLanguage(lang)
@@ -136,16 +135,12 @@ export async function changeAppLanguage(lang: string): Promise<void> {
   await i18n.changeLanguage(resolved)
 }
 
-// Preload the user's persisted/detected language before first render.
-// Errors are caught so the app still renders with English fallback.
+// Preload the user's persisted language, or the app default, before first render.
 export const i18nReady: Promise<void> = (async () => {
   const persistedLanguage =
     typeof localStorage === 'undefined' ? null : localStorage.getItem(I18N_STORAGE_KEY)
-  const detectedLanguage = typeof navigator === 'undefined' ? DEFAULT_LANGUAGE : navigator.language
-  const initial = resolveSupportedLanguage(
-    persistedLanguage ?? detectedLanguage,
-  )
-  if (initial !== DEFAULT_LANGUAGE) await loadLanguageResources(initial)
+  const initial = resolveSupportedLanguage(persistedLanguage ?? DEFAULT_LANGUAGE)
+  await loadLanguageResources(initial)
 })().catch((err) => {
   log.error('Failed to preload language resources', err)
 })

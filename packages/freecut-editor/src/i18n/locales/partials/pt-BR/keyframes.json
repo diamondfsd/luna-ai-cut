@@ -84,8 +84,8 @@
         "iconAutoKey": "Chave automática: captura um quadro-chave automaticamente sempre que você altera este valor.",
         "iconDiamond": "Adicionar ou remover um quadro-chave no cursor de reprodução.",
         "colorsHeading": "Quadros-chave",
-        "colorDefault": "Losango laranja: um quadro-chave.",
-        "colorSelected": "Laranja brilhante com um anel: quadro-chave selecionado."
+        "colorDefault": "Losango azul: um quadro-chave.",
+        "colorSelected": "Azul brilhante com um anel: quadro-chave selecionado."
       },
       "keyframeMarker": {
         "rowLabel": "Quadro-chave no frame {{frame}} — arraste para reposicionar, Alt+arrastar para duplicar",

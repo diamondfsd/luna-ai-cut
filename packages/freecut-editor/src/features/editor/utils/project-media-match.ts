@@ -1,6 +1,7 @@
 import type { ProjectResolution } from '@freecut/types/project'
 import type { MediaMetadata } from '@freecut/types/storage'
 import { formatFpsValue, resolveAutoMatchProjectFps } from '@freecut/features/editor/deps/projects'
+import { resizeCanvasToAspectRatio } from '@freecut/shared/projects/canvas-aspect-ratio'
 
 export interface ProjectMediaMatchSuggestion {
   width: number
@@ -23,38 +24,40 @@ function normalizeDimension(value: number): number {
   return rounded % 2 === 0 ? rounded : rounded + 1
 }
 
-export function isProjectMatchableVideo(media: MediaMetadata): boolean {
+export function isProjectMatchableVisual(media: MediaMetadata): boolean {
   return (
-    media.mimeType.startsWith('video/') &&
+    (media.mimeType.startsWith('video/') || media.mimeType.startsWith('image/')) &&
     Number.isFinite(media.width) &&
     media.width > 0 &&
     Number.isFinite(media.height) &&
-    media.height > 0 &&
-    Number.isFinite(media.fps) &&
-    media.fps > 0
+    media.height > 0
   )
 }
 
-type ProjectMediaMatchSource = Pick<MediaMetadata, 'width' | 'height' | 'fps'>
+type ProjectMediaMatchSource = Pick<MediaMetadata, 'width' | 'height'> & { fps?: number }
 
 export function getProjectMediaMatchSuggestion(
   project: ProjectResolution,
   media: ProjectMediaMatchSource,
 ): ProjectMediaMatchSuggestion {
-  const width = normalizeDimension(media.width)
-  const height = normalizeDimension(media.height)
-  const fpsMatch = resolveAutoMatchProjectFps(media.fps)
+  const sourceWidth = normalizeDimension(media.width)
+  const sourceHeight = normalizeDimension(media.height)
+  const matchedCanvas = resizeCanvasToAspectRatio(project, sourceWidth / sourceHeight)
+  const hasSourceFps = Number.isFinite(media.fps) && (media.fps ?? 0) > 0
+  const fpsMatch = resolveAutoMatchProjectFps(hasSourceFps ? media.fps! : project.fps)
   const fps = fpsMatch.fps
 
   const sizeDiffers =
-    width > 0 && height > 0 && (project.width !== width || project.height !== height)
-  const fpsDiffers = project.fps !== fps
+    sourceWidth > 0 &&
+    sourceHeight > 0 &&
+    (project.width !== matchedCanvas.width || project.height !== matchedCanvas.height)
+  const fpsDiffers = hasSourceFps && project.fps !== fps
 
   return {
-    width,
-    height,
+    width: matchedCanvas.width,
+    height: matchedCanvas.height,
     fps,
-    sourceFpsLabel: formatFpsValue(media.fps),
+    sourceFpsLabel: formatFpsValue(hasSourceFps ? media.fps! : project.fps),
     matchedFpsLabel: formatFpsValue(fps),
     fpsWasRounded: !fpsMatch.exact,
     sizeDiffers,

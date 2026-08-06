@@ -84,8 +84,8 @@
         "iconAutoKey": "Clave automática: captura un fotograma clave automáticamente cada vez que cambias este valor.",
         "iconDiamond": "Añadir o quitar un fotograma clave en el cabezal de reproducción.",
         "colorsHeading": "Fotogramas clave",
-        "colorDefault": "Diamante naranja: un fotograma clave.",
-        "colorSelected": "Naranja brillante con un anillo: fotograma clave seleccionado."
+        "colorDefault": "Diamante azul: un fotograma clave.",
+        "colorSelected": "Azul brillante con un anillo: fotograma clave seleccionado."
       },
       "keyframeMarker": {
         "rowLabel": "Fotograma clave en el frame {{frame}}: arrastra para reubicar, Alt+arrastrar para duplicar",

@@ -138,7 +138,7 @@ export function MiniZoomControl({
       >
         <span className="pointer-events-none absolute inset-x-1 top-1/2 h-px -translate-y-1/2 bg-muted-foreground/45" />
         <span
-          className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-orange-400/80 bg-background shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+          className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/80 bg-background shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
           style={{ left: thumbLeft }}
         />
       </button>
