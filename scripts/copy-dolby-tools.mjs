@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { chmodSync, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import https from 'node:https'
 import path from 'node:path'
@@ -12,7 +13,9 @@ const arch = archIndex >= 0 ? process.argv[archIndex + 1] : process.arch
 const version = '2.3.3'
 const bentoVersion = '1-6-0-641'
 const destination = path.join(process.cwd(), 'resources', 'dolby-vision')
-const cache = path.join(process.cwd(), '.dolby-tools-cache')
+const commonGitDir = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim()
+const primaryWorktreeRoot = path.dirname(path.resolve(process.cwd(), commonGitDir))
+const cache = path.join(primaryWorktreeRoot, '.dolby-tools-cache')
 
 const releases = {
   darwin: {
