@@ -1,13 +1,21 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
 
     /* Bundler mode */
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["packages/opencut-editor/src/*"],
+      "next/navigation": ["packages/opencut-editor/src/platform/next-navigation.tsx"],
+      "next/link": ["packages/opencut-editor/src/platform/next-link.tsx"],
+      "next/image": ["packages/opencut-editor/src/platform/next-image.tsx"],
+      "next-themes": ["packages/opencut-editor/src/platform/next-themes.tsx"]
+    },
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,

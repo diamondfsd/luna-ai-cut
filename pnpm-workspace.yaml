@@ -1,4 +1,20 @@
+packages:
+  - '.'
+  - 'packages/*'
+
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+  - ffmpeg-static
+  - onnxruntime-node
+  - protobufjs
+  - sharp
+  - workerd
 allowBuilds:
-  electron: true
+  electron: set this to true or false
   esbuild: true
-  ffmpeg-static: true
+  ffmpeg-static: set this to true or false
+  onnxruntime-node: set this to true or false
+  protobufjs: set this to true or false
+  sharp: set this to true or false
+  workerd: set this to true or false

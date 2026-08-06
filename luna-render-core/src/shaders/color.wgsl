@@ -65,8 +65,17 @@ fn apply_color(input: vec3<f32>, tex_coord: vec2<f32>, layer_x: f32) -> vec3<f32
 
     let contrast_amount = params.contrast / 100.0;
     if (contrast_amount >= 0.0) {
-        let pivot = 0.1845;
-        c = (c - pivot) * (1.0 + contrast_amount * 1.35) + pivot;
+        // Shape contrast in display space so small positive adjustments do not
+        // crush linear shadows or clip highlights around the mid-gray pivot.
+        let pivot = 0.466;
+        let strength = 1.0 + contrast_amount * 0.55;
+        let encoded = linear_to_srgb(sat3(c));
+        let below = pivot * pow(max(encoded / pivot, vec3<f32>(0.0)), vec3<f32>(strength));
+        let above = 1.0 - (1.0 - pivot) * pow(
+            max((vec3<f32>(1.0) - encoded) / (1.0 - pivot), vec3<f32>(0.0)),
+            vec3<f32>(strength),
+        );
+        c = srgb_to_linear(select(below, above, encoded >= vec3<f32>(pivot)));
     } else {
         // Compress brighter tones toward the existing shadows instead of
         // lifting the whole image toward a gray pivot.

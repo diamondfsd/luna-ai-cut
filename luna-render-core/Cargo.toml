@@ -39,6 +39,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 swash = "0.2"
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "download-binaries", "copy-dylibs", "tls-native", "api-23"] }
+opencut-compositor = { package = "compositor", path = "opencut/crates/compositor" }
+opencut-gpu = { package = "gpu", path = "opencut/crates/gpu" }
+opencut-time = { package = "time", path = "opencut/crates/time" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

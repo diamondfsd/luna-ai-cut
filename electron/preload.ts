@@ -162,6 +162,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     segmentInstances: (request: import('../src/shared/types').WorkspaceInstanceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentInstances', request),
     analyzeBeauty: (request: import('../src/shared/types').WorkspaceBeautyAnalysisRequest) => ipcRenderer.invoke('workspace:analyzeBeauty', request),
     transcribeSubtitles: (request: import('../src/shared/types').WorkspaceSubtitleTranscriptionRequest) => ipcRenderer.invoke('workspace:transcribeSubtitles', request),
+    transcribeOpenCutAudio: (request: import('../src/shared/types').OpenCutSubtitleTranscriptionRequest) => ipcRenderer.invoke('workspace:transcribeOpenCutAudio', request),
     cancelSubtitleTranscription: (requestId: string) => ipcRenderer.invoke('workspace:cancelSubtitleTranscription', requestId),
     chooseSubtitleFont: () => ipcRenderer.invoke('workspace:chooseSubtitleFont'),
     exportSubtitlesSrt: (request: { sourcePath: string; track: import('../src/shared/types').WorkspaceSubtitleTrack; range: { startMs: number; endMs: number } }) => ipcRenderer.invoke('workspace:exportSubtitlesSrt', request),
@@ -378,6 +379,13 @@ const lunaRenderCoreApi = {
     ipcRenderer.invoke('lrc:renderFrame', canvasWidth, canvasHeight, layers, compositionTime),
   releaseTexture: (textureId: number) =>
     ipcRenderer.invoke('lrc:releaseTexture', textureId),
+  openCutInit: () => ipcRenderer.invoke('lrc:openCutInit'),
+  openCutUpsertTexture: (id: string, data: Uint8Array, width: number, height: number) =>
+    ipcRenderer.invoke('lrc:openCutUpsertTexture', id, data, width, height),
+  openCutReleaseTexture: (id: string) =>
+    ipcRenderer.invoke('lrc:openCutReleaseTexture', id),
+  openCutRenderFrame: (frameJson: string) =>
+    ipcRenderer.invoke('lrc:openCutRenderFrame', frameJson),
   renderCompositionFrame: (composition: CompositionInput, time: number, maxSide?: number) =>
     ipcRenderer.invoke('lrc:renderCompositionFrame', composition, time, maxSide),
   renderCompositionFrameAsync: (composition: CompositionInput, time: number, maxSide?: number) =>
@@ -411,8 +419,26 @@ const lunaRenderCoreApi = {
     ipcRenderer.invoke('lrc:deleteCubeFile', cubePath, isBuiltin),
 }
 
+const openCutStorageApi = {
+  getJson: (namespace: string, key: string) => ipcRenderer.invoke('opencut-storage:get-json', namespace, key),
+  setJson: (namespace: string, key: string, value: unknown) => ipcRenderer.invoke('opencut-storage:set-json', namespace, key, value),
+  getBinary: (namespace: string, key: string) => ipcRenderer.invoke('opencut-storage:get-binary', namespace, key),
+  setBinary: (namespace: string, key: string, value: Uint8Array) => ipcRenderer.invoke('opencut-storage:set-binary', namespace, key, value),
+  remove: (namespace: string, key: string) => ipcRenderer.invoke('opencut-storage:remove', namespace, key),
+  list: (namespace: string, extension: 'json' | 'bin') => ipcRenderer.invoke('opencut-storage:list', namespace, extension),
+  clear: (namespace: string) => ipcRenderer.invoke('opencut-storage:clear', namespace),
+  capacity: () => ipcRenderer.invoke('opencut-storage:capacity'),
+}
+
+const openCutServicesApi = {
+  searchSounds: (request: unknown) => ipcRenderer.invoke('opencut:search-sounds', request),
+  submitFeedback: (message: string) => ipcRenderer.invoke('opencut:submit-feedback', message),
+}
+
 contextBridge.exposeInMainWorld('luna', lunaApi)
 contextBridge.exposeInMainWorld('lunaRenderCore', lunaRenderCoreApi)
+contextBridge.exposeInMainWorld('openCutStorage', openCutStorageApi)
+contextBridge.exposeInMainWorld('openCutServices', openCutServicesApi)
 contextBridge.exposeInMainWorld('deviceDebug', deviceDebugApi)
 if (import.meta.env.DEV || process.env.VITE_DEV_SERVER_URL) {
   contextBridge.exposeInMainWorld('wifiDebug', wifiDebugApi)

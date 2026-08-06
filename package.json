@@ -87,6 +87,7 @@
   "devDependencies": {
     "7zip-bin": "5.2.0",
     "@playwright/test": "^1.61.1",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/adm-zip": "^0.5.8",
     "@types/node": "^26.0.0",
     "@types/probe-image-size": "^7.2.5",
@@ -96,6 +97,7 @@
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^9.2.1",
     "electron": "^30.0.1",
     "electron-builder": "^24.13.3",
     "eslint": "^8.57.0",
@@ -103,6 +105,7 @@
     "eslint-plugin-react-refresh": "^0.4.5",
     "ffmpeg-static": "^5.3.0",
     "ffprobe-static": "^3.1.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.2.2",
     "vite": "^5.1.6",
     "vite-plugin-electron": "^0.28.6",

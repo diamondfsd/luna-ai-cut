@@ -128,6 +128,10 @@ interface LunaRenderCoreNative {
   updateTexture(textureId: number, data: Buffer): void
   renderFrame(canvasWidth: number, canvasHeight: number, layers: unknown[], compositionTime?: number): Buffer
   releaseTexture(textureId: number): void
+  initOpenCutRenderer(): void
+  openCutUpsertTexture(id: string, data: Buffer, width: number, height: number): void
+  openCutReleaseTexture(id: string): void
+  openCutRenderFrame(frameJson: string): Buffer
   renderCompositionFrame(input: unknown): RenderPreviewOutput
   renderCompositionFrameAsync(input: unknown): Promise<RenderPreviewOutput>
   exportCompositionVideoAsync(input: unknown): Promise<void>

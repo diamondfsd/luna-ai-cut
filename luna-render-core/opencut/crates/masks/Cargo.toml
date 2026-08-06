@@ -1,0 +1,13 @@
+[package]
+name = "masks"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/masks.rs"
+crate-type = ["rlib"]
+
+[dependencies]
+bytemuck = { version = "1.25.0", features = ["derive"] }
+gpu = { version = "0.1.0", path = "../gpu" }
+wgpu = "30"

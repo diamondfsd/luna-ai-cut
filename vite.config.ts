@@ -3,6 +3,7 @@ import path from 'node:path'
 import { cpSync, readFileSync } from 'node:fs'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
 
@@ -22,13 +23,24 @@ function copyLocalShareAssets() {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  publicDir: false,
+  publicDir: path.resolve(__dirname, 'packages/opencut-editor/public'),
+  resolve: {
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname, 'packages/opencut-editor/src') },
+      { find: 'next/navigation', replacement: path.resolve(__dirname, 'packages/opencut-editor/src/platform/next-navigation.tsx') },
+      { find: 'next/link', replacement: path.resolve(__dirname, 'packages/opencut-editor/src/platform/next-link.tsx') },
+      { find: 'next/image', replacement: path.resolve(__dirname, 'packages/opencut-editor/src/platform/next-image.tsx') },
+      { find: 'next-themes', replacement: path.resolve(__dirname, 'packages/opencut-editor/src/platform/next-themes.tsx') },
+    ],
+    dedupe: ['react', 'react-dom'],
+  },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [
     copyLocalShareAssets(),
     react(),
+    tailwindcss(),
     electron({
       main: {
         entry: 'electron/main.ts',

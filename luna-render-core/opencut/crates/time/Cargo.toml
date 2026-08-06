@@ -1,0 +1,18 @@
+[package]
+name = "time"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/time.rs"
+crate-type = ["rlib"]
+
+[dependencies]
+bridge = { version = "0.1.0", path = "../bridge" }
+num-traits = "0.2.19"
+serde = { version = "1", features = ["derive"] }
+tsify-next = { version = "0.5", optional = true }
+wasm-bindgen = { version = "0.2.115", optional = true }
+
+[features]
+wasm = ["dep:wasm-bindgen", "dep:tsify-next", "tsify-next/js"]

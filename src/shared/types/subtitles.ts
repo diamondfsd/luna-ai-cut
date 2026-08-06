@@ -50,6 +50,13 @@ export interface WorkspaceSubtitleTranscriptionRequest {
   language: WorkspaceSubtitleLanguage
 }
 
+export interface OpenCutSubtitleTranscriptionRequest {
+  requestId: string
+  samples: Float32Array
+  sampleRate: number
+  language: WorkspaceSubtitleLanguage
+}
+
 export interface WorkspaceSubtitleTranscriptionResult {
   requestId: string
   language: string

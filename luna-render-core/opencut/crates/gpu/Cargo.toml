@@ -1,0 +1,17 @@
+[package]
+name = "gpu"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytemuck = { version = "1.25.0", features = ["derive"] }
+thiserror = "2.0.18"
+wgpu = "30"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.116"
+web-sys = { version = "0.3.93", features = ["Document", "Window", "HtmlCanvasElement", "CanvasRenderingContext2d", "OffscreenCanvasRenderingContext2d", "ImageData"] }
+
+[features]
+default = []
+wasm = ["wgpu/webgl"]

@@ -90,6 +90,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bridge"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -174,6 +182,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "compositor"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "effects",
+ "gpu",
+ "masks",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -250,6 +270,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
+]
+
+[[package]]
+name = "effects"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "gpu",
+ "thiserror",
+ "wgpu",
 ]
 
 [[package]]
@@ -384,6 +414,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c4ee00b289aba7a9e5306d57c2d05499b2e5dc427f84ac708bd2c090212cf3e"
 dependencies = [
  "gl_generator",
+]
+
+[[package]]
+name = "gpu"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "thiserror",
+ "wasm-bindgen",
+ "web-sys",
+ "wgpu",
 ]
 
 [[package]]
@@ -606,6 +647,8 @@ dependencies = [
  "bytemuck",
  "cc",
  "chrono",
+ "compositor",
+ "gpu",
  "napi",
  "napi-build",
  "napi-derive",
@@ -616,6 +659,7 @@ dependencies = [
  "serde",
  "serde_json",
  "swash",
+ "time",
  "wgpu",
  "windows",
 ]
@@ -625,6 +669,15 @@ name = "lzma-rust2"
 version = "0.15.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e20f57f9918e5bd7bc58c22cdd70a6afc7375d4dd9683af5f2b34bd3d2bba619"
+
+[[package]]
+name = "masks"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "gpu",
+ "wgpu",
+]
 
 [[package]]
 name = "matrixmultiply"
@@ -1418,6 +1471,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "time"
+version = "0.1.0"
+dependencies = [
+ "bridge",
+ "num-traits",
+ "serde",
 ]
 
 [[package]]

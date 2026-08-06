@@ -1,0 +1,12 @@
+[package]
+name = "bridge"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/bridge.rs"
+proc-macro = true
+
+[dependencies]
+quote = "1.0.45"
+syn = { version = "2.0.117", features = ["full"] }

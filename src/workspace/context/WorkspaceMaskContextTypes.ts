@@ -71,5 +71,6 @@ export interface WorkspaceMaskValue {
   updateGroupedMaskSettings: (patch: { opacity?: number; feather?: number }, groupKey: string, finalize?: boolean) => void
   removeMask: () => Promise<void>
   generateSemanticMask: (point?: { x: number; y: number }, targetId?: AutomaticSegmentationTargetId, modelId?: SegmentationModelId) => Promise<void>
+  generateSuggestedMasks: (targetIds: AutomaticSegmentationTargetId[]) => Promise<number>
   generateInstanceStrokeMask: (points: Array<{ x: number; y: number }>) => Promise<void>
 }

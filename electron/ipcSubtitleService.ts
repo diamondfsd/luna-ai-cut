@@ -1,12 +1,32 @@
 import { app, dialog, ipcMain } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, mkdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleTranscriptionRequest } from '../src/shared/types'
+import type { OpenCutSubtitleTranscriptionRequest, WorkspaceSubtitleFontAsset, WorkspaceSubtitleTranscriptionRequest } from '../src/shared/types'
 import { transcribeVideo } from './subtitleTranscriptionService'
 
 const tasks = new Map<string, AbortController>()
 const MAX_FONT_BYTES = 30 * 1024 * 1024
+
+function encodeFloat32Wave(samples: Float32Array, sampleRate: number): Buffer {
+  const dataBytes = samples.byteLength
+  const output = Buffer.allocUnsafe(44 + dataBytes)
+  output.write('RIFF', 0)
+  output.writeUInt32LE(36 + dataBytes, 4)
+  output.write('WAVE', 8)
+  output.write('fmt ', 12)
+  output.writeUInt32LE(16, 16)
+  output.writeUInt16LE(3, 20)
+  output.writeUInt16LE(1, 22)
+  output.writeUInt32LE(sampleRate, 24)
+  output.writeUInt32LE(sampleRate * 4, 28)
+  output.writeUInt16LE(4, 32)
+  output.writeUInt16LE(32, 34)
+  output.write('data', 36)
+  output.writeUInt32LE(dataBytes, 40)
+  Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength).copy(output, 44)
+  return output
+}
 
 function validFontHeader(bytes: Buffer, extension: string): boolean {
   if (bytes.length < 4) return false
@@ -76,6 +96,34 @@ export function register(): void {
     } finally {
       event.sender.removeListener('destroyed', abort)
       tasks.delete(request.requestId)
+    }
+  })
+
+  ipcMain.handle('workspace:transcribeOpenCutAudio', async (event, request: OpenCutSubtitleTranscriptionRequest) => {
+    if (tasks.size > 0) throw new Error('已有字幕识别任务正在进行')
+    if (!(request.samples instanceof Float32Array) || request.samples.length === 0) throw new Error('没有可识别的音频')
+    if (!Number.isInteger(request.sampleRate) || request.sampleRate < 8_000 || request.sampleRate > 192_000) throw new Error('音频采样率无效')
+
+    const controller = new AbortController()
+    tasks.set(request.requestId, controller)
+    const abort = (): void => controller.abort()
+    event.sender.once('destroyed', abort)
+    const tempPath = path.join(app.getPath('temp'), `luna-opencut-${request.requestId}.wav`)
+    try {
+      await writeFile(tempPath, encodeFloat32Wave(request.samples, request.sampleRate))
+      return await transcribeVideo({
+        requestId: request.requestId,
+        filePath: tempPath,
+        startMs: 0,
+        endMs: request.samples.length / request.sampleRate * 1_000,
+        language: request.language,
+      }, controller.signal, (progress) => {
+        if (!event.sender.isDestroyed()) event.sender.send('workspace:subtitle-progress', progress)
+      })
+    } finally {
+      event.sender.removeListener('destroyed', abort)
+      tasks.delete(request.requestId)
+      await rm(tempPath, { force: true }).catch(() => undefined)
     }
   })
 

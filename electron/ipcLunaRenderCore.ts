@@ -167,6 +167,28 @@ export function register(ctx: RegisterContext): void {
     },
   ))
 
+  ipcMain.handle('lrc:openCutInit', safe('openCutInit', async () => {
+    return getNative().initOpenCutRenderer()
+  }))
+
+  ipcMain.handle('lrc:openCutUpsertTexture', safe('openCutUpsertTexture',
+    async (_event: IpcMainInvokeEvent, id: string, data: Buffer, width: number, height: number) => {
+      return getNative().openCutUpsertTexture(id, data, width, height)
+    },
+  ))
+
+  ipcMain.handle('lrc:openCutReleaseTexture', safe('openCutReleaseTexture',
+    async (_event: IpcMainInvokeEvent, id: string) => {
+      return getNative().openCutReleaseTexture(id)
+    },
+  ))
+
+  ipcMain.handle('lrc:openCutRenderFrame', safe('openCutRenderFrame',
+    async (_event: IpcMainInvokeEvent, frameJson: string) => {
+      return getNative().openCutRenderFrame(frameJson)
+    },
+  ))
+
   ipcMain.handle('lrc:renderCompositionFrame', safe('renderCompositionFrame',
     async (_event: IpcMainInvokeEvent, composition: any, time: number, maxSide?: number) => {
       const ffmpegPath = getFfmpegPath()
