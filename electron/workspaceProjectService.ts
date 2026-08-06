@@ -2,7 +2,6 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
 import type { WorkspaceMediaAsset, WorkspaceProject, WorkspaceProjectAsset, WorkspaceRemovalOperation } from '../src/shared/types'
-import { normalizeSubtitleTrack } from '../src/shared/subtitleTrack'
 import { fileSha256 } from './resumableDownloadService'
 
 const PROJECTS_DIR = 'workspace-projects'
@@ -112,11 +111,10 @@ async function normalizeRemovalPipelines(project: WorkspaceProject, projectDirec
   return {
     ...project,
     assets: await Promise.all(project.assets.map(async (asset) => {
-      const subtitles = normalizeSubtitleTrack(asset.subtitles)
-      if (!asset.removal?.operations) return { ...asset, ...(subtitles ? { subtitles } : {}) }
+      if (!asset.removal?.operations) return asset
       const operations = (await Promise.all(asset.removal.operations.map((operation) => normalizeRemovalOperation(operation, directory))))
         .filter((operation): operation is WorkspaceRemovalOperation => operation !== null)
-      return { ...asset, removal: { schemaVersion: 1, operations }, ...(subtitles ? { subtitles } : {}) }
+      return { ...asset, removal: { schemaVersion: 1, operations } }
     })),
   }
 }
