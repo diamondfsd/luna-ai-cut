@@ -19,6 +19,7 @@ import { LocalMediaPage } from '../pages/LocalMediaPage'
 import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
+import { VideoEditorPage } from '../pages/VideoEditorPage'
 import type { CacheStats } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
 
@@ -89,6 +90,7 @@ export function AppRoutes() {
     ['/local-resources', true],
     ['/ai-selection', true],
     ['/workspace', true],
+    ['/video-editor', true],
     ['/settings', true],
     ['/developer', developerMode],
     ['/ble-debug', debugVisible],
@@ -162,6 +164,10 @@ export function AppRoutes() {
             onCreativeModeChange={setCreativeModeId}
             pageActive={isActive('/workspace')}
           />
+        </AppRoute>
+
+        <AppRoute path="/video-editor" preserve={false}>
+          <VideoEditorPage />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>

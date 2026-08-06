@@ -1,0 +1,614 @@
+{
+  "unusedExports": [
+    {
+      "path": "src/features/editor/deps/preview-contract.ts",
+      "exportName": "ColorVideoPreview",
+      "reason": "deps-contract: consumed through the editor preview adapter and lazy component selection; Fallow does not trace this re-export path reliably."
+    },
+    {
+      "path": "src/features/editor/deps/preview-contract.ts",
+      "exportName": "usePowerWindowEditorStore",
+      "reason": "deps-contract: preview editor state is shared with effect panels through feature boundary adapters."
+    },
+    {
+      "path": "src/features/editor/deps/preview-contract.ts",
+      "exportName": "useSpatialEffectEditorStore",
+      "reason": "deps-contract: preview editor state is shared with effect panels through feature boundary adapters."
+    },
+    {
+      "path": "src/features/editor/deps/timeline-keyframe-ui-contract.ts",
+      "exportName": "TranscriptEditorPanel",
+      "reason": "deps-contract: lazy-loaded by the editor media sidebar through the timeline UI contract."
+    },
+    {
+      "path": "src/features/editor/deps/timeline-keyframe-ui-contract.ts",
+      "exportName": "CompactNavigator",
+      "reason": "deps-contract: consumed by the compositing timeline through the timeline keyframe UI adapter."
+    },
+    {
+      "path": "src/features/editor/deps/timeline-keyframe-ui-contract.ts",
+      "exportName": "DopesheetEditor",
+      "reason": "deps-contract: consumed by the compositing timeline through the timeline keyframe UI adapter."
+    },
+    {
+      "path": "src/features/editor/deps/timeline-keyframe-ui-contract.ts",
+      "exportName": "KEYFRAME_EDGE_INSET",
+      "reason": "deps-contract: consumed by compositing timeline layout through the timeline keyframe UI adapter."
+    },
+    {
+      "path": "src/features/preview/components/video-preview.tsx",
+      "exportName": "ColorVideoPreview",
+      "reason": "Component is re-exported by the editor preview dependency contract for workspace-specific preview selection."
+    },
+    {
+      "path": "src/features/timeline/components/transcript-editor/transcript-editor-panel.tsx",
+      "exportName": "TranscriptEditorPanel",
+      "reason": "Component is lazy-loaded by the editor media sidebar through timeline contracts."
+    },
+    {
+      "path": "src/features/timeline/components/timeline.tsx",
+      "exportName": "Timeline",
+      "reason": "Component is exported through the timeline editor contract and consumed by the editor workspace."
+    },
+    {
+      "path": "src/components/ui/popover.tsx",
+      "exportName": "PopoverAnchor",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/config/hotkeys.ts",
+      "exportName": "HOTKEY_DESCRIPTIONS",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/editor/agent/agent-service.ts",
+      "exportName": "getAgentAdapter",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/agent-service.ts",
+      "exportName": "planRequest",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/agent-service.ts",
+      "exportName": "runStep",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/agent-store.ts",
+      "exportName": "useAgentStore",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/index.ts",
+      "exportName": "buildToolCatalog",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/index.ts",
+      "exportName": "callMcpTool",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/index.ts",
+      "exportName": "getEditorTool",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/index.ts",
+      "exportName": "listEditorTools",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/index.ts",
+      "exportName": "listMcpTools",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/index.ts",
+      "exportName": "useAgentStore",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/prompt.ts",
+      "exportName": "buildMessages",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/prompt.ts",
+      "exportName": "buildSystemPrompt",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/prompt.ts",
+      "exportName": "parsePlan",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/timeline-context.ts",
+      "exportName": "buildTimelineContext",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/clip-refs.ts",
+      "exportName": "resolveClipRef",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "buildClipRefs",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "buildToolCatalog",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "callMcpTool",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "getEditorTool",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "listEditorTools",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "listMcpTools",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "resolveClipRef",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "resolveClipRefs",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "resolveItemRef",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/agent/tools/index.ts",
+      "exportName": "resolveTargetItems",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/features/editor/components/mini-timeline/constants.ts",
+      "exportName": "MINI_TIMELINE_IO_HANDLE_COLOR",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/editor/deps/composition-runtime-contract.ts",
+      "exportName": "deletePreviewAudioConform",
+      "reason": "Re-exported deps contract API used through a dynamic composition-runtime import in the editor settings dialog."
+    },
+    {
+      "path": "src/features/editor/deps/keyframes-contract.ts",
+      "exportName": "bakeAudioPulseToKeyframes",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/editor/deps/keyframes-contract.ts",
+      "exportName": "bakeMotionModifiersToKeyframes",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/editor/deps/keyframes-contract.ts",
+      "exportName": "buildTriggerWaveMotionLayerKeyframes",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/editor/deps/keyframes-contract.ts",
+      "exportName": "createAudioPulseModulation",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/editor/deps/keyframes-contract.ts",
+      "exportName": "createTriggerWaveMotionLayerEffects",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/editor/deps/keyframes-contract.ts",
+      "exportName": "TRIGGER_WAVE_MOTION_LAYER_LABEL",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/export/components/exports-dialog.tsx",
+      "exportName": "ExportsDialog",
+      "reason": "Lazy-loaded from the editor export deps contract."
+    },
+    {
+      "path": "src/features/export/deps/timeline-compositions-contract.ts",
+      "exportName": "getActiveCompositionId",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/export/deps/timeline-compositions.ts",
+      "exportName": "getActiveCompositionId",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/export/utils/canvas-audio.ts",
+      "exportName": "createAudioBuffer",
+      "reason": "Called through the canvas-audio namespace from export rendering."
+    },
+    {
+      "path": "src/features/export/utils/canvas-audio.ts",
+      "exportName": "hasAudioContent",
+      "reason": "Called through the canvas-audio namespace from export rendering."
+    },
+    {
+      "path": "src/features/export/utils/canvas-render-orchestrator.ts",
+      "exportName": "renderSingleFrame",
+      "reason": "Dynamically imported by thumbnail and timeline persistence flows."
+    },
+    {
+      "path": "src/features/keyframes/utils/easing-presets.ts",
+      "exportName": "areBezierPointsEqual",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/keyframes/utils/easing-presets.ts",
+      "exportName": "BEZIER_PRESETS",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/keyframes/utils/effect-animatable-properties.ts",
+      "exportName": "isAnimatableGpuColorParam",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/keyframes/utils/trigger-wave-motion-layer.ts",
+      "exportName": "pulseEnvelope",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/keyframes/utils/trigger-wave-motion-layer.ts",
+      "exportName": "TRIGGER_WAVE_MOTION_LAYER_LABEL",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/lottie-browser/services/lottiefiles-api.ts",
+      "exportName": "LOTTIEFILES_LICENSE",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/media-library/components/embedded-subtitle-track-picker-host.tsx",
+      "exportName": "EmbeddedSubtitleTrackPickerHost",
+      "reason": "Lazy-loaded through the editor media-library import helper."
+    },
+    {
+      "path": "src/features/media-library/components/subtitle-scan-progress-dialog.tsx",
+      "exportName": "SubtitleScanProgressDialog",
+      "reason": "Lazy-loaded through the editor media-library import helper."
+    },
+    {
+      "path": "src/features/media-library/transcription/transcription-engine.ts",
+      "exportName": "PARAKEET_FALLBACK_WHISPER_MODEL",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/media-library/transcription/transcription-engine.ts",
+      "exportName": "PARAKEET_MODEL",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/media-library/transcription/transcription-engine.ts",
+      "exportName": "PARAKEET_SUPPORTED_LANGUAGES",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/preview/components/color-scopes-monitor.tsx",
+      "exportName": "ColorScopesMonitor",
+      "reason": "Lazy-loaded from the preview area."
+    },
+    {
+      "path": "src/features/preview/components/inline-source-preview.tsx",
+      "exportName": "InlineSourcePreview",
+      "reason": "Lazy-loaded from the preview area."
+    },
+    {
+      "path": "src/features/preview/deps/media-library-contract.ts",
+      "exportName": "cleanupBlobUrls",
+      "reason": "Re-exported through preview media resolution helpers for tests and route cleanup."
+    },
+    {
+      "path": "src/features/preview/deps/media-library-contract.ts",
+      "exportName": "resolveProxyUrl",
+      "reason": "Re-exported through preview media resolution helpers for preview component callers."
+    },
+    {
+      "path": "src/features/preview/hooks/use-preview-render-pump-controller.ts",
+      "exportName": "resolvePlaybackDomVideoElement",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/preview/utils/motion-path.ts",
+      "exportName": "canvasPointToPlayerPoint",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/preview/utils/preview-state-coordinator.ts",
+      "exportName": "getPreviewRuntimeSnapshot",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/preview/utils/preview-state-coordinator.ts",
+      "exportName": "getPreviewRuntimeStateFromPlaybackState",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/preview/utils/source-media-sync.ts",
+      "exportName": "shouldResyncPlayingMedia",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/features/project-bundle/components/bundle-export-dialog.tsx",
+      "exportName": "BundleExportDialog",
+      "reason": "Lazy-loaded through the editor project-bundle deps contract."
+    },
+    {
+      "path": "src/features/project-bundle/services/json-export-service.ts",
+      "exportName": "downloadSnapshotJson",
+      "reason": "Dynamically imported by the project debug panel."
+    },
+    {
+      "path": "src/features/scene-browser/components/scene-browser-panel.tsx",
+      "exportName": "SceneBrowserPanel",
+      "reason": "Lazy-loaded through the scene-browser contract from media-library UI."
+    },
+    {
+      "path": "src/features/timeline/components/bento-layout-dialog.tsx",
+      "exportName": "BentoLayoutDialog",
+      "reason": "Lazy-loaded through the editor timeline import helper."
+    },
+    {
+      "path": "src/features/timeline/components/filler-removal-dialog.tsx",
+      "exportName": "FillerRemovalDialog",
+      "reason": "Lazy-loaded through the editor timeline import helper."
+    },
+    {
+      "path": "src/features/timeline/components/reverse-conform-dialog.tsx",
+      "exportName": "ReverseConformDialog",
+      "reason": "Lazy-loaded through the editor timeline import helper."
+    },
+    {
+      "path": "src/features/timeline/deps/keyframes-contract.ts",
+      "exportName": "areBezierPointsEqual",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/timeline/deps/keyframes-contract.ts",
+      "exportName": "BEZIER_PRESETS",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/timeline/deps/keyframes-contract.ts",
+      "exportName": "clampBezierValue",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/timeline/deps/keyframes-contract.ts",
+      "exportName": "clampSpringValue",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/timeline/deps/keyframes-contract.ts",
+      "exportName": "findMatchingBezierPreset",
+      "reason": "deps-contract: cross-feature adapter surface mandated by the boundary rules; check:deps-wrapper-health --fail-on-unused passes it."
+    },
+    {
+      "path": "src/features/timeline/utils/collision-utils.ts",
+      "exportName": "detectOverlappingItems",
+      "reason": "Dynamically imported by the project debug utilities."
+    },
+    {
+      "path": "src/features/timeline/utils/track-heights.ts",
+      "exportName": "getPresetTrackHeight",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/analysis/captioning/registry.ts",
+      "exportName": "DEFAULT_MEDIA_CAPTIONING_PROVIDER_ID",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/analysis/captioning/registry.ts",
+      "exportName": "mediaCaptioningProviderRegistry",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/analysis/verification/registry.ts",
+      "exportName": "DEFAULT_SCENE_VERIFICATION_PROVIDER_ID",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/analysis/verification/registry.ts",
+      "exportName": "getDefaultSceneVerificationProvider",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/analysis/verification/registry.ts",
+      "exportName": "getSceneVerificationModelLabel",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/analysis/verification/registry.ts",
+      "exportName": "getSceneVerificationModelOptions",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/audio/mic-recorder/devices.ts",
+      "exportName": "onAudioInputDevicesChanged",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/audio/mic-recorder/index.ts",
+      "exportName": "buildAudioConstraints",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/infrastructure/audio/mic-recorder/index.ts",
+      "exportName": "createMicLevelMeter",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/infrastructure/audio/mic-recorder/index.ts",
+      "exportName": "onAudioInputDevicesChanged",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/infrastructure/audio/mic-recorder/index.ts",
+      "exportName": "pickRecorderMimeType",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/infrastructure/audio/ui-sound/engine.ts",
+      "exportName": "disposeEngine",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/audio/ui-sound/index.ts",
+      "exportName": "disposeEngine",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/infrastructure/llm/create-gemma-llm-worker.ts",
+      "exportName": "createGemmaLlmWorker",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/llm/gemma-llm-adapter.ts",
+      "exportName": "gemmaLlmAdapter",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/llm/index.ts",
+      "exportName": "DEFAULT_LLM_ADAPTER_ID",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/llm/index.ts",
+      "exportName": "getDefaultLlmAdapter",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/llm/index.ts",
+      "exportName": "getLlmAdapter",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/llm/index.ts",
+      "exportName": "listLlmAdapters",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/llm/llm-registry.ts",
+      "exportName": "DEFAULT_LLM_ADAPTER_ID",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/llm/llm-registry.ts",
+      "exportName": "getDefaultLlmAdapter",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/llm/llm-registry.ts",
+      "exportName": "getLlmAdapter",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/llm/llm-registry.ts",
+      "exportName": "listLlmAdapters",
+      "reason": "parked-ai-feature: the on-device assistant is deliberately unwired (see the note in ai-tab.tsx); restore when the Assistant tab ships."
+    },
+    {
+      "path": "src/infrastructure/lottie/lottie-frame-provider.ts",
+      "exportName": "ensureLottieWasm",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/lottie/lottie-frame-provider.ts",
+      "exportName": "parseLottieFileBytes",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/lottie/lottie-frame-provider.ts",
+      "exportName": "parseLottieMetadata",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/infrastructure/storage/workspace-fs/ai-outputs/index.ts",
+      "exportName": "AI_OUTPUT_SCHEMA_VERSION",
+      "reason": "Intentional AI-output workspace API surface covered by storage tests."
+    },
+    {
+      "path": "src/infrastructure/storage/workspace-fs/ai-outputs/index.ts",
+      "exportName": "listAiOutputs",
+      "reason": "Intentional AI-output workspace API surface covered by storage tests."
+    },
+    {
+      "path": "src/infrastructure/storage/workspace-fs/exports.ts",
+      "exportName": "saveExportFile",
+      "reason": "Storage implementation exported through the indexed storage API and dynamic render queue path."
+    },
+    {
+      "path": "src/shared/logging/preview-trace.ts",
+      "exportName": "getPreviewTraceEvents",
+      "reason": "Called by project debug utilities through the preview-trace namespace."
+    },
+    {
+      "path": "src/shared/timeline/io-range/index.ts",
+      "exportName": "computeIoGripWidth",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/shared/timeline/io-range/index.ts",
+      "exportName": "IO_HANDLE_COLOR",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/shared/timeline/io-range/index.ts",
+      "exportName": "IO_HANDLE_WIDTH",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/shared/typography/text-motion/index.ts",
+      "exportName": "TEXT_MOTION_IN_PRESET_IDS",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/shared/typography/text-motion/index.ts",
+      "exportName": "TEXT_MOTION_LOOP_PRESET_IDS",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/shared/typography/text-motion/index.ts",
+      "exportName": "TEXT_MOTION_OUT_PRESET_IDS",
+      "reason": "barrel-surface: feature barrel defines the public API; current consumers import the underlying module directly."
+    },
+    {
+      "path": "src/shared/ui/ui-sound.ts",
+      "exportName": "useUiSound",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    },
+    {
+      "path": "src/shared/utils/transcription-progress.ts",
+      "exportName": "isModelStage",
+      "reason": "unreviewed: carried over by the 2026-07-09 re-baseline; trace individually before deleting."
+    }
+  ]
+}

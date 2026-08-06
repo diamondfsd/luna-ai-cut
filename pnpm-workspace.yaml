@@ -1,4 +1,11 @@
+packages:
+  - '.'
+  - 'packages/*'
+
 allowBuilds:
   electron: true
   esbuild: true
   ffmpeg-static: true
+  onnxruntime-node: false
+  protobufjs: true
+  sharp: false

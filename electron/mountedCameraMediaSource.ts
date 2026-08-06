@@ -1,4 +1,5 @@
 import { dialog } from 'electron'
+import type { Dirent } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -25,6 +26,8 @@ export const MOUNTED_CAMERA_CAPABILITIES: CameraMediaSourceCapabilities = {
   watch: true,
 }
 
+const MAX_MOUNTED_CAMERA_DIRECTORY_DEPTH = 4
+
 function formatSize(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)}G`
   if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)}M`
@@ -32,41 +35,60 @@ function formatSize(bytes: number): string {
   return String(bytes)
 }
 
-async function directoryExists(dir: string): Promise<boolean> {
-  try {
-    return (await fs.stat(dir)).isDirectory()
-  } catch {
-    return false
-  }
-}
-
 async function mediaRootsFor(selectedPath: string): Promise<string[]> {
   const root = await fs.realpath(selectedPath)
-  const candidates = path.basename(root).toLowerCase() === 'dcim'
-    ? [root]
-    : [
-        path.join(root, 'DCIM'),
-        path.join(root, 'dcim'),
-        path.join(root, 'storage_internal', 'DCIM'),
-        path.join(root, 'storage_internal', 'dcim'),
-      ]
-  const roots: string[] = []
-  for (const candidate of candidates) {
-    if (await directoryExists(candidate)) roots.push(await fs.realpath(candidate))
-  }
-  return [...new Set(roots)]
+  return (await fs.stat(root)).isDirectory() ? [root] : []
 }
 
-async function walkMediaFiles(dir: string, limit = Number.POSITIVE_INFINITY, depth = 0): Promise<string[]> {
-  if (depth > 6) return []
+function isPathInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate)
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
+}
+
+async function walkMediaFiles(
+  dir: string,
+  limit = Number.POSITIVE_INFINITY,
+  depth = 0,
+  boundaryRoot = dir,
+  boundaryDevice?: number,
+): Promise<string[]> {
+  if (depth > MAX_MOUNTED_CAMERA_DIRECTORY_DEPTH || limit <= 0) return []
   const result: string[] = []
-  const entries = await fs.readdir(dir, { withFileTypes: true })
+  let entries: Dirent[]
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true })
+  } catch (error) {
+    logMainWarn('[有线相机] 跳过无法读取的目录', {
+      dir,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return result
+  }
+
+  const rootDevice = boundaryDevice ?? (await fs.stat(boundaryRoot)).dev
   for (const entry of entries) {
     if (result.length >= limit) break
     if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue
     const entryPath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
-      result.push(...await walkMediaFiles(entryPath, limit - result.length, depth + 1))
+      if (depth >= MAX_MOUNTED_CAMERA_DIRECTORY_DEPTH) continue
+      try {
+        const entryStats = await fs.stat(entryPath)
+        const resolvedEntry = await fs.realpath(entryPath)
+        if (!entryStats.isDirectory() || entryStats.dev !== rootDevice || !isPathInside(boundaryRoot, resolvedEntry)) continue
+        result.push(...await walkMediaFiles(
+          resolvedEntry,
+          limit - result.length,
+          depth + 1,
+          boundaryRoot,
+          rootDevice,
+        ))
+      } catch (error) {
+        logMainWarn('[有线相机] 跳过无法读取的目录', {
+          dir: entryPath,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
       continue
     }
     if (entry.isFile() && lunaMediaAdapter.mediaKind(entry.name) !== 'unknown') result.push(entryPath)
@@ -125,7 +147,7 @@ async function platformVolumeRoots(): Promise<string[]> {
 
 export async function detectMountedCameraVolumes(): Promise<MountedCameraVolume[]> {
   const candidates = await platformVolumeRoots()
-  const inspected = await Promise.all(candidates.map((candidate) => inspectVolume(candidate, false)))
+  const inspected = await Promise.all(candidates.map((candidate) => inspectVolume(candidate)))
   const volumes = inspected.filter((volume): volume is MountedCameraVolume => Boolean(volume))
   logMainInfo('[有线相机] 磁盘检测完成', { candidateCount: candidates.length, volumeCount: volumes.length })
   return volumes
@@ -146,11 +168,11 @@ export async function resolveMountedCameraVolumes(preferredRoot?: string): Promi
 export async function chooseMountedCameraVolume(): Promise<MountedCameraVolume | null> {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory'],
-    title: '选择相机磁盘或 DCIM 文件夹',
+    title: '选择相机磁盘或素材文件夹',
   })
   if (result.canceled || result.filePaths.length === 0) return null
   const volume = await inspectVolume(result.filePaths[0])
-  if (!volume) throw new Error('所选位置没有找到可识别的相机素材，请选择相机磁盘或 DCIM 文件夹')
+  if (!volume) throw new Error('所选位置没有找到可识别的相机素材，请选择相机磁盘或素材文件夹')
   return volume
 }
 
@@ -198,7 +220,7 @@ export function mountedCameraVolumesStatus(
     host: '',
     httpOk: false,
     controlOk: false,
-    message: '未检测到包含 DCIM 的相机磁盘',
+    message: '未检测到包含素材的相机磁盘',
     deviceId,
     deviceName: deviceDefinitionFor(deviceId).name,
     capabilities: MOUNTED_CAMERA_CAPABILITIES,
@@ -237,9 +259,23 @@ export function mountedCameraVolumesStatus(
 
 async function assertInsideMediaRoot(filePath: string, mediaRoots: string[]): Promise<string> {
   const resolved = await fs.realpath(filePath)
-  const inside = mediaRoots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`))
+  const inside = mediaRoots.some((root) => isPathInside(root, resolved))
   if (!inside) throw new Error('相机素材路径超出允许的磁盘目录')
   return resolved
+}
+
+async function discoveredMediaPaths(volumes: MountedCameraVolume[]): Promise<Set<string>> {
+  const paths = (await Promise.all(volumes.flatMap((volume) => (
+    volume.mediaRoots.map((root) => walkMediaFiles(root))
+  )))).flat()
+  const resolved = await Promise.all(paths.map(async (filePath) => {
+    try {
+      return await fs.realpath(filePath)
+    } catch {
+      return null
+    }
+  }))
+  return new Set(resolved.filter((filePath): filePath is string => Boolean(filePath)))
 }
 
 function mountedPathsForFile(file: LunaFile): string[] {
@@ -272,12 +308,14 @@ export async function deleteMountedCameraFilesFromVolumes(
 
   const requestedPaths = [...new Set(files.flatMap(mountedPathsForFile))]
   const mediaRoots = volumes.flatMap((volume) => volume.mediaRoots)
+  const allowedPaths = await discoveredMediaPaths(volumes)
   const result: CameraDeleteResult = { deleted: [], failed: [] }
   for (const requestedPath of requestedPaths) {
     try {
       const stats = await fs.lstat(requestedPath)
       if (!stats.isFile() || stats.isSymbolicLink()) throw new Error('素材路径不是可删除的相机文件')
       const filePath = await assertInsideMediaRoot(requestedPath, mediaRoots)
+      if (!allowedPaths.has(filePath)) throw new Error('素材不在当前相机扫描结果中')
       await fs.unlink(filePath)
       result.deleted.push(filePath)
     } catch (error) {

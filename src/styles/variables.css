@@ -31,7 +31,9 @@ button {
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   background: var(--parchment);
   color: var(--ink);
 }

@@ -234,6 +234,8 @@ try {
   const uniformSourcePath = path.join(temporaryRoot, 'uniform.ppm')
   const skinTextureSourcePath = path.join(temporaryRoot, 'skin-texture.ppm')
   const toneGlowSourcePath = path.join(temporaryRoot, 'tone-glow.ppm')
+  const shadowSourcePath = path.join(temporaryRoot, 'shadow.ppm')
+  const brightSourcePath = path.join(temporaryRoot, 'bright.ppm')
   const blueSkySourcePath = path.join(temporaryRoot, 'blue-sky.ppm')
   const invalidWatermarkPath = path.join(temporaryRoot, 'invalid-watermark.png')
   const rectMaskPath = path.join(temporaryRoot, 'rect.pgm')
@@ -246,6 +248,8 @@ try {
     writeFile(uniformSourcePath, writeUniformPpmPixels()),
     writeFile(skinTextureSourcePath, writeSkinTexturePpmPixels()),
     writeFile(toneGlowSourcePath, writeToneGlowPpmPixels()),
+    writeFile(shadowSourcePath, writeUniformPpmPixels(32)),
+    writeFile(brightSourcePath, writeUniformPpmPixels(220)),
     writeFile(blueSkySourcePath, writeBlueSkyPpmPixels()),
     writeFile(invalidWatermarkPath, Buffer.alloc(0)),
     writeFile(rectMaskPath, maskPixels('rect')),
@@ -285,6 +289,28 @@ try {
     ...mediaLayer(toneGlowSourcePath), color: renderColor({ contrast: -100 }),
   }]))
   assert.equal(pixelBrightnessAt(lowContrast, 2, 16), 0, 'negative contrast must preserve pure black')
+  const contrast10 = await renderAndMatchExport('contrast-10', composition([{
+    ...mediaLayer(shadowSourcePath), color: renderColor({ contrast: 10 }),
+  }]))
+  const contrast25 = await renderAndMatchExport('contrast-25', composition([{
+    ...mediaLayer(shadowSourcePath), color: renderColor({ contrast: 25 }),
+  }]))
+  const contrast50 = await renderAndMatchExport('contrast-50', composition([{
+    ...mediaLayer(shadowSourcePath), color: renderColor({ contrast: 50 }),
+  }]))
+  const shadow10 = pixelBrightnessAt(contrast10, 24, 16)
+  const shadow25 = pixelBrightnessAt(contrast25, 24, 16)
+  const shadow50 = pixelBrightnessAt(contrast50, 24, 16)
+  assert.ok(shadow10 > 0, 'a small positive contrast adjustment must not crush visible shadows to black')
+  assert.ok(shadow10 > shadow25 && shadow25 > shadow50 && shadow50 > 0, 'positive contrast must deepen shadows gradually')
+  const brightBase = await renderAndMatchExport('bright-base', composition([mediaLayer(brightSourcePath)]))
+  const brightContrast50 = await renderAndMatchExport('bright-contrast-50', composition([{
+    ...mediaLayer(brightSourcePath), color: renderColor({ contrast: 50 }),
+  }]))
+  const brightBaseValue = pixelBrightnessAt(brightBase, 24, 16)
+  const brightContrast50Value = pixelBrightnessAt(brightContrast50, 24, 16)
+  assert.ok(brightContrast50Value > brightBaseValue, 'positive contrast must raise bright tones')
+  assert.ok(brightContrast50Value < 255 * 3, 'moderate positive contrast must not clip bright tones to white')
   const raisedBlacks = await renderAndMatchExport('raised-blacks', composition([{
     ...mediaLayer(toneGlowSourcePath), color: renderColor({ blacks: 100 }),
   }]))

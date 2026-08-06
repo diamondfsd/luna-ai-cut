@@ -1,5 +1,5 @@
 import { ArrowLeft, Captions, Check, Crop, Eraser, Image, ImagePlus, Loader2, Paintbrush, RotateCcw, ScanFace, Scissors, SlidersHorizontal, Sparkles, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
 
 import { Accordion, Button, Dialog, IconButton, Tooltip } from '../../ui'
 import { createDefaultPipeline, DEFAULT_PIPELINE, HSL_CHANNELS } from '../shared/editPipeline'
@@ -9,6 +9,10 @@ import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ColorMaskPanel } from '../color/ColorMaskPanel'
 import { FilterPanel } from '../lut/FilterPanel'
 import { TransformPanel, type CropPreset } from '../transform/TransformPanel'
+import { useAutoComposition } from '../transform/useAutoComposition'
+import { useAutoColor } from '../color/useAutoColor'
+import { SmartOptimizePanel } from '../smart/SmartOptimizePanel'
+import { frameAspect } from '../transform/cropGeometry'
 import { WatermarkSettings } from '../../components/WatermarkSettings'
 import type { WatermarkSettings as WatermarkSettingsType } from '../../shared/types'
 import type { EditPipeline } from '../shared/editPipeline'
@@ -21,7 +25,7 @@ import type { CreativeModeId } from '../creative/creativeCatalog'
 import { BeautyPanel } from '../beauty/BeautyPanel'
 import { SubtitlePanel } from '../subtitles/SubtitlePanel'
 
-export type WorkspaceTool = 'beauty' | 'border' | 'color' | 'creative' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal' | 'subtitles'
+export type WorkspaceTool = 'smart' | 'beauty' | 'border' | 'color' | 'creative' | 'crop' | 'trim' | 'watermark' | 'filter' | 'mask' | 'removal' | 'subtitles'
 
 /** 检查当前 pipeline 的调色参数是否有任何修改 */
 function isColorModified(color: typeof DEFAULT_PIPELINE.color): boolean {
@@ -85,7 +89,7 @@ function isTrimModified(trim: typeof DEFAULT_PIPELINE.trim): boolean {
 }
 
 const BEAUTY_ENABLED = import.meta.env.VITE_BEAUTY !== 'false'
-const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element }> = [
+const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: ReactElement }> = [
   { value: 'color', label: '调色与蒙版', icon: <SlidersHorizontal size={22} /> },
   { value: 'filter', label: '滤镜', icon: <Paintbrush size={22} /> },
   ...(BEAUTY_ENABLED ? [{ value: 'beauty' as const, label: '美颜', icon: <ScanFace size={22} /> }] : []),
@@ -97,8 +101,10 @@ const TOOL_ITEMS: Array<{ value: WorkspaceTool; label: string; icon: JSX.Element
   { value: 'border', label: '边框', icon: <Image size={22} strokeWidth={1.8} /> },
   { value: 'creative', label: '创意', icon: <Sparkles size={22} /> },
 ]
+const AI_TOOL_ITEM = { value: 'smart' as const, label: 'AI 工具', icon: <Sparkles size={22} /> }
 
 function titleForTool(tool: WorkspaceTool): string {
+  if (tool === 'smart') return 'AI 工具'
   if (tool === 'crop') return '裁剪工具'
   if (tool === 'trim') return '截取'
   if (tool === 'subtitles') return '字幕'
@@ -170,6 +176,7 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
 
   // 各面板是否有未保存的修改
   const toolModified = useMemo(() => ({
+    smart: false,
     filter: isFilterModified(edit.pipeline.lutFilter),
     beauty: edit.pipeline.beautyMasks.length > 0,
     color: isColorModified(edit.pipeline.color) || edit.pipeline.colorMasks.some((layer) => isColorModified(layer.color)),
@@ -188,18 +195,34 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
     () => (watermarkSettings: WatermarkSettingsType) => {
       edit.commitPatch({ watermark: watermarkSettings as EditPipeline['watermark'] })
     },
-    [edit.commitPatch],
+    [edit],
   )
 
   // Wrap crop preset/size handlers to inject sourceAspect from canvas context
   const onCropPresetChange = useMemo(
     () => (preset: CropPreset) => edit.handleCropPresetChange(preset, canvas.sourceAspect, mediaSize ?? undefined),
-    [edit.handleCropPresetChange, canvas.sourceAspect, mediaSize],
+    [edit, canvas.sourceAspect, mediaSize],
   )
   const onCropSizeChange = useMemo(
     () => (size: { width?: number; height?: number }) => edit.handleCropSizeChange(size, canvas.sourceAspect, mediaSize ?? undefined),
-    [edit.handleCropSizeChange, canvas.sourceAspect, mediaSize],
+    [edit, canvas.sourceAspect, mediaSize],
   )
+  const autoComposition = useAutoComposition({
+    filePath: mediaCtx.activeMedia?.path ?? null,
+    enabled: mediaCtx.activeMedia?.kind === 'image',
+    sourceAspect: canvas.sourceAspect,
+    targetAspect: edit.cropPreset === 'original'
+      ? frameAspect(canvas.sourceAspect, edit.activeTransform.orientation)
+      : cropWidth / Math.max(1, cropHeight),
+    transform: edit.activeTransform,
+    onApply: (crop) => edit.commitPatch({ transform: { crop } }),
+  })
+  const autoColor = useAutoColor({
+    filePath: mediaCtx.activeMedia?.path ?? null,
+    mediaKind: mediaCtx.activeMedia?.kind ?? null,
+    enabled: Boolean(mediaCtx.activeMedia),
+    onApply: (color) => edit.commitPatch({ color }),
+  })
 
   const resetAllColor = () => {
     edit.commitPatch({
@@ -292,7 +315,15 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
           )}
         </header>
         <div className={`workspace-tool-panel-body${activeTool === 'color' ? ' is-color-panel' : ''}${activeTool === 'creative' ? ' is-creative-panel' : ''}${activeTool === 'subtitles' ? ' is-subtitle-panel' : ''}`}>
-          {activeTool === 'creative' ? (
+          {activeTool === 'smart' ? (
+            <SmartOptimizePanel
+              mediaKind={mediaCtx.activeMedia?.kind ?? null}
+              compositionLoading={autoComposition.loading}
+              colorLoading={autoColor.loading}
+              onComposition={() => void autoComposition.apply()}
+              onColor={() => void autoColor.apply()}
+            />
+          ) : activeTool === 'creative' ? (
             <WorkspaceCreativePanel onSelect={onOpenCreative} />
           ) : activeTool === 'filter' ? (
             <FilterPanel
@@ -434,6 +465,21 @@ export function WorkspaceEditSidebar({ mediaSize, duration, currentTime, onTrimS
             </div>
             )
           })}
+        </div>
+        <div className="workspace-tool-rail-ai">
+          <Tooltip content={AI_TOOL_ITEM.label}>
+            <IconButton
+              variant={activeTool === AI_TOOL_ITEM.value ? 'outline' : 'ghost'}
+              size="compact"
+              icon={AI_TOOL_ITEM.icon}
+              aria-label={AI_TOOL_ITEM.label}
+              disabled={!mediaCtx.activeMedia}
+              onClick={() => {
+                mask.setEditing(false)
+                edit.selectTool(AI_TOOL_ITEM.value, canvas.sourceAspect, mediaSize ?? undefined)
+              }}
+            />
+          </Tooltip>
         </div>
       </nav>
       <Dialog
