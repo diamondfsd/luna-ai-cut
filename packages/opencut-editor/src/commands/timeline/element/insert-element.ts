@@ -18,7 +18,7 @@ import {
 	resolveTrackPlacement,
 	validateElementTrackCompatibility,
 } from "@/timeline/placement";
-import { roundMediaTime } from "@/wasm";
+import { roundMediaTime } from "@/platform/media-time";
 
 type InsertElementPlacement =
 	| { mode: "explicit"; trackId: string }

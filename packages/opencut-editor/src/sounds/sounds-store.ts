@@ -4,7 +4,7 @@ import { storageService } from "@/services/storage/service";
 import { toast } from "sonner";
 import { EditorCore } from "@/core";
 import { buildLibraryAudioElement } from "@/timeline/element-utils";
-import { mediaTimeFromSeconds } from "@/wasm";
+import { mediaTimeFromSeconds } from "@/platform/media-time";
 
 interface SoundsStore {
 	topSoundEffects: SoundEffect[];

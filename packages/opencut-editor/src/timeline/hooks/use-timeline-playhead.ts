@@ -8,7 +8,7 @@ import {
 	PlayheadController,
 	type PlayheadConfig,
 } from "@/timeline/controllers/playhead-controller";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 interface UseTimelinePlayheadProps {
 	zoomLevel: number;

@@ -49,7 +49,7 @@ export function hasAnimatedVolume({
 	});
 }
 
-import { TICKS_PER_SECOND } from "@/wasm";
+import { TICKS_PER_SECOND } from "@/platform/media-time";
 
 export function resolveEffectiveAudioGain({
 	element,

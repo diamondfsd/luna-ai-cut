@@ -1,5 +1,5 @@
 import type { SnapPoint } from "@/timeline/snapping";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export function getPlayheadSnapPoints({
 	playheadTime,

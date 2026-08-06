@@ -13,7 +13,7 @@ import {
 	type ElementParamDefinition,
 } from "@/params/registry";
 import type { TimelineElement } from "@/timeline";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export function ElementParamsTab({
 	element,

@@ -1,4 +1,4 @@
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 import type { ParamValue } from "@/params";
 
 export const ANIMATION_PROPERTY_PATHS = [

@@ -21,7 +21,7 @@ import {
 	ToggleBookmarkCommand,
 	UpdateBookmarkCommand,
 } from "@/commands/scene";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export class ScenesManager {
 	private active: TScene | null = null;

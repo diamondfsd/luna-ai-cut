@@ -20,7 +20,7 @@ import { canTrackHaveAudio } from "@/timeline";
 import { mediaSupportsAudio } from "@/media/media-utils";
 import { getSourceTimeAtClipTime, renderRetimedBuffer } from "@/retime";
 import { Input, ALL_FORMATS, BlobSource, AudioBufferSink } from "mediabunny";
-import { TICKS_PER_SECOND } from "@/wasm";
+import { TICKS_PER_SECOND } from "@/platform/media-time";
 import {
 	computeRmsBuckets,
 	type SampleBucket,

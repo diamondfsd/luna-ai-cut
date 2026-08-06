@@ -2,7 +2,7 @@ import type { ElementRef, SceneTracks } from "@/timeline";
 import { findTrackInSceneTracks } from "@/timeline/track-element-update";
 import type { GroupMember, MoveGroup } from "./types";
 import { getTrackPlacementById } from "./track-placement";
-import { subMediaTime } from "@/wasm";
+import { subMediaTime } from "@/platform/media-time";
 
 export function buildMoveGroup({
 	anchorRef,

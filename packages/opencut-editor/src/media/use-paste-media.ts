@@ -7,7 +7,7 @@ import { AddMediaAssetCommand } from "@/commands/media";
 import { InsertElementCommand } from "@/commands/timeline";
 import { BatchCommand } from "@/commands";
 import { DEFAULT_NEW_ELEMENT_DURATION } from "@/timeline/creation";
-import { mediaTimeFromSeconds } from "@/wasm";
+import { mediaTimeFromSeconds } from "@/platform/media-time";
 import { isTypableDOMElement } from "@/utils/browser";
 import type { MediaType } from "@/media/types";
 

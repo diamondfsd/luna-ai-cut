@@ -1,5 +1,5 @@
 import { BASE_TIMELINE_PIXELS_PER_SECOND } from "@/timeline/scale";
-import { mediaTime, type MediaTime, TICKS_PER_SECOND } from "@/wasm";
+import { mediaTime, type MediaTime, TICKS_PER_SECOND } from "@/platform/media-time";
 
 export function getMouseTimeFromClientX({
 	clientX,

@@ -32,7 +32,7 @@ import {
 	snapSeekMediaTime,
 	subMediaTime,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 
 const MIN_BOOKMARK_WIDTH_PX = 2;
 const BOOKMARK_MARKER_WIDTH_PX = 12;

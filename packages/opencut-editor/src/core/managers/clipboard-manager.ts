@@ -6,7 +6,7 @@ import {
 	type CopyContext,
 	type PasteContext,
 } from "@/clipboard";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export class ClipboardManager {
 	private entry: ClipboardEntry | null = null;

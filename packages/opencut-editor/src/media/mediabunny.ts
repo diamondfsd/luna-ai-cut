@@ -8,7 +8,7 @@ import {
 import { createTimelineAudioBuffer } from "@/media/audio";
 import type { SceneTracks } from "@/timeline";
 import type { MediaAsset } from "@/media/types";
-import { TICKS_PER_SECOND } from "@/wasm";
+import { TICKS_PER_SECOND } from "@/platform/media-time";
 import { renderThumbnailDataUrl } from "./thumbnail";
 
 export type VideoFileData = {

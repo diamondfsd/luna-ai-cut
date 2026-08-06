@@ -12,7 +12,7 @@ import type {
 	ElementRef,
 	TrackType,
 } from "@/timeline";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export interface ElementClipboardItem {
 	trackId: string;

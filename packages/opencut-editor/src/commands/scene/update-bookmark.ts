@@ -6,7 +6,7 @@ import {
 	getFrameTime,
 	updateBookmarkInArray,
 } from "@/timeline/bookmarks/index";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export class UpdateBookmarkCommand extends Command {
 	private savedScenes: TScene[] | null = null;

@@ -7,7 +7,7 @@ import type {
 	NormalizedCubicBezier,
 	ScalarAnimationKey,
 } from "@/animation/types";
-import { roundMediaTime } from "@/wasm";
+import { roundMediaTime } from "@/platform/media-time";
 
 const VALUE_EPSILON = 1e-6;
 

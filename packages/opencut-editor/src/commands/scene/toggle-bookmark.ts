@@ -6,7 +6,7 @@ import {
 	getFrameTime,
 	toggleBookmarkInArray,
 } from "@/timeline/bookmarks/index";
-import { type MediaTime, ZERO_MEDIA_TIME } from "@/wasm";
+import { type MediaTime, ZERO_MEDIA_TIME } from "@/platform/media-time";
 
 export class ToggleBookmarkCommand extends Command {
 	private savedScenes: TScene[] | null = null;

@@ -1,5 +1,5 @@
 import type { ElementType, TrackType } from "@/timeline";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export interface PlacementTimeSpan {
 	startTime: MediaTime;

@@ -32,7 +32,7 @@ import {
 	getBuiltInElementParams,
 } from "@/params/registry";
 import { capitalizeFirstLetter } from "@/utils/string";
-import { type MediaTime, ZERO_MEDIA_TIME } from "@/wasm";
+import { type MediaTime, ZERO_MEDIA_TIME } from "@/platform/media-time";
 
 export function canElementHaveAudio(
 	element: TimelineElement,

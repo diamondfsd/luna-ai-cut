@@ -20,7 +20,7 @@ import { getElementEdgeSnapPoints } from "@/timeline/element-snap-source";
 import { getPlayheadSnapPoints } from "@/timeline/playhead-snap-source";
 import { getAnimationKeyframeSnapPointsForTimeline } from "@/timeline/animation-snap-points";
 import type { Bookmark } from "@/timeline";
-import { roundFrameTime, type MediaTime, ZERO_MEDIA_TIME } from "@/wasm";
+import { roundFrameTime, type MediaTime, ZERO_MEDIA_TIME } from "@/platform/media-time";
 
 export interface BookmarkDragState {
 	isDragging: boolean;

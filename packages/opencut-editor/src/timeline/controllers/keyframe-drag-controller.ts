@@ -10,7 +10,7 @@ import {
 	snapSeekMediaTime,
 	TICKS_PER_SECOND,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 import { TIMELINE_DRAG_THRESHOLD_PX } from "@/timeline/components/interaction";
 import { timelineTimeToSnappedPixels } from "@/timeline";
 import { getKeyframeById } from "@/animation";

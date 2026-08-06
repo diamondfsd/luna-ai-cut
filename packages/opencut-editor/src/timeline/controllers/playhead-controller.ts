@@ -5,7 +5,7 @@ import {
 	snapSeekMediaTime,
 	TICKS_PER_SECOND,
 	type MediaTime,
-} from "@/wasm";
+} from "@/platform/media-time";
 import {
 	buildTimelineSnapPoints,
 	getTimelineSnapThresholdInTicks,

@@ -9,7 +9,7 @@ import {
 	type KeyframeDragState,
 } from "@/timeline/controllers/keyframe-drag-controller";
 import type { TimelineElement } from "@/timeline";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export type { KeyframeDragState };
 

@@ -17,7 +17,7 @@ import {
 	type ParamDefinition,
 } from "@/params";
 import type { TimelineElement } from "@/timeline";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export interface KeyframedParamPropertyResult {
 	hasAnimatedKeyframes: boolean;

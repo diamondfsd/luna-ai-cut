@@ -11,13 +11,15 @@ import {
 } from "@/platform/opencut-native";
 
 /**
- * Integer-tick time. Mirrors `MediaTime(i64)` in `rust/crates/time/src/media_time.rs`.
+ * Integer-tick time. Mirrors `MediaTime(i64)` in
+ * `luna-render-core/opencut/crates/time/src/media_time.rs`.
  *
  * The native bridge exposes `MediaTime` as a bare `number`. The brand here is
  * the TS-side discipline that
  * recovers the invariant: a `MediaTime` is an integer count of ticks, and the
  * only legal way to construct one from a fractional `number` is `roundMediaTime`
- * (or `mediaTimeFromSeconds`, which rounds inside the wasm boundary).
+ * (or `mediaTimeFromSeconds`, which rounds inside the synchronous platform
+ * boundary shared with the native time contract).
  *
  * Reading is free — `MediaTime` is assignable to `number`. Writing is gated —
  * a bare `number` is not assignable to `MediaTime`.

@@ -9,7 +9,7 @@ import { getElementEdgeSnapPoints } from "@/timeline/element-snap-source";
 import { getPlayheadSnapPoints } from "@/timeline/playhead-snap-source";
 import { getAnimationKeyframeSnapPointsForTimeline } from "@/timeline/animation-snap-points";
 import type { MoveGroup } from "./types";
-import { addMediaTime, type MediaTime, subMediaTime } from "@/wasm";
+import { addMediaTime, type MediaTime, subMediaTime } from "@/platform/media-time";
 
 export function snapGroupEdges({
 	group,

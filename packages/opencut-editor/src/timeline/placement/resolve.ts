@@ -13,7 +13,7 @@ import type {
 	PlacementSubject,
 	PlacementTimeSpan,
 } from "./types";
-import { ZERO_MEDIA_TIME } from "@/wasm";
+import { ZERO_MEDIA_TIME } from "@/platform/media-time";
 
 type ResolveTrackPlacementParams = PlacementSubject & {
 	tracks: SceneTracks;

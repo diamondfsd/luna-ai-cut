@@ -1,5 +1,5 @@
 import { BASE_TIMELINE_PIXELS_PER_SECOND } from "@/timeline/scale";
-import { TICKS_PER_SECOND } from "@/wasm";
+import { TICKS_PER_SECOND } from "@/platform/media-time";
 
 const DEFAULT_TIMELINE_SNAP_THRESHOLD_PX = 10;
 

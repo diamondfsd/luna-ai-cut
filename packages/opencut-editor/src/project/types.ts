@@ -1,6 +1,6 @@
 import type { FrameRate } from "@/platform/opencut-native";
 import type { TScene } from "@/timeline/types";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export type TBackground =
 	| {

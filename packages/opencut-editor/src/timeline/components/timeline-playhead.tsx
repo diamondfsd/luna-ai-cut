@@ -16,7 +16,7 @@ import {
 	subMediaTime,
 	TICKS_PER_SECOND,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 import { useEditor } from "@/editor/use-editor";
 import { TIMELINE_SCROLLBAR_SIZE_PX } from "./layout";
 import { TIMELINE_LAYERS } from "./layers";

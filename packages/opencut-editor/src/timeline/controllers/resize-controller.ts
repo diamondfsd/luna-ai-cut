@@ -8,7 +8,7 @@ import {
 	minMediaTime,
 	subMediaTime,
 	TICKS_PER_SECOND,
-} from "@/wasm";
+} from "@/platform/media-time";
 import {
 	computeGroupResize,
 	type GroupResizeMember,

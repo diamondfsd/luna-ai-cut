@@ -1,5 +1,5 @@
 import type { ElementRef, ElementType, TrackType } from "@/timeline";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export type GroupTrackSection = "overlay" | "main" | "audio";
 

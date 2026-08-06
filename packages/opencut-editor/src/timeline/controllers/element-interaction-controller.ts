@@ -15,7 +15,7 @@ import {
 	subMediaTime,
 	TICKS_PER_SECOND,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 import { TIMELINE_DRAG_THRESHOLD_PX } from "@/timeline/components/interaction";
 import type { FrameRate } from "@/platform/opencut-native";
 import { computeDropTarget } from "@/timeline/components/drop-target";

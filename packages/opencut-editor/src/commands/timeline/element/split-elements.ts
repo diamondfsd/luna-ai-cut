@@ -14,7 +14,7 @@ import {
 	type MediaTime,
 	roundMediaTime,
 	subMediaTime,
-} from "@/wasm";
+} from "@/platform/media-time";
 
 export class SplitElementsCommand extends Command {
 	private savedState: SceneTracks | null = null;

@@ -9,7 +9,7 @@ import {
 	maxMediaTime,
 	minMediaTime,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 import { resolveAnimationTarget } from "@/timeline/animation-targets";
 
 export class RetimeKeyframeCommand extends Command {

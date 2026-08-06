@@ -13,7 +13,7 @@ import {
 	ZoomController,
 	type ZoomConfig,
 } from "@/timeline/controllers/zoom-controller";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 interface UseTimelineZoomProps {
 	containerRef: RefObject<HTMLDivElement | null>;

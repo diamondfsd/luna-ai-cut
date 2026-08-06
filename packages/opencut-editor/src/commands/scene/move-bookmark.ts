@@ -3,7 +3,7 @@ import { EditorCore } from "@/core";
 import type { TScene } from "@/timeline";
 import { updateSceneInArray } from "@/timeline/scenes";
 import { getFrameTime, moveBookmarkInArray } from "@/timeline/bookmarks/index";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export class MoveBookmarkCommand extends Command {
 	private savedScenes: TScene[] | null = null;

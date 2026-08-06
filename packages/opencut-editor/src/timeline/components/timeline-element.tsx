@@ -50,7 +50,7 @@ import {
 import { buildWaveformGainSamples, isElementMuted } from "@/timeline/audio-state";
 import { getTimelinePixelsPerSecond } from "@/timeline";
 import { buildWaveformSourceKey } from "@/media/waveform-summary";
-import { addMediaTime, type MediaTime, TICKS_PER_SECOND } from "@/wasm";
+import { addMediaTime, type MediaTime, TICKS_PER_SECOND } from "@/platform/media-time";
 import {
 	getActionDefinition,
 	type TAction,

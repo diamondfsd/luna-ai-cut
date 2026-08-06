@@ -1,5 +1,5 @@
 import { BASE_TIMELINE_PIXELS_PER_SECOND } from "@/timeline/scale";
-import { TICKS_PER_SECOND } from "@/wasm";
+import { TICKS_PER_SECOND } from "@/platform/media-time";
 
 export const TIMELINE_INDICATOR_LINE_WIDTH_PX = 2;
 

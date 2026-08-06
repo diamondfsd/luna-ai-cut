@@ -8,7 +8,7 @@ import {
 	type MediaTime,
 	roundMediaTime,
 	TICKS_PER_SECOND,
-} from "@/wasm";
+} from "@/platform/media-time";
 
 function findElementAtPosition({
 	mouseX,

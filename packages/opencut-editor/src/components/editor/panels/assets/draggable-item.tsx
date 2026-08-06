@@ -13,7 +13,7 @@ import {
 import { useEditor } from "@/editor/use-editor";
 import type { TimelineDragData } from "@/timeline/drag";
 import { cn } from "@/utils/ui";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export interface DraggableItemProps {
 	name: string;

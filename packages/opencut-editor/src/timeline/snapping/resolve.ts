@@ -1,5 +1,5 @@
 import type { SnapPoint, SnapResult } from "./types";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export function resolveTimelineSnap({
 	targetTime,

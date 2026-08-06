@@ -9,7 +9,7 @@ import type {
 	KeyframeClipboardCurvePatch,
 	KeyframeClipboardItem,
 } from "../types";
-import { roundMediaTime, subMediaTime, type MediaTime } from "@/wasm";
+import { roundMediaTime, subMediaTime, type MediaTime } from "@/platform/media-time";
 
 function resolveSingleSourceElement({
 	selectedKeyframes,

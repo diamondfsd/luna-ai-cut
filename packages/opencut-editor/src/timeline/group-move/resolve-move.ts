@@ -18,7 +18,7 @@ import {
 	type MediaTime,
 	subMediaTime,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 
 type GroupMoveTarget =
 	| {

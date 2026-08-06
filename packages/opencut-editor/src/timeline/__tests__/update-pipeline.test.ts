@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Transform } from "@/rendering";
 import type { SceneTracks, VideoElement } from "@/timeline";
 import { applyElementUpdate } from "@/timeline/update-pipeline";
-import { mediaTime, ZERO_MEDIA_TIME } from "@/wasm";
+import { mediaTime, ZERO_MEDIA_TIME } from "@/platform/media-time";
 
 function buildTransform(): Transform {
 	return {

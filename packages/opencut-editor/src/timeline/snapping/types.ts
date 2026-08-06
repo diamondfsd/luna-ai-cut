@@ -1,4 +1,4 @@
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export type SnapPointType =
 	| "element-start"

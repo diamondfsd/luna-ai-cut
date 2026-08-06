@@ -6,7 +6,7 @@ import {
 	mediaTimeFromSeconds,
 	roundFrameTime,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 
 export class PlaybackManager {
 	private isPlaying = false;

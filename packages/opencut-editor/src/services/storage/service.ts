@@ -19,7 +19,7 @@ import type {
 } from "./types";
 import type { SavedSoundsData, SavedSound, SoundEffect } from "@/sounds/types";
 import type { Bookmark, SceneTracks, TScene } from "@/timeline";
-import { roundMediaTime } from "@/wasm";
+import { roundMediaTime } from "@/platform/media-time";
 
 function normalizeBookmarks({ raw }: { raw: unknown }): Bookmark[] {
 	if (!Array.isArray(raw)) return [];

@@ -16,7 +16,7 @@ import {
 	maxMediaTime,
 	minMediaTime,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 
 function pasteKeyframesIntoElement({
 	element,

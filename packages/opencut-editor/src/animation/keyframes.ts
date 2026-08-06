@@ -40,7 +40,7 @@ import {
 	roundMediaTime,
 	subMediaTime,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 import { generateUUID } from "@/utils/id";
 
 function isNearlySameTime({

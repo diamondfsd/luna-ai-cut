@@ -3,7 +3,7 @@ import { TIMELINE_ZOOM_ANCHOR_PLAYHEAD_THRESHOLD } from "@/timeline/components/i
 import { timelineTimeToPixels } from "@/timeline/pixel-utils";
 import { TIMELINE_ZOOM_MAX } from "@/timeline/scale";
 import { zoomToSlider } from "@/timeline/zoom-utils";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 type ZoomUpdater = number | ((prev: number) => number);
 

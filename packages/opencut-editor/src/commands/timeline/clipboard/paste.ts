@@ -19,7 +19,7 @@ import {
 	maxMediaTime,
 	subMediaTime,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 
 export class PasteCommand extends Command {
 	private savedState: SceneTracks | null = null;

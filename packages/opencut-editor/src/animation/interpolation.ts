@@ -9,7 +9,7 @@ import type {
 	ScalarSegmentType,
 } from "@/animation/types";
 import type { ParamValue } from "@/params";
-import { mediaTime } from "@/wasm";
+import { mediaTime } from "@/platform/media-time";
 import {
 	getBezierPoint,
 	getDefaultLeftHandle,

@@ -5,7 +5,7 @@ import {
 	setCanvasLetterSpacing,
 } from "@/text/layout";
 import { DEFAULTS } from "@/timeline/defaults";
-import { mediaTimeFromSeconds } from "@/wasm";
+import { mediaTimeFromSeconds } from "@/platform/media-time";
 import type { CreateTextElement } from "@/timeline";
 import type { TextBackground } from "@/text/background";
 import type {

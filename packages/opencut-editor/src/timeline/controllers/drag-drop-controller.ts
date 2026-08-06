@@ -30,7 +30,7 @@ import type {
 import type { TimelineDragData } from "@/timeline/drag";
 import type { MediaAsset } from "@/media/types";
 import type { ProcessedMediaAsset } from "@/media/processing";
-import { roundFrameTime, type MediaTime } from "@/wasm";
+import { roundFrameTime, type MediaTime } from "@/platform/media-time";
 
 // --- Config ---
 

@@ -5,7 +5,7 @@ import {
 	SeekController,
 	type SeekConfig,
 } from "@/timeline/controllers/seek-controller";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 interface UseTimelineSeekProps {
 	playheadRef: RefObject<HTMLDivElement | null>;

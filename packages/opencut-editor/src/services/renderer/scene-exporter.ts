@@ -14,7 +14,7 @@ import {
 } from "mediabunny";
 import type { FrameRate } from "@/platform/opencut-native";
 import { mediaTimeToSeconds } from "@/platform/opencut-native";
-import { TICKS_PER_SECOND } from "@/wasm";
+import { TICKS_PER_SECOND } from "@/platform/media-time";
 import { frameRateToFloat } from "@/fps/utils";
 import type { RootNode } from "./nodes/root-node";
 import type { ExportFormat, ExportQuality } from "@/export";

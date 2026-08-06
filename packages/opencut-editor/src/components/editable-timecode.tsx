@@ -11,7 +11,7 @@ import {
 	parseMediaTimecode,
 	snapSeekMediaTime,
 	type MediaTime,
-} from "@/wasm";
+} from "@/platform/media-time";
 
 interface EditableTimecodeProps {
 	time: MediaTime;

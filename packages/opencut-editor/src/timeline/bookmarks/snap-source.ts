@@ -1,6 +1,6 @@
 import type { Bookmark } from "@/timeline";
 import type { SnapPoint } from "@/timeline/snapping";
-import type { MediaTime } from "@/wasm";
+import type { MediaTime } from "@/platform/media-time";
 
 export function getBookmarkSnapPoints({
 	bookmarks,

@@ -14,7 +14,7 @@ import {
 	maxMediaTime,
 	minMediaTime,
 	ZERO_MEDIA_TIME,
-} from "@/wasm";
+} from "@/platform/media-time";
 
 export class UpsertKeyframeCommand extends Command {
 	private savedState: SceneTracks | null = null;

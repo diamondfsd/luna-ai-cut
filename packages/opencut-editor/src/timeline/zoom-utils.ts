@@ -2,7 +2,7 @@ import {
 	BASE_TIMELINE_PIXELS_PER_SECOND,
 	TIMELINE_ZOOM_MAX,
 } from "@/timeline/scale";
-import { TICKS_PER_SECOND } from "@/wasm";
+import { TICKS_PER_SECOND } from "@/platform/media-time";
 
 const PADDING_MAX_RATIO = 0.75;
 const PADDING_MIN_RATIO = 0.15;

@@ -1,6 +1,6 @@
 import { useEditor } from "@/editor/use-editor";
 import { getElementLocalTime } from "@/animation";
-import { addMediaTime, mediaTime, type MediaTime } from "@/wasm";
+import { addMediaTime, mediaTime, type MediaTime } from "@/platform/media-time";
 
 export function useElementPlayhead({
 	startTime,

@@ -6,7 +6,7 @@ import {
 } from "@/retime";
 import type { RetimeConfig, SceneTracks, TimelineElement } from "@/timeline";
 import { isRetimableElement } from "@/timeline";
-import { ZERO_MEDIA_TIME, roundMediaTime } from "@/wasm";
+import { ZERO_MEDIA_TIME, roundMediaTime } from "@/platform/media-time";
 
 type ElementUpdateField = keyof TimelineElement | string;
 

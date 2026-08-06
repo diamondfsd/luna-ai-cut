@@ -11,7 +11,7 @@ import type {
 import { calculateTotalDuration } from "@/timeline";
 import { TimelineDragSource } from "@/timeline/drag-source";
 import { findTrackInSceneTracks } from "@/timeline/track-element-update";
-import { lastFrameMediaTime, type MediaTime, ZERO_MEDIA_TIME } from "@/wasm";
+import { lastFrameMediaTime, type MediaTime, ZERO_MEDIA_TIME } from "@/platform/media-time";
 import {
 	canElementBeHidden,
 	canElementHaveAudio,

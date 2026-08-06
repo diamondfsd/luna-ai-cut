@@ -1,4 +1,4 @@
-import { addMediaTime, type MediaTime, ZERO_MEDIA_TIME } from "@/wasm";
+import { addMediaTime, type MediaTime, ZERO_MEDIA_TIME } from "@/platform/media-time";
 import type { SceneTracks } from "./types";
 
 export * from "./types";

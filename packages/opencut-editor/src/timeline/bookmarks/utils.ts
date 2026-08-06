@@ -1,6 +1,6 @@
 import type { Bookmark } from "@/timeline";
 import type { FrameRate } from "@/platform/opencut-native";
-import { addMediaTime, roundFrameTime, type MediaTime } from "@/wasm";
+import { addMediaTime, roundFrameTime, type MediaTime } from "@/platform/media-time";
 
 function bookmarkTimeEqual({
 	bookmarkTime,

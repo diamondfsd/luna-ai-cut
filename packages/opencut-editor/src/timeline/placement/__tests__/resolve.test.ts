@@ -14,7 +14,7 @@ import type {
 } from "@/timeline";
 import type { Transform } from "@/rendering";
 import { resolveTrackPlacement } from "@/timeline/placement";
-import { mediaTime, ZERO_MEDIA_TIME } from "@/wasm";
+import { mediaTime, ZERO_MEDIA_TIME } from "@/platform/media-time";
 
 function buildTransform(): Transform {
 	return {
