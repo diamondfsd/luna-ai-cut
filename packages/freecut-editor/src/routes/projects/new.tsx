@@ -8,7 +8,7 @@ import { useCreateProject } from '@freecut/features/projects/hooks/use-project-a
 import { useProjectStore } from '@freecut/features/projects/stores/project-store'
 import { FreeCutLogo } from '@freecut/components/brand/freecut-logo'
 import { Button } from '@freecut/components/ui/button'
-import { Github } from 'lucide-react'
+import { GitBranch } from 'lucide-react'
 import { DiscordIcon } from '@freecut/components/brand/discord-icon'
 import { DISCORD_INVITE_URL } from '@freecut/config/community'
 import type { ProjectFormData } from '@freecut/features/projects/utils/validation'
@@ -79,7 +79,7 @@ function NewProject() {
                 data-tooltip={t('projects.viewOnGitHub')}
                 data-tooltip-side="left"
               >
-                <Github className="w-5 h-5" />
+                <GitBranch className="w-5 h-5" />
               </a>
             </Button>
           </div>

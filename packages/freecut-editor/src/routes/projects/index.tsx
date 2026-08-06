@@ -7,7 +7,7 @@ import { createLogger } from '@freecut/shared/logging/logger'
 const logger = createLogger('ProjectsIndex')
 import { Button } from '@freecut/components/ui/button'
 import { Separator } from '@freecut/components/ui/separator'
-import { Plus, Upload, FolderOpen, File, Github, BookOpen } from 'lucide-react'
+import { Plus, Upload, FolderOpen, File, GitBranch, BookOpen } from 'lucide-react'
 import { FreeCutLogo } from '@freecut/components/brand/freecut-logo'
 import { DiscordIcon } from '@freecut/components/brand/discord-icon'
 import { DISCORD_INVITE_URL } from '@freecut/config/community'
@@ -295,7 +295,7 @@ function ProjectsIndex() {
                   rel="noopener noreferrer"
                   aria-label={t('projects.viewOnGitHub')}
                 >
-                  <Github className="w-4 h-4" />
+                  <GitBranch className="w-4 h-4" />
                   GitHub
                 </a>
               </Button>
