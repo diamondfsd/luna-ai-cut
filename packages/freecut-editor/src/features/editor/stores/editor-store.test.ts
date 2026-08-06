@@ -32,8 +32,8 @@ describe('editor-store', () => {
       keyframeEditorShortcutScopeActive: false,
       activeTab: 'media',
       clipInspectorTab: 'video',
-      sidebarWidth: editorLayout.leftSidebarDefaultWidth,
-      rightSidebarWidth: editorLayout.rightSidebarDefaultWidth,
+      sidebarWidth: 360,
+      rightSidebarWidth: 340,
       timelineHeight: 250,
       sourcePreviewMediaId: null,
       mediaSkimPreviewMediaId: null,
@@ -47,7 +47,7 @@ describe('editor-store', () => {
       linkedSelectionEnabled: true,
       colorScopesOpen: false,
       propertiesFullColumn: false,
-      mediaFullColumn: true,
+      mediaFullColumn: false,
     })
     usePlaybackStore.setState({ isPlaying: false, previewFrame: null, previewItemId: null })
   })
@@ -226,10 +226,14 @@ describe('editor-store', () => {
     const raw = localStorage.getItem('editor:workspaceLayout:color')
     expect(raw).not.toBeNull()
     expect(JSON.parse(raw ?? '{}')).toEqual({
+      schemaVersion: 2,
       activeTab: 'ai',
       clipInspectorTab: 'audio',
       colorScopesOpen: false,
       propertiesFullColumn: false,
+      mediaFullColumn: true,
+      sidebarWidth: 360,
+      rightSidebarWidth: 340,
     })
   })
 

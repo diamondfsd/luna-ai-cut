@@ -41,9 +41,23 @@ body.canvas-translate-cursor-not-allowed * {
     --popover-foreground: oklch(0.92 0 0);
 
     /* Primary - Luna blue accent (playback, active states) */
-    --primary: #2997ff;
-    --primary-strong: #0066cc;
+    --primary: #78bdf2;
+    --primary-strong: #4f9fe3;
     --primary-foreground: oklch(0.12 0 0); /* Dark text on primary */
+
+    /* Compact editor typography - project title (12px) is the body-size baseline. */
+    --text-xs: 0.75rem;
+    --text-xs--line-height: 1rem;
+    --text-sm: 0.75rem;
+    --text-sm--line-height: 1rem;
+    --text-base: 0.8125rem;
+    --text-base--line-height: 1.125rem;
+    --text-lg: 0.875rem;
+    --text-lg--line-height: 1.25rem;
+    --text-xl: 1rem;
+    --text-xl--line-height: 1.375rem;
+    font-size: 12px;
+    line-height: 1rem;
 
     /* Secondary - Subtle panel variation */
     --secondary: oklch(0.22 0 0); /* #383838 - Secondary surfaces */

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import {
@@ -8,17 +8,15 @@ import {
   ChevronDown,
   Download,
   FolderArchive,
-  GitBranch,
   Keyboard,
   ListVideo,
+  MoreHorizontal,
   Save,
   Settings,
   Sparkles,
   Video,
 } from 'lucide-react'
 import { Button } from '@freecut/components/ui/button'
-import { DiscordIcon } from '@freecut/components/brand/discord-icon'
-import { DISCORD_INVITE_URL } from '@freecut/config/community'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +25,6 @@ import {
 } from '@freecut/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@freecut/components/ui/popover'
 import { Separator } from '@freecut/components/ui/separator'
-import { LocalInferenceStatusPill } from './local-inference-status-pill'
 import { ProjectDebugPanel } from './project-debug-panel'
 import { SettingsDialog } from './settings-dialog'
 import { ShortcutsDialog } from './shortcuts-dialog'
@@ -39,8 +36,7 @@ import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
 import { cn } from '@freecut/shared/ui/cn'
 import { LanguageSwitcher } from '@freecut/shared/ui/language-switcher'
 import { useDebugStore } from '@freecut/features/editor/stores/debug-store'
-import { useItemsStore, useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
-import { useMediaLibraryStore } from '@freecut/features/editor/deps/media-library'
+import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 
 const SAVE_ANIMATION_MIN_MS = 1800
 
@@ -50,13 +46,6 @@ const SaveDirtyIndicator = memo(function SaveDirtyIndicator() {
     <span className="absolute -right-1 -top-1 h-2 w-2 animate-pulse rounded-full bg-primary" />
   ) : null
 })
-
-function formatProjectDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.round(seconds % 60)
-  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
-}
 
 interface ToolbarProps {
   projectId: string
@@ -94,23 +83,6 @@ export const Toolbar = memo(function Toolbar({
   const [isSaveAnimating, setIsSaveAnimating] = useState(false)
   const [saveAnimationKey, setSaveAnimationKey] = useState(0)
   const saveAnimationTimeoutRef = useRef<number | undefined>(undefined)
-  const itemCount = useItemsStore((state) => state.items.length)
-  const maxItemEndFrame = useItemsStore((state) => state.maxItemEndFrame)
-  const mediaDependencyIds = useItemsStore((state) => state.mediaDependencyIds)
-  const brokenMediaIds = useMediaLibraryStore((state) => state.brokenMediaIds)
-  const projectSummary = useMemo(
-    () => {
-      const projectMediaIds = new Set(mediaDependencyIds)
-      return {
-        durationSeconds: project.fps > 0 ? maxItemEndFrame / project.fps : 0,
-        clipCount: itemCount,
-        mediaCount: mediaDependencyIds.length,
-        brokenMediaCount: brokenMediaIds.filter((mediaId) => projectMediaIds.has(mediaId)).length,
-      }
-    },
-    [brokenMediaIds, itemCount, maxItemEndFrame, mediaDependencyIds, project.fps],
-  )
-
   useEffect(() => {
     setHasUnseenWhatsNew(hasUnseenChangelog())
   }, [])
@@ -194,21 +166,10 @@ export const Toolbar = memo(function Toolbar({
 
         <Separator orientation="vertical" className="h-5" />
 
-        <div className="flex flex-col -space-y-0.5">
-          <h1 className="text-sm font-medium leading-none">
+        <div className="min-w-0">
+          <h1 className="max-w-64 truncate text-xs font-medium leading-none" title={project?.name}>
             {project?.name || t('common.untitledProject')}
           </h1>
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {t('toolbar.specsDetailed', {
-              width: project?.width,
-              height: project?.height,
-              fps: project?.fps,
-              duration: formatProjectDuration(projectSummary.durationSeconds),
-              clips: projectSummary.clipCount,
-              media: projectSummary.mediaCount,
-              missing: projectSummary.brokenMediaCount,
-            })}
-          </span>
         </div>
       </div>
 
@@ -216,109 +177,27 @@ export const Toolbar = memo(function Toolbar({
         <WorkspaceSwitcher />
       </div>
 
-      <LocalInferenceStatusPill />
-
       <ShortcutsDialog open={showShortcutsDialog} onOpenChange={setShowShortcutsDialog} />
 
       <SettingsDialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog} />
 
       <WhatsNewDialog open={showWhatsNewDialog} onOpenChange={setShowWhatsNewDialog} />
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5">
         {import.meta.env.DEV && import.meta.env.VITE_SHOW_DEBUG_PANEL !== 'false' && (
           <DebugPopover projectId={projectId} />
         )}
 
-        {/* Socials */}
-        <Button variant="outline" size="icon" className="h-7 w-7" asChild>
-          <a
-            href="https://github.com/walterlow/freecut"
-            target="_blank"
-            rel="noopener noreferrer"
-            data-tooltip={t('toolbar.viewOnGitHub')}
-            data-tooltip-side="bottom"
-            aria-label={t('toolbar.viewOnGitHub')}
-          >
-            <GitBranch className="h-4 w-4" />
-          </a>
-        </Button>
-        <Button variant="outline" size="icon" className="h-7 w-7" asChild>
-          <a
-            href={DISCORD_INVITE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-tooltip={t('toolbar.joinDiscord')}
-            data-tooltip-side="bottom"
-            aria-label={t('toolbar.joinDiscord')}
-          >
-            <DiscordIcon className="h-4 w-4" />
-          </a>
-        </Button>
-
-        <Separator orientation="vertical" className="h-5" />
-
-        {/* Utility */}
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => navigate({ to: '/docs' })}
-          data-tooltip="User Guide"
-          data-tooltip-side="bottom"
-          aria-label="User Guide"
-        >
-          <BookOpen className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-7 w-7 relative"
-          onClick={openWhatsNew}
-          data-tooltip={t('toolbar.whatsNew')}
-          data-tooltip-side="bottom"
-          aria-label={t('toolbar.whatsNewAria')}
-        >
-          <Sparkles className="h-4 w-4" />
-          {hasUnseenWhatsNew && (
-            <span
-              className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-primary"
-              aria-hidden="true"
-            />
-          )}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => setShowSettingsDialog(true)}
-          data-tooltip={t('toolbar.settings')}
-          data-tooltip-side="bottom"
-          aria-label={t('toolbar.settings')}
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => setShowShortcutsDialog(true)}
-          data-tooltip={t('toolbar.keyboardShortcuts')}
-          data-tooltip-side="bottom"
-          aria-label={t('toolbar.keyboardShortcutsAria')}
-        >
-          <Keyboard className="h-4 w-4" />
-        </Button>
         <LanguageSwitcher size="sm" align="end" side="bottom" />
 
-        <Separator orientation="vertical" className="h-5" />
-
-        {/* Actions */}
         <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
           onClick={handleSave}
           aria-label={t('toolbar.saveAria')}
+          data-tooltip={t('toolbar.save')}
+          data-tooltip-side="bottom"
         >
           <div className="relative">
             {isSaveAnimating ? (
@@ -328,12 +207,11 @@ export const Toolbar = memo(function Toolbar({
             )}
             <SaveDirtyIndicator />
           </div>
-          {t('toolbar.save')}
         </Button>
 
         {onOpenRenderQueue && (
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
             className="h-7 w-7 relative"
             onClick={onOpenRenderQueue}
@@ -349,6 +227,42 @@ export const Toolbar = memo(function Toolbar({
             )}
           </Button>
         )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative h-8 w-8"
+              aria-label={t('toolbar.more')}
+              data-tooltip={t('toolbar.more')}
+              data-tooltip-side="bottom"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              {hasUnseenWhatsNew && (
+                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => navigate({ to: '/docs' })} className="gap-2">
+              <BookOpen className="h-4 w-4" />
+              {t('toolbar.userGuide')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={openWhatsNew} className="gap-2">
+              <Sparkles className="h-4 w-4" />
+              {t('toolbar.whatsNew')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowSettingsDialog(true)} className="gap-2">
+              <Settings className="h-4 w-4" />
+              {t('toolbar.settings')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowShortcutsDialog(true)} className="gap-2">
+              <Keyboard className="h-4 w-4" />
+              {t('toolbar.keyboardShortcuts')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

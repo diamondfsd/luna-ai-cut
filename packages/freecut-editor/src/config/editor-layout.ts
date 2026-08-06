@@ -5,26 +5,26 @@
  *
  * Prefer changing presets here before editing one-off component sizes.
  */
-const EDIT_DOPESHEET_COLUMN_WIDTH = 288
+const EDIT_DOPESHEET_COLUMN_WIDTH = 232
 
 const EDITOR_DENSITY_PRESETS = {
   compact: {
-    toolbarHeight: 48,
+    toolbarHeight: 44,
     sidebarRailWidth: 44,
     sidebarHeaderHeight: 36,
     sidebarHeaderButtonSize: 20,
     toolbarButtonSize: 20,
-    leftSidebarDefaultWidth: 320,
-    leftSidebarMinWidth: 240,
-    leftSidebarMaxWidth: 560,
-    rightSidebarDefaultWidth: 288,
-    rightSidebarMinWidth: 280,
-    rightSidebarMaxWidth: 420,
-    previewPadding: 32,
+    leftSidebarDefaultWidth: 360,
+    leftSidebarMinWidth: 280,
+    leftSidebarMaxWidth: 600,
+    rightSidebarDefaultWidth: 340,
+    rightSidebarMinWidth: 300,
+    rightSidebarMaxWidth: 480,
+    previewPadding: 24,
     previewSplitHeaderHeight: 32,
     previewControlsHeight: 32,
     previewControlButtonSize: 30,
-    timelineDefaultSize: 28,
+    timelineDefaultSize: 36,
     timelineMinSize: 14,
     timelineMaxSize: 80,
     graphPanelSizeIncrease: 10,
