@@ -79,6 +79,12 @@
       "auto": "Auto",
       "tooltip": "Zoom: {{label}}"
     },
+    "canvasRatio": {
+      "ariaLabel": "Canvas ratio: {{label}}",
+      "tooltip": "Canvas ratio: {{label}}",
+      "original": "Fit (original)",
+      "custom": "Custom"
+    },
     "canvasDrop": {
       "dropOnTimeline": "Drop on timeline",
       "compoundClipsTimeline": "Compound clips still place best on the timeline.",

@@ -3680,7 +3680,7 @@ export const DopesheetEditor = memo(function DopesheetEditor({
                   MINI_ICON_BUTTON_CLASS,
                   'self-center text-muted-foreground hover:text-foreground',
                   curveVisible
-                    ? 'text-orange-500 hover:text-orange-400'
+                    ? 'text-primary hover:text-primary/80'
                     : 'opacity-30 hover:opacity-60',
                 )}
                 onClick={(event) => {
@@ -3803,7 +3803,7 @@ export const DopesheetEditor = memo(function DopesheetEditor({
                       size="sm"
                       className={cn(
                         MINI_ICON_BUTTON_CLASS,
-                        'self-center text-orange-400 hover:bg-orange-500/10 hover:text-orange-300',
+                        'self-center text-primary hover:bg-primary/10 hover:text-primary/80',
                       )}
                       onPointerDown={(event) => {
                         event.stopPropagation()
@@ -3926,7 +3926,7 @@ export const DopesheetEditor = memo(function DopesheetEditor({
                 className={cn(
                   MINI_ICON_BUTTON_CLASS,
                   'ml-0.5 self-center text-muted-foreground hover:text-foreground',
-                  axisConstraint.constrained && 'text-orange-400 hover:text-orange-300',
+                  axisConstraint.constrained && 'text-primary hover:text-primary/80',
                 )}
                 onClick={(event) => {
                   event.stopPropagation()
@@ -4083,7 +4083,7 @@ export const DopesheetEditor = memo(function DopesheetEditor({
                       ? 'w-[80px]'
                       : 'w-[44px]',
                   !isColorAnimatableProperty(row.property) && 'cursor-ew-resize select-none',
-                  propertyLink && 'text-orange-400',
+                  propertyLink && 'text-primary',
                 )}
                 disabled={
                   disabled ||
@@ -4329,7 +4329,7 @@ export const DopesheetEditor = memo(function DopesheetEditor({
                 MINI_ICON_BUTTON_CLASS,
                 'self-center text-muted-foreground hover:text-foreground',
                 curveVisible
-                  ? 'text-orange-500 hover:text-orange-400'
+                  ? 'text-primary hover:text-primary/80'
                   : 'opacity-30 hover:opacity-60',
               )}
               onClick={(event) => {

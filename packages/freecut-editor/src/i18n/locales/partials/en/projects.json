@@ -1,5 +1,6 @@
 {
   "projects": {
+    "creatingProject": "Creating project…",
     "unknownError": "Unknown error",
     "tryAgain": "Please try again",
     "dismiss": "Dismiss",

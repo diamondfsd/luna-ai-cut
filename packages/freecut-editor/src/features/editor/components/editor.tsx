@@ -56,7 +56,6 @@ import {
 } from '@freecut/features/editor/deps/projects'
 import { useClearKeyframesDialogStore } from '@freecut/shared/state/clear-keyframes-dialog'
 import { useTtsGenerateDialogStore } from '@freecut/shared/state/tts-generate-dialog'
-import { useProjectMediaMatchDialogStore } from '@freecut/shared/state/project-media-match-dialog'
 import { rememberLastEditorProjectId } from '@freecut/shared/projects/last-editor-project'
 import {
   importEmbeddedSubtitleTrackPickerHost,
@@ -294,9 +293,6 @@ export const Editor = memo(function Editor({ projectId, project, migration }: Ed
 const EditorDialogHost = memo(function EditorDialogHost({ projectId }: { projectId: string }) {
   const clearKeyframesDialogOpen = useClearKeyframesDialogStore((s) => s.isOpen)
   const ttsGenerateDialogOpen = useTtsGenerateDialogStore((s) => s.isOpen)
-  const projectMediaMatchDialogOpen = useProjectMediaMatchDialogStore(
-    (s) => s.isOpen && s.projectId === projectId,
-  )
   const embeddedSubtitlePickerOpen = useEmbeddedSubtitlePickerStore((s) => s.media !== null)
   const subtitleScanProgressOpen = useSubtitleScanProgressStore((s) => s.open)
 
@@ -307,11 +303,9 @@ const EditorDialogHost = memo(function EditorDialogHost({ projectId }: { project
           <LazyClearKeyframesDialog />
         </Suspense>
       )}
-      {projectMediaMatchDialogOpen && (
-        <Suspense fallback={null}>
-          <LazyProjectMediaMatchDialog projectId={projectId} />
-        </Suspense>
-      )}
+      <Suspense fallback={null}>
+        <LazyProjectMediaMatchDialog projectId={projectId} />
+      </Suspense>
       {ttsGenerateDialogOpen && (
         <Suspense fallback={null}>
           <LazyTtsGenerateDialog />

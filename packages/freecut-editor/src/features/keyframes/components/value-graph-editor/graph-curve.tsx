@@ -55,8 +55,7 @@ const GraphCurve = memo(function GraphCurve({
     return points.join(' ')
   }, [startPoint, endPoint, easingConfig])
 
-  // Always use orange for curves (blue glow added when selected)
-  const color = strokeColor || '#f97316'
+  const color = strokeColor || 'var(--primary)'
 
   return (
     <g className="graph-curve" style={{ pointerEvents: 'none' }}>
@@ -65,7 +64,7 @@ const GraphCurve = memo(function GraphCurve({
         <path
           d={path}
           fill="none"
-          stroke="#3b82f6"
+          stroke="var(--primary)"
           strokeWidth={5}
           strokeLinecap="round"
           strokeLinejoin="round"

@@ -47,7 +47,7 @@ const SAVE_ANIMATION_MIN_MS = 1800
 const SaveDirtyIndicator = memo(function SaveDirtyIndicator() {
   const isDirty = useTimelineStore((state) => state.isDirty)
   return isDirty ? (
-    <span className="absolute -right-1 -top-1 h-2 w-2 animate-pulse rounded-full bg-orange-500" />
+    <span className="absolute -right-1 -top-1 h-2 w-2 animate-pulse rounded-full bg-primary" />
   ) : null
 })
 

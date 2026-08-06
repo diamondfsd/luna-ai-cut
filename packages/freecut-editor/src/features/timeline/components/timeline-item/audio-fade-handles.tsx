@@ -87,11 +87,11 @@ export const AudioFadeHandles = memo(function AudioFadeHandles({
     const isActive = curveEditingHandle === handle || hoveredHandle === handle
 
     return cn(
-      'absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-orange-200/90 shadow-[0_0_0_1px_rgba(15,23,42,0.2)] transition-opacity cursor-move touch-none before:absolute before:-inset-[8px] before:content-[""] focus-visible:outline-none',
+      'absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/70 shadow-[0_0_0_1px_rgba(15,23,42,0.2)] transition-opacity cursor-move touch-none before:absolute before:-inset-[8px] before:content-[""] focus-visible:outline-none',
       densityPointerClass,
       isActive
-        ? 'bg-orange-500 opacity-100'
-        : 'bg-orange-400/90 opacity-0 group-hover/timeline-item:opacity-100',
+        ? 'bg-primary opacity-100'
+        : 'bg-primary/90 opacity-0 group-hover/timeline-item:opacity-100',
     )
   }
 

@@ -84,8 +84,8 @@
         "iconAutoKey": "Auto-Key: erfasst automatisch einen Keyframe, sobald du diesen Wert änderst.",
         "iconDiamond": "Einen Keyframe am Abspielkopf hinzufügen oder entfernen.",
         "colorsHeading": "Keyframes",
-        "colorDefault": "Oranges Diamant: ein Keyframe.",
-        "colorSelected": "Leuchtendes Orange mit Ring: ausgewählter Keyframe."
+        "colorDefault": "Blauer Diamant: ein Keyframe.",
+        "colorSelected": "Leuchtendes Blau mit Ring: ausgewählter Keyframe."
       },
       "keyframeMarker": {
         "rowLabel": "Keyframe bei Frame {{frame}} — ziehen zum Verschieben, Alt+Ziehen zum Duplizieren",

@@ -5,7 +5,6 @@ test('从 Luna 导航创建项目并打开内嵌 FreeCut 剪辑器', async ({ lu
   const navigation = page.locator('.global-nav')
 
   await expect(navigation).toBeVisible()
-  await page.evaluate(() => localStorage.setItem('freecut-language', 'zh'))
   await page.getByRole('link', { name: '剪辑', exact: true }).click()
 
   await expect(page).toHaveURL(/#\/video-editor$/)
@@ -21,12 +20,13 @@ test('从 Luna 导航创建项目并打开内嵌 FreeCut 剪辑器', async ({ lu
   expect(editorBounds!.y).toBeGreaterThanOrEqual(navBounds!.y + navBounds!.height - 1)
 
   await page.getByRole('button', { name: '新建项目' }).click()
-  await expect(page.getByRole('heading', { name: '项目详情' })).toBeVisible()
-  await page.getByLabel('项目名称').fill('FreeCut E2E 项目')
-  await page.getByRole('button', { name: '创建项目' }).click()
 
   await expect(page.getByRole('toolbar', { name: '编辑器工具栏' })).toBeVisible()
   await expect(page.getByRole('region', { name: '区域' })).toBeVisible()
-  await expect(page.getByText('FreeCut E2E 项目', { exact: true })).toBeVisible()
+  await expect(page.getByText('未命名项目', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: /画布比例/ }).click()
+  await page.getByRole('menuitem', { name: '9:16' }).click()
+  await expect(page.getByText(/1080x1920/)).toBeVisible()
   expect(runtimeErrors).toEqual([])
 })

@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, useRef } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -6,11 +6,7 @@ import { createLogger } from '@freecut/shared/logging/logger'
 
 const logger = createLogger('ProjectsIndex')
 import { Button } from '@freecut/components/ui/button'
-import { Separator } from '@freecut/components/ui/separator'
-import { Plus, Upload, FolderOpen, File, GitBranch, BookOpen } from 'lucide-react'
-import { FreeCutLogo } from '@freecut/components/brand/freecut-logo'
-import { DiscordIcon } from '@freecut/components/brand/discord-icon'
-import { DISCORD_INVITE_URL } from '@freecut/config/community'
+import { FolderOpen, File } from 'lucide-react'
 import { ProjectList } from '@freecut/features/projects/components/project-list'
 import { EditProjectForm } from '@freecut/features/projects/components/project-form'
 import {
@@ -37,8 +33,6 @@ import { BUNDLE_EXTENSION } from '@freecut/features/project-bundle/types/bundle'
 import { LegacyMigrationBanner } from '@freecut/features/projects/components/legacy-migration-banner'
 import { LegacyMigrationErrors } from '@freecut/features/projects/components/legacy-migration-errors'
 import { TrashSection } from '@freecut/features/projects/components/trash-section'
-import { WorkspaceIndicator } from '@freecut/features/workspace-gate'
-import { LanguageSwitcher } from '@freecut/shared/ui/language-switcher'
 
 export const Route = createFileRoute('/projects/')({
   component: ProjectsIndex,
@@ -261,75 +255,13 @@ function ProjectsIndex() {
   return (
     <>
       <div className="size-full min-h-0 overflow-auto bg-background">
-        {/* Header */}
-        <div className="panel-header border-b border-border" data-no-marquee>
-          <div className="max-w-[1920px] mx-auto px-6 py-5 flex items-center justify-between">
-            <Link to="/">
-              <FreeCutLogo
-                variant="full"
-                size="md"
-                className="hover:opacity-80 transition-opacity"
-              />
-            </Link>
-            <div className="flex items-center gap-3">
-              <LanguageSwitcher size="md" align="end" side="bottom" />
-
-              <Separator orientation="vertical" className="h-6" />
-
-              <Button variant="outline" size="lg" className="gap-2 px-4" asChild>
-                <Link to="/docs">
-                  <BookOpen className="w-4 h-4" />
-                  Docs
-                </Link>
-              </Button>
-              <Button variant="outline" size="lg" className="gap-2 px-4" asChild>
-                <a href={DISCORD_INVITE_URL} target="_blank" rel="noopener noreferrer">
-                  <DiscordIcon className="w-4 h-4" />
-                  Discord
-                </a>
-              </Button>
-              <Button variant="outline" size="lg" className="gap-2 px-4" asChild>
-                <a
-                  href="https://github.com/walterlow/freecut"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={t('projects.viewOnGitHub')}
-                >
-                  <GitBranch className="w-4 h-4" />
-                  GitHub
-                </a>
-              </Button>
-
-              <Separator orientation="vertical" className="h-6" />
-
-              <WorkspaceIndicator />
-              <Button
-                variant="outline"
-                size="lg"
-                className="gap-2 px-4"
-                onClick={handleImportClick}
-              >
-                <Upload className="w-4 h-4" />
-                {t('projects.importProject')}
-              </Button>
-              <Link to="/projects/new">
-                <Button size="lg" className="gap-2 px-4">
-                  <Plus className="w-4 h-4" />
-                  {t('projects.newProject')}
-                </Button>
-              </Link>
-            </div>
-
-            {/* Hidden file input for import */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".zip"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-          </div>
-        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".zip"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
 
         {/* Error state */}
         {error && (

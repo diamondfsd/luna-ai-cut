@@ -84,8 +84,8 @@
         "iconAutoKey": "Image clé auto : capture automatiquement une image clé à chaque modification de cette valeur.",
         "iconDiamond": "Ajouter ou supprimer une image clé à la tête de lecture.",
         "colorsHeading": "Images clés",
-        "colorDefault": "Losange orange : une image clé.",
-        "colorSelected": "Orange vif avec un anneau : image clé sélectionnée."
+        "colorDefault": "Losange bleu : une image clé.",
+        "colorSelected": "Bleu vif avec un anneau : image clé sélectionnée."
       },
       "keyframeMarker": {
         "rowLabel": "Image clé à l’image {{frame}} — glissez pour redéfinir le timing, Alt+glisser pour dupliquer",

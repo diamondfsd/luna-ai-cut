@@ -100,8 +100,8 @@ export function GizmoHandles({
       ? '#0891b2'
       : '#06b6d4' // Cyan for masks
     : isInteracting
-      ? '#ea580c'
-      : '#f97316' // Orange for regular
+      ? 'var(--primary-strong)'
+      : 'var(--primary)' // Luna blue for regular elements
 
   return (
     <>
@@ -145,7 +145,7 @@ export function GizmoHandles({
           return (
             <div
               key={handle}
-              className="bg-white border border-orange-500"
+              className="border border-primary bg-white"
               style={{ ...getHandleStyle(handle), zIndex: 102 }}
               role="button"
               aria-label={handleLabels[handle]}
@@ -160,7 +160,7 @@ export function GizmoHandles({
       {cropRect && onCropStart && (
         <>
           <div
-            className="pointer-events-none absolute border border-orange-400/80"
+            className="pointer-events-none absolute border border-primary/80"
             style={{
               left: cropRect.left,
               top: cropRect.top,
@@ -188,7 +188,7 @@ export function GizmoHandles({
             return (
               <div
                 key={edge}
-                className="absolute border border-white bg-orange-500 shadow-sm"
+                className="absolute border border-white bg-primary shadow-sm"
                 style={{
                   left,
                   top,
@@ -213,7 +213,7 @@ export function GizmoHandles({
 
       {/* Rotation handle */}
       <div
-        className="absolute bg-white border border-orange-500 rounded-full cursor-crosshair"
+        className="absolute rounded-full border border-primary bg-white cursor-crosshair"
         style={{
           width: 10,
           height: 10,
@@ -231,7 +231,7 @@ export function GizmoHandles({
 
       {/* Rotation guide line */}
       <div
-        className="absolute border-l border-dashed border-orange-500 pointer-events-none"
+        className="pointer-events-none absolute border-l border-dashed border-primary"
         style={{
           left: '50%',
           top: -ROTATION_HANDLE_OFFSET + 10,

@@ -555,7 +555,7 @@ function PositionPreview({ config, duration }: { config: EasingConfig; duration:
           <>
             <div className="absolute inset-x-3 top-1/2 border-t border-dashed border-white/20" />
             <div
-              className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-orange-400"
+              className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-primary"
               // pos 0→1 spans the full dashed track (dot center hits each end);
               // clamp keeps small spring overshoot inside the box instead of clipping.
               style={{
@@ -566,14 +566,14 @@ function PositionPreview({ config, duration }: { config: EasingConfig; duration:
         ) : mode === 'rotate' ? (
           // Rounded square + orientation pip so the spin is actually visible.
           <div
-            className="relative size-9 rounded-[5px] bg-orange-400"
+            className="relative size-9 rounded-[5px] bg-primary"
             style={{ transform: `rotate(${pos * 180}deg)` }}
           >
             <span className="absolute left-1/2 top-1 size-1.5 -translate-x-1/2 rounded-full bg-black/40" />
           </div>
         ) : (
           <div
-            className="size-9 rounded-full bg-orange-400"
+            className="size-9 rounded-full bg-primary"
             style={
               mode === 'scale'
                 ? { transform: `scale(${Math.max(0, pos)})` }

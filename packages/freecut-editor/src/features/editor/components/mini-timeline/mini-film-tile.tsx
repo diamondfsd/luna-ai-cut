@@ -43,7 +43,7 @@ export const MiniFilmTile = memo(function MiniFilmTile({
       data-clip-id={dataClipId}
       className={`group grid shrink-0 grid-rows-[20px_1fr_16px] overflow-hidden rounded-[3px] border bg-[#17181d] text-left shadow-sm transition-colors ${
         selected
-          ? 'border-orange-500 shadow-[0_0_0_1px_rgba(249,115,22,0.65)]'
+          ? 'border-primary ring-1 ring-primary/65'
           : 'border-zinc-700 hover:border-zinc-500'
       }`}
       style={{ width: MINI_FILM_TILE_WIDTH, height: MINI_FILM_TILE_HEIGHT }}

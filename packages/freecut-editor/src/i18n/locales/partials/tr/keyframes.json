@@ -84,8 +84,8 @@
         "iconAutoKey": "Otomatik anahtar: bu değeri her değiştirdiğinizde otomatik olarak bir anahtar kare yakalar.",
         "iconDiamond": "Oynatma başlığında bir anahtar kare ekleyin veya kaldırın.",
         "colorsHeading": "Anahtar kareler",
-        "colorDefault": "Turuncu elmas: bir anahtar kare.",
-        "colorSelected": "Halkalı parlak turuncu: seçili anahtar kare."
+        "colorDefault": "Mavi elmas: bir anahtar kare.",
+        "colorSelected": "Halkalı parlak mavi: seçili anahtar kare."
       },
       "keyframeMarker": {
         "rowLabel": "{{frame}}. karedeki anahtar kare — zamanlamayı değiştirmek için sürükleyin, çoğaltmak için Alt+sürükleyin",
