@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowDown, ArrowUp, Copy, Eye, EyeOff, GripVertical, MoreHorizontal, Pencil, Plus, RefreshCcw, RotateCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { Button, Dialog, IconButton, Input, Popover, PopoverClose, PopoverContent, PopoverTrigger, Select, Tooltip } from '../../ui'
+import { Button, Dialog, IconButton, Input, Popover, PopoverClose, PopoverContent, PopoverTrigger, SegmentedControl, Select, Tooltip } from '../../ui'
 import { createDefaultPipeline, type ColorMaskBlendMode, type ColorMaskLayer } from '../shared/editPipeline'
 import { useWorkspaceCanvas } from '../context/WorkspaceCanvasContext'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
@@ -10,6 +10,7 @@ import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { MaskPanel } from '../mask/MaskPanel'
 import { featherMaskPreview, sampleMaskBilinear } from '../mask/maskPreviewSampling'
 import { ColorPanel } from './ColorPanel'
+import { SimpleColorMaskPanel } from './SimpleColorMaskPanel'
 import { normalizeColorMaskName, reorderColorMaskLayers, type ColorMaskDropPosition } from './colorMaskLayerOperations'
 import './ColorMaskPanel.css'
 
@@ -117,12 +118,19 @@ export function ColorMaskPanel() {
   const canvas = useWorkspaceCanvas()
   const edit = useWorkspaceEdit()
   const mask = useWorkspaceMask()
+  const media = useWorkspaceMedia()
   const globalThumbnailSize = fitThumbnailSize(canvas.sourceAspect, 1)
   const selectedColor = mask.activeMask?.color ?? edit.pipeline.color
   const createMaskHint = mask.available ? '新建蒙版' : '请先在项目中打开图片或视频'
   const [renameState, setRenameState] = useState<{ id: string; originalName: string; value: string } | null>(null)
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string; position: ColorMaskDropPosition } | null>(null)
+  const [photoMode, setPhotoMode] = useState<'simple' | 'professional'>('simple')
+  const simpleMode = media.activeMedia?.kind === 'image' && photoMode === 'simple' && !mask.editing
+
+  useEffect(() => {
+    if (media.activeMedia?.kind === 'image') setPhotoMode('simple')
+  }, [media.activeMedia?.id, media.activeMedia?.kind])
 
   const openRename = (layer: ColorMaskLayer): void => {
     setRenameState({ id: layer.id, originalName: layer.name, value: layer.name })
@@ -149,6 +157,20 @@ export function ColorMaskPanel() {
 
   return (
     <div className={`workspace-color-mask-panel${mask.editing ? ' is-editing' : ''}`}>
+      {media.activeMedia?.kind === 'image' && !mask.editing && (
+        <div className="workspace-color-mask-mode">
+          <SegmentedControl
+            ariaLabel="蒙版使用模式"
+            value={photoMode}
+            options={[
+              { value: 'simple', label: '简单' },
+              { value: 'professional', label: '专业' },
+            ]}
+            onChange={setPhotoMode}
+          />
+        </div>
+      )}
+      {simpleMode ? <SimpleColorMaskPanel /> : <>
       <div className="workspace-color-mask-content">
         {mask.editing ? (
           <div className="workspace-mask-inline-editor"><MaskPanel /></div>
@@ -308,6 +330,7 @@ export function ColorMaskPanel() {
           })}
         </div>
       </section>
+      </>}
       <Dialog
         open={Boolean(renameState)}
         onOpenChange={(open) => { if (!open) setRenameState(null) }}

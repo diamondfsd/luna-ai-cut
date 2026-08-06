@@ -17,6 +17,7 @@ interface AppNavProps {
 
 export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
   const { exportProgress } = useExportProgress()
+  const isMac = window.navigator.platform.includes('Mac')
   const connected = Boolean(connection?.httpOk && connection.controlOk)
   const deviceName = connection?.deviceInfo?.deviceName ?? connection?.deviceName ?? activeDevice?.name ?? '设备'
   const statusText = connected
@@ -24,7 +25,7 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
     : connection?.message ?? `${deviceName} 未连接`
 
   return (
-    <nav className="global-nav">
+    <nav className={`global-nav${isMac ? ' global-nav-macos' : ''}`}>
       <div className="nav-inner">
         <div className="nav-links">
           <NavLink to="/library" className={({ isActive }) => (isActive ? 'active' : '')}>
@@ -38,6 +39,9 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           </NavLink>
           <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>
             工作台
+          </NavLink>
+          <NavLink to="/video-editor" className={({ isActive }) => (isActive ? 'active' : '')}>
+            剪辑
           </NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置

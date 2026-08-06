@@ -1,0 +1,10 @@
+.workspace-smart-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.workspace-smart-actions .ui-btn {
+  width: 100%;
+  min-height: 40px;
+}
+

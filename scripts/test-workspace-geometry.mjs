@@ -4,6 +4,8 @@ import { Buffer } from 'node:buffer'
 import ts from 'typescript'
 
 const source = await readFile(new URL('../src/workspace/transform/cropGeometry.ts', import.meta.url), 'utf8')
+const autoCompositionSource = await readFile(new URL('../src/workspace/transform/autoComposition.ts', import.meta.url), 'utf8')
+const autoColorSource = await readFile(new URL('../src/workspace/color/autoColorAnalysis.ts', import.meta.url), 'utf8')
 const pixelStretchSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchLayers.ts', import.meta.url), 'utf8')
 const pixelStretchStateSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchState.ts', import.meta.url), 'utf8')
 const pixelStretchPathSource = await readFile(new URL('../src/workspace/creative/pixel-stretch/pixelStretchPath.ts', import.meta.url), 'utf8')
@@ -17,6 +19,11 @@ const compilerOptions = {
   importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
 }
 const compiled = ts.transpileModule(source, { compilerOptions }).outputText
+const autoCompositionCompiled = ts.transpileModule(
+  `${source}\n${autoCompositionSource.replace(/import[^\n]+\n/g, '')}`,
+  { compilerOptions },
+).outputText
+const autoColorCompiled = ts.transpileModule(autoColorSource.replace(/import[^\n]+\n/g, ''), { compilerOptions }).outputText
 const pixelStretchCompiled = ts.transpileModule(`${pixelStretchPathSource}\n${pixelStretchSource.replace(/import \{ buildPixelStretchFlowPath, flattenPixelStretchPath \} from '.\/pixelStretchPath'\n/, '')}`, { compilerOptions }).outputText
 const pixelStretchStateCompiled = ts.transpileModule(pixelStretchStateSource, { compilerOptions }).outputText
 const pixelStretchPathCompiled = ts.transpileModule(pixelStretchPathSource, { compilerOptions }).outputText
@@ -25,6 +32,8 @@ const videoOutputMarkersCompiled = ts.transpileModule(videoOutputMarkersSource, 
 const aiSelectionWorkspaceAssetsCompiled = ts.transpileModule(aiSelectionWorkspaceAssetsSource, { compilerOptions }).outputText
 
 const geometry = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`)
+const autoComposition = await import(`data:text/javascript;base64,${Buffer.from(autoCompositionCompiled).toString('base64')}`)
+const autoColor = await import(`data:text/javascript;base64,${Buffer.from(autoColorCompiled).toString('base64')}`)
 const pixelStretch = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchCompiled).toString('base64')}`)
 const pixelStretchState = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchStateCompiled).toString('base64')}`)
 const pixelStretchPath = await import(`data:text/javascript;base64,${Buffer.from(pixelStretchPathCompiled).toString('base64')}`)
@@ -127,6 +136,48 @@ close(geometry.frameAspect(sourceAspect, 90), 1 / sourceAspect, 'portrait frame 
 
 cropClose(geometry.cropForAspect(sourceAspect, 0, sourceAspect), { x: 0, y: 0, w: 1, h: 1 }, 'original landscape crop')
 cropClose(geometry.cropForAspect(sourceAspect, 90, 1 / sourceAspect), { x: 0, y: 0, w: 1, h: 1 }, 'original portrait crop')
+
+const instanceIds = new Uint16Array(8 * 6)
+for (let y = 1; y <= 4; y += 1) {
+  for (let x = 0; x <= 2; x += 1) instanceIds[y * 8 + x] = 1
+}
+assert.deepEqual(
+  autoComposition.subjectBoundsFromInstances(instanceIds, 8, 6),
+  { x: 0, y: 1 / 6, width: 3 / 8, height: 4 / 6 },
+  'AI composition derives normalized subject bounds from instance ids',
+)
+const subjectCrop = autoComposition.autoCropForSubject({
+  sourceAspect,
+  targetAspect: 1,
+  orientation: 0,
+  rotate: 0,
+  subject: { x: 0.02, y: 0.2, width: 0.2, height: 0.5 },
+})
+close(subjectCrop.x, 0, 'left-side subject keeps square crop near the left edge')
+assert.equal(
+  geometry.isCropInsideImage(subjectCrop, sourceAspect, 0, 0),
+  true,
+  'AI composition crop remains inside the source image',
+)
+assert.equal(autoComposition.subjectBoundsFromInstances(new Uint16Array(12), 4, 3), null, 'empty instance output has no subject')
+
+function solidPixels(width, height, r, g, b) {
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let offset = 0; offset < data.length; offset += 4) {
+    data[offset] = r
+    data[offset + 1] = g
+    data[offset + 2] = b
+    data[offset + 3] = 255
+  }
+  return { width, height, data }
+}
+
+const darkAutoColor = autoColor.analyzeAutoColor(solidPixels(16, 16, 45, 45, 45))
+assert.ok(darkAutoColor && darkAutoColor.exposure > 0.5, 'AI color raises a dark neutral image')
+assert.equal(darkAutoColor.temperature, 0, 'neutral input does not receive a temperature cast')
+const blueAutoColor = autoColor.analyzeAutoColor(solidPixels(16, 16, 95, 110, 150))
+assert.ok(blueAutoColor && blueAutoColor.temperature > 0, 'AI color warms a blue cast')
+assert.equal(autoColor.analyzeAutoColor(solidPixels(4, 4, 80, 80, 80)), null, 'AI color rejects too few pixels')
 cropClose(
   geometry.maxCropInsideImage({ sourceAspect, orientation: 0, rotate: 0, aspectRatio: geometry.frameAspect(sourceAspect, 0) }),
   { x: 0, y: 0, w: 1, h: 1 },

@@ -106,11 +106,20 @@ export function useCropMachine(
   )
 
   const confirmCrop = useCallback(() => {
-    if (transformDraft) commitPatch({ transform: transformDraft })
+    if (transformDraft && JSON.stringify(transformDraft) !== JSON.stringify(pipeline.transform)) {
+      commitPatch({ transform: transformDraft })
+    }
     setCropActive(false)
     setTransformDraft(null)
     setActiveTool(previousToolRef.current)
-  }, [transformDraft, commitPatch, setActiveTool])
+  }, [transformDraft, pipeline.transform, commitPatch, setActiveTool])
+
+  const applyAutomaticCrop = useCallback((crop: NonNullable<EditPipeline['transform']['crop']>) => {
+    const transform = { ...activeTransform, crop }
+    commitPatch({ transform })
+    setTransformDraft(transform)
+    setCropActive(true)
+  }, [activeTransform, commitPatch])
 
   const cancelCrop = useCallback(() => {
     setTransformDraft(null)
@@ -139,6 +148,7 @@ export function useCropMachine(
     handleCropPresetChange,
     handleCropSizeChange,
     handleRotateChange,
+    applyAutomaticCrop,
     confirmCrop,
     cancelCrop,
     exitCropMode,

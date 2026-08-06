@@ -155,7 +155,7 @@ class MountedCameraMediaSource implements CameraMediaSourceAdapter {
   async listFiles(): Promise<LunaFile[]> {
     const { deviceId, rootPath } = await this.values()
     const volumes = await resolveMountedCameraVolumes(rootPath)
-    if (volumes.length === 0) throw new Error('未检测到包含 DCIM 的相机磁盘')
+    if (volumes.length === 0) throw new Error('未检测到包含素材的相机磁盘')
     const files = await listMountedCameraFilesFromVolumes(volumes, deviceId)
     await resolveLocalThumbnails(files, getLocalResourcesDir(await getSettings()))
     return files
@@ -164,7 +164,7 @@ class MountedCameraMediaSource implements CameraMediaSourceAdapter {
   async deleteFiles(files: LunaFile[]): Promise<CameraDeleteResult> {
     const { rootPath } = await this.values()
     const volumes = await resolveMountedCameraVolumes(rootPath)
-    if (volumes.length === 0) throw new Error('未检测到包含 DCIM 的相机磁盘')
+    if (volumes.length === 0) throw new Error('未检测到包含素材的相机磁盘')
     return deleteMountedCameraFilesFromVolumes(volumes, files)
   }
 

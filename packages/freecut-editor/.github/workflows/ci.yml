@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Nightly soak for the preview-sync stress job (catches ordering flakes
+    # introduced via indirect deps that the PR path-filter would miss).
+    - cron: '0 7 * * *'
+
+jobs:
+  quality:
+    name: Quality Checks
+    # The nightly `schedule` trigger only exists for the preview-sync soak;
+    # skip the full quality suite (already run on every PR and push to main).
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so the fallow ratchet can diff against the PR base branch.
+          fetch-depth: 0
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: '22'
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Check feature boundaries
+        run: vp run check:boundaries
+
+      - name: Check deps contract seams
+        run: vp run check:deps-contracts
+
+      - name: Check legacy lib import migration
+        run: vp run check:legacy-lib-imports
+
+      - name: Check deps wrapper health
+        run: vp run check:deps-wrapper-health
+
+      - name: Generate feature-edge report
+        run: node scripts/report-feature-edges.mjs --json > feature-edges-report.json
+
+      - name: Generate deps-wrapper health report
+        run: node scripts/check-deps-wrapper-health.mjs --json > deps-wrapper-health-report.json
+
+      - name: Check feature-edge budgets
+        run: node scripts/check-feature-edge-budgets.mjs --input feature-edges-report.json
+
+      - name: Upload feature-edge report
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-edges-report
+          path: feature-edges-report.json
+
+      - name: Upload deps-wrapper health report
+        uses: actions/upload-artifact@v4
+        with:
+          name: deps-wrapper-health-report
+          path: deps-wrapper-health-report.json
+
+      - name: Check
+        run: vp run check
+
+      - name: Unit tests (with coverage floor)
+        run: vp test run --coverage
+
+      - name: Build
+        run: vp build
+
+      # Portable Node, Chrome, edit-operation, and generated-media/audio
+      # contracts. Reuses dist/ from Build and never requires WebGPU.
+      - name: Portable headless contract suite
+        run: npm run headless:test:portable
+
+      # Quality ratchet: fails only on dead code / complexity / duplication
+      # INTRODUCED by the PR (gate new-only), never on inherited issues.
+      # Advisory for now (continue-on-error) — drop that line to enforce once
+      # the current develop-vs-main delta is cleaned up.
+      - name: Fallow quality ratchet
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          npm install -g fallow
+          fallow audit --base "origin/${{ github.base_ref }}" --gate new-only --ci
+
+  # Repeatedly re-runs the preview-sync suite from cold to surface ordering /
+  # stale-render flakes in the fast-scrub state machine. Kept OFF the common PR
+  # critical path: it only runs nightly (full soak) or on PRs that actually
+  # touch preview code. See scripts/preview-sync-stress.mjs.
+  preview-sync-stress:
+    name: Preview Sync Stress
+    runs-on: ubuntu-latest
+    # ~27s/run × 10 nightly runs ≈ 5min of work; cap well above that so a
+    # hung fast-scrub deadlock is killed fast instead of holding the runner
+    # for the 6h GitHub default.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so the PR path-filter can diff against the base branch.
+          fetch-depth: 0
+
+      - name: Decide whether to run
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Nightly schedule and pushes to main soak the whole thing.
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "runs=10" >> "$GITHUB_OUTPUT"
+            echo "Non-PR event (${{ github.event_name }}) — full soak (10x)."
+            exit 0
+          fi
+          base="origin/${{ github.base_ref }}"
+          if git diff --name-only "$base"...HEAD \
+            | grep -qE '^(src/features/preview/|scripts/preview-sync-stress\.mjs$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "runs=5" >> "$GITHUB_OUTPUT"
+            echo "Preview code changed — running stress (5x)."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No preview changes — skipping stress (nightly soak still covers it)."
+          fi
+
+      - name: Setup Vite+
+        if: steps.gate.outputs.run == 'true'
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: '22'
+          cache: true
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: vp install
+
+      - name: Preview Sync Stress
+        if: steps.gate.outputs.run == 'true'
+        run: vp run test:preview-sync:stress -- --runs ${{ steps.gate.outputs.runs }}

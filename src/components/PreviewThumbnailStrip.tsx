@@ -19,7 +19,7 @@ function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThu
   isActive: boolean
   isModified: boolean
   onFileChange: (filePath: string) => void
-  activeThumbRef?: RefObject<HTMLButtonElement>
+  activeThumbRef?: RefObject<HTMLButtonElement | null>
 }) {
   const btnRef = useRef<HTMLButtonElement>(null)
   const kind = mediaKindFromPath(filePath)

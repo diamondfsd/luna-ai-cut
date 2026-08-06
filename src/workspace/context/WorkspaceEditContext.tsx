@@ -89,6 +89,7 @@ interface WorkspaceEditValue {
   handleCropPresetChange: (preset: CropPreset, sourceAspect: number, mediaSize?: { w: number; h: number }) => void
   handleCropSizeChange: (size: { width?: number; height?: number }, sourceAspect: number, mediaSize?: { w: number; h: number }) => void
   handleRotateChange: (rotate: number) => void
+  applyAutomaticCrop: (crop: NonNullable<EditPipeline['transform']['crop']>) => void
   confirmCrop: () => void
   cancelCrop: () => void
   exitCropMode: () => void
