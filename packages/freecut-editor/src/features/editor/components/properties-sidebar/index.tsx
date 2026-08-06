@@ -302,7 +302,7 @@ export const PropertiesSidebar = memo(function PropertiesSidebar() {
                   )}
                 </Button>
                 <Settings2 className="w-3 h-3 shrink-0 text-muted-foreground" />
-                <h2 className="min-w-0 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                <h2 className="min-w-0 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                   <span className="shrink-0 uppercase tracking-wide">
                     {headerLabel}
                   </span>

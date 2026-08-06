@@ -2,11 +2,15 @@
   "editor": {
     "mediaSidebar": {
       "media": "Media",
+      "audio": "Audio",
       "text": "Text",
       "shapes": "Shapes",
+      "stickers": "Stickers",
       "effects": "Effects",
       "transitions": "Transitions",
+      "captions": "Captions",
       "ai": "AI",
+      "more": "More",
       "collapsePanel": "Collapse panel",
       "expandPanel": "Expand panel",
       "keyframeEditor": "Keyframe editor",

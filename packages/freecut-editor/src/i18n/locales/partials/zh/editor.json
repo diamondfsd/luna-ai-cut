@@ -401,9 +401,9 @@
       "totalFrames": "总帧数"
     },
     "clipPanel": {
-      "tabVideo": "视频",
+      "tabVideo": "画面",
       "tabAudio": "音频",
-      "tabEffects": "效果",
+      "tabEffects": "调整",
       "adjustmentLayerHint": "调整图层上的效果会应用到上方所有轨道的项目。",
       "tabText": "文本",
       "tabAnimation": "动画",
@@ -678,11 +678,15 @@
     },
     "mediaSidebar": {
       "media": "媒体",
+      "audio": "音频",
       "text": "文本",
       "shapes": "形状",
+      "stickers": "贴纸",
       "effects": "效果",
       "transitions": "转场",
+      "captions": "字幕",
       "ai": "AI",
+      "more": "更多",
       "collapsePanel": "收起面板",
       "expandPanel": "展开面板",
       "keyframeEditor": "关键帧编辑器",

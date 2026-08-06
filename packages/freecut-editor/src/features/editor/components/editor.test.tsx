@@ -416,7 +416,7 @@ describe('LoadedEditor migration metadata refresh', () => {
 
     expect(mocks.resizablePanelGroup).toHaveBeenCalledWith(
       expect.objectContaining({
-        autoSaveId: 'editor:timeline-layout',
+        autoSaveId: 'editor:timeline-layout:v2',
         direction: 'vertical',
       }),
     )

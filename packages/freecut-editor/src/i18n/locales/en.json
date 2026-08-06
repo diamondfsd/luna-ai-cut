@@ -52,6 +52,8 @@
     "settings": "Settings",
     "keyboardShortcuts": "Keyboard Shortcuts",
     "keyboardShortcutsAria": "Keyboard shortcuts",
+    "more": "More",
+    "userGuide": "User Guide",
     "viewOnGitHub": "View on GitHub",
     "joinDiscord": "Join Discord",
     "debugPanel": "Debug Panel",

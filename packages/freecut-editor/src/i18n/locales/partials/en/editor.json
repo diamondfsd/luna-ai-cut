@@ -401,9 +401,9 @@
       "totalFrames": "Total Frames"
     },
     "clipPanel": {
-      "tabVideo": "Video",
+      "tabVideo": "Visual",
       "tabAudio": "Audio",
-      "tabEffects": "Effects",
+      "tabEffects": "Adjust",
       "adjustmentLayerHint": "Effects on adjustment layers apply to all items on tracks above.",
       "tabText": "Text",
       "tabAnimation": "Animation",
@@ -678,11 +678,15 @@
     },
     "mediaSidebar": {
       "media": "Media",
+      "audio": "Audio",
       "text": "Text",
       "shapes": "Shapes",
+      "stickers": "Stickers",
       "effects": "Effects",
       "transitions": "Transitions",
+      "captions": "Captions",
       "ai": "AI",
+      "more": "More",
       "collapsePanel": "Collapse panel",
       "expandPanel": "Expand panel",
       "keyframeEditor": "Keyframe editor",

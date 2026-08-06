@@ -77,7 +77,7 @@ const LazyColorTimelineNavigator = lazy(() =>
 const EDITOR_PROJECT_ROUTE_ID = '/editor/$projectId'
 
 function workspaceTimelineSizeStorageKey(workspace: EditorWorkspaceId): string {
-  return `editor:workspaceTimelineSize:${workspace}`
+  return `editor:workspaceTimelineSize:v2:${workspace}`
 }
 
 function loadWorkspaceTimelineSize(workspace: EditorWorkspaceId): number | null {
@@ -533,7 +533,7 @@ export const LoadedEditor = memo(function LoadedEditor({
 
   useEffect(() => {
     syncSidebarLayout(editorLayout)
-  }, [editorLayout, syncSidebarLayout])
+  }, [editorLayout, syncSidebarLayout, workspace])
 
   // Apply the per-workspace timeline split when switching workspaces:
   // snapshot the outgoing workspace's split, then restore the incoming
@@ -659,6 +659,8 @@ export const LoadedEditor = memo(function LoadedEditor({
   // Color replaces the default editor shell. Motion deliberately keeps it and
   // swaps the preview/timeline surfaces while retaining the shared sidebars.
   const hidesDefaultSidebars = isColorWorkspace
+  const workspaceTimelineDefaultSize =
+    EDITOR_WORKSPACE_TIMELINE_SIZE[workspace] ?? editorLayout.timelineDefaultSize
 
   return (
     <div
@@ -683,7 +685,7 @@ export const LoadedEditor = memo(function LoadedEditor({
         />
       </InteractionLockRegion>
 
-      {/* Main Layout: Full-height sidebar + vertical split */}
+      {/* Main Layout: upper workspace + full-width timeline in Edit */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar - Media Library (full column mode) */}
         {mediaFullColumn && !hidesDefaultSidebars && (
@@ -720,11 +722,11 @@ export const LoadedEditor = memo(function LoadedEditor({
           <ResizablePanelGroup
             direction="vertical"
             className="flex-1 min-w-0"
-            autoSaveId="editor:timeline-layout"
+            autoSaveId="editor:timeline-layout:v2"
           >
             {/* Top - Preview + Properties (inline mode) */}
             <ResizablePanel
-              defaultSize={100 - editorLayout.timelineDefaultSize}
+              defaultSize={100 - workspaceTimelineDefaultSize}
               minSize={100 - editorLayout.timelineMaxSize}
               maxSize={100 - editorLayout.timelineMinSize}
             >
@@ -766,7 +768,7 @@ export const LoadedEditor = memo(function LoadedEditor({
             {/* Bottom - Timeline */}
             <ResizablePanel
               ref={timelinePanelRef}
-              defaultSize={editorLayout.timelineDefaultSize}
+              defaultSize={workspaceTimelineDefaultSize}
               minSize={editorLayout.timelineMinSize}
               maxSize={editorLayout.timelineMaxSize}
             >

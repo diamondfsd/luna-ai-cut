@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ChevronUp,
   Film,
+  Music2,
   Layers,
   Type,
   Square,
@@ -14,12 +15,12 @@ import {
   Star,
   Hexagon,
   Heart,
-  Pentagon,
   Blend,
   Pen,
   Captions,
   Sticker,
   WandSparkles,
+  MoreHorizontal,
 } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { Button } from '@freecut/components/ui/button'
@@ -38,10 +39,12 @@ import {
   clearMediaDragData,
   MediaLibrary,
   setMediaDragData,
+  useMediaLibraryStore,
 } from '@freecut/features/editor/deps/media-library'
 import { importTranscriptEditorPanel } from '@freecut/features/editor/deps/timeline-panels'
 import { LottieBrowserPanel } from '@freecut/features/editor/deps/lottie-browser'
 import { TransitionsPanel } from './transitions-panel'
+import { EditorPrimaryNav } from './editor-primary-nav'
 import {
   createDefaultGradientItem,
   createDefaultShapeItem,
@@ -310,6 +313,14 @@ export const MediaSidebar = memo(function MediaSidebar() {
     if (activeTab === 'lottie') setLottieTabActivated(true)
   }, [activeTab])
 
+  useEffect(() => {
+    if (activeTab === 'audio') {
+      useMediaLibraryStore.getState().setFilterByType('audio')
+    } else if (activeTab === 'media') {
+      useMediaLibraryStore.getState().setFilterByType(null)
+    }
+  }, [activeTab])
+
   // The collapsed panel stays mounted (clipped to 0 width, see NOTE below), so
   // its buttons/inputs would remain in the tab order while invisible. Mark the
   // content `inert` once the close animation settles to pull them out of tab
@@ -533,17 +544,27 @@ export const MediaSidebar = memo(function MediaSidebar() {
     return grouped
   }, [])
 
-  // Category items for the vertical nav
+  // Primary creation categories mirror the task-oriented editor navigation.
   const categories = [
     { id: 'media' as const, icon: Film, label: t('editor.mediaSidebar.media') },
+    { id: 'audio' as const, icon: Music2, label: t('editor.mediaSidebar.audio') },
     { id: 'text' as const, icon: Type, label: t('editor.mediaSidebar.text') },
-    { id: 'shapes' as const, icon: Pentagon, label: t('editor.mediaSidebar.shapes') },
+    { id: 'lottie' as const, icon: Sticker, label: t('editor.mediaSidebar.stickers') },
     { id: 'effects' as const, icon: Layers, label: t('editor.mediaSidebar.effects') },
     { id: 'transitions' as const, icon: Blend, label: t('editor.mediaSidebar.transitions') },
-    { id: 'lottie' as const, icon: Sticker, label: t('lottieBrowser.tabLabel') },
-    { id: 'transcript' as const, icon: Captions, label: t('transcript.tabLabel') },
+    { id: 'transcript' as const, icon: Captions, label: t('editor.mediaSidebar.captions') },
     { id: 'ai' as const, icon: WandSparkles, label: t('editor.mediaSidebar.ai') },
+    { id: 'shapes' as const, icon: MoreHorizontal, label: t('editor.mediaSidebar.more') },
   ]
+
+  const handlePrimaryTabSelect = useCallback(
+    (id: (typeof categories)[number]['id']) => {
+      setActiveTab(id)
+      if (!leftSidebarOpen) toggleLeftSidebar()
+      if (id === 'effects') triggerPreviews()
+    },
+    [leftSidebarOpen, setActiveTab, toggleLeftSidebar, triggerPreviews],
+  )
 
   const shouldSuppressGeneratedItemClick = useCallback(() => {
     if (!suppressGeneratedItemClickRef.current) {
@@ -585,70 +606,7 @@ export const MediaSidebar = memo(function MediaSidebar() {
   }, [])
 
   return (
-    <div className="flex h-full flex-shrink-0">
-      {/* Vertical Category Bar */}
-      <div
-        className="panel-header border-r border-border flex flex-col items-center flex-shrink-0"
-        style={{ width: EDITOR_LAYOUT_CSS_VALUES.sidebarRailWidth }}
-      >
-        {/* Header row - aligned with content panel header */}
-        <div
-          className="flex items-center justify-center border-b border-border w-full"
-          style={{ height: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderHeight }}
-        >
-          <button
-            onClick={toggleLeftSidebar}
-            className="rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
-            style={{
-              width: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
-              height: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
-            }}
-            data-tooltip={
-              leftSidebarOpen
-                ? t('editor.mediaSidebar.collapsePanel')
-                : t('editor.mediaSidebar.expandPanel')
-            }
-            data-tooltip-side="right"
-          >
-            {leftSidebarOpen ? (
-              <ChevronLeft className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
-            )}
-          </button>
-        </div>
-
-        {/* Category Icons */}
-        <div className="flex flex-col gap-1 py-1.5">
-          {categories.map(({ id, icon: Icon, label }) => (
-            <button
-              key={id}
-              onClick={() => {
-                if (activeTab === id && leftSidebarOpen) {
-                  toggleLeftSidebar()
-                } else {
-                  setActiveTab(id)
-                  if (!leftSidebarOpen) toggleLeftSidebar()
-                  if (id === 'effects') triggerPreviews()
-                }
-              }}
-              className={`
-                w-9 h-9 rounded-lg flex items-center justify-center transition-[transform,background-color,color] duration-150 active:scale-95
-                ${
-                  activeTab === id && leftSidebarOpen
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
-                }
-              `}
-              data-tooltip={label}
-              data-tooltip-side="right"
-            >
-              <Icon className="w-4 h-4" />
-            </button>
-          ))}
-        </div>
-      </div>
-
+    <div className="relative flex h-full flex-shrink-0">
       {/* Content Panel — width animated via motion for the open/close toggle.
           We intentionally animate `width` (a layout property, not the cheaper
           transform/opacity) because collapsing must reclaim layout space for the
@@ -680,14 +638,35 @@ export const MediaSidebar = memo(function MediaSidebar() {
           inert={contentInert}
         >
           <>
+            <EditorPrimaryNav
+              items={categories}
+              activeTab={activeTab}
+              onSelect={handlePrimaryTabSelect}
+            />
+
             {/* Panel Header — sits with the tab content */}
             <div
               className="flex items-center justify-between px-3 border-b border-border flex-shrink-0"
               style={{ height: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderHeight }}
             >
-              <span className="text-sm font-medium text-foreground">
-                {categories.find((c) => c.id === activeTab)?.label}
-              </span>
+              <div className="flex min-w-0 items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  style={{
+                    width: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
+                    height: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
+                  }}
+                  onClick={toggleLeftSidebar}
+                  aria-label={t('editor.mediaSidebar.collapsePanel')}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+                <span className="truncate text-xs font-medium text-foreground">
+                  {categories.find((c) => c.id === activeTab)?.label}
+                </span>
+              </div>
               <Button
                 variant="ghost"
                 size="icon"
@@ -719,7 +698,7 @@ export const MediaSidebar = memo(function MediaSidebar() {
 
             {/* Media Tab - Full Media Library */}
             <div
-              className={`min-h-0 flex-1 overflow-hidden ${activeTab === 'media' ? 'block' : 'hidden'}`}
+              className={`min-h-0 flex-1 overflow-hidden ${activeTab === 'media' || activeTab === 'audio' ? 'block' : 'hidden'}`}
             >
               <MediaLibrary />
             </div>
@@ -1178,6 +1157,22 @@ export const MediaSidebar = memo(function MediaSidebar() {
           />
         )}
       </motion.div>
+      {!leftSidebarOpen && (
+        <button
+          type="button"
+          onClick={toggleLeftSidebar}
+          className="absolute left-0 top-2 z-10 flex items-center justify-center rounded-r-md border border-l-0 border-border bg-secondary/70 transition-colors hover:bg-secondary"
+          style={{
+            width: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
+            height: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
+          }}
+          data-tooltip={t('editor.mediaSidebar.expandPanel')}
+          data-tooltip-side="right"
+          aria-label={t('editor.mediaSidebar.expandPanel')}
+        >
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+        </button>
+      )}
     </div>
   )
 })

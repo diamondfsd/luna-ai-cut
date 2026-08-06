@@ -630,11 +630,15 @@ const ClipPanelCore = memo(function ClipPanelCore({
         onValueChange={handleTabChange}
         className={cn('w-full', motionUsesFullHeight && 'flex h-full min-h-0 flex-col')}
       >
-        <TabsList className={cn('grid h-8 w-full shrink-0', tabGridColsClass)}>
+        <TabsList className={cn('grid h-8 w-full shrink-0 bg-muted/45 p-0.5', tabGridColsClass)}>
           {availableTabs.map((value) => {
             const { label, icon: Icon } = getTabMeta(value)
             return (
-              <TabsTrigger key={value} value={value} className="text-xs gap-1 px-2">
+              <TabsTrigger
+                key={value}
+                value={value}
+                className="gap-1 px-1.5 text-[10px] font-normal data-[state=active]:bg-background/70 data-[state=active]:shadow-none"
+              >
                 <Icon className="h-3 w-3" />
                 {label}
               </TabsTrigger>

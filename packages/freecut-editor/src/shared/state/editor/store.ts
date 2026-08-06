@@ -8,12 +8,14 @@ import {
 import {
   normalizeEditorWorkspaceId,
   normalizeEditorWorkspaceLayout,
+  EDITOR_WORKSPACE_LAYOUT_SCHEMA_VERSION,
   type EditorWorkspaceId,
   type EditorWorkspaceLayout,
 } from '@freecut/config/editor-workspaces'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 
 const LEGACY_SIDEBAR_DEFAULT_WIDTH = 320
+const LEGACY_RIGHT_SIDEBAR_DEFAULT_WIDTH = 288
 const WORKSPACE_STORAGE_KEY = 'editor:workspace'
 const TRACK_SIZE_PRESET_STORAGE_KEY = 'editor:trackSizePreset'
 
@@ -49,6 +51,15 @@ function loadLegacyPropertiesFullColumn(): boolean {
   }
 }
 
+function loadLegacyMediaFullColumn(): boolean {
+  try {
+    const stored = localStorage.getItem('editor:mediaFullColumn')
+    return stored === null ? true : stored === 'true'
+  } catch {
+    return true
+  }
+}
+
 /** Saved per-workspace layout (user tweaks), falling back to the workspace preset. */
 function loadEditorWorkspaceLayout(workspace: EditorWorkspaceId): EditorWorkspaceLayout {
   let stored: unknown = null
@@ -59,23 +70,74 @@ function loadEditorWorkspaceLayout(workspace: EditorWorkspaceId): EditorWorkspac
     stored = null
   }
 
-  const layout = normalizeEditorWorkspaceLayout(stored, workspace)
-  // The edit workspace inherits the pre-workspaces global preference until
-  // the user has a saved snapshot for it.
-  const hasStoredFullColumn =
-    typeof (stored as { propertiesFullColumn?: unknown } | null)?.propertiesFullColumn === 'boolean'
-  if (workspace === 'edit' && !hasStoredFullColumn) {
-    return { ...layout, propertiesFullColumn: loadLegacyPropertiesFullColumn() }
+  const candidate = stored as { schemaVersion?: unknown } | null
+  if (candidate?.schemaVersion === EDITOR_WORKSPACE_LAYOUT_SCHEMA_VERSION) {
+    return normalizeEditorWorkspaceLayout(stored, workspace)
   }
-  return layout
+
+  const legacyLayout = normalizeEditorWorkspaceLayout(stored, workspace)
+  const migratedLayout: EditorWorkspaceLayout =
+    workspace === 'edit'
+      ? {
+          ...legacyLayout,
+          propertiesFullColumn: false,
+          mediaFullColumn: false,
+          sidebarWidth: loadSidebarWidth(
+            'editor:sidebarWidth',
+            EDITOR_LAYOUT.leftSidebarDefaultWidth,
+            LEGACY_SIDEBAR_DEFAULT_WIDTH,
+          ),
+          rightSidebarWidth: loadSidebarWidth(
+            'editor:rightSidebarWidth',
+            EDITOR_LAYOUT.rightSidebarDefaultWidth,
+            LEGACY_RIGHT_SIDEBAR_DEFAULT_WIDTH,
+          ),
+        }
+      : {
+          ...legacyLayout,
+          propertiesFullColumn:
+            workspace === 'motion'
+              ? loadLegacyPropertiesFullColumn()
+              : legacyLayout.propertiesFullColumn,
+          mediaFullColumn: loadLegacyMediaFullColumn(),
+          sidebarWidth: loadSidebarWidth(
+            'editor:sidebarWidth',
+            EDITOR_LAYOUT.leftSidebarDefaultWidth,
+            LEGACY_SIDEBAR_DEFAULT_WIDTH,
+          ),
+          rightSidebarWidth: loadSidebarWidth(
+            'editor:rightSidebarWidth',
+            EDITOR_LAYOUT.rightSidebarDefaultWidth,
+            LEGACY_RIGHT_SIDEBAR_DEFAULT_WIDTH,
+          ),
+        }
+
+  saveEditorWorkspaceLayout(workspace, migratedLayout)
+  return migratedLayout
 }
 
 function getEditorWorkspaceLayoutSnapshot(state: EditorState): EditorWorkspaceLayout {
   return {
+    schemaVersion: EDITOR_WORKSPACE_LAYOUT_SCHEMA_VERSION,
     colorScopesOpen: state.colorScopesOpen,
     clipInspectorTab: state.clipInspectorTab,
     activeTab: state.activeTab,
     propertiesFullColumn: state.propertiesFullColumn,
+    mediaFullColumn: state.mediaFullColumn,
+    sidebarWidth: state.sidebarWidth,
+    rightSidebarWidth: state.rightSidebarWidth,
+  }
+}
+
+function getEditorWorkspaceState(layout: EditorWorkspaceLayout) {
+  return {
+    colorScopesOpen: layout.colorScopesOpen,
+    clipInspectorTab: layout.clipInspectorTab,
+    activeTab: layout.activeTab,
+    propertiesFullColumn: layout.propertiesFullColumn,
+    mediaFullColumn: layout.mediaFullColumn,
+    sidebarWidth: layout.sidebarWidth,
+    rightSidebarWidth: layout.rightSidebarWidth,
   }
 }
 
@@ -97,21 +159,23 @@ function normalizeSidebarWidth(
   width: number,
   fallback: number,
   bounds: { minWidth: number; maxWidth: number },
+  legacyDefaultWidth: number,
 ): number {
   if (!Number.isFinite(width)) return fallback
   const nextWidth =
-    width === LEGACY_SIDEBAR_DEFAULT_WIDTH && fallback !== LEGACY_SIDEBAR_DEFAULT_WIDTH
+    width === legacyDefaultWidth && fallback !== legacyDefaultWidth
       ? fallback
       : width
   return Math.min(bounds.maxWidth, Math.max(bounds.minWidth, nextWidth))
 }
 
-function loadSidebarWidth(key: string, fallback: number): number {
+function loadSidebarWidth(key: string, fallback: number, legacyDefaultWidth: number): number {
   try {
     const v = localStorage.getItem(key)
     if (v !== null) {
       const parsedWidth = Number(v)
-      return Number.isFinite(parsedWidth) ? parsedWidth : fallback
+      if (!Number.isFinite(parsedWidth)) return fallback
+      return parsedWidth === legacyDefaultWidth ? fallback : parsedWidth
     }
   } catch {
     /* noop */
@@ -129,11 +193,8 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
   workspace: initialWorkspace,
   activeTab: initialWorkspaceLayout.activeTab,
   clipInspectorTab: initialWorkspaceLayout.clipInspectorTab,
-  sidebarWidth: loadSidebarWidth('editor:sidebarWidth', EDITOR_LAYOUT.leftSidebarDefaultWidth),
-  rightSidebarWidth: loadSidebarWidth(
-    'editor:rightSidebarWidth',
-    EDITOR_LAYOUT.rightSidebarDefaultWidth,
-  ),
+  sidebarWidth: initialWorkspaceLayout.sidebarWidth,
+  rightSidebarWidth: initialWorkspaceLayout.rightSidebarWidth,
   timelineHeight: 250,
   sourcePreviewMediaId: null,
   mediaSkimPreviewMediaId: null,
@@ -155,14 +216,7 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
     }
   })(),
   propertiesFullColumn: initialWorkspaceLayout.propertiesFullColumn,
-  mediaFullColumn: (() => {
-    try {
-      const v = localStorage.getItem('editor:mediaFullColumn')
-      return v === null ? true : v === 'true'
-    } catch {
-      return true
-    }
-  })(),
+  mediaFullColumn: initialWorkspaceLayout.mediaFullColumn,
   trackSizePreset: loadTrackSizePreset(),
 
   // Actions
@@ -196,7 +250,7 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
         /* noop */
       }
 
-      return { workspace, ...loadEditorWorkspaceLayout(workspace) }
+      return { workspace, ...getEditorWorkspaceState(loadEditorWorkspaceLayout(workspace)) }
     }),
   setActiveTab: (tab) =>
     set((state) => {
@@ -216,7 +270,11 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
     } catch {
       /* noop */
     }
-    set({ sidebarWidth: width })
+    set((state) => {
+      const nextState = { ...state, sidebarWidth: width }
+      saveEditorWorkspaceLayout(state.workspace, getEditorWorkspaceLayoutSnapshot(nextState))
+      return { sidebarWidth: width }
+    })
   },
   setRightSidebarWidth: (width) => {
     try {
@@ -224,7 +282,11 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
     } catch {
       /* noop */
     }
-    set({ rightSidebarWidth: width })
+    set((state) => {
+      const nextState = { ...state, rightSidebarWidth: width }
+      saveEditorWorkspaceLayout(state.workspace, getEditorWorkspaceLayoutSnapshot(nextState))
+      return { rightSidebarWidth: width }
+    })
   },
   syncSidebarLayout: (layout) =>
     set((currentState) => ({
@@ -235,6 +297,7 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
           leftSidebarMinWidth: layout.leftSidebarMinWidth,
           leftSidebarMaxWidth: layout.leftSidebarMaxWidth,
         }),
+        LEGACY_SIDEBAR_DEFAULT_WIDTH,
       ),
       rightSidebarWidth: normalizeSidebarWidth(
         currentState.rightSidebarWidth,
@@ -243,6 +306,7 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
           rightSidebarMinWidth: layout.rightSidebarMinWidth,
           rightSidebarMaxWidth: layout.rightSidebarMaxWidth,
         }),
+        LEGACY_RIGHT_SIDEBAR_DEFAULT_WIDTH,
       ),
     })),
   setTimelineHeight: (height) => set({ timelineHeight: height }),
@@ -382,11 +446,8 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
   toggleMediaFullColumn: () =>
     set((state) => {
       const next = !state.mediaFullColumn
-      try {
-        localStorage.setItem('editor:mediaFullColumn', String(next))
-      } catch {
-        /* noop */
-      }
+      const nextState = { ...state, mediaFullColumn: next }
+      saveEditorWorkspaceLayout(state.workspace, getEditorWorkspaceLayoutSnapshot(nextState))
       return { mediaFullColumn: next }
     }),
   setTrackSizePreset: (preset) => {
