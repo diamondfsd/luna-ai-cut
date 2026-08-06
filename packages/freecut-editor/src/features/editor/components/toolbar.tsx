@@ -8,7 +8,7 @@ import {
   ChevronDown,
   Download,
   FolderArchive,
-  Github,
+  GitBranch,
   Keyboard,
   ListVideo,
   Save,
@@ -239,7 +239,7 @@ export const Toolbar = memo(function Toolbar({
             data-tooltip-side="bottom"
             aria-label={t('toolbar.viewOnGitHub')}
           >
-            <Github className="h-4 w-4" />
+            <GitBranch className="h-4 w-4" />
           </a>
         </Button>
         <Button variant="outline" size="icon" className="h-7 w-7" asChild>
