@@ -22,8 +22,9 @@ if(POLICY CMP0169)
 endif()
 FetchContent_Declare(
   llama
-  GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
-  GIT_TAG 8086439a4cea94c71a5dfb8fe4ad1546aebd640f
+  URL https://gitcode.com/diamondfsd/luna-ai-cut-package-release/releases/download/model-resources-v1.0.0/llama.cpp-8086439a4.tar.gz
+  URL_HASH SHA256=0a95c9ded634e5f04bb29ab799e4595351b680615874faca5266076f8927310a
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_GetProperties(llama)
 if(NOT llama_POPULATED)
