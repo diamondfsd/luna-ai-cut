@@ -407,7 +407,8 @@
       "adjustmentLayerHint": "Effekte auf Einstellungsebenen gelten für alle Elemente auf Spuren darüber.",
       "tabText": "Text",
       "tabAnimation": "Animation",
-      "tabShape": "Form"
+      "tabShape": "Form",
+      "alignment": "Ausrichtung"
     },
     "gifSection": {
       "animation": "Animation",

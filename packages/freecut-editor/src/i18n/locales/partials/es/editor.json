@@ -407,7 +407,8 @@
       "adjustmentLayerHint": "Los efectos en capas de ajuste se aplican a todos los elementos de las pistas superiores.",
       "tabText": "Texto",
       "tabAnimation": "Animación",
-      "tabShape": "Forma"
+      "tabShape": "Forma",
+      "alignment": "Alineación"
     },
     "gifSection": {
       "animation": "Animación",
