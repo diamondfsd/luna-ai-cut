@@ -1,18 +1,19 @@
 /**
  * Track heights are a local view preference, not project data.
  *
- * Two localStorage keys back them: the global Track Size preset
- * (`editor:trackSizePreset`, owned by the editor store) supplies the base row
- * height, and `editor:trackHeights:<projectId>` holds per-track overrides for
- * tracks the user has dragged to a custom height. `items-store.setTracks()`
- * re-derives `TimelineTrack.height` from these on every write, so the height
- * stored in a project file is ignored.
+ * The global Track Size preset (`editor:trackSizePreset`, owned by the editor
+ * store) supplies the base row height. `editor:trackPreviewCollapsed` can
+ * temporarily replace it with a short label-only row, while
+ * `editor:trackHeights:<projectId>` holds per-track overrides for tracks the
+ * user has dragged to a custom height. `items-store.setTracks()` re-derives
+ * `TimelineTrack.height` from these on every write, so the height stored in a
+ * project file is ignored.
  *
  * Overrides are held in memory and flushed to localStorage on a short debounce
  * so a drag gesture doesn't write once per mousemove.
  */
 import { useEditorStore } from '@freecut/shared/state/editor'
-import { TRACK_SIZE_PRESET_HEIGHTS } from '../constants'
+import { COLLAPSED_TRACK_HEIGHT, TRACK_SIZE_PRESET_HEIGHTS } from '../constants'
 import { clampTrackHeight } from './track-resize'
 
 const OVERRIDES_KEY_PREFIX = 'editor:trackHeights:'
@@ -58,10 +59,14 @@ export function flushTrackHeightOverrides(): void {
 
 /** Base row height for tracks with no override, from the saved Track Size preset. */
 export function getPresetTrackHeight(): number {
-  return TRACK_SIZE_PRESET_HEIGHTS[useEditorStore.getState().trackSizePreset]
+  const state = useEditorStore.getState()
+  return state.trackPreviewCollapsed
+    ? COLLAPSED_TRACK_HEIGHT
+    : TRACK_SIZE_PRESET_HEIGHTS[state.trackSizePreset]
 }
 
 export function resolveTrackHeight(trackId: string): number {
+  if (useEditorStore.getState().trackPreviewCollapsed) return COLLAPSED_TRACK_HEIGHT
   return overrides.get(trackId) ?? getPresetTrackHeight()
 }
 

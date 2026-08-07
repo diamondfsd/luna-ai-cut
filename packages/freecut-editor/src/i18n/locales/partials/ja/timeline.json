@@ -331,7 +331,9 @@
       "label": "トラックサイズ",
       "compact": "コンパクト",
       "medium": "中",
-      "large": "大"
+      "large": "大",
+      "hidePreview": "プレビューを折りたたむ",
+      "showPreview": "プレビューを展開"
     },
     "volumeControl": {
       "adjustClipVolume": "クリップ音量を調整"

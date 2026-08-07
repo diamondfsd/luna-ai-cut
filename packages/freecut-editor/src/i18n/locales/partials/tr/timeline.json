@@ -327,7 +327,9 @@
       "label": "Parça boyutu",
       "compact": "Kompakt",
       "medium": "Orta",
-      "large": "Büyük"
+      "large": "Büyük",
+      "hidePreview": "Önizlemeleri gizle",
+      "showPreview": "Önizlemeleri göster"
     },
     "volumeControl": {
       "adjustClipVolume": "Klip ses düzeyini ayarla"

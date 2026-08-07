@@ -331,7 +331,9 @@
       "label": "Tamaño de pista",
       "compact": "Compacto",
       "medium": "Mediano",
-      "large": "Grande"
+      "large": "Grande",
+      "hidePreview": "Ocultar vistas previas",
+      "showPreview": "Mostrar vistas previas"
     },
     "volumeControl": {
       "adjustClipVolume": "Ajustar clip volumen"

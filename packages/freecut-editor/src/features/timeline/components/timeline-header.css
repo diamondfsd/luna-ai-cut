@@ -1,0 +1,40 @@
+.timeline-header {
+  --timeline-header-button-hover: color-mix(in oklab, var(--primary) 12%, transparent);
+  --timeline-header-button-active: color-mix(in oklab, var(--timeline-bg) 82%, var(--primary) 18%);
+  --timeline-header-button-active-border: color-mix(in oklab, var(--primary) 30%, transparent);
+}
+
+.timeline-header .timeline-header-button {
+  border-radius: 4px;
+  color: var(--foreground);
+}
+
+.timeline-header .timeline-header-button:hover:not(:disabled) {
+  background-color: var(--timeline-header-button-hover);
+  color: var(--foreground);
+}
+
+.timeline-header .timeline-header-button-active,
+.timeline-header .timeline-header-button[aria-pressed='true'] {
+  background-color: var(--timeline-header-button-active);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--timeline-header-button-active-border);
+}
+
+.timeline-header .timeline-header-button-active:hover:not(:disabled),
+.timeline-header .timeline-header-button[aria-pressed='true']:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--timeline-bg) 72%, var(--primary) 28%);
+  color: var(--primary);
+}
+
+.timeline-header .timeline-header-button:disabled {
+  color: var(--muted-foreground);
+}
+
+.timeline-header .timeline-header-symbol {
+  color: currentColor;
+}
+
+.timeline-header .timeline-header-zoom-controls .timeline-header-button {
+  color: var(--foreground);
+}

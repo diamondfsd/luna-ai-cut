@@ -331,7 +331,9 @@
       "label": "Tamanho da faixa",
       "compact": "Compacto",
       "medium": "Médio",
-      "large": "Grande"
+      "large": "Grande",
+      "hidePreview": "Ocultar prévias",
+      "showPreview": "Mostrar prévias"
     },
     "volumeControl": {
       "adjustClipVolume": "Ajustar volume do clipe"

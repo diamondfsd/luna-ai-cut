@@ -335,7 +335,9 @@
       "label": "Track size",
       "compact": "Compact",
       "medium": "Medium",
-      "large": "Large"
+      "large": "Large",
+      "hidePreview": "Hide previews",
+      "showPreview": "Show previews"
     },
     "volumeControl": {
       "adjustClipVolume": "Adjust clip volume"

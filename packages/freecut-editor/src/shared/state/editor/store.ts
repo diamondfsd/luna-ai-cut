@@ -18,6 +18,7 @@ const LEGACY_SIDEBAR_DEFAULT_WIDTH = 320
 const LEGACY_RIGHT_SIDEBAR_DEFAULT_WIDTH = 288
 const WORKSPACE_STORAGE_KEY = 'editor:workspace'
 const TRACK_SIZE_PRESET_STORAGE_KEY = 'editor:trackSizePreset'
+const TRACK_PREVIEW_COLLAPSED_STORAGE_KEY = 'editor:trackPreviewCollapsed'
 
 function loadTrackSizePreset(): TrackSizePreset {
   try {
@@ -29,6 +30,14 @@ function loadTrackSizePreset(): TrackSizePreset {
     /* noop */
   }
   return 'medium'
+}
+
+function loadTrackPreviewCollapsed(): boolean {
+  try {
+    return localStorage.getItem(TRACK_PREVIEW_COLLAPSED_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
 }
 
 function workspaceLayoutStorageKey(workspace: EditorWorkspaceId): string {
@@ -218,6 +227,7 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
   propertiesFullColumn: initialWorkspaceLayout.propertiesFullColumn,
   mediaFullColumn: initialWorkspaceLayout.mediaFullColumn,
   trackSizePreset: loadTrackSizePreset(),
+  trackPreviewCollapsed: loadTrackPreviewCollapsed(),
 
   // Actions
   setActivePanel: (panel) => set({ activePanel: panel }),
@@ -457,5 +467,13 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
       /* noop */
     }
     set({ trackSizePreset: preset })
+  },
+  setTrackPreviewCollapsed: (collapsed) => {
+    try {
+      localStorage.setItem(TRACK_PREVIEW_COLLAPSED_STORAGE_KEY, String(collapsed))
+    } catch {
+      /* noop */
+    }
+    set({ trackPreviewCollapsed: collapsed })
   },
 }))

@@ -490,6 +490,44 @@ describe('TimelineContent playback selection behavior', () => {
     animationFrameSpy.mockRestore()
   })
 
+  it('scrolls the hovered track section vertically on a normal wheel gesture', () => {
+    const frameCallbacks: FrameRequestCallback[] = []
+    const animationFrameSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        frameCallbacks.push(callback)
+        return frameCallbacks.length
+      })
+    const tracks = [
+      { ...VIDEO_TRACK, id: 'track-video-1', name: 'V1', order: 0 },
+      { ...VIDEO_TRACK, id: 'track-video-2', name: 'V2', order: 1 },
+      { ...VIDEO_TRACK, id: 'track-video-3', name: 'V3', order: 2 },
+    ]
+    const allTracksScrollRef = createRef<HTMLDivElement>()
+    const { container, unmount } = render(
+      <TimelineContent
+        duration={100}
+        tracks={tracks}
+        allTracksScrollRef={allTracksScrollRef}
+      />,
+    )
+    const scrollContainer = container.querySelector('[data-timeline-scroll-container]')
+    const trackSection = allTracksScrollRef.current
+    if (!(scrollContainer instanceof HTMLDivElement) || !trackSection) {
+      throw new Error('Expected timeline scroll container and track section')
+    }
+
+    fireEvent.wheel(trackSection, { deltaY: 120 })
+    expect(frameCallbacks).toHaveLength(1)
+    act(() => frameCallbacks.shift()?.(performance.now()))
+
+    expect(trackSection.scrollTop).toBeGreaterThan(0)
+    expect(scrollContainer.scrollLeft).toBe(0)
+
+    unmount()
+    animationFrameSpy.mockRestore()
+  })
+
   it('preserves the mouse pivot when wheel-zooming immediately after zoom to fit', () => {
     let zoomToFit: (() => void) | undefined
     const frameCallbacks: FrameRequestCallback[] = []
