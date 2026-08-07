@@ -126,6 +126,13 @@ export function PreviewModal({
     ? (filePathList ?? []).some((fp) => isVideoPath(fp))
     : isVideoPath(currentFilePath)
 
+  const dolbyVisionProbePaths = useMemo(() => {
+    const candidates = batchExportMode ? exportList : (stageSource ? [stageSource] : [])
+    return candidates
+      .map((path) => toLocalPath(path))
+      .filter((path): path is string => path !== null && isVideoPath(path))
+  }, [batchExportMode, exportList, stageSource])
+
   useEffect(() => {
     if (previewOnly || !window.navigator.platform.includes('Mac')) {
       setLivePhotoCount(0)
@@ -144,7 +151,7 @@ export function PreviewModal({
   }, [exportList, previewOnly])
 
   useEffect(() => {
-    const canProbe = Boolean(lightweightPreview && !batchExportMode && stageSource && isVideoPath(stageSource))
+    const canProbe = Boolean(lightweightPreview && dolbyVisionProbePaths.length > 0)
     if (!canProbe) {
       setDolbyVisionProbe(null)
       setDolbyVisionChecking(false)
@@ -154,11 +161,13 @@ export function PreviewModal({
     let cancelled = false
     setDolbyVisionChecking(true)
     setDolbyVisionProbe(null)
-    window.luna.workspace.probeDolbyVision(stageSource!)
-      .then((result) => {
+    void Promise.all(dolbyVisionProbePaths.map((path) => window.luna.workspace.probeDolbyVision(path)))
+      .then((results) => {
         if (cancelled) return
-        setDolbyVisionProbe(result)
-        setExportConfig((current) => result.eligible
+        const result = results.find((probe) => !probe.eligible) ?? results[0]
+        const allEligible = results.length > 0 && results.every((probe) => probe.eligible)
+        setDolbyVisionProbe(allEligible ? results[0] : { ...result, eligible: false })
+        setExportConfig((current) => allEligible
           ? lockDolbyVisionExportSettings(current)
           : current.dolbyVision ? { ...current, dolbyVision: false } : current)
       })
@@ -170,7 +179,7 @@ export function PreviewModal({
       })
       .finally(() => { if (!cancelled) setDolbyVisionChecking(false) })
     return () => { cancelled = true }
-  }, [batchExportMode, lightweightPreview, stageSource])
+  }, [dolbyVisionProbePaths, lightweightPreview])
 
   useEffect(() => {
     setWatermarkLayers([])
