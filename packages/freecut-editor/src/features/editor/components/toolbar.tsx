@@ -13,7 +13,6 @@ import {
   ListVideo,
   MoreHorizontal,
   Settings,
-  Sparkles,
   Video,
 } from 'lucide-react'
 import { Button } from '@freecut/components/ui/button'
@@ -29,8 +28,6 @@ import { ProjectDebugPanel } from './project-debug-panel'
 import { SettingsDialog } from './settings-dialog'
 import { ShortcutsDialog } from './shortcuts-dialog'
 import { WorkspaceSwitcher } from './workspace-switcher'
-import { WhatsNewDialog } from './whats-new-dialog'
-import { hasUnseenChangelog } from './whats-new-seen'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
 import { cn } from '@freecut/shared/ui/cn'
 import { LanguageSwitcher } from '@freecut/shared/ui/language-switcher'
@@ -69,14 +66,9 @@ export const Toolbar = memo(function Toolbar({
   const { t } = useTranslation()
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
-  const [showWhatsNewDialog, setShowWhatsNewDialog] = useState(false)
-  const [hasUnseenWhatsNew, setHasUnseenWhatsNew] = useState(false)
   const [lunaNavHost, setLunaNavHost] = useState<HTMLElement | null>(() =>
     typeof document === 'undefined' ? null : document.getElementById('luna-video-editor-nav-slot'),
   )
-  useEffect(() => {
-    setHasUnseenWhatsNew(hasUnseenChangelog())
-  }, [])
 
   useEffect(() => {
     document.body.classList.add('freecut-editor-open')
@@ -86,11 +78,6 @@ export const Toolbar = memo(function Toolbar({
       document.body.classList.remove('freecut-editor-open')
     }
   }, [])
-
-  const openWhatsNew = () => {
-    setHasUnseenWhatsNew(false)
-    setShowWhatsNewDialog(true)
-  }
 
   const handleBackClick = async () => {
     try {
@@ -117,7 +104,7 @@ export const Toolbar = memo(function Toolbar({
       role="toolbar"
       aria-label={t('toolbar.ariaLabel')}
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex min-w-0 flex-1 basis-0 items-center gap-2.5">
         <Button
           variant="ghost"
           size="icon"
@@ -132,24 +119,20 @@ export const Toolbar = memo(function Toolbar({
 
         <Separator orientation="vertical" className="h-5" />
 
-        <div className="min-w-0">
-          <h1 className="max-w-64 truncate text-xs font-medium leading-none" title={project?.name}>
-            {project?.name || t('common.untitledProject')}
-          </h1>
-        </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-center">
-        <WorkspaceSwitcher />
+      <div className="flex min-w-0 flex-[0_1_18rem] items-center justify-center px-3">
+        <h1 className="max-w-full truncate text-xs font-medium leading-none" title={project?.name}>
+          {project?.name || t('common.untitledProject')}
+        </h1>
       </div>
 
       <ShortcutsDialog open={showShortcutsDialog} onOpenChange={setShowShortcutsDialog} />
 
       <SettingsDialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog} />
 
-      <WhatsNewDialog open={showWhatsNewDialog} onOpenChange={setShowWhatsNewDialog} />
-
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex min-w-0 flex-1 basis-0 items-center justify-end gap-1.5">
+        <WorkspaceSwitcher />
         {import.meta.env.DEV && import.meta.env.VITE_SHOW_DEBUG_PANEL !== 'false' && (
           <DebugPopover projectId={projectId} />
         )}
@@ -186,19 +169,12 @@ export const Toolbar = memo(function Toolbar({
               data-tooltip-side="bottom"
             >
               <MoreHorizontal className="h-4 w-4" />
-              {hasUnseenWhatsNew && (
-                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
-              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => navigate({ to: '/docs' })} className="gap-2">
               <BookOpen className="h-4 w-4" />
               {t('toolbar.userGuide')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={openWhatsNew} className="gap-2">
-              <Sparkles className="h-4 w-4" />
-              {t('toolbar.whatsNew')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setShowSettingsDialog(true)} className="gap-2">
               <Settings className="h-4 w-4" />
@@ -213,7 +189,7 @@ export const Toolbar = memo(function Toolbar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" className="gap-1.5 glow-primary-sm">
+            <Button variant="editorAction" size="sm" className="gap-1.5 px-2.5">
               <Download className="h-4 w-4" />
               {t('toolbar.export')}
               <ChevronDown className="h-3 w-3" />

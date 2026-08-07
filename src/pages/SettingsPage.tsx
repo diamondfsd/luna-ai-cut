@@ -6,7 +6,7 @@ import { useApp } from '../context/AppContext'
 import type { AppSettings, CacheStats, ConnectionStatus, DeviceDefinition } from '../shared/types'
 import { WatermarkManagementDialog } from '../components/WatermarkManagementDialog'
 import { LutManagementDialog } from '../components/LutManagementDialog'
-import { Button, Dialog, Input, Switch, toast } from '../ui'
+import { Button, Input, toast } from '../ui'
 import '../styles/settings.css'
 
 interface SettingsPageProps {
@@ -65,7 +65,6 @@ export function SettingsPage({
   const [logDir, setLogDir] = useState('')
   const [watermarkDialogOpen, setWatermarkDialogOpen] = useState(false)
   const [lutManagementOpen, setLutManagementOpen] = useState(false)
-  const [gpuPreviewConfirmOpen, setGpuPreviewConfirmOpen] = useState(false)
   const clickCountRef = useRef(0)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -127,12 +126,6 @@ export function SettingsPage({
       defaultWatermarkEnabled: watermark.enabled,
       defaultWatermarkPosition: watermark.position,
     }
-    setSettings((current) => (current ? { ...current, ...patch } : current))
-    void window.luna.saveSettings(patch).then(setSettings)
-  }
-
-  function saveGpuPreviewSetting(enabled: boolean): void {
-    const patch = { experimentalGpuPreview: enabled }
     setSettings((current) => (current ? { ...current, ...patch } : current))
     void window.luna.saveSettings(patch).then(setSettings)
   }
@@ -209,27 +202,6 @@ export function SettingsPage({
         </section>
 
         <section className="settings-group">
-          <h2 className="settings-group-title">实验性功能</h2>
-          <div className="settings-card">
-            <article className="settings-row">
-              <div className="settings-row-copy">
-                <span>GPU 预览加速</span>
-                <em>减少预览和时间跳转时的等待；部分设备上可能存在显示兼容问题</em>
-              </div>
-              <Switch
-                checked={settings?.experimentalGpuPreview ?? false}
-                disabled={!settings}
-                ariaLabel="GPU 预览加速"
-                onCheckedChange={(enabled) => {
-                  if (enabled) setGpuPreviewConfirmOpen(true)
-                  else saveGpuPreviewSetting(false)
-                }}
-              />
-            </article>
-          </div>
-        </section>
-
-        <section className="settings-group">
           <h2 className="settings-group-title">连接与维护</h2>
           <div className="settings-card">
             <article className="settings-row">
@@ -297,21 +269,6 @@ export function SettingsPage({
         onDefaultChange={handleDefaultWatermarkChange}
       />
       <LutManagementDialog open={lutManagementOpen} onOpenChange={setLutManagementOpen} />
-      <Dialog
-        open={gpuPreviewConfirmOpen}
-        onOpenChange={setGpuPreviewConfirmOpen}
-        title="开启 GPU 预览加速？"
-        description="部分 Windows 设备可能出现黑屏、无法预览或画面异常。如果遇到这些情况，请返回设置关闭 GPU 预览加速。"
-        footer={(
-          <>
-            <Button variant="secondary" onClick={() => setGpuPreviewConfirmOpen(false)}>取消</Button>
-            <Button variant="primary" onClick={() => {
-              setGpuPreviewConfirmOpen(false)
-              saveGpuPreviewSetting(true)
-            }}>仍然开启</Button>
-          </>
-        )}
-      />
     </section>
   )
 }
