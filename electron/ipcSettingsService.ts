@@ -2,7 +2,8 @@ import { ipcMain } from 'electron'
 import type { AppSettings } from '../src/shared/types'
 import { deviceDefinitions } from './deviceDefaults'
 import {
-  chooseDownloadDir, chooseLocalResourcesDir, chooseExportDir, chooseLutDir, chooseMockMediaDir, chooseWorkspaceMediaFiles,
+  chooseDownloadDir, chooseLocalResourcesDir, chooseExportDir, chooseLutDir, chooseMockMediaDir,
+  chooseWorkspaceMediaDirectory, chooseWorkspaceMediaFiles, readWorkspaceMediaFile,
   getSettings, saveSettings, getCacheStats, clearCache,
 } from './fileService'
 import { startMockServer, stopMockServer, getMockStatus } from './mockServerService'
@@ -20,6 +21,8 @@ export function register(): void {
   ipcMain.handle('settings:deleteCustomLut', (_event, filePath: string) => deleteCustomLut(filePath))
   ipcMain.handle('settings:chooseMockMediaDir', () => chooseMockMediaDir())
   ipcMain.handle('workspace:chooseMediaFiles', () => chooseWorkspaceMediaFiles())
+  ipcMain.handle('workspace:chooseMediaDirectory', () => chooseWorkspaceMediaDirectory())
+  ipcMain.handle('workspace:readMediaFile', (_event, filePath: string) => readWorkspaceMediaFile(filePath))
   ipcMain.handle('mock:start', (_event, s?: Partial<AppSettings>) => startMockServer(s))
   ipcMain.handle('mock:stop', () => stopMockServer())
   ipcMain.handle('mock:status', () => getMockStatus())

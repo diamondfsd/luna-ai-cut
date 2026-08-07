@@ -1,11 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { App } from './app'
 import { i18nReady } from './i18n'
+import {
+  EmbeddedHostProvider,
+  type ImportMediaFiles,
+} from './shared/host/embedded-host'
 import './index.css'
 
-export function FreeCutEditor() {
+export interface FreeCutEditorProps {
+  onRequestMediaImport?: (importFiles: ImportMediaFiles) => void
+}
+
+export function FreeCutEditor({ onRequestMediaImport }: FreeCutEditorProps) {
   const [ready, setReady] = useState(false)
+  const hostBridge = useMemo(
+    () => ({ requestMediaImport: onRequestMediaImport }),
+    [onRequestMediaImport],
+  )
 
   useEffect(() => {
     document.body.classList.add('freecut-active')
@@ -22,8 +34,10 @@ export function FreeCutEditor() {
   if (!ready) return null
 
   return (
-    <div className="freecut-app dark size-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
-      <App />
-    </div>
+    <EmbeddedHostProvider bridge={hostBridge}>
+      <div className="freecut-app dark size-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
+        <App />
+      </div>
+    </EmbeddedHostProvider>
   )
 }

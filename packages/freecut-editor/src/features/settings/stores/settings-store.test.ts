@@ -5,6 +5,7 @@ import { useSettingsStore } from './settings-store'
 
 const DEFAULT_SETTINGS = {
   snapEnabled: true,
+  showTimelineHoverPreview: false,
   showWaveforms: true,
   showFilmstrips: true,
   enableFilmstripExtraction: true,
@@ -77,6 +78,7 @@ describe('settings-store', () => {
 
       const state = useSettingsStore.getState()
       expect(state.snapEnabled).toBe(DEFAULT_SETTINGS.snapEnabled)
+      expect(state.showTimelineHoverPreview).toBe(DEFAULT_SETTINGS.showTimelineHoverPreview)
       expect(state.editorDensity).toBe(DEFAULT_SETTINGS.editorDensity)
       expect(state.autoSaveInterval).toBe(DEFAULT_SETTINGS.autoSaveInterval)
       expect(state.defaultWhisperModel).toBe(DEFAULT_SETTINGS.defaultWhisperModel)

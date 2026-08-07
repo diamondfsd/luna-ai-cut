@@ -50,6 +50,7 @@ let lastScrollPositionRef: unknown = null
 let lastSnapEnabledRef: unknown = null
 let lastAudioSkimmingEnabledRef: unknown = null
 let lastIsDirtyRef: unknown = null
+let lastChangeVersionRef: unknown = null
 
 /**
  * Get cached snapshot, rebuilding only if underlying state changed.
@@ -74,7 +75,8 @@ function getSnapshot(): TimelineState & TimelineActions {
     lastScrollPositionRef !== settingsState.scrollPosition ||
     lastSnapEnabledRef !== settingsState.snapEnabled ||
     lastAudioSkimmingEnabledRef !== settingsState.audioSkimmingEnabled ||
-    lastIsDirtyRef !== settingsState.isDirty
+    lastIsDirtyRef !== settingsState.isDirty ||
+    lastChangeVersionRef !== settingsState.changeVersion
 
   if (!cachedSnapshot || stateChanged) {
     // Update tracked references
@@ -90,6 +92,7 @@ function getSnapshot(): TimelineState & TimelineActions {
     lastSnapEnabledRef = settingsState.snapEnabled
     lastAudioSkimmingEnabledRef = settingsState.audioSkimmingEnabled
     lastIsDirtyRef = settingsState.isDirty
+    lastChangeVersionRef = settingsState.changeVersion
 
     // Rebuild cached snapshot
     cachedSnapshot = {
@@ -106,6 +109,7 @@ function getSnapshot(): TimelineState & TimelineActions {
       snapEnabled: settingsState.snapEnabled,
       audioSkimmingEnabled: settingsState.audioSkimmingEnabled,
       isDirty: settingsState.isDirty,
+      changeVersion: settingsState.changeVersion,
 
       // Actions (static references, never change)
       setTracks: timelineActions.setTracks,

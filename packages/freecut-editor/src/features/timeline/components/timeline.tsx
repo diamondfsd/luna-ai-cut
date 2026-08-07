@@ -916,10 +916,8 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
         onZoomIn={zoomHandlers?.handleZoomIn}
         onZoomOut={zoomHandlers?.handleZoomOut}
         onZoomToFit={zoomHandlers?.handleZoomToFit}
+        leadingContent={<SequenceTabs compact />}
       />
-
-      {/* Standalone-timeline (sequence) tabs — Main + top-level sequences */}
-      <SequenceTabs />
 
       {/* Composition Breadcrumbs - shown when inside a sub-composition */}
       <CompositionBreadcrumbs />

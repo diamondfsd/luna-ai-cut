@@ -21,7 +21,7 @@
   --color-timeline-shape: oklch(0.62 0.14 205);
 
   /* Playhead color */
-  --color-timeline-playhead: var(--primary); /* Luna blue (matches primary) */
+  --color-timeline-playhead: #ffffff;
 
   /* In/Out marker colors */
   --color-timeline-in: oklch(0.65 0.18 142); /* Green - in point */

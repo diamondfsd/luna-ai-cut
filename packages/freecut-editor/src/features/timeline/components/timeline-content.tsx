@@ -11,6 +11,7 @@ import { registerZoomTo100, useZoomStore } from '../stores/zoom-store'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { useEditorStore } from '@freecut/shared/state/editor'
 import { useSelectionStore } from '@freecut/shared/state/selection'
+import { useSettingsStore } from '../deps/settings-contract'
 
 // Hooks
 import { useMarqueeSelection } from '@freecut/shared/marquee/use-marquee-selection'
@@ -800,6 +801,7 @@ export const TimelineContent = memo(function TimelineContent({
   const clearItemSelection = useSelectionStore((s) => s.clearItemSelection)
   const activeTrackId = useSelectionStore((s) => s.activeTrackId)
   const isTranscriptionDialogOpen = useEditorStore((s) => s.transcriptionDialogDepth > 0)
+  const showTimelineHoverPreview = useSettingsStore((s) => s.showTimelineHoverPreview)
   // Granular selectors for drag state - avoid subscribing to entire dragState object
   const isDragging = useSelectionStore((s) => !!s.dragState?.isDragging)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -868,6 +870,14 @@ export const TimelineContent = memo(function TimelineContent({
       cancelPendingHoverPreview()
     }
   }, [cancelPendingHoverPreview])
+
+  useEffect(() => {
+    if (showTimelineHoverPreview) return
+    cancelPendingHoverPreview()
+    if (usePlaybackStore.getState().previewFrame !== null) {
+      setPreviewFrameRef.current(null)
+    }
+  }, [cancelPendingHoverPreview, showTimelineHoverPreview])
 
   // Use refs to avoid callback recreation on every frame/zoom change
   // Access currentFrame via store subscription (no re-renders) instead of hook
@@ -1442,6 +1452,11 @@ export const TimelineContent = memo(function TimelineContent({
 
   const handleTimelineMouseMove = useCallback(
     (e: React.MouseEvent) => {
+      if (!showTimelineHoverPreview) {
+        cancelPendingHoverPreview()
+        return
+      }
+
       // A hover-skim request that lands in the same frame as the first zoom
       // wheel update makes the program monitor render a new preview frame while
       // the dense timeline is also changing scale. Keep the last settled
@@ -1552,7 +1567,7 @@ export const TimelineContent = memo(function TimelineContent({
         schedulePreviewFrame()
       }
     },
-    [buildRazorSnapTargets, cancelPendingHoverPreview],
+    [buildRazorSnapTargets, cancelPendingHoverPreview, showTimelineHoverPreview],
   )
 
   const handleTimelineMouseLeave = useCallback(() => {
@@ -2194,7 +2209,9 @@ export const TimelineContent = memo(function TimelineContent({
         </TimelineSettledContentZoomProvider>
 
         {/* One overlay owns each complete marker across the ruler and tracks. */}
-        <TimelinePreviewScrubber inRuler maxFrame={maxTimelineFrame} zIndex={40} />
+        {showTimelineHoverPreview && (
+          <TimelinePreviewScrubber inRuler maxFrame={maxTimelineFrame} zIndex={40} />
+        )}
         <TimelinePlayhead
           inRuler
           maxFrame={maxTimelineFrame}

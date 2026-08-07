@@ -1,4 +1,12 @@
-import { useEffect, useCallback, memo, useLayoutEffect, useReducer, useRef } from 'react'
+import {
+  useEffect,
+  useCallback,
+  memo,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@freecut/components/ui/button'
 import {
@@ -28,6 +36,8 @@ import {
   Link2,
   Volume2,
   Diamond,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { Separator } from '@freecut/components/ui/separator'
 import { formatHotkeyBinding } from '@freecut/config/hotkeys'
@@ -39,7 +49,7 @@ import { useEditorStore } from '@freecut/shared/state/editor'
 import { useSelectionStore } from '@freecut/shared/state/selection'
 import { ZOOM_MIN, ZOOM_MAX, SLIP_SLIDE_TOOLS_ENABLED } from '../constants'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
-import { useResolvedHotkeys } from '@freecut/features/timeline/deps/settings'
+import { useResolvedHotkeys, useSettingsStore } from '@freecut/features/timeline/deps/settings'
 import { MicRecordControl } from './mic-record-control'
 
 interface TimelineHeaderProps {
@@ -47,6 +57,7 @@ interface TimelineHeaderProps {
   onZoomIn?: () => void
   onZoomOut?: () => void
   onZoomToFit?: () => void
+  leadingContent?: ReactNode
 }
 
 function TrimEditIcon({ className }: { className?: string }) {
@@ -449,6 +460,7 @@ export const TimelineHeader = memo(function TimelineHeader({
   onZoomIn,
   onZoomOut,
   onZoomToFit,
+  leadingContent,
 }: TimelineHeaderProps) {
   const { t } = useTranslation()
   const hotkeys = useResolvedHotkeys()
@@ -456,6 +468,8 @@ export const TimelineHeader = memo(function TimelineHeader({
   const toggleSnap = useTimelineStore((s) => s.toggleSnap)
   const audioSkimmingEnabled = useTimelineStore((s) => s.audioSkimmingEnabled)
   const toggleAudioSkimming = useTimelineStore((s) => s.toggleAudioSkimming)
+  const showTimelineHoverPreview = useSettingsStore((s) => s.showTimelineHoverPreview)
+  const setSetting = useSettingsStore((s) => s.setSetting)
   const inPoint = useTimelineStore((s) => s.inPoint)
   const outPoint = useTimelineStore((s) => s.outPoint)
   const setInPoint = useTimelineStore((s) => s.setInPoint)
@@ -503,11 +517,12 @@ export const TimelineHeader = memo(function TimelineHeader({
       aria-label={t('timeline.header.controls')}
     >
       {/* Left: Title */}
-      <div className="flex min-w-0 items-center gap-2.5">
-        <h2 className="text-xs font-semibold tracking-wide uppercase text-muted-foreground flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2.5 overflow-hidden">
+        <h2 className="flex shrink-0 items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <Film className="w-3 h-3" />
           {t('timeline.header.title')}
         </h2>
+        {leadingContent}
       </div>
 
       {/* Middle: Timeline Controls */}
@@ -807,6 +822,35 @@ export const TimelineHeader = memo(function TimelineHeader({
             }
           >
             <Volume2 className="w-3.5 h-3.5" />
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            style={btnSize}
+            className={
+              showTimelineHoverPreview
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : ''
+            }
+            onClick={() => setSetting('showTimelineHoverPreview', !showTimelineHoverPreview)}
+            aria-label={
+              showTimelineHoverPreview
+                ? t('timeline.header.disableHoverPreview')
+                : t('timeline.header.enableHoverPreview')
+            }
+            aria-pressed={showTimelineHoverPreview}
+            data-tooltip={
+              showTimelineHoverPreview
+                ? t('timeline.header.hoverPreviewEnabled')
+                : t('timeline.header.hoverPreviewDisabled')
+            }
+          >
+            {showTimelineHoverPreview ? (
+              <Eye className="h-3.5 w-3.5" />
+            ) : (
+              <EyeOff className="h-3.5 w-3.5" />
+            )}
           </Button>
 
           <Separator orientation="vertical" className="h-5 mx-1.5" />

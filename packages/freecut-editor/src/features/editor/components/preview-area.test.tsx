@@ -51,6 +51,10 @@ vi.mock('@freecut/features/editor/deps/preview', async () => {
   }
 })
 
+vi.mock('./audio-meter-panel', () => ({
+  AudioMeterPanel: () => <div data-testid="mini-audio-meter" />,
+}))
+
 function resetStores() {
   useProjectStore.setState({ currentProject: null })
   useMaskEditorStore.getState().stopEditing()

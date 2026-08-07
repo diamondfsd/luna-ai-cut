@@ -11,6 +11,7 @@ interface TimelineSettingsState {
   snapEnabled: boolean
   audioSkimmingEnabled: boolean
   isDirty: boolean
+  changeVersion: number
   /** True while loadTimeline() is in progress - used to coordinate initial player sync */
   isTimelineLoading: boolean
 }
@@ -24,18 +25,19 @@ interface TimelineSettingsActions {
   toggleAudioSkimming: () => void
   setIsDirty: (dirty: boolean) => void
   markDirty: () => void
-  markClean: () => void
+  markClean: (expectedChangeVersion?: number) => void
   setTimelineLoading: (loading: boolean) => void
 }
 
 export const useTimelineSettingsStore = create<TimelineSettingsState & TimelineSettingsActions>()(
-  (set, get) => ({
+  (set) => ({
     // State
     fps: 30,
     scrollPosition: 0,
     snapEnabled: true,
     audioSkimmingEnabled: true,
     isDirty: false,
+    changeVersion: 0,
     isTimelineLoading: true, // Start true - set false after loadTimeline completes
 
     // Actions
@@ -46,11 +48,19 @@ export const useTimelineSettingsStore = create<TimelineSettingsState & TimelineS
     setAudioSkimmingEnabled: (enabled) => set({ audioSkimmingEnabled: enabled }),
     toggleAudioSkimming: () =>
       set((state) => ({ audioSkimmingEnabled: !state.audioSkimmingEnabled })),
-    setIsDirty: (dirty) => set({ isDirty: dirty }),
-    markDirty: () => {
-      if (!get().isDirty) set({ isDirty: true })
-    },
-    markClean: () => set({ isDirty: false }),
+    setIsDirty: (dirty) =>
+      set((state) => ({
+        isDirty: dirty,
+        changeVersion: dirty ? state.changeVersion + 1 : state.changeVersion,
+      })),
+    markDirty: () =>
+      set((state) => ({ isDirty: true, changeVersion: state.changeVersion + 1 })),
+    markClean: (expectedChangeVersion) =>
+      set((state) =>
+        expectedChangeVersion === undefined || state.changeVersion === expectedChangeVersion
+          ? { isDirty: false }
+          : state,
+      ),
     setTimelineLoading: (loading) => set({ isTimelineLoading: loading }),
   }),
 )

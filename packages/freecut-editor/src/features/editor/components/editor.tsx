@@ -12,7 +12,6 @@ import { PropertiesSidebar } from './properties-sidebar'
 import { PreviewArea } from './preview-area'
 import { MotionPreviewArea, MotionTimelineDock } from './compose-workspace/compose-layout'
 import { InteractionLockRegion } from './interaction-lock-region'
-import { AudioMeterPanel } from './audio-meter-panel'
 import {
   importTimeline,
   importBentoLayoutDialog,
@@ -363,7 +362,8 @@ const AutoSaveController = memo(function AutoSaveController({
   onSave: () => Promise<void>
 }) {
   const isDirty = useTimelineStore((s: { isDirty: boolean }) => s.isDirty)
-  useAutoSave({ isDirty, onSave })
+  const changeVersion = useTimelineStore((s) => s.changeVersion ?? 0)
+  useAutoSave({ isDirty, changeVersion, onSave })
   return null
 })
 
@@ -399,8 +399,8 @@ export const LoadedEditor = memo(function LoadedEditor({
   const timelinePanelRef = useRef<ImperativePanelHandle>(null)
   const previousWorkspaceRef = useRef(workspace)
 
-  // Guard against concurrent saves (e.g., spamming Ctrl+S)
-  const isSavingRef = useRef(false)
+  // Serialize saves so leaving during an in-flight auto-save cannot drop newer edits.
+  const savePromiseRef = useRef<Promise<void> | null>(null)
 
   useEffect(() => {
     hasRefreshedMigrationStateRef.current = false
@@ -577,28 +577,46 @@ export const LoadedEditor = memo(function LoadedEditor({
     }
   }, [isMaskEditingActive])
 
-  // Save timeline to project (with guard against concurrent saves)
-  const handleSave = useCallback(async () => {
-    // Prevent concurrent saves (e.g., spamming Ctrl+S)
-    if (isSavingRef.current) {
-      return
-    }
-
-    isSavingRef.current = true
-    const { saveTimeline } = useTimelineStore.getState()
+  const saveProject = useCallback(async (showFeedback: boolean, flushPendingEdits: boolean) => {
+    let didSave = false
 
     try {
-      await saveTimeline(projectId)
-      logger.debug('Project saved successfully')
-      toast.success(i18n.t('editor.editor.projectSaved'))
+      if (savePromiseRef.current) {
+        await savePromiseRef.current
+      }
+
+      do {
+        if (!useTimelineStore.getState().isDirty) break
+
+        const savePromise = useTimelineStore.getState().saveTimeline(projectId)
+        savePromiseRef.current = savePromise
+        try {
+          await savePromise
+          didSave = true
+        } finally {
+          if (savePromiseRef.current === savePromise) {
+            savePromiseRef.current = null
+          }
+        }
+      } while (flushPendingEdits && useTimelineStore.getState().isDirty)
+
+      if (didSave) {
+        logger.debug('Project saved successfully')
+      }
+      if (didSave && showFeedback) {
+        toast.success(i18n.t('editor.editor.projectSaved'))
+      }
     } catch (error) {
       logger.error('Failed to save project:', error)
-      toast.error(i18n.t('editor.editor.projectSaveFailed'))
-      throw error // Re-throw so callers know save failed
-    } finally {
-      isSavingRef.current = false
+      if (showFeedback) {
+        toast.error(i18n.t('editor.editor.projectSaveFailed'))
+      }
+      throw error
     }
   }, [projectId])
+
+  const handleSave = useCallback(() => saveProject(true, true), [saveProject])
+  const handleAutoSave = useCallback(() => saveProject(false, false), [saveProject])
 
   const handleExport = useCallback(() => {
     // Pause playback when opening export dialog
@@ -669,7 +687,7 @@ export const LoadedEditor = memo(function LoadedEditor({
       role="application"
       aria-label={t('editor.editor.appLabel')}
     >
-      <AutoSaveController onSave={handleSave} />
+      <AutoSaveController onSave={handleAutoSave} />
       <TimelineShortcutsController />
 
       {/* Top Toolbar */}
@@ -682,6 +700,7 @@ export const LoadedEditor = memo(function LoadedEditor({
           onExportBundle={handleExportBundle}
           onOpenRenderQueue={handleOpenRenderQueue}
           renderQueueCount={renderQueueActiveCount}
+          locked={isMaskEditingActive}
         />
       </InteractionLockRegion>
 
@@ -784,7 +803,6 @@ export const LoadedEditor = memo(function LoadedEditor({
                         </Suspense>
                       )}
                     </div>
-                    <AudioMeterPanel />
                   </div>
                 </ErrorBoundary>
               </InteractionLockRegion>

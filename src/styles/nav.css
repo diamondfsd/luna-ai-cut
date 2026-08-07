@@ -23,6 +23,49 @@
   position: relative;
 }
 
+.nav-default-content {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.video-editor-nav-slot {
+  display: none;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+}
+
+body.freecut-editor-open .global-nav .nav-inner {
+  max-width: none;
+  padding-right: 12px;
+  padding-left: 12px;
+}
+
+body.freecut-editor-open .global-nav {
+  --canvas: #080808;
+  --ink: #f2f2f2;
+  --muted: #a1a1a6;
+  --hairline: rgba(255, 255, 255, 0.1);
+  background: #080808;
+  color: #f2f2f2;
+}
+
+body.freecut-editor-open .global-nav-macos .nav-inner {
+  padding-left: 82px;
+}
+
+body.freecut-editor-open .global-nav .nav-default-content {
+  display: none;
+}
+
+body.freecut-editor-open .global-nav .video-editor-nav-slot {
+  display: block;
+}
+
 .global-nav-macos .nav-inner {
   padding-left: 82px;
 }
@@ -32,7 +75,7 @@
 .global-nav a,
 .global-nav button,
 .global-nav input,
-.global-nav [role='button'] {
+.global-nav [role="button"] {
   -webkit-app-region: no-drag;
 }
 
@@ -88,7 +131,9 @@
   color: var(--muted);
   cursor: pointer;
   border: none;
-  transition: background 120ms, color 120ms;
+  transition:
+    background 120ms,
+    color 120ms;
 }
 
 .nav-icon-button:hover {

@@ -1,10 +1,7 @@
 import { useCallback, useMemo, useRef, useEffect, memo, lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  ChevronDown,
-  ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Film,
   Music2,
   Layers,
@@ -23,7 +20,6 @@ import {
   MoreHorizontal,
 } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
-import { Button } from '@freecut/components/ui/button'
 import { cn } from '@freecut/shared/ui/cn'
 import { useEditorStore } from '@freecut/shared/state/editor'
 import {
@@ -296,8 +292,6 @@ export const MediaSidebar = memo(function MediaSidebar() {
   // Use granular selectors - Zustand v5 best practice
   const leftSidebarOpen = useEditorStore((s) => s.leftSidebarOpen)
   const toggleLeftSidebar = useEditorStore((s) => s.toggleLeftSidebar)
-  const mediaFullColumn = useEditorStore((s) => s.mediaFullColumn)
-  const toggleMediaFullColumn = useEditorStore((s) => s.toggleMediaFullColumn)
   const activeTab = useEditorStore((s) => s.activeTab)
   const setActiveTab = useEditorStore((s) => s.setActiveTab)
   const sidebarWidth = useEditorStore((s) => s.sidebarWidth)
@@ -559,11 +553,15 @@ export const MediaSidebar = memo(function MediaSidebar() {
 
   const handlePrimaryTabSelect = useCallback(
     (id: (typeof categories)[number]['id']) => {
+      if (id === activeTab && leftSidebarOpen) {
+        toggleLeftSidebar()
+        return
+      }
       setActiveTab(id)
       if (!leftSidebarOpen) toggleLeftSidebar()
       if (id === 'effects') triggerPreviews()
     },
-    [leftSidebarOpen, setActiveTab, toggleLeftSidebar, triggerPreviews],
+    [activeTab, leftSidebarOpen, setActiveTab, toggleLeftSidebar, triggerPreviews],
   )
 
   const shouldSuppressGeneratedItemClick = useCallback(() => {
@@ -643,58 +641,6 @@ export const MediaSidebar = memo(function MediaSidebar() {
               activeTab={activeTab}
               onSelect={handlePrimaryTabSelect}
             />
-
-            {/* Panel Header — sits with the tab content */}
-            <div
-              className="flex items-center justify-between px-3 border-b border-border flex-shrink-0"
-              style={{ height: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderHeight }}
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0"
-                  style={{
-                    width: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
-                    height: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
-                  }}
-                  onClick={toggleLeftSidebar}
-                  aria-label={t('editor.mediaSidebar.collapsePanel')}
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </Button>
-                <span className="truncate text-xs font-medium text-foreground">
-                  {categories.find((c) => c.id === activeTab)?.label}
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0"
-                style={{
-                  width: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
-                  height: EDITOR_LAYOUT_CSS_VALUES.sidebarHeaderButtonSize,
-                }}
-                onClick={toggleMediaFullColumn}
-                aria-label={
-                  mediaFullColumn
-                    ? t('editor.propertiesSidebar.dockToPreview')
-                    : t('editor.propertiesSidebar.expandFullColumn')
-                }
-                data-tooltip={
-                  mediaFullColumn
-                    ? t('editor.propertiesSidebar.dockToPreview')
-                    : t('editor.propertiesSidebar.expandFullColumn')
-                }
-                data-tooltip-side="bottom"
-              >
-                {mediaFullColumn ? (
-                  <ChevronUp className="w-3 h-3" />
-                ) : (
-                  <ChevronDown className="w-3 h-3" />
-                )}
-              </Button>
-            </div>
 
             {/* Media Tab - Full Media Library */}
             <div
