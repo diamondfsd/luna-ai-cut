@@ -331,7 +331,9 @@
       "label": "트랙 크기",
       "compact": "좁게",
       "medium": "보통",
-      "large": "크게"
+      "large": "크게",
+      "hidePreview": "미리보기 접기",
+      "showPreview": "미리보기 펼치기"
     },
     "volumeControl": {
       "adjustClipVolume": "클립 볼륨 조정"

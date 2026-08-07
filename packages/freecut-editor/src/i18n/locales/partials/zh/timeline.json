@@ -335,7 +335,9 @@
       "label": "轨道大小",
       "compact": "紧凑",
       "medium": "中等",
-      "large": "较大"
+      "large": "较大",
+      "hidePreview": "收起预览图",
+      "showPreview": "展开预览图"
     },
     "volumeControl": {
       "adjustClipVolume": "调整剪辑音量"

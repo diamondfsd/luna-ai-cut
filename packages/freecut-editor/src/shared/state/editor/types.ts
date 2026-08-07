@@ -37,6 +37,7 @@ export interface EditorState {
   propertiesFullColumn: boolean
   mediaFullColumn: boolean
   trackSizePreset: TrackSizePreset
+  trackPreviewCollapsed: boolean
 }
 
 export interface EditorActions {
@@ -83,4 +84,5 @@ export interface EditorActions {
   togglePropertiesFullColumn: () => void
   toggleMediaFullColumn: () => void
   setTrackSizePreset: (preset: TrackSizePreset) => void
+  setTrackPreviewCollapsed: (collapsed: boolean) => void
 }

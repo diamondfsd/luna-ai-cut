@@ -92,6 +92,7 @@ interface TimelineItemProps {
   timelineDuration?: number
   trackLocked?: boolean
   trackHidden?: boolean
+  isTrackPreviewCollapsed?: boolean
   isCompactWidth: boolean
   isDetailEligible: boolean
   onHoverChange?: (itemId: string, hovered: boolean) => void
@@ -115,6 +116,7 @@ export const TimelineItem = memo(function TimelineItem({
   timelineDuration = 30,
   trackLocked = false,
   trackHidden = false,
+  isTrackPreviewCollapsed = false,
   isCompactWidth,
   isDetailEligible,
   onHoverChange,
@@ -826,7 +828,8 @@ export const TimelineItem = memo(function TimelineItem({
     (item.type === 'shape' && (item.isMask ?? false))
   // hasActiveClipInteraction is hoisted before fade memos (see above)
   const useCompactClipShell =
-    activeTool === 'select' && isCompactWidth && !hasDetailBadges && !hasActiveClipInteraction
+    isTrackPreviewCollapsed ||
+    (activeTool === 'select' && isCompactWidth && !hasDetailBadges && !hasActiveClipInteraction)
   const { trimInfoLabel, moveInfoLabel } = useClipReadoutLabels({
     fps,
     isTrimming,
@@ -1069,6 +1072,7 @@ export const TimelineItem = memo(function TimelineItem({
               audioWaveformScale={audioVisualizationScale}
               linkedSyncOffsetFrames={linkedSyncOffsetFrames}
               isDetailEligible={isDetailEligible}
+              isTrackPreviewCollapsed={isTrackPreviewCollapsed}
             />
 
             {!useCompactClipShell && (

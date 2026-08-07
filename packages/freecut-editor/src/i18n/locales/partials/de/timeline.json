@@ -331,7 +331,9 @@
       "label": "Spurhöhe",
       "compact": "Kompakt",
       "medium": "Mittel",
-      "large": "Groß"
+      "large": "Groß",
+      "hidePreview": "Vorschauen ausblenden",
+      "showPreview": "Vorschauen anzeigen"
     },
     "volumeControl": {
       "adjustClipVolume": "Anpassen Clip Lautstarke"

@@ -20,7 +20,18 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@freecut/components/ui/dropdown-menu'
-import { Plus, Minus, Rows4, Rows3, Rows2, Check, Video, AudioLines } from 'lucide-react'
+import {
+  Plus,
+  Minus,
+  Rows4,
+  Rows3,
+  Rows2,
+  Check,
+  Video,
+  AudioLines,
+  PanelTopClose,
+  PanelTopOpen,
+} from 'lucide-react'
 import { CompositionBreadcrumbs } from './composition-breadcrumbs'
 import { SequenceTabs } from './sequence-tabs'
 import { useCompositionNavigationStore } from '../stores/composition-navigation-store'
@@ -35,7 +46,11 @@ import { createLogger } from '@freecut/shared/logging/logger'
 import { EDITOR_LAYOUT_CSS_VALUES, getEditorLayout } from '@freecut/config/editor-layout'
 import { useTrackHeightResize } from '../hooks/use-track-height-resize'
 import { resizeTracksOfKindByDelta } from '../utils/track-resize'
-import { applyTrackSizePreset, commitTrackHeights } from '../stores/actions/track-height-actions'
+import {
+  applyTrackSizePreset,
+  commitTrackHeights,
+  toggleTrackPreviewCollapsed,
+} from '../stores/actions/track-height-actions'
 import { useZoomStore } from '../stores/zoom-store'
 import { computeWheelZoomStep } from '../constants'
 import {
@@ -164,6 +179,7 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
   )
 
   const trackSizePreset = useEditorStore((s) => s.trackSizePreset)
+  const trackPreviewCollapsed = useEditorStore((s) => s.trackPreviewCollapsed)
   const setTimelineTracks = useTimelineStore((s) => s.setTracks)
 
   useEffect(() => {
@@ -281,8 +297,8 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
   }, [])
 
   // Wheel handling in track headers:
-  //   Alt+scroll  = resize track heights in the hovered zone
-  //   Shift+scroll = vertical scroll of the hovered zone
+  //   Alt+scroll = resize track heights in the hovered zone
+  //   Scroll over a track = vertical scroll of the hovered zone
   //   Ctrl/Cmd+scroll = zoom timeline in/out
   const zoomHandlersRef = useRef(zoomHandlers)
   useEffect(() => {
@@ -319,7 +335,7 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
         return
       }
 
-      if (event.shiftKey) {
+      if (zone) {
         event.preventDefault()
         const contentScroll = hasTrackSections
           ? zone === 'audio'
@@ -718,6 +734,10 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
     applyTrackSizePreset(preset.id)
   }, [])
 
+  const handleToggleTrackPreview = useCallback(() => {
+    toggleTrackPreviewCollapsed()
+  }, [])
+
   const handleDeleteTrack = useCallback(
     (trackId: string) => {
       if (tracks.length <= 1) {
@@ -937,6 +957,24 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
             className="flex items-center justify-between px-3 border-b border-border bg-secondary/20 flex-shrink-0"
             style={{ height: EDITOR_LAYOUT_CSS_VALUES.timelineTracksHeaderHeight }}
           >
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-6 w-6 ${trackPreviewCollapsed ? 'bg-secondary/60 text-primary' : ''}`}
+              aria-pressed={trackPreviewCollapsed}
+              onClick={handleToggleTrackPreview}
+              title={t(
+                trackPreviewCollapsed
+                  ? 'timeline.trackSize.showPreview'
+                  : 'timeline.trackSize.hidePreview',
+              )}
+            >
+              {trackPreviewCollapsed ? (
+                <PanelTopOpen className="h-3.5 w-3.5" />
+              ) : (
+                <PanelTopClose className="h-3.5 w-3.5" />
+              )}
+            </Button>
             {/* Track size flyout */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

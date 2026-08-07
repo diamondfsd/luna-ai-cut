@@ -2043,17 +2043,18 @@ export const TimelineContent = memo(function TimelineContent({
       velocityZoomRef.current = 0
       const smoothingFactor = 1 - SCROLL_SMOOTHING
 
-      // Shift + scroll = vertical scroll ONLY
-      if (event.shiftKey) {
-        verticalScrollTargetRef.current = getVerticalScrollTarget(event.target)
+      // Scroll over a track section = vertical scroll; Shift + scroll keeps
+      // horizontal timeline navigation available for track content.
+      const verticalScrollTarget = getVerticalScrollTarget(event.target)
+      if (verticalScrollTarget && !event.shiftKey) {
+        verticalScrollTargetRef.current = verticalScrollTarget
         velocityXRef.current = 0
-        const delta = (event.deltaX || event.deltaY) * SCROLL_SENSITIVITY
+        const delta = (event.deltaY || event.deltaX) * SCROLL_SENSITIVITY
         velocityYRef.current = velocityYRef.current * smoothingFactor + delta * SCROLL_SMOOTHING
       } else {
         verticalScrollTargetRef.current = null
-        // Default scroll = horizontal scroll ONLY
         velocityYRef.current = 0
-        const delta = (event.deltaY || event.deltaX) * SCROLL_SENSITIVITY
+        const delta = (event.deltaX || event.deltaY) * SCROLL_SENSITIVITY
         velocityXRef.current = velocityXRef.current * smoothingFactor + delta * SCROLL_SMOOTHING
       }
 

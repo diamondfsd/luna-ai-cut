@@ -180,6 +180,7 @@ interface ClipContentProps {
   clipWidthFrames: number
   fps: number
   isCompactWidth?: boolean
+  isTrackPreviewCollapsed?: boolean
   isLinked?: boolean
   preferImmediateRendering?: boolean
   audioWaveformScale?: number
@@ -858,6 +859,37 @@ function hasBasicMediaVisuals(item: TimelineItem): boolean {
   return item.type === 'image' && !!item.src && !!item.mediaId
 }
 
+const CollapsedClipContent = memo(function CollapsedClipContent({
+  item,
+  isLinked = false,
+  linkedSyncOffsetFrames = null,
+  fps,
+}: ClipContentProps) {
+  if (!hasBasicMediaVisuals(item)) {
+    return (
+      <div className="absolute inset-0 flex items-center overflow-hidden px-2 text-xs font-medium">
+        <span className="truncate">{item.label}</span>
+      </div>
+    )
+  }
+
+  const linkedSyncOffsetLabel =
+    linkedSyncOffsetFrames === null ? null : formatSignedFrameDelta(linkedSyncOffsetFrames, fps)
+
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      <MediaClipLabel
+        label={item.label}
+        isLinked={isLinked}
+        linkedSyncOffsetLabel={linkedSyncOffsetLabel}
+        showLinkIcon
+        showLabel
+        showSyncOffset
+      />
+    </div>
+  )
+})
+
 function getMediaVisualMinWidthPx(item: TimelineItem): number {
   return item.type === 'audio' ? WAVEFORM_MIN_WIDTH_PX : FILMSTRIP_MIN_WIDTH_PX
 }
@@ -978,6 +1010,10 @@ const WidthGatedMediaClipContent = memo(function WidthGatedMediaClipContent(
 })
 
 export const ClipContent = memo(function ClipContent(props: ClipContentProps) {
+  if (props.isTrackPreviewCollapsed === true) {
+    return <CollapsedClipContent {...props} />
+  }
+
   // Compact clips already retain the full interactive TimelineItem root. Do
   // not also mount a label/filmstrip/waveform subtree that cannot be read at
   // this width. Besides reducing layout work, returning before the width-gated
