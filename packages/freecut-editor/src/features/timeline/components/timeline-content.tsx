@@ -2046,7 +2046,9 @@ export const TimelineContent = memo(function TimelineContent({
       // Scroll over a track section = vertical scroll; Shift + scroll keeps
       // horizontal timeline navigation available for track content.
       const verticalScrollTarget = getVerticalScrollTarget(event.target)
-      if (verticalScrollTarget && !event.shiftKey) {
+      const scrollHorizontally =
+        event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      if (verticalScrollTarget && !scrollHorizontally) {
         verticalScrollTargetRef.current = verticalScrollTarget
         velocityXRef.current = 0
         const delta = (event.deltaY || event.deltaX) * SCROLL_SENSITIVITY

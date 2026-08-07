@@ -63,8 +63,8 @@ interface TimelineHeaderProps {
 
 function getTimelineHeaderButtonClass(active = false): string {
   return active
-    ? 'timeline-header-button timeline-header-button-active'
-    : 'timeline-header-button'
+    ? 'editor-toolbar-button timeline-header-button timeline-header-button-active'
+    : 'editor-toolbar-button timeline-header-button'
 }
 
 function TrimEditIcon({ className }: { className?: string }) {
@@ -521,7 +521,7 @@ export const TimelineHeader = memo(function TimelineHeader({
 
   return (
     <div
-      className="timeline-header grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3"
+      className="timeline-header editor-toolbar-theme grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3"
       style={{ height: EDITOR_LAYOUT_CSS_VALUES.timelineHeaderHeight }}
       role="toolbar"
       aria-label={t('timeline.header.controls')}

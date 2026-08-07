@@ -96,7 +96,7 @@ export function CanvasAspectRatioControls() {
         <Button
           ref={triggerRef}
           variant="ghost"
-          className="flex-shrink-0 gap-1 px-1.5 text-muted-foreground hover:text-foreground"
+          className="editor-toolbar-button flex-shrink-0 gap-1 px-1.5 text-muted-foreground hover:text-foreground"
           style={{ height: EDITOR_LAYOUT_CSS_VALUES.previewControlButtonSize }}
           data-tooltip={t('preview.canvasRatio.tooltip', { label: currentLabel })}
           aria-label={t('preview.canvasRatio.ariaLabel', { label: currentLabel })}
