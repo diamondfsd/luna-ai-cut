@@ -203,6 +203,17 @@ export interface MediaTranscript {
   segments: MediaTranscriptSegment[]
   createdAt: number
   updatedAt: number
+  /**
+   * Optional source details for transcripts supplied by an embedded desktop
+   * host. `model` stays compatible with the browser transcription UI, while
+   * these fields preserve the actual local model used for the evidence.
+   */
+  provenance?: {
+    service: string
+    modelId: string
+    modelVersion?: string
+    sourceFingerprint?: string
+  }
 }
 
 // Waveform data for timeline audio clip visualization

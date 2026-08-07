@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import fs from 'node:fs'
 import { promisify } from 'node:util'
-import type { WorkspaceBeautyAnalysisRequest, WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest } from '../src/shared/types'
+import type { WorkspaceBeautyAnalysisRequest, WorkspaceInstanceSegmentationRequest, WorkspaceMaskTrackingRequest, WorkspaceMediaAsset, WorkspaceObjectRemovalRequest, WorkspaceProject, WorkspaceSegmentationRequest, WorkspaceVisualAnalysisRequest } from '../src/shared/types'
 import { createExportTask, updateTaskItemProgress } from './exportStubs'
 import probe from 'probe-image-size'
 import { getSettings } from './fileService'
@@ -44,6 +44,7 @@ import { trackMaskInWorker } from './maskTrackingService'
 import { removeObject } from './inpaintService'
 import { inpaintWorkerService } from './inpaintWorkerService'
 import { analyzeBeauty } from './beautyAnalysisService'
+import { analyzeVisualEvidence } from './aiEditingVisualEvidenceService'
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.lrv'])
 const execFileAsync = promisify(execFile)
@@ -392,6 +393,20 @@ export function register(): void {
       return await analyzeBeauty(request.requestId, request.filePath, task.controller.signal, reportProgress, frameTime, request.videoFrame === true)
     } finally {
       segmentationTasks.finish(task)
+    }
+  })
+  ipcMain.handle('workspace:analyzeVisualEvidence', async (event, request: WorkspaceVisualAnalysisRequest) => {
+    if (!request || typeof request.requestId !== 'string' || request.requestId.length === 0 || request.requestId.length > 128) throw new Error('画面分析任务无效')
+    if (typeof request.filePath !== 'string' || request.filePath.length === 0) throw new Error('画面分析素材无效')
+    if (!Number.isFinite(request.durationSeconds) || request.durationSeconds <= 0 || request.durationSeconds > 12 * 60 * 60) throw new Error('画面分析时长无效')
+    const task = segmentationTasks.begin(event.sender.id, request.requestId)
+    const finishForegroundSegmentation = beginForegroundSegmentation('yolo26s-seg')
+    watchSender(event.sender)
+    try {
+      return await analyzeVisualEvidence(request, task.controller.signal)
+    } finally {
+      segmentationTasks.finish(task)
+      finishForegroundSegmentation()
     }
   })
   ipcMain.handle('workspace:segmentInstances', async (event, request: WorkspaceInstanceSegmentationRequest) => {

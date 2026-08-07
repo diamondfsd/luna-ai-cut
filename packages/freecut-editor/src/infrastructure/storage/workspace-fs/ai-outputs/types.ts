@@ -21,7 +21,7 @@ import type {
  * 3. (Optional) Add a thin wrapper in `workspace-fs/` that calls
  *    `readAiOutput/writeAiOutput` with that kind.
  */
-export type AiOutputKind = 'transcript' | 'captions' | 'scenes'
+export type AiOutputKind = 'transcript' | 'captions' | 'scenes' | 'editing-evidence'
 
 /**
  * Typed payload per kind. Matches the `data` field on `AiOutput<T>`.
@@ -31,6 +31,7 @@ export interface AiOutputPayloads {
   transcript: TranscriptPayload
   captions: CaptionsPayload
   scenes: ScenesPayload
+  'editing-evidence': EditingEvidencePayload
 }
 
 /**
@@ -62,6 +63,7 @@ export interface TranscriptPayload {
   modelVariant: MediaTranscriptModel
   text: string
   segments: Array<{ text: string; start: number; end: number }>
+  provenance?: MediaTranscript['provenance']
 }
 
 export type CaptionsPayload = {
@@ -111,6 +113,15 @@ export interface ScenesPayload {
   cuts: SceneCutPayload[]
 }
 
+/** Compact, model-produced facts that can safely ground an editing assistant. */
+export interface EditingEvidencePayload {
+  sourceFingerprint: string
+  visual?: {
+    samples: Array<{ timeSeconds: number; tags: string[] }>
+    models: Array<{ id: string; version: string }>
+  }
+}
+
 /* ───────────────── Conversions ───────────────── */
 
 /**
@@ -134,6 +145,7 @@ export function transcriptFromLegacy(record: MediaTranscript): AiOutput<'transcr
       modelVariant: record.model,
       text: record.text,
       segments: record.segments,
+      provenance: record.provenance,
     },
   }
 }
@@ -148,6 +160,7 @@ export function transcriptToLegacy(envelope: AiOutput<'transcript'>): MediaTrans
     quantization: envelope.data.quantization,
     text: envelope.data.text,
     segments: envelope.data.segments,
+    provenance: envelope.data.provenance,
     createdAt: envelope.createdAt,
     updatedAt: envelope.updatedAt,
   }
