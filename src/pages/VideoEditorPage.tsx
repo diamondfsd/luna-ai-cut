@@ -1,8 +1,9 @@
-import { lazy, Suspense, useCallback, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { ImportMediaFiles } from '@freecut/embedded'
 
 import { LoadingIndicator } from '../ui'
 import { WorkspaceImportDialog } from '../workspace/components/WorkspaceImportDialog'
+import './VideoEditorPage.css'
 
 const FreeCutEditor = lazy(async () => {
   const module = await import('@freecut/embedded')
@@ -12,6 +13,11 @@ const FreeCutEditor = lazy(async () => {
 export function VideoEditorPage() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const pendingImportRef = useRef<ImportMediaFiles | null>(null)
+
+  useLayoutEffect(() => {
+    document.body.classList.add('freecut-route-open')
+    return () => document.body.classList.remove('freecut-route-open')
+  }, [])
 
   const handleRequestMediaImport = useCallback((importFiles: ImportMediaFiles) => {
     pendingImportRef.current = importFiles
@@ -40,8 +46,14 @@ export function VideoEditorPage() {
   }, [])
 
   return (
-    <>
-      <Suspense fallback={<LoadingIndicator label="正在打开剪辑器" />}>
+    <div className="video-editor-page">
+      <Suspense
+        fallback={(
+          <div className="video-editor-loading">
+            <LoadingIndicator label="正在打开剪辑器" />
+          </div>
+        )}
+      >
         <FreeCutEditor onRequestMediaImport={handleRequestMediaImport} />
       </Suspense>
       <WorkspaceImportDialog
@@ -51,6 +63,6 @@ export function VideoEditorPage() {
         onImportPaths={handleImportPaths}
         enableDirectoryImport
       />
-    </>
+    </div>
   )
 }
