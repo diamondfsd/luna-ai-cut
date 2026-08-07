@@ -1,6 +1,6 @@
 import type { LlmAdapter, LlmMessage } from '@freecut/infrastructure/llm'
 import { getDefaultLlmAdapter } from '@freecut/infrastructure/llm'
-import { openAiResponsesLlmAdapter } from '@freecut/infrastructure/llm/openai-responses-llm-adapter'
+import { openAiChatCompletionsLlmAdapter } from '@freecut/infrastructure/llm/openai-chat-completions-llm-adapter'
 import { useTimelineCommandStore } from '@freecut/features/timeline/stores/timeline-command-store'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { buildProjectEvidence, getTimelineRevision } from './evidence'
@@ -96,7 +96,7 @@ export interface AiEditingRunOptions {
 }
 
 export function getAiEditingAdapter(): LlmAdapter {
-  if (getEmbeddedHostBridge().aiAssistant) return openAiResponsesLlmAdapter
+  if (getEmbeddedHostBridge().aiAssistant) return openAiChatCompletionsLlmAdapter
   return getDefaultLlmAdapter()
 }
 

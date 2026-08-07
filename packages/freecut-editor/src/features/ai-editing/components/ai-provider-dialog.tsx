@@ -104,7 +104,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
       <DialogContent className="freecut-app dark max-w-md">
         <DialogHeader>
           <DialogTitle>剪辑助手连接</DialogTitle>
-          <DialogDescription>填写模型服务的连接信息。</DialogDescription>
+          <DialogDescription>填写兼容 Chat Completions 的模型服务连接信息。</DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={(event) => {
           event.preventDefault()
