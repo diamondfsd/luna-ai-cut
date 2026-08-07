@@ -11,14 +11,15 @@ import {
 import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
+  AlignCenterHorizontal,
   Crosshair,
   Film,
-  Sparkles,
-  SlidersHorizontal,
-  Volume2,
-  Type,
-  WandSparkles,
   Shapes,
+  SlidersHorizontal,
+  Sparkles,
+  Type,
+  Volume2,
+  WandSparkles,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@freecut/shared/ui/cn'
@@ -40,7 +41,8 @@ import type { TimelineState, TimelineActions } from '@freecut/features/editor/de
 import type { TransformProperties } from '@freecut/types/transform'
 import type { TimelineItem, VideoItem, CompositionItem } from '@freecut/types/timeline'
 import { getLinkedAudioCompanion } from '@freecut/shared/utils/linked-media'
-import { useGizmoStore } from '@freecut/features/editor/deps/preview'
+import { useGizmoStore, AlignmentToolbar } from '@freecut/features/editor/deps/preview'
+import { PropertySection } from '../components'
 
 import { LayoutSection } from './layout-section'
 import { FillSection } from './fill-section'
@@ -659,6 +661,19 @@ const ClipPanelCore = memo(function ClipPanelCore({
                   aspectLocked={aspectLocked}
                   onAspectLockToggle={handleAspectLockToggle}
                 />
+              )}
+              {showVideoTab && (
+                <PropertySection
+                  title={t('editor.clipPanel.alignment')}
+                  icon={AlignCenterHorizontal}
+                  defaultOpen={true}
+                >
+                  <div className="flex items-center justify-center py-1">
+                    <AlignmentToolbar
+                      projectSize={{ width: projectWidth, height: projectHeight }}
+                    />
+                  </div>
+                </PropertySection>
               )}
               <CompositionControlsSection items={selectedItems} />
               {(hasVideoItems || hasCompositionItems) && <VideoSection items={selectedItems} />}

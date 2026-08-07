@@ -407,7 +407,8 @@
       "adjustmentLayerHint": "Effects on adjustment layers apply to all items on tracks above.",
       "tabText": "Text",
       "tabAnimation": "Animation",
-      "tabShape": "Shape"
+      "tabShape": "Shape",
+      "alignment": "Alignment"
     },
     "gifSection": {
       "animation": "Animation",

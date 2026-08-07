@@ -407,7 +407,8 @@
       "adjustmentLayerHint": "調整レイヤーのエフェクトは、上のトラックのすべてのアイテムに適用されます。",
       "tabText": "テキスト",
       "tabAnimation": "アニメーション",
-      "tabShape": "シェイプ"
+      "tabShape": "シェイプ",
+      "alignment": "アライメント"
     },
     "gifSection": {
       "animation": "アニメーション",

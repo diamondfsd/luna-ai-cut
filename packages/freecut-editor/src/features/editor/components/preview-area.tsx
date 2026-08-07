@@ -3,7 +3,6 @@ import { Columns2 } from 'lucide-react'
 import {
   VideoPreview,
   PlaybackControls,
-  AlignmentToolbar,
   TimecodeDisplay,
   PreviewZoomControls,
   importSourceMonitor,
@@ -689,14 +688,6 @@ export const PreviewArea = memo(function PreviewArea({
           ) : (
             <InteractionLockRegion locked={false} overlayClassName="rounded-none">
               <div className="flex flex-col flex-shrink-0">
-                {previewChrome === 'edit' && (
-                  <div className="border-t border-border panel-header flex h-7 items-center justify-center overflow-hidden px-3">
-                    <div className="flex items-center gap-0">
-                      <AlignmentToolbar projectSize={{ width, height }} />
-                    </div>
-                  </div>
-                )}
-
                 {/* Playback controls row */}
                 <div
                   className="@container border-t border-border panel-header relative flex items-center px-3 overflow-hidden"

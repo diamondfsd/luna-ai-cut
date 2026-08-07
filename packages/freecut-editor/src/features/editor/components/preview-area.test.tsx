@@ -28,7 +28,6 @@ vi.mock('@freecut/features/editor/deps/preview', async () => {
       />
     ),
     ColorVideoPreview: () => <div data-testid="color-video-preview" />,
-    AlignmentToolbar: () => <div data-testid="alignment-toolbar" />,
     PlaybackControls: ({ totalFrames }: { totalFrames: number }) => (
       <div data-testid="playback-controls" data-total-frames={totalFrames} />
     ),
@@ -209,7 +208,6 @@ describe('PreviewArea mask editor toolbar', () => {
     render(<PreviewArea project={{ width: 1920, height: 1080, fps: 30 }} />)
 
     expect(screen.getByTestId('video-preview')).toBeInTheDocument()
-    expect(screen.getByTestId('alignment-toolbar')).toBeInTheDocument()
     expect(screen.queryByTestId('color-video-preview')).not.toBeInTheDocument()
   })
 
@@ -268,7 +266,6 @@ describe('PreviewArea mask editor toolbar', () => {
     render(<PreviewArea project={{ width: 1920, height: 1080, fps: 30 }} />)
 
     expect(screen.getByTestId('color-video-preview')).toBeInTheDocument()
-    expect(screen.queryByTestId('alignment-toolbar')).not.toBeInTheDocument()
     expect(screen.getByTestId('playback-controls')).toBeInTheDocument()
   })
 

@@ -407,7 +407,8 @@
       "adjustmentLayerHint": "Les effets sur les calques de réglage s'appliquent à tous les éléments des pistes situées au-dessus.",
       "tabText": "Texte",
       "tabAnimation": "Animation",
-      "tabShape": "Forme"
+      "tabShape": "Forme",
+      "alignment": "Alignement"
     },
     "gifSection": {
       "animation": "Animation",

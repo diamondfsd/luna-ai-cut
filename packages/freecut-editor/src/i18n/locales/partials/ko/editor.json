@@ -407,7 +407,8 @@
       "adjustmentLayerHint": "조정 레이어의 효과는 위쪽 트랙의 모든 항목에 적용됩니다.",
       "tabText": "텍스트",
       "tabAnimation": "애니메이션",
-      "tabShape": "도형"
+      "tabShape": "도형",
+      "alignment": "정렬"
     },
     "gifSection": {
       "animation": "애니메이션",

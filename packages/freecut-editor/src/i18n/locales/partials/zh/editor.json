@@ -407,7 +407,8 @@
       "adjustmentLayerHint": "调整图层上的效果会应用到上方所有轨道的项目。",
       "tabText": "文本",
       "tabAnimation": "动画",
-      "tabShape": "形状"
+      "tabShape": "形状",
+      "alignment": "对齐"
     },
     "gifSection": {
       "animation": "动画",
