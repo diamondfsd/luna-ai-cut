@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useRef, useState } from 'react'
 import type { ImportMediaFiles } from '@freecut/embedded'
 
 import { LoadingIndicator } from '../ui'
@@ -13,11 +13,6 @@ const FreeCutEditor = lazy(async () => {
 export function VideoEditorPage() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const pendingImportRef = useRef<ImportMediaFiles | null>(null)
-
-  useLayoutEffect(() => {
-    document.body.classList.add('freecut-route-open')
-    return () => document.body.classList.remove('freecut-route-open')
-  }, [])
 
   const handleRequestMediaImport = useCallback((importFiles: ImportMediaFiles) => {
     pendingImportRef.current = importFiles

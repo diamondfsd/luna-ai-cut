@@ -11,10 +11,6 @@
   -webkit-app-region: drag;
 }
 
-body.freecut-route-open:not(.freecut-editor-open) .global-nav {
-  display: none;
-}
-
 .nav-inner {
   display: flex;
   max-width: 1440px;
