@@ -6,6 +6,44 @@ import { DEFAULT_DEVICE } from './deviceDefaults'
 import type { AppSettings } from '../src/shared/types'
 
 const SETTINGS_FILE = 'settings.json'
+const WORKSPACE_MEDIA_FILE_LIMIT = 2_000
+const WORKSPACE_MEDIA_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif', '.tiff', '.heic', '.heif',
+  '.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mts', '.insv', '.m4v', '.lrv', '.ogg',
+  '.mp3', '.wav', '.m4a', '.aac', '.opus', '.flac', '.lottie',
+])
+
+const WORKSPACE_MEDIA_MIME_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.avif': 'image/avif',
+  '.tiff': 'image/tiff',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.avi': 'video/x-msvideo',
+  '.mkv': 'video/x-matroska',
+  '.webm': 'video/webm',
+  '.wmv': 'video/x-ms-wmv',
+  '.mts': 'video/mp2t',
+  '.insv': 'video/mp4',
+  '.m4v': 'video/x-m4v',
+  '.lrv': 'video/mp4',
+  '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.opus': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.lottie': 'application/octet-stream',
+}
 
 function settingsPath(): string {
   return path.join(app.getPath('userData'), SETTINGS_FILE)
@@ -192,13 +230,14 @@ export async function chooseWorkspaceMediaFiles(): Promise<string[]> {
   const result = await dialog.showOpenDialog({
     defaultPath: settings.workspaceImportDir || app.getPath('downloads'),
     properties: ['openFile', 'multiSelections'],
-    title: '选择要导入工作台的图片或视频',
+    title: '选择要导入的素材',
     filters: [
       {
-        name: '图片和视频',
+        name: '图片、视频和音频',
         extensions: [
           'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'tiff', 'heic', 'heif',
           'mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'mts', 'insv', 'm4v', 'lrv', 'ogg',
+          'mp3', 'wav', 'm4a', 'aac', 'opus', 'flac', 'lottie',
         ],
       },
     ],
@@ -208,4 +247,63 @@ export async function chooseWorkspaceMediaFiles(): Promise<string[]> {
 
   await saveSettings({ workspaceImportDir: path.dirname(result.filePaths[0]) })
   return result.filePaths
+}
+
+export async function chooseWorkspaceMediaDirectory(): Promise<string[]> {
+  const settings = await getSettings()
+  const result = await dialog.showOpenDialog({
+    defaultPath: settings.workspaceImportDir || app.getPath('downloads'),
+    properties: ['openDirectory'],
+    title: '选择素材文件夹',
+  })
+
+  const rootPath = result.filePaths[0]
+  if (result.canceled || !rootPath) return []
+
+  await saveSettings({ workspaceImportDir: rootPath })
+  const mediaPaths: string[] = []
+  const pendingDirectories = [rootPath]
+
+  while (pendingDirectories.length > 0 && mediaPaths.length < WORKSPACE_MEDIA_FILE_LIMIT) {
+    const directory = pendingDirectories.shift()
+    if (!directory) continue
+
+    const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => [])
+    entries.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue
+      const entryPath = path.join(directory, entry.name)
+      if (entry.isDirectory()) {
+        pendingDirectories.push(entryPath)
+      } else if (entry.isFile() && WORKSPACE_MEDIA_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        mediaPaths.push(entryPath)
+        if (mediaPaths.length >= WORKSPACE_MEDIA_FILE_LIMIT) break
+      }
+    }
+  }
+
+  return mediaPaths
+}
+
+export async function readWorkspaceMediaFile(filePath: string): Promise<{
+  name: string
+  mimeType: string
+  lastModified: number
+  bytes: ArrayBuffer
+}> {
+  if (!path.isAbsolute(filePath)) throw new Error('素材路径无效')
+
+  const extension = path.extname(filePath).toLowerCase()
+  if (!WORKSPACE_MEDIA_EXTENSIONS.has(extension)) throw new Error('不支持该素材格式')
+
+  const stat = await fs.lstat(filePath)
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('素材文件无效')
+
+  const bytes = await fs.readFile(filePath)
+  return {
+    name: path.basename(filePath),
+    mimeType: WORKSPACE_MEDIA_MIME_TYPES[extension] ?? 'application/octet-stream',
+    lastModified: stat.mtimeMs,
+    bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  }
 }

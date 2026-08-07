@@ -25,6 +25,8 @@ export {
   chooseLutDir,
   chooseMockMediaDir,
   chooseWorkspaceMediaFiles,
+  chooseWorkspaceMediaDirectory,
+  readWorkspaceMediaFile,
   getSettings,
   previewCacheDir,
   saveSettings,

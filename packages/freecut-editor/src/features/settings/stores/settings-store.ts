@@ -29,6 +29,7 @@ interface AppSettings {
   timelineSectionDividerPosition: number | null
   // Canvas/gizmo snap (preview area) — independent from timeline frame snap
   canvasSnapEnabled: boolean
+  showTimelineHoverPreview: boolean
   showWaveforms: boolean
   showFilmstrips: boolean
   enableFilmstripExtraction: boolean
@@ -140,6 +141,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   snapEnabled: true,
   timelineSectionDividerPosition: null,
   canvasSnapEnabled: true,
+  showTimelineHoverPreview: false,
   showWaveforms: true,
   showFilmstrips: true,
   enableFilmstripExtraction: true,

@@ -30,9 +30,8 @@ interface PlayheadMarksProps {
 }
 
 /**
- * Shared visual marks for a timeline playhead: a vertical accent-orange line
- * (the `--color-timeline-playhead` token) with an optional flag handle, optional
- * pointer, and a soft glow.
+ * Shared visual marks for a timeline playhead: a solid white line with an
+ * optional flag handle and pointer.
  *
  * Purely presentational — the parent owns positioning (it translates this group
  * to the current frame). The marks anchor at x=0 of the parent and self-center,
@@ -54,7 +53,7 @@ export function PlayheadMarks({
       <span
         data-playhead-mark="line"
         className={cn(
-          'pointer-events-none absolute w-px -translate-x-1/2 bg-timeline-playhead shadow-[0_0_5px_rgba(255,140,58,0.65)]',
+          'pointer-events-none absolute w-px -translate-x-1/2 bg-white',
           bleedBottom ? '-bottom-px' : 'bottom-0',
           className,
         )}
@@ -64,7 +63,7 @@ export function PlayheadMarks({
         <span
           data-playhead-mark="handle"
           className={cn(
-            'pointer-events-none absolute left-0 block h-3 w-2 -translate-x-1/2 rounded-b-[2px] border border-timeline-playhead/60 bg-timeline-playhead shadow-[0_0_7px_rgba(255,140,58,0.55)]',
+            'pointer-events-none absolute left-0 block h-3 w-2 -translate-x-1/2 rounded-b-[2px] border border-white/60 bg-white',
             handleClassName,
           )}
           style={{ top: topOffsetPx }}

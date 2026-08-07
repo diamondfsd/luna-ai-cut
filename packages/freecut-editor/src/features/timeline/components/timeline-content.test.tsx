@@ -15,6 +15,7 @@ import { _resetZoomStoreForTest, useZoomStore } from '../stores/zoom-store'
 import { ZOOM_MAX, ZOOM_MIN } from '../constants'
 import { TimelineContent } from './timeline-content'
 import { TIMELINE_LIVE_SCROLL_EVENT } from '@freecut/shared/timeline/live-scroll-sync'
+import { useSettingsStore } from '../deps/settings-contract'
 
 const perfMarkMocks = vi.hoisted(() => ({
   mark: vi.fn(),
@@ -151,6 +152,8 @@ beforeAll(() => {
 })
 
 function resetStores() {
+  useSettingsStore.getState().resetToDefaults()
+  useSettingsStore.setState({ showTimelineHoverPreview: true })
   _resetZoomStoreForTest()
   useEditorStore.setState({
     linkedSelectionEnabled: true,
@@ -211,6 +214,14 @@ describe('TimelineContent playback selection behavior', () => {
     expect(getAllByTestId('unified-timeline-preview-scrubber')).toHaveLength(1)
     expect(getByTestId('unified-timeline-preview-scrubber')).toBeInTheDocument()
     expect(container.querySelector('.timeline-container')).toHaveClass('isolate')
+  })
+
+  it('hides the hover preview overlay when the setting is disabled', () => {
+    useSettingsStore.setState({ showTimelineHoverPreview: false })
+
+    const { queryByTestId } = render(<TimelineContent duration={10} tracks={[VIDEO_TRACK]} />)
+
+    expect(queryByTestId('unified-timeline-preview-scrubber')).not.toBeInTheDocument()
   })
 
   it('keeps the selected clip selected after the playhead moves past it', async () => {

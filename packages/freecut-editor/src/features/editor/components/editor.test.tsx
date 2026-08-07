@@ -105,10 +105,6 @@ vi.mock('./interaction-lock-region', () => ({
   InteractionLockRegion: ({ children }: { children: ReactNode }) => <>{children}</>,
 }))
 
-vi.mock('./audio-meter-panel', () => ({
-  AudioMeterPanel: () => <div data-testid="audio-meter-panel" />,
-}))
-
 vi.mock('@freecut/features/editor/deps/timeline-ui', () => ({
   importTimeline: vi.fn().mockResolvedValue({ Timeline: () => <div data-testid="timeline" /> }),
   importBentoLayoutDialog: vi.fn().mockResolvedValue({ BentoLayoutDialog: () => null }),

@@ -920,6 +920,7 @@ export async function saveTimeline(projectId: string): Promise<void> {
 
   // Saving must not navigate the live editor. A temporary Main swap is still
   // observable by Motion's store subscribers and asynchronous preview renderer.
+  const changeVersion = useTimelineSettingsStore.getState().changeVersion
   const persistenceSnapshot = captureTimelinePersistenceSnapshot()
   const rootTimeline = persistenceSnapshot.rootTimeline
 
@@ -1053,7 +1054,7 @@ export async function saveTimeline(projectId: string): Promise<void> {
     })
 
     // Mark as clean after successful save
-    useTimelineSettingsStore.getState().markClean()
+    useTimelineSettingsStore.getState().markClean(changeVersion)
 
     event.success({ updatedAt, thumbnailId })
   } catch (error) {

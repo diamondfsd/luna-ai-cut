@@ -13,7 +13,12 @@ import { clearTimeline, markClean, markDirty, toggleSnap } from './settings-acti
 describe('settings actions', () => {
   beforeEach(() => {
     useTimelineCommandStore.getState().clearHistory()
-    useTimelineSettingsStore.setState({ fps: 30, isDirty: false, snapEnabled: true })
+    useTimelineSettingsStore.setState({
+      fps: 30,
+      isDirty: false,
+      changeVersion: 0,
+      snapEnabled: true,
+    })
     useItemsStore
       .getState()
       .setTracks([makeTimelineTrack({ id: 'track-v1', name: 'V1', kind: 'video', order: 0 })])
@@ -43,6 +48,19 @@ describe('settings actions', () => {
     markClean()
     expect(useTimelineSettingsStore.getState().isDirty).toBe(false)
     expect(useTimelineCommandStore.getState().undoStack.length).toBe(undoDepth)
+  })
+
+  it('does not mark newer edits clean when an older save completes', () => {
+    markDirty()
+    const savingVersion = useTimelineSettingsStore.getState().changeVersion
+
+    markDirty()
+    useTimelineSettingsStore.getState().markClean(savingVersion)
+    expect(useTimelineSettingsStore.getState().isDirty).toBe(true)
+
+    const latestVersion = useTimelineSettingsStore.getState().changeVersion
+    useTimelineSettingsStore.getState().markClean(latestVersion)
+    expect(useTimelineSettingsStore.getState().isDirty).toBe(false)
   })
 
   it('clearTimeline empties every domain store and the undo history', () => {

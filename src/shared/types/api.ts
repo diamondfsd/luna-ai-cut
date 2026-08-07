@@ -266,6 +266,13 @@ export interface LunaApi {
   }
   workspace: {
     chooseMediaFiles(): Promise<string[]>
+    chooseMediaDirectory(): Promise<string[]>
+    readMediaFile(filePath: string): Promise<{
+      name: string
+      mimeType: string
+      lastModified: number
+      bytes: ArrayBuffer
+    }>
     loadTrimThumbnailCache(videoPath: string, duration: number): Promise<ArrayBuffer | null>
     saveTrimThumbnailCache(videoPath: string, duration: number, bytes: ArrayBuffer): Promise<void>
     saveColorMask(projectId: string, assetId: string, width: number, height: number, bytes: ArrayBuffer, feather: number): Promise<{ path: string; width: number; height: number }>

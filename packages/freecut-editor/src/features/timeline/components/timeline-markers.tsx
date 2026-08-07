@@ -389,6 +389,7 @@ export const TimelineMarkers = memo(function TimelineMarkers({
 }: TimelineMarkersProps) {
   perfMarkRender('TimelineMarkers')
   const editorDensity = useSettingsStore((s) => s.editorDensity)
+  const showTimelineHoverPreview = useSettingsStore((s) => s.showTimelineHoverPreview)
   const editorLayout = getEditorLayout(editorDensity)
   const { timeToPixels, frameToPixels, pixelsPerSecond } = useTimelineCommittedZoomContext()
   const fps = useTimelineStore((s) => s.fps)
@@ -858,6 +859,18 @@ export const TimelineMarkers = memo(function TimelineMarkers({
       // from scheduling a second publication for the same pointer sample.
       e.stopPropagation()
 
+      if (!showTimelineHoverPreview) {
+        if (hoverPreviewRafRef.current !== null) {
+          cancelAnimationFrame(hoverPreviewRafRef.current)
+          hoverPreviewRafRef.current = null
+        }
+        pendingHoverPreviewFrameRef.current = null
+        if (usePlaybackStore.getState().previewFrame !== null) {
+          setPreviewFrameRef.current(null)
+        }
+        return
+      }
+
       const frame = getFrameFromClientX(e.clientX)
       pendingHoverPreviewFrameRef.current = frame
       if (hoverPreviewRafRef.current !== null) return
@@ -870,8 +883,20 @@ export const TimelineMarkers = memo(function TimelineMarkers({
         }
       })
     },
-    [getFrameFromClientX, isDragging, isRangeDragging],
+    [getFrameFromClientX, isDragging, isRangeDragging, showTimelineHoverPreview],
   )
+
+  useEffect(() => {
+    if (showTimelineHoverPreview) return
+    if (hoverPreviewRafRef.current !== null) {
+      cancelAnimationFrame(hoverPreviewRafRef.current)
+      hoverPreviewRafRef.current = null
+    }
+    pendingHoverPreviewFrameRef.current = null
+    if (usePlaybackStore.getState().previewFrame !== null) {
+      setPreviewFrameRef.current(null)
+    }
+  }, [showTimelineHoverPreview])
 
   const handleRulerMouseLeave = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {

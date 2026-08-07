@@ -1,4 +1,4 @@
-import { FolderOpen, Plus } from 'lucide-react'
+import { FolderOpen, FolderTree, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { MediaGallery } from '../../components/MediaGallery'
@@ -15,7 +15,9 @@ interface WorkspaceImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   existingPaths: Set<string>
-  onImport: (assets: WorkspaceMediaAsset[]) => void | Promise<void>
+  onImport?: (assets: WorkspaceMediaAsset[]) => void | Promise<void>
+  onImportPaths?: (paths: string[]) => void | Promise<void>
+  enableDirectoryImport?: boolean
   mode?: 'import' | 'create'
   projectName?: string
   onProjectNameChange?: (value: string) => void
@@ -38,6 +40,8 @@ export function WorkspaceImportDialog({
   onOpenChange,
   existingPaths,
   onImport,
+  onImportPaths,
+  enableDirectoryImport = false,
   mode = 'import',
   projectName = '',
   onProjectNameChange,
@@ -78,7 +82,11 @@ export function WorkspaceImportDialog({
     }
     setImporting(true)
     try {
-      await onImport(assets)
+      if (onImportPaths) {
+        await onImportPaths(assets.map((asset) => asset.path))
+      } else if (onImport) {
+        await onImport(assets)
+      }
       onOpenChange(false)
       toast.success(creatingProject ? `已创建项目，包含 ${assets.length} 个素材` : `已导入 ${assets.length} 个素材`)
     } catch (error) {
@@ -90,12 +98,38 @@ export function WorkspaceImportDialog({
 
   async function handleChooseLocalFiles(): Promise<void> {
     try {
+      if (onImportPaths) {
+        const paths = await window.luna.workspace.chooseMediaFiles()
+        if (paths.length === 0) return
+        setImporting(true)
+        await onImportPaths(paths)
+        onOpenChange(false)
+        toast.success(`已导入 ${paths.length} 个本地文件`)
+        return
+      }
+      if (!onImport) return
+
       const assets = await chooseWorkspaceMediaAssets(existingPaths)
       if (assets.length === 0) return
       setImporting(true)
       await onImport(assets)
       onOpenChange(false)
       toast.success(creatingProject ? `已创建项目，包含 ${assets.length} 个素材` : `已导入 ${assets.length} 个本地文件`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '导入失败')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function handleChooseDirectory(): Promise<void> {
+    try {
+      const paths = await window.luna.workspace.chooseMediaDirectory()
+      if (paths.length === 0 || !onImportPaths) return
+      setImporting(true)
+      await onImportPaths(paths)
+      onOpenChange(false)
+      toast.success(`已从文件夹导入 ${paths.length} 个素材`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导入失败')
     } finally {
@@ -118,6 +152,11 @@ export function WorkspaceImportDialog({
             <Button variant="secondary" size="compact" icon={<FolderOpen size={14} />} onClick={() => void handleChooseLocalFiles()} disabled={importing}>
               选择本地文件
             </Button>
+            {enableDirectoryImport && (
+              <Button variant="secondary" size="compact" icon={<FolderTree size={14} />} onClick={() => void handleChooseDirectory()} disabled={importing}>
+                选择文件夹
+              </Button>
+            )}
             <Button variant="secondary" size="compact" onClick={() => onOpenChange(false)} disabled={importing}>取消</Button>
             <Button variant="primary" size="compact" icon={<Plus size={14} />} disabled={controller.selectedFiles.length === 0 || importing} onClick={() => void handleImport()}>
               {importing ? (creatingProject ? '创建中' : '导入中') : (creatingProject ? '创建并编辑' : '导入素材')}

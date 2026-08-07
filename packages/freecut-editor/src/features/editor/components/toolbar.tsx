@@ -1,4 +1,5 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import {
@@ -11,7 +12,6 @@ import {
   Keyboard,
   ListVideo,
   MoreHorizontal,
-  Save,
   Settings,
   Sparkles,
   Video,
@@ -28,7 +28,6 @@ import { Separator } from '@freecut/components/ui/separator'
 import { ProjectDebugPanel } from './project-debug-panel'
 import { SettingsDialog } from './settings-dialog'
 import { ShortcutsDialog } from './shortcuts-dialog'
-import { UnsavedChangesDialog } from './unsaved-changes-dialog'
 import { WorkspaceSwitcher } from './workspace-switcher'
 import { WhatsNewDialog } from './whats-new-dialog'
 import { hasUnseenChangelog } from './whats-new-seen'
@@ -37,15 +36,6 @@ import { cn } from '@freecut/shared/ui/cn'
 import { LanguageSwitcher } from '@freecut/shared/ui/language-switcher'
 import { useDebugStore } from '@freecut/features/editor/stores/debug-store'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
-
-const SAVE_ANIMATION_MIN_MS = 1800
-
-const SaveDirtyIndicator = memo(function SaveDirtyIndicator() {
-  const isDirty = useTimelineStore((state) => state.isDirty)
-  return isDirty ? (
-    <span className="absolute -right-1 -top-1 h-2 w-2 animate-pulse rounded-full bg-primary" />
-  ) : null
-})
 
 interface ToolbarProps {
   projectId: string
@@ -62,6 +52,7 @@ interface ToolbarProps {
   onOpenRenderQueue?: () => void
   /** Number of queued + rendering jobs, shown as a badge on the queue button. */
   renderQueueCount?: number
+  locked?: boolean
 }
 
 export const Toolbar = memo(function Toolbar({
@@ -72,26 +63,27 @@ export const Toolbar = memo(function Toolbar({
   onExportBundle,
   onOpenRenderQueue,
   renderQueueCount = 0,
+  locked = false,
 }: ToolbarProps) {
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [showWhatsNewDialog, setShowWhatsNewDialog] = useState(false)
   const [hasUnseenWhatsNew, setHasUnseenWhatsNew] = useState(false)
-  const [isSaveAnimating, setIsSaveAnimating] = useState(false)
-  const [saveAnimationKey, setSaveAnimationKey] = useState(0)
-  const saveAnimationTimeoutRef = useRef<number | undefined>(undefined)
+  const [lunaNavHost, setLunaNavHost] = useState<HTMLElement | null>(() =>
+    typeof document === 'undefined' ? null : document.getElementById('luna-video-editor-nav-slot'),
+  )
   useEffect(() => {
     setHasUnseenWhatsNew(hasUnseenChangelog())
   }, [])
 
   useEffect(() => {
+    document.body.classList.add('freecut-editor-open')
+    setLunaNavHost(document.getElementById('luna-video-editor-nav-slot'))
+
     return () => {
-      if (saveAnimationTimeoutRef.current !== undefined) {
-        window.clearTimeout(saveAnimationTimeoutRef.current)
-      }
+      document.body.classList.remove('freecut-editor-open')
     }
   }, [])
 
@@ -100,47 +92,28 @@ export const Toolbar = memo(function Toolbar({
     setShowWhatsNewDialog(true)
   }
 
-  const handleBackClick = () => {
-    if (useTimelineStore.getState().isDirty) {
-      setShowUnsavedDialog(true)
-    } else {
-      navigate({ to: '/projects' })
-    }
-  }
-
-  const handleSave = async () => {
-    const startedAt = performance.now()
-    const finishSaveAnimation = () => {
-      const remainingMs = Math.max(0, SAVE_ANIMATION_MIN_MS - (performance.now() - startedAt))
-
-      saveAnimationTimeoutRef.current = window.setTimeout(() => {
-        setIsSaveAnimating(false)
-        saveAnimationTimeoutRef.current = undefined
-      }, remainingMs)
-    }
-
-    if (saveAnimationTimeoutRef.current !== undefined) {
-      window.clearTimeout(saveAnimationTimeoutRef.current)
-    }
-
-    setSaveAnimationKey((key) => key + 1)
-    setIsSaveAnimating(true)
-
-    if (onSave) {
-      try {
+  const handleBackClick = async () => {
+    try {
+      if (useTimelineStore.getState().isDirty && onSave) {
         await onSave()
-      } finally {
-        finishSaveAnimation()
       }
-    } else {
-      finishSaveAnimation()
+      navigate({ to: '/projects' })
+    } catch {
+      // The save path reports the error. Stay in the editor so changes are not lost.
     }
   }
 
-  return (
+  const toolbar = (
     <div
-      className="panel-header flex flex-shrink-0 items-center gap-2.5 border-b border-border px-3"
-      style={{ height: EDITOR_LAYOUT_CSS_VALUES.toolbarHeight }}
+      className={cn(
+        'panel-header flex flex-shrink-0 items-center gap-2.5',
+        lunaNavHost ? 'h-full w-full px-0' : 'border-b border-border px-3',
+        locked && 'pointer-events-none select-none opacity-60',
+      )}
+      style={{
+        height: lunaNavHost ? '100%' : EDITOR_LAYOUT_CSS_VALUES.toolbarHeight,
+        backgroundColor: lunaNavHost ? '#080808' : undefined,
+      }}
       role="toolbar"
       aria-label={t('toolbar.ariaLabel')}
     >
@@ -156,13 +129,6 @@ export const Toolbar = memo(function Toolbar({
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-
-        <UnsavedChangesDialog
-          open={showUnsavedDialog}
-          onOpenChange={setShowUnsavedDialog}
-          onSave={handleSave}
-          projectName={project?.name}
-        />
 
         <Separator orientation="vertical" className="h-5" />
 
@@ -189,25 +155,6 @@ export const Toolbar = memo(function Toolbar({
         )}
 
         <LanguageSwitcher size="sm" align="end" side="bottom" />
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={handleSave}
-          aria-label={t('toolbar.saveAria')}
-          data-tooltip={t('toolbar.save')}
-          data-tooltip-side="bottom"
-        >
-          <div className="relative">
-            {isSaveAnimating ? (
-              <SaveAnimationIcon key={saveAnimationKey} className="h-5 w-5" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            <SaveDirtyIndicator />
-          </div>
-        </Button>
 
         {onOpenRenderQueue && (
           <Button
@@ -286,49 +233,9 @@ export const Toolbar = memo(function Toolbar({
       </div>
     </div>
   )
-})
 
-function SaveAnimationIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      version="1.1"
-      id="L6"
-      xmlns="http://www.w3.org/2000/svg"
-      x="0px"
-      y="0px"
-      viewBox="12 12 76 76"
-      enableBackground="new 12 12 76 76"
-      xmlSpace="preserve"
-      aria-hidden="true"
-    >
-      <rect fill="none" stroke="currentColor" strokeWidth="4" x="25" y="25" width="50" height="50">
-        <animateTransform
-          attributeName="transform"
-          dur="0.5s"
-          from="0 50 50"
-          to="180 50 50"
-          type="rotate"
-          id="strokeBox"
-          attributeType="XML"
-          begin="rectBox.end"
-        />
-      </rect>
-      <rect x="27" y="27" fill="currentColor" width="46" height="50">
-        <animate
-          attributeName="height"
-          dur="1.3s"
-          attributeType="XML"
-          from="50"
-          to="0"
-          id="rectBox"
-          fill="freeze"
-          begin="0s;strokeBox.end"
-        />
-      </rect>
-    </svg>
-  )
-}
+  return lunaNavHost ? createPortal(toolbar, lunaNavHost) : toolbar
+})
 
 function DebugPopover({ projectId }: { projectId: string }) {
   const { t } = useTranslation()

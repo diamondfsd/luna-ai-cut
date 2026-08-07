@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { usePlaybackStore } from '@freecut/shared/state/playback'
 import { ShuttleIndicator } from '@freecut/shared/ui/shuttle-indicator'
 import { CanvasAspectRatioControls } from './canvas-aspect-ratio-controls'
+import { AudioMeterPanel } from './audio-meter-panel'
 
 interface PreviewAreaProps {
   project: {
@@ -703,6 +704,7 @@ export const PreviewArea = memo(function PreviewArea({
                 >
                   <div className="flex flex-shrink-0 items-center gap-2">
                     <TimecodeDisplay fps={fps} totalFrames={totalFrames} />
+                    <AudioMeterPanel compact />
                     <ProgramShuttleIndicator />
                   </div>
 
