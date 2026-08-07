@@ -462,7 +462,7 @@ describe('TimelineContent playback selection behavior', () => {
     animationFrameSpy.mockRestore()
   })
 
-  it('notifies linked panels inside each horizontal momentum frame', () => {
+  it('updates linked panels immediately for horizontal scrolling', () => {
     const frameCallbacks: FrameRequestCallback[] = []
     const animationFrameSpy = vi
       .spyOn(window, 'requestAnimationFrame')
@@ -478,18 +478,17 @@ describe('TimelineContent playback selection behavior', () => {
     const liveScroll = vi.fn()
     scrollContainer.addEventListener(TIMELINE_LIVE_SCROLL_EVENT, liveScroll)
 
-    fireEvent.wheel(scrollContainer, { deltaY: 120 })
-    expect(frameCallbacks).toHaveLength(1)
-    act(() => frameCallbacks.shift()?.(performance.now()))
+    fireEvent.wheel(scrollContainer, { deltaX: 120 })
 
-    expect(scrollContainer.scrollLeft).toBeGreaterThan(0)
+    expect(scrollContainer.scrollLeft).toBe(120)
     expect(liveScroll).toHaveBeenCalledOnce()
+    expect(frameCallbacks).toHaveLength(0)
 
     unmount()
     animationFrameSpy.mockRestore()
   })
 
-  it('scrolls the hovered track section vertically on a normal wheel gesture', () => {
+  it('scrolls the shared track list vertically on a normal wheel gesture', () => {
     const frameCallbacks: FrameRequestCallback[] = []
     const animationFrameSpy = vi
       .spyOn(window, 'requestAnimationFrame')
@@ -516,7 +515,7 @@ describe('TimelineContent playback selection behavior', () => {
       throw new Error('Expected timeline scroll container and track section')
     }
 
-    fireEvent.wheel(trackSection, { deltaY: 120 })
+    fireEvent.wheel(scrollContainer, { deltaY: 120 })
     expect(frameCallbacks).toHaveLength(1)
     act(() => frameCallbacks.shift()?.(performance.now()))
 
@@ -555,11 +554,10 @@ describe('TimelineContent playback selection behavior', () => {
     }
 
     fireEvent.wheel(trackSection, { deltaX: 120 })
-    expect(frameCallbacks).toHaveLength(1)
-    act(() => frameCallbacks.shift()?.(performance.now()))
 
-    expect(scrollContainer.scrollLeft).toBeGreaterThan(0)
+    expect(scrollContainer.scrollLeft).toBe(120)
     expect(trackSection.scrollTop).toBe(0)
+    expect(frameCallbacks).toHaveLength(0)
 
     unmount()
     animationFrameSpy.mockRestore()
