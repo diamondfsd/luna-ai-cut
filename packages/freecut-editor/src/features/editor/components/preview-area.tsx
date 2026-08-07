@@ -690,7 +690,7 @@ export const PreviewArea = memo(function PreviewArea({
               <div className="flex flex-col flex-shrink-0">
                 {/* Playback controls row */}
                 <div
-                  className="@container border-t border-border panel-header relative flex items-center px-3 overflow-hidden"
+                  className="editor-toolbar-theme @container border-t border-border panel-header relative flex items-center px-3 overflow-hidden"
                   style={{ height: EDITOR_LAYOUT_CSS_VALUES.previewControlsHeight }}
                 >
                   <div className="flex flex-shrink-0 items-center gap-2">

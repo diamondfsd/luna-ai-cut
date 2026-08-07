@@ -59,6 +59,7 @@ import {
   getTrackSectionLayout,
 } from '../utils/track-resize'
 import { clearMediaDragData } from '@freecut/features/timeline/deps/media-library-resolver'
+import { notifyTimelineLiveScroll } from '@freecut/shared/timeline/live-scroll-sync'
 import { useNewTrackZonePreviewStore } from '../stores/new-track-zone-preview-store'
 import { useTrackDropPreviewStore } from '../stores/track-drop-preview-store'
 import { clearAllTimelineDropPreviewOwners } from '../utils/drop-preview-owner'
@@ -337,6 +338,15 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
 
       if (zone) {
         event.preventDefault()
+        const scrollHorizontally =
+          event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        if (scrollHorizontally) {
+          const timelineScroll = timelineContentRef.current
+          if (!timelineScroll) return
+          timelineScroll.scrollLeft += event.deltaX || event.deltaY
+          notifyTimelineLiveScroll(timelineScroll)
+          return
+        }
         const contentScroll = hasTrackSections
           ? zone === 'audio'
             ? audioTrackContentScrollRef.current
@@ -926,7 +936,7 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
 
   return (
     <div
-      className="timeline-bg h-full border-t border-border flex flex-col overflow-hidden"
+      className="timeline-bg editor-toolbar-theme h-full border-t border-border flex flex-col overflow-hidden"
       role="region"
       aria-label={t('timeline.region')}
     >
@@ -960,7 +970,7 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
             <Button
               variant="ghost"
               size="icon"
-              className={`h-6 w-6 ${trackPreviewCollapsed ? 'bg-secondary/60 text-primary' : ''}`}
+              className={`editor-toolbar-button h-6 w-6 ${trackPreviewCollapsed ? 'editor-toolbar-button-active' : ''}`}
               aria-pressed={trackPreviewCollapsed}
               onClick={handleToggleTrackPreview}
               title={t(
@@ -981,7 +991,7 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6"
+                  className="editor-toolbar-button h-6 w-6"
                   title={t('timeline.trackSize.label')}
                 >
                   <ActiveTrackSizeIcon className="w-3 h-3" />
@@ -1011,7 +1021,7 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6"
+                    className="editor-toolbar-button h-6 w-6"
                     title={t('timeline.addTrack.label')}
                   >
                     <Plus className="w-3 h-3" />
@@ -1032,7 +1042,7 @@ export const Timeline = memo(function Timeline({ duration }: TimelineProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6"
+                className="editor-toolbar-button h-6 w-6"
                 onClick={handleRemoveTracks}
                 disabled={tracks.length === 0 || (!activeTrackId && selectedTrackIds.length === 0)}
                 title={
