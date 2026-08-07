@@ -7,8 +7,8 @@ function abortedError(): DOMException {
   return new DOMException('Aborted', 'AbortError')
 }
 
-class OpenAiResponsesLlmAdapter implements LlmAdapter {
-  readonly id = 'openai-responses'
+class OpenAiChatCompletionsLlmAdapter implements LlmAdapter {
+  readonly id = 'openai-chat-completions'
   readonly label = '远端剪辑助手'
 
   isSupported(): boolean {
@@ -59,4 +59,4 @@ class OpenAiResponsesLlmAdapter implements LlmAdapter {
   }
 }
 
-export const openAiResponsesLlmAdapter: LlmAdapter = new OpenAiResponsesLlmAdapter()
+export const openAiChatCompletionsLlmAdapter: LlmAdapter = new OpenAiChatCompletionsLlmAdapter()

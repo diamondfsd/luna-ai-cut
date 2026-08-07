@@ -133,6 +133,9 @@ function connectionError(error: unknown, controller: AbortController): Error {
     return new DOMException('Aborted', 'AbortError')
   }
   if (error instanceof OpenAI.APIError) {
+    if (error.status === 404) {
+      return new Error('剪辑助手连接失败：服务地址不支持 Chat Completions。请填写服务根地址，不要包含 /chat/completions。')
+    }
     return new Error(`剪辑助手连接失败（服务返回 ${error.status}）。请检查服务地址、模型和 API Key。`)
   }
   return new Error('无法连接剪辑助手，请检查网络和服务地址。')
@@ -174,16 +177,17 @@ export async function generateAiEditingAssistantResponse(input: AiEditingAssista
   activeRequests.set(input.requestId, controller)
   try {
     const client = new OpenAI({ apiKey, baseURL: normalizeBaseUrl(config.baseUrl) })
-    const response = await client.responses.create({
+    const response = await client.chat.completions.create({
       model,
-      input: input.messages.map((message) => ({
-        role: message.role === 'system' ? 'developer' : message.role,
-        content: message.content,
-      })),
-      max_output_tokens: input.maxTokens,
+      messages: input.messages.map((message) => {
+        if (message.role === 'system') return { role: 'system' as const, content: message.content }
+        if (message.role === 'assistant') return { role: 'assistant' as const, content: message.content }
+        return { role: 'user' as const, content: message.content }
+      }),
+      max_tokens: input.maxTokens,
       temperature: input.temperature,
     }, { signal: controller.signal })
-    const text = response.output_text.trim()
+    const text = response.choices[0]?.message.content?.trim()
     if (!text) throw new Error('剪辑助手没有返回内容，请重试。')
     return text
   } catch (error) {
