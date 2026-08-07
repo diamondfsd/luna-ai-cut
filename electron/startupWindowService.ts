@@ -3,9 +3,14 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 const STARTUP_READY_CHANNEL = 'luna:startup-ready'
+export const BACKGROUND_MIGRATION_WINDOW_TITLE = 'Luna FreeCut Storage Migration'
 let startupWindow: BrowserWindow | null = null
 let startupPending = true
 let creatingStartupWindow = false
+
+function isBackgroundMigrationWindow(window: BrowserWindow): boolean {
+  return window.getTitle() === BACKGROUND_MIGRATION_WINDOW_TITLE
+}
 
 function startupPage(failed = false): string {
   const title = failed ? 'Luna AI Cut 暂时无法启动' : 'Luna AI Cut'
@@ -38,7 +43,9 @@ function cleanupStartupListeners(): void {
   app.removeListener('browser-window-created', observeMainWindow)
 }
 
-function finishStartup(): void {
+function finishStartup(event?: Electron.IpcMainEvent): void {
+  const senderWindow = event ? BrowserWindow.fromWebContents(event.sender) : null
+  if (senderWindow && isBackgroundMigrationWindow(senderWindow)) return
   if (!startupPending) return
   startupPending = false
   cleanupStartupListeners()
@@ -92,7 +99,7 @@ function createStartupWindow(): void {
 }
 
 function observeMainWindow(_event: Electron.Event, window: BrowserWindow): void {
-  if (creatingStartupWindow) return
+  if (creatingStartupWindow || isBackgroundMigrationWindow(window)) return
   let fallbackTimer: NodeJS.Timeout | undefined
   window.webContents.once('did-finish-load', () => {
     // 兼容尚未包含启动通知的旧热更新页面。
@@ -112,7 +119,7 @@ function observeMainWindow(_event: Electron.Event, window: BrowserWindow): void 
 
 export function installStartupExperience(): void {
   app.on('browser-window-created', observeMainWindow)
-  ipcMain.once(STARTUP_READY_CHANNEL, finishStartup)
+  ipcMain.on(STARTUP_READY_CHANNEL, finishStartup)
   process.once('unhandledRejection', failStartup)
   createStartupWindow()
 }

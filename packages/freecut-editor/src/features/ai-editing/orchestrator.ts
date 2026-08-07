@@ -1,16 +1,17 @@
 import type { LlmAdapter, LlmMessage } from '@freecut/infrastructure/llm'
 import { getDefaultLlmAdapter } from '@freecut/infrastructure/llm'
 import { openAiChatCompletionsLlmAdapter } from '@freecut/infrastructure/llm/openai-chat-completions-llm-adapter'
+import { useProjectStore } from '@freecut/features/projects/stores/project-store'
 import { useTimelineCommandStore } from '@freecut/features/timeline/stores/timeline-command-store'
+import { useTimelineStore } from '@freecut/features/timeline/stores/timeline-store-facade'
 import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { buildProjectEvidence, getTimelineRevision } from './evidence'
+import { parseAiEditingResponse } from './response-parser'
 import { getAiEditingTool, listAiEditingTools } from './tool-registry'
 import type {
   AiEditingObservation,
   AiEditingPlan,
   AiEditingPlanStep,
-  AiEditingResponse,
-  AiEditingToolCall,
 } from './types'
 
 const MAX_TOOL_ROUNDS = 3
@@ -34,36 +35,13 @@ ${toolCatalog()}
 2. analysis、edit、settings 工具只会形成待确认计划，绝不直接生效。
 3. 工具参数必须使用素材或片段的真实 ID，时间使用秒。
 4. 对口播剪辑，优先引用字幕时间；对卡点剪辑，只有获得节拍证据后才能提出节拍对齐。
-5. 每次只返回一个 JSON 对象，不要 Markdown：
+5. 用户要求分析之外的剪辑、添加素材或调整设置时，toolCalls 至少包含一个 analysis、edit 或 settings 工具；只有纯问答可以使用空数组。
+6. 用户要求从素材库挑选并混剪时，只能使用已有画面描述的素材；如没有画面描述，先提出 analysis.request。只要请求素材已有画面描述，必须使用 timeline.compose_from_media 编排到时间轴末尾，不能重复提出 analysis.request。
+7. 每次只返回一个 JSON 对象，不要 Markdown，不要 JSON 前后的任何解释：
 {"reply":"给用户的简短说明","toolCalls":[{"id":"工具 ID","args":{}}]}
 
 当前项目的结构化证据：
 ${JSON.stringify(evidence)}`
-}
-
-function parseResponse(raw: string): AiEditingResponse | null {
-  const start = raw.indexOf('{')
-  const end = raw.lastIndexOf('}')
-  if (start < 0 || end <= start) return null
-  try {
-    const value = JSON.parse(raw.slice(start, end + 1)) as {
-      reply?: unknown
-      toolCalls?: unknown
-    }
-    if (typeof value.reply !== 'string' || !Array.isArray(value.toolCalls)) return null
-    const toolCalls: AiEditingToolCall[] = []
-    for (const candidate of value.toolCalls) {
-      if (!candidate || typeof candidate !== 'object') return null
-      const call = candidate as { id?: unknown; args?: unknown }
-      if (typeof call.id !== 'string' || !call.args || typeof call.args !== 'object' || Array.isArray(call.args)) {
-        return null
-      }
-      toolCalls.push({ id: call.id, args: call.args as Record<string, unknown> })
-    }
-    return { reply: value.reply, toolCalls }
-  } catch {
-    return null
-  }
 }
 
 function toolError(toolId: string, message: string): AiEditingObservation {
@@ -122,15 +100,15 @@ export async function runAiEditingTurn(
       signal: options.signal,
       onToken: options.onToken,
     })
-    const parsed = parseResponse(raw)
+    const parsed = parseAiEditingResponse(raw)
     if (!parsed) {
       if (round === MAX_TOOL_ROUNDS - 1) {
-        throw new Error('助手没有返回可执行的剪辑计划，请换一种说法再试。')
+        throw new Error('助手这次没有按约定返回剪辑计划，已自动重试 3 次。请再试一次。')
       }
       messages.push({ role: 'assistant', content: raw })
       messages.push({
         role: 'user',
-        content: '请只返回符合约定格式的 JSON 对象，且 toolCalls 必须是数组。',
+        content: '刚才的回复无法解析。请只返回一个 JSON 对象，不要任何解释；必须包含字符串 reply 和数组 toolCalls。',
       })
       continue
     }
@@ -221,6 +199,16 @@ export async function applyAiEditingPlan(plan: AiEditingPlan): Promise<AiEditing
     observations.push({ toolId: entry.tool.id, result: await entry.tool.execute(entry.args) })
   }
   flushSyncEdits()
+
+  // AI edits are applied as one explicit user action. Persist before reporting
+  // success so closing the app immediately afterwards cannot lose the plan
+  // while the editor's normal debounced autosave is still pending.
+  const timeline = useTimelineStore.getState()
+  if (timeline.isDirty) {
+    const projectId = useProjectStore.getState().currentProject?.id
+    if (!projectId) throw new Error('当前项目不可用，无法保存剪辑结果。')
+    await timeline.saveTimeline(projectId)
+  }
 
   return observations
 }

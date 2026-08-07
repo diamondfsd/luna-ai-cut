@@ -45,6 +45,16 @@ const WORKSPACE_MEDIA_MIME_TYPES: Record<string, string> = {
   '.lottie': 'application/octet-stream',
 }
 
+function e2eWorkspaceMediaPaths(): string[] | null {
+  const configuredPaths = process.env.LUNA_E2E_WORKSPACE_MEDIA_PATHS?.trim()
+  if (!configuredPaths) return null
+
+  return configuredPaths
+    .split(path.delimiter)
+    .map((filePath) => filePath.trim())
+    .filter(Boolean)
+}
+
 function settingsPath(): string {
   return path.join(app.getPath('userData'), SETTINGS_FILE)
 }
@@ -226,6 +236,11 @@ export async function chooseMockMediaDir(): Promise<string | null> {
 }
 
 export async function chooseWorkspaceMediaFiles(): Promise<string[]> {
+  // Playwright cannot operate Electron's native file picker. This keeps the
+  // product import flow testable while only accepting explicit test input.
+  const testPaths = e2eWorkspaceMediaPaths()
+  if (testPaths) return testPaths
+
   const settings = await getSettings()
   const result = await dialog.showOpenDialog({
     defaultPath: settings.workspaceImportDir || app.getPath('downloads'),
