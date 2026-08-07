@@ -812,7 +812,6 @@ export const TimelineContent = memo(function TimelineContent({
   // NOTE: itemsRef removed - use getState() on-demand or actualDurationRef for duration
 
   // Momentum scrolling state
-  const velocityXRef = useRef(0)
   const velocityYRef = useRef(0)
   const velocityZoomRef = useRef(0)
   const momentumIdRef = useRef<number | null>(null)
@@ -913,7 +912,6 @@ export const TimelineContent = memo(function TimelineContent({
       })
       if (nextScrollLeft === null) return
 
-      velocityXRef.current = 0
       container.scrollLeft = nextScrollLeft
       scrollLeftRef.current = nextScrollLeft
       syncViewportFromContainer(nextScrollLeft, true)
@@ -1747,13 +1745,16 @@ export const TimelineContent = memo(function TimelineContent({
 
   const getVerticalScrollTarget = useCallback(
     (target: EventTarget | null): HTMLDivElement | null => {
-      if (!(target instanceof Element)) {
-        return null
+      if (target instanceof Element) {
+        const sectionScroll = target.closest('[data-track-section-scroll]')
+        if (sectionScroll instanceof HTMLDivElement) {
+          return sectionScroll
+        }
       }
 
-      return target.closest('[data-track-section-scroll]') as HTMLDivElement | null
+      return allTracksScrollRef?.current ?? null
     },
-    [],
+    [allTracksScrollRef],
   )
 
   // Momentum scroll/zoom loop using requestAnimationFrame
@@ -1770,13 +1771,12 @@ export const TimelineContent = memo(function TimelineContent({
     momentumLastTimeRef.current = 0
 
     const momentumLoop = () => {
-      const container = containerRef.current
-      if (!container) return
+      if (!containerRef.current) return
 
-      withPerfMeasure('tl.raf.momentum', () => momentumLoopBody(container))
+      withPerfMeasure('tl.raf.momentum', momentumLoopBody)
     }
 
-    const momentumLoopBody = (container: HTMLDivElement) => {
+    const momentumLoopBody = () => {
       let hasScrollMomentum = false
       let hasZoomMomentum = false
 
@@ -1789,18 +1789,6 @@ export const TimelineContent = memo(function TimelineContent({
       momentumLastTimeRef.current = now
       const frames = last === 0 ? 1 : Math.min(4, Math.max(0, (now - last) / MOMENTUM_REF_FRAME_MS))
       const scrollDecay = Math.pow(SCROLL_FRICTION, frames)
-
-      // Apply velocity to scroll position
-      if (Math.abs(velocityXRef.current) > SCROLL_MIN_VELOCITY) {
-        container.scrollLeft += velocityXRef.current * frames
-        // Linked panels live outside this native scroller. Notify them inside
-        // the same RAF so their ruler/playhead update before this frame paints.
-        notifyTimelineLiveScroll(container)
-        velocityXRef.current *= scrollDecay
-        hasScrollMomentum = true
-      } else {
-        velocityXRef.current = 0
-      }
 
       const verticalScrollTarget = verticalScrollTargetRef.current
       if (verticalScrollTarget && Math.abs(velocityYRef.current) > SCROLL_MIN_VELOCITY) {
@@ -1899,14 +1887,12 @@ export const TimelineContent = memo(function TimelineContent({
 
       // If a new gesture starts (after pause), reset all velocities
       if (timeDelta > SCROLL_GESTURE_TIMEOUT) {
-        velocityXRef.current = 0
         velocityYRef.current = 0
         velocityZoomRef.current = 0
       }
 
       // Ctrl/Cmd + scroll = discrete zoom in 10% increments (anchored to cursor position)
       if (event.ctrlKey || event.metaKey) {
-        velocityXRef.current = 0
         velocityYRef.current = 0
         velocityZoomRef.current = 0
         showZoomInteractionShield()
@@ -1949,20 +1935,21 @@ export const TimelineContent = memo(function TimelineContent({
       const smoothingFactor = 1 - SCROLL_SMOOTHING
 
       // Scroll over a track section = vertical scroll; Shift + scroll keeps
-      // horizontal timeline navigation available for track content.
+      // horizontal timeline navigation available for track content. Horizontal
+      // input updates immediately to stay coupled to the user's gesture.
       const verticalScrollTarget = getVerticalScrollTarget(event.target)
       const scrollHorizontally =
         event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
       if (verticalScrollTarget && !scrollHorizontally) {
         verticalScrollTargetRef.current = verticalScrollTarget
-        velocityXRef.current = 0
         const delta = (event.deltaY || event.deltaX) * SCROLL_SENSITIVITY
         velocityYRef.current = velocityYRef.current * smoothingFactor + delta * SCROLL_SMOOTHING
       } else {
         verticalScrollTargetRef.current = null
         velocityYRef.current = 0
-        const delta = (event.deltaX || event.deltaY) * SCROLL_SENSITIVITY
-        velocityXRef.current = velocityXRef.current * smoothingFactor + delta * SCROLL_SMOOTHING
+        container.scrollLeft += event.deltaX || event.deltaY
+        notifyTimelineLiveScroll(container)
+        return
       }
 
       startMomentumScroll()
