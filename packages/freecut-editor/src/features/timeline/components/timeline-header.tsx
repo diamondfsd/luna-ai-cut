@@ -51,6 +51,7 @@ import { ZOOM_MIN, ZOOM_MAX, SLIP_SLIDE_TOOLS_ENABLED } from '../constants'
 import { EDITOR_LAYOUT_CSS_VALUES } from '@freecut/config/editor-layout'
 import { useResolvedHotkeys, useSettingsStore } from '@freecut/features/timeline/deps/settings'
 import { MicRecordControl } from './mic-record-control'
+import { AiEditingTimelineControl } from '@freecut/features/ai-editing/components/ai-editing-timeline-control'
 import './timeline-header.css'
 
 interface TimelineHeaderProps {
@@ -777,6 +778,10 @@ export const TimelineHeader = memo(function TimelineHeader({
 
           {/* Microphone voiceover */}
           <MicRecordControl />
+
+          <Separator orientation="vertical" className="h-5 mx-1.5" />
+
+          <AiEditingTimelineControl />
 
           <Separator orientation="vertical" className="h-5 mx-1.5" />
 

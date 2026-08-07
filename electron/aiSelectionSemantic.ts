@@ -32,11 +32,15 @@ const ADE_LABELS = new Map<number, string>([
   [120, '食物'], [126, '动物'], [127, '自行车'], [128, '湖泊'], [132, '雕塑'], [140, '码头'], [149, '旗帜'],
 ])
 
-async function decodeSquare(filePath: string, size: number, pad: boolean, signal?: AbortSignal): Promise<{ rgb: Buffer; scaledWidth: number; scaledHeight: number; padX: number; padY: number }> {
+async function decodeSquare(filePath: string, size: number, pad: boolean, signal?: AbortSignal, frameTime?: number): Promise<{ rgb: Buffer; scaledWidth: number; scaledHeight: number; padX: number; padY: number }> {
   const filter = pad
     ? `scale=${size}:${size}:force_original_aspect_ratio=decrease,pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=0x727272`
     : `scale=${size}:${size}:flags=bilinear`
-  const { stdout } = await execFileAsync(getFfmpegPath(), ['-v', 'error', '-i', filePath, '-frames:v', '1', '-vf', filter, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'], {
+  const { stdout } = await execFileAsync(getFfmpegPath(), [
+    '-v', 'error',
+    ...(frameTime === undefined ? [] : ['-ss', frameTime.toFixed(3)]),
+    '-i', filePath, '-frames:v', '1', '-vf', filter, '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1',
+  ], {
     encoding: 'buffer', maxBuffer: size * size * 3 + 1024, signal,
   })
   const rgb = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
@@ -84,15 +88,28 @@ function sceneTags(bytes: Buffer): string[] {
 
 export async function analyzeContentTags(item: AiSelectionItem, signal?: AbortSignal): Promise<string[]> {
   if (item.kind !== 'image' || item.analysisState !== 'ready') return []
+  return analyzeContentTagsForFrame(item.path, undefined, signal)
+}
+
+/**
+ * Returns compact local-model tags for one source frame. The caller receives
+ * neither frame bytes nor masks, which keeps this safe to pass into an AI
+ * editing evidence layer.
+ */
+export async function analyzeContentTagsForFrame(
+  filePath: string,
+  frameTime: number | undefined,
+  signal?: AbortSignal,
+): Promise<string[]> {
   const [yoloModel, sceneModel] = await Promise.all([
     loadModel('yolo26s-seg', undefined, signal),
     loadModel('segformer-b5-ade20k', undefined, signal),
   ])
-  const yoloInput = await decodeSquare(item.path, 640, true, signal)
+  const yoloInput = await decodeSquare(filePath, 640, true, signal, frameTime)
   const yolo = await segmentSpecializedInWorker({
     backend: 'yolo26-labels', modelPath: yoloModel.path, ...yoloInput, outputSize: 128,
   }, signal)
-  const sceneInput = await decodeSquare(item.path, 640, false, signal)
+  const sceneInput = await decodeSquare(filePath, 640, false, signal, frameTime)
   const scene = await segmentSpecializedInWorker({
     backend: 'segformer-labels', modelPath: sceneModel.path, ...sceneInput, outputSize: 128,
   }, signal)

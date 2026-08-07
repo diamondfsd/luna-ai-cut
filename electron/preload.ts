@@ -140,6 +140,12 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   connectWifi: (options: WifiConnectOptions) => ipcRenderer.invoke('wifiDebug:connect', options),
   disconnectWifi: () => ipcRenderer.invoke('wifiDebug:disconnect'),
   cacheFile: (params: { sourceUrl: string; previewUrl?: string | null }) => ipcRenderer.invoke('luna:cacheFile', params),
+  aiEditingAssistant: {
+    getConfig: () => ipcRenderer.invoke('ai-editing-assistant:get-config'),
+    saveConfig: (input) => ipcRenderer.invoke('ai-editing-assistant:save-config', input),
+    generate: (input) => ipcRenderer.invoke('ai-editing-assistant:generate', input),
+    cancel: (requestId: string) => ipcRenderer.invoke('ai-editing-assistant:cancel', requestId),
+  },
   workspace: {
     chooseMediaFiles: () => ipcRenderer.invoke('workspace:chooseMediaFiles'),
     chooseMediaDirectory: () => ipcRenderer.invoke('workspace:chooseMediaDirectory'),
@@ -163,6 +169,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     segmentImage: (request: WorkspaceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentImage', request),
     segmentInstances: (request: import('../src/shared/types').WorkspaceInstanceSegmentationRequest) => ipcRenderer.invoke('workspace:segmentInstances', request),
     analyzeBeauty: (request: import('../src/shared/types').WorkspaceBeautyAnalysisRequest) => ipcRenderer.invoke('workspace:analyzeBeauty', request),
+    analyzeVisualEvidence: (request: import('../src/shared/types').WorkspaceVisualAnalysisRequest) => ipcRenderer.invoke('workspace:analyzeVisualEvidence', request),
     transcribeSubtitles: (request: import('../src/shared/types').WorkspaceSubtitleTranscriptionRequest) => ipcRenderer.invoke('workspace:transcribeSubtitles', request),
     cancelSubtitleTranscription: (requestId: string) => ipcRenderer.invoke('workspace:cancelSubtitleTranscription', requestId),
     chooseSubtitleFont: () => ipcRenderer.invoke('workspace:chooseSubtitleFont'),

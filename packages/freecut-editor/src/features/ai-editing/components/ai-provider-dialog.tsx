@@ -1,0 +1,173 @@
+import { useEffect, useState } from 'react'
+import { Loader2 } from 'lucide-react'
+import { Button } from '@freecut/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@freecut/components/ui/dialog'
+import { Input } from '@freecut/components/ui/input'
+import { Label } from '@freecut/components/ui/label'
+import { getEmbeddedHostBridge, type EmbeddedAiAssistantConfig } from '@freecut/shared/host/embedded-host'
+
+interface AiProviderDialogProps {
+  open: boolean
+  onOpenChange(open: boolean): void
+}
+
+const EMPTY_CONFIG: EmbeddedAiAssistantConfig = {
+  baseUrl: 'https://api.openai.com/v1',
+  model: '',
+  hasApiKey: false,
+}
+
+export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) {
+  const [config, setConfig] = useState<EmbeddedAiAssistantConfig>(EMPTY_CONFIG)
+  const [baseUrl, setBaseUrl] = useState(EMPTY_CONFIG.baseUrl)
+  const [model, setModel] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const bridge = getEmbeddedHostBridge().aiAssistant
+    if (!bridge) {
+      setError('当前环境不支持剪辑助手模型连接。')
+      return
+    }
+    let active = true
+    setLoading(true)
+    setError(null)
+    void bridge.getConfig().then((next) => {
+      if (!active) return
+      setConfig(next)
+      setBaseUrl(next.baseUrl)
+      setModel(next.model)
+      setApiKey('')
+    }).catch((reason: unknown) => {
+      if (active) setError(reason instanceof Error ? reason.message : '无法读取剪辑助手连接。')
+    }).finally(() => {
+      if (active) setLoading(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [open])
+
+  const save = async (): Promise<void> => {
+    const bridge = getEmbeddedHostBridge().aiAssistant
+    if (!bridge) {
+      setError('当前环境不支持剪辑助手模型连接。')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const next = await bridge.saveConfig({
+        baseUrl,
+        model,
+        ...(apiKey.trim() ? { apiKey } : {}),
+      })
+      setConfig(next)
+      setApiKey('')
+      onOpenChange(false)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '无法保存剪辑助手连接。')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const clearApiKey = async (): Promise<void> => {
+    const bridge = getEmbeddedHostBridge().aiAssistant
+    if (!bridge) return
+    setSaving(true)
+    setError(null)
+    try {
+      const next = await bridge.saveConfig({ baseUrl, model, clearApiKey: true })
+      setConfig(next)
+      setApiKey('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '无法清除 API Key。')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>剪辑助手连接</DialogTitle>
+          <DialogDescription>填写模型服务的连接信息。</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-4" onSubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}>
+          <div className="space-y-1.5">
+            <Label htmlFor="ai-assistant-base-url">服务地址</Label>
+            <Input
+              id="ai-assistant-base-url"
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              placeholder="https://api.openai.com/v1"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={loading || saving}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ai-assistant-model">模型</Label>
+            <Input
+              id="ai-assistant-model"
+              value={model}
+              onChange={(event) => setModel(event.target.value)}
+              placeholder="例如 gpt-5-mini"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={loading || saving}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="ai-assistant-api-key">API Key</Label>
+              <span className="text-xs text-muted-foreground">{config.hasApiKey ? '已保存' : '未保存'}</span>
+            </div>
+            <Input
+              id="ai-assistant-api-key"
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder={config.hasApiKey ? '输入新 Key 以替换' : '输入 API Key'}
+              autoComplete="new-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={loading || saving}
+            />
+          </div>
+          {error && <p className="text-sm leading-relaxed text-destructive">{error}</p>}
+          <DialogFooter className="gap-2 sm:space-x-0">
+            {config.hasApiKey && (
+              <Button type="button" variant="outline" onClick={() => void clearApiKey()} disabled={loading || saving}>
+                清除 Key
+              </Button>
+            )}
+            <Button type="submit" disabled={loading || saving}>
+              {(loading || saving) && <Loader2 className="h-4 w-4 animate-spin" />}
+              保存
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}

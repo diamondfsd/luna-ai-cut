@@ -369,6 +369,18 @@ class MediaTranscriptionService {
     this.emitTranscriptChanged(mediaId)
   }
 
+  /**
+   * Stores a transcript supplied by a trusted embedded host, then refreshes
+   * any captions already linked to its timeline clips. The host provides
+   * normalized timed text only; source media never enters this service.
+   */
+  async adoptTranscript(transcript: MediaTranscript): Promise<MediaTranscript> {
+    const saved = await saveTranscript(transcript)
+    this.syncExistingTranscriptCaptions(saved.mediaId, saved)
+    this.emitTranscriptChanged(saved.mediaId)
+    return saved
+  }
+
   async transcribeMedia(
     mediaId: string,
     options: TranscriptionRequestOptions = {},

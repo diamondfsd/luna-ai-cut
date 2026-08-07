@@ -31,6 +31,13 @@ import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segm
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
+import type {
+  AiEditingAssistantConfig,
+  AiEditingAssistantConfigInput,
+  AiEditingAssistantGenerateInput,
+  WorkspaceVisualAnalysisRequest,
+  WorkspaceVisualAnalysisResult,
+} from './aiEditing'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 
 export interface WorkspaceSegmentationRequest {
@@ -264,6 +271,12 @@ export interface LunaApi {
     onProgress(callback: (progress: AiSelectionProgress) => void): () => void
     onSessionUpdated(callback: (session: AiSelectionSession) => void): () => void
   }
+  aiEditingAssistant: {
+    getConfig(): Promise<AiEditingAssistantConfig>
+    saveConfig(input: AiEditingAssistantConfigInput): Promise<AiEditingAssistantConfig>
+    generate(input: AiEditingAssistantGenerateInput): Promise<string>
+    cancel(requestId: string): Promise<void>
+  }
   workspace: {
     chooseMediaFiles(): Promise<string[]>
     chooseMediaDirectory(): Promise<string[]>
@@ -308,6 +321,7 @@ export interface LunaApi {
     }>
     segmentInstances(request: WorkspaceInstanceSegmentationRequest): Promise<WorkspaceInstanceSegmentationResult>
     analyzeBeauty(request: WorkspaceBeautyAnalysisRequest): Promise<WorkspaceBeautyAnalysisResult>
+    analyzeVisualEvidence(request: WorkspaceVisualAnalysisRequest): Promise<WorkspaceVisualAnalysisResult>
     transcribeSubtitles(request: WorkspaceSubtitleTranscriptionRequest): Promise<WorkspaceSubtitleTranscriptionResult>
     cancelSubtitleTranscription(requestId: string): Promise<void>
     chooseSubtitleFont(): Promise<WorkspaceSubtitleFontAsset | null>

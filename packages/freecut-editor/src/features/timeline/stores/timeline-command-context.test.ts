@@ -99,4 +99,33 @@ describe('timeline-command-store per-context history', () => {
     cmd.getState().setActiveContext(null) // already root
     expect(cmd.getState().undoStack).toHaveLength(1)
   })
+
+  it('groups nested timeline commands into one undo entry', () => {
+    const cmd = useTimelineCommandStore
+
+    cmd.getState().executeTransaction({ type: 'AI_EDIT_PLAN' }, () => {
+      recordChange('plan-1')
+      recordChange('plan-2')
+    })
+
+    expect(useItemsStore.getState().items).toHaveLength(2)
+    expect(cmd.getState().undoStack).toHaveLength(1)
+
+    cmd.getState().undo()
+    expect(useItemsStore.getState().items).toHaveLength(0)
+  })
+
+  it('restores the prior snapshot when a transaction fails', () => {
+    const cmd = useTimelineCommandStore
+
+    expect(() => {
+      cmd.getState().executeTransaction({ type: 'AI_EDIT_PLAN' }, () => {
+        recordChange('plan-1')
+        throw new Error('planned failure')
+      })
+    }).toThrow('planned failure')
+
+    expect(useItemsStore.getState().items).toHaveLength(0)
+    expect(cmd.getState().undoStack).toHaveLength(0)
+  })
 })
