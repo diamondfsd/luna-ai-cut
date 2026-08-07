@@ -60,6 +60,8 @@ interface TimelineHeaderProps {
   onZoomOut?: () => void
   onZoomToFit?: () => void
   leadingContent?: ReactNode
+  aiEditingOpen?: boolean
+  onAiEditingOpenChange?: (open: boolean) => void
 }
 
 function getTimelineHeaderButtonClass(active = false): string {
@@ -472,6 +474,8 @@ export const TimelineHeader = memo(function TimelineHeader({
   onZoomOut,
   onZoomToFit,
   leadingContent,
+  aiEditingOpen,
+  onAiEditingOpenChange,
 }: TimelineHeaderProps) {
   const { t } = useTranslation()
   const hotkeys = useResolvedHotkeys()
@@ -781,10 +785,6 @@ export const TimelineHeader = memo(function TimelineHeader({
 
           <Separator orientation="vertical" className="h-5 mx-1.5" />
 
-          <AiEditingTimelineControl />
-
-          <Separator orientation="vertical" className="h-5 mx-1.5" />
-
           {/* Snap Toggle */}
           <Button
             variant="ghost"
@@ -878,12 +878,18 @@ export const TimelineHeader = memo(function TimelineHeader({
         </div>
       </div>
 
-      <TimelineZoomControls
-        onZoomChange={onZoomChange}
-        onZoomIn={onZoomIn}
-        onZoomOut={onZoomOut}
-        onZoomToFit={onZoomToFit}
-      />
+      <div className="flex items-center gap-1">
+        <AiEditingTimelineControl
+          open={aiEditingOpen}
+          onOpenChange={onAiEditingOpenChange}
+        />
+        <TimelineZoomControls
+          onZoomChange={onZoomChange}
+          onZoomIn={onZoomIn}
+          onZoomOut={onZoomOut}
+          onZoomToFit={onZoomToFit}
+        />
+      </div>
     </div>
   )
 })

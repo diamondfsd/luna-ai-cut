@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Check,
   ChevronRight,
@@ -13,6 +13,7 @@ import {
 import { Button } from '@freecut/components/ui/button'
 import { Textarea } from '@freecut/components/ui/textarea'
 import { cn } from '@freecut/shared/ui/cn'
+import { getEmbeddedHostBridge } from '@freecut/shared/host/embedded-host'
 import { useAiEditingStore } from '../store'
 import type { AiEditingPlanStep, AiEditingToolRisk } from '../types'
 import { AiProviderDialog } from './ai-provider-dialog'
@@ -73,12 +74,13 @@ const PlanCard = memo(function PlanCard() {
   )
 })
 
+type ConnectionState = 'checking' | 'ready' | 'needs-setup' | 'unavailable'
+
 interface AiEditingPanelProps {
   onClose?: () => void
-  closeButton?: ReactNode
 }
 
-export const AiEditingPanel = memo(function AiEditingPanel({ onClose, closeButton }: AiEditingPanelProps) {
+export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditingPanelProps) {
   const phase = useAiEditingStore((state) => state.phase)
   const loadPercent = useAiEditingStore((state) => state.loadPercent)
   const messages = useAiEditingStore((state) => state.messages)
@@ -91,8 +93,32 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose, closeButto
 
   const [input, setInput] = useState('')
   const [providerDialogOpen, setProviderDialogOpen] = useState(false)
+  const [connectionState, setConnectionState] = useState<ConnectionState>('checking')
   const scrollRef = useRef<HTMLDivElement>(null)
   const busy = phase !== 'idle' && phase !== 'awaiting-confirmation'
+  const canChat = connectionState === 'ready'
+
+  useEffect(() => {
+    const bridge = getEmbeddedHostBridge().aiAssistant
+    if (!bridge) {
+      setConnectionState('unavailable')
+      return
+    }
+
+    let active = true
+    setConnectionState('checking')
+    void bridge.getConfig().then((config) => {
+      if (!active) return
+      setConnectionState(config.hasApiKey && Boolean(config.baseUrl.trim()) && Boolean(config.model.trim())
+        ? 'ready'
+        : 'needs-setup')
+    }).catch(() => {
+      if (active) setConnectionState('unavailable')
+    })
+    return () => {
+      active = false
+    }
+  }, [providerDialogOpen])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -100,10 +126,10 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose, closeButto
 
   const send = useCallback((value: string) => {
     const text = value.trim()
-    if (!text || busy) return
+    if (!text || busy || connectionState !== 'ready') return
     setInput('')
     void submit(text)
-  }, [busy, submit])
+  }, [busy, connectionState, submit])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -119,21 +145,47 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose, closeButto
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={clear} aria-label="清空剪辑助手记录" data-tooltip="清空剪辑助手记录">
             <RotateCcw className="h-3.5 w-3.5" />
           </Button>
-          {closeButton ?? (onClose && (
+          {onClose && (
             <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onClose} aria-label="关闭剪辑助手" data-tooltip="关闭剪辑助手">
               <X className="h-3.5 w-3.5" />
             </Button>
-          ))}
+          )}
         </div>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {messages.length === 0 && phase === 'idle' && (
+        {connectionState === 'checking' && (
+          <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />正在检查连接
+          </div>
+        )}
+
+        {connectionState === 'needs-setup' && (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center">
+            <Settings2 className="h-5 w-5 text-primary" />
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-foreground">完成剪辑助手设置</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">设置服务地址、模型和 API Key 后即可开始对话。</p>
+            </div>
+            <Button size="sm" className="gap-1.5" onClick={() => setProviderDialogOpen(true)}>
+              <Settings2 className="h-3.5 w-3.5" />
+              去设置
+            </Button>
+          </div>
+        )}
+
+        {connectionState === 'unavailable' && (
+          <div className="flex h-full items-center justify-center px-5 text-center text-xs leading-relaxed text-muted-foreground">
+            当前无法使用剪辑助手连接。
+          </div>
+        )}
+
+        {canChat && messages.length === 0 && phase === 'idle' && (
           <div className="space-y-3">
             <p className="text-xs leading-relaxed text-muted-foreground">根据时间轴、字幕和本地素材分析提出可确认的剪辑计划。</p>
             <div className="flex flex-wrap gap-1.5">
               {SUGGESTIONS.map((suggestion) => (
-                <Button key={suggestion} size="sm" variant="outline" className="h-auto min-h-7 whitespace-normal px-2 py-1 text-left text-[11px]" onClick={() => send(suggestion)}>
+                <Button key={suggestion} size="sm" variant="outline" className="h-auto min-h-7 whitespace-normal px-2 py-1 text-left text-[11px]" onClick={() => send(suggestion)} disabled={!canChat}>
                   {suggestion}
                 </Button>
               ))}
@@ -141,7 +193,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose, closeButto
           </div>
         )}
 
-        {messages.map((message) => (
+        {canChat && messages.map((message) => (
           <div key={message.id} className={cn('flex', message.role === 'user' ? 'justify-end' : 'justify-start')}>
             <div className={cn('max-w-[88%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs leading-relaxed', message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-foreground')}>
               {message.content}
@@ -149,20 +201,20 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose, closeButto
           </div>
         ))}
 
-        {streamingText && (
+        {canChat && streamingText && (
           <div className="rounded-lg bg-secondary/60 px-2.5 py-1.5 text-xs leading-relaxed text-foreground">{streamingText}</div>
         )}
 
-        {phase === 'loading' && (
+        {canChat && phase === 'loading' && (
           <div className="space-y-1.5 text-xs text-muted-foreground">
             <div className="flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在准备剪辑助手</div>
             <div className="h-1 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-[width]" style={{ width: `${loadPercent}%` }} /></div>
           </div>
         )}
-        {phase === 'thinking' && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在整理剪辑建议</div>}
-        {observations.length > 0 && <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Check className="h-3.5 w-3.5 text-emerald-500" />已参考 {observations.length} 条素材或项目结果</div>}
-        <PlanCard />
-        {error && <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs leading-relaxed text-destructive">{error}</div>}
+        {canChat && phase === 'thinking' && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在整理剪辑建议</div>}
+        {canChat && observations.length > 0 && <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Check className="h-3.5 w-3.5 text-emerald-500" />已参考 {observations.length} 条素材或项目结果</div>}
+        {canChat && <PlanCard />}
+        {canChat && error && <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs leading-relaxed text-destructive">{error}</div>}
       </div>
 
       <div className="shrink-0 border-t border-border p-2.5">
@@ -176,14 +228,14 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose, closeButto
                 send(input)
               }
             }}
-            placeholder="描述想要完成的剪辑"
+            placeholder={canChat ? '描述想要完成的剪辑' : '完成设置后开始对话'}
             className="min-h-9 max-h-28 resize-none text-xs"
-            disabled={busy}
+            disabled={!canChat || busy}
           />
           {busy ? (
             <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={cancel} aria-label="停止生成剪辑建议"><X className="h-4 w-4" /></Button>
           ) : (
-            <Button size="icon" className="h-9 w-9 shrink-0" onClick={() => send(input)} disabled={!input.trim()} aria-label="发送剪辑请求"><Send className="h-4 w-4" /></Button>
+            <Button size="icon" className="h-9 w-9 shrink-0" onClick={() => send(input)} disabled={!canChat || !input.trim()} aria-label="发送剪辑请求"><Send className="h-4 w-4" /></Button>
           )}
         </div>
       </div>

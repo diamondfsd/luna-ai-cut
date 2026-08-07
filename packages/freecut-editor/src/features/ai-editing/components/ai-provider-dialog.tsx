@@ -101,7 +101,7 @@ export function AiProviderDialog({ open, onOpenChange }: AiProviderDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="freecut-app dark max-w-md">
         <DialogHeader>
           <DialogTitle>剪辑助手连接</DialogTitle>
           <DialogDescription>填写模型服务的连接信息。</DialogDescription>
