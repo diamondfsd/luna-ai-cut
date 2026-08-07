@@ -214,7 +214,7 @@ export const AiEditingPanel = memo(function AiEditingPanel({ onClose }: AiEditin
         {canChat && phase === 'thinking' && <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在整理剪辑建议</div>}
         {canChat && observations.length > 0 && <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Check className="h-3.5 w-3.5 text-emerald-500" />已参考 {observations.length} 条素材或项目结果</div>}
         {canChat && <PlanCard />}
-        {canChat && error && <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs leading-relaxed text-destructive">{error}</div>}
+        {canChat && error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs leading-relaxed text-destructive">{error}</div>}
       </div>
 
       <div className="shrink-0 border-t border-border p-2.5">

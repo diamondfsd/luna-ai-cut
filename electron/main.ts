@@ -7,12 +7,35 @@
  * ⚠️ 此文件应保持极简，只做路径判断和动态 import，不要引入业务逻辑。
  *    改动此文件意味着需要发布完整安装包，丧失热更新优势。
  */
-import { app } from 'electron'
+import { app, protocol } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { canLoadHotUpdate } from '../src/shared/hotUpdateCompatibility'
 import { failStartup, installStartupExperience } from './startupWindowService'
+
+const e2eUserDataDir = process.env.LUNA_E2E_USER_DATA_DIR
+if (!app.isPackaged && e2eUserDataDir) {
+  const isolatedUserData = resolve(e2eUserDataDir)
+  app.setPath('userData', isolatedUserData)
+  // Chromium's origin-scoped storage, including OPFS, lives in sessionData.
+  app.setPath('sessionData', join(isolatedUserData, 'session-data'))
+}
+
+// `file://` has an opaque, unstable storage origin in Electron. The renderer
+// must use a privileged application origin so OPFS-backed FreeCut projects
+// persist across normal launches.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'luna',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+])
 
 async function boot(): Promise<void> {
   // 开发模式跳过热更新，避免本地代码被热更新覆盖

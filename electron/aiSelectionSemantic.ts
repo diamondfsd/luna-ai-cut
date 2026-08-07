@@ -109,7 +109,7 @@ export async function analyzeContentTagsForFrame(
   const yolo = await segmentSpecializedInWorker({
     backend: 'yolo26-labels', modelPath: yoloModel.path, ...yoloInput, outputSize: 128,
   }, signal)
-  const sceneInput = await decodeSquare(filePath, 640, false, signal, frameTime)
+  const sceneInput = await decodeSquare(filePath, 512, false, signal, frameTime)
   const scene = await segmentSpecializedInWorker({
     backend: 'segformer-labels', modelPath: sceneModel.path, ...sceneInput, outputSize: 128,
   }, signal)

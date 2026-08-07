@@ -1,5 +1,9 @@
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, net, protocol } from 'electron'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+const RENDERER_PROTOCOL = 'luna'
+const RENDERER_HOST = 'app'
 
 interface MainWindowOptions {
   devServerUrl: string | undefined
@@ -10,6 +14,28 @@ interface MainWindowOptions {
   hasActiveExports: () => boolean
   abortDownloads: () => void
   abortExports: () => void
+}
+
+function rendererFilePath(requestUrl: string, rendererDist: string): string | null {
+  try {
+    const url = new URL(requestUrl)
+    if (url.protocol !== `${RENDERER_PROTOCOL}:` || url.hostname !== RENDERER_HOST) return null
+    const pathname = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname)
+    const candidate = path.resolve(rendererDist, `.${pathname}`)
+    const relative = path.relative(rendererDist, candidate)
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null
+    return candidate
+  } catch {
+    return null
+  }
+}
+
+export function registerRendererProtocol(rendererDist: string): void {
+  protocol.handle(RENDERER_PROTOCOL, (request) => {
+    const filePath = rendererFilePath(request.url, rendererDist)
+    if (!filePath) return new Response('Not found', { status: 404 })
+    return net.fetch(pathToFileURL(filePath).toString())
+  })
 }
 
 export function createMainWindow(options: MainWindowOptions): BrowserWindow {
@@ -67,8 +93,10 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
 
   if (options.devServerUrl) {
     win.loadURL(options.devServerUrl)
-  } else {
+  } else if (process.env.LUNA_E2E_RENDERER_ORIGIN === 'file') {
     win.loadFile(path.join(options.rendererDist, 'index.html'))
+  } else {
+    win.loadURL(`${RENDERER_PROTOCOL}://${RENDERER_HOST}/index.html`)
   }
 
   return win

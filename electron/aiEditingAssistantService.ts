@@ -141,6 +141,11 @@ function connectionError(error: unknown, controller: AbortController): Error {
   return new Error('无法连接剪辑助手，请检查网络和服务地址。')
 }
 
+function doesNotSupportJsonMode(error: unknown): boolean {
+  if (!(error instanceof OpenAI.APIError) || error.status !== 400) return false
+  return /response_format|json[_ -]?object|json mode/i.test(error.message)
+}
+
 export async function getAiEditingAssistantConfig(): Promise<AiEditingAssistantConfig> {
   return publicConfig(await readConfig())
 }
@@ -177,7 +182,7 @@ export async function generateAiEditingAssistantResponse(input: AiEditingAssista
   activeRequests.set(input.requestId, controller)
   try {
     const client = new OpenAI({ apiKey, baseURL: normalizeBaseUrl(config.baseUrl) })
-    const response = await client.chat.completions.create({
+    const request = {
       model,
       messages: input.messages.map((message) => {
         if (message.role === 'system') return { role: 'system' as const, content: message.content }
@@ -186,7 +191,17 @@ export async function generateAiEditingAssistantResponse(input: AiEditingAssista
       }),
       max_tokens: input.maxTokens,
       temperature: input.temperature,
-    }, { signal: controller.signal })
+    }
+    let response
+    try {
+      response = await client.chat.completions.create({
+        ...request,
+        response_format: { type: 'json_object' },
+      }, { signal: controller.signal })
+    } catch (error) {
+      if (!doesNotSupportJsonMode(error)) throw error
+      response = await client.chat.completions.create(request, { signal: controller.signal })
+    }
     const text = response.choices[0]?.message.content?.trim()
     if (!text) throw new Error('剪辑助手没有返回内容，请重试。')
     return text

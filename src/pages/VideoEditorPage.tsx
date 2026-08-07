@@ -15,8 +15,51 @@ const FreeCutEditor = lazy(async () => {
   return { default: module.FreeCutEditor }
 })
 
+const IMPORTED_SOURCE_PATHS_STORAGE_KEY = 'luna.freecut.imported-source-paths.v1'
+const AI_VISUAL_ANALYSIS_SAMPLE_LIMIT = 4
+
 function mediaSourceKey(source: Pick<EmbeddedMediaSource, 'fileName' | 'fileSize' | 'fileLastModified'>): string {
   return `${source.fileName}\u0000${source.fileSize}\u0000${source.fileLastModified ?? ''}`
+}
+
+function mediaSourceFallbackKey(source: Pick<EmbeddedMediaSource, 'fileName' | 'fileSize'>): string {
+  return `${source.fileName}\u0000${source.fileSize}`
+}
+
+function loadImportedSourcePaths(): Map<string, string> {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(IMPORTED_SOURCE_PATHS_STORAGE_KEY) ?? '{}') as unknown
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return new Map()
+    return new Map(Object.entries(stored).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+  } catch {
+    return new Map()
+  }
+}
+
+function saveImportedSourcePath(key: string, filePath: string): void {
+  try {
+    const stored = Object.fromEntries(loadImportedSourcePaths())
+    stored[key] = filePath
+    window.localStorage.setItem(IMPORTED_SOURCE_PATHS_STORAGE_KEY, JSON.stringify(stored))
+  } catch {
+    // The imported media itself remains available even if its local source reference cannot be saved.
+  }
+}
+
+function findImportedSourcePath(
+  sourcePaths: Map<string, string>,
+  source: Pick<EmbeddedMediaSource, 'fileName' | 'fileSize' | 'fileLastModified'>,
+): string | undefined {
+  const exactKey = mediaSourceKey(source)
+  const fallbackKey = mediaSourceFallbackKey(source)
+  const direct = sourcePaths.get(exactKey) ?? sourcePaths.get(fallbackKey)
+  if (direct) return direct
+
+  // Older entries used the full key only. File metadata timestamps can lose
+  // sub-millisecond precision when they cross the Electron bridge, so retain
+  // a same-name-and-size recovery path for already imported local media.
+  const prefix = `${fallbackKey}\u0000`
+  return [...sourcePaths.entries()].find(([key]) => key.startsWith(prefix))?.[1]
 }
 
 export function VideoEditorPage() {
@@ -35,17 +78,30 @@ export function VideoEditorPage() {
 
     const uniquePaths = [...new Set(paths)]
     const files: File[] = []
+    const importedSources: Array<{
+      source: Pick<EmbeddedMediaSource, 'fileName' | 'fileSize' | 'fileLastModified'>
+      filePath: string
+    }> = []
     for (const filePath of uniquePaths) {
       const source = await window.luna.workspace.readMediaFile(filePath)
       files.push(new File([source.bytes], source.name, {
         type: source.mimeType,
         lastModified: source.lastModified,
       }))
-      importedSourcePathsRef.current.set(mediaSourceKey({
-        fileName: source.name,
-        fileSize: source.bytes.byteLength,
-        fileLastModified: source.lastModified,
-      }), filePath)
+      importedSources.push({
+        source: {
+          fileName: source.name,
+          fileSize: source.bytes.byteLength,
+          fileLastModified: source.lastModified,
+        },
+        filePath,
+      })
+    }
+    for (const source of importedSources) {
+      for (const key of [mediaSourceKey(source.source), mediaSourceFallbackKey(source.source)]) {
+        importedSourcePathsRef.current.set(key, source.filePath)
+        saveImportedSourcePath(key, source.filePath)
+      }
     }
     await importFiles(files)
   }, [])
@@ -56,7 +112,8 @@ export function VideoEditorPage() {
   }, [])
 
   const handleTranscribeMedia = useCallback(async (source: EmbeddedMediaSource) => {
-    const filePath = importedSourcePathsRef.current.get(mediaSourceKey(source))
+    const filePath = findImportedSourcePath(importedSourcePathsRef.current, source)
+      ?? findImportedSourcePath(loadImportedSourcePaths(), source)
     if (!filePath) throw new Error('这段素材需要重新导入后才能使用本地口播识别。')
     if (!Number.isFinite(source.durationSeconds) || source.durationSeconds <= 0) {
       throw new Error('这段素材的时长尚未准备完成，请稍后再试。')
@@ -82,12 +139,14 @@ export function VideoEditorPage() {
   }, [])
 
   const handleAnalyzeMediaVisual = useCallback(async (source: EmbeddedMediaSource) => {
-    const filePath = importedSourcePathsRef.current.get(mediaSourceKey(source))
+    const filePath = findImportedSourcePath(importedSourcePathsRef.current, source)
+      ?? findImportedSourcePath(loadImportedSourcePaths(), source)
     if (!filePath) throw new Error('这段素材需要重新导入后才能使用本地画面分析。')
     return window.luna.workspace.analyzeVisualEvidence({
       requestId: crypto.randomUUID(),
       filePath,
       durationSeconds: Math.max(0.1, source.durationSeconds),
+      maxSamples: AI_VISUAL_ANALYSIS_SAMPLE_LIMIT,
     })
   }, [])
 
