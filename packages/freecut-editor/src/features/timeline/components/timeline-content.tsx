@@ -32,7 +32,6 @@ import {
   ZOOM_MIN,
   ZOOM_MIN_VELOCITY,
   TIMELINE_RULER_HEIGHT,
-  TRACK_SECTION_DIVIDER_HEIGHT,
   computeWheelZoomStep,
 } from '../constants'
 
@@ -45,7 +44,7 @@ import { TimelineGuidelines } from './timeline-guidelines'
 import { TimelineMediaDropZone } from './timeline-media-drop-zone'
 import { TimelineRecordingOverlay } from './timeline-recording-overlay'
 import { IO_LANE_HEIGHT } from './timeline-markers'
-import { FirstTrackRowFrame, TrackRowFrame, TrackSectionDivider } from './track-row-frame'
+import { FirstTrackRowFrame, TrackRowFrame } from './track-row-frame'
 import { MarqueeOverlay } from '@freecut/shared/marquee/marquee-overlay'
 import { announceTimelineMarqueeActive } from '../utils/timeline-interaction-events'
 
@@ -88,7 +87,7 @@ const ACTIVE_TIMELINE_GESTURE_CURSOR_CLASSES = [
 const FINE_ZOOM_FACTOR = 1.1
 const DENSE_TIMELINE_HOVER_PREVIEW_DELAY_MS = 150
 
-type TrackScrollbarSection = 'video' | 'audio' | 'single'
+type TrackScrollbarSection = 'single'
 
 function revealTrackInScrollContainer(container: HTMLDivElement | null, trackId: string): boolean {
   if (!container) {
@@ -126,8 +125,6 @@ function revealTrackInScrollContainer(container: HTMLDivElement | null, trackId:
  */
 function useTrackSectionHasOverflow(
   scrollRef?: React.RefObject<HTMLDivElement | null>,
-  hasTrackSections?: boolean,
-  paneHeight?: number,
   trackCount?: number,
   primaryContentHeight?: number,
   secondaryContentHeight?: number,
@@ -160,8 +157,6 @@ function useTrackSectionHasOverflow(
     }
   }, [
     scrollRef,
-    hasTrackSections,
-    paneHeight,
     trackCount,
     primaryContentHeight,
     secondaryContentHeight,
@@ -176,11 +171,13 @@ function useTrackSectionHasOverflow(
  */
 function TrackSectionScrollbarOverlay({
   section,
-  height,
+  height = 0,
+  fill = false,
   scrollRef,
 }: {
   section: TrackScrollbarSection
-  height: number
+  height?: number
+  fill?: boolean
   scrollRef?: React.RefObject<HTMLDivElement | null>
 }) {
   const railRef = useRef<HTMLDivElement | null>(null)
@@ -340,19 +337,14 @@ function TrackSectionScrollbarOverlay({
     [stopDragging, syncScrollFromClientY],
   )
 
-  if (height <= 0) {
+  if (!fill && (height ?? 0) <= 0) {
     return null
   }
 
   return (
     <div
-      className="relative shrink-0"
-      style={{
-        height:
-          section === 'single'
-            ? `${height}px`
-            : `var(--timeline-${section}-pane-height, ${height}px)`,
-      }}
+      className={fill ? 'relative min-h-0 flex-1' : 'relative shrink-0'}
+      style={fill ? undefined : { height: `${height}px` }}
       role="scrollbar"
       aria-label={`${section} track section scrollbar`}
       aria-controls="timeline-track-sections"
@@ -377,11 +369,6 @@ interface TimelineContentProps {
   tracks: TimelineTrackType[]
   scrollRef?: React.RefObject<HTMLDivElement | null> // Optional ref for scroll syncing
   allTracksScrollRef?: React.RefObject<HTMLDivElement | null>
-  videoTracksScrollRef?: React.RefObject<HTMLDivElement | null>
-  audioTracksScrollRef?: React.RefObject<HTMLDivElement | null>
-  videoPaneHeight?: number
-  audioPaneHeight?: number
-  onSectionDividerMouseDown?: (event: React.MouseEvent) => void
   onZoomHandlersReady?: (handlers: {
     handleZoomChange: (newZoom: number) => void
     handleZoomIn: () => void
@@ -513,24 +500,13 @@ interface TimelineTrackSectionsSurfaceProps {
   actualDuration: number
   containerWidth: number
   initialTimelineWidth: number
-  hasTrackSections: boolean
   videoTracks: TimelineTrackType[]
   audioTracks: TimelineTrackType[]
-  singleSectionTracks: TimelineTrackType[]
-  singleSectionKind: 'video' | 'audio'
-  videoPaneHeight: number
-  audioPaneHeight: number
-  singleSectionHeight: number
   videoZoneHeight: number
   audioZoneHeight: number
-  singleSectionZoneHeight: number
   topZoneAnchorTrackId: string | null
   bottomZoneAnchorTrackId: string | null
-  singleSectionAnchorTrackId: string | null
-  onSectionDividerMouseDown?: (event: React.MouseEvent) => void
   allTracksScrollRef?: React.RefObject<HTMLDivElement | null>
-  videoTracksScrollRef?: React.RefObject<HTMLDivElement | null>
-  audioTracksScrollRef?: React.RefObject<HTMLDivElement | null>
   children?: React.ReactNode
 }
 
@@ -540,24 +516,13 @@ const TimelineTrackSectionsSurface = memo(function TimelineTrackSectionsSurface(
   actualDuration,
   containerWidth,
   initialTimelineWidth,
-  hasTrackSections,
   videoTracks,
   audioTracks,
-  singleSectionTracks,
-  singleSectionKind,
-  videoPaneHeight,
-  audioPaneHeight,
-  singleSectionHeight,
   videoZoneHeight,
   audioZoneHeight,
-  singleSectionZoneHeight,
   topZoneAnchorTrackId,
   bottomZoneAnchorTrackId,
-  singleSectionAnchorTrackId,
-  onSectionDividerMouseDown,
   allTracksScrollRef,
-  videoTracksScrollRef,
-  audioTracksScrollRef,
   children,
 }: TimelineTrackSectionsSurfaceProps) {
   const committedSurfaceRef = useRef<HTMLDivElement>(null)
@@ -597,66 +562,48 @@ const TimelineTrackSectionsSurface = memo(function TimelineTrackSectionsSurface(
     sectionTracks: TimelineTrackType[],
     options: {
       section: 'video' | 'audio'
-      height: number
       zoneHeight: number
       anchorTrackId: string | null
       firstTrackFrame: 'with-top-divider' | 'regular'
-      scrollRef?: React.RefObject<HTMLDivElement | null>
     },
   ) => (
     <div
-      ref={options.scrollRef}
-      data-track-section-scroll={options.section}
-      className="min-h-0 overflow-y-auto overflow-x-hidden"
-      style={{
-        height: `var(--timeline-${options.section}-pane-height, ${options.height}px)`,
-      }}
+      data-track-section={options.section}
+      className="relative"
     >
-      <div className="relative min-h-full">
-        {options.section === 'video' && options.anchorTrackId && (
-          <TimelineMediaDropZone
-            height={options.zoneHeight}
-            zone="video"
-            anchorTrackId={options.anchorTrackId}
-          />
-        )}
-        {options.section === 'video' && !options.anchorTrackId && (
-          <div
-            aria-hidden="true"
-            style={{
-              height: `var(--timeline-video-zone-height, ${options.zoneHeight}px)`,
-            }}
-          />
-        )}
+      {options.section === 'video' && options.anchorTrackId && (
+        <TimelineMediaDropZone
+          height={options.zoneHeight}
+          zone="video"
+          anchorTrackId={options.anchorTrackId}
+        />
+      )}
+      {options.section === 'video' && !options.anchorTrackId && (
+        <div aria-hidden="true" style={{ height: `${options.zoneHeight}px` }} />
+      )}
 
-        {sectionTracks.map((track, index) => {
-          const RowFrame =
-            options.firstTrackFrame === 'with-top-divider' && index === 0
-              ? FirstTrackRowFrame
-              : TrackRowFrame
-          return (
-            <RowFrame key={track.id}>
-              <TimelineTrack track={track} />
-            </RowFrame>
-          )
-        })}
+      {sectionTracks.map((track, index) => {
+        const RowFrame =
+          options.firstTrackFrame === 'with-top-divider' && index === 0
+            ? FirstTrackRowFrame
+            : TrackRowFrame
+        return (
+          <RowFrame key={track.id}>
+            <TimelineTrack track={track} />
+          </RowFrame>
+        )
+      })}
 
-        {options.section === 'audio' && options.anchorTrackId && (
-          <TimelineMediaDropZone
-            height={options.zoneHeight}
-            zone="audio"
-            anchorTrackId={options.anchorTrackId}
-          />
-        )}
-        {options.section === 'audio' && !options.anchorTrackId && (
-          <div
-            aria-hidden="true"
-            style={{
-              height: `var(--timeline-audio-zone-height, ${options.zoneHeight}px)`,
-            }}
-          />
-        )}
-      </div>
+      {options.section === 'audio' && options.anchorTrackId && (
+        <TimelineMediaDropZone
+          height={options.zoneHeight}
+          zone="audio"
+          anchorTrackId={options.anchorTrackId}
+        />
+      )}
+      {options.section === 'audio' && !options.anchorTrackId && (
+        <div aria-hidden="true" style={{ height: `${options.zoneHeight}px` }} />
+      )}
     </div>
   )
 
@@ -686,36 +633,26 @@ const TimelineTrackSectionsSurface = memo(function TimelineTrackSectionsSurface(
           } as React.CSSProperties
         }
       >
-        {hasTrackSections ? (
-          <>
+        <div
+          ref={allTracksScrollRef}
+          data-track-section-scroll="all"
+          className="h-full min-h-0 overflow-y-auto overflow-x-hidden"
+        >
+          <div className="relative min-h-full">
             {renderTrackSection(videoTracks, {
               section: 'video',
-              height: videoPaneHeight,
               zoneHeight: videoZoneHeight,
               anchorTrackId: topZoneAnchorTrackId,
               firstTrackFrame: 'with-top-divider',
-              scrollRef: videoTracksScrollRef,
             })}
-            <TrackSectionDivider onMouseDown={onSectionDividerMouseDown} />
             {renderTrackSection(audioTracks, {
               section: 'audio',
-              height: audioPaneHeight,
               zoneHeight: audioZoneHeight,
               anchorTrackId: bottomZoneAnchorTrackId,
-              firstTrackFrame: 'regular',
-              scrollRef: audioTracksScrollRef,
+              firstTrackFrame: videoTracks.length > 0 ? 'regular' : 'with-top-divider',
             })}
-          </>
-        ) : (
-          renderTrackSection(singleSectionTracks, {
-            section: singleSectionKind,
-            height: singleSectionHeight,
-            zoneHeight: singleSectionZoneHeight,
-            anchorTrackId: singleSectionAnchorTrackId,
-            firstTrackFrame: 'with-top-divider',
-            scrollRef: allTracksScrollRef,
-          })
-        )}
+          </div>
+        </div>
       </div>
       {children}
     </div>
@@ -738,11 +675,6 @@ export const TimelineContent = memo(function TimelineContent({
   tracks,
   scrollRef,
   allTracksScrollRef,
-  videoTracksScrollRef,
-  audioTracksScrollRef,
-  videoPaneHeight = 0,
-  audioPaneHeight = 0,
-  onSectionDividerMouseDown,
   onZoomHandlersReady,
 }: TimelineContentProps) {
   void duration
@@ -764,29 +696,14 @@ export const TimelineContent = memo(function TimelineContent({
     () => tracks.filter((track) => getTrackKind(track) === 'audio'),
     [tracks],
   )
-  const hasTrackSections = videoTracks.length > 0 && audioTracks.length > 0
   const firstTrackId = tracks[0]?.id ?? null
   const lastTrackId = tracks[tracks.length - 1]?.id ?? null
   const topZoneAnchorTrackId =
     tracks.find((track) => getTrackKind(track) === 'video')?.id ?? firstTrackId
   const bottomZoneAnchorTrackId =
     [...tracks].reverse().find((track) => getTrackKind(track) === 'audio')?.id ?? lastTrackId
-  const videoSectionContentHeight = useMemo(
-    () => videoTracks.reduce((sum, track) => sum + track.height, 0),
-    [videoTracks],
-  )
-  const audioSectionContentHeight = useMemo(
-    () => audioTracks.reduce((sum, track) => sum + track.height, 0),
-    [audioTracks],
-  )
-  const videoZoneHeight = useMemo(
-    () => Math.max(24, videoPaneHeight - videoSectionContentHeight),
-    [videoPaneHeight, videoSectionContentHeight],
-  )
-  const audioZoneHeight = useMemo(
-    () => Math.max(24, audioPaneHeight - audioSectionContentHeight),
-    [audioPaneHeight, audioSectionContentHeight],
-  )
+  const videoZoneHeight = 24
+  const audioZoneHeight = 24
 
   // PERFORMANCE: Don't subscribe to items directly - it causes ALL tracks to re-render
   // when ANY item changes. Instead, use derived selectors for specific needs.
@@ -1189,24 +1106,12 @@ export const TimelineContent = memo(function TimelineContent({
       return
     }
 
-    const scrollContainers = [
-      videoTracksScrollRef?.current ?? null,
-      audioTracksScrollRef?.current ?? null,
-      allTracksScrollRef?.current ?? null,
-    ]
-
-    for (const container of scrollContainers) {
-      if (revealTrackInScrollContainer(container, activeTrackId)) {
-        break
-      }
-    }
+    revealTrackInScrollContainer(allTracksScrollRef?.current ?? null, activeTrackId)
   }, [
     activeTrackId,
     videoTracks.length,
     audioTracks.length,
     tracks.length,
-    videoTracksScrollRef,
-    audioTracksScrollRef,
     allTracksScrollRef,
   ])
 
@@ -2024,9 +1929,9 @@ export const TimelineContent = memo(function TimelineContent({
       if (event.altKey) {
         const sectionEl =
           event.target instanceof Element
-            ? (event.target.closest('[data-track-section-scroll]') as HTMLElement | null)
+            ? (event.target.closest('[data-track-section]') as HTMLElement | null)
             : null
-        const zone = sectionEl?.dataset.trackSectionScroll as 'video' | 'audio' | undefined
+        const zone = sectionEl?.dataset.trackSection as 'video' | 'audio' | undefined
         if (zone) {
           const delta = event.deltaY > 0 ? -4 : 4
           const currentTracks = useItemsStore.getState().tracks
@@ -2073,42 +1978,16 @@ export const TimelineContent = memo(function TimelineContent({
     applyZoomWithCursorAnchor,
     cancelPendingHoverPreview,
     getVerticalScrollTarget,
-    hasTrackSections,
     showZoomInteractionShield,
     startMomentumScroll,
   ])
 
-  const singleSectionTracks = videoTracks.length > 0 ? videoTracks : audioTracks
-  const singleSectionKind = videoTracks.length > 0 ? 'video' : 'audio'
-  const singleSectionHeight = videoTracks.length > 0 ? videoPaneHeight : audioPaneHeight
-  const singleSectionZoneHeight = videoTracks.length > 0 ? videoZoneHeight : audioZoneHeight
-  const singleSectionAnchorTrackId =
-    videoTracks.length > 0 ? topZoneAnchorTrackId : bottomZoneAnchorTrackId
-  const videoSectionHasOverflow = useTrackSectionHasOverflow(
-    videoTracksScrollRef,
-    hasTrackSections,
-    videoPaneHeight,
-    videoTracks.length,
-    videoSectionContentHeight,
-  )
-  const audioSectionHasOverflow = useTrackSectionHasOverflow(
-    audioTracksScrollRef,
-    hasTrackSections,
-    audioPaneHeight,
-    audioTracks.length,
-    audioSectionContentHeight,
-  )
-  const singleSectionHasOverflow = useTrackSectionHasOverflow(
+  const allTracksHasOverflow = useTrackSectionHasOverflow(
     allTracksScrollRef,
-    hasTrackSections,
-    singleSectionHeight,
-    singleSectionTracks.length,
-    videoSectionContentHeight,
-    audioSectionContentHeight,
+    tracks.length,
+    videoTracks.length,
+    audioTracks.length,
   )
-  const anyOverflow = hasTrackSections
-    ? videoSectionHasOverflow || audioSectionHasOverflow
-    : singleSectionHasOverflow
 
   // Stable children reference for TimelineTrackSectionsSurface memo boundary
   const trackSurfaceOverlayChildren = useMemo(
@@ -2122,17 +2001,7 @@ export const TimelineContent = memo(function TimelineContent({
   )
 
   return (
-    <div
-      className="flex flex-1 min-h-0 min-w-0 bg-background/30"
-      style={
-        {
-          '--timeline-video-pane-height': `${videoPaneHeight}px`,
-          '--timeline-audio-pane-height': `${audioPaneHeight}px`,
-          '--timeline-video-zone-height': `${videoZoneHeight}px`,
-          '--timeline-audio-zone-height': `${audioZoneHeight}px`,
-        } as React.CSSProperties
-      }
-    >
+    <div className="flex flex-1 min-h-0 min-w-0 bg-background/30">
       <div
         ref={mergedRef}
         data-timeline-scroll-container
@@ -2188,24 +2057,13 @@ export const TimelineContent = memo(function TimelineContent({
             actualDuration={actualDuration}
             containerWidth={containerWidth}
             initialTimelineWidth={timelineWidth}
-            hasTrackSections={hasTrackSections}
             videoTracks={videoTracks}
             audioTracks={audioTracks}
-            singleSectionTracks={singleSectionTracks}
-            singleSectionKind={singleSectionKind}
-            videoPaneHeight={videoPaneHeight}
-            audioPaneHeight={audioPaneHeight}
-            singleSectionHeight={singleSectionHeight}
             videoZoneHeight={videoZoneHeight}
             audioZoneHeight={audioZoneHeight}
-            singleSectionZoneHeight={singleSectionZoneHeight}
             topZoneAnchorTrackId={topZoneAnchorTrackId}
             bottomZoneAnchorTrackId={bottomZoneAnchorTrackId}
-            singleSectionAnchorTrackId={singleSectionAnchorTrackId}
-            onSectionDividerMouseDown={onSectionDividerMouseDown}
             allTracksScrollRef={allTracksScrollRef}
-            videoTracksScrollRef={videoTracksScrollRef}
-            audioTracksScrollRef={audioTracksScrollRef}
           >
             {trackSurfaceOverlayChildren}
           </TimelineTrackSectionsSurface>
@@ -2223,31 +2081,11 @@ export const TimelineContent = memo(function TimelineContent({
         />
       </div>
 
-      {anyOverflow && (
+      {allTracksHasOverflow && (
         <div className="flex shrink-0 flex-col w-3 bg-background/80">
           {/* Ruler spacer */}
           <div className="shrink-0" style={{ height: `${TIMELINE_RULER_HEIGHT}px` }} />
-          {hasTrackSections ? (
-            <>
-              <TrackSectionScrollbarOverlay
-                section="video"
-                height={videoPaneHeight}
-                scrollRef={videoTracksScrollRef}
-              />
-              <div className="shrink-0" style={{ height: `${TRACK_SECTION_DIVIDER_HEIGHT}px` }} />
-              <TrackSectionScrollbarOverlay
-                section="audio"
-                height={audioPaneHeight}
-                scrollRef={audioTracksScrollRef}
-              />
-            </>
-          ) : (
-            <TrackSectionScrollbarOverlay
-              section="single"
-              height={singleSectionHeight}
-              scrollRef={allTracksScrollRef}
-            />
-          )}
+          <TrackSectionScrollbarOverlay section="single" fill scrollRef={allTracksScrollRef} />
         </div>
       )}
     </div>

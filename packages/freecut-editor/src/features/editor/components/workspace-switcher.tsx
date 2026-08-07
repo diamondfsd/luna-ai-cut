@@ -9,7 +9,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@freecut/components/ui/select'
 
 const WORKSPACE_ITEMS: readonly {
@@ -26,23 +25,25 @@ export const WorkspaceSwitcher = memo(function WorkspaceSwitcher() {
   const { t } = useTranslation()
   const workspace = useEditorStore((s) => s.workspace)
   const setWorkspace = useEditorStore((s) => s.setWorkspace)
-  const activeItem = WORKSPACE_ITEMS.find((item) => item.id === workspace)
-  const ActiveIcon = activeItem?.icon ?? Scissors
+  const activeItem = WORKSPACE_ITEMS.find((item) => item.id === workspace) ?? WORKSPACE_ITEMS[0]!
+  const ActiveIcon = activeItem.icon
 
   return (
     <Select value={workspace} onValueChange={(value) => setWorkspace(value as EditorWorkspaceId)}>
       <SelectTrigger
         aria-label={t('toolbar.workspaces.label')}
-        className="h-8 min-w-[112px] gap-1.5 border-white/10 bg-white/5 px-2.5 text-xs text-foreground shadow-none hover:bg-white/10"
+        className="h-8 w-[112px] shrink-0 flex-nowrap justify-start gap-1.5 border-white/10 bg-white/5 px-2.5 text-xs text-foreground shadow-none hover:bg-white/10 [&>svg:last-child]:ml-auto [&>svg:last-child]:shrink-0"
       >
         <ActiveIcon className="h-3.5 w-3.5 shrink-0" />
-        <SelectValue />
+        <span className="min-w-0 flex-1 truncate">{t(activeItem.labelKey)}</span>
       </SelectTrigger>
       <SelectContent align="end" className="min-w-[144px]">
         {WORKSPACE_ITEMS.map(({ id, icon: Icon, labelKey }) => (
           <SelectItem key={id} value={id} className="gap-2">
-            <Icon className="h-3.5 w-3.5" />
-            <span>{t(labelKey)}</span>
+            <span className="flex items-center gap-2">
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span>{t(labelKey)}</span>
+            </span>
           </SelectItem>
         ))}
       </SelectContent>
