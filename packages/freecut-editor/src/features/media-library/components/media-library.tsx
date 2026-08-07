@@ -478,10 +478,11 @@ export const MediaLibrary = memo(function MediaLibrary({ onMediaSelect }: MediaL
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <Button
           type="button"
+          variant="editorAction"
           size="sm"
           onClick={handleImport}
           disabled={!currentProjectId}
-          className="h-8 shrink-0 gap-1.5 px-3 text-xs"
+          className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
         >
           <FolderOpen className="h-3.5 w-3.5" />
           {t('media.library.import')}
