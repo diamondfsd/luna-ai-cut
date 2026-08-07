@@ -10,6 +10,7 @@ import { Toolbar } from './toolbar'
 import { MediaSidebar } from './media-sidebar'
 import { PropertiesSidebar } from './properties-sidebar'
 import { PreviewArea } from './preview-area'
+import { AiEditingDock } from '@freecut/features/ai-editing/components/ai-editing-dock'
 import { MotionPreviewArea, MotionTimelineDock } from './compose-workspace/compose-layout'
 import { InteractionLockRegion } from './interaction-lock-region'
 import {
@@ -382,6 +383,7 @@ export const LoadedEditor = memo(function LoadedEditor({
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [bundleExportDialogOpen, setBundleExportDialogOpen] = useState(false)
   const [renderQueueOpen, setRenderQueueOpen] = useState(false)
+  const [aiEditingOpen, setAiEditingOpen] = useState(false)
   const renderQueueActiveCount = useRenderQueueStore(
     (s) => s.jobs.filter((j) => j.status === 'queued' || j.status === 'rendering').length,
   )
@@ -799,7 +801,11 @@ export const LoadedEditor = memo(function LoadedEditor({
                         <MotionTimelineDock project={project} />
                       ) : (
                         <Suspense fallback={null}>
-                          <LazyTimeline duration={timelineDuration} />
+                          <LazyTimeline
+                            duration={timelineDuration}
+                            aiEditingOpen={aiEditingOpen}
+                            onAiEditingOpenChange={setAiEditingOpen}
+                          />
                         </Suspense>
                       )}
                     </div>
@@ -818,6 +824,8 @@ export const LoadedEditor = memo(function LoadedEditor({
             </ErrorBoundary>
           </InteractionLockRegion>
         )}
+
+        {aiEditingOpen && <AiEditingDock onClose={() => setAiEditingOpen(false)} />}
       </div>
 
       <Suspense fallback={null}>
