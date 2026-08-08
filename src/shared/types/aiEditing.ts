@@ -65,6 +65,7 @@ export interface AiEditingAssistantGenerateInput {
   tools?: AiEditingAssistantToolDefinition[]
   maxTokens: number
   temperature: number
+  reasoningEffort: 'low' | 'high' | 'xhigh' | 'max'
 }
 
 export interface AiEditingAssistantGenerateResult {

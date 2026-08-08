@@ -2,6 +2,13 @@ import { useCallback, useMemo, useRef, useState, type ChangeEvent, type Keyboard
 import { AtSign, Clapperboard, FileVideo, FolderKanban, Send, X } from 'lucide-react'
 import { Button } from '@freecut/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@freecut/components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@freecut/components/ui/select'
 import { Textarea } from '@freecut/components/ui/textarea'
 import { useMediaLibraryStore } from '@freecut/features/editor/deps/media-library'
 import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
@@ -9,6 +16,7 @@ import { useProjectStore } from '@freecut/features/projects/stores/project-store
 import { useSelectionStore } from '@freecut/shared/state/selection'
 import { cn } from '@freecut/shared/ui/cn'
 import type { AiEditingResourceReference } from '../resource-references'
+import type { AiEditingReasoningEffort } from '../store'
 
 interface AiEditingReferenceOption extends AiEditingResourceReference {
   detail: string
@@ -22,6 +30,7 @@ interface MentionState {
 }
 
 const MAX_REFERENCE_OPTIONS = 24
+const REASONING_EFFORTS: AiEditingReasoningEffort[] = ['low', 'high', 'xhigh', 'max']
 
 function formatTime(seconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(seconds))
@@ -62,11 +71,15 @@ function ReferenceIcon({ kind }: { kind: AiEditingResourceReference['kind'] }) {
 export function AiEditingComposer({
   canChat,
   busy,
+  reasoningEffort,
+  onReasoningEffortChange,
   onSubmit,
   onCancel,
 }: {
   canChat: boolean
   busy: boolean
+  reasoningEffort: AiEditingReasoningEffort
+  onReasoningEffortChange: (effort: AiEditingReasoningEffort) => void
   onSubmit: (text: string, references: AiEditingResourceReference[]) => void
   onCancel: () => void
 }) {
@@ -225,19 +238,7 @@ export function AiEditingComposer({
                 ))}
               </div>
             )}
-            <div className="flex items-end gap-1.5">
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="h-9 w-9 shrink-0 text-muted-foreground"
-                onClick={openReferencePicker}
-                disabled={!canChat || busy || referenceOptions.length === 0}
-                aria-label="引用编辑资源"
-                data-tooltip="引用资源"
-              >
-                <AtSign className="h-4 w-4" />
-              </Button>
+            <div className="rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
               <Textarea
                 ref={textareaRef}
                 value={input}
@@ -245,14 +246,51 @@ export function AiEditingComposer({
                 onKeyDown={handleKeyDown}
                 onSelect={(event) => updateMention(event.currentTarget.value, event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
                 placeholder={canChat ? '描述想要完成的剪辑' : '完成设置后开始对话'}
-                className="min-h-9 max-h-28 resize-none text-xs"
+                className="min-h-14 max-h-28 resize-none border-0 bg-transparent px-2.5 py-2 text-xs shadow-none focus-visible:ring-0"
                 disabled={!canChat || busy}
               />
-              {busy ? (
-                <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={onCancel} aria-label="停止剪辑操作"><X className="h-4 w-4" /></Button>
-              ) : (
-                <Button type="button" size="icon" className="h-9 w-9 shrink-0" onClick={send} disabled={!canChat || !input.trim()} aria-label="发送剪辑请求"><Send className="h-4 w-4" /></Button>
-              )}
+              <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 text-muted-foreground"
+                  onClick={openReferencePicker}
+                  disabled={!canChat || busy || referenceOptions.length === 0}
+                  aria-label="引用编辑资源"
+                  data-tooltip="引用资源"
+                >
+                  <AtSign className="h-3.5 w-3.5" />
+                </Button>
+                <div className="flex items-center gap-1">
+                  <Select
+                    value={reasoningEffort}
+                    onValueChange={(value) => onReasoningEffortChange(value as AiEditingReasoningEffort)}
+                    disabled={busy}
+                  >
+                    <SelectTrigger
+                      className="h-7 w-[7.25rem] border-0 px-2 text-[11px] text-muted-foreground shadow-none"
+                      aria-label="思考强度"
+                      data-tooltip="思考强度"
+                    >
+                      <span className="truncate">思考</span>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {REASONING_EFFORTS.map((effort) => (
+                        <SelectItem key={effort} value={effort} className="text-xs">
+                          {effort}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {busy ? (
+                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={onCancel} aria-label="停止剪辑操作"><X className="h-3.5 w-3.5" /></Button>
+                  ) : (
+                    <Button type="button" size="icon" className="h-7 w-7 shrink-0" onClick={send} disabled={!canChat || !input.trim()} aria-label="发送剪辑请求"><Send className="h-3.5 w-3.5" /></Button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </PopoverAnchor>

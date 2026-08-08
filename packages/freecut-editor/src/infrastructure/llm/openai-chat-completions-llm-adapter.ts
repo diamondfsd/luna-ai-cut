@@ -59,6 +59,7 @@ class OpenAiChatCompletionsLlmAdapter implements NativeToolCallingLlmAdapter {
         mode: 'json',
         maxTokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
         temperature: options.temperature ?? 0,
+        reasoningEffort: options.reasoningEffort ?? 'high',
       })
       if (signal?.aborted) throw abortedError()
       const text = result.content
@@ -95,6 +96,7 @@ class OpenAiChatCompletionsLlmAdapter implements NativeToolCallingLlmAdapter {
         mode: 'auto',
         maxTokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
         temperature: options.temperature ?? 0,
+        reasoningEffort: options.reasoningEffort ?? 'high',
       })
       if (signal?.aborted) throw abortedError()
       return result

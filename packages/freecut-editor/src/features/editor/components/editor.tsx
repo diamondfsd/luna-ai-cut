@@ -383,7 +383,7 @@ export const LoadedEditor = memo(function LoadedEditor({
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [bundleExportDialogOpen, setBundleExportDialogOpen] = useState(false)
   const [renderQueueOpen, setRenderQueueOpen] = useState(false)
-  const [aiEditingOpen, setAiEditingOpen] = useState(false)
+  const [aiEditingOpen, setAiEditingOpen] = useState(true)
   const renderQueueActiveCount = useRenderQueueStore(
     (s) => s.jobs.filter((j) => j.status === 'queued' || j.status === 'rendering').length,
   )
@@ -410,6 +410,10 @@ export const LoadedEditor = memo(function LoadedEditor({
 
   useEffect(() => {
     rememberLastEditorProjectId(projectId)
+  }, [projectId])
+
+  useEffect(() => {
+    setAiEditingOpen(true)
   }, [projectId])
 
   // Initialize transition chain subscription (pre-computes chains from timeline data)

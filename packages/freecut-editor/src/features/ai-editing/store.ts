@@ -20,6 +20,22 @@ import type { AiEditingObservation, AiEditingToolActivity } from './types'
 const logger = createLogger('AiEditingStore')
 
 export type AiEditingPhase = 'idle' | 'loading' | 'thinking' | 'executing'
+export type AiEditingReasoningEffort = 'low' | 'high' | 'xhigh' | 'max'
+
+const REASONING_EFFORT_STORAGE_KEY = 'editor:aiEditingReasoningEffort'
+const REASONING_EFFORTS = new Set<AiEditingReasoningEffort>(['low', 'high', 'xhigh', 'max'])
+
+function loadReasoningEffort(): AiEditingReasoningEffort {
+  if (typeof window === 'undefined') return 'high'
+  try {
+    const stored = window.localStorage.getItem(REASONING_EFFORT_STORAGE_KEY)
+    return stored && REASONING_EFFORTS.has(stored as AiEditingReasoningEffort)
+      ? stored as AiEditingReasoningEffort
+      : 'high'
+  } catch {
+    return 'high'
+  }
+}
 
 export interface AiEditingMessage {
   id: string
@@ -37,10 +53,12 @@ interface AiEditingState {
   messages: AiEditingMessage[]
   observations: AiEditingObservation[]
   toolActivities: AiEditingToolActivity[]
+  reasoningEffort: AiEditingReasoningEffort
   projectId: string | null
   isRestoringConversation: boolean
   restoreConversation: (projectId: string | null) => Promise<void>
   submit: (text: string, references?: AiEditingResourceReference[]) => Promise<void>
+  setReasoningEffort: (effort: AiEditingReasoningEffort) => void
   cancel: () => void
   clear: () => Promise<void>
 }
@@ -86,6 +104,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
   messages: [],
   observations: [],
   toolActivities: [],
+  reasoningEffort: loadReasoningEffort(),
   projectId: null,
   isRestoringConversation: false,
 
@@ -176,6 +195,7 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
       const result = await runAiEditingTurn(addAiEditingReferenceContext(trimmed, references), {
         history,
         adapter,
+        reasoningEffort: get().reasoningEffort,
         signal: controller.signal,
         onToken: (_delta, fullText) => {
           if (!controller.signal.aborted && get().projectId === projectId) {
@@ -249,6 +269,16 @@ export const useAiEditingStore = create<AiEditingState>((set, get) => ({
     } finally {
       if (activeController === controller) activeController = null
     }
+  },
+
+  setReasoningEffort: (effort) => {
+    if (!REASONING_EFFORTS.has(effort)) return
+    try {
+      window.localStorage.setItem(REASONING_EFFORT_STORAGE_KEY, effort)
+    } catch {
+      // Keep the preference for this editor session when storage is unavailable.
+    }
+    set({ reasoningEffort: effort })
   },
 
   cancel: () => {

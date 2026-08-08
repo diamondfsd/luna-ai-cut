@@ -30,6 +30,8 @@ export interface LlmGenerateOptions {
   temperature?: number
   /** Nucleus sampling cutoff when `temperature > 0`. */
   topP?: number
+  /** Remote reasoning depth. Local adapters may ignore this preference. */
+  reasoningEffort?: 'low' | 'high' | 'xhigh' | 'max'
   /** Abort streaming and reject the pending generation. */
   signal?: AbortSignal
   /**

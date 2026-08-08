@@ -8,6 +8,7 @@ import {
   type EmbeddedTranscriptResult,
   type EmbeddedVisualEvidence,
   type EmbeddedMediaSource,
+  type EmbeddedTaskProgress,
   type EmbeddedAiAssistantConfig,
   type EmbeddedAiAssistantConfigInput,
   type EmbeddedAiAssistantGenerateInput,
@@ -17,8 +18,14 @@ import './index.css'
 
 export interface FreeCutEditorProps {
   onRequestMediaImport?: (importFiles: ImportMediaFiles) => void
-  onTranscribeMedia?: (source: EmbeddedMediaSource) => Promise<EmbeddedTranscriptResult>
-  onAnalyzeMediaVisual?: (source: EmbeddedMediaSource) => Promise<EmbeddedVisualEvidence>
+  onTranscribeMedia?: (
+    source: EmbeddedMediaSource,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+  ) => Promise<EmbeddedTranscriptResult>
+  onAnalyzeMediaVisual?: (
+    source: EmbeddedMediaSource,
+    onProgress?: (progress: EmbeddedTaskProgress) => void,
+  ) => Promise<EmbeddedVisualEvidence>
   onGetAiAssistantConfig?: () => Promise<EmbeddedAiAssistantConfig>
   onSaveAiAssistantConfig?: (input: EmbeddedAiAssistantConfigInput) => Promise<EmbeddedAiAssistantConfig>
   onGenerateAiAssistant?: (input: EmbeddedAiAssistantGenerateInput) => Promise<EmbeddedAiAssistantGenerateResult>

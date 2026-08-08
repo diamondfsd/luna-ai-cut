@@ -3,6 +3,7 @@ import { useTimelineStore } from '@freecut/features/editor/deps/timeline-store'
 import { analyzeAudioBeats, getAudioBeatEvidence } from '../audio-beat-service'
 import type { AiEditingToolModule } from '../types'
 import { defineAiEditingTool, objectSchema } from './tool-utils'
+import { mediaIdFromToolInput } from './media-reference'
 
 const inspectBeats = defineAiEditingTool({
   id: 'audio.inspect_beats',
@@ -10,7 +11,7 @@ const inspectBeats = defineAiEditingTool({
   description: '读取已分析音乐的 BPM 和节拍时间点。',
   risk: 'read',
   inputSchema: objectSchema({
-    mediaId: { type: 'string', description: '音乐素材。' },
+    mediaId: { type: 'string', description: '音乐素材，使用 workspace.media[].ref。' },
     startSeconds: { type: 'number', minimum: 0, description: '可选的起始时间。' },
     endSeconds: { type: 'number', minimum: 0, description: '可选的结束时间。' },
   }, ['mediaId']),
@@ -21,7 +22,7 @@ const inspectBeats = defineAiEditingTool({
   }),
   summarize: () => '查看音乐节拍',
   execute: (args) => {
-    const evidence = getAudioBeatEvidence(args.mediaId)
+    const evidence = getAudioBeatEvidence(mediaIdFromToolInput(args.mediaId))
     if (!evidence) return { ok: false, message: '这段音乐还没有完成节拍分析。' }
     const beats = evidence.beats
       .filter((beat) => args.startSeconds === undefined || beat >= args.startSeconds)
@@ -40,11 +41,16 @@ const analyzeBeats = defineAiEditingTool({
   title: '分析音乐节拍',
   description: '使用本地音频分析识别 BPM 和节拍时间点。',
   risk: 'analysis',
-  inputSchema: objectSchema({ mediaId: { type: 'string', description: '音乐素材。' } }, ['mediaId']),
+  inputSchema: objectSchema({
+    mediaId: { type: 'string', description: '音乐素材，使用 workspace.media[].ref。' },
+  }, ['mediaId']),
   schema: z.object({ mediaId: z.string().min(1) }),
   summarize: () => '分析音乐节拍',
-  execute: async (args) => {
-    const evidence = await analyzeAudioBeats(args.mediaId)
+  execute: async (args, context) => {
+    context?.signal?.throwIfAborted()
+    context?.reportProgress({ label: '正在读取音频并识别节拍', percent: 5 })
+    const evidence = await analyzeAudioBeats(mediaIdFromToolInput(args.mediaId))
+    context?.reportProgress({ label: '节拍分析完成', percent: 100 })
     return {
       ok: true,
       message: `已识别音乐节拍，速度约为 ${Math.round(evidence.tempoBpm)} BPM。`,
