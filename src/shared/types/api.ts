@@ -167,6 +167,9 @@ export interface WorkspaceSegmentationModelStatus {
 }
 
 export interface LunaApi {
+  environment?: {
+    freecutStorage?: 'disk' | 'opfs'
+  }
   startupReady(): void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>

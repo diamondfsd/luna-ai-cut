@@ -29,7 +29,6 @@ import {
 import { mockTcpPortForHost, stopMockServer } from './mockServerService'
 import { createPreviewTaskQueue } from './previewTaskQueue'
 import { appIconPath, createMainWindow, registerRendererProtocol } from './windowService'
-import { migrateLegacyFreecutWorkspace } from './freecutLegacyMigrationService'
 import { cleanupDeviceDebug, registerDeviceDebugHandlers } from './deviceDebugHandlers'
 import { cancelExportTask, resetRenderCompatibilityBlock, warmupRenderCore } from './lunaRenderCore'
 import { shutdownSpecializedSegmentationWorker } from './specializedSegmentationService'
@@ -544,15 +543,6 @@ app.whenReady().then(async () => {
   if (!VITE_DEV_SERVER_URL) registerRendererProtocol(RENDERER_DIST)
   initLogger()
   logMainInfo('应用启动', { codeSource: process.env.LUNA_BOOT_SOURCE ?? 'unknown' })
-  if (!VITE_DEV_SERVER_URL && process.env.LUNA_E2E_RENDERER_ORIGIN !== 'file') {
-    try {
-      await migrateLegacyFreecutWorkspace(RENDERER_DIST)
-    } catch (error) {
-      logMainWarn('FreeCut 旧项目迁移失败，跳过本次迁移', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
   recoverLegacyRenderInitGuardOnce()
   // 打印系统信息
   logMainInfo('[系统信息]', {

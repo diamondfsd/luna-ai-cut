@@ -53,6 +53,9 @@ interface LunaExportTaskApi {
 }
 
 const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
+  environment: {
+    freecutStorage: process.env.LUNA_E2E_FREECUT_STORAGE === 'opfs' ? 'opfs' : 'disk',
+  },
   startupReady: () => ipcRenderer.send('luna:startup-ready'),
   // 日志
   log: (level: string, message: string, meta?: unknown) => {
